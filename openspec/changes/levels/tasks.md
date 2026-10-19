@@ -1,10 +1,10 @@
 ## 1. Format and parser (no engine)
 
-- [ ] 1.1 Spike: E2 is Bevy 0.20's `@SceneComp { @prop: v, field: v }` (settled from `bevy_scene/src/lib.rs`); check whether `#26043`'s lexer accepts comments; record both in design.md
-- [ ] 1.2 Vendor `bevy_bsn`'s syntax module at the #26043 commit under `crates/bevy-ts-levels/src/upstream/`, with its licence, for tests only
-- [ ] 1.3 Write the lossless lexer and parser (tokens with trivia, byte spans) for upstream's grammar plus E1 to E4; reject every other construct with a named error and location
-- [ ] 1.4 Printer and round-trip tests: a fixture corpus (comments, blank lines, one-line and multi-line patches, trailing commas) prints back byte for byte
-- [ ] 1.5 Differential test: every extension-free fixture parses to the same tree with the vendored parser; `bevy-ts levels check --upstream` lists extensions with locations
+- [x] 1.1 Spike: E2 is Bevy 0.20's `@SceneComp { @prop: v, field: v }` (settled from `bevy_scene/src/lib.rs`); check whether `#26043`'s lexer accepts comments; record both in design.md
+- [x] 1.2 Vendor `bevy_bsn`'s syntax module at the #26043 commit under `crates/bevy-ts-levels/src/upstream/`, with its licence, for tests only
+- [x] 1.3 Write the lossless lexer and parser (tokens with trivia, byte spans) for upstream's grammar plus E1 to E4; reject every other construct with a named error and location
+- [x] 1.4 Printer and round-trip tests: a fixture corpus (comments, blank lines, one-line and multi-line patches, trailing commas) prints back byte for byte
+- [x] 1.5 Differential test: every extension-free fixture parses to the same tree with the vendored parser; `bevy-ts levels check --upstream` lists extensions with locations
 
 ## 2. Loading levels
 

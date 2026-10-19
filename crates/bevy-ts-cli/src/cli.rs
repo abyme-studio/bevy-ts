@@ -19,7 +19,8 @@ const USAGE: &str = "usage:
   bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]
   bevy-ts build [<project dir>]
   bevy-ts types [--out <file>]
-  bevy-ts skeleton [--headless]";
+  bevy-ts skeleton [--headless]
+  bevy-ts levels check [--upstream] <file.bsn>…";
 
 /// Parsed `bevy-ts dev` options.
 #[derive(Debug, Clone)]
@@ -104,6 +105,9 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
                 std::process::exit(code);
             }
             std::process::exit(crate::types::run(&engine, extra, &args[1..]))
+        }
+        Some("levels") if args.get(1).map(String::as_str) == Some("check") => {
+            std::process::exit(bevy_ts_levels::check::run(&args[2..]))
         }
         Some("skeleton") => skeleton(&engine, extra, args.iter().any(|a| a == "--headless")),
         _ => {

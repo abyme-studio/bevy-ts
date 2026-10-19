@@ -1,0 +1,6 @@
+#Lamp
+@game::Lamp { @base: 2.0 }
+Children [
+    #"mesh#0"
+    MeshMaterial3d("materials/brass.mat")
+]

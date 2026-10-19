@@ -1,0 +1,21 @@
+#Room
+Transform { translation: Vec3 { x: 0.0, y: 0.0, z: 0.0 } }
+Children [
+    #Floor
+    Transform {
+        translation: Vec3 { y: 0.5 },
+        scale: Vec3 { x: 10.0, y: 1.0, z: 10.0 },
+    }
+    Mesh3d("meshes/floor.glb#Mesh0")
+    --
+    #Door
+    game::Door { open: false, code: 0x1F, label: "front \"main\"\tdoor" }
+    Visibility::Hidden
+    --
+    #Lamp
+    PointLight { intensity: 1500.0, range: .5e2, shadows_enabled: true, }
+    --
+]
+--
+#Spawn
+::bevy_transform::components::Transform

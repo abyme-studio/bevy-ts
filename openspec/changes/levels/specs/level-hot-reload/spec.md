@@ -24,7 +24,7 @@ An override value SHALL be written when it differs from the last value applied f
 - **THEN** enemy `b` stays where `bob` put it
 
 #### Scenario: Raising hp in the file
-- **WHEN** enemy `b` has taken damage, and `hp: 250.0` becomes `hp: 400.0`
+- **WHEN** enemy `b` has taken damage, and `@hp: 250.0` becomes `@hp: 400.0`
 - **THEN** `Health.max` becomes 400 and `Health.hp` keeps its damaged value
 
 ### Requirement: Identity across reloads

@@ -1,0 +1,17 @@
+[package]
+name = "bevy-ts-levels"
+description = "Levels for bevy-ts: .bsn files loaded as reconciled roots, and the writer the viewport edits them through"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "bevy_ts_levels"
+
+[dependencies]
+
+[dev-dependencies]
+# The vendored `bevy_bsn` (src/upstream) needs these, for the differential test only.
+nom = "8"
+memchr = "2"
+thiserror = { version = "2", default-features = false }

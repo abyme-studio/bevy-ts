@@ -282,6 +282,14 @@ On top of bridge's and tsx's rules:
 
 None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions only). For Bevy's loader: bump the vendored `bevy_bsn`, run the differential test, and when upstream's `BsnLevel`-equivalent asset lands, swap our parser and loader for it behind decision 3's level root. Files using no extension need no change. Files using E1 to E4 are rewritten by `bevy-ts levels migrate` once upstream has the matching forms.
 
+## Spike findings (task 1.1, 2026-10-20)
+
+- **#26043's lexer has no comments.** `/` is an unexpected character (`bevy_bsn/src/lex.rs` at 81f44028). E1 stays an extension.
+- **#26043's lexer has no negative numbers.** `-` and `--` are lexed before numbers, so `-4.0` is `Minus` then `Float(4.0)` and the parser rejects it; `+4.0` lexes as one float. The macro accepts negatives and levels need them, so bevy-ts accepts them and `levels check --upstream` lists them as `U1`, an upstream gap rather than an extension. The differential test pins this.
+- **Upstream's `ParseStream` reads a lex error as the end of input** (`peek_token` returns `None`), so its parser accepts the prefix of a file that fails to lex. The differential test lexes upstream's way first.
+- **Upstream's root rule parses one entity** and stops at `--`. A level's top level is a scene-list body (the rule inside `Children [ … ]`), and the differential test compares it with that rule.
+- **`@name` in an ordinary patch is refused**, as the macro refuses it ("Scene prop fields are not supported in normal component patches").
+
 ## Operator rulings
 
 - 2026-10-20: placeable prefabs are scene components, `class X extends SceneComponent` with

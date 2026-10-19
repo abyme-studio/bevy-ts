@@ -1,0 +1,21 @@
+// Hand formatting the writer must keep.
+
+
+#Crate    Transform{translation:Vec3{x:1.0,y:2.0}}   Marker
+	-- // a tab-indented separator
+
+
+#Shelf
+Transform {
+    translation: Vec3 {
+        x: 4.0,
+        y: 0.0, /* inline */
+    },
+}
+Children [
+    #Box1 Marker --
+    #Box2 Score(1, 2,)
+    --
+]
+/* trailing
+   block /* nested */ comment */

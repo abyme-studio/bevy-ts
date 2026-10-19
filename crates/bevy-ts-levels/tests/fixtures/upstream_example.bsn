@@ -1,0 +1,16 @@
+
+#A
+:"inherited.bsn"
+bevy_transform::Transform { x: 1.0 }
+Children [
+    bevy_transform::Transform
+    Foo { nested: Bar { value: 1 } }
+    Marker
+    Score(0, 1)
+    --
+    #B
+    Marker
+    Children [
+        #C
+    ]
+]

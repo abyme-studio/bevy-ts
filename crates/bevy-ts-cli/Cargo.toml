@@ -16,6 +16,7 @@ bevy-ts-v8.workspace = true
 bevy-ts-remote.workspace = true
 bevy-ts-tsx.workspace = true
 bevy-ts-viewport.workspace = true
+bevy-ts-levels.workspace = true
 oxc = { version = "0.154", features = ["transformer", "codegen", "semantic"] }
 notify = "8"
 serde_json.workspace = true
