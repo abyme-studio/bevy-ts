@@ -77,10 +77,10 @@ fn tsx_elements_carry_their_ts_source() {
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     updates(&mut app, 2);
-    let line = messages(&app).into_iter().find(|m| m.contains("lineNumber")).expect("element source logged");
+    let line = messages(&app).into_iter().find(|m| m.contains("\"line\"")).expect("element source logged");
     assert!(line.contains("game.tsx"), "{line}");
-    assert!(line.contains("\"lineNumber\":4"), "{line}");
-    assert!(line.contains("\"columnNumber\":19"), "{line}");
+    assert!(line.contains("\"line\":4"), "{line}");
+    assert!(line.contains("\"column\":19"), "{line}");
 }
 
 #[test]

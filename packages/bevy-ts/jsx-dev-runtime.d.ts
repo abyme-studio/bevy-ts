@@ -1,5 +1,6 @@
-export { Fragment, JSX } from "./jsx-runtime";
-import type { Element } from "./jsx-runtime";
+// `bevy-ts/jsx-dev-runtime`: as `bevy-ts/jsx-runtime`, plus the TS source of each element.
+export { Fragment, JSX } from "bevy-ts/jsx-runtime";
+import type { Element } from "bevy-ts/jsx-runtime";
 export interface Source {
   fileName: string;
   lineNumber: number;
@@ -12,4 +13,4 @@ export declare function jsxDEV(
   isStatic: boolean,
   source?: Source,
   self?: unknown,
-): Element & { source: Source | null };
+): Element;

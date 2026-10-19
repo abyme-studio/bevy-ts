@@ -5,6 +5,8 @@
 // system run is one call from Rust (`runSystem`) with column ArrayBuffers that Rust detaches
 // when the call returns. Field setters store the run's tick in the row's changed tick.
 
+import { describe } from "bevy-ts/jsx-runtime";
+
 const S = {
   /** The generation being loaded, or null. */
   loading: null,
@@ -218,6 +220,30 @@ export const app = {
     if (typeof run !== "function") throw declError(`startup ${name}: run must be a function`, at);
     g.startups.push({ name, location: at });
     g.startupFns.push(run);
+  },
+
+  /**
+   * Declares a scene root. Its function runs now, during the load, and its description goes to
+   * the `tsx` reconciler with the generation; a throw fails the generation.
+   */
+  scene(name, fn) {
+    const at = callerLocation();
+    const g = S.loading;
+    if (!g) throw declError(`app.scene(${name}) must be called while a module loads`, at);
+    if (typeof fn !== "function") throw declError(`scene ${name}: must be a function returning elements`, at);
+    if (g.scenes.has(name)) throw declError(`scene ${name} is declared twice`, at);
+    const root = fn();
+    let nodes = [];
+    try {
+      nodes = describe(root);
+    } catch (e) {
+      // A description error names its element: it reaches Rust in the section, which fails the
+      // generation with that location (a throw here would be located at this call instead).
+      if (!e || !e.bevyTsLocation) throw e;
+      g.sceneErrors.push({ message: String(e.message), location: e.bevyTsLocation });
+    }
+    g.scenes.set(name, { name, location: at, nodes });
+    section("tsx", { roots: [...g.scenes.values()], errors: g.sceneErrors });
   },
 
   /** Declares an entry Rust plugins call by name with a byte payload. */
@@ -681,6 +707,15 @@ class Commands {
     this.op(w.bytes());
     return e;
   }
+  /** Mounts an element tree under the tsx runtime root (`{ parent }`: an entity to nest under). */
+  mount(element, options) {
+    const parent = options && options.parent !== undefined && options.parent !== null ? options.parent : null;
+    this.custom("tsx/mount", { nodes: describe(element), parent });
+  }
+  /** Unmounts a runtime-mounted node by its key, or any tsx node by its entity. */
+  unmount(target) {
+    this.custom("tsx/unmount", typeof target === "string" ? { key: target } : { entity: target });
+  }
   /** Appends an op of a plugin's command kind. */
   custom(kind, payload) {
     const opcode = this.kinds ? this.kinds[kind] : undefined;
@@ -845,6 +880,8 @@ function newGeneration() {
     entries: [],
     entryFns: new Map(),
     sections: new Map(),
+    scenes: new Map(),
+    sceneErrors: [],
     built: null,
   };
 }

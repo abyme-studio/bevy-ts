@@ -8,7 +8,8 @@ export declare const Transform: ComponentType<{
 }>;
 
 export declare const GlobalTransform: RustComponent;
-export declare const Name: RustComponent;
+/** `Name`; as an element, `<Name value="..." />` (or `<entity name="...">`). */
+export declare const Name: RustComponent & ((props: { value: string }) => import("bevy-ts/jsx-runtime").Element);
 export declare const ChildOf: RustComponent;
 export declare const Children: RustComponent;
 export declare const Visibility: RustComponent;

@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "bevy-ts"
+  },
+  "imports": {
+    "bevy-ts": "./index.d.ts",
+    "bevy-ts/bevy": "./bevy.d.ts",
+    "bevy-ts/jsx-runtime": "./jsx-runtime.d.ts",
+    "bevy-ts/jsx-dev-runtime": "./jsx-dev-runtime.d.ts"
+  }
+}

@@ -95,9 +95,24 @@ export interface ComponentValue<F extends Fields = Fields> {
   readonly values: Values<F>;
 }
 
+type WriteOf<T> = T extends FieldType<any, infer W> ? W : never;
+
+/**
+ * A component element's props: each field `f` controlled (written on insert and whenever the
+ * declared value changes) or `initialF` initial (written on insert only).
+ */
+export type ElementProps<F extends Fields> = { [K in keyof F]?: WriteOf<F[K]> } & {
+  [K in keyof F & string as `initial${Capitalize<K>}`]?: WriteOf<F[K]>;
+};
+
+/** A field given both as `f` and as `initialF` becomes `never`: a type error on `f`. */
+type NoBoth<F extends Fields, P> = { [K in keyof F & keyof P & string]: `initial${Capitalize<K>}` extends keyof P ? never : unknown };
+
 /** A component type. Call it with field values to make a value for `spawn`/`insert`. */
 export interface ComponentType<F extends Fields = Fields> {
   (values?: Values<F>): ComponentValue<F>;
+  /** As a JSX tag: a component element on the enclosing `<entity>`. */
+  <const P extends ElementProps<F>>(props: P & NoBoth<F, P>): import("bevy-ts/jsx-runtime").Element;
   readonly componentName: string;
   readonly source: "ts" | "rust";
   /** Byte offset of each field in a row, once the generation applies. */
@@ -173,6 +188,10 @@ export interface Commands {
     params?: { size?: [number, number, number]; color?: string; position?: [number, number, number]; lookAt?: [number, number, number] },
   ): Entity;
   spawnNative(recipe: string, params?: unknown): Entity;
+  /** Mounts an element tree under the tsx runtime root, optionally as children of `parent`. */
+  mount(element: import("bevy-ts/jsx-runtime").Element, options?: { parent?: Entity }): void;
+  /** Unmounts a runtime-mounted node by its key, or any tsx-mounted entity. */
+  unmount(target: string | Entity): void;
   /** Appends an op of a Rust plugin's command kind. */
   custom(kind: string, payload: Uint8Array | string | object): void;
 }
@@ -205,6 +224,8 @@ export declare const app: {
   ): void;
   startup(name: string, run: (ctx: Context) => void): void;
   entry(name: string, fn: (payload: Uint8Array, ctx: Context) => Uint8Array | string | object | void): void;
+  /** Declares a scene root, evaluated on every generation and reconciled by key path. */
+  scene(name: string, fn: () => import("bevy-ts/jsx-runtime").Child): void;
 };
 
 /** Writes a manifest section for a Rust plugin. */
