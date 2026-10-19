@@ -40,7 +40,7 @@ fn node(id: u64, source: Vec<SourceLocation>, translation: Provenance) -> TsxNod
         fields.insert(f.to_string(), FieldState { provenance: p, applied: Value::Null });
     }
     let mut components = BTreeMap::new();
-    components.insert("Transform".to_string(), OwnedComponent { fields, source: Some(at("enemy.tsx", 3)) });
+    components.insert("Transform".to_string(), OwnedComponent { fields, source: Some(at("enemy.tsx", 3)), overrides: BTreeMap::new() });
     TsxNode { id, root: "game".into(), key_path: vec!["b".into()], types: vec!["Enemy".into()], source, components }
 }
 
