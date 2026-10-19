@@ -39,8 +39,8 @@ impl Schema for TestSchema {
                 component: ComponentSchema { name: "enemies::Grunt".into(), kind: ComponentKind::Ts, fields: vec![f("team", FieldType::U8, json!(0))], is_name: false },
                 props: vec![f("hp", FieldType::F32, json!(100.0))],
             }),
-            "Lamp" => Ok(SceneSchema {
-                component: ComponentSchema { name: "Lamp".into(), kind: ComponentKind::Ts, fields: vec![], is_name: false },
+            "Lamp" | "Drone" => Ok(SceneSchema {
+                component: ComponentSchema { name: path.into(), kind: ComponentKind::Ts, fields: vec![], is_name: false },
                 props: vec![],
             }),
             _ => Err(format!("unknown scene component {path}")),
@@ -91,7 +91,8 @@ impl Expander for TestExpander {
                     root.ty = "enemies::Grunt".into();
                     root
                 }
-                _ => entity("lamp", vec![comp("Light", ComponentKind::Ts, json!({ "intensity": { "$b": 7 } }))], vec![]),
+                "Lamp" => entity("lamp", vec![comp("Light", ComponentKind::Ts, json!({ "intensity": { "$b": 7 } }))], vec![]),
+                _ => entity("drone", vec![comp("Transform", ComponentKind::Rust, json!({ "translation": { "$b": 8, "$s": 1 } }))], vec![]),
             })
             .collect())
     }
@@ -248,4 +249,10 @@ fn relative_paths() {
     assert_eq!(resolve_path("levels/rooms/a.bsn", "./crate.glb#Mesh0"), "levels/rooms/crate.glb#Mesh0");
     assert_eq!(resolve_path("levels/rooms/a.bsn", "../b.bsn"), "levels/b.bsn");
     assert_eq!(resolve_path("levels/rooms/a.bsn", "models/x.glb"), "models/x.glb");
+}
+
+#[test]
+fn a_bound_root_transform_cannot_be_placed() {
+    let e = err(&[("a.bsn", "#D @Drone\nTransform { translation: Vec3 { x: 1.0 } }")]);
+    assert!(e.starts_with("a.bsn:2:13 Transform.translation is bound in TSX"), "{e}");
 }

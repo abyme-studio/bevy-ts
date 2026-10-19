@@ -737,6 +737,20 @@ export const app = {
     section("tsx", { roots: [...g.scenes.values()], errors: g.sceneErrors });
     return app;
   },
+  /**
+   * Declares a level root: a `.bsn` file under the asset root, loaded and reconciled by
+   * `bevy-ts-levels` on every generation.
+   */
+  level(path) {
+    const at = callerLocation();
+    const g = loadingOrThrow("app.level");
+    if (typeof path !== "string" || !path.endsWith(".bsn")) throw declError(`app.level(${JSON.stringify(path)}): expected a path to a .bsn file`, at);
+    g.levels ??= [];
+    if (g.levels.includes(path)) throw declError(`level ${path} is declared twice`, at);
+    g.levels.push(path);
+    section("levels", { levels: g.levels });
+    return app;
+  },
   /** Declares an entry Rust plugins call by name with a byte payload. */
   entry(name, fn) {
     const at = callerLocation();

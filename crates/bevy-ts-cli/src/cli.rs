@@ -171,6 +171,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
     }
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(true))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
+        .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
         .add_systems(Update, headless::screenshot_on_request)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);

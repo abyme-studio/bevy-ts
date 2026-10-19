@@ -9,14 +9,14 @@
 ## 2. Loading levels
 
 - [ ] 2.1 Confirm tsx T1 (scene components by name with fields and props read by the compile step, and a host entry) and T2 (external roots); add `app.level()` to the TS package with types
-- [ ] 2.2 `BsnLevel` asset loader (`bsn` extension) and tree-to-description conversion: names as keys, patches as controlled component elements, `Children` lists
-- [ ] 2.3 Value typing: Rust components through the type registry with short-path resolution and ambiguity errors, TS components through layouts; errors with file, line, column
+- [x] 2.2 `BsnLevel` asset loader (`bsn` extension) and tree-to-description conversion: names as keys, patches as controlled component elements, `Children` lists
+- [x] 2.3 Value typing: Rust components through the type registry with short-path resolution and ambiguity errors, TS components through layouts; errors with file, line, column
 - [ ] 2.4 Asset paths in `Handle` fields: asset-root and `./`/`../` relative resolution, `ReflectConvert` where 0.20 has it (verify) and own conversion otherwise; missing-asset warnings
 - [ ] 2.5 `@Comp` expansion through the TS scene component's `scene` in one host call per reconcile, scene component added to the root, `field:` patches applied to it; Transform and other root patches layered after the expansion
-- [ ] 2.6 E3 merge by name into expansion children (keys and quoted `tsx` segments), new children otherwise; reject removal of prefab-internal entities
-- [ ] 2.7 `:"x.bsn"` inclusion with overrides through any depth and a cycle check
-- [ ] 2.8 Identity: node ids from level path and name path, duplicate-name errors, positional ids and warnings for unnamed entities; `LevelInstance` component with owner chains
-- [ ] 2.9 Confirm tsx T3: `override` provenance with location; refuse an override of a bound field with a load error naming file, line, site and expression; test it, including a bound root `Transform`
+- [x] 2.6 E3 merge by name into expansion children (keys and quoted `tsx` segments), new children otherwise; reject removal of prefab-internal entities
+- [x] 2.7 `:"x.bsn"` inclusion with overrides through any depth and a cycle check
+- [x] 2.8 Identity: node ids from level path and name path, duplicate-name errors, positional ids and warnings for unnamed entities; `LevelInstance` component with owner chains
+- [x] 2.9 Confirm tsx T3: `override` provenance with location; refuse an override of a bound field with a load error naming file, line, site and expression; test it, including a bound root `Transform`
 
 ## 3. Writer
 

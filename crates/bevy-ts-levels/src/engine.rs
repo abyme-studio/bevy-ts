@@ -5,7 +5,7 @@
 use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, Expander, FieldSchema, Files, Frame, SceneSchema, Schema, ValueType};
 use crate::syntax::{self, EntityList, Entry, Extension, ParsedFile};
 use bevy::asset::io::Reader;
-use bevy::asset::{AssetLoader, LoadContext};
+use bevy::asset::{AssetLoadFailedEvent, AssetLoader, LoadContext};
 use bevy::ecs::message::MessageCursor;
 use bevy::prelude::*;
 use bevy_ts::backend::ScriptError;
@@ -257,8 +257,26 @@ fn open_pending(world: &mut World) {
 }
 
 /// Marks levels whose files changed, and reconciles every dirty level whose files are loaded.
-fn watch(world: &mut World, mut cursor: Local<MessageCursor<AssetEvent<BsnLevel>>>) {
+fn watch(world: &mut World, mut cursor: Local<MessageCursor<AssetEvent<BsnLevel>>>, mut failed: Local<MessageCursor<AssetLoadFailedEvent<BsnLevel>>>) {
     let mut changed = Vec::new();
+    let mut errors = Vec::new();
+    {
+        let messages = world.resource::<Messages<AssetLoadFailedEvent<BsnLevel>>>();
+        for ev in failed.read(messages) {
+            let path = ev.path.path().to_string_lossy().replace('\\', "/");
+            errors.push(located(&path, &ev.error.to_string()));
+        }
+    }
+    for e in &errors {
+        log(world, LogLevel::Error, e);
+        let affected = world.resource::<Levels>().affected(e.location.as_ref().map_or("", |l| l.file.as_str()));
+        let mut levels = world.resource_mut::<Levels>();
+        for p in affected {
+            if let Some(r) = levels.roots.get_mut(&p) {
+                r.error = Some(e.clone());
+            }
+        }
+    }
     {
         let messages = world.resource::<Messages<AssetEvent<BsnLevel>>>();
         let server = world.resource::<AssetServer>();
@@ -280,6 +298,21 @@ fn watch(world: &mut World, mut cursor: Local<MessageCursor<AssetEvent<BsnLevel>
         }
     }
     reconcile_dirty(world);
+}
+
+/// A load failure as a located error: the loader renders parse errors `file:line:col: message`.
+fn located(path: &str, text: &str) -> ScriptError {
+    let needle = format!("{path}:");
+    for (i, _) in text.match_indices(&needle) {
+        let rest = &text[i + needle.len()..];
+        let mut parts = rest.splitn(3, ':');
+        if let (Some(l), Some(c), Some(m)) = (parts.next(), parts.next(), parts.next())
+            && let (Ok(line), Ok(column)) = (l.parse::<u32>(), c.parse::<u32>())
+        {
+            return ScriptError::at(m.trim_start(), Some(bevy_ts::backend::SourceLocation { file: path.to_string(), line, column }));
+        }
+    }
+    ScriptError::at(text, Some(bevy_ts::backend::SourceLocation { file: path.to_string(), line: 1, column: 1 }))
 }
 
 /// Files read from the loaded `BsnLevel` assets.

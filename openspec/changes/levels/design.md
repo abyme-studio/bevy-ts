@@ -291,6 +291,14 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 - **Upstream's root rule parses one entity** and stops at `--`. A level's top level is a scene-list body (the rule inside `Children [ … ]`), and the differential test compares it with that rule.
 - **`@name` in an ordinary patch is refused**, as the macro refuses it ("Scene prop fields are not supported in normal component patches").
 
+## Implementation notes (group 2)
+
+- **An included file with several top-level entities is a group.** `#RoomA :"room.bsn"` takes `room.bsn`'s one top-level entity as its base; a file with several becomes the children of the including entity, keyed by their names.
+- **Includes resolve as asset paths:** `:"levels/room.bsn"` from the asset root, `:"./room.bsn"` against the including file.
+- **A level patch of a field the prefab gives as `initialF` makes it controlled:** the override wins and the `initial` prop goes.
+- **Reflect-tier components** (no native layout, such as handle-holding `Mesh3d`) are refused by name with their tier reason until task 2.4 gives them a reflect target in tsx.
+- **The binding's expression** is not in the description, so the bound-field error names the binding's site (file, line, column) and not its expression text.
+
 ## Operator rulings
 
 - 2026-10-20: comments (E1) and negative numbers (U1) stay bevy-ts extensions for now; no upstream

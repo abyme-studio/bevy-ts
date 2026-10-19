@@ -42,7 +42,7 @@ export default {
   "viewport-spike": { cmd: "SPIKE_SECS=60 cargo test --release -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },
   "viewport-gate": { cmd: "scripts/viewport-gate.sh" },
   // The same gate for levels task groups.
-  "levels-gate": { cmd: "scripts/viewport-gate.sh 2>&1 | tee target/levels-gate.log" },
+  "levels-gate": { cmd: "scripts/levels-gate.sh 2>&1 | tee target/levels-gate.log" },
   // The gate a systems-api task group lands on.
   "systems-gate": { cmd: "mkdir -p target && scripts/systems-gate.sh 2>&1 | tee target/systems-gate.log" },
 } satisfies ProcessFile;

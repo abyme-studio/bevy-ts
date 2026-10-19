@@ -393,6 +393,8 @@ export interface App {
   insertResource(r: { readonly [resourceBrand]: true }): App;
   addMessage(m: abstract new (...a: never) => { readonly [messageBrand]: true }): App;
   scene(name: string, root: () => Element): App;
+  /** Declares a level root: a `.bsn` file under the asset root (`"levels/arena.bsn"`), loaded and reconciled by bevy-ts-levels. */
+  level(path: `${string}.bsn`): App;
   /** Declares an entry Rust plugins call by name with a byte payload. */
   entry(name: string, fn: (payload: Uint8Array, ctx: { readonly commands: Commands; readonly dt: number; readonly elapsed: number; readonly tick: number; readonly frame: number }) => Uint8Array | string | object | void): App;
 }

@@ -152,7 +152,7 @@ fn a_level_loads_as_a_reconciled_root() {
     assert_eq!(floors.len(), 2, "room.bsn is included twice");
     let floor = f.app.world().get::<Transform>(floors[0]).unwrap();
     assert_eq!(floor.scale, Vec3::new(10.0, 1.0, 10.0));
-    assert_eq!(f.app.world().get::<ChildOf>(floors[0]).map(|c| c.parent()).is_some(), true);
+    assert!(f.app.world().get::<ChildOf>(floors[0]).is_some());
 
     let node = f.app.world().get::<TsxNode>(b).unwrap();
     assert_eq!(node.root, "level:levels/arena.bsn");
