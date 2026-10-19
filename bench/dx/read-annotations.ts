@@ -74,7 +74,7 @@ function decl(t: ts.TypeNode, sf: ts.SourceFile, sub: Map<string, string> = new 
   return `{ ${n.members.map((m) => `${(m as ts.PropertySignature).name.getText(nsf)}: ${decl((m as ts.PropertySignature).type!, nsf)}`).join(", ")} }`;
 }
 // Data classes: components, resources, messages and events. Field kinds come from the written type.
-const DATA = new Set(["Component", "ReflectComponent", "Resource", "Message", "Event", "EntityEvent"]);
+const DATA = new Set(["Component", "SceneComponent", "ReflectComponent", "Resource", "Message", "Event", "EntityEvent"]);
 const KINDS: Record<string, string> = {
   f32: "f32", f64: "f64", i8: "i8", u8: "u8", i16: "i16", u16: "u16", i32: "i32", u32: "u32",
   bool: "bool", boolean: "bool", Entity: "entity", Vec2: "vec2", Vec3: "vec3", Vec3Like: "vec3", Vec4: "vec4", Quat: "quat",
@@ -96,8 +96,20 @@ function readData(n: ts.ClassDeclaration, sf: ts.SourceFile, file: string) {
   const fields: string[] = [];
   try {
     for (const m of n.members) {
+      if (ts.isMethodDeclaration(m) && m.name.getText(sf) === "scene" && base === "SceneComponent") {
+        const p = m.parameters[0];
+        if (p?.type && ts.isTypeLiteralNode(p.type) && ts.isObjectBindingPattern(p.name)) {
+          const defaults = new Map(p.name.elements.map((e) => [e.name.getText(sf), e.initializer?.getText(sf)]));
+          for (const pm of p.type.members) {
+            const ps = pm as ts.PropertySignature, k = ps.name.getText(sf), d = defaults.get(k);
+            fields.push(`@${k}: ${fieldKind(ps.type!, sf)}${d ? ` = ${d}` : ""}`);
+          }
+        }
+        continue;
+      }
       if (!ts.isPropertyDeclaration(m)) continue;
       const name = m.name.getText(sf);
+      if (ts.isMethodDeclaration(m)) continue;
       if (m.modifiers?.some((x) => x.kind === ts.SyntaxKind.StaticKeyword)) {
         if (name === "path" && m.initializer && ts.isStringLiteral(m.initializer)) path = m.initializer.text;
         continue;
@@ -113,34 +125,6 @@ const sf = load(resolve(Deno.args[0]));
 const rel = Deno.args[0].replace(/^.*?examples\//, "examples/");
 // Data and prefab names: the module path under the source root as a Rust-style path (src/enemies.tsx -> enemies).
 const modPath = rel.replace(/^(src|examples)\//, "").replace(/\.(tsx?|jsx?)$/, "").split("/").join("::");
-// Prefabs: exported arrow functions in .tsx whose one parameter is a destructured, typed props object.
-// Name `module#export`, pinned by `Name.path = "..."`; props and defaults read as fields.
-const pinned = new Map<string, string>();
-for (const n of sf.statements) {
-  if (ts.isExpressionStatement(n) && ts.isBinaryExpression(n.expression) && ts.isPropertyAccessExpression(n.expression.left)
-    && n.expression.left.name.text === "path" && ts.isStringLiteral(n.expression.right)) {
-    pinned.set(n.expression.left.expression.getText(sf), n.expression.right.text);
-  }
-}
-function readPrefab(name: string, fn: ts.ArrowFunction) {
-  const p = fn.parameters[0];
-  if (!p || !p.type || !ts.isTypeLiteralNode(p.type) || !ts.isObjectBindingPattern(p.name)) return;
-  const defaults = new Map(p.name.elements.map((e) => [e.name.getText(sf), e.initializer?.getText(sf)]));
-  try {
-    const props = p.type.members.map((m) => {
-      const ps = m as ts.PropertySignature, k = ps.name.getText(sf), d = defaults.get(k);
-      return `${k}: ${fieldKind(ps.type!, sf)}${d ? ` = ${d}` : ""}`;
-    });
-    console.log(`${name}: prefab "${pinned.get(name) ?? `${modPath}::${name}`}" { ${props.join(", ")} }`);
-  } catch (e) { console.log(`${name}: ERROR ${(e as Error).message}`); }
-}
-for (const n of sf.statements) {
-  if (ts.isVariableStatement(n) && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
-    for (const d of n.declarationList.declarations) {
-      if (d.initializer && ts.isArrowFunction(d.initializer) && Deno.args[0].endsWith(".tsx")) readPrefab(d.name.getText(sf), d.initializer);
-    }
-  }
-}
 for (const n of sf.statements) {
   if (ts.isClassDeclaration(n) && n.name && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) readData(n, sf, rel);
   if (ts.isFunctionDeclaration(n) && n.name && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {

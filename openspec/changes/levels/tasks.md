@@ -1,6 +1,6 @@
 ## 1. Format and parser (no engine)
 
-- [ ] 1.1 Spike: pin the 0.20 `bsn!` forms that E2 mirrors (`@SceneComp { prop: v }` against `@prop: v`), and check whether `#26043`'s lexer accepts comments; record both in design.md
+- [ ] 1.1 Spike: E2 is Bevy 0.20's `@SceneComp { @prop: v, field: v }` (settled from `bevy_scene/src/lib.rs`); check whether `#26043`'s lexer accepts comments; record both in design.md
 - [ ] 1.2 Vendor `bevy_bsn`'s syntax module at the #26043 commit under `crates/bevy-ts-levels/src/upstream/`, with its licence, for tests only
 - [ ] 1.3 Write the lossless lexer and parser (tokens with trivia, byte spans) for upstream's grammar plus E1 to E4; reject every other construct with a named error and location
 - [ ] 1.4 Printer and round-trip tests: a fixture corpus (comments, blank lines, one-line and multi-line patches, trailing commas) prints back byte for byte
@@ -8,11 +8,11 @@
 
 ## 2. Loading levels
 
-- [ ] 2.1 Confirm tsx T1 (exported prefabs by name with props read by the compile step, and a host entry) and T2 (external roots); add `app.level()` to the TS package with types
+- [ ] 2.1 Confirm tsx T1 (scene components by name with fields and props read by the compile step, and a host entry) and T2 (external roots); add `app.level()` to the TS package with types
 - [ ] 2.2 `BsnLevel` asset loader (`bsn` extension) and tree-to-description conversion: names as keys, patches as controlled component elements, `Children` lists
 - [ ] 2.3 Value typing: Rust components through the type registry with short-path resolution and ambiguity errors, TS components through layouts; errors with file, line, column
 - [ ] 2.4 Asset paths in `Handle` fields: asset-root and `./`/`../` relative resolution, `ReflectConvert` where 0.20 has it (verify) and own conversion otherwise; missing-asset warnings
-- [ ] 2.5 `@Prefab` expansion in one host call per reconcile; Transform and other root patches layered after the expansion
+- [ ] 2.5 `@Comp` expansion through the TS scene component's `scene` in one host call per reconcile, scene component added to the root, `field:` patches applied to it; Transform and other root patches layered after the expansion
 - [ ] 2.6 E3 merge by name into expansion children (keys and quoted `tsx` segments), new children otherwise; reject removal of prefab-internal entities
 - [ ] 2.7 `:"x.bsn"` inclusion with overrides through any depth and a cycle check
 - [ ] 2.8 Identity: node ids from level path and name path, duplicate-name errors, positional ids and warnings for unnamed entities; `LevelInstance` component with owner chains

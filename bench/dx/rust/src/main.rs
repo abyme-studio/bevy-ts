@@ -160,6 +160,36 @@ fn grunt(at: Vec3, speed: f32) -> impl Scene {
     }
 }
 
+// The placeable form: a scene component with props, as levels place it.
+#[derive(SceneComponent, Default, Clone)]
+#[scene(GruntProps)]
+struct Grunt {
+    team: u8,
+}
+
+#[derive(Default)]
+struct GruntProps {
+    speed: f32,
+}
+
+impl Grunt {
+    fn scene(props: GruntProps) -> impl Scene {
+        let speed = props.speed;
+        bsn! {
+            Enemy { speed: speed }
+            Health { hp: 100.0, max: 100.0 }
+        }
+    }
+}
+
+fn spawn_placed_grunt(mut commands: Commands) {
+    commands.spawn_scene(bsn! { @Grunt { @speed: 3.0, team: 1 } });
+}
+
+fn count_grunts(grunts: Query<&Grunt>) {
+    let _ = grunts.iter().count();
+}
+
 fn spawn_grunt(mut commands: Commands) {
     commands.spawn_scene(grunt(vec3(0.0, 0.0, -12.0), 3.0));
 }
@@ -221,7 +251,8 @@ fn grounded(rapier: ReadRapierContext, q: Single<(Entity, &Transform, &mut Veloc
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins, RapierPhysicsPlugin::<NoUserData>::default(), EnemyPlugin))
-        .add_systems(Startup, (spawn_grunt, spawn_hud))
+        .add_systems(Startup, (spawn_grunt, spawn_placed_grunt, spawn_hud))
+        .add_systems(Update, count_grunts)
         .add_systems(Update, (update_hp, hurt))
         .add_systems(FixedUpdate, (steer, grounded).before(PhysicsSet::SyncBackend))
         .run();

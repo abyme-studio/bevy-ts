@@ -45,8 +45,8 @@ A level file that fails to parse or resolve SHALL be rejected whole. Failures in
 A TS generation SHALL re-expand every level instance as part of that generation, because prefab code may have changed. If any level fails under the new generation, for example because its prefab was removed or a prop was renamed, the whole generation SHALL fail under bridge's rule. The old code and the old world SHALL keep running, and the failure SHALL name the level location.
 
 #### Scenario: Removing a prefab a level uses
-- **WHEN** `game::Enemy` is deleted from TSX and saved, while `arena.bsn` still instances it
-- **THEN** the generation fails naming `arena.bsn`'s `@game::Enemy` lines, and the enemies keep running under the old code
+- **WHEN** `enemies::Enemy` is deleted from TSX and saved, while `arena.bsn` still instances it
+- **THEN** the generation fails naming `arena.bsn`'s `@enemies::Enemy` lines, and the enemies keep running under the old code
 
 ### Requirement: Edit mode, selection and the camera survive level reloads
 A level reload, whether caused by the writer or by an external change, SHALL keep the viewport's mode, its selection by node id, and the editor camera. The selection SHALL be cleared only when the selected entity is despawned.

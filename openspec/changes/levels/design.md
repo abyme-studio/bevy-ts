@@ -59,7 +59,7 @@ bevy-ts reads exactly what `bevy_bsn` (PR #26043) parses, plus four extensions. 
 | Extension | Why | Leaves when |
 |---|---|---|
 | E1 `//` and `/* */` comments | Levels are read and annotated by people and agents. The macro grammar has comments. | Upstream's lexer gains them, which the "comment-preserving round tripping" goal in #26043 implies |
-| E2 `@path::Prefab { prop: v }` | A level must instance a TSX prefab by name with props. It is the macro's `@SceneComp { … }` form. | Upstream ships function or scene-component support in files (post-MVP in #14437) |
+| E2 `@path::Comp { @prop: v, field: v }` in files | A level must place a TS scene component with props. It is the macro's `@SceneComp { … }` form, character for character. | Upstream ships function or scene-component support in files (post-MVP in #14437) |
 | E3 a `#Name` child of an inclusion merges with the included child of that name | A level must override a prefab's inner entity. | Upstream defines child overrides of inclusions (decision 4) |
 | E4 quoted names `#"mesh#0"` | They address unkeyed prefab children, whose key segment is not an identifier. | Upstream accepts them (Jackdaw already does) |
 
@@ -90,7 +90,7 @@ New text follows fixed rules. Floats are the shortest form that round-trips and 
 - Each entity becomes an `<entity>` node keyed by its `#Name`.
 - Each type patch becomes a component element whose fields are `controlled`, with provenance `override` and the file location.
 - `Children [ … ]` becomes child nodes.
-- `@Prefab { … }` is expanded by the registered TSX prefab in JS (decision 5).
+- `@Comp { … }` is expanded by the TS scene component's `scene` in JS (decision 5).
 - `:"other.bsn"` is expanded from that file's tree, recursively, with a cycle check.
 
 The finished description goes to the same reconciler as an `app.scene` root named `level:<path>`. `commands.loadLevel(path)` and `commands.unloadLevel(path)` do the same at runtime.
@@ -112,25 +112,35 @@ E3 extends this into prefab instances. In an instance's `Children [ … ]`, an e
 - *Beat: positional ids.* Inserting one entity would shift every later one.
 - *Beat: an `Override("eye")` marker component for child overrides.* It parses with upstream today, but it reads worse, and it is no closer to the semantics upstream will choose.
 
-### 5. Prefabs are called by name with typed props; the instance root's Transform is the level's
+### 5. Placeable prefabs are scene components, placed with Bevy's own syntax; the instance root's Transform is the level's
+A prefab a level can place is Bevy's scene component (`#[derive(SceneComponent)]`, `bevy_scene/src/scene_component.rs`) written in TS: a component class whose `static scene(props)` builds its scene (operator ruling 2026-10-20).
+
 ```tsx
-export const Enemy = ({ hp = 100 }: { hp?: f32 }) => (
-  <entity name="enemy">
-    <Health initialHp={hp} max={hp} />
-    <mesh shape="cuboid" size={[1, 1, 1]} color="#c33" />
-    <entity key="eye"><Transform translation={[0, 0.6, 0.5]} /></entity>
-  </entity>
-);
-Enemy.path = "game::Enemy";
+export class Enemy extends SceneComponent {
+  team: u8 = 0;                                        // component field
+  static scene({ hp = 100 }: { hp?: f32 }) {           // props
+    return (
+      <entity name="enemy">
+        <Health initialHp={hp} max={hp} />
+        <mesh shape="cuboid" size={[1, 1, 1]} color="#c33" />
+        <entity key="eye"><Transform translation={[0, 0.6, 0.5]} /></entity>
+      </entity>
+    );
+  }
+}
 ```
 ```
 #EnemyB
-@game::Enemy { hp: 250.0 }
+@enemies::Enemy { @hp: 250.0, team: 1 }
 Transform { translation: Vec3 { x: 3.0, z: -4.0 } }
 ```
 
-- Every exported prefab is callable from a level, with no registration (operator ruling 2026-10-20, as with components and systems). Its name is a Rust-style path, the module's path under the source root with `/` as `::` and the extension dropped, then the class or export: `src/enemies.tsx` exporting `Grunt` is `enemies::Grunt`, `src/units/tank.ts` exporting `Tank` is `units::tank::Tank`, as a Rust type path is built from its module, unless `Enemy.path` pins it, so a level writes `@enemies::Grunt { speed: 3.0 }` in upstream's path syntax. The compile step reads its props from the props type and their defaults from the destructuring, with components' field types. That lets Rust type-check `.bsn` values, the inspector show props, and the writer emit them.
-- *Beat: `prefab(name, props, fn)` with a runtime props schema (the previous draft).* A name string and a schema object beside the TS type said the same thing twice.
+- **Bevy 0.20's syntax.** `@Comp { @prop: v, field: v }` is exactly the macro's form. `@prop` sets a scene prop, which is evaluated when the scene is included and is not patchable. A plain `field: v` patches the component's own field (the "SceneComponent Props" section of `bevy_scene/src/lib.rs`). That answers the old open question: props take `@`.
+- **The scene component is always added** to the instance root, as in Bevy, so `Query<[Enemy]>` finds every placed enemy.
+- **Naming.** The name is a Rust-style path from the module, unless `static path` pins it: `src/enemies.tsx` exporting `Enemy` is `enemies::Enemy`, and `src/units/tank.ts` exporting `Tank` is `units::tank::Tank`. The compile step reads the class's fields and its `scene` props (types from the props type, defaults from the destructuring), with components' field types. That lets Rust type-check `.bsn` values, the inspector show fields and props, and the writer emit them.
+- **Plain function prefabs** (`const Eye = (props) => <entity/>`) stay usable inside TSX only, like Rust's scene functions (`@eye(0.2)` in `bsn!`). They are not placeable from a file, because Bevy's file format has no function calls (post-MVP in #14437).
+- *Beat: any exported function prefab placeable by name with `@Prefab { prop: v }` (the previous draft).* Bevy reads `prop: v` inside `@Comp { }` as a component field, not a prop, so the same text would mean different things in Bevy and bevy-ts. It also gave levels no component to query placed instances by.
+- *Beat: `prefab(name, props, fn)` with a runtime props schema (an earlier draft).* A name string and a schema object beside the TS type said the same thing twice.
 - Expansion is one host call per reconcile that has any instances to expand (`tsx`'s B2 entry). It sends `(name, props)` per instance and gets descriptions back.
 - An instance root's `Transform` is the level's, unless the prefab binds it (decision 6). A prefab that sets the root `Transform` with a literal or a prop gets it overridden by the level's patch, which follows the expansion. Placement is therefore always a component override and never a prop the engine would have to trace. tsx decision 10 says the engine cannot tell whether `translation={at}` came from a literal.
 
@@ -238,7 +248,7 @@ On top of bridge's and tsx's rules:
 
 ## Depends on tsx and viewport
 
-- **T1 (tsx).** Exported prefabs by name (a Rust-style path from the module, such as `enemies::Grunt`, or a pinned `path`), with props read by the compile step, callable from Rust through a host entry with `(name, props)` per instance.
+- **T1 (tsx).** Scene components (`class X extends SceneComponent` with `static scene(props)`) by name (a Rust-style path from the module, or a pinned `static path`), with fields and props read by the compile step, expandable from Rust through a host entry with `(name, props)` per instance.
 - **T2 (tsx).** External roots: a Rust plugin can submit a description for a named root (`level:<path>`) built in Rust and partly expanded in JS. It is reconciled under the same rules and generation boundary as `app.scene` roots.
 - **T3 (tsx).** Provenance `override` with location, and, before reconciling a level description, a lookup of which expanded fields are `bound` with their site location and expression, so levels can refuse overrides of them.
 - **T4 (tsx).** An overlay root: a description layered over an `app.scene` root by key path, for decision 11.
@@ -274,8 +284,9 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 
 ## Operator rulings
 
-- 2026-10-20: prefabs need no registration. Every exported prefab is callable by a Rust-style path from
-  its module (`enemies::Grunt`) or a pinned `Enemy.path`, with props read from its props type (docs/research/dx.md).
+- 2026-10-20: placeable prefabs are scene components, `class X extends SceneComponent` with
+  `static scene(props)`, placed with Bevy's own `@Comp { @prop: v, field: v }`. Plain function prefabs
+  stay for TSX only (docs/research/dx.md).
 
 - 2026-10-19: `levels.prefabEdits` defaults to `override`. A viewport edit is a per-instance `.bsn`
   override; "Apply to prefab" rewrites the TSX literal. `source` stays a setting a project may choose.
@@ -292,5 +303,4 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 
 ## Open Questions
 
-- The exact upstream prop syntax inside `@SceneComp { … }` (`prop: v` against `@prop: v`). Task 1.1 pins E2 to whatever the 0.20 macro accepts.
 - Whether upstream's eventual child-override form matches E3's merge by name. Watch #23637 and the loader PR.

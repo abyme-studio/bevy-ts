@@ -334,51 +334,62 @@ Before: none; a module called `app.system` at top level. A plugin is a function 
 
 ### Spawning a prefab
 
+A prefab a level can place is Bevy's scene component (ruled 2026-10-20): a component whose scene is spawned with it, placed with `@Comp { @prop: v, field: v }`.
+
 ```rust
 // Components in a bsn! scene must derive Default and Clone.
-fn grunt(at: Vec3, speed: f32) -> impl Scene {
-    bsn! {
-        Transform { translation: at }
-        Enemy { speed: speed }
-        Health { hp: 100.0, max: 100.0 }
-        Alive
-        RigidBody::Dynamic
-        Collider::cuboid(0.5, 0.5, 0.5)
-        on(|click: On<PointerClick>, mut commands: Commands| {
-            commands.trigger(Explode { entity: click.entity, radius: 3.0 });
-        })
+#[derive(SceneComponent, Default, Clone)]
+#[scene(GruntProps)]
+struct Grunt { team: u8 }                       // component field, on the instance root
+
+#[derive(Default)]
+struct GruntProps { speed: f32 }                // props: inputs to the scene
+
+impl Grunt {
+    fn scene(props: GruntProps) -> impl Scene {
+        let speed = props.speed;
+        bsn! { Enemy { speed: speed } Health { hp: 100.0, max: 100.0 } }
     }
 }
 
-fn spawn_grunt(mut commands: Commands) {
-    commands.spawn_scene(grunt(vec3(0.0, 0.0, -12.0), 3.0));
-}
+commands.spawn_scene(bsn! { @Grunt { @speed: 3.0, team: 1 } });
+fn count_grunts(grunts: Query<&Grunt>) { ... }
 ```
 
 ```tsx
-export const Grunt = ({ at = [0, 0, 0], speed = 2 }: { at?: Vec3Like; speed?: f32 }) => (
-  <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(Explode.of({ entity, radius: 3 }))}>
-    <Transform translation={at} />
-    <Enemy speed={speed} />
-    <Health initialHp={100} max={100} />
-    <Alive />
-    <RigidBody value="Dynamic" />
-    <Collider cuboid={[0.5, 0.5, 0.5]} />
-    <mesh shape="cuboid" size={[1, 1, 1]} color="#c33" />
-  </entity>
-);
-Grunt.path = "game::Grunt"; // a .bsn level calls it as @game::Grunt { speed: 3.0 }
-
-export function waves(commands: Commands, time: Res<Time>, s: Local<{ timer: f32; wave: u32 }>) {
-  s.timer += time.delta_secs;
-  if (s.timer < 5) return;
-  s.timer = 0;
-  s.wave += 1;
-  for (let i = 0; i < s.wave; i++) commands.spawn(<Grunt at={[i * 2 - s.wave, 0, -12]} speed={2 + s.wave * 0.5} />);
+export class Grunt extends SceneComponent {
+  team: u8 = 0;                                                       // component field
+  static scene({ at = [0, 0, 0], speed = 2 }: { at?: Vec3Like; speed?: f32 }) {   // props
+    return (
+      <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(Explode.of({ entity, radius: 3 }))}>
+        <Transform translation={at} />
+        <Enemy speed={speed} />
+        <Health initialHp={100} max={100} />
+        <Alive />
+        <RigidBody value="Dynamic" />
+        <Collider cuboid={[0.5, 0.5, 0.5]} />
+        <mesh shape="cuboid" size={[1, 1, 1]} color="#c33" />
+      </entity>
+    );
+  }
 }
+
+commands.spawn(<Grunt speed={3} team={1} />);
+export function countGrunts(grunts: Query<[Grunt]>) { ... }
 ```
 
-A component class is its own TSX tag: `<Health initialHp={100} />` takes its props from the class fields. Before (tsx): the prefab was the same, spawning was `ctx.commands.mount(<Enemy at={p} />)`, and handlers were `onClick` on `<button>` only. `<entity onPointerClick>` is an entity observer, which is what `on(...)` is in BSN. `commands.spawn` takes component instances (`new Health({ hp: 3 })`) or a prefab element, so `mount` folds into `spawn`.
+```
+// levels/arena.bsn: the same text Rust's bsn! takes
+#GruntA
+@prefab::Grunt { @speed: 3.0, team: 1 }
+Transform { translation: Vec3 { x: 3.0, z: -4.0 } }
+```
+
+- `@speed` sets a prop; a plain `team` patches the component's field, as in Bevy (`bevy_scene/src/lib.rs`, "SceneComponent Props"). The Rust form above compiles in `bench/dx/rust`.
+- The `Grunt` component is always on the root, so a system can query every grunt.
+- The name is a Rust-style path from the module (`src/prefab.tsx` gives `prefab::Grunt`), unless `static path` pins it.
+- A plain function prefab (`const Eye = (props) => <entity/>`) stays usable inside TSX only, like a Rust scene function. Files cannot call functions in Bevy either.
+- Before (tsx): a plain prefab function, spawned with `ctx.commands.mount(<Enemy at={p} />)`, and handlers were `onClick` on `<button>` only.
 
 ### A UI HUD, with and without hooks
 

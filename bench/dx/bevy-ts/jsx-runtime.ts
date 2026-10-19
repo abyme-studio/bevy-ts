@@ -45,7 +45,11 @@ export declare namespace JSX {
   interface ElementChildrenAttribute { children: {} }
   interface IntrinsicAttributes { key?: string }
   /** A component class used as a tag takes its fields as props. */
-  type LibraryManagedAttributes<C, P> = C extends abstract new () => infer I extends import("./mod.ts").Component | import("./mod.ts").ReflectComponent ? ComponentProps<I> : P;
+  /** A scene component takes its fields and its scene's props; a component class takes its fields. */
+  type LibraryManagedAttributes<C, P> =
+    C extends { scene(props: infer Props): unknown } & (abstract new () => infer I) ? ComponentProps<I> & Props & { key?: string }
+    : C extends abstract new () => infer I extends import("./mod.ts").Component | import("./mod.ts").ReflectComponent ? ComponentProps<I>
+    : P;
   interface IntrinsicElements {
     entity: EntityProps;
     node: NodeProps;

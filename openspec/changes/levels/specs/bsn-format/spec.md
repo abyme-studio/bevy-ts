@@ -18,7 +18,7 @@ A differential test SHALL parse every fixture and every example level with both 
 ### Requirement: Four named extensions, and nothing else
 Beyond upstream's grammar, bevy-ts SHALL accept exactly four extensions:
 - E1 `//` and `/* */` comments
-- E2 prefab instances `@path::Prefab { prop: value, … }`
+- E2 scene component instances in files, `@path::Comp { @prop: value, field: value, … }`, Bevy's `bsn!` form
 - E3 a `#Name` child of an inclusion merges with the included child of that name
 - E4 quoted names `#"…"`
 
@@ -29,7 +29,7 @@ It SHALL reject anything else upstream's file grammar lacks, with file, line, co
 - **THEN** the load fails at that line and column with "expressions are not supported in .bsn files", and the level stays as it was
 
 #### Scenario: Listing extensions
-- **WHEN** `levels check --upstream arena.bsn` runs on a file with comments and two `@game::Enemy` instances
+- **WHEN** `levels check --upstream arena.bsn` runs on a file with comments and two `@enemies::Enemy` instances
 - **THEN** it reports E1 and E2 with each location
 
 ### Requirement: Lossless parse
@@ -43,7 +43,7 @@ bevy-ts's parse SHALL keep every token, comment and whitespace run with its byte
 A type patch SHALL write only the fields it names. Entries on one entity SHALL apply in order, and a later patch SHALL override an earlier one field by field. An inclusion (`:"…"` or `@Prefab`) SHALL be the entity's first entry after its name, and the patches that follow it SHALL override what it produced. A component named without fields SHALL insert the component with its defaults for fields no earlier entry set.
 
 #### Scenario: Layered patches
-- **WHEN** an entity has `@game::Enemy { }` and then `Transform { translation: Vec3 { x: 3.0 } }`, and the prefab sets translation `[0, 0, -4]`
+- **WHEN** an entity has `@enemies::Enemy { }` and then `Transform { translation: Vec3 { x: 3.0 } }`, and the prefab sets translation `[0, 0, -4]`
 - **THEN** the entity's translation is `[3, 0, -4]`
 
 #### Scenario: An inclusion after a patch

@@ -129,6 +129,14 @@ declare abstract class Data {
   static of<T>(this: new () => T, init?: Init<T>): T;
 }
 export declare abstract class Component extends Data { readonly [tierBrand]?: "layout" }
+/**
+ * A placeable prefab, Bevy's `#[derive(SceneComponent)]`: a component whose scene is spawned with it.
+ * Its fields are component fields (patched by `field: v` in `.bsn`); `static scene(props)` builds the
+ * scene from props (set by `@prop: v`). The component is always added, so `Query<[Grunt]>` finds instances.
+ */
+export declare abstract class SceneComponent extends Component {
+  static scene(props: object): Element;
+}
 /** A Rust component reachable only through reflection (a ported type the layout rule refuses). */
 export declare abstract class ReflectComponent extends Data { readonly [tierBrand]?: "reflect" }
 export declare abstract class Resource extends Data { readonly [resourceBrand]?: true }

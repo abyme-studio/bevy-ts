@@ -12,11 +12,13 @@
 - **WHEN** `game.tsx` calls `app.level("levels/arena.bsn")`, which holds a light and two enemies
 - **THEN** the light and both enemies spawn, and `bevy-ts/tsx_tree` lists them under root `level:levels/arena.bsn`
 
-### Requirement: A level instances a TSX prefab by name
-Every exported TSX prefab, a plain function from one destructured, typed props object to an element, SHALL be callable from a level, with no registration call (operator ruling 2026-10-20). Its name SHALL default to a Rust-style path, the module's path under the source root with `/` as `::` and the extension dropped, then the class or export: `src/enemies.tsx` exporting `Grunt` is `enemies::Grunt`, `src/units/tank.ts` exporting `Tank` is `units::tank::Tank`, as a Rust type path is built from its module, and MAY be pinned with `Enemy.path = "game::Enemy"`. The compile step (script-runtime) SHALL read its props from the props type, with the same field types as components (`f32`, `Vec3Like`, `Entity`, a string-literal union, ...), and their defaults from the destructuring. In a level, `@name { prop: value, … }` SHALL call that prefab with those props, and its expansion SHALL be the entity's base, with the entity's later patches layered on top. Props not given SHALL take their defaults. An unknown prefab, an unknown prop or a wrongly typed prop SHALL fail the load at its location. A prefab whose props type the compile step cannot read SHALL be usable in TSX and refused by a level with that reason.
+### Requirement: A level places TS scene components with Bevy's syntax
+A prefab placeable from a level SHALL be a scene component, a class extending `SceneComponent` whose `static scene(props)` returns the scene's element, as Bevy's `#[derive(SceneComponent)]`. Its name SHALL default to a Rust-style path from its module (`src/enemies.tsx` exporting `Enemy` is `enemies::Enemy`) and MAY be pinned with `static path`. The compile step SHALL read its fields and its `scene` props (types from the props type, defaults from the destructuring), with components' field types.
+
+In a level, `@path::Comp { @prop: value, field: value, … }` SHALL place it, exactly as Bevy's `bsn!` does: `@prop` sets a scene prop, and a plain `field` patches the component's own field. The scene's expansion SHALL be the entity's base, with the scene component added to the root and the entity's later patches layered on top. Props and fields not given SHALL take their defaults. An unknown scene component, prop or field, or a wrongly typed value, SHALL fail the load at its location. A plain function prefab SHALL NOT be placeable from a level.
 
 #### Scenario: Enemy b with more health
-- **WHEN** `enemy.tsx` exports `Enemy = ({ hp = 100 }: { hp?: f32 }) => ...` with `Enemy.path = "game::Enemy"`, and `arena.bsn` has `#EnemyB @game::Enemy { hp: 250.0 } Transform { translation: Vec3 { x: 3.0, z: -4.0 } }`
+- **WHEN** `enemies.tsx` exports `class Enemy extends SceneComponent { static scene({ hp = 100 }: { hp?: f32 }) { ... } }`, and `arena.bsn` has `#EnemyB @enemies::Enemy { @hp: 250.0 } Transform { translation: Vec3 { x: 3.0, z: -4.0 } }`
 - **THEN** one enemy spawns at `[3, 0, -4]` with `Health.max` 250 and `Health.hp` 250
 
 #### Scenario: A prop the prefab does not declare
@@ -38,7 +40,7 @@ Inside an instance's `Children […]`, an entry whose name matches a child of th
 - **THEN** enemy `b`'s eye is at `y = 0.8` and enemy `a`'s eye keeps the prefab's `0.6`
 
 #### Scenario: Adding a child to an instance
-- **WHEN** `#EnemyB`'s `Children […]` has `#hat Transform { … } @game::Hat { }`
+- **WHEN** `#EnemyB`'s `Children […]` has `#hat Transform { … } @hats::Hat { }`
 - **THEN** a hat entity spawns under enemy `b` and no other enemy
 
 ### Requirement: Nested prefabs and included levels
@@ -78,3 +80,7 @@ Each level-placed entity SHALL carry a `LevelInstance` component with its level 
 #### Scenario: Inspecting enemy b
 - **WHEN** a client calls `bevy-ts/level_node` for enemy `b`'s entity
 - **THEN** it gets `levels/arena.bsn`, name path `EnemyB`, prefab `game::Enemy` with `hp: 250`, and a `Transform.translation` override at the patch's line
+
+#### Scenario: Querying placed instances
+- **WHEN** `arena.bsn` places three `@enemies::Enemy { ... }` and a TS system takes `Query<[Enemy]>`
+- **THEN** the system sees three rows, one per placed root, each with its `team` field as the level set it
