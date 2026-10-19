@@ -130,6 +130,20 @@ fn camel(s: &str) -> String {
     out
 }
 
+/// `T` when `t` is written `Result<T, E>`.
+fn result_ok(t: &Type) -> Option<&Type> {
+    let Type::Path(p) = t else { return None };
+    let seg = p.path.segments.last()?;
+    if seg.ident != "Result" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(a) = &seg.arguments else { return None };
+    match a.args.first()? {
+        syn::GenericArgument::Type(ok) if a.args.len() == 2 => Some(ok),
+        _ => None,
+    }
+}
+
 struct StaticLifetimes;
 
 impl VisitMut for StaticLifetimes {
@@ -228,9 +242,18 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
             }
             call_args.push(quote!(#local));
         }
-        let ret = match &sig.output {
-            ReturnType::Default => quote!(()),
-            ReturnType::Type(_, t) => quote!(#t),
+        // `Result<T, E>` returns `T` to TS and throws `E` (its Display) as an exception.
+        let (ret, fallible) = match &sig.output {
+            ReturnType::Default => (quote!(()), false),
+            ReturnType::Type(_, t) => match result_ok(t) {
+                Some(ok) => (quote!(#ok), true),
+                None => (quote!(#t), false),
+            },
+        };
+        let invoke = if fallible {
+            quote!(__p.#method(#(#call_args),*).map_err(|e| e.to_string())?)
+        } else {
+            quote!(__p.#method(#(#call_args),*))
         };
         let ts_method = camel(&method.to_string());
         methods.push(quote! {{
@@ -248,7 +271,7 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
                 #[allow(unused_mut, unused_variables)]
                 let mut __sl = __slices.iter_mut();
                 #(#decls)*
-                let __out: #ret = __p.#method(#(#call_args),*);
+                let __out: #ret = #invoke;
                 #h::HostValue::write(&__out, __w);
                 ::core::result::Result::Ok(())
             }

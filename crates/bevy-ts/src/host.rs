@@ -484,7 +484,9 @@ fn write_js(kind: &Kind, expr: &str, out: &mut String) {
         Kind::Record(_, fields) => {
             let _ = write!(out, "{{ const r = {expr} || {{}}; ");
             for (f, k) in fields {
-                write_js(k, &format!("(r[{f:?}] ?? 0)"), out);
+                // A missing optional field is `None`; any other missing field is zero.
+                let e = if matches!(k, Kind::Option(_)) { format!("r[{f:?}]") } else { format!("(r[{f:?}] ?? 0)") };
+                write_js(k, &e, out);
             }
             out.push('}');
         }

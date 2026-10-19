@@ -193,7 +193,6 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
         }
     };
     let (tx, channel) = DevChannel::new();
-    dev::spawn_watcher(compiler.clone(), tx);
 
     let display = if args.viewport {
         if !bevy_ts_viewport::supported() {
@@ -208,6 +207,9 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     };
     let assets = headless::asset_root(&compiler.root);
     let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets));
+    // Compile only once the plugins have exported their params: the compile step reads them as
+    // system param kinds.
+    dev::spawn_watcher(compiler.clone(), tx);
     app.insert_resource(channel).insert_resource(DevSource(compiler.clone()));
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     bevy_ts_tsx::protocol::add_methods(&mut app);

@@ -390,6 +390,16 @@ impl Plan {
                 .map(|m| format!("{}|{:?}", m.len(), m.modified().ok()))
                 .unwrap_or_default();
             feed("source", format!("{}|{stamp}", root.display()).as_bytes());
+            // Ports built from the checkout are not part of that binary: their files count.
+            for port in &self.native.ports {
+                let dir = root.join("crates").join(format!("bevy-ts-{port}"));
+                let mut files = Vec::new();
+                package_files(&dir, &mut files);
+                for f in files {
+                    let rel = f.strip_prefix(&dir).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+                    feed(&format!("port {port}:{rel}"), &std::fs::read(&f).map_err(|e| format!("{}: {e}", f.display()))?);
+                }
+            }
         }
         if let Some(p) = &self.pkg {
             let lock = p.lock_path();

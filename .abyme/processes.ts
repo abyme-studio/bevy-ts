@@ -22,6 +22,8 @@ export default {
   "check-track-location": { cmd: "CARGO_TARGET_DIR=target/track-location cargo check -p bevy-ts --features track_location --all-targets" },
   clippy: { cmd: "cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee target/clippy.log | tail -40" },
   release: { cmd: "cargo build --release -p bevy-ts-cli" },
+  // Native task 4.4: what one exclusive slot costs the parallel executor.
+  "bench-slot": { cmd: "cargo run --release -p bevy-ts-cli --example slot_barrier | tee bench/change-detection/results/slot-barrier.md" },
   "bench-bob": { cmd: "cargo run --release -p bevy-ts-cli --example bob_bench | tee bench/change-detection/results/bob-frame.md" },
   skeleton: { cmd: "cargo run -p bevy-ts-cli -- skeleton --headless" },
   cube: { cmd: "cargo run -p bevy-ts-cli -- dev examples/cube/src/game.ts --headless" },

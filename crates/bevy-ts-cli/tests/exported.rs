@@ -51,6 +51,11 @@ impl Probe<'_> {
     pub fn boom(&self) -> f32 {
         panic!("boom")
     }
+
+    /// Fails when there is no ground, as a param whose context is missing does.
+    pub fn height(&self) -> Result<f32, String> {
+        self.ground()
+    }
 }
 
 const SRC: &str = r#"import { app, Update } from "bevy-ts";
@@ -62,7 +67,7 @@ export function cast(probe: Probe) {
   for (let i = 0; i < 1000; i++) ys[i] = i;
   const toi = new Float32Array(1000);
   const n = probe.castRays(ys, toi);
-  console.log(`hit ${hit.toi} ${hit.normal.y} ${hit.entity} rays ${n} ${toi[999]}`);
+  if (hit) console.log(`hit ${hit.toi} ${hit.normal.y} ${hit.entity} rays ${n} ${toi[999]}`);
   let caught = "";
   try {
     probe.boom();
@@ -70,6 +75,7 @@ export function cast(probe: Probe) {
     caught = e.message;
   }
   console.log(`caught ${caught}`);
+  console.log(`height ${probe.height()}`);
 }
 
 app.addSystems(Update, cast);
@@ -91,13 +97,21 @@ fn a_batch_is_one_crossing_and_results_arrive_in_the_same_run() {
     let before = app.world().resource::<HostParams>().calls;
     app.update();
     let calls = app.world().resource::<HostParams>().calls - before;
-    // castRay, castRays (1,000 rays in one crossing) and boom.
-    assert_eq!(calls, 3);
+    // castRay, castRays (1,000 rays in one crossing), boom and height.
+    assert_eq!(calls, 4);
     // console output is collected at the next frame's pump.
     app.update();
     let m = messages(&app);
     assert!(m.iter().any(|l| l == "hit 3 1 7 rays 998 997"), "{m:?}");
     assert!(m.iter().any(|l| l.starts_with("caught Probe.boom panicked: boom")), "{m:?}");
+    assert!(m.iter().any(|l| l == "height 2"), "{m:?}");
+
+    // Without the resource the method throws, naming param and method; the run's commands go.
+    app.world_mut().remove_resource::<Ground>();
+    app.update();
+    app.update();
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l.contains("Probe.height: no ground yet")), "{m:?}");
 }
 
 #[test]
