@@ -34,7 +34,7 @@
 - [x] 5.3 Gizmos: grid, selection and hover bounds, light and camera icons, `TransformGizmoPlugin` on the primary selection, `W`/`E`/`R`/`X`/`Escape`; `ui` option for game UI over the editor view
 - [x] 5.4 Picking: editor pointer with game mouse input off, prefab-instance-root resolution from `TsxNode` source chains, ⌥ and ⇧ clicks, `bevy-ts/viewport_pick`; test that TSX `onClick` does not fire in edit mode
 - [x] 5.5 Selection sync: `viewport_select` by entities or by location (through tsx's lookup), `viewport_selection+watch` with origin, node id, source chain and primary flag; selection kept across reloads by node id
-- [ ] 5.6 Check edit mode in windowed `bevy-ts dev` with the same tests
+- [x] 5.6 Check edit mode in windowed `bevy-ts dev` with the same tests
 
 ## 6. Edits
 
@@ -52,4 +52,4 @@
 ## 8. Demo and hand-off
 
 - [x] 8.1 With the throwaway viewer standing in for abyme: run `examples/arena` with `--viewport`, play, toggle edit, select enemy `b` by click and by location, drag it, answer as an editor, step, resize, and record stats in design.md
-- [ ] 8.2 Check design.md's "What abyme must provide" against what the throwaway viewer needed, and send it to abyme's Bevy app change
+- [x] 8.2 Check design.md's "What abyme must provide" against what the throwaway viewer needed, and send it to abyme's Bevy app change
