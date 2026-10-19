@@ -60,11 +60,15 @@ The file SHALL also hold methods owned by other bevy-ts crates. They follow the 
 - **THEN** the call fails with an error saying `.amplitude` expects `f32`, and the component is unchanged
 
 ### Requirement: Pausing for editing
-`bevy-ts/pause` (`paused: boolean`) SHALL stop or resume all bevy-ts stages and `Time<Virtual>`, so an edited value is not overwritten by a system on the next frame. The window and rendering SHALL keep running while paused.
+`bevy-ts/pause` (`paused: boolean`) SHALL stop or resume all bevy-ts stages and `Time<Virtual>`, so an edited value is not overwritten by a system on the next frame. `bevy-ts/step` (`frames: number`, default 1) SHALL, while paused, run that many frames and pause again. The window and rendering SHALL keep running while paused.
 
 #### Scenario: Editing a paused game
 - **WHEN** the game is paused and the inspector sets the cube's `translation.y` to 3
 - **THEN** the cube stays at 3 until the game resumes
+
+#### Scenario: Stepping one frame while paused
+- **WHEN** the game is paused and the client calls `bevy-ts/step` with `frames: 1`
+- **THEN** every stage and `Time<Virtual>` advance by exactly one frame, and the game is paused again
 
 ### Requirement: Entity and scene change events
 `bevy-ts/entities` SHALL return a snapshot: each entity's id, `Name` if any, parent, and the names of all its components (TS and Rust). `bevy-ts/entities+watch` SHALL first send that snapshot with a sequence number, then at most one message per frame with what changed that frame: spawned (with the snapshot fields), despawned, reparented, renamed, components added and components removed. Each message SHALL carry the next sequence number; a client that sees a gap SHALL resubscribe. Field values are not part of this stream.

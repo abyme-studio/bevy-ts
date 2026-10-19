@@ -48,6 +48,7 @@
 - [ ] 6.5 Keep undeclared components and revive them on redeclaration with the same layout
 - [ ] 6.6 Keep the old generation on any failure; tests for a syntax error, a throwing module, a duplicate name and a bad `after`
 - [ ] 6.7 Wire `bevy-ts dev <entry>` with `--remote-port` and `--inspect`
+- [ ] 6.8 Package for npm: a `bevy-ts` package whose bin resolves the engine binary from per-platform optional packages (`@bevy-ts/darwin-arm64`, …), as esbuild ships; `npx bevy-ts dev` works with no Rust toolchain
 
 ## 7. Debugging
 
@@ -69,7 +70,7 @@
 - [ ] 9.4 `bevy-ts/schema` in `registry.schema`'s shape with `x-bevy-ts`
 - [ ] 9.5 `bevy-ts/get_components`, `bevy-ts/get_components+watch` and `bevy-ts/mutate_components` for TS and reflected components, with path and type errors
 - [ ] 9.6 `bevy-ts/entities` and `bevy-ts/entities+watch` from lifecycle observers registered only while watched, one message per frame with sequence numbers
-- [ ] 9.7 `bevy-ts/pause`, `bevy-ts/systems` and `bevy-ts/log+watch`
+- [ ] 9.7 `bevy-ts/pause` and `bevy-ts/step`, `bevy-ts/systems` and `bevy-ts/log+watch`
 
 ## 10. Plugin API for feature crates
 

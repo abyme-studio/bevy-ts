@@ -196,6 +196,10 @@ None: a greenfield crate. Protocol 1.0.0 ships with this change; the studio pins
 
 ## Operator rulings
 
+- 2026-10-19: pause also steps single frames (`bevy-ts/step`). bevy-ts ships on npm: a `bevy-ts`
+  package with the engine binary in per-platform packages, as esbuild and Biome ship, so
+  `npx bevy-ts dev` needs no Rust toolchain.
+
 - 2026-10-19: field writes go straight into the zero-copy columns and each setter stamps its row
   in Bevy's own changed-tick array (decision 6, docs/research/change-detection.md). Not coarse
   whole-column marking, not commands for field writes.
@@ -212,5 +216,3 @@ None: a greenfield crate. Protocol 1.0.0 ships with this change; the studio pins
 ## Open Questions
 
 - Viewport and asset viewer: this change specs no viewport surface, picking/selection sync or asset listing. They are the `viewport` change (operator ruling below) and protocol 1.1.
-- Whether `bevy-ts/pause` should also offer single-frame stepping.
-- Packaging: whether `bevy-ts` ships as one prebuilt binary per platform through npm (`npx bevy-ts dev`) or through `cargo install`. That decides how a user with no Rust toolchain gets it, and is left to the CLI task.
