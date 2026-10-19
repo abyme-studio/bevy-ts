@@ -24,7 +24,13 @@ pub enum FieldType {
     Vec4,
     Quat,
     Entity,
-    Enum { variants: Vec<String> },
+    /// A fieldless enum. TS-declared enums store the variant index in the smallest width; a Rust
+    /// enum carries `repr`, the bytes this build stores per variant, read at startup.
+    Enum {
+        variants: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        repr: Option<EnumRepr>,
+    },
     Array { of: Box<FieldType>, len: u32 },
 }
 
@@ -39,7 +45,8 @@ impl FieldType {
             FieldType::Vec2 => 8,
             FieldType::Vec3 => 12,
             FieldType::Vec4 | FieldType::Quat => 16,
-            FieldType::Enum { variants } => enum_width(variants.len()),
+            FieldType::Enum { repr: Some(r), .. } => r.width as usize,
+            FieldType::Enum { variants, .. } => enum_width(variants.len()),
             FieldType::Array { of, len } => of.size() * *len as usize,
         }
     }
@@ -71,7 +78,7 @@ impl FieldType {
             FieldType::Vec4 => "vec4".into(),
             FieldType::Quat => "quat".into(),
             FieldType::Entity => "entity".into(),
-            FieldType::Enum { variants } => format!("enumOf({})", variants.join(", ")),
+            FieldType::Enum { variants, .. } => format!("enumOf({})", variants.join(", ")),
             FieldType::Array { of, len } => format!("array({}, {len})", of.ts_name()),
         }
     }
@@ -90,7 +97,7 @@ impl FieldType {
     /// scalars or vectors).
     pub fn validate(&self) -> Result<(), String> {
         match self {
-            FieldType::Enum { variants } if variants.is_empty() => {
+            FieldType::Enum { variants, .. } if variants.is_empty() => {
                 Err("enumOf needs at least one variant".into())
             }
             FieldType::Array { len: 0, .. } => Err("array length must be at least 1".into()),
@@ -99,6 +106,44 @@ impl FieldType {
             }
             FieldType::Array { of, .. } => of.validate(),
             _ => Ok(()),
+        }
+    }
+}
+
+/// How a Rust enum stores its variants: `values[i]` is variant `i`'s bytes, little-endian, in
+/// `width` bytes.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EnumRepr {
+    pub width: u8,
+    pub values: Vec<u32>,
+}
+
+impl FieldType {
+    /// The stored value of variant `index`.
+    pub fn enum_value(&self, index: usize) -> Option<u32> {
+        match self {
+            FieldType::Enum { repr: Some(r), .. } => r.values.get(index).copied(),
+            FieldType::Enum { variants, .. } => (index < variants.len()).then_some(index as u32),
+            _ => None,
+        }
+    }
+
+    /// The variant index a stored value stands for.
+    pub fn enum_index(&self, value: u32) -> Option<usize> {
+        match self {
+            FieldType::Enum { repr: Some(r), .. } => r.values.iter().position(|v| *v == value),
+            FieldType::Enum { variants, .. } => ((value as usize) < variants.len()).then_some(value as usize),
+            _ => None,
+        }
+    }
+
+    /// Whether TS may only write this field through an accessor that keeps the value valid
+    /// (`bool`, enums, `entity`), never as a raw array.
+    pub fn accessor_only(&self) -> bool {
+        match self {
+            FieldType::Bool | FieldType::Entity | FieldType::Enum { .. } => true,
+            FieldType::Array { of, .. } => of.accessor_only(),
+            _ => false,
         }
     }
 }
@@ -163,79 +208,167 @@ impl ComponentLayout {
     }
 }
 
-/// A Rust component that may appear in a TS system's `read`/`write`, with a layout taken from
-/// `offset_of!`, `size_of` and `align_of`.
+/// Where a native layout came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NativeSource {
+    /// Offsets read from reflection at startup (native decision 5).
+    Reflect,
+    /// `#[derive(NativeLayout)]`: offsets from `offset_of!`.
+    OffsetOf,
+}
+
+/// A layout-tier Rust component: a column in TS systems.
 #[derive(Clone, Debug)]
 pub struct NativeComponent {
-    /// The name TS uses (`Transform`), exported from `bevy-ts/bevy`.
+    /// The name TS uses: the reflected type path.
     pub ts_name: String,
+    /// The type path's last segment (`Transform`), which also finds it when unambiguous.
+    pub short_name: String,
     /// Bevy's type path (`bevy_transform::components::transform::Transform`).
     pub type_path: String,
     pub id: ComponentId,
     pub layout: ComponentLayout,
+    /// A whole default value's bytes (padding included), for elements and spawns.
+    pub defaults: Vec<u8>,
+    /// False for components declared immutable: TS never writes them.
+    pub writable: bool,
+    /// Fields TS cannot read (`name: why`): never exposed, never written. A type with holes
+    /// offers no raw `q.tables` writes.
+    pub holes: Vec<String>,
+    /// Whether a whole value may be inserted from bytes (spawn, insert, TSX): false when holes
+    /// may own heap data.
+    pub insertable: bool,
+    pub source: NativeSource,
 }
 
-/// Rust components with a declared native layout.
+/// A registered reflected component that is not a column, and why.
+#[derive(Clone, Debug, Serialize)]
+pub struct ReflectTier {
+    #[serde(rename = "typePath")]
+    pub type_path: String,
+    #[serde(skip)]
+    pub id: ComponentId,
+    pub reason: String,
+    /// False when no value could be had yet: it is tiered again once a row exists.
+    #[serde(skip)]
+    pub sampled: bool,
+}
+
+/// The native layout registry (bridge decision 4, native N1): every layout-tier Rust component,
+/// filled from reflection at startup and by `NativeLayout` derives, plus the reflect-tier ones
+/// with their reasons.
 #[derive(Resource, Default, Clone, Debug)]
 pub struct NativeLayouts {
-    by_name: HashMap<String, NativeComponent>,
+    by_path: HashMap<String, NativeComponent>,
+    /// Short name to type paths, for lookups by short name.
+    short: HashMap<String, Vec<String>>,
+    reflect_tier: HashMap<String, ReflectTier>,
+    /// Set once the registry has been filled from the type registry.
+    pub filled: bool,
 }
 
 impl NativeLayouts {
-    pub fn get(&self, ts_name: &str) -> Option<&NativeComponent> {
-        self.by_name.get(ts_name)
+    fn path_of<'a>(&'a self, name: &'a str) -> Option<&'a str> {
+        if self.by_path.contains_key(name) || self.reflect_tier.contains_key(name) {
+            return Some(name);
+        }
+        match self.short.get(name).map(Vec::as_slice) {
+            Some([one]) => Some(one.as_str()),
+            _ => None,
+        }
+    }
+
+    /// A layout-tier component by type path, or by short name when only one type has it.
+    pub fn get(&self, name: &str) -> Option<&NativeComponent> {
+        self.path_of(name).and_then(|p| self.by_path.get(p))
+    }
+
+    /// A reflect-tier component by type path or unambiguous short name, with the reason.
+    pub fn reflect_tier(&self, name: &str) -> Option<&ReflectTier> {
+        self.path_of(name).and_then(|p| self.reflect_tier.get(p))
+    }
+
+    /// Short names more than one tiered type shares, with their paths.
+    pub fn ambiguous(&self, name: &str) -> Option<&[String]> {
+        self.short.get(name).filter(|v| v.len() > 1).map(Vec::as_slice)
     }
 
     pub fn by_id(&self, id: ComponentId) -> Option<&NativeComponent> {
-        self.by_name.values().find(|c| c.id == id)
+        self.by_path.values().find(|c| c.id == id)
     }
 
+    /// Layout-tier components, in no particular order.
     pub fn iter(&self) -> impl Iterator<Item = &NativeComponent> {
-        self.by_name.values()
+        self.by_path.values()
     }
 
-    /// Registers a native layout. The caller vouches that `layout` describes `T` exactly; use
-    /// [`NativeLayouts::register_transform`] as the template.
-    pub fn register<T: Component>(&mut self, world: &mut World, ts_name: &str, layout: ComponentLayout) {
-        assert_eq!(layout.size, size_of::<T>(), "native layout size for {ts_name}");
-        assert_eq!(layout.align, align_of::<T>(), "native layout align for {ts_name}");
+    /// Reflect-tier components, in no particular order.
+    pub fn reflect_tiered(&self) -> impl Iterator<Item = &ReflectTier> {
+        self.reflect_tier.values()
+    }
+
+    fn index_short(&mut self, short: &str, path: &str) {
+        let v = self.short.entry(short.to_string()).or_default();
+        if !v.iter().any(|p| p == path) {
+            v.push(path.to_string());
+            v.sort();
+        }
+    }
+
+    /// Records a layout-tier component, replacing a reflect-tier record of the same type.
+    pub fn insert(&mut self, c: NativeComponent) {
+        self.reflect_tier.remove(&c.type_path);
+        self.index_short(&c.short_name.clone(), &c.type_path.clone());
+        self.by_path.insert(c.type_path.clone(), c);
+    }
+
+    pub(crate) fn set_reflect_tier(&mut self, path: &str, short: &str, id: ComponentId, reason: String, sampled: bool) {
+        self.index_short(short, path);
+        self.reflect_tier.insert(path.to_string(), ReflectTier { type_path: path.to_string(), id, reason, sampled });
+    }
+
+    /// Sets each component's TS name: its short name when no other tiered type shares it, else
+    /// its type path. Lookups accept either.
+    pub fn assign_names(&mut self) {
+        for c in self.by_path.values_mut() {
+            let unique = self.short.get(&c.short_name).is_some_and(|v| v.len() == 1);
+            c.ts_name = if unique { c.short_name.clone() } else { c.type_path.clone() };
+        }
+    }
+
+    pub(crate) fn forget_reflect_tier(&mut self, path: &str) {
+        self.reflect_tier.remove(path);
+    }
+
+    /// Registers a layout for a component without `Reflect` (`#[derive(NativeLayout)]`). The
+    /// caller vouches that `layout` describes `T` exactly: offsets from `offset_of!`, every field
+    /// plain data. `defaults` is a whole value's bytes, or zeroes when `None`.
+    pub fn register<T: Component>(&mut self, world: &mut World, layout: ComponentLayout, defaults: Option<Vec<u8>>) {
+        let path = std::any::type_name::<T>().to_string();
+        assert_eq!(layout.size, size_of::<T>(), "native layout size for {path}");
+        assert_eq!(layout.align, align_of::<T>(), "native layout align for {path}");
+        for f in &layout.fields {
+            assert!(f.offset + f.ty.size() <= layout.size, "native layout field {path}.{} lies outside the value", f.name);
+        }
+        let defaults = defaults.unwrap_or_else(|| vec![0; layout.size]);
+        assert_eq!(defaults.len(), layout.size, "native layout defaults for {path}");
         let id = world.register_component::<T>();
-        self.by_name.insert(
-            ts_name.to_string(),
-            NativeComponent {
-                ts_name: ts_name.to_string(),
-                type_path: std::any::type_name::<T>().to_string(),
-                id,
-                layout,
-            },
-        );
-    }
-
-    /// `Transform` as `translation: vec3, rotation: quat, scale: vec3`, offsets from
-    /// `offset_of!`. Its Rust layout is not `repr(C)`, so nothing here is assumed.
-    pub fn register_transform(&mut self, world: &mut World) {
-        use core::mem::offset_of;
-        // Each field must be plain f32 lanes for the typed-array views to index it.
-        const _: () = assert!(size_of::<Vec3>() == 12 && align_of::<Vec3>() == 4);
-        const _: () = assert!(size_of::<Quat>() == 16);
-        let layout = ComponentLayout {
-            size: size_of::<Transform>(),
-            align: align_of::<Transform>(),
-            fields: vec![
-                FieldLayout {
-                    name: "translation".into(),
-                    ty: FieldType::Vec3,
-                    offset: offset_of!(Transform, translation),
-                },
-                FieldLayout {
-                    name: "rotation".into(),
-                    ty: FieldType::Quat,
-                    offset: offset_of!(Transform, rotation),
-                },
-                FieldLayout { name: "scale".into(), ty: FieldType::Vec3, offset: offset_of!(Transform, scale) },
-            ],
-        };
-        self.register::<Transform>(world, "Transform", layout);
+        let writable = world.components().get_info(id).is_none_or(|i| i.mutable());
+        let short = path.rsplit("::").next().unwrap_or(&path).to_string();
+        self.insert(NativeComponent {
+            ts_name: path.clone(),
+            short_name: short,
+            type_path: path,
+            id,
+            layout,
+            defaults,
+            writable,
+            holes: Vec::new(),
+            insertable: true,
+            source: NativeSource::OffsetOf,
+        });
+        self.assign_names();
     }
 }
 
@@ -267,8 +400,8 @@ mod tests {
 
     #[test]
     fn enums_take_the_smallest_width() {
-        let small = FieldType::Enum { variants: vec!["a".into(), "b".into()] };
-        let wide = FieldType::Enum { variants: (0..300).map(|i| i.to_string()).collect() };
+        let small = FieldType::Enum { variants: vec!["a".into(), "b".into()], repr: None };
+        let wide = FieldType::Enum { variants: (0..300).map(|i| i.to_string()).collect(), repr: None };
         assert_eq!(small.size(), 1);
         assert_eq!(wide.size(), 2);
         let l = layout(&[("s", small), ("w", wide), ("x", FieldType::U8)]);
@@ -316,10 +449,17 @@ mod tests {
     #[test]
     fn transform_layout_matches_rust() {
         let mut world = World::new();
-        let mut native = NativeLayouts::default();
-        native.register_transform(&mut world);
+        let registry = AppTypeRegistry::default();
+        registry.write().register::<Transform>();
+        world.insert_resource(registry);
+        crate::layout_reflect::fill(&mut world);
+        let native = world.resource::<NativeLayouts>();
         let t = native.get("Transform").unwrap();
         assert_eq!(t.layout.size, size_of::<Transform>());
+        use core::mem::offset_of;
+        assert_eq!(t.layout.field("translation").unwrap().offset, offset_of!(Transform, translation));
+        assert_eq!(t.layout.field("rotation").unwrap().offset, offset_of!(Transform, rotation));
+        assert_eq!(t.layout.field("scale").unwrap().offset, offset_of!(Transform, scale));
         let tr = Transform::from_xyz(1.0, 2.0, 3.0).with_scale(Vec3::splat(4.0));
         let bytes: &[u8] =
             unsafe { std::slice::from_raw_parts(&tr as *const Transform as *const u8, size_of::<Transform>()) };
@@ -328,5 +468,9 @@ mod tests {
         let sc = t.layout.field("scale").unwrap().offset;
         assert_eq!((f(tl), f(tl + 4), f(tl + 8)), (1.0, 2.0, 3.0));
         assert_eq!(f(sc), 4.0);
+        // The default's bytes: identity rotation, unit scale.
+        let d = |off: usize| f32::from_le_bytes(t.defaults[off..off + 4].try_into().unwrap());
+        assert_eq!(d(t.layout.field("rotation").unwrap().offset + 12), 1.0);
+        assert_eq!(d(sc), 1.0);
     }
 }

@@ -27,7 +27,7 @@ fn field_schema(ty: &FieldType, hints: Option<&bevy_ts::manifest::FieldHints>) -
             let n = ty.lanes().unwrap();
             json!({ "type": "array", "items": { "type": "number" }, "minItems": n, "maxItems": n })
         }
-        FieldType::Enum { variants } => json!({ "type": "string", "enum": variants }),
+        FieldType::Enum { variants, .. } => json!({ "type": "string", "enum": variants }),
         FieldType::Array { of, len } => json!({ "type": "array", "items": field_schema(of, None), "minItems": len, "maxItems": len }),
         int => {
             let (min, max): (i64, i64) = match int {

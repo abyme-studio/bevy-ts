@@ -10,7 +10,7 @@ use bevy_ts::components::{PendingComponents, TsComponents};
 use bevy_ts::layout::{ComponentLayout, FieldType, NativeLayouts};
 use bevy_ts::manifest::ComponentDecl;
 use bevy_ts::value;
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashSet};
 
 /// The name `<entity name>` and `<Name value>` resolve to.
@@ -91,15 +91,6 @@ fn initial_field(prop: &str) -> Option<String> {
     let mut chars = rest.chars();
     let first = chars.next()?;
     first.is_uppercase().then(|| first.to_lowercase().chain(chars).collect())
-}
-
-fn transform_defaults(layout: &ComponentLayout) -> Vec<u8> {
-    let mut bytes = vec![0u8; layout.size];
-    for (f, v) in [("translation", json!([0, 0, 0])), ("rotation", json!([0, 0, 0, 1])), ("scale", json!([1, 1, 1]))] {
-        let fl = layout.field(f).expect("Transform field");
-        value::encode_field(f, &fl.ty, &v, &mut bytes[fl.offset..fl.offset + fl.ty.size()]).expect("Transform default");
-    }
-    bytes
 }
 
 /// Controlled, initial and default fields of one element.
@@ -228,7 +219,7 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
                 err(format!("<{}>: tsx sets Rust components with a native layout (Transform) and Name only", c.ty), &c.source)
             })?;
             let fields: Vec<_> = n.layout.fields.iter().map(|f| (f.name.clone(), f.ty.clone(), None)).collect();
-            let defaults = if c.ty == "Transform" { transform_defaults(&n.layout) } else { vec![0; n.layout.size] };
+            let defaults = n.defaults.clone();
             let mut split = split_fields(c, &fields)?;
             // Defaults read back from the default value, for provenance.
             for (f, v) in split.2.iter_mut() {

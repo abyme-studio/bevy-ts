@@ -109,6 +109,7 @@ pub const HEAP_RESTART_BYTES: usize = 1 << 30;
 /// Never leaves a generation partly applied.
 pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     let started = Instant::now();
+    crate::layout_reflect::fill_once(world);
     // Flush the previous generation's console output so the log reads in order.
     crate::runtime::pump(world);
     let number = world.resource::<Generations>().live + 1;

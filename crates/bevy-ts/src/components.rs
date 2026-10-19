@@ -110,7 +110,7 @@ impl TsComponents {
             .filter(|c| c.state == ComponentState::Live)
             .map(|c| (c.id, c.layout.size))
             .collect();
-        m.extend(native.iter().map(|n| (n.id, n.layout.size)));
+        m.extend(native.iter().filter(|n| n.insertable).map(|n| (n.id, n.layout.size)));
         m
     }
 }

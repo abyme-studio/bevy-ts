@@ -81,7 +81,7 @@ pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Re
             Entity::try_from_bits(bits).ok_or_else(|| err(path, ty, format!("{bits} is not an entity")))?;
             out.copy_from_slice(&bits.to_le_bytes());
         }
-        FieldType::Enum { variants } => {
+        FieldType::Enum { variants, .. } => {
             let index = match v {
                 Value::String(s) => variants
                     .iter()
@@ -93,7 +93,8 @@ pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Re
                 }
                 _ => return Err(err(path, ty, format!("got {v}"))),
             };
-            out.copy_from_slice(&(index as u32).to_le_bytes()[..out.len()]);
+            let stored = ty.enum_value(index).expect("index checked against variants");
+            out.copy_from_slice(&stored.to_le_bytes()[..out.len()]);
         }
         FieldType::Array { of, len } => {
             let a = v.as_array().filter(|a| a.len() == *len as usize).ok_or_else(|| err(path, ty, format!("got {v}")))?;
@@ -123,11 +124,11 @@ pub fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
             Value::Array((0..ty.lanes().unwrap()).map(|i| json!(f32_at(i))).collect())
         }
         FieldType::Entity => json!(u64::from_le_bytes(b[..8].try_into().unwrap())),
-        FieldType::Enum { variants } => {
+        FieldType::Enum { variants, .. } => {
             let mut raw = [0u8; 4];
             raw[..b.len()].copy_from_slice(b);
-            let i = u32::from_le_bytes(raw) as usize;
-            variants.get(i).map(|s| json!(s)).unwrap_or(json!(i))
+            let stored = u32::from_le_bytes(raw);
+            ty.enum_index(stored).and_then(|i| variants.get(i)).map(|s| json!(s)).unwrap_or(json!(stored))
         }
         FieldType::Array { of, len } => {
             let w = of.size();
@@ -285,7 +286,7 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let ty = FieldType::Enum { variants: vec!["idle".into(), "run".into()] };
+        let ty = FieldType::Enum { variants: vec!["idle".into(), "run".into()], repr: None };
         let mut b = [0u8; 1];
         encode_field(".s", &ty, &json!("run"), &mut b).unwrap();
         assert_eq!(decode_field(&ty, &b), json!("run"));

@@ -9,15 +9,18 @@
 pub mod backend;
 pub mod commands;
 pub mod components;
+pub mod engine;
 pub mod fake;
 pub mod generation;
 pub mod layout;
+pub mod layout_reflect;
 pub mod log;
 pub mod manifest;
 pub mod plugin_api;
 #[cfg(feature = "pbr")]
 pub mod recipes;
 pub mod runtime;
+pub mod sets;
 pub mod systems;
 pub mod value;
 
@@ -46,7 +49,7 @@ pub enum BevyTsSet {
 pub type BackendFactory = Arc<dyn Fn() -> Box<dyn ScriptBackend> + Send + Sync>;
 
 /// Adds the bridge: the runtime as non-send data, the four stages, generation application in
-/// `First`, and the `Transform` native layout.
+/// `First`, and the native layout registry filled from reflection.
 pub struct BevyTsPlugin {
     backend: BackendFactory,
     /// Dev mode: reload, the read-column check, inspector.
@@ -97,9 +100,10 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<runtime::ScriptFrame>()
             .insert_resource(runtime::RuntimeInfo { dev: self.dev, engine, inspector, ..Default::default() });
 
-        let mut native = layout::NativeLayouts::default();
-        native.register_transform(app.world_mut());
-        app.insert_resource(native);
+        // Rust components' layouts come from reflection once every plugin has registered its
+        // types: in `finish`, or when the first generation applies if the app never finishes.
+        app.register_type::<Transform>().init_resource::<layout::NativeLayouts>();
+        sets::expose_anchors(app);
 
         #[cfg(feature = "pbr")]
         recipes::register(app);
@@ -113,5 +117,12 @@ impl Plugin for BevyTsPlugin {
             .add_systems(Update, stage_update.in_set(BevyTsSet::Update))
             .add_systems(PostUpdate, stage_post_update.in_set(BevyTsSet::PostUpdate))
             .add_systems(FixedUpdate, stage_fixed_update.in_set(BevyTsSet::FixedUpdate));
+    }
+
+    fn finish(&self, app: &mut App) {
+        if let Err(e) = app.world().resource::<sets::TsSets>().check() {
+            panic!("{e}");
+        }
+        layout_reflect::fill_once(app.world_mut());
     }
 }
