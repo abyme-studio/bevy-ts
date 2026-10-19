@@ -2,7 +2,7 @@
 
 - [ ] 1.1 Fill bridge's native layout registry at startup from reflection (decision 5: offsets from a value's field references, bounds and leaf-size checks, enum variant bytes read from the build, unreadable leaves as holes; test `Res<Time>` reads `delta_secs`), make it public, and route every Rust-component check in TS systems through it (N1); `Transform` takes the same path
 - [x] 1.2 Turn `bevy-ts-cli`'s `main` into `bevy_ts_cli::run(extra: impl Plugin)` and make the prebuilt binary a one-line caller (N4)
-- [ ] 1.3 Make the exclusive stage system constructible for any schedule and ordering (N3); bridge's four stages use it unchanged
+- [x] 1.3 Make the exclusive stage system constructible for any schedule and ordering (N3); bridge's four stages use it unchanged
 - [ ] 1.4 Add the call-host-function seam operation to the backend trait, the fake backend and `bevy-ts-v8` (deno_core op over views of JS memory) (N2)
 - [ ] 1.5 Add engine identity, exposed sets and native functions to `bevy-ts/hello` and `bevy-ts/schema` in `protocol/bevy-ts.openrpc.json`, minor bump, regenerate both sides (N5)
 
@@ -38,10 +38,10 @@
 ## 4. Ordering against Rust sets
 
 - [x] 4.1 `app.ts_set(name, schedule, set)`, name uniqueness at startup, bevy-ts's own anchors (`bevy:transform-propagate`)
-- [ ] 4.2 Make before and after slots for a set the first time a generation names it (one schedule edit at that generation's apply), with `BevyTsSlot::before/after` sets for Rust ordering; no slots for unnamed sets
-- [ ] 4.3 Place TS systems by `.before/.after(systemSet(name))` into slots; validate one set per system, matching schedule, and TS-to-TS ordering only within a slot; reload moves systems between existing slots without touching schedules
+- [x] 4.2 Make before and after slots for a set the first time a generation names it (one schedule edit at that generation's apply), with `BevyTsSlot::before/after` sets for Rust ordering; no slots for unnamed sets
+- [x] 4.3 Place TS systems by `.before/.after(systemSet(name))` into slots; validate one set per system, matching schedule, and TS-to-TS ordering only within a slot; reload moves systems between existing slots without touching schedules
 - [ ] 4.4 Measure the cost of one slot's barrier (Rust systems on both sides, slot present vs absent); the barrier itself is established from `multi_threaded.rs:533`; record the numbers in a research note
-- [ ] 4.5 Emit `NativeSet` as a string union in `native.d.ts`
+- [x] 4.5 Emit `NativeSet` as a string union in `native.d.ts`
 
 ## 5. Exported system params
 

@@ -90,6 +90,8 @@ pub struct TsSystem {
 #[derive(Resource, Default)]
 pub struct TsSystems {
     pub stages: BTreeMap<StageKey, Vec<TsSystem>>,
+    /// Systems placed before or after an exposed Rust set, by slot.
+    pub slots: BTreeMap<SlotKey, Vec<TsSystem>>,
     pub startup: Vec<TsSystem>,
     pub on_enter: HashMap<(usize, u32), Vec<TsSystem>>,
     pub on_exit: HashMap<(usize, u32), Vec<TsSystem>>,
@@ -107,11 +109,20 @@ impl From<Stage> for StageKey {
     }
 }
 
+/// A slot: the TS systems running just before or just after an exposed Rust set.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SlotKey {
+    /// The exposed set's name (`rapier:step`).
+    pub set: String,
+    pub after: bool,
+}
+
 impl TsSystems {
     pub fn iter(&self) -> impl Iterator<Item = &TsSystem> {
         self.startup
             .iter()
             .chain(self.stages.values().flatten())
+            .chain(self.slots.values().flatten())
             .chain(self.on_enter.values().flatten())
             .chain(self.on_exit.values().flatten())
             .chain(self.observers.iter())
@@ -170,7 +181,7 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
 
 /// Orders systems by registration order adjusted by `after`/`before` (on systems or sets). Errors
 /// on unknown targets and cycles.
-fn order(decls: &[(usize, &SystemDecl)]) -> Result<Vec<usize>, ScriptError> {
+fn order(decls: &[(usize, &SystemDecl)], exposed: &HashSet<String>) -> Result<Vec<usize>, ScriptError> {
     let n = decls.len();
     let mut members: HashMap<&str, Vec<usize>> = HashMap::new();
     for (i, (_, d)) in decls.iter().enumerate() {
@@ -189,6 +200,10 @@ fn order(decls: &[(usize, &SystemDecl)]) -> Result<Vec<usize>, ScriptError> {
     for (i, (_, d)) in decls.iter().enumerate() {
         for (targets, after) in [(&d.after, true), (&d.before, false)] {
             for t in targets {
+                if exposed.contains(t) {
+                    // An exposed Rust set places the system in a slot; it orders nothing inside it.
+                    continue;
+                }
                 let Some(js) = members.get(t.as_str()) else {
                     return Err(ScriptError::at(
                         format!("system {} is ordered {} {t}, which is no system or set in its schedule", d.name, if after { "after" } else { "before" }),
@@ -251,7 +266,14 @@ fn evaluate(world: &World, c: &Condition, identity: &str) -> bool {
 }
 
 /// A schedule's systems, with their indices in the manifest.
-type ScheduleGroup<'a> = (ScheduleDecl, Vec<(usize, &'a SystemDecl)>);
+type ScheduleGroup<'a> = (Placement, Vec<(usize, &'a SystemDecl)>);
+
+/// Where a group of systems runs: a declared schedule, or a slot around an exposed set.
+#[derive(Clone, Debug)]
+enum Placement {
+    Schedule(ScheduleDecl),
+    Slot(SlotKey),
+}
 
 /// Builds the systems of a generation. Fails on unusable params, duplicate identities and bad
 /// ordering. `TsPayloads` must already hold the generation's messages, events and states.
@@ -265,6 +287,7 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLo
     }
     let mut out = TsSystems { generation, ..Default::default() };
     let mut groups: BTreeMap<String, ScheduleGroup> = BTreeMap::new();
+    let exposed: HashSet<String> = world.get_resource::<crate::sets::TsSets>().map(|s| s.iter().map(|x| x.name.clone()).collect()).unwrap_or_default();
     for (i, d) in decls.iter().enumerate() {
         if d.schedule == ScheduleDecl::Observer {
             match build_one(world, generation, i, d, ts) {
@@ -273,10 +296,16 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLo
             }
             continue;
         }
-        groups.entry(format!("{:?}", d.schedule)).or_insert_with(|| (d.schedule.clone(), Vec::new())).1.push((i, d));
+        match crate::sets::placement(world, d) {
+            Ok(Some(key)) => {
+                groups.entry(format!("{key:?}")).or_insert_with(|| (Placement::Slot(key), Vec::new())).1.push((i, d));
+            }
+            Ok(None) => groups.entry(format!("{:?}", d.schedule)).or_insert_with(|| (Placement::Schedule(d.schedule.clone()), Vec::new())).1.push((i, d)),
+            Err(e) => errors.push(e),
+        }
     }
-    for (_, (schedule, list)) in groups {
-        let ordered = match order(&list) {
+    for (_, (placement, list)) in groups {
+        let ordered = match order(&list, &exposed) {
             Ok(o) => o,
             Err(e) => {
                 errors.push(e);
@@ -294,6 +323,13 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLo
         let state_key = |state: &str, value: &str| -> Result<(usize, u32), String> {
             let i = payloads.state(state).ok_or_else(|| format!("no state {state}"))?;
             Ok((i, payloads.states[i].index(value).ok_or_else(|| format!("{state} has no value {value}"))?))
+        };
+        let schedule = match placement {
+            Placement::Slot(key) => {
+                out.slots.insert(key, built);
+                continue;
+            }
+            Placement::Schedule(s) => s,
         };
         match &schedule {
             ScheduleDecl::Startup => out.startup = built,
@@ -517,6 +553,26 @@ pub fn run_state_transitions(world: &mut World) {
             run_list(world, rt, systems, &mut list);
             systems.on_enter.insert((i, new), list);
         }
+    });
+}
+
+/// Runs the systems of one slot. Called from the slot's exclusive system, which
+/// [`crate::sets::ensure_slots`] adds around the exposed set the first time a generation names it.
+pub fn run_slot(world: &mut World, key: &SlotKey) {
+    if !runtime::stage_should_run(world) {
+        return;
+    }
+    if world.get_resource::<TsSystems>().is_none_or(|s| s.slots.get(key).is_none_or(|l| l.is_empty())) {
+        return;
+    }
+    with_systems(world, |world, rt, systems| {
+        drain_observers(world, rt, systems);
+        let mut list = systems.slots.remove(key).unwrap_or_default();
+        for sys in list.iter_mut() {
+            run_one(world, rt, sys, None);
+            drain_observers(world, rt, systems);
+        }
+        systems.slots.insert(key.clone(), list);
     });
 }
 
@@ -896,19 +952,19 @@ mod tests {
     fn registration_order_adjusted_by_after_before_and_sets() {
         let ds = [sys("a", &["c"], &[], &[]), sys("b", &[], &[], &[]), sys("c", &[], &[], &[])];
         let refs: Vec<_> = ds.iter().enumerate().collect();
-        assert_eq!(order(&refs).unwrap(), vec![1, 2, 0]);
+        assert_eq!(order(&refs, &HashSet::new()).unwrap(), vec![1, 2, 0]);
         let ds = [sys("x", &["enemies"], &[], &[]), sys("e1", &[], &[], &["enemies"]), sys("e2", &[], &["e1"], &["enemies"])];
         let refs: Vec<_> = ds.iter().enumerate().collect();
-        assert_eq!(order(&refs).unwrap(), vec![2, 1, 0]);
+        assert_eq!(order(&refs, &HashSet::new()).unwrap(), vec![2, 1, 0]);
     }
 
     #[test]
     fn cycles_and_unknown_targets_fail() {
         let ds = [sys("a", &["b"], &[], &[]), sys("b", &["a"], &[], &[])];
         let refs: Vec<_> = ds.iter().enumerate().collect();
-        assert!(order(&refs).unwrap_err().message.contains("cycle"));
+        assert!(order(&refs, &HashSet::new()).unwrap_err().message.contains("cycle"));
         let ds = [sys("a", &["nope"], &[], &[])];
         let refs: Vec<_> = ds.iter().enumerate().collect();
-        assert!(order(&refs).unwrap_err().message.contains("nope"));
+        assert!(order(&refs, &HashSet::new()).unwrap_err().message.contains("nope"));
     }
 }

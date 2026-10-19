@@ -3,6 +3,9 @@
 //! against the name and run in a slot made around the set the first time a generation names it.
 
 use crate::BevyTsSet;
+use crate::backend::ScriptError;
+use crate::manifest::{ScheduleDecl, Stage, SystemDecl};
+use crate::systems::{SlotKey, TsSystems};
 use bevy::ecs::intern::Interned;
 use bevy::ecs::schedule::{ScheduleLabel, SystemSet};
 use bevy::prelude::*;
@@ -98,6 +101,79 @@ impl BevyTsSlot {
 
     pub fn after(name: &str) -> Self {
         BevyTsSlot::After(name.to_string())
+    }
+}
+
+fn stage_label(stage: Stage) -> Interned<dyn ScheduleLabel> {
+    match stage {
+        Stage::PreUpdate => PreUpdate.intern(),
+        Stage::Update => Update.intern(),
+        Stage::PostUpdate => PostUpdate.intern(),
+        Stage::FixedUpdate => FixedUpdate.intern(),
+    }
+}
+
+/// Where a system runs when it orders itself against an exposed set: its slot, or `None` for its
+/// declared schedule. A system names at most one exposed set, in the set's own schedule.
+pub(crate) fn placement(world: &World, d: &SystemDecl) -> Result<Option<SlotKey>, ScriptError> {
+    let Some(sets) = world.get_resource::<TsSets>() else { return Ok(None) };
+    let named: Vec<(&String, bool)> = d
+        .after
+        .iter()
+        .map(|t| (t, true))
+        .chain(d.before.iter().map(|t| (t, false)))
+        .filter(|(t, _)| sets.get(t).is_some())
+        .collect();
+    let err = |m: String| Err(ScriptError::at(format!("system {}: {m}", d.name), d.location.clone()));
+    let [(name, after)] = named.as_slice() else {
+        return match named.len() {
+            0 => Ok(None),
+            _ => err(format!(
+                "it orders against {} exposed sets ({}); a system runs in one slot, so name at most one",
+                named.len(),
+                named.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")
+            )),
+        };
+    };
+    let set = sets.get(name).expect("filtered on exposed sets");
+    let ScheduleDecl::Stage { stage } = &d.schedule else {
+        return err(format!("only systems in PreUpdate, Update, PostUpdate or FixedUpdate can order against {name}"));
+    };
+    if stage_label(*stage) != set.schedule {
+        return err(format!(
+            "it is registered in {:?} but orders against {name}, which runs in {:?}; register it in {:?}",
+            stage_label(*stage),
+            set.schedule,
+            set.schedule
+        ));
+    }
+    Ok(Some(SlotKey { set: name.to_string(), after: *after }))
+}
+
+/// Slots made so far: each is one exclusive system in its set's schedule, kept for the life of
+/// the app (an emptied slot is skipped).
+#[derive(Resource, Default, Debug)]
+pub struct MadeSlots(pub std::collections::BTreeSet<SlotKey>);
+
+/// Makes the slots a just-committed generation names for the first time: one schedule edit each,
+/// applied at this frame boundary. Later generations reuse them without touching schedules.
+pub(crate) fn ensure_slots(world: &mut World) {
+    let wanted: Vec<SlotKey> = match world.get_resource::<TsSystems>() {
+        Some(s) => s.slots.iter().filter(|(_, l)| !l.is_empty()).map(|(k, _)| k.clone()).collect(),
+        None => return,
+    };
+    let made = world.get_resource_or_init::<MadeSlots>().0.clone();
+    for key in wanted.into_iter().filter(|k| !made.contains(k)) {
+        let Some(set) = world.resource::<TsSets>().get(&key.set).cloned() else { continue };
+        let slot = if key.after { BevyTsSlot::after(&key.set) } else { BevyTsSlot::before(&key.set) };
+        let run = {
+            let key = key.clone();
+            move |world: &mut World| crate::systems::run_slot(world, &key)
+        };
+        let mut schedules = world.resource_mut::<Schedules>();
+        let placed = if key.after { run.after(set.set).in_set(slot) } else { run.before(set.set).in_set(slot) };
+        schedules.add_systems(set.schedule, placed);
+        world.resource_mut::<MadeSlots>().0.insert(key);
     }
 }
 

@@ -350,6 +350,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
     insert_resources(world, &manifest);
     let watched = systems.watched_lifecycles();
     world.insert_resource(systems);
+    crate::sets::ensure_slots(world);
     crate::observers::install(world, &watched);
     rt.entries = manifest.entries.iter().map(|e| e.name.clone()).collect();
     Ok((migrations, sections))
