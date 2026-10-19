@@ -334,6 +334,10 @@ const KIND = Symbol.for("bevy-ts.kind");
 const STATE_VALUES = Symbol("bevy-ts.states");
 
 class Data {
+  constructor(init) {
+    // Class fields initialise after this constructor, so values passed here would be lost.
+    if (init !== undefined) throw new TypeError(`${new.target.name}: make values with ${new.target.name}.of({ ... }), not new ${new.target.name}({ ... })`);
+  }
   /** `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. */
   static of(values) {
     const v = new this();
