@@ -166,6 +166,30 @@ fn hello(In(_): In<Option<Value>>, world: &World) -> BrpResult {
             inspector: info.inspector.clone(),
         },
         viewport: Some(world.resource::<RemoteMethods>().get("bevy-ts/viewport_attach").is_some()),
+        build: world.get_resource::<bevy_ts::engine::EngineIdentity>().map(|id| protocol::EngineBuild {
+            kind: match id.kind {
+                bevy_ts::engine::EngineKind::Prebuilt => protocol::EngineBuildKind::Prebuilt,
+                bevy_ts::engine::EngineKind::Project => protocol::EngineBuildKind::Project,
+            },
+            hash: id.hash.clone(),
+            native: id.native.as_ref().map(|n| protocol::NativeCrate { name: n.name.clone(), version: n.version.clone() }),
+        }),
+        sets: world
+            .get_resource::<bevy_ts::sets::TsSets>()
+            .map(|s| s.infos().into_iter().map(|i| protocol::ExposedSet { name: i.name, schedule: i.schedule }).collect())
+            .unwrap_or_default(),
+        params: world
+            .get_resource::<bevy_ts::host::HostParams>()
+            .map(|h| {
+                h.specs()
+                    .map(|p| protocol::ExportedParam {
+                        name: p.ts.to_string(),
+                        module: p.module.to_string(),
+                        methods: p.methods.iter().map(|m| m.name.clone()).collect(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
     };
     serde_json::to_value(result).map_err(|e| internal(e.to_string()))
 }

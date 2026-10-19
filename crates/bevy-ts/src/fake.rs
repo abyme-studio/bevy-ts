@@ -76,6 +76,22 @@ pub struct FakeCall<'a> {
     pub payload: &'a [u8],
     /// An entry's return bytes.
     pub output: Vec<u8>,
+    /// The call's host functions, as JS reaches them through the seam; valid for the call only.
+    host: Option<*mut (dyn crate::backend::HostCalls + 'static)>,
+}
+
+impl FakeCall<'_> {
+    /// Calls host function `id` with `args` as slots; returns the result slots.
+    pub fn host_call(&mut self, id: u32, args: &[f64], slices: &mut [&mut [u8]]) -> Result<Vec<f64>, ScriptError> {
+        let host = self.host.ok_or_else(|| ScriptError::new("fake: no host functions in this call"))?;
+        // SAFETY: the pointer is the call context's host, alive for the whole call this
+        // `FakeCall` exists in.
+        let host = unsafe { &mut *host };
+        let bytes: Vec<u8> = args.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let mut ret = vec![0u8; crate::host::SLOTS * 8];
+        let n = host.call(id, &bytes, &mut ret, slices).map_err(ScriptError::new)?;
+        Ok(ret[..n * 8].chunks(8).map(|c| f64::from_le_bytes(c.try_into().unwrap())).collect())
+    }
 }
 
 pub type FakeFn = Box<dyn FnMut(&mut FakeCall) -> Result<(), ScriptError> + Send>;
@@ -149,7 +165,12 @@ impl FakeBackend {
         ctx_pool: &[u64],
         payload: &'a [u8],
         arena: &mut [u8],
+        host: Option<&mut dyn crate::backend::HostCalls>,
     ) -> Result<(Vec<u8>, RunOutput), ScriptError> {
+        // SAFETY: only the lifetime is erased; the pointer is used during this call only.
+        let host = host.map(|h| unsafe {
+            std::mem::transmute::<*mut dyn crate::backend::HostCalls, *mut (dyn crate::backend::HostCalls + 'static)>(h)
+        });
         let (func, resolution) = {
             let mut s = self.0.0.lock().unwrap();
             s.calls += 1;
@@ -168,6 +189,7 @@ impl FakeBackend {
             write_marks: Vec::new(),
             payload,
             output: Vec::new(),
+            host,
         };
         // SAFETY: the closure lives in `State::loaded`, which is only mutated by load, commit
         // and discard, never during a call (the backend is single-threaded on the main thread).
@@ -260,6 +282,7 @@ impl ScriptBackend for FakeBackend {
         }
         let frame = run.ctx.frame;
         let pool = run.ctx.pool;
+        let host = run.ctx.host.as_mut().map(|h| &mut **h as &mut dyn crate::backend::HostCalls);
         let (_, out) = self.call(
             |s| {
                 let (p, r) = s.loaded.get_mut(&key.generation)?;
@@ -272,6 +295,7 @@ impl ScriptBackend for FakeBackend {
             pool,
             &[],
             run.ctx.arena,
+            host,
         )?;
         Ok(out)
     }
@@ -291,6 +315,7 @@ impl ScriptBackend for FakeBackend {
             ctx.pool,
             payload,
             ctx.arena,
+            ctx.host.as_mut().map(|h| &mut **h as &mut dyn crate::backend::HostCalls),
         )
     }
 

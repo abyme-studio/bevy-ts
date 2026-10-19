@@ -315,6 +315,9 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
     }
 
     let mut resolution = Resolution { generation: number, ..Default::default() };
+    if let Some(h) = world.get_resource::<crate::host::HostParams>() {
+        resolution.ports = h.glue();
+    }
     for (name, id, layout) in pending.iter() {
         resolution.components.insert(name.to_string(), ResolvedComponent { id: id.index() as u32, layout: layout.clone() });
     }

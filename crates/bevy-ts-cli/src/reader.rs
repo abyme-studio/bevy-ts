@@ -27,13 +27,10 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 
-/// Param kinds that installed ports declare, by type name (`ReadRapierContext`). Empty until
-/// `native` lands; a port's param reads as `{ kind: "port", name, args }`.
-pub const PORT_PARAM_KINDS: &[&str] = &[];
-
-/// The port param-kind registry.
-pub fn port_param_kinds() -> &'static [&'static str] {
-    PORT_PARAM_KINDS
+/// The port param-kind registry: the params Rust crates export with `app.ts_param` in this
+/// process (`ReadRapierContext`). A port's param reads as `{ kind: "port", name, args }`.
+pub fn port_param_kinds() -> Vec<String> {
+    bevy_ts::host::param_kinds()
 }
 
 /// Param kinds bevy-ts itself declares, recognised by name.
@@ -399,7 +396,7 @@ pub(crate) struct Declarations {
 
 struct Reader {
     root: PathBuf,
-    ports: &'static [&'static str],
+    ports: Vec<String>,
     files: HashMap<PathBuf, Option<Rc<FileInfo>>>,
     /// Modules (by path) a declaration referenced.
     referenced: BTreeSet<PathBuf>,
@@ -411,7 +408,7 @@ pub(crate) fn read(file: FileInfo, root: &Path) -> Result<Declarations, Vec<Scri
     read_with(file, root, port_param_kinds())
 }
 
-fn read_with(file: FileInfo, root: &Path, ports: &'static [&'static str]) -> Result<Declarations, Vec<ScriptError>> {
+fn read_with(file: FileInfo, root: &Path, ports: Vec<String>) -> Result<Declarations, Vec<ScriptError>> {
     let file = Rc::new(file);
     let mut r = Reader { root: root.to_path_buf(), ports, files: HashMap::new(), referenced: BTreeSet::new() };
     r.files.insert(file.path.clone(), Some(file.clone()));
@@ -579,7 +576,7 @@ impl Reader {
             let (t, s) = (t.clone(), s.clone());
             return self.head(&t, &s, depth + 1);
         }
-        if KINDS.contains(&name.as_str()) || self.ports.contains(&name.as_str()) {
+        if KINDS.contains(&name.as_str()) || self.ports.iter().any(|p| p == name) {
             return Ok(Head::Kind { name: name.clone(), args: args.clone(), span, scope: scope.clone() });
         }
         if let Some((file, there)) = self.lookup(&scope.file, name, 0) {
@@ -715,7 +712,7 @@ impl Reader {
                 Head::Value(e) => Ok(json!({ "kind": "on", "event": e })),
                 _ => Err(self.fail(s, span, "On takes an event or Add/Insert/Remove<Component>")),
             },
-            port if self.ports.contains(&port) => {
+            port if self.ports.iter().any(|p| p == port) => {
                 let refs = args.iter().map(|a| self.reference(a, s, "a value")).collect::<Result<Vec<_>, _>>()?;
                 Ok(json!({ "kind": "port", "name": port, "args": refs }))
             }
@@ -1029,12 +1026,12 @@ export const arrow = (q: Query<[Pos]>) => {};
 
     #[test]
     fn port_param_kinds_come_from_the_registry() {
-        assert!(port_param_kinds().is_empty());
+
         let src = "import { Collider } from \"bevy-ts/rapier\";\nexport function cast(r: ReadRapierContext<Collider>) {}\n";
         let path = Path::new("/p/src/game.ts");
         let allocator = Allocator::default();
         let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
-        let read = |ports| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), ports).ok().unwrap().code);
+        let read = |ports: &[&str]| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), ports.iter().map(|s| s.to_string()).collect()).ok().unwrap().code);
         assert_eq!(read(&["ReadRapierContext"])["cast"]["params"], json!([{ "kind": "port", "name": "ReadRapierContext", "args": [["src/game.ts", "Collider"]] }]));
         assert!(read(&[])["cast"]["error"].as_str().unwrap().contains("ReadRapierContext is not a system param kind"));
     }

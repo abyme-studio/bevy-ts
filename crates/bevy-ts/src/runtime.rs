@@ -95,8 +95,13 @@ impl ScriptRuntime {
         scratch.arena_mut().resize(commands::ARENA_BYTES, 0);
         let result = {
             let pool = std::mem::take(&mut rt.pool);
-            let mut ctx = CallContext { frame, arena: scratch.arena_mut(), pool: &pool };
-            let r = rt.backend.call_entry(name, payload, &mut ctx);
+            let mut params = world.remove_resource::<crate::host::HostParams>().unwrap_or_default();
+            let r = {
+                let mut host = crate::host::WorldHost { world: &*world, params: &mut params };
+                let mut ctx = CallContext { frame, arena: scratch.arena_mut(), pool: &pool, host: Some(&mut host) };
+                rt.backend.call_entry(name, payload, &mut ctx)
+            };
+            world.insert_resource(params);
             rt.pool = pool;
             r
         };

@@ -483,6 +483,7 @@ dependencies = [
  "bevy",
  "bevy-ts",
  "bevy-ts-levels",
+ "bevy-ts-native",
  "bevy-ts-remote",
  "bevy-ts-tsx",
  "bevy-ts-v8",

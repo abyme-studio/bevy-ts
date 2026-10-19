@@ -14,7 +14,7 @@ compile_error!(
 mod loader;
 
 use bevy_ts::backend::{
-    CallContext, ConsoleMessage, Generation, ParamFrame, RunOutput, ScriptBackend, ScriptError, ScriptKey, SourceLocation, SystemRun,
+    CallContext, HostCalls, ConsoleMessage, Generation, ParamFrame, RunOutput, ScriptBackend, ScriptError, ScriptKey, SourceLocation, SystemRun,
 };
 use bevy_ts::log::LogLevel;
 use bevy_ts::manifest::{LoadedGeneration, Manifest, Resolution, Section};
@@ -42,11 +42,56 @@ fn op_bevyts_log(state: &mut OpState, #[smi] level: u32, #[string] message: &str
     state.borrow_mut::<ConsoleBuffer>().0.push(ConsoleMessage { level, message: message.to_string(), location });
 }
 
+/// The host functions of the call in progress (the sixth seam operation), lifetime-erased:
+/// set only while a system run or entry call is inside JS.
+#[derive(Default)]
+struct HostSlot(Option<*mut (dyn HostCalls + 'static)>);
+
+#[derive(Default)]
+struct HostError(String);
+
+/// Calls exported method `id`: `args` and `ret` are `f64` slots, `s0..s3` slice arguments viewed
+/// in place. Returns the result's slot count, or -1 with the message in [`HostError`].
+#[allow(clippy::too_many_arguments)]
+#[op2(fast)]
+fn op_bevyts_host(
+    state: &mut OpState,
+    #[smi] id: u32,
+    #[buffer] args: &[u8],
+    #[buffer] ret: &mut [u8],
+    #[buffer] s0: &mut [u8],
+    #[buffer] s1: &mut [u8],
+    #[buffer] s2: &mut [u8],
+    #[buffer] s3: &mut [u8],
+) -> i32 {
+    let Some(host) = state.borrow::<HostSlot>().0 else {
+        state.borrow_mut::<HostError>().0 = "Rust params can only be called while a system runs".into();
+        return -1;
+    };
+    let mut slices = [s0, s1, s2, s3];
+    // SAFETY: the slot holds the running call's host for exactly the duration of that call.
+    match unsafe { &mut *host }.call(id, args, ret, &mut slices) {
+        Ok(n) => n as i32,
+        Err(e) => {
+            state.borrow_mut::<HostError>().0 = e;
+            -1
+        }
+    }
+}
+
+#[op2]
+#[string]
+fn op_bevyts_host_error(state: &mut OpState) -> String {
+    std::mem::take(&mut state.borrow_mut::<HostError>().0)
+}
+
 deno_core::extension!(
     bevy_ts_v8,
-    ops = [op_bevyts_log],
+    ops = [op_bevyts_log, op_bevyts_host, op_bevyts_host_error],
     state = |state| {
         state.put(ConsoleBuffer::default());
+        state.put(HostSlot::default());
+        state.put(HostError::default());
     }
 );
 
@@ -487,6 +532,7 @@ impl ScriptBackend for V8Backend {
         let mut pool = std::mem::take(&mut self.pool_f64);
         let params = run.params;
         let ctx = &mut run.ctx;
+        self.set_host(ctx.host.take());
         let result = self.call(
             |f| &f.run_system,
             |s, buffers| {
@@ -500,6 +546,7 @@ impl ScriptBackend for V8Backend {
             },
             |s, v| read_output(s, v, 0),
         );
+        self.set_host(None);
         self.pool_f64 = pool;
         result.map_err(|e| self.relocate(e))
     }
@@ -508,6 +555,7 @@ impl ScriptBackend for V8Backend {
         self.fill_pool(ctx.pool);
         let mut pool = std::mem::take(&mut self.pool_f64);
         let mut payload = payload.to_vec();
+        self.set_host(ctx.host.take());
         let result = self.call(
             |f| &f.call_entry,
             |s, buffers| {
@@ -524,6 +572,7 @@ impl ScriptBackend for V8Backend {
                 (bytes, read_output(s, v, 1))
             },
         );
+        self.set_host(None);
         self.pool_f64 = pool;
         result.map_err(|e| self.relocate(e))
     }
@@ -570,6 +619,14 @@ impl ScriptBackend for V8Backend {
 }
 
 impl V8Backend {
+    /// Makes `host` callable from JS until the next `set_host`.
+    fn set_host(&mut self, host: Option<&mut dyn HostCalls>) {
+        // SAFETY: only the lifetime is erased; every call into JS that sets a host clears it
+        // before returning, so the pointer is never used past the call that owns it.
+        let ptr = host.map(|h| unsafe { std::mem::transmute::<*mut dyn HostCalls, *mut (dyn HostCalls + 'static)>(h) });
+        self.runtime.op_state().borrow_mut().borrow_mut::<HostSlot>().0 = ptr;
+    }
+
     /// Errors from module evaluation may be located at a declaration's call site.
     fn relocate(&self, e: ScriptError) -> ScriptError {
         e

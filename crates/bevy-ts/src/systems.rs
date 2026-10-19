@@ -443,6 +443,12 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 RunParam::Local(locals.len() - 1)
             }
             ParamDecl::Commands | ParamDecl::MessageWriter { .. } | ParamDecl::NextState { .. } => RunParam::None,
+            ParamDecl::Port { name } => {
+                if world.get_resource::<crate::host::HostParams>().is_none_or(|h| h.get(name).is_none()) {
+                    return Err(err(format!("{name} is not a system param any loaded crate exports")));
+                }
+                RunParam::None
+            }
             ParamDecl::MessageReader { message } => {
                 let index = world.resource::<TsPayloads>().message(message).ok_or_else(|| err(format!("no message type {message}; call app.addMessage")))?;
                 RunParam::MessageReader { index }
@@ -804,10 +810,13 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
             rt.fill_pool(world);
             scratch.arena.resize(crate::commands::ARENA_BYTES, 0);
             let pool = std::mem::take(&mut rt.pool);
+            let mut params = world.remove_resource::<crate::host::HostParams>().unwrap_or_default();
             let r = {
-                let mut run = SystemRun { ctx: CallContext { frame, arena: &mut scratch.arena, pool: &pool }, params: &frames };
+                let mut host = crate::host::WorldHost { world: &*world, params: &mut params };
+                let mut run = SystemRun { ctx: CallContext { frame, arena: &mut scratch.arena, pool: &pool, host: Some(&mut host) }, params: &frames };
                 rt.backend.run_system(sys.key, &mut run)
             };
+            world.insert_resource(params);
             rt.pool = pool;
             r
         }

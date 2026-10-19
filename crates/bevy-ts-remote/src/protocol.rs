@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.3.0";
+pub const VERSION: &str = "1.4.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -689,6 +689,71 @@ impl ::std::convert::TryFrom<::std::string::String> for EditStatus {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Empty {}
+///`EngineBuild`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EngineBuild {
+    ///The project engine's hash of its Rust inputs; prebuilt-<version>-<target> for the prebuilt engine.
+    pub hash: ::std::string::String,
+    pub kind: EngineBuildKind,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub native: ::std::option::Option<NativeCrate>,
+}
+///`EngineBuildKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum EngineBuildKind {
+    #[serde(rename = "prebuilt")]
+    Prebuilt,
+    #[serde(rename = "project")]
+    Project,
+}
+impl ::std::fmt::Display for EngineBuildKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Prebuilt => f.write_str("prebuilt"),
+            Self::Project => f.write_str("project"),
+        }
+    }
+}
+impl ::std::str::FromStr for EngineBuildKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "prebuilt" => Ok(Self::Prebuilt),
+            "project" => Ok(Self::Project),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EngineBuildKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EngineBuildKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`EntitiesResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -769,6 +834,23 @@ pub struct EntityInfo {
     pub name: ::std::option::Option<::std::string::String>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub parent: ::std::option::Option<Entity>,
+}
+///`ExportedParam`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExportedParam {
+    pub methods: ::std::vec::Vec<::std::string::String>,
+    pub module: ::std::string::String,
+    ///The TS type, such as ReadRapierContext.
+    pub name: ::std::string::String,
+}
+///`ExposedSet`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExposedSet {
+    ///<crate>:<name>, such as rapier:step.
+    pub name: ::std::string::String,
+    pub schedule: ::std::string::String,
 }
 ///`FieldHints`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
@@ -1146,6 +1228,9 @@ pub struct HelloResult {
     pub bevy: ::std::string::String,
     #[serde(rename = "bevyTs")]
     pub bevy_ts: ::std::string::String,
+    ///Which engine binary runs: the prebuilt one or a project engine (protocol 1.4).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub build: ::std::option::Option<EngineBuild>,
     pub dev: DevFeatures,
     ///The JS engine and its version.
     pub engine: ::std::string::String,
@@ -1153,8 +1238,14 @@ pub struct HelloResult {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub entry: ::std::option::Option<::std::string::String>,
     pub generation: u64,
+    ///Rust system params exported to TS with app.ts_param (protocol 1.4).
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub params: ::std::vec::Vec<ExportedParam>,
     ///The protocol version (semver) this server speaks.
     pub protocol: ::std::string::String,
+    ///Rust system sets exposed to TS with app.ts_set, by name (protocol 1.4).
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub sets: ::std::vec::Vec<ExposedSet>,
     ///Whether bevy-ts-viewport methods are served (protocol 1.2).
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub viewport: ::std::option::Option<bool>,
@@ -1555,6 +1646,13 @@ pub struct MutateComponentsParams {
     ///.field, .field.x|y|z|w or .field[i] for TS components; a reflect path for Rust ones.
     pub path: ::std::string::String,
     pub value: ::serde_json::Value,
+}
+///`NativeCrate`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct NativeCrate {
+    pub name: ::std::string::String,
+    pub version: ::std::string::String,
 }
 ///`OnMessage`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

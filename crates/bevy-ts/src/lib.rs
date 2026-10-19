@@ -12,6 +12,7 @@ pub mod components;
 pub mod engine;
 pub mod fake;
 pub mod generation;
+pub mod host;
 pub mod layout;
 pub mod layout_reflect;
 pub mod log;
@@ -104,6 +105,7 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<memory::SystemMemory>()
             .init_resource::<messages::TsPayloads>()
             .init_resource::<observers::ObserverQueue>()
+            .init_resource::<host::HostParams>()
             .insert_resource(runtime::RuntimeInfo { dev: self.dev, engine, inspector, ..Default::default() });
 
         // Rust components' layouts come from reflection once every plugin has registered its

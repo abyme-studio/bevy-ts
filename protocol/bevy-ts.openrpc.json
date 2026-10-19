@@ -2,13 +2,13 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names."
   },
   "methods": [
     {
       "name": "bevy-ts/hello",
-      "summary": "Handshake: protocol, bevy-ts, Bevy and JS engine versions, entry, generation, dev features.",
+      "summary": "Handshake: protocol, bevy-ts, Bevy and JS engine versions, entry, generation, dev features, and the engine build with its exposed Rust sets and exported params.",
       "x-bevy-ts-crate": "bevy-ts-remote",
       "params": [],
       "result": {
@@ -887,6 +887,24 @@
           "viewport": {
             "type": "boolean",
             "description": "Whether bevy-ts-viewport methods are served (protocol 1.2)."
+          },
+          "build": {
+            "$ref": "#/components/schemas/EngineBuild",
+            "description": "Which engine binary runs: the prebuilt one or a project engine (protocol 1.4)."
+          },
+          "sets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExposedSet"
+            },
+            "description": "Rust system sets exposed to TS with app.ts_set, by name (protocol 1.4)."
+          },
+          "params": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportedParam"
+            },
+            "description": "Rust system params exported to TS with app.ts_param (protocol 1.4)."
           }
         }
       },
@@ -906,6 +924,87 @@
               "null"
             ],
             "description": "The CDP address when the inspector is on."
+          }
+        }
+      },
+      "EngineBuild": {
+        "type": "object",
+        "required": [
+          "kind",
+          "hash"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "prebuilt",
+              "project"
+            ]
+          },
+          "hash": {
+            "type": "string",
+            "description": "The project engine's hash of its Rust inputs; prebuilt-<version>-<target> for the prebuilt engine."
+          },
+          "native": {
+            "$ref": "#/components/schemas/NativeCrate"
+          }
+        }
+      },
+      "NativeCrate": {
+        "type": "object",
+        "required": [
+          "name",
+          "version"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "ExposedSet": {
+        "type": "object",
+        "required": [
+          "name",
+          "schedule"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "<crate>:<name>, such as rapier:step."
+          },
+          "schedule": {
+            "type": "string"
+          }
+        }
+      },
+      "ExportedParam": {
+        "type": "object",
+        "required": [
+          "name",
+          "module",
+          "methods"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The TS type, such as ReadRapierContext."
+          },
+          "module": {
+            "type": "string"
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

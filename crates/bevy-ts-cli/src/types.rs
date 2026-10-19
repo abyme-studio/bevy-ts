@@ -221,6 +221,15 @@ pub fn emit(world: &World) -> String {
          import { Component, ReflectComponent, Resource } from \"bevy-ts\";\n\
          import type { Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
     );
+    if let Some(host) = world.get_resource::<bevy_ts::host::HostParams>() {
+        for (module, decls) in host.declarations() {
+            let _ = writeln!(s, "declare module {module:?} {{\n  import type {{ Entity }} from \"bevy-ts\";");
+            for line in decls.lines() {
+                let _ = writeln!(s, "  {line}");
+            }
+            s.push_str("}\n\n");
+        }
+    }
     let sets: Vec<String> = world.get_resource::<TsSets>().map(|t| t.iter().map(|x| format!("{:?}", x.name)).collect()).unwrap_or_default();
     let _ = writeln!(s, "/** System sets exposed with `app.ts_set`, for `.before`/`.after(systemSet(name))`. */");
     let _ = writeln!(s, "export type NativeSet = {};", if sets.is_empty() { "never".to_string() } else { sets.join(" | ") });

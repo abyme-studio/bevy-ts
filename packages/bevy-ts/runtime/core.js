@@ -853,6 +853,9 @@ function resolveParams(g, params, at) {
       case "bundle":
         out.push({ kind: "bundle", fields: p.fields.map((f) => ({ name: f.name, param: resolveParams(g, [f.param], at)[0] })) });
         break;
+      case "port":
+        out.push({ kind: "port", name: p.name });
+        break;
       case "app":
         throw declError("a plugin (app: App) is registered with app.addPlugins, not as a system", at);
       default:
@@ -1021,6 +1024,7 @@ const VIEW = { f32: "f32", f64: "f64", i8: "i8", u8: "u8", i16: "i16", u16: "u16
 const VIEW_CTORS = { f32: Float32Array, f64: Float64Array, i8: Int8Array, u8: Uint8Array, i16: Int16Array, u16: Uint16Array, i32: Int32Array, u32: Uint32Array };
 
 function enumView(t) {
+  if (t.repr) return t.repr.width === 1 ? "u8" : t.repr.width === 2 ? "u16" : "u32";
   const n = t.variants.length;
   return n <= 256 ? "u8" : n <= 65536 ? "u16" : "u32";
 }
@@ -1048,7 +1052,10 @@ function setterTail(write) {
 }
 
 /** Source for reading/writing one scalar at byte offset `off` of a `size`-byte row. */
-function scalarCode(kind, off, size, enumVariants) {
+/** `enumType`: for an enum field, its type; a Rust enum's `repr` maps variants to the bytes this
+ * build stores, read at startup. */
+function scalarCode(kind, off, size, enumType) {
+  const enumVariants = enumType && enumType.variants;
   const w = WIDTH[kind] || (kind === "u16" ? 2 : 4);
   const view = kind === "bool" ? "u8" : kind === "entity" ? "u32" : kind;
   const idx = size % w === 0 ? `p.r * ${size / w} + ${off / w}` : `(p.r * ${size} + ${off}) / ${w}`;
@@ -1061,9 +1068,10 @@ function scalarCode(kind, off, size, enumVariants) {
   }
   if (enumVariants) {
     const names = JSON.stringify(enumVariants);
+    const vals = enumType.repr ? JSON.stringify(enumType.repr.values) : null;
     return {
-      get: `${names}[p.${view}[${idx}]]`,
-      set: `{ const i = typeof v === "string" ? ${names}.indexOf(v) : v; if (i < 0 || i >= ${enumVariants.length}) throw new RangeError("unknown variant " + v); p.${view}[${idx}] = i; }`,
+      get: vals ? `${names}[${vals}.indexOf(p.${view}[${idx}])]` : `${names}[p.${view}[${idx}]]`,
+      set: `{ const i = typeof v === "string" ? ${names}.indexOf(v) : v; if (i < 0 || i >= ${enumVariants.length}) throw new RangeError("unknown variant " + v); p.${view}[${idx}] = ${vals ? `${vals}[i]` : "i"}; }`,
     };
   }
   return { get: `p.${view}[${idx}]`, set: `p.${view}[${idx}] = v;` };
@@ -1117,7 +1125,7 @@ function generateAccessor(name, layout, write) {
           const s = [...Array(n).keys()].map((j) => scalarCode("f32", off + j * 4, size).set.replace(/\bv\b/g, `v[${j}]`));
           c = { get: `[${g.join(", ")}]`, set: s.join(" ") };
         } else {
-          c = scalarCode(scalarKind(el), off, size, el.kind === "enum" ? el.variants : undefined);
+          c = scalarCode(scalarKind(el), off, size, el.kind === "enum" ? el : undefined);
         }
         cls.push(`get ${i}() { const p = this.p; return ${c.get}; }`);
         cls.push(`set ${i}(v) { const p = this.p; ${c.set} ${setterTail(write)} }`);
@@ -1135,7 +1143,7 @@ function generateAccessor(name, layout, write) {
           : `set ${key}(v) { throw new TypeError(READONLY); }`,
       );
     } else {
-      const c = scalarCode(scalarKind(t), f.offset, size, t.kind === "enum" ? t.variants : undefined);
+      const c = scalarCode(scalarKind(t), f.offset, size, t.kind === "enum" ? t : undefined);
       parts.push(`get ${key}() { const p = this; return ${c.get}; }`);
       parts.push(`set ${key}(v) { const p = this; ${c.set} ${setterTail(write)} }`);
     }
@@ -1502,6 +1510,56 @@ class OnParam {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Exported Rust params: each method is one host call (a fast op), arguments and results as f64
+// slots in two scratch arrays, slices passed in place.
+
+const HOST_SLOTS = 512;
+const HOST = {
+  slots: new Float64Array(HOST_SLOTS),
+  result: new Float64Array(HOST_SLOTS),
+  EMPTY: new Uint8Array(0),
+  /** A slice argument's bytes, in place. */
+  bytes(v, name) {
+    if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+    if (v instanceof ArrayBuffer) return new Uint8Array(v);
+    throw new TypeError(`${name}: expected a typed array`);
+  },
+  call(id, _n, s0, s1, s2, s3) {
+    if (!core) throw new Error("Rust params need the engine");
+    const ss = [s0, s1, s2, s3];
+    for (let i = 0; i < 4; i++) {
+      for (let j = i + 1; j < 4; j++) {
+        const a = ss[i], b = ss[j];
+        if (a.byteLength && b.byteLength && a.buffer === b.buffer && a.byteOffset < b.byteOffset + b.byteLength && b.byteOffset < a.byteOffset + a.byteLength) {
+          throw new TypeError("two slice arguments share memory; pass separate arrays");
+        }
+      }
+    }
+    return core.ops.op_bevyts_host(id, HOST.slotBytes, HOST.resultBytes, s0, s1, s2, s3);
+  },
+  fail(param, method) {
+    const msg = core ? core.ops.op_bevyts_host_error() : "";
+    throw new Error(msg || `${param}.${method} failed`);
+  },
+};
+HOST.slotBytes = new Uint8Array(HOST.slots.buffer);
+HOST.resultBytes = new Uint8Array(HOST.result.buffer);
+
+const PORT_CLASSES = new Map();
+
+/** The class of an exported param, built from the glue Rust sent with the resolution. */
+function portClass(res, name) {
+  const src = res && res.ports && res.ports[name];
+  if (!src) throw new Error(`${name} is not a system param any loaded crate exports`);
+  let P = PORT_CLASSES.get(src);
+  if (!P) {
+    P = new Function("H", src)(HOST);
+    PORT_CLASSES.set(src, P);
+  }
+  return P;
+}
+
 /** One built system: its params, flattened frames' consumers, and how to call it. */
 function buildSystem(g, s) {
   const ctx = makeCtx();
@@ -1567,6 +1625,11 @@ function buildSystem(g, s) {
         const o = {};
         for (const f of p.fields) o[f.name] = make(f.param);
         return o;
+      }
+      case "port": {
+        const P = portClass(g.res, p.name);
+        consumers.push(() => {});
+        return new P();
       }
     }
   };
@@ -1892,8 +1955,9 @@ function encodeScalar(dv, kind, off, v, t) {
       dv.setUint32(off, v % 4294967296, true);
       return dv.setUint32(off + 4, Math.floor(v / 4294967296), true);
     case "enum": {
-      const i = typeof v === "string" ? t.variants.indexOf(v) : v;
+      let i = typeof v === "string" ? t.variants.indexOf(v) : v;
       if (i < 0 || i >= t.variants.length) throw new RangeError(`unknown variant ${v}`);
+      if (t.repr) i = t.repr.values[i];
       const w = enumView(t);
       if (w === "u8") return dv.setUint8(off, i);
       if (w === "u16") return dv.setUint16(off, i, true);

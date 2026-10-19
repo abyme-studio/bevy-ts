@@ -104,6 +104,18 @@ pub struct CallContext<'a> {
     pub arena: &'a mut [u8],
     /// Pre-allocated entity ids (`Entity::to_bits`) `spawn` hands out, in order.
     pub pool: &'a [u64],
+    /// Host functions JS may call synchronously during this call (the sixth seam operation).
+    pub host: Option<&'a mut dyn HostCalls>,
+}
+
+/// Call host function: Rust functions JS calls synchronously during a system run or an entry
+/// call, one per exported method. Arguments arrive as little-endian `f64` slots (`args`),
+/// results go into `ret` (also slots), and slices are views over JS memory passed in place. A
+/// backend makes it reachable from JS for exactly the duration of the call into JS: on V8 a fast
+/// op, on QuickJS-ng a host function, on the web a wasm import.
+pub trait HostCalls {
+    /// Calls host function `id`; returns the result's slot count, or an error message JS throws.
+    fn call(&mut self, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String>;
 }
 
 /// One component column of one table, as raw memory valid for the length of one run.

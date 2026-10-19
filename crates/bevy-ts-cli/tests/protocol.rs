@@ -101,6 +101,9 @@ fn every_method_answers_on_contract() {
     assert_eq!(hello["viewport"], false);
     assert_eq!(hello["generation"], 1);
     assert_eq!(hello["dev"]["reload"], true);
+    // Protocol 1.4: bevy-ts's own anchors are exposed sets; no engine identity resource here.
+    assert!(hello["sets"].as_array().unwrap().iter().any(|s| s["name"] == "bevy:transform-propagate"), "{hello}");
+    assert!(hello["params"].as_array().is_none_or(|a| a.is_empty()));
     ok(&mut app, "bevy-ts/discover", None);
 
     // Schemas: one renderer for both kinds.

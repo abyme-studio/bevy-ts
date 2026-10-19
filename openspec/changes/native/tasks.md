@@ -1,10 +1,10 @@
 ## 1. Bridge prerequisites (N1 to N5)
 
-- [ ] 1.1 Fill bridge's native layout registry at startup from reflection (decision 5: offsets from a value's field references, bounds and leaf-size checks, enum variant bytes read from the build, unreadable leaves as holes; test `Res<Time>` reads `delta_secs`), make it public, and route every Rust-component check in TS systems through it (N1); `Transform` takes the same path
+- [x] 1.1 Fill bridge's native layout registry at startup from reflection (decision 5: offsets from a value's field references, bounds and leaf-size checks, enum variant bytes read from the build, unreadable leaves as holes; test `Res<Time>` reads `delta_secs`), make it public, and route every Rust-component check in TS systems through it (N1); `Transform` takes the same path
 - [x] 1.2 Turn `bevy-ts-cli`'s `main` into `bevy_ts_cli::run(extra: impl Plugin)` and make the prebuilt binary a one-line caller (N4)
 - [x] 1.3 Make the exclusive stage system constructible for any schedule and ordering (N3); bridge's four stages use it unchanged
-- [ ] 1.4 Add the call-host-function seam operation to the backend trait, the fake backend and `bevy-ts-v8` (deno_core op over views of JS memory) (N2)
-- [ ] 1.5 Add engine identity, exposed sets and native functions to `bevy-ts/hello` and `bevy-ts/schema` in `protocol/bevy-ts.openrpc.json`, minor bump, regenerate both sides (N5)
+- [x] 1.4 Add the call-host-function seam operation to the backend trait, the fake backend and `bevy-ts-v8` (deno_core op over views of JS memory) (N2)
+- [x] 1.5 Add engine identity, exposed sets and native functions to `bevy-ts/hello` and `bevy-ts/schema` in `protocol/bevy-ts.openrpc.json`, minor bump, regenerate both sides (N5)
 
 ## 2. Native crate and project engine
 
@@ -45,10 +45,10 @@
 
 ## 5. Exported system params
 
-- [ ] 5.1 `#[bevy_ts::export(ts, module)]` on an `impl` of a `ReadOnlySystemParam`: per method a host function (V8 fast op), argument and result codecs, the TS declaration and JS glue; compile errors for unsupported argument types and non-read-only params
-- [ ] 5.2 `app.ts_param::<P>()`: a `SystemState<P>` per param, fetched read-only during the JS stage; validation errors and panics (`catch_unwind`) thrown as JS exceptions naming param and method; no re-entry into JS
-- [ ] 5.3 The compile step reads exported params as system param kinds (from the module that declares them); load error on an unknown name
-- [ ] 5.4 Test 1,000 rays in one `castRays` call record one JS-to-Rust crossing and return 1,000 results in the same run; a single `castRay` is one fast op; output views detach after the run
+- [x] 5.1 `#[bevy_ts::export(ts, module)]` on an `impl` of a `ReadOnlySystemParam`: per method a host function (V8 fast op), argument and result codecs, the TS declaration and JS glue; compile errors for unsupported argument types and non-read-only params
+- [x] 5.2 `app.ts_param::<P>()`: a `SystemState<P>` per param, fetched read-only during the JS stage; validation errors and panics (`catch_unwind`) thrown as JS exceptions naming param and method; no re-entry into JS
+- [x] 5.3 The compile step reads exported params as system param kinds (from the module that declares them); load error on an unknown name
+- [x] 5.4 Test 1,000 rays in one `castRays` call record one JS-to-Rust crossing and return 1,000 results in the same run; a single `castRay` is one fast op; output views detach after the run
 
 ## 7. Docs
 

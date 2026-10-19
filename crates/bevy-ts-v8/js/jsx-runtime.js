@@ -1011,7 +1011,7 @@ class SitePairRead extends Error {}
 const SCALAR_WIDTH = { f32: 4, f64: 8, i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, bool: 1, entity: 8, vec2: 8, vec3: 12, vec4: 16, quat: 16 };
 
 function fieldWidth(t) {
-  if (t.kind === "enum") return t.variants.length <= 256 ? 1 : t.variants.length <= 65536 ? 2 : 4;
+  if (t.kind === "enum") return t.repr ? t.repr.width : t.variants.length <= 256 ? 1 : t.variants.length <= 65536 ? 2 : 4;
   if (t.kind === "array") return fieldWidth(t.of) * t.len;
   return SCALAR_WIDTH[t.kind];
 }
@@ -1038,8 +1038,10 @@ function decodeField(dv, o, t) {
     }
     case "enum": {
       const w = fieldWidth(t);
-      const i = w === 1 ? dv.getUint8(o) : w === 2 ? dv.getUint16(o, true) : dv.getUint32(o, true);
-      return i < t.variants.length ? t.variants[i] : i;
+      const raw = w === 1 ? dv.getUint8(o) : w === 2 ? dv.getUint16(o, true) : dv.getUint32(o, true);
+      // A Rust enum stores the bytes this build uses per variant (`repr`), read at startup.
+      const i = t.repr ? t.repr.values.indexOf(raw) : raw;
+      return i >= 0 && i < t.variants.length ? t.variants[i] : raw;
     }
     case "array": {
       const w = fieldWidth(t.of);

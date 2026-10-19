@@ -159,6 +159,10 @@ pub enum ParamDecl {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         component: Option<ComponentRef>,
     },
+    /// A system param exported from Rust (`ReadRapierContext`), by its TS name.
+    Port {
+        name: String,
+    },
     /// A param bundle: an object whose properties are params.
     Bundle {
         fields: Vec<BundleField>,
@@ -363,6 +367,9 @@ pub struct Resolution {
     /// State machines by name: their index in ops.
     #[serde(default)]
     pub states: BTreeMap<String, u32>,
+    /// Exported Rust system params by TS name: the JS glue building each param's class.
+    #[serde(default)]
+    pub ports: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
