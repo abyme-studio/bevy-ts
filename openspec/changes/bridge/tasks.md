@@ -1,11 +1,11 @@
 ## 1. Walking skeleton: a cube moved by JS through a zero-copy Transform column
 
-- [ ] 1.1 Create the Cargo workspace (`bevy-ts`, `bevy-ts-v8`, `bevy-ts-cli` with a `bevy-ts` binary) on Bevy 0.20 and `deno_core` 0.412; the binary opens a window with a camera, a light and a cube spawned in Rust
-- [ ] 1.2 Define the backend trait in `bevy-ts` (load generation, run system, run startup, pump) and a fake backend for tests
-- [ ] 1.3 Create the `JsRuntime` on the main thread as non-send data and run one hard-coded JS script that declares one system writing `Transform`
-- [ ] 1.4 Register `Transform`'s native layout with `offset_of!` and hand its column and its changed ticks (`Table::get_changed_ticks_slice_for`) to JS as external `ArrayBuffer`s, detached after the run
-- [ ] 1.5 Run that system from an exclusive `Update` stage system with its own change tick; the script stores the tick on the rows it writes; the cube bobs on screen and a Rust `Changed<Transform>` system sees one entity
-- [ ] 1.6 Add a test that a retained view reads length 0 after the run, and that the build fails with `v8_enable_sandbox` on
+- [x] 1.1 Create the Cargo workspace (`bevy-ts`, `bevy-ts-v8`, `bevy-ts-cli` with a `bevy-ts` binary) on Bevy 0.20 and `deno_core` 0.412; the binary opens a window with a camera, a light and a cube spawned in Rust
+- [x] 1.2 Define the backend trait in `bevy-ts` (load generation, run system, run startup, pump) and a fake backend for tests
+- [x] 1.3 Create the `JsRuntime` on the main thread as non-send data and run one hard-coded JS script that declares one system writing `Transform`
+- [x] 1.4 Register `Transform`'s native layout with `offset_of!` and hand its column and its changed ticks (`Table::get_changed_ticks_slice_for`) to JS as external `ArrayBuffer`s, detached after the run
+- [x] 1.5 Run that system from an exclusive `Update` stage system with its own change tick; the script stores the tick on the rows it writes; the cube bobs on screen and a Rust `Changed<Transform>` system sees one entity
+- [x] 1.6 Add a test that a retained view reads length 0 after the run, and that the build fails with `v8_enable_sandbox` on
 
 ## 2. TS compilation and module loading
 

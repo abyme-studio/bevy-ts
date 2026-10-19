@@ -16,7 +16,7 @@ A TS component's layout SHALL follow C struct rules: fields in declaration order
 
 #### Scenario: Offsets of a mixed component
 - **WHEN** a component declares `{ alive: bool, hp: f32, pos: vec3 }`
-- **THEN** its layout is size 16, align 4, with `alive` at 0, `hp` at 4 and `pos` at 8
+- **THEN** its layout is size 20, align 4, with `alive` at 0, `hp` at 4 and `pos` at 8
 
 ### Requirement: Registration as dynamic ECS components
 Each TS component SHALL be registered with `World::register_component_with_descriptor` and `ComponentDescriptor::new_with_layout`: table storage, no drop function, mutable, summary tick on, default clone behaviour. Its name in Bevy SHALL be the declared name. It SHALL be queryable by Rust through its `ComponentId` and usable in `QueryBuilder`, `insert_by_id` and `get_by_id`.

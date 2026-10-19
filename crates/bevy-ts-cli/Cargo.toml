@@ -1,0 +1,15 @@
+[package]
+name = "bevy-ts-cli"
+description = "The bevy-ts engine binary: bevy-ts dev <entry.ts>"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "bevy-ts"
+path = "src/main.rs"
+
+[dependencies]
+bevy = { workspace = true, features = ["3d", "bevy_remote"] }
+bevy-ts = { workspace = true, features = ["pbr"] }
+bevy-ts-v8.workspace = true

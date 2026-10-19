@@ -1,0 +1,20 @@
+[package]
+name = "bevy-ts"
+description = "TypeScript components and systems for Bevy: the engine-neutral bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "bevy_ts"
+
+[features]
+default = ["pbr"]
+# Native spawn recipes that need rendering (camera3d, directionalLight, cuboid).
+pbr = ["bevy/3d_api", "bevy/bevy_pbr", "bevy/bevy_core_pipeline"]
+track_location = ["bevy/track_location"]
+
+[dependencies]
+bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log", "async_executor"] }
+serde.workspace = true
+serde_json.workspace = true
