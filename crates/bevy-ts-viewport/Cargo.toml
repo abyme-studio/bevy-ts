@@ -1,0 +1,24 @@
+[package]
+name = "bevy-ts-viewport"
+description = "bevy-ts viewport mode: the engine renders into IOSurfaces another process shows, takes its input, and edits the world"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "bevy_ts_viewport"
+
+[dependencies]
+bevy = { workspace = true, features = ["3d", "bevy_remote"] }
+bevy-ts.workspace = true
+bevy-ts-remote.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+wgpu = { version = "30", default-features = false, features = ["metal"] }
+wgpu-hal = { version = "30", features = ["metal"] }
+objc2-metal = { version = "0.3.2", default-features = false, features = ["std", "MTLDevice", "MTLTexture", "MTLResource", "MTLPixelFormat", "MTLTypes", "objc2-io-surface"] }
+objc2-io-surface = "0.3.2"
+objc2-core-foundation = { version = "0.3.2", features = ["CFDictionary", "CFNumber", "CFString"] }
+mach2 = "0.5"

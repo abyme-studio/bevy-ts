@@ -189,5 +189,14 @@ None: a new crate, a CLI flag, protocol 1.1 (additions only). abyme pins major 1
   per-instance overrides; a literal TSX prop inside a prefab may be rewritten in its TSX; computed
   and bound props are read-only. bevy-ts keeps a windowed mode for `bevy-ts dev` outside abyme.
 
+## Spike results (2026-10-19, Apple M5 Max, macOS 26.4)
+
+- **Decision 1 holds.** Three `BGRA` IOSurfaces wrapped with `newTextureWithDescriptor:iosurface:plane:` on wgpu's own `MTLDevice`, `texture_from_raw` with a `drop_callback` holding the surface, and `create_texture_from_hal` render Bevy's frame with no copy. A Metal texture may be smaller than its IOSurface, so a slot is wrapped at the window's exact pixel size over the rounded-up surface (rewrapped on resize, no new IOSurfaces). This replaces cropping by camera viewport: Bevy 0.20's upscaling pass only scissors to the camera viewport, so a larger target would have stretched the picture.
+- **Decision 2 holds.** An exclusive system in `ExtractSchedule`, before `extract_cameras`, inserts the virtual window's `ExtractedWindow` (`Bgra8UnormSrgb`, no `SurfaceData`); `prepare_windows` and `present` skip it and an unmodified `Camera3d` on the primary window renders into the slot. No fallback taken.
+- **Decision 3 holds.** `on_submitted_work_done`, with a thread that waits on `Device::poll` so the callback fires at completion rather than the next submit. A slot is excluded while last announced, submitted and unannounced, or `IOSurfaceIsInUse`.
+- **60 s at a 120 Hz target** (release, full-screen clear colour changing every frame, the corner pixels of every announced slot read back on `frame`): 4934 updates, 4930 frames, 4 skipped, 0 mixed frames. The loop reached 82 Hz, not 120: the test paces with a sleep after each update; the tick-driven runner (task 3.3) replaces it.
+- **Deviation:** the throwaway viewer is windowless and in-process (tests run headless on a shared Mac; nothing may open a window): it speaks the same Mach channel, looks surfaces up from their ports and reads pixels back instead of setting `layer.contents`. Tearing is checked by readback rather than captures, and the window server never holds a slot, so `IOSurfaceIsInUse` starvation is unmeasured. The same-scene comparison against a winit window was not run for the same reason.
+- Key-to-pixels (task 1.5) is measured once input exists (group 4), through `bevy-ts/viewport_stats`.
+
 ## Open Questions
 
