@@ -1,7 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Input events are protocol types carried on the channel
-Viewport input SHALL be defined in `protocol/bevy-ts.openrpc.json` as `ViewportInput` events: `pointer` (`kind`: `move`, `down`, `up`, `enter`, `leave`; `x`, `y` in points from the hole's top left; `button`: `left`, `right`, `middle`, `back`, `forward`; `clicks`; `dx`, `dy` raw motion; `mods`), `wheel` (`dx`, `dy`, `unit`: `line` or `pixel`, `phase`, `momentum`, `mods`), `gesture` (`kind`: `pinch`, `rotate`, `double_tap`; `delta`), `key` (`state`: `down`, `up`; `code` as a W3C `KeyboardEvent.code`; `key` logical key; `text`; `repeat`; `mods`), `ime` (`kind`: `enabled`, `preedit`, `commit`, `disabled`; `text`; `cursor` as a UTF-8 byte range), `focus` (`on`) and `visible` (`on`). The viewer SHALL send them as JSON messages on the viewport's Mach channel. `bevy-ts/viewport_input` (an array of events) SHALL accept the same events over HTTP, for tests and for clients without the channel.
+Viewport input SHALL be defined in `protocol/bevy-ts.openrpc.json` as `ViewportInput` events: `pointer` (`kind`: `move`, `down`, `up`, `enter`, `leave`; `x`, `y` in points from the hole's top left; `button`: `left`, `right`, `middle`, `back`, `forward`; `clicks`; `dx`, `dy` raw motion; `mods`), `wheel` (`dx`, `dy`, `unit`: `line` or `pixel`, `phase`, `momentum`, `mods`), `gesture` (`kind`: `pinch`, `rotate`, `double_tap`; `delta`), `key` (`state`: `down`, `up`; `code` as a W3C `KeyboardEvent.code`; `key` logical key; `text`; `repeat`; `mods`), `ime` (`kind`: `enabled`, `preedit`, `commit`, `disabled`; `text`; `cursor` as a UTF-8 byte range), `focus` (`on`) and `visible` (`on`). On the viewport's Mach channel the viewer SHALL send each event as one `input` notification whose params are that single event, one event per message, in the order they happened. `bevy-ts/viewport_input` (an array of events) SHALL accept the same events over HTTP, for tests and for clients without the channel.
+
+#### Scenario: Input on the channel
+- **WHEN** the viewer sends a pointer `down` and then `up` as two `input` notifications
+- **THEN** the engine applies them as two events in that order, and a message holding an array or another method name for input is rejected as malformed
 
 #### Scenario: A test drives the game over HTTP
 - **WHEN** a test posts `bevy-ts/viewport_input` with a `key` down and up of `KeyW`
