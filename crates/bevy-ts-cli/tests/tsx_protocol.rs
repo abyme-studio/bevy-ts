@@ -56,10 +56,10 @@ fn ok(app: &mut App, method: &str, params: Option<Value>) -> Value {
     v
 }
 
-const ENEMY: &str = r##"import { component, f32 } from "bevy-ts";
+const ENEMY: &str = r##"import { Component, f32 } from "bevy-ts";
 import { Transform } from "bevy-ts/bevy";
 
-export const Health = component("game::Health", { hp: f32.default(100), max: f32.default(100) });
+export class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}
 export const Enemy = ({ at, hp = 100 }: { at: [number, number, number]; hp?: number }) => (
   <entity name="enemy">
     <Transform translation={at} />

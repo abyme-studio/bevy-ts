@@ -833,7 +833,8 @@ mod tests {
         let params = |f: &str| d[f]["params"].clone();
         assert_eq!(d["chase"]["id"], json!("systems.ts#chase"));
         assert_eq!(d["chase"]["kind"], json!("system"));
-        assert_eq!(d["chase"]["at"], json!({ "file": "systems.ts", "line": 27, "column": 17 }));
+        let line = std::fs::read_to_string(&path).unwrap().lines().position(|l| l.starts_with("export function chase(")).unwrap() + 1;
+        assert_eq!(d["chase"]["at"], json!({ "file": "systems.ts", "line": line, "column": 17 }));
         assert_eq!(
             params("chase"),
             json!([

@@ -141,7 +141,11 @@ fn every_method_answers_on_contract() {
     assert!(me["components"].as_array().unwrap().contains(&json!("game::Mover")));
 
     let systems = ok(&mut app, "bevy-ts/systems", None);
-    assert_eq!(systems[0]["name"], "bob");
+    let bob = systems.as_array().unwrap().iter().find(|s| s["name"] == "bob").expect("bob listed");
+    assert_eq!(bob["id"], "game.ts#bob");
+    assert_eq!(bob["stage"], "update");
+    assert_eq!(bob["write"], json!(["Transform"]));
+    assert_eq!(bob["params"][1]["kind"], "query");
 
     let r = ok(&mut app, "bevy-ts/reload", Some(json!({})));
     assert_eq!(r["status"], "applied");
@@ -257,7 +261,7 @@ fn a_watch_stays_quiet_for_rows_a_system_does_not_write() {
         "quiet-watch",
         &[(
             "game.ts",
-            "import { app } from \"bevy-ts\";\nimport { Transform } from \"bevy-ts/bevy\";\nlet first = -1;\napp.system(\"one\", { write: [Transform], run(q) { q.each((e, t) => { if (first < 0) first = e; if (e === first) t.translation.x += 1; }); } });\n",
+            "import { app, Transform, Update } from \"bevy-ts\";\nimport type { Entity, Mut, Query } from \"bevy-ts\";\nlet first = -1;\nexport function one(q: Query<[Entity, Mut<Transform>]>) { q.each((e, t) => { if (first < 0) first = e as any; if ((e as any) === first) t.translation.x += 1; }); }\napp.addSystems(Update, one);\n",
         )],
     );
     let mut app = app(&dir.join("game.ts"));

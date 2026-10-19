@@ -405,6 +405,7 @@ function nativeClass(name, typePath, fields, kind = "component") {
   C.componentName = name;
   C.typePath = typePath;
   C.source = "rust";
+  C.native = true;
   C[KIND] = kind;
   C.schema = fields;
   C.decl = { name, fields: fieldDecls(name, fields) };
@@ -415,6 +416,32 @@ function nativeClass(name, typePath, fields, kind = "component") {
 }
 
 const NATIVE = [];
+
+/**
+ * A Rust component with a native layout registered in Rust (a port's `Velocity`, a native
+ * crate's `Thrust`): `class Thrust extends nativeComponent("Thrust", { power: f32 }) {}`. The
+ * fields type the accessors; Rust's layout places them.
+ */
+export function nativeComponent(name, fields) {
+  const at = callerLocation();
+  const C = class {
+    constructor(init) {
+      if (init) Object.assign(this, init);
+    }
+  };
+  Object.defineProperty(C, "name", { value: name.split("::").pop() });
+  C.componentName = name;
+  C.source = "rust";
+  C.native = true;
+  C[KIND] = "component";
+  C.schema = fields;
+  C.decl = { name, fields: fieldDecls(name, fields, at) };
+  C.id = -1;
+  C.layout = null;
+  if (S.loading) S.loading.classes.push(C);
+  else NATIVE.push(C);
+  return C;
+}
 
 /** A Rust component by type path or short name: usable in `With`/`Without` only. */
 export function rustComponent(name) {
@@ -936,7 +963,7 @@ function end() {
   S.gens.set(g.number, g);
   const byKind = (k) => g.classes.filter((C) => C[KIND] === k);
   const manifest = {
-    components: byKind("component").map((C) => C.decl),
+    components: byKind("component").filter((C) => C.source === "ts").map((C) => C.decl),
     resources: byKind("resource").map((C) => ({ ...C.decl, insert: g.resourceInserts.has(C.componentName) ? jsonValues(C, g.resourceInserts.get(C.componentName)) : undefined })),
     messages: byKind("message").map((C) => ({ ...C.decl, added: g.addedMessages.has(C.componentName) })),
     events: byKind("event").map((C) => C.decl),
