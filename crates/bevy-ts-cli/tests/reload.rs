@@ -11,28 +11,23 @@ use std::time::{Duration, Instant};
 
 fn game(bob: &str, fields: &str, extra: &str) -> String {
     format!(
-        r#"import {{ app, component, f32, i32 }} from "bevy-ts";
-import {{ Transform }} from "bevy-ts/bevy";
+        r#"import {{ app, Component, f32, i32, Startup, systems, systemSet, Transform, Update }} from "bevy-ts";
+import type {{ Commands, Mut, Query }} from "bevy-ts";
 
-export const Mover = component("game::Mover", {{ {fields} }});
+export class Mover extends Component("game::Mover", {{ {fields} }}) {{}}
 
 let hits = 0;
 
-app.startup("scene", ({{ commands }}) => {{
-  commands.spawn(Mover({{ speed: 1.5, amplitude: 2 }}), Transform);
-}});
+export function scene(commands: Commands) {{
+  commands.spawn(new Mover({{ speed: 1.5, amplitude: 2 }}), Transform);
+}}
 
-app.system("bob", {{
-  read: [Mover],
-  write: [Transform],
-  run(q, ctx) {{
-    hits++;
-    q.each((_, m, t) => {{ {bob} }});
-  }},
-}});
+export function bob(q: Query<[Mover, Mut<Transform>]>) {{
+  hits++;
+  q.each((m, t) => {{ {bob} }});
+}}
 
-app.system("hits", {{ write: [Transform], run() {{ if (ctx_log) console.log(`hits=${{hits}}`); }} }});
-const ctx_log = false;
+app.addSystems(Startup, scene).addSystems(Update, bob);
 {extra}
 "#
     )
@@ -82,7 +77,7 @@ fn editing_a_system_keeps_ecs_state_and_does_not_rerun_startups() {
 
 #[test]
 fn module_state_resets_on_reload() {
-    let src = game("", FIELDS, "app.system(\"count\", { write: [Transform], run() { console.log(`hits=${hits}`); } });");
+    let src = game("", FIELDS, "export function count(q: Query<[Mut<Transform>]>) { console.log(`hits=${hits}`); }\napp.addSystems(Update, systems(count).after(bob));");
     let (dir, mut app) = setup("counter", &src);
     updates(&mut app, 4);
     write(&dir, "game.ts", &format!("{src}\n// touched\n"));
@@ -116,7 +111,7 @@ fn commenting_a_component_out_and_back_keeps_its_data() {
     let (dir, mut app) = setup("comment", &src);
     app.update();
     let id = app.world().resource::<TsComponents>().live("game::Mover").unwrap().id;
-    let without = "import { app } from \"bevy-ts\";\napp.startup(\"scene\", () => {});\n";
+    let without = "import { app, Startup } from \"bevy-ts\";\nexport function scene() {}\napp.addSystems(Startup, scene);\n";
     write(&dir, "game.ts", without);
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
     assert!(app.world().resource::<TsComponents>().live("game::Mover").is_none());
@@ -132,10 +127,10 @@ fn a_failed_reload_keeps_the_running_generation() {
     updates(&mut app, 2);
     let good = game("t.translation.y += 1;", FIELDS, "");
     let bad = [
-        ("syntax", good.replace("run(q, ctx) {", "run(q, ctx) {{")),
+        ("syntax", good.replace("export function bob(q: Query<[Mover, Mut<Transform>]>) {", "export function bob(q: Query<[Mover, Mut<Transform>]>) {{")),
         ("throwing module", format!("{good}\nthrow new Error(\"top level\");\n")),
-        ("duplicate name", format!("{good}\napp.system(\"bob\", {{ run() {{}} }});\n")),
-        ("bad after", format!("{good}\napp.system(\"late\", {{ after: \"nobody\", run() {{}} }});\n")),
+        ("duplicate name", format!("{good}\napp.addSystems(Update, bob);\n")),
+        ("bad after", format!("{good}\nexport function late(q: Query<[Mover]>) {{}}\napp.addSystems(Update, systems(late).after(systemSet(\"game::Nobody\")));\n")),
     ];
     for (what, src) in bad {
         let y0 = ys(&mut app)[0];

@@ -11,35 +11,30 @@ use bevy_ts_tsx::{TsxNode, TsxTree};
 use common::*;
 use std::path::{Path, PathBuf};
 
-const GAME: &str = r##"import { app, component, f32, u8, ref, signal, px, Show, For } from "bevy-ts";
+const GAME: &str = r##"import { app, Component, f32, u8, ref, signal, px, Show, For, Update, type Query, type Mut, type With } from "bevy-ts";
 
-export const Health = component("game::Health", { hp: f32.default(100), max: f32.default(100) });
-export const Enemy = component("game::Enemy", { tag: u8 });
-export const Alarm = component("game::Alarm", { on: u8 });
+export class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}
+export class Enemy extends Component("game::Enemy", { tag: u8 }) {}
+export class Alarm extends Component("game::Alarm", { on: u8 }) {}
 
 const player = ref();
 export const [open, setOpen] = signal(false);
 export const [items, setItems] = signal(["a", "b", "c"]);
 
-app.system("hurtEnemies", {
-  write: [Health],
-  with: [Enemy],
-  run(q) {
-    q.each((_e, h) => {
-      h.hp -= 1;
-    });
-  },
-});
+export function hurtEnemies(q: Query<[Mut<Health>], With<Enemy>>) {
+  q.each((h) => {
+    h.hp -= 1;
+  });
+}
 
-app.system("toggle", {
-  read: [Alarm],
-  run(q, ctx) {
-    q.each((_e, a) => {
-      if (a.on === 1 && !open()) setOpen(true);
-      if (a.on === 2) setItems(["a", "c"]);
-    });
-  },
-});
+export function toggle(q: Query<[Alarm]>) {
+  q.each((a) => {
+    if (a.on === 1 && !open()) setOpen(true);
+    if (a.on === 2) setItems(["a", "c"]);
+  });
+}
+
+app.addSystems(Update, hurtEnemies, toggle);
 
 app.scene("arena", () => (
   <>
@@ -195,10 +190,10 @@ fn a_reload_rebuilds_bindings_and_writes_nothing_that_did_not_change() {
 
 #[test]
 fn a_bound_component_field_follows_its_binding() {
-    let src = r##"import { app, component, f32, signal } from "bevy-ts";
-export const Light = component("game::Light", { intensity: f32 });
+    let src = r##"import { app, Component, f32, signal, Time, Update, type Query, type Res } from "bevy-ts";
+export class Light extends Component("game::Light", { intensity: f32 }) {}
 export const [alarm, setAlarm] = signal(false);
-app.system("flip", { read: [Light], run(q, ctx) { if (ctx.frame === 5) setAlarm(true); } });
+export function flip(q: Query<[Light]>, time: Res<Time>) { if (time.frame === 5) setAlarm(true); } app.addSystems(Update, flip);
 app.scene("s", () => <entity key="l"><Light intensity={() => (alarm() ? 8 : 2)} /></entity>);
 "##;
     let (_dir, mut app) = setup("rx-field", src);
@@ -260,9 +255,9 @@ app.scene("s", () => <text key="t">{label()}</text>);
 
 #[test]
 fn a_system_writing_a_bound_component_is_named_with_the_site() {
-    let src = r##"import { app, component, f32 } from "bevy-ts";
-export const Light = component("game::Light", { intensity: f32 });
-app.system("dim", { write: [Light], run(q) {} });
+    let src = r##"import { app, Component, f32, Update, type Query, type Mut } from "bevy-ts";
+export class Light extends Component("game::Light", { intensity: f32 }) {}
+export function dim(q: Query<[Mut<Light>]>) {} app.addSystems(Update, dim);
 app.scene("s", () => (
   <entity key="l">
     <Light intensity={() => 3} />
@@ -271,7 +266,7 @@ app.scene("s", () => (
 "##;
     let (_dir, app) = setup("rx-two-writers", src);
     let w = logs(&app).into_iter().find(|e| e.message.contains("one writer")).expect("warned");
-    assert!(w.message.contains("system dim") && w.message.contains("intensity"), "{}", w.message);
+    assert!(w.message.contains("system game.tsx#dim") && w.message.contains("intensity"), "{}", w.message);
     assert_eq!(w.location.as_ref().map(|l| l.line), Some(6));
 }
 
@@ -285,8 +280,8 @@ fn click(app: &mut App, e: Entity, x: f32) {
     app.world_mut().trigger(PointerClick { entity: e, pointer, button: PointerButton::Primary, hit, duration: std::time::Duration::ZERO, count: 1 });
 }
 
-const BUTTONS: &str = r##"import { app, component, f32, signal } from "bevy-ts";
-export const Health = component("game::Health", { hp: f32 });
+const BUTTONS: &str = r##"import { app, Component, f32, signal } from "bevy-ts";
+export class Health extends Component("game::Health", { hp: f32 }) {}
 const [log, setLog] = signal("");
 const Enemy = () => <entity name="enemy"><Health initialHp={10} /></entity>;
 const Button = ({ label }: { label: string }) => (

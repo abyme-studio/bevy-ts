@@ -115,7 +115,8 @@ pub(crate) fn required<T: serde::de::DeserializeOwned>(p: Option<Value>) -> Resu
     serde_json::from_value(p.ok_or_else(|| invalid("params are required"))?).map_err(|e| invalid(format!("invalid params: {e}")))
 }
 
-pub(crate) fn frame(world: &World) -> u64 {
+/// bevy-ts's frame counter, for watching methods.
+pub fn frame(world: &World) -> u64 {
     world.get_resource::<ScriptFrame>().map_or(0, |f| f.0)
 }
 
@@ -123,13 +124,13 @@ pub(crate) fn frame(world: &World) -> u64 {
 /// run once per open request per frame with that request's params; a key not served last frame
 /// belongs to a closed request, so the next call with it is a new subscriber.
 #[derive(Resource, Default)]
-pub(crate) struct Subscribers {
+pub struct Subscribers {
     cursors: HashMap<(String, String), (u64, u64)>,
 }
 
 impl Subscribers {
     /// Returns the subscriber's cursor, or `None` for a new one, and marks it served this frame.
-    pub(crate) fn cursor(&mut self, method: &str, params: &Option<Value>, frame: u64) -> Option<u64> {
+    pub fn cursor(&mut self, method: &str, params: &Option<Value>, frame: u64) -> Option<u64> {
         let key = (method.to_string(), params.as_ref().map(Value::to_string).unwrap_or_default());
         match self.cursors.get_mut(&key) {
             Some((last_frame, cursor)) if *last_frame + 1 >= frame => {
@@ -143,7 +144,7 @@ impl Subscribers {
         }
     }
 
-    pub(crate) fn set(&mut self, method: &str, params: &Option<Value>, cursor: u64) {
+    pub fn set(&mut self, method: &str, params: &Option<Value>, cursor: u64) {
         let key = (method.to_string(), params.as_ref().map(Value::to_string).unwrap_or_default());
         if let Some(c) = self.cursors.get_mut(&key) {
             c.1 = cursor;

@@ -16,6 +16,9 @@ pub mod layout;
 pub mod layout_reflect;
 pub mod log;
 pub mod manifest;
+pub mod memory;
+pub mod messages;
+pub mod observers;
 pub mod plugin_api;
 #[cfg(feature = "pbr")]
 pub mod recipes;
@@ -98,6 +101,9 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<generation::Generations>()
             .init_resource::<runtime::ScriptClock>()
             .init_resource::<runtime::ScriptFrame>()
+            .init_resource::<memory::SystemMemory>()
+            .init_resource::<messages::TsPayloads>()
+            .init_resource::<observers::ObserverQueue>()
             .insert_resource(runtime::RuntimeInfo { dev: self.dev, engine, inspector, ..Default::default() });
 
         // Rust components' layouts come from reflection once every plugin has registered its
@@ -112,6 +118,11 @@ impl Plugin for BevyTsPlugin {
             First,
             (runtime::advance_clock.before(bevy::time::TimeSystems), generation::apply_pending, runtime::pump).chain(),
         );
+        if !app.is_plugin_added::<bevy::state::app::StatesPlugin>() {
+            app.add_plugins(bevy::state::app::StatesPlugin);
+        }
+        app.add_systems(First, messages::update_messages.after(generation::apply_pending));
+        app.add_systems(bevy::state::state::StateTransition, systems::run_state_transitions);
         app.configure_sets(PostUpdate, BevyTsSet::PostUpdate.before(bevy::transform::TransformSystems::Propagate));
         app.add_systems(PreUpdate, stage_pre_update.in_set(BevyTsSet::PreUpdate))
             .add_systems(Update, stage_update.in_set(BevyTsSet::Update))

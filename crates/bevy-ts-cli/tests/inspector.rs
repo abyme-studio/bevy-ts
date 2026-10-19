@@ -14,7 +14,7 @@ const MARK: &str = "t.translation.y = 1.25;";
 
 fn source(extra: &str) -> String {
     format!(
-        "import {{ app }} from \"bevy-ts\";\nimport {{ Transform }} from \"bevy-ts/bevy\";\n\napp.system(\"bob\", {{\n  write: [Transform],\n  run(q) {{\n    q.each((_, t) => {{\n      {MARK}\n    }});\n  }},\n}});\n{extra}"
+        "import {{ app, Transform, Update }} from \"bevy-ts\";\nimport type {{ Mut, Query }} from \"bevy-ts\";\n\nexport function bob(q: Query<[Mut<Transform>]>) {{\n  q.each((t) => {{\n      {MARK}\n  }});\n}}\n\napp.addSystems(Update, bob);\n{extra}"
     )
 }
 

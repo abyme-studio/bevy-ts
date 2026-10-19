@@ -111,7 +111,7 @@ The backend still sees pointers and lengths only. Rust resolves `Entity`, filter
 ## Risks / Trade-offs
 
 - [A name in an alias resolved in the alias's module can differ from a same-named binding at the use site] → That is the right scoping (it is what TS itself does); generic arguments resolve at the use site.
-- [Row lists for `Changed` cost a tick scan per filter column per run] → It is the scan Bevy's `Changed<T>` does. A query's tables are skipped when their summary tick predates the last run.
+- [Row lists for `Changed` cost a tick scan per filter column per run] → It is the scan Bevy's `Changed<T>` does. Tables are not skipped by summary tick: a Rust `Mut` write does not update it, so a skip would miss changes.
 - [One JS call per observer event] → Observers are rare by design; batching per observer is a later optimisation with no API change.
 - [Messages through the command arena add a copy] → It is one memcpy into the Rust arena, the same cost as any spawn value.
 

@@ -21,10 +21,13 @@ export type ReloadStatus = "compiling" | "applied" | "failed";
  */
 export type ComponentSource = "ts" | "rust";
 /**
+ * The bevy-ts stage a system runs in, or startup, onEnter, onExit or observer for systems outside the four stages.
+ *
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
  * via the `definition` "Stage".
  */
-export type Stage = "preUpdate" | "update" | "postUpdate" | "fixedUpdate";
+export type Stage =
+  "preUpdate" | "update" | "postUpdate" | "fixedUpdate" | "startup" | "onEnter" | "onExit" | "observer";
 /**
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
  * via the `definition` "SystemsResult".
@@ -434,11 +437,35 @@ export interface EntitiesWatchMessage {
 export interface SystemInfo {
   name: string;
   stage: Stage;
+  /**
+   * Components its queries read and never write.
+   */
   read: string[];
+  /**
+   * Components some query of it takes as Mut.
+   */
   write: string[];
   generation: number;
   lastRunMicros: number;
   lastError?: ScriptError;
+  /**
+   * The system's identity, <module path>#<export>.
+   */
+  id: string;
+  /**
+   * Where it runs: {kind: startup|stage|onEnter|onExit|observer, ...}.
+   */
+  schedule: {
+    kind: string;
+    [k: string]: unknown;
+  };
+  /**
+   * Its params as the compile step declared them.
+   */
+  params: {
+    kind: string;
+    [k: string]: unknown;
+  }[];
 }
 /**
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema

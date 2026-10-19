@@ -11,20 +11,19 @@ fn a_ts_graph_loads_and_a_throw_is_located_in_ts() {
         &[
             (
                 "game.ts",
-                r#"import { app } from "bevy-ts";
-import { Transform } from "bevy-ts/bevy";
+                r#"import { app, Time, Transform, Update } from "bevy-ts";
+import type { Mut, Query, Res } from "bevy-ts";
 import { scale } from "./util.js";
 
 type Speed = number;
 const speed: Speed = scale(2);
 
-app.system("boom", {
-  write: [Transform],
-  run(q, ctx): void {
-    const label: string = "boom";
-    if (ctx.frame > 0) throw new Error(`${label} ${speed}`);
-  },
-});
+export function boom(q: Query<[Mut<Transform>]>, time: Res<Time>): void {
+  const label: string = "boom";
+  if (time.frame > 0) throw new Error(`${label} ${speed}`);
+}
+
+app.addSystems(Update, boom);
 "#,
             ),
             ("util.ts", "export function scale(n: number): number {\n  return n * 3;\n}\n"),
@@ -38,15 +37,15 @@ app.system("boom", {
     let e = logs(&app).into_iter().find(|e| e.message.contains("boom 6")).expect("the throw is logged");
     let loc = e.location.expect("located");
     assert!(loc.file.ends_with("game.ts"), "{loc:?}");
-    assert_eq!(loc.line, 12, "{loc:?}");
-    assert!(e.message.contains("game.ts:12"), "stack mapped to TS: {}", e.message);
+    assert_eq!(loc.line, 10, "{loc:?}");
+    assert!(e.message.contains("game.ts:10"), "stack mapped to TS: {}", e.message);
 }
 
 #[test]
 fn a_type_error_does_not_block_a_run() {
     let dir = project(
         "typeerror",
-        &[("game.ts", "import { app } from \"bevy-ts\";\nconst n: number = \"text\";\napp.startup(\"s\", () => console.log(`n=${n}`));\n")],
+        &[("game.ts", "import { app, Startup } from \"bevy-ts\";\nconst n: number = \"text\";\nexport function s() { console.log(`n=${n}`); }\napp.addSystems(Startup, s);\n")],
     );
     let mut app = app(&dir.join("game.ts"));
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
@@ -70,7 +69,7 @@ fn tsx_elements_carry_their_ts_source() {
         "tsx",
         &[(
             "game.tsx",
-            "import { app } from \"bevy-ts\";\n\napp.startup(\"s\", () => {\n  const el: any = <entity name=\"a\" />;\n  console.log(JSON.stringify(el.source));\n});\n",
+            "import { app, Startup } from \"bevy-ts\";\n\nexport function s() {\n  const el: any = <entity name=\"a\" />;\n  console.log(JSON.stringify(el.source));\n}\napp.addSystems(Startup, s);\n",
         )],
     );
     let mut app = app(&dir.join("game.tsx"));
@@ -89,7 +88,7 @@ fn repeated_errors_are_logged_once_per_second_with_a_count() {
         "repeat",
         &[(
             "game.ts",
-            "import { app } from \"bevy-ts\";\nimport { Transform } from \"bevy-ts/bevy\";\napp.system(\"again\", { write: [Transform], run() { throw new Error(\"again\"); } });\n",
+            "import { app, Transform, Update } from \"bevy-ts\";\nimport type { Mut, Query } from \"bevy-ts\";\nexport function again(q: Query<[Mut<Transform>]>) { throw new Error(\"again\"); }\napp.addSystems(Update, again);\n",
         )],
     );
     let mut app = app(&dir.join("game.ts"));

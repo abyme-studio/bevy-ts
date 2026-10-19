@@ -118,8 +118,8 @@ try {
 
   // 2. Move x too.
   const xSrc = original.replace(
-    "t.translation.y = Math.sin(ctx.elapsed * mover.speed) * mover.amplitude;",
-    "t.translation.y = Math.sin(ctx.elapsed * mover.speed) * mover.amplitude;\n      t.translation.x = Math.cos(ctx.elapsed * mover.speed);",
+    "t.translation.y = Math.sin(time.elapsed * mover.speed) * mover.amplitude;",
+    "t.translation.y = Math.sin(time.elapsed * mover.speed) * mover.amplitude;\n    t.translation.x = Math.cos(time.elapsed * mover.speed);",
   );
   const before2 = (await components(c.entity))[TRANSFORM].translation;
   const r2 = await saveAndWait(xSrc, reloads);
@@ -135,7 +135,7 @@ try {
   // 3. Add phase.
   const phaseSrc = xSrc
     .replace("amplitude: f32.default(2),", "amplitude: f32.default(2),\n  phase: f32.default(0),")
-    .replace("Math.sin(ctx.elapsed * mover.speed)", "Math.sin(ctx.elapsed * mover.speed + mover.phase)");
+    .replace("Math.sin(time.elapsed * mover.speed)", "Math.sin(time.elapsed * mover.speed + mover.phase)");
   const r3 = await saveAndWait(phaseSrc, reloads);
   const m3 = (await components(c.entity))["game::Mover"];
   const migrated = r3.report?.migrations?.[0];
@@ -165,7 +165,7 @@ try {
   );
 
   // 5. A syntax error.
-  const r5 = await saveAndWait(phaseSrc.replace("run(q, ctx) {", "run(q, ctx) {{"), reloads);
+  const r5 = await saveAndWait(phaseSrc.replace("q.each((mover, t) => {", "q.each((mover, t) => {{"), reloads);
   const y5a = (await components(c.entity))[TRANSFORM].translation[1];
   await sleep(200);
   const y5b = (await components(c.entity))[TRANSFORM].translation[1];

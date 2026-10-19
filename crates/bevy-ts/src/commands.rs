@@ -12,6 +12,9 @@
 //! | setParent | 5 | child u64, parent u64 (`u64::MAX` removes the parent) |
 //! | spawnNative | 6 | entity u64, name len u16, name, params len u32, params JSON |
 //! | plugin | 7 | opcode u16, len u32, bytes |
+//! | writeMessage | 8 | message index u32, len u32, bytes |
+//! | trigger | 9 | event index u32, target u64 (`u64::MAX` for a global event), len u32, bytes |
+//! | setState | 10 | state index u32, value u32 |
 //!
 //! Entities are `Entity::to_bits`. Component values are native layout bytes.
 
@@ -29,6 +32,9 @@ pub const OP_REMOVE: u8 = 4;
 pub const OP_SET_PARENT: u8 = 5;
 pub const OP_SPAWN_NATIVE: u8 = 6;
 pub const OP_PLUGIN: u8 = 7;
+pub const OP_WRITE_MESSAGE: u8 = 8;
+pub const OP_TRIGGER: u8 = 9;
+pub const OP_SET_STATE: u8 = 10;
 
 /// Size of the Rust-owned arena handed to each call. Larger buffers overflow into JS.
 pub const ARENA_BYTES: usize = 64 * 1024;
@@ -50,6 +56,9 @@ pub enum Op {
     SetParent { child: Entity, parent: Option<Entity> },
     SpawnNative { entity: Entity, recipe: String, params: serde_json::Value },
     Plugin { opcode: u16, bytes: Vec<u8> },
+    WriteMessage { index: u32, bytes: Vec<u8> },
+    Trigger { index: u32, target: Option<Entity>, bytes: Vec<u8> },
+    SetState { index: u32, value: u32 },
 }
 
 /// A plugin's command decoder: gets the op's bytes and `&mut World`.
@@ -190,6 +199,23 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 let n = r.u32()? as usize;
                 Op::Plugin { opcode, bytes: r.take(n)?.to_vec() }
             }
+            OP_WRITE_MESSAGE => {
+                let index = r.u32()?;
+                let n = r.u32()? as usize;
+                Op::WriteMessage { index, bytes: r.take(n)?.to_vec() }
+            }
+            OP_TRIGGER => {
+                let index = r.u32()?;
+                let bits = r.u64()?;
+                let target = if bits == u64::MAX {
+                    None
+                } else {
+                    Some(Entity::try_from_bits(bits).ok_or_else(|| format!("{bits} is not an entity"))?)
+                };
+                let n = r.u32()? as usize;
+                Op::Trigger { index, target, bytes: r.take(n)?.to_vec() }
+            }
+            OP_SET_STATE => Op::SetState { index: r.u32()?, value: r.u32()? },
             other => return Err(format!("unknown command op {other} at byte {}", r.at - 1)),
         };
         ops.push(op);
@@ -274,6 +300,41 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                         }
                     }
                     Err(err) => warnings.push(format!("spawnNative {entity}: {err}")),
+                }
+            }
+            Op::WriteMessage { index, bytes } => {
+                let pushed = world
+                    .get_resource_mut::<crate::messages::TsPayloads>()
+                    .and_then(|mut p| p.messages.get_mut(index as usize).map(|q| q.push(&bytes)));
+                if pushed.is_none() {
+                    warnings.push(format!("write: no message type {index}"));
+                }
+            }
+            Op::Trigger { index, target, bytes } => {
+                let Some(t) = world.get_resource::<crate::messages::TsPayloads>().and_then(|p| p.events.get(index as usize)).cloned() else {
+                    warnings.push(format!("trigger: no event type {index}"));
+                    continue;
+                };
+                let path = match target {
+                    Some(e) if world.get_entity(e).is_ok() => crate::observers::propagation_path(world, e, t.propagate),
+                    Some(e) => {
+                        warnings.push(format!("trigger {}: entity {e} does not exist", t.name));
+                        continue;
+                    }
+                    None => vec![],
+                };
+                world.get_resource_or_init::<crate::observers::ObserverQueue>().0.push_back(crate::observers::Pending {
+                    trigger: crate::observers::Trigger::Event(index as usize),
+                    bytes,
+                    path,
+                });
+            }
+            Op::SetState { index, value } => {
+                match world.get_resource_mut::<crate::messages::TsPayloads>().and_then(|mut p| {
+                    p.states.get_mut(index as usize).filter(|s| (value as usize) < s.values.len()).map(|s| s.next = Some(value))
+                }) {
+                    Some(()) => {}
+                    None => warnings.push(format!("setState: no state {index} value {value}")),
                 }
             }
             Op::Plugin { opcode, bytes } => {

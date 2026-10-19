@@ -2,7 +2,7 @@
 //! implements the same seam as V8, so the core and feature crates test without V8.
 
 use crate::backend::{
-    CallContext, ConsoleMessage, FrameInfo, Generation, RunOutput, ScriptBackend, ScriptError, ScriptKey, SystemRun,
+    CallContext, ConsoleMessage, FrameInfo, Generation, ParamFrame, RunOutput, ScriptBackend, ScriptError, ScriptKey, SystemRun,
 };
 use crate::commands::Encoder;
 use crate::manifest::{LoadedGeneration, Manifest, Resolution, Section};
@@ -56,14 +56,22 @@ impl FakeCommands<'_> {
     }
 }
 
-/// What a fake system, startup or entry gets.
+/// What a fake system, observer or entry gets.
 pub struct FakeCall<'a> {
     pub frame: FrameInfo,
+    /// The tables of the first query param (the common case in tests).
     pub tables: Vec<FakeTable<'a>>,
+    /// Every query param's tables, in param order.
+    pub queries: Vec<Vec<FakeTable<'a>>>,
+    /// Every one-row param (resource, `Local`, `Time`), in param order.
+    pub rows: Vec<&'a mut [u8]>,
+    /// An observer's event bytes and target bits.
+    pub event: Option<(&'a [u8], u64)>,
+    pub stop_propagation: bool,
     pub commands: FakeCommands<'a>,
     pub resolution: &'a Resolution,
-    /// `(table, column)` pairs to mark wholly changed, as `table.write(T)` does.
-    pub write_marks: Vec<(u32, u32)>,
+    /// `(param, table, column)` triples to mark wholly changed, as `table.write(T)` does.
+    pub write_marks: Vec<(u32, u32, u32)>,
     /// An entry's payload.
     pub payload: &'a [u8],
     /// An entry's return bytes.
@@ -77,10 +85,8 @@ pub type FakeFn = Box<dyn FnMut(&mut FakeCall) -> Result<(), ScriptError> + Send
 pub struct FakeProgram {
     pub manifest: Manifest,
     pub sections: Vec<Section>,
-    /// One per `manifest.systems`, by index.
+    /// One per `manifest.systems` (observers and `Startup` systems included), by index.
     pub systems: Vec<FakeFn>,
-    /// One per `manifest.startups`, by index.
-    pub startups: Vec<FakeFn>,
     pub entries: HashMap<String, FakeFn>,
     /// Makes the load fail, as a syntax error or a throwing module would.
     pub load_error: Option<Vec<ScriptError>>,
@@ -132,13 +138,16 @@ impl FakeHandle {
 pub struct FakeBackend(FakeHandle);
 
 impl FakeBackend {
-    fn call(
+    #[allow(clippy::too_many_arguments)]
+    fn call<'a>(
         &mut self,
         f: impl FnOnce(&mut State) -> Option<(*mut FakeFn, Resolution)>,
         frame: FrameInfo,
-        tables: Vec<FakeTable<'_>>,
+        mut queries: Vec<Vec<FakeTable<'a>>>,
+        rows: Vec<&'a mut [u8]>,
+        event: Option<(&'a [u8], u64)>,
         ctx_pool: &[u64],
-        payload: &[u8],
+        payload: &'a [u8],
         arena: &mut [u8],
     ) -> Result<(Vec<u8>, RunOutput), ScriptError> {
         let (func, resolution) = {
@@ -146,9 +155,14 @@ impl FakeBackend {
             s.calls += 1;
             f(&mut s).ok_or_else(|| ScriptError::new("fake: nothing to call"))?
         };
+        let tables = if queries.is_empty() { Vec::new() } else { queries.remove(0) };
         let mut call = FakeCall {
             frame,
             tables,
+            queries,
+            rows,
+            event,
+            stop_propagation: false,
             commands: FakeCommands { encoder: Encoder::default(), pool: ctx_pool, used: 0 },
             resolution: &resolution,
             write_marks: Vec::new(),
@@ -168,6 +182,7 @@ impl FakeBackend {
                 overflow: bytes[n..].to_vec(),
                 pool_used: call.commands.used,
                 write_marks: call.write_marks,
+                stop_propagation: call.stop_propagation,
             },
         ))
     }
@@ -205,29 +220,44 @@ impl ScriptBackend for FakeBackend {
     }
 
     fn run_system(&mut self, key: ScriptKey, run: &mut SystemRun<'_>) -> Result<RunOutput, ScriptError> {
-        let tables = run
-            .tables
-            .iter()
-            .map(|t| FakeTable {
-                len: t.len,
-                // SAFETY: `entities` holds `len × 2` u32s for the duration of the call.
-                entities: unsafe { std::slice::from_raw_parts(t.entities, t.len * 2) }
-                    .chunks(2)
-                    .map(|p| Entity::from_bits(p[0] as u64 | (p[1] as u64) << 32))
-                    .collect(),
-                columns: t
-                    .columns
-                    .iter()
-                    .map(|c| {
-                        // SAFETY: the seam's contract: valid for this call only, and these
-                        // slices do not outlive it.
-                        let data = unsafe { std::slice::from_raw_parts_mut(c.data, c.bytes) };
-                        let ticks = c.ticks.map(|p| unsafe { std::slice::from_raw_parts_mut(p, t.len) });
-                        (data, ticks)
-                    })
-                    .collect(),
-            })
-            .collect();
+        let mut queries = Vec::new();
+        let mut rows = Vec::new();
+        let mut event = None;
+        for p in run.params {
+            match p {
+                ParamFrame::Query { tables } => queries.push(
+                    tables
+                        .iter()
+                        .map(|t| FakeTable {
+                            len: t.len,
+                            // SAFETY: `entities` holds `len × 2` u32s for the duration of the call.
+                            entities: unsafe { std::slice::from_raw_parts(t.entities, t.len * 2) }
+                                .chunks(2)
+                                .map(|p| Entity::from_bits(p[0] as u64 | (p[1] as u64) << 32))
+                                .collect(),
+                            columns: t
+                                .columns
+                                .iter()
+                                .map(|c| {
+                                    if c.data.is_null() {
+                                        return (&mut [][..], None);
+                                    }
+                                    // SAFETY: the seam's contract: valid for this call only, and
+                                    // these slices do not outlive it.
+                                    let data = unsafe { std::slice::from_raw_parts_mut(c.data, c.bytes) };
+                                    let ticks = c.ticks.map(|p| unsafe { std::slice::from_raw_parts_mut(p, t.len) });
+                                    (data, ticks)
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                ),
+                // SAFETY: as above.
+                ParamFrame::Row { data, bytes, .. } => rows.push(unsafe { std::slice::from_raw_parts_mut(*data, *bytes) }),
+                ParamFrame::Event { data, bytes, entity } => event = Some((unsafe { std::slice::from_raw_parts(*data, *bytes) }, *entity)),
+                _ => {}
+            }
+        }
         let frame = run.ctx.frame;
         let pool = run.ctx.pool;
         let (_, out) = self.call(
@@ -236,25 +266,12 @@ impl ScriptBackend for FakeBackend {
                 Some((p.systems.get_mut(key.index as usize)? as *mut FakeFn, r.clone()?))
             },
             frame,
-            tables,
+            queries,
+            rows,
+            event,
             pool,
             &[],
             run.ctx.arena,
-        )?;
-        Ok(out)
-    }
-
-    fn run_startup(&mut self, key: ScriptKey, ctx: &mut CallContext<'_>) -> Result<RunOutput, ScriptError> {
-        let (_, out) = self.call(
-            |s| {
-                let (p, r) = s.loaded.get_mut(&key.generation)?;
-                Some((p.startups.get_mut(key.index as usize)? as *mut FakeFn, r.clone()?))
-            },
-            ctx.frame,
-            Vec::new(),
-            ctx.pool,
-            &[],
-            ctx.arena,
         )?;
         Ok(out)
     }
@@ -269,6 +286,8 @@ impl ScriptBackend for FakeBackend {
             },
             ctx.frame,
             Vec::new(),
+            Vec::new(),
+            None,
             ctx.pool,
             payload,
             ctx.arena,

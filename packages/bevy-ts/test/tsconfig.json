@@ -3,5 +3,7 @@
   "compilerOptions": {
     "paths": { "bevy-ts": ["../index.d.ts"], "bevy-ts/*": ["../*.d.ts"] }
   },
-  "include": ["."]
+  "include": ["."],
+  // tsx moves its element types onto component classes after systems-api lands.
+  "exclude": ["tsx", "vitest"]
 }

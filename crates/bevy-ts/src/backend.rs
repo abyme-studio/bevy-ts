@@ -117,25 +117,44 @@ pub struct ColumnFrame {
 }
 
 /// One matched table: its row count, its entities as (index, generation) pairs, and one
-/// [`ColumnFrame`] per component of the system, `read` components first, then `write`.
+/// [`ColumnFrame`] per data component of the query, in the query's order.
 #[derive(Clone, Debug)]
 pub struct TableFrame {
     pub len: usize,
     /// `len × 2` `u32`s.
     pub entities: *const u32,
+    /// A column the table lacks (an `Option<C>` the row does not have) has a null `data`.
     pub columns: Vec<ColumnFrame>,
+    /// For a query with `Changed`/`Added` filters: the rows that pass, `(ptr, count)`.
+    pub rows: Option<(*const u32, usize)>,
+}
+
+/// One system param's memory for a run. Params are flattened in declaration order, bundles
+/// depth-first; params with nothing to hand over (`Commands`, writers, `NextState`) are `None`.
+#[derive(Clone, Debug)]
+pub enum ParamFrame {
+    Query { tables: Vec<TableFrame> },
+    /// One row: a resource, a `Local`, or a computed view such as `Time`. `ticks` points at the
+    /// row's changed tick when the param writes it.
+    Row { data: *mut u8, bytes: usize, ticks: Option<*mut u32> },
+    /// Unread messages, oldest first, in at most two contiguous runs of `stride`-byte records.
+    Messages { parts: [(*const u8, usize); 2], stride: usize },
+    State { value: u32 },
+    /// An observer's trigger: the event's bytes and its current target (`u64::MAX` for none).
+    Event { data: *const u8, bytes: usize, entity: u64 },
+    None,
 }
 
 /// What a system run sees.
 ///
 /// # Safety contract
-/// Every pointer is valid for reads (and writes, for `write` columns and ticks) for exactly the
-/// duration of [`ScriptBackend::run_system`]. A backend must not retain any of them past the
+/// Every pointer is valid for reads (and writes, for written columns, rows and ticks) for exactly
+/// the duration of [`ScriptBackend::run_system`]. A backend must not retain any of them past the
 /// call: views it hands to JS must be detached before it returns, whether `run` returned or
 /// threw.
 pub struct SystemRun<'a> {
     pub ctx: CallContext<'a>,
-    pub tables: &'a [TableFrame],
+    pub params: &'a [ParamFrame],
 }
 
 /// What came back from a call into JS.
@@ -147,8 +166,10 @@ pub struct RunOutput {
     pub overflow: Vec<u8>,
     /// How many ids of [`CallContext::pool`] JS handed out, from the front.
     pub pool_used: usize,
-    /// `(table, column)` pairs taken through `table.write(T)`: every row is marked changed.
-    pub write_marks: Vec<(u32, u32)>,
+    /// `(param, table, column)` triples taken through `table.write(T)`: every row is marked.
+    pub write_marks: Vec<(u32, u32, u32)>,
+    /// An observer called `propagate(false)`.
+    pub stop_propagation: bool,
 }
 
 /// A `console.*` call or other runtime message.
@@ -175,11 +196,8 @@ pub trait ScriptBackend: 'static {
     /// Drops a loaded generation that will not be committed.
     fn discard(&mut self, generation: u64);
 
-    /// Runs one declared system: exactly one call into JS.
+    /// Runs one declared system or observer: exactly one call into JS.
     fn run_system(&mut self, key: ScriptKey, run: &mut SystemRun<'_>) -> Result<RunOutput, ScriptError>;
-
-    /// Runs one declared startup.
-    fn run_startup(&mut self, key: ScriptKey, ctx: &mut CallContext<'_>) -> Result<RunOutput, ScriptError>;
 
     /// Calls a named entry of the live generation with a byte payload.
     fn call_entry(

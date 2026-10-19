@@ -308,13 +308,22 @@ fn a_section_applies_after_commit_and_before_startups() {
     let mut program = FakeProgram {
         manifest: Manifest {
             components: vec![health()],
-            startups: vec![bevy_ts::manifest::StartupDecl { name: "first".into(), location: None }],
+            systems: vec![bevy_ts::manifest::SystemDecl {
+                name: "game.ts#first".into(),
+                schedule: bevy_ts::manifest::ScheduleDecl::Startup,
+                params: vec![],
+                after: vec![],
+                before: vec![],
+                sets: vec![],
+                condition: None,
+                location: None,
+            }],
             ..Default::default()
         },
         sections: vec![Section { name: "test/scene".into(), bytes: b"tree".to_vec(), location: None }],
         ..Default::default()
     };
-    program.startups.push(Box::new(move |_| {
+    program.systems.push(Box::new(move |_| {
         s.push("startup");
         Ok(())
     }));

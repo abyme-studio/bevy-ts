@@ -17,9 +17,9 @@ use std::time::Instant;
 
 fn sirens(n: usize) -> String {
     format!(
-        r##"import {{ app, component, f32, u8, ref }} from "bevy-ts";
-export const Alarm = component("game::Alarm", {{ on: u8 }});
-export const Light = component("game::Light", {{ intensity: f32 }});
+        r##"import {{ app, Component, f32, u8, ref }} from "bevy-ts";
+export class Alarm extends Component("game::Alarm", {{ on: u8 }}) {{}}
+export class Light extends Component("game::Light", {{ intensity: f32 }}) {{}}
 export const Siren = () => {{
   const self = ref();
   return (
@@ -34,20 +34,16 @@ app.scene("s", () => <>{{Array.from({{ length: {n} }}, (_, i) => <Siren key={{`s
     )
 }
 
-const SYSTEM: &str = r##"import { app, component, f32, u8 } from "bevy-ts";
-export const Alarm = component("game::Alarm", { on: u8 });
-export const Light = component("game::Light", { intensity: f32 });
-app.system("siren", {
-  stage: "postUpdate",
-  read: [Alarm],
-  write: [Light],
-  run(q) {
-    q.each((_e, a, l) => {
-      const v = a.on ? 8 : 2;
-      if (l.intensity !== v) l.intensity = v;
-    });
-  },
-});
+const SYSTEM: &str = r##"import { app, Component, f32, u8, PostUpdate, type Query, type Mut } from "bevy-ts";
+export class Alarm extends Component("game::Alarm", { on: u8 }) {}
+export class Light extends Component("game::Light", { intensity: f32 }) {}
+export function siren(q: Query<[Alarm, Mut<Light>]>) {
+  q.each((a, l) => {
+    const v = a.on ? 8 : 2;
+    if (l.intensity !== v) l.intensity = v;
+  });
+}
+app.addSystems(PostUpdate, siren);
 "##;
 
 struct Ids {

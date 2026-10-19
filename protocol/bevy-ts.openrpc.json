@@ -1595,14 +1595,22 @@
           "preUpdate",
           "update",
           "postUpdate",
-          "fixedUpdate"
-        ]
+          "fixedUpdate",
+          "startup",
+          "onEnter",
+          "onExit",
+          "observer"
+        ],
+        "description": "The bevy-ts stage a system runs in, or startup, onEnter, onExit or observer for systems outside the four stages."
       },
       "SystemInfo": {
         "type": "object",
         "required": [
+          "id",
           "name",
           "stage",
+          "schedule",
+          "params",
           "read",
           "write",
           "generation",
@@ -1620,13 +1628,15 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Components its queries read and never write."
           },
           "write": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Components some query of it takes as Mut."
           },
           "generation": {
             "type": "integer",
@@ -1640,6 +1650,39 @@
           },
           "lastError": {
             "$ref": "#/components/schemas/ScriptError"
+          },
+          "id": {
+            "type": "string",
+            "description": "The system's identity, <module path>#<export>."
+          },
+          "schedule": {
+            "type": "object",
+            "description": "Where it runs: {kind: startup|stage|onEnter|onExit|observer, ...}.",
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "kind": {
+                "type": "string"
+              }
+            }
+          },
+          "params": {
+            "type": "array",
+            "description": "Its params as the compile step declared them.",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": true,
+              "properties": {
+                "kind": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       },

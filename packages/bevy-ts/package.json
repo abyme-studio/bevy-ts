@@ -14,37 +14,58 @@
   "types": "./index.d.ts",
   "exports": {
     ".": {
-      "types": "./index.d.ts"
+      "types": "./index.d.ts",
+      "default": "./runtime/core.js"
     },
     "./bevy": {
-      "types": "./bevy.d.ts"
+      "types": "./bevy.d.ts",
+      "default": "./runtime/bevy.js"
     },
     "./jsx-runtime": {
-      "types": "./jsx-runtime.d.ts"
+      "types": "./jsx-runtime.d.ts",
+      "default": "./runtime/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
-      "types": "./jsx-dev-runtime.d.ts"
+      "types": "./jsx-dev-runtime.d.ts",
+      "default": "./runtime/jsx-dev-runtime.js"
     },
     "./protocol": {
       "types": "./protocol.d.ts"
+    },
+    "./testing": {
+      "types": "./testing.d.ts",
+      "default": "./testing.js"
+    },
+    "./vite": {
+      "types": "./plugins/vite.d.ts",
+      "default": "./plugins/vite.js"
+    },
+    "./esbuild": {
+      "types": "./plugins/esbuild.d.ts",
+      "default": "./plugins/esbuild.js"
     }
   },
   "files": [
     "*.d.ts",
-    "bin"
+    "*.js",
+    "bin",
+    "runtime",
+    "plugins"
   ],
   "optionalDependencies": {
     "@bevy-ts/darwin-arm64": "0.1.0",
     "@bevy-ts/darwin-x64": "0.1.0",
-    "@bevy-ts/linux-x64": "0.1.0",
     "@bevy-ts/linux-arm64": "0.1.0",
+    "@bevy-ts/linux-x64": "0.1.0",
     "@bevy-ts/win32-x64": "0.1.0"
   },
   "devDependencies": {
     "json-schema-to-typescript": "^15.0.4",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.7"
   },
   "scripts": {
-    "check": "tsc -p ../../examples/cube && tsc -p test"
+    "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p test",
+    "test": "vitest run --config test/vitest/vitest.config.mjs"
   }
 }

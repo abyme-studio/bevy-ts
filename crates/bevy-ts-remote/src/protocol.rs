@@ -2039,7 +2039,7 @@ pub struct SourceLocation {
     pub file: ::std::string::String,
     pub line: u32,
 }
-///`Stage`
+///The bevy-ts stage a system runs in, or startup, onEnter, onExit or observer for systems outside the four stages.
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
@@ -2061,6 +2061,14 @@ pub enum Stage {
     PostUpdate,
     #[serde(rename = "fixedUpdate")]
     FixedUpdate,
+    #[serde(rename = "startup")]
+    Startup,
+    #[serde(rename = "onEnter")]
+    OnEnter,
+    #[serde(rename = "onExit")]
+    OnExit,
+    #[serde(rename = "observer")]
+    Observer,
 }
 impl ::std::fmt::Display for Stage {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -2069,6 +2077,10 @@ impl ::std::fmt::Display for Stage {
             Self::Update => f.write_str("update"),
             Self::PostUpdate => f.write_str("postUpdate"),
             Self::FixedUpdate => f.write_str("fixedUpdate"),
+            Self::Startup => f.write_str("startup"),
+            Self::OnEnter => f.write_str("onEnter"),
+            Self::OnExit => f.write_str("onExit"),
+            Self::Observer => f.write_str("observer"),
         }
     }
 }
@@ -2082,6 +2094,10 @@ impl ::std::str::FromStr for Stage {
             "update" => Ok(Self::Update),
             "postUpdate" => Ok(Self::PostUpdate),
             "fixedUpdate" => Ok(Self::FixedUpdate),
+            "startup" => Ok(Self::Startup),
+            "onEnter" => Ok(Self::OnEnter),
+            "onExit" => Ok(Self::OnExit),
+            "observer" => Ok(Self::Observer),
             _ => Err("invalid value".into()),
         }
     }
@@ -2132,6 +2148,8 @@ pub struct SurfaceMessage {
 #[serde(deny_unknown_fields)]
 pub struct SystemInfo {
     pub generation: u64,
+    ///The system's identity, <module path>#<export>.
+    pub id: ::std::string::String,
     #[serde(
         rename = "lastError",
         skip_serializing_if = "::std::option::Option::is_none"
@@ -2140,9 +2158,24 @@ pub struct SystemInfo {
     #[serde(rename = "lastRunMicros")]
     pub last_run_micros: u64,
     pub name: ::std::string::String,
+    ///Its params as the compile step declared them.
+    pub params: ::std::vec::Vec<SystemInfoParamsItem>,
+    ///Components its queries read and never write.
     pub read: ::std::vec::Vec<::std::string::String>,
+    pub schedule: SystemInfoSchedule,
     pub stage: Stage,
+    ///Components some query of it takes as Mut.
     pub write: ::std::vec::Vec<::std::string::String>,
+}
+///`SystemInfoParamsItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct SystemInfoParamsItem {
+    pub kind: ::std::string::String,
+}
+///Where it runs: {kind: startup|stage|onEnter|onExit|observer, ...}.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct SystemInfoSchedule {
+    pub kind: ::std::string::String,
 }
 ///`SystemsResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

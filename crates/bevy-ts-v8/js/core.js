@@ -1,9 +1,13 @@
 // The `bevy-ts` module for the V8 backend.
 //
-// Declarations collect into the generation being loaded; Rust resolves ids and layouts and
-// hands them back on commit, when accessor classes are generated with constant offsets. Each
-// system run is one call from Rust (`runSystem`) with column ArrayBuffers that Rust detaches
-// when the call returns. Field setters store the run's tick in the row's changed tick.
+// Systems are exported functions whose parameter types the compile step read; it appends
+// `__bevyts.bind` / `__bevyts.declare` after each module, so every system function carries its
+// declarations (openspec/changes/systems-api, design decision 1). During a load, classes
+// (`Component`, `Resource`, `Message`, `Event`, `States`) and `app.*` registrations collect into
+// the generation; at its end the registrations resolve into a manifest. Rust answers with ids and
+// layouts on commit, when accessor classes are generated with constant offsets. Each system run
+// is one call from Rust (`runSystem`) with one frame per param; Rust detaches every buffer when
+// the call returns. Field setters store the run's tick in the row's changed tick.
 
 import { TsxContext, describe, runScene, setHost } from "bevy-ts/jsx-runtime";
 
@@ -19,10 +23,20 @@ const S = {
   live: 0,
   /** Rust's resolution of the live generation. */
   resolution: null,
+  /** The params a running setup closure declares, or null outside one. */
+  declaring: null,
+  /** The context of the call into JS under way, for tsx flush requests. */
+  calling: null,
 };
 
+// In the engine, deno_core's `Deno.core`; elsewhere (Node, vitest through `bevy-ts/testing`), the
+// web's encoders and the host console.
+const core = globalThis.Deno && globalThis.Deno.core && globalThis.Deno.core.ops && globalThis.Deno.core.ops.op_bevyts_log ? globalThis.Deno.core : null;
+const encoder = core ? { encode: (s) => core.encode(s) } : new TextEncoder();
+const decoder = core ? { decode: (b) => core.decode(b) } : new TextDecoder();
+
 // ---------------------------------------------------------------------------------------------
-// Source locations
+// Source locations and console
 
 const BUILTIN = /bevy-ts:/;
 const FRAME = /\(?((?:file|bevy-ts):[^\s()]+?):(\d+):(\d+)\)?\s*$/;
@@ -43,228 +57,6 @@ function declError(message, location) {
   return e;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Field types
-
-const SCALARS = ["f32", "f64", "i8", "u8", "i16", "u16", "i32", "u32", "bool", "vec2", "vec3", "vec4", "quat", "entity"];
-
-class FieldType {
-  constructor(spec, def, hints) {
-    this.spec = spec;
-    this.def = def;
-    this.hintSet = hints || {};
-  }
-  /** A default value for new components and new fields in a migration. */
-  default(value) {
-    return new FieldType(this.spec, value, this.hintSet);
-  }
-  /** Editor hints: `min`, `max`, `step`, `label`. */
-  hints(h) {
-    return new FieldType(this.spec, this.def, { ...this.hintSet, ...h });
-  }
-  min(v) {
-    return this.hints({ min: v });
-  }
-  max(v) {
-    return this.hints({ max: v });
-  }
-  step(v) {
-    return this.hints({ step: v });
-  }
-  label(v) {
-    return this.hints({ label: v });
-  }
-}
-
-export const f32 = new FieldType({ kind: "f32" });
-export const f64 = new FieldType({ kind: "f64" });
-export const i8 = new FieldType({ kind: "i8" });
-export const u8 = new FieldType({ kind: "u8" });
-export const i16 = new FieldType({ kind: "i16" });
-export const u16 = new FieldType({ kind: "u16" });
-export const i32 = new FieldType({ kind: "i32" });
-export const u32 = new FieldType({ kind: "u32" });
-export const bool = new FieldType({ kind: "bool" });
-export const vec2 = new FieldType({ kind: "vec2" });
-export const vec3 = new FieldType({ kind: "vec3" });
-export const vec4 = new FieldType({ kind: "vec4" });
-export const quat = new FieldType({ kind: "quat" });
-export const entity = new FieldType({ kind: "entity" });
-/** Rejected at declaration: components hold no heap data. */
-export const string = new FieldType({ kind: "string" });
-
-export function enumOf(...variants) {
-  return new FieldType({ kind: "enum", variants });
-}
-
-export function array(of, len) {
-  if (!(of instanceof FieldType)) throw new Error("array(type, n): type must be a field type");
-  return new FieldType({ kind: "array", of: of.spec, len });
-}
-
-const LANES = { vec2: 2, vec3: 3, vec4: 4, quat: 4 };
-
-function checkType(name, field, t, at) {
-  if (!(t instanceof FieldType)) {
-    throw declError(`component ${name} field ${field}: not a field type (use f32, vec3, enumOf(...), ...)`, at);
-  }
-  const k = t.spec.kind;
-  if (k === "string") {
-    throw declError(`component ${name} field ${field}: strings are not supported in components; components hold fixed-size data only`, at);
-  }
-  if (k === "array" && t.spec.of.kind === "string") {
-    throw declError(`component ${name} field ${field}: strings are not supported in components`, at);
-  }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Components
-
-const VALUE = Symbol("bevy-ts.value");
-
-function makeHandle(name, source, fields, native) {
-  // A handle is callable: `Mover({ speed: 2 })` is a component value for spawn/insert.
-  const handle = function (values) {
-    return { [VALUE]: true, type: handle, values: values || {} };
-  };
-  Object.defineProperty(handle, "name", { value: name });
-  handle.componentName = name;
-  handle.source = source;
-  handle.fields = fields; // { field: FieldType } or null for Rust components without a layout
-  handle.native = native;
-  handle.id = -1;
-  handle.layout = null;
-  handle.Read = null;
-  handle.Write = null;
-  handle.toString = () => name;
-  return handle;
-}
-
-/**
- * Declares a component with native fields. The layout is computed by Rust on load.
- * @param {string} name a stable path such as `game::Mover`
- */
-export function component(name, fields, options) {
-  const at = callerLocation();
-  const g = S.loading;
-  if (!g) throw declError(`component(${name}) must be called while a module loads`, at);
-  if (typeof name !== "string" || !name) throw declError("component(name, fields): name must be a non-empty string", at);
-  if (!fields || typeof fields !== "object") throw declError(`component ${name}: fields must be an object`, at);
-  const decl = [];
-  for (const [field, t] of Object.entries(fields)) {
-    checkType(name, field, t, at);
-    const f = { name: field, type: t.spec, hints: t.hintSet };
-    if (t.def !== undefined) f.default = t.def;
-    decl.push(f);
-  }
-  const handle = makeHandle(name, "ts", fields, false);
-  handle.options = options || {};
-  g.components.push({ name, fields: decl, location: at });
-  g.handles.push(handle);
-  return handle;
-}
-
-/** A Rust component with a native layout (from `bevy-ts/bevy`). */
-export function nativeComponent(name, fields) {
-  const h = makeHandle(name, "rust", fields, true);
-  NATIVE.push(h);
-  return h;
-}
-
-/** A Rust component by type path or short name: usable in `with`/`without` only. */
-export function rustComponent(name) {
-  return makeHandle(name, "rust", null, false);
-}
-
-const NATIVE = [];
-
-function componentRef(h, what, at) {
-  if (typeof h !== "function" || !h.componentName) {
-    throw declError(`${what}: ${String(h)} is not a component`, at);
-  }
-  return { name: h.componentName, source: h.source };
-}
-
-// ---------------------------------------------------------------------------------------------
-// Systems, startups, entries, sections
-
-const STAGES = ["preUpdate", "update", "postUpdate", "fixedUpdate"];
-
-export const app = {
-  /** Declares a system: `{ stage, read, write, with, without, after, run }`. */
-  system(name, spec) {
-    const at = callerLocation();
-    const g = S.loading;
-    if (!g) throw declError(`app.system(${name}) must be called while a module loads`, at);
-    if (!spec || typeof spec.run !== "function") throw declError(`system ${name}: run must be a function`, at);
-    const stage = spec.stage || "update";
-    if (!STAGES.includes(stage)) throw declError(`system ${name}: unknown stage ${stage}; use ${STAGES.join(", ")}`, at);
-    const read = (spec.read || []).map((h) => componentRef(h, `system ${name} read`, at));
-    const write = (spec.write || []).map((h) => componentRef(h, `system ${name} write`, at));
-    const decl = {
-      name,
-      stage,
-      read,
-      write,
-      with: (spec.with || []).map((h) => componentRef(h, `system ${name} with`, at)),
-      without: (spec.without || []).map((h) => componentRef(h, `system ${name} without`, at)),
-      after: [].concat(spec.after || []),
-      location: at,
-    };
-    g.systems.push(decl);
-    g.systemFns.push({ name, run: spec.run, read: spec.read || [], write: spec.write || [] });
-  },
-
-  /** Declares a function run once per world, the first time a generation declaring it applies. */
-  startup(name, run) {
-    const at = callerLocation();
-    const g = S.loading;
-    if (!g) throw declError(`app.startup(${name}) must be called while a module loads`, at);
-    if (typeof run !== "function") throw declError(`startup ${name}: run must be a function`, at);
-    g.startups.push({ name, location: at });
-    g.startupFns.push(run);
-  },
-
-  /**
-   * Declares a scene root. Its function runs now, during the load, and its description goes to
-   * the `tsx` reconciler with the generation; a throw fails the generation.
-   */
-  scene(name, fn) {
-    const at = callerLocation();
-    const g = S.loading;
-    if (!g) throw declError(`app.scene(${name}) must be called while a module loads`, at);
-    if (typeof fn !== "function") throw declError(`scene ${name}: must be a function returning elements`, at);
-    if (g.scenes.has(name)) throw declError(`scene ${name} is declared twice`, at);
-    let nodes = [];
-    const root = runScene(g.tsx, fn);
-    try {
-      nodes = describe(root, g.tsx);
-    } catch (e) {
-      // A description error names its element: it reaches Rust in the section, which fails the
-      // generation with that location (a throw here would be located at this call instead).
-      if (!e || !e.bevyTsLocation) throw e;
-      g.sceneErrors.push({ message: String(e.message), location: e.bevyTsLocation });
-    }
-    g.scenes.set(name, { name, location: at, nodes });
-    section("tsx", { roots: [...g.scenes.values()], errors: g.sceneErrors });
-  },
-
-  /** Declares an entry Rust plugins call by name with a byte payload. */
-  entry(name, fn) {
-    const at = callerLocation();
-    const g = S.loading;
-    if (!g) throw declError(`app.entry(${name}) must be called while a module loads`, at);
-    if (typeof fn !== "function") throw declError(`entry ${name}: must be a function`, at);
-    g.entries.push({ name, location: at });
-    g.entryFns.set(name, fn);
-  },
-};
-
-const core = globalThis.Deno.core;
-const encoder = { encode: (s) => core.encode(s) };
-const decoder = { decode: (b) => core.decode(b) };
-
-// console.* goes to Rust's script log with the caller's TS location.
 function format(args) {
   return args
     .map((a) => {
@@ -286,21 +78,649 @@ function logger(level) {
   };
 }
 
-const bevyConsole = {
-  debug: logger(0),
-  log: logger(1),
-  info: logger(1),
-  warn: logger(2),
-  error: logger(3),
-  trace: logger(0),
+if (core) globalThis.console = { debug: logger(0), log: logger(1), info: logger(1), warn: logger(2), error: logger(3), trace: logger(0) };
+
+// ---------------------------------------------------------------------------------------------
+// Field types: each is a value (for schemas) and, in the types package, a TS type
+
+const LANES = { vec2: 2, vec3: 3, vec4: 4, quat: 4 };
+
+class FieldType {
+  constructor(spec, def, hints) {
+    this.spec = spec;
+    this.def = def;
+    this.hintSet = hints || {};
+  }
+  /** A default for new values and for new fields in a migration. */
+  default(value) {
+    return new FieldType(this.spec, value, this.hintSet);
+  }
+  /** Editor hints: `min`, `max`, `step`, `label`. */
+  hints(h) {
+    return new FieldType(this.spec, this.def, { ...this.hintSet, ...h });
+  }
+  min(v) {
+    return this.hints({ min: v });
+  }
+  max(v) {
+    return this.hints({ max: v });
+  }
+  step(v) {
+    return this.hints({ step: v });
+  }
+  label(v) {
+    return this.hints({ label: v });
+  }
+}
+
+/** A field type that is also a function (`vec3(1, 2, 3)` makes a scratch vector). */
+function callableField(spec, make) {
+  const f = (...args) => make(...args);
+  const t = new FieldType(spec);
+  f.spec = spec;
+  f.def = undefined;
+  f.hintSet = {};
+  for (const m of ["default", "hints", "min", "max", "step", "label"]) f[m] = (...a) => t[m](...a);
+  return f;
+}
+
+function isFieldType(t) {
+  return !!t && typeof t === "object" ? t instanceof FieldType : typeof t === "function" && !!t.spec;
+}
+
+export const f32 = new FieldType({ kind: "f32" });
+export const f64 = new FieldType({ kind: "f64" });
+export const i8 = new FieldType({ kind: "i8" });
+export const u8 = new FieldType({ kind: "u8" });
+export const i16 = new FieldType({ kind: "i16" });
+export const u16 = new FieldType({ kind: "u16" });
+export const i32 = new FieldType({ kind: "i32" });
+export const u32 = new FieldType({ kind: "u32" });
+export const bool = new FieldType({ kind: "bool" });
+export const vec2 = callableField({ kind: "vec2" }, (x = 0, y = 0) => new Vec3(x, y, 0));
+export const vec3 = callableField({ kind: "vec3" }, (x = 0, y = 0, z = 0) => new Vec3(x, y, z));
+export const vec4 = new FieldType({ kind: "vec4" });
+export const quat = callableField({ kind: "quat" }, (x = 0, y = 0, z = 0, w = 1) => new Quat(x, y, z, w));
+export const entity = new FieldType({ kind: "entity" });
+/** Rejected at declaration: components hold fixed-size data only. */
+export const string = new FieldType({ kind: "string" });
+
+export function enumOf(...variants) {
+  return new FieldType({ kind: "enum", variants });
+}
+
+export function array(of, len) {
+  if (!isFieldType(of)) throw new Error("array(type, n): type must be a field type");
+  return new FieldType({ kind: "array", of: of.spec, len });
+}
+
+function checkType(name, field, t, at) {
+  if (!isFieldType(t)) throw declError(`${name} field ${field}: not a field type (use f32, vec3, enumOf(...), ...)`, at);
+  const k = t.spec.kind;
+  if (k === "string" || (k === "array" && t.spec.of.kind === "string")) {
+    throw declError(`${name} field ${field}: strings are not supported; components hold fixed-size data only`, at);
+  }
+}
+
+function fieldDecls(name, fields, at) {
+  if (!fields || typeof fields !== "object") throw declError(`${name}: fields must be an object`, at);
+  return Object.entries(fields).map(([field, t]) => {
+    checkType(name, field, t, at);
+    const f = { name: field, type: t.spec, hints: t.hintSet };
+    if (t.def !== undefined) f.default = t.def;
+    return f;
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Scratch vectors: `vec3()` and `quat()`, with the same in-place methods as column views
+
+const VEC_READ = {
+  length() {
+    return Math.hypot(this.x, this.y, this.z);
+  },
+  dot(v) {
+    return this.x * v.x + this.y * v.y + this.z * v.z;
+  },
+  distance(v) {
+    return Math.hypot(this.x - v.x, this.y - v.y, this.z - v.z);
+  },
+  toArray() {
+    return [this.x, this.y, this.z];
+  },
+  toJSON() {
+    return [this.x, this.y, this.z];
+  },
 };
-globalThis.console = bevyConsole;
+
+const VEC_WRITE = {
+  set(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    return this;
+  },
+  copy(v) {
+    return this.set(v.x, v.y, v.z);
+  },
+  add(v) {
+    return this.set(this.x + v.x, this.y + v.y, this.z + v.z);
+  },
+  sub(v) {
+    return this.set(this.x - v.x, this.y - v.y, this.z - v.z);
+  },
+  scale(s) {
+    return this.set(this.x * s, this.y * s, this.z * s);
+  },
+  addScaled(v, s) {
+    return this.set(this.x + v.x * s, this.y + v.y * s, this.z + v.z * s);
+  },
+  normalize() {
+    const l = Math.hypot(this.x, this.y, this.z);
+    return l > 0 ? this.scale(1 / l) : this;
+  },
+  lerp(v, t) {
+    return this.set(this.x + (v.x - this.x) * t, this.y + (v.y - this.y) * t, this.z + (v.z - this.z) * t);
+  },
+  /** this = a - b */
+  subVectors(a, b) {
+    return this.set(a.x - b.x, a.y - b.y, a.z - b.z);
+  },
+  /** Rotates by a unit quaternion. */
+  rotate(q) {
+    const { x, y, z } = this;
+    const tx = 2 * (q.y * z - q.z * y), ty = 2 * (q.z * x - q.x * z), tz = 2 * (q.x * y - q.y * x);
+    return this.set(x + q.w * tx + (q.y * tz - q.z * ty), y + q.w * ty + (q.z * tx - q.x * tz), z + q.w * tz + (q.x * ty - q.y * tx));
+  },
+};
+
+const QUAT_READ = {
+  toArray() {
+    return [this.x, this.y, this.z, this.w];
+  },
+  toJSON() {
+    return [this.x, this.y, this.z, this.w];
+  },
+};
+
+const QUAT_WRITE = {
+  set(x, y, z, w) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.w = w;
+    return this;
+  },
+  copy(q) {
+    return this.set(q.x, q.y, q.z, q.w);
+  },
+  /** Faces `dir` (Bevy's -Z forward) with `up`. */
+  lookTo(dir, up) {
+    // Basis: back = -dir, right = up × back, up' = back × right.
+    let bx = -dir.x, by = -dir.y, bz = -dir.z;
+    const bl = Math.hypot(bx, by, bz) || 1;
+    bx /= bl, by /= bl, bz /= bl;
+    let rx = up.y * bz - up.z * by, ry = up.z * bx - up.x * bz, rz = up.x * by - up.y * bx;
+    const rl = Math.hypot(rx, ry, rz) || 1;
+    rx /= rl, ry /= rl, rz /= rl;
+    const ux = by * rz - bz * ry, uy = bz * rx - bx * rz, uz = bx * ry - by * rx;
+    const m00 = rx, m11 = uy, m22 = bz, tr = m00 + m11 + m22;
+    if (tr > 0) {
+      const s = Math.sqrt(tr + 1) * 2;
+      return this.set((uz - by) / s, (bx - rz) / s, (ry - ux) / s, 0.25 * s);
+    } else if (m00 > m11 && m00 > m22) {
+      const s = Math.sqrt(1 + m00 - m11 - m22) * 2;
+      return this.set(0.25 * s, (ux + ry) / s, (bx + rz) / s, (uz - by) / s);
+    } else if (m11 > m22) {
+      const s = Math.sqrt(1 + m11 - m00 - m22) * 2;
+      return this.set((ux + ry) / s, 0.25 * s, (by + uz) / s, (bx - rz) / s);
+    }
+    const s = Math.sqrt(1 + m22 - m00 - m11) * 2;
+    return this.set((bx + rz) / s, (by + uz) / s, 0.25 * s, (ry - ux) / s);
+  },
+  /** Rotates about Y by `radians` (this = rotation(y) * this). */
+  rotateY(radians) {
+    const h = radians / 2, s = Math.sin(h), c = Math.cos(h);
+    const { x, y, z, w } = this;
+    return this.set(c * x + s * z, c * y + s * w, c * z - s * x, c * w - s * y);
+  },
+  slerp(q, t) {
+    let { x, y, z, w } = q;
+    let d = this.x * x + this.y * y + this.z * z + this.w * w;
+    if (d < 0) {
+      d = -d;
+      x = -x, y = -y, z = -z, w = -w;
+    }
+    if (d > 0.9995) {
+      return this.set(this.x + (x - this.x) * t, this.y + (y - this.y) * t, this.z + (z - this.z) * t, this.w + (w - this.w) * t).normalize4();
+    }
+    const th = Math.acos(d), sn = Math.sin(th), a = Math.sin((1 - t) * th) / sn, b = Math.sin(t * th) / sn;
+    return this.set(a * this.x + b * x, a * this.y + b * y, a * this.z + b * z, a * this.w + b * w);
+  },
+  normalize4() {
+    const l = Math.hypot(this.x, this.y, this.z, this.w) || 1;
+    return this.set(this.x / l, this.y / l, this.z / l, this.w / l);
+  },
+};
+
+class Vec3 {
+  constructor(x, y, z) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+}
+Object.assign(Vec3.prototype, VEC_READ, VEC_WRITE);
+
+class Quat {
+  constructor(x, y, z, w) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.w = w;
+  }
+}
+Object.assign(Quat.prototype, QUAT_READ, QUAT_WRITE);
+
+// ---------------------------------------------------------------------------------------------
+// Declarations: one class each
+
+/** What kind of declaration a class is. */
+const KIND = Symbol.for("bevy-ts.kind");
+
+function declare(kind, name, fields, extra, at) {
+  const g = S.loading;
+  const decl = { name, fields: fieldDecls(name, fields, at), location: at, ...extra };
+  // A class whose instances are values: `new Health({ hp: 3 })`.
+  const C = class {
+    constructor(init) {
+      if (init) Object.assign(this, init);
+    }
+  };
+  Object.defineProperty(C, "name", { value: name.split("::").pop() });
+  C.componentName = name;
+  C.source = "ts";
+  C[KIND] = kind;
+  C.schema = fields;
+  C.decl = decl;
+  C.id = -1;
+  C.layout = null;
+  if (g) g.classes.push(C);
+  return C;
+}
+
+/** `class Enemy extends Component("game::Enemy", { speed: f32 }) {}` */
+export function Component(name, fields, options) {
+  const at = callerLocation();
+  if (typeof name !== "string" || !name) throw declError("Component(name, fields): name must be a non-empty string", at);
+  return declare("component", name, fields, { options: options || {} }, at);
+}
+
+/** A component with no fields: a marker for filters. */
+export function Tag(name) {
+  return declare("component", name, {}, {}, callerLocation());
+}
+
+export function Resource(name, fields) {
+  return declare("resource", name, fields, {}, callerLocation());
+}
+
+export function Message(name, fields) {
+  return declare("message", name, fields, {}, callerLocation());
+}
+
+export function Event(name, fields) {
+  return declare("event", name, fields, { entity: false, propagate: false }, callerLocation());
+}
+
+/** An event that targets an entity; `propagate` bubbles it up `ChildOf`. */
+export function EntityEvent(name, fields, opts) {
+  return declare("event", name, fields, { entity: true, propagate: !!(opts && opts.propagate) }, callerLocation());
+}
+
+/** `class Game extends States("game::Game", ["Menu", "Playing"]) {}`; `Game.Playing` is a value. */
+export function States(name, values) {
+  const at = callerLocation();
+  if (!Array.isArray(values) || values.length === 0) throw declError(`States(${name}): values must be a non-empty array`, at);
+  const C = class {};
+  Object.defineProperty(C, "name", { value: name.split("::").pop() });
+  C.componentName = name;
+  C[KIND] = "state";
+  C.values = values;
+  C.decl = { name, values: [...values], location: at };
+  for (const v of values) C[v] = Object.freeze({ state: name, value: v, machine: C });
+  if (S.loading) S.loading.classes.push(C);
+  return C;
+}
+
+/** A Rust component with a native layout (`Transform`). */
+function nativeClass(name, typePath, fields, kind = "component") {
+  const C = class {
+    constructor(init) {
+      if (init) Object.assign(this, init);
+    }
+  };
+  Object.defineProperty(C, "name", { value: name });
+  C.componentName = name;
+  C.typePath = typePath;
+  C.source = "rust";
+  C[KIND] = kind;
+  C.schema = fields;
+  C.decl = { name, fields: fieldDecls(name, fields) };
+  C.id = -1;
+  C.layout = null;
+  NATIVE.push(C);
+  return C;
+}
+
+const NATIVE = [];
+
+/** A Rust component by type path or short name: usable in `With`/`Without` only. */
+export function rustComponent(name) {
+  const C = class {};
+  Object.defineProperty(C, "name", { value: name.split("::").pop() });
+  C.componentName = name;
+  C.source = "rust";
+  C[KIND] = "component";
+  C.id = -1;
+  C.layout = null;
+  return C;
+}
+
+export const Transform = nativeClass("Transform", "bevy_transform::components::transform::Transform", {
+  translation: vec3.default([0, 0, 0]),
+  rotation: quat.default([0, 0, 0, 1]),
+  scale: vec3.default([1, 1, 1]),
+});
+
+/** `Res<Time>`: `delta` and `elapsed` in seconds, and the frame number. */
+export const Time = nativeClass("Time", "bevy_time::time::Time", { delta: f32, elapsed: f64, frame: u32 }, "resource");
+
+// ---------------------------------------------------------------------------------------------
+// Schedules, sets, conditions, system configs
+
+const sched = (kind, extra) => Object.freeze({ schedule: kind, ...extra });
+export const Startup = sched("startup");
+export const PreUpdate = sched("stage", { stage: "preUpdate" });
+export const Update = sched("stage", { stage: "update" });
+export const PostUpdate = sched("stage", { stage: "postUpdate" });
+export const FixedUpdate = sched("stage", { stage: "fixedUpdate" });
+export function OnEnter(v) {
+  return sched("onEnter", { state: v.state, value: v.value });
+}
+export function OnExit(v) {
+  return sched("onExit", { state: v.state, value: v.value });
+}
+
+export function systemSet(name) {
+  return Object.freeze({ set: name });
+}
+
+export function inState(v) {
+  return { condition: true, kind: "inState", state: v.state, value: v.value };
+}
+export function resourceExists(R) {
+  return { condition: true, kind: "resourceExists", resource: R.componentName };
+}
+export function onMessage(M) {
+  return { condition: true, kind: "onMessage", message: M.componentName };
+}
+export function not(c) {
+  return { condition: true, kind: "not", condition_: c };
+}
+
+class SystemConfig {
+  constructor(items, chained) {
+    this.items = items;
+    this.chained = chained;
+    this.afters = [];
+    this.befores = [];
+    this.sets = [];
+    this.conditions = [];
+  }
+  after(...x) {
+    this.afters.push(...x);
+    return this;
+  }
+  before(...x) {
+    this.befores.push(...x);
+    return this;
+  }
+  inSet(s) {
+    this.sets.push(s);
+    return this;
+  }
+  runIf(c) {
+    this.conditions.push(c);
+    return this;
+  }
+}
+
+/** Bevy's tuple of systems: `systems(a, b).after(x).runIf(c)`. */
+export function systems(...items) {
+  return new SystemConfig(items, false);
+}
+
+/** Each runs after the previous, as Bevy's `.chain()`. */
+export function chain(...items) {
+  return new SystemConfig(items, true);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The compile step's declarations, and the setup-closure fallback
+
+const DECL = Symbol.for("bevy-ts.decl");
+const SETUP = Symbol.for("bevy-ts.setup");
+
+/** A system whose param types are computed: `setup` declares params and returns the body. */
+export function system(setup) {
+  if (typeof setup !== "function") throw declError("system(setup): setup must be a function", callerLocation());
+  const s = new SystemConfig([], false);
+  s[SETUP] = setup;
+  s.at = callerLocation();
+  return s;
+}
+
+function declaring(what) {
+  if (!S.declaring) throw declError(`${what} declares a param and may only be called in a system(() => ...) setup`, callerLocation());
+  return S.declaring;
+}
+
+const dataOf = (d) =>
+  d === EntityId ? { entity: true } : d && d[OPT] ? { ...dataOf(d[OPT]), optional: true } : d && d[MUT] ? { ...dataOf(d[MUT]), mut: true } : { component: d };
+
+const MUT = Symbol("bevy-ts.mut");
+const OPT = Symbol("bevy-ts.option");
+/** `Mut(C)` in a setup's `query(...)`. */
+export function Mut(C) {
+  return { [MUT]: C };
+}
+/** `Option(C)` in a setup's `query(...)`. */
+export function Option(C) {
+  return { [OPT]: C };
+}
+/** `Entity` as query data in a setup's `query(...)`. */
+export const EntityId = Object.freeze({ entity: true });
+
+class SetupQuery {
+  constructor(desc) {
+    this.desc = desc;
+  }
+  with(...cs) {
+    this.desc.filter.push(...cs.map((c) => ({ with: c })));
+    return this;
+  }
+  without(...cs) {
+    this.desc.filter.push(...cs.map((c) => ({ without: c })));
+    return this;
+  }
+  changed(...cs) {
+    this.desc.filter.push(...cs.map((c) => ({ changed: c })));
+    return this;
+  }
+  added(...cs) {
+    this.desc.filter.push(...cs.map((c) => ({ added: c })));
+    return this;
+  }
+}
+
+/** Declares a query param in a setup; the returned object is the query each run. */
+export function query(...data) {
+  const list = declaring("query()");
+  const desc = { kind: "query", data: data.map(dataOf), filter: [], live: true };
+  const holder = new SetupQuery(desc);
+  list.push({ desc, holder });
+  return holder;
+}
+function setupParam(what, desc) {
+  const list = declaring(what);
+  const holder = {};
+  list.push({ desc, holder });
+  return holder;
+}
+export function res(R) {
+  return setupParam("res()", { kind: "res", resource: R, live: true });
+}
+export function resMut(R) {
+  return setupParam("resMut()", { kind: "resMut", resource: R, live: true });
+}
+export function commands() {
+  return setupParam("commands()", { kind: "commands", live: true });
+}
+export function local(fields) {
+  return setupParam("local()", { kind: "local", fields: fieldDecls("Local", fields), live: true });
+}
+
+const FIELD_BY_TYPE = { f32, f64, i8, u8, i16, u16, i32, u32, bool, vec2, vec3, vec4, quat, entity };
+
+// The compile step's hooks, installed on the host object below.
+function bindModule(module, names) {
+  const g = S.loading;
+  if (!g) return;
+  for (const [name, thunk] of Object.entries(names)) g.bindings.set(`${module}\u0000${name}`, thunk);
+}
+
+function declareFn(fn, desc) {
+  if (fn && (typeof fn === "function" || typeof fn === "object")) fn[DECL] = desc;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The app
+
+function flatten(schedule, items, inherited, out) {
+  let prev = null;
+  for (const item of items) {
+    const cfg = {
+      after: [...inherited.after],
+      before: [...inherited.before],
+      sets: [...inherited.sets],
+      conditions: [...inherited.conditions],
+    };
+    if (item instanceof SystemConfig && !item[SETUP]) {
+      const inner = { after: [...cfg.after, ...item.afters], before: [...cfg.before, ...item.befores], sets: [...cfg.sets, ...item.sets], conditions: [...cfg.conditions, ...item.conditions] };
+      if (prev && inherited.chained) inner.after.push(prev);
+      const first = out.length;
+      flatten(schedule, item.items, { ...inner, chained: item.chained }, out);
+      // A nested group's members are its own "last" for the outer chain.
+      prev = out.slice(first).map((r) => r.target);
+      continue;
+    }
+    if (prev && inherited.chained) cfg.after.push(prev);
+    const target = item;
+    if (item instanceof SystemConfig && item[SETUP]) {
+      cfg.after.push(...item.afters);
+      cfg.before.push(...item.befores);
+      cfg.sets.push(...item.sets);
+      cfg.conditions.push(...item.conditions);
+    }
+    out.push({ schedule, target, ...cfg, at: callerLocation() });
+    prev = [target];
+  }
+}
+
+function loadingOrThrow(what) {
+  if (!S.loading) throw declError(`${what} must be called while a generation loads`, callerLocation());
+  return S.loading;
+}
+
+export const app = {
+  /** `app.addSystems(Update, chain(a, b).runIf(inState(Game.Playing)))` */
+  addSystems(schedule, ...items) {
+    const g = loadingOrThrow("addSystems");
+    if (!schedule || !schedule.schedule) throw declError("addSystems(schedule, ...systems): the first argument must be a schedule (Update, Startup, OnEnter(...))", callerLocation());
+    flatten(schedule, items, { after: [], before: [], sets: [], conditions: [], chained: false }, g.registrations);
+    return app;
+  },
+  /** Registers an observer: a function whose first param is `On<E>`. */
+  addObserver(fn) {
+    const g = loadingOrThrow("addObserver");
+    g.registrations.push({ schedule: { schedule: "observer" }, target: fn, after: [], before: [], sets: [], conditions: [], at: callerLocation() });
+    return app;
+  },
+  /** Runs plugins (functions of the app) now; every generation re-runs them. */
+  addPlugins(...plugins) {
+    loadingOrThrow("addPlugins");
+    for (const p of plugins.flat()) {
+      if (typeof p !== "function") throw declError(`addPlugins: ${String(p)} is not a plugin function`, callerLocation());
+      p(app);
+    }
+    return app;
+  },
+  insertResource(value) {
+    const g = loadingOrThrow("insertResource");
+    const C = value && value.constructor;
+    if (!C || C[KIND] !== "resource") throw declError("insertResource: pass a Resource instance (new Score({ value: 0 }))", callerLocation());
+    g.resourceInserts.set(C.componentName, { ...value });
+    return app;
+  },
+  addMessage(M) {
+    const g = loadingOrThrow("addMessage");
+    if (!M || M[KIND] !== "message") throw declError("addMessage: pass a Message class", callerLocation());
+    g.addedMessages.add(M.componentName);
+    return app;
+  },
+  initState(v) {
+    const g = loadingOrThrow("initState");
+    if (!v || !v.machine) throw declError("initState: pass a state value (Game.Menu)", callerLocation());
+    g.initialStates.set(v.state, v.value);
+    return app;
+  },
+  /**
+   * Declares a scene root. Its function runs now, during the load, and its description goes to
+   * the `tsx` reconciler with the generation; a throw fails the generation.
+   */
+  scene(name, fn) {
+    const at = callerLocation();
+    const g = loadingOrThrow("app.scene");
+    if (typeof fn !== "function") throw declError(`scene ${name}: must be a function returning elements`, at);
+    if (g.scenes.has(name)) throw declError(`scene ${name} is declared twice`, at);
+    let nodes = [];
+    const root = runScene(g.tsx, fn);
+    try {
+      nodes = describe(root, g.tsx);
+    } catch (e) {
+      if (!e || !e.bevyTsLocation) throw e;
+      g.sceneErrors.push({ message: String(e.message), location: e.bevyTsLocation });
+    }
+    g.scenes.set(name, { name, location: at, nodes });
+    section("tsx", { roots: [...g.scenes.values()], errors: g.sceneErrors });
+    return app;
+  },
+  /** Declares an entry Rust plugins call by name with a byte payload. */
+  entry(name, fn) {
+    const at = callerLocation();
+    const g = loadingOrThrow("app.entry");
+    if (typeof fn !== "function") throw declError(`entry ${name}: must be a function`, at);
+    g.entries.push({ name, location: at });
+    g.entryFns.set(name, fn);
+    return app;
+  },
+};
 
 /** Writes a manifest section for a Rust plugin: bytes, a string, or a JSON-serializable value. */
 export function section(name, value) {
   const at = callerLocation();
-  const g = S.loading;
-  if (!g) throw declError(`section(${name}) must be called while a module loads`, at);
+  const g = loadingOrThrow(`section(${name})`);
   let bytes;
   if (value instanceof Uint8Array) bytes = value;
   else if (typeof value === "string") bytes = encoder.encode(value);
@@ -308,21 +728,252 @@ export function section(name, value) {
   g.sections.set(name, { bytes, location: at });
 }
 
+/** Decodes UTF-8 bytes, for entries that take text or JSON payloads. */
+export function text(bytes) {
+  return decoder.decode(bytes);
+}
+
 // ---------------------------------------------------------------------------------------------
-// Accessors: generated per component from Rust's layout
+// Resolving declarations at the end of a load
+
+function refClass(g, ref, at) {
+  if (typeof ref === "function" || (ref && typeof ref === "object" && !Array.isArray(ref))) return ref;
+  const [module, name] = ref;
+  const thunk = g.bindings.get(`${module}\u0000${name}`);
+  if (!thunk) throw declError(`${name} is not bound in ${module}; was the module compiled by bevy-ts?`, at);
+  const v = thunk();
+  if (v === undefined) throw declError(`${name} has no value at run time; import it as a value, not with import type`, at);
+  return v;
+}
+
+function componentRef(C, at, what) {
+  if (!C || !C.componentName || (C[KIND] && C[KIND] !== "component")) throw declError(`${what}: ${String(C && C.name)} is not a component class`, at);
+  return { name: C.componentName, source: C.source };
+}
+
+/** Turns a declaration's params (refs to bound names) into manifest params (names). */
+function resolveParams(g, params, at) {
+  const out = [];
+  for (const p of params) {
+    switch (p.kind) {
+      case "query": {
+        const data = p.data.map((d) => {
+          if (d.entity) return { entity: true };
+          const C = refClass(g, d.component, at);
+          return { component: componentRef(C, at, "query data"), mutable: !!(d.mut || d.mutable), optional: !!d.optional, cls: C };
+        });
+        const filter = p.filter.map((f) => {
+          const [k] = Object.keys(f);
+          return { [k]: componentRef(refClass(g, f[k], at), at, `${k} filter`) };
+        });
+        out.push({ kind: "query", data, filter });
+        break;
+      }
+      case "res":
+      case "resMut": {
+        const R = refClass(g, p.resource, at);
+        if (R[KIND] !== "resource") throw declError(`${p.kind === "res" ? "Res" : "ResMut"}<${R.name}>: ${R.name} is not a Resource class`, at);
+        out.push({ kind: p.kind, resource: R.componentName, cls: R });
+        break;
+      }
+      case "local":
+        out.push({ kind: "local", fields: p.fields.map((f) => (typeof f.type === "string" ? { name: f.name, type: FIELD_BY_TYPE[f.type].spec, hints: {} } : f)) });
+        break;
+      case "commands":
+        out.push({ kind: "commands" });
+        break;
+      case "messageReader":
+      case "messageWriter": {
+        const M = refClass(g, p.message, at);
+        if (M[KIND] !== "message") throw declError(`${M.name} is not a Message class`, at);
+        out.push({ kind: p.kind, message: M.componentName, cls: M });
+        break;
+      }
+      case "state":
+      case "nextState": {
+        const St = refClass(g, p.state, at);
+        if (St[KIND] !== "state") throw declError(`${St.name} is not a States class`, at);
+        out.push({ kind: p.kind, state: St.componentName, cls: St });
+        break;
+      }
+      case "on":
+        if (p.lifecycle) {
+          out.push({ kind: "on", lifecycle: p.lifecycle, component: componentRef(refClass(g, p.component, at), at, "On<...>") });
+        } else {
+          const E = refClass(g, p.event, at);
+          if (E[KIND] !== "event") throw declError(`On<${E.name}>: ${E.name} is not an Event class`, at);
+          out.push({ kind: "on", event: E.componentName, cls: E });
+        }
+        break;
+      case "bundle":
+        out.push({ kind: "bundle", fields: p.fields.map((f) => ({ name: f.name, param: resolveParams(g, [f.param], at)[0] })) });
+        break;
+      case "app":
+        throw declError("a plugin (app: App) is registered with app.addPlugins, not as a system", at);
+      default:
+        throw declError(`unknown param kind ${p.kind}`, at);
+    }
+  }
+  return out;
+}
+
+/** Strips runtime-only properties for the manifest JSON. */
+function manifestParams(params) {
+  return params.map((p) => {
+    const { cls, ...rest } = p;
+    if (rest.kind === "query") rest.data = rest.data.map(({ cls, ...d }) => d);
+    if (rest.kind === "bundle") rest.fields = rest.fields.map((f) => ({ name: f.name, param: manifestParams([f.param])[0] }));
+    return rest;
+  });
+}
+
+function identityOf(target) {
+  const d = target && target[DECL];
+  return d && d.id ? d.id : null;
+}
+
+function resolveCondition(c) {
+  if (c.kind === "not") return { kind: "not", condition: resolveCondition(c.condition_) };
+  const { condition, ...rest } = c;
+  return rest;
+}
+
+function orderTargets(list, at) {
+  return list.flat().map((x) => {
+    if (x && x.set) return x.set;
+    const id = identityOf(x);
+    if (!id) throw declError(`ordering on ${String(x && x.name)}: not a registered system or set`, at);
+    return id;
+  });
+}
+
+function resolveRegistrations(g) {
+  for (const r of g.registrations) {
+    const t = r.target;
+    let d = t && t[DECL];
+    const name = (t && t.name) || "anonymous";
+    if (t instanceof SystemConfig && t[SETUP]) {
+      // The fallback: run the setup once now; its declaring calls are the params.
+      S.declaring = [];
+      let body;
+      try {
+        body = t[SETUP]();
+      } finally {
+        const decls = S.declaring;
+        S.declaring = null;
+        t.setupParams = decls;
+      }
+      if (typeof body !== "function") throw declError("system(setup): setup must return the per-run body", t.at);
+      const id = (d && d.id) || `${(t.at && t.at.file) || "?"}#system@${t.at ? t.at.line : 0}`;
+      const params = resolveParams(g, t.setupParams.map((x) => x.desc), r.at);
+      g.systems.push({ r, id, params, call: "setup", body, holders: t.setupParams.map((x) => x.holder), at: d && d.at ? d.at : t.at });
+      continue;
+    }
+    if (typeof t !== "function") throw declError(`addSystems: ${String(t)} is not a system`, r.at);
+    if (!d) throw declError(`${name} was compiled without bevy-ts: its param types were never read; load it through bevy-ts (or its Vite/vitest/esbuild plugin)`, r.at);
+    if (d.error) throw declError(d.error, d.at || r.at);
+    const params = resolveParams(g, d.params || [], d.at || r.at);
+    if (r.schedule.schedule === "observer" && (!params[0] || params[0].kind !== "on")) {
+      throw declError(`${name}: an observer's first param must be On<...>`, d.at || r.at);
+    }
+    g.systems.push({ r, id: d.id, params, call: "fn", fn: t, at: d.at || r.at });
+  }
+}
+
+function newGeneration(number) {
+  return {
+    number,
+    classes: [],
+    bindings: new Map(),
+    registrations: [],
+    systems: [],
+    resourceInserts: new Map(),
+    addedMessages: new Set(),
+    initialStates: new Map(),
+    entries: [],
+    entryFns: new Map(),
+    sections: new Map(),
+    scenes: new Map(),
+    sceneErrors: [],
+    tsx: new TsxContext(),
+    built: null,
+  };
+}
+
+function scheduleDecl(s) {
+  switch (s.schedule) {
+    case "stage":
+      return { kind: "stage", stage: s.stage };
+    case "onEnter":
+    case "onExit":
+      return { kind: s.schedule, state: s.state, value: s.value };
+    default:
+      return { kind: s.schedule };
+  }
+}
+
+function begin(gen) {
+  S.loading = newGeneration(gen);
+  // The tsx host call: Rust calls it only when this generation has bindings or slots to run.
+  const g = S.loading;
+  g.entries.push({ name: "tsx" });
+  // The payload is a u32 header length, a JSON header, then site rows as raw bytes.
+  g.entryFns.set("tsx", (payload, ctx) => {
+    const n = new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getUint32(0, true);
+    return g.tsx.call(JSON.parse(text(payload.subarray(4, 4 + n))), ctx, payload.subarray(4 + n));
+  });
+}
+
+function end() {
+  const g = S.loading;
+  if (!g) throw new Error("bevy-ts: end without begin");
+  try {
+    resolveRegistrations(g);
+  } finally {
+    S.loading = null;
+  }
+  S.gens.set(g.number, g);
+  const byKind = (k) => g.classes.filter((C) => C[KIND] === k);
+  const manifest = {
+    components: byKind("component").map((C) => C.decl),
+    resources: byKind("resource").map((C) => ({ ...C.decl, insert: g.resourceInserts.has(C.componentName) ? jsonValues(C, g.resourceInserts.get(C.componentName)) : undefined })),
+    messages: byKind("message").map((C) => ({ ...C.decl, added: g.addedMessages.has(C.componentName) })),
+    events: byKind("event").map((C) => C.decl),
+    states: byKind("state").map((C) => ({ ...C.decl, initial: g.initialStates.get(C.componentName) })),
+    systems: g.systems.map((s) => ({
+      name: s.id,
+      schedule: scheduleDecl(s.r.schedule),
+      params: manifestParams(s.params),
+      after: orderTargets(s.r.after, s.at),
+      before: orderTargets(s.r.before, s.at),
+      sets: s.r.sets.map((x) => x.set),
+      condition: s.r.conditions.length ? { kind: "all", conditions: s.r.conditions.map(resolveCondition) } : undefined,
+      location: s.at,
+    })),
+    entries: g.entries,
+  };
+  const sections = [...g.sections].map(([name, s]) => [name, s.bytes, s.location || null]);
+  return [JSON.stringify(manifest), sections];
+}
+
+/** Field values as JSON for Rust (vectors as arrays). */
+function jsonValues(C, values) {
+  const out = {};
+  for (const [k, v] of Object.entries(values)) out[k] = v && typeof v.toArray === "function" ? v.toArray() : v;
+  return out;
+}
+
+function abort() {
+  S.loading = null;
+  S.declaring = null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Accessors: generated per layout from Rust's offsets
 
 const WIDTH = { f32: 4, f64: 8, i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, bool: 1, entity: 4 };
 const VIEW = { f32: "f32", f64: "f64", i8: "i8", u8: "u8", i16: "i16", u16: "u16", i32: "i32", u32: "u32", bool: "u8", entity: "u32" };
-const VIEW_CTORS = {
-  f32: Float32Array,
-  f64: Float64Array,
-  i8: Int8Array,
-  u8: Uint8Array,
-  i16: Int16Array,
-  u16: Uint16Array,
-  i32: Int32Array,
-  u32: Uint32Array,
-};
+const VIEW_CTORS = { f32: Float32Array, f64: Float64Array, i8: Int8Array, u8: Uint8Array, i16: Int16Array, u16: Uint16Array, i32: Int32Array, u32: Uint32Array };
 
 function enumView(t) {
   const n = t.variants.length;
@@ -330,11 +981,9 @@ function enumView(t) {
 }
 
 function scalarKind(t) {
-  if (t.kind === "enum") return enumView(t);
-  return t.kind;
+  return t.kind === "enum" ? enumView(t) : t.kind;
 }
 
-/** Views a component needs, by name. */
 function viewsFor(layout) {
   const need = new Set();
   const add = (t) => {
@@ -347,15 +996,17 @@ function viewsFor(layout) {
   return [...need];
 }
 
+const READONLY = "this value is read-only here: query it as Mut<C> (or take ResMut) to change it";
+
 function setterTail(write) {
   return write ? "p.t[p.r] = p.k;" : "throw new TypeError(READONLY);";
 }
 
-/** Source for reading/writing one scalar at byte offset `off` (relative to the row). */
+/** Source for reading/writing one scalar at byte offset `off` of a `size`-byte row. */
 function scalarCode(kind, off, size, enumVariants) {
   const w = WIDTH[kind] || (kind === "u16" ? 2 : 4);
   const view = kind === "bool" ? "u8" : kind === "entity" ? "u32" : kind;
-  const idx = `p.r * ${size / w} + ${off / w}`;
+  const idx = size % w === 0 ? `p.r * ${size / w} + ${off / w}` : `(p.r * ${size} + ${off}) / ${w}`;
   if (kind === "bool") return { get: `p.u8[${idx}] !== 0`, set: `p.u8[${idx}] = v ? 1 : 0;` };
   if (kind === "entity") {
     return {
@@ -373,9 +1024,7 @@ function scalarCode(kind, off, size, enumVariants) {
   return { get: `p.${view}[${idx}]`, set: `p.${view}[${idx}] = v;` };
 }
 
-const READONLY = "this component is declared in `read`; declare it in `write` to change it";
-
-/** Generates the accessor class for a layout. `write` adds tick-storing setters. */
+/** Generates the accessor class for a layout. `write` adds tick-storing setters and mutators. */
 function generateAccessor(name, layout, write) {
   const size = layout.size;
   const parts = [];
@@ -384,6 +1033,7 @@ function generateAccessor(name, layout, write) {
   for (const f of layout.fields) {
     const t = f.type;
     const key = JSON.stringify(f.name);
+    const slot = JSON.stringify("_" + f.name);
     if (LANES[t.kind]) {
       const lanes = LANES[t.kind];
       const names = ["x", "y", "z", "w"].slice(0, lanes);
@@ -393,47 +1043,52 @@ function generateAccessor(name, layout, write) {
         cls.push(`get ${n}() { const p = this.p; return ${c.get}; }`);
         cls.push(`set ${n}(v) { const p = this.p; ${c.set} ${setterTail(write)} }`);
       });
-      cls.push(`toArray() { const p = this.p; return [${names.map((_, i) => scalarCode("f32", f.offset + i * 4, size).get).join(", ")}]; }`);
-      cls.push(`set(${names.join(", ")}) { const p = this.p; ${names.map((n, i) => scalarCode("f32", f.offset + i * 4, size).set.replace(/\bv\b/g, n)).join(" ")} ${setterTail(write)} return this; }`);
-      cls.push(`toJSON() { return this.toArray(); }`);
-      cls.push(`}`);
-      cls.push(`return V;`);
-      subclasses.push(`const V_${subclasses.length} = (function () { ${cls.join("\n")} })();`);
-      const vi = subclasses.length - 1;
-      init.push(`this[${JSON.stringify("_" + f.name)}] = new V_${vi}(this);`);
-      parts.push(`get ${key}() { return this[${JSON.stringify("_" + f.name)}]; }`);
+      if (lanes === 2) cls.push(`get z() { return 0; } set z(v) {}`);
+      if (write) {
+        // Every vector method routes through set(): lanes written raw, the row tick stored once.
+        const args = names.join(", ");
+        const raw = names.map((n, i) => scalarCode("f32", f.offset + i * 4, size).set.replace(/\bv\b/g, n)).join(" ");
+        cls.push(`set(${args}) { const p = this.p; ${raw} p.t[p.r] = p.k; return this; }`);
+      }
+      cls.push(`}`, `return V;`);
+      subclasses.push({ src: `(function () { ${cls.join("\n")} })()`, quat: t.kind === "quat" || t.kind === "vec4" });
+      init.push(`this[${slot}] = new V_${subclasses.length - 1}(this);`);
+      parts.push(`get ${key}() { return this[${slot}]; }`);
       parts.push(
-        `set ${key}(v) { const s = this[${JSON.stringify("_" + f.name)}]; if (Array.isArray(v)) s.set(...v); else s.set(${names.map((n) => "v." + n).join(", ")}); }`,
+        write
+          ? `set ${key}(v) { const s = this[${slot}]; if (Array.isArray(v)) s.set(...v); else s.set(${names.map((n) => "v." + n).join(", ")}); }`
+          : `set ${key}(v) { throw new TypeError(READONLY); }`,
       );
     } else if (t.kind === "array") {
       const el = t.of;
       const w = el.kind === "enum" ? WIDTH[enumView(el)] : LANES[el.kind] ? LANES[el.kind] * 4 : WIDTH[el.kind];
       const cls = [`class A { constructor(p) { this.p = p; } get length() { return ${t.len}; }`];
-      const getters = [];
       for (let i = 0; i < t.len; i++) {
         const off = f.offset + i * w;
+        let c;
         if (LANES[el.kind]) {
-          const lanes = LANES[el.kind];
-          const g = [...Array(lanes).keys()].map((j) => scalarCode("f32", off + j * 4, size).get);
-          const s = [...Array(lanes).keys()].map((j) => scalarCode("f32", off + j * 4, size).set.replace(/\bv\b/g, `v[${j}]`));
-          getters.push({ get: `[${g.join(", ")}]`, set: s.join(" ") });
+          const n = LANES[el.kind];
+          const g = [...Array(n).keys()].map((j) => scalarCode("f32", off + j * 4, size).get);
+          const s = [...Array(n).keys()].map((j) => scalarCode("f32", off + j * 4, size).set.replace(/\bv\b/g, `v[${j}]`));
+          c = { get: `[${g.join(", ")}]`, set: s.join(" ") };
         } else {
-          getters.push(scalarCode(scalarKind(el), off, size, el.kind === "enum" ? el.variants : undefined));
+          c = scalarCode(scalarKind(el), off, size, el.kind === "enum" ? el.variants : undefined);
         }
-      }
-      getters.forEach((c, i) => {
         cls.push(`get ${i}() { const p = this.p; return ${c.get}; }`);
         cls.push(`set ${i}(v) { const p = this.p; ${c.set} ${setterTail(write)} }`);
-      });
+      }
       cls.push(`get(i) { return this[i]; } set(i, v) { if (i < 0 || i >= ${t.len}) throw new RangeError("index " + i); this[i] = v; }`);
       cls.push(`toArray() { return Array.from({ length: ${t.len} }, (_, i) => this[i]); } toJSON() { return this.toArray(); }`);
       cls.push(`*[Symbol.iterator]() { for (let i = 0; i < ${t.len}; i++) yield this[i]; }`);
       cls.push(`}`, `return A;`);
-      subclasses.push(`const V_${subclasses.length} = (function () { ${cls.join("\n")} })();`);
-      const vi = subclasses.length - 1;
-      init.push(`this[${JSON.stringify("_" + f.name)}] = new V_${vi}(this);`);
-      parts.push(`get ${key}() { return this[${JSON.stringify("_" + f.name)}]; }`);
-      parts.push(`set ${key}(v) { const a = this[${JSON.stringify("_" + f.name)}]; for (let i = 0; i < ${t.len}; i++) a[i] = v[i]; }`);
+      subclasses.push({ src: `(function () { ${cls.join("\n")} })()` });
+      init.push(`this[${slot}] = new V_${subclasses.length - 1}(this);`);
+      parts.push(`get ${key}() { return this[${slot}]; }`);
+      parts.push(
+        write
+          ? `set ${key}(v) { const a = this[${slot}]; for (let i = 0; i < ${t.len}; i++) a[i] = v[i]; }`
+          : `set ${key}(v) { throw new TypeError(READONLY); }`,
+      );
     } else {
       const c = scalarCode(scalarKind(t), f.offset, size, t.kind === "enum" ? t.variants : undefined);
       parts.push(`get ${key}() { const p = this; return ${c.get}; }`);
@@ -442,7 +1097,7 @@ function generateAccessor(name, layout, write) {
   }
   const views = viewsFor(layout);
   const src = `
-    ${subclasses.join("\n")}
+    ${subclasses.map((s, i) => `const V_${i} = ${s.src}; mix(V_${i}.prototype, ${s.quat ? "true" : "false"});`).join("\n")}
     return class ${write ? "Write" : "Read"} {
       constructor() {
         this.r = 0; this.k = 0; this.t = null;
@@ -452,34 +1107,70 @@ function generateAccessor(name, layout, write) {
       toJSON() { const o = {}; ${layout.fields.map((f) => `o[${JSON.stringify(f.name)}] = this[${JSON.stringify(f.name)}];`).join(" ")} return o; }
       ${parts.join("\n")}
     };`;
+  // Shared methods, except those the generated class defines itself (the raw `set`).
+  const mix = (proto, isQuat) => {
+    const add = (k, fn) => Object.prototype.hasOwnProperty.call(proto, k) || Object.defineProperty(proto, k, { value: fn, writable: true });
+    for (const [k, fn] of Object.entries(isQuat ? QUAT_READ : VEC_READ)) add(k, fn);
+    if (write) for (const [k, fn] of Object.entries(isQuat ? QUAT_WRITE : VEC_WRITE)) add(k, fn);
+  };
   try {
-    return new Function("READONLY", src)(READONLY);
+    return new Function("READONLY", "mix", src)(READONLY, mix);
   } catch (e) {
     throw new Error(`bevy-ts: generating accessors for ${name}: ${e.message}`);
   }
 }
 
-function resolveHandle(h, res) {
-  const r = res.components[h.componentName];
+/** Gives a class its id, layout and accessor classes from Rust's resolution. */
+function resolveClass(C, r) {
   if (!r) return;
-  if (h.layout && h.id === r.id && JSON.stringify(h.layout) === JSON.stringify(r.layout)) return;
-  h.id = r.id;
-  h.layout = r.layout;
-  h.views = viewsFor(r.layout);
-  h.offsets = Object.fromEntries(r.layout.fields.map((f) => [f.name, f.offset]));
-  h.size = r.layout.size;
-  h.Read = generateAccessor(h.componentName, r.layout, false);
-  h.Write = generateAccessor(h.componentName, r.layout, true);
+  if (C.layout && C.id === r.id && JSON.stringify(C.layout) === JSON.stringify(r.layout)) return;
+  C.id = r.id;
+  C.layout = r.layout;
+  C.views = viewsFor(r.layout);
+  C.offsets = Object.fromEntries(r.layout.fields.map((f) => [f.name, f.offset]));
+  C.size = r.layout.size;
+  C.Read = generateAccessor(C.componentName, r.layout, false);
+  C.Write = generateAccessor(C.componentName, r.layout, true);
+}
+
+/** Accessor classes for a layout that is not a class (a `Local`). */
+function accessorPair(name, layout) {
+  return { layout, views: viewsFor(layout), size: layout.size, Read: generateAccessor(name, layout, false), Write: generateAccessor(name, layout, true) };
+}
+
+/** Points an accessor at one buffer, row 0. */
+function bindRow(acc, T, buffer, ticks, tick) {
+  for (const v of T.views) acc[v] = buffer ? new VIEW_CTORS[v](buffer) : null;
+  acc.t = ticks ? new Uint32Array(ticks) : DUMMY_TICKS;
+  acc.k = tick;
+  acc.r = 0;
+}
+
+const DUMMY_TICKS = new Uint32Array(1);
+
+/** C layout rules, mirrored for `Local`s (Rust lays them out the same way). */
+function cLayout(fields) {
+  const size = (t) => {
+    if (LANES[t.kind]) return LANES[t.kind] * 4;
+    if (t.kind === "enum") return { u8: 1, u16: 2, u32: 4 }[enumView(t)];
+    if (t.kind === "array") return size(t.of) * t.len;
+    return { f32: 4, f64: 8, i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, bool: 1, entity: 8 }[t.kind];
+  };
+  const align = (t) => (LANES[t.kind] ? 4 : t.kind === "array" ? align(t.of) : size(t));
+  let offset = 0, max = 1;
+  const out = [];
+  for (const f of fields) {
+    const a = align(f.type);
+    max = Math.max(max, a);
+    offset = Math.ceil(offset / a) * a;
+    out.push({ name: f.name, type: f.type, offset });
+    offset += size(f.type);
+  }
+  return { size: Math.ceil(offset / max) * max, align: max, fields: out };
 }
 
 // ---------------------------------------------------------------------------------------------
-// Queries
-
-function makeViews(buffer, names) {
-  const v = { buffer };
-  for (const n of names) v[n] = new VIEW_CTORS[n](buffer);
-  return v;
-}
+// Param objects: built once per generation, bound to each run's frames
 
 class Table {
   constructor(q, i) {
@@ -493,141 +1184,446 @@ class Table {
   get entities() {
     return this.q.raw[this.i][1];
   }
+  /** For `Changed`/`Added` queries: the rows that passed. */
+  get rows() {
+    return this.q.raw[this.i][4];
+  }
   entity(row) {
     const e = this.q.raw[this.i][1];
     return e[row * 2] + e[row * 2 + 1] * 4294967296;
   }
   col(T) {
-    const c = this.q.index.get(T);
-    if (c === undefined) throw new Error(`${T} is not in this system's read or write`);
+    const c = this.q.columnOf.get(T) ?? this.q.columnOf.get(Object.getPrototypeOf(T));
+    if (c === undefined) throw new Error(`${T.name} is not data of this query`);
     return c;
   }
   arrays(T, c) {
     const buf = this.q.raw[this.i][2][c];
-    const out = makeViews(buf, T.views);
-    out.offsets = T.offsets;
-    out.size = T.size;
-    out.stride = (w) => T.size / w;
+    const C = this.q.data[this.q.dataIndexOfColumn[c]].cls;
+    const out = { buffer: buf };
+    for (const n of C.views) out[n] = buf ? new VIEW_CTORS[n](buf) : null;
+    out.offsets = C.offsets;
+    out.size = C.size;
+    out.stride = C.size / 4;
     return out;
   }
-  /** A component's typed arrays and byte offsets, for reading. */
+  /** A component's typed arrays and byte offsets. */
   read(T) {
     return this.arrays(T, this.col(T));
   }
-  /** A `write` component's arrays; every row of this table is marked changed after the run. */
+  /** A written component's arrays; every row of this table is marked changed after the run. */
   write(T) {
     const c = this.col(T);
-    if (!this.q.writes[c]) throw new Error(`${T} is declared in read; declare it in write`);
-    this.q.marks.push(this.i, c);
+    if (!this.q.columnWrites[c]) throw new Error(`${T.name} is not Mut in this query`);
+    this.q.marks.push(this.q.paramIndex, this.i, c);
     return this.arrays(T, c);
   }
-  /** A `write` component's arrays plus its `ticks`; mark rows yourself with `ticks[row] = ctx.tick`. */
+  /** A written component's arrays plus its `ticks`; mark rows with `ticks[row] = q.tick`. */
   split(T) {
     const c = this.col(T);
-    if (!this.q.writes[c]) throw new Error(`${T} is declared in read; declare it in write`);
+    if (!this.q.columnWrites[c]) throw new Error(`${T.name} is not Mut in this query`);
     const out = this.arrays(T, c);
     out.ticks = new Uint32Array(this.q.raw[this.i][3][c]);
     return out;
   }
 }
 
-class Query {
-  constructor(handles, writes) {
-    this.handles = handles;
-    this.writes = writes;
-    this.index = new Map(handles.map((h, i) => [h, i]));
-    this.raw = null;
+class QueryParam {
+  constructor(desc, marks) {
+    // `data`: per datum, { entity } or { cls, write, optional, column }.
+    this.data = [];
+    this.columnWrites = [];
+    this.dataIndexOfColumn = [];
+    this.columnOf = new Map();
+    for (const d of desc.data) {
+      if (d.entity) {
+        this.data.push({ entity: true });
+        continue;
+      }
+      const column = this.columnWrites.length;
+      this.columnWrites.push(!!d.mutable);
+      this.dataIndexOfColumn.push(this.data.length);
+      if (!this.columnOf.has(d.cls)) this.columnOf.set(d.cls, column);
+      this.data.push({ cls: d.cls, write: !!d.mutable, optional: !!d.optional, column });
+    }
+    this.marks = marks;
+    this.raw = [];
     this.tick = 0;
-    this.marks = [];
+    this.paramIndex = 0;
     this.accs = null;
+    this._tables = null;
+    this.row = new Array(this.data.length);
   }
-  bind(raw, tick) {
+  bind(raw, tick, paramIndex) {
     this.raw = raw;
     this.tick = tick;
-    this.marks = [];
+    this.paramIndex = paramIndex;
     this._tables = null;
-    if (!this.accs || this.accs.some((a, i) => !(a instanceof (this.writes[i] ? this.handles[i].Write : this.handles[i].Read)))) {
-      this.accs = this.handles.map((h, i) => new (this.writes[i] ? h.Write : h.Read)());
+    this._index = null;
+    if (!this.accs) this.accs = this.data.map((d) => (d.entity ? null : new (d.write ? d.cls.Write : d.cls.Read)()));
+  }
+  /** Points the reused accessors at table `t`; returns false for tables whose optional data is absent. */
+  enter(t, accs) {
+    const tb = this.raw[t];
+    for (let i = 0; i < this.data.length; i++) {
+      const d = this.data[i];
+      if (d.entity) continue;
+      const buf = tb[2][d.column];
+      const a = accs[i];
+      if (!buf) {
+        a.present = false;
+        continue;
+      }
+      a.present = true;
+      for (const v of d.cls.views) a[v] = new VIEW_CTORS[v](buf);
+      a.t = tb[3][d.column] ? new Uint32Array(tb[3][d.column]) : DUMMY_TICKS;
+      a.k = this.tick;
     }
+  }
+  fill(row, accs, ents, r) {
+    for (let i = 0; i < this.data.length; i++) {
+      const d = this.data[i];
+      if (d.entity) row[i] = ents[r * 2] + ents[r * 2 + 1] * 4294967296;
+      else {
+        const a = accs[i];
+        a.r = r;
+        row[i] = a.present === false ? undefined : a;
+      }
+    }
+    return row;
+  }
+  /** Calls `fn(...row)` per match: the entity or a reused accessor per datum. No iterator protocol. */
+  each(fn) {
+    const accs = this.accs;
+    const row = this.row;
+    for (let t = 0; t < this.raw.length; t++) {
+      const tb = this.raw[t];
+      this.enter(t, accs);
+      const ents = tb[1];
+      const rows = tb[4];
+      if (rows) {
+        for (let k = 0; k < rows.length; k++) fn(...this.fill(row, accs, ents, rows[k]));
+      } else {
+        const len = tb[0];
+        if (this.data.length === 2 && !this.data[0].entity && !this.data[1].entity) {
+          const a0 = accs[0], a1 = accs[1];
+          const p0 = a0.present !== false, p1 = a1.present !== false;
+          for (let r = 0; r < len; r++) {
+            a0.r = r;
+            a1.r = r;
+            fn(p0 ? a0 : undefined, p1 ? a1 : undefined);
+          }
+        } else {
+          for (let r = 0; r < len; r++) fn(...this.fill(row, accs, ents, r));
+        }
+      }
+    }
+  }
+  *[Symbol.iterator]() {
+    const accs = this.accs;
+    for (let t = 0; t < this.raw.length; t++) {
+      const tb = this.raw[t];
+      this.enter(t, accs);
+      const rows = tb[4];
+      const n = rows ? rows.length : tb[0];
+      for (let k = 0; k < n; k++) yield this.fill(new Array(this.data.length), accs, tb[1], rows ? rows[k] : k);
+    }
+  }
+  /** Number of matches. */
+  get len() {
+    let n = 0;
+    for (const tb of this.raw) n += tb[4] ? tb[4].length : tb[0];
+    return n;
   }
   /** The matched tables, for hand-written loops over the typed arrays. */
   get tables() {
     if (!this._tables) this._tables = this.raw.map((_, i) => new Table(this, i));
     return this._tables;
   }
-  /** Number of matched entities. */
-  get count() {
-    let n = 0;
-    for (const t of this.raw) n += t[0];
-    return n;
+  /** A row with fresh accessors (safe to keep while calling `get` again in this run). */
+  rowAt(t, r) {
+    const accs = this.data.map((d) => (d.entity ? null : new (d.write ? d.cls.Write : d.cls.Read)()));
+    this.enter(t, accs);
+    return this.fill(new Array(this.data.length), accs, this.raw[t][1], r);
   }
-  /** Calls `fn(entity, ...rows)` per matched entity; rows are reused accessors. */
-  each(fn) {
-    const accs = this.accs;
-    const n = accs.length;
-    const handles = this.handles;
-    for (const t of this.raw) {
-      const len = t[0];
-      const ents = t[1];
-      for (let c = 0; c < n; c++) {
-        const a = accs[c];
-        const buf = t[2][c];
-        for (const v of handles[c].views) a[v] = new VIEW_CTORS[v](buf);
-        a.t = t[3][c] ? new Uint32Array(t[3][c]) : null;
-        a.k = this.tick;
+  /** Exactly one match, or throws. */
+  single() {
+    if (this.len !== 1) throw new Error(`single(): expected exactly one match, found ${this.len}`);
+    for (let t = 0; t < this.raw.length; t++) {
+      const tb = this.raw[t];
+      const n = tb[4] ? tb[4].length : tb[0];
+      if (n) return this.rowAt(t, tb[4] ? tb[4][0] : 0);
+    }
+  }
+  /** The row of `entity`, or `undefined`. */
+  get(entity) {
+    if (!this._index) {
+      this._index = new Map();
+      for (let t = 0; t < this.raw.length; t++) {
+        const tb = this.raw[t];
+        const ents = tb[1];
+        const visit = (r) => this._index.set(ents[r * 2] + ents[r * 2 + 1] * 4294967296, [t, r]);
+        if (tb[4]) for (const r of tb[4]) visit(r);
+        else for (let r = 0; r < tb[0]; r++) visit(r);
       }
-      if (n === 1) {
-        const a0 = accs[0];
-        for (let r = 0; r < len; r++) {
-          a0.r = r;
-          fn(ents[r * 2] + ents[r * 2 + 1] * 4294967296, a0);
-        }
-      } else if (n === 2) {
-        const a0 = accs[0];
-        const a1 = accs[1];
-        for (let r = 0; r < len; r++) {
-          a0.r = r;
-          a1.r = r;
-          fn(ents[r * 2] + ents[r * 2 + 1] * 4294967296, a0, a1);
-        }
-      } else {
-        const args = new Array(n + 1);
-        for (let r = 0; r < len; r++) {
-          for (let c = 0; c < n; c++) {
-            accs[c].r = r;
-            args[c + 1] = accs[c];
-          }
-          args[0] = ents[r * 2] + ents[r * 2 + 1] * 4294967296;
-          fn(...args);
-        }
+    }
+    const at = this._index.get(entity);
+    return at ? this.rowAt(at[0], at[1]) : undefined;
+  }
+}
+
+class MessageReaderParam {
+  constructor(cls) {
+    this.cls = cls;
+    this.parts = [];
+    this.acc = null;
+  }
+  bind(frame) {
+    // [bufferA, countA, bufferB, countB, stride]
+    this.parts = [[frame[0], frame[1]], [frame[2], frame[3]]];
+    if (!this.acc) this.acc = new this.cls.Read();
+  }
+  get len() {
+    return this.parts[0][1] + this.parts[1][1];
+  }
+  each(fn) {
+    for (const [buf, n] of this.parts) {
+      if (!n) continue;
+      bindRow(this.acc, this.cls, buf, null, 0);
+      for (let r = 0; r < n; r++) {
+        this.acc.r = r;
+        fn(this.acc);
       }
     }
   }
+  *[Symbol.iterator]() {
+    for (const [buf, n] of this.parts) {
+      if (!n) continue;
+      for (let r = 0; r < n; r++) {
+        const a = new this.cls.Read();
+        bindRow(a, this.cls, buf, null, 0);
+        a.r = r;
+        yield a;
+      }
+    }
+  }
+}
+
+class MessageWriterParam {
+  constructor(cls, ctx) {
+    this.cls = cls;
+    this.ctx = ctx;
+    this.pending = null;
+  }
+  /** Queues a message: a `Message` instance or a plain object of its fields. */
+  write(value) {
+    this.flush();
+    this.ctx.commands.write(value instanceof this.cls ? value : new this.cls(value));
+  }
+  /** A writable view on a fresh slot; written when the run ends or at the next `next`/`write`. */
+  next() {
+    this.flush();
+    const bytes = new Uint8Array(this.cls.size);
+    const acc = new this.cls.Write();
+    bindRow(acc, this.cls, bytes.buffer, null, 0);
+    this.pending = bytes;
+    return acc;
+  }
+  flush() {
+    if (this.pending) {
+      this.ctx.commands.writeBytes(this.cls, this.pending);
+      this.pending = null;
+    }
+  }
+}
+
+class OnParam {
+  constructor(cls, lifecycle) {
+    this.cls = cls;
+    this.lifecycle = lifecycle;
+    this.entity = undefined;
+    this.event = cls ? new cls.Read() : {};
+    this.stopped = false;
+  }
+  bind(frame) {
+    // [ArrayBuffer, entity]
+    if (this.cls) bindRow(this.event, this.cls, frame[0], null, 0);
+    this.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
+    this.stopped = false;
+  }
+  /** `propagate(false)` stops an entity event from bubbling further up `ChildOf`. */
+  propagate(on) {
+    this.stopped = !on;
+  }
+}
+
+/** One built system: its params, flattened frames' consumers, and how to call it. */
+function buildSystem(g, s) {
+  const ctx = makeCtx();
+  const marks = [];
+  const consumers = []; // per flat frame: (frame, tick, index) => void
+  const make = (p) => {
+    switch (p.kind) {
+      case "query": {
+        const q = new QueryParam(p, marks);
+        consumers.push((frame, tick, i) => q.bind(frame, tick, i));
+        return q;
+      }
+      case "res":
+      case "resMut": {
+        const C = p.cls;
+        const acc = new (p.kind === "resMut" ? C.Write : C.Read)();
+        consumers.push((frame, tick) => bindRow(acc, C, frame[0], frame[1], tick));
+        return acc;
+      }
+      case "local": {
+        const T = accessorPair("Local", cLayout(p.fields));
+        const acc = new T.Write();
+        consumers.push((frame) => bindRow(acc, T, frame[0], null, 0));
+        return acc;
+      }
+      case "commands":
+        consumers.push(() => {});
+        return ctx.commands;
+      case "messageReader": {
+        const r = new MessageReaderParam(p.cls);
+        consumers.push((frame) => r.bind(frame));
+        return r;
+      }
+      case "messageWriter": {
+        const w = new MessageWriterParam(p.cls, ctx);
+        ctx.writers.push(w);
+        consumers.push(() => {});
+        return w;
+      }
+      case "state": {
+        const St = p.cls;
+        const o = { current: undefined };
+        consumers.push((frame) => (o.current = frame >= 0 && frame < St.values.length ? St[St.values[frame]] : undefined));
+        return o;
+      }
+      case "nextState": {
+        const St = p.cls;
+        consumers.push(() => {});
+        return {
+          set(v) {
+            if (!v || v.state !== St.componentName) throw new TypeError(`next.set: not a ${St.name} value`);
+            ctx.commands.setState(St, v.value);
+          },
+        };
+      }
+      case "on": {
+        const o = new OnParam(p.cls, p.lifecycle);
+        ctx.on = o;
+        consumers.push((frame) => o.bind(frame));
+        return o;
+      }
+      case "bundle": {
+        const o = {};
+        for (const f of p.fields) o[f.name] = make(f.param);
+        return o;
+      }
+    }
+  };
+  const args = s.params.map(make);
+  if (s.call === "setup") {
+    // The setup's holders become the param objects: copy their prototypes' behaviour in.
+    s.holders.forEach((h, i) => {
+      const a = args[i];
+      Object.setPrototypeOf(h, Object.getPrototypeOf(a));
+      Object.assign(h, a);
+      args[i] = h;
+    });
+    // Accessor-backed params (res, local) are objects bound in place: rebind consumers to holders.
+    let ci = 0;
+    s.params.forEach((p, i) => {
+      if (p.kind === "res" || p.kind === "resMut" || p.kind === "local") {
+        const h = args[i];
+        const C = p.kind === "local" ? accessorPair("Local", cLayout(p.fields)) : p.cls;
+        const at = ci;
+        consumers[at] = (frame, tick) => bindRow(h, C, frame[0], frame[1], tick);
+      } else if (p.kind === "query") {
+        const h = args[i];
+        consumers[ci] = (frame, tick, idx) => h.bind(frame, tick, idx);
+      }
+      ci += p.kind === "bundle" ? 0 : 1;
+    });
+  }
+  return { s, ctx, marks, consumers, args };
+}
+
+function makeCtx() {
+  return { commands: new Commands(), writers: [], on: null };
 }
 
 // ---------------------------------------------------------------------------------------------
 // Commands: a binary arena in Rust memory, overflow kept in JS
 
 const OP_SPAWN = 1, OP_INSERT = 2, OP_DESPAWN = 3, OP_REMOVE = 4, OP_SET_PARENT = 5, OP_SPAWN_NATIVE = 6, OP_PLUGIN = 7;
+const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10;
+
+class EntityCommands {
+  constructor(commands, id) {
+    this.commands = commands;
+    this.id = id;
+  }
+  insert(...parts) {
+    const els = parts.filter(isElement);
+    if (els.length) for (const el of els) this.commands.mount(el, { parent: this.id });
+    const comps = parts.filter((p) => !isElement(p));
+    if (comps.length) this.commands.op(encodeComponentsOp(OP_INSERT, this.id, comps));
+    return this;
+  }
+  remove(...classes) {
+    const w = new Writer();
+    w.u8(OP_REMOVE);
+    w.entity(this.id);
+    w.u16(classes.length);
+    for (const C of classes) w.u32(idOf(C));
+    this.commands.op(w.bytes());
+    return this;
+  }
+  setParent(parent) {
+    const w = new Writer();
+    w.u8(OP_SET_PARENT);
+    w.entity(this.id);
+    if (parent === null || parent === undefined) {
+      w.u32(0xffffffff);
+      w.u32(0xffffffff);
+    } else w.entity(parent);
+    this.commands.op(w.bytes());
+    return this;
+  }
+  despawn() {
+    const w = new Writer();
+    w.u8(OP_DESPAWN);
+    w.entity(this.id);
+    this.commands.op(w.bytes());
+  }
+}
+
+function isElement(p) {
+  return !!p && typeof p === "object" && "type" in p && "props" in p && !(p.constructor && p.constructor.componentName);
+}
 
 class Commands {
   constructor() {
     this.arena = null;
-    this.view = null;
     this.at = 0;
     this.overflow = null;
     this.pool = null;
     this.poolUsed = 0;
     this.kinds = null;
+    this.res = null;
   }
-  begin(arena, pool, kinds) {
+  begin(arena, pool, kinds, res) {
     this.arena = new Uint8Array(arena);
-    this.view = new DataView(arena);
     this.at = 0;
     this.overflow = null;
     this.pool = new Float64Array(pool);
     this.poolUsed = 0;
     this.kinds = kinds;
+    this.res = res;
   }
   /** Returns [arena bytes used, overflow bytes or null, pool ids used]. */
   end() {
@@ -657,42 +1653,68 @@ class Commands {
     }
   }
   alloc() {
-    if (this.poolUsed >= this.pool.length) {
-      throw new Error(`spawn pool exhausted: at most ${this.pool.length} spawns per call`);
-    }
+    if (this.poolUsed >= this.pool.length) throw new Error(`spawn pool exhausted: at most ${this.pool.length} spawns per call`);
     return this.pool[this.poolUsed++];
   }
-  /** Spawns an entity with components (handles for defaults, or `Type({...})` values). */
-  spawn(...components) {
+  /** Spawns an entity with components (`new Health({ hp: 3 })`, or a class for its defaults), or mounts a prefab element. */
+  spawn(...parts) {
+    if (parts.length === 1 && isElement(parts[0])) {
+      this.mount(parts[0]);
+      return undefined;
+    }
     const e = this.alloc();
-    this.op(encodeComponentsOp(OP_SPAWN, e, components));
+    this.op(encodeComponentsOp(OP_SPAWN, e, parts.filter((p) => !isElement(p))));
+    for (const el of parts.filter(isElement)) this.mount(el, { parent: e });
     return e;
   }
-  insert(entity, ...components) {
-    this.op(encodeComponentsOp(OP_INSERT, entity, components));
+  /** Commands for one entity. */
+  entity(e) {
+    return new EntityCommands(this, e);
   }
-  despawn(entity) {
+  /** Triggers a global event, or (`target`, entity event) an entity event. */
+  trigger(a, b) {
+    const [target, event] = b === undefined ? [undefined, a] : [a, b];
+    const E = event && event.constructor;
+    if (!E || E[KIND] !== "event") throw new TypeError("trigger: pass an Event or EntityEvent instance");
+    const r = this.res && this.res.events[E.componentName];
+    if (!r) throw new Error(`${E.componentName} is not a declared event`);
+    if (E.decl.entity && target === undefined) throw new TypeError(`${E.name} is an EntityEvent: trigger(target, event)`);
+    const bytes = encodeWithLayout(E, r.layout, event);
     const w = new Writer();
-    w.u8(OP_DESPAWN);
-    w.entity(entity);
-    this.op(w.bytes());
-  }
-  remove(entity, ...types) {
-    const w = new Writer();
-    w.u8(OP_REMOVE);
-    w.entity(entity);
-    w.u16(types.length);
-    for (const T of types) w.u32(idOf(T));
-    this.op(w.bytes());
-  }
-  setParent(child, parent) {
-    const w = new Writer();
-    w.u8(OP_SET_PARENT);
-    w.entity(child);
-    if (parent === null || parent === undefined) {
+    w.u8(OP_TRIGGER);
+    w.u32(r.index);
+    if (target === undefined) {
       w.u32(0xffffffff);
       w.u32(0xffffffff);
-    } else w.entity(parent);
+    } else w.entity(target);
+    w.u32(bytes.length);
+    w.raw(bytes);
+    this.op(w.bytes());
+  }
+  /** Writes a message (a `Message` instance). */
+  write(message) {
+    const M = message && message.constructor;
+    if (!M || M[KIND] !== "message") throw new TypeError("write: pass a Message instance (new Damage({ ... }))");
+    const r = this.res && this.res.messages[M.componentName];
+    if (!r) throw new Error(`${M.componentName} is not a declared message`);
+    this.writeBytes(M, encodeWithLayout(M, r.layout, message));
+  }
+  writeBytes(M, bytes) {
+    const r = this.res.messages[M.componentName];
+    const w = new Writer();
+    w.u8(OP_WRITE_MESSAGE);
+    w.u32(r.index);
+    w.u32(bytes.length);
+    w.raw(bytes);
+    this.op(w.bytes());
+  }
+  setState(St, value) {
+    const index = this.res && this.res.states[St.componentName];
+    if (index === undefined) throw new Error(`${St.componentName} is not a declared state`);
+    const w = new Writer();
+    w.u8(OP_SET_STATE);
+    w.u32(index);
+    w.u32(St.values.indexOf(value));
     this.op(w.bytes());
   }
   /** Spawns through a native Rust recipe (`camera3d`, `directionalLight`, `cuboid`). */
@@ -777,23 +1799,24 @@ class Writer {
   }
 }
 
-function idOf(T) {
-  if (typeof T !== "function" || !T.componentName) throw new TypeError(`not a component: ${T}`);
-  if (T.id < 0 || !T.layout) throw new Error(`${T.componentName} has no native layout to write from TS`);
-  return T.id;
+function idOf(C) {
+  if (typeof C !== "function" || !C.componentName) throw new TypeError(`not a component: ${C}`);
+  if (C.id < 0 || !C.layout) throw new Error(`${C.componentName} has no native layout to write from TS`);
+  return C.id;
 }
 
-function encodeComponentsOp(op, e, components) {
+function encodeComponentsOp(op, e, parts) {
   const w = new Writer();
   w.u8(op);
   w.entity(e);
-  w.u16(components.length);
-  for (const c of components) {
-    const T = c && c[VALUE] ? c.type : c;
-    const values = c && c[VALUE] ? c.values : {};
-    const id = idOf(T);
-    const bytes = encodeValue(T, values);
-    w.u32(id);
+  w.u16(parts.length);
+  for (const part of parts) {
+    // A class alone means its defaults.
+    const C = typeof part === "function" ? part : part && part.constructor;
+    const values = typeof part === "function" ? {} : part;
+    if (!C || !C.componentName || (C[KIND] && C[KIND] !== "component")) throw new TypeError(`spawn/insert: ${String(part)} is not a component (new Health({ hp: 3 }))`);
+    const bytes = encodeWithLayout(C, C.layout, values);
+    w.u32(idOf(C));
     w.u32(bytes.length);
     w.raw(bytes);
   }
@@ -838,11 +1861,11 @@ function encodeField(dv, t, off, v, path) {
   if (LANES[t.kind]) {
     const lanes = LANES[t.kind];
     const arr = Array.isArray(v) ? v : v && typeof v.toArray === "function" ? v.toArray() : ["x", "y", "z", "w"].slice(0, lanes).map((n) => v[n]);
-    if (arr.length !== lanes) throw new TypeError(`${path} expects ${t.kind}`);
+    if (arr.length < lanes) throw new TypeError(`${path} expects ${t.kind}`);
     for (let i = 0; i < lanes; i++) dv.setFloat32(off + i * 4, arr[i], true);
   } else if (t.kind === "array") {
     const el = t.of;
-    const w = el.kind === "enum" ? WIDTH[enumView(el)] : LANES[el.kind] ? LANES[el.kind] * 4 : WIDTH[el.kind];
+    const w = el.kind === "enum" ? WIDTH[enumView(el)] : LANES[el.kind] ? LANES[el.kind] * 4 : WIDTH[el.kind] * (el.kind === "entity" ? 2 : 1);
     for (let i = 0; i < t.len; i++) encodeField(dv, el, off + i * w, v[i], `${path}[${i}]`);
   } else {
     if (t.kind !== "enum" && t.kind !== "bool" && typeof v !== "number") throw new TypeError(`${path} expects ${t.kind}, got ${typeof v}`);
@@ -850,22 +1873,22 @@ function encodeField(dv, t, off, v, path) {
   }
 }
 
-/** Native bytes for a component value; omitted fields take their declared default. */
-function encodeValue(T, values) {
-  const layout = T.layout;
+/** Native bytes for a value; omitted fields take their declared default. */
+function encodeWithLayout(C, layout, values) {
+  if (!layout) throw new Error(`${C.componentName} has no layout yet`);
   const out = new Uint8Array(layout.size);
   const dv = new DataView(out.buffer);
+  const defaults = (C.decl && C.decl.fields) || [];
   for (const f of layout.fields) {
-    let v = values[f.name];
-    if (v === undefined) {
-      const ft = T.fields && T.fields[f.name];
-      v = ft ? ft.def : undefined;
-    }
+    let v = values ? values[f.name] : undefined;
+    if (v === undefined) v = (defaults.find((d) => d.name === f.name) || {}).default;
     if (v === undefined) continue;
-    encodeField(dv, f.type, f.offset, v, `${T.componentName}.${f.name}`);
+    encodeField(dv, f.type, f.offset, v, `${C.componentName}.${f.name}`);
   }
-  for (const k of Object.keys(values)) {
-    if (!layout.fields.some((f) => f.name === k)) throw new TypeError(`${T.componentName} has no field ${k}`);
+  if (values) {
+    for (const k of Object.keys(values)) {
+      if (!layout.fields.some((f) => f.name === k)) throw new TypeError(`${C.componentName} has no field ${k}`);
+    }
   }
   return out;
 }
@@ -873,73 +1896,19 @@ function encodeValue(T, values) {
 // ---------------------------------------------------------------------------------------------
 // The host interface Rust calls
 
-function newGeneration() {
-  return {
-    components: [],
-    handles: [],
-    systems: [],
-    systemFns: [],
-    startups: [],
-    startupFns: [],
-    entries: [],
-    entryFns: new Map(),
-    sections: new Map(),
-    scenes: new Map(),
-    sceneErrors: [],
-    tsx: new TsxContext(),
-    built: null,
-  };
-}
-
-function makeCtx() {
-  return { dt: 0, elapsed: 0, tick: 0, frame: 0, commands: new Commands() };
-}
-
-function begin(gen) {
-  S.loading = newGeneration();
-  S.loading.number = gen;
-  // The tsx host call: Rust calls it only when this generation has bindings or slots to run.
-  const g = S.loading;
-  g.entries.push({ name: "tsx" });
-  // The payload is a u32 header length, a JSON header, then site rows as raw bytes.
-  g.entryFns.set("tsx", (payload, ctx) => {
-    const n = new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getUint32(0, true);
-    return g.tsx.call(JSON.parse(text(payload.subarray(4, 4 + n))), ctx, payload.subarray(4 + n));
-  });
-}
-
-function end() {
-  const g = S.loading;
-  S.loading = null;
-  if (!g) throw new Error("bevy-ts: end without begin");
-  S.gens.set(g.number, g);
-  const manifest = {
-    components: g.components,
-    systems: g.systems,
-    startups: g.startups,
-    entries: g.entries,
-  };
-  const sections = [...g.sections].map(([name, s]) => [name, s.bytes, s.location || null]);
-  return [JSON.stringify(manifest), sections];
-}
-
-function abort() {
-  S.loading = null;
-}
-
 function commit(gen, resolutionJson) {
   const g = S.gens.get(gen);
   if (!g) throw new Error(`bevy-ts: generation ${gen} is not loaded`);
   const res = JSON.parse(resolutionJson);
-  for (const h of g.handles) resolveHandle(h, res);
-  for (const h of NATIVE) resolveHandle(h, res);
-  g.built = g.systemFns.map((s) => {
-    const handles = [...s.read, ...s.write];
-    const writes = [...s.read.map(() => false), ...s.write.map(() => true)];
-    return { run: s.run, query: new Query(handles, writes), ctx: makeCtx() };
-  });
-  g.startupCtx = makeCtx();
-  g.kinds = res.commandKinds;
+  for (const C of g.classes) {
+    const kind = C[KIND];
+    if (kind === "component" || kind === "resource") resolveClass(C, res.components[C.componentName]);
+    else if (kind === "message") resolveClass(C, res.messages[C.componentName]);
+    else if (kind === "event") resolveClass(C, res.events[C.componentName]);
+  }
+  for (const C of NATIVE) resolveClass(C, res.components[C.componentName]);
+  g.res = res;
+  g.built = g.systems.map((s) => buildSystem(g, s));
   const old = S.live;
   S.live = gen;
   S.resolution = res;
@@ -950,40 +1919,23 @@ function discard(gen) {
   S.gens.delete(gen);
 }
 
-function fillCtx(ctx, dt, elapsed, tick, frame, arena, pool, kinds) {
-  S.calling = ctx;
-  ctx.dt = dt;
-  ctx.elapsed = elapsed;
-  ctx.tick = tick;
-  ctx.frame = frame;
-  ctx.commands.begin(arena, pool, kinds);
-}
-
-function runSystem(gen, index, dt, elapsed, tick, frame, tables, arena, pool) {
+/** One call per run: frames are one entry per flat param (bundles flattened). */
+function runSystem(gen, index, dt, elapsed, tick, frame, frames, arena, pool) {
   const g = S.gens.get(gen);
-  const s = g.built[index];
-  fillCtx(s.ctx, dt, elapsed, tick, frame, arena, pool, g.kinds);
-  s.query.bind(tables, tick);
+  const b = g.built[index];
+  b.ctx.commands.begin(arena, pool, g.res.commandKinds, g.res);
+  b.marks.length = 0;
+  for (let i = 0; i < b.consumers.length; i++) b.consumers[i](frames[i], tick, i);
+  S.calling = b.ctx;
   try {
-    s.run(s.query, s.ctx);
+    if (b.s.call === "setup") b.s.body();
+    else b.s.fn(...b.args);
   } finally {
     S.calling = null;
   }
-  const [len, over, used] = s.ctx.commands.end();
-  return [len, over, used, s.query.marks];
-}
-
-function runStartup(gen, index, dt, elapsed, tick, frame, arena, pool) {
-  const g = S.gens.get(gen);
-  const ctx = g.startupCtx;
-  fillCtx(ctx, dt, elapsed, tick, frame, arena, pool, g.kinds);
-  try {
-    g.startupFns[index](ctx);
-  } finally {
-    S.calling = null;
-  }
-  const [len, over, used] = ctx.commands.end();
-  return [len, over, used, []];
+  for (const w of b.ctx.writers) w.flush();
+  const [len, over, used] = b.ctx.commands.end();
+  return [len, over, used, b.marks, !!(b.ctx.on && b.ctx.on.stopped)];
 }
 
 function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {
@@ -991,10 +1943,13 @@ function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {
   const fn = g && g.entryFns.get(name);
   if (!fn) throw new Error(`no entry named ${name}`);
   const ctx = makeCtx();
-  fillCtx(ctx, dt, elapsed, tick, frame, arena, pool, g.kinds);
+  ctx.commands.begin(arena, pool, g.res.commandKinds, g.res);
+  // Entries keep the bridge's context shape: `ctx.commands` plus the frame numbers.
+  const entryCtx = { commands: ctx.commands, dt, elapsed, tick, frame };
+  S.calling = entryCtx;
   let out;
   try {
-    out = fn(new Uint8Array(payload), ctx);
+    out = fn(new Uint8Array(payload), entryCtx);
   } finally {
     S.calling = null;
   }
@@ -1005,7 +1960,7 @@ function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {
   return [out.slice(), len, over, used];
 }
 
-globalThis.__bevyts = { begin, end, abort, commit, discard, runSystem, runStartup, callEntry };
+globalThis.__bevyts = { begin, end, abort, commit, discard, runSystem, callEntry, bind: bindModule, declare: declareFn };
 
 // A binding that changed outside the tsx host call (a signal a system set) asks Rust for one
 // through the running call's commands.
@@ -1021,8 +1976,3 @@ setHost({
     }
   },
 });
-
-/** Decodes UTF-8 bytes, for entries that take text or JSON payloads. */
-export function text(bytes) {
-  return decoder.decode(bytes);
-}

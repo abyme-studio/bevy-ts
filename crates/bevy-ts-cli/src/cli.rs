@@ -19,6 +19,7 @@ const USAGE: &str = "usage:
   bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]
   bevy-ts build [<project dir>]
   bevy-ts types [--out <file>]
+  bevy-ts transform <file.ts> [--dev]
   bevy-ts skeleton [--headless]
   bevy-ts levels check [--upstream] <file.bsn>…";
 
@@ -109,6 +110,21 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
         Some("levels") if args.get(1).map(String::as_str) == Some("check") => {
             std::process::exit(bevy_ts_levels::check::run(&args[2..]))
         }
+        Some("transform") => match args.get(1) {
+            Some(file) => match crate::compile::transform(std::path::Path::new(file), args.iter().any(|a| a == "--dev")) {
+                Ok(code) => print!("{code}"),
+                Err(errors) => {
+                    for e in errors {
+                        eprintln!("{e}");
+                    }
+                    std::process::exit(1);
+                }
+            },
+            None => {
+                eprintln!("{USAGE}");
+                std::process::exit(2);
+            }
+        },
         Some("skeleton") => skeleton(&engine, extra, args.iter().any(|a| a == "--headless")),
         _ => {
             eprintln!("{USAGE}");
@@ -194,19 +210,27 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     app.run();
 }
 
+/// Plain JS, so it writes the declarations the compile step would otherwise append.
 const SKELETON_JS: &str = r#"
-import { app } from "bevy-ts";
-import { Transform, Mesh3d } from "bevy-ts/bevy";
+import { app, Time, Transform, Update } from "bevy-ts";
+import { Mesh3d } from "bevy-ts/bevy";
 
-app.system("bob", {
-  stage: "update",
-  write: [Transform],
-  with: [Mesh3d],
-  run(q, ctx) {
-    q.each((e, t) => {
-      t.translation.y = Math.sin(ctx.elapsed * 2) * 1.5;
-    });
-  },
+export function bob(time, q) {
+  q.each((t) => {
+    t.translation.y = Math.sin(time.elapsed * 2) * 1.5;
+  });
+}
+
+app.addSystems(Update, bob);
+
+__bevyts.bind("skeleton.js", { Time: () => Time, Transform: () => Transform, Mesh3d: () => Mesh3d });
+__bevyts.declare(bob, {
+  id: "skeleton.js#bob",
+  kind: "system",
+  params: [
+    { kind: "res", resource: ["skeleton.js", "Time"] },
+    { kind: "query", data: [{ component: ["skeleton.js", "Transform"], mut: true }], filter: [{ with: ["skeleton.js", "Mesh3d"] }] },
+  ],
 });
 "#;
 

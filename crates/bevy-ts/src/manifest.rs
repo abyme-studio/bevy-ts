@@ -86,27 +86,211 @@ pub enum ComponentSource {
     Rust,
 }
 
+/// What a query param fetches per row.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DataDecl {
+    Entity { entity: bool },
+    Component {
+        component: ComponentRef,
+        #[serde(default)]
+        mutable: bool,
+        #[serde(default)]
+        optional: bool,
+    },
+}
+
+/// A query filter.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FilterDecl {
+    With(ComponentRef),
+    Without(ComponentRef),
+    Changed(ComponentRef),
+    Added(ComponentRef),
+}
+
+/// A lifecycle event an observer can take.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Lifecycle {
+    Add,
+    Insert,
+    Remove,
+}
+
+/// One system parameter, as the compile step (or a setup closure) declared it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ParamDecl {
+    Query {
+        data: Vec<DataDecl>,
+        #[serde(default)]
+        filter: Vec<FilterDecl>,
+    },
+    Res {
+        resource: String,
+    },
+    ResMut {
+        resource: String,
+    },
+    Local {
+        fields: Vec<FieldDecl>,
+    },
+    Commands,
+    MessageReader {
+        message: String,
+    },
+    MessageWriter {
+        message: String,
+    },
+    State {
+        state: String,
+    },
+    NextState {
+        state: String,
+    },
+    /// An observer's trigger: an event by name, or a lifecycle event of a component.
+    On {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        event: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lifecycle: Option<Lifecycle>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        component: Option<ComponentRef>,
+    },
+    /// A param bundle: an object whose properties are params.
+    Bundle {
+        fields: Vec<BundleField>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BundleField {
+    pub name: String,
+    pub param: ParamDecl,
+}
+
+/// Where a system runs.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ScheduleDecl {
+    Startup,
+    Stage { stage: Stage },
+    OnEnter { state: String, value: String },
+    OnExit { state: String, value: String },
+    Observer,
+}
+
+/// A run condition, evaluated in Rust.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ConditionDecl {
+    InState { state: String, value: String },
+    ResourceExists { resource: String },
+    OnMessage { message: String },
+    Not { condition: Box<ConditionDecl> },
+    All { conditions: Vec<ConditionDecl> },
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SystemDecl {
+    /// The system's identity, `<module path>#<export>`.
     pub name: String,
-    pub stage: Stage,
+    pub schedule: ScheduleDecl,
     #[serde(default)]
-    pub read: Vec<ComponentRef>,
-    #[serde(default)]
-    pub write: Vec<ComponentRef>,
-    #[serde(default)]
-    pub with: Vec<ComponentRef>,
-    #[serde(default)]
-    pub without: Vec<ComponentRef>,
+    pub params: Vec<ParamDecl>,
+    /// Systems (by identity) or sets this one runs after.
     #[serde(default)]
     pub after: Vec<String>,
+    #[serde(default)]
+    pub before: Vec<String>,
+    #[serde(default)]
+    pub sets: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<ConditionDecl>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SourceLocation>,
 }
 
+impl SystemDecl {
+    /// Every query param, bundles included, in order.
+    pub fn queries(&self) -> Vec<(&Vec<DataDecl>, &Vec<FilterDecl>)> {
+        fn walk<'a>(p: &'a ParamDecl, out: &mut Vec<(&'a Vec<DataDecl>, &'a Vec<FilterDecl>)>) {
+            match p {
+                ParamDecl::Query { data, filter } => out.push((data, filter)),
+                ParamDecl::Bundle { fields } => fields.iter().for_each(|f| walk(&f.param, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        self.params.iter().for_each(|p| walk(p, &mut out));
+        out
+    }
+
+    /// Components the system reads and writes, as the union over its queries: a component is
+    /// written when any query names it `Mut`.
+    pub fn access(&self) -> (Vec<String>, Vec<String>) {
+        let mut read = Vec::new();
+        let mut write = Vec::new();
+        for (data, _) in self.queries() {
+            for d in data {
+                if let DataDecl::Component { component, mutable, .. } = d {
+                    let list = if *mutable { &mut write } else { &mut read };
+                    if !list.contains(&component.name) {
+                        list.push(component.name.clone());
+                    }
+                }
+            }
+        }
+        read.retain(|r| !write.contains(r));
+        (read, write)
+    }
+}
+
+/// A TS resource: a layout, and the value `insertResource` gave, if any.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct StartupDecl {
+pub struct ResourceDecl {
     pub name: String,
+    pub fields: Vec<FieldDecl>,
+    /// Field values to insert with when the resource does not exist yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert: Option<serde_json::Map<String, serde_json::Value>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<SourceLocation>,
+}
+
+/// A message or event type: a layout.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PayloadDecl {
+    pub name: String,
+    pub fields: Vec<FieldDecl>,
+    /// Events only: an entity event, and whether it bubbles up `ChildOf`.
+    #[serde(default)]
+    pub entity: bool,
+    #[serde(default)]
+    pub propagate: bool,
+    /// Messages only: `app.addMessage` was called for it.
+    #[serde(default)]
+    pub added: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<SourceLocation>,
+}
+
+impl PayloadDecl {
+    pub fn layout(&self) -> ComponentLayout {
+        ComponentLayout::c_layout(self.fields.iter().map(|f| (f.name.as_str(), &f.ty)))
+    }
+}
+
+/// A TS state machine.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StateDecl {
+    pub name: String,
+    pub values: Vec<String>,
+    /// The value `initState` gave.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SourceLocation>,
 }
@@ -126,7 +310,13 @@ pub struct Manifest {
     #[serde(default)]
     pub systems: Vec<SystemDecl>,
     #[serde(default)]
-    pub startups: Vec<StartupDecl>,
+    pub resources: Vec<ResourceDecl>,
+    #[serde(default)]
+    pub messages: Vec<PayloadDecl>,
+    #[serde(default)]
+    pub events: Vec<PayloadDecl>,
+    #[serde(default)]
+    pub states: Vec<StateDecl>,
     #[serde(default)]
     pub entries: Vec<EntryDecl>,
     /// Command kinds the generation's code appends, by name, so Rust can check them up front.
@@ -165,4 +355,18 @@ pub struct Resolution {
     pub components: BTreeMap<String, ResolvedComponent>,
     #[serde(rename = "commandKinds")]
     pub command_kinds: BTreeMap<String, u16>,
+    /// Message and event types by name: their index in ops, and their layout.
+    #[serde(default)]
+    pub messages: BTreeMap<String, ResolvedPayload>,
+    #[serde(default)]
+    pub events: BTreeMap<String, ResolvedPayload>,
+    /// State machines by name: their index in ops.
+    #[serde(default)]
+    pub states: BTreeMap<String, u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ResolvedPayload {
+    pub index: u32,
+    pub layout: ComponentLayout,
 }

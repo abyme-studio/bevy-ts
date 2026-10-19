@@ -1,14 +1,14 @@
 //! Generations: loading a compiled module set, checking it whole, and applying it at a frame
 //! boundary, or keeping the previous one when anything fails.
 
-use crate::backend::{CallContext, Generation, ModuleSet, ScriptError, ScriptKey};
+use crate::backend::{Generation, ModuleSet, ScriptError};
 use crate::commands::{self, TsSpawned};
 use crate::components::{self, Migration, TsComponents};
 use crate::layout::NativeLayouts;
 use crate::log::{LogLevel, ScriptLog};
-use crate::manifest::{LoadedGeneration, ResolvedComponent, Resolution, StartupDecl};
+use crate::manifest::{LoadedGeneration, ResolvedComponent, ResolvedPayload, Resolution};
 use crate::plugin_api::{RestartHandlers, SectionHandlers, SectionInput};
-use crate::runtime::{RuntimeInfo, ScriptRuntime, frame_info};
+use crate::runtime::{RuntimeInfo, ScriptRuntime};
 use crate::systems::{self, TsSystems};
 use bevy::prelude::*;
 use serde::Serialize;
@@ -122,6 +122,8 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
             let _ = world.try_despawn(e);
         }
         world.resource_mut::<Generations>().startups_run.clear();
+        world.insert_resource(crate::memory::SystemMemory::default());
+        world.resource_mut::<crate::messages::TsPayloads>().reset();
         let handlers = world.resource::<RestartHandlers>().clone();
         for h in handlers.0.iter() {
             h(world);
@@ -137,7 +139,7 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
 
     let result = load_and_apply(world, &mut rt, number, set);
     let report = match result {
-        Ok((migrations, startups, sections)) => {
+        Ok((migrations, sections)) => {
             world.resource_mut::<Generations>().live = number;
             world.resource_mut::<RuntimeInfo>().generation = number;
             let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
@@ -165,7 +167,7 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
                 None,
                 number,
             );
-            run_startups(world, &mut rt, startups);
+            run_startups(world, &mut rt);
             ReloadReport {
                 seq: 0,
                 generation: number,
@@ -212,7 +214,18 @@ pub fn compile_failed(world: &mut World, errors: Vec<ScriptError>, took: Duratio
     })
 }
 
-type Applied = (Vec<Migration>, Vec<(ScriptKey, StartupDecl)>, Vec<crate::manifest::Section>);
+type Applied = (Vec<Migration>, Vec<crate::manifest::Section>);
+
+/// Resources are components on their own resource entity: one declaration list for both.
+fn component_decls(manifest: &crate::manifest::Manifest) -> Vec<crate::manifest::ComponentDecl> {
+    let mut all = manifest.components.clone();
+    all.extend(manifest.resources.iter().map(|r| crate::manifest::ComponentDecl {
+        name: r.name.clone(),
+        fields: r.fields.clone(),
+        location: r.location.clone(),
+    }));
+    all
+}
 
 fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: ModuleSet) -> Result<Applied, Vec<ScriptError>> {
     let LoadedGeneration { manifest, sections } = rt.backend.load(&Generation { number, set })?;
@@ -223,7 +236,8 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
     };
 
     // Declarations, checked whole before anything moves.
-    let mut errors = components::validate(&manifest.components, world.resource::<NativeLayouts>());
+    let decls = component_decls(&manifest);
+    let mut errors = components::validate(&decls, world.resource::<NativeLayouts>());
     let handlers = world.resource::<SectionHandlers>().clone();
     let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
     for s in &sections {
@@ -244,16 +258,38 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
         }
     }
     let mut seen = HashSet::new();
-    for s in &manifest.startups {
-        if !seen.insert(s.name.as_str()) {
-            errors.push(ScriptError::at(format!("startup {} is declared twice", s.name), s.location.clone()));
+    for p in manifest.messages.iter().chain(&manifest.events) {
+        if !seen.insert(p.name.as_str()) {
+            errors.push(ScriptError::at(format!("{} is declared twice", p.name), p.location.clone()));
+        }
+        for f in &p.fields {
+            if let Err(e) = f.ty.validate() {
+                errors.push(ScriptError::at(format!("{}.{}: {e}", p.name, f.name), p.location.clone()));
+            }
+        }
+    }
+    for st in &manifest.states {
+        if let Some(v) = &st.initial
+            && !st.values.contains(v)
+        {
+            errors.push(ScriptError::at(format!("{} has no value {v}", st.name), st.location.clone()));
         }
     }
     if !errors.is_empty() {
         return fail(rt, errors);
     }
 
-    let pending = components::prepare(world, &manifest.components);
+    // Payloads first (systems resolve message, event and state indices), kept aside so a failed
+    // generation leaves the old ones untouched.
+    let old_payloads = world.remove_resource::<crate::messages::TsPayloads>().unwrap_or_default();
+    let mut payloads = old_payloads.clone();
+    payloads.declare(&manifest.messages, &manifest.events, &manifest.states);
+    world.insert_resource(payloads);
+    let restore = |world: &mut World, old: crate::messages::TsPayloads| {
+        world.insert_resource(old);
+    };
+
+    let pending = components::prepare(world, &decls);
     let built = {
         let lookup = |name: &str| pending.lookup(name).map(|(id, l)| (id, l.size));
         systems::build(world, number, &manifest.systems, &lookup)
@@ -262,6 +298,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
         Ok(s) => s,
         Err(errors) => {
             components::abandon(world, pending);
+            restore(world, old_payloads);
             return fail(rt, errors);
         }
     };
@@ -272,6 +309,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
         let input = SectionInput { generation: number, bytes: &s.bytes, location: s.location.clone(), components: &pending };
         if let Err(errors) = handler(world, &input) {
             components::abandon(world, pending);
+            restore(world, old_payloads);
             return fail(rt, errors);
         }
     }
@@ -281,51 +319,96 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
         resolution.components.insert(name.to_string(), ResolvedComponent { id: id.index() as u32, layout: layout.clone() });
     }
     for n in world.resource::<NativeLayouts>().iter() {
-        resolution.components.insert(n.ts_name.clone(), ResolvedComponent { id: n.id.index() as u32, layout: n.layout.clone() });
+        let r = ResolvedComponent { id: n.id.index() as u32, layout: n.layout.clone() };
+        resolution.components.insert(n.type_path.clone(), r.clone());
+        resolution.components.insert(n.ts_name.clone(), r);
     }
+    resolution.components.insert(systems::TIME.into(), ResolvedComponent { id: u32::MAX, layout: systems::time_layout() });
     for (name, op) in kinds.all() {
         resolution.command_kinds.insert(name.to_string(), op);
     }
+    {
+        let p = world.resource::<crate::messages::TsPayloads>();
+        for (i, m) in p.messages.iter().enumerate() {
+            resolution.messages.insert(m.name.clone(), ResolvedPayload { index: i as u32, layout: m.layout.clone() });
+        }
+        for (i, e) in p.events.iter().enumerate() {
+            resolution.events.insert(e.name.clone(), ResolvedPayload { index: i as u32, layout: e.layout.clone() });
+        }
+        for (i, st) in p.states.iter().enumerate() {
+            resolution.states.insert(st.name.clone(), i as u32);
+        }
+    }
     if let Err(errors) = rt.backend.commit(number, &resolution) {
         components::abandon(world, pending);
+        restore(world, old_payloads);
         return fail(rt, errors);
     }
 
     // Nothing can fail from here.
     let migrations = components::commit(world, pending);
+    insert_resources(world, &manifest);
+    let watched = systems.watched_lifecycles();
     world.insert_resource(systems);
+    crate::observers::install(world, &watched);
     rt.entries = manifest.entries.iter().map(|e| e.name.clone()).collect();
-    let startups = manifest
-        .startups
-        .iter()
-        .enumerate()
-        .map(|(i, s)| (ScriptKey { generation: number, index: i as u32 }, s.clone()))
-        .collect();
-    Ok((migrations, startups, sections))
+    Ok((migrations, sections))
 }
 
-fn run_startups(world: &mut World, rt: &mut ScriptRuntime, startups: Vec<(ScriptKey, StartupDecl)>) {
-    for (key, decl) in startups {
-        if !world.resource_mut::<Generations>().startups_run.insert(decl.name.clone()) {
+/// Inserts each declared resource that does not exist yet, and points migrated resources'
+/// `IsResource` at their new component id.
+fn insert_resources(world: &mut World, manifest: &crate::manifest::Manifest) {
+    use bevy::ecs::resource::IsResource;
+    for r in &manifest.resources {
+        let Some(c) = world.resource::<TsComponents>().live(&r.name).cloned() else { continue };
+        // Only `app.insertResource` creates a resource; a declaration alone does not.
+        let declared_insert = r.insert.is_some();
+        if world.resource_entities().get(c.id).is_some() {
             continue;
         }
-        let tick = world.increment_change_tick();
-        let frame = frame_info(world, tick.get());
-        rt.fill_pool(world);
-        let mut scratch = std::mem::take(&mut rt.scratch);
-        scratch.arena_mut().resize(commands::ARENA_BYTES, 0);
-        let pool = std::mem::take(&mut rt.pool);
-        let result = {
-            let mut ctx = CallContext { frame, arena: scratch.arena_mut(), pool: &pool };
-            rt.backend.run_startup(key, &mut ctx)
+        // A migrated resource: its entity carries the new component, and `IsResource` of the old id.
+        let migrated = {
+            let mut q = world.query::<(Entity, &IsResource)>();
+            q.iter(world).find(|(e, _)| world.get_by_id(*e, c.id).is_some()).map(|(e, _)| e)
         };
-        rt.pool = pool;
-        match result {
-            Ok(out) => rt.apply_output(world, scratch.arena_mut(), out, &format!("startup {}", decl.name)),
-            Err(e) => rt.log_error(world, &format!("startup {} threw", decl.name), &e),
+        if let Some(e) = migrated {
+            world.entity_mut(e).insert(IsResource::new(c.id));
+            continue;
         }
-        rt.scratch = scratch;
+        if !declared_insert {
+            continue;
+        }
+        let values = r.insert.clone().unwrap_or_default();
+        let bytes = match crate::value::encode_component(&c.decl, &c.layout, &values) {
+            Ok(b) => b,
+            Err(e) => {
+                world.resource_mut::<ScriptLog>().push(LogLevel::Error, format!("insertResource {}: {e}", r.name), r.location.clone(), 0);
+                continue;
+            }
+        };
+        let mut e = world.spawn(IsResource::new(c.id));
+        // SAFETY: `c.id` is a TS component with `c.layout`; `bytes` has its size.
+        unsafe { commands::insert_bytes(&mut e, c.id, &bytes) };
     }
+}
+
+/// Runs `Startup` systems whose identity has not run in this world.
+fn run_startups(world: &mut World, rt: &mut ScriptRuntime) {
+    let Some(mut systems) = world.remove_resource::<TsSystems>() else { return };
+    let mut list = std::mem::take(&mut systems.startup);
+    let mut due = Vec::new();
+    let mut rest = Vec::new();
+    for s in list.drain(..) {
+        if world.resource_mut::<Generations>().startups_run.insert(s.decl.name.clone()) {
+            due.push(s);
+        } else {
+            rest.push(s);
+        }
+    }
+    systems::run_list(world, rt, &mut systems, &mut due);
+    rest.extend(due);
+    systems.startup = rest;
+    world.insert_resource(systems);
     rt.free_pool(world);
 }
 

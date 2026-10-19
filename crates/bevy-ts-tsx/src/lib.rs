@@ -167,7 +167,7 @@ fn warn_two_writers(world: &mut World, generation: u64) {
     let mut warnings = Vec::new();
     for s in world.resource::<bevy_ts::systems::TsSystems>().iter() {
         for ((component, prop), source) in &sites {
-            if s.decl.write.iter().any(|w| &w.name == component) {
+            if s.decl.access().1.iter().any(|w| w == component) {
                 warnings.push((format!("system {} writes {component}, whose {prop} is bound in TSX: a bound field has one writer, its binding", s.decl.name), source.clone()));
             }
         }

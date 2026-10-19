@@ -130,9 +130,6 @@ pub fn validate(decls: &[ComponentDecl], native: &NativeLayouts) -> Vec<ScriptEr
         if seen.insert(d.name.as_str(), ()).is_some() {
             errors.push(ScriptError::at(format!("component {} is declared twice", d.name), at.clone()));
         }
-        if d.fields.is_empty() {
-            errors.push(ScriptError::at(format!("component {} has no fields", d.name), at.clone()));
-        }
         let mut field_names = HashMap::new();
         for f in &d.fields {
             if field_names.insert(f.name.as_str(), ()).is_some() {

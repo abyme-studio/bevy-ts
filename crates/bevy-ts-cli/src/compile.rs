@@ -73,7 +73,7 @@ pub fn compile_module(path: &Path, source: &str, dev: bool, root: &Path) -> Resu
 
 /// Whether the engine's compiles append declarations. Off until `core.js` defines
 /// `__bevyts.bind`/`declare` (the runtime half of systems-api); `transform` always appends.
-pub const ENGINE_DECLARATIONS: bool = false;
+pub const ENGINE_DECLARATIONS: bool = true;
 
 fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool) -> Result<Compiled, Vec<ScriptError>> {
     let allocator = Allocator::default();

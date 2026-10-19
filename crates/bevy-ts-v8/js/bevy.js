@@ -1,12 +1,8 @@
 // `bevy-ts/bevy`: Rust components TS can name. Only those with a native layout registered in
-// Rust (`Transform`) can be read or written by TS systems; the rest work in `with`/`without`.
-import { nativeComponent, rustComponent, vec3, quat } from "bevy-ts";
+// Rust (`Transform`) can be query data; the rest work in `With`/`Without` filters.
+import { rustComponent } from "bevy-ts";
 
-export const Transform = nativeComponent("Transform", {
-  translation: vec3.default([0, 0, 0]),
-  rotation: quat.default([0, 0, 0, 1]),
-  scale: vec3.default([1, 1, 1]),
-});
+export { Time, Transform } from "bevy-ts";
 
 export const GlobalTransform = rustComponent("GlobalTransform");
 export const Name = rustComponent("Name");

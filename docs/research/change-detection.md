@@ -130,3 +130,9 @@ write-loop numbers above; the accessor form costs 20% over raw at 100k, mostly t
 property dispatch on the 3-lane vector sub-object, not the tick. A fixed cost of about 3 µs per
 run covers the call into V8 and the view setup. At 100k entities `bob` takes about 0.7 ms of a
 16.7 ms frame.
+
+The systems-api surface (2026-10-20, `bob(time: Res<Time>, q: Query<[Mover, Mut<Transform>]>)`) was
+benchmarked once under a load average of 56 on 18 cores (other agents compiling): 1,635 µs
+accessor, 1,267 µs raw, 1,264 µs raw + tick at 100k rows. Raw loops slowed as much as accessors,
+and hoisting `time.elapsed` changed nothing, so the run measures the machine, not the surface;
+the table above stands until `bench-bob` is rerun on a quiet machine.

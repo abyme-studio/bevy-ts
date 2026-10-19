@@ -14,7 +14,7 @@ compile_error!(
 mod loader;
 
 use bevy_ts::backend::{
-    CallContext, ConsoleMessage, Generation, RunOutput, ScriptBackend, ScriptError, ScriptKey, SourceLocation, SystemRun,
+    CallContext, ConsoleMessage, Generation, ParamFrame, RunOutput, ScriptBackend, ScriptError, ScriptKey, SourceLocation, SystemRun,
 };
 use bevy_ts::log::LogLevel;
 use bevy_ts::manifest::{LoadedGeneration, Manifest, Resolution, Section};
@@ -139,7 +139,6 @@ struct Fns {
     commit: v8::Global<v8::Function>,
     discard: v8::Global<v8::Function>,
     run_system: v8::Global<v8::Function>,
-    run_startup: v8::Global<v8::Function>,
     call_entry: v8::Global<v8::Function>,
 }
 
@@ -178,6 +177,73 @@ fn external<'s>(scope: &mut v8::PinScope<'s, '_>, ptr: *mut u8, len: usize) -> v
     v8::ArrayBuffer::with_backing_store(scope, &store.make_shared())
 }
 
+/// An `ArrayBuffer` over `len` bytes at `ptr`, or an empty one for a null or zero-length span.
+fn span<'s>(scope: &mut v8::PinScope<'s, '_>, buffers: &mut Vec<v8::Local<'s, v8::ArrayBuffer>>, ptr: *mut u8, len: usize) -> v8::Local<'s, v8::ArrayBuffer> {
+    if ptr.is_null() || len == 0 {
+        return v8::ArrayBuffer::new(scope, 0);
+    }
+    let ab = external(scope, ptr, len);
+    buffers.push(ab);
+    ab
+}
+
+/// One param's frame as the JS runtime reads it (see core.js `runSystem`).
+fn frame_value<'s>(s: &mut v8::PinScope<'s, '_>, buffers: &mut Vec<v8::Local<'s, v8::ArrayBuffer>>, p: &ParamFrame) -> v8::Local<'s, v8::Value> {
+    match p {
+        ParamFrame::Query { tables } => {
+            let arr = v8::Array::new(s, tables.len() as i32);
+            for (i, t) in tables.iter().enumerate() {
+                let ents = span(s, buffers, t.entities as *mut u8, t.len * 8);
+                let ents = v8::Uint32Array::new(s, ents, 0, if ents.byte_length() == 0 { 0 } else { t.len * 2 }).unwrap();
+                let cols = v8::Array::new(s, t.columns.len() as i32);
+                let ticks = v8::Array::new(s, t.columns.len() as i32);
+                for (c, col) in t.columns.iter().enumerate() {
+                    let data: v8::Local<v8::Value> =
+                        if col.data.is_null() { v8::null(s).into() } else { span(s, buffers, col.data, col.bytes).into() };
+                    cols.set_index(s, c as u32, data);
+                    let tv: v8::Local<v8::Value> = match col.ticks {
+                        Some(p) => span(s, buffers, p as *mut u8, t.len * 4).into(),
+                        None => v8::null(s).into(),
+                    };
+                    ticks.set_index(s, c as u32, tv);
+                }
+                let rows: v8::Local<v8::Value> = match t.rows {
+                    Some((ptr, n)) => {
+                        let ab = span(s, buffers, ptr as *mut u8, n * 4);
+                        v8::Uint32Array::new(s, ab, 0, if ab.byte_length() == 0 { 0 } else { n }).unwrap().into()
+                    }
+                    None => v8::null(s).into(),
+                };
+                let len = num(s, t.len as f64);
+                let tuple = v8::Array::new_with_elements(s, &[len, ents.into(), cols.into(), ticks.into(), rows]);
+                arr.set_index(s, i as u32, tuple.into());
+            }
+            arr.into()
+        }
+        ParamFrame::Row { data, bytes, ticks } => {
+            let d = span(s, buffers, *data, *bytes);
+            let t: v8::Local<v8::Value> = match ticks {
+                Some(p) => span(s, buffers, *p as *mut u8, 4).into(),
+                None => v8::null(s).into(),
+            };
+            v8::Array::new_with_elements(s, &[d.into(), t]).into()
+        }
+        ParamFrame::Messages { parts, stride } => {
+            let a = span(s, buffers, parts[0].0 as *mut u8, parts[0].1 * stride);
+            let b = span(s, buffers, parts[1].0 as *mut u8, parts[1].1 * stride);
+            let (na, nb, st) = (num(s, parts[0].1 as f64), num(s, parts[1].1 as f64), num(s, *stride as f64));
+            v8::Array::new_with_elements(s, &[a.into(), na, b.into(), nb, st]).into()
+        }
+        ParamFrame::State { value } => num(s, if *value == u32::MAX { -1.0 } else { *value as f64 }),
+        ParamFrame::Event { data, bytes, entity } => {
+            let d = span(s, buffers, *data as *mut u8, *bytes);
+            let e = num(s, *entity as f64);
+            v8::Array::new_with_elements(s, &[d.into(), e]).into()
+        }
+        ParamFrame::None => v8::null(s).into(),
+    }
+}
+
 fn get_fn(scope: &mut v8::PinScope, host: v8::Local<v8::Object>, name: &str) -> v8::Global<v8::Function> {
     let key = v8::String::new(scope, name).unwrap();
     let f = host.get(scope, key.into()).unwrap();
@@ -208,15 +274,15 @@ fn read_output<'s>(scope: &mut v8::PinScope<'s, '_>, v: v8::Local<'s, v8::Value>
         && let Ok(marks) = v8::Local::<v8::Array>::try_from(arr.get_index(scope, offset + 3).unwrap())
     {
         let n = marks.length();
+        let at = |scope: &mut v8::PinScope, i: u32| marks.get_index(scope, i).unwrap().number_value(scope).unwrap_or(0.0) as u32;
         let mut i = 0;
-        while i + 1 < n {
-            let t = marks.get_index(scope, i).unwrap().number_value(scope).unwrap_or(0.0) as u32;
-            let c = marks.get_index(scope, i + 1).unwrap().number_value(scope).unwrap_or(0.0) as u32;
-            write_marks.push((t, c));
-            i += 2;
+        while i + 2 < n {
+            write_marks.push((at(scope, i), at(scope, i + 1), at(scope, i + 2)));
+            i += 3;
         }
     }
-    RunOutput { arena_len, overflow, pool_used, write_marks }
+    let stop_propagation = arr.length() > 4 + offset && arr.get_index(scope, offset + 4).unwrap().is_true();
+    RunOutput { arena_len, overflow, pool_used, write_marks, stop_propagation }
 }
 
 impl V8Backend {
@@ -268,7 +334,6 @@ impl V8Backend {
                 commit: get_fn(scope, host, "commit"),
                 discard: get_fn(scope, host, "discard"),
                 run_system: get_fn(scope, host, "runSystem"),
-                run_startup: get_fn(scope, host, "runStartup"),
                 call_entry: get_fn(scope, host, "callEntry"),
             }
         };
@@ -420,63 +485,18 @@ impl ScriptBackend for V8Backend {
     fn run_system(&mut self, key: ScriptKey, run: &mut SystemRun<'_>) -> Result<RunOutput, ScriptError> {
         self.fill_pool(run.ctx.pool);
         let mut pool = std::mem::take(&mut self.pool_f64);
-        let tables = run.tables;
+        let params = run.params;
         let ctx = &mut run.ctx;
         let result = self.call(
             |f| &f.run_system,
             |s, buffers| {
-                let arr = v8::Array::new(s, tables.len() as i32);
-                for (i, t) in tables.iter().enumerate() {
-                    let ents = external(s, t.entities as *mut u8, t.len * 8);
-                    buffers.push(ents);
-                    let ents = v8::Uint32Array::new(s, ents, 0, t.len * 2).unwrap();
-                    let cols = v8::Array::new(s, t.columns.len() as i32);
-                    let ticks = v8::Array::new(s, t.columns.len() as i32);
-                    for (c, col) in t.columns.iter().enumerate() {
-                        let data = external(s, col.data, col.bytes);
-                        buffers.push(data);
-                        cols.set_index(s, c as u32, data.into());
-                        let tv: v8::Local<v8::Value> = match col.ticks {
-                            Some(p) => {
-                                let ab = external(s, p as *mut u8, t.len * 4);
-                                buffers.push(ab);
-                                ab.into()
-                            }
-                            None => v8::null(s).into(),
-                        };
-                        ticks.set_index(s, c as u32, tv);
-                    }
-                    let len = num(s, t.len as f64);
-                    let tuple = v8::Array::new_with_elements(s, &[len, ents.into(), cols.into(), ticks.into()]);
-                    arr.set_index(s, i as u32, tuple.into());
+                let frames = v8::Array::new(s, params.len() as i32);
+                for (i, p) in params.iter().enumerate() {
+                    let v = frame_value(s, buffers, p);
+                    frames.set_index(s, i as u32, v);
                 }
                 let [dt, el, tick, frame, arena, pool_ab] = Self::ctx_args(s, buffers, ctx, &mut pool);
-                vec![
-                    num(s, key.generation as f64),
-                    num(s, key.index as f64),
-                    dt,
-                    el,
-                    tick,
-                    frame,
-                    arr.into(),
-                    arena,
-                    pool_ab,
-                ]
-            },
-            |s, v| read_output(s, v, 0),
-        );
-        self.pool_f64 = pool;
-        result.map_err(|e| self.relocate(e))
-    }
-
-    fn run_startup(&mut self, key: ScriptKey, ctx: &mut CallContext<'_>) -> Result<RunOutput, ScriptError> {
-        self.fill_pool(ctx.pool);
-        let mut pool = std::mem::take(&mut self.pool_f64);
-        let result = self.call(
-            |f| &f.run_startup,
-            |s, buffers| {
-                let [dt, el, tick, frame, arena, pool_ab] = Self::ctx_args(s, buffers, ctx, &mut pool);
-                vec![num(s, key.generation as f64), num(s, key.index as f64), dt, el, tick, frame, arena, pool_ab]
+                vec![num(s, key.generation as f64), num(s, key.index as f64), dt, el, tick, frame, frames.into(), arena, pool_ab]
             },
             |s, v| read_output(s, v, 0),
         );
@@ -574,7 +594,9 @@ fn relocate_manifest(m: &mut Manifest) {
     };
     m.components.iter_mut().for_each(|c| fix(&mut c.location));
     m.systems.iter_mut().for_each(|c| fix(&mut c.location));
-    m.startups.iter_mut().for_each(|c| fix(&mut c.location));
+    m.resources.iter_mut().for_each(|c| fix(&mut c.location));
+    m.messages.iter_mut().chain(m.events.iter_mut()).for_each(|c| fix(&mut c.location));
+    m.states.iter_mut().for_each(|c| fix(&mut c.location));
     m.entries.iter_mut().for_each(|c| fix(&mut c.location));
 }
 
