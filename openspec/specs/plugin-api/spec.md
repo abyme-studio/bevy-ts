@@ -39,7 +39,7 @@ A plugin SHALL be able to call a named JS entry registered by the current genera
 - **THEN** the plugin gets an error with the TS location, and no entity is spawned
 
 ### Requirement: Plugin command kinds
-A plugin SHALL be able to register a command opcode with a decoder. JS SHALL be able to append that plugin's ops to `ctx.commands` in a system run or an entry call through the `bevy-ts` module. Plugin ops SHALL be applied in order with the built-in commands of the same buffer, with `&mut World`. An unregistered opcode SHALL fail that run's commands with an error naming it.
+A plugin SHALL be able to register a command opcode with a decoder. JS SHALL be able to append that plugin's ops to a system's `Commands` param in a system run or an entry call through the `bevy-ts` module. Plugin ops SHALL be applied in order with the built-in commands of the same buffer, with `&mut World`. An unregistered opcode SHALL fail that run's commands with an error naming it.
 
 #### Scenario: Mixed ops keep order
 - **WHEN** a system queues `spawn`, then a plugin op that targets the spawned entity, then `despawn` of another entity
@@ -53,7 +53,7 @@ A plugin SHALL be able to look up a live TS component's `ComponentId` and layout
 - **THEN** it gets 8 bytes holding 50.0 and 100.0
 
 ### Requirement: Reflected Rust components for plugins
-A plugin SHALL be able to read the change ticks of any component by `ComponentId`, and to read and write a reflected Rust component (one with `ReflectComponent`, such as `Text` or `Node`) on an entity as JSON through Bevy reflection, by type path. This is the slow path for components without a native layout; TS systems still reject them in `read`/`write`.
+A plugin SHALL be able to read the change ticks of any component by `ComponentId`, and to read and write a reflected Rust component (one with `ReflectComponent`, such as `Text` or `Node`) on an entity as JSON through Bevy reflection, by type path. This is the slow path for components without a native layout; TS systems still reject them as query data.
 
 #### Scenario: Watching Text without a native layout
 - **WHEN** a plugin checks the change tick of an entity's `Text` each frame and reads it as JSON only when the tick moved

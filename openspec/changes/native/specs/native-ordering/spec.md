@@ -11,7 +11,7 @@ The native crate SHALL be able to expose a Bevy system set to TS with `app.ts_se
 For each exposed set, the engine SHALL add, at app build time, two exclusive bevy-ts stage systems in that set's schedule: one ordered before the set and one after it. TS systems SHALL be placed into slots by their `before`/`after` declarations and run there in declaration order, exactly as in a bridge stage. A slot with no TS systems in the current generation SHALL be skipped by a run condition. A TS reload SHALL move systems between slots without changing any Bevy schedule.
 
 #### Scenario: A TS system after physics
-- **WHEN** a TS system declares `{ after: ["physics:step"], read: [Transform], write: [Thrust] }`
+- **WHEN** a TS system `thrust(q: Query<[Transform, Mut<Thrust>]>)` is registered as `systems(thrust).after(systemSet("physics:step"))`
 - **THEN** each fixed step it runs after avian's step set and sees the positions avian wrote in that step
 
 #### Scenario: A reload moves a system
@@ -22,7 +22,7 @@ For each exposed set, the engine SHALL add, at app build time, two exclusive bev
 A TS system SHALL name at most one exposed set across `before` and `after`, and its `stage`, if given, SHALL match that set's schedule; otherwise the generation SHALL fail with an error naming the system and the set. `after` and `before` between TS systems SHALL apply only within one slot or stage; naming a TS system in another slot SHALL fail the load.
 
 #### Scenario: Conflicting placement
-- **WHEN** a system declares `stage: "update"` and `after: ["physics:step"]`, which lives in `FixedPostUpdate`
+- **WHEN** a system is registered in `Update` with `.after(systemSet("physics:step"))`, which lives in `FixedPostUpdate`
 - **THEN** the generation fails with an error naming the system, `physics:step` and both schedules
 
 ### Requirement: Rust orders against TS through sets only

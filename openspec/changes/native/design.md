@@ -41,7 +41,7 @@ A class stays Rust when TS on one main-thread isolate cannot do it at the cost t
 
 | Class | Why not TS | Where it lives | What TS gets |
 |---|---|---|---|
-| Physics, solvers, collision | Broadphase trees, contact graphs and islands are pointer-heavy heap structures, not columns; solvers want SIMD and threads | A third-party plugin (avian, rapier) in the native crate | Layout-tier components it reads (velocities, forces); slots `after: ["physics:step"]`; batched native functions for raycasts and shape casts |
+| Physics, solvers, collision | Broadphase trees, contact graphs and islands are pointer-heavy heap structures, not columns; solvers want SIMD and threads | A third-party plugin (avian, rapier) in the native crate | Layout-tier components it reads (velocities, forces); slots `systems(s).after(PhysicsSet.StepSimulation)`; batched native functions for raycasts and shape casts |
 | Particles | Simulated on the GPU (bevy_hanabi) or in parallel CPU systems | Native crate | Spawner settings as layout-tier components; effect assets by path |
 | Spatial queries at scale (neighbours, navmesh, pathfinding) | The index is a heap structure; per-entity queries from JS would cross per call | Native crate, as a resource | Batched native functions, one call per batch |
 | Render-world work: render-graph systems, passes, compute, readback, custom draw | Runs in the render sub-app on the render thread, with no JS and no main-world access | Native crate | Settings as layout-tier components on cameras or entities, extracted by Rust; materials are the exception below |

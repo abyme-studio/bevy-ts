@@ -20,10 +20,10 @@ Any registered component with `ReflectComponent` and no native layout SHALL be v
 
 #### Scenario: A component holding a Handle
 - **WHEN** the native crate registers `struct Weapon { mesh: Handle<Mesh>, name: String }` with `Reflect`
-- **THEN** `<Weapon name="laser" />` type-checks in TSX, and a TS system with `read: [Weapon]` fails to load with an error naming `Weapon` and saying it has no native layout
+- **THEN** `<Weapon name="laser" />` type-checks in TSX, and a TS system with `Query<[Weapon]>` fails to load with an error naming `Weapon` and saying it has no native layout
 
 #### Scenario: Filtering by a reflect-tier component
-- **WHEN** a TS system declares `with: [Weapon]` and `write: [Transform]`
+- **WHEN** a TS system queries `Query<[Mut<Transform>], With<Weapon>>`
 - **THEN** it runs over entities that carry `Weapon`, without access to `Weapon`'s data
 
 ### Requirement: TS types are generated from the engine's type registry
@@ -42,4 +42,4 @@ A component with heap or shared data (`String`, `Vec`, `Handle<T>`, `Box<dyn T>`
 
 #### Scenario: Entity references from TS
 - **WHEN** a layout-tier component has a field `target: Entity`
-- **THEN** a TS system reads it as an entity reference it can pass to `ctx.commands`, and writing an invalid id is rejected when Rust applies a command that uses it
+- **THEN** a TS system reads it as an entity reference it can pass to its `Commands` param, and writing an invalid id is rejected when Rust applies a command that uses it

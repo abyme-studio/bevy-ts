@@ -1,7 +1,7 @@
-// TSX types for the proposed surface. Types only.
-import type { Child, Commands, Element, Entity, NodeRef, Ref, Schema } from "./mod.ts";
+// TSX types for the ruled surface. Types only.
+import type { Child, Commands, Element, Entity, Field, NodeRef, ReadonlyVec3, Schema } from "./mod.ts";
 
-type Handler<S extends Schema = {}> = (event: Ref<S>, ctx: { entity: Entity; commands: Commands }) => void;
+type Handler = (ctx: { entity: Entity; commands: Commands }) => void;
 type Bindable<T> = T | (() => T);
 
 interface EntityProps {
@@ -9,13 +9,11 @@ interface EntityProps {
   name?: string;
   ref?: NodeRef;
   children?: Child;
-  // Entity-local observers (Bevy 0.20 `on(...)` in BSN, `observe` on an entity).
-  onPointerClick?: Handler<{ x: Field32; y: Field32 }>;
+  // Entity-local observers (Bevy 0.20 `on(...)` in BSN).
+  onPointerClick?: Handler;
   onPointerOver?: Handler;
   onPointerOut?: Handler;
 }
-type Field32 = import("./mod.ts").Field<"f32">;
-
 interface NodeProps extends EntityProps {
   style?: Record<string, string | number>;
   background?: Bindable<string>;
@@ -30,10 +28,25 @@ interface MeshProps {
   color?: Bindable<string>;
 }
 
+type PropValue<F> =
+  F extends Field<"vec2" | "vec3"> ? readonly [number, number, number] | ReadonlyVec3
+  : F extends Field<"bool"> ? boolean
+  : F extends Field<"enum", infer E> ? E
+  : F extends Field<"entity"> ? Entity
+  : number;
+/** A component tag's props: each field controlled (`hp`), initial (`initialHp`) or bound (`hp={() => ...}`). */
+type ComponentProps<S> =
+  & { [K in keyof S]?: PropValue<S[K]> | (() => PropValue<S[K]>) }
+  & { [K in keyof S & string as `initial${Capitalize<K>}`]?: PropValue<S[K]> };
+
 export declare namespace JSX {
   type Element = import("./mod.ts").Element;
+  interface ElementClass {}
+  interface ElementAttributesProperty {}
   interface ElementChildrenAttribute { children: {} }
   interface IntrinsicAttributes { key?: string }
+  /** A component class used as a tag takes its fields as props. */
+  type LibraryManagedAttributes<C, P> = C extends { readonly schema: infer S extends Schema } ? ComponentProps<S> : P;
   interface IntrinsicElements {
     entity: EntityProps;
     node: NodeProps;

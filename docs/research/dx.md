@@ -1,34 +1,107 @@
 # TS developer experience against Bevy's own, and adopting Rust Bevy plugins
 
-1. **Surface:** a Bevy-shaped API in the setup form. `system(() => { const q = query(Enemy, Mut(Transform)).with(Alive); return () => { ... } })` declares once at load and runs the body every frame. It is registered with `app.addSystems(Update, s.after(x).runIf(inState(...)))`, alongside `plugin(app => ...)`, `observer(On(E), ...)`, resources, messages, states and `local`. Systems are identified by `module#export`. Access comes from `Mut(...)` and is checked by `tsc`. `q.each` is the hot loop. There is no ParamSet, and there are no hooks in systems or in TSX: a binding reads `ref.get(C)`.
-2. **Plugins:** take layouts from reflection, not from `repr(C)`. Any reflected component whose leaves are plain data becomes a zero-copy column with no generated code, Rapier's `Velocity` included. Adopting a plugin is one line in `bevy-ts.json`. bevy-ts publishes thin curated ports only for what reflection cannot reach: Rapier now, and leafwing, avian and hanabi once they are on Bevy 0.20.
+1. **Surface (ruled 2026-10-20):** systems are plain exported functions whose parameter types say what they use, as in Rust: `export function chase(time: Res<Time>, enemies: Query<[Enemy, Mut<Transform>], With<Alive>>) { ... }`. A syntax-only pass in bevy-ts's oxc compile step reads the annotations. A system whose param types are computed uses the setup closure instead. Around that:
+   - Components, resources, messages, events and states are one class each: `class Enemy extends Component("game::Enemy", { speed: f32 }) {}`.
+   - Systems register Bevy's way: `app.addSystems(Update, chain(a, b).runIf(inState(Game.Playing)))`. Observers are functions whose first parameter is `On<E>`; plugins are functions of `app`.
+   - Systems are identified by `module#export`. Access comes from `Mut<...>` and is checked by `tsc`. `q.each` is the hot loop. There is no ParamSet.
+   - Not yet ruled: no hooks in TSX (a binding reads `ref.get(C)`).
+2. **Plugins (not yet ruled):** take layouts from reflection, not from `repr(C)`. Any reflected component whose leaves are plain data becomes a zero-copy column with no generated code, Rapier's `Velocity` included. Adopting a plugin is one line in `bevy-ts.json`. bevy-ts publishes thin curated ports only for what reflection cannot reach: Rapier now, and leafwing, avian and hanabi once they are on Bevy 0.20.
 
 Researched and measured 2026-10-19 and 2026-10-20 on this Mac (Apple M5 Max, macOS 25.4; deno 2.9.7 with V8 15.0.245 and TypeScript 6.0.3; rustc 1.98). Bevy 0.20.0 source is from `~/dev/refs/bevy-0.20`. Plugin sources are from crates.io: `bevy_rapier3d` 0.37.0, `avian3d` 0.7.0, `bevy_hanabi` 0.19.0, `leafwing-input-manager` 0.22.0 and `bevy_tweening` 0.16.0.
 
 The evidence is in the repo:
 
 - `bench/dx/rust/`: every Rust snippet below, in one crate. `cargo check` passes against `bevy` 0.20 and `bevy_rapier3d` 0.37, so the Rust side is real Bevy, not remembered Bevy.
-- `bench/dx/`: the proposed API as types (`bevy-ts/mod.ts`, `jsx-runtime.ts`, `rapier.ts`) and every TS snippet below as real `.ts`/`.tsx` files. `deno check examples/*.ts examples/*.tsx` passes. Every `@ts-expect-error` in them fires.
+- `bench/dx/`: the ruled API as types (`bevy-ts/mod.ts`, `jsx-runtime.ts`, `rapier.ts`) and every TS snippet below as real `.ts`/`.tsx` files. `deno check examples/*.ts examples/*.tsx` passes. Every `@ts-expect-error` in them fires.
+- `bench/dx/read-annotations.ts`: the syntax-only reader. `deno run -A bench/dx/read-annotations.ts bench/dx/examples/systems.ts` prints what the engine would declare for each system.
 - `bench/dx/iter-forms.js`: iteration forms, with results in `bench/dx/results/`.
 - `bench/ports/`: the `offset_of!` and reflection proof against `bevy_rapier3d` 0.37. `cargo test` runs 5 tests and 4 `compile_fail` cases, and all pass. Output is in `bench/ports/results/cargo-test.txt`.
 
-## Why the setup form
+## How systems declare what they use (ruled 2026-10-20)
 
-A Rust system declares its parameters by type, and Bevy reads the types. TypeScript erases types before the code runs, so the declaration has to be a value. Three ways to write that value were weighed (2026-10-20):
+A Rust system declares its parameters by type, and Bevy reads the types. TypeScript erases types before the code runs, so something has to turn the annotations into data. The ruling: bevy-ts's oxc compile step reads them from syntax alone, and a system whose types it cannot read uses the setup closure.
 
-- **A params object:** `system({ time: Res(Time), enemies: Query(...) }, ({ time, enemies }) => ...)`. Every name is written twice. This was the first draft and read as more verbose than Rust.
-- **Positional:** `system(Res(Time), Query(...), (time, enemies) => ...)`. Each name is written once, but parameters are matched by order, and swapping two of the same kind is a bug `tsc` cannot always see.
-- **Setup closure (chosen):** `system(() => { const time = res(Time); ...; return () => { ... } })`. Each name is written once, next to what it means, as in a Rust signature. Nothing is matched by order. Scratch values such as `dir` have a home. Filters chain zod-style: `query(Enemy, Mut(Transform)).with(Alive).without(Player)`.
+### What the reader does
 
-The setup form has one rule: `query`, `res`, `local`, `reader`, `writer` and `commands` may only be called in a setup. A call in the per-frame body is a load error. It is a placement rule like React's hooks, but it is checked once at load and the setup never re-runs within a generation.
+It runs once per save on the watcher thread, beside oxc's type stripping, never per frame. For each exported function it reads the parameter annotations and attaches the declarations the engine needs:
 
-Beaten: reading declarations from type annotations with a compiler pass (Thyseus). It needs a pass in bevy-ts's oxc step, a type alias hides a query from it, and Thyseus has been unmaintained since 2024.
+```text
+chase:        [time = res(Time), player = query(Transform).with(Player),
+               enemies = query(Enemy, Mut(Transform)).with(Alive).without(Player)]
+regen:        [q = query(Entity, Mut(Health), Option(Enemy)).changed(Health)]
+spawnWave:    [commands = commands(), wave = local({ n: u32 })]
+onExplode:    [explode = on(Explode), q = query(Entity, Transform).with(Enemy), damage = messageWriter(Damage), ...]
+onHealthAdded:[add = on(Add(Health)), q = query(Mut(Health))]
+grounded:     [rapier = rapier.readContext(), player = query(Entity, Transform, Mut(Velocity)).with(Player)]
+```
+
+That is the reader's real output on `bench/dx/examples/`. What it follows by name, without a type checker:
+
+- inline param types;
+- type aliases, including generic aliases (`type Movers<T> = Query<[T, Mut<Transform>]>`);
+- param bundles, the way Rust's `#[derive(SystemParam)]` groups params: `interface Scoring { score: ResMut<Score>; time: Res<Time> }`;
+- imports across files;
+- param kinds that installed ports declare (`ReadRapierContext`).
+
+It refuses param types TypeScript has to compute (`ReturnType<...>`, `Pick<...>`, conditional types), with the file and line: `fallback.ts:10: ReturnType is not a system param type, an alias of one, or a param bundle`. Rust has no equivalent of those: its system params are always written-out types.
+
+### The fallback: a setup closure
+
+```ts
+export const drift = system(() => {
+  const q = query(Enemy, Mut(Transform)).with(Alive);   // runs once at load: declares
+  return () => q.each((enemy, t) => { t.translation.y += enemy.speed * 0.001; }); // every frame
+});
+```
+
+The declaring calls (`query`, `res`, `resMut`, `commands`) may only run in the outer function; a call in the per-frame body is a load error.
+
+### Outside the engine
+
+The reader only attaches declarations and leaves the body alone, so source maps and breakpoints are unaffected. Any other tool that strips types (Node, Deno, vitest, esbuild) would load a system with no declarations, so:
+
+- bevy-ts ships the same pass as a plugin for vitest, Vite and esbuild;
+- `addSystems` throws "compiled without bevy-ts" for a function without declarations. It never runs silently with none.
+
+### What was weighed, and why this one
+
+The forms considered, for the same system (all but the builder and class were type-checked):
+
+- **Params object:** `system({ time: Res(Time), enemies: Query(...) }, ({ time, enemies }) => ...)`. Every name is written twice.
+- **Positional:** `system(Res(Time), Query(...), (time, enemies) => ...)`. Matched by order, so swapping two of the same kind is a silent bug.
+- **Builder, zod/tRPC-style:** `system().res(Time).query(Enemy).run((time, enemies) => ...)`. Also matched by order.
+- **Setup closure:** names once, no order bugs, but a `return () =>` wrapper on every system. Kept as the fallback.
+- **Default params:** `system((time = res(Time), q = query(...)) => ...)`. Close to Rust, but the engine must call the body once at load to read the defaults. It runs until its first param use, which Rust never does.
+- **Class, becsy-style:** `class Chase extends System { q = this.query(...); run() { ... } }`. Needs `this.` everywhere.
+- **Type annotations (chosen):** the same shape as Rust.
+
+State of the art, checked against primary sources on 2026-10-20:
+
+- **No checker in the save loop.**
+  - Nobody who derives runtime behaviour from TS types keeps a type checker in a fast build loop.
+  - Thyseus, the one TS ECS that read system params from types, did it from syntax: it matched `Query` and `Res` by name.
+  - Deepkit avoids the checker on purpose ("instantiating a TypeChecker per file/transformer is incredible slow").
+  - oxc's own source says it has no type checker.
+- **TypeScript 7 offers no usable checker API yet.**
+  - 7.0 (the native Go compiler, 2026-07-08) shipped without an API. The new one is due in 7.1, which is still in dev builds.
+  - It runs as a separate server process, and in one test it was 34–44% slower than TS 6 on cold builds.
+  - Custom transformers aren't supported yet.
+  - The only checker routes today are TS 6, a dead line, or linking into the Go internals, as typia and oxc's type-aware linter do.
+- **No usable checker written in Rust:** stc is archived, ezno has stalled, and Biome only infers types for some lint rules.
+- **Others have moved toward values:**
+  - Angular moved dependency injection from constructor types to `inject()`; TS 5's standard decorators cannot emit parameter types.
+  - NestJS 12 added an explicit value-based `schema` option.
+  - becsy, the most complete live TS ECS, declares access with values.
+
+  That is why the setup closure stays as the fallback.
+
+A real type checker may come later as an optional lint, in CI or the editor, once TypeScript 7.1's API ships. It would never sit in the save loop.
 
 What stays longer than Rust is vector maths: `dir.subVectors(a, b)` where Rust writes `a - b`. No JS engine overloads operators.
 
 ## Side by side
 
-Rust Bevy 0.20 (from `bench/dx/rust/src/main.rs`, compiled) against proposed TS (from `bench/dx/examples/`, type-checked). Under each pair is one line on what the specs allow today.
+Rust Bevy 0.20 (from `bench/dx/rust/src/main.rs`, compiled) against the ruled TS (from `bench/dx/examples/`, type-checked). Under each pair is one line on what the specs allowed before the ruling.
 
 ### A system with two queries and a resource
 
@@ -46,24 +119,21 @@ fn chase(
 ```
 
 ```ts
-export const chase = system(() => {
-  const time = res(Time);
-  const player = query(Transform).with(Player);
-  const enemies = query(Enemy, Mut(Transform)).with(Alive).without(Player);
-  const dir = vec3(); // scratch, made once
-
-  return () => {
-    const [p] = player.single();
-    enemies.each((enemy, t) => {
-      dir.subVectors(p.translation, t.translation).normalize();
-      t.translation.addScaled(dir, enemy.speed * time.delta);
-      enemy.speed = 3; // tsc error: Enemy is read-only in this query
-    });
-  };
-});
+export function chase(
+  time: Res<Time>,
+  player: Query<[Transform], With<Player>>,
+  enemies: Query<[Enemy, Mut<Transform>], [With<Alive>, Without<Player>]>,
+) {
+  const [p] = player.single();
+  enemies.each((enemy, t) => {
+    dir.subVectors(p.translation, t.translation).normalize();
+    t.translation.addScaled(dir, enemy.speed * time.delta);
+    enemy.speed = 3; // tsc error: Enemy is read-only in this query
+  });
+}
 ```
 
-Today: one query per system (`app.system("chase", { stage, read, write, with, run })`) and no resources, so the player's position needs a second system and a component to carry it.
+Before: one query per system (`app.system("chase", { stage, read, write, with, run })`) and no resources, so the player's position needed a second system and a component to carry it.
 
 ### Two queries over the same component
 
@@ -81,18 +151,17 @@ fn separate(mut set: ParamSet<(Query<&mut Transform, With<Enemy>>, Query<(Entity
 
 ```ts
 // No ParamSet: the stage is exclusive and JS single-threaded, so both views alias one column.
-export const separate = system(() => {
-  const a = query(EntityId, Mut(Transform)).with(Enemy);
-  const b = query(EntityId, Transform).with(Enemy);
-  return () => {
-    a.each((ea, ta) => b.each((eb, tb) => {
-      if (ea !== eb && ta.translation.distance(tb.translation) < 1) ta.translation.y += 0.01;
-    }));
-  };
-});
+export function separate(
+  a: Query<[Entity, Mut<Transform>], With<Enemy>>,
+  b: Query<[Entity, Transform], With<Enemy>>,
+) {
+  a.each((ea, ta) => b.each((eb, tb) => {
+    if (ea !== eb && ta.translation.distance(tb.translation) < 1) ta.translation.y += 0.01;
+  }));
+}
 ```
 
-Today: not expressible (one query per system).
+Before: not expressible (one query per system).
 
 ### Ordering, run conditions, states
 
@@ -116,22 +185,21 @@ fn pause(mut next: ResMut<NextState<Game>>) {
 ```
 
 ```ts
-export const Game = states("game::Game", ["Menu", "Playing", "Paused"]);
+export class Game extends States("game::Game", ["Menu", "Playing", "Paused"]) {}
 export const EnemySet = systemSet("game::Enemies");
 
-app.initState(Game, Game.Menu)
+app.initState(Game.Menu)
   .addSystems(OnEnter(Game.Playing), spawnWave)
   .addSystems(Update,
     chain(spawnWave, chase, separate).inSet(EnemySet).runIf(inState(Game.Playing)),
-    applyDamage.after(EnemySet));
+    systems(applyDamage).after(EnemySet));
 
-export const pause = system(() => {
-  const next = nextState(Game);
-  return () => next.set(Game.Paused); // next.set("Paused") is a tsc error
-});
+export function pause(next: NextState<Game>) {
+  next.set(Game.Paused); // next.set("Paused") is a tsc error
+}
 ```
 
-Today: no states, no run conditions, ordering by name string within a stage. `inState`, `resourceExists` and `onMessage` are data, so Rust evaluates them and a skipped system costs no JS call.
+`systems(a, b)` is Bevy's tuple `(a, b)`: functions cannot carry `.after()` in TS, so a group does. Before: no states, no run conditions, ordering by name string within a stage. `inState`, `resourceExists` and `onMessage` are data, so Rust evaluates them and a skipped system costs no JS call.
 
 ### A message and an observer
 
@@ -171,51 +239,39 @@ fn on_health_added(add: On<Add<Health>>, mut q: Query<&mut Health>) {
 ```
 
 ```ts
-export const Damage = message("game::Damage", { target: entity, amount: f32 });
-export const Explode = entityEvent("game::Explode", { radius: f32 });
+export class Damage extends Message("game::Damage", { target: entity, amount: f32 }) {}
+export class Explode extends EntityEvent("game::Explode", { radius: f32 }) {}
 
-export const applyDamage = system(() => {
-  const damage = reader(Damage);
-  const q = query(Mut(Health));
-  const score = resMut(Score);
-  const cmd = commands();
-  return () => {
-    damage.each((d) => {
-      const [h] = q.get(d.target) ?? [];
-      if (!h) return;
-      h.hp -= d.amount;
-      if (h.hp <= 0) {
-        score.value += 1;
-        cmd.trigger(Explode, d.target, { radius: 3 });
-      }
-    });
-  };
-});
+export function applyDamage(damage: MessageReader<Damage>, q: Query<[Mut<Health>]>,
+                            score: ResMut<Score>, commands: Commands) {
+  damage.each((d) => {
+    const [h] = q.get(d.target) ?? [];
+    if (!h) return;
+    h.hp -= d.amount;
+    if (h.hp <= 0) {
+      score.value += 1;
+      commands.trigger(d.target, new Explode({ radius: 3 }));
+    }
+  });
+}
 
-export const onExplode = observer(On(Explode), () => {
-  const q = query(EntityId, Transform).with(Enemy);
-  const damage = writer(Damage);
-  const cmd = commands();
-  return (on) => {
-    const [, at] = q.get(on.entity) ?? [];
-    if (!at) return;
-    q.each((e, t) => {
-      if (t.translation.distance(at.translation) < on.event.radius) damage.write({ target: e, amount: 50 });
-    });
-    cmd.entity(on.entity).despawn();
-  };
-});
+export function onExplode(explode: On<Explode>, q: Query<[Entity, Transform], With<Enemy>>,
+                          damage: MessageWriter<Damage>, commands: Commands) {
+  const [, at] = q.get(explode.entity) ?? [];
+  if (!at) return;
+  q.each((e, t) => {
+    if (t.translation.distance(at.translation) < explode.event.radius) damage.write({ target: e, amount: 50 });
+  });
+  commands.entity(explode.entity).despawn();
+}
 
-export const onHealthAdded = observer(Add(Health), () => {
-  const q = query(Mut(Health));
-  return (on) => {
-    const [h] = q.get(on.entity) ?? [];
-    if (h) h.hp = h.max;
-  };
-});
+export function onHealthAdded(add: On<Add<Health>>, q: Query<[Mut<Health>]>) {
+  const [h] = q.get(add.entity) ?? [];
+  if (h) h.hp = h.max;
+}
 ```
 
-Today: none. TS-defined resources and events are a bridge non-goal; the only reactions are TSX `onClick` handlers.
+Before: none. TS-defined resources and events were a bridge non-goal; the only reactions were TSX `onClick` handlers.
 
 ### A plugin
 
@@ -239,21 +295,21 @@ app.add_plugins(EnemyPlugin);
 ```
 
 ```ts
-export const EnemyPlugin = plugin((app) => {
-  app.initResource(Score, { value: 0 })
+export function enemyPlugin(app: App) {
+  app.insertResource(new Score({ value: 0 }))
     .addMessage(Damage)
-    .initState(Game, Game.Menu)
+    .initState(Game.Menu)
     .addSystems(OnEnter(Game.Playing), spawnWave)
     .addSystems(Update,
       chain(spawnWave, chase, separate).inSet(EnemySet).runIf(inState(Game.Playing)),
-      applyDamage.after(EnemySet))
+      systems(applyDamage).after(EnemySet))
     .addObserver(onExplode)
     .addObserver(onHealthAdded);
-});
-app.addPlugins(EnemyPlugin);
+}
+app.addPlugins(enemyPlugin);
 ```
 
-Today: none; a module calls `app.system` at top level. A plugin is a function the loader re-runs on every generation.
+Before: none; a module called `app.system` at top level. A plugin is a function the loader re-runs on every generation.
 
 ### Spawning a prefab
 
@@ -280,7 +336,7 @@ fn spawn_grunt(mut commands: Commands) {
 
 ```tsx
 export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]; speed?: number }) => (
-  <entity name="grunt" onPointerClick={(_, { entity, commands }) => commands.trigger(Explode, entity, { radius: 3 })}>
+  <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(entity, new Explode({ radius: 3 }))}>
     <Transform translation={at} />
     <Enemy speed={speed} />
     <Health initialHp={100} max={100} />
@@ -291,21 +347,16 @@ export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]
   </entity>
 );
 
-export const waves = system(() => {
-  const cmd = commands();
-  const time = res(Time);
-  const s = local({ timer: f32, wave: u32 });
-  return () => {
-    s.timer += time.delta;
-    if (s.timer < 5) return;
-    s.timer = 0;
-    s.wave += 1;
-    for (let i = 0; i < s.wave; i++) cmd.spawn(<Grunt at={[i * 2 - s.wave, 0, -12]} speed={2 + s.wave * 0.5} />);
-  };
-});
+export function waves(commands: Commands, time: Res<Time>, s: Local<{ timer: f32; wave: u32 }>) {
+  s.timer += time.delta;
+  if (s.timer < 5) return;
+  s.timer = 0;
+  s.wave += 1;
+  for (let i = 0; i < s.wave; i++) commands.spawn(<Grunt at={[i * 2 - s.wave, 0, -12]} speed={2 + s.wave * 0.5} />);
+}
 ```
 
-Today (tsx): the prefab is the same; spawning is `ctx.commands.mount(<Enemy at={p} />)`, and handlers are `onClick` on `<button>` only. `<entity onPointerClick>` is an entity observer, which is what `on(...)` is in BSN. `commands.spawn` takes components or a prefab element, so `mount` folds into `spawn`.
+A component class is its own TSX tag: `<Health initialHp={100} />` takes its props from the schema. Before (tsx): the prefab was the same, spawning was `ctx.commands.mount(<Enemy at={p} />)`, and handlers were `onClick` on `<button>` only. `<entity onPointerClick>` is an entity observer, which is what `on(...)` is in BSN. `commands.spawn` takes component instances (`new Health({ hp: 3 })`) or a prefab element, so `mount` folds into `spawn`.
 
 ### A UI HUD, with and without hooks
 
@@ -330,7 +381,7 @@ fn update_hp(player: Single<&Health, (With<Player>, Changed<Health>)>,
 }
 ```
 
-tsx today, with a hook:
+tsx before the ruling, with a hook:
 
 ```tsx
 export const HudWithHooks = ({ player }: { player: NodeRef }) => {
@@ -343,14 +394,14 @@ export const HudWithHooks = ({ player }: { player: NodeRef }) => {
 };
 ```
 
-Proposed, with no hook:
+Proposed (not yet ruled), with no hook:
 
 ```tsx
 export const Hud = ({ player }: { player: NodeRef }) => (
   <node style={{ position: "absolute", top: px(12), left: px(12) }} background="#0008">
     <text size={20}>{() => `HP ${Math.ceil(player.get(Health).hp)} / ${player.get(Health).max}`}</text>
     <text size={16} color={() => (res(Score).value > 10 ? "#fd0" : "#fff")}>{() => `Score ${res(Score).value}`}</text>
-    <button onPointerClick={(_, { commands }) => commands.trigger(Explode, player.entity, { radius: 5 })}>
+    <button onPointerClick={({ commands }) => commands.trigger(player.entity, new Explode({ radius: 5 }))}>
       <text>Boom</text>
     </button>
   </node>
@@ -366,9 +417,7 @@ Both TSX versions cost the same. The hook buys nothing the binding does not alre
 A hook-like API is still the right tool in two places, and neither is named `use*`:
 
 - `signal()`: UI-local state that is not game state, such as a dropdown's open flag or a text field's draft. Components run once, so a signal has no call-order rule.
-- A declarative list over a query, for an inventory or a scoreboard: `<For each={query(EntityId, Item).with(InBag)}>{(e, item) => ...}</For>`. It needs a subscription whose lifetime is the UI subtree. It is tsx's open `useQuery` question, answered with a query instead of a hook.
-
-Systems never get hooks: their setup is their subscription.
+- A declarative list over a query, for an inventory or a scoreboard: `<For each={query(Entity, Item).with(InBag)}>{(e, item) => ...}</For>`. It needs a subscription whose lifetime is the UI subtree. It is tsx's open `useQuery` question, answered with a query instead of a hook.
 
 ### Adopting Rapier, end to end
 
@@ -413,62 +462,48 @@ fn grounded(rapier: ReadRapierContext, q: Single<(Entity, &Transform, &mut Veloc
 ```
 
 ```ts
-import { CollisionEvent, PhysicsSet, rapierContext, Velocity } from "bevy-ts/rapier";
+import { CollisionEvent, PhysicsSet, type ReadRapierContext, Velocity } from "bevy-ts/rapier";
 
-export const steer = system(() => {
-  const player = query(Transform).with(Player);
-  const enemies = query(Enemy, Transform, Mut(Velocity)); // Rapier's own column, zero-copy
-  const dir = vec3();
-  return () => {
-    const [p] = player.single();
-    enemies.each((enemy, t, v) => {
-      dir.subVectors(p.translation, t.translation).normalize();
-      v.linear.x = dir.x * enemy.speed;
-      v.linear.z = dir.z * enemy.speed;
-    });
-  };
-});
+export function steer(player: Query<[Transform], With<Player>>, enemies: Query<[Enemy, Transform, Mut<Velocity>]>) {
+  const [p] = player.single();
+  enemies.each((enemy, t, v) => {          // v is Rapier's own Velocity column, zero-copy
+    dir.subVectors(p.translation, t.translation).normalize();
+    v.linear.x = dir.x * enemy.speed;
+    v.linear.z = dir.z * enemy.speed;
+  });
+}
 
-export const hurt = system(() => {
-  const contacts = reader(CollisionEvent);
-  const players = query(Mut(Health)).with(Player);
-  return () => {
-    contacts.each((c) => {
-      if (c.kind !== "Started") return;
-      const [h] = players.get(c.a) ?? players.get(c.b) ?? [];
-      if (h) h.hp -= 10;
-    });
-  };
-});
+export function hurt(contacts: MessageReader<CollisionEvent>, players: Query<[Mut<Health>], With<Player>>) {
+  contacts.each((c) => {
+    if (c.kind !== "Started") return;
+    const [h] = players.get(c.a) ?? players.get(c.b) ?? [];
+    if (h) h.hp -= 10;
+  });
+}
 
-export const grounded = system(() => {
-  const rapier = rapierContext();
-  const player = query(EntityId, Transform, Mut(Velocity)).with(Player);
-  const down = vec3(0, -1, 0);
-  return () => {
-    const [e, t, v] = player.single();
-    const hit = rapier.castRay(t.translation, down, 1.1, true, { exclude: e });
-    if (!hit && v.linear.y > -20) v.linear.y -= 0.5;
-  };
-});
+export function grounded(rapier: ReadRapierContext, player: Query<[Entity, Transform, Mut<Velocity>], With<Player>>) {
+  const [e, t, v] = player.single();
+  const hit = rapier.castRay(t.translation, down, 1.1, true, { exclude: e });
+  if (!hit && v.linear.y > -20) v.linear.y -= 0.5;
+}
 
-app.addSystems(FixedUpdate, steer.before(PhysicsSet.SyncBackend), grounded.before(PhysicsSet.SyncBackend))
+app.addSystems(FixedUpdate, systems(steer, grounded).before(PhysicsSet.SyncBackend))
   .addSystems(Update, hurt);
 ```
 
-The project writes no Rust. bevy-ts generates the native crate from `bevy-ts.json` and builds the project engine once per Rust change, or fetches it from the shared cache (native decisions 1 and 2).
+The project writes no Rust. bevy-ts generates the native crate from `bevy-ts.json` and builds the project engine once per Rust change, or fetches it from the shared cache (native decisions 1 and 2). A port declares its own param kinds (`ReadRapierContext`) for the reader.
 
-Today (native): a native crate with hand-written glue for every type TS should write: a `#[repr(C)]` mirror of `Velocity` with `#[derive(NativeLayout)]`, two systems copying it in and out around the step, a mirror message for contacts, a native function for the raycast, and `bevy_ts::native!` registering it all.
+Before (native): a native crate with hand-written glue for every type TS should write: a `#[repr(C)]` mirror of `Velocity` with `#[derive(NativeLayout)]`, two systems copying it in and out around the step, a mirror message for contacts, a native function for the raycast, and `bevy_ts::native!` registering it all.
 
 ## Evidence, question 1: the TS surface
 
 ### What `tsc` proves (`bench/dx/`, `deno check`, TypeScript 6.0.3)
 
-- **Query tuples infer exactly.** `query(EntityId, Enemy, Mut(Transform), Option(Health))` gives `[Entity, Ref<Enemy>, MutRef<Transform>, Ref<Health> | undefined]`. `examples/inference.ts` asserts each element with an exact type-equality check, and flipping one assertion fails the check. The mechanism is a `const` type parameter on `query` plus a mapped tuple type; chained filters keep the row type. No transformer is involved, unlike Thyseus.
+- **Query rows infer exactly.** `Query<[Entity, Enemy, Mut<Transform>, Option<Health>], With<Alive>>` gives rows of `[Entity, ReadView<Enemy>, Transform, ReadView<Health> | undefined]`. `examples/inference.ts` asserts each element with an exact type-equality check, and flipping one assertion fails the check. It is a mapped tuple type over the component classes; `tsc` needs nothing from bevy-ts's compile step.
 - **Read and write are enforced at compile time.** Fields of a read component are `readonly`. A read vector is `ReadonlyVec3`, which has no mutating methods. A `Mut` vector field is a view: assignable by component (`t.translation.y += 1`) and by method (`t.translation.addScaled(v, s)`), but not reassignable (`t.translation = v` is an error). Misspelt fields are errors. The bridge spec today only enforces this at load.
-- **Several queries per system** are several `const` lines in the setup.
-- **Filters** chain: `.with()`, `.without()`, `.changed()`, `.added()`. `changed` reads bridge's per-row ticks against the system's last run (bridge decision 6). An `Or` filter is rare enough to defer.
-- **Tiers show in the types.** `query(Mut(Collider))` is a type error (`Collider` is reflect tier), and `.with(Collider)` is fine. States, messages and TSX props are typed too: `next.set("Paused")`, `<RigidBody value="Floating" />`, `<Transform translation={[1, 2]} />` and `onPointerClick` on `<mesh>` are all errors (`examples/tsx-errors.tsx`).
+- **Several queries per system** are several parameters, as in Rust.
+- **Filters** are `With<C>`, `Without<C>`, `Changed<C>` and `Added<C>`, alone or as a tuple. `changed` reads bridge's per-row ticks against the system's last run (bridge decision 6). An `Or` filter is rare enough to defer.
+- **Tiers show in the types.** `Query<[Mut<Collider>]>` gives rows of `never`, so any use is a type error (`Collider` is reflect tier), and `With<Collider>` is fine. States, messages and TSX props are typed too: `next.set("Paused")`, `<RigidBody value="Floating" />`, `<Transform translation={[1, 2]} />` and `onPointerClick` on `<mesh>` are all errors (`examples/tsx-errors.tsx`).
 - **Not enforced by types:** giving both `hp` and `initialHp` (the load error stays), and a system that is not exported (a load error, below).
 
 ### ParamSet is not needed
@@ -504,7 +539,7 @@ V8 does not remove the iterator protocol from a custom iterable. The table is th
 
 ### Vector maths without operator overloading
 
-The API is glam-like and in place: every method writes `this` and returns it. Scratch vectors are made once with `vec3()` in the setup. Column views and scratch vectors share one interface, so `toPlayer.subVectors(a.translation, b.translation).normalize()` allocates nothing.
+The API is glam-like and in place: every method writes `this` and returns it. Scratch vectors are made once with `vec3()` at module scope. Column views and scratch vectors share one interface, so `toPlayer.subVectors(a.translation, b.translation).normalize()` allocates nothing.
 
 This is three.js's `Vector3` and gl-matrix's out-param style with glam's names. becsy, koota and bitECS ship no maths API; Thyseus had methods on component classes. Operators are out of reach: no JS engine overloads them.
 
@@ -512,22 +547,22 @@ This is three.js's `Vector3` and gl-matrix's out-param style with glam's names. 
 
 | Bevy 0.20 | Where | Proposed TS |
 |---|---|---|
-| `Message`, `MessageReader`, `MessageWriter`, `add_message` | `bevy_ecs/src/message/` | `message()`, `reader()`, `writer()`, `addMessage` |
-| `Event`, `EntityEvent`, `On<E>`, `commands.trigger` | `event/mod.rs`, `observer/system_param.rs` | `event()`, `entityEvent()`, `On(E)`, `commands.trigger` |
-| `On<Add<C>>`, `Insert`, `Discard`, `Remove`, `Despawn` | `lifecycle.rs` (`EventPattern` for each) | `Add(C)`, `Insert(C)`, `Remove(C)` |
+| `Message`, `MessageReader`, `MessageWriter`, `add_message` | `bevy_ecs/src/message/` | `class X extends Message(...)`, `MessageReader<X>`, `MessageWriter<X>`, `addMessage` |
+| `Event`, `EntityEvent`, `On<E>`, `commands.trigger` | `event/mod.rs`, `observer/system_param.rs` | `class X extends Event(...)` / `EntityEvent(...)`, `On<X>`, `commands.trigger` |
+| `On<Add<C>>`, `Insert`, `Discard`, `Remove`, `Despawn` | `lifecycle.rs` (`EventPattern` for each) | `On<Add<C>>`, `On<Insert<C>>`, `On<Remove<C>>` |
 | `On<PointerClick>` (not `Pointer<Click>`) | `bevy_picking/src/events.rs`, `examples/ui/navigation` | `onPointerClick`, `On(PointerClick)` |
-| `in_state`, `on_message`, `run_if` | `bevy_state/src/condition.rs`, `schedule/condition.rs` | `inState`, `onMessage`, `runIf` |
-| `Local<T>`, `ParamSet` | `system/system_param.rs` | `local(schema)`; no ParamSet |
-| `trait Resource: Component`; `ReflectResource` implies `ReflectComponent` | `resource.rs`, `reflect/resource.rs` | `resource()` is a component on a resource entity |
+| `in_state`, `on_message`, `run_if` | `bevy_state/src/condition.rs`, `schedule/condition.rs` | `inState`, `onMessage`, `systems(...).runIf` |
+| `Local<T>`, `ParamSet` | `system/system_param.rs` | `Local<{ timer: f32 }>`; no ParamSet |
+| `trait Resource: Component`; `ReflectResource` implies `ReflectComponent` | `resource.rs`, `reflect/resource.rs` | `class X extends Resource(...)` is a component on a resource entity |
 
-The last row matters most. In 0.20 a resource is a component on its own entity, so `res(Score)` is a one-row column through the same path as a query. TS resources need no separate storage, and native's open question about "native resources as single-row views" answers itself.
+The last row matters most. In 0.20 a resource is a component on its own entity, so `Res<Score>` is a one-row column through the same path as a query. TS resources need no separate storage, and native's open question about "native resources as single-row views" answers itself.
 
 ### Hot-reload identity by `module#export`
 
 - The loader walks each module's namespace and stamps every exported system, observer and plugin with `"src/enemy.ts#chase"`. That is the key for ordering, per-system `changed` ticks, message cursors and `Local` storage.
-- `local({ timer: f32 })` is a layout row kept in Rust under that key, so it survives reloads, as the hot-reload rules require of anything that must live.
+- `Local<{ timer: f32 }>` is a layout row kept in Rust under that key, so it survives reloads, as the hot-reload rules require of anything that must live.
 - A system that is not exported fails the load, with its location.
-- Renaming an export is a new system, and its `local` starts at defaults. It is reported as such.
+- Renaming an export is a new system, and its `Local` starts at defaults. It is reported as such.
 
 ### Observers across the boundary
 
@@ -546,7 +581,7 @@ Read 2026-10-19:
 - **Thyseus 0.18:** the closest to Bevy (`Query<[A, B]>`, `Res`, `Commands`, `EventReader`), but its params come from a compile-time TypeScript transformer. It has no `Mut`, and it has been unmaintained since May 2024.
 - **bitECS 0.4 and miniplex 2:** no access model and no inference beyond the entity type.
 
-None of them combines inferred tuples with declared mutability. The `const` type parameter does it with no transformer, which matters because bevy-ts compiles with oxc and has no plugin pipeline (native decision 9).
+None of them combines inferred tuples with declared mutability. Thyseus came closest with the same signature shape bevy-ts now uses; bevy-ts adds `Mut<T>`, reflect-tier errors in the types, and a reader that follows aliases and bundles and fails loudly.
 
 ### What the Bevy scripting crates do
 
@@ -554,7 +589,7 @@ None of them combines inferred tuples with declared mutability. The `const` type
 - **bevy_mod_js_scripting:** abandoned. It used `world.query(Transform, Aabb)` with type names as strings.
 - **bevy-react:** has no query API, only JSON messages.
 
-The proposed surface is bevy_mod_scripting's declared-access model, in Solid's setup-then-run shape, with the types Lua cannot have, over columns instead of reflection.
+The ruled surface is bevy_mod_scripting's declared-access model, written as Rust-style signatures, with the types Lua cannot have, over columns instead of reflection.
 
 ## Evidence, question 2: adopting a Rust plugin
 
@@ -646,51 +681,56 @@ One line in `bevy-ts.json`, never code:
 - **Why not all curated:** curated-only would make bevy-ts the bottleneck for every crate.
 - **Why not all generated:** it cannot produce a raycast API or a collider constructor from types.
 
-## What changes in the specs (not edited; the operator rules first)
+## What changes in the specs
 
-### bridge
+### Applied: bridge's capability specs (ruled 2026-10-20)
+
+Bridge is archived, so its capabilities live in `openspec/specs/`.
 
 - `ts-systems`:
-  - **Replace** `app.system(name, { stage, read, write, with, without, after, run })` with the setup form, `system(() => { ...declare; return () => { ...run } })`, and `app.addSystems(schedule, ...)`.
-  - **Declarations, setup only:** `query(...data)`, `res`, `resMut`, `local`, `commands`, `reader`, `writer`, `nextState`. A call outside a setup is a load error.
-  - **Access:** derived from query data (`Mut(C)` writes) as the union over a system's queries. Several queries per system, overlapping allowed, no ParamSet.
-  - **Filters:** chained `.with()`, `.without()`, `.changed()`, `.added()`. Query data adds `EntityId` and `Option`.
-  - **Iteration:** `q.each` as the hot loop, plus `for...of`, `single`, `get`, `len` and `tables`.
-  - **Schedules:** `Update`/`FixedUpdate`/... map onto the existing stages. Ordering is `.after`/`.before`/`.inSet`/`chain` by object, not by name string.
-  - **Run conditions:** `inState`, `resourceExists` and `onMessage` are evaluated in Rust, so a skipped system makes no JS call.
-- `ts-components`:
-  - **Typed views:** read views are typed `readonly`, write views are `MutRef`, and vector fields are in-place views with the glam-like method set.
-  - **Scratch vectors:** `vec3()`/`quat()` make scratch values.
-  - **Dual handles:** a component handle is also its TSX tag and its bundle constructor.
+  - **Replaced:** `app.system(name, { stage, read, write, with, without, after, run })` gives way to exported functions with annotated params, registered with `app.addSystems(schedule, ...)`.
+  - **Param kinds:** `Query<[data], filters>`, `Res<R>`, `ResMut<R>`, `Local<{ ... }>`, `Commands`, `MessageReader<M>`, `MessageWriter<M>`, `NextState<S>`, `State<S>`, plus kinds that ports declare.
+  - **Access:** derived from query data, where `Mut<C>` writes, as the union over a system's queries. Several queries per system are allowed, overlapping included; there is no ParamSet.
+  - **Filters:** `With`, `Without`, `Changed`, `Added`. Query data adds `Entity` and `Option<C>`.
+  - **Iteration:** `q.each` is the hot loop, with `for...of`, `single`, `get`, `len` and `tables`.
+  - **Schedules and ordering:** `Startup`, `Update`, `FixedUpdate` and the rest map onto the existing stages. Ordering is by function or set (`systems(...).after/.before/.inSet/.runIf`, `chain(...)`), not by name string.
+  - **Run conditions:** `inState`, `resourceExists` and `onMessage` are evaluated in Rust.
+  - **Fallback:** a setup closure, `system(() => { ...declare; return () => { ...run } })`, for computed param types.
+- `script-runtime`: the oxc compile step gains the syntax-only annotation pass:
+  - It follows aliases, generic aliases, bundles and imports.
+  - It refuses computed types with the file and line.
+  - A system registered without declarations throws.
+  - The same pass ships as a vitest, Vite and esbuild plugin.
+- `ts-components`: components, resources, messages, events and states are declared as classes (`class Enemy extends Component(name, fields) {}`):
+  - The class is the handle, the TSX tag and the constructor (`new Health({ hp: 3 })`). Its instance type is the data.
+  - Read views are `readonly`, and vector fields are in-place views with the glam-like method set.
+  - `vec3()` and `quat()` make scratch values.
 - `hot-reload`:
-  - **Identity:** systems, observers and plugins are identified by `module#export`.
-  - **Exports:** an unexported system is a load error.
-  - **`local`:** rows are kept in Rust under that identity and survive reloads.
-  - **Renames:** renaming an export is reported as a new system.
-- **Non-goals:** "TS-defined resources and events" moves into scope.
-  - *Resources:* components on resource entities (0.20).
+  - Systems, observers and plugins are identified by `module#export`, and an unexported system is a load error.
+  - `Local` rows are kept in Rust under that identity and survive reloads.
+  - Renaming an export is reported as a new system.
+- **Moved into scope:**
+  - *Resources:* components on resource entities, as in 0.20.
   - *Messages:* double-buffered arenas per type, with a cursor per system.
-  - *Events and observers:* `observer(On(E), setup)` and lifecycle `Add`/`Insert`/`Remove`. A TS-triggered observer runs when its command applies; a Rust-triggered one runs at the next stage boundary.
-  - *States:* TS states, with `OnEnter`/`OnExit` run by one bevy-ts exclusive system in `StateTransition`.
-  - *Plugins:* `plugin(build)`, re-run per generation.
-- Decision 4 and `ts-components` "Rust components cross only with a declared native layout": layouts come from reflection over a value, bounds-checked, for any registered component whose reflected leaves are plain data. `offset_of!` stays for `NativeLayout` derives and for unreflected types in ports. `Transform` stops being a special case.
-- Decision 5 and task 11.2: vector views get the parent's row without a per-row setter. Setters stamp a row's tick once per row, not once per field.
-- `commands.spawn` accepts prefab elements; tsx B3's `commands.mount` folds into it.
+  - *Observers:* functions whose first param is `On<E>` or `On<Add<C>>`. A TS-triggered observer runs when its command applies; a Rust-triggered one runs at the next stage boundary.
+  - *States:* `OnEnter`/`OnExit` run by one bevy-ts exclusive system in `StateTransition`.
+  - *Plugins:* functions of `app`, re-run per generation.
+- `commands.spawn` takes component instances or a prefab element.
 
-### tsx
+### Not yet ruled
 
-- **`useComponent`:** removed in favour of `ref.get(C)` and `res(R)` read inside bindings, resolved per site (decision 11) or per pair (decision 9). No `use*` names. `signal()` stays for UI-local state.
-- **`useQuery`:** the open question becomes `<For each={query(...)}>`.
-- **Picking:** handlers are entity-local observer props (`onPointerClick`, `onPointerOver`, ...) on any `<entity>` or UI element, named after Bevy 0.20's `PointerClick`. The design's `Pointer<Click>` is the 0.19 name.
-- **B3:** becomes `commands.spawn(<Prefab />)`.
-
-### native
-
-- **Decision 5:** the two tiers are redrawn. Layout tier no longer requires `#[repr(C)]` or a derive: any reflected component whose leaves are plain data qualifies, with the guards above. `#[derive(NativeLayout)]` stays for unreflected types. The "What stays Rust" row for third-party plugins changes from "their components with `NativeLayout` if the crate author or a wrapper adds it" to "their reflected components, as columns when their leaves are plain data".
-- **New decision:** adoption by `bevy-ts.json` (`native.ports`, `native.crates`). Generated plugin, message and set lines go in `.bevy-ts/engine/`. Curated ports are published as `bevy-ts-<name>` crates with `bevy-ts/<name>` types. A native crate is needed only for the project's own Rust.
-- **Open question closed:** native resources are components in Bevy 0.20, so they take the layout path.
-- **Decision 8:** a native function may also be exposed as a system param (`RapierContext`) with single and batched calls. A single call is one host call, fine for a handful of rays a frame; batches stay the rule for many.
-- **N1:** the layout registry is filled from the type registry at startup, not only by derives.
+- **tsx (no hooks):**
+  - `useComponent` is removed in favour of `ref.get(C)` and `res(R)` read inside bindings, resolved per site (decision 11) or per pair (decision 9). No `use*` names, and `signal()` stays for UI-local state.
+  - The `useQuery` question becomes `<For each={query(...)}>`.
+  - Picking handlers become entity-local observer props (`onPointerClick`, ...) on any `<entity>` or UI element. The design's `Pointer<Click>` is the 0.19 name; 0.20's is `PointerClick`.
+  - B3 becomes `commands.spawn(<Prefab />)`.
+- **native (reflection-derived layouts, one-line adoption):**
+  - *Decision 5:* layout tier no longer requires `#[repr(C)]` or a derive. Any reflected component whose leaves are plain data qualifies, with the guards above. Bridge decision 4 is generalised the same way, so `Transform` stops being a special case.
+  - *New decision:* adoption by `bevy-ts.json` (`native.ports`, `native.crates`), with curated `bevy-ts-<name>` ports.
+  - *Open question closed:* resources are components in Bevy 0.20.
+  - *Decision 8:* native functions can be exposed as param kinds (`ReadRapierContext`).
+  - *N1:* the layout registry is filled from the type registry at startup.
+- **Performance (asks first):** vector views get the parent's row without a per-row setter, and setters stamp a row's tick once per row (bridge decision 5, task 11.2).
 
 ## Sources
 
@@ -706,6 +746,7 @@ One line in `bevy-ts.json`, never code:
   - `leafwing-input-manager` 0.22.0: `action_state/mod.rs`;
   - `bevy_tweening` 0.16.0: `lib.rs`.
 - Rust: `core::mem::offset_of!` (stable 1.77, nested fields 1.82), `offset_of_enum` tracking issue https://github.com/rust-lang/rust/issues/120141.
+- Reading types for runtime behaviour, checked 2026-10-20: TypeScript 7.0 announcement https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/ ; API roadmap microsoft/TypeScript#63875 and #64861 ; typia https://github.com/samchon/typia ; Deepkit `@deepkit/type-compiler` `compiler.ts` ; Thyseus `transformSystems.ts` ; oxc `decorator/legacy/metadata.rs` ; tsgolint https://github.com/oxc-project/tsgolint ; Angular inject() migration https://angular.dev/reference/migrations/inject-function ; TypeScript 5.0 decorators https://devblogs.microsoft.com/typescript/announcing-typescript-5-0/
 - TS ECS libraries, read 2026-10-19: bitECS 0.4.0 https://github.com/NateTheGreatt/bitECS ; becsy 0.16.1 https://github.com/lastolivegames/becsy ; koota https://github.com/pmndrs/koota ; miniplex 2.0.0 https://github.com/hmans/miniplex ; Thyseus 0.18.0 https://github.com/JaimeGensler/thyseus (`packages/typescript-transformer`).
 - Scripting crates: bevy_mod_scripting 0.23 `docs/src/ScriptSystems/introduction.md` (`~/dev/refs/bevy_mod_scripting`) ; bevy_mod_js_scripting https://github.com/jakobhellermann/bevy_mod_js_scripting ; bevy-react https://docs.rs/bevy-react.
 - bevy-ts: `openspec/changes/{bridge,tsx,native,levels,viewport}`, `docs/research/change-detection.md`, `docs/research/scene-bindings.md`.

@@ -23,17 +23,36 @@ function lookup(sf: ts.SourceFile, name: string): [Named, ts.SourceFile] | undef
     }
   }
 }
-const PARAMS = new Set(["Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter"]);
+// Param kinds from bevy-ts, plus those installed ports declare (here bevy-ts/rapier's ReadRapierContext).
+const PARAMS = new Set(["ReadRapierContext", "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "NextState", "State"]);
 function decl(t: ts.TypeNode, sf: ts.SourceFile, sub: Map<string, string> = new Map()): string {
   const txt = (n: ts.Node) => sub.get(n.getText(sf)) ?? n.getText(sf);
   const at = () => `${sf.fileName.split("/").pop()}:${sf.getLineAndCharacterOfPosition(t.getStart(sf)).line + 1}`;
+  if (ts.isImportTypeNode(t) && t.qualifier?.getText(sf) === "App") return "app";
   if (!ts.isTypeReferenceNode(t)) throw new Error(`${at()}: not a system param type: ${t.getText(sf)}`);
   const name = t.typeName.getText(sf), args = t.typeArguments ?? [];
   if (sub.has(name)) return sub.get(name)!;
+  // An observer's trigger: On<Explode>, On<Add<Health>>.
+  if (name === "On") {
+    const e = args[0];
+    if (ts.isTypeReferenceNode(e) && ["Add", "Insert", "Remove"].includes(e.typeName.getText(sf))) {
+      return `on(${e.typeName.getText(sf)}(${txt(e.typeArguments![0])}))`;
+    }
+    return `on(${txt(e)})`;
+  }
+  // A plugin: (app: App) => void.
+  if (name === "App") return "app";
   if (PARAMS.has(name)) {
+    if (name === "Commands") return "commands()";
+    if (name === "ReadRapierContext") return "rapier.readContext()";
     if (name !== "Query") return `${name[0].toLowerCase()}${name.slice(1)}(${args.map(txt).join(", ")})`;
-    const data = (args[0] as ts.TupleTypeNode).elements.map((e) =>
-      ts.isTypeReferenceNode(e) && e.typeName.getText(sf) === "Mut" ? `Mut(${txt(e.typeArguments![0])})` : txt(e));
+    const datum = (e: ts.TypeNode): string => {
+      if (!ts.isTypeReferenceNode(e)) return txt(e);
+      const n = e.typeName.getText(sf);
+      if (n === "Mut" || n === "Option") return `${n}(${datum(e.typeArguments![0])})`;
+      return txt(e);
+    };
+    const data = (args[0] as ts.TupleTypeNode).elements.map(datum);
     const f = args[1] ? (ts.isTupleTypeNode(args[1]) ? args[1].elements : [args[1]]) : [];
     return `query(${data.join(", ")})` + f.map((x) => {
       const r = x as ts.TypeReferenceNode;

@@ -1,7 +1,7 @@
 # hot-reload Specification
 
 ## Purpose
-TBD - created by archiving change bridge. Update Purpose after archive.
+The `bevy-ts dev` command, generations, what state survives a reload, schema migration, and failed reloads.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ A saved file, or a `bevy-ts/reload` request, SHALL recompile the module graph on
 - **THEN** within 200 ms on a recent laptop the cube moves with the new constant, and the generation number goes up by one
 
 ### Requirement: ECS state survives a reload
-A reload SHALL keep every entity, component value, resource and parent link. It SHALL replace all systems, startups and component declarations with the new generation's. JS module-level state SHALL NOT survive; state that must survive belongs in components.
+A reload SHALL keep every entity, component value, resource and parent link. It SHALL replace all systems, observers, plugins and component declarations with the new generation's. JS module-level state SHALL NOT survive; state that must survive belongs in components.
 
 #### Scenario: The cube keeps its place
 - **WHEN** a reload happens while the cube is at y = 1.4
@@ -30,11 +30,18 @@ A reload SHALL keep every entity, component value, resource and parent link. It 
 - **WHEN** a module keeps `let hits = 0` and increments it, then reloads
 - **THEN** `hits` starts at 0 again in the new generation
 
-### Requirement: Startups run once per name per world
-A startup SHALL run once the first time a generation declaring its name is applied, and SHALL NOT run again on later reloads. A startup with a new name SHALL run when the generation that adds it is applied. `bevy-ts/reload` with `restart: true` SHALL despawn every entity spawned by TS, forget which startups ran, notify registered plugins (see plugin-api), and apply the generation as if first.
+### Requirement: Systems are identified by module and export name
+Every system, observer and plugin SHALL be identified by `<module path>#<export name>` (for example `src/enemy.ts#chase`), assigned by the loader. That identity SHALL key ordering, per-system `Changed`/`Added` ticks, message cursors and `Local` storage across reloads. Renaming an export SHALL be reported as a removed and an added system; the new one starts with default `Local` values and an unread message cursor.
+
+#### Scenario: Local survives an edit
+- **WHEN** `waves` keeps `s: Local<{ wave: u32 }>` at 4 and its body is edited and reloads
+- **THEN** `s.wave` is still 4 in the new generation
+
+### Requirement: Startup systems run once per identity per world
+A system in `Startup` SHALL run once the first time a generation registering its identity is applied, and SHALL NOT run again on later reloads. A `Startup` system with a new identity SHALL run when the generation that adds it is applied. `bevy-ts/reload` with `restart: true` SHALL despawn every entity spawned by TS, forget which `Startup` systems ran, reset `Local` storage, notify registered plugins (see plugin-api), and apply the generation as if first.
 
 #### Scenario: Editing a startup's body
-- **WHEN** the body of startup `scene` changes and reloads
+- **WHEN** the body of `Startup` system `scene` changes and reloads
 - **THEN** it does not run again and no duplicate cube appears
 
 ### Requirement: Layout changes migrate by field name

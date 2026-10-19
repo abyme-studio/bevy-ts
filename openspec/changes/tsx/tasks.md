@@ -20,7 +20,7 @@
 - [x] 3.3 Implement the keyed diff: spawn, despawn with descendants, insert and remove of tsx-owned components, controlled field writes against last applied values
 - [x] 3.4 Implement `initial*` and controlled typing from `component()` declarations; reject a field given both ways in `tsc` and at load
 - [x] 3.5 Cache static subtrees by content hash; test that a second identical `<Enemy>` reuses the template
-- [x] 3.6 Implement `app.scene` roots, unmount of roots missing from a generation, and `ctx.commands.mount`/`unmount` under a runtime root
+- [x] 3.6 Implement `app.scene` roots, unmount of roots missing from a generation, and `commands.mount`/`unmount` under a runtime root
 
 ## 4. Hot reload
 
