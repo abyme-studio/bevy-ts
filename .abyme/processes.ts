@@ -35,4 +35,5 @@ export default {
   "viewport-one": { cmd: "cargo test -p bevy-ts-viewport --test viewport -- --nocapture --test-threads=1 $VIEWPORT_TEST 2>&1 | grep -v ld64 | tee target/viewport-one.log | tail -30" },
   "viewport-spike-short": { cmd: "cargo test -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike-short.log | tail -40" },
   "viewport-spike": { cmd: "SPIKE_SECS=60 cargo test --release -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },
+  "viewport-gate": { cmd: "scripts/viewport-gate.sh" },
 } satisfies ProcessFile;
