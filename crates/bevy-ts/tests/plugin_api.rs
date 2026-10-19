@@ -298,6 +298,10 @@ fn a_section_applies_after_commit_and_before_startups() {
     app.on_ts_section_applied("test/scene", move |world, input| {
         let live = world.resource::<Generations>().live;
         let bytes = plugin_api::encode_component(world, "game::Health", &serde_json::Map::new()).unwrap();
+        if !input.present {
+            s.push(format!("absent gen={}", input.generation));
+            return;
+        }
         s.push(format!("applied gen={} live={live} {} health={bytes:?}", input.generation, String::from_utf8_lossy(input.bytes)));
     });
     let s = seen.clone();
@@ -318,4 +322,7 @@ fn a_section_applies_after_commit_and_before_startups() {
     assert_eq!(apply(&mut app).status, ReloadStatus::Applied);
     let defaults = [0f32.to_le_bytes(), 100f32.to_le_bytes()].concat();
     assert_eq!(seen.list(), vec![format!("applied gen=1 live=1 tree health={defaults:?}"), "startup".to_string()]);
+    fake.push(FakeProgram { manifest: Manifest { components: vec![health()], ..Default::default() }, ..Default::default() });
+    apply(&mut app);
+    assert_eq!(seen.list().last().unwrap(), "absent gen=2");
 }

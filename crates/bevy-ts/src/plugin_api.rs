@@ -38,6 +38,9 @@ pub type SectionApply = Arc<dyn Fn(&mut World, &AppliedSection) + Send + Sync>;
 /// What a section's apply step receives.
 pub struct AppliedSection<'a> {
     pub generation: u64,
+    /// False when the generation wrote no such section: the apply step runs for every applied
+    /// generation, so a plugin can drop what an earlier one built.
+    pub present: bool,
     pub bytes: &'a [u8],
     pub location: Option<SourceLocation>,
 }

@@ -140,9 +140,17 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
             world.resource_mut::<Generations>().live = number;
             world.resource_mut::<RuntimeInfo>().generation = number;
             let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
-            for s in &sections {
-                for apply in appliers.0.get(&s.name).into_iter().flatten() {
-                    let input = crate::plugin_api::AppliedSection { generation: number, bytes: &s.bytes, location: s.location.clone() };
+            let mut names: Vec<&String> = appliers.0.keys().collect();
+            names.sort();
+            for name in names {
+                let s = sections.iter().find(|s| &s.name == name);
+                let input = crate::plugin_api::AppliedSection {
+                    generation: number,
+                    present: s.is_some(),
+                    bytes: s.map_or(&[][..], |s| &s.bytes),
+                    location: s.and_then(|s| s.location.clone()),
+                };
+                for apply in &appliers.0[name] {
                     apply(world, &input);
                 }
             }
