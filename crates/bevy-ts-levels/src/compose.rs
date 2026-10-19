@@ -483,7 +483,7 @@ fn lanes(base: &Value, n: usize) -> Vec<f64> {
 }
 
 /// `Vec3::ZERO`, `Quat::IDENTITY` and the other glam constants a level may name.
-fn constant(name: &str, n: usize) -> Option<Vec<f64>> {
+pub fn constant(name: &str, n: usize) -> Option<Vec<f64>> {
     let axis = |i: usize, s: f64| {
         (i < n).then(|| {
             let mut v = vec![0.0; n];

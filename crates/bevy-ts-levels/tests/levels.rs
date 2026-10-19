@@ -36,6 +36,7 @@ fn fixture(name: &str, files: &[(&str, &str)]) -> Fixture {
         .add_plugins(BevyTsPlugin::new(move || Box::new(h.backend())))
         .add_plugins(TsxPlugin)
         .add_plugins(LevelsPlugin);
+    app.world_mut().resource_mut::<Levels>().asset_root = dir.clone();
     Fixture { app, fake, dir }
 }
 
@@ -276,4 +277,112 @@ fn handle_fields_take_asset_paths() {
     // The level still loaded the entity, with the handle unresolved.
     let gone = f.by_name("Gone");
     assert!(f.app.world().get::<Sign>(gone).is_some());
+}
+
+mod writes {
+    use super::*;
+    use bevy_ts_levels::edit::{WriteRequest, write_level};
+    use bevy_ts_levels::engine::content_hash;
+    use bevy_ts_levels::writer::{Op, WValue};
+
+    fn p(s: &str) -> Vec<String> {
+        s.split('/').map(String::from).collect()
+    }
+
+    fn set_x(path: &str, x: f64) -> Op {
+        Op::Set { path: p(path), component: "Transform".into(), field: p("translation/x"), value: WValue::Float { v: x, f32: true }, containers: vec!["Vec3".into()] }
+    }
+
+    fn file(f: &Fixture) -> String {
+        std::fs::read_to_string(f.dir.join("levels/arena.bsn")).unwrap()
+    }
+
+    fn write(f: &mut Fixture, base: &str, ops: Vec<Op>) -> bevy_ts_levels::edit::WriteResult {
+        write_level(f.app.world_mut(), WriteRequest { id: 7, file: "levels/arena.bsn".into(), base: content_hash(base.as_bytes()), ops })
+    }
+
+    fn arena() -> Fixture {
+        let mut f = fixture(&format!("write-{:?}", std::thread::current().id()).replace(['(', ')'], ""), &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        f
+    }
+
+    #[test]
+    fn a_write_changes_one_line_and_keeps_the_entity() {
+        let mut f = arena();
+        let b = f.by_name("EnemyB");
+        let r = write(&mut f, ARENA, vec![set_x("EnemyB", 5.0)]);
+        assert_eq!((r.status, r.lines.clone()), ("written", vec![(7, 7)]), "{r:?}");
+        assert_eq!(file(&f), ARENA.replace("x: 3.0, z: -4.0", "x: 5.0, z: -4.0"));
+        assert_eq!(f.by_name("EnemyB"), b);
+        assert_eq!(f.translation(b).x, 5.0);
+        // The watcher's reload of the writer's own write reconciles nothing again.
+        f.app.update();
+        assert_eq!(f.app.world().resource::<bevy_ts_levels::edit::WriteResults>().0.len(), 1);
+    }
+
+    #[test]
+    fn a_rename_keeps_the_entity() {
+        let mut f = arena();
+        let a = f.by_name("EnemyA");
+        let r = write(&mut f, ARENA, vec![Op::Rename { path: p("EnemyA"), to: "Grunt".into() }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(f.by_name("Grunt"), a);
+        assert_eq!(f.app.world().get::<TsxNode>(a).unwrap().key_path, ["Grunt"]);
+    }
+
+    #[test]
+    fn another_entity_changed_on_disk_rebases() {
+        let mut f = arena();
+        let a = f.by_name("EnemyA");
+        std::fs::write(f.dir.join("levels/arena.bsn"), ARENA.replace("x: -3.0", "x: -6.0")).unwrap();
+        let r = write(&mut f, ARENA, vec![set_x("EnemyB", 5.0)]);
+        assert_eq!(r.status, "rebased", "{r:?}");
+        assert_eq!(f.translation(a).x, -6.0);
+        let b = f.by_name("EnemyB");
+        assert_eq!(f.translation(b).x, 5.0);
+        assert!(file(&f).contains("x: -6.0") && file(&f).contains("x: 5.0"));
+    }
+
+    #[test]
+    fn a_target_deleted_on_disk_is_a_conflict() {
+        let mut f = arena();
+        let b = f.by_name("EnemyB");
+        let without_b = ARENA.replace("#EnemyB\nTransform { translation: Vec3 { x: 3.0, z: -4.0 } }\nHealth { max: 250.0 }\n--\n", "");
+        assert_ne!(without_b, ARENA);
+        std::fs::write(f.dir.join("levels/arena.bsn"), &without_b).unwrap();
+        let r = write(&mut f, ARENA, vec![set_x("EnemyB", 5.0)]);
+        assert_eq!((r.status, r.reason.as_deref()), ("conflict", Some("target removed")), "{r:?}");
+        assert!(f.app.world().get_entity(b).is_err(), "the world follows the disk");
+        assert_eq!(file(&f), without_b);
+    }
+
+    #[test]
+    fn the_same_field_changed_on_disk_is_a_conflict() {
+        let mut f = arena();
+        std::fs::write(f.dir.join("levels/arena.bsn"), ARENA.replace("x: 3.0", "x: 9.0")).unwrap();
+        let r = write(&mut f, ARENA, vec![set_x("EnemyB", 5.0)]);
+        assert_eq!((r.status, r.reason.as_deref(), r.disk.as_deref()), ("conflict", Some("changed on disk"), Some("9.0")), "{r:?}");
+        let b = f.by_name("EnemyB");
+        assert_eq!(f.translation(b).x, 9.0);
+    }
+
+    #[test]
+    fn naming_an_unnamed_entity_keeps_it() {
+        let src = "Transform { translation: Vec3 { x: 1.0 } }\n--\nTransform { translation: Vec3 { x: 2.0 } }\n";
+        let mut f = fixture("unnamed", &[("levels/arena.bsn", src)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        let find = |f: &mut Fixture, x: f32| {
+            let world = f.app.world_mut();
+            world.query::<(Entity, &Transform)>().iter(world).find(|(_, t)| t.translation.x == x).map(|(e, _)| e).unwrap()
+        };
+        let (first, second) = (find(&mut f, 1.0), find(&mut f, 2.0));
+        let r = write(&mut f, src, vec![set_x("#0", 1.5)]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(file(&f).starts_with("#Transform1 Transform { translation: Vec3 { x: 1.5 } }"), "{}", file(&f));
+        assert_eq!(find(&mut f, 1.5), first);
+        assert_eq!(find(&mut f, 2.0), second, "the positional id after it moved, not the entity");
+    }
 }

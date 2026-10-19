@@ -68,12 +68,13 @@ impl std::error::Error for BsnLoadError {}
 #[derive(Default, TypePath)]
 pub struct BsnLoader;
 
-fn includes(list: &EntityList, out: &mut Vec<String>) {
+/// The inclusion paths a file names, as written.
+pub fn includes_of(list: &EntityList, out: &mut Vec<String>) {
     for e in &list.items {
         for entry in &e.entries {
             match entry {
                 Entry::Include(i) => out.push(i.path.clone()),
-                Entry::Related(r) => includes(&r.list, out),
+                Entry::Related(r) => includes_of(&r.list, out),
                 _ => {}
             }
         }
@@ -92,7 +93,7 @@ impl AssetLoader for BsnLoader {
         let src = String::from_utf8(bytes).map_err(|_| BsnLoadError(format!("{path}: not UTF-8")))?;
         let parsed = syntax::parse(&src).map_err(|d| BsnLoadError(d.render(&path, &src)))?;
         let mut paths = Vec::new();
-        includes(&parsed.entities, &mut paths);
+        includes_of(&parsed.entities, &mut paths);
         let includes = paths.iter().map(|p| cx.load::<BsnLevel>(compose::resolve_path(&path, p))).collect();
         Ok(BsnLevel { includes, hash: content_hash(src.as_bytes()), parsed: Arc::new(parsed) })
     }
@@ -148,9 +149,17 @@ pub struct LevelRoot {
 }
 
 /// Open levels, by asset path.
-#[derive(Resource, Default, Debug)]
+#[derive(Resource, Debug)]
 pub struct Levels {
     pub roots: BTreeMap<String, LevelRoot>,
+    /// Where asset paths are on disk, for the writer: Bevy's default `assets` folder unless set.
+    pub asset_root: std::path::PathBuf,
+}
+
+impl Default for Levels {
+    fn default() -> Self {
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets") }
+    }
 }
 
 impl Levels {
@@ -246,7 +255,7 @@ fn after_restart(world: &mut World) {
 
 impl Plugin for LevelsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<BsnLevel>().register_asset_loader(BsnLoader).init_resource::<Levels>();
+        app.init_asset::<BsnLevel>().register_asset_loader(BsnLoader).init_resource::<Levels>().init_resource::<crate::edit::WriteResults>();
         app.add_ts_section(SECTION, check_section);
         app.on_ts_section_applied(SECTION, apply_section);
         app.on_ts_section_applied(bevy_ts_tsx::SECTION, after_generation);
@@ -308,11 +317,19 @@ fn watch(
     {
         let messages = world.resource::<Messages<AssetEvent<BsnLevel>>>();
         let server = world.resource::<AssetServer>();
+        let assets = world.resource::<Assets<BsnLevel>>();
+        let levels = world.resource::<Levels>();
         for ev in cursor.read(messages) {
             if let AssetEvent::Modified { id } | AssetEvent::LoadedWithDependencies { id } = ev
                 && let Some(p) = server.get_path(*id)
             {
-                changed.push(p.path().to_string_lossy().replace('\\', "/"));
+                let file = p.path().to_string_lossy().replace('\\', "/");
+                // The writer's own write, already reconciled: the reload brings nothing new.
+                let hash = assets.get(*id).map(|a| a.hash);
+                let applied = levels.roots.values().any(|r| r.applied.get(&file).is_some_and(|h| Some(*h) == hash)) && levels.affected(&file).iter().all(|l| levels.roots[l].applied.contains_key(&file));
+                if !applied {
+                    changed.push(file);
+                }
             }
         }
     }
@@ -539,6 +556,13 @@ pub fn reconcile_level(world: &mut World, path: &str) {
     let (result, hashes) = compose_level(world, path);
     let composed = match result {
         Ok(c) => c,
+        // An inclusion the last edit added is still loading: try again when it has.
+        Err(errors) if errors.iter().any(|e| e.message.ends_with(": not loaded")) => {
+            if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
+                r.dirty = true;
+            }
+            return;
+        }
         Err(errors) => {
             for e in &errors {
                 log(world, LogLevel::Error, e);

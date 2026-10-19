@@ -8,8 +8,10 @@
 
 pub mod check;
 pub mod compose;
+pub mod edit;
 pub mod engine;
 pub mod syntax;
+pub mod writer;
 
 #[cfg(test)]
 #[allow(warnings, clippy::all, clippy::pedantic)]

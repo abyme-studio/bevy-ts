@@ -167,6 +167,59 @@ pub fn reconcile_external(world: &mut World, name: &str, location: Option<bevy_t
     Ok(stats)
 }
 
+/// Moves every node of `root` under key path `from` to `to`, keeping its entity and state: a
+/// rename the next reconcile then finds in place (levels' writer `rename`). Returns how many
+/// nodes moved; none when `to` is taken.
+pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> usize {
+    let moves: Vec<(Entity, u64, Vec<String>)> = {
+        let mut q = world.query::<(Entity, &TsxNode)>();
+        q.iter(world)
+            .filter(|(_, n)| n.root == root && n.key_path.starts_with(from))
+            .map(|(e, n)| {
+                let mut path = to.to_vec();
+                path.extend_from_slice(&n.key_path[from.len()..]);
+                (e, n.id, path)
+            })
+            .collect()
+    };
+    let tree = world.resource::<TsxTree>();
+    if moves.iter().any(|(_, _, p)| tree.entities.contains_key(&desc::node_id(root, p)) && !moves.iter().any(|(_, old, _)| *old == desc::node_id(root, p))) {
+        return 0;
+    }
+    let mut ids = std::collections::HashMap::new();
+    for (e, old, path) in &moves {
+        let id = desc::node_id(root, path);
+        ids.insert(*old, id);
+        let mut n = world.get_mut::<TsxNode>(*e).expect("queried");
+        n.id = id;
+        n.key_path = path.clone();
+    }
+    let mut tree = world.resource_mut::<TsxTree>();
+    let mut moved = Vec::new();
+    for (old, new) in &ids {
+        if let Some(e) = tree.entities.remove(old) {
+            moved.push((*new, e));
+        }
+    }
+    for (id, e) in moved {
+        tree.entities.insert(id, e);
+    }
+    if let Some(state) = tree.roots.get_mut(root) {
+        state.nodes = state.nodes.iter().map(|id| ids.get(id).copied().unwrap_or(*id)).collect();
+    }
+    for t in tree.reactive.targets.values_mut() {
+        if let Some(n) = ids.get(&t.node) {
+            t.node = *n;
+        }
+    }
+    for n in tree.reactive.refs.values_mut() {
+        if let Some(id) = ids.get(n) {
+            *n = *id;
+        }
+    }
+    moves.len()
+}
+
 /// Unmounts an external root and forgets it.
 pub fn unmount_external(world: &mut World, name: &str) -> ReconcileStats {
     world.resource_mut::<TsxTree>().external.remove(name);

@@ -20,11 +20,11 @@
 
 ## 3. Writer
 
-- [ ] 3.1 Operations on name paths (`set`, `revert`, `set_prop`, `add_instance`, `add_entity`, `delete`, `rename`, `reparent`) as text splices with style copied from siblings, and inverse batches
-- [ ] 3.2 Value printing: shortest round-trip floats, short type paths unless the file writes the type in full, only leaf fields that differ
-- [ ] 3.3 Re-parse check after every splice and atomic writes; golden diff tests asserting a one-field edit is one changed line
-- [ ] 3.4 Naming unnamed entities on first write; `rename` updates the retained tree before the reload
-- [ ] 3.5 Base-hash check, reload of the disk version, name-path replay, `rebased` and `conflict` results; tests for the agent-edits-mid-drag and target-deleted scenarios
+- [x] 3.1 Operations on name paths (`set`, `revert`, `set_prop`, `add_instance`, `add_entity`, `delete`, `rename`, `reparent`) as text splices with style copied from siblings, and inverse batches
+- [x] 3.2 Value printing: shortest round-trip floats, short type paths unless the file writes the type in full, only leaf fields that differ
+- [x] 3.3 Re-parse check after every splice and atomic writes; golden diff tests asserting a one-field edit is one changed line
+- [x] 3.4 Naming unnamed entities on first write; `rename` updates the retained tree before the reload
+- [x] 3.5 Base-hash check, reload of the disk version, name-path replay, `rebased` and `conflict` results; tests for the agent-edits-mid-drag and target-deleted scenarios
 - [ ] 3.6 Sidecar levels for `app.scene` roots on a `computed` rejection (needs tsx T4)
 
 ## 4. Hot reload

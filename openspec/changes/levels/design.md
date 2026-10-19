@@ -299,6 +299,14 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 - **Components with handles go through reflection (task 2.4).** Reflect-tier components, and layout-tier ones whose holes may own heap data (a `Handle` field), get a reflect target in tsx: inserted from their reflected `Default`, then written field by field, so an unchanged field is never rewritten. 0.20 registers no `ReflectConvert` from strings to handles, so a string in a field whose type has `ReflectHandle` is loaded with `load_erased` and made typed with `ReflectHandle::typed`. A failed asset load is a warning located at the field that named it.
 - **The binding's expression** is not in the description, so the bound-field error names the binding's site (file, line, column) and not its expression text.
 
+## Implementation notes (group 3)
+
+- **Field paths reach lanes.** `set` on `Transform.translation.x` replaces that lane's bytes; a missing lane joins its typed value in the value's style; a missing path inside a prefab becomes `Children [ #eye Transform { … } ]` under the instance.
+- **Inverses are batches by name path.** An inverse puts every value back but may place a re-added lane or entity after its siblings (the end of its list), so it restores the tree, not always the bytes.
+- **The verify step compares entity heads** (each named entity's entries as tokens, without trivia) outside the touched paths; any other difference refuses the batch with `internal`.
+- **Naming an unnamed entity moves the positional ids after it** (`#1` becomes `#0`); the writer reports those moves and the engine rekeys the retained tree (`tsx::rekey`), so no entity respawns. Renames rekey only in the level whose own file changed; a rename inside an included file respawns the includers' copies. `reparent` respawns the moved entity.
+- **Conflicts** (decision 8): a disk hash that differs from the batch's base reloads the disk version first; a `set` or `revert` whose field text differs between the base and the disk is `changed on disk` (with the disk's text), one whose entity or field is gone is `target removed`, and the rest replay and report `rebased`.
+
 ## Operator rulings
 
 - 2026-10-20: comments (E1) and negative numbers (U1) stay bevy-ts extensions for now; no upstream
