@@ -220,5 +220,35 @@ None: a new crate, a CLI flag, protocol 1.1 (additions only). abyme pins major 1
 - `assets+watch` polls the root every 250 ms while someone watches, diffing size, mtime and load state; Bevy's `file_watcher` feature is not on in the engine build, and polling needs no new feature.
 - `asset_thumbnail` answers images at once (decoded by Bevy, scaled on the CPU). Meshes and glTF scenes render offscreen on layer 30 over a few frames and read back; until then the answer is `pending: true` and the client asks again (`bevy_remote` methods cannot wait across frames). Fonts get no thumbnail yet (`png: null`). PNGs are written with stored deflate blocks and base64 by hand, so no image or base64 crate was added.
 
+## Demo walk (task 8.1, 2026-10-20)
+
+`cargo test --release -p bevy-ts-cli --test viewport_walk -- --ignored --nocapture` runs `bevy-ts dev <game.tsx> --viewport` as a process of its own; the test is the viewer (the Mach channel across processes, ticks at 120 Hz from a thread as a display link would, IOSurfaces looked up from their ports) and the editor (HTTP, rewriting `game.tsx`). There is no `examples/arena` yet (tsx task 8.1), so the walk writes a two-enemy TSX project (`b` at a literal, `c` at `spawn(2)`). Release build, Apple M5 Max, load average 50–75 from other builds on the machine:
+
+```
+1 started with no window: hello says viewport: true (5.8 s)
+2 play: 3 surfaces of 1792x1280, 83 to 111 frames in 1 s at 120 Hz ticks, 2 skipped, gpu 0.7 ms
+2b play input to frame over 40 events: median 15.0 ms, p95 70.9 ms
+3 edit: paused; selected b by game.tsx:8, route tsx
+4 clicked b: selected, origin viewport
+5 dragged b: x 3 -> 5.474, one edit, route tsx at game.tsx:8
+6 editor wrote the literal: reload in 39 to 52 ms, b at x 5.474 (no jump), still selected
+7 stepped one frame in edit
+8 resized to 900x500 points: frames at 1800x1000 in 112 to 407 ms (a new ring: 2048x1024)
+```
+
+The frame rate and the latency tail follow the machine's load; on a quiet machine the spike measured 14.0 ms median key to pixels. The first frame after start takes several seconds in a debug build (pipelines compile); the walk waits for ten frames before measuring.
+
+## What abyme must provide: as built
+
+Checked against abyme's `bevy-studio` change (its design, decision 2), which already speaks this channel. Differences from the list above:
+
+- The contract is protocol 1.5.0 (tsx, systems-api and native took 1.1 to 1.4); abyme checks `hello.viewport`, not a version.
+- Multi-word fields are camelCase like the rest of the contract: `tick` is `{ ts, targetTs }`, not `target_ts`. The engine does not read `targetTs` yet, so either spelling works today.
+- `visible` and `focus` work as notifications of their own or as `input` events (`{ "type": "focus", "on": … }`); `resize` takes `display` and `hz`.
+- `surface` and `frame` carry no `layer` yet (absent means 0). A message the engine does not know (`command`, `menu`) is ignored.
+- `asset_thumbnail` answers `pending: true` for meshes and glTF until the offscreen render has been read back; ask again.
+- `viewport_select` by `file`, `line` (and `column`) selects every instance root the location makes. Selection items carry tsx's 16-hex node id.
+- A game wanting mesh picking in play adds `MeshPickingPlugin`; edit mode's picking needs nothing from the game.
+
 ## Open Questions
 

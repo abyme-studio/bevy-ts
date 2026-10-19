@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.4.0";
+pub const VERSION: &str = "1.5.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -541,8 +541,17 @@ pub struct EditRoute {
     pub kind: EditRouteKind,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub level: ::std::option::Option<::std::string::String>,
+    ///bsn: the instance's name path in its level.
+    #[serde(rename = "namePath", skip_serializing_if = "::std::option::Option::is_none")]
+    pub name_path: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+    ///bsn: every level frame that could hold the edit, outermost first.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub owners: ::std::option::Option<::std::vec::Vec<LevelOwner>>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub path: ::std::option::Option<::std::string::String>,
+    ///bsn: the levels.prefabEdits policy that chose the target.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub policy: ::std::option::Option<EditRoutePolicy>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub prop: ::std::option::Option<::std::string::String>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -550,6 +559,9 @@ pub struct EditRoute {
     ///tsx: the entity's source chain.
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub source: ::std::vec::Vec<SourceLocation>,
+    ///bsn: the frame the edit is written to under levels.prefabEdits.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub target: ::std::option::Option<LevelTarget>,
 }
 ///`EditRouteKind`
 #[derive(
@@ -607,6 +619,61 @@ impl ::std::convert::TryFrom<&str> for EditRouteKind {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String> for EditRouteKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///bsn: the levels.prefabEdits policy that chose the target.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum EditRoutePolicy {
+    #[serde(rename = "override")]
+    Override,
+    #[serde(rename = "source")]
+    Source,
+}
+impl ::std::fmt::Display for EditRoutePolicy {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Override => f.write_str("override"),
+            Self::Source => f.write_str("source"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditRoutePolicy {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "override" => Ok(Self::Override),
+            "source" => Ok(Self::Source),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditRoutePolicy {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditRoutePolicy {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -1531,6 +1598,23 @@ pub struct Layout {
     pub align: u32,
     pub fields: ::std::vec::Vec<FieldLayout>,
     pub size: u32,
+}
+///`LevelOwner`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelOwner {
+    pub file: ::std::string::String,
+    pub line: u32,
+    #[serde(rename = "namePath")]
+    pub name_path: ::std::vec::Vec<::std::string::String>,
+}
+///`LevelTarget`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelTarget {
+    pub file: ::std::string::String,
+    #[serde(rename = "namePath")]
+    pub name_path: ::std::vec::Vec<::std::string::String>,
 }
 ///`LogEntry`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -2916,6 +3000,9 @@ pub struct ViewportPickResult {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportResizeParams {
+    ///The display the hole is on (CGDirectDisplayID), when it moves display.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub display: ::std::option::Option<u32>,
     pub h: f64,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub hz: ::std::option::Option<f64>,

@@ -168,7 +168,9 @@ pub(crate) fn drain(world: &mut World) {
                         crate::input::queue_at(world, at, json!({ "type": "focus", "on": params["on"] }));
                     }
                     "visible" | "hello" | "bye" => {}
-                    other => warn!("viewport: unknown channel message {other}"),
+                    // A surface view's own messages (abyme's `command`, `menu`) and any later
+                    // ones: not the engine's to read.
+                    other => debug!("viewport: ignoring channel message {other}"),
                 }
             }
             crate::mach::Incoming::Malformed(s) => warn!("viewport: malformed channel message {s}"),

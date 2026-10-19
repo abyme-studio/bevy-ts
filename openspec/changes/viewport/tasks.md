@@ -51,5 +51,5 @@
 
 ## 8. Demo and hand-off
 
-- [ ] 8.1 With the throwaway viewer standing in for abyme: run `examples/arena` with `--viewport`, play, toggle edit, select enemy `b` by click and by location, drag it, answer as an editor, step, resize, and record stats in design.md
+- [x] 8.1 With the throwaway viewer standing in for abyme: run `examples/arena` with `--viewport`, play, toggle edit, select enemy `b` by click and by location, drag it, answer as an editor, step, resize, and record stats in design.md
 - [ ] 8.2 Check design.md's "What abyme must provide" against what the throwaway viewer needed, and send it to abyme's Bevy app change

@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names."
   },
   "methods": [
@@ -2654,6 +2654,15 @@
           },
           "hz": {
             "type": "number"
+          },
+          "display": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The display the hole is on (CGDirectDisplayID), when it moves display."
           }
         }
       },
@@ -3001,6 +3010,49 @@
               "string",
               "null"
             ]
+          },
+          "namePath": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "bsn: the instance's name path in its level."
+          },
+          "owners": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/LevelOwner"
+            },
+            "description": "bsn: every level frame that could hold the edit, outermost first."
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelTarget"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "bsn: the frame the edit is written to under levels.prefabEdits."
+          },
+          "policy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "override",
+              "source",
+              null
+            ],
+            "description": "bsn: the levels.prefabEdits policy that chose the target."
           }
         },
         "description": "Who may persist an edit to this field: bsn (bevy-ts, levels), tsx (the editor), locked (bound or rejected), transient (ECS only)."
@@ -3740,6 +3792,50 @@
         "required": [],
         "additionalProperties": false,
         "properties": {}
+      },
+      "LevelOwner": {
+        "type": "object",
+        "required": [
+          "file",
+          "namePath",
+          "line"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "namePath": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "line": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "LevelTarget": {
+        "type": "object",
+        "required": [
+          "file",
+          "namePath"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "namePath": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       }
     }
   }
