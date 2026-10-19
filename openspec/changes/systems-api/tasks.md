@@ -72,4 +72,4 @@
 
 - [x] 11.1 Move the V8, CLI and protocol tests to the new surface
 - [x] 11.2 Rewrite `examples/cube/src/game.ts` in the ruled form; walk all six demo steps headless; rerun `bob_bench` and update the recorded numbers (walk: all six steps pass on release; bob_bench rerun pending a quiet machine, see docs/research/change-detection.md)
-- [ ] 11.3 Tell bevy-ts-tsx when the surface is on main
+- [x] 11.3 Tell bevy-ts-tsx when the surface is on main (main 8871413)
