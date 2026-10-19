@@ -90,9 +90,9 @@ function fieldKind(t: ts.TypeNode, sf: ts.SourceFile): string {
 function readData(n: ts.ClassDeclaration, sf: ts.SourceFile, file: string) {
   const base = n.heritageClauses?.[0]?.types[0]?.expression.getText(sf) ?? "";
   if (base.startsWith("States(")) return console.log(`${n.name!.text}: states ${base.slice(6)}`);
-  if (base === "SystemSet") return console.log(`${n.name!.text}: set "${file}#${n.name!.text}"`);
+  if (base === "SystemSet") return console.log(`${n.name!.text}: set "${modPath}::${n.name!.text}"`);
   if (!DATA.has(base)) return;
-  let path = `${file}#${n.name!.text}`;
+  let path = `${modPath}::${n.name!.text}`;
   const fields: string[] = [];
   try {
     for (const m of n.members) {
@@ -111,6 +111,8 @@ function readData(n: ts.ClassDeclaration, sf: ts.SourceFile, file: string) {
 
 const sf = load(resolve(Deno.args[0]));
 const rel = Deno.args[0].replace(/^.*?examples\//, "examples/");
+// Data and prefab names: the module path under the source root as a Rust-style path (src/enemies.tsx -> enemies).
+const modPath = rel.replace(/^(src|examples)\//, "").replace(/\.(tsx?|jsx?)$/, "").split("/").join("::");
 // Prefabs: exported arrow functions in .tsx whose one parameter is a destructured, typed props object.
 // Name `module#export`, pinned by `Name.path = "..."`; props and defaults read as fields.
 const pinned = new Map<string, string>();
@@ -129,7 +131,7 @@ function readPrefab(name: string, fn: ts.ArrowFunction) {
       const ps = m as ts.PropertySignature, k = ps.name.getText(sf), d = defaults.get(k);
       return `${k}: ${fieldKind(ps.type!, sf)}${d ? ` = ${d}` : ""}`;
     });
-    console.log(`${name}: prefab "${pinned.get(name) ?? `${rel}#${name}`}" { ${props.join(", ")} }`);
+    console.log(`${name}: prefab "${pinned.get(name) ?? `${modPath}::${name}`}" { ${props.join(", ")} }`);
   } catch (e) { console.log(`${name}: ERROR ${(e as Error).message}`); }
 }
 for (const n of sf.statements) {

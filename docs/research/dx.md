@@ -1,7 +1,7 @@
 # TS developer experience against Bevy's own, and adopting Rust Bevy plugins
 
 1. **Surface (ruled 2026-10-20):** systems are plain exported functions whose parameter types say what they use, as in Rust: `export function chase(time: Res<Time>, enemies: Query<[Enemy, Mut<Transform>], With<Alive>>) { ... }`. A syntax-only pass in bevy-ts's oxc compile step reads the annotations. A system whose param types are computed uses the setup closure instead. Around that:
-   - Components, resources, messages and events are plain classes whose fields the same compile pass reads (ruled 2026-10-20): `class Health extends Component { hp: f32 = 100 }`. The name defaults to `module#Class`, and `static path = "game::Health"` pins it.
+   - Components, resources, messages and events are plain classes whose fields the same compile pass reads (ruled 2026-10-20): `class Health extends Component { hp: f32 = 100 }`. The name defaults to a Rust-style path from the module (`src/game.ts` gives `game::Health`), and `static path` pins it.
    - Systems register Bevy's way: `app.addSystems(Update, chain(a, b).runIf(inState(Game.Playing)))`. Observers are functions whose first parameter is `On<E>`; plugins are functions of `app`.
    - Systems are identified by `module#export`. Access comes from `Mut<...>` and is checked by `tsc`. `q.each` is the hot loop. There is no ParamSet.
    - No hooks in TSX (ruled 2026-10-20): a binding reads `ref.get(C)` and `res(R)`; `signal()` stays for UI-local state.
@@ -122,7 +122,7 @@ export class Damage extends Message { declare target: Entity; declare amount: f3
 export class Explode extends EntityEvent { declare radius: f32 }
 ```
 
-Ruled 2026-10-20. The compile pass reads each class's fields (name, type, default) from syntax, as it reads system signatures. `declare` marks a field with no default, and TS emits nothing for it. The name defaults to `module#Class`, as Rust's comes from its module path, and `static path = "game::Health"` pins it, so renaming the file keeps saved levels working. A value is `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. Before: `class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}`, a name string plus a runtime schema object.
+Ruled 2026-10-20. The compile pass reads each class's fields (name, type, default) from syntax, as it reads system signatures. `declare` marks a field with no default, and TS emits nothing for it. The name defaults to a Rust-style path from the module (`src/game.ts` gives `game::Health`), as Rust's comes from its module path, and `static path = "game::Health"` pins it, so renaming the file keeps saved levels working. A value is `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. Before: `class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}`, a name string plus a runtime schema object.
 
 ### A system with two queries and a resource
 
@@ -723,7 +723,7 @@ Bridge is archived, so its capabilities live in `openspec/specs/`.
   - It refuses computed types with the file and line.
   - A system registered without declarations throws.
   - The same pass ships as a vitest, Vite and esbuild plugin.
-- `ts-components`: components, resources, messages and events are plain classes whose fields the compile pass reads (`class Enemy extends Component { speed: f32 = 2 }`), named `module#Class` unless `static path` pins it:
+- `ts-components`: components, resources, messages and events are plain classes whose fields the compile pass reads (`class Enemy extends Component { speed: f32 = 2 }`), named by a Rust-style path from the module (`game::Enemy`) unless `static path` pins it:
   - The class is the handle, the TSX tag and, through `Enemy.of({ ... })`, the constructor. Its instance type is the data.
   - Read views are `readonly`, and vector fields are in-place views with the glam-like method set.
   - `vec3()` and `quat()` make scratch values.

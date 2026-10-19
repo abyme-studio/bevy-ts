@@ -17,11 +17,11 @@ The compile step SHALL read each field's name, type and default from syntax (scr
 
 The class SHALL be the component's handle in queries (`Query<[Mover]>`), its TSX tag (`<Mover speed={2} />`) and, through `Mover.of({ speed: 2 })`, its constructor for commands. Its instance type SHALL be the component's data. A class with no fields is a marker.
 
-The component's name in Bevy, the protocol and `.bsn` files SHALL default to `<module path>#<Class>` (`src/game.ts#Mover`). `static path = "game::Mover"` SHALL pin it, so moving or renaming the class keeps its identity.
+The component's name in Bevy, the protocol and `.bsn` files SHALL default to a Rust-style path: the module's path under the source root with `/` as `::` and the extension dropped, then the class or export: `src/enemies.tsx` exporting `Grunt` is `enemies::Grunt`, `src/units/tank.ts` exporting `Tank` is `units::tank::Tank`, as a Rust type path is built from its module (`src/game.ts` exporting `Mover` is `game::Mover`). Two classes with one derived path SHALL fail the load naming both. `static path = "game::Mover"` SHALL pin it, so moving or renaming the class keeps its identity.
 
 #### Scenario: A plain numeric component
 - **WHEN** `game.ts` exports `class Mover extends Component { speed: f32 = 1; amplitude: f32 = 2 }`
-- **THEN** a component named `src/game.ts#Mover` with two `f32` fields, defaulting to 1 and 2, exists in the world after the module loads
+- **THEN** a component named `game::Mover` with two `f32` fields, defaulting to 1 and 2, exists in the world after the module loads
 
 #### Scenario: A string field
 - **WHEN** a component declares `name: string = "x"`

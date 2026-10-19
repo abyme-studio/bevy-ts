@@ -110,7 +110,7 @@ export type Init<T> = {
 // The compile pass reads each class's fields (name, type, default) as it reads system signatures:
 //   export class Health extends Component { hp: f32 = 100; max: f32 = 100 }
 //   export class Damage extends Message { declare target: Entity; declare amount: f32 }
-// The name defaults to `module#Class` (`src/game.ts#Health`); `static path = "game::Health"` pins it.
+// The name defaults to a Rust-style path from the module (`src/game.ts` -> `game::Health`); `static path` pins it.
 
 /**
  * `layout`: a column a TS system may read and write (TS components, ported Rust components).
@@ -123,7 +123,7 @@ declare const messageBrand: unique symbol;
 declare const eventBrand: unique symbol;
 
 declare abstract class Data {
-  /** Optional stable name; the default is `module#Class`. */
+  /** Optional stable name; the default is the module's Rust-style path, `game::Health`. */
   static readonly path?: string;
   /** `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. */
   static of<T>(this: new () => T, init?: Init<T>): T;

@@ -152,7 +152,7 @@ Rust SHALL register named recipes callable from `spawnNative` for things TS cann
 - **THEN** the next system in the stage no longer sees `e`
 
 ### Requirement: States
-`class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (`module#Class`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule by one bevy-ts exclusive system, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. `inState(S.Value)` SHALL be a Rust-evaluated run condition.
+`class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (a Rust-style path from its module, such as `game::Game`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule by one bevy-ts exclusive system, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. `inState(S.Value)` SHALL be a Rust-evaluated run condition.
 
 #### Scenario: Entering Playing
 - **WHEN** a system calls `next.set(Game.Playing)` from `Menu`

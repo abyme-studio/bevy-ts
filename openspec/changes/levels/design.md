@@ -129,12 +129,12 @@ Enemy.path = "game::Enemy";
 Transform { translation: Vec3 { x: 3.0, z: -4.0 } }
 ```
 
-- Every exported prefab is callable from a level, with no registration (operator ruling 2026-10-20, as with components and systems). Its name is `module#export` unless `Enemy.path` pins it. The compile step reads its props from the props type and their defaults from the destructuring, with components' field types. That lets Rust type-check `.bsn` values, the inspector show props, and the writer emit them.
+- Every exported prefab is callable from a level, with no registration (operator ruling 2026-10-20, as with components and systems). Its name is a Rust-style path, the module's path under the source root with `/` as `::` and the extension dropped, then the class or export: `src/enemies.tsx` exporting `Grunt` is `enemies::Grunt`, `src/units/tank.ts` exporting `Tank` is `units::tank::Tank`, as a Rust type path is built from its module, unless `Enemy.path` pins it, so a level writes `@enemies::Grunt { speed: 3.0 }` in upstream's path syntax. The compile step reads its props from the props type and their defaults from the destructuring, with components' field types. That lets Rust type-check `.bsn` values, the inspector show props, and the writer emit them.
 - *Beat: `prefab(name, props, fn)` with a runtime props schema (the previous draft).* A name string and a schema object beside the TS type said the same thing twice.
 - Expansion is one host call per reconcile that has any instances to expand (`tsx`'s B2 entry). It sends `(name, props)` per instance and gets descriptions back.
 - An instance root's `Transform` is the level's, unless the prefab binds it (decision 6). A prefab that sets the root `Transform` with a literal or a prop gets it overridden by the level's patch, which follows the expansion. Placement is therefore always a component override and never a prop the engine would have to trace. tsx decision 10 says the engine cannot tell whether `translation={at}` came from a literal.
 
-- *Beat: name prefabs by file and export (`:"src/enemy.tsx#Enemy"`).* It parses with upstream today. But a cached inclusion takes no props, so props would need a fake component, and renaming a file would break every level.
+- *Beat: name prefabs by file and export as a string (`:"src/enemy.tsx#Enemy"`).* It parses with upstream today, but a cached inclusion takes no props, so props would need a fake component. A Rust-style path derived from the module reads like any other `.bsn` type path, and `path` pins it against renames.
 - *Beat: untyped props (JSON passed through).* The writer could not emit them, the inspector could not show them, and errors would surface inside the prefab function rather than at the line in the level.
 
 ### 6. Override values are controlled; overriding a bound field is a load error
@@ -238,7 +238,7 @@ On top of bridge's and tsx's rules:
 
 ## Depends on tsx and viewport
 
-- **T1 (tsx).** Exported prefabs by name (`module#export` or a pinned `path`), with props read by the compile step, callable from Rust through a host entry with `(name, props)` per instance.
+- **T1 (tsx).** Exported prefabs by name (a Rust-style path from the module, such as `enemies::Grunt`, or a pinned `path`), with props read by the compile step, callable from Rust through a host entry with `(name, props)` per instance.
 - **T2 (tsx).** External roots: a Rust plugin can submit a description for a named root (`level:<path>`) built in Rust and partly expanded in JS. It is reconciled under the same rules and generation boundary as `app.scene` roots.
 - **T3 (tsx).** Provenance `override` with location, and, before reconciling a level description, a lookup of which expanded fields are `bound` with their site location and expression, so levels can refuse overrides of them.
 - **T4 (tsx).** An overlay root: a description layered over an `app.scene` root by key path, for decision 11.
@@ -274,8 +274,8 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 
 ## Operator rulings
 
-- 2026-10-20: prefabs need no registration. Every exported prefab is callable by `module#export` or a
-  pinned `Enemy.path`, with props read from its props type (docs/research/dx.md).
+- 2026-10-20: prefabs need no registration. Every exported prefab is callable by a Rust-style path from
+  its module (`enemies::Grunt`) or a pinned `Enemy.path`, with props read from its props type (docs/research/dx.md).
 
 - 2026-10-19: `levels.prefabEdits` defaults to `override`. A viewport edit is a per-instance `.bsn`
   override; "Apply to prefab" rewrites the TSX literal. `source` stays a setting a project may choose.
