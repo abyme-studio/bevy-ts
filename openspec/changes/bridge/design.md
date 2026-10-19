@@ -182,10 +182,21 @@ V8 sandbox caveat: external backing stores over arbitrary pointers need the sand
 
 None: a greenfield crate. Protocol 1.0.0 ships with this change; the studio pins the major.
 
+## Operator rulings
+
+- 2026-10-19: the game draws inside abyme's window from the start, in a native hole, as abyme's
+  browser view already sits behind its page. The engine renders to an offscreen target shared
+  across processes as a GPU surface (IOSurface on macOS) instead of a window of its own; abyme's
+  app draws that surface in the hole and forwards input over the protocol. macOS and this Mac
+  first; streamed frames for remote devices come later. The edit viewport is the engine itself in
+  edit mode (paused simulation, editor camera, engine-drawn gizmos). It is the `viewport` change,
+  with its abyme half in abyme's Bevy app; this change keeps a windowed mode for `bevy-ts dev`
+  outside abyme.
+
 ## Open Questions
 
 - Decision 2's scope (structural only, or field writes too) and decision 6's alternative (per-row dirty bits) are still the operator's to choose; this draft keeps them as written.
 
-- Viewport and asset viewer: the studio plugins list names them, but this change specs no frame streaming, picking/selection sync or asset listing. They need their own methods, probably a protocol 1.1.
+- Viewport and asset viewer: this change specs no viewport surface, picking/selection sync or asset listing. They are the `viewport` change (operator ruling below) and protocol 1.1.
 - Whether `bevy-ts/pause` should also offer single-frame stepping.
 - Packaging: whether `bevy-ts` ships as one prebuilt binary per platform through npm (`npx bevy-ts dev`) or through `cargo install`. That decides how a user with no Rust toolchain gets it, and is left to the CLI task.
