@@ -760,8 +760,7 @@ A Fable review of the native change, checked against Bevy 0.20 and `bevy_rapier3
 - **Script materials and the TypeGPU verdict moved to their own change**, `openspec/changes/script-materials`.
 
 
-- **tsx, picking and spawning:** picking handlers become entity-local observer props (`onPointerClick`, ...) named after Bevy 0.20's `PointerClick`, and B3 becomes `commands.spawn(<Prefab />)`.
-- **Performance (asks first):** vector views get the parent's row without a per-row setter, and setters stamp a row's tick once per row (bridge decision 5, task 11.2).
+- **Spawning:** tsx B3 becomes `commands.spawn(<Prefab />)`; the systems spec already lets `spawn` take a prefab element.
 
 ## Sources
 

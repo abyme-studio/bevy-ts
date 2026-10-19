@@ -36,7 +36,7 @@ A node SHALL keep its entity across a reload when its key path is unchanged, eve
 A generation SHALL re-register every binding, handler and subscription it creates, and the previous generation's ids SHALL be dropped when it is applied. A bound value that evaluates equal to its last applied value SHALL NOT be written.
 
 #### Scenario: Editing a handler
-- **WHEN** the Spawn button's `onClick` body changes and reloads
+- **WHEN** the Spawn button's `onPointerClick` body changes and reloads
 - **THEN** the next click runs the new body, and the button entity is unchanged
 
 ### Requirement: A failing scene fails the generation

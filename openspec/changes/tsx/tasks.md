@@ -42,7 +42,7 @@
 
 - [x] 6.1 Implement `<node>` with `style` mapped to `Node` and the length helpers, plus `background`, `border`, `radius`
 - [x] 6.2 Implement `<text>` (`Text`, `TextFont`, `TextColor`, bound children through `patchReflect`), `<image>` and `<button>`
-- [ ] 6.3 Observe `Pointer<Click|Press|Release|Over|Out>` on entities with handlers, queue events, and deliver them in the same host call as subscriptions; test three clicks in one frame
+- [ ] 6.3 Observe `PointerClick|PointerPress|PointerRelease|PointerOver|PointerOut` on entities with `onPointer*` handlers (any `<entity>` or UI element), queue events, and deliver them in the same host call as subscriptions; test three clicks in one frame
 
 ## 7. Editor hooks
 

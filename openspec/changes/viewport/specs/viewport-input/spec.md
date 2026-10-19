@@ -16,7 +16,7 @@ The engine SHALL apply queued events at the start of each frame, before `PreUpda
 
 #### Scenario: A click on the cube
 - **WHEN** the viewer sends `move`, `down` and `up` at the cube's position with `button: left`
-- **THEN** a `bevy_picking` `Pointer<Click>` observer on the cube fires once, from the stock mouse pointer
+- **THEN** a `bevy_picking` `PointerClick` observer on the cube fires once, from the stock mouse pointer
 
 #### Scenario: Focus leaves the hole with a key held
 - **WHEN** `KeyW` is down and the viewer sends `focus` with `on: false`

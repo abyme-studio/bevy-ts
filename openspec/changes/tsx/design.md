@@ -14,7 +14,7 @@ Prior art, read 2026-10-19:
 - **Solid 1.9.** Components run once; `createSignal`/`createEffect`/`createMemo` track reads; the compiler (dom-expressions) clones static structure and wraps only dynamic expressions in effects, so only bound nodes update. `solid-js/universal`'s `createRenderer` targets non-DOM hosts but needs Solid's Babel preset. **bevy_superui 0.4** does the same with its own oxc pass lowering JSX to a `$ss` ABI. Taken: run-once components and fine-grained bindings. Not taken: a compiler pass (see decision 3).
 - **Triplex** (trytriplex/triplex). A Babel plugin rewrites compiled `jsx`/`jsxs` calls to inject `__meta` (`path`, `line`, `column`, `astPath`, where `astPath` is element names from the export down with `.N` for repeated siblings) and wraps host elements so a click in the viewport finds its element. Edits go through `ts-morph` on the server (`getJsxElementAt` by line and column) and `saveSync`; undo is a stack of whole-file snapshots. Taken: source location per element, lookup by line and column, an element-path fallback, and the rule that the editor, not the runtime, parses and rewrites source.
 - **Bevy 0.20 BSN** (`bevy_scene` 0.20, BSN introduced in 0.19). `bsn!` builds a `Scene` and `bsn_list!` a `SceneList`. A BSN expression is a patch that writes only the fields it names, layered in order. Templates may read the world and the spawn context, for example to load assets. `#Name` names an entity, `:"file.bsn"` inherits a cached scene, `on(...)` attaches observers, and 0.20 adds a bottom-up `Ready` event. No `.bsn` loader ships yet (0.20 "What's Next"). Nothing retains or reconciles: BSN spawns, it does not update.
-- **bevy_ui 0.20.** `Node`, `Text`, `ImageNode`, `BackgroundColor`, `em()`/`rem()` units, feathers widgets; interaction through `bevy_picking` (`Pointer<Click>`, `Pointer<Over>`, `Pointer<Out>`) and observers.
+- **bevy_ui 0.20.** `Node`, `Text`, `ImageNode`, `BackgroundColor`, `em()`/`rem()` units, feathers widgets; interaction through `bevy_picking` (renamed in 0.20: `PointerClick`, `PointerOver`, `PointerOut`) and observers.
 - **JSX source info.** React 19.2 stopped using `__source`/`__self`, but the automatic dev transform (`jsxDEV`) still carries `{fileName, lineNumber, columnNumber}` in TypeScript's `react-jsxdev`, and oxc 0.154's transformer has `development` (the `jsx_source` plugin) and `importSource`. Checked 2026-10-20 (task 1.2): oxc 0.154 passes source as `jsxDEV`'s fifth argument, with `fileName` the absolute path bridge compiled and line and column in TS source coordinates; Rust makes the file project-relative. The runtime also reads a `__source` prop.
 
 ## Goals / Non-Goals
@@ -212,7 +212,7 @@ export const Enemy = ({ at, hp = 100 }: { at: Vec3; hp?: number }) => (
 export const Hud = ({ player }: { player: NodeRef }) => (
   <node style={{ position: "absolute", top: px(12), left: px(12), padding: px(8) }} background="#0008">
     <text size={20}>{() => `HP ${Math.ceil(player.get(Health).hp)} / ${player.get(Health).max}`}</text>
-    <button onClick={(ctx) => ctx.commands.mount(<Enemy key={`e${ctx.frame}`} at={[0, 0, -6]} />)}>
+    <button onPointerClick={(ctx) => ctx.commands.mount(<Enemy key={`e${ctx.frame}`} at={[0, 0, -6]} />)}>
       <text>Spawn</text>
     </button>
   </node>
@@ -257,6 +257,9 @@ A `damage` system lowers `hp` of every `Health` near the player each frame; a `b
 None: new crate and modules. Protocol minor bump for the `bevy-ts/tsx_*` methods.
 
 ## Operator rulings
+
+- 2026-10-20: picking props are `onPointerClick`, `onPointerOver`, ... (`on` plus Bevy 0.20's event
+  name), allowed on any `<entity>` or UI element as entity-local observers.
 
 - 2026-10-20: TSX has no hooks. Bindings read `ref.get(C)` and `res(R)` directly; the read inside
   the binding is the subscription. `signal()` stays for UI-local state. No `use*` exports

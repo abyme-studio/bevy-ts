@@ -62,7 +62,7 @@ Under `bevy-ts dev`, reading a signal, `target.get(C)` or `res(R)` directly in a
 - **THEN** the entity's `Node.padding` is 8 px on every side and its `BackgroundColor` is black at 50% alpha
 
 ### Requirement: Events from bevy_picking, batched
-`onClick`, `onPress`, `onRelease`, `onOver` and `onOut` on any element SHALL register handler ids with Rust, which SHALL observe the matching `Pointer<...>` events on that entity and queue them. Queued events SHALL be delivered in the same per-frame host call as subscription changes, in arrival order. A handler SHALL receive the event (entity, pointer position, button) and a `ctx` with `commands` and `frame`. Events SHALL NOT bubble in this change.
+`onPointerClick`, `onPointerPress`, `onPointerRelease`, `onPointerOver` and `onPointerOut` on any `<entity>` or UI element SHALL register handler ids with Rust, which SHALL observe the matching Bevy 0.20 picking event on that entity (`PointerClick`, `PointerPress`, `PointerRelease`, `PointerOver`, `PointerOut`) and queue it; each prop is an entity-local observer, as `on(...)` is in BSN (operator ruling 2026-10-20). The prop name is `on` plus the Bevy event's name, so the remaining picking events (`PointerDragStart`, `PointerScroll`, ...) follow the same rule when added. Queued events SHALL be delivered in the same per-frame host call as subscription changes, in arrival order. A handler SHALL receive the event (entity, pointer position, button) and a `ctx` with `commands` and `frame`. Events SHALL NOT bubble in this change.
 
 #### Scenario: Three clicks in one frame
 - **WHEN** three buttons are clicked in one frame

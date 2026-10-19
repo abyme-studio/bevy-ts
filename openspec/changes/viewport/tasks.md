@@ -23,7 +23,7 @@
 ## 4. Input
 
 - [ ] 4.1 Map `ViewportInput` to Bevy 0.20's winit-shaped messages (cursor, buttons, motion, wheel with units and phases, gestures, keys via a W3C `code` to `KeyCode` table from winit's, IME, focus); release keys on focus loss
-- [ ] 4.2 `bevy-ts/viewport_input` over HTTP into the same queue through `BrpSender`; test `ButtonInput<KeyCode>` and a `Pointer<Click>` observer from it
+- [ ] 4.2 `bevy-ts/viewport_input` over HTTP into the same queue through `BrpSender`; test `ButtonInput<KeyCode>` and a `PointerClick` observer from it
 - [ ] 4.3 Send `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed` on change of the virtual window's fields
 - [ ] 4.4 Gate `gilrs` gamepad input by focus unless `gamepad_unfocused`
 

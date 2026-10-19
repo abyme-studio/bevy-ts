@@ -57,5 +57,5 @@ Spawning a description subtree SHALL go through Bevy 0.20's BSN scene machinery 
 A TS system (through its `Commands` param) or a handler SHALL be able to mount a description at runtime with `commands.mount(element, { parent? })` and unmount with `commands.unmount(node)`, applied in order with that run's other commands. Runtime-mounted nodes SHALL be keyed under a runtime root and SHALL survive reloads like scene nodes, until unmounted or despawned.
 
 #### Scenario: A handler spawns an enemy
-- **WHEN** a button's `onClick` calls `commands.mount(<Enemy key="e9" at={[0, 0, -6]} />)`
+- **WHEN** a button's `onPointerClick` calls `commands.mount(<Enemy key="e9" at={[0, 0, -6]} />)`
 - **THEN** after that frame's host call an enemy entity exists with a `TsxNode` whose key path is under the runtime root
