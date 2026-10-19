@@ -33,7 +33,7 @@
 - [x] 3b.1 Read `native.ports` and `native.crates` from `bevy-ts.json`; generate the engine's dependencies and `add_plugins` lines; a project with plugins and no native crate builds and runs
 - [x] 3b.2 Port format: crate `bevy-ts-<name>` whose Bevy plugin adds the third-party plugin, exports params, exposes sets and registers the `bevy-ts/<name>` module (types, JS glue, TSX constructors, flattened messages)
 - [ ] 3b.3 Ship the `rapier3d` port: `RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule()`, `Collider` constructors, `CollisionEvent` flattened to `{ kind, a, b, sensor }`, `ReadRapierContext` exported with `castRay`/`castRays`, sets `rapier:sync-backend`/`rapier:step`/`rapier:writeback`; example `examples/rapier/` with no Rust in the project
-- [ ] 3b.4 Plan the `leafwing-input-manager` port with a dynamic `TsAction(u16)`; record avian and hanabi as waiting on Bevy 0.20
+- [x] 3b.4 Plan the `leafwing-input-manager` port with a dynamic `TsAction(u16)`; record avian and hanabi as waiting on Bevy 0.20
 
 ## 4. Ordering against Rust sets
 
