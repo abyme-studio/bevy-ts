@@ -182,7 +182,7 @@ V8 sandbox caveat: external backing stores over arbitrary pointers need the sand
 
 - [A row marks changed on a write of the same value, as Bevy's `Mut` does] → Authors compare before writing when it matters, as Rust code uses `set_if_neq`; the comparing setter costs 2× the plain one on V8 and is not the default.
 - [JS cannot write `changed_by` locations under Bevy's `track_location` feature] → Dev only, off by default. When it is on, the post-run step fills `changed_by` for rows whose tick equals the run's tick with a location naming the TS system.
-- [JS can write into a `read` column: typed arrays cannot be made read-only] → Dev builds hash read columns around each run and warn. Release builds trust the declaration, which only affects change detection, since the stage is exclusive and no other thread is reading.
+- [JS can write into a `read` column: typed arrays cannot be made read-only] → Dev builds hash read columns around each run and warn; a serial hash costs ~8 ms per 1M rows per column (docs/research/change-detection.md), so it uses a SIMD hash or samples pages. Release builds trust the declaration, which only affects change detection, since the stage is exclusive and no other thread is reading.
 - [A system that throws after writing fields leaves partial writes] → Commands from that run are discarded; field writes cannot be rolled back. Documented.
 - [Module records leak across soft reloads] → They are dev only; an automatic hard reload triggers above a heap threshold.
 - [Breakpoints may not rebind across generation-tagged specifiers in every debugger] → Source maps point at the stable TS path. Verify with VS Code and Chrome in task 7; fall back to stable specifiers plus a fresh isolate if they fail.
