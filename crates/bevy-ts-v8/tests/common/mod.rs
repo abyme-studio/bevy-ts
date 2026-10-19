@@ -41,3 +41,9 @@ pub fn logs(app: &App) -> Vec<LogEntry> {
 pub fn messages(app: &App) -> Vec<String> {
     logs(app).into_iter().map(|e| e.message).collect()
 }
+
+pub fn updates(app: &mut App, n: usize) {
+    for _ in 0..n {
+        app.update();
+    }
+}

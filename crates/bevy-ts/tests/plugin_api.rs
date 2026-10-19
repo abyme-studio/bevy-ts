@@ -289,3 +289,33 @@ fn restart_notifies_between_despawn_and_first_apply() {
     assert_eq!(fake.restarts(), 1);
     assert_eq!(app.world().resource::<Generations>().live, 2);
 }
+
+#[test]
+fn a_section_applies_after_commit_and_before_startups() {
+    let (mut app, fake) = app();
+    let seen = Seen::default();
+    let s = seen.clone();
+    app.on_ts_section_applied("test/scene", move |world, input| {
+        let live = world.resource::<Generations>().live;
+        let bytes = plugin_api::encode_component(world, "game::Health", &serde_json::Map::new()).unwrap();
+        s.push(format!("applied gen={} live={live} {} health={bytes:?}", input.generation, String::from_utf8_lossy(input.bytes)));
+    });
+    let s = seen.clone();
+    let mut program = FakeProgram {
+        manifest: Manifest {
+            components: vec![health()],
+            startups: vec![bevy_ts::manifest::StartupDecl { name: "first".into(), location: None }],
+            ..Default::default()
+        },
+        sections: vec![Section { name: "test/scene".into(), bytes: b"tree".to_vec(), location: None }],
+        ..Default::default()
+    };
+    program.startups.push(Box::new(move |_| {
+        s.push("startup");
+        Ok(())
+    }));
+    fake.push(program);
+    assert_eq!(apply(&mut app).status, ReloadStatus::Applied);
+    let defaults = [0f32.to_le_bytes(), 100f32.to_le_bytes()].concat();
+    assert_eq!(seen.list(), vec![format!("applied gen=1 live=1 tree health={defaults:?}"), "startup".to_string()]);
+}

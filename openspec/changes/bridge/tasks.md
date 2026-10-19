@@ -17,36 +17,36 @@
 
 ## 3. TS components
 
-- [ ] 3.1 Collect component declarations into the generation manifest and validate types, defaults and hints
-- [ ] 3.2 Compute C layouts in Rust; unit-test offsets for mixed, vector, enum, array and entity fields
-- [ ] 3.3 Register components with `new_with_layout` (table, no drop, summary tick) and return ids and offsets to JS
-- [ ] 3.4 Generate per-component accessors in the `bevy-ts` runtime from returned offsets, setters storing `ctx.tick` into the row's tick; test that a Rust `QueryBuilder` query reads what TS wrote and that only written rows pass `Changed`
+- [x] 3.1 Collect component declarations into the generation manifest and validate types, defaults and hints
+- [x] 3.2 Compute C layouts in Rust; unit-test offsets for mixed, vector, enum, array and entity fields
+- [x] 3.3 Register components with `new_with_layout` (table, no drop, summary tick) and return ids and offsets to JS
+- [x] 3.4 Generate per-component accessors in the `bevy-ts` runtime from returned offsets, setters storing `ctx.tick` into the row's tick; test that a Rust `QueryBuilder` query reads what TS wrote and that only written rows pass `Changed`
 
 ## 4. TS systems and queries
 
-- [ ] 4.1 Build a `QueryState` per system from `read`/`write`/`with`/`without` with `QueryBuilder`; reject unknown and Rust-without-layout components
-- [ ] 4.2 Per run: take a change tick, walk matched tables, build data views per table × component and tick views per table × `write` component, copy entity pairs, make one call into JS, detach
-- [ ] 4.3 Implement `q.each` with reused accessors and `q.tables` with `read`, `write` and `split`; test that `each`, `write` and `split` give identical values and that `split` marks only the rows the caller ticked
-- [ ] 4.4 Add stages `preUpdate`/`update`/`postUpdate`/`fixedUpdate` with `BevyTsSet`, declaration order, `after`, and cycle errors
-- [ ] 4.5 After each run set summary ticks on `write` columns and fill ticks for tables taken through `table.write`; add the dev-only read-column hash check and, under `track_location`, the `changed_by` fill for rows at the run's tick
+- [x] 4.1 Build a `QueryState` per system from `read`/`write`/`with`/`without` with `QueryBuilder`; reject unknown and Rust-without-layout components
+- [x] 4.2 Per run: take a change tick, walk matched tables, build data views per table × component and tick views per table × `write` component, copy entity pairs, make one call into JS, detach
+- [x] 4.3 Implement `q.each` with reused accessors and `q.tables` with `read`, `write` and `split`; test that `each`, `write` and `split` give identical values and that `split` marks only the rows the caller ticked
+- [x] 4.4 Add stages `preUpdate`/`update`/`postUpdate`/`fixedUpdate` with `BevyTsSet`, declaration order, `after`, and cycle errors
+- [x] 4.5 After each run set summary ticks on `write` columns and fill ticks for tables taken through `table.write`; add the dev-only read-column hash check and, under `track_location`, the `changed_by` fill for rows at the run's tick
 - [ ] 4.7 Add a test that a system writing 3 of 10,000 rows leaves exactly 3 rows `Changed` and that `bevy-ts/get_components+watch` sends nothing for an unwritten entity
-- [ ] 4.6 Add a test that 10,000 entities in 4 tables cost one JS call per run
+- [x] 4.6 Add a test that 10,000 entities in 4 tables cost one JS call per run
 
 ## 5. Command buffer
 
-- [ ] 5.1 Define the binary op format and the JS encoder; build the Rust-owned arena with overflow kept in JS
-- [ ] 5.2 Apply spawn, despawn, insert, remove and setParent after each system with `insert_by_id` and `spawn_empty_at`
-- [ ] 5.3 Pre-fill the entity pool from `EntityAllocator::alloc` and free unused ids after the stage
-- [ ] 5.4 Add native spawn recipes `camera3d`, `directionalLight` and `cuboid`; discard a throwing run's commands
+- [x] 5.1 Define the binary op format and the JS encoder; build the Rust-owned arena with overflow kept in JS
+- [x] 5.2 Apply spawn, despawn, insert, remove and setParent after each system with `insert_by_id` and `spawn_empty_at`
+- [x] 5.3 Pre-fill the entity pool from `EntityAllocator::alloc` and free unused ids after the stage
+- [x] 5.4 Add native spawn recipes `camera3d`, `directionalLight` and `cuboid`; discard a throwing run's commands
 
 ## 6. Hot reload
 
-- [ ] 6.1 Watch loaded files with `notify` and produce numbered generations on the dev thread
-- [ ] 6.2 Load each generation as generation-tagged side modules in the live isolate and apply it whole in `First`
-- [ ] 6.3 Track startups by name per world; implement `restart` (despawn TS-spawned entities, fresh isolate)
-- [ ] 6.4 Migrate changed layouts by field name to a new `ComponentId`, retire the old one, report the migration
-- [ ] 6.5 Keep undeclared components and revive them on redeclaration with the same layout
-- [ ] 6.6 Keep the old generation on any failure; tests for a syntax error, a throwing module, a duplicate name and a bad `after`
+- [x] 6.1 Watch loaded files with `notify` and produce numbered generations on the dev thread
+- [x] 6.2 Load each generation as generation-tagged side modules in the live isolate and apply it whole in `First`
+- [x] 6.3 Track startups by name per world; implement `restart` (despawn TS-spawned entities, fresh isolate)
+- [x] 6.4 Migrate changed layouts by field name to a new `ComponentId`, retire the old one, report the migration
+- [x] 6.5 Keep undeclared components and revive them on redeclaration with the same layout
+- [x] 6.6 Keep the old generation on any failure; tests for a syntax error, a throwing module, a duplicate name and a bad `after`
 - [ ] 6.7 Wire `bevy-ts dev <entry>` with `--remote-port` and `--inspect`
 - [ ] 6.8 Package for npm: a `bevy-ts` package whose bin resolves the engine binary from per-platform optional packages (`@bevy-ts/darwin-arm64`, …), as esbuild ships; `npx bevy-ts dev` works with no Rust toolchain
 

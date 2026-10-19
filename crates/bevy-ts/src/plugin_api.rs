@@ -31,8 +31,22 @@ pub struct SectionInput<'a> {
 /// A manifest section handler. Returning errors fails the whole generation.
 pub type SectionHandler = Arc<dyn Fn(&mut World, &SectionInput) -> Result<(), Vec<ScriptError>> + Send + Sync>;
 
+/// A section's apply step: runs once the generation is committed (components live and migrated,
+/// systems replaced), before startups and before any system of the generation. Cannot fail.
+pub type SectionApply = Arc<dyn Fn(&mut World, &AppliedSection) + Send + Sync>;
+
+/// What a section's apply step receives.
+pub struct AppliedSection<'a> {
+    pub generation: u64,
+    pub bytes: &'a [u8],
+    pub location: Option<SourceLocation>,
+}
+
 #[derive(Resource, Default, Clone)]
 pub struct SectionHandlers(pub HashMap<String, SectionHandler>);
+
+#[derive(Resource, Default, Clone)]
+pub struct SectionAppliers(pub HashMap<String, Vec<SectionApply>>);
 
 /// Called on a restart, between the despawn and the first-time apply.
 pub type RestartHandler = Arc<dyn Fn(&mut World) + Send + Sync>;
@@ -47,6 +61,15 @@ pub trait BevyTsAppExt {
         &mut self,
         name: impl Into<String>,
         handler: impl Fn(&mut World, &SectionInput) -> Result<(), Vec<ScriptError>> + Send + Sync + 'static,
+    ) -> &mut Self;
+
+    /// Registers an apply step for a section, run after the generation is committed and before
+    /// its startups and systems run. Pair it with [`BevyTsAppExt::add_ts_section`], which
+    /// validates (and may reject) the same bytes first.
+    fn on_ts_section_applied(
+        &mut self,
+        name: impl Into<String>,
+        apply: impl Fn(&mut World, &AppliedSection) + Send + Sync + 'static,
     ) -> &mut Self;
 
     /// Registers a command kind JS appends with `ctx.commands.custom(name, bytes)`. Its ops are
@@ -76,6 +99,15 @@ impl BevyTsAppExt for App {
         handler: impl Fn(&mut World, &SectionInput) -> Result<(), Vec<ScriptError>> + Send + Sync + 'static,
     ) -> &mut Self {
         self.world_mut().get_resource_or_init::<SectionHandlers>().0.insert(name.into(), Arc::new(handler));
+        self
+    }
+
+    fn on_ts_section_applied(
+        &mut self,
+        name: impl Into<String>,
+        apply: impl Fn(&mut World, &AppliedSection) + Send + Sync + 'static,
+    ) -> &mut Self {
+        self.world_mut().get_resource_or_init::<SectionAppliers>().0.entry(name.into()).or_default().push(Arc::new(apply));
         self
     }
 

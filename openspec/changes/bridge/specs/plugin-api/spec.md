@@ -8,11 +8,15 @@
 - **THEN** all three work with no V8 in the build
 
 ### Requirement: Manifest sections
-A plugin SHALL be able to register a named section of the generation manifest. JS code SHALL be able to write that section during module evaluation, through the `bevy-ts` module, under the registered name. The plugin SHALL receive the section's bytes when the generation is applied, in the same frame-boundary step as component and system declarations. The plugin SHALL be able to reject the section with errors carrying TS locations; a rejection SHALL fail the whole generation under the failed-reload rule. A section name nobody registered SHALL fail the load.
+A plugin SHALL be able to register a named section of the generation manifest. JS code SHALL be able to write that section during module evaluation, through the `bevy-ts` module, under the registered name. The plugin SHALL receive the section's bytes when the generation is applied, in the same frame-boundary step as component and system declarations. The plugin SHALL be able to reject the section with errors carrying TS locations; a rejection SHALL fail the whole generation under the failed-reload rule. A section name nobody registered SHALL fail the load. A plugin MAY also register an apply step for its section, which SHALL run once the generation is committed (components live and migrated, systems replaced) and before the generation's startups and systems, and which cannot fail the generation; while the generation is checked, the plugin SHALL be able to read the pending components' declarations and encode values for them.
 
 #### Scenario: A plugin rejects its section
 - **WHEN** a plugin's section handler returns an error located at `game.tsx:12:5`
 - **THEN** the generation is not applied, the previous one keeps running, and the error is reported at `game.tsx:12:5`
+
+#### Scenario: Applying after the commit
+- **WHEN** a plugin registers an apply step for its section and a generation carries the section and a new component
+- **THEN** the apply step runs after the component is live with its defaults encodable, and before the generation's first startup
 
 #### Scenario: Applied with declarations
 - **WHEN** a generation carries both new components and a plugin section

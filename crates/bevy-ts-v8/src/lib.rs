@@ -151,10 +151,13 @@ pub struct V8Options {
 }
 
 pub struct V8Backend {
-    runtime: JsRuntime,
+    /// `ManuallyDrop` so `fns` (handles into the isolate) always drop first, and so a restart
+    /// can drop the old isolate before creating the new one: isolates on one thread must be
+    /// disposed in the reverse order they were made.
+    runtime: std::mem::ManuallyDrop<JsRuntime>,
     tokio: tokio::runtime::Runtime,
     loader: Rc<Loader>,
-    fns: Fns,
+    fns: std::mem::ManuallyDrop<Fns>,
     calls: u64,
     /// Load counter: tags module specifiers so every load is a fresh module record.
     loads: u64,
@@ -222,7 +225,12 @@ impl V8Backend {
         let tokio = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime");
         let (runtime, fns) = Self::boot(&loader, &tokio, options.inspect.is_some());
         let mut backend =
-            V8Backend { runtime, tokio, loader, fns, calls: 0, loads: 0, pool_f64: Vec::new(), options, inspector: None };
+            V8Backend {
+                runtime: std::mem::ManuallyDrop::new(runtime),
+                tokio,
+                loader,
+                fns: std::mem::ManuallyDrop::new(fns),
+                calls: 0, loads: 0, pool_f64: Vec::new(), options, inspector: None };
         backend.start_inspector();
         backend
     }
@@ -326,6 +334,17 @@ impl V8Backend {
         self.pool_f64.clear();
         // Entity bits are exact in an f64 while the generation stays below 2^21.
         self.pool_f64.extend(pool.iter().map(|b| *b as f64));
+    }
+}
+
+impl Drop for V8Backend {
+    fn drop(&mut self) {
+        self.stop_inspector();
+        // SAFETY: dropped once, handles before the isolate that owns them.
+        unsafe {
+            std::mem::ManuallyDrop::drop(&mut self.fns);
+            std::mem::ManuallyDrop::drop(&mut self.runtime);
+        }
     }
 }
 
@@ -503,9 +522,17 @@ impl ScriptBackend for V8Backend {
 
     fn restart(&mut self) {
         self.stop_inspector();
+        // SAFETY: both are re-initialised below before any other use.
+        unsafe {
+            std::mem::ManuallyDrop::drop(&mut self.fns);
+            std::mem::ManuallyDrop::drop(&mut self.runtime);
+        }
         let (runtime, fns) = Self::boot(&self.loader, &self.tokio, self.options.inspect.is_some());
-        self.runtime = runtime;
-        self.fns = fns;
+        // Overwrite without dropping the already-dropped values.
+        unsafe {
+            std::ptr::write(&mut self.runtime, std::mem::ManuallyDrop::new(runtime));
+            std::ptr::write(&mut self.fns, std::mem::ManuallyDrop::new(fns));
+        }
         self.start_inspector();
     }
 

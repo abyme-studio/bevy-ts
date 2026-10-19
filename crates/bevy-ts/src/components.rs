@@ -219,6 +219,21 @@ impl PendingComponents {
         self.items.iter().find(|(d, ..)| d.name == name).map(|(_, l, _, id)| (*id, l))
     }
 
+    /// A pending component's declaration (fields, defaults, hints).
+    pub fn decl(&self, name: &str) -> Option<&ComponentDecl> {
+        self.items.iter().find(|(d, ..)| d.name == name).map(|(d, ..)| d)
+    }
+
+    /// Encodes a field map into a pending component's native bytes, defaults filled in.
+    pub fn encode(&self, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<u8>, ValueError> {
+        let (d, l, ..) = self.items.iter().find(|(d, ..)| d.name == name).ok_or_else(|| ValueError {
+            path: String::new(),
+            expected: "a component of this generation".into(),
+            message: format!("no component named {name}"),
+        })?;
+        value::encode_component(d, l, values)
+    }
+
     /// Every pending component: name, id, layout.
     pub fn iter(&self) -> impl Iterator<Item = (&str, ComponentId, &ComponentLayout)> {
         self.items.iter().map(|(d, l, _, id)| (d.name.as_str(), *id, l))

@@ -109,6 +109,8 @@ pub const HEAP_RESTART_BYTES: usize = 1 << 30;
 /// Never leaves a generation partly applied.
 pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     let started = Instant::now();
+    // Flush the previous generation's console output so the log reads in order.
+    crate::runtime::pump(world);
     let number = world.resource::<Generations>().live + 1;
     let mut rt = world.remove_non_send::<ScriptRuntime>().expect("bevy-ts runtime present");
 
@@ -134,9 +136,16 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
 
     let result = load_and_apply(world, &mut rt, number, set);
     let report = match result {
-        Ok((migrations, startups)) => {
+        Ok((migrations, startups, sections)) => {
             world.resource_mut::<Generations>().live = number;
             world.resource_mut::<RuntimeInfo>().generation = number;
+            let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
+            for s in &sections {
+                for apply in appliers.0.get(&s.name).into_iter().flatten() {
+                    let input = crate::plugin_api::AppliedSection { generation: number, bytes: &s.bytes, location: s.location.clone() };
+                    apply(world, &input);
+                }
+            }
             for m in &migrations {
                 world.resource_mut::<ScriptLog>().push(LogLevel::Info, m.to_string(), None, number);
             }
@@ -194,7 +203,7 @@ pub fn compile_failed(world: &mut World, errors: Vec<ScriptError>, took: Duratio
     })
 }
 
-type Applied = (Vec<Migration>, Vec<(ScriptKey, StartupDecl)>);
+type Applied = (Vec<Migration>, Vec<(ScriptKey, StartupDecl)>, Vec<crate::manifest::Section>);
 
 fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: ModuleSet) -> Result<Applied, Vec<ScriptError>> {
     let LoadedGeneration { manifest, sections } = rt.backend.load(&Generation { number, set })?;
@@ -207,8 +216,9 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
     // Declarations, checked whole before anything moves.
     let mut errors = components::validate(&manifest.components, world.resource::<NativeLayouts>());
     let handlers = world.resource::<SectionHandlers>().clone();
+    let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
     for s in &sections {
-        if !handlers.0.contains_key(&s.name) {
+        if !handlers.0.contains_key(&s.name) && !appliers.0.contains_key(&s.name) {
             errors.push(ScriptError::at(format!("no plugin registered manifest section {}", s.name), s.location.clone()));
         }
     }
@@ -249,7 +259,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
 
     // Plugin sections, with the pending components already resolvable.
     for s in &sections {
-        let handler = handlers.0[&s.name].clone();
+        let Some(handler) = handlers.0.get(&s.name).cloned() else { continue };
         let input = SectionInput { generation: number, bytes: &s.bytes, location: s.location.clone(), components: &pending };
         if let Err(errors) = handler(world, &input) {
             components::abandon(world, pending);
@@ -282,7 +292,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
         .enumerate()
         .map(|(i, s)| (ScriptKey { generation: number, index: i as u32 }, s.clone()))
         .collect();
-    Ok((migrations, startups))
+    Ok((migrations, startups, sections))
 }
 
 fn run_startups(world: &mut World, rt: &mut ScriptRuntime, startups: Vec<(ScriptKey, StartupDecl)>) {
