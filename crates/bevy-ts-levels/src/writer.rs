@@ -927,7 +927,8 @@ fn fingerprint(file: &ParsedFile) -> BTreeMap<Vec<String>, String> {
                     continue;
                 }
                 let span: Span = entry.span();
-                for t in file.tokens.iter().filter(|t| t.span.start >= span.start && t.span.end <= span.end) {
+                let from = file.tokens.partition_point(|t| t.span.start < span.start);
+                for t in file.tokens[from..].iter().take_while(|t| t.span.end <= span.end) {
                     head.push_str(file.text(t.span));
                     head.push(' ');
                 }

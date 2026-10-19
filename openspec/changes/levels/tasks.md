@@ -43,4 +43,4 @@
 
 - [ ] 6.1 Move `examples/arena/` enemies into `assets/levels/arena.bsn` with `Enemy` as a registered prefab and `room.bsn` included twice
 - [ ] 6.2 Walk the seven demo steps in design.md under both `prefabEdits` policies, recording `git diff` output for each write
-- [ ] 6.3 Measure load, reload and expansion of a level with 1,000 and 10,000 instances, and writer latency per edit; record them in `docs/`
+- [x] 6.3 Measure load, reload and expansion of a level with 1,000 and 10,000 instances, and writer latency per edit; record them in `docs/`

@@ -36,6 +36,10 @@ pub fn asset_root(project_root: &std::path::Path) -> std::path::PathBuf {
 /// Bevy's `AssetPlugin` reading from `root` (an absolute path, so the binary's location and the
 /// working directory do not matter).
 pub fn asset_plugin(root: &std::path::Path) -> AssetPlugin {
+    // Bevy's file watcher strips the root from the paths it reports, which are canonical: a
+    // symlinked root (macOS `/var` is `/private/var`) would panic its thread.
+    let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let root = root.as_path();
     // Watched, so a level saved by anyone reloads (levels decision 3).
     AssetPlugin { file_path: root.to_string_lossy().into_owned(), watch_for_changes_override: Some(true), ..default() }
 }

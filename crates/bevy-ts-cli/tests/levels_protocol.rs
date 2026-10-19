@@ -103,7 +103,8 @@ Children [
 
 fn level_app(dir: &Path) -> App {
     let mut app = App::new();
-    let assets = dir.join("assets");
+    // Canonical: Bevy's file watcher panics on a symlinked root (macOS /var).
+    let assets = dir.join("assets").canonicalize().unwrap();
     app.add_plugins((MinimalPlugins, AssetPlugin { file_path: assets.to_string_lossy().into_owned(), ..Default::default() }))
         .init_asset::<Mesh>()
         .init_asset::<StandardMaterial>()
