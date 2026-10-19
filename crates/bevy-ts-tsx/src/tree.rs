@@ -189,11 +189,52 @@ pub struct TsxTree {
     /// Reconciles run so far: generation applies plus runtime mounts and unmounts.
     pub reconciles: u64,
     pub reactive: Reactive,
+    pub journal: Journal,
 }
 
 impl TsxTree {
     pub fn entity(&self, id: u64) -> Option<Entity> {
         self.entities.get(&id).copied()
+    }
+}
+
+/// What one reconcile changed, by node id, for `bevy-ts/tsx_tree+watch`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Change {
+    pub added: Vec<u64>,
+    pub removed: Vec<u64>,
+    pub tombstoned: Vec<u64>,
+    /// Nodes whose source chain moved (lines inserted above them, a prefab renamed).
+    pub moved: Vec<u64>,
+    /// Nodes whose values tsx wrote (controlled fields, inserted or removed components).
+    pub written: Vec<u64>,
+}
+
+impl Change {
+    pub fn is_empty(&self) -> bool {
+        *self == Change::default()
+    }
+}
+
+/// Recent reconciles' changes, numbered.
+#[derive(Debug, Default)]
+pub struct Journal {
+    pub seq: u64,
+    pub open: Change,
+    pub messages: std::collections::VecDeque<(u64, Change)>,
+}
+
+impl Journal {
+    /// Ends the reconcile in progress: a non-empty one becomes the next message.
+    pub fn close(&mut self) {
+        if self.open.is_empty() {
+            return;
+        }
+        self.seq += 1;
+        if self.messages.len() == 256 {
+            self.messages.pop_front();
+        }
+        self.messages.push_back((self.seq, std::mem::take(&mut self.open)));
     }
 }
 

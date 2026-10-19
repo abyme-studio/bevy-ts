@@ -540,6 +540,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy-ts",
+ "bevy-ts-remote",
  "serde",
  "serde_json",
 ]

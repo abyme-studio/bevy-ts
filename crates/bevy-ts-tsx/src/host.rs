@@ -249,6 +249,7 @@ fn run(world: &mut World, changed: Vec<(Entity, String)>, mut rows: Vec<u8>) {
 
     let mut tree = world.remove_resource::<TsxTree>().expect("tsx tree");
     tree.reactive.due = false;
+    tree.journal.close();
     let sweep = std::mem::take(&mut tree.reactive.sweep);
     let slots: Vec<_> = if sweep { tree.reactive.slots.values().cloned().collect() } else { vec![] };
     world.insert_resource(tree);
@@ -257,6 +258,7 @@ fn run(world: &mut World, changed: Vec<(Entity, String)>, mut rows: Vec<u8>) {
     for s in slots {
         reconcile::sweep(world, &s.root, &s.prefix, &s.groups);
     }
+    world.resource_mut::<TsxTree>().journal.close();
 }
 
 /// The current values of `pairs`, marking them delivered now.

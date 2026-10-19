@@ -10,8 +10,8 @@
 
 - [x] 2.1 Confirm bridge has B1 (manifest sections) and B4 (TSX compilation); move the skeleton's manifest read onto a registered `tsx` section that can fail the generation
 - [x] 2.2 Confirm B5 (layout and id lookup) and encode TS component props into native bytes in Rust
-- [ ] 2.3 Confirm B2 (host-invoked entries) and B3 (plugin command kinds); register the `tsx` entry and the `mount`/`unmount` opcodes (opcodes registered 2026-10-20; the entry waits for reactivity)
-- [ ] 2.4 Confirm B6 and B7; wire `restart` notification and the protocol method pipeline (restart wired 2026-10-20; the protocol half waits for 7.2)
+- [x] 2.3 Confirm B2 (host-invoked entries) and B3 (plugin command kinds); register the `tsx` entry and the `mount`/`unmount` opcodes
+- [x] 2.4 Confirm B6 and B7; wire `restart` notification and the protocol method pipeline
 
 ## 3. Reconciler
 
@@ -47,8 +47,8 @@
 ## 7. Editor hooks
 
 - [x] 7.1 Record source chains and prop provenance on `TsxNode`, updated on every reconcile
-- [ ] 7.2 Add `bevy-ts/tsx_tree`, `bevy-ts/tsx_node`, `bevy-ts/tsx_find` and `bevy-ts/tsx_tree+watch` to `protocol/bevy-ts.openrpc.json`, regenerate types, add conformance tests
-- [ ] 7.3 Test the round trip: rewrite a controlled prop in a `.tsx` file, save, and see the watch stream report the written node
+- [x] 7.2 Add `bevy-ts/tsx_tree`, `bevy-ts/tsx_node`, `bevy-ts/tsx_find` and `bevy-ts/tsx_tree+watch` to `protocol/bevy-ts.openrpc.json`, regenerate types, add conformance tests
+- [x] 7.3 Test the round trip: rewrite a controlled prop in a `.tsx` file, save, and see the watch stream report the written node
 
 ## 8. First demo
 

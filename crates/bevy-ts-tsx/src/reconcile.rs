@@ -183,6 +183,7 @@ pub fn apply_root(
 /// forgets it.
 fn forget(world: &mut World, tree: &mut TsxTree, id: u64, stats: &mut ReconcileStats) {
     tree.reactive.stale = true;
+    tree.journal.open.removed.push(id);
     if let Some(e) = tree.entities.remove(&id)
         && alive(world, e, id)
     {
@@ -280,6 +281,9 @@ fn tombstone_subtree(world: &World, tree: &mut TsxTree, root: &str, n: &RNode, s
         if tree.entities.remove(&n.id).is_some() {
             stats.tombstoned += 1;
         }
+        if !tree.tombstones.contains_key(&n.id) {
+            tree.journal.open.tombstoned.push(n.id);
+        }
         tree.tombstones
             .entry(n.id)
             .or_insert_with(|| Tombstone { root: root.to_string(), key_path: n.path.clone(), source: n.source.clone() });
@@ -325,12 +329,21 @@ fn apply_node(
     let entity = match known {
         _ if tree.tombstones.contains_key(&n.id) => None,
         Some(e) if alive(world, e, n.id) => {
-            update(world, e, n, stats);
+            let before = stats.clone();
+            if update(world, e, n, stats) {
+                tree.journal.open.moved.push(n.id);
+            }
+            if stats.written + stats.inserted + stats.removed != before.written + before.inserted + before.removed {
+                tree.journal.open.written.push(n.id);
+            }
             Some(e)
         }
         // Despawned by something other than tsx: a system killed it. It stays dead.
         Some(_) => None,
-        None => Some(spawn(world, root, n, parent, stats)),
+        None => {
+            tree.journal.open.added.push(n.id);
+            Some(spawn(world, root, n, parent, stats))
+        }
     };
     match entity {
         Some(e) => {
@@ -472,7 +485,8 @@ fn remove(world: &mut World, e: Entity, key: &str, prev: &OwnedComponent) {
     }
 }
 
-fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) {
+/// Returns whether the node's source chain moved.
+fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -> bool {
     let old = world.get::<TsxNode>(e).expect("alive").clone();
     let mut components = BTreeMap::new();
     for r in n.comps.iter() {
@@ -541,8 +555,10 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) {
         }
     }
     let node = TsxNode { source: n.source.clone(), types: n.types.clone(), components, ..old.clone() };
+    let moved = node.source != old.source;
     // Only a real difference touches `TsxNode`, so an identical reload moves no change tick.
     if node != old {
         *world.get_mut::<TsxNode>(e).expect("alive") = node;
     }
+    moved
 }

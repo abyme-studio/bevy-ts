@@ -58,6 +58,7 @@ pub fn mount(world: &mut World, bytes: &[u8]) -> Result<(), String> {
     let types: Vec<String> = prefix.iter().map(|_| "parent".to_string()).collect();
     let nodes = resolve_tree(world, RUNTIME_ROOT, &op.nodes, (&prefix, &types)).map_err(|e| e.to_string())?;
     apply_root(world, RUNTIME_ROOT, None, &nodes, parent, crate::reconcile::Prune::None);
+    world.resource_mut::<crate::TsxTree>().journal.close();
     Ok(())
 }
 
@@ -71,5 +72,9 @@ pub fn unmount(world: &mut World, bytes: &[u8]) -> Result<(), String> {
             world.get::<TsxNode>(e).ok_or_else(|| format!("unmount: {e} was not mounted by tsx"))?.id
         }
     };
-    if unmount_node(world, id) { Ok(()) } else { Err("unmount: no such mounted node".into()) }
+    let removed = unmount_node(world, id);
+    let mut tree = world.resource_mut::<crate::TsxTree>();
+    tree.journal.open.removed.push(id);
+    tree.journal.close();
+    if removed { Ok(()) } else { Err("unmount: no such mounted node".into()) }
 }

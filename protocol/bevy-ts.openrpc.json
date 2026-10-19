@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump."
   },
   "methods": [
@@ -230,6 +230,71 @@
         "name": "message",
         "schema": {
           "$ref": "#/components/schemas/LogWatchMessage"
+        }
+      },
+      "x-bevy-ts-watch": true
+    },
+    {
+      "name": "bevy-ts/tsx_tree",
+      "summary": "Every scene root with its nodes: id, entity, key path, element type, source, tombstoned.",
+      "x-bevy-ts-crate": "bevy-ts-tsx",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/TsxTreeResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/tsx_node",
+      "summary": "One node by entity or id: its source chain, and the components tsx inserted with each field's provenance and last written value.",
+      "x-bevy-ts-crate": "bevy-ts-tsx",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/TsxNodeParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/TsxNodeResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/tsx_find",
+      "summary": "Every node whose source chain contains a location: one prefab element maps to all its instances, runtime mounts included.",
+      "x-bevy-ts-crate": "bevy-ts-tsx",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/TsxFindParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/TsxFindResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/tsx_tree+watch",
+      "summary": "The tree, then one message per reconcile with what it changed.",
+      "x-bevy-ts-crate": "bevy-ts-tsx",
+      "params": [],
+      "result": {
+        "name": "message",
+        "schema": {
+          "$ref": "#/components/schemas/TsxTreeWatchMessage"
         }
       },
       "x-bevy-ts-watch": true
@@ -1184,6 +1249,370 @@
             "items": {
               "type": "object",
               "additionalProperties": true
+            }
+          }
+        }
+      },
+      "TsxNodeId": {
+        "description": "A tsx node's identity: a hash of its scene root and key path, in hex. Stable across runs and reloads.",
+        "type": "string"
+      },
+      "TsxProvenance": {
+        "description": "How a field got its value: `controlled` (`f`), `initial` (`initialF`), `default` (neither), `bound` (`f={() => ...}`).",
+        "type": "string",
+        "enum": [
+          "controlled",
+          "initial",
+          "default",
+          "bound"
+        ]
+      },
+      "TsxTreeNode": {
+        "type": "object",
+        "required": [
+          "node",
+          "keyPath",
+          "type",
+          "tombstoned"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/TsxNodeId"
+          },
+          "entity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Entity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "keyPath": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "type": {
+            "description": "The element type that made the node: `entity`, a UI tag, or the outermost prefab.",
+            "type": "string"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tombstoned": {
+            "description": "Despawned by something other than tsx; not respawned until a restart or a key change.",
+            "type": "boolean"
+          }
+        }
+      },
+      "TsxRoot": {
+        "type": "object",
+        "required": [
+          "name",
+          "nodes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "location": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxTreeNode"
+            }
+          }
+        }
+      },
+      "TsxTreeResult": {
+        "type": "object",
+        "required": [
+          "seq",
+          "roots"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "roots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxRoot"
+            }
+          }
+        }
+      },
+      "TsxNodeParams": {
+        "description": "Give `entity` or `node`.",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "node": {
+            "$ref": "#/components/schemas/TsxNodeId"
+          }
+        }
+      },
+      "TsxField": {
+        "type": "object",
+        "required": [
+          "provenance",
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "provenance": {
+            "$ref": "#/components/schemas/TsxProvenance"
+          },
+          "value": {
+            "description": "The last value tsx wrote (null for a bound field not delivered yet)."
+          }
+        }
+      },
+      "TsxComponent": {
+        "type": "object",
+        "required": [
+          "fields"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TsxField"
+            }
+          }
+        }
+      },
+      "TsxNodeResult": {
+        "type": "object",
+        "required": [
+          "node",
+          "root",
+          "keyPath",
+          "types",
+          "source",
+          "components"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/TsxNodeId"
+          },
+          "root": {
+            "type": "string"
+          },
+          "entity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Entity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "keyPath": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "description": "The element that made the entity, then each prefab call site above it, innermost first. The editor picks the frame in the file it has open.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceLocation"
+            }
+          },
+          "components": {
+            "description": "Components tsx inserted, by element name (`game::Health`, `Transform`, `Name`, `mesh`, `text`).",
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TsxComponent"
+            }
+          }
+        }
+      },
+      "TsxFindParams": {
+        "type": "object",
+        "required": [
+          "file",
+          "line"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "column": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "TsxFindMatch": {
+        "type": "object",
+        "required": [
+          "node",
+          "depth"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/TsxNodeId"
+          },
+          "entity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Entity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "depth": {
+            "description": "Where in the node's source chain the location matched: 0 is the element itself, 1 the innermost prefab call site, and so on.",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "TsxFindResult": {
+        "type": "object",
+        "required": [
+          "matches"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxFindMatch"
+            }
+          }
+        }
+      },
+      "TsxMoved": {
+        "type": "object",
+        "required": [
+          "node",
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/TsxNodeId"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TsxTreeWatchMessage": {
+        "description": "The first message carries `snapshot`; later ones carry one reconcile's changes: nodes added, removed, tombstoned, whose source moved, and whose values tsx wrote. A gap in `seq` means resubscribe.",
+        "type": "object",
+        "required": [
+          "seq"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "snapshot": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxRoot"
+            }
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxTreeNode"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxNodeId"
+            }
+          },
+          "tombstoned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxNodeId"
+            }
+          },
+          "moved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxMoved"
+            }
+          },
+          "written": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxNodeId"
             }
           }
         }

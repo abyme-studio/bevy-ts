@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.0.0";
+pub const VERSION: &str = "1.1.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,6 +29,10 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/entities+watch", crate_name: "bevy-ts-remote", watch: true },
     Method { name: "bevy-ts/systems", crate_name: "bevy-ts-remote", watch: false },
     Method { name: "bevy-ts/log+watch", crate_name: "bevy-ts-remote", watch: true },
+    Method { name: "bevy-ts/tsx_tree", crate_name: "bevy-ts-tsx", watch: false },
+    Method { name: "bevy-ts/tsx_node", crate_name: "bevy-ts-tsx", watch: false },
+    Method { name: "bevy-ts/tsx_find", crate_name: "bevy-ts-tsx", watch: false },
+    Method { name: "bevy-ts/tsx_tree+watch", crate_name: "bevy-ts-tsx", watch: true },
 ];
 
 ///`BrpError`
@@ -880,6 +884,235 @@ impl ::std::convert::TryFrom<::std::string::String> for TsSchemaExtensionSource 
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
     }
+}
+///`TsxComponent`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxComponent {
+    pub fields: ::std::collections::HashMap<::std::string::String, TsxField>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub source: ::std::option::Option<SourceLocation>,
+}
+///`TsxField`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxField {
+    pub provenance: TsxProvenance,
+    ///The last value tsx wrote (null for a bound field not delivered yet).
+    pub value: ::serde_json::Value,
+}
+///`TsxFindMatch`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxFindMatch {
+    ///Where in the node's source chain the location matched: 0 is the element itself, 1 the innermost prefab call site, and so on.
+    pub depth: u32,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub entity: ::std::option::Option<Entity>,
+    pub node: TsxNodeId,
+}
+///`TsxFindParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxFindParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub column: ::std::option::Option<u32>,
+    pub file: ::std::string::String,
+    pub line: u32,
+}
+///`TsxFindResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxFindResult {
+    pub matches: ::std::vec::Vec<TsxFindMatch>,
+}
+///`TsxMoved`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxMoved {
+    pub node: TsxNodeId,
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub source: ::std::option::Option<SourceLocation>,
+}
+///A tsx node's identity: a hash of its scene root and key path, in hex. Stable across runs and reloads.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+#[serde(transparent)]
+pub struct TsxNodeId(pub ::std::string::String);
+impl ::std::ops::Deref for TsxNodeId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<TsxNodeId> for ::std::string::String {
+    fn from(value: TsxNodeId) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::std::string::String> for TsxNodeId {
+    fn from(value: ::std::string::String) -> Self {
+        Self(value)
+    }
+}
+impl ::std::fmt::Display for TsxNodeId {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl ::std::str::FromStr for TsxNodeId {
+    type Err = ::std::convert::Infallible;
+    fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+        Ok(Self(value.to_string()))
+    }
+}
+///Give `entity` or `node`.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct TsxNodeParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub entity: ::std::option::Option<Entity>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub node: ::std::option::Option<TsxNodeId>,
+}
+///`TsxNodeResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxNodeResult {
+    ///Components tsx inserted, by element name (`game::Health`, `Transform`, `Name`, `mesh`, `text`).
+    pub components: ::std::collections::HashMap<::std::string::String, TsxComponent>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub entity: ::std::option::Option<Entity>,
+    #[serde(rename = "keyPath")]
+    pub key_path: ::std::vec::Vec<::std::string::String>,
+    pub node: TsxNodeId,
+    pub root: ::std::string::String,
+    ///The element that made the entity, then each prefab call site above it, innermost first. The editor picks the frame in the file it has open.
+    pub source: ::std::vec::Vec<SourceLocation>,
+    pub types: ::std::vec::Vec<::std::string::String>,
+}
+///How a field got its value: `controlled` (`f`), `initial` (`initialF`), `default` (neither), `bound` (`f={() => ...}`).
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum TsxProvenance {
+    #[serde(rename = "controlled")]
+    Controlled,
+    #[serde(rename = "initial")]
+    Initial,
+    #[serde(rename = "default")]
+    Default,
+    #[serde(rename = "bound")]
+    Bound,
+}
+impl ::std::fmt::Display for TsxProvenance {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Controlled => f.write_str("controlled"),
+            Self::Initial => f.write_str("initial"),
+            Self::Default => f.write_str("default"),
+            Self::Bound => f.write_str("bound"),
+        }
+    }
+}
+impl ::std::str::FromStr for TsxProvenance {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "controlled" => Ok(Self::Controlled),
+            "initial" => Ok(Self::Initial),
+            "default" => Ok(Self::Default),
+            "bound" => Ok(Self::Bound),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for TsxProvenance {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TsxProvenance {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`TsxRoot`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxRoot {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub location: ::std::option::Option<SourceLocation>,
+    pub name: ::std::string::String,
+    pub nodes: ::std::vec::Vec<TsxTreeNode>,
+}
+///`TsxTreeNode`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxTreeNode {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub entity: ::std::option::Option<Entity>,
+    #[serde(rename = "keyPath")]
+    pub key_path: ::std::vec::Vec<::std::string::String>,
+    pub node: TsxNodeId,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub source: ::std::option::Option<SourceLocation>,
+    ///Despawned by something other than tsx; not respawned until a restart or a key change.
+    pub tombstoned: bool,
+    ///The element type that made the node: `entity`, a UI tag, or the outermost prefab.
+    #[serde(rename = "type")]
+    pub type_: ::std::string::String,
+}
+///`TsxTreeResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxTreeResult {
+    pub roots: ::std::vec::Vec<TsxRoot>,
+    pub seq: u64,
+}
+///The first message carries `snapshot`; later ones carry one reconcile's changes: nodes added, removed, tombstoned, whose source moved, and whose values tsx wrote. A gap in `seq` means resubscribe.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxTreeWatchMessage {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub added: ::std::vec::Vec<TsxTreeNode>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub moved: ::std::vec::Vec<TsxMoved>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub removed: ::std::vec::Vec<TsxNodeId>,
+    pub seq: u64,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub snapshot: ::std::vec::Vec<TsxRoot>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub tombstoned: ::std::vec::Vec<TsxNodeId>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub written: ::std::vec::Vec<TsxNodeId>,
 }
 /// Generation of default values for serde.
 pub mod defaults {

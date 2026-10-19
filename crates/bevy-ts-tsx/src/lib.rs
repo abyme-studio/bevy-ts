@@ -12,6 +12,7 @@ pub mod host;
 pub mod intrinsics;
 pub mod mount;
 pub mod picking;
+pub mod protocol;
 pub mod reconcile;
 pub mod resolve;
 pub mod tree;
@@ -113,6 +114,7 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
         total.add(&unmount_root(world, &name));
     }
     let mut tree = world.resource_mut::<TsxTree>();
+    tree.journal.close();
     tree.last = total.clone();
     tree.reactive.sweep = !tree.reactive.slots.is_empty();
     if world.get_resource::<bevy_ts::runtime::RuntimeInfo>().is_some_and(|r| r.dev) {
@@ -184,6 +186,11 @@ impl Plugin for TsxPlugin {
         app.on_ts_restart(restart);
         app.add_ts_command_kind(mount::MOUNT, mount::mount);
         app.add_ts_command_kind(host::FLUSH, host::flush);
+        // The editor methods, when the app serves the protocol already; otherwise call
+        // `protocol::add_methods` after adding it.
+        if app.world().contains_resource::<bevy::remote::RemoteMethods>() {
+            protocol::add_methods(app);
+        }
         app.add_systems(
             PostUpdate,
             host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare),

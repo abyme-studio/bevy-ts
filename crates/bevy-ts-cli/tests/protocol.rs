@@ -89,11 +89,13 @@ fn every_method_answers_on_contract() {
     let (mut app, cube) = cube_app();
     let e = cube.to_bits();
     let served: BTreeSet<String> = app.world().resource::<RemoteMethods>().methods().into_iter().filter(|m| m.starts_with("bevy-ts/")).collect();
-    let listed: BTreeSet<String> = bevy_ts_remote::protocol::METHODS.iter().map(|m| m.name.to_string()).collect();
+    // Feature crates' methods (bevy-ts-tsx's) are served only with their plugin's methods added.
+    let listed: BTreeSet<String> =
+        bevy_ts_remote::protocol::METHODS.iter().filter(|m| m.crate_name == bevy_ts_remote::CRATE).map(|m| m.name.to_string()).collect();
     assert_eq!(served, listed);
 
     let hello = ok(&mut app, "bevy-ts/hello", None);
-    assert_eq!(hello["protocol"], "1.0.0");
+    assert_eq!(hello["protocol"], contract()["info"]["version"]);
     assert_eq!(hello["generation"], 1);
     assert_eq!(hello["dev"]["reload"], true);
     ok(&mut app, "bevy-ts/discover", None);
@@ -210,7 +212,8 @@ fn stock_and_bevy_ts_share_the_port() {
     }
     let (stock, ours) = client.join().unwrap();
     assert!(stock.contains("\"result\""), "{stock}");
-    assert!(ours.contains("\"protocol\":\"1.0.0\""), "{ours}");
+    let version = format!("\"protocol\":\"{}\"", contract()["info"]["version"].as_str().unwrap());
+    assert!(ours.contains(&version), "{ours}");
 }
 
 #[test]
