@@ -361,8 +361,10 @@ fn finish(
         Base::Scene(i) => {
             let mut n = expansions[i].take().expect("each expansion is used once");
             n.key = key.clone();
-            // The level is the outermost call site.
-            n.source.push(at.clone());
+            // The level is the outermost call site (tsx's expansion may have put it there).
+            if n.source.last().is_none_or(|s| s.file != at.file || s.line != at.line) {
+                n.source.push(at.clone());
+            }
             n
         }
         Base::Include(mut nodes) if nodes.len() == 1 => {

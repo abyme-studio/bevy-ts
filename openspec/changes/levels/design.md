@@ -307,6 +307,12 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 - **Naming an unnamed entity moves the positional ids after it** (`#1` becomes `#0`); the writer reports those moves and the engine rekeys the retained tree (`tsx::rekey`), so no entity respawns. Renames rekey only in the level whose own file changed; a rename inside an included file respawns the includers' copies. `reparent` respawns the moved entity.
 - **Conflicts** (decision 8): a disk hash that differs from the batch's base reloads the disk version first; a `set` or `revert` whose field text differs between the base and the disk is `changed on disk` (with the disk's text), one whose entity or field is gone is `target removed`, and the rest replay and report `rebased`.
 
+## Implementation notes (groups 4 and 5.1)
+
+- **Rule 9 in two steps.** A generation is checked against every loaded level's types (components, fields, scene props) before it commits, and fails whole if one no longer reads. Expansion needs the new generation's JS, so an expansion error (a throwing `scene`) is found after the commit: that level stays exactly as it was and the error is logged.
+- **A removed override writes the default** when the prefab does not declare the field (tsx writes a field that goes from `override` to `default`).
+- **`route()` / `write()` for viewport** live in this crate; viewport depends on it. `write` turns a whole vector into `set`s on the lanes that differ from what the entity has, so a drag along x writes `x` alone.
+
 ## Operator rulings
 
 - 2026-10-20: comments (E1) and negative numbers (U1) stay bevy-ts extensions for now; no upstream

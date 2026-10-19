@@ -573,8 +573,8 @@ impl Schema for WorldSchema<'_> {
 
 /// Expands scene component instances through tsx's host entry: one call for all of them.
 fn expand(world: &mut World, requests: &[ExpandRequest]) -> Result<Vec<NodeDesc>, Vec<ScriptError>> {
-    let _ = (world, requests);
-    Err(vec![ScriptError::new("scene component expansion is not available yet (tsx's expand entry)")])
+    let items: Vec<bevy_ts_tsx::ExpandItem> = requests.iter().map(|r| bevy_ts_tsx::ExpandItem { component: r.component.clone(), props: r.props.clone(), at: r.at.clone() }).collect();
+    bevy_ts_tsx::expand(world, &items)
 }
 
 /// Composes one level from the loaded files, expanding its instances.
