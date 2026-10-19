@@ -27,7 +27,7 @@ pub struct RootDesc {
     pub nodes: Vec<NodeDesc>,
 }
 
-/// One entity.
+/// One entity, or a control-flow slot (`<Show>`, `<For>`) whose content JS mounts later.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct NodeDesc {
     /// The explicit key, or `type#n` among siblings of the same type.
@@ -37,6 +37,12 @@ pub struct NodeDesc {
     pub ty: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// The `ref={...}` this entity fills, by id within the generation.
+    #[serde(default, rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub ref_id: Option<u32>,
+    /// Set on a slot: not an entity, a place where JS mounts groups of nodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<u32>,
     /// The element that made it, then each prefab call site above it, innermost first.
     #[serde(default)]
     pub source: Vec<SourceLocation>,
@@ -117,6 +123,15 @@ pub fn normalize_sources(nodes: &mut [NodeDesc]) {
         }
         normalize_sources(&mut n.children);
     }
+}
+
+/// A binding placeholder in a prop: `{"$b": id}`. Its value comes from the host call.
+pub fn binding_id(v: &Value) -> Option<u32> {
+    let o = v.as_object()?;
+    if o.len() != 1 {
+        return None;
+    }
+    o.get("$b")?.as_u64().map(|n| n as u32)
 }
 
 #[cfg(test)]

@@ -1,7 +1,8 @@
 //! Component elements resolved against the components they name: which fields are controlled,
 //! which initial, the bytes to insert, and the errors (with TS locations) that fail a load.
 
-use crate::desc::{ComponentDesc, ComponentKind, NodeDesc, RootDesc};
+use crate::desc::{ComponentDesc, ComponentKind, NodeDesc, RootDesc, binding_id};
+use crate::ui::{self, UiKind};
 use crate::intrinsics::{MaterialProps, MeshProps};
 use bevy::ecs::component::ComponentId;
 use bevy_ts::backend::{ScriptError, SourceLocation};
@@ -45,6 +46,7 @@ pub enum Target {
     Name,
     Mesh(MeshProps),
     Material(MaterialProps),
+    Ui(UiKind),
 }
 
 /// A component element, checked.
@@ -59,6 +61,8 @@ pub struct Resolved {
     pub initial: BTreeMap<String, Value>,
     /// Fields given neither way, with the default they take on insert.
     pub defaults: BTreeMap<String, Value>,
+    /// Fields written only by a binding (`f={() => ...}`), by binding id.
+    pub bound: BTreeMap<String, u32>,
     pub source: Option<SourceLocation>,
 }
 
@@ -145,14 +149,53 @@ fn parse_props<T: serde::de::DeserializeOwned>(c: &ComponentDesc) -> Result<T, S
     serde_json::from_value(Value::Object(c.props.clone())).map_err(|e| err(format!("<{}>: {e}", c.ty), &c.source))
 }
 
-/// Resolves one component element.
+/// Resolves one component element: bound props first, then the rest by kind.
 pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> Result<Resolved, ScriptError> {
+    let mut bound = BTreeMap::new();
+    let mut rest = c.clone();
+    for (prop, v) in &c.props {
+        let Some(id) = binding_id(v) else { continue };
+        if initial_field(prop).is_some() {
+            return Err(err(format!("{}.{prop}: an initial value is written once, so it takes a value, not a binding", c.ty), &c.source));
+        }
+        bound.insert(prop.clone(), id);
+        rest.props.remove(prop);
+    }
+    let mut r = resolve_unbound(&rest, ts, native)?;
+    if bound.is_empty() {
+        return Ok(r);
+    }
+    match &r.target {
+        Target::Native { layout, .. } => {
+            for f in bound.keys() {
+                if layout.field(f).is_none() {
+                    let known: Vec<&str> = layout.fields.iter().map(|f| f.name.as_str()).collect();
+                    return Err(err(format!("{} has no field {f} (fields: {})", c.ty, known.join(", ")), &c.source));
+                }
+                r.defaults.remove(f);
+            }
+        }
+        Target::Ui(kind) => {
+            for f in bound.keys() {
+                ui::check(*kind, &Map::from_iter([(f.clone(), Value::Null)]))
+                    .or_else(|e| if e.contains("has no prop") { Err(e) } else { Ok(()) })
+                    .map_err(|e| err(format!("<{}> {e}", c.ty), &c.source))?;
+            }
+        }
+        _ => return Err(err(format!("<{}> props cannot be bound yet; bind a component field or a UI prop", c.ty), &c.source)),
+    }
+    r.bound = bound;
+    Ok(r)
+}
+
+fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> Result<Resolved, ScriptError> {
     let resolved = |target, (controlled, initial, defaults)| Resolved {
         key: c.ty.clone(),
         target,
         controlled,
         initial,
         defaults,
+        bound: BTreeMap::new(),
         source: c.source.clone(),
     };
     match c.kind {
@@ -198,7 +241,12 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> 
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(resolved(Target::Material(props), (controlled, BTreeMap::new(), BTreeMap::new())))
         }
-        ComponentKind::Intrinsic => Err(err(format!("unknown intrinsic <{}>", c.ty), &c.source)),
+        ComponentKind::Intrinsic => {
+            let kind = UiKind::from_tag(&c.ty).ok_or_else(|| err(format!("unknown intrinsic <{}>", c.ty), &c.source))?;
+            ui::check(kind, &c.props).map_err(|m| err(format!("<{}> {m}", c.ty), &c.source))?;
+            let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Ok(resolved(Target::Ui(kind), (controlled, BTreeMap::new(), BTreeMap::new())))
+        }
     }
 }
 
@@ -213,6 +261,7 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts) 
             target: Target::Name,
             controlled: BTreeMap::from([("value".to_string(), Value::String(name.clone()))]),
             initial: BTreeMap::new(),
+            bound: BTreeMap::new(),
             defaults: BTreeMap::new(),
             source: node.location(),
         });

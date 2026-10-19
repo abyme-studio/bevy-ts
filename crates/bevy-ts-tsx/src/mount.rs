@@ -57,7 +57,7 @@ pub fn mount(world: &mut World, bytes: &[u8]) -> Result<(), String> {
     let prefix: Vec<String> = parent.map(|p| vec![format!("@{}", p.to_bits())]).unwrap_or_default();
     let types: Vec<String> = prefix.iter().map(|_| "parent".to_string()).collect();
     let nodes = resolve_tree(world, RUNTIME_ROOT, &op.nodes, (&prefix, &types)).map_err(|e| e.to_string())?;
-    apply_root(world, RUNTIME_ROOT, None, &nodes, parent, false);
+    apply_root(world, RUNTIME_ROOT, None, &nodes, parent, crate::reconcile::Prune::None);
     Ok(())
 }
 

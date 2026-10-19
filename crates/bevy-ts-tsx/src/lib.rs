@@ -8,11 +8,13 @@
 //! every JS isolate. Nothing here runs per frame.
 
 pub mod desc;
+pub mod host;
 pub mod intrinsics;
 pub mod mount;
 pub mod reconcile;
 pub mod resolve;
 pub mod tree;
+pub mod ui;
 
 use crate::desc::{SceneSection, normalize_sources};
 use crate::reconcile::{apply_root, resolve_tree, unmount_root};
@@ -49,7 +51,7 @@ fn parse(bytes: &[u8]) -> Result<SceneSection, ScriptError> {
 
 pub(crate) fn uses_assets(nodes: &[desc::NodeDesc]) -> Option<Option<bevy_ts::backend::SourceLocation>> {
     for n in nodes {
-        if let Some(c) = n.components.iter().find(|c| c.kind == desc::ComponentKind::Intrinsic) {
+        if let Some(c) = n.components.iter().find(|c| c.kind == desc::ComponentKind::Intrinsic && (c.ty == resolve::MESH || c.ty == resolve::MATERIAL)) {
             return Some(c.source.clone());
         }
         if let Some(l) = uses_assets(&n.children) {
@@ -78,10 +80,21 @@ fn check(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> Result
 pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneSection) -> ReconcileStats {
     // Ids and layouts may have changed with the generation.
     world.resource_mut::<reconcile::TemplateCache>().clear();
+    // The old generation's closures died with it: its bindings, refs, slots and subscriptions
+    // go, and the new generation's register as its roots reconcile.
+    {
+        let mut tree = world.resource_mut::<TsxTree>();
+        let r = &mut tree.reactive;
+        r.targets.clear();
+        r.refs.clear();
+        r.new_refs.clear();
+        r.slots.clear();
+        r.subs.clear();
+    }
     let mut total = ReconcileStats::default();
     for r in &section.roots {
         match resolve_tree(world, &r.name, &r.nodes, (&[], &[])) {
-            Ok(nodes) => total.add(&apply_root(world, &r.name, r.location.clone(), &nodes, None, true)),
+            Ok(nodes) => total.add(&apply_root(world, &r.name, r.location.clone(), &nodes, None, reconcile::Prune::Root)),
             // Checked with the generation; only a bug lands here.
             Err(e) => world.resource_mut::<ScriptLog>().push(LogLevel::Error, format!("tsx: {}", e.message), e.location, generation),
         }
@@ -96,8 +109,39 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
     for name in gone {
         total.add(&unmount_root(world, &name));
     }
-    world.resource_mut::<TsxTree>().last = total.clone();
+    let mut tree = world.resource_mut::<TsxTree>();
+    tree.last = total.clone();
+    tree.reactive.sweep = !tree.reactive.slots.is_empty();
+    if world.get_resource::<bevy_ts::runtime::RuntimeInfo>().is_some_and(|r| r.dev) {
+        warn_two_writers(world, generation);
+    }
     total
+}
+
+/// A bound field has one writer, its binding. Under dev, a TS system whose `write` set holds the
+/// bound component is named with the binding's site, once per site and generation.
+fn warn_two_writers(world: &mut World, generation: u64) {
+    let tree = world.resource::<TsxTree>();
+    let mut sites = std::collections::BTreeMap::new();
+    for t in tree.reactive.targets.values() {
+        if ui::UiKind::from_tag(&t.component).is_some() {
+            continue;
+        }
+        let Some(source) = tree.entities.get(&t.node).and_then(|e| world.get::<TsxNode>(*e)).and_then(|n| n.components.get(&t.component)).map(|c| c.source.clone()) else { continue };
+        sites.entry((t.component.clone(), t.prop.clone())).or_insert(source);
+    }
+    let mut warnings = Vec::new();
+    for s in world.resource::<bevy_ts::systems::TsSystems>().iter() {
+        for ((component, prop), source) in &sites {
+            if s.decl.write.iter().any(|w| &w.name == component) {
+                warnings.push((format!("system {} writes {component}, whose {prop} is bound in TSX: a bound field has one writer, its binding", s.decl.name), source.clone()));
+            }
+        }
+    }
+    let mut log = world.resource_mut::<ScriptLog>();
+    for (m, at) in warnings {
+        log.push(LogLevel::Warn, m, at, generation);
+    }
 }
 
 fn apply(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection) {
@@ -136,6 +180,11 @@ impl Plugin for TsxPlugin {
         app.on_ts_section_applied(SECTION, apply);
         app.on_ts_restart(restart);
         app.add_ts_command_kind(mount::MOUNT, mount::mount);
+        app.add_ts_command_kind(host::FLUSH, host::flush);
+        app.add_systems(
+            PostUpdate,
+            host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare),
+        );
         app.add_ts_command_kind(mount::UNMOUNT, mount::unmount);
     }
 }

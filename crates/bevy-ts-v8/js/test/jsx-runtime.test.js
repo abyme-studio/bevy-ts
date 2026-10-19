@@ -147,8 +147,9 @@ Deno.test("a keyed fragment from a prefab prefixes its children's keys", () => {
   eq(describe(jsxs(Fragment, { children: [jsx(Pair, {}, "p"), jsx(Pair, {})] })).map((n) => n.key), ["p/l", "p/r", "Pair#0/l", "Pair#0/r"]);
 });
 
-Deno.test("function props are rejected until bindings exist", () => {
-  throws(() => describe(jsx("entity", { children: jsx(Health, { max: () => 3 }) })), /function props/);
+Deno.test("function props become bindings carried as ids", () => {
+  const [e] = describe(jsx("entity", { children: jsx(Health, { max: () => 3 }) }));
+  eq(e.components[0].props.max, { $b: 1 });
 });
 
 Deno.test("vector views cross as arrays", () => {

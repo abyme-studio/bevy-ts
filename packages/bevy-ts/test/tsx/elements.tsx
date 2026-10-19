@@ -51,3 +51,37 @@ export const Bad = () => (
 
 // @ts-expect-error entity props are name and children only
 export const AlsoBad = () => <entity colour="red" />;
+
+// A HUD with no hooks: bindings read the player's Health directly.
+import { For, Show, px, ref, signal } from "bevy-ts";
+
+const player = ref();
+const [open, setOpen] = signal(false);
+const [items] = signal([{ id: "a", label: "Sword" }]);
+
+export const Hud = () => (
+  <node style={{ position: "absolute", top: px(12), left: px(12), padding: px(8) }} background="#0008">
+    <text size={20}>{() => `HP ${Math.ceil(player.get(Health).hp)} / ${player.get(Health).max}`}</text>
+    <text color={() => (player.get(Health).hp < 20 ? "#f33" : "#fff")}>HP</text>
+    <Show when={open} fallback={<text>closed</text>}>
+      <For each={items} key={(i) => i.id}>
+        {(i) => <text>{i.label}</text>}
+      </For>
+    </Show>
+  </node>
+);
+
+app.scene("hud", () => (
+  <>
+    <entity ref={player}>
+      <Health initialHp={100} max={() => 100 + (open() ? 10 : 0)} />
+    </entity>
+    <Hud />
+  </>
+));
+setOpen(true);
+
+// @ts-expect-error style keys are Node's
+export const BadStyle = () => <node style={{ widht: 3 }} />;
+// @ts-expect-error a binding reads components of a ref, not strings
+export const BadRead = () => <text>{() => player.get("Health")}</text>;

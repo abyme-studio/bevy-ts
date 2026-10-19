@@ -7,7 +7,8 @@
 use crate::desc::{NodeDesc, node_id};
 use crate::intrinsics::{self, MeshProps};
 use crate::resolve::{self, NAME, Resolved, Target};
-use crate::tree::{FieldState, OwnedComponent, Provenance, ReconcileStats, Tombstone, TsxNode, TsxTree};
+use crate::tree::{BindTarget, FieldState, OwnedComponent, Provenance, ReconcileStats, SlotState, Tombstone, TsxNode, TsxTree};
+use crate::ui;
 use bevy::prelude::*;
 use bevy_ts::backend::{ScriptError, SourceLocation};
 use bevy_ts::components::TsComponents;
@@ -26,6 +27,9 @@ pub struct RNode {
     pub source: Vec<SourceLocation>,
     pub comps: Arc<[Resolved]>,
     pub children: Vec<RNode>,
+    pub ref_id: Option<u32>,
+    /// A `<Show>`/`<For>` slot: no entity; JS mounts its content under this node's key path.
+    pub slot: Option<u32>,
 }
 
 /// Resolved component elements by the content of an entity's elements (its name and component
@@ -87,6 +91,10 @@ fn resolve_with(
             p.push(n.key.clone());
             let mut t = types.to_vec();
             t.push(n.ty.clone());
+            if n.slot.is_some() {
+                let id = node_id(root, &p);
+                return Ok(RNode { id, path: p, types: t, source: n.source.clone(), comps: Arc::new([]), children: vec![], ref_id: None, slot: n.slot });
+            }
             let key = content_hash(n);
             let comps = match cache.templates.get(&key) {
                 Some(c) => {
@@ -101,7 +109,7 @@ fn resolve_with(
                 }
             };
             let children = resolve_with(root, &n.children, (&p, &t), ts, native, cache)?;
-            Ok(RNode { id: node_id(root, &p), path: p, types: t, source: n.source.clone(), comps, children })
+            Ok(RNode { id: node_id(root, &p), path: p, types: t, source: n.source.clone(), comps, children, ref_id: n.ref_id, slot: None })
         })
         .collect()
 }
@@ -110,45 +118,97 @@ fn alive(world: &World, e: Entity, id: u64) -> bool {
     world.get::<TsxNode>(e).is_some_and(|n| n.id == id)
 }
 
-/// Applies resolved nodes under `root`. With `prune`, nodes of the root missing from `nodes`
-/// are despawned (a generation's reconcile); without, the mount is additive (runtime mounts).
-/// `parent` is the entity the top-level nodes are children of.
+/// What a reconcile may despawn: nothing it was not given (runtime mounts), every node of the
+/// root it was not given (a generation), or the nodes under one key path (a slot's group).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Prune {
+    None,
+    Root,
+    Under(Vec<String>),
+}
+
+fn key_path(world: &World, tree: &TsxTree, id: u64) -> Option<Vec<String>> {
+    let e = tree.entities.get(&id)?;
+    world.get::<TsxNode>(*e).filter(|n| n.id == id).map(|n| n.key_path.clone())
+}
+
+/// Applies resolved nodes under `root`, with `parent` the entity top-level nodes are children
+/// of, despawning what `prune` allows.
 pub fn apply_root(
     world: &mut World,
     root: &str,
     location: Option<SourceLocation>,
     nodes: &[RNode],
     parent: Option<Entity>,
-    prune: bool,
+    prune: Prune,
 ) -> ReconcileStats {
     let mut stats = ReconcileStats::default();
     let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
     let mut seen = BTreeSet::new();
+    let mut slots = Vec::new();
     for n in nodes {
-        apply_node(world, &mut tree, root, n, parent, &mut seen, &mut stats);
+        apply_node(world, &mut tree, root, n, parent, &mut seen, &mut stats, &mut slots);
     }
     let state = tree.roots.entry(root.to_string()).or_default();
     if location.is_some() {
         state.location = location;
     }
-    if prune {
-        let gone: Vec<u64> = state.nodes.difference(&seen).copied().collect();
-        state.nodes = seen;
-        for id in gone {
-            if let Some(e) = tree.entities.remove(&id)
-                && alive(world, e, id)
-            {
-                // Descendants go with it, including entities systems parented under it.
-                world.despawn(e);
-                stats.despawned += 1;
-            }
-            tree.tombstones.remove(&id);
+    let candidates: Vec<u64> = match &prune {
+        Prune::None => vec![],
+        Prune::Root | Prune::Under(_) => state.nodes.difference(&seen).copied().collect(),
+    };
+    state.nodes.extend(seen);
+    for id in candidates {
+        let path = key_path(world, &tree, id);
+        let inside = match (&prune, &path) {
+            (Prune::Under(prefix), Some(p)) => p.starts_with(prefix),
+            (Prune::Under(_), None) => false,
+            _ => true,
+        };
+        // Slot content is the slot's to keep or drop, after JS mounts it again.
+        let in_slot = path.as_ref().is_some_and(|p| slots.iter().any(|s: &Vec<String>| p.starts_with(s)));
+        if !inside || in_slot {
+            continue;
         }
-    } else {
-        state.nodes.extend(seen);
+        forget(world, &mut tree, id, &mut stats);
     }
     tree.last = stats.clone();
     tree.reconciles += 1;
+    world.insert_resource(tree);
+    stats
+}
+
+/// Despawns a node (descendants go with it, including entities systems parented under it) and
+/// forgets it.
+fn forget(world: &mut World, tree: &mut TsxTree, id: u64, stats: &mut ReconcileStats) {
+    if let Some(e) = tree.entities.remove(&id)
+        && alive(world, e, id)
+    {
+        world.despawn(e);
+        stats.despawned += 1;
+    }
+    tree.tombstones.remove(&id);
+    for r in tree.roots.values_mut() {
+        r.nodes.remove(&id);
+    }
+}
+
+/// Despawns every node of `root` under `prefix` whose next key is not in `keep`.
+pub fn sweep(world: &mut World, root: &str, prefix: &[String], keep: &BTreeSet<String>) -> ReconcileStats {
+    let mut stats = ReconcileStats::default();
+    let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
+    let ids: Vec<u64> = tree.roots.get(root).map(|r| r.nodes.iter().copied().collect()).unwrap_or_default();
+    for id in ids {
+        let Some(p) = key_path(world, &tree, id) else {
+            if tree.entities.contains_key(&id) {
+                tree.entities.remove(&id);
+            }
+            continue;
+        };
+        if p.len() > prefix.len() && p.starts_with(prefix) && !keep.contains(&p[prefix.len()]) {
+            forget(world, &mut tree, id, &mut stats);
+        }
+    }
     world.insert_resource(tree);
     stats
 }
@@ -227,6 +287,7 @@ fn tombstone_subtree(world: &World, tree: &mut TsxTree, root: &str, n: &RNode, s
     }
 }
 
+#[expect(clippy::too_many_arguments, reason = "the walk's state, threaded down")]
 fn apply_node(
     world: &mut World,
     tree: &mut TsxTree,
@@ -235,8 +296,29 @@ fn apply_node(
     parent: Option<Entity>,
     seen: &mut BTreeSet<u64>,
     stats: &mut ReconcileStats,
+    slots: &mut Vec<Vec<String>>,
 ) {
+    if let Some(slot) = n.slot {
+        tree.reactive.slots.insert(
+            slot,
+            SlotState { root: root.to_string(), parent, prefix: n.path.clone(), types: n.types.clone(), groups: BTreeSet::new() },
+        );
+        tree.reactive.due = true;
+        slots.push(n.path.clone());
+        return;
+    }
     seen.insert(n.id);
+    for r in n.comps.iter() {
+        for (prop, id) in &r.bound {
+            tree.reactive.targets.insert(*id, BindTarget { node: n.id, component: r.key.clone(), prop: prop.clone() });
+            tree.reactive.due = true;
+        }
+    }
+    if let Some(r) = n.ref_id {
+        tree.reactive.refs.insert(r, n.id);
+        tree.reactive.new_refs.push(r);
+        tree.reactive.due = true;
+    }
     let known = tree.entities.get(&n.id).copied();
     let entity = match known {
         _ if tree.tombstones.contains_key(&n.id) => None,
@@ -252,7 +334,7 @@ fn apply_node(
         Some(e) => {
             tree.entities.insert(n.id, e);
             for c in &n.children {
-                apply_node(world, tree, root, c, Some(e), seen, stats);
+                apply_node(world, tree, root, c, Some(e), seen, stats, slots);
             }
         }
         None => tombstone_subtree(world, tree, root, n, seen, stats),
@@ -270,6 +352,9 @@ fn owned(r: &Resolved) -> OwnedComponent {
     for (f, v) in &r.defaults {
         fields.insert(f.clone(), FieldState { provenance: Provenance::Default, applied: v.clone() });
     }
+    for f in r.bound.keys() {
+        fields.insert(f.clone(), FieldState { provenance: Provenance::Bound, applied: Value::Null });
+    }
     OwnedComponent { fields, source: r.source.clone() }
 }
 
@@ -286,7 +371,24 @@ fn insert(world: &mut World, e: Entity, r: &Resolved) {
         }
         Target::Mesh(p) => intrinsics::insert_mesh(world, e, p),
         Target::Material(p) => intrinsics::insert_material(world, e, p),
+        Target::Ui(kind) => {
+            let props: Map<String, Value> = r.controlled.clone().into_iter().collect();
+            if let Err(m) = ui::insert(world, e, *kind, &props) {
+                log_error(world, format!("<{}> {m}", r.key), r.source.clone());
+            }
+        }
     }
+}
+
+/// Logs an error found while applying (bound values are checked only when they arrive).
+pub fn log_error(world: &mut World, message: String, location: Option<SourceLocation>) {
+    let generation = bevy_ts::runtime::current_generation(world);
+    world.resource_mut::<bevy_ts::log::ScriptLog>().push(bevy_ts::log::LogLevel::Error, message, location, generation);
+}
+
+/// Applied values of a component's fields, leaving out bound ones not delivered yet.
+fn applied(c: &OwnedComponent) -> Map<String, Value> {
+    c.fields.iter().filter(|(_, s)| !s.applied.is_null()).map(|(k, s)| (k.clone(), s.applied.clone())).collect()
 }
 
 fn spawn(world: &mut World, root: &str, n: &RNode, parent: Option<Entity>, stats: &mut ReconcileStats) -> Entity {
@@ -311,8 +413,16 @@ fn spawn(world: &mut World, root: &str, n: &RNode, parent: Option<Entity>, stats
     e
 }
 
+/// A bound field keeps whatever its binding last wrote; the reconciler never writes it.
+fn bound_fields(r: &Resolved, prev: &OwnedComponent, state: &mut OwnedComponent) {
+    for f in r.bound.keys() {
+        let applied = prev.fields.get(f).map_or(Value::Null, |s| s.applied.clone());
+        state.fields.insert(f.clone(), FieldState { provenance: Provenance::Bound, applied });
+    }
+}
+
 /// Writes one field of a native-layout component in place, marking it changed.
-fn write_field(world: &mut World, e: Entity, id: bevy::ecs::component::ComponentId, layout: &ComponentLayout, f: &str, v: &Value) -> bool {
+pub fn write_field(world: &mut World, e: Entity, id: bevy::ecs::component::ComponentId, layout: &ComponentLayout, f: &str, v: &Value) -> bool {
     let fl = layout.field(f).expect("checked field");
     let mut bytes = vec![0u8; fl.ty.size()];
     value::encode_field(f, &fl.ty, v, &mut bytes).expect("checked value");
@@ -338,6 +448,7 @@ fn remove(world: &mut World, e: Entity, key: &str, prev: &OwnedComponent) {
             }
         }
         resolve::MATERIAL => intrinsics::remove_material(world, e),
+        tag if ui::UiKind::from_tag(tag).is_some() => ui::remove(world, e, ui::UiKind::from_tag(tag).expect("checked")),
         name => {
             let id = world
                 .resource::<TsComponents>()
@@ -383,6 +494,20 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) {
                 {
                     let applied = prev.fields.get(f).map_or_else(|| v.clone(), |s| s.applied.clone());
                     state.fields.insert(f.clone(), FieldState { provenance: p, applied });
+                }
+                bound_fields(r, prev, &mut state);
+            }
+            Target::Ui(kind) => {
+                // Prop by prop: only the components behind changed props are written.
+                let old_props = applied(prev);
+                for (f, v) in &r.controlled {
+                    state.fields.insert(f.clone(), FieldState { provenance: Provenance::Controlled, applied: v.clone() });
+                }
+                bound_fields(r, prev, &mut state);
+                let new_props = applied(&state);
+                match ui::update(world, e, *kind, &old_props, &new_props) {
+                    Ok(n) => stats.written += n,
+                    Err(m) => log_error(world, format!("<{}> {m}", r.key), r.source.clone()),
                 }
             }
             target => {

@@ -101,7 +101,7 @@ type WriteOf<T> = T extends FieldType<any, infer W> ? W : never;
  * A component element's props: each field `f` controlled (written on insert and whenever the
  * declared value changes) or `initialF` initial (written on insert only).
  */
-export type ElementProps<F extends Fields> = { [K in keyof F]?: WriteOf<F[K]> } & {
+export type ElementProps<F extends Fields> = { [K in keyof F]?: WriteOf<F[K]> | (() => WriteOf<F[K]>) } & {
   [K in keyof F & string as `initial${Capitalize<K>}`]?: WriteOf<F[K]>;
 };
 
@@ -235,3 +235,45 @@ export declare function text(bytes: Uint8Array): string;
 
 export declare function nativeComponent<const F extends Fields>(name: string, fields: F): ComponentType<F>;
 export declare function rustComponent(name: string): RustComponent;
+
+// ---------------------------------------------------------------------------------------------
+// TSX reactivity. No hooks: a binding (`() => ...` as a prop or child) reads game state
+// directly, and the read is the subscription.
+
+/** A component's value as a binding sees it: fields, vectors with `.x`/`.y`/`.z`. */
+export type ReadValue<F extends Fields> = {
+  readonly [K in keyof F]: F[K] extends FieldType<infer R, any> ? (R extends Vec3View | Vec4View | Vec2View ? Readonly<Omit<R, "set">> : R) : never;
+};
+
+/** An entity a scene made (`ref={player}`), or `ref(entity)`. */
+export interface NodeRef {
+  /** The component's current value; inside a binding, the binding re-runs when it changes. */
+  get<F extends Fields>(C: ComponentType<F>): ReadValue<F>;
+  /** The entity, once mounted. */
+  readonly entity: Entity | null;
+}
+export declare function ref(entity?: Entity): NodeRef;
+
+/** UI-local state (a dropdown's open flag); game state lives in components. */
+export declare function signal<T>(value: T, options?: { equals?: (a: T, b: T) => boolean }): [() => T, (next: T | ((prev: T) => T)) => T];
+export declare function computed<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }): () => T;
+/** Runs now (or, in a scene, once mounted) and again when what it read changes; returns a stop. */
+export declare function effect(fn: () => void): () => void;
+export declare function untrack<T>(fn: () => T): T;
+export declare function onCleanup(fn: () => void): void;
+export declare function batch<T>(fn: () => T): T;
+
+type JsxElement = import("bevy-ts/jsx-runtime").Element;
+type JsxChild = import("bevy-ts/jsx-runtime").Child;
+
+/** Mounts its children while `when` is truthy, `fallback` otherwise. */
+export declare function Show(props: { when: boolean | (() => unknown); fallback?: JsxChild | (() => JsxChild); children?: JsxChild | (() => JsxChild) }): JsxElement;
+/** One subtree per item, kept by `key` across changes. */
+export declare function For<T>(props: { each: readonly T[] | (() => readonly T[]); key?: (item: T, index: number) => string | number; children: (item: T, index: number) => JsxElement }): JsxElement;
+
+export declare function px(n: number): string;
+export declare function percent(n: number): string;
+export declare function vw(n: number): string;
+export declare function vh(n: number): string;
+export declare function em(n: number): string;
+export declare function rem(n: number): string;

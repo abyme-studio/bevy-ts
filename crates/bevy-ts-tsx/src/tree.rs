@@ -17,6 +17,8 @@ pub enum Provenance {
     Initial,
     /// Given neither way: the declared default, on insert.
     Default,
+    /// `f={() => ...}`: written only by its binding, never from a literal.
+    Bound,
 }
 
 /// One field of a component tsx inserted.
@@ -89,6 +91,53 @@ impl ReconcileStats {
     }
 }
 
+/// Where a binding writes: a prop of a component element on a node.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BindTarget {
+    pub node: u64,
+    pub component: String,
+    pub prop: String,
+}
+
+/// A `<Show>` or `<For>`: its content mounts under `prefix` (the slot's key path), in groups.
+#[derive(Clone, Debug, Default)]
+pub struct SlotState {
+    pub root: String,
+    pub parent: Option<Entity>,
+    pub prefix: Vec<String>,
+    pub types: Vec<String>,
+    /// Groups mounted since the generation applied.
+    pub groups: BTreeSet<String>,
+}
+
+/// A component of an entity a binding read, watched by change tick.
+#[derive(Clone, Debug)]
+pub struct Subscription {
+    pub id: bevy::ecs::component::ComponentId,
+    /// The tick the value was last delivered at.
+    pub last: bevy::ecs::change_detection::Tick,
+}
+
+/// The live generation's bindings, refs, slots and subscriptions. JS holds the closures; Rust
+/// holds where they write and what they read. Rebuilt by every applied generation.
+#[derive(Default, Debug)]
+pub struct Reactive {
+    pub targets: HashMap<u32, BindTarget>,
+    /// Ref id to the node that fills it.
+    pub refs: HashMap<u32, u64>,
+    /// Refs JS has not been told about.
+    pub new_refs: Vec<u32>,
+    pub slots: HashMap<u32, SlotState>,
+    pub subs: HashMap<(Entity, String), Subscription>,
+    /// A host call is due: a generation applied, a mount brought bindings, or JS asked.
+    pub due: bool,
+    /// Slots of a fresh generation to sweep after their first host call.
+    pub sweep: bool,
+    /// Host calls made, and bound values written, for tests.
+    pub calls: u64,
+    pub patched: u64,
+}
+
 /// One mounted root: the node ids it owns, in description order.
 #[derive(Clone, Debug, Default)]
 pub struct RootState {
@@ -106,6 +155,7 @@ pub struct TsxTree {
     pub last: ReconcileStats,
     /// Reconciles run so far: generation applies plus runtime mounts and unmounts.
     pub reconciles: u64,
+    pub reactive: Reactive,
 }
 
 impl TsxTree {

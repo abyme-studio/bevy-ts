@@ -5,7 +5,10 @@
 // system run is one call from Rust (`runSystem`) with column ArrayBuffers that Rust detaches
 // when the call returns. Field setters store the run's tick in the row's changed tick.
 
-import { describe } from "bevy-ts/jsx-runtime";
+import { TsxContext, describe, runScene, setHost } from "bevy-ts/jsx-runtime";
+
+// TSX's reactive surface, from the JSX runtime: no hooks, bindings read `ref.get(C)` directly.
+export { signal, computed, effect, untrack, onCleanup, batch, ref, Show, For, px, percent, vw, vh, em, rem } from "bevy-ts/jsx-runtime";
 
 const S = {
   /** The generation being loaded, or null. */
@@ -175,7 +178,7 @@ export function rustComponent(name) {
 
 const NATIVE = [];
 
-function ref(h, what, at) {
+function componentRef(h, what, at) {
   if (typeof h !== "function" || !h.componentName) {
     throw declError(`${what}: ${String(h)} is not a component`, at);
   }
@@ -196,15 +199,15 @@ export const app = {
     if (!spec || typeof spec.run !== "function") throw declError(`system ${name}: run must be a function`, at);
     const stage = spec.stage || "update";
     if (!STAGES.includes(stage)) throw declError(`system ${name}: unknown stage ${stage}; use ${STAGES.join(", ")}`, at);
-    const read = (spec.read || []).map((h) => ref(h, `system ${name} read`, at));
-    const write = (spec.write || []).map((h) => ref(h, `system ${name} write`, at));
+    const read = (spec.read || []).map((h) => componentRef(h, `system ${name} read`, at));
+    const write = (spec.write || []).map((h) => componentRef(h, `system ${name} write`, at));
     const decl = {
       name,
       stage,
       read,
       write,
-      with: (spec.with || []).map((h) => ref(h, `system ${name} with`, at)),
-      without: (spec.without || []).map((h) => ref(h, `system ${name} without`, at)),
+      with: (spec.with || []).map((h) => componentRef(h, `system ${name} with`, at)),
+      without: (spec.without || []).map((h) => componentRef(h, `system ${name} without`, at)),
       after: [].concat(spec.after || []),
       location: at,
     };
@@ -232,10 +235,10 @@ export const app = {
     if (!g) throw declError(`app.scene(${name}) must be called while a module loads`, at);
     if (typeof fn !== "function") throw declError(`scene ${name}: must be a function returning elements`, at);
     if (g.scenes.has(name)) throw declError(`scene ${name} is declared twice`, at);
-    const root = fn();
     let nodes = [];
+    const root = runScene(g.tsx, fn);
     try {
-      nodes = describe(root);
+      nodes = describe(root, g.tsx);
     } catch (e) {
       // A description error names its element: it reaches Rust in the section, which fails the
       // generation with that location (a throw here would be located at this call instead).
@@ -710,7 +713,8 @@ class Commands {
   /** Mounts an element tree under the tsx runtime root (`{ parent }`: an entity to nest under). */
   mount(element, options) {
     const parent = options && options.parent !== undefined && options.parent !== null ? options.parent : null;
-    this.custom("tsx/mount", { nodes: describe(element), parent });
+    const g = S.gens.get(S.live);
+    this.custom("tsx/mount", { nodes: describe(element, g ? g.tsx : undefined), parent });
   }
   /** Unmounts a runtime-mounted node by its key, or any tsx node by its entity. */
   unmount(target) {
@@ -882,6 +886,7 @@ function newGeneration() {
     sections: new Map(),
     scenes: new Map(),
     sceneErrors: [],
+    tsx: new TsxContext(),
     built: null,
   };
 }
@@ -893,6 +898,10 @@ function makeCtx() {
 function begin(gen) {
   S.loading = newGeneration();
   S.loading.number = gen;
+  // The tsx host call: Rust calls it only when this generation has bindings or slots to run.
+  const g = S.loading;
+  g.entries.push({ name: "tsx" });
+  g.entryFns.set("tsx", (payload) => g.tsx.call(JSON.parse(text(payload))));
 }
 
 function end() {
@@ -938,6 +947,7 @@ function discard(gen) {
 }
 
 function fillCtx(ctx, dt, elapsed, tick, frame, arena, pool, kinds) {
+  S.calling = ctx;
   ctx.dt = dt;
   ctx.elapsed = elapsed;
   ctx.tick = tick;
@@ -950,7 +960,11 @@ function runSystem(gen, index, dt, elapsed, tick, frame, tables, arena, pool) {
   const s = g.built[index];
   fillCtx(s.ctx, dt, elapsed, tick, frame, arena, pool, g.kinds);
   s.query.bind(tables, tick);
-  s.run(s.query, s.ctx);
+  try {
+    s.run(s.query, s.ctx);
+  } finally {
+    S.calling = null;
+  }
   const [len, over, used] = s.ctx.commands.end();
   return [len, over, used, s.query.marks];
 }
@@ -959,7 +973,11 @@ function runStartup(gen, index, dt, elapsed, tick, frame, arena, pool) {
   const g = S.gens.get(gen);
   const ctx = g.startupCtx;
   fillCtx(ctx, dt, elapsed, tick, frame, arena, pool, g.kinds);
-  g.startupFns[index](ctx);
+  try {
+    g.startupFns[index](ctx);
+  } finally {
+    S.calling = null;
+  }
   const [len, over, used] = ctx.commands.end();
   return [len, over, used, []];
 }
@@ -970,7 +988,12 @@ function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {
   if (!fn) throw new Error(`no entry named ${name}`);
   const ctx = makeCtx();
   fillCtx(ctx, dt, elapsed, tick, frame, arena, pool, g.kinds);
-  let out = fn(new Uint8Array(payload), ctx);
+  let out;
+  try {
+    out = fn(new Uint8Array(payload), ctx);
+  } finally {
+    S.calling = null;
+  }
   if (out === undefined || out === null) out = new Uint8Array(0);
   else if (typeof out === "string") out = encoder.encode(out);
   else if (!(out instanceof Uint8Array)) out = encoder.encode(JSON.stringify(out));
@@ -979,6 +1002,21 @@ function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {
 }
 
 globalThis.__bevyts = { begin, end, abort, commit, discard, runSystem, runStartup, callEntry };
+
+// A binding that changed outside the tsx host call (a signal a system set) asks Rust for one
+// through the running call's commands.
+setHost({
+  requestFlush() {
+    const c = S.calling;
+    if (!c) return false;
+    try {
+      c.commands.custom("tsx/flush", "");
+      return true;
+    } catch {
+      return false;
+    }
+  },
+});
 
 /** Decodes UTF-8 bytes, for entries that take text or JSON payloads. */
 export function text(bytes) {
