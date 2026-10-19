@@ -1,0 +1,1048 @@
+//! The annotation reader: system signatures read from syntax alone, with no type checker.
+//!
+//! It reads the param types of every top-level function (and every `const x = system(...)`),
+//! follows type aliases (generic ones by substituting the arguments as written), interfaces and
+//! object types used as param bundles, and relative imports, all by name. The result is appended
+//! after the module's code as `__bevyts.bind(...)` and `__bevyts.declare(...)` statements; no
+//! function body is touched, so source maps and breakpoints are unchanged.
+//!
+//! A component, resource, message, event or state named in a param is a reference
+//! `["<module path>", "<local name>"]` into the module whose source text names it. Each module
+//! binds, as thunks, the value names its own text contributes, so circular imports and
+//! declaration order do not matter.
+
+use crate::compile::line_col;
+use bevy_ts::backend::{ScriptError, SourceLocation};
+use oxc::allocator::Allocator;
+use oxc::ast::ast::{
+    BindingPattern, Declaration, ExportDefaultDeclarationKind, Expression, FormalParameters, ImportDeclarationSpecifier, Program,
+    Statement, TSImportTypeQualifier, TSSignature, TSTupleElement, TSType, TSTypeName, TSTypeParameterDeclaration,
+};
+use oxc::parser::Parser;
+use oxc::span::{SourceType, Span};
+use serde_json::{Value, json};
+use std::collections::{BTreeSet, HashMap};
+#[cfg(test)]
+use std::collections::BTreeMap;
+use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
+
+/// Param kinds that installed ports declare, by type name (`ReadRapierContext`). Empty until
+/// `native` lands; a port's param reads as `{ kind: "port", name, args }`.
+pub const PORT_PARAM_KINDS: &[&str] = &[];
+
+/// The port param-kind registry.
+pub fn port_param_kinds() -> &'static [&'static str] {
+    PORT_PARAM_KINDS
+}
+
+/// Param kinds bevy-ts itself declares, recognised by name.
+const KINDS: &[&str] = &[
+    "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "State", "NextState", "On", "App", "Mut", "Option",
+    "Entity", "With", "Without", "Changed", "Added", "Add", "Insert", "Remove",
+];
+
+/// Field types a `Local` may hold.
+const FIELD_TYPES: &[&str] = &["f32", "f64", "i32", "u32", "u8", "bool", "vec2", "vec3", "quat", "entity"];
+
+/// Utility types that compute a type; the reader names them in its error.
+const COMPUTED: &[&str] = &[
+    "ReturnType", "Parameters", "ConstructorParameters", "InstanceType", "Pick", "Omit", "Partial", "Required", "Readonly", "Record",
+    "Exclude", "Extract", "NonNullable", "Awaited",
+];
+
+/// The nearest ancestor of `entry` holding `package.json`, `tsconfig.json` or `bevy-ts.json`,
+/// else the entry's directory. Identities are paths relative to it.
+pub fn project_root(entry: &Path) -> PathBuf {
+    let dir = entry.parent().unwrap_or(Path::new("/"));
+    dir.ancestors()
+        .find(|d| ["package.json", "tsconfig.json", "bevy-ts.json"].iter().any(|f| d.join(f).is_file()))
+        .unwrap_or(dir)
+        .to_path_buf()
+}
+
+/// `to` relative to the directory `from`, with `/` separators.
+fn relative(from: &Path, to: &Path) -> String {
+    let from: Vec<_> = from.components().collect();
+    let to_c: Vec<_> = to.components().collect();
+    let common = from.iter().zip(&to_c).take_while(|(a, b)| a == b).count();
+    let mut parts: Vec<String> = from[common..].iter().map(|_| "..".to_string()).collect();
+    parts.extend(to_c[common..].iter().map(|c| c.as_os_str().to_string_lossy().to_string()));
+    parts.join("/")
+}
+
+fn normalize(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// A type as written, owned, with where it was written.
+#[derive(Clone, Debug)]
+enum Ty {
+    Ref { name: String, args: Vec<Ty>, span: Span },
+    Tuple(Vec<Ty>, Span),
+    /// An object type's members; `None` for a member that is not a plain property.
+    Object(Vec<(String, Option<Ty>, Span)>, Span),
+    /// `import("bevy-ts").App`.
+    App,
+    /// Anything else, unreadable; `what` says what it is.
+    Other { what: &'static str, span: Span },
+}
+
+fn ty(t: &TSType) -> Ty {
+    let other = |what| Ty::Other { what, span: oxc::span::GetSpan::span(t) };
+    match t {
+        TSType::TSTypeReference(r) => match &r.type_name {
+            TSTypeName::IdentifierReference(id) => Ty::Ref {
+                name: id.name.to_string(),
+                args: r.type_arguments.as_ref().map(|a| a.params.iter().map(ty).collect()).unwrap_or_default(),
+                span: r.span,
+            },
+            _ => other("a qualified name"),
+        },
+        TSType::TSTupleType(t) => Ty::Tuple(
+            t.element_types
+                .iter()
+                .map(|e| match e {
+                    TSTupleElement::TSOptionalType(o) => Ty::Other { what: "an optional tuple element", span: o.span },
+                    TSTupleElement::TSRestType(r) => Ty::Other { what: "a rest tuple element", span: r.span },
+                    e => match e.to_ts_type() {
+                        TSType::TSNamedTupleMember(m) => match m.element_type.as_ts_type() {
+                            Some(t) if !m.optional => ty(t),
+                            _ => Ty::Other { what: "an optional tuple element", span: m.span },
+                        },
+                        t => ty(t),
+                    },
+                })
+                .collect(),
+            t.span,
+        ),
+        TSType::TSTypeLiteral(l) => Ty::Object(members(&l.members), l.span),
+        TSType::TSImportType(i) => match &i.qualifier {
+            Some(TSImportTypeQualifier::Identifier(q)) if q.name == "App" => Ty::App,
+            _ => other("an import type"),
+        },
+        TSType::TSParenthesizedType(p) => ty(&p.type_annotation),
+        TSType::TSConditionalType(_) => other("a conditional type"),
+        TSType::TSMappedType(_) => other("a mapped type"),
+        TSType::TSIndexedAccessType(_) => other("an indexed access type"),
+        TSType::TSTypeQuery(_) => other("a typeof type"),
+        TSType::TSTypeOperatorType(_) => other("a type operator"),
+        TSType::TSUnionType(_) => other("a union type"),
+        TSType::TSIntersectionType(_) => other("an intersection type"),
+        TSType::TSFunctionType(_) | TSType::TSConstructorType(_) => other("a function type"),
+        TSType::TSArrayType(_) => other("an array type"),
+        TSType::TSLiteralType(_) | TSType::TSTemplateLiteralType(_) => other("a literal type"),
+        _ => other("a built-in type"),
+    }
+}
+
+fn members(m: &[TSSignature]) -> Vec<(String, Option<Ty>, Span)> {
+    m.iter()
+        .map(|s| match s {
+            TSSignature::TSPropertySignature(p) if !p.computed && !p.optional => match p.key.static_name() {
+                Some(name) => (name.to_string(), p.type_annotation.as_ref().map(|a| ty(&a.type_annotation)), p.span),
+                None => (String::new(), None, p.span),
+            },
+            s => (String::new(), None, oxc::span::GetSpan::span(s)),
+        })
+        .collect()
+}
+
+/// A type alias or interface: its type params and body.
+#[derive(Debug)]
+struct Named {
+    params: Vec<String>,
+    body: Ty,
+}
+
+#[derive(Debug)]
+struct Import {
+    spec: String,
+    imported: String,
+    type_only: bool,
+    span: Span,
+}
+
+/// A function the reader declares.
+#[derive(Debug)]
+struct Func {
+    name: String,
+    span: Span,
+    /// `const x = system(...)`: declared with values, no params to read.
+    setup: bool,
+    params: Vec<Param>,
+}
+
+#[derive(Debug)]
+struct Param {
+    name: String,
+    ty: Option<Ty>,
+    span: Span,
+}
+
+/// What the reader needs from one file.
+#[derive(Debug)]
+pub(crate) struct FileInfo {
+    path: PathBuf,
+    /// Root-relative path: the module's identity prefix.
+    rel: String,
+    source: String,
+    named: HashMap<String, Named>,
+    imports: HashMap<String, Import>,
+    /// `export { a as b } from "./x"`: exported name to (specifier, name there).
+    reexports: HashMap<String, (String, String)>,
+    /// Top-level value bindings.
+    values: BTreeSet<String>,
+    /// Local name to the names it is exported as.
+    exports: HashMap<String, Vec<String>>,
+    functions: Vec<Func>,
+    imports_bevy_ts: bool,
+}
+
+fn type_params(p: &Option<oxc::allocator::Box<TSTypeParameterDeclaration>>) -> Vec<String> {
+    p.as_ref().map(|p| p.params.iter().map(|t| t.name.name.to_string()).collect()).unwrap_or_default()
+}
+
+fn params(p: &FormalParameters) -> Vec<Param> {
+    let mut out: Vec<Param> = p
+        .items
+        .iter()
+        .map(|i| Param {
+            name: match &i.pattern {
+                BindingPattern::BindingIdentifier(id) => id.name.to_string(),
+                _ => "{…}".into(),
+            },
+            ty: i.type_annotation.as_ref().map(|a| ty(&a.type_annotation)),
+            span: i.span,
+        })
+        .collect();
+    if let Some(r) = &p.rest {
+        out.push(Param { name: "...".into(), ty: Some(Ty::Other { what: "a rest param", span: r.span }), span: r.span });
+    }
+    out
+}
+
+/// Collects what the reader needs from a parsed file. Call it before types are stripped.
+pub(crate) fn extract(program: &Program, path: &Path, source: &str, root: &Path) -> FileInfo {
+    let mut f = FileInfo {
+        path: path.to_path_buf(),
+        rel: relative(root, path),
+        source: source.to_string(),
+        named: HashMap::new(),
+        imports: HashMap::new(),
+        reexports: HashMap::new(),
+        values: BTreeSet::new(),
+        exports: HashMap::new(),
+        functions: Vec::new(),
+        imports_bevy_ts: false,
+    };
+    for stmt in &program.body {
+        if let Statement::ImportDeclaration(d) = stmt {
+            let spec = d.source.value.to_string();
+            f.imports_bevy_ts |= spec == "bevy-ts" || spec.starts_with("bevy-ts/");
+            for s in d.specifiers.iter().flatten() {
+                let (local, imported, kind_type, span) = match s {
+                    ImportDeclarationSpecifier::ImportSpecifier(s) => (&s.local, s.imported.name().to_string(), s.import_kind.is_type(), s.span),
+                    ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => (&s.local, "default".into(), false, s.span),
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => (&s.local, "*".into(), false, s.span),
+                };
+                let import = Import { spec: spec.clone(), imported, type_only: d.import_kind.is_type() || kind_type, span };
+                f.imports.insert(local.name.to_string(), import);
+            }
+        }
+    }
+    let system = |name: &str, f: &FileInfo| {
+        f.imports.get(name).map_or(name == "system", |i| i.imported == "system" && (i.spec == "bevy-ts" || i.spec.starts_with("bevy-ts/")))
+    };
+    let declare = |d: &Declaration, exported: bool, f: &mut FileInfo| {
+        let export = |name: &str, f: &mut FileInfo| {
+            if exported {
+                f.exports.entry(name.to_string()).or_default().push(name.to_string());
+            }
+        };
+        match d {
+            Declaration::VariableDeclaration(v) if !v.declare => {
+                for d in &v.declarations {
+                    for id in d.id.get_binding_identifiers() {
+                        f.values.insert(id.name.to_string());
+                        export(id.name.as_str(), f);
+                    }
+                    let BindingPattern::BindingIdentifier(id) = &d.id else { continue };
+                    let (setup, ps) = match &d.init {
+                        Some(Expression::CallExpression(c)) => match &c.callee {
+                            Expression::Identifier(callee) if system(callee.name.as_str(), f) => (true, Vec::new()),
+                            _ => continue,
+                        },
+                        Some(Expression::ArrowFunctionExpression(a)) => (false, params(&a.params)),
+                        Some(Expression::FunctionExpression(fun)) => (false, params(&fun.params)),
+                        _ => continue,
+                    };
+                    f.functions.push(Func { name: id.name.to_string(), span: id.span, setup, params: ps });
+                }
+            }
+            Declaration::FunctionDeclaration(fun) if !fun.declare && fun.body.is_some() => {
+                if let Some(id) = &fun.id {
+                    f.values.insert(id.name.to_string());
+                    export(id.name.as_str(), f);
+                    f.functions.push(Func { name: id.name.to_string(), span: id.span, setup: false, params: params(&fun.params) });
+                }
+            }
+            Declaration::ClassDeclaration(c) if !c.declare => {
+                if let Some(id) = &c.id {
+                    f.values.insert(id.name.to_string());
+                    export(id.name.as_str(), f);
+                }
+            }
+            Declaration::TSEnumDeclaration(e) if !e.declare => {
+                f.values.insert(e.id.name.to_string());
+                export(e.id.name.as_str(), f);
+            }
+            Declaration::TSTypeAliasDeclaration(a) => {
+                f.named.insert(a.id.name.to_string(), Named { params: type_params(&a.type_parameters), body: ty(&a.type_annotation) });
+            }
+            Declaration::TSInterfaceDeclaration(i) => {
+                let body = if i.extends.is_empty() {
+                    Ty::Object(members(&i.body.body), i.span)
+                } else {
+                    Ty::Other { what: "an interface that extends another", span: i.span }
+                };
+                f.named.insert(i.id.name.to_string(), Named { params: type_params(&i.type_parameters), body });
+            }
+            _ => {}
+        }
+    };
+    for stmt in &program.body {
+        match stmt {
+            Statement::ExportDeclaration(e) => declare(&e.declaration, true, &mut f),
+            Statement::ExportDefaultDeclaration(e) => match &e.declaration {
+                ExportDefaultDeclarationKind::FunctionDeclaration(fun) if fun.body.is_some() => {
+                    if let Some(id) = &fun.id {
+                        f.values.insert(id.name.to_string());
+                        f.exports.entry(id.name.to_string()).or_default().push("default".into());
+                        f.functions.push(Func { name: id.name.to_string(), span: id.span, setup: false, params: params(&fun.params) });
+                    }
+                }
+                ExportDefaultDeclarationKind::ClassDeclaration(c) => {
+                    if let Some(id) = &c.id {
+                        f.values.insert(id.name.to_string());
+                    }
+                }
+                ExportDefaultDeclarationKind::TSInterfaceDeclaration(i) if i.extends.is_empty() => {
+                    let body = Ty::Object(members(&i.body.body), i.span);
+                    f.named.insert(i.id.name.to_string(), Named { params: type_params(&i.type_parameters), body });
+                }
+                _ => {}
+            },
+            Statement::ExportNamedDeclaration(e) if !e.export_kind.is_type() => {
+                for s in e.specifiers.iter().filter(|s| !s.export_kind.is_type()) {
+                    f.exports.entry(s.local.name().to_string()).or_default().push(s.exported.name().to_string());
+                }
+            }
+            Statement::ExportFromDeclaration(e) => {
+                for s in &e.specifiers {
+                    f.reexports.insert(s.exported.name().to_string(), (e.source.value.to_string(), s.local.name().to_string()));
+                }
+            }
+            s => {
+                if let Some(d) = s.as_declaration() {
+                    declare(d, false, &mut f);
+                }
+            }
+        }
+    }
+    f
+}
+
+/// Where a type is read: the file whose text wrote it, and the generic arguments in force.
+#[derive(Clone)]
+struct Scope {
+    file: Rc<FileInfo>,
+    subst: Rc<HashMap<String, (Ty, Scope)>>,
+}
+
+/// A failure to read a param.
+struct Fail {
+    file: Rc<FileInfo>,
+    span: Span,
+    message: String,
+    /// A name imported with `import type`: fails the compile rather than the registration.
+    type_import: bool,
+}
+
+/// What a type names once aliases, substitutions and imports are followed.
+enum Head {
+    Kind { name: String, args: Vec<Ty>, span: Span, scope: Scope },
+    Value(Value),
+    Bundle(Vec<(String, Option<Ty>, Span)>, Scope),
+    Tuple(Vec<Ty>, Scope),
+    App,
+}
+
+/// The appended declarations for one module.
+#[derive(Default)]
+pub(crate) struct Declarations {
+    /// JS to append after the module's code.
+    pub code: String,
+    /// Relative specifiers the declarations need evaluated (modules whose names are bound).
+    pub imports: Vec<String>,
+}
+
+struct Reader {
+    root: PathBuf,
+    ports: &'static [&'static str],
+    files: HashMap<PathBuf, Option<Rc<FileInfo>>>,
+    /// Modules (by path) a declaration referenced.
+    referenced: BTreeSet<PathBuf>,
+}
+
+/// Reads one module's declarations. `Err` holds compile errors: names a param needs that are
+/// imported with `import type`. Every other failure is carried lazily as an `error` declaration.
+pub(crate) fn read(file: FileInfo, root: &Path) -> Result<Declarations, Vec<ScriptError>> {
+    read_with(file, root, port_param_kinds())
+}
+
+fn read_with(file: FileInfo, root: &Path, ports: &'static [&'static str]) -> Result<Declarations, Vec<ScriptError>> {
+    let file = Rc::new(file);
+    let mut r = Reader { root: root.to_path_buf(), ports, files: HashMap::new(), referenced: BTreeSet::new() };
+    r.files.insert(file.path.clone(), Some(file.clone()));
+    let scope = Scope { file: file.clone(), subst: Rc::default() };
+    let mut declares = Vec::new();
+    let mut errors = Vec::new();
+    let mut any_read = false;
+    for func in &file.functions {
+        let exported = file.exports.get(&func.name).and_then(|e| e.first());
+        let (line, column) = line_col(&file.source, func.span.start);
+        let mut d = json!({ "at": { "file": file.rel, "line": line, "column": column } });
+        match exported {
+            Some(export) => d["id"] = json!(format!("{}#{export}", file.rel)),
+            None => {
+                d["error"] = json!(format!(
+                    "{} is not exported; a system, observer or plugin is an exported function, identified as module#export",
+                    func.name
+                ));
+            }
+        }
+        if func.setup {
+            d["kind"] = json!("setup");
+        } else {
+            d["kind"] = json!("system");
+            if exported.is_some() {
+                match r.params(&func.params, &scope) {
+                    Ok(params) => {
+                        any_read |= !params.is_empty();
+                        d["params"] = Value::Array(params);
+                    }
+                    Err(f) if f.type_import => errors.push(r.script_error(&f)),
+                    Err(f) => d["error"] = json!(r.message(&f)),
+                }
+            }
+        }
+        declares.push(format!(";__bevyts.declare({}, {d});", func.name));
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    if !file.imports_bevy_ts && !any_read {
+        // A module that never names bevy-ts declares nothing: helpers in plain modules stay plain.
+        return Ok(Declarations { code: String::new(), imports: Vec::new() });
+    }
+    let mut code = String::new();
+    let binds = r.binds(&file);
+    if !binds.is_empty() {
+        let thunks: Vec<_> = binds.iter().map(|n| format!("{n}: () => {n}")).collect();
+        code.push_str(&format!(";__bevyts.bind({}, {{ {} }});\n", json!(file.rel), thunks.join(", ")));
+    }
+    let dir = file.path.parent().unwrap_or(Path::new("/"));
+    let mut imports = Vec::new();
+    for p in r.referenced.iter().filter(|p| **p != file.path) {
+        let rel = relative(dir, p);
+        let spec = if rel.starts_with("..") { rel } else { format!("./{rel}") };
+        code.push_str(&format!(";import {};\n", json!(spec)));
+        imports.push(spec);
+    }
+    for d in declares {
+        code.push_str(&d);
+        code.push('\n');
+    }
+    Ok(Declarations { code, imports })
+}
+
+impl Reader {
+    fn location(&self, f: &Fail) -> (u32, u32) {
+        line_col(&f.file.source, f.span.start)
+    }
+
+    fn message(&self, f: &Fail) -> String {
+        let (line, column) = self.location(f);
+        format!("{}:{line}:{column}: {}", f.file.rel, f.message)
+    }
+
+    fn script_error(&self, f: &Fail) -> ScriptError {
+        let (line, column) = self.location(f);
+        ScriptError::at(f.message.clone(), Some(SourceLocation { file: f.file.path.display().to_string(), line, column }))
+    }
+
+    /// The value names a module binds: every value its own param types and type declarations name.
+    fn binds(&self, file: &FileInfo) -> BTreeSet<String> {
+        fn walk(t: &Ty, file: &FileInfo, params: &[String], out: &mut BTreeSet<String>) {
+            match t {
+                Ty::Ref { name, args, .. } => {
+                    let value = file.values.contains(name) || file.imports.get(name).is_some_and(|i| !i.type_only && i.imported != "*");
+                    if value && !params.contains(name) && !KINDS.contains(&name.as_str()) && !FIELD_TYPES.contains(&name.as_str()) {
+                        out.insert(name.clone());
+                    }
+                    args.iter().for_each(|a| walk(a, file, params, out));
+                }
+                Ty::Tuple(ts, _) => ts.iter().for_each(|a| walk(a, file, params, out)),
+                Ty::Object(ms, _) => ms.iter().filter_map(|m| m.1.as_ref()).for_each(|a| walk(a, file, params, out)),
+                Ty::App | Ty::Other { .. } => {}
+            }
+        }
+        let mut out = BTreeSet::new();
+        for n in file.named.values() {
+            walk(&n.body, file, &n.params, &mut out);
+        }
+        for f in &file.functions {
+            for p in f.params.iter().filter_map(|p| p.ty.as_ref()) {
+                walk(p, file, &[], &mut out);
+            }
+        }
+        out
+    }
+
+    fn load(&mut self, path: &Path) -> Option<Rc<FileInfo>> {
+        if let Some(f) = self.files.get(path) {
+            return f.clone();
+        }
+        let info = std::fs::read_to_string(path).ok().and_then(|source| {
+            let allocator = Allocator::default();
+            let source_type = SourceType::from_path(path).ok()?;
+            let parsed = Parser::new(&allocator, &source, source_type).parse();
+            Some(Rc::new(extract(&parsed.program, path, &source, &self.root)))
+        });
+        self.files.insert(path.to_path_buf(), info.clone());
+        info
+    }
+
+    /// The type alias or interface `name` means in `file`, following relative imports.
+    fn lookup(&mut self, file: &Rc<FileInfo>, name: &str, depth: u32) -> Option<(Rc<FileInfo>, String)> {
+        if depth > 32 {
+            return None;
+        }
+        if file.named.contains_key(name) {
+            return Some((file.clone(), name.to_string()));
+        }
+        let (spec, there) = match file.imports.get(name) {
+            Some(i) => (i.spec.clone(), i.imported.clone()),
+            None => file.reexports.get(name).cloned()?,
+        };
+        if !(spec.starts_with("./") || spec.starts_with("../")) {
+            return None;
+        }
+        let target = crate::compile::resolve_relative(&file.path, &spec)?;
+        let target = self.load(&normalize(&target))?;
+        self.lookup(&target, &there, depth + 1)
+    }
+
+    fn fail(&self, scope: &Scope, span: Span, message: impl Into<String>) -> Fail {
+        Fail { file: scope.file.clone(), span, message: message.into(), type_import: false }
+    }
+
+    fn head(&mut self, t: &Ty, scope: &Scope, depth: u32) -> Result<Head, Fail> {
+        if depth > 64 {
+            return Err(self.fail(scope, span_of(t), "type aliases nest too deep (a cycle?)"));
+        }
+        let (name, args, span) = match t {
+            Ty::Ref { name, args, span } => (name, args, *span),
+            Ty::Tuple(ts, _) => return Ok(Head::Tuple(ts.clone(), scope.clone())),
+            Ty::Object(ms, _) => return Ok(Head::Bundle(ms.clone(), scope.clone())),
+            Ty::App => return Ok(Head::App),
+            Ty::Other { what, span } => {
+                let text = &scope.file.source[span.start as usize..span.end as usize];
+                return Err(self.fail(scope, *span, format!("`{text}` is {what}; a param type is a bevy-ts param kind, an alias of one or a param bundle. Use system(() => ...) for computed types")));
+            }
+        };
+        if let Some((t, s)) = scope.subst.get(name) {
+            if !args.is_empty() {
+                return Err(self.fail(scope, span, format!("{name} is a type parameter and takes no arguments")));
+            }
+            let (t, s) = (t.clone(), s.clone());
+            return self.head(&t, &s, depth + 1);
+        }
+        if KINDS.contains(&name.as_str()) || self.ports.contains(&name.as_str()) {
+            return Ok(Head::Kind { name: name.clone(), args: args.clone(), span, scope: scope.clone() });
+        }
+        if let Some((file, there)) = self.lookup(&scope.file, name, 0) {
+            let named = &file.named[&there];
+            if args.len() != named.params.len() {
+                return Err(self.fail(scope, span, format!("{name} takes {} type arguments, given {}", named.params.len(), args.len())));
+            }
+            let subst = named.params.iter().cloned().zip(args.iter().map(|a| (a.clone(), scope.clone()))).collect::<HashMap<_, _>>();
+            let body = named.body.clone();
+            let inner = Scope { file: file.clone(), subst: Rc::new(subst) };
+            return self.head(&body, &inner, depth + 1);
+        }
+        if let Some(i) = scope.file.imports.get(name) {
+            if i.type_only {
+                return Err(Fail {
+                    file: scope.file.clone(),
+                    span: i.span,
+                    message: format!("{name} is imported as a type; system params need its value"),
+                    type_import: true,
+                });
+            }
+            if i.imported != "*" {
+                return self.value(name, args, span, scope);
+            }
+        }
+        if scope.file.values.contains(name) {
+            return self.value(name, args, span, scope);
+        }
+        if COMPUTED.contains(&name.as_str()) {
+            let text = &scope.file.source[span.start as usize..span.end as usize];
+            return Err(self.fail(scope, span, format!("`{text}` is a computed type ({name}); the reader follows names only. Use system(() => ...) instead")));
+        }
+        Err(self.fail(scope, span, format!("{name} is not a system param kind, an alias of one, a param bundle or a value declared in this module")))
+    }
+
+    fn value(&mut self, name: &str, args: &[Ty], span: Span, scope: &Scope) -> Result<Head, Fail> {
+        if !args.is_empty() {
+            return Err(self.fail(scope, span, format!("{name} is a value and takes no type arguments")));
+        }
+        self.referenced.insert(scope.file.path.clone());
+        Ok(Head::Value(json!([scope.file.rel, name])))
+    }
+
+    fn params(&mut self, ps: &[Param], scope: &Scope) -> Result<Vec<Value>, Fail> {
+        ps.iter()
+            .map(|p| match &p.ty {
+                Some(t) => self.param(t, scope),
+                None => Err(self.fail(scope, p.span, format!("param {} has no type; annotate it with a param kind such as Query<[...]>", p.name))),
+            })
+            .collect()
+    }
+
+    fn arg<'t>(&self, name: &str, args: &'t [Ty], i: usize, span: Span, scope: &Scope) -> Result<&'t Ty, Fail> {
+        args.get(i).ok_or_else(|| self.fail(scope, span, format!("{name} needs {} type argument{}", i + 1, if i == 0 { "" } else { "s" })))
+    }
+
+    /// A component, resource, message, event or state name.
+    fn reference(&mut self, t: &Ty, scope: &Scope, what: &str) -> Result<Value, Fail> {
+        match self.head(t, scope, 0)? {
+            Head::Value(v) => Ok(v),
+            Head::Kind { name, span, scope, .. } => Err(self.fail(&scope, span, format!("{name}<...> is not {what}"))),
+            _ => Err(self.fail(scope, span_of(t), format!("expected {what}"))),
+        }
+    }
+
+    fn param(&mut self, t: &Ty, scope: &Scope) -> Result<Value, Fail> {
+        let (name, args, span, scope) = match self.head(t, scope, 0)? {
+            Head::Kind { name, args, span, scope } => (name, args, span, scope),
+            Head::Value(v) => {
+                return Err(self.fail(scope, span_of(t), format!("{} is a value, not a system param; query it with Query<[{}]>", v[1], v[1].as_str().unwrap_or(""))));
+            }
+            Head::Bundle(members, s) => {
+                let mut fields = Vec::new();
+                for (name, t, span) in members {
+                    let Some(t) = t else {
+                        return Err(self.fail(&s, span, "a param bundle holds plain named properties only"));
+                    };
+                    fields.push(json!({ "name": name, "param": self.param(&t, &s)? }));
+                }
+                return Ok(json!({ "kind": "bundle", "fields": fields }));
+            }
+            Head::Tuple(..) => return Err(self.fail(scope, span_of(t), "a tuple is not a system param; Query takes one as its data")),
+            Head::App => return Ok(json!({ "kind": "app" })),
+        };
+        let s = &scope;
+        match name.as_str() {
+            "Query" => {
+                let data = match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
+                    Head::Tuple(ts, ds) => ts.iter().map(|d| self.datum(d, &ds)).collect::<Result<Vec<_>, _>>()?,
+                    _ => return Err(self.fail(s, span, "Query's data is a tuple: Query<[A, Mut<B>]>")),
+                };
+                let filter = match args.get(1) {
+                    None => Vec::new(),
+                    Some(f) => match self.head(f, s, 0)? {
+                        Head::Tuple(ts, fs) => ts.iter().map(|f| self.filter(f, &fs)).collect::<Result<Vec<_>, _>>()?,
+                        _ => vec![self.filter(f, s)?],
+                    },
+                };
+                Ok(json!({ "kind": "query", "data": data, "filter": filter }))
+            }
+            "Res" | "ResMut" => {
+                let r = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a resource")?;
+                Ok(json!({ "kind": if name == "Res" { "res" } else { "resMut" }, "resource": r }))
+            }
+            "Local" => {
+                let fields = match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
+                    Head::Bundle(members, ls) => members
+                        .into_iter()
+                        .map(|(n, t, sp)| match t.as_ref().map(|t| self.field_type(t, &ls)) {
+                            Some(Some(ft)) => Ok(json!({ "name": n, "type": ft })),
+                            _ => Err(self.fail(&ls, sp, format!("Local field {n} is not a field type ({})", FIELD_TYPES.join(", ")))),
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                    _ => return Err(self.fail(s, span, "Local takes an object of field types: Local<{ n: u32 }>")),
+                };
+                Ok(json!({ "kind": "local", "fields": fields }))
+            }
+            "Commands" => Ok(json!({ "kind": "commands" })),
+            "App" => Ok(json!({ "kind": "app" })),
+            "MessageReader" | "MessageWriter" => {
+                let m = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a message")?;
+                Ok(json!({ "kind": if name == "MessageReader" { "messageReader" } else { "messageWriter" }, "message": m }))
+            }
+            "State" | "NextState" => {
+                let st = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a state")?;
+                Ok(json!({ "kind": if name == "State" { "state" } else { "nextState" }, "state": st }))
+            }
+            "On" => match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
+                Head::Kind { name: l, args: largs, span: lspan, scope: ls } if matches!(l.as_str(), "Add" | "Insert" | "Remove") => {
+                    let c = self.reference(self.arg(&l, &largs, 0, lspan, &ls)?, &ls, "a component")?;
+                    Ok(json!({ "kind": "on", "lifecycle": l.to_lowercase(), "component": c }))
+                }
+                Head::Value(e) => Ok(json!({ "kind": "on", "event": e })),
+                _ => Err(self.fail(s, span, "On takes an event or Add/Insert/Remove<Component>")),
+            },
+            port if self.ports.contains(&port) => {
+                let refs = args.iter().map(|a| self.reference(a, s, "a value")).collect::<Result<Vec<_>, _>>()?;
+                Ok(json!({ "kind": "port", "name": port, "args": refs }))
+            }
+            other => Err(self.fail(s, span, format!("{other}<...> is not a system param; it belongs inside a Query or On"))),
+        }
+    }
+
+    fn field_type(&mut self, t: &Ty, scope: &Scope) -> Option<String> {
+        match t {
+            Ty::Ref { name, args, .. } if args.is_empty() => match scope.subst.get(name) {
+                Some((t, s)) => {
+                    let (t, s) = (t.clone(), s.clone());
+                    self.field_type(&t, &s)
+                }
+                None => FIELD_TYPES.contains(&name.as_str()).then(|| name.clone()),
+            },
+            _ => None,
+        }
+    }
+
+    fn datum(&mut self, t: &Ty, scope: &Scope) -> Result<Value, Fail> {
+        match self.head(t, scope, 0)? {
+            Head::Value(c) => Ok(json!({ "component": c, "mut": false, "optional": false })),
+            Head::Kind { name, args, span, scope } => match name.as_str() {
+                "Entity" => Ok(json!({ "entity": true })),
+                "Mut" | "Option" => {
+                    let mut d = self.datum(self.arg(&name, &args, 0, span, &scope)?, &scope)?;
+                    if d.get("entity").is_some() {
+                        return Err(self.fail(&scope, span, format!("{name}<Entity> is not query data")));
+                    }
+                    d[if name == "Mut" { "mut" } else { "optional" }] = json!(true);
+                    Ok(d)
+                }
+                _ => Err(self.fail(&scope, span, format!("{name}<...> is not query data; data is a component, Mut<C>, Option<C> or Entity"))),
+            },
+            _ => Err(self.fail(scope, span_of(t), "query data is a component, Mut<C>, Option<C> or Entity")),
+        }
+    }
+
+    fn filter(&mut self, t: &Ty, scope: &Scope) -> Result<Value, Fail> {
+        match self.head(t, scope, 0)? {
+            Head::Kind { name, args, span, scope } if matches!(name.as_str(), "With" | "Without" | "Changed" | "Added") => {
+                let c = self.reference(self.arg(&name, &args, 0, span, &scope)?, &scope, "a component")?;
+                let mut m = serde_json::Map::new();
+                m.insert(name.to_lowercase(), c);
+                Ok(Value::Object(m))
+            }
+            _ => Err(self.fail(scope, span_of(t), "a query filter is With<C>, Without<C>, Changed<C> or Added<C>, or a tuple of them")),
+        }
+    }
+}
+
+fn span_of(t: &Ty) -> Span {
+    match t {
+        Ty::Ref { span, .. } | Ty::Other { span, .. } | Ty::Tuple(_, span) | Ty::Object(_, span) => *span,
+        Ty::App => Span::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compile::{Compiler, compile_module};
+
+    fn tmp(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let dir = std::env::temp_dir().join("bevy-ts-reader").join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("package.json"), "{}").unwrap();
+        for (f, src) in files {
+            std::fs::write(dir.join(f), src).unwrap();
+        }
+        dir.canonicalize().unwrap()
+    }
+
+    fn compile(path: &Path, root: &Path) -> String {
+        let source = std::fs::read_to_string(path).unwrap();
+        compile_module(path, &source, false, root).unwrap_or_else(|e| panic!("{e:?}")).code
+    }
+
+    /// The declarations in compiled code, by function name.
+    fn declared(code: &str) -> BTreeMap<String, Value> {
+        code.lines()
+            .filter_map(|l| l.strip_prefix(";__bevyts.declare("))
+            .map(|l| {
+                let (name, rest) = l.split_once(", ").unwrap();
+                (name.to_string(), serde_json::from_str(rest.strip_suffix(");").unwrap()).unwrap())
+            })
+            .collect()
+    }
+
+    fn bind_line(code: &str) -> &str {
+        code.lines().find(|l| l.starts_with(";__bevyts.bind(")).unwrap_or("")
+    }
+
+    fn c(r: &Value) -> Value {
+        json!({ "component": r, "mut": false, "optional": false })
+    }
+
+    fn m(r: &Value) -> Value {
+        json!({ "component": r, "mut": true, "optional": false })
+    }
+
+    fn bench(file: &str) -> (PathBuf, PathBuf) {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/dx/examples").canonicalize().unwrap();
+        (root.join(file), root)
+    }
+
+    #[test]
+    fn reads_the_prototype_systems() {
+        let (path, root) = bench("systems.ts");
+        let code = compile(&path, &root);
+        let d = declared(&code);
+        let r = |n: &str| json!(["systems.ts", n]);
+        let params = |f: &str| d[f]["params"].clone();
+        assert_eq!(d["chase"]["id"], json!("systems.ts#chase"));
+        assert_eq!(d["chase"]["kind"], json!("system"));
+        assert_eq!(d["chase"]["at"], json!({ "file": "systems.ts", "line": 27, "column": 17 }));
+        assert_eq!(
+            params("chase"),
+            json!([
+                { "kind": "res", "resource": r("Time") },
+                { "kind": "query", "data": [c(&r("Transform"))], "filter": [{ "with": r("Player") }] },
+                { "kind": "query", "data": [c(&r("Enemy")), m(&r("Transform"))], "filter": [{ "with": r("Alive") }, { "without": r("Player") }] },
+            ])
+        );
+        assert_eq!(
+            params("regen"),
+            json!([{ "kind": "query", "data": [{ "entity": true }, m(&r("Health")), { "component": r("Enemy"), "mut": false, "optional": true }], "filter": [{ "changed": r("Health") }] }])
+        );
+        assert_eq!(
+            params("separate"),
+            json!([
+                { "kind": "query", "data": [{ "entity": true }, m(&r("Transform"))], "filter": [{ "with": r("Enemy") }] },
+                { "kind": "query", "data": [{ "entity": true }, c(&r("Transform"))], "filter": [{ "with": r("Enemy") }] },
+            ])
+        );
+        assert_eq!(params("drag"), json!([{ "kind": "query", "data": [m(&r("Velocity"))], "filter": [{ "with": r("Collider") }] }]));
+        // Reflect tier is the type checker's to refuse; the syntax reads.
+        assert_eq!(params("bad"), json!([{ "kind": "query", "data": [m(&r("Collider"))], "filter": [] }]));
+        assert_eq!(params("spawnWave"), json!([{ "kind": "commands" }, { "kind": "local", "fields": [{ "name": "n", "type": "u32" }] }]));
+        assert_eq!(params("pause"), json!([{ "kind": "nextState", "state": r("Game") }]));
+        assert_eq!(
+            params("applyDamage"),
+            json!([
+                { "kind": "messageReader", "message": r("Damage") },
+                { "kind": "query", "data": [m(&r("Health"))], "filter": [] },
+                { "kind": "resMut", "resource": r("Score") },
+                { "kind": "commands" },
+            ])
+        );
+        assert_eq!(
+            params("onExplode"),
+            json!([
+                { "kind": "on", "event": r("Explode") },
+                { "kind": "query", "data": [{ "entity": true }, c(&r("Transform"))], "filter": [{ "with": r("Enemy") }] },
+                { "kind": "messageWriter", "message": r("Damage") },
+                { "kind": "commands" },
+            ])
+        );
+        assert_eq!(
+            params("onHealthAdded"),
+            json!([{ "kind": "on", "lifecycle": "add", "component": r("Health") }, { "kind": "query", "data": [m(&r("Health"))], "filter": [] }])
+        );
+        assert_eq!(params("enemyPlugin"), json!([{ "kind": "app" }]));
+        assert_eq!(d.len(), 11, "{d:#?}");
+        assert_eq!(
+            bind_line(&code),
+            r#";__bevyts.bind("systems.ts", { Alive: () => Alive, Collider: () => Collider, Damage: () => Damage, Enemy: () => Enemy, Explode: () => Explode, Game: () => Game, Health: () => Health, Player: () => Player, Score: () => Score, Time: () => Time, Transform: () => Transform, Velocity: () => Velocity });"#
+        );
+    }
+
+    #[test]
+    fn reads_the_prototype_fallback() {
+        let (path, root) = bench("fallback.ts");
+        let d = declared(&compile(&path, &root));
+        let err = d["computed"]["error"].as_str().unwrap();
+        assert!(err.starts_with("fallback.ts:10:29: `ReturnType<typeof makeQuery>` is a computed type (ReturnType)"), "{err}");
+        assert!(d["computed"].get("params").is_none());
+        assert_eq!(d["drift"]["kind"], json!("setup"));
+        assert_eq!(d["drift"]["id"], json!("fallback.ts#drift"));
+        assert_eq!(d.len(), 2, "{d:#?}");
+    }
+
+    #[test]
+    fn declarations_follow_the_code_and_leave_mapped_lines_alone() {
+        let (path, root) = bench("systems.ts");
+        let source = std::fs::read_to_string(&path).unwrap();
+        let c = compile_module(&path, &source, false, &root).unwrap();
+        let map: Value = serde_json::from_str(&c.source_map).unwrap();
+        let mapped_lines = map["mappings"].as_str().unwrap().split(';').count();
+        let first = c.code.lines().position(|l| l.starts_with(";__bevyts.")).unwrap();
+        assert!(first >= mapped_lines, "declarations start at line {first}, inside the {mapped_lines} mapped lines");
+        assert!(c.code.contains("function chase(time, player, enemies) {"), "the body is untouched");
+    }
+
+    #[test]
+    fn an_alias_from_another_file() {
+        let dir = tmp(
+            "alias",
+            &[
+                (
+                    "src/enemies.ts",
+                    "import { Transform, Tag, type Query, type Mut, type With } from \"bevy-ts\";\nexport class Alive extends Tag(\"game::Alive\") {}\nexport type Movers<T> = Query<[T, Mut<Transform>], With<Alive>>;\n",
+                ),
+                ("src/enemy.ts", "import { Component } from \"bevy-ts\";\nexport class Enemy extends Component(\"game::Enemy\", {}) {}\n"),
+                (
+                    "src/game.ts",
+                    "import type { Movers } from \"./enemies.ts\";\nimport { Enemy } from \"./enemy.ts\";\nexport function move(q: Movers<Enemy>) {}\n",
+                ),
+            ],
+        );
+        let code = compile(&dir.join("src/game.ts"), &dir);
+        assert_eq!(
+            declared(&code)["move"]["params"],
+            json!([{ "kind": "query", "data": [c(&json!(["src/game.ts", "Enemy"])), m(&json!(["src/enemies.ts", "Transform"]))], "filter": [{ "with": ["src/enemies.ts", "Alive"] }] }])
+        );
+        assert_eq!(bind_line(&code), r#";__bevyts.bind("src/game.ts", { Enemy: () => Enemy });"#);
+        // The alias's module binds what its own text names, and is evaluated for it.
+        assert!(code.contains(";import \"./enemies.ts\";"), "{code}");
+        let enemies = compile(&dir.join("src/enemies.ts"), &dir);
+        assert_eq!(bind_line(&enemies), r#";__bevyts.bind("src/enemies.ts", { Alive: () => Alive, Transform: () => Transform });"#);
+        let mut compiler = Compiler::new(dir.join("src/game.ts"), false).unwrap();
+        compiler.declarations = true;
+        let set = compiler.compile_graph().unwrap();
+        assert_eq!(set.modules.len(), 3);
+    }
+
+    #[test]
+    fn a_type_only_import_fails_the_compile_at_its_line() {
+        let dir = tmp(
+            "type-import",
+            &[
+                ("src/enemy.ts", "export class Enemy {}\n"),
+                ("src/game.ts", "import type { Query } from \"bevy-ts\";\n\nimport type { Enemy } from \"./enemy\";\nexport function chase(q: Query<[Enemy]>) {}\n"),
+            ],
+        );
+        let path = dir.join("src/game.ts");
+        let e = compile_module(&path, &std::fs::read_to_string(&path).unwrap(), false, &dir).err().unwrap();
+        assert_eq!(e[0].message, "Enemy is imported as a type; system params need its value");
+        let at = e[0].location.clone().unwrap();
+        assert!(at.file.ends_with("src/game.ts"), "{at:?}");
+        assert_eq!((at.line, at.column), (3, 15));
+    }
+
+    #[test]
+    fn a_computed_param_type_names_itself() {
+        let dir = tmp(
+            "pick",
+            &[(
+                "src/game.ts",
+                "import { type Query, Component } from \"bevy-ts\";\nclass A extends Component(\"a\", {}) {}\ninterface Bundle { a: Query<[A]> }\nexport function f(\n  b: Pick<Bundle, \"a\">,\n) {}\n",
+            )],
+        );
+        let d = declared(&compile(&dir.join("src/game.ts"), &dir));
+        let err = d["f"]["error"].as_str().unwrap();
+        assert!(err.starts_with("src/game.ts:5:6: `Pick<Bundle, \"a\">` is a computed type (Pick)"), "{err}");
+    }
+
+    #[test]
+    fn bundles_locals_states_and_lazy_errors() {
+        let src = r#"import { type Query, type Res, type State, type Local, type Mut, type Option, type On, type Remove, type Commands, Component, Resource, States, f32 } from "bevy-ts";
+export class Pos extends Component("pos", { x: f32 }) {}
+export class Clock extends Resource("clock", { t: f32 }) {}
+export class Mode extends States("mode", ["A", "B"]) {}
+interface Movers { q: Query<[Option<Mut<Pos>>]>; clock: Res<Clock> }
+type Counter<T> = Local<{ n: T; at: vec3 }>;
+type Env = { mode: State<Mode>; cmd: Commands };
+function step(m: Movers, e: Env, c: Counter<u32>, gone: On<Remove<Pos>>) {}
+export { step as tick };
+function helper(x: number) {}
+export function untyped(x) {}
+export function wrong(p: Pos) {}
+export function local(l: Local<{ n: number }>) {}
+export const arrow = (q: Query<[Pos]>) => {};
+"#;
+        let dir = tmp("bundles", &[("src/game.ts", src)]);
+        let d = declared(&compile(&dir.join("src/game.ts"), &dir));
+        let pos = json!(["src/game.ts", "Pos"]);
+        assert_eq!(d["step"]["id"], json!("src/game.ts#tick"));
+        assert_eq!(
+            d["step"]["params"],
+            json!([
+                { "kind": "bundle", "fields": [
+                    { "name": "q", "param": { "kind": "query", "data": [{ "component": pos, "mut": true, "optional": true }], "filter": [] } },
+                    { "name": "clock", "param": { "kind": "res", "resource": ["src/game.ts", "Clock"] } },
+                ] },
+                { "kind": "bundle", "fields": [
+                    { "name": "mode", "param": { "kind": "state", "state": ["src/game.ts", "Mode"] } },
+                    { "name": "cmd", "param": { "kind": "commands" } },
+                ] },
+                { "kind": "local", "fields": [{ "name": "n", "type": "u32" }, { "name": "at", "type": "vec3" }] },
+                { "kind": "on", "lifecycle": "remove", "component": pos },
+            ])
+        );
+        assert_eq!(d["arrow"]["params"], json!([{ "kind": "query", "data": [c(&pos)], "filter": [] }]));
+        let err = |f: &str| d[f]["error"].as_str().unwrap().to_string();
+        assert!(err("helper").starts_with("helper is not exported"), "{}", err("helper"));
+        assert!(d["helper"].get("id").is_none());
+        assert!(err("untyped").contains("param x has no type"), "{}", err("untyped"));
+        assert!(err("wrong").starts_with("src/game.ts:12:26: \"Pos\" is a value, not a system param"), "{}", err("wrong"));
+        assert!(err("local").contains("Local field n is not a field type"), "{}", err("local"));
+    }
+
+    #[test]
+    fn a_plain_module_declares_nothing() {
+        let dir = tmp("plain", &[("src/util.ts", "export function scale(n: number): number {\n  return n * 3;\n}\n")]);
+        assert!(!compile(&dir.join("src/util.ts"), &dir).contains("__bevyts"));
+    }
+
+    #[test]
+    fn port_param_kinds_come_from_the_registry() {
+        assert!(port_param_kinds().is_empty());
+        let src = "import { Collider } from \"bevy-ts/rapier\";\nexport function cast(r: ReadRapierContext<Collider>) {}\n";
+        let path = Path::new("/p/src/game.ts");
+        let allocator = Allocator::default();
+        let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
+        let read = |ports| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), ports).ok().unwrap().code);
+        assert_eq!(read(&["ReadRapierContext"])["cast"]["params"], json!([{ "kind": "port", "name": "ReadRapierContext", "args": [["src/game.ts", "Collider"]] }]));
+        assert!(read(&[])["cast"]["error"].as_str().unwrap().contains("ReadRapierContext is not a system param kind"));
+    }
+
+    #[test]
+    fn the_project_root_holds_a_manifest() {
+        let dir = tmp("root", &[("src/game.ts", "")]);
+        assert_eq!(project_root(&dir.join("src/game.ts")), dir);
+        assert_eq!(relative(&dir, &dir.join("src/game.ts")), "src/game.ts");
+        assert_eq!(relative(&dir.join("src/a"), &dir.join("src/b/c.ts")), "../b/c.ts");
+    }
+}

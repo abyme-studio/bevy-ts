@@ -1,11 +1,11 @@
 ## 1. Compile step: the annotation reader
 
-- [ ] 1.1 Read exported function signatures from oxc's AST: inline param types, `Mut`/`Option`/`Entity` data, `With`/`Without`/`Changed`/`Added` filters (single or tuple), `Res`/`ResMut`/`Local`/`Commands`/`MessageReader`/`MessageWriter`/`State`/`NextState`/`On`/`App`
-- [ ] 1.2 Follow type aliases (generic ones by substituting arguments as written), interfaces and object types as param bundles, and relative imports, with names scoped to the module whose text writes them
-- [ ] 1.3 Append `__bevyts.bind` and `__bevyts.declare` after the module's code with identities `<root-relative path>#<export>`; leave bodies and line numbers unchanged; check breakpoints still map
-- [ ] 1.4 Errors with file and line: computed types (`ReturnType`, `Pick`, conditional), names imported with `import type`, non-exported registered functions; carried lazily as `error` declarations
-- [ ] 1.5 A port param-kind registry in the compiler crate (empty for now) and `export const x = system(...)` identities
-- [ ] 1.6 Unit tests against `bench/dx/examples/systems.ts` and `fallback.ts` (adapted to real imports): the declarations match the prototype reader's output
+- [x] 1.1 Read exported function signatures from oxc's AST: inline param types, `Mut`/`Option`/`Entity` data, `With`/`Without`/`Changed`/`Added` filters (single or tuple), `Res`/`ResMut`/`Local`/`Commands`/`MessageReader`/`MessageWriter`/`State`/`NextState`/`On`/`App`
+- [x] 1.2 Follow type aliases (generic ones by substituting arguments as written), interfaces and object types as param bundles, and relative imports, with names scoped to the module whose text writes them
+- [x] 1.3 Append `__bevyts.bind` and `__bevyts.declare` after the module's code with identities `<root-relative path>#<export>`; leave bodies and line numbers unchanged; check breakpoints still map
+- [x] 1.4 Errors with file and line: computed types (`ReturnType`, `Pick`, conditional), names imported with `import type`, non-exported registered functions; carried lazily as `error` declarations
+- [x] 1.5 A port param-kind registry in the compiler crate (empty for now) and `export const x = system(...)` identities
+- [x] 1.6 Unit tests against `bench/dx/examples/systems.ts` and `fallback.ts` (adapted to real imports): the declarations match the prototype reader's output
 
 ## 2. Declarations in the runtime
 

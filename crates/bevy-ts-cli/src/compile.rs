@@ -1,6 +1,7 @@
 //! Host-side TS: type stripping and source maps with oxc, walking the module graph from the
 //! entry through relative imports. No type checking; that is the editor's and `tsc`'s job.
 
+use crate::reader;
 use bevy_ts::backend::{CompiledModule, ModuleSet, ScriptError, SourceLocation};
 use bevy_ts::generation::ModuleSource;
 use oxc::allocator::Allocator;
@@ -49,9 +50,32 @@ fn file_url(path: &Path) -> String {
     format!("file://{}", path.display())
 }
 
-/// Compiles one TS or TSX file. `dev` uses the development JSX transform, so elements carry
-/// their source location.
+/// Compiles one TS or TSX file, with identities relative to its project root. `dev` uses the
+/// development JSX transform, so elements carry their source location.
 pub fn compile_file(path: &Path, source: &str, dev: bool) -> Result<Compiled, Vec<ScriptError>> {
+    compile_module(path, source, dev, &reader::project_root(path))
+}
+
+/// Compiles one file for `bevy-ts transform <file>`: the module as the engine would load it,
+/// declarations included.
+pub fn transform(path: &Path, dev: bool) -> Result<String, Vec<ScriptError>> {
+    let path = std::env::current_dir().map(|cwd| cwd.join(path)).unwrap_or_else(|_| path.to_path_buf());
+    let path = path.canonicalize().unwrap_or_else(|_| normalize(&path));
+    let source = std::fs::read_to_string(&path).map_err(|e| vec![ScriptError::new(format!("{}: {e}", display(&path)))])?;
+    compile_module(&path, &source, dev, &reader::project_root(&path)).map(|c| c.code)
+}
+
+/// Compiles one TS or TSX file. System signatures are read before types are stripped and their
+/// declarations appended after the code, with identities relative to `root`.
+pub fn compile_module(path: &Path, source: &str, dev: bool, root: &Path) -> Result<Compiled, Vec<ScriptError>> {
+    compile_with(path, source, dev, root, true)
+}
+
+/// Whether the engine's compiles append declarations. Off until `core.js` defines
+/// `__bevyts.bind`/`declare` (the runtime half of systems-api); `transform` always appends.
+pub const ENGINE_DECLARATIONS: bool = false;
+
+fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool) -> Result<Compiled, Vec<ScriptError>> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).map_err(|e| vec![ScriptError::new(format!("{}: {e}", display(path)))])?;
     let parsed = Parser::new(&allocator, source, source_type).parse();
@@ -67,6 +91,7 @@ pub fn compile_file(path: &Path, source: &str, dev: bool) -> Result<Compiled, Ve
             .collect());
     }
     let mut program = parsed.program;
+    let info = reader::extract(&program, path, source, root);
     let semantic = SemanticBuilder::new().build(&program).semantic;
     let mut options = TransformOptions::default();
     options.jsx.runtime = JsxRuntime::Automatic;
@@ -90,6 +115,10 @@ pub fn compile_file(path: &Path, source: &str, dev: bool) -> Result<Compiled, Ve
         }
     }
 
+    let declarations = if declare { reader::read(info, root)? } else { reader::Declarations::default() };
+    let end = location(path, source, Span::new(source.len() as u32, source.len() as u32));
+    imports.extend(declarations.imports.iter().map(|spec| (spec.clone(), end.clone())));
+
     let out = Codegen::new()
         .with_options(CodegenOptions { source_map_path: Some(path.to_path_buf()), ..CodegenOptions::default() })
         .build(&program);
@@ -100,7 +129,8 @@ pub fn compile_file(path: &Path, source: &str, dev: bool) -> Result<Compiled, Ve
     map["sourcesContent"] = serde_json::json!([source]);
     let map = map.to_string();
     // Inline too, so debuggers attached over CDP map breakpoints to the TS file themselves.
-    let code = format!("{}\n//# sourceMappingURL=data:application/json;base64,{}\n", out.code, base64(map.as_bytes()));
+    // Declarations go after the code, so every mapped line keeps its place.
+    let code = format!("{}{}\n//# sourceMappingURL=data:application/json;base64,{}\n", out.code, declarations.code, base64(map.as_bytes()));
     Ok(Compiled { code, source_map: map, imports })
 }
 
@@ -156,6 +186,10 @@ fn is_relative(spec: &str) -> bool {
 /// Compiles an entry and every module it reaches through relative imports.
 pub struct Compiler {
     pub entry: PathBuf,
+    /// The project root identities are relative to.
+    pub root: PathBuf,
+    /// Append system declarations to each module.
+    pub declarations: bool,
     pub dev: bool,
     /// Every file the last compile read, for the watcher.
     files: Mutex<BTreeSet<PathBuf>>,
@@ -166,7 +200,8 @@ impl Compiler {
         let entry = std::env::current_dir()?.join(entry);
         // Canonical, so paths match what the file watcher reports (/var vs /private/var).
         let entry = entry.canonicalize().unwrap_or_else(|_| normalize(&entry));
-        Ok(Compiler { entry, dev, files: Mutex::new(BTreeSet::new()) })
+        let root = reader::project_root(&entry);
+        Ok(Compiler { entry, root, declarations: ENGINE_DECLARATIONS, dev, files: Mutex::new(BTreeSet::new()) })
     }
 
     /// Files the last compile read (also those that failed).
@@ -192,7 +227,7 @@ impl Compiler {
                     continue;
                 }
             };
-            match compile_file(&path, &source, self.dev) {
+            match compile_with(&path, &source, self.dev, &self.root, self.declarations) {
                 Ok(c) => {
                     for (spec, at) in &c.imports {
                         if BUILTINS.contains(&spec.as_str()) {

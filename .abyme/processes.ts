@@ -14,6 +14,7 @@ export default {
     cmd: "cd bench/dx/rust && cargo check 2>&1 | tee ../results/rust-check.txt",
   },
   build: { cmd: "cargo build --workspace --all-targets" },
+  "cli-test": { cmd: "cargo test -p bevy-ts-cli 2>&1 | tee target/cli-test.log | grep -E \"^test result|FAILED|panicked|^error\"" },
   "tsx-test": { cmd: "cargo test -p bevy-ts-tsx -- --nocapture 2>&1 | tee target/tsx-test.log | tail -80" },
   "tsx-sites-bench": { cmd: "cargo test --release -p bevy-ts-cli --test tsx_sites -- --ignored --nocapture 2>&1 | tee target/tsx-sites.log | tail -20" },
   "tsx-scale-bench": { cmd: "cargo test --release -p bevy-ts-cli --test tsx_scale -- --ignored --nocapture --test-threads 1 2>&1 | tee target/tsx-scale.log | tail -20" },

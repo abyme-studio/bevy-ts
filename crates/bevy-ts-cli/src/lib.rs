@@ -7,6 +7,7 @@ pub mod dev;
 pub mod engine;
 pub mod headless;
 pub mod project;
+pub mod reader;
 pub mod supervise;
 pub mod types;
 
