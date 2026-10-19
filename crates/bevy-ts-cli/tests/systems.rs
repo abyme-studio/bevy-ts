@@ -7,10 +7,10 @@ use bevy::prelude::*;
 use common::*;
 use serde_json::json;
 
-const HEAD: &str = r#"import { app, chain, Component, f32, PostUpdate, Startup, systems, systemSet, Tag, Transform, Update, vec3 } from "bevy-ts";
+const HEAD: &str = r#"import { app, chain, Component, f32, PostUpdate, Startup, systems, systemSet, SystemSet, Transform, Update, vec3 } from "bevy-ts";
 import type { Added, Changed, Commands, Entity, Local, Mut, Option, Query, Res, ResMut, With, Without } from "bevy-ts";
-export class Mover extends Component("game::Mover", { speed: f32.default(1), amplitude: f32.default(2) }) {}
-export class Marked extends Tag("game::Marked") {}
+export class Mover extends Component { static path = "game::Mover"; speed: f32 = 1; amplitude: f32 = 2 }
+export class Marked extends Component { static path = "game::Marked" }
 "#;
 
 fn src(body: &str) -> String {
@@ -120,8 +120,8 @@ app.addSystems(Update, chain(a, b));
 
 #[test]
 fn one_call_into_js_per_run_over_four_tables() {
-    let body = r#"export class A extends Tag("t::A") {}
-export class B extends Tag("t::B") {}
+    let body = r#"export class A extends Component { static path = "t::A" }
+export class B extends Component { static path = "t::B" }
 export function count(q: Query<[Mover, Mut<Transform>]>) {
   let n = 0;
   q.each((m, t) => { n++; t.translation.y = m.speed; });
@@ -290,12 +290,12 @@ fn commands_spawn_parent_overflow_and_discard() {
     let (_, mut app) = load(
         "commands",
         &src(
-            r#"export class Big extends Component("t::Big", { data: (globalThis as any).__bigArray }) {}
+            r#"export class Big extends Component { static path = "t::Big"; __FIELDS__ }
 export function spawn(commands: Commands) {
-  const parent = commands.spawn(new Mover({ speed: 4 }), Transform);
+  const parent = commands.spawn(Mover.of({ speed: 4 }), Transform);
   const child = commands.spawn(Mover);
   commands.entity(child).setParent(parent);
-  for (let i = 0; i < 40; i++) commands.spawn(Big);
+  for (let i = 0; i < 100; i++) commands.spawn(Big);
 }
 export function throws(commands: Commands) {
   commands.spawn(Mover);
@@ -304,8 +304,8 @@ export function throws(commands: Commands) {
 app.addSystems(Startup, spawn, throws);
 "#,
         )
-        .replace("(globalThis as any).__bigArray", "array(f32, 1000)")
-        .replace("import { app,", "import { array, app,"),
+        // 64 Vec4 fields: 1 KB a row, so 100 spawns overflow the 64 KB arena.
+        .replace("__FIELDS__", &(0..64).map(|i| format!("declare v{i}: Vec4;")).collect::<String>()),
     );
     let id = bevy_ts::plugin_api::component_by_name(app.world(), "game::Mover").unwrap().0;
     let world = app.world_mut();
@@ -317,13 +317,13 @@ app.addSystems(Startup, spawn, throws);
     assert_eq!(app.world().get::<Transform>(parent), Some(&Transform::IDENTITY));
     let big = bevy_ts::plugin_api::component_by_name(app.world(), "t::Big").unwrap().0;
     let world = app.world_mut();
-    assert_eq!(QueryBuilder::<Entity>::new(world).with_id(big).build().iter(world).count(), 40, "160 KB of spawns overflow the arena");
+    assert_eq!(QueryBuilder::<Entity>::new(world).with_id(big).build().iter(world).count(), 100, "100 KB of spawns overflow the arena");
 }
 
 #[test]
 fn load_errors_name_what_is_wrong() {
     let cases: &[(&str, &str, &str)] = &[
-        ("string", "export class Tagged extends Component(\"game::Tagged\", { label: (globalThis as any).S }) {}\n", "not a field type"),
+        ("string", "export class Tagged extends Component { label: string = \"x\" }\n", "strings are not supported"),
         ("rust-data", "import { GlobalTransform } from \"bevy-ts/bevy\";\nexport function g(q: Query<[GlobalTransform]>) {}\napp.addSystems(Update, g);\n", "GlobalTransform"),
         (
             "cycle",
@@ -369,11 +369,11 @@ fn an_alias_from_another_file_declares_its_query() {
         &[
             (
                 "enemies.ts",
-                "import { Component, f32, Tag, Transform } from \"bevy-ts\";\nimport type { Mut, Query, With } from \"bevy-ts\";\nexport class Alive extends Tag(\"game::Alive\") {}\nexport class Enemy extends Component(\"game::Enemy\", { speed: f32.default(2) }) {}\nexport type Movers<T> = Query<[T, Mut<Transform>], With<Alive>>;\n",
+                "import { Component, Transform } from \"bevy-ts\";\nimport type { f32, Mut, Query, With } from \"bevy-ts\";\nexport class Alive extends Component { static path = \"game::Alive\" }\nexport class Enemy extends Component { static path = \"game::Enemy\"; speed: f32 = 2 }\nexport type Movers<T> = Query<[T, Mut<Transform>], With<Alive>>;\n",
             ),
             (
                 "game.ts",
-                "import { app, Startup, Transform, Update } from \"bevy-ts\";\nimport type { Commands } from \"bevy-ts\";\nimport { Alive, Enemy, type Movers } from \"./enemies\";\nexport function spawn(c: Commands) { c.spawn(new Enemy(), Transform, new Alive()); c.spawn(new Enemy(), Transform); }\nexport function move(q: Movers<Enemy>) { q.each((e, t) => { t.translation.y += e.speed; }); }\napp.addSystems(Startup, spawn).addSystems(Update, move);\n",
+                "import { app, Startup, Transform, Update } from \"bevy-ts\";\nimport type { Commands } from \"bevy-ts\";\nimport { Alive, Enemy, type Movers } from \"./enemies\";\nexport function spawn(c: Commands) { c.spawn(Enemy.of(), Transform, Alive.of()); c.spawn(Enemy.of(), Transform); }\nexport function move(q: Movers<Enemy>) { q.each((e, t) => { t.translation.y += e.speed; }); }\napp.addSystems(Startup, spawn).addSystems(Update, move);\n",
             ),
         ],
     );

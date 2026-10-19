@@ -9,7 +9,7 @@ export class Thrust extends nativeComponent("Thrust", { power: f32, dir: vec3 })
 
 export function throttle(time: Res<Time>, q: Query<[Mut<Thrust>]>) {
   q.each((t) => {
-    t.power = 12 + Math.sin(time.elapsed * 2) * 4;
+    t.power = 12 + Math.sin(time.elapsed_secs * 2) * 4;
   });
 }
 

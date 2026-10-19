@@ -49,5 +49,5 @@ export default {
   // The gate a systems-api task group lands on.
   // The gate a native task group lands on.
   "native-gate": { cmd: "mkdir -p target && scripts/native-gate.sh 2>&1 | tee target/native-gate.log" },
-  "systems-gate": { cmd: "mkdir -p target && scripts/systems-gate.sh 2>&1 | tee target/systems-gate.log" },
+  "systems-gate": { cmd: "mkdir -p target && set -o pipefail && scripts/systems-gate.sh 2>&1 | tee target/systems-gate.log" },
 } satisfies ProcessFile;

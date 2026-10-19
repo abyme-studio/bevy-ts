@@ -20,6 +20,7 @@ The DX ruling of 2026-10-20 (docs/research/dx.md, main 7c1a813) rewrote `openspe
 - **Identity:** `module#export` keys ordering, last-run ticks, message cursors and `Local` across reloads; `restart: true` resets them.
 - **npm package and protocol:** the `bevy-ts` npm types move to the ruled surface (from `bench/dx/bevy-ts/mod.ts`), and the protocol's `bevy-ts/systems` reports params.
 - **Tooling:** the same reader ships as Vite, vitest and esbuild plugins through `bevy-ts transform`, so systems load in tests outside the engine.
+- **Later rulings (main 2b02a46, 7977c08, 8681dfd), group 12:** data types are plain classes whose fields the compile step reads (`class Health extends Component { hp: f32 = 100 }`), named by Rust-style module paths unless `static path` pins them, with values from `Health.of({...})`; `States(...values)`; `On<E>` gives the event's fields; an entity event carries its target; system sets are classes; scene components (`SceneComponent` with `static scene(props)`) are found by name for levels; `Res<Time>` takes Bevy's field names; `bevy_ts::ScriptHidden` hides editor entities from TS.
 - **BREAKING:** `app.system`, `app.startup` and `component()` are removed for game code. The plugin-facing `section()`, `app.entry` and `Commands.custom` stay. Tests, the cube demo, the walk and the benchmark move to the new surface.
 
 Not in this change (not yet ruled): reflection-derived layouts and one-line plugin adoption (`native`), and the no-hooks TSX binding.
@@ -36,8 +37,10 @@ None.
   - States what `Res<Time>` exposes.
   - Defines how `Changed`/`Added` rows reach JS.
   - Defines where observers triggered from TS and from Rust run relative to command application.
+  - Adds `ScriptHidden`.
+- `plugin-api`: component declarations and scene components by name.
 - `script-runtime`:
-  - The declarations the compile step attaches, and how they bind to runtime values.
+  - The declarations the compile step attaches, and how they bind to runtime values; data classes declare themselves when defined.
   - The `bevy-ts transform` command the tool plugins call.
 
 ## Impact

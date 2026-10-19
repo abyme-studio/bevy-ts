@@ -73,3 +73,15 @@
 - [x] 11.1 Move the V8, CLI and protocol tests to the new surface
 - [x] 11.2 Rewrite `examples/cube/src/game.ts` in the ruled form; walk all six demo steps headless; rerun `bob_bench` and update the recorded numbers (walk: all six steps pass on release; bob_bench rerun pending a quiet machine, see docs/research/change-detection.md)
 - [x] 11.3 Tell bevy-ts-tsx when the surface is on main (main 8871413)
+
+## 12. The later rulings: class fields, On<E>, set classes, scene components (main 2b02a46, 7977c08, 8681dfd)
+
+- [x] 12.1 The compile step reads classes extending `Component`, `SceneComponent`, `ReflectComponent`, `Resource`, `Message`, `Event`, `EntityEvent`, `SystemSet` and `States(...)`: typed fields with literal defaults, `declare` fields, `static path`, `static propagate`, `static scene(props)` with its props type and destructured defaults; field types `f32`..`u32`, `bool`, `Vec2`/`Vec3`/`Vec4`/`Quat`, `Entity`, string-literal unions and aliases of them; `string` for props only
+- [x] 12.2 Names default to Rust-style module paths (`src/units/tank.ts` → `units::tank::Tank`); each data class gets a trailing `static { __bevyts.data(this, ...) }` with no source spans (decision 13)
+- [x] 12.3 Runtime: plain base classes, `X.of({...})`, `States(...values)`, `class X extends SystemSet {}`, statics `componentName`, `source`, `native`, `fieldNames`, `sceneProps` at definition; duplicate derived names fail the load naming both
+- [x] 12.4 `On<E>` exposes event fields directly; `commands.trigger(Explode.of({ entity, ... }))`; an entity event's target is not a layout field
+- [x] 12.5 `Res<Time>` with Bevy's field names (`delta_secs`, `elapsed_secs`, `delta_secs_f64`, `elapsed_secs_f64`)
+- [x] 12.6 Manifest: component declarations carry `id` and `scene` (props with type, default, `optional`); plugin API `component_decl` and `scene_components`; a runtime registry of scene components by name and `module#export` (`sceneComponent(name)`) for tsx's expand entry (levels decision 5)
+- [x] 12.7 `bevy_ts::ScriptHidden`: TS queries, TS lifecycle observers and `bevy-ts/entities`(`+watch`) skip marked entities (viewport's edit mode)
+- [x] 12.8 npm types, type tests, the cube example and walk, `bob_bench`, rapier/thrusters examples and the CLI and tsx integration tests on the new forms
+- [ ] 12.9 Release walk; tell bevy-ts-tsx, bevy-ts-levels-impl and bevy-ts-viewport-impl the commit

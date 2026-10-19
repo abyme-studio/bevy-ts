@@ -2,7 +2,7 @@
 // `Velocity` and `RigidBody` are Rapier's own components, columns here because their fields are
 // plain data (layouts read from reflection; RigidBody's variant bytes read from this build).
 import { app, enumOf, nativeComponent, Time, Transform, Startup, Update, vec3 } from "bevy-ts";
-import type { Commands, Mut, Query, Res, With } from "bevy-ts";
+import type { Commands, Local, Mut, Query, Res, u32, With } from "bevy-ts";
 
 export class Velocity extends nativeComponent("Velocity", { linear: vec3, angular: vec3 }) {}
 export class RigidBody extends nativeComponent("RigidBody", {
@@ -10,7 +10,7 @@ export class RigidBody extends nativeComponent("RigidBody", {
 }) {}
 
 export function spawn(commands: Commands) {
-  commands.spawn(new RigidBody({ value: "Dynamic" }), Velocity, Transform);
+  commands.spawn(RigidBody.of({ value: "Dynamic" }), Velocity, Transform);
 }
 
 // Rapier's own Velocity, written in place each frame: the body climbs at 3 m/s.
@@ -20,8 +20,8 @@ export function launch(q: Query<[Mut<Velocity>]>) {
   });
 }
 
-export function report(time: Res<Time>, q: Query<[Transform], With<RigidBody>>) {
-  if (time.frame % 60 !== 0) return;
+export function report(frames: Local<{ n: u32 }>, q: Query<[Transform], With<RigidBody>>) {
+  if (frames.n++ % 60 !== 0) return;
   q.each((t) => console.log(`rapier: body y=${t.translation.y.toFixed(2)}`));
 }
 

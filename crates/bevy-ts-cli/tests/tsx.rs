@@ -12,7 +12,7 @@ use std::path::Path;
 const ENEMY: &str = r##"import { Component, f32 } from "bevy-ts";
 import { Transform } from "bevy-ts/bevy";
 
-export class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}
+export class Health extends Component { static path = "game::Health"; hp: f32 = 100; max: f32 = 100 }
 export const Enemy = ({ at, hp = 100 }: { at: [number, number, number]; hp?: number }) => (
   <entity name="enemy">
     <Transform translation={at} />

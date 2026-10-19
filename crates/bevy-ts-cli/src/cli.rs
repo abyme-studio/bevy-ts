@@ -218,7 +218,7 @@ import { Mesh3d } from "bevy-ts/bevy";
 
 export function bob(time, q) {
   q.each((t) => {
-    t.translation.y = Math.sin(time.elapsed * 2) * 1.5;
+    t.translation.y = Math.sin(time.elapsed_secs * 2) * 1.5;
   });
 }
 

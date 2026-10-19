@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
 ### Requirement: Time as a resource view
-`Res<Time>` SHALL give a read-only view with `delta` (seconds since the last frame, `f32`), `elapsed` (seconds since start, `f64`) and `frame` (`u32`), taken from Bevy's `Time` for the schedule the system runs in (`Time<Fixed>` in `FixedUpdate`). `ResMut<Time>` SHALL fail the load with its location.
+`Res<Time>` SHALL give a read-only view with Bevy's own field names: `delta_secs` and `elapsed_secs` (`f32`) and `delta_secs_f64` and `elapsed_secs_f64` (`f64`), taken from Bevy's `Time` for the schedule the system runs in (`Time<Fixed>` in `FixedUpdate`). `Time`'s `Duration` fields SHALL NOT be visible. `ResMut<Time>` SHALL fail the load with its location.
 
 #### Scenario: Fixed step
-- **WHEN** a `FixedUpdate` system reads `time.delta`
+- **WHEN** a `FixedUpdate` system reads `time.delta_secs`
 - **THEN** it reads the fixed timestep, not the frame's delta
 
 ### Requirement: Changed and Added rows reach JS as row lists
@@ -20,3 +20,10 @@ An observer triggered by a TS system's `commands.trigger` SHALL run when that sy
 #### Scenario: A lifecycle observer on a Rust insert
 - **WHEN** a Rust `Update` system inserts `Health` on an entity and a TS observer takes `On<Add<Health>>`
 - **THEN** the observer runs at the start of the `PostUpdate` bevy-ts stage that frame
+
+### Requirement: Entities hidden from TS
+`bevy_ts::ScriptHidden` SHALL be a marker component that keeps an entity out of TS: no TS query SHALL match it, no TS lifecycle observer SHALL run for it, and `bevy-ts/entities` and `bevy-ts/entities+watch` SHALL leave it out. It is for editor-only entities.
+
+#### Scenario: An editor camera
+- **WHEN** a Rust plugin spawns a camera with `Transform` and `ScriptHidden`, and a TS system queries `Query<[Mut<Transform>]>`
+- **THEN** the system never sees the camera, and `bevy-ts/entities` does not list it

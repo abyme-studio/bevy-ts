@@ -18,8 +18,8 @@ use std::time::Instant;
 fn sirens(n: usize) -> String {
     format!(
         r##"import {{ app, Component, f32, u8, ref }} from "bevy-ts";
-export class Alarm extends Component("game::Alarm", {{ on: u8 }}) {{}}
-export class Light extends Component("game::Light", {{ intensity: f32 }}) {{}}
+export class Alarm extends Component {{ static path = "game::Alarm"; declare on: u8 }}
+export class Light extends Component {{ static path = "game::Light"; declare intensity: f32 }}
 export const Siren = () => {{
   const self = ref();
   return (
@@ -35,8 +35,8 @@ app.scene("s", () => <>{{Array.from({{ length: {n} }}, (_, i) => <Siren key={{`s
 }
 
 const SYSTEM: &str = r##"import { app, Component, f32, u8, PostUpdate, type Query, type Mut } from "bevy-ts";
-export class Alarm extends Component("game::Alarm", { on: u8 }) {}
-export class Light extends Component("game::Light", { intensity: f32 }) {}
+export class Alarm extends Component { static path = "game::Alarm"; declare on: u8 }
+export class Light extends Component { static path = "game::Light"; declare intensity: f32 }
 export function siren(q: Query<[Alarm, Mut<Light>]>) {
   q.each((a, l) => {
     const v = a.on ? 8 : 2;

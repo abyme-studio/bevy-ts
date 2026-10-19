@@ -62,7 +62,7 @@ The backend still sees pointers and lengths only. Rust resolves `Entity`, filter
 - A TS resource is a dynamic component registered with the same C layout rules. It lives on its own entity with `IsResource(id)`, as Bevy 0.20 stores every resource.
 - `app.insertResource(new R(...))` inserts it when absent at apply; a reload keeps the value.
 - `Res<R>`/`ResMut<R>` take a one-row view: the entity's table row in the column, plus its tick for `ResMut`. The view is zero-copy and uses the same accessor classes.
-- `Res<Time>` is the one computed view. `Time`'s fields are private, so Rust writes `{ delta: f32, elapsed: f64, frame: u32 }` into a per-run scratch buffer. `ResMut<Time>` is a load error.
+- `Res<Time>` is the one computed view, with Bevy's own field names (operator ruling 2026-10-20). Rust writes `{ delta_secs: f32, elapsed_secs: f32, delta_secs_f64: f64, elapsed_secs_f64: f64 }` into a per-run scratch buffer from the schedule's clock. `ResMut<Time>` is a load error. The frame number is not `Time`'s; a system that counts frames keeps a `Local`.
 
 ### 5. `Local` lives in Rust under the identity
 - A `HashMap<identity, (layout, bytes)>` is handed to JS as a one-row view.
@@ -103,10 +103,27 @@ The backend still sees pointers and lengths only. Rust resolves `Entity`, filter
 ### 12. Compatibility kept
 - The plugin API is unchanged: sections, entries, command kinds, lookup and encoding, reflection, restart.
 - The tsx runtime's contract stays:
-  - component classes carry static `componentName` and `source`;
+  - component classes carry static `componentName` and `source`, Rust ones `native`, scene components `fieldNames` and `sceneProps`, all at definition;
   - `Commands.mount`/`unmount`/`custom` stay;
   - `commands.spawn(element)` routes to `mount`.
 - The manifest's `systems` entries gain `params`, `schedule`, `conditions` and `id`. `read`/`write` remain as the union, so the protocol and the dev read-column guard keep working.
+
+### 13. Data classes declare themselves in a static block (rulings 2b02a46, 7977c08, 8681dfd)
+- Components, resources, messages, events, states and system sets are plain classes: `class Health extends Component { hp: f32 = 100 }`. The reader reads each class whose base is imported from `bevy-ts`: typed fields and literal defaults, `declare` fields (no default, zero), `static path`, `static propagate`, and a scene component's `static scene(props)`, whose props come from its props type and their defaults from the destructuring. A field type is `f32`..`u32`, `bool`/`boolean`, `Vec2`/`Vec3`/`Vec4`/`Quat`, `Entity`, a string-literal union, or an alias of one; a prop may also be `string`.
+- The name is the class's `static path`, else the module's path under `src/` with `/` as `::` and the extension dropped, then the export: `src/units/tank.ts` exporting `Tank` is `units::tank::Tank`. An exported class also carries `module#export` as its id.
+- The compile step gives each such class a last member `static { __bevyts.data(this, {...}) }`, built with no source spans, so the source map is unchanged. The class therefore has `componentName`, `fieldNames` and `sceneProps` from the moment it is defined; tsx reads them at module load, before commit.
+- Defaults come from the class's own initialisers at run time (`new C()`), so any expression works; the literal the reader read is what the manifest carries for levels and the inspector when the initialiser is not a literal (`hasDefault`).
+- An error (a `string` field, a field and prop of one name, an untyped field) is carried in the declaration and thrown when the class is defined, failing the load at the field's line.
+- An entity event's target is its `entity` field: it is carried beside the payload, not in its layout, and `On<E>` gives it as `entity` next to the event's fields.
+- *Beat: appending `__bevyts.data(...)` after the module, as systems are.* Code in the module that reads `componentName` after the class (a TSX scene, `OnEnter(Game.Playing)`) would run before it.
+- *Beat: a runtime registry keyed by class name.* Two modules may each declare a `Score`; the module path is what tells them apart.
+
+### 14. Scene components are found by name
+- The manifest's component declarations gain `id` and `scene` (`props`: name, type, literal default or `hasDefault`, `optional`). Every scene component a generation defines is in the manifest whether or not a system names it, so a level can place it.
+- The plugin API adds `component_decl(name or id)` and `scene_components()`. The runtime keeps the generation's scene component classes by name and id (`sceneComponent(name)`), which tsx's expand entry calls; the entry itself is tsx's (levels decision 5).
+
+### 15. `ScriptHidden` keeps editor entities out of TS
+- `bevy_ts::ScriptHidden` is a marker component. Every TS query is built with `Without<ScriptHidden>`, TS lifecycle observers skip marked entities, and `bevy-ts/entities` and its watch leave them out. Viewport marks its editor camera and gizmos with it.
 
 ## Risks / Trade-offs
 

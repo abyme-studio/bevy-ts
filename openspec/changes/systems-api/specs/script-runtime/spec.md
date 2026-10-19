@@ -13,3 +13,10 @@ The `bevy-ts` binary SHALL offer `bevy-ts transform <file>`, printing the compil
 #### Scenario: A system in a vitest test
 - **WHEN** a vitest test imports a module through the bevy-ts plugin and registers its system with the `bevy-ts/testing` app
 - **THEN** the system's declarations are present and the test can call it with hand-built params
+
+### Requirement: Data classes declare themselves when defined
+The compile step SHALL give every class it reads as a component, scene component, resource, message, event, state machine or system set a static block, with no source mapping, that hands the runtime the class's name, fields and scene props, so the class carries its resolved name (`componentName`), `source`, `fieldNames` and, for a scene component, `sceneProps` from the moment it is defined. A field the compile step cannot type SHALL fail the load when the class is defined, with the field's file and line. The runtime SHALL keep the generation's scene components by name and by `module#export`.
+
+#### Scenario: A scene reads a component at module load
+- **WHEN** `game.tsx` declares `class Health extends Component { hp: f32 = 100 }` and, later in the same module, a scene uses `<Health hp={3} />`
+- **THEN** the element is keyed by `game::Health` while the module evaluates, before the generation commits

@@ -21,17 +21,17 @@ use std::time::Instant;
 
 const HEAD: &str = r#"import { app, Component, f32, Time, Transform, Update } from "bevy-ts";
 import type { Mut, Query, Res } from "bevy-ts";
-export class Mover extends Component("game::Mover", { speed: f32.default(1), amplitude: f32.default(2) }) {}
+export class Mover extends Component { static path = "game::Mover"; speed: f32 = 1; amplitude: f32 = 2 }
 "#;
 
 fn variant(name: &str) -> String {
     let body = match name {
-        "accessor+tick" => "q.each((m, t) => { t.translation.y = Math.sin(time.elapsed * m.speed) * m.amplitude; });",
+        "accessor+tick" => "q.each((m, t) => { t.translation.y = Math.sin(time.elapsed_secs * m.speed) * m.amplitude; });",
         "raw, no tick" => {
-            "for (const tb of q.tables) { const m = tb.read(Mover), t = tb.read(Transform); const ms = m.size / 4, ts = t.size / 4, sp = m.offsets.speed / 4, am = m.offsets.amplitude / 4, ty = t.offsets.translation / 4 + 1; for (let r = 0; r < tb.len; r++) t.f32![r * ts + ty] = Math.sin(time.elapsed * m.f32![r * ms + sp]) * m.f32![r * ms + am]; }"
+            "for (const tb of q.tables) { const m = tb.read(Mover), t = tb.read(Transform); const ms = m.size / 4, ts = t.size / 4, sp = m.offsets.speed / 4, am = m.offsets.amplitude / 4, ty = t.offsets.translation / 4 + 1; for (let r = 0; r < tb.len; r++) t.f32![r * ts + ty] = Math.sin(time.elapsed_secs * m.f32![r * ms + sp]) * m.f32![r * ms + am]; }"
         }
         _ => {
-            "for (const tb of q.tables) { const m = tb.read(Mover), t = tb.split(Transform); const ms = m.size / 4, ts = t.size / 4, sp = m.offsets.speed / 4, am = m.offsets.amplitude / 4, ty = t.offsets.translation / 4 + 1, tick = q.tick, ticks = t.ticks; for (let r = 0; r < tb.len; r++) { t.f32![r * ts + ty] = Math.sin(time.elapsed * m.f32![r * ms + sp]) * m.f32![r * ms + am]; ticks[r] = tick; } }"
+            "for (const tb of q.tables) { const m = tb.read(Mover), t = tb.split(Transform); const ms = m.size / 4, ts = t.size / 4, sp = m.offsets.speed / 4, am = m.offsets.amplitude / 4, ty = t.offsets.translation / 4 + 1, tick = q.tick, ticks = t.ticks; for (let r = 0; r < tb.len; r++) { t.f32![r * ts + ty] = Math.sin(time.elapsed_secs * m.f32![r * ms + sp]) * m.f32![r * ms + am]; ticks[r] = tick; } }"
         }
     };
     format!("{HEAD}export function bob(time: Res<Time>, q: Query<[Mover, Mut<Transform>]>) {{ {body} }}\napp.addSystems(Update, bob);\n")

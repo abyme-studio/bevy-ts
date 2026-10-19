@@ -13,9 +13,9 @@ use std::path::{Path, PathBuf};
 
 const GAME: &str = r##"import { app, Component, f32, u8, ref, signal, px, Show, For, Update, type Query, type Mut, type With } from "bevy-ts";
 
-export class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}
-export class Enemy extends Component("game::Enemy", { tag: u8 }) {}
-export class Alarm extends Component("game::Alarm", { on: u8 }) {}
+export class Health extends Component { static path = "game::Health"; hp: f32 = 100; max: f32 = 100 }
+export class Enemy extends Component { static path = "game::Enemy"; declare tag: u8 }
+export class Alarm extends Component { static path = "game::Alarm"; declare on: u8 }
 
 const player = ref();
 export const [open, setOpen] = signal(false);
@@ -190,10 +190,10 @@ fn a_reload_rebuilds_bindings_and_writes_nothing_that_did_not_change() {
 
 #[test]
 fn a_bound_component_field_follows_its_binding() {
-    let src = r##"import { app, Component, f32, signal, Time, Update, type Query, type Res } from "bevy-ts";
-export class Light extends Component("game::Light", { intensity: f32 }) {}
+    let src = r##"import { app, Component, f32, signal, Time, Update, type Local, type Query, type Res, type u32 } from "bevy-ts";
+export class Light extends Component { static path = "game::Light"; declare intensity: f32 }
 export const [alarm, setAlarm] = signal(false);
-export function flip(q: Query<[Light]>, time: Res<Time>) { if (time.frame === 5) setAlarm(true); } app.addSystems(Update, flip);
+export function flip(q: Query<[Light]>, frames: Local<{ n: u32 }>) { frames.n += 1; if (frames.n === 5) setAlarm(true); } app.addSystems(Update, flip);
 app.scene("s", () => <entity key="l"><Light intensity={() => (alarm() ? 8 : 2)} /></entity>);
 "##;
     let (_dir, mut app) = setup("rx-field", src);
@@ -256,7 +256,7 @@ app.scene("s", () => <text key="t">{label()}</text>);
 #[test]
 fn a_system_writing_a_bound_component_is_named_with_the_site() {
     let src = r##"import { app, Component, f32, Update, type Query, type Mut } from "bevy-ts";
-export class Light extends Component("game::Light", { intensity: f32 }) {}
+export class Light extends Component { static path = "game::Light"; declare intensity: f32 }
 export function dim(q: Query<[Mut<Light>]>) {} app.addSystems(Update, dim);
 app.scene("s", () => (
   <entity key="l">
@@ -281,7 +281,7 @@ fn click(app: &mut App, e: Entity, x: f32) {
 }
 
 const BUTTONS: &str = r##"import { app, Component, f32, signal } from "bevy-ts";
-export class Health extends Component("game::Health", { hp: f32 }) {}
+export class Health extends Component { static path = "game::Health"; declare hp: f32 }
 const [log, setLog] = signal("");
 const Enemy = () => <entity name="enemy"><Health initialHp={10} /></entity>;
 const Button = ({ label }: { label: string }) => (

@@ -20,7 +20,7 @@ const speed: Speed = scale(2);
 
 export function boom(q: Query<[Mut<Transform>]>, time: Res<Time>): void {
   const label: string = "boom";
-  if (time.frame > 0) throw new Error(`${label} ${speed}`);
+  if (time.elapsed_secs_f64 > 0) throw new Error(`${label} ${speed}`);
 }
 
 app.addSystems(Update, boom);

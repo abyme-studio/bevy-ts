@@ -14,12 +14,12 @@ fn game(bob: &str, fields: &str, extra: &str) -> String {
         r#"import {{ app, Component, f32, i32, Startup, systems, systemSet, Transform, Update }} from "bevy-ts";
 import type {{ Commands, Mut, Query }} from "bevy-ts";
 
-export class Mover extends Component("game::Mover", {{ {fields} }}) {{}}
+export class Mover extends Component {{ static path = "game::Mover"; {fields} }}
 
 let hits = 0;
 
 export function scene(commands: Commands) {{
-  commands.spawn(new Mover({{ speed: 1.5, amplitude: 2 }}), Transform);
+  commands.spawn(Mover.of({{ speed: 1.5, amplitude: 2 }}), Transform);
 }}
 
 export function bob(q: Query<[Mover, Mut<Transform>]>) {{
@@ -33,7 +33,7 @@ app.addSystems(Startup, scene).addSystems(Update, bob);
     )
 }
 
-const FIELDS: &str = "speed: f32.default(1), amplitude: f32.default(2)";
+const FIELDS: &str = "speed: f32 = 1; amplitude: f32 = 2";
 
 fn movers(app: &mut App) -> Vec<serde_json::Value> {
     let c = app.world().resource::<TsComponents>().live("game::Mover").cloned();
@@ -92,14 +92,14 @@ fn module_state_resets_on_reload() {
 fn adding_a_field_migrates_and_retyping_resets() {
     let (dir, mut app) = setup("migrate", &game("", FIELDS, ""));
     app.update();
-    write(&dir, "game.ts", &game("", &format!("{FIELDS}, phase: f32.default(0)"), ""));
+    write(&dir, "game.ts", &game("", &format!("{FIELDS}; phase: f32 = 0"), ""));
     let r = reload(&mut app, false);
     assert_eq!(r.migrations.len(), 1);
     assert_eq!(r.migrations[0].entities, 1);
     assert!(messages(&app).iter().any(|m| m == "game::Mover migrated on 1 entities; added phase"), "{:?}", messages(&app));
     assert_eq!(movers(&mut app), vec![serde_json::json!({"speed": 1.5, "amplitude": 2.0, "phase": 0.0})]);
 
-    write(&dir, "game.ts", &game("", "speed: i32.default(7), amplitude: f32.default(2), phase: f32.default(0)", ""));
+    write(&dir, "game.ts", &game("", "speed: i32 = 7; amplitude: f32 = 2; phase: f32 = 0", ""));
     let r = reload(&mut app, false);
     assert_eq!(r.migrations[0].reset, vec!["speed"]);
     assert_eq!(movers(&mut app), vec![serde_json::json!({"speed": 7, "amplitude": 2.0, "phase": 0.0})]);

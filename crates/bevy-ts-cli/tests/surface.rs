@@ -7,15 +7,15 @@ use bevy::prelude::*;
 use common::*;
 use serde_json::json;
 
-const HEAD: &str = r#"import { app, chain, Component, EntityEvent, Event, f32, FixedUpdate, inState, Message, not, OnEnter, OnExit, PostUpdate, PreUpdate, query, res, resMut, Resource, resourceExists, onMessage, Startup, States, system, systems, Tag, Time, Transform, u32, Update, entity, Mut as MutOf } from "bevy-ts";
+const HEAD: &str = r#"import { app, chain, Component, EntityEvent, Event, f32, FixedUpdate, inState, Message, not, OnEnter, OnExit, PostUpdate, PreUpdate, query, res, resMut, Resource, resourceExists, onMessage, Startup, States, system, systems, SystemSet, Time, Transform, u32, Update, entity, Mut as MutOf } from "bevy-ts";
 import type { Add, Commands, Entity, Local, MessageReader, MessageWriter, Mut, NextState, On, Query, Res, ResMut, State, With } from "bevy-ts";
-export class Score extends Resource("game::Score", { value: u32 }) {}
-export class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}
-export class Enemy extends Tag("game::Enemy") {}
-export class Damage extends Message("game::Damage", { target: entity, amount: f32 }) {}
-export class Explode extends EntityEvent("game::Explode", { radius: f32 }, { propagate: true }) {}
-export class Ping extends Event("game::Ping", { n: u32 }) {}
-export class Game extends States("game::Game", ["Menu", "Playing", "Paused"]) {}
+export class Score extends Resource { static path = "game::Score"; declare value: u32 }
+export class Health extends Component { static path = "game::Health"; hp: f32 = 100; max: f32 = 100 }
+export class Enemy extends Component { static path = "game::Enemy" }
+export class Damage extends Message { static path = "game::Damage"; declare target: Entity; declare amount: f32 }
+export class Explode extends EntityEvent { static path = "game::Explode"; static propagate = true; declare radius: f32 }
+export class Ping extends Event { static path = "game::Ping"; declare n: u32 }
+export class Game extends States("Menu", "Playing", "Paused") { static path = "game::Game" }
 "#;
 
 fn src(body: &str) -> String {
@@ -24,7 +24,7 @@ fn src(body: &str) -> String {
 
 #[test]
 fn a_score_resource_is_written_in_place_and_kept_across_reloads() {
-    let body = "export function add(score: ResMut<Score>) { score.value += 1; }\napp.insertResource(new Score({ value: 10 })).addSystems(Update, add);\n";
+    let body = "export function add(score: ResMut<Score>) { score.value += 1; }\napp.insertResource(Score.of({ value: 10 })).addSystems(Update, add);\n";
     let (dir, mut app) = load("score", &src(body));
     updates(&mut app, 3);
     assert_eq!(read_res(&app, "game::Score").unwrap()["value"], 13);
@@ -39,9 +39,9 @@ fn a_score_resource_is_written_in_place_and_kept_across_reloads() {
 
 #[test]
 fn time_is_a_read_only_view() {
-    let (_, mut app) = load("time", &src("export function tock(time: Res<Time>) { console.log(`t ${time.delta >= 0} ${time.elapsed >= 0} ${time.frame}`); }\napp.addSystems(Update, tock);\n"));
+    let (_, mut app) = load("time", &src("export function tock(time: Res<Time>) { console.log(`t ${time.delta_secs >= 0} ${time.elapsed_secs >= 0} ${time.delta_secs_f64 === Math.fround(time.delta_secs_f64) || time.delta_secs_f64 >= 0} ${time.elapsed_secs_f64 >= time.elapsed_secs - 0.01}`); }\napp.addSystems(Update, tock);\n"));
     updates(&mut app, 4);
-    assert!(messages(&app).iter().any(|m| m.starts_with("t true true ")), "{:?}", messages(&app));
+    assert!(messages(&app).iter().any(|m| m.starts_with("t true true true true")), "{:?}", messages(&app));
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn resource_exists_and_not_conditions() {
 
 #[test]
 fn startup_runs_once_per_identity() {
-    let body = |n: u32| format!("export function scene(c: Commands) {{ c.spawn(new Health({{ hp: {n} }})); }}\napp.addSystems(Startup, scene);\n");
+    let body = |n: u32| format!("export function scene(c: Commands) {{ c.spawn(Health.of({{ hp: {n} }})); }}\napp.addSystems(Startup, scene);\n");
     let (dir, mut app) = load("startup", &src(&body(1)));
     app.update();
     write(&dir, "game.ts", &src(&body(2)));
@@ -106,7 +106,7 @@ fn two_readers_see_the_same_messages_once_and_they_expire() {
         "messages",
         &src(
             r#"let sent = false;
-export function send(w: MessageWriter<Damage>) { if (!sent) { sent = true; w.write({ target: 0 as any, amount: 1 }); w.write(new Damage({ amount: 2 })); const m = w.next(); m.amount = 3; } }
+export function send(w: MessageWriter<Damage>) { if (!sent) { sent = true; w.write({ target: 0 as any, amount: 1 }); w.write(Damage.of({ amount: 2 })); const m = w.next(); m.amount = 3; } }
 export function readA(r: MessageReader<Damage>) { const xs: number[] = []; r.each((d) => xs.push(d.amount)); if (xs.length) console.log(`a ${xs.join(",")}`); }
 export function readB(r: MessageReader<Damage>) { let n = 0; for (const d of r) n += d.amount; if (r.len) console.log(`b ${r.len} ${n}`); }
 export function late(r: MessageReader<Damage>) { if (r.len) console.log(`late ${r.len}`); }
@@ -129,9 +129,9 @@ fn an_observer_triggered_from_ts_runs_before_the_next_system() {
         "explode",
         &src(
             r#"let fired = false;
-export function spawn(c: Commands) { const parent = c.spawn(new Health()); const e = c.spawn(new Health(), new Enemy()); c.entity(e).setParent(parent); }
-export function a(q: Query<[Entity], With<Enemy>>, c: Commands) { if (fired) return; fired = true; q.each((e) => c.trigger(e, new Explode({ radius: 3 }))); }
-export function onExplode(ex: On<Explode>, c: Commands) { console.log(`boom ${ex.event.radius}`); c.entity(ex.entity).despawn(); ex.propagate(false); }
+export function spawn(c: Commands) { const parent = c.spawn(Health.of()); const e = c.spawn(Health.of(), Enemy.of()); c.entity(e).setParent(parent); }
+export function a(q: Query<[Entity], With<Enemy>>, c: Commands) { if (fired) return; fired = true; q.each((e) => c.trigger(Explode.of({ entity: e, radius: 3 }))); }
+export function onExplode(ex: On<Explode>, c: Commands) { console.log(`boom ${ex.radius}`); c.entity(ex.entity).despawn(); ex.propagate(false); }
 export function b(q: Query<[Entity], With<Enemy>>) { console.log(`after ${q.len}`); }
 app.addSystems(Startup, spawn).addSystems(Update, chain(a, b)).addObserver(onExplode);
 "#,
@@ -184,7 +184,7 @@ app.initState(Game.Menu)
 fn a_plugins_new_system_on_reload_keeps_its_resources() {
     let body = |extra: &str| {
         format!(
-            "export function count(s: ResMut<Score>) {{ s.value += 1; }}\n{extra}export function enemyPlugin(a: typeof app) {{ a.insertResource(new Score({{ value: 0 }})).addSystems(Update, count{more}); }}\napp.addPlugins(enemyPlugin);\n",
+            "export function count(s: ResMut<Score>) {{ s.value += 1; }}\n{extra}export function enemyPlugin(a: typeof app) {{ a.insertResource(Score.of({{ value: 0 }})).addSystems(Update, count{more}); }}\napp.addPlugins(enemyPlugin);\n",
             more = if extra.is_empty() { "" } else { ", shout" }
         )
     };
@@ -202,13 +202,13 @@ fn the_setup_closure_declares_with_values() {
     let (_, mut app) = load(
         "setup",
         &src(
-            r#"export function spawn(c: Commands) { c.spawn(new Health({ hp: 1 }), new Enemy(), Transform); c.spawn(new Health({ hp: 1 }), Transform); }
+            r#"export function spawn(c: Commands) { c.spawn(Health.of({ hp: 1 }), Enemy.of(), Transform); c.spawn(Health.of({ hp: 1 }), Transform); }
 export const drift = system(() => {
   const q = query(Health, MutOf(Transform)).with(Enemy);
   const score = resMut(Score);
   return () => q.each((h, t) => { t.translation.y += h.hp; score.value += 1; });
 });
-app.insertResource(new Score()).addSystems(Startup, spawn).addSystems(Update, drift);
+app.insertResource(Score.of()).addSystems(Startup, spawn).addSystems(Update, drift);
 "#,
         ),
     );
