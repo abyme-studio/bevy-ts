@@ -1,0 +1,103 @@
+mod common;
+
+use bevy::prelude::*;
+use bevy_ts::generation::ReloadStatus;
+use common::*;
+
+#[test]
+fn a_ts_graph_loads_and_a_throw_is_located_in_ts() {
+    let dir = project(
+        "throw",
+        &[
+            (
+                "game.ts",
+                r#"import { app } from "bevy-ts";
+import { Transform } from "bevy-ts/bevy";
+import { scale } from "./util.js";
+
+type Speed = number;
+const speed: Speed = scale(2);
+
+app.system("boom", {
+  write: [Transform],
+  run(q, ctx): void {
+    const label: string = "boom";
+    if (ctx.frame > 0) throw new Error(`${label} ${speed}`);
+  },
+});
+"#,
+            ),
+            ("util.ts", "export function scale(n: number): number {\n  return n * 3;\n}\n"),
+        ],
+    );
+    let mut app = app(&dir.join("game.ts"));
+    app.world_mut().spawn(Transform::default());
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 3);
+    let e = logs(&app).into_iter().find(|e| e.message.contains("boom 6")).expect("the throw is logged");
+    let loc = e.location.expect("located");
+    assert!(loc.file.ends_with("game.ts"), "{loc:?}");
+    assert_eq!(loc.line, 12, "{loc:?}");
+    assert!(e.message.contains("game.ts:12"), "stack mapped to TS: {}", e.message);
+}
+
+#[test]
+fn a_type_error_does_not_block_a_run() {
+    let dir = project(
+        "typeerror",
+        &[("game.ts", "import { app } from \"bevy-ts\";\nconst n: number = \"text\";\napp.startup(\"s\", () => console.log(`n=${n}`));\n")],
+    );
+    let mut app = app(&dir.join("game.ts"));
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    updates(&mut app, 2);
+    assert!(messages(&app).contains(&"n=text".to_string()), "{:?}", messages(&app));
+}
+
+#[test]
+fn a_bare_import_fails_naming_it_and_its_line() {
+    let dir = project("bare", &[("game.ts", "import { app } from \"bevy-ts\";\nimport _ from \"lodash\";\n")]);
+    let mut app = app(&dir.join("game.ts"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    assert!(r.errors[0].message.contains("lodash"));
+    assert_eq!(r.errors[0].location.as_ref().unwrap().line, 2);
+}
+
+#[test]
+fn tsx_elements_carry_their_ts_source() {
+    let dir = project(
+        "tsx",
+        &[(
+            "game.tsx",
+            "import { app } from \"bevy-ts\";\n\napp.startup(\"s\", () => {\n  const el: any = <entity name=\"a\" />;\n  console.log(JSON.stringify(el.source));\n});\n",
+        )],
+    );
+    let mut app = app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 2);
+    let line = messages(&app).into_iter().find(|m| m.contains("lineNumber")).expect("element source logged");
+    assert!(line.contains("game.tsx"), "{line}");
+    assert!(line.contains("\"lineNumber\":4"), "{line}");
+    assert!(line.contains("\"columnNumber\":19"), "{line}");
+}
+
+#[test]
+fn repeated_errors_are_logged_once_per_second_with_a_count() {
+    let dir = project(
+        "repeat",
+        &[(
+            "game.ts",
+            "import { app } from \"bevy-ts\";\nimport { Transform } from \"bevy-ts/bevy\";\napp.system(\"again\", { write: [Transform], run() { throw new Error(\"again\"); } });\n",
+        )],
+    );
+    let mut app = app(&dir.join("game.ts"));
+    app.world_mut().spawn(Transform::default());
+    reload(&mut app, false);
+    updates(&mut app, 50);
+    let n = logs(&app).iter().filter(|e| e.message.contains("Error: again")).count();
+    assert_eq!(n, 1, "{:?}", messages(&app));
+    let systems = app.world().resource::<bevy_ts::systems::TsSystems>();
+    assert!(systems.iter().next().unwrap().last_error.is_some());
+}

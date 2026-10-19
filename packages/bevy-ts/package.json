@@ -1,0 +1,22 @@
+{
+  "name": "bevy-ts",
+  "version": "0.1.0",
+  "description": "TypeScript for Bevy: components, systems and hot reload without recompiling Rust",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": { "types": "./index.d.ts" },
+    "./bevy": { "types": "./bevy.d.ts" },
+    "./jsx-runtime": { "types": "./jsx-runtime.d.ts" },
+    "./jsx-dev-runtime": { "types": "./jsx-dev-runtime.d.ts" },
+    "./protocol": { "types": "./protocol.d.ts" }
+  },
+  "files": ["*.d.ts", "bin"],
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "check": "tsc -p ../../examples/cube && tsc -p test"
+  }
+}

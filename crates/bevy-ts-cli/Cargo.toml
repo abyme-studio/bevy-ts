@@ -13,3 +13,13 @@ path = "src/main.rs"
 bevy = { workspace = true, features = ["3d", "bevy_remote"] }
 bevy-ts = { workspace = true, features = ["pbr"] }
 bevy-ts-v8.workspace = true
+oxc = { version = "0.154", features = ["transformer", "codegen", "semantic"] }
+notify = "8"
+serde_json.workspace = true
+
+[lib]
+name = "bevy_ts_cli"
+path = "src/lib.rs"
+
+[dev-dependencies]
+bevy = { workspace = true }

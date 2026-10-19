@@ -265,7 +265,7 @@ const bevyConsole = {
   error: logger(3),
   trace: logger(0),
 };
-globalThis.console = core.wrapConsole ? (core.wrapConsole(bevyConsole, globalThis.console), bevyConsole) : bevyConsole;
+globalThis.console = bevyConsole;
 
 /** Writes a manifest section for a Rust plugin: bytes, a string, or a JSON-serializable value. */
 export function section(name, value) {

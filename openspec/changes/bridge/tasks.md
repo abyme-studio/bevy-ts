@@ -9,11 +9,11 @@
 
 ## 2. TS compilation and module loading
 
-- [ ] 2.1 Compile `.ts` with `oxc_transformer` (type stripping, source maps) on a background thread
-- [ ] 2.2 Write the `deno_core` `ModuleLoader`: relative imports, the built-in `bevy-ts` and `bevy-ts/bevy` modules, a clear error for bare specifiers
-- [ ] 2.3 Map JS error stacks to TS locations and route them to the log with once-per-second dedup
-- [ ] 2.4 Compile `.tsx` with oxc's automatic runtime (`importSource: "bevy-ts"`), using the development transform under `bevy-ts dev`; resolve `bevy-ts/jsx-runtime` and `bevy-ts/jsx-dev-runtime` as built-in stub modules; test that an element carries its TS file, line and column
-- [ ] 2.5 Start the npm package `bevy-ts` with `app`, `component`, field types and their TS inference; `tsc` checks the demo
+- [x] 2.1 Compile `.ts` with `oxc_transformer` (type stripping, source maps) on a background thread
+- [x] 2.2 Write the `deno_core` `ModuleLoader`: relative imports, the built-in `bevy-ts` and `bevy-ts/bevy` modules, a clear error for bare specifiers
+- [x] 2.3 Map JS error stacks to TS locations and route them to the log with once-per-second dedup
+- [x] 2.4 Compile `.tsx` with oxc's automatic runtime (`importSource: "bevy-ts"`), using the development transform under `bevy-ts dev`; resolve `bevy-ts/jsx-runtime` and `bevy-ts/jsx-dev-runtime` as built-in stub modules; test that an element carries its TS file, line and column
+- [x] 2.5 Start the npm package `bevy-ts` with `app`, `component`, field types and their TS inference; `tsc` checks the demo
 
 ## 3. TS components
 
