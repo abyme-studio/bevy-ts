@@ -296,7 +296,7 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 - **An included file with several top-level entities is a group.** `#RoomA :"room.bsn"` takes `room.bsn`'s one top-level entity as its base; a file with several becomes the children of the including entity, keyed by their names.
 - **Includes resolve as asset paths:** `:"levels/room.bsn"` from the asset root, `:"./room.bsn"` against the including file.
 - **A level patch of a field the prefab gives as `initialF` makes it controlled:** the override wins and the `initial` prop goes.
-- **Reflect-tier components** (no native layout, such as handle-holding `Mesh3d`) are refused by name with their tier reason until task 2.4 gives them a reflect target in tsx.
+- **Components with handles go through reflection (task 2.4).** Reflect-tier components, and layout-tier ones whose holes may own heap data (a `Handle` field), get a reflect target in tsx: inserted from their reflected `Default`, then written field by field, so an unchanged field is never rewritten. 0.20 registers no `ReflectConvert` from strings to handles, so a string in a field whose type has `ReflectHandle` is loaded with `load_erased` and made typed with `ReflectHandle::typed`. A failed asset load is a warning located at the field that named it.
 - **The binding's expression** is not in the description, so the bound-field error names the binding's site (file, line, column) and not its expression text.
 
 ## Operator rulings

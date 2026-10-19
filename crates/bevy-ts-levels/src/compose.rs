@@ -21,6 +21,8 @@ pub enum ValueType {
     String,
     /// A `Handle<T>`: a string asset path (decision 12).
     Handle,
+    /// A reflected field of a type levels cannot write, by type path.
+    Unsupported(String),
 }
 
 #[derive(Clone, Debug)]
@@ -523,12 +525,13 @@ fn convert(ctx: &FileCtx, field: &str, v: &syntax::Value, ty: &ValueType, base: 
                 _ => Err(ctx.err("expected a string", v.span)),
             };
         }
+        ValueType::Unsupported(t) => return Err(ctx.err(format!("{field}: {t} fields cannot be set from a level"), v.span)),
         ValueType::Field(t) => t,
     };
     let out = match ty {
         FieldType::F32 | FieldType::F64 => json!(number(ctx, v)?),
         FieldType::I8 | FieldType::U8 | FieldType::I16 | FieldType::U16 | FieldType::I32 | FieldType::U32 => match v.kind {
-            ValueKind::Int(i) => json!(i as f64),
+            ValueKind::Int(i) => json!(i as i64),
             ValueKind::Float(_) => return Err(ctx.err("expected an integer, found a float", v.span)),
             _ => return Err(ctx.err("expected an integer", v.span)),
         },

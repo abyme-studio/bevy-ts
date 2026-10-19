@@ -392,6 +392,12 @@ fn insert(world: &mut World, e: Entity, r: &Resolved) {
             let Some(Value::String(s)) = r.controlled.get("value") else { unreachable!("checked") };
             world.entity_mut(e).insert(Name::new(s.clone()));
         }
+        Target::Reflect { type_path } => {
+            let props: Map<String, Value> = r.controlled.clone().into_iter().collect();
+            if let Err(m) = crate::reflected::insert(world, e, type_path, &props) {
+                log_error(world, m, r.source.clone());
+            }
+        }
         Target::Mesh(p) => intrinsics::insert_mesh(world, e, p),
         Target::Material(p) => intrinsics::insert_material(world, e, p),
         Target::Ui(kind) => {
@@ -477,7 +483,8 @@ fn remove(world: &mut World, e: Entity, key: &str, prev: &OwnedComponent) {
                 .resource::<TsComponents>()
                 .get(name)
                 .map(|c| c.id)
-                .or_else(|| world.resource::<NativeLayouts>().get(name).map(|n| n.id));
+                .or_else(|| world.resource::<NativeLayouts>().get(name).map(|n| n.id))
+                .or_else(|| world.resource::<NativeLayouts>().reflect_tier(name).map(|t| t.id));
             if let Some(id) = id {
                 world.entity_mut(e).remove_by_id(id);
             }
@@ -522,6 +529,20 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
                     state.fields.insert(f.clone(), FieldState { provenance: p, applied });
                 }
                 bound_fields(r, prev, &mut state);
+            }
+            Target::Reflect { type_path } => {
+                for (f, v) in &r.controlled {
+                    let provenance = r.controlled_provenance(f);
+                    let same = prev.fields.get(f).is_some_and(|s| s.provenance == provenance && &s.applied == v);
+                    if !same {
+                        match crate::reflected::write(world, e, type_path, f, v) {
+                            Ok(true) => stats.written += 1,
+                            Ok(false) => {}
+                            Err(m) => log_error(world, m, r.source.clone()),
+                        }
+                    }
+                    state.fields.insert(f.clone(), FieldState { provenance, applied: v.clone() });
+                }
             }
             Target::Ui(kind) => {
                 // Prop by prop: only the components behind changed props are written.

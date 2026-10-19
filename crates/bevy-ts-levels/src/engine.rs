@@ -5,7 +5,12 @@
 use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, Expander, FieldSchema, Files, Frame, SceneSchema, Schema, ValueType};
 use crate::syntax::{self, EntityList, Entry, Extension, ParsedFile};
 use bevy::asset::io::Reader;
-use bevy::asset::{AssetLoadFailedEvent, AssetLoader, LoadContext};
+use bevy::asset::{AssetLoadFailedEvent, AssetLoader, LoadContext, ReflectHandle, UntypedAssetLoadFailedEvent};
+use bevy::reflect::serde::TypedReflectSerializer;
+use bevy::reflect::enums::VariantInfo;
+use bevy::reflect::{ParsedPath, ReflectPath, TypeInfo, TypeRegistry};
+use serde_json::Value;
+use std::any::TypeId;
 use bevy::ecs::message::MessageCursor;
 use bevy::prelude::*;
 use bevy_ts::backend::ScriptError;
@@ -138,6 +143,8 @@ pub struct LevelRoot {
     pub warnings: Vec<ScriptError>,
     /// Waiting to be composed and reconciled.
     pub dirty: bool,
+    /// Asset paths the level's handle fields name (label dropped), with where.
+    pub assets: BTreeMap<String, bevy_ts::backend::SourceLocation>,
 }
 
 /// Open levels, by asset path.
@@ -190,7 +197,7 @@ fn open(world: &mut World, path: &str, from_ts: bool) {
     let handle = world.resource::<AssetServer>().load::<BsnLevel>(path.to_string());
     world.resource_mut::<Levels>().roots.insert(
         path.to_string(),
-        LevelRoot { handle, from_ts, files: BTreeSet::new(), applied: BTreeMap::new(), owners: BTreeMap::new(), error: None, warnings: Vec::new(), dirty: true },
+        LevelRoot { handle, from_ts, files: BTreeSet::new(), applied: BTreeMap::new(), owners: BTreeMap::new(), error: None, warnings: Vec::new(), dirty: true, assets: BTreeMap::new() },
     );
 }
 
@@ -257,9 +264,30 @@ fn open_pending(world: &mut World) {
 }
 
 /// Marks levels whose files changed, and reconciles every dirty level whose files are loaded.
-fn watch(world: &mut World, mut cursor: Local<MessageCursor<AssetEvent<BsnLevel>>>, mut failed: Local<MessageCursor<AssetLoadFailedEvent<BsnLevel>>>) {
+fn watch(
+    world: &mut World,
+    mut cursor: Local<MessageCursor<AssetEvent<BsnLevel>>>,
+    mut failed: Local<MessageCursor<AssetLoadFailedEvent<BsnLevel>>>,
+    mut missing: Local<MessageCursor<UntypedAssetLoadFailedEvent>>,
+) {
     let mut changed = Vec::new();
     let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    {
+        let messages = world.resource::<Messages<UntypedAssetLoadFailedEvent>>();
+        let levels = world.resource::<Levels>();
+        for ev in missing.read(messages) {
+            let path = ev.path.path().to_string_lossy().replace('\\', "/");
+            for r in levels.roots.values() {
+                if let Some(at) = r.assets.get(&path) {
+                    warnings.push(ScriptError::at(format!("missing asset {path}: {}", ev.error), Some(at.clone())));
+                }
+            }
+        }
+    }
+    for w in &warnings {
+        log(world, LogLevel::Warn, w);
+    }
     {
         let messages = world.resource::<Messages<AssetLoadFailedEvent<BsnLevel>>>();
         for ev in failed.read(messages) {
@@ -336,6 +364,7 @@ impl Files for LoadedFiles<'_> {
 pub struct WorldSchema<'w> {
     pub ts: &'w TsComponents,
     pub native: &'w NativeLayouts,
+    pub registry: &'w TypeRegistry,
 }
 
 fn short(path: &str) -> &str {
@@ -352,6 +381,67 @@ impl WorldSchema<'_> {
             .map(|f| FieldSchema { name: f.name.clone(), ty: ValueType::Field(f.ty.clone()), default: f.default.clone().unwrap_or_else(|| value::zero(&f.ty)) })
             .collect();
         Some(ComponentSchema { name: c.decl.name.clone(), kind: ComponentKind::Ts, fields, is_name: false })
+    }
+
+    /// What a reflected field holds.
+    fn value_type(&self, type_id: TypeId, type_path: &str) -> ValueType {
+        use bevy_ts::layout::FieldType as F;
+        if self.registry.get(type_id).is_some_and(|r| r.data::<ReflectHandle>().is_some()) {
+            return ValueType::Handle;
+        }
+        let field = |t| ValueType::Field(t);
+        let plain = [
+            (TypeId::of::<f32>(), F::F32),
+            (TypeId::of::<f64>(), F::F64),
+            (TypeId::of::<i8>(), F::I8),
+            (TypeId::of::<u8>(), F::U8),
+            (TypeId::of::<i16>(), F::I16),
+            (TypeId::of::<u16>(), F::U16),
+            (TypeId::of::<i32>(), F::I32),
+            (TypeId::of::<u32>(), F::U32),
+            (TypeId::of::<bool>(), F::Bool),
+            (TypeId::of::<Vec2>(), F::Vec2),
+            (TypeId::of::<Vec3>(), F::Vec3),
+            (TypeId::of::<Vec4>(), F::Vec4),
+            (TypeId::of::<Quat>(), F::Quat),
+        ];
+        if let Some((_, t)) = plain.into_iter().find(|(id, _)| *id == type_id) {
+            return field(t);
+        }
+        if type_id == TypeId::of::<String>() {
+            return ValueType::String;
+        }
+        if let Some(TypeInfo::Enum(e)) = self.registry.get(type_id).map(|r| r.type_info())
+            && e.iter().all(|v| matches!(v, VariantInfo::Unit(_)))
+        {
+            return field(F::Enum { variants: e.variant_names().iter().map(|s| s.to_string()).collect(), repr: None });
+        }
+        ValueType::Unsupported(type_path.to_string())
+    }
+
+    /// A component written through reflection: its fields from reflection, defaults from its
+    /// `Default`.
+    fn reflect_schema(&self, type_path: &str) -> Result<ComponentSchema, String> {
+        let Some(reg) = self.registry.get_with_type_path(type_path) else { return Err(format!("{type_path} is not registered")) };
+        let default = reg.data::<ReflectDefault>().map(|d| d.default());
+        let field_default = |name: &str| -> Value {
+            let Some(d) = &default else { return Value::Null };
+            let Ok(p) = ParsedPath::parse(&format!(".{name}")) else { return Value::Null };
+            let Ok(f) = p.reflect_element(d.as_partial_reflect()) else { return Value::Null };
+            serde_json::to_value(TypedReflectSerializer::new(f, self.registry)).unwrap_or(Value::Null)
+        };
+        let fields: Vec<FieldSchema> = match reg.type_info() {
+            TypeInfo::Struct(s) => s.iter().map(|f| FieldSchema { name: f.name().to_string(), ty: self.value_type(f.type_id(), f.type_path()), default: field_default(f.name()) }).collect(),
+            TypeInfo::TupleStruct(s) => s
+                .iter()
+                .map(|f| {
+                    let name = f.index().to_string();
+                    FieldSchema { default: field_default(&name), name, ty: self.value_type(f.type_id(), f.type_path()) }
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        Ok(ComponentSchema { name: type_path.to_string(), kind: ComponentKind::Rust, fields, is_name: false })
     }
 }
 
@@ -376,15 +466,18 @@ impl Schema for WorldSchema<'_> {
         candidates.sort();
         candidates.dedup();
         match candidates.as_slice() {
-            [] => Err(match self.native.reflect_tier(path) {
-                Some(t) => format!("{path} has no native layout ({}); levels set layout-tier components", t.reason),
-                None => format!("unknown component {path}"),
-            }),
+            [] => match self.native.reflect_tier(path) {
+                Some(t) => self.reflect_schema(&t.type_path.clone()),
+                None => Err(format!("unknown component {path}")),
+            },
             [one] => {
                 if let Some(s) = self.ts_schema(one) {
                     return Ok(s);
                 }
                 let n = self.native.get(one).expect("a native candidate");
+                if !n.insertable {
+                    return self.reflect_schema(&n.type_path);
+                }
                 let fields = n
                     .layout
                     .fields
@@ -414,7 +507,8 @@ impl Expander for NoExpander {
 /// Composes one level from the loaded files.
 pub fn compose_level(world: &World, path: &str) -> (Result<Composed, Vec<ScriptError>>, BTreeMap<String, u64>) {
     let mut files = LoadedFiles { server: world.resource::<AssetServer>(), assets: world.resource::<Assets<BsnLevel>>(), hashes: BTreeMap::new() };
-    let schema = WorldSchema { ts: world.resource::<TsComponents>(), native: world.resource::<NativeLayouts>() };
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let schema = WorldSchema { ts: world.resource::<TsComponents>(), native: world.resource::<NativeLayouts>(), registry: &registry };
     let r = compose::compose(path, &mut files, &schema, &mut NoExpander);
     (r, files.hashes)
 }
@@ -472,12 +566,29 @@ pub fn reconcile_level(world: &mut World, path: &str) {
         log(world, LogLevel::Warn, w);
     }
     stamp_instances(world, path, &root, &composed.owners);
+    let mut assets = BTreeMap::new();
+    asset_paths(&composed.nodes, &mut assets);
     if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
         r.error = None;
         r.files = composed.files;
         r.applied = hashes;
         r.owners = composed.owners;
         r.warnings = composed.warnings;
+        r.assets = assets;
+    }
+}
+
+/// Strings in overridden component fields are asset paths: only handle fields take strings.
+fn asset_paths(nodes: &[NodeDesc], out: &mut BTreeMap<String, bevy_ts::backend::SourceLocation>) {
+    for n in nodes {
+        for c in &n.components {
+            for (f, at) in &c.overrides {
+                if let Some(Value::String(p)) = c.props.get(f) {
+                    out.insert(p.split('#').next().unwrap_or(p).to_string(), at.clone());
+                }
+            }
+        }
+        asset_paths(&n.children, out);
     }
 }
 

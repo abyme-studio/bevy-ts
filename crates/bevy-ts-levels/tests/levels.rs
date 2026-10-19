@@ -213,3 +213,66 @@ fn a_generation_without_the_level_closes_it() {
     assert!(f.app.world().get_entity(b).is_err());
     assert!(f.app.world().resource::<Levels>().roots.is_empty());
 }
+
+#[derive(Asset, Reflect, Debug)]
+struct Note(String);
+
+#[derive(Default, TypePath)]
+struct NoteLoader;
+
+impl bevy::asset::AssetLoader for NoteLoader {
+    type Asset = Note;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    async fn load(&self, reader: &mut dyn bevy::asset::io::Reader, _: &(), _: &mut bevy::asset::LoadContext<'_>) -> Result<Note, std::io::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        Ok(Note(String::from_utf8_lossy(&bytes).into_owned()))
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["note"]
+    }
+}
+
+/// A reflect-tier component: a handle field and a plain one.
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+struct Sign {
+    note: Handle<Note>,
+    size: f32,
+}
+
+fn with_signs(f: &mut Fixture) {
+    f.app.init_asset::<Note>().register_asset_reflect::<Note>().register_asset_loader(NoteLoader).register_type::<Sign>();
+}
+
+#[test]
+fn handle_fields_take_asset_paths() {
+    let level = "#Sign\nSign { note: \"./hello.note\", size: 2.0 }\n--\n#Gone\nSign { note: \"notes/gone.note\" }\n";
+    let mut f = fixture("assets", &[("levels/signs.bsn", level), ("levels/hello.note", "hello")]);
+    with_signs(&mut f);
+    f.load(&["levels/signs.bsn"]);
+    f.settle();
+    assert!(f.errors().is_empty(), "{:?}", f.errors());
+    let sign = f.by_name("Sign");
+    let s = f.app.world().get::<Sign>(sign).unwrap();
+    assert_eq!(s.size, 2.0);
+    assert_eq!(s.note.path().map(|p| p.to_string()).as_deref(), Some("levels/hello.note"));
+    let id = s.note.id();
+    let mut warned = Vec::new();
+    for _ in 0..200 {
+        f.app.update();
+        warned = f.app.world().resource::<ScriptLog>().since(0).filter(|e| e.level == bevy_ts::log::LogLevel::Warn).map(|e| format!("{} {}", e.location.as_ref().map(|l| l.to_string()).unwrap_or_default(), e.message)).collect();
+        if f.app.world().resource::<Assets<Note>>().get(id).is_some() && !warned.is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert_eq!(f.app.world().resource::<Assets<Note>>().get(id).map(|n| n.0.as_str()), Some("hello"));
+    assert!(warned.iter().any(|w| w.starts_with("levels/signs.bsn:5:8 levels: missing asset notes/gone.note")), "{warned:?}");
+    // The level still loaded the entity, with the handle unresolved.
+    let gone = f.by_name("Gone");
+    assert!(f.app.world().get::<Sign>(gone).is_some());
+}

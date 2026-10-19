@@ -46,6 +46,8 @@ pub enum Target {
     Name,
     Mesh(MeshProps),
     Material(MaterialProps),
+    /// A reflect-tier Rust component, by type path: written field by field through reflection.
+    Reflect { type_path: String },
     Ui(UiKind),
 }
 
@@ -221,6 +223,16 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
             }
             let Some(Value::String(s)) = v else { return Err(err("<Name> needs value=\"...\" (a string)", &c.source)) };
             Ok(resolved(Target::Name, (BTreeMap::from([("value".to_string(), Value::String(s))]), BTreeMap::new(), BTreeMap::new())))
+        }
+        // Reflect-tier components, and layout-tier ones whose holes may own heap data (a handle):
+        // never inserted from bytes.
+        ComponentKind::Rust if native.get(&c.ty).map_or(native.reflect_tier(&c.ty).is_some(), |n| !n.insertable) => {
+            let type_path = match native.get(&c.ty) {
+                Some(n) => n.type_path.clone(),
+                None => native.reflect_tier(&c.ty).expect("checked").type_path.clone(),
+            };
+            let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Ok(resolved(Target::Reflect { type_path }, (controlled, BTreeMap::new(), BTreeMap::new())))
         }
         ComponentKind::Rust => {
             let n = native.get(&c.ty).ok_or_else(|| {

@@ -140,7 +140,7 @@ fn layered_patches_over_an_instance() {
     )]);
     let c = r.unwrap();
     assert_eq!(ex.calls.len(), 1);
-    assert_eq!(ex.calls[0][0].props, json!({ "hp": 250.0, "team": 1.0 }).as_object().unwrap().clone());
+    assert_eq!(ex.calls[0][0].props, json!({ "hp": 250.0, "team": 1 }).as_object().unwrap().clone());
     let b = &c.nodes[0];
     assert_eq!((b.key.as_str(), b.name.as_deref(), b.ty.as_str()), ("EnemyB", Some("EnemyB"), "enemies::Grunt"));
     let t = b.components.iter().find(|c| c.ty == "Transform").unwrap();

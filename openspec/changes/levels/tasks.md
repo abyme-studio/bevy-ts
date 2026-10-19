@@ -11,7 +11,7 @@
 - [ ] 2.1 Confirm tsx T1 (scene components by name with fields and props read by the compile step, and a host entry) and T2 (external roots); add `app.level()` to the TS package with types
 - [x] 2.2 `BsnLevel` asset loader (`bsn` extension) and tree-to-description conversion: names as keys, patches as controlled component elements, `Children` lists
 - [x] 2.3 Value typing: Rust components through the type registry with short-path resolution and ambiguity errors, TS components through layouts; errors with file, line, column
-- [ ] 2.4 Asset paths in `Handle` fields: asset-root and `./`/`../` relative resolution, `ReflectConvert` where 0.20 has it (verify) and own conversion otherwise; missing-asset warnings
+- [x] 2.4 Asset paths in `Handle` fields: asset-root and `./`/`../` relative resolution, `ReflectConvert` where 0.20 has it (verify) and own conversion otherwise; missing-asset warnings
 - [ ] 2.5 `@Comp` expansion through the TS scene component's `scene` in one host call per reconcile, scene component added to the root, `field:` patches applied to it; Transform and other root patches layered after the expansion
 - [x] 2.6 E3 merge by name into expansion children (keys and quoted `tsx` segments), new children otherwise; reject removal of prefab-internal entities
 - [x] 2.7 `:"x.bsn"` inclusion with overrides through any depth and a cycle check
