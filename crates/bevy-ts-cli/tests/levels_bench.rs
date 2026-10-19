@@ -100,6 +100,24 @@ fn run(n: usize) -> String {
         assert_eq!(r.status, "written", "{r:?}");
     }
     let write = ms(t) / edits as f64;
+
+    // Where one write goes: the writer (splice, two parses, verify), the parse of the new text
+    // for the asset, the level's compose without expansion, and tsx's resolve and diff.
+    let text = std::fs::read_to_string(dir.join("assets/levels/arena.bsn")).unwrap();
+    let op = Op::Set { path: vec!["G7".into()], component: "Transform".into(), field: vec!["translation".into(), "x".into()], value: WValue::Float { v: 99.0, f32: true }, containers: vec!["Vec3".into()] };
+    let t = Instant::now();
+    let w = bevy_ts_levels::writer::apply(&text, &[op]).unwrap();
+    let splice = ms(t);
+    let t = Instant::now();
+    bevy_ts_levels::syntax::parse(&w.text).unwrap();
+    let parse = ms(t);
+    let (composed, _) = bevy_ts_levels::engine::compose_level(app.world_mut(), "levels/arena.bsn");
+    let nodes = composed.unwrap().nodes;
+    let t = Instant::now();
+    bevy_ts_tsx::reconcile_external(app.world_mut(), "level:levels/arena.bsn", None, &nodes).unwrap();
+    let tsx = ms(t);
+    let compose = reconcile - expand - tsx;
+    println!("{n}: write {write:.1} ms = writer {splice:.1} (splice, 2 parses, verify) + asset parse {parse:.1} + compose {compose:.1} + expand {expand:.1} + tsx {tsx:.1}, roughly");
     format!("| {n} | {} | {load:.0} | {reconcile:.1} | {expand:.1} | {write:.1} |", spawned)
 }
 

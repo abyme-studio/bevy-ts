@@ -190,6 +190,9 @@ pub fn write_sidecar(world: &mut World, edit_id: u64, entity: Entity, component:
         return Err("a level entity: use write".into());
     }
     let (scene, path) = (node.root.clone(), node.key_path.clone());
+    if !world.contains_resource::<Levels>() {
+        return Err("levels is not in this app".into());
+    }
     let file = bevy_ts_tsx::scene_level(world, &scene).ok_or_else(|| format!("{scene} is not an app.scene root"))?;
     let ops = set_ops(world, &path, component, field, &after, &serde_json::Map::new())?;
     if world.resource::<Levels>().roots.contains_key(&file) {

@@ -20,6 +20,14 @@ The level is N `@enemies::Grunt { @hp: … }` instances, each with a `Transform`
 
 What was fixed on the way. The first run took 193 ms per edit at 1,000 instances and 9.75 s at 10,000. The writer's verify step compared every named entity's head by scanning all of the file's tokens once per entry, which is quadratic. It now finds each entry's tokens by binary search: 26 ms and 215 ms. The same run showed Bevy's file watcher panicking its thread when the asset root is a symlinked path (macOS `/var` is `/private/var`). `bevy-ts dev` now canonicalises the asset root before giving it to `AssetPlugin`.
 
+Where a 10,000-instance write goes (a re-run, 196 ms per edit):
+
+| writer: splice, two parses, verify | asset parse | compose | expand host call | tsx resolve and diff |
+|---:|---:|---:|---:|---:|
+| 33 ms | 9 ms | 44 ms | 49 ms | 71 ms |
+
+About 83% is the whole-level reconcile that follows the write, not the write itself. A drag writes once, on release, so coalescing drags would not change this. The write path needs to be incremental: reconcile only the touched name paths, and reuse the expansion of instances whose props did not change.
+
 What is left, if 10,000-instance levels become a target:
 
 - A write reconciles the whole level. It could reconcile only the edited entity, since the writer knows the touched name paths.

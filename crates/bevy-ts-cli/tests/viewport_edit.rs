@@ -41,6 +41,11 @@ fn game(b_at: &str) -> String {
 const B_LINE: u32 = 8;
 
 fn viewport_app(entry: &Path) -> App {
+    viewport_app_with(entry, None)
+}
+
+/// With levels on an asset root (`bevy-ts dev`'s app has both).
+fn viewport_app_with(entry: &Path, assets: Option<&Path>) -> App {
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -52,6 +57,10 @@ fn viewport_app(entry: &Path) -> App {
     .add_plugins(bevy_ts_viewport::ViewportPlugin { windowed: false })
     .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true))
     .add_plugins(bevy_ts_tsx::TsxPlugin);
+    if let Some(root) = assets {
+        app.add_plugins(bevy_ts_levels::engine::LevelsPlugin);
+        app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
+    }
     app.insert_resource(DevSource(Arc::new(Compiler::new(entry, true).unwrap())));
     bevy_ts_remote::add_methods(&mut app);
     app.finish();
@@ -188,4 +197,48 @@ fn a_literal_drag_is_written_by_the_editor_and_a_computed_one_rejected() {
     let sel = watch(&mut app, "bevy-ts/viewport_selection+watch", 5).unwrap();
     assert_eq!(sel["items"][0]["routes"]["translation"]["kind"], "locked");
     assert_eq!(sel["items"][0]["routes"]["translation"]["reason"], "computed");
+}
+
+#[test]
+fn a_computed_drag_goes_to_the_scene_sidecar_level() {
+    let dir = project("viewport-edit-sidecar", &[("enemy.tsx", ENEMY), ("game.tsx", &game("[3, 0, -4]"))]);
+    let assets = dir.join("assets");
+    std::fs::create_dir_all(&assets).unwrap();
+    let assets = assets.canonicalize().unwrap();
+    let mut app = viewport_app_with(&dir.join("game.tsx"), Some(&assets));
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    updates(&mut app, 3);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" }));
+    updates(&mut app, 2);
+    let c = enemy(&mut app, "c");
+    call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [c.to_bits()] }));
+    updates(&mut app, 2);
+    let c_x = app.world().get::<Transform>(c).unwrap().translation.x;
+    drag_x(&mut app, c, 80.0);
+    let new_x = app.world().get::<Transform>(c).unwrap().translation.x;
+    assert!(new_x > c_x + 0.2);
+    let edits = watch(&mut app, "bevy-ts/viewport_edits+watch", 1).unwrap();
+    let edit = edits["edits"].as_array().unwrap().last().unwrap().clone();
+    // `spawn(2)` has no literal: the editor rejects it, and the edit goes to levels/arena.bsn.
+    let r = call(&mut app, "bevy-ts/viewport_edit_result", json!({ "id": edit["id"], "status": "rejected", "reason": "computed" }));
+    assert_eq!((r["status"].as_str(), r["reason"].as_str()), (Some("pending"), Some("sidecar")), "{r:#}");
+    let mut status = Value::Null;
+    for k in 2..200 {
+        updates(&mut app, 1);
+        if let Some(e) = watch(&mut app, "bevy-ts/viewport_edits+watch", k) {
+            status = e["edits"].as_array().unwrap().last().unwrap()["status"].clone();
+            if status == "written" {
+                break;
+            }
+        }
+    }
+    assert_eq!(status, "written");
+    let level = std::fs::read_to_string(assets.join("levels/arena.bsn")).unwrap();
+    assert!(level.starts_with("#c\nTransform { translation: Vec3 { x: "), "{level}");
+    assert_eq!(app.world().get::<Transform>(c).unwrap().translation.x, new_x, "not restored");
+    // A reload re-runs `spawn(2)`; the sidecar keeps c where it was dragged.
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    updates(&mut app, 3);
+    let c2 = enemy(&mut app, "c");
+    assert!((app.world().get::<Transform>(c2).unwrap().translation.x - new_x).abs() < 1e-4);
 }

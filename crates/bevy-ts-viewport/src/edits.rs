@@ -171,8 +171,9 @@ pub fn record(world: &mut World, e: Entity, field: &'static str, before: Transfo
     log.touch(i);
     // A `bsn` edit is bevy-ts's to write: hand it to levels now; the outcome arrives later.
     if status == "pending" && world.resource::<EditLog>().edits[i].route["kind"] == "bsn" {
-        let value = field_json(&after, field);
-        if let Err(reason) = bevy_ts_levels::write(world, id, e, TRANSFORM_ELEMENT, field, value) {
+        // The gizmo's start, so a drag along x writes x alone even if a system moved y.
+        let (from, value) = (field_json(&before, field), field_json(&after, field));
+        if let Err(reason) = bevy_ts_levels::write_from(world, id, e, TRANSFORM_ELEMENT, field, Some(from), value) {
             settle(world, i, "rejected", Some(reason), true);
         }
     }
@@ -278,6 +279,18 @@ pub fn answer(world: &mut World, id: u64, written: bool, reason: Option<String>)
         log.edits[i].reason = None;
         log.touch(i);
     } else {
+        // No literal to rewrite (2026-10-19 ruling): the edit goes to the scene's sidecar level,
+        // whose answer arrives through levels' results like any `bsn` write.
+        if reason.as_deref().is_some_and(|r| r.contains("computed"))
+            && let Some(e) = live_entity(world, &edit)
+            && bevy_ts_levels::write_sidecar(world, id, e, TRANSFORM_ELEMENT, edit.field, field_json(&edit.after, edit.field)).is_ok()
+        {
+            let mut log = world.resource_mut::<EditLog>();
+            log.edits[i].status = "pending";
+            log.edits[i].reason = Some("sidecar".into());
+            log.touch(i);
+            return Ok(edit_json(&world.resource::<EditLog>().edits[i]));
+        }
         restore(world, i);
         let key = edit.node.unwrap_or(edit.entity.to_bits());
         let reason = reason.unwrap_or_else(|| "rejected".into());
