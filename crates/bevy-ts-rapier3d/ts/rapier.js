@@ -1,6 +1,6 @@
 // `bevy-ts/rapier`: the TS half of the rapier3d port. Served by the engine; the classes here are
 // declared by every generation, as a project's own classes are.
-import { Message } from "bevy-ts";
+import { bool, f32, Message, nativeComponent, vec2, vec3 } from "bevy-ts";
 
 /** Rapier's `CollisionEvent`, an enum with data in Rust, flattened to one record. */
 export class CollisionEvent extends Message {
@@ -18,15 +18,19 @@ export class CollisionEvent extends Message {
   }
 }
 
-/** `Collider` has no `Reflect`: these constructors insert one through the port's command. */
-export const Collider = {
-  ball(commands, entity, radius, opts) {
+/**
+ * `Collider` has no `Reflect`. As a TSX element, `<Collider cuboid={[0.5, 0.5, 0.5]} />` sets the
+ * port's plain-data `ColliderShape`, which Rust turns into a real `Collider`; the static
+ * constructors insert one through the port's command instead.
+ */
+export class Collider extends nativeComponent("bevy_ts_rapier3d::ColliderShape", { ball: f32, cuboid: vec3, capsule_y: vec2, sensor: bool }) {
+  static ball(commands, entity, radius, opts) {
     commands.custom("rapier/collider", { entity, ball: radius, sensor: !!(opts && opts.sensor) });
-  },
-  cuboid(commands, entity, hx, hy, hz, opts) {
+  }
+  static cuboid(commands, entity, hx, hy, hz, opts) {
     commands.custom("rapier/collider", { entity, cuboid: [hx, hy, hz], sensor: !!(opts && opts.sensor) });
-  },
-  capsuleY(commands, entity, halfHeight, radius, opts) {
+  }
+  static capsuleY(commands, entity, halfHeight, radius, opts) {
     commands.custom("rapier/collider", { entity, capsuleY: [halfHeight, radius], sensor: !!(opts && opts.sensor) });
-  },
-};
+  }
+}

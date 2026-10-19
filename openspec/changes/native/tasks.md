@@ -20,11 +20,11 @@
 ## 3. Rust components in TS
 
 - [x] 3.1 `bevy-ts-native-derive`: `#[derive(NativeLayout)]` for components without `Reflect`, mapping field types to bridge field types, `offset_of!` tables (public fields, no `repr(C)`); compile-fail tests for `String`, `Handle`, a private field
-- [ ] 3.2 Tier every reflected component at startup by decision 5; TS systems accept layout tier as query data and reflect tier only in `With`/`Without`, with the ts-components error otherwise; accessor-only `bool`/enum/`Entity` fields, immutable components refused
-- [ ] 3.3 Test that a TS write to a layout-tier Rust component is seen by a Rust system the same frame, with `Changed` exactly on written rows
+- [x] 3.2 Tier every reflected component at startup by decision 5; TS systems accept layout tier as query data and reflect tier only in `With`/`Without`, with the ts-components error otherwise; accessor-only `bool`/enum/`Entity` fields, immutable components refused
+- [x] 3.3 Test that a TS write to a layout-tier Rust component is seen by a Rust system the same frame, with `Changed` exactly on written rows
 - [x] 3.4 `bevy-ts types`: build the app, stop after `Plugin::build` before `finish`, walk the registry, emit `native.d.ts` deterministically; verify no GPU device is created with `bevy_rapier3d` and `bevy_egui`, and report plugins that need one
 - [ ] 3.5 Ship pre-generated `bevy-ts/bevy` types from the prebuilt engine; CI regenerate-and-diff; `bevy-ts dev` regenerates after each project-engine build
-- [ ] 3.6 TSX accepts reflect-tier components as elements (patch through bridge's reflected access); test `<Weapon name="laser" />`
+- [x] 3.6 TSX accepts reflect-tier components as elements (patch through bridge's reflected access); test `<Weapon name="laser" />`
 
 - [x] 3.7 Prove the layout rule on `bevy_rapier3d` 0.37 in the engine: `Velocity`, `ExternalImpulse`, `RigidBody` (enum bytes) and the private `LockedAxes` are layout tier; `Collider` (no `Reflect`) is not; a TS write to `Velocity` moves a body
 
@@ -32,7 +32,7 @@
 
 - [x] 3b.1 Read `native.ports` and `native.crates` from `bevy-ts.json`; generate the engine's dependencies and `add_plugins` lines; a project with plugins and no native crate builds and runs
 - [x] 3b.2 Port format: crate `bevy-ts-<name>` whose Bevy plugin adds the third-party plugin, exports params, exposes sets and registers the `bevy-ts/<name>` module (types, JS glue, TSX constructors, flattened messages)
-- [ ] 3b.3 Ship the `rapier3d` port: `RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule()`, `Collider` constructors, `CollisionEvent` flattened to `{ kind, a, b, sensor }`, `ReadRapierContext` exported with `castRay`/`castRays`, sets `rapier:sync-backend`/`rapier:step`/`rapier:writeback`; example `examples/rapier/` with no Rust in the project
+- [x] 3b.3 Ship the `rapier3d` port: `RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule()`, `Collider` constructors, `CollisionEvent` flattened to `{ kind, a, b, sensor }`, `ReadRapierContext` exported with `castRay`/`castRays`, sets `rapier:sync-backend`/`rapier:step`/`rapier:writeback`; example `examples/rapier/` with no Rust in the project
 - [x] 3b.4 Plan the `leafwing-input-manager` port with a dynamic `TsAction(u16)`; record avian and hanabi as waiting on Bevy 0.20
 
 ## 4. Ordering against Rust sets
@@ -52,5 +52,5 @@
 
 ## 7. Docs
 
-- [ ] 7.1 Write `docs/native.md`: the "what stays Rust" table, the two component tiers and holes, plugin adoption and ports, exported params, slots, and the shared cache for teams
+- [x] 7.1 Write `docs/native.md`: the "what stays Rust" table, the two component tiers and holes, plugin adoption and ports, exported params, slots, and the shared cache for teams
 - [x] 7.2 README: one line on the native crate and project engines

@@ -174,8 +174,9 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
                 return Ok((n.id, n.layout.size));
             }
             if data {
+                let why = native.reflect_tier(&r.name).map(|t| format!(" ({})", t.reason)).unwrap_or_default();
                 return Err(format!(
-                    "{} is a Rust component without a native layout; it can be used in With/Without but not as query data",
+                    "{} is a Rust component without a native layout{why}; it can be used in With/Without but not as query data",
                     r.name
                 ));
             }
@@ -355,11 +356,22 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLo
 }
 
 fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], ts: &TsLookup) -> Result<QueryParam, String> {
+    // A Rust type that had no value to read offsets from at startup is tiered from its first row.
+    for d in data {
+        if let DataDecl::Component { component, .. } = d
+            && component.source == ComponentSource::Rust
+        {
+            crate::layout_reflect::retry(world, &component.name);
+        }
+    }
     let native = world.resource::<NativeLayouts>().clone();
     let mut columns = Vec::new();
     for d in data {
         if let DataDecl::Component { component, mutable, optional } = d {
             let (id, size) = resolve_ref(world, component, ts, &native, true)?;
+            if *mutable && native.by_id(id).is_some_and(|n| !n.writable) {
+                return Err(format!("{} is an immutable Rust component; TS can read it but not take Mut<{}>", component.name, component.name));
+            }
             if columns.iter().any(|c: &Access| c.id == id && c.write != *mutable) {
                 // The same component read and written in one query: written wins.
             }

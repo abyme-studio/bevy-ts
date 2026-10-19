@@ -320,14 +320,15 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
         resolution.ports = h.glue();
     }
     for (name, id, layout) in pending.iter() {
-        resolution.components.insert(name.to_string(), ResolvedComponent { id: id.index() as u32, layout: layout.clone() });
+        resolution.components.insert(name.to_string(), ResolvedComponent { id: id.index() as u32, layout: layout.clone(), raw_writes: true });
     }
     for n in world.resource::<NativeLayouts>().iter() {
-        let r = ResolvedComponent { id: n.id.index() as u32, layout: n.layout.clone() };
+        let raw_writes = n.holes.is_empty() && n.layout.fields.iter().all(|f| !f.ty.accessor_only());
+        let r = ResolvedComponent { id: n.id.index() as u32, layout: n.layout.clone(), raw_writes };
         resolution.components.insert(n.type_path.clone(), r.clone());
         resolution.components.insert(n.ts_name.clone(), r);
     }
-    resolution.components.insert(systems::TIME.into(), ResolvedComponent { id: u32::MAX, layout: systems::time_layout() });
+    resolution.components.insert(systems::TIME.into(), ResolvedComponent { id: u32::MAX, layout: systems::time_layout(), raw_writes: true });
     for (name, op) in kinds.all() {
         resolution.command_kinds.insert(name.to_string(), op);
     }

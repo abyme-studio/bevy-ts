@@ -783,7 +783,9 @@ impl Reader {
                     errors.push((f.span, format!("field {} of {} needs a type (f32, u32, bool, Entity, Vec3, Quat, a string-literal union, ...)", f.name, c.name)));
                     continue;
                 };
-                match self.field_ty(t, scope, false, 0) {
+                // A reflect-tier Rust component's fields cross as JSON through reflection, so they
+                // may be strings (native-components).
+                match self.field_ty(t, scope, kind == "reflectComponent", 0) {
                     Ok(ty) => {
                         let mut field = json!({ "name": f.name, "type": ty });
                         if let Some(v) = &f.default {

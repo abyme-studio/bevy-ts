@@ -13,9 +13,16 @@ export class RigidBody extends nativeComponent("RigidBody", {
   value: enumOf("Dynamic", "Fixed", "KinematicPositionBased", "KinematicVelocityBased"),
 }) {}
 
+// The ground as a scene: `<Collider>` is the port's element for Rapier's unreflected Collider.
+app.scene("ground", () => (
+  <entity name="ground">
+    <RigidBody value="Fixed" />
+    <Transform translation={[0, -0.5, 0]} />
+    <Collider cuboid={[20, 0.5, 20]} />
+  </entity>
+));
+
 export function spawn(commands: Commands) {
-  const ground = commands.spawn(RigidBody.of({ value: "Fixed" }), Transform.of({ translation: [0, -0.5, 0] }));
-  Collider.cuboid(commands, ground, 20, 0.5, 20);
   const rocket = commands.spawn(RigidBody.of({ value: "Dynamic" }), Velocity, Transform.of({ translation: [0, 2, 0] }));
   Collider.ball(commands, rocket, 0.5);
   // A rock that falls onto the ground: one collision.

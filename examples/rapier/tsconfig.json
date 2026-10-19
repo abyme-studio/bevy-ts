@@ -6,8 +6,10 @@
     "strict": true,
     "noEmit": true,
     "verbatimModuleSyntax": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "bevy-ts",
     "allowImportingTsExtensions": true,
-    "paths": { "bevy-ts": ["../../packages/bevy-ts/index.d.ts"], "bevy-ts/bevy": ["../../packages/bevy-ts/bevy.d.ts"] }
+    "paths": { "bevy-ts": ["../../packages/bevy-ts/index.d.ts"], "bevy-ts/bevy": ["../../packages/bevy-ts/bevy.d.ts"], "bevy-ts/jsx-runtime": ["../../packages/bevy-ts/jsx-runtime.d.ts"], "bevy-ts/jsx-dev-runtime": ["../../packages/bevy-ts/jsx-dev-runtime.d.ts"] }
   },
   "include": ["src", ".bevy-ts/types"]
 }

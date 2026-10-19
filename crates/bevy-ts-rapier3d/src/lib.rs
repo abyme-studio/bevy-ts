@@ -32,6 +32,8 @@ impl Plugin for PortPlugin {
             .ts_param::<RapierQuery<'static, 'static>>()
             .ts_module("bevy-ts/rapier", include_str!("../ts/rapier.js"), include_str!("../ts/rapier.d.ts"))
             .add_ts_command_kind("rapier/collider", insert_collider)
+            .register_type::<ColliderShape>()
+            .add_systems(PreUpdate, shape_colliders)
             .add_systems(FixedUpdate, forward_collisions.after(PhysicsSet::Writeback));
     }
 }
@@ -60,6 +62,52 @@ fn forward_collisions(world: &mut World, reader: &mut SystemState<MessageReader<
                 warn!("bevy-ts-rapier3d: {e}");
                 return;
             }
+        }
+    }
+}
+
+/// What TSX's `<Collider cuboid={[0.5, 0.5, 0.5]} />` sets: Rapier's `Collider` has no
+/// `Reflect`, so TS writes this plain-data stand-in and [`shape_colliders`] builds the real one.
+/// Exactly one of `ball`, `cuboid` or `capsule_y` is non-zero.
+#[derive(Component, Reflect, Default, Clone, Copy)]
+#[reflect(Component, Default)]
+pub struct ColliderShape {
+    pub ball: f32,
+    pub cuboid: Vec3,
+    pub capsule_y: Vec2,
+    pub sensor: bool,
+}
+
+impl ColliderShape {
+    fn collider(&self) -> Option<Collider> {
+        if self.ball > 0.0 {
+            Some(Collider::ball(self.ball))
+        } else if self.cuboid != Vec3::ZERO {
+            Some(Collider::cuboid(self.cuboid.x, self.cuboid.y, self.cuboid.z))
+        } else if self.capsule_y != Vec2::ZERO {
+            Some(Collider::capsule_y(self.capsule_y.x, self.capsule_y.y))
+        } else {
+            None
+        }
+    }
+}
+
+/// Builds `Collider` (and `Sensor`) from each added or changed [`ColliderShape`].
+fn shape_colliders(mut commands: Commands, q: Query<(Entity, &ColliderShape), Changed<ColliderShape>>) {
+    for (e, shape) in &q {
+        let mut ec = commands.entity(e);
+        match shape.collider() {
+            Some(c) => {
+                ec.insert((c, ActiveEvents::COLLISION_EVENTS));
+            }
+            None => {
+                ec.remove::<Collider>();
+            }
+        }
+        if shape.sensor {
+            ec.insert(Sensor);
+        } else {
+            ec.remove::<Sensor>();
         }
     }
 }

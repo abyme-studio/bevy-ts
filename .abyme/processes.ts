@@ -31,7 +31,7 @@ export default {
   // A project engine (native crate + Rapier) built and run under the dev supervisor, headless.
   // A ports-only project engine: Rapier adopted in bevy-ts.json, no Rust in the project.
   rapier: {
-    cmd: "cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/rapier/src/game.ts --headless --remote-port 15791 2>&1 | tee target/rapier.log",
+    cmd: "cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/rapier/src/game.tsx --headless --remote-port 15791 2>&1 | tee target/rapier.log",
   },
   thrusters: {
     cmd: "cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/thrusters/src/game.ts --headless --remote-port 15790 2>&1 | tee target/thrusters.log",

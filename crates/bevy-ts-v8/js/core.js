@@ -1271,6 +1271,7 @@ function resolveClass(C, r) {
   if (C.layout && C.id === r.id && JSON.stringify(C.layout) === JSON.stringify(r.layout)) return;
   C.id = r.id;
   C.layout = r.layout;
+  C.rawWrites = r.rawWrites !== false;
   C.views = viewsFor(r.layout);
   C.offsets = Object.fromEntries(r.layout.fields.map((f) => [f.name, f.offset]));
   C.size = r.layout.size;
@@ -1360,6 +1361,7 @@ class Table {
   write(T) {
     const c = this.col(T);
     if (!this.q.columnWrites[c]) throw new Error(`${T.name} is not Mut in this query`);
+    rawWritable(T);
     this.q.marks.push(this.q.paramIndex, this.i, c);
     return this.arrays(T, c);
   }
@@ -1367,9 +1369,18 @@ class Table {
   split(T) {
     const c = this.col(T);
     if (!this.q.columnWrites[c]) throw new Error(`${T.name} is not Mut in this query`);
+    rawWritable(T);
     const out = this.arrays(T, c);
     out.ticks = new Uint32Array(this.q.raw[this.i][3][c]);
     return out;
+  }
+}
+
+/** Rust components with hidden fields, or bool, enum and Entity fields, are written only through
+ * accessors, which keep every value valid for Rust. */
+function rawWritable(T) {
+  if (T.rawWrites === false) {
+    throw new Error(`${T.name} has fields only accessors may write (bool, enum, Entity, or fields TS cannot see); write it in q.each`);
   }
 }
 

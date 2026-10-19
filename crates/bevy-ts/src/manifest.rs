@@ -393,6 +393,18 @@ pub struct LoadedGeneration {
 pub struct ResolvedComponent {
     pub id: u32,
     pub layout: ComponentLayout,
+    /// False for a Rust component whose bytes TS may not write as raw arrays (`q.tables`): it has
+    /// holes, or `bool`, enum or `Entity` fields only accessors keep valid.
+    #[serde(default = "yes", rename = "rawWrites", skip_serializing_if = "is_true")]
+    pub raw_writes: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 /// Rust's answer to a manifest: ids and layouts for every component the generation names, and

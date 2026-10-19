@@ -29,7 +29,7 @@ Everything is in `bevy-ts.json`:
     "crates": {                                          // any plugin crate on crates.io
       "bevy_kira_audio": { "version": "0.27", "plugin": "bevy_kira_audio::AudioPlugin" }
     },
-    "crate": "native", "plugin": "my_native::GamePlugin" // the project's own Rust
+      "crate": "native", "plugin": "my_native::GamePlugin" // the project's own Rust
   },
   "engineCache": "/mnt/team/bevy-ts-engines"             // optional shared directory
 }
@@ -104,12 +104,61 @@ with their JSON shapes, and `NativeSet`, the union of exposed set names. Output 
 
 A crate exposes a Bevy set under a stable name, `app.ts_set("rapier:step", FixedUpdate,
 PhysicsSet::StepSimulation)`; names are `<crate>:<name>` and unique. bevy-ts exposes its own
-anchors: `bevy:transform-propagate` and `bevy-ts:<stage>`. TS systems order before or after a
-named set and run in a slot around it, made the first time a generation names the set, so an
-unused set costs the parallel executor nothing.
+anchors: `bevy:transform-propagate` and `bevy-ts:<stage>`. A TS system orders against one with
+`systems(s).after(systemSet("rapier:step"))` (or `.before`) and runs in a slot around the set, in
+the set's schedule. The first generation that names a set makes its slot: one exclusive system,
+one schedule edit at that reload. Later reloads move systems between existing slots without
+touching a schedule; an emptied slot stays and is skipped. An unused set has no slot, so it costs
+the parallel executor nothing. A system names at most one exposed set, in that set's schedule,
+and orders against other TS systems only within its slot. Rust orders against a slot with
+`BevyTsSlot::before(name)` / `BevyTsSlot::after(name)`.
 
-## Ports
+## Calling Rust from TS: exported params
 
-A port is a crate `bevy-ts-<name>` whose plugin adds the third-party plugin the way TS gameplay
-needs it and supplies what reflection cannot. `rapier3d` adds `RapierPhysicsPlugin` in
-`FixedUpdate` and exposes `rapier:sync-backend`, `rapier:step` and `rapier:writeback`.
+Behaviour reaches TS as Bevy's own unit, a read-only `SystemParam`. One attribute exports it:
+
+```rust
+#[derive(SystemParam)]
+pub struct RapierQuery<'w, 's> { ctx: ReadRapierContext<'w, 's> }
+
+#[derive(HostRecord)]
+pub struct RayHit { pub entity: Entity, pub toi: f32 }
+
+#[bevy_ts_native::export(ts = "ReadRapierContext", module = "bevy-ts/rapier")]
+impl RapierQuery<'_, '_> {
+    pub fn cast_ray(&self, origin: Vec3, dir: Vec3, max_toi: f32, solid: bool, filter: RayFilter) -> Result<Option<RayHit>, String> { ... }
+    pub fn cast_rays(&self, rays: &[f32], max_toi: f32, solid: bool, filter: RayFilter, toi: &mut [f32], entity: &mut [f64]) -> Result<u32, String> { ... }
+}
+// in the plugin: app.ts_param::<RapierQuery<'static, 'static>>();
+```
+
+A TS system takes it as a parameter and calls it: `rapier.castRay(origin, [0, -1, 0], 100, true,
+{ excludeRigidBody: e })`. Each call is one host call (a V8 fast op), synchronous inside the
+system's run; slices are read and written in place, so `castRays` over 1,000 rays is one call.
+Arguments and results are numbers, `bool`, `Entity`, `Vec2`, `Vec3`, `Quat`, `#[derive(HostRecord)]`
+records, `Option`s of these, and `&[T]` / `&mut [T]` of numbers; anything else is a compile error
+naming the type. A param that writes (`ResMut`, `Query<&mut T>`) does not compile. The param is
+fetched read-only against the world, so a method sees the system's writes so far and cannot move
+column memory. A `Result` error, a param that fails validation, or a panic throws in JS, naming
+the param and method.
+
+## Ports and built-in modules
+
+A port is a crate `bevy-ts-<name>` whose `PortPlugin` adds the third-party plugin the way TS
+gameplay needs it and supplies what reflection cannot: exported params, exposed sets, and a
+built-in TS module registered with `app.ts_module("bevy-ts/<name>", js, dts)`. The module's
+classes declare themselves with `__bevyts.data` and are declared by every generation;
+`plugin_api::write_message` forwards Rust messages into a TS message type of the same name.
+`bevy-ts types` writes the modules' declarations to `native-modules.d.ts` beside `native.d.ts`.
+
+`rapier3d` adds `RapierPhysicsPlugin` in `FixedUpdate`, exposes `rapier:sync-backend`,
+`rapier:step` and `rapier:writeback`, exports `ReadRapierContext`, and ships `bevy-ts/rapier`:
+
+- `Collider`: Rapier's `Collider` has no `Reflect`, so `<Collider cuboid={[0.5, 0.5, 0.5]} />`
+  sets the port's plain-data `ColliderShape`, which Rust turns into the real one; and
+  `Collider.cuboid(commands, e, hx, hy, hz)` inserts one directly;
+- `CollisionEvent`: Rapier's enum flattened to `{ kind, a, b, sensor }`, read with
+  `MessageReader<CollisionEvent>` after `app.addMessage(CollisionEvent)`.
+
+`examples/rapier` uses all of it with no Rust in the project. Plans for leafwing-input-manager,
+avian and bevy_hanabi are in [research/native-ports.md](research/native-ports.md).
