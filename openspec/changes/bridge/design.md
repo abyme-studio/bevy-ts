@@ -196,6 +196,10 @@ None: a greenfield crate. Protocol 1.0.0 ships with this change; the studio pins
 
 ## Operator rulings
 
+- 2026-10-19: field writes go straight into the zero-copy columns and each setter stamps its row
+  in Bevy's own changed-tick array (decision 6, docs/research/change-detection.md). Not coarse
+  whole-column marking, not commands for field writes.
+
 - 2026-10-19: the game draws inside abyme's window from the start, in a native hole, as abyme's
   browser view already sits behind its page. The engine renders to an offscreen target shared
   across processes as a GPU surface (IOSurface on macOS) instead of a window of its own; abyme's

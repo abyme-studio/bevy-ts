@@ -113,7 +113,7 @@ Each reconciled entity's `TsxNode` holds its key path, the source chain (the ele
 
 - *Beat: a compile pass that marks literal props and spans.* It duplicates what the editor's parser must do anyway and couples the runtime to formatting.
 
-### 11. A scene binding is a derived field with one owner, run per site (recommendation, pending the operator)
+### 11. A scene binding is a derived field with one owner, run per site
 A binding on a component element's field, `<PointLight intensity={() => (alarm().on ? 8 : 2)} />`, is allowed on any element, scene or UI, and means: this field is a function of what the binding reads, and the binding is its only writer. A binding whose target has a native layout is not one Solid effect per instance. It is grouped by *site*, the element and prop in source, one per prefab element however many instances exist, and runs as a generated system:
 
 - Rust finds the site's instances whose reads changed, with no JS call: the instance's own components by their change ticks in table order (what `Changed<T>` does), another entity's components through decision 9's per-pair check, a signal through its version (a change re-runs every instance of the site).
@@ -240,6 +240,10 @@ None: new crate and modules. Protocol minor bump for the `bevy-ts/tsx_*` methods
 
 ## Operator rulings
 
+- 2026-10-19: reactive bindings are allowed on scene props, compiled to one generated system per
+  binding site (decision 11, docs/research/scene-bindings.md). A bound prop has one owner, its
+  binding; no system writes it, and the viewport shows it read-only.
+
 - 2026-10-19: TSX defines prefabs, what a thing is. Levels (where things are) and per-instance
   overrides are `.bsn` text files, which the IDE's viewport writes, as Godot writes `.tscn` and
   Unity its scenes; Bevy's own editor plans the same. A literal prop inside a prefab may still be
@@ -250,6 +254,5 @@ None: new crate and modules. Protocol minor bump for the `bevy-ts/tsx_*` methods
 
 ## Open Questions
 
-- Decision 11 is a recommendation from `docs/research/scene-bindings.md`, not a ruling: bindings allowed on scene props as derived fields with one owner, run per site, against UI only. The operator confirms. If the ruling is UI only, decision 11, task 5.7 and the reactive-ui requirement "Bindings on native-layout fields are derived fields with one owner" go, and a function-valued prop on a component element becomes a `tsc` and load error.
 - Whether `<For>` over a signal is enough for HUD lists until `useQuery` exists.
 - Whether a `.bsn` export (`bevy-ts bake`) should wait for Bevy's `.bsn` loader or ship as a text writer first.
