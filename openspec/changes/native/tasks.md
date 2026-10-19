@@ -40,7 +40,7 @@
 - [x] 4.1 `app.ts_set(name, schedule, set)`, name uniqueness at startup, bevy-ts's own anchors (`bevy:transform-propagate`)
 - [x] 4.2 Make before and after slots for a set the first time a generation names it (one schedule edit at that generation's apply), with `BevyTsSlot::before/after` sets for Rust ordering; no slots for unnamed sets
 - [x] 4.3 Place TS systems by `.before/.after(systemSet(name))` into slots; validate one set per system, matching schedule, and TS-to-TS ordering only within a slot; reload moves systems between existing slots without touching schedules
-- [ ] 4.4 Measure the cost of one slot's barrier (Rust systems on both sides, slot present vs absent); the barrier itself is established from `multi_threaded.rs:533`; record the numbers in a research note
+- [x] 4.4 Measure the cost of one slot's barrier (Rust systems on both sides, slot present vs absent); the barrier itself is established from `multi_threaded.rs:533`; record the numbers in a research note
 - [x] 4.5 Emit `NativeSet` as a string union in `native.d.ts`
 
 ## 5. Exported system params
