@@ -30,6 +30,7 @@ pub fn write(dir: &Path, file: &str, src: &str) {
 pub fn app(entry: &Path) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins).add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true));
+    app.add_plugins(bevy_ts_tsx::TsxPlugin);
     app.insert_resource(DevSource(Arc::new(Compiler::new(entry, true).unwrap())));
     app
 }

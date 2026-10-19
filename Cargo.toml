@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen"]
+members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen", "crates/bevy-ts-tsx"]
 exclude = ["bench"]
 
 [workspace.package]
@@ -18,6 +18,7 @@ tokio = { version = "1", features = ["rt"] }
 bevy-ts = { path = "crates/bevy-ts", default-features = false }
 bevy-ts-v8 = { path = "crates/bevy-ts-v8" }
 bevy-ts-remote = { path = "crates/bevy-ts-remote" }
+bevy-ts-tsx = { path = "crates/bevy-ts-tsx" }
 
 [profile.dev]
 opt-level = 1

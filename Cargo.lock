@@ -483,6 +483,7 @@ dependencies = [
  "bevy",
  "bevy-ts",
  "bevy-ts-remote",
+ "bevy-ts-tsx",
  "bevy-ts-v8",
  "jsonschema",
  "notify",
@@ -504,6 +505,16 @@ dependencies = [
 
 [[package]]
 name = "bevy-ts-remote"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy-ts",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "bevy-ts-tsx"
 version = "0.1.0"
 dependencies = [
  "bevy",

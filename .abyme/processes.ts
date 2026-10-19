@@ -11,9 +11,10 @@ export default {
     cmd: "cd bench/ports && cargo test -- --nocapture 2>&1 | tee results/cargo-test.txt",
   },
   build: { cmd: "cargo build --workspace --all-targets" },
-  test: { cmd: "cargo test --workspace" },
+  "tsx-test": { cmd: "cargo test -p bevy-ts-tsx -- --nocapture 2>&1 | tee target/tsx-test.log | tail -80" },
+  test: { cmd: "cargo test --workspace 2>&1 | tee target/test.log | grep -E \"^test result|FAILED|panicked\"" },
   "check-track-location": { cmd: "CARGO_TARGET_DIR=target/track-location cargo check -p bevy-ts --features track_location --all-targets" },
-  clippy: { cmd: "cargo clippy --workspace --all-targets -- -D warnings" },
+  clippy: { cmd: "cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee target/clippy.log | tail -40" },
   skeleton: { cmd: "cargo run -p bevy-ts-cli -- skeleton --headless" },
   cube: { cmd: "cargo run -p bevy-ts-cli -- dev examples/cube/src/game.ts --headless" },
 } satisfies ProcessFile;

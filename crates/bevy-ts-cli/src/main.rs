@@ -79,6 +79,7 @@ fn base_app(headless_mode: bool, options: V8Options) -> App {
         app.add_plugins(headless::HeadlessPlugin);
     }
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(true))
+        .add_plugins(bevy_ts_tsx::TsxPlugin)
         .add_systems(Update, headless::screenshot_on_request);
     app
 }
