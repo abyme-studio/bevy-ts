@@ -26,11 +26,11 @@
 - [ ] 3.5 Ship pre-generated `bevy-ts/bevy` types from the prebuilt engine; CI regenerate-and-diff; `bevy-ts dev` regenerates after each project-engine build
 - [ ] 3.6 TSX accepts reflect-tier components as elements (patch through bridge's reflected access); test `<Weapon name="laser" />`
 
-- [ ] 3.7 Prove the layout rule on `bevy_rapier3d` 0.37 in the engine: `Velocity`, `ExternalImpulse`, `RigidBody` (enum bytes) and the private `LockedAxes` are layout tier; `Collider` (no `Reflect`) is not; a TS write to `Velocity` moves a body
+- [x] 3.7 Prove the layout rule on `bevy_rapier3d` 0.37 in the engine: `Velocity`, `ExternalImpulse`, `RigidBody` (enum bytes) and the private `LockedAxes` are layout tier; `Collider` (no `Reflect`) is not; a TS write to `Velocity` moves a body
 
 ## 3b. Plugin adoption
 
-- [ ] 3b.1 Read `native.ports` and `native.crates` from `bevy-ts.json`; generate the engine's dependencies and `add_plugins` lines; a project with plugins and no native crate builds and runs
+- [x] 3b.1 Read `native.ports` and `native.crates` from `bevy-ts.json`; generate the engine's dependencies and `add_plugins` lines; a project with plugins and no native crate builds and runs
 - [ ] 3b.2 Port format: crate `bevy-ts-<name>` whose Bevy plugin adds the third-party plugin, exports params, exposes sets and registers the `bevy-ts/<name>` module (types, JS glue, TSX constructors, flattened messages)
 - [ ] 3b.3 Ship the `rapier3d` port: `RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule()`, `Collider` constructors, `CollisionEvent` flattened to `{ kind, a, b, sensor }`, `ReadRapierContext` exported with `castRay`/`castRays`, sets `rapier:sync-backend`/`rapier:step`/`rapier:writeback`; example `examples/rapier/` with no Rust in the project
 - [ ] 3b.4 Plan the `leafwing-input-manager` port with a dynamic `TsAction(u16)`; record avian and hanabi as waiting on Bevy 0.20
@@ -53,4 +53,4 @@
 ## 7. Docs
 
 - [ ] 7.1 Write `docs/native.md`: the "what stays Rust" table, the two component tiers and holes, plugin adoption and ports, exported params, slots, and the shared cache for teams
-- [ ] 7.2 README: one line on the native crate and project engines
+- [x] 7.2 README: one line on the native crate and project engines

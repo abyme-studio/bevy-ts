@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen", "crates/bevy-ts-tsx", "crates/bevy-ts-native", "crates/bevy-ts-native-derive"]
-exclude = ["bench"]
+exclude = ["bench", "crates/bevy-ts-rapier3d"]
 
 [workspace.package]
 version = "0.1.0"

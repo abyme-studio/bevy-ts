@@ -13,6 +13,9 @@ without recompiling Rust.
   native entities on mount and on change, never per frame. Stable keys keep runtime state across
   hot reloads; `initial*` props are never reset by a reload. Built on BSN templates where they fit.
 - **`bevy-ts dev src/game.ts`** launches the engine, loads the TypeScript and hot reloads it.
+- **Rust when it must be**: a project adopts Bevy plugins in one line of `bevy-ts.json`, or adds
+  its own Rust as one Bevy plugin; bevy-ts then builds a project engine, only when Rust changes,
+  cached by hash ([docs/native.md](docs/native.md)).
 
 abyme's Bevy studio talks to a running game over the Bevy Remote Protocol, which bevy-ts extends
 (reload, component schemas, scene reconcile, entity events). That contract is the only coupling.

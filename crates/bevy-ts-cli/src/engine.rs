@@ -327,7 +327,7 @@ impl Plan {
             let last = path.rsplit("::").next().unwrap_or(path);
             let _ = write!(
                 s,
-                "#[allow(non_upper_case_globals, unused_imports)]\nmod plugin_{i} {{\n    mod fallback {{\n        pub const {last}: bevy_ts_cli::__plugin::UseDefault = bevy_ts_cli::__plugin::UseDefault;\n    }}\n    pub use fallback::*;\n    pub use {path};\n}}\n\n"
+                "#[allow(non_upper_case_globals, unused_imports, dead_code)]\nmod plugin_{i} {{\n    mod fallback {{\n        pub const {last}: bevy_ts_cli::__plugin::UseDefault = bevy_ts_cli::__plugin::UseDefault;\n    }}\n    pub use fallback::*;\n    pub use {path};\n}}\n\n"
             );
         }
         s.push_str("struct ProjectPlugins;\n\nimpl Plugin for ProjectPlugins {\n    fn build(&self, app: &mut App) {\n");

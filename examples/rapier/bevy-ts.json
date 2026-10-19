@@ -1,0 +1,4 @@
+{
+  // Physics in one line: no Rust in this project.
+  "native": { "ports": ["rapier3d"] }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "bevy-ts-rapier3d"
+description = "The bevy-ts port of bevy_rapier3d: one line in bevy-ts.json adopts Rapier physics"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false }
+bevy-ts-native = { path = "../bevy-ts-native" }
+bevy_rapier3d = { version = "0.37", default-features = false, features = ["dim3"] }
+
+# Built only into project engines that adopt it, never with the bevy-ts workspace, so the
+# workspace build does not compile Rapier.
+[workspace]

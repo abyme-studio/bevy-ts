@@ -5,3 +5,4 @@ dist/
 packages/platforms/*/bin/bevy-ts
 packages/platforms/*/bin/bevy-ts.exe
 .bevy-ts/
+crates/bevy-ts-rapier3d/Cargo.lock
