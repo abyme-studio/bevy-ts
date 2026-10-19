@@ -214,5 +214,11 @@ None: a new crate, a CLI flag, protocol 1.1 (additions only). abyme pins major 1
 - The prefab instance root is the highest ancestor with the hit's innermost call site and chain depth; `viewport_select` by location goes through the served `bevy-ts/tsx_find`. Selection items carry the node id as tsx's 16-digit hex.
 - Pointer events' `mods` count as held modifiers for ⌥ and ⇧ clicks, since a viewer may not forward modifier key events.
 
+## Assets as built
+
+- The root is Bevy's file reader root (`BEVY_ASSET_ROOT`, else `CARGO_MANIFEST_DIR`, else the executable's folder, joined with `assets`), overridable with the `AssetRoot` resource. `bevy-ts dev` does not yet point Bevy at the project's `assets/`; that is bridge's to set, and the listing follows whatever Bevy reads.
+- `assets+watch` polls the root every 250 ms while someone watches, diffing size, mtime and load state; Bevy's `file_watcher` feature is not on in the engine build, and polling needs no new feature.
+- `asset_thumbnail` answers images at once (decoded by Bevy, scaled on the CPU). Meshes and glTF scenes render offscreen on layer 30 over a few frames and read back; until then the answer is `pending: true` and the client asks again (`bevy_remote` methods cannot wait across frames). Fonts get no thumbnail yet (`png: null`). PNGs are written with stored deflate blocks and base64 by hand, so no image or base64 crate was added.
+
 ## Open Questions
 

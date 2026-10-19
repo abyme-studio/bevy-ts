@@ -3441,6 +3441,10 @@
               "null"
             ],
             "description": "Base64 PNG; null for kinds with no thumbnail."
+          },
+          "pending": {
+            "type": "boolean",
+            "description": "Rendering has started and is not done: ask again. Meshes and glTF scenes render offscreen over a few frames; images answer at once."
           }
         }
       },

@@ -37,6 +37,7 @@ export default {
   "viewport-one": { cmd: "cargo test -p bevy-ts-viewport --test viewport -- --nocapture --test-threads=1 $VIEWPORT_TEST 2>&1 | grep -v ld64 | tee target/viewport-one.log | tail -30" },
   "viewport-edit": { cmd: "cargo test -p bevy-ts-viewport --test edit -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-edit.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -40" },
   "viewport-roundtrip": { cmd: "cargo test -p bevy-ts-cli --test viewport_edit -- --nocapture 2>&1 | grep -v ld64 | tee target/viewport-roundtrip.log | grep -E 'test |panicked|left|right|assert|^thread|error' | tail -30" },
+  "viewport-assets": { cmd: "cargo test -p bevy-ts-viewport --test assets --lib -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-assets.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -30" },
   "viewport-spike-short": { cmd: "cargo test -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike-short.log | tail -40" },
   "viewport-latency": { cmd: "SPIKE_PRESSES=200 cargo test --release -p bevy-ts-viewport --test spike key_to_pixels -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-latency.log | tail -8" },
   "viewport-spike": { cmd: "SPIKE_SECS=60 cargo test --release -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },

@@ -45,9 +45,9 @@
 
 ## 7. Assets
 
-- [ ] 7.1 `bevy-ts/assets`: walk the asset root, kind and loader by extension, load state by path, glTF labelled sub-assets once loaded, loading nothing
-- [ ] 7.2 `assets+watch` from `file_watcher` and `AssetEvent`, coalesced per frame
-- [ ] 7.3 `asset_thumbnail`: offscreen camera on layer 30 with its own light, `Readback`, PNG, cache by path and mtime; test it leaves the ring and game cameras untouched
+- [x] 7.1 `bevy-ts/assets`: walk the asset root, kind and loader by extension, load state by path, glTF labelled sub-assets once loaded, loading nothing
+- [x] 7.2 `assets+watch` from `file_watcher` and `AssetEvent`, coalesced per frame
+- [x] 7.3 `asset_thumbnail`: offscreen camera on layer 30 with its own light, `Readback`, PNG, cache by path and mtime; test it leaves the ring and game cameras untouched
 
 ## 8. Demo and hand-off
 

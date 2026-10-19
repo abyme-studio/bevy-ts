@@ -5,6 +5,8 @@
 //! macOS only. On other platforms the crate builds empty and [`supported`] is false.
 
 #[cfg(target_os = "macos")]
+pub mod assets;
+#[cfg(target_os = "macos")]
 pub mod edit;
 #[cfg(target_os = "macos")]
 pub mod edits;
@@ -67,6 +69,7 @@ mod plugin {
                 .add_systems(First, count_update);
             edit::build(app);
             edits::build(app);
+            assets::build(app);
             if !self.windowed {
                 let (w, h, scale) = DEFAULT_SIZE;
                 let mut resolution = WindowResolution::new((w * scale) as u32, (h * scale) as u32);
@@ -101,6 +104,7 @@ mod plugin {
                 methods::add_common_methods(app);
                 methods::add_edit_methods(app);
                 methods::add_edit_result_methods(app);
+                assets::add_methods(app);
             }
             if !self.windowed {
                 ring::finish_render(app);

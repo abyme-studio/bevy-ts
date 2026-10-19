@@ -997,7 +997,10 @@ export interface FieldRoutes {
 export interface SelectionItem {
   entity: Entity;
   name?: string | null;
-  node?: number | null;
+  /**
+   * The TSX node id, 16 hex digits as bevy-ts/tsx_node gives it.
+   */
+  node?: string | null;
   source?: SourceLocation[];
   level?: string | null;
   instance?: string | null;
@@ -1156,6 +1159,10 @@ export interface AssetThumbnailResult {
    * Base64 PNG; null for kinds with no thumbnail.
    */
   png: string | null;
+  /**
+   * Rendering has started and is not done: ask again. Meshes and glTF scenes render offscreen over a few frames; images answer at once.
+   */
+  pending?: boolean;
 }
 /**
  * Carries the IOSurface's Mach port.

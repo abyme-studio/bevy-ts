@@ -309,6 +309,9 @@ pub struct AssetThumbnailParams {
 #[serde(deny_unknown_fields)]
 pub struct AssetThumbnailResult {
     pub path: ::std::string::String,
+    ///Rendering has started and is not done: ask again. Meshes and glTF scenes render offscreen over a few frames; images answer at once.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub pending: ::std::option::Option<bool>,
     ///Base64 PNG; null for kinds with no thumbnail.
     #[serde(deserialize_with = "::std::option::Option::deserialize")]
     pub png: ::std::option::Option<::std::string::String>,
@@ -1964,8 +1967,9 @@ pub struct SelectionItem {
     pub level: ::std::option::Option<::std::string::String>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub name: ::std::option::Option<::std::string::String>,
+    ///The TSX node id, 16 hex digits as bevy-ts/tsx_node gives it.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-    pub node: ::std::option::Option<u64>,
+    pub node: ::std::option::Option<::std::string::String>,
     pub primary: bool,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub routes: ::std::option::Option<FieldRoutes>,
