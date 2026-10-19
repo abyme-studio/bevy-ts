@@ -6,7 +6,7 @@
 Transform { translation: Vec3 { x: -3.0, z: -4.0 } }
 --
 #EnemyB
-@game::Enemy { @hp: 250.0 }
+@game::Enemy { @hp: 250.0, team: 1 }
 Transform { translation: Vec3 { x: 3.0, z: -4.0 } }
 Children [
     // Override the prefab's eye by name (E3).

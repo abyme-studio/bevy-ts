@@ -342,7 +342,7 @@ mod tests {
         let codes: Vec<_> = f.extensions.iter().map(|u| u.extension.code()).collect();
         assert_eq!(codes, ["E2", "U1"]);
         assert!(!p.fields.get("team").unwrap().prop && p.fields.get("hp").unwrap().prop);
-        assert!(err("Transform { @x: 1.0 }").contains("only valid in a prefab"));
+        assert!(err("Transform { @x: 1.0 }").contains("only valid in a scene component instance"));
     }
 
     #[test]
