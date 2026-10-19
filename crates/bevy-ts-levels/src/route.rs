@@ -112,14 +112,24 @@ fn vector_type(ty: &FieldType) -> Option<&'static str> {
 /// arrives in [`crate::edit::WriteResults`] under `edit_id`. `Err` is a refusal before any
 /// write: not a level entity, or a field levels cannot write.
 pub fn write(world: &mut World, edit_id: u64, entity: Entity, component: &str, field: &str, after: Value) -> Result<(), String> {
+    write_from(world, edit_id, entity, component, field, None, after)
+}
+
+/// [`write`] given the value before the edit (the gizmo's start): only lanes that differ from it
+/// are written, so a drag along x writes `x` even when a system had moved `y`.
+pub fn write_from(world: &mut World, edit_id: u64, entity: Entity, component: &str, field: &str, before: Option<Value>, after: Value) -> Result<(), String> {
     let r = route(world, entity, component, field).ok_or("levels does not own this field")?;
     let file = r["target"]["file"].as_str().ok_or("no target")?.to_string();
     let path: Vec<String> = serde_json::from_value(r["target"]["namePath"].clone()).map_err(|e| e.to_string())?;
-    let before = world
-        .get::<TsxNode>(entity)
-        .and_then(|n| n.components.get(component))
-        .map(|c| c.fields.iter().map(|(k, s)| (k.clone(), s.applied.clone())).collect::<serde_json::Map<_, _>>())
-        .unwrap_or_default();
+    let top = field.split('.').next().unwrap_or(field).to_string();
+    let before = match before {
+        Some(v) => serde_json::Map::from_iter([(top, v)]),
+        None => world
+            .get::<TsxNode>(entity)
+            .and_then(|n| n.components.get(component))
+            .map(|c| c.fields.iter().map(|(k, s)| (k.clone(), s.applied.clone())).collect::<serde_json::Map<_, _>>())
+            .unwrap_or_default(),
+    };
     let ops = set_ops(world, &path, component, field, &after, &before)?;
     if ops.is_empty() {
         return Ok(());

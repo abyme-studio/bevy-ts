@@ -699,8 +699,23 @@ fn plan_revert(file: &ParsedFile, path: &[String], component: &str, field: &[Str
     let mut out = Vec::new();
     if holder.named().len() == 1 && holder.get(leaf).is_some() {
         if field.len() == 1 {
-            // The patch has nothing left: it goes with its line.
-            out.push(entry_removal(file, f.entity, &Entry::Patch(p.clone())));
+            let only = f.entity.entries.iter().all(|x| matches!(x, Entry::Name(_)) || x == &Entry::Patch(p.clone()));
+            if only && path.len() > 1 {
+                // An override entry with nothing left (`#eye` under an instance) goes whole, and
+                // its parent's `Children [ … ]` with it when it was the only one.
+                let parent = find(file, &path[..path.len() - 1]).expect("the parent of a found entity");
+                let siblings = f.list.items.iter().filter(|e| !e.entries.is_empty()).count();
+                match parent.entity.related("Children") {
+                    Some(r) if siblings == 1 => out.push(entry_removal(file, parent.entity, &Entry::Related(r.clone()))),
+                    _ => {
+                        let (s, e) = entity_removal(file, f.list, f.index);
+                        out.push((s, e, String::new()));
+                    }
+                }
+            } else {
+                // The patch has nothing left: it goes with its line.
+                out.push(entry_removal(file, f.entity, &Entry::Patch(p.clone())));
+            }
         } else {
             return plan_revert(file, path, component, &field[..field.len() - 1]).map(|(s, _, t, n)| (s, inverse.clone().into_iter().collect(), t, n));
         }

@@ -361,8 +361,8 @@ fn finish(
         Base::Scene(i) => {
             let mut n = expansions[i].take().expect("each expansion is used once");
             n.key = key.clone();
-            // The level is the outermost call site (tsx's expansion may have put it there).
-            if n.source.last().is_none_or(|s| s.file != at.file || s.line != at.line) {
+            // The level is the outermost call site; tsx's expansion already names the `@` entry.
+            if n.source.last().is_none_or(|s| s.file != at.file) {
                 n.source.push(at.clone());
             }
             n

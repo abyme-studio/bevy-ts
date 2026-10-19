@@ -199,6 +199,13 @@ fn existing_full_paths_are_kept() {
 }
 
 #[test]
+fn reverting_an_override_child_removes_its_entry() {
+    let w = ok(ARENA, &[set("EnemyB/eye", "Transform", "translation.y", f(0.8))]);
+    let back = ok(&w.text, &w.inverse);
+    assert_eq!(back.text, ARENA);
+}
+
+#[test]
 fn a_prefab_internal_entity_cannot_be_deleted() {
     let e = apply(ARENA, &[Op::Delete { path: p("EnemyB/eye") }]).unwrap_err();
     assert_eq!(e.reason, "prefab-internal");

@@ -1,6 +1,7 @@
-// The arena: two enemies, a player and a HUD, and three systems. `bevy-ts dev src/game.tsx`.
+// The arena: a player and a HUD in TSX, the enemies placed by assets/levels/arena.bsn, and three
+// systems. `bevy-ts dev src/game.tsx`.
 import { app, type Commands, type Entity, type Local, type Mut, type Query, ref, type Res, Time, Transform, type u32, Update, type With, type Without } from "bevy-ts";
-import { Enemy, Foe, Health } from "./enemy.tsx";
+import { Foe, Health } from "./enemy.tsx";
 import { Hud } from "./hud.tsx";
 import { Player, PlayerUnit } from "./player.tsx";
 
@@ -37,9 +38,8 @@ const player = ref();
 app.scene("arena", () => (
   <>
     <PlayerUnit handle={player} />
-    <Enemy key="a" at={[-3, 0, -4]} />
-    <Enemy key="b" at={[3, 0, -4]} hp={250} />
     <Hud player={player} />
   </>
 ));
+app.level("levels/arena.bsn");
 app.addSystems(Update, damage, bob, cull);

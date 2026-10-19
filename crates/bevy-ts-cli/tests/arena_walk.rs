@@ -1,6 +1,7 @@
 //! Task 8.2: the eight demo steps of `openspec/changes/tsx/design.md` ("First demo") against
 //! `examples/arena/src`, in V8, headless and in-process: reload latency (compile and apply, no
-//! watcher) and tsx host calls per frame. Prints one line per step; `examples/arena/WALK.md`
+//! watcher) and tsx host calls per frame. The enemies are placed by `assets/levels/arena.bsn`
+//! (levels task 6.1), so their edits are level edits. Prints one line per step; `examples/arena/WALK.md`
 //! records a release run:
 //! `cargo test --release -p bevy-ts-cli --test arena_walk -- --nocapture`.
 
@@ -28,13 +29,21 @@ impl Walk {
             .iter()
             .map(|f| (format!("src/{f}"), std::fs::read_to_string(src.join(f)).unwrap()))
             .collect();
+        let levels = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena/assets/levels");
+        let mut files = files;
+        for f in ["arena.bsn", "room.bsn"] {
+            files.push((format!("assets/levels/{f}"), std::fs::read_to_string(levels.join(f)).unwrap()));
+        }
         let mut list: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
         list.push(("package.json", "{}"));
         let dir = project("arena-walk", &list);
         let mut app = app(&dir.join("src/game.tsx"));
-        app.add_plugins((AssetPlugin::default(), RemotePlugin::default()))
+        let assets = dir.join("assets").canonicalize().unwrap();
+        app.add_plugins((AssetPlugin { file_path: assets.to_string_lossy().into_owned(), ..Default::default() }, RemotePlugin::default()))
             .init_asset::<Mesh>()
-            .init_asset::<StandardMaterial>();
+            .init_asset::<StandardMaterial>()
+            .add_plugins(bevy_ts_levels::engine::LevelsPlugin);
+        app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = assets;
         bevy_ts_tsx::protocol::add_methods(&mut app);
         Walk { app, dir }
     }
@@ -42,9 +51,49 @@ impl Walk {
     fn reload(&mut self, restart: bool) -> (ReloadReport, f64) {
         let t = Instant::now();
         let r = reload(&mut self.app, restart);
-        let ms = t.elapsed().as_secs_f64() * 1e3;
         assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+        self.settle();
+        let ms = t.elapsed().as_secs_f64() * 1e3;
         (r, ms)
+    }
+
+    /// Frames until the level has loaded and reconciled.
+    fn settle(&mut self) {
+        for _ in 0..500 {
+            let levels = self.app.world().resource::<bevy_ts_levels::engine::Levels>();
+            if !levels.roots.is_empty() && levels.roots.values().all(|r| !r.dirty && !r.applied.is_empty()) {
+                return;
+            }
+            self.app.update();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        panic!("the level never loaded: {:?}", messages(&self.app));
+    }
+
+    /// Edits the level file and reloads it as the watcher would; returns the time to the
+    /// reconciled world.
+    fn edit_level(&mut self, from: &str, to: &str) -> f64 {
+        let p = self.dir.join("assets/levels/arena.bsn");
+        let s = std::fs::read_to_string(&p).unwrap();
+        assert!(s.contains(from), "arena.bsn has no {from:?}");
+        let next = s.replacen(from, to, 1);
+        std::fs::write(&p, &next).unwrap();
+        let hash = bevy_ts_levels::engine::content_hash(next.as_bytes());
+        let t = Instant::now();
+        self.app.world().resource::<AssetServer>().reload("levels/arena.bsn");
+        for _ in 0..500 {
+            self.app.update();
+            let levels = self.app.world().resource::<bevy_ts_levels::engine::Levels>();
+            if levels.roots["levels/arena.bsn"].applied.get("levels/arena.bsn") == Some(&hash) {
+                return t.elapsed().as_secs_f64() * 1e3;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        panic!("arena.bsn never reloaded: {:?}", messages(&self.app));
+    }
+
+    fn enemy(&mut self, name: &str) -> Option<Entity> {
+        self.node("level:levels/arena.bsn", &[name])
     }
 
     fn edit(&mut self, file: &str, from: &str, to: &str) -> f64 {
@@ -110,13 +159,13 @@ fn line(step: u32, what: &str) {
 fn the_arena_demo_walks_its_eight_steps() {
     let mut w = Walk::start();
 
-    // 1. Two red cubes; the HUD reads HP 100 / 100.
+    // 1. Two red cubes from arena.bsn; the HUD reads HP 100 / 100.
     let (_, ms) = w.reload(false);
     updates(&mut w.app, 2);
-    let (a, b) = (w.arena("a").expect("enemy a"), w.arena("b").expect("enemy b"));
+    let (a, b) = (w.enemy("EnemyA").expect("enemy a"), w.enemy("EnemyB").expect("enemy b"));
     assert!(w.app.world().get::<Mesh3d>(a).is_some() && w.app.world().get::<Mesh3d>(b).is_some());
     assert_eq!(w.text(), "HP 100 / 100");
-    line(1, &format!("two enemies and a player mounted, HUD \"{}\"; first load {ms:.1} ms", w.text()));
+    line(1, &format!("two enemies from arena.bsn and a player mounted, HUD \"{}\"; first load {ms:.1} ms", w.text()));
 
     // 2. Damage: only the HUD text changes, with no host call on frames the player's Health
     // did not change.
@@ -144,12 +193,15 @@ fn the_arena_demo_walks_its_eight_steps() {
     assert_eq!(moved, 1, "only the hp text was written");
     line(2, &format!("60 frames of damage: HUD \"{}\"; {} host calls, on the 2 frames the player was hit (none on the other 58); 1 Text written", w.text(), w.calls() - before));
 
-    // 3. b's hp={250} -> 400: max follows, hp (initial) stays, no cube jumps.
+    // 3. b's @hp: 250 -> 400 in arena.bsn: max follows, hp (initial) stays, no cube jumps.
     let tb = *w.app.world().get::<Transform>(b).unwrap();
-    let ms = w.edit("game.tsx", "hp={250}", "hp={400}");
+    let ms = w.edit_level("@hp: 250.0", "@hp: 400.0");
     assert_eq!(w.health(b), (250.0, 400.0));
-    assert_eq!(*w.app.world().get::<Transform>(b).unwrap(), tb);
-    line(3, &format!("b hp={{250}} -> {{400}}: Health (hp, max) = {:?}, Transform untouched; reload {ms:.1} ms", w.health(b)));
+    // The reload runs frames, so bob has moved y; x and z are where they were.
+    let now = w.app.world().get::<Transform>(b).unwrap().translation;
+    assert_eq!((now.x, now.z), (tb.translation.x, tb.translation.z));
+    assert_eq!(w.enemy("EnemyB"), Some(b));
+    line(3, &format!("b @hp: 250.0 -> 400.0 in arena.bsn: Health (hp, max) = {:?}, Transform untouched; reload {ms:.1} ms", w.health(b)));
 
     // 4. Recolour Enemy: both enemies' material changes, positions (moved by bob) kept.
     updates(&mut w.app, 5);
@@ -157,7 +209,11 @@ fn the_arena_demo_walks_its_eight_steps() {
     let (ma, mb) = (w.material(a), w.material(b));
     let ms = w.edit("enemy.tsx", "#cc3333", "#33cc33");
     assert!(w.material(a) != ma && w.material(b) != mb && w.material(a) == w.material(b));
-    assert_eq!((*w.app.world().get::<Transform>(a).unwrap(), *w.app.world().get::<Transform>(b).unwrap()), (ta, tb));
+    // The level re-expands at the frame after the generation, so bob has run once more: x and
+    // z are the level's, and y is bob's, never reset to the prefab's 0.
+    let (na, nb) = (w.app.world().get::<Transform>(a).unwrap().translation, w.app.world().get::<Transform>(b).unwrap().translation);
+    assert_eq!((na.x, na.z, nb.x, nb.z), (ta.translation.x, ta.translation.z, tb.translation.x, tb.translation.z));
+    assert!(na.y != 0.0 && nb.y != 0.0);
     line(4, &format!("recolour Enemy: both enemies share the new material; bobbed y kept (a.y {:.2}); reload {ms:.1} ms", ta.translation.y));
 
     // 5. A system kills a; an unrelated save leaves it dead; a restart brings it back.
@@ -165,24 +221,25 @@ fn the_arena_demo_walks_its_eight_steps() {
     w.app.update();
     assert!(w.app.world().get_entity(a).is_err(), "cull despawned a");
     let ms = w.edit("game.tsx", "// The arena:", "// The arena (edited):");
-    assert!(w.arena("a").is_none(), "not respawned");
+    assert!(w.enemy("EnemyA").is_none(), "not respawned");
     let tree = w.rpc("bevy-ts/tsx_tree", json!(null));
-    let tomb = tree["roots"].as_array().unwrap().iter().flat_map(|r| r["nodes"].as_array().unwrap().iter()).find(|n| n["keyPath"] == json!(["a"])).unwrap().clone();
+    let tomb = tree["roots"].as_array().unwrap().iter().flat_map(|r| r["nodes"].as_array().unwrap().iter()).find(|n| n["keyPath"] == json!(["EnemyA"])).unwrap().clone();
     assert_eq!(tomb["tombstoned"], true);
     let (_, restart_ms) = w.reload(true);
     w.app.update();
-    let a2 = w.arena("a").expect("back after restart");
+    let a2 = w.enemy("EnemyA").expect("back after restart");
     assert_eq!(w.health(a2), (100.0, 100.0));
     line(5, &format!("cull despawned a; an unrelated save left it tombstoned ({ms:.1} ms); restart: true brought it back at hp 100 ({restart_ms:.1} ms)"));
 
-    // 6. Add enemy c: one spawn; a and b keep their entities.
-    let (a, b) = (a2, w.arena("b").unwrap());
-    let ms = w.edit("game.tsx", "    <Hud player={player} />", "    <Enemy key=\"c\" at={[0, 0, -8]} />\n    <Hud player={player} />");
+    // 6. Add enemy c to arena.bsn: one instance (the enemy and its eye) spawns; a and b keep
+    // their entities.
+    let (a, b) = (a2, w.enemy("EnemyB").unwrap());
+    let ms = w.edit_level("--\n// Two copies of one room", "--\n#EnemyC\n@enemy::Enemy\nTransform { translation: Vec3 { z: -8.0 } }\n--\n// Two copies of one room");
     let last = w.app.world().resource::<TsxTree>().last.clone();
-    assert_eq!((last.spawned, last.despawned), (1, 0));
-    assert_eq!((w.arena("a"), w.arena("b")), (Some(a), Some(b)));
-    assert!(w.arena("c").is_some());
-    line(6, &format!("add <Enemy key=\"c\">: {} spawned, a and b unchanged; reload {ms:.1} ms", last.spawned));
+    assert_eq!((last.spawned, last.despawned), (2, 0));
+    assert_eq!((w.enemy("EnemyA"), w.enemy("EnemyB")), (Some(a), Some(b)));
+    assert!(w.enemy("EnemyC").is_some());
+    line(6, &format!("add #EnemyC to arena.bsn: {} spawned (enemy and eye), a and b unchanged; reload {ms:.1} ms", last.spawned));
 
     // 7. Click Spawn: an enemy mounts from the handler through the tsx op stream.
     w.app.update();
@@ -200,16 +257,16 @@ fn the_arena_demo_walks_its_eight_steps() {
     w.app.update();
     let runtime: Vec<Vec<String>> = {
         let world = w.app.world_mut();
-        world.query::<&TsxNode>().iter(world).filter(|n| n.root == "$runtime").map(|n| n.key_path.clone()).collect()
+        world.query::<&TsxNode>().iter(world).filter(|n| n.root == "$runtime" && n.key_path.len() == 1).map(|n| n.key_path.clone()).collect()
     };
     assert_eq!(runtime.len(), 1, "{runtime:?}");
     line(7, &format!("click Spawn: {:?} mounted under the runtime root in {} host call", runtime[0], w.calls() - c));
 
-    // 8. tsx_node for b: its chain ends at game.tsx's <Enemy key="b">; hp initial, max controlled.
+    // 8. tsx_node for b: its chain ends at arena.bsn's `@enemy::Enemy` entry; hp initial, max controlled.
     let n = w.rpc("bevy-ts/tsx_node", json!({ "entity": b.to_bits() }));
     let chain: Vec<String> = n["source"].as_array().unwrap().iter().map(|s| format!("{}:{}", s["file"].as_str().unwrap().rsplit('/').next().unwrap(), s["line"])).collect();
-    let game_line = std::fs::read_to_string(w.dir.join("src/game.tsx")).unwrap().lines().position(|l| l.contains("<Enemy key=\"b\"")).unwrap() + 1;
-    assert_eq!(chain.last().unwrap(), &format!("game.tsx:{game_line}"));
+    let level_line = std::fs::read_to_string(w.dir.join("assets/levels/arena.bsn")).unwrap().lines().position(|l| l.contains("@enemy::Enemy { @hp")).unwrap() + 1;
+    assert_eq!(chain.last().unwrap(), &format!("arena.bsn:{level_line}"));
     let h = &n["components"]["enemy::Health"]["fields"];
     assert_eq!((h["hp"]["provenance"].as_str(), h["max"]["provenance"].as_str()), (Some("initial"), Some("controlled")));
     line(8, &format!("tsx_node b: source {chain:?}; Health.hp {}, Health.max {}", h["hp"], h["max"]));

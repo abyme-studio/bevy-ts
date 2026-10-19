@@ -16,7 +16,7 @@ pub mod syntax;
 pub mod writer;
 
 pub use edit::{WriteResult, WriteResults};
-pub use route::{PrefabEdits, route, write};
+pub use route::{PrefabEdits, route, write, write_from};
 
 #[cfg(test)]
 #[allow(warnings, clippy::all, clippy::pedantic)]

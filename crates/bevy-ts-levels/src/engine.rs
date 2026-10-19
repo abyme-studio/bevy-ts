@@ -20,7 +20,7 @@ use bevy_ts::log::{LogLevel, ScriptLog};
 use bevy_ts::plugin_api::BevyTsAppExt;
 use bevy_ts::value;
 use bevy_ts_tsx::desc::{ComponentKind, NodeDesc, node_id};
-use bevy_ts_tsx::TsxTree;
+use bevy_ts_tsx::{TsxNode, TsxTree};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -286,12 +286,12 @@ fn apply_section(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSectio
     }
 }
 
-/// A generation re-expands every instance (rule 9): run after tsx applied the generation.
+/// A generation re-expands every instance (rule 9). The runtime is busy while a generation
+/// applies, so the expansion runs at the next frame boundary, in `watch`.
 fn after_generation(world: &mut World, _: &bevy_ts::plugin_api::AppliedSection) {
     for r in world.resource_mut::<Levels>().roots.values_mut() {
         r.dirty = true;
     }
-    reconcile_dirty(world);
 }
 
 fn after_restart(world: &mut World) {
@@ -749,10 +749,16 @@ fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap
             writes.push((e, inst));
         }
     }
+    let keep: std::collections::HashSet<Entity> = writes.iter().map(|(e, _)| *e).collect();
     for (e, inst) in writes {
         let Ok(mut em) = world.get_entity_mut(e) else { continue };
         if em.get::<LevelInstance>() != Some(&inst) {
             em.insert(inst);
         }
+    }
+    // An entity whose override went is the prefab's again.
+    let stale: Vec<Entity> = world.query_filtered::<(Entity, &TsxNode), With<LevelInstance>>().iter(world).filter(|(e, n)| n.root == root && !keep.contains(e)).map(|(e, _)| e).collect();
+    for e in stale {
+        world.entity_mut(e).remove::<LevelInstance>();
     }
 }
