@@ -49,7 +49,7 @@ A plugin SHALL be able to register a command opcode with a decoder. JS SHALL be 
 A plugin SHALL be able to look up a live TS component's `ComponentId` and layout (size, align, fields with offsets and types) by its declared name, and SHALL be able to encode a map of field names to values into the component's native bytes, with defaults filled in and type errors naming the field.
 
 #### Scenario: Encoding a partial value
-- **WHEN** a plugin encodes `{ hp: 50 }` for `game::Health { hp: f32, max: f32.default(100) }`
+- **WHEN** a plugin encodes `{ hp: 50 }` for `class Health extends Component { static path = "game::Health"; declare hp: f32; max: f32 = 100 }`
 - **THEN** it gets 8 bytes holding 50.0 and 100.0
 
 ### Requirement: Reflected Rust components for plugins

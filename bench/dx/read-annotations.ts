@@ -73,8 +73,45 @@ function decl(t: ts.TypeNode, sf: ts.SourceFile, sub: Map<string, string> = new 
   }
   return `{ ${n.members.map((m) => `${(m as ts.PropertySignature).name.getText(nsf)}: ${decl((m as ts.PropertySignature).type!, nsf)}`).join(", ")} }`;
 }
+// Data classes: components, resources, messages and events. Field kinds come from the written type.
+const DATA = new Set(["Component", "ReflectComponent", "Resource", "Message", "Event", "EntityEvent"]);
+const KINDS: Record<string, string> = {
+  f32: "f32", f64: "f64", i8: "i8", u8: "u8", i16: "i16", u16: "u16", i32: "i32", u32: "u32",
+  bool: "bool", boolean: "bool", Entity: "entity", Vec2: "vec2", Vec3: "vec3", Vec4: "vec4", Quat: "quat",
+};
+function fieldKind(t: ts.TypeNode, sf: ts.SourceFile): string {
+  if (ts.isUnionTypeNode(t) && t.types.every((u) => ts.isLiteralTypeNode(u) && ts.isStringLiteral(u.literal))) {
+    return `enum(${t.types.map((u) => ((u as ts.LiteralTypeNode).literal as ts.StringLiteral).text).join("|")})`;
+  }
+  const k = KINDS[t.getText(sf)];
+  if (!k) throw new Error(`${sf.fileName.split("/").pop()}:${sf.getLineAndCharacterOfPosition(t.getStart(sf)).line + 1}: ${t.getText(sf)} is not a field type (f32, u32, bool, Entity, Vec3, Quat, a string-literal union, ...)`);
+  return k;
+}
+function readData(n: ts.ClassDeclaration, sf: ts.SourceFile, file: string) {
+  const base = n.heritageClauses?.[0]?.types[0]?.expression.getText(sf) ?? "";
+  if (base.startsWith("States(")) return console.log(`${n.name!.text}: states ${base.slice(6)}`);
+  if (!DATA.has(base)) return;
+  let path = `${file}#${n.name!.text}`;
+  const fields: string[] = [];
+  try {
+    for (const m of n.members) {
+      if (!ts.isPropertyDeclaration(m)) continue;
+      const name = m.name.getText(sf);
+      if (m.modifiers?.some((x) => x.kind === ts.SyntaxKind.StaticKeyword)) {
+        if (name === "path" && m.initializer && ts.isStringLiteral(m.initializer)) path = m.initializer.text;
+        continue;
+      }
+      if (!m.type) throw new Error(`${file}: field ${name} of ${n.name!.text} needs a type annotation`);
+      fields.push(`${name}: ${fieldKind(m.type, sf)}${m.initializer ? ` = ${m.initializer.getText(sf)}` : ""}`);
+    }
+    console.log(`${n.name!.text}: ${base.toLowerCase()} "${path}" { ${fields.join(", ")} }`);
+  } catch (e) { console.log(`${n.name!.text}: ERROR ${(e as Error).message}`); }
+}
+
 const sf = load(resolve(Deno.args[0]));
+const rel = Deno.args[0].replace(/^.*?examples\//, "examples/");
 for (const n of sf.statements) {
+  if (ts.isClassDeclaration(n) && n.name && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) readData(n, sf, rel);
   if (ts.isFunctionDeclaration(n) && n.name && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
     try {
       console.log(`${n.name.text}: [${n.parameters.map((p) => `${p.name.getText(sf)} = ${decl(p.type!, sf)}`).join(", ")}]`);

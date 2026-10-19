@@ -1,7 +1,7 @@
 # TS developer experience against Bevy's own, and adopting Rust Bevy plugins
 
 1. **Surface (ruled 2026-10-20):** systems are plain exported functions whose parameter types say what they use, as in Rust: `export function chase(time: Res<Time>, enemies: Query<[Enemy, Mut<Transform>], With<Alive>>) { ... }`. A syntax-only pass in bevy-ts's oxc compile step reads the annotations. A system whose param types are computed uses the setup closure instead. Around that:
-   - Components, resources, messages, events and states are one class each: `class Enemy extends Component("game::Enemy", { speed: f32 }) {}`.
+   - Components, resources, messages and events are plain classes whose fields the same compile pass reads (ruled 2026-10-20): `class Health extends Component { hp: f32 = 100 }`. The name defaults to `module#Class`, and `static path = "game::Health"` pins it.
    - Systems register Bevy's way: `app.addSystems(Update, chain(a, b).runIf(inState(Game.Playing)))`. Observers are functions whose first parameter is `On<E>`; plugins are functions of `app`.
    - Systems are identified by `module#export`. Access comes from `Mut<...>` and is checked by `tsc`. `q.each` is the hot loop. There is no ParamSet.
    - No hooks in TSX (ruled 2026-10-20): a binding reads `ref.get(C)` and `res(R)`; `signal()` stays for UI-local state.
@@ -103,6 +103,27 @@ What stays longer than Rust is vector maths: `dir.subVectors(a, b)` where Rust w
 
 Rust Bevy 0.20 (from `bench/dx/rust/src/main.rs`, compiled) against the ruled TS (from `bench/dx/examples/`, type-checked). Under each pair is one line on what the specs allowed before the ruling.
 
+### Declaring data
+
+```rust
+#[derive(Component)]
+struct Health { hp: f32, max: f32 }
+
+#[derive(Message)]
+struct Damage { target: Entity, amount: f32 }
+
+#[derive(EntityEvent)]
+struct Explode { entity: Entity, radius: f32 }
+```
+
+```ts
+export class Health extends Component { hp: f32 = 100; max: f32 = 100 }
+export class Damage extends Message { declare target: Entity; declare amount: f32 }
+export class Explode extends EntityEvent { declare radius: f32 }
+```
+
+Ruled 2026-10-20. The compile pass reads each class's fields (name, type, default) from syntax, as it reads system signatures. `declare` marks a field with no default, and TS emits nothing for it. The name defaults to `module#Class`, as Rust's comes from its module path, and `static path = "game::Health"` pins it, so renaming the file keeps saved levels working. A value is `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. Before: `class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}`, a name string plus a runtime schema object.
+
 ### A system with two queries and a resource
 
 ```rust
@@ -127,7 +148,7 @@ export function chase(
   const [p] = player.single();
   enemies.each((enemy, t) => {
     dir.subVectors(p.translation, t.translation).normalize();
-    t.translation.addScaled(dir, enemy.speed * time.delta);
+    t.translation.addScaled(dir, enemy.speed * time.delta_secs);
     enemy.speed = 3; // tsc error: Enemy is read-only in this query
   });
 }
@@ -185,7 +206,7 @@ fn pause(mut next: ResMut<NextState<Game>>) {
 ```
 
 ```ts
-export class Game extends States("game::Game", ["Menu", "Playing", "Paused"]) {}
+export class Game extends States("Menu", "Playing", "Paused") {}
 export const EnemySet = systemSet("game::Enemies");
 
 app.initState(Game.Menu)
@@ -239,8 +260,8 @@ fn on_health_added(add: On<Add<Health>>, mut q: Query<&mut Health>) {
 ```
 
 ```ts
-export class Damage extends Message("game::Damage", { target: entity, amount: f32 }) {}
-export class Explode extends EntityEvent("game::Explode", { radius: f32 }) {}
+export class Damage extends Message { declare target: Entity; declare amount: f32 }
+export class Explode extends EntityEvent { declare radius: f32 }
 
 export function applyDamage(damage: MessageReader<Damage>, q: Query<[Mut<Health>]>,
                             score: ResMut<Score>, commands: Commands) {
@@ -250,7 +271,7 @@ export function applyDamage(damage: MessageReader<Damage>, q: Query<[Mut<Health>
     h.hp -= d.amount;
     if (h.hp <= 0) {
       score.value += 1;
-      commands.trigger(d.target, new Explode({ radius: 3 }));
+      commands.trigger(d.target, Explode.of({ radius: 3 }));
     }
   });
 }
@@ -296,7 +317,7 @@ app.add_plugins(EnemyPlugin);
 
 ```ts
 export function enemyPlugin(app: App) {
-  app.insertResource(new Score({ value: 0 }))
+  app.insertResource(Score.of({ value: 0 }))
     .addMessage(Damage)
     .initState(Game.Menu)
     .addSystems(OnEnter(Game.Playing), spawnWave)
@@ -336,7 +357,7 @@ fn spawn_grunt(mut commands: Commands) {
 
 ```tsx
 export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]; speed?: number }) => (
-  <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(entity, new Explode({ radius: 3 }))}>
+  <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(entity, Explode.of({ radius: 3 }))}>
     <Transform translation={at} />
     <Enemy speed={speed} />
     <Health initialHp={100} max={100} />
@@ -348,7 +369,7 @@ export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]
 );
 
 export function waves(commands: Commands, time: Res<Time>, s: Local<{ timer: f32; wave: u32 }>) {
-  s.timer += time.delta;
+  s.timer += time.delta_secs;
   if (s.timer < 5) return;
   s.timer = 0;
   s.wave += 1;
@@ -356,7 +377,7 @@ export function waves(commands: Commands, time: Res<Time>, s: Local<{ timer: f32
 }
 ```
 
-A component class is its own TSX tag: `<Health initialHp={100} />` takes its props from the schema. Before (tsx): the prefab was the same, spawning was `ctx.commands.mount(<Enemy at={p} />)`, and handlers were `onClick` on `<button>` only. `<entity onPointerClick>` is an entity observer, which is what `on(...)` is in BSN. `commands.spawn` takes component instances (`new Health({ hp: 3 })`) or a prefab element, so `mount` folds into `spawn`.
+A component class is its own TSX tag: `<Health initialHp={100} />` takes its props from the class fields. Before (tsx): the prefab was the same, spawning was `ctx.commands.mount(<Enemy at={p} />)`, and handlers were `onClick` on `<button>` only. `<entity onPointerClick>` is an entity observer, which is what `on(...)` is in BSN. `commands.spawn` takes component instances (`new Health({ hp: 3 })`) or a prefab element, so `mount` folds into `spawn`.
 
 ### A UI HUD, with and without hooks
 
@@ -401,7 +422,7 @@ export const Hud = ({ player }: { player: NodeRef }) => (
   <node style={{ position: "absolute", top: px(12), left: px(12) }} background="#0008">
     <text size={20}>{() => `HP ${Math.ceil(player.get(Health).hp)} / ${player.get(Health).max}`}</text>
     <text size={16} color={() => (res(Score).value > 10 ? "#fd0" : "#fff")}>{() => `Score ${res(Score).value}`}</text>
-    <button onPointerClick={({ commands }) => commands.trigger(player.entity, new Explode({ radius: 5 }))}>
+    <button onPointerClick={({ commands }) => commands.trigger(player.entity, Explode.of({ radius: 5 }))}>
       <text>Boom</text>
     </button>
   </node>
@@ -483,7 +504,7 @@ export function hurt(contacts: MessageReader<CollisionEvent>, players: Query<[Mu
 
 export function grounded(rapier: ReadRapierContext, player: Query<[Entity, Transform, Mut<Velocity>], With<Player>>) {
   const [e, t, v] = player.single();
-  const hit = rapier.castRay(t.translation, down, 1.1, true, { exclude: e });
+  const hit = rapier.castRay(t.translation, down, 1.1, true, { excludeRigidBody: e });
   if (!hit && v.linear.y > -20) v.linear.y -= 0.5;
 }
 
@@ -547,13 +568,13 @@ This is three.js's `Vector3` and gl-matrix's out-param style with glam's names. 
 
 | Bevy 0.20 | Where | Proposed TS |
 |---|---|---|
-| `Message`, `MessageReader`, `MessageWriter`, `add_message` | `bevy_ecs/src/message/` | `class X extends Message(...)`, `MessageReader<X>`, `MessageWriter<X>`, `addMessage` |
+| `Message`, `MessageReader`, `MessageWriter`, `add_message` | `bevy_ecs/src/message/` | `class X extends Message { ... }`, `MessageReader<X>`, `MessageWriter<X>`, `addMessage` |
 | `Event`, `EntityEvent`, `On<E>`, `commands.trigger` | `event/mod.rs`, `observer/system_param.rs` | `class X extends Event(...)` / `EntityEvent(...)`, `On<X>`, `commands.trigger` |
 | `On<Add<C>>`, `Insert`, `Discard`, `Remove`, `Despawn` | `lifecycle.rs` (`EventPattern` for each) | `On<Add<C>>`, `On<Insert<C>>`, `On<Remove<C>>` |
 | `On<PointerClick>` (not `Pointer<Click>`) | `bevy_picking/src/events.rs`, `examples/ui/navigation` | `onPointerClick`, `On(PointerClick)` |
 | `in_state`, `on_message`, `run_if` | `bevy_state/src/condition.rs`, `schedule/condition.rs` | `inState`, `onMessage`, `systems(...).runIf` |
 | `Local<T>`, `ParamSet` | `system/system_param.rs` | `Local<{ timer: f32 }>`; no ParamSet |
-| `trait Resource: Component`; `ReflectResource` implies `ReflectComponent` | `resource.rs`, `reflect/resource.rs` | `class X extends Resource(...)` is a component on a resource entity |
+| `trait Resource: Component`; `ReflectResource` implies `ReflectComponent` | `resource.rs`, `reflect/resource.rs` | `class X extends Resource { ... }` is a component on a resource entity |
 
 The last row matters most. In 0.20 a resource is a component on its own entity, so `Res<Score>` is a one-row column through the same path as a query. TS resources need no separate storage, and native's open question about "native resources as single-row views" answers itself.
 
@@ -701,8 +722,8 @@ Bridge is archived, so its capabilities live in `openspec/specs/`.
   - It refuses computed types with the file and line.
   - A system registered without declarations throws.
   - The same pass ships as a vitest, Vite and esbuild plugin.
-- `ts-components`: components, resources, messages, events and states are declared as classes (`class Enemy extends Component(name, fields) {}`):
-  - The class is the handle, the TSX tag and the constructor (`new Health({ hp: 3 })`). Its instance type is the data.
+- `ts-components`: components, resources, messages and events are plain classes whose fields the compile pass reads (`class Enemy extends Component { speed: f32 = 2 }`), named `module#Class` unless `static path` pins it:
+  - The class is the handle, the TSX tag and, through `Enemy.of({ ... })`, the constructor. Its instance type is the data.
   - Read views are `readonly`, and vector fields are in-place views with the glam-like method set.
   - `vec3()` and `quat()` make scratch values.
 - `hot-reload`:

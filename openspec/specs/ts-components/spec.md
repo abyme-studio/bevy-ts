@@ -5,19 +5,34 @@ How TS declares components (class-based, with native layouts), registers them as
 
 ## Requirements
 
-### Requirement: Components are declared in TS with field types
-The `bevy-ts` module SHALL export `Component(name, fields, options?)`, used as a class base: `export class Mover extends Component("game::Mover", { speed: f32 }) {}`. `name` is a stable path such as `game::Mover` and `fields` maps each field name to a field type. The class SHALL be the component's handle in queries (`Query<[Mover]>`), its TSX tag (`<Mover speed={2} />`) and its constructor for commands (`new Mover({ speed: 2 })`); its instance type SHALL be the component's data. `Tag(name)` SHALL declare a component with no fields. Each field type SHALL also be a TS type of the same name (`f32` is `number`), so `Local<{ timer: f32 }>` can name a layout. Field types in this change: `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `vec2`, `vec3`, `vec4`, `quat`, `entity`, `enumOf(...variants)` and `array(type, n)`. A field MAY carry a default and editor hints (`min`, `max`, `step`, `label`). Strings, lists and other heap data SHALL be rejected at declaration time.
+### Requirement: Components are plain classes whose fields the compile step reads
+A component SHALL be declared as a plain class extending `Component`, its fields written as typed class fields, as a Rust struct is (operator ruling 2026-10-20):
+
+```ts
+export class Mover extends Component { speed: f32 = 1; amplitude: f32 = 2 }
+export class Target extends Component { declare entity: Entity }
+```
+
+The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero. `string`, arrays, objects and other heap data SHALL fail the load with the file and line.
+
+The class SHALL be the component's handle in queries (`Query<[Mover]>`), its TSX tag (`<Mover speed={2} />`) and, through `Mover.of({ speed: 2 })`, its constructor for commands. Its instance type SHALL be the component's data. A class with no fields is a marker.
+
+The component's name in Bevy, the protocol and `.bsn` files SHALL default to `<module path>#<Class>` (`src/game.ts#Mover`). `static path = "game::Mover"` SHALL pin it, so moving or renaming the class keeps its identity.
 
 #### Scenario: A plain numeric component
-- **WHEN** `game.ts` declares `class Mover extends Component("game::Mover", { speed: f32.default(1), amplitude: f32.default(2) }) {}`
-- **THEN** a component named `game::Mover` with two `f32` fields exists in the world after the module loads
+- **WHEN** `game.ts` exports `class Mover extends Component { speed: f32 = 1; amplitude: f32 = 2 }`
+- **THEN** a component named `src/game.ts#Mover` with two `f32` fields, defaulting to 1 and 2, exists in the world after the module loads
 
 #### Scenario: A string field
-- **WHEN** a component declares a field of type `string`
-- **THEN** loading fails with an error naming the component and field
+- **WHEN** a component declares `name: string = "x"`
+- **THEN** loading fails with an error naming the class, the field, the file and the line
+
+#### Scenario: A pinned name survives a rename
+- **WHEN** `class Shield extends Component { static path = "game::Shield"; strength: f32 = 0 }` is renamed to `Barrier` and reloads
+- **THEN** it keeps the `ComponentId` of `game::Shield`, and every entity keeps its value
 
 ### Requirement: Native layout rules
-A TS component's layout SHALL follow C struct rules: fields in declaration order, each at an offset aligned to its own alignment, total size rounded up to the largest field alignment. `vec2`/`vec3`/`vec4`/`quat` are `f32` arrays aligned to 4; `bool` is one byte holding 0 or 1; `entity` is a `u64` holding `Entity::to_bits`, aligned to 8; `enumOf` is the smallest unsigned integer holding its variants. Rust SHALL compute the layout and hand the offsets back to JS; JS SHALL NOT compute its own.
+A TS component's layout SHALL follow C struct rules: fields in declaration order, each at an offset aligned to its own alignment, total size rounded up to the largest field alignment. `Vec2`/`Vec3`/`Vec4`/`Quat` are `f32` arrays aligned to 4; `bool` is one byte holding 0 or 1; `Entity` is a `u64` holding `Entity::to_bits`, aligned to 8; a string-literal union is the smallest unsigned integer holding its variants. Rust SHALL compute the layout and hand the offsets back to JS; JS SHALL NOT compute its own.
 
 #### Scenario: Offsets of a mixed component
 - **WHEN** a component declares `{ alive: bool, hp: f32, pos: vec3 }`
@@ -31,11 +46,11 @@ Each TS component SHALL be registered with `World::register_component_with_descr
 - **THEN** it iterates every entity carrying `game::Mover` and reads its bytes in the declared layout
 
 ### Requirement: A component name keeps its identity
-Declaring the same name with the same layout in a later generation SHALL reuse the existing `ComponentId`. Two declarations of one name in one generation SHALL fail the load.
+Declaring the same name (default or pinned) with the same layout in a later generation SHALL reuse the existing `ComponentId`. Two declarations of one name in one generation SHALL fail the load. Moving or renaming a class without a pinned `path` SHALL be reported as a new component; its old data stays with the old name (hot-reload, undeclared components are kept).
 
 #### Scenario: A reload without schema change
-- **WHEN** `game.ts` is edited without touching `game::Mover`'s fields and reloads
-- **THEN** `game::Mover` keeps its `ComponentId` and every entity keeps its value
+- **WHEN** `game.ts` is edited without touching `Mover`'s fields and reloads
+- **THEN** `Mover` keeps its `ComponentId` and every entity keeps its value
 
 ### Requirement: Rust components cross only with a declared native layout
 A Rust component SHALL be usable as query data in a TS system only if a native layout for it is registered in Rust: from reflection, for its plain-data leaves (offsets from a value's field references, bounds-checked; other leaves are holes TS never sees or writes; operator ruling 2026-10-20, native decision 5), or from `core::mem::offset_of!` for a `NativeLayout` derive, with the type's real size and alignment either way. `Transform` (`translation: vec3`, `rotation: quat`, `scale: vec3`) SHALL take the reflection path like any other type and be exposed to TS as `Transform` from `bevy-ts/bevy`. A Rust component with no native layout SHALL be rejected as query data with an error naming it; it MAY be used in `With`/`Without` filters.
@@ -49,7 +64,7 @@ A Rust component SHALL be usable as query data in a TS system only if a native l
 - **THEN** loading fails with an error naming `GlobalTransform`
 
 ### Requirement: Generated field accessors
-For each component, the `bevy-ts` module SHALL give TS code a typed view object whose properties read and write the fields of one row in place (`mover.speed`, `t.translation.y`), plus the raw offsets and size for code that indexes the typed arrays itself. Every setter SHALL also store the run's change tick in the row's changed tick (see ts-systems). TS types for declared components SHALL be inferred from the `Component()` call without a codegen step. A component read by a query SHALL be typed read-only: its fields `readonly`, its vector fields `ReadonlyVec3`/`ReadonlyQuat` without mutating methods. A written component (`Mut<C>`) SHALL type its scalar fields as assignable and its vector fields as views that are not reassignable and are mutated in place with glam-style methods that write `this` and allocate nothing (`set`, `copy`, `add`, `sub`, `scale`, `addScaled`, `normalize`, `lerp`, `subVectors`, `rotate`, ...). `vec3(x, y, z)` and `quat()` SHALL make scratch values with the same methods. A vector view SHALL read its row from its parent accessor, not keep a copy updated by a setter on every row move (operator ruling 2026-10-20: nested views measured 3.5× raw arrays at 1M rows when re-positioned per row, `bench/dx/results/iter-forms.md`). A vector method that writes several components (`addScaled`, `normalize`, `lerp`, ...) SHALL store the row's change tick once per call, not once per component; a plain field setter keeps its one store, the form measured cheapest on V8 (`docs/research/change-detection.md`).
+For each component, the `bevy-ts` module SHALL give TS code a typed view object whose properties read and write the fields of one row in place (`mover.speed`, `t.translation.y`), plus the raw offsets and size for code that indexes the typed arrays itself. Every setter SHALL also store the run's change tick in the row's changed tick (see ts-systems). TS types for declared components SHALL be the classes themselves, with no codegen step. A component read by a query SHALL be typed read-only: its fields `readonly`, its vector fields `ReadonlyVec3`/`ReadonlyQuat` without mutating methods. A written component (`Mut<C>`) SHALL type its scalar fields as assignable and its vector fields as views that are not reassignable and are mutated in place with glam-style methods that write `this` and allocate nothing (`set`, `copy`, `add`, `sub`, `scale`, `addScaled`, `normalize`, `lerp`, `subVectors`, `rotate`, ...). `vec3(x, y, z)` and `quat()` SHALL make scratch values with the same methods. A vector view SHALL read its row from its parent accessor, not keep a copy updated by a setter on every row move (operator ruling 2026-10-20: nested views measured 3.5× raw arrays at 1M rows when re-positioned per row, `bench/dx/results/iter-forms.md`). A vector method that writes several components (`addScaled`, `normalize`, `lerp`, ...) SHALL store the row's change tick once per call, not once per component; a plain field setter keeps its one store, the form measured cheapest on V8 (`docs/research/change-detection.md`).
 
 #### Scenario: Typed access in the editor
 - **WHEN** a system's `run` writes `mover.sped = 2`

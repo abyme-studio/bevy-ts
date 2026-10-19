@@ -201,7 +201,7 @@ The README names no Enemy or HUD yet; this is the demo this change ships as `exa
 
 ```tsx
 // src/enemy.tsx
-export const Health = component("game::Health", { hp: f32.default(100), max: f32.default(100) });
+export class Health extends Component { hp: f32 = 100; max: f32 = 100 }
 export const Enemy = ({ at, hp = 100 }: { at: Vec3; hp?: number }) => (
   <entity name="enemy">
     <Transform translation={at} />

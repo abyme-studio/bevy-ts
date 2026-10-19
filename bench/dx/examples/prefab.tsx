@@ -1,11 +1,11 @@
 // A prefab, entity-local event props, and spawning a prefab from a system.
-import { app, type Commands, inState, type Local, type Query, type Res, Time, Transform, f32, u32, Update, systems } from "bevy-ts";
+import { app, type Commands, inState, type Local, type Query, type Res, Time, Transform, type f32, type u32, Update, systems } from "bevy-ts";
 import { Collider, RigidBody } from "bevy-ts/rapier";
 import { Alive, Enemy, Explode, Game, Health } from "./systems.ts";
 
 /** What a grunt is. Where grunts are is a `.bsn` level (levels change). */
 export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]; speed?: number }) => (
-  <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(entity, new Explode({ radius: 3 }))}>
+  <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(entity, Explode.of({ radius: 3 }))}>
     <Transform translation={at} />
     <Enemy speed={speed} />
     <Health initialHp={100} max={100} />
@@ -17,7 +17,7 @@ export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]
 );
 
 export function waves(commands: Commands, time: Res<Time>, s: Local<{ timer: f32; wave: u32 }>, alive: Query<[Enemy]>) {
-  s.timer += time.delta;
+  s.timer += time.delta_secs;
   if (s.timer < 5 || alive.len > 20) return;
   s.timer = 0;
   s.wave += 1;

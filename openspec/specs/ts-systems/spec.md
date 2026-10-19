@@ -113,7 +113,7 @@ Each TS system run SHALL take its own change tick from `World::increment_change_
 - **THEN** a warning names the system and component, once per generation
 
 ### Requirement: Structural changes go through the command buffer
-The `Commands` param SHALL offer `spawn(...parts)` (component instances such as `new Health({ hp: 3 })`, or a prefab element), `entity(e)` with `insert(...parts)`, `remove(...classes)`, `setParent(parent)` and `despawn()`, `trigger(event)` and `trigger(target, entityEvent)` (see "Observers"), `write(message)` and `spawnNative(name, params)`. Commands SHALL be encoded by JS into a binary arena owned by Rust, with component values in their native layout, and applied by Rust after the system returns, before the next system runs. `spawn` SHALL return a real `Entity` at once, taken from a pool allocated with `EntityAllocator::alloc`.
+The `Commands` param SHALL offer `spawn(...parts)` (component values such as `Health.of({ hp: 3 })`, or a prefab element), `entity(e)` with `insert(...parts)`, `remove(...classes)`, `setParent(parent)` and `despawn()`, `trigger(event)` and `trigger(target, entityEvent)` (see "Observers"), `write(message)` and `spawnNative(name, params)`. Commands SHALL be encoded by JS into a binary arena owned by Rust, with component values in their native layout, and applied by Rust after the system returns, before the next system runs. `spawn` SHALL return a real `Entity` at once, taken from a pool allocated with `EntityAllocator::alloc`.
 
 #### Scenario: Spawning and using the id in the same run
 - **WHEN** a system spawns an entity and then calls `commands.entity(child).setParent(spawned)` in the same run
@@ -131,28 +131,28 @@ Rust SHALL register named recipes callable from `spawnNative` for things TS cann
 - **THEN** an orange cube is visible and carries `game::Mover`
 
 ### Requirement: Resources
-`class R extends Resource(name, fields) {}` SHALL declare a resource with the same field types and layout rules as a component. A resource SHALL be a component on its own resource entity, as in Bevy 0.20 (`trait Resource: Component`), so `Res<R>` and `ResMut<R>` are one-row column views through the same zero-copy path as a query. `app.insertResource(new R({...}))` SHALL insert it at the generation's apply if absent; a reload SHALL keep its value. A Rust resource with a native layout SHALL be reachable the same way (`Res<Time>`).
+`class R extends Resource { ...fields }` SHALL declare a resource with the same field rules, naming and layout as a component (ts-components). A resource SHALL be a component on its own resource entity, as in Bevy 0.20 (`trait Resource: Component`), so `Res<R>` and `ResMut<R>` are one-row column views through the same zero-copy path as a query. `app.insertResource(R.of({...}))` SHALL insert it at the generation's apply if absent; a reload SHALL keep its value. A Rust resource with a native layout SHALL be reachable the same way (`Res<Time>`).
 
 #### Scenario: A score
 - **WHEN** a system with `score: ResMut<Score>` adds 1 to `score.value`
 - **THEN** a Rust system reading `Score`'s component id sees the new value that frame
 
 ### Requirement: Messages
-`class M extends Message(name, fields) {}` and `app.addMessage(M)` SHALL declare a buffered message type, as Bevy's `Message`. Messages SHALL be stored by Rust in a double-buffered arena per type, in the type's native layout, and cleared on Bevy's two-frame rule. `MessageWriter<M>` SHALL offer `write(value)` and `next()`, an allocation-free writable view on a fresh slot; `MessageReader<M>` SHALL offer `each`, iteration and `len` over messages the system has not read yet, tracked by a cursor per system identity.
+`class M extends Message { ...fields }` and `app.addMessage(M)` SHALL declare a buffered message type, as Bevy's `Message`. Messages SHALL be stored by Rust in a double-buffered arena per type, in the type's native layout, and cleared on Bevy's two-frame rule. `MessageWriter<M>` SHALL offer `write(value)` and `next()`, an allocation-free writable view on a fresh slot; `MessageReader<M>` SHALL offer `each`, iteration and `len` over messages the system has not read yet, tracked by a cursor per system identity.
 
 #### Scenario: Two readers
 - **WHEN** a system writes 3 `Damage` messages and two later systems read `Damage`
 - **THEN** each reader sees the same 3 messages once
 
 ### Requirement: Observers
-`class E extends Event(name, fields) {}` and `class E extends EntityEvent(name, fields, { propagate? }) {}` SHALL declare events. An observer SHALL be an exported function whose first param is `On<E>`, `On<Add<C>>`, `On<Insert<C>>` or `On<Remove<C>>` and whose other params are system params, registered with `app.addObserver(fn)`. `On<E>` SHALL give `event` (a read view of the event), `entity` (the target, for entity and lifecycle events) and `propagate(on)`. An observer triggered from a TS system's commands SHALL run when those commands are applied, after that system. An observer triggered from Rust (a lifecycle event of a Rust insert, a picking event) SHALL run at the next bevy-ts stage boundary in the same frame, in trigger order, with its propagation path computed in Rust at trigger time.
+`class E extends Event { ...fields }` and `class E extends EntityEvent { ...fields }` (with `static propagate = true` to bubble up `ChildOf`) SHALL declare events, with the same field rules as components. An observer SHALL be an exported function whose first param is `On<E>`, `On<Add<C>>`, `On<Insert<C>>` or `On<Remove<C>>` and whose other params are system params, registered with `app.addObserver(fn)`. `On<E>` SHALL give `event` (a read view of the event), `entity` (the target, for entity and lifecycle events) and `propagate(on)`. An observer triggered from a TS system's commands SHALL run when those commands are applied, after that system. An observer triggered from Rust (a lifecycle event of a Rust insert, a picking event) SHALL run at the next bevy-ts stage boundary in the same frame, in trigger order, with its propagation path computed in Rust at trigger time.
 
 #### Scenario: Triggered from TS
-- **WHEN** system `a` calls `commands.trigger(e, new Explode({ radius: 3 }))` and an observer on `On<Explode>` despawns `e`
+- **WHEN** system `a` calls `commands.trigger(e, Explode.of({ radius: 3 }))` and an observer on `On<Explode>` despawns `e`
 - **THEN** the next system in the stage no longer sees `e`
 
 ### Requirement: States
-`class S extends States(name, [values...]) {}` SHALL declare a state machine whose values are `S.Value`. `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule by one bevy-ts exclusive system, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. `inState(S.Value)` SHALL be a Rust-evaluated run condition.
+`class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (`module#Class`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule by one bevy-ts exclusive system, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. `inState(S.Value)` SHALL be a Rust-evaluated run condition.
 
 #### Scenario: Entering Playing
 - **WHEN** a system calls `next.set(Game.Playing)` from `Menu`

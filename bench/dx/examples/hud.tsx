@@ -17,7 +17,7 @@ export const Hud = ({ player }: { player: NodeRef }) => (
   <node style={{ position: "absolute", top: px(12), left: px(12) }} background="#0008">
     <text size={20}>{() => `HP ${Math.ceil(player.get(Health).hp)} / ${player.get(Health).max}`}</text>
     <text size={16} color={() => (res(Score).value > 10 ? "#fd0" : "#fff")}>{() => `Score ${res(Score).value}`}</text>
-    <button onPointerClick={({ commands }) => commands.trigger(player.entity, new Explode({ radius: 5 }))}>
+    <button onPointerClick={({ commands }) => commands.trigger(player.entity, Explode.of({ radius: 5 }))}>
       <text>Boom</text>
     </button>
   </node>

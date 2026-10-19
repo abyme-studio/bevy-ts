@@ -95,19 +95,20 @@ type MutField<F> =
   : F extends Field<"enum", infer E> ? E
   : number;
 type VectorKey<S> = { [K in keyof S]: S[K] extends Field<"vec2" | "vec3" | "quat"> ? K : never }[keyof S];
-/** A component's data, writable: scalars assignable, vector fields are views mutated in place. */
-export type Data<S> =
-  & { -readonly [K in Exclude<keyof S, VectorKey<S>>]: MutField<S[K]> }
-  & { readonly [K in VectorKey<S>]: MutField<S[K]> };
 /** Read access: every field readonly, vectors without mutating methods. */
 export type ReadView<T> = {
-  readonly [K in keyof T]: T[K] extends Vec3 ? ReadonlyVec3 : T[K] extends Quat ? ReadonlyQuat : T[K];
+  readonly [K in keyof T as K extends symbol ? never : K]: T[K] extends Vec3 ? ReadonlyVec3 : T[K] extends Quat ? ReadonlyQuat : T[K];
 };
-type Init<S> = {
-  [K in keyof S]?: S[K] extends Field<"vec2" | "vec3"> ? readonly [number, number, number] | ReadonlyVec3 : MutField<S[K]>;
+/** Initial values, as Rust's `Health { hp: 3.0, ..default() }`: vectors take a tuple or a vector. */
+export type Init<T> = {
+  [K in keyof T as K extends symbol ? never : K]?: T[K] extends Vec3 ? readonly [number, number, number] | ReadonlyVec3 : T[K];
 };
 
-// ---------- Components, resources, messages, events, states: one class each ----------
+// ---------- Components, resources, messages, events: plain classes (operator ruling 2026-10-20) ----------
+// The compile pass reads each class's fields (name, type, default) as it reads system signatures:
+//   export class Health extends Component { hp: f32 = 100; max: f32 = 100 }
+//   export class Damage extends Message { declare target: Entity; declare amount: f32 }
+// The name defaults to `module#Class` (`src/game.ts#Health`); `static path = "game::Health"` pins it.
 
 /**
  * `layout`: a column a TS system may read and write (TS components, ported Rust components).
@@ -115,48 +116,38 @@ type Init<S> = {
  */
 export type Tier = "layout" | "reflect";
 declare const tierBrand: unique symbol;
-
-/** `class Enemy extends Component("game::Enemy", { speed: f32 }) {}`: the class is the handle, its instance type is the data. */
-export interface ComponentClass<S extends Schema = Schema, T extends Tier = Tier> {
-  new (init?: Init<S>): Data<S> & { readonly [tierBrand]?: T };
-  readonly schema: S;
-  readonly tier: T;
-}
-export declare function Component<const S extends Schema>(name: string, fields: S): ComponentClass<S, "layout">;
-/** A component with no data: a marker for filters. */
-export declare function Tag(name: string): ComponentClass<{}, "layout">;
-/** A Rust component reachable only through reflection (a ported type the layout rule refuses). */
-export declare function ReflectComponent<const S extends Schema>(name: string, fields: S): ComponentClass<S, "reflect">;
-
 declare const resourceBrand: unique symbol;
-export declare function Resource<const S extends Schema>(name: string, fields: S): {
-  new (init?: Init<S>): Data<S> & { readonly [resourceBrand]: true };
-  readonly schema: S;
-};
 declare const messageBrand: unique symbol;
-export declare function Message<const S extends Schema>(name: string, fields: S): {
-  new (init?: Init<S>): Data<S> & { readonly [messageBrand]: true };
-  readonly schema: S;
-};
 declare const eventBrand: unique symbol;
-/** An EntityEvent: targets an entity; `propagate` bubbles it up `ChildOf`. */
-export declare function EntityEvent<const S extends Schema>(name: string, fields: S, opts?: { propagate?: boolean }): {
-  new (init?: Init<S>): Data<S> & { readonly [eventBrand]: "entity" };
-  readonly schema: S;
-};
-export declare function Event<const S extends Schema>(name: string, fields: S): {
-  new (init?: Init<S>): Data<S> & { readonly [eventBrand]: "global" };
-  readonly schema: S;
-};
+
+declare abstract class Data {
+  /** Optional stable name; the default is `module#Class`. */
+  static readonly path?: string;
+  /** `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. */
+  static of<T>(this: new () => T, init?: Init<T>): T;
+}
+export declare abstract class Component extends Data { readonly [tierBrand]?: "layout" }
+/** A Rust component reachable only through reflection (a ported type the layout rule refuses). */
+export declare abstract class ReflectComponent extends Data { readonly [tierBrand]?: "reflect" }
+export declare abstract class Resource extends Data { readonly [resourceBrand]?: true }
+export declare abstract class Message extends Data { readonly [messageBrand]?: true }
+export declare abstract class Event extends Data { readonly [eventBrand]?: "global" }
+/** An EntityEvent: targets `entity`; `static propagate = true` bubbles it up `ChildOf`. */
+export declare abstract class EntityEvent extends Data {
+  readonly [eventBrand]?: "entity";
+  declare entity: Entity;
+  static readonly propagate?: boolean;
+}
+export type ComponentClass = abstract new () => Component | ReflectComponent;
 
 declare const stateBrand: unique symbol;
 export interface StateValue<N extends string = string, V extends string = string> { readonly state: N; readonly value: V }
-/** `class Game extends States("game::Game", ["Menu", "Playing"]) {}`; `Game.Playing` is a value. */
-export declare function States<const N extends string, const V extends string>(name: N, values: readonly V[]):
-  & { new (): { readonly [stateBrand]: { name: N; values: V } } }
-  & { readonly [K in V]: StateValue<N, K> };
-type StateValueOf<G> = G extends { readonly [stateBrand]: { name: infer N extends string; values: infer V extends string } }
-  ? { [K in V]: StateValue<N, K> }[V]
+/** `class Game extends States("Menu", "Playing") {}`; `Game.Playing` is a value. */
+export declare function States<const V extends string>(...values: V[]):
+  & { new (): { readonly [stateBrand]: { values: V } }; readonly path?: string }
+  & { readonly [K in V]: StateValue<string, K> };
+type StateValueOf<G> = G extends { readonly [stateBrand]: { values: infer V extends string } }
+  ? { [K in V]: StateValue<string, K> }[V]
   : never;
 
 // ---------- System param types (read by the compile step) ----------
@@ -172,7 +163,7 @@ export type Without<T> = { readonly [filterBrand]: ["without", T] };
 export type Changed<T> = { readonly [filterBrand]: ["changed", T] };
 export type Added<T> = { readonly [filterBrand]: ["added", T] };
 
-type NotReflect<T> = T extends { readonly [tierBrand]?: "reflect" } ? never : T;
+type NotReflect<T> = T extends ReflectComponent ? never : T;
 type Item<D> =
   D extends Entity ? Entity
   : D extends Option<infer X> ? Item<X> | undefined
@@ -216,15 +207,15 @@ export interface NextState<G> { set(v: StateValueOf<G>): void }
 export interface State<G> { readonly current: StateValueOf<G> }
 
 export interface Commands {
-  /** Components (`new Health({ hp: 3 })`) or a prefab element (`<Grunt speed={3} />`). */
-  spawn(...parts: readonly (object | Element)[]): Entity;
+  /** Components (`Health.of({ hp: 3 })`) or a prefab element (`<Grunt speed={3} />`). */
+  spawn(...parts: readonly (Component | ReflectComponent | Element)[]): Entity;
   entity(e: Entity): EntityCommands;
-  trigger(event: { readonly [eventBrand]: "global" }): void;
-  trigger(target: Entity, event: { readonly [eventBrand]: "entity" }): void;
-  write(message: { readonly [messageBrand]: true }): void;
+  trigger(target: Entity, event: EntityEvent): void;
+  trigger(event: Event): void;
+  write(message: Message): void;
 }
 export interface EntityCommands {
-  insert(...parts: readonly (object | Element)[]): EntityCommands;
+  insert(...parts: readonly (Component | ReflectComponent | Element)[]): EntityCommands;
   remove(...cs: readonly ComponentClass[]): EntityCommands;
   despawn(): void;
   readonly id: Entity;
@@ -244,7 +235,7 @@ export interface On<E> {
   propagate(on: boolean): void;
 }
 /** bevy_picking 0.20's `PointerClick`, an entity event that bubbles. */
-export declare class PointerClick extends EntityEvent("bevy_picking::events::PointerClick", { x: f32, y: f32 }) {}
+export declare class PointerClick extends EntityEvent { static readonly path: "bevy_picking::events::PointerClick"; declare x: f32; declare y: f32 }
 
 // ---------- Systems, schedules, ordering ----------
 
@@ -304,10 +295,20 @@ export declare function commands(): Commands;
 
 // ---------- Rust types bevy-ts ships typed ----------
 
-export declare class Transform extends Component("bevy_transform::components::transform::Transform", {
-  translation: vec3, rotation: quat, scale: vec3,
-}) {}
-export declare class Time extends Resource("bevy_time::Time", { delta: f32, elapsed: f64 }) {}
+export declare class Transform extends Component {
+  static readonly path: "bevy_transform::components::transform::Transform";
+  declare readonly translation: Vec3;
+  declare readonly rotation: Quat;
+  declare readonly scale: Vec3;
+}
+/** Bevy's `Time`: its `Duration` fields are holes (opaque to reflection); the plain-data ones are columns. */
+export declare class Time extends Resource {
+  static readonly path: "bevy_time::Time";
+  declare delta_secs: f32;
+  declare elapsed_secs: f32;
+  declare delta_secs_f64: f64;
+  declare elapsed_secs_f64: f64;
+}
 
 // ---------- App and plugins ----------
 
@@ -316,8 +317,8 @@ export interface App {
   addObserver(o: (on: On<never>, ...params: never[]) => void): App;
   addPlugins(...p: readonly Plugin[]): App;
   initState(initial: StateValue): App;
-  insertResource(r: { readonly [resourceBrand]: true }): App;
-  addMessage(m: abstract new (...a: never) => { readonly [messageBrand]: true }): App;
+  insertResource(r: Resource): App;
+  addMessage(m: abstract new () => Message): App;
   scene(name: string, root: () => Element): App;
 }
 /** A plugin: an exported function taking the app, as Bevy's `fn build(&self, app: &mut App)`. */

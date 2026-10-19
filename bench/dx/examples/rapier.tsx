@@ -29,7 +29,7 @@ export function hurt(contacts: MessageReader<CollisionEvent>, players: Query<[Mu
 // A raycast: one host call, read-only access declared on the Rust side.
 export function grounded(rapier: ReadRapierContext, player: Query<[Entity, Transform, Mut<Velocity>], With<Player>>) {
   const [e, t, v] = player.single();
-  const hit = rapier.castRay(t.translation, down, 1.1, true, { exclude: e });
+  const hit = rapier.castRay(t.translation, down, 1.1, true, { excludeRigidBody: e });
   if (!hit && v.linear.y > -20) v.linear.y -= 0.5;
 }
 

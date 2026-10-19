@@ -48,7 +48,7 @@ A system in `Startup` SHALL run once the first time a generation registering its
 When a component name is redeclared with a different layout, bevy-ts SHALL register a new `ComponentId` for it, copy each entity's value field by field where name and type match, fill new fields with their defaults (zero if none), drop removed fields, remove the old component from every entity, and report the migration. The old `ComponentId` SHALL become retired: hidden from the protocol and never matched by TS systems.
 
 #### Scenario: Adding a field
-- **WHEN** `game::Mover` gains `phase: f32.default(0)` and reloads
+- **WHEN** `Mover` gains `phase: f32 = 0` and reloads
 - **THEN** every cube keeps its `speed` and `amplitude`, has `phase = 0`, and the log says `game::Mover` migrated on N entities
 
 #### Scenario: Changing a field's type

@@ -1,5 +1,5 @@
 // TSX types for the ruled surface. Types only.
-import type { Child, Commands, Element, Entity, Field, NodeRef, ReadonlyVec3, Schema } from "./mod.ts";
+import type { Child, Commands, Element, Entity, NodeRef, ReadonlyVec3, Vec3, Quat } from "./mod.ts";
 
 type Handler = (ctx: { entity: Entity; commands: Commands }) => void;
 type Bindable<T> = T | (() => T);
@@ -28,16 +28,15 @@ interface MeshProps {
   color?: Bindable<string>;
 }
 
-type PropValue<F> =
-  F extends Field<"vec2" | "vec3"> ? readonly [number, number, number] | ReadonlyVec3
-  : F extends Field<"bool"> ? boolean
-  : F extends Field<"enum", infer E> ? E
-  : F extends Field<"entity"> ? Entity
-  : number;
+type PropValue<T> =
+  T extends Vec3 ? readonly [number, number, number] | ReadonlyVec3
+  : T extends Quat ? readonly [number, number, number, number]
+  : T;
+type Fields<T> = { [K in keyof T as K extends symbol ? never : K]: T[K] };
 /** A component tag's props: each field controlled (`hp`), initial (`initialHp`) or bound (`hp={() => ...}`). */
-type ComponentProps<S> =
-  & { [K in keyof S]?: PropValue<S[K]> | (() => PropValue<S[K]>) }
-  & { [K in keyof S & string as `initial${Capitalize<K>}`]?: PropValue<S[K]> };
+type ComponentProps<T> =
+  & { [K in keyof Fields<T>]?: PropValue<Fields<T>[K]> | (() => PropValue<Fields<T>[K]>) }
+  & { [K in keyof Fields<T> & string as `initial${Capitalize<K>}`]?: PropValue<Fields<T>[K]> };
 
 export declare namespace JSX {
   type Element = import("./mod.ts").Element;
@@ -46,7 +45,7 @@ export declare namespace JSX {
   interface ElementChildrenAttribute { children: {} }
   interface IntrinsicAttributes { key?: string }
   /** A component class used as a tag takes its fields as props. */
-  type LibraryManagedAttributes<C, P> = C extends { readonly schema: infer S extends Schema } ? ComponentProps<S> : P;
+  type LibraryManagedAttributes<C, P> = C extends abstract new () => infer I extends import("./mod.ts").Component | import("./mod.ts").ReflectComponent ? ComponentProps<I> : P;
   interface IntrinsicElements {
     entity: EntityProps;
     node: NodeProps;
