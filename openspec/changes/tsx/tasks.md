@@ -52,6 +52,6 @@
 
 ## 8. First demo
 
-- [ ] 8.1 Write `examples/arena/` (Enemy, Player, Hud, `damage` and `bob` systems) as in design.md
-- [ ] 8.2 Walk the eight demo steps, recording reload latency and host calls per frame
+- [x] 8.1 Write `examples/arena/` (Enemy, Player, Hud, `damage` and `bob` systems) as in design.md
+- [x] 8.2 Walk the eight demo steps, recording reload latency and host calls per frame
 - [x] 8.3 Measure mount and reload of 1,000 and 10,000 enemies, and HUD update cost, and record them in `docs/`

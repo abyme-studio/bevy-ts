@@ -12,7 +12,7 @@
 //! declaration order do not matter.
 
 use crate::compile::line_col;
-use bevy_ts::backend::{ScriptError, SourceLocation};
+use bevy_ts::backend::ScriptError;
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
     BindingPattern, Class, ClassElement, Declaration, ExportDefaultDeclarationKind, Expression, FormalParameters, ImportDeclarationSpecifier, Program,
@@ -560,8 +560,6 @@ struct Fail {
     file: Rc<FileInfo>,
     span: Span,
     message: String,
-    /// A name imported with `import type`: fails the compile rather than the registration.
-    type_import: bool,
 }
 
 /// What a type names once aliases, substitutions and imports are followed.
@@ -605,7 +603,6 @@ fn read_with(file: FileInfo, root: &Path, ports: Vec<String>) -> Result<Declarat
     r.files.insert(file.path.clone(), Some(file.clone()));
     let scope = Scope { file: file.clone(), subst: Rc::default() };
     let mut declares = Vec::new();
-    let mut errors = Vec::new();
     let mut any_read = false;
     for func in &file.functions {
         let exported = file.exports.get(&func.name).and_then(|e| e.first());
@@ -630,15 +627,20 @@ fn read_with(file: FileInfo, root: &Path, ports: Vec<String>) -> Result<Declarat
                         any_read |= !params.is_empty();
                         d["params"] = Value::Array(params);
                     }
-                    Err(f) if f.type_import => errors.push(r.script_error(&f)),
-                    Err(f) => d["error"] = json!(r.message(&f)),
+                    // Every exported function is read, but only a registered system needs its
+                    // params: a prefab or helper with a type-imported param is not an error
+                    // until it is registered as a system.
+                    Err(f) => {
+                        // The error points where the reader failed (an `import type` line),
+                        // not at the function.
+                        let (line, column) = r.location(&f);
+                        d["at"] = json!({ "file": f.file.rel, "line": line, "column": column });
+                        d["error"] = json!(r.message(&f));
+                    }
                 }
             }
         }
         declares.push(format!(";__bevyts.declare({}, {d});", func.name));
-    }
-    if !errors.is_empty() {
-        return Err(errors);
     }
     let classes: Vec<_> = file.classes.iter().map(|c| (c.name.clone(), r.class(c, &scope).to_string())).collect();
     if !file.imports_bevy_ts && !any_read {
@@ -676,10 +678,6 @@ impl Reader {
         format!("{}:{line}:{column}: {}", f.file.rel, f.message)
     }
 
-    fn script_error(&self, f: &Fail) -> ScriptError {
-        let (line, column) = self.location(f);
-        ScriptError::at(f.message.clone(), Some(SourceLocation { file: f.file.path.display().to_string(), line, column }))
-    }
 
     /// The value names a module binds: every value its own param types and type declarations name.
     fn binds(&self, file: &FileInfo) -> BTreeSet<String> {
@@ -910,7 +908,7 @@ impl Reader {
     }
 
     fn fail(&self, scope: &Scope, span: Span, message: impl Into<String>) -> Fail {
-        Fail { file: scope.file.clone(), span, message: message.into(), type_import: false }
+        Fail { file: scope.file.clone(), span, message: message.into() }
     }
 
     fn head(&mut self, t: &Ty, scope: &Scope, depth: u32) -> Result<Head, Fail> {
@@ -955,7 +953,6 @@ impl Reader {
                     file: scope.file.clone(),
                     span: i.span,
                     message: format!("{name} is imported as a type; system params need its value"),
-                    type_import: true,
                 });
             }
             if i.imported != "*" {
@@ -1292,7 +1289,17 @@ mod tests {
     }
 
     #[test]
-    fn a_type_only_import_fails_the_compile_at_its_line() {
+    fn a_prefab_may_take_props_typed_by_a_type_only_import() {
+        let dir = tmp(
+            "prefab-type-import",
+            &[("src/game.tsx", "import { app, type NodeRef } from \"bevy-ts\";\nexport const Unit = ({ handle }: { handle: NodeRef }) => <entity ref={handle} />;\napp.scene(\"s\", () => <entity />);\n")],
+        );
+        let path = dir.join("src/game.tsx");
+        compile_module(&path, &std::fs::read_to_string(&path).unwrap(), false, &dir).expect("a prefab is not a system");
+    }
+
+    #[test]
+    fn a_type_only_import_fails_the_system_at_registration_with_its_line() {
         let dir = tmp(
             "type-import",
             &[
@@ -1301,11 +1308,9 @@ mod tests {
             ],
         );
         let path = dir.join("src/game.ts");
-        let e = compile_module(&path, &std::fs::read_to_string(&path).unwrap(), false, &dir).err().unwrap();
-        assert_eq!(e[0].message, "Enemy is imported as a type; system params need its value");
-        let at = e[0].location.clone().unwrap();
-        assert!(at.file.ends_with("src/game.ts"), "{at:?}");
-        assert_eq!((at.line, at.column), (3, 15));
+        // Deferred: only registering `chase` as a system fails, naming the import's line.
+        let c = compile_module(&path, &std::fs::read_to_string(&path).unwrap(), false, &dir).expect("compiles");
+        assert!(c.code.contains("src/game.ts:3:15: Enemy is imported as a type; system params need its value"), "{}", c.code);
     }
 
     #[test]
