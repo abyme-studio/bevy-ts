@@ -4,6 +4,13 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@bevy-ts/darwin-arm64': link:../platforms/darwin-arm64
+  '@bevy-ts/darwin-x64': link:../platforms/darwin-x64
+  '@bevy-ts/linux-arm64': link:../platforms/linux-arm64
+  '@bevy-ts/linux-x64': link:../platforms/linux-x64
+  '@bevy-ts/win32-x64': link:../platforms/win32-x64
+
 importers:
 
   .:
@@ -17,6 +24,22 @@ importers:
       vitest:
         specifier: ^3.2.7
         version: 3.2.7
+    optionalDependencies:
+      '@bevy-ts/darwin-arm64':
+        specifier: link:../platforms/darwin-arm64
+        version: link:../platforms/darwin-arm64
+      '@bevy-ts/darwin-x64':
+        specifier: link:../platforms/darwin-x64
+        version: link:../platforms/darwin-x64
+      '@bevy-ts/linux-arm64':
+        specifier: link:../platforms/linux-arm64
+        version: link:../platforms/linux-arm64
+      '@bevy-ts/linux-x64':
+        specifier: link:../platforms/linux-x64
+        version: link:../platforms/linux-x64
+      '@bevy-ts/win32-x64':
+        specifier: link:../platforms/win32-x64
+        version: link:../platforms/win32-x64
 
 packages:
 

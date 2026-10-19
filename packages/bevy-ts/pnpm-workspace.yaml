@@ -1,3 +1,11 @@
 allowBuilds:
   # esbuild ships prebuilt binaries as optional packages; its install script only verifies them.
   esbuild: false
+# The engine's platform packages are published with bevy-ts; in the repo they link the local
+# builds, so the lockfile resolves them and a frozen install works before any publish.
+overrides:
+  "@bevy-ts/darwin-arm64": link:../platforms/darwin-arm64
+  "@bevy-ts/darwin-x64": link:../platforms/darwin-x64
+  "@bevy-ts/linux-arm64": link:../platforms/linux-arm64
+  "@bevy-ts/linux-x64": link:../platforms/linux-x64
+  "@bevy-ts/win32-x64": link:../platforms/win32-x64
