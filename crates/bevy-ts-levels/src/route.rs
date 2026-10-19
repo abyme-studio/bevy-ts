@@ -178,3 +178,36 @@ pub fn set_ops(world: &World, path: &[String], component: &str, field: &str, aft
     }
     Ok(ops)
 }
+
+/// Writes an edit to an `app.scene` entity into the scene's sidecar level (decision 11), for an
+/// edit the editor rejected as `computed` (no literal to rewrite). The sidecar
+/// (`levels/<scene>.bsn`, or `app.scene`'s `level` option) is created on first write and layered
+/// over the scene by key path. Vectors are written whole: an overlay has no prefab value below it
+/// for missing lanes to come from.
+pub fn write_sidecar(world: &mut World, edit_id: u64, entity: Entity, component: &str, field: &str, after: Value) -> Result<(), String> {
+    let node = world.get::<TsxNode>(entity).ok_or("not a tsx entity")?;
+    if node.root.starts_with("level:") {
+        return Err("a level entity: use write".into());
+    }
+    let (scene, path) = (node.root.clone(), node.key_path.clone());
+    let file = bevy_ts_tsx::scene_level(world, &scene).ok_or_else(|| format!("{scene} is not an app.scene root"))?;
+    let ops = set_ops(world, &path, component, field, &after, &serde_json::Map::new())?;
+    if world.resource::<Levels>().roots.contains_key(&file) {
+        let base = loaded_hash(world, &file).unwrap_or(0);
+        write_level(world, WriteRequest { id: edit_id, file, base, ops });
+        return Ok(());
+    }
+    // The first write: the file is written with the edit, then opened, so its first load is
+    // already the edited text; the scene follows when it has loaded.
+    let disk_path = world.resource::<Levels>().asset_root.join(&file);
+    let disk = std::fs::read_to_string(&disk_path).unwrap_or_default();
+    let w = crate::writer::apply_sidecar(&disk, &ops).map_err(|e| e.message)?;
+    std::fs::create_dir_all(disk_path.parent().unwrap_or(std::path::Path::new("."))).map_err(|e| e.to_string())?;
+    std::fs::write(&disk_path, &w.text).map_err(|e| e.to_string())?;
+    crate::engine::open_sidecar(world, &scene, &file);
+    let hash = crate::edit::hash_text(crate::engine::content_hash(w.text.as_bytes()));
+    let result = crate::edit::WriteResult { id: edit_id, file: file.clone(), status: "written", reason: None, message: String::new(), hash: Some(hash.clone()), lines: w.lines, disk: None, inverse: w.inverse };
+    world.resource_mut::<Levels>().emit(json!({ "event": "written", "level": file, "hash": hash, "lines": result.lines, "id": edit_id }));
+    world.resource_mut::<crate::edit::WriteResults>().0.push(result);
+    Ok(())
+}

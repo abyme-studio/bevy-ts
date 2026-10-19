@@ -210,3 +210,12 @@ fn a_prefab_internal_entity_cannot_be_deleted() {
     let e = apply(ARENA, &[Op::Delete { path: p("EnemyB/eye") }]).unwrap_err();
     assert_eq!(e.reason, "prefab-internal");
 }
+
+#[test]
+fn a_sidecar_creates_paths_from_the_top() {
+    assert_eq!(apply("", &[set("PlayerUnit#0", "Transform", "translation", f(1.0))]).unwrap_err().reason, "not-found");
+    let w = apply_sidecar("", &[set("PlayerUnit#0/gun", "Transform", "scale", WValue::Vector { ty: "Vec3".into(), lanes: vec![("x".into(), 2.0)] })]).unwrap();
+    assert_eq!(w.text, "#\"PlayerUnit#0\"\nChildren [\n    #gun\n    Transform { scale: Vec3 { x: 2.0 } }\n]\n");
+    let w2 = apply_sidecar(&w.text, &[set("Hud#0", "Transform", "scale", WValue::Vector { ty: "Vec3".into(), lanes: vec![("y".into(), 3.0)] })]).unwrap();
+    assert!(w2.text.ends_with("]\n--\n#\"Hud#0\"\nTransform { scale: Vec3 { y: 3.0 } }\n"), "{}", w2.text);
+}

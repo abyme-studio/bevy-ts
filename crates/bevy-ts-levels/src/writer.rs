@@ -120,13 +120,23 @@ fn refuse(reason: &'static str, message: impl Into<String>) -> Refused {
 /// Applies a batch to `src`, one operation after another, each re-parsed and checked. The whole
 /// batch applies or none of it.
 pub fn apply(src: &str, ops: &[Op]) -> Result<Written, Refused> {
+    apply_with(src, ops, false)
+}
+
+/// [`apply`] for a sidecar level (decision 11), where a `set` on a name path the file lacks
+/// creates it from the top: the file layers over a TSX scene, so every path is an override.
+pub fn apply_sidecar(src: &str, ops: &[Op]) -> Result<Written, Refused> {
+    apply_with(src, ops, true)
+}
+
+fn apply_with(src: &str, ops: &[Op], create_top: bool) -> Result<Written, Refused> {
     let mut text = src.to_string();
     let mut inverse = Vec::new();
     let mut changed: Vec<(usize, usize)> = Vec::new();
     let mut renamed = Vec::new();
     for op in ops {
         let file = syntax::parse(&text).map_err(|d| refuse("internal", format!("the file does not parse: {}", d.message)))?;
-        let (splices, inv, touched, renames) = plan(&file, op)?;
+        let (splices, inv, touched, renames) = plan(&file, op, create_top)?;
         renamed.extend(renames);
         let (next, ranges) = splice(&text, &splices);
         let parsed = syntax::parse(&next).map_err(|d| refuse("internal", format!("the edit would not parse: {} ({op:?})", d.message)))?;
@@ -353,9 +363,9 @@ fn ensure_named(file: &ParsedFile, path: &[String], splices: &mut Vec<(usize, us
     out
 }
 
-fn plan(file: &ParsedFile, op: &Op) -> Result<Plan, Refused> {
+fn plan(file: &ParsedFile, op: &Op, create_top: bool) -> Result<Plan, Refused> {
     let (s, i, t, mut renames) = match op {
-        Op::Set { path, component, field, value, containers } => plan_set(file, path, component, field, value, containers),
+        Op::Set { path, component, field, value, containers } => plan_set(file, path, component, field, value, containers, create_top),
         Op::Revert { path, component, field } => plan_revert(file, path, component, field),
         Op::SetProp { path, prop, value, field } => plan_set_prop(file, path, prop, value, *field),
         Op::Add { parent, name, base, patches } => plan_add(file, parent, name, base, patches),
@@ -497,7 +507,7 @@ fn add_entry(file: &ParsedFile, e: &Entity, text: &str, out: &mut Vec<(usize, us
 
 /// Creates the missing tail of `path` (override entries inside a prefab) under the deepest
 /// entity that exists, with `body` as the last one's patch text.
-fn create_path(file: &ParsedFile, path: &[String], body: &str, out: &mut Vec<(usize, usize, String)>) -> Result<(), Refused> {
+fn create_path(file: &ParsedFile, path: &[String], body: &str, create_top: bool, out: &mut Vec<(usize, usize, String)>) -> Result<(), Refused> {
     let mut depth = 0;
     let mut list = &file.entities;
     let mut parent: Option<&Entity> = None;
@@ -511,10 +521,15 @@ fn create_path(file: &ParsedFile, path: &[String], body: &str, out: &mut Vec<(us
             None => break,
         }
     }
-    let Some(parent) = parent else { return Err(refuse("not-found", format!("no entity {}", path.join("/")))) };
+    if parent.is_none() && !create_top {
+        return Err(refuse("not-found", format!("no entity {}", path.join("/"))));
+    }
     let missing = &path[depth..];
     // Nested override entries, innermost holding the body.
-    let base_indent = child_indent(file, Some(parent), children(parent).unwrap_or(&EMPTY));
+    let base_indent = match parent {
+        Some(p) => child_indent(file, Some(p), children(p).unwrap_or(&EMPTY)),
+        None => child_indent(file, None, &file.entities),
+    };
     let mut text = String::new();
     for (i, seg) in missing.iter().enumerate() {
         let ind = format!("{base_indent}{}", "    ".repeat(i));
@@ -531,7 +546,10 @@ fn create_path(file: &ParsedFile, path: &[String], body: &str, out: &mut Vec<(us
     for i in (0..missing.len().saturating_sub(1)).rev() {
         text.push_str(&format!("\n{base_indent}{}]", "    ".repeat(i)));
     }
-    append_child(file, parent, &text, out);
+    match parent {
+        Some(p) => append_child(file, p, &text, out),
+        None => append_top(file, &text, &base_indent, out),
+    }
     Ok(())
 }
 
@@ -569,7 +587,7 @@ fn append_child(file: &ParsedFile, parent: &Entity, text: &str, out: &mut Vec<(u
     }
 }
 
-fn plan_set(file: &ParsedFile, path: &[String], component: &str, field: &[String], value: &WValue, containers: &[String]) -> Result<Plan, Refused> {
+fn plan_set(file: &ParsedFile, path: &[String], component: &str, field: &[String], value: &WValue, containers: &[String], create_top: bool) -> Result<Plan, Refused> {
     if field.is_empty() {
         return Err(refuse("invalid", "set needs a field"));
     }
@@ -607,7 +625,7 @@ fn plan_set(file: &ParsedFile, path: &[String], component: &str, field: &[String
             for (i, seg) in field.iter().enumerate().rev() {
                 s = if i == 0 { format!("{seg}: {s}") } else { format!("{} {{ {seg}: {s} }}", containers.get(i - 1).map_or("", String::as_str)) };
             }
-            create_path(file, path, &format!("{name} {{ {s} }}"), &mut out)?;
+            create_path(file, path, &format!("{name} {{ {s} }}"), create_top, &mut out)?;
             inverse = Some(Op::Revert { path: named.clone(), component: component.into(), field: field.to_vec() });
         }
     }

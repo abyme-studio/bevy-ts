@@ -146,6 +146,8 @@ pub struct LevelRoot {
     pub dirty: bool,
     /// Asset paths the level's handle fields name (label dropped), with where.
     pub assets: BTreeMap<String, bevy_ts::backend::SourceLocation>,
+    /// A sidecar level (decision 11): layered over this `app.scene` root instead of mounted.
+    pub overlay: Option<String>,
 }
 
 /// Open levels, by asset path.
@@ -233,20 +235,58 @@ struct LevelSection {
 }
 
 fn open(world: &mut World, path: &str, from_ts: bool) {
+    open_as(world, path, from_ts, None);
+}
+
+fn open_as(world: &mut World, path: &str, from_ts: bool, overlay: Option<String>) {
     if world.resource::<Levels>().roots.contains_key(path) {
         return;
     }
     let handle = world.resource::<AssetServer>().load::<BsnLevel>(path.to_string());
     world.resource_mut::<Levels>().roots.insert(
         path.to_string(),
-        LevelRoot { handle, from_ts, files: BTreeSet::new(), applied: BTreeMap::new(), owners: BTreeMap::new(), error: None, warnings: Vec::new(), dirty: true, assets: BTreeMap::new() },
+        LevelRoot {
+            handle,
+            from_ts,
+            files: BTreeSet::new(),
+            applied: BTreeMap::new(),
+            owners: BTreeMap::new(),
+            error: None,
+            warnings: Vec::new(),
+            dirty: true,
+            assets: BTreeMap::new(),
+            overlay,
+        },
     );
 }
 
-/// Closes a level: its entities despawn.
+/// Opens `scene`'s sidecar level at `path`, layered over the scene (decision 11).
+pub fn open_sidecar(world: &mut World, scene: &str, path: &str) {
+    open_as(world, path, false, Some(scene.to_string()));
+}
+
+/// Closes a level: its entities despawn (a sidecar's overrides leave its scene).
 pub fn close(world: &mut World, path: &str) {
-    if world.resource_mut::<Levels>().roots.remove(path).is_some() {
-        bevy_ts_tsx::unmount_external(world, &root_name(path));
+    if let Some(r) = world.resource_mut::<Levels>().roots.remove(path) {
+        match r.overlay {
+            Some(scene) => {
+                bevy_ts_tsx::clear_overlay(world, &scene);
+            }
+            None => {
+                bevy_ts_tsx::unmount_external(world, &root_name(path));
+            }
+        }
+    }
+}
+
+/// Opens the sidecar level of every scene that has one on disk.
+fn open_sidecars(world: &mut World) {
+    let scenes: Vec<String> = world.resource::<TsxTree>().scenes.keys().cloned().collect();
+    for scene in scenes {
+        let Some(path) = bevy_ts_tsx::scene_level(world, &scene) else { continue };
+        if world.resource::<Levels>().asset_root.join(&path).exists() {
+            open_sidecar(world, &scene, &path);
+        }
     }
 }
 
@@ -292,6 +332,7 @@ fn after_generation(world: &mut World, _: &bevy_ts::plugin_api::AppliedSection) 
     for r in world.resource_mut::<Levels>().roots.values_mut() {
         r.dirty = true;
     }
+    open_sidecars(world);
 }
 
 fn after_restart(world: &mut World) {
@@ -694,7 +735,17 @@ pub fn reconcile_level(world: &mut World, path: &str) {
         }
     };
     let root = root_name(path);
-    if let Err(e) = bevy_ts_tsx::reconcile_external(world, &root, None, &composed.nodes) {
+    let overlay = world.resource::<Levels>().roots.get(path).and_then(|r| r.overlay.clone());
+    let applied = match &overlay {
+        // A sidecar's names are the scene's keys: they name nothing.
+        Some(scene) => {
+            let mut nodes = composed.nodes.clone();
+            strip_names(&mut nodes);
+            bevy_ts_tsx::set_overlay(world, scene, nodes).map(|_| ()).map_err(|mut e| e.remove(0))
+        }
+        None => bevy_ts_tsx::reconcile_external(world, &root, None, &composed.nodes).map(|_| ()),
+    };
+    if let Err(e) = applied {
         log(world, LogLevel::Error, &e);
         if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
             r.error = Some(e);
@@ -709,7 +760,8 @@ pub fn reconcile_level(world: &mut World, path: &str) {
     for w in &new_warnings {
         log(world, LogLevel::Warn, w);
     }
-    stamp_instances(world, path, &root, &composed.owners);
+    let stamp_root = overlay.clone().unwrap_or(root.clone());
+    stamp_instances(world, path, &stamp_root, &composed.owners);
     let mut assets = BTreeMap::new();
     asset_paths(&composed.nodes, &mut assets);
     if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
@@ -735,6 +787,13 @@ fn asset_paths(nodes: &[NodeDesc], out: &mut BTreeMap<String, bevy_ts::backend::
             }
         }
         asset_paths(&n.children, out);
+    }
+}
+
+fn strip_names(nodes: &mut [NodeDesc]) {
+    for n in nodes {
+        n.name = None;
+        strip_names(&mut n.children);
     }
 }
 

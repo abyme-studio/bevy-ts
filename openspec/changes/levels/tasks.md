@@ -25,7 +25,7 @@
 - [x] 3.3 Re-parse check after every splice and atomic writes; golden diff tests asserting a one-field edit is one changed line
 - [x] 3.4 Naming unnamed entities on first write; `rename` updates the retained tree before the reload
 - [x] 3.5 Base-hash check, reload of the disk version, name-path replay, `rebased` and `conflict` results; tests for the agent-edits-mid-drag and target-deleted scenarios
-- [ ] 3.6 Sidecar levels for `app.scene` roots on a `computed` rejection (needs tsx T4)
+- [x] 3.6 Sidecar levels for `app.scene` roots on a `computed` rejection (needs tsx T4)
 
 ## 4. Hot reload
 
@@ -41,6 +41,6 @@
 
 ## 6. First demo
 
-- [ ] 6.1 Move `examples/arena/` enemies into `assets/levels/arena.bsn` with `Enemy` as a registered prefab and `room.bsn` included twice
-- [ ] 6.2 Walk the seven demo steps in design.md under both `prefabEdits` policies, recording `git diff` output for each write
+- [x] 6.1 Move `examples/arena/` enemies into `assets/levels/arena.bsn` with `Enemy` as a registered prefab and `room.bsn` included twice
+- [x] 6.2 Walk the seven demo steps in design.md under both `prefabEdits` policies, recording `git diff` output for each write
 - [x] 6.3 Measure load, reload and expansion of a level with 1,000 and 10,000 instances, and writer latency per edit; record them in `docs/`

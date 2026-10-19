@@ -534,3 +534,61 @@ mod viewport_routes {
         assert!(route(f.app.world(), loose, "Transform", "translation").is_none());
     }
 }
+
+mod sidecar {
+    use super::*;
+    use bevy_ts_levels::{WriteResults, write_sidecar};
+
+    fn scene_program() -> FakeProgram {
+        let scene = json!({ "roots": [{ "name": "arena", "nodes": [{
+            "key": "p", "type": "entity", "name": "player",
+            "components": [{ "type": "Transform", "kind": "rust", "props": { "translation": [0, 0, -4] } }],
+            "children": [],
+        }] }] });
+        FakeProgram {
+            manifest: Manifest { components: vec![health()], ..Default::default() },
+            sections: vec![Section { name: "tsx".into(), bytes: serde_json::to_vec(&scene).unwrap(), location: None }],
+            ..Default::default()
+        }
+    }
+
+    fn apply(f: &mut Fixture) {
+        f.fake.push(scene_program());
+        let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+        assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+        for _ in 0..50 {
+            f.app.update();
+        }
+    }
+
+    #[test]
+    fn a_computed_scene_edit_persists_in_a_sidecar_level() {
+        let mut f = fixture("sidecar", &[]);
+        apply(&mut f);
+        let p = f.by_name("player");
+        write_sidecar(f.app.world_mut(), 9, p, "Transform", "translation", json!([2.0, 0.0, -4.0])).unwrap();
+        let r = f.app.world_mut().resource_mut::<WriteResults>().drain().pop().unwrap();
+        assert_eq!(r.status, "written", "{r:?}");
+        let text = std::fs::read_to_string(f.dir.join("levels/arena.bsn")).unwrap();
+        // The first write creates the file, which loads like any asset.
+        for _ in 0..200 {
+            f.app.update();
+            if f.translation(p).x == 2.0 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert_eq!(text, "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n");
+        assert_eq!(f.translation(p), Vec3::new(2.0, 0.0, -4.0), "{:?} {:?}", f.errors(), f.app.world().resource::<Levels>().roots.keys().collect::<Vec<_>>());
+        assert_eq!(f.app.world().get::<TsxNode>(p).unwrap().components["Transform"].fields["translation"].provenance, Provenance::Override);
+        assert_eq!(f.app.world().get::<Name>(p).unwrap().as_str(), "player", "the sidecar's names are keys only");
+        // The next generation layers the sidecar again; a fresh app opens it from disk.
+        apply(&mut f);
+        assert_eq!(f.by_name("player"), p);
+        assert_eq!(f.translation(p), Vec3::new(2.0, 0.0, -4.0), "{:?} {:?} {:?}", f.app.world().get::<TsxNode>(p).unwrap().components["Transform"], f.app.world().resource::<TsxTree>().overlays.keys().collect::<Vec<_>>(), f.app.world().resource::<ScriptLog>().since(0).map(|e| e.message.clone()).collect::<Vec<_>>());
+        let mut g = fixture("sidecar-reopen", &[("levels/arena.bsn", &text)]);
+        apply(&mut g);
+        let p = g.by_name("player");
+        assert_eq!(g.translation(p), Vec3::new(2.0, 0.0, -4.0));
+    }
+}

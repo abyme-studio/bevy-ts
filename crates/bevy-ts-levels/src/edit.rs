@@ -163,7 +163,8 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         }
         status = "rebased";
     }
-    let written = match writer::apply(&disk, &req.ops) {
+    let sidecar = world.resource::<Levels>().roots.get(&req.file).is_some_and(|r| r.overlay.is_some());
+    let written = match if sidecar { writer::apply_sidecar(&disk, &req.ops) } else { writer::apply(&disk, &req.ops) } {
         Ok(w) => w,
         Err(e) if status == "rebased" && e.reason == "not-found" => return WriteResult::refused(req, "conflict", "target removed", e.message),
         Err(e) => return WriteResult::refused(req, "refused", e.reason, e.message),
