@@ -47,7 +47,7 @@ A class stays Rust when TS on one main-thread isolate cannot do it at the cost t
 | Render-world work: render-graph systems, passes, compute, readback, custom draw | Runs in the render sub-app on the render thread, with no JS and no main-world access | Native crate | Settings as layout-tier components on cameras or entities, extracted by Rust; materials are the exception below |
 | Custom materials | Not disqualified: a material is WGSL plus parameters, which is data | Prebuilt engine's script-material crate | `material()` declarations, TSX `<material>` |
 | Parallel systems | JS is exclusive on the main thread (bridge decision 1) | Native crate | Ordering through slots; data through shared components |
-| Third-party Bevy plugins | They are Rust crates, compiled in | Native crate | Their reflected types (reflect tier), their sets if the crate exposes them, their components with `NativeLayout` if the crate author or a wrapper adds it |
+| Third-party Bevy plugins | They are Rust crates, compiled in | `bevy-ts.json` (decision 11); the native crate only for the project's own Rust | Their reflected types (reflect tier), their sets if the crate exposes them, their components with `NativeLayout` if the crate author or a wrapper adds it |
 | Components with non-POD data (`String`, `Vec`, `Handle<T>`, `Box<dyn T>`, maps) | No fixed layout, need drop and clone in Rust | Native crate, as Rust types | Reflect tier: typed values in TSX and the protocol, filters in queries; `Entity` refs are plain layout-tier fields |
 | Platform integrations (Steamworks, console SDKs, IAP, native dialogs, haptics) | C SDKs, callbacks on foreign threads, platform build rules | Native crate | Native functions for requests, components or entries for results |
 | Hot loops over huge counts that are plain arithmetic (boids, bobbing, damage over time) | Nothing: these stay TS | TS systems | — |
@@ -79,11 +79,29 @@ Under `bevy-ts dev`, a save in the native crate rebuilds in the background while
 
 - *Beat: a semver range.* Two bevy-ts patch releases can carry different engine internals that the native crate links against; with a generated `main` linking the same crates, only an exact match is known to work.
 
-### 5. Rust components cross in two tiers: layout and reflect
-A `#[repr(C)]` component of bridge field types derives `NativeLayout`, which fills bridge's layout registry from `offset_of!` (bridge decision 4 made public). It is a zero-copy column in TS systems, with change ticks, exactly as `Transform` is. Every other registered component is reflect tier: typed in TS, usable in TSX elements, the protocol and plugins through bridge decision 14, and in `with`/`without` filters, never in `read`/`write`. Non-POD data (`String`, `Vec`, `Handle`, `Box<dyn>`) is reflect tier by construction. A component that needs both is split into two components on one entity.
+### 5. Rust components cross in two tiers, decided per type from reflection
+Layouts come from reflection, not from `repr(C)` (operator ruling 2026-10-20, docs/research/dx.md). At startup the engine walks the type registry. For each registered component and resource with `ReflectComponent`, it takes a value (`ReflectDefault`, `ReflectFromWorld`, or the first live row) and reads every reflected field's offset as the field reference's address minus the value's address. A derived `Reflect` hands out references into the value itself.
 
-- *Beat: reading `repr(C)` and offsets from reflection.* Reflection carries neither (checked in Bevy 0.20); guessing offsets is what bridge decision 4 forbade.
-- *Beat: requiring `repr(C)` for every component TS sees.* Most third-party components are not, and the reflect tier is cheap for components that change rarely.
+The type is **layout tier** when every reflected leaf is a plain-data type bevy-ts knows: `f32`, `f64`, the integers, `bool`, `Entity`, glam's vectors and quaternions, and fieldless enums. Layout tier makes it a zero-copy column in TS systems, with change ticks, whatever its `repr`. Everything else is **reflect tier**: typed in TS, usable in TSX elements, the protocol and plugins through bridge decision 14, and in `With`/`Without` filters, never as query data. A component that needs both is split into two components on one entity.
+
+Guards on the layout tier:
+
+- **Bounds:** every derived offset lies inside `size_of::<T>()`, leaves do not overlap, and each leaf's size matches its `TypeId`. Otherwise the type is reflect tier, with the reason in `bevy-ts types`.
+- **Validity:**
+  - `bool`, fieldless enums and `Entity` fields are accessor-only. Their setters write `0`/`1`, a byte from the variant table, or a validated id.
+  - `q.tables` does not expose them raw.
+  - A fieldless enum's variant bytes are read from this build at startup, never assumed.
+- **Mutability:** a component declared `#[component(immutable)]` is never writable. Field writes run no hooks, as with Bevy's `Mut`.
+- **Privacy:** reflected private fields are writable, as they already are to `bevy_remote`'s `world.mutate_components`. `#[reflect(ignore)]` fields are never touched.
+
+`#[derive(NativeLayout)]` stays for components without `Reflect`. It fills the same registry from `core::mem::offset_of!`, which needs public fields but no `repr(C)`. Proven on `bevy_rapier3d` 0.37 (`bench/ports/`):
+
+- `offset_of!` and reflection agree on every field of Rapier's `Velocity` and Bevy's `Transform`.
+- Reflection also reaches glam's SIMD `Quat` and the private `LockedAxes.0`, which `offset_of!` refuses.
+- 1,000 `Velocity` rows were written through an `f32` view and read back through Bevy's own `Query`.
+
+- *Beat: requiring `#[repr(C)]` and a derive (the previous draft).* No third-party plugin's components qualify, so every adopted type needed a hand-written mirror plus systems that copy it in and out around each step.
+- *Beat: generated `offset_of!` code per adopted type.* It needs public fields, cannot see inside glam's SIMD types, and needs codegen per type, where reflection needs none.
 - *Beat: TS components with heap fields via a drop fn.* `new_with_layout` accepts a drop fn, but the data would be opaque bytes to TS anyway; the owner of heap data must be Rust.
 
 ### 6. TS types come from the engine's registry, generated, not hand-written
@@ -123,15 +141,42 @@ Verdict: skip TypeGPU as a dependency; borrow its schema-per-WGSL-type idea for 
 - *Beat: `ExtendedMaterial<StandardMaterial, _>` with a fixed extension of generic slots (N floats, M textures).* No layout logic, but authors index `params[3]` instead of naming fields, and the slot count is a cap someone will hit.
 - *Beat: TS-authored render passes too.* Passes run in the render world on another thread with ordering rules (`chain_weak`) TS cannot see; settings components extracted by Rust cover the TS side.
 
-### 11. Third-party plugins come only through the native crate
-The prebuilt engine ships Bevy's default plugins, `bevy_remote` and bevy-ts's crates, and no third-party plugin. A project that wants avian, bevy_hanabi or any other plugin adds it in its native crate.
+### 11. Third-party plugins are adopted by one line of config
+The prebuilt engine ships Bevy's default plugins, `bevy_remote` and bevy-ts's crates, and no third-party plugin. A project adopts a plugin in `bevy-ts.json`, never in code (operator ruling 2026-10-20):
+
+```jsonc
+{ "native": {
+    "ports": ["rapier3d"],                                                   // curated
+    "crates": { "bevy_kira_audio": { "version": "0.27", "plugin": "bevy_kira_audio::AudioPlugin" } }  // uncurated
+} }
+```
+
+bevy-ts generates `.bevy-ts/engine/` (decision 1) with the dependencies and the plugin lines, and builds the project engine (decision 2). The registry walk then types every reflected component and resource the plugin registered, as layout or reflect tier per decision 5. That is the data layer, with no code per type.
+
+What reflection cannot reach is the behaviour layer, and comes from a curated port or the project's own native crate:
+
+- functions, such as raycasts (native functions, as system param kinds);
+- components without `Reflect`, such as Rapier's `Collider`, which come as TSX constructors;
+- messages that are enums with data, such as Rapier's `CollisionEvent`, which a port flattens to a layout record;
+- system sets;
+- plugin construction that needs code, such as `RapierPhysicsPlugin::<NoUserData>::default()`.
+
+bevy-ts publishes curated ports as `bevy-ts-<name>` crates with `bevy-ts/<name>` types, a few hundred lines each:
+
+- `rapier3d` now;
+- `leafwing-input-manager`, whose `Actionlike` is generic over the game's own Rust enum, so the port ships a dynamic `TsAction(u16)` whose names come from TS;
+- `avian3d` and `bevy_hanabi` once they support Bevy 0.20.
+
+A native crate is needed only for the project's own Rust.
+
+- *Beat: plugins only through the native crate (the previous draft).* Every adoption was Rust code and glue.
 
 - *Beat: a curated set of plugins in the prebuilt engine.* Every included plugin pins its version for every user, grows the download for those who do not use it, and lags Bevy releases; it would also make bevy-ts responsible for those plugins' types in `bevy-ts/bevy`.
 - *Beat: prebuilt flavours (`@bevy-ts/engine-physics-*`).* Combinations multiply per platform. Physics included: the operator ruled (2026-10-19) that the prebuilt engine ships none.
 
 ## Depends on bridge
 
-- **N1. Public native layout registry.** bridge decision 4's registry SHALL be public so `NativeLayout` can register components, and the TS-system checks SHALL consult it for every Rust component, not only `Transform`.
+- **N1. Native layout registry filled from reflection.** bridge decision 4's registry SHALL be filled at startup from the type registry by decision 5's rule, SHALL be public so `NativeLayout` can add unreflected components, and the TS-system checks SHALL consult it for every Rust component; `Transform` becomes the first case of the rule, not a special registration.
 - **N2. A sixth seam operation, call host function.** The backend trait SHALL let Rust register host functions JS can call synchronously during a system run or entry call, receiving views over JS memory and returning a view over a Rust buffer.
 - **N3. Stage systems as a reusable unit.** The exclusive stage system SHALL be constructible for any schedule and ordering, so slots are bridge stages with a different placement, not a second runner.
 - **N4. The engine entry is a library function.** `bevy-ts-cli`'s `main` SHALL be a thin call into `bevy_ts_cli::run(native: Option<fn(&mut NativeApp)>)`, which the generated project `main` also calls.
@@ -139,7 +184,7 @@ The prebuilt engine ships Bevy's default plugins, `bevy_remote` and bevy-ts's cr
 
 ## Data across the boundary
 
-- **Layout-tier component:** identical to bridge's columns; the layout comes from `offset_of!` instead of bridge's C-rule computation, and the two agree for `repr(C)`.
+- **Layout-tier component:** identical to bridge's columns; the layout comes from reflection (or `offset_of!` for `NativeLayout` derives) instead of bridge's C-rule computation.
 - **Native function call:** JS passes `(fn id, input view: ptr, len, record count)`; Rust runs `f` with its `SystemState<P>` against `&World` (read-only, validated), writes results into a per-function output arena, and returns `(ptr, len, record count)`; JS views it with the output record's accessors. The arena is reset after the run, and the views are detached with the column views.
 - **Script material instance:** uniform bytes in the kind's WGSL layout, encoded in Rust from a field map on mount and patch (TSX), or written by a TS system through a material component, decided by task 6.4.
 - **Types:** `native.d.ts`, generated; never crosses at runtime.
@@ -162,12 +207,16 @@ None: additive. Projects without a native crate are unchanged and keep the prebu
 
 ## Operator rulings
 
+- 2026-10-20: layouts come from reflection, not `repr(C)`: any reflected component whose leaves are
+  plain data is a zero-copy column. Plugins are adopted by one line in `bevy-ts.json`
+  (`native.ports`, `native.crates`); bevy-ts curates ports for what reflection cannot reach, Rapier
+  first. A native crate is only for the project's own Rust (docs/research/dx.md, question 2).
+
 - 2026-10-19: the prebuilt engine ships no physics and there are no prebuilt flavours. A project
   adds physics (bevy_rapier3d today, avian once it supports Bevy 0.20) through its native crate,
   built once per Rust change or fetched from the shared engine cache.
 
 ## Open Questions
 
-- Whether native resources (single-row layout-tier views, `res: [NavSettings]`) belong here or with TS-defined resources in a later change.
 - Whether material instances are assets addressed by key or components on the entity (task 6.4).
 - Whether `bevy-ts build` packages per-platform game builds in this change or in a `ship` change.

@@ -1,6 +1,6 @@
 ## 1. Bridge prerequisites (N1 to N5)
 
-- [ ] 1.1 Make bridge's native layout registry public and route every Rust-component check in TS systems through it (N1); `Transform` registers through the same API
+- [ ] 1.1 Fill bridge's native layout registry at startup from reflection (decision 5: offsets from a value's field references, bounds and leaf-size checks, enum variant bytes read from the build), make it public, and route every Rust-component check in TS systems through it (N1); `Transform` takes the same path
 - [ ] 1.2 Turn `bevy-ts-cli`'s `main` into `bevy_ts_cli::run(native: Option<fn(&mut NativeApp)>)` and make the prebuilt binary a one-line caller (N4)
 - [ ] 1.3 Make the exclusive stage system constructible for any schedule and ordering (N3); bridge's four stages use it unchanged
 - [ ] 1.4 Add the call-host-function seam operation to the backend trait, the fake backend and `bevy-ts-v8` (deno_core op over views of JS memory) (N2)
@@ -19,12 +19,21 @@
 
 ## 3. Rust components in TS
 
-- [ ] 3.1 `bevy-ts-native-derive`: `#[derive(NativeLayout)]` requiring `repr(C)`, mapping field types to bridge field types, `offset_of!` tables; compile-fail tests for `String`, `Handle`, missing `repr(C)`
-- [ ] 3.2 `app.ts_component::<T>()` for both tiers; TS systems accept layout tier in `read`/`write` and reflect tier only in `with`/`without`, with the bridge error otherwise
+- [ ] 3.1 `bevy-ts-native-derive`: `#[derive(NativeLayout)]` for components without `Reflect`, mapping field types to bridge field types, `offset_of!` tables (public fields, no `repr(C)`); compile-fail tests for `String`, `Handle`, a private field
+- [ ] 3.2 Tier every reflected component at startup by decision 5; TS systems accept layout tier as query data and reflect tier only in `With`/`Without`, with the ts-components error otherwise; accessor-only `bool`/enum/`Entity` fields, immutable components refused
 - [ ] 3.3 Test that a TS write to a layout-tier Rust component is seen by a Rust system the same frame, with `Changed` exactly on written rows
 - [ ] 3.4 `bevy-ts types`: build the app, stop after `Plugin::build` before `finish`, walk the registry, emit `native.d.ts` deterministically; verify no GPU device is created with `bevy_rapier3d` and `bevy_egui`, and report plugins that need one
 - [ ] 3.5 Ship pre-generated `bevy-ts/bevy` types from the prebuilt engine; CI regenerate-and-diff; `bevy-ts dev` regenerates after each project-engine build
 - [ ] 3.6 TSX accepts reflect-tier components as elements (patch through bridge's reflected access); test `<Weapon name="laser" />`
+
+- [ ] 3.7 Prove the layout rule on `bevy_rapier3d` 0.37 in the engine: `Velocity`, `ExternalImpulse`, `RigidBody` (enum bytes) and the private `LockedAxes` are layout tier; `Collider` (no `Reflect`) is not; a TS write to `Velocity` moves a body
+
+## 3b. Plugin adoption
+
+- [ ] 3b.1 Read `native.ports` and `native.crates` from `bevy-ts.json`; generate the engine's dependencies and `add_plugins` lines; a project with plugins and no native crate builds and runs
+- [ ] 3b.2 Port format: crate `bevy-ts-<name>` plus `bevy-ts/<name>` types; a port registers param kinds for the compile step, TSX constructors, flattened messages, sets and its plugin line
+- [ ] 3b.3 Ship the `rapier3d` port: `Collider` constructors, `CollisionEvent` flattened to `{ kind, a, b, sensor }`, `ReadRapierContext` with `castRay`/`castRays`, `PhysicsSet`; example `examples/rapier/` with no Rust in the project
+- [ ] 3b.4 Plan the `leafwing-input-manager` port with a dynamic `TsAction(u16)`; record avian and hanabi as waiting on Bevy 0.20
 
 ## 4. Ordering against Rust sets
 
@@ -37,7 +46,7 @@
 ## 5. Native functions
 
 - [ ] 5.1 `app.ts_fn::<P>(name, f)` with `ReadOnlySystemParam` and `NativeLayout` input/output records; a per-function `SystemState<P>` and output arena
-- [ ] 5.2 `uses` on TS systems; `ctx.native` typed from `native.d.ts`; runtime error on an unlisted call
+- [ ] 5.2 `NativeFn<name>` system param kind read by the compile step; typed from `native.d.ts`; load error on an unknown name
 - [ ] 5.3 Load-time aliasing check between a function's component reads and the system's `write` set
 - [ ] 5.4 Test 1,000 rays in one call record one JS-to-Rust crossing and return 1,000 results in the same run; output views detach after the run
 

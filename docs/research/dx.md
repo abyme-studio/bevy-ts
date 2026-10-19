@@ -5,7 +5,7 @@
    - Systems register Bevy's way: `app.addSystems(Update, chain(a, b).runIf(inState(Game.Playing)))`. Observers are functions whose first parameter is `On<E>`; plugins are functions of `app`.
    - Systems are identified by `module#export`. Access comes from `Mut<...>` and is checked by `tsc`. `q.each` is the hot loop. There is no ParamSet.
    - No hooks in TSX (ruled 2026-10-20): a binding reads `ref.get(C)` and `res(R)`; `signal()` stays for UI-local state.
-2. **Plugins (not yet ruled):** take layouts from reflection, not from `repr(C)`. Any reflected component whose leaves are plain data becomes a zero-copy column with no generated code, Rapier's `Velocity` included. Adopting a plugin is one line in `bevy-ts.json`. bevy-ts publishes thin curated ports only for what reflection cannot reach: Rapier now, and leafwing, avian and hanabi once they are on Bevy 0.20.
+2. **Plugins (ruled 2026-10-20):** take layouts from reflection, not from `repr(C)`. Any reflected component whose leaves are plain data becomes a zero-copy column with no generated code, Rapier's `Velocity` included. Adopting a plugin is one line in `bevy-ts.json`. bevy-ts publishes thin curated ports only for what reflection cannot reach: Rapier now, and leafwing, avian and hanabi once they are on Bevy 0.20.
 
 Researched and measured 2026-10-19 and 2026-10-20 on this Mac (Apple M5 Max, macOS 25.4; deno 2.9.7 with V8 15.0.245 and TypeScript 6.0.3; rustc 1.98). Bevy 0.20.0 source is from `~/dev/refs/bevy-0.20`. Plugin sources are from crates.io: `bevy_rapier3d` 0.37.0, `avian3d` 0.7.0, `bevy_hanabi` 0.19.0, `leafwing-input-manager` 0.22.0 and `bevy_tweening` 0.16.0.
 
@@ -723,15 +723,23 @@ Bridge is archived, so its capabilities live in `openspec/specs/`.
 - `useQuery` becomes the open question of `<For each={query(...)}>`.
 - Edited: `openspec/changes/tsx` design (decision 9, goals, data model, demo, rulings), `reactive-ui` spec, tasks 5.3 and 5.6, proposal.
 
+### Applied: reflection-derived layouts and one-line plugin adoption (ruled 2026-10-20)
+
+- `openspec/changes/native`:
+  - decision 5 is rewritten: tiers come from reflection, with the guards above;
+  - decision 11 is rewritten: adoption by `native.ports`/`native.crates`, with curated ports;
+  - N1 fills the registry from reflection;
+  - the open question on resources is closed;
+  - the rulings and tasks 1.1, 3.1, 3.2, 3.7 and 3b are updated.
+- Specs edited:
+  - `native-components`: the layout tier by reflection, and valid-value writes;
+  - `native-crate`: plugins adopted in config;
+  - `native-functions`: `NativeFn<name>` param kinds;
+  - `openspec/specs/ts-components`: Rust layouts from reflection, so `Transform` is no longer special.
+
 ### Not yet ruled
 
 - **tsx, picking and spawning:** picking handlers become entity-local observer props (`onPointerClick`, ...) named after Bevy 0.20's `PointerClick`, and B3 becomes `commands.spawn(<Prefab />)`.
-- **native (reflection-derived layouts, one-line adoption):**
-  - *Decision 5:* layout tier no longer requires `#[repr(C)]` or a derive. Any reflected component whose leaves are plain data qualifies, with the guards above. Bridge decision 4 is generalised the same way, so `Transform` stops being a special case.
-  - *New decision:* adoption by `bevy-ts.json` (`native.ports`, `native.crates`), with curated `bevy-ts-<name>` ports.
-  - *Open question closed:* resources are components in Bevy 0.20.
-  - *Decision 8:* native functions can be exposed as param kinds (`ReadRapierContext`).
-  - *N1:* the layout registry is filled from the type registry at startup.
 - **Performance (asks first):** vector views get the parent's row without a per-row setter, and setters stamp a row's tick once per row (bridge decision 5, task 11.2).
 
 ## Sources
