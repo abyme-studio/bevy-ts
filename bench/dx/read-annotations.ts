@@ -1,22 +1,57 @@
-// Syntax-only: read each exported function's parameter annotations, emit declarations.
+// Syntax-only reader for Rust-style system signatures. No type checker: it follows type aliases,
+// param-bundle interfaces and relative imports by name, and fails loudly on anything else.
+// deno run -A bench/dx/read-annotations.ts <file.ts>
 import ts from "npm:typescript@5";
-const src = Deno.readTextFileSync(Deno.args[0]);
-const sf = ts.createSourceFile("f.ts", src, ts.ScriptTarget.Latest, true);
-const text = (n: ts.Node) => n.getText(sf);
-function decl(t: ts.TypeNode): string {
-  if (!ts.isTypeReferenceNode(t)) return `?${text(t)}`;
-  const name = text(t.typeName), args = t.typeArguments ?? [];
-  if (name === "Query") {
-    const data = (args[0] as ts.TupleTypeNode).elements.map((e) =>
-      ts.isTypeReferenceNode(e) && text(e.typeName) === "Mut" ? `Mut(${text(e.typeArguments![0])})` : text(e));
-    const f = args[1] ? (ts.isTupleTypeNode(args[1]) ? args[1].elements : [args[1]]) : [];
-    const filters = f.map((x) => { const r = x as ts.TypeReferenceNode; return `.${text(r.typeName).toLowerCase()}(${text(r.typeArguments![0])})`; });
-    return `query(${data.join(", ")})${filters.join("")}`;
-  }
-  if (name === "Res") return `res(${text(args[0])})`;
-  return `?${text(t)}`;
+import { dirname, resolve } from "jsr:@std/path@1";
+
+const files = new Map<string, ts.SourceFile>();
+function load(path: string): ts.SourceFile {
+  if (!files.has(path)) files.set(path, ts.createSourceFile(path, Deno.readTextFileSync(path), ts.ScriptTarget.Latest, true));
+  return files.get(path)!;
 }
-sf.forEachChild((n) => {
-  if (ts.isFunctionDeclaration(n) && n.name)
-    console.log(`${n.name.text}: [${n.parameters.map((p) => `${text(p.name)} = ${decl(p.type!)}`).join(", ")}]`);
-});
+type Named = ts.TypeAliasDeclaration | ts.InterfaceDeclaration;
+function lookup(sf: ts.SourceFile, name: string): [Named, ts.SourceFile] | undefined {
+  for (const s of sf.statements) {
+    if ((ts.isTypeAliasDeclaration(s) || ts.isInterfaceDeclaration(s)) && s.name.text === name) return [s, sf];
+    if (ts.isImportDeclaration(s) && s.importClause?.namedBindings && ts.isNamedImports(s.importClause.namedBindings)) {
+      const spec = (s.moduleSpecifier as ts.StringLiteral).text;
+      for (const el of s.importClause.namedBindings.elements) {
+        if (el.name.text === name && spec.startsWith(".")) {
+          return lookup(load(resolve(dirname(sf.fileName), spec)), (el.propertyName ?? el.name).text);
+        }
+      }
+    }
+  }
+}
+const PARAMS = new Set(["Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter"]);
+function decl(t: ts.TypeNode, sf: ts.SourceFile): string {
+  const at = () => `${sf.fileName.split("/").pop()}:${sf.getLineAndCharacterOfPosition(t.getStart(sf)).line + 1}`;
+  if (!ts.isTypeReferenceNode(t)) throw new Error(`${at()}: not a system param type: ${t.getText(sf)}`);
+  const name = t.typeName.getText(sf), args = t.typeArguments ?? [];
+  if (PARAMS.has(name)) {
+    if (name !== "Query") return `${name[0].toLowerCase()}${name.slice(1)}(${args.map((a) => a.getText(sf)).join(", ")})`;
+    const data = (args[0] as ts.TupleTypeNode).elements.map((e) =>
+      ts.isTypeReferenceNode(e) && e.typeName.getText(sf) === "Mut" ? `Mut(${e.typeArguments![0].getText(sf)})` : e.getText(sf));
+    const f = args[1] ? (ts.isTupleTypeNode(args[1]) ? args[1].elements : [args[1]]) : [];
+    return `query(${data.join(", ")})` + f.map((x) => {
+      const r = x as ts.TypeReferenceNode;
+      return `.${r.typeName.getText(sf).toLowerCase()}(${r.typeArguments![0].getText(sf)})`;
+    }).join("");
+  }
+  const found = lookup(sf, name);
+  if (!found) throw new Error(`${at()}: cannot resolve ${name} without a type checker; write the param type inline or alias it`);
+  const [n, nsf] = found;
+  if (ts.isTypeAliasDeclaration(n)) {
+    if (n.typeParameters) throw new Error(`${at()}: generic alias ${name} is not supported`);
+    return decl(n.type, nsf);
+  }
+  return `{ ${n.members.map((m) => `${(m as ts.PropertySignature).name.getText(nsf)}: ${decl((m as ts.PropertySignature).type!, nsf)}`).join(", ")} }`;
+}
+const sf = load(resolve(Deno.args[0]));
+for (const n of sf.statements) {
+  if (ts.isFunctionDeclaration(n) && n.name && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+    try {
+      console.log(`${n.name.text}: [${n.parameters.map((p) => `${p.name.getText(sf)} = ${decl(p.type!, sf)}`).join(", ")}]`);
+    } catch (e) { console.log(`${n.name.text}: ERROR ${(e as Error).message}`); }
+  }
+}
