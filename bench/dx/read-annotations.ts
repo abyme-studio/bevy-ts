@@ -24,26 +24,33 @@ function lookup(sf: ts.SourceFile, name: string): [Named, ts.SourceFile] | undef
   }
 }
 const PARAMS = new Set(["Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter"]);
-function decl(t: ts.TypeNode, sf: ts.SourceFile): string {
+function decl(t: ts.TypeNode, sf: ts.SourceFile, sub: Map<string, string> = new Map()): string {
+  const txt = (n: ts.Node) => sub.get(n.getText(sf)) ?? n.getText(sf);
   const at = () => `${sf.fileName.split("/").pop()}:${sf.getLineAndCharacterOfPosition(t.getStart(sf)).line + 1}`;
   if (!ts.isTypeReferenceNode(t)) throw new Error(`${at()}: not a system param type: ${t.getText(sf)}`);
   const name = t.typeName.getText(sf), args = t.typeArguments ?? [];
+  if (sub.has(name)) return sub.get(name)!;
   if (PARAMS.has(name)) {
-    if (name !== "Query") return `${name[0].toLowerCase()}${name.slice(1)}(${args.map((a) => a.getText(sf)).join(", ")})`;
+    if (name !== "Query") return `${name[0].toLowerCase()}${name.slice(1)}(${args.map(txt).join(", ")})`;
     const data = (args[0] as ts.TupleTypeNode).elements.map((e) =>
-      ts.isTypeReferenceNode(e) && e.typeName.getText(sf) === "Mut" ? `Mut(${e.typeArguments![0].getText(sf)})` : e.getText(sf));
+      ts.isTypeReferenceNode(e) && e.typeName.getText(sf) === "Mut" ? `Mut(${txt(e.typeArguments![0])})` : txt(e));
     const f = args[1] ? (ts.isTupleTypeNode(args[1]) ? args[1].elements : [args[1]]) : [];
     return `query(${data.join(", ")})` + f.map((x) => {
       const r = x as ts.TypeReferenceNode;
-      return `.${r.typeName.getText(sf).toLowerCase()}(${r.typeArguments![0].getText(sf)})`;
+      return `.${r.typeName.getText(sf).toLowerCase()}(${txt(r.typeArguments![0])})`;
     }).join("");
   }
   const found = lookup(sf, name);
-  if (!found) throw new Error(`${at()}: cannot resolve ${name} without a type checker; write the param type inline or alias it`);
+  if (!found) throw new Error(`${at()}: ${name} is not a system param type, an alias of one, or a param bundle`);
   const [n, nsf] = found;
   if (ts.isTypeAliasDeclaration(n)) {
-    if (n.typeParameters) throw new Error(`${at()}: generic alias ${name} is not supported`);
-    return decl(n.type, nsf);
+    // A generic alias is text substitution: T -> the argument as written at the use site.
+    const inner = new Map(sub);
+    (n.typeParameters ?? []).forEach((tp, i) => {
+      if (!args[i]) throw new Error(`${at()}: ${name} needs ${n.typeParameters!.length} type arguments`);
+      inner.set(tp.name.text, txt(args[i]));
+    });
+    return decl(n.type, nsf, inner);
   }
   return `{ ${n.members.map((m) => `${(m as ts.PropertySignature).name.getText(nsf)}: ${decl((m as ts.PropertySignature).type!, nsf)}`).join(", ")} }`;
 }

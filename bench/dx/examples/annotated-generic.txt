@@ -1,0 +1,6 @@
+type Movers<T> = Query<[T, Mut<Transform>], With<Alive>>;
+type Pair<A, B> = Query<[A, B]>;
+export function move(q: Movers<Enemy>) {}
+export function both(q: Pair<Enemy, Health>) {}
+export function computed(q: ReturnType<typeof makeQuery>) {}
+export function picked(q: Pick<Bundle, "a">) {}
