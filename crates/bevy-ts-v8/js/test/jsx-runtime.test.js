@@ -157,3 +157,35 @@ Deno.test("vector views cross as arrays", () => {
   const [e] = describe(jsx("entity", { children: jsx(Transform, { translation: v }) }));
   eq(e.components[0].props.translation, [1, 2, 3]);
 });
+
+Deno.test("a scene component splits fields from scene props and adds itself to its root", () => {
+  class Grunt {
+    static scene({ speed = 2 }) {
+      return dev("entity", { name: "grunt", children: dev(Transform, { translation: [speed, 0, 0] }, undefined, at("grunt.tsx", 3)) }, undefined, at("grunt.tsx", 2));
+    }
+  }
+  Grunt.componentName = "enemies::Grunt";
+  Grunt.source = "ts";
+  Grunt.fieldNames = ["team"];
+  const [g] = describe(jsxs(Fragment, { children: [dev(Grunt, { team: 1, speed: 3 }, "g1", at("level.tsx", 9)), jsx(Grunt, { initialTeam: 2 })] }));
+  eq(g.key, "g1");
+  eq(g.type, "enemies::Grunt");
+  eq(g.components.map((c) => [c.type, c.props]), [["enemies::Grunt", { team: 1 }], ["Transform", { translation: [3, 0, 0] }]]);
+  eq(g.source.map((s) => `${s.file}:${s.line}`), ["grunt.tsx:2", "level.tsx:9"]);
+  const all = describe(jsxs(Fragment, { children: [jsx(Grunt, {}), jsx(Grunt, { initialTeam: 2 })] }));
+  eq(all.map((n) => n.key), ["enemies::Grunt#0", "enemies::Grunt#1"]);
+  eq(all[1].components[0].props, { initialTeam: 2 });
+});
+
+Deno.test("a scene component whose field and scene prop share a name fails", () => {
+  class Bad {
+    static scene() {
+      return jsx("entity", {});
+    }
+  }
+  Bad.componentName = "Bad";
+  Bad.source = "ts";
+  Bad.fieldNames = ["speed"];
+  Bad.sceneProps = ["speed"];
+  throws(() => jsx(Bad, {}), /speed is both a field and a scene prop/);
+});

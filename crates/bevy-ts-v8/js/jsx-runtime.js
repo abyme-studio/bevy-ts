@@ -99,6 +99,8 @@ function create(type, props, key, source, isStatic) {
   }
   const explicitKey = key === undefined || key === null ? null : String(key);
 
+  if (isComponent(type) && typeof type.scene === "function") return sceneComponent(type, p, children, explicitKey, location);
+
   if (typeof type === "function" && !isComponent(type) && !type[CONTROL]) {
     // A prefab: call it now, with children as a prop, and stamp its call site on what it made.
     const before = seq;
@@ -127,6 +129,71 @@ function create(type, props, key, source, isStatic) {
     keyLocation: location,
     chain: [],
   };
+}
+
+/** A component's field names, from whatever the runtime knows of its layout. */
+function fieldNames(C) {
+  if (Array.isArray(C.fieldNames)) return C.fieldNames;
+  if (C.layout && C.layout.fields) return C.layout.fields.map((f) => f.name);
+  if (C.fields && typeof C.fields === "object") return Object.keys(C.fields);
+  return [];
+}
+
+/**
+ * A scene component (a class extending `SceneComponent` with `static scene(props)`): its props
+ * split into the component's fields (`team`, `initialTeam`) and its scene's props (the rest);
+ * `scene` builds the subtree, and the component is always added to its root entity, so a query
+ * for it finds every instance.
+ */
+function sceneComponent(type, p, children, explicitKey, location) {
+  const fields = new Set(fieldNames(type));
+  const declared = Array.isArray(type.sceneProps) ? new Set(type.sceneProps) : null;
+  if (declared) {
+    for (const f of fields) {
+      if (declared.has(f)) throw located(`${typeName(type)}: ${f} is both a field and a scene prop; rename one`, location);
+    }
+  }
+  const fieldProps = {};
+  const sceneProps = {};
+  for (const k in p) {
+    const base = k.startsWith("initial") && k.length > 7 ? k[7].toLowerCase() + k.slice(8) : null;
+    if (k === "ref") sceneProps.ref = p[k];
+    else if (fields.has(k) || (base !== null && fields.has(base))) fieldProps[k] = p[k];
+    else sceneProps[k] = p[k];
+  }
+  const before = seq;
+  const hasChildren = !(children === undefined || (Array.isArray(children) && children.length === 0));
+  const out = type.scene(hasChildren ? { ...sceneProps, children } : sceneProps);
+  if (!isElement(out) || (out.type !== "entity" && !UI_INTRINSICS.has(out.type))) {
+    throw located(`${typeName(type)}.scene must return one <entity> (or UI element)`, location);
+  }
+  addCallSite(out, before, location);
+  // The component itself, on the root, with the field props; never expanded again.
+  const own = {
+    [ELEMENT]: true,
+    seq: ++seq,
+    type,
+    props: fieldProps,
+    children: [],
+    staticChildren: false,
+    key: null,
+    keyType: null,
+    source: location,
+    keyLocation: location,
+    chain: [],
+    componentOnly: true,
+  };
+  const kids = out.children === undefined ? [] : out.children;
+  const expanded = {
+    ...out,
+    children: [own].concat(kids),
+    staticChildren: true,
+    key: explicitKey !== null ? explicitKey : out.key,
+    keyType: typeName(type),
+    keyLocation: location,
+  };
+  if (sceneProps.ref !== undefined && out.props.ref === undefined) expanded.props = { ...out.props, ref: sceneProps.ref };
+  return expanded;
 }
 
 export function jsx(type, props, key) {
