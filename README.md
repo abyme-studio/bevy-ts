@@ -17,5 +17,9 @@ without recompiling Rust.
 abyme's Bevy studio talks to a running game over the Bevy Remote Protocol, which bevyts extends
 (reload, component schemas, scene reconcile, entity events). That contract is the only coupling.
 
-Open: the JS runtime (V8 via deno_core, or another), and whether TSX compiles to static scene
-data, runs dynamically, or both.
+The JS runtime is V8 through `deno_core` on desktop (ruled 2026-10-19,
+[docs/research/js-runtime.md](docs/research/js-runtime.md)). The bridge stays engine-neutral:
+buffers in, a command buffer out, so QuickJS-ng can be a later backend for iOS and consoles, and
+the web uses the browser's engine.
+
+Open: whether TSX compiles to static scene data, runs dynamically, or both.
