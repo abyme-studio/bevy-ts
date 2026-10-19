@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: A project engine is the default engine plus the native crate, statically linked
-For a project with a native crate, bevy-ts SHALL generate a binary crate under `.bevy-ts/engine/` whose `main` calls the same engine entry the prebuilt binary uses, with the native crate's `native!` function passed in, and SHALL build it with `cargo build` in the profile `bevy-ts dev` (dev, with dependencies optimised) or `bevy-ts build` (release) asks for. The native crate SHALL be linked statically into one executable; bevy-ts SHALL NOT load Rust code from a dynamic library at runtime.
+For a project with a native crate, adopted crates or ports, bevy-ts SHALL generate a binary crate under `.bevy-ts/engine/` whose `main` calls the same engine entry the prebuilt binary uses (`bevy_ts_cli::run`) with their Bevy plugins passed in, and SHALL build it with `cargo build` in the profile `bevy-ts dev` (dev, with dependencies optimised) or `bevy-ts build` (release) asks for. The native crate SHALL be linked statically into one executable; bevy-ts SHALL NOT load Rust code from a dynamic library at runtime.
 
 #### Scenario: Building a project engine
 - **WHEN** `bevy-ts dev` runs in a project with a native crate and no cached engine
@@ -23,10 +23,10 @@ bevy-ts SHALL compute an engine hash from: the bevy-ts version, the target tripl
 - **THEN** the engine hash changes and a new project engine is built
 
 ### Requirement: A shared engine cache
-`bevy-ts.json` MAY name a shared engine cache, either a directory or an HTTP(S) URL template containing `{hash}` and `{target}`. On a local miss bevy-ts SHALL try the shared cache before building, SHALL verify a downloaded binary against the SHA-256 recorded next to it, and SHALL NOT execute a binary that fails verification. `bevy-ts engine publish` SHALL build the engine for the current target and write it with its checksum to a directory-type cache, for CI to upload.
+`bevy-ts.json` MAY name a shared engine cache, a directory laid out as `<hash>/<target>/` (a network share, or a CI artefact a team unpacks). On a local miss bevy-ts SHALL try the shared cache before building, SHALL verify a binary against the SHA-256 recorded next to it, and SHALL NOT execute a binary that fails verification. The checksum proves integrity, not authenticity; the docs SHALL say so. An HTTP cache and a publish command are out of scope for this change. Before any build, `bevy-ts dev` SHALL print the engine hash, why the caches missed and what will compile.
 
 #### Scenario: A gameplay author without Rust
-- **WHEN** CI has published the engine for the current `Cargo.lock` and native sources, and an author with no Rust toolchain runs `bevy-ts dev`
+- **WHEN** CI has placed the engine for the current `Cargo.lock` and native sources in the shared directory, and an author with no Rust toolchain runs `bevy-ts dev`
 - **THEN** the engine is fetched from the shared cache, verified and started, and no build is attempted
 
 #### Scenario: A tampered download

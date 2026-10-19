@@ -737,7 +737,28 @@ Bridge is archived, so its capabilities live in `openspec/specs/`.
   - `native-functions`: `NativeFn<name>` param kinds;
   - `openspec/specs/ts-components`: Rust layouts from reflection, so `Transform` is no longer special.
 
-### Not yet ruled
+### Applied: the native review (operator, 2026-10-20)
+
+A Fable review of the native change, checked against Bevy 0.20 and `bevy_rapier3d` 0.37 source:
+
+- **TS calls Rust through exported system params, not `NativeFn<name>`.** `#[bevy_ts::export]` on a read-only `SystemParam`'s `impl` generates, per method:
+  - a fast op;
+  - the argument codecs;
+  - the TS types;
+  - the JS glue.
+
+  A TS system takes `rapier: ReadRapierContext` and calls `rapier.castRay(...)`, as Rust does. A fixed record could not carry Rapier's `QueryFilter`.
+- **The aliasing rejection is dropped.** Read-only access during the exclusive stage is sound, for the same reason overlapping queries are.
+- **`bevy_reflect::func` is rejected.** It boxes every argument and cannot receive a `SystemParam`.
+- **No `native!` macro.** The project's Rust is a plain Bevy `Plugin` named in `bevy-ts.json`, with an `App` extension trait (`ts_param`, `ts_set`, `ts_module`).
+- **Unreadable leaves are holes.**
+  - `Time`'s `Duration` fields are opaque to reflection (`impl_reflect_opaque!`), so the "every leaf plain data" rule would have refused `Res<Time>`.
+  - Now `delta_secs` and `elapsed_secs` are columns, and the `Duration` fields are never seen.
+- **Slots exist only for sets a generation names.** An exclusive system is a barrier even when skipped (`multi_threaded.rs:533`).
+- **The Rapier port uses `in_fixed_schedule()`.** Rapier's default schedule is `PostUpdate`.
+- **Shared cache: directory only for now.** The checksum proves integrity, not authenticity, and `bevy-ts dev` prints the build plan before compiling.
+- **Script materials and the TypeGPU verdict moved to their own change**, `openspec/changes/script-materials`.
+
 
 - **tsx, picking and spawning:** picking handlers become entity-local observer props (`onPointerClick`, ...) named after Bevy 0.20's `PointerClick`, and B3 becomes `commands.spawn(<Prefab />)`.
 - **Performance (asks first):** vector views get the parent's row without a per-row setter, and setters stamp a row's tick once per row (bridge decision 5, task 11.2).

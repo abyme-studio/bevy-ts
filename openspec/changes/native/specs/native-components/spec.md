@@ -1,11 +1,15 @@
 ## ADDED Requirements
 
 ### Requirement: Layout-tier Rust components are columns in TS systems
-A registered Rust component or resource with `ReflectComponent` SHALL be usable as query data in a TS system (`Query<[Mut<T>]>`, `Res<T>`) when every reflected leaf is a plain-data type bevy-ts knows (`f32`, `f64`, the integer types, `bool`, `Entity`, `Vec2`, `Vec3`, `Vec3A`, `Vec4`, `Quat`, fieldless enums), whatever its `repr`. The engine SHALL fill bridge's native layout registry at startup from reflection: from a value of the type (`ReflectDefault`, `ReflectFromWorld` or the first live row), each leaf's offset is its reference's address minus the value's address. A type whose derived offsets fall outside `size_of::<T>()`, overlap or disagree with their leaf sizes SHALL be reflect tier, with the reason in `bevy-ts types`. A component without `Reflect` MAY derive `bevy_ts_native::NativeLayout`, which fills the registry from `core::mem::offset_of!` and needs public fields but no `repr(C)`. The component's TS name SHALL be its reflected type path.
+A registered Rust component or resource with `ReflectComponent` SHALL be usable as query data in a TS system (`Query<[Mut<T>]>`, `Res<T>`) when at least one reflected leaf is a plain-data type bevy-ts knows (`f32`, `f64`, the integer types, `bool`, `Entity`, `Vec2`, `Vec3`, `Vec3A`, `Vec4`, `Quat`, fieldless enums), whatever its `repr`. Every other leaf (opaque to reflection, such as `Duration`, or not plain data) SHALL be a hole: never exposed to TS and never written, and a type with holes SHALL NOT offer raw `q.tables` writes. The engine SHALL fill bridge's native layout registry at startup from reflection: from a value of the type (`ReflectDefault`, `ReflectFromWorld` or the first live row), each leaf's offset is its reference's address minus the value's address. A type whose derived offsets fall outside `size_of::<T>()`, overlap or disagree with their leaf sizes SHALL be reflect tier, with the reason in `bevy-ts types`. A component without `Reflect` MAY derive `bevy_ts_native::NativeLayout`, which fills the registry from `core::mem::offset_of!` and needs public fields but no `repr(C)`. The component's TS name SHALL be its reflected type path.
 
 #### Scenario: Rapier's Velocity written by TS
 - **WHEN** the project adopts `bevy_rapier3d` and a TS system queries `Query<[Mut<Velocity>]>` and writes `v.linear.x`
 - **THEN** Rapier's own `Velocity` changes that frame with no mirror type and no `repr(C)`, and `Changed<Velocity>` holds for exactly the rows TS wrote
+
+#### Scenario: Time with opaque Durations
+- **WHEN** a TS system takes `time: Res<Time>`
+- **THEN** it reads `time.delta_secs` and `time.elapsed_secs` from Bevy's own `Time`, and its `Duration` fields are not visible to TS
 
 #### Scenario: A private reflected field
 - **WHEN** a reflected component's field is private (`LockedAxes(u8)`)
@@ -19,7 +23,7 @@ A registered Rust component or resource with `ReflectComponent` SHALL be usable 
 - **THEN** the byte written is the one this build uses for `RigidBody::Fixed`
 
 ### Requirement: Reflect-tier Rust components are typed but never columns
-Any registered component with `ReflectComponent` whose leaves are not all plain data (or that has no native layout) SHALL be visible to TS as a typed value: usable as a TSX component element, in `bevy-ts/` protocol methods and through bridge's reflected access for plugins, read and written as JSON through Bevy reflection. TS systems SHALL reject it as query data (ts-components) and SHALL accept it in `With` and `Without` filters.
+Any registered component with `ReflectComponent` that has no plain-data leaf (or no native layout) SHALL be visible to TS as a typed value: usable as a TSX component element, in `bevy-ts/` protocol methods and through bridge's reflected access for plugins, read and written as JSON through Bevy reflection. TS systems SHALL reject it as query data (ts-components) and SHALL accept it in `With` and `Without` filters.
 
 #### Scenario: A component holding a Handle
 - **WHEN** the native crate or an adopted plugin registers `struct Weapon { mesh: Handle<Mesh>, name: String }` with `Reflect`

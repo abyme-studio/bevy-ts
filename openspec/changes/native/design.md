@@ -23,8 +23,6 @@ Read for this design (2026-10-19):
 - A team where only one machine (or CI) has a Rust toolchain.
 - Rust components typed in TS, as columns when their layout allows it, as reflected values otherwise.
 - TS systems ordered against Rust systems without rebuilding schedules on reload.
-- Custom materials without Rust.
-- A verdict on TypeGPU.
 
 **Non-Goals:**
 - Hot patching Rust in a running engine (`subsecond`, Bevy's hotpatching feature). Room is left: a Rust edit already restarts cleanly.
@@ -41,32 +39,42 @@ A class stays Rust when TS on one main-thread isolate cannot do it at the cost t
 
 | Class | Why not TS | Where it lives | What TS gets |
 |---|---|---|---|
-| Physics, solvers, collision | Broadphase trees, contact graphs and islands are pointer-heavy heap structures, not columns; solvers want SIMD and threads | A third-party plugin (avian, rapier) in the native crate | Layout-tier components it reads (velocities, forces); slots `systems(s).after(PhysicsSet.StepSimulation)`; batched native functions for raycasts and shape casts |
+| Physics, solvers, collision | Broadphase trees, contact graphs and islands are pointer-heavy heap structures, not columns; solvers want SIMD and threads | A third-party plugin (avian, rapier) in the native crate | Layout-tier components it reads (velocities, forces); slots `systems(s).after(PhysicsSet.StepSimulation)`; exported params for raycasts and shape casts (decision 8) |
 | Particles | Simulated on the GPU (bevy_hanabi) or in parallel CPU systems | Native crate | Spawner settings as layout-tier components; effect assets by path |
-| Spatial queries at scale (neighbours, navmesh, pathfinding) | The index is a heap structure; per-entity queries from JS would cross per call | Native crate, as a resource | Batched native functions, one call per batch |
+| Spatial queries at scale (neighbours, navmesh, pathfinding) | The index is a heap structure; per-entity queries from JS would cross per call | Native crate, as a resource | Exported param methods, with batched variants for bulk queries (decision 8) |
 | Render-world work: render-graph systems, passes, compute, readback, custom draw | Runs in the render sub-app on the render thread, with no JS and no main-world access | Native crate | Settings as layout-tier components on cameras or entities, extracted by Rust; materials are the exception below |
-| Custom materials | Not disqualified: a material is WGSL plus parameters, which is data | Prebuilt engine's script-material crate | `material()` declarations, TSX `<material>` |
+| Custom materials | Not disqualified: a material is WGSL plus parameters, which is data | Prebuilt engine (the `script-materials` change) | `material()` declarations, TSX `<material>` |
 | Parallel systems | JS is exclusive on the main thread (bridge decision 1) | Native crate | Ordering through slots; data through shared components |
 | Third-party Bevy plugins | They are Rust crates, compiled in | `bevy-ts.json` (decision 11); the native crate only for the project's own Rust | Their reflected types (reflect tier), their sets if the crate exposes them, their components with `NativeLayout` if the crate author or a wrapper adds it |
 | Components with non-POD data (`String`, `Vec`, `Handle<T>`, `Box<dyn T>`, maps) | No fixed layout, need drop and clone in Rust | Native crate, as Rust types | Reflect tier: typed values in TSX and the protocol, filters in queries; `Entity` refs are plain layout-tier fields |
-| Platform integrations (Steamworks, console SDKs, IAP, native dialogs, haptics) | C SDKs, callbacks on foreign threads, platform build rules | Native crate | Native functions for requests, components or entries for results |
+| Platform integrations (Steamworks, console SDKs, IAP, native dialogs, haptics) | C SDKs, callbacks on foreign threads, platform build rules | Native crate | Exported param methods for requests, components or entries for results |
 | Hot loops over huge counts that are plain arithmetic (boids, bobbing, damage over time) | Nothing: these stay TS | TS systems | — |
 
 ## Decisions
 
-### 1. The escape hatch is one native crate, statically linked into a project engine
-A project names one Cargo library in `bevy-ts.json`. bevy-ts generates `.bevy-ts/engine/`, a binary crate whose `main` is the prebuilt engine's own `main` with the native crate's entry passed in, and builds it with `cargo`. The project engine is the prebuilt engine plus the crate, nothing else: same CLI flags, same protocol, same TS loader.
+### 1. The project's Rust is one Bevy plugin, statically linked into a project engine
+A project names one Cargo library and one plugin in it in `bevy-ts.json`:
 
+```jsonc
+"native": { "crate": "native", "plugin": "native::GamePlugin" }
+```
+
+The plugin is an ordinary Bevy `Plugin`. bevy-ts generates `.bevy-ts/engine/`, a binary crate whose `main` calls `bevy_ts_cli::run(plugins)` with the project's plugin, the adopted crates' plugins and the ports (decision 11). It builds that crate with `cargo`. The project engine is the prebuilt engine plus those plugins, nothing else: same CLI flags, same protocol, same TS loader. What TS needs from Rust is registered through an extension trait on `App`, Bevy's `register_type` idiom: `app.ts_param::<P>()` (decision 8) and `app.ts_set(name, schedule, set)` (decision 7).
+
+- *Beat: a `bevy_ts::native!` entry macro with a `NativeApp` wrapper (the previous draft).* The wrapper restricted nothing it stated. "Exactly one entry" needed link-time tricks, where a plugin path named in config fails with an ordinary compile error. A third-party plugin and the project's own Rust are the same case.
 - *Beat: dynamic libraries loaded at runtime (GDExtension, Unity native plugins, Bevy's removed `bevy_dynamic_plugin`).* Rust has no stable ABI. A dylib sharing Bevy types with the engine must be built by the same compiler against the same Bevy build with the same features, which is exactly a project-specific build anyway, plus unsoundness when anything drifts; Bevy removed its dynamic plugin loader in 0.15 for that reason (#14534), and godot-rust's own book advises turning GDExtension reload off. GDExtension avoids it by putting a C ABI over the whole engine, which for Bevy would mean wrapping every plugin's API in C.
 - *Beat: a C ABI plugin surface (`abi_stable`, `stabby`).* It would let one prebuilt engine load plugins, but third-party Bevy plugins are written against Bevy's Rust API and would not cross it. It solves the toolchain problem only for code written specifically for bevy-ts.
 - *Beat: letting the native crate own `main`.* Then every project carries engine startup code that must track bevy-ts releases. A generated `main` keeps the engine one thing.
 
-### 2. Rebuild only when Rust inputs change, keyed by a content hash, with a shared cache
-The engine hash covers the bevy-ts version, target, profile, engine features, `Cargo.lock`, the workspace's `Cargo.toml`s and the native package's files; never TS or assets. A hit in `.bevy-ts/engines/<hash>/` starts without `cargo`. A miss tries the shared cache (a directory or an HTTP URL template), verifying a SHA-256, then builds. CI runs `bevy-ts engine publish` per target. That is how "no Rust recompile for gameplay" holds for a team: gameplay authors fetch the engine their checkout needs, and only the people editing `native/` compile.
+### 2. Rebuild only when Rust inputs change, keyed by a content hash, with a shared directory cache
+The engine hash covers the bevy-ts version, target, profile, engine features, `Cargo.lock`, the workspace's `Cargo.toml`s and the native package's files; never TS or assets. A hit in `.bevy-ts/engines/<hash>/` starts without `cargo`. A miss tries the shared cache, a directory (a network share, or a CI artefact a team unpacks), verifying a SHA-256, then builds. That is how "no Rust recompile for gameplay" holds for a team: gameplay authors fetch the engine their checkout needs, and only the people editing Rust compile. Before a build starts, `bevy-ts dev` prints what it will compile and why: the hash, the cache miss, and on a first build the size of Bevy, rusty_v8 and the plugins.
+
+The SHA-256 next to a binary in the same cache proves integrity, not authenticity: whoever can write the cache can replace both. The cache location is the project's own choice and there is no default remote.
 
 - *Beat: always `cargo build` and let Cargo's own freshness check decide.* Correct, but it requires a toolchain on every machine and pays Cargo's resolution on every launch.
 - *Beat: committing engine binaries to the repository (or LFS).* It works with no service, but binaries per platform per change bloat history and drift from the source that built them; a hash-keyed cache cannot drift.
-- *Beat: a bevy-ts hosted build service.* It is infrastructure and someone pays for it; a URL template lets a team point at any bucket it already has.
+- *Beat: a bevy-ts hosted build service.* It is infrastructure and someone pays for it.
+- *Later, not now:* an HTTP(S) URL template for the shared cache and a `bevy-ts engine publish` command. A directory covers a team, and CI can produce one.
 
 ### 3. Rust edits restart the engine; they never patch it
 Under `bevy-ts dev`, a save in the native crate rebuilds in the background while the old engine runs. On success the new engine starts on the same port and the TS generation loads as a restart (startups re-run, TSX remounts). On failure the old engine keeps running. World state does not cross the restart; Rust edits are rarer and coarser than TS edits, and the studio reconnects through `bevy-ts/hello`.
@@ -82,7 +90,7 @@ Under `bevy-ts dev`, a save in the native crate rebuilds in the background while
 ### 5. Rust components cross in two tiers, decided per type from reflection
 Layouts come from reflection, not from `repr(C)` (operator ruling 2026-10-20, docs/research/dx.md). At startup the engine walks the type registry. For each registered component and resource with `ReflectComponent`, it takes a value (`ReflectDefault`, `ReflectFromWorld`, or the first live row) and reads every reflected field's offset as the field reference's address minus the value's address. A derived `Reflect` hands out references into the value itself.
 
-The type is **layout tier** when every reflected leaf is a plain-data type bevy-ts knows: `f32`, `f64`, the integers, `bool`, `Entity`, glam's vectors and quaternions, and fieldless enums. Layout tier makes it a zero-copy column in TS systems, with change ticks, whatever its `repr`. Everything else is **reflect tier**: typed in TS, usable in TSX elements, the protocol and plugins through bridge decision 14, and in `With`/`Without` filters, never as query data. A component that needs both is split into two components on one entity.
+The type is **layout tier** when it has at least one reflected leaf of a plain-data type bevy-ts knows: `f32`, `f64`, the integers, `bool`, `Entity`, glam's vectors and quaternions, and fieldless enums. Layout tier makes it a zero-copy column in TS systems, with change ticks, whatever its `repr`. A leaf of a type bevy-ts cannot read (reflection marks it opaque, such as `Duration`, or it is not plain data) is a **hole**. A hole is never exposed or written. The known leaves around it are still columns, and `q.tables` raw writes are disabled for that type. `Time` is the case that decides this: its `delta: Duration` is opaque (`impl_reflect_opaque!` in `bevy_reflect/src/impls/core/time.rs`), while its `delta_secs: f32` and `elapsed_secs: f32` are plain data, so `Res<Time>` reads `delta_secs` from Bevy's own resource. A type with no known leaves at all is **reflect tier**: typed in TS, usable in TSX elements, the protocol and plugins through bridge decision 14, and in `With`/`Without` filters, never as query data. A component that needs both is split into two components on one entity.
 
 Guards on the layout tier:
 
@@ -105,47 +113,61 @@ Guards on the layout tier:
 - *Beat: TS components with heap fields via a drop fn.* `new_with_layout` accepts a drop fn, but the data would be opaque bytes to TS anyway; the owner of heap data must be Rust.
 
 ### 6. TS types come from the engine's registry, generated, not hand-written
-`bevy-ts types` builds the engine's `App` with all plugins added, stops before the renderer creates a device, walks `AppTypeRegistry` for components registered for TS, exposed sets and native functions, and writes `.bevy-ts/types/native.d.ts`. Layout-tier fields map to bridge field types; reflect-tier fields follow `registry.schema`'s JSON Schema. The prebuilt engine's types ship in the npm package as `bevy-ts/bevy`. Output is deterministic and diffed in CI, the way bridge's protocol types are.
+`bevy-ts types` builds the engine's `App` with all plugins added, stops before the renderer creates a device, walks `AppTypeRegistry` for components registered for TS, exposed sets and exported params, and writes `.bevy-ts/types/native.d.ts`. Layout-tier fields map to bridge field types; reflect-tier fields follow `registry.schema`'s JSON Schema. The prebuilt engine's types ship in the npm package as `bevy-ts/bevy`. Output is deterministic and diffed in CI, the way bridge's protocol types are.
 
 - *Beat: hand-written `declare` blocks.* They drift on the first Rust edit.
 - *Beat: a proc macro writing TS at compile time.* It sees one crate at a time, so it misses third-party plugins' reflected types and anything registered at runtime.
 - *Beat: generating from the `bevy-ts/schema` protocol method of a running engine.* Same data, but needs a window and a running game; the registry walk can run in CI with no GPU.
 
-### 7. TS orders against Rust through named sets with fixed slots
-The native crate exposes a system set under a name (`physics:step`). At app build the engine adds two exclusive stage systems around it, a before slot and an after slot. TS systems say `before`/`after` with that name and run in that slot; an empty slot is skipped by a run condition. Rust orders against TS through `BevyTsSet` and the slot sets. The schedule is fixed by the engine binary, which only changes when Rust changes, so a TS reload still never rebuilds a schedule (bridge decision 1 holds).
+### 7. TS orders against Rust through named sets, with slots made when first named
+Rust exposes a system set under a name with `app.ts_set("rapier:step", FixedUpdate, PhysicsSet::StepSimulation)`. The first generation that orders a TS system against that name makes two exclusive stage systems around the set, a before slot and an after slot. That is one schedule edit at that reload. TS systems say `systems(s).after(systemSet("rapier:step"))` and run in the slot. Later reloads move systems between existing slots without touching the schedule. A slot no generation has named does not exist. Rust orders against TS through `BevyTsSet` and the slot sets.
 
+A skipped exclusive system still costs the parallel executor a barrier. `MultiThreadedExecutor::can_run` refuses an exclusive system while `num_running_systems > 0` (`bevy_ecs/src/schedule/executor/multi_threaded.rs:533`), before its run condition is evaluated. So pre-built empty slots would add two drain points per exposed set to every schedule run. Rapier's three sets would add six.
+
+- *Beat: two slots per exposed set built at app build, empty ones skipped by a run condition (the previous draft).* It would pay the barriers above on every frame for sets no TS system uses.
 - *Beat: one Bevy system per TS system, inserted against the Rust set on each reload.* Precise, but it rebuilds schedules on every save, the cost bridge decision 1 refused.
 - *Beat: only the four bridge stages.* A TS system reacting to physics results would run a frame late, or the author would have to move it to Rust.
-- *Beat: slots around every Rust system set automatically.* Each exclusive slot is a barrier for the parallel executor; slots must be opted into by name, and empty ones skipped.
 
-### 8. Native functions: batched, synchronous, read-only, declared
-A native function is Rust taking a read-only `SystemParam` and a batch of typed records, returning a batch of typed records into a Rust-owned buffer viewed by JS. A TS system lists the functions it `uses`; load rejects a system whose `write` set overlaps what a function reads, so a function never reads a column JS is writing. Structural changes go through the system's command buffer. This is a new seam operation, JS calling a host function, which `deno_core` (ops), QuickJS-ng (host functions) and the web (wasm imports) all have.
+### 8. TS calls Rust through Bevy system params with exported methods
+Behaviour reaches TS as Bevy's own unit, a read-only `SystemParam`, and is used from TS as a Rust system uses it. A TS system takes the param in its signature (`rapier: ReadRapierContext`) and calls its methods (`rapier.castRay(...)`). The Rust side is one attribute on an `impl` block:
 
-- *Beat: requests as commands, results next frame.* Engine-neutral without a new seam op, but a frame of latency for every raycast changes gameplay.
-- *Beat: per-call functions without batches.* One crossing per ray; bridge's rule is crossings per run, not per item.
-- *Beat: giving native functions `&mut World`.* JS holds live column views during the run; a mutating function could move or free the memory under them.
+```rust
+#[bevy_ts::export(ts = "ReadRapierContext", module = "bevy-ts/rapier")]
+impl ReadRapierContext<'_, '_> {
+    fn cast_ray(&self, origin: Vec3, dir: Vec3, max_toi: f32, solid: bool, f: RayFilter) -> Option<RayHit> { ... }
+    fn cast_rays(&self, rays: &[Ray], solid: bool, f: RayFilter, out: &mut [RayHit]) -> u32 { ... }
+}
+// in the plugin: app.ts_param::<ReadRapierContext>();
+```
 
-### 9. TypeGPU: borrow ideas, do not adopt
-Verdict: skip TypeGPU as a dependency; borrow its schema-per-WGSL-type idea for script-material params and its headless `resolve` as the model for generating WGSL declarations from a TS schema.
+The macro generates four things:
 
-- **As the component layout vocabulary: no.** Its `d.*` types encode WGSL alignment (`vec3f` aligned 16, struct sizes rounded to 16), and components must follow C rules so they match Rust's `Vec3` (align 4) and `offset_of!` layouts of Rust components. Using WGSL layout for components would pad every `vec3` by a third and break the layout tier. It also has no notion of `entity`, `bool` as one byte, or enums.
-- **As the material param vocabulary: borrowed, not imported.** A material's params are exactly a WGSL uniform struct, which is TypeGPU's model. bevy-ts's `bevy-ts/material` types mirror the `vec3f`-style names so authors who know TypeGPU or WGSL read them directly, and Rust computes the layout, as it does for components (bridge decision 3).
-- **As the shader language: not now.** Its codegen works without a GPU device (`tgpu.resolve` is device-free), but JS-bodied functions need `unplugin-typegpu` at build time to embed their AST; bevy-ts compiles with oxc in the engine process and its loader rejects bare npm specifiers (bridge script-runtime), so adoption means porting the plugin to an oxc pass and vendoring a 0.x library that changes every few weeks into the built-in modules. Its resolved output is WGSL plus TypeGPU bind group layout objects that nothing maps to Bevy's `#{MATERIAL_BIND_GROUP}` conventions or PBR imports. WGSL strings with generated bindings give custom materials today with none of that.
-- **Owning the GPU: never on native.** Bevy's wgpu device is the only one. On the web, both would sit on the browser's WebGPU, which is still not a reason to give TypeGPU the device.
-- Revisit when TypeGPU reaches 1.0 and offers a codegen-only entry that emits WGSL functions for a host's bind group conventions; a `typegpu`-authored WGSL string can already be pasted into `fragment` today.
+- a `SystemState<P>` kept in the backend's state;
+- one host function per method, a fast op on V8;
+- record codecs for the arguments;
+- the method's TS declaration and the JS glue, in a built-in module the port registers (`app.ts_module("bevy-ts/rapier", ...)`).
 
-### 10. Script materials: one erased Rust material, runtime layouts
-`bevy-ts-material` registers one Rust asset type, `ScriptMaterial`, implementing `ErasedRenderAsset` by hand, as `manual_material.rs` does: its `MaterialProperties` carry a bind group layout built per material kind from the TS schema, the kind's shader handles, and an `UnpreparedBindingResources` per instance (the uniform bytes and texture views). Rust lays params out with WGSL uniform rules and prepends the generated struct and bindings to the author's WGSL. Shader edits replace the shader asset in place; Bevy re-specializes.
+The TS types therefore come from the Rust signatures. Signatures are restricted to scalars, `Vec2`/`Vec3`/`Quat`, `Entity`, `bool`, `NativeLayout` records, slices of them, `&mut` slices for output, and `Option` of these. A batched method is just another method on the same param: one call per batch, for the 1,000-ray case.
 
-- *Beat: one Rust `Material` type per material (`AsBindGroup` derive).* Every new material would be a Rust change and a project engine; the layout fn is static per type.
-- *Beat: `ExtendedMaterial<StandardMaterial, _>` with a fixed extension of generic slots (N floats, M textures).* No layout logic, but authors index `params[3]` instead of naming fields, and the slot count is a cap someone will hit.
-- *Beat: TS-authored render passes too.* Passes run in the render world on another thread with ordering rules (`chain_weak`) TS cannot see; settings components extracted by Rust cover the TS side.
+During a JS stage the backend holds the world for the run and fetches each param with `SystemState::get(&World)`. That access is read-only, so a method sees JS's writes made so far in the run, as an overlapping query does (ts-systems: overlapping queries need no ParamSet), and cannot move or free column memory. Methods cannot make structural changes; they return entity ids, and the TS system uses its `Commands`. Errors:
+
+- a param that fails validation (`SystemParamValidationError`, such as Rapier's context not existing yet) throws a JS exception naming the param and method;
+- a panic in a method is caught with `catch_unwind` and becomes an exception;
+- a method cannot call back into JS.
+
+- *Beat: named batched functions with fixed records, `NativeFn<"physics:raycast">` (the previous draft).* It is not Bevy's idiom, and a fixed `Ray` record cannot carry Rapier's `QueryFilter` (flags, groups, exclusions). The bench's own Rapier example already used the param form.
+- *Beat: rejecting a function whose param reads a column the system writes (the previous draft).* It contradicts the ts-systems rule that overlapping access is sound inside the exclusive stage; read-only access is the whole bound.
+- *Beat: Bevy's function reflection (`bevy_reflect::func`, `DynamicFunction`, `App::register_function`, feature `reflect_functions`).* Its arguments are boxed `PartialReflect` values, one allocation per argument per call, and a function cannot receive `&World` or a `SystemParam`. bevy_mod_scripting builds its own registry for the same reason.
+- *Beat: one-shot systems (`World::run_system_with`).* They flush the world after the run (`system_registry.rs`), which would apply queued structural commands under JS's live column views.
+- *Beat: requests as commands, results next frame.* A frame of latency for every raycast changes gameplay.
+- *Beat: giving methods `&mut World`.* JS holds live column views during the run; a mutating method could move or free the memory under them.
 
 ### 11. Third-party plugins are adopted by one line of config
-The prebuilt engine ships Bevy's default plugins, `bevy_remote` and bevy-ts's crates, and no third-party plugin. A project adopts a plugin in `bevy-ts.json`, never in code (operator ruling 2026-10-20):
+The prebuilt engine ships Bevy's default plugins, `bevy_remote` and bevy-ts's crates, and no third-party plugin. A project adopts a plugin in `bevy-ts.json`, never in code (operator ruling 2026-10-20). The project's own crate (decision 1) is named the same way:
 
 ```jsonc
 { "native": {
+    "crate": "native", "plugin": "native::GamePlugin",                       // the project's own Rust
     "ports": ["rapier3d"],                                                   // curated
     "crates": { "bevy_kira_audio": { "version": "0.27", "plugin": "bevy_kira_audio::AudioPlugin" } }  // uncurated
 } }
@@ -155,13 +177,13 @@ bevy-ts generates `.bevy-ts/engine/` (decision 1) with the dependencies and the 
 
 What reflection cannot reach is the behaviour layer, and comes from a curated port or the project's own native crate:
 
-- functions, such as raycasts (native functions, as system param kinds);
+- behaviour, such as raycasts (exported system params, decision 8);
 - components without `Reflect`, such as Rapier's `Collider`, which come as TSX constructors;
 - messages that are enums with data, such as Rapier's `CollisionEvent`, which a port flattens to a layout record;
 - system sets;
 - plugin construction that needs code, such as `RapierPhysicsPlugin::<NoUserData>::default()`.
 
-bevy-ts publishes curated ports as `bevy-ts-<name>` crates with `bevy-ts/<name>` types, a few hundred lines each:
+A curated port is a crate `bevy-ts-<name>` whose Bevy plugin adds the third-party plugin, exports its params (decision 8), exposes its sets (decision 7) and registers its built-in TS module `bevy-ts/<name>` (types, JS glue, TSX constructors, flattened messages). The Rapier port constructs `RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule()`, because Rapier's default schedule is `PostUpdate` (`plugin/plugin.rs`) and TS physics gameplay belongs in `FixedUpdate`. bevy-ts publishes these ports, a few hundred lines each:
 
 - `rapier3d` now;
 - `leafwing-input-manager`, whose `Actionlike` is generic over the game's own Rust enum, so the port ships a dynamic `TsAction(u16)` whose names come from TS;
@@ -177,35 +199,40 @@ A native crate is needed only for the project's own Rust.
 ## Depends on bridge
 
 - **N1. Native layout registry filled from reflection.** bridge decision 4's registry SHALL be filled at startup from the type registry by decision 5's rule, SHALL be public so `NativeLayout` can add unreflected components, and the TS-system checks SHALL consult it for every Rust component; `Transform` becomes the first case of the rule, not a special registration.
-- **N2. A sixth seam operation, call host function.** The backend trait SHALL let Rust register host functions JS can call synchronously during a system run or entry call, receiving views over JS memory and returning a view over a Rust buffer.
+- **N2. A sixth seam operation, call host function.** The backend trait SHALL let Rust register host functions, one per exported method, that JS can call synchronously during a system run or entry call. They receive scalars and views over JS memory and return scalars or a view over a Rust buffer. On V8 they are fast ops (`#[op2(fast)]`), and on QuickJS-ng and the web they are host functions and wasm imports. During a run the backend makes the world reachable read-only to them.
 - **N3. Stage systems as a reusable unit.** The exclusive stage system SHALL be constructible for any schedule and ordering, so slots are bridge stages with a different placement, not a second runner.
-- **N4. The engine entry is a library function.** `bevy-ts-cli`'s `main` SHALL be a thin call into `bevy_ts_cli::run(native: Option<fn(&mut NativeApp)>)`, which the generated project `main` also calls.
-- **N5. `bevy-ts/hello` and `bevy-ts/schema` carry engine identity, exposed sets and native functions** (protocol minor bump).
+- **N4. The engine entry is a library function.** `bevy-ts-cli`'s `main` SHALL be a thin call into `bevy_ts_cli::run(extra: impl Plugin)`, which the generated project `main` also calls with the project's, adopted crates' and ports' plugins.
+- **N5. `bevy-ts/hello` and `bevy-ts/schema` carry engine identity, exposed sets and exported params** (protocol minor bump).
 
 ## Data across the boundary
 
 - **Layout-tier component:** identical to bridge's columns; the layout comes from reflection (or `offset_of!` for `NativeLayout` derives) instead of bridge's C-rule computation.
-- **Native function call:** JS passes `(fn id, input view: ptr, len, record count)`; Rust runs `f` with its `SystemState<P>` against `&World` (read-only, validated), writes results into a per-function output arena, and returns `(ptr, len, record count)`; JS views it with the output record's accessors. The arena is reset after the run, and the views are detached with the column views.
-- **Script material instance:** uniform bytes in the kind's WGSL layout, encoded in Rust from a field map on mount and patch (TSX), or written by a TS system through a material component, decided by task 6.4.
+- **Exported method call:** one host call per method call. Scalars and vectors pass as numbers or a reused scratch view; records and slices pass as views over JS memory. Rust gets the param from its `SystemState<P>` against the world (read-only, validated), runs the method and writes record results into the param's output arena. JS views those through generated accessors. The arena is reset after the run, and its views are detached with the column views.
 - **Types:** `native.d.ts`, generated; never crosses at runtime.
 
 ## Risks / Trade-offs
 
-- [The first `bevy-ts dev` in a native project compiles Bevy, minutes on a laptop] → Shared cache from CI; `bevy-ts dev` prints the hash it is building so the author knows a cache miss happened; dev profile with dependencies optimised once and reused.
+- [The first `bevy-ts dev` in a native project compiles Bevy, rusty_v8 and the plugins, minutes on a laptop] → `bevy-ts dev` prints the plan (hash, cache miss, what will compile) before starting; shared directory cache from CI; dev profile with dependencies optimised once and reused.
 - [A restart on every Rust edit loses world state] → Rust edits are rarer than TS edits; levels persist in `.bsn`; hot patching is the planned later change.
-- [Every exposed set adds two exclusive systems, each a barrier for the parallel executor] → Sets are exposed by name only; empty slots are skipped by run condition. Whether a skipped exclusive system still costs a barrier is unverified (task 4.4 measures it); if it does, slots are created only for names the current generation uses, which needs one schedule rebuild when that set changes, never on ordinary reloads.
+- [Each slot is an exclusive system and a barrier for the parallel executor, skipped or not (verified in source, decision 7)] → Slots exist only for sets a generation has named, made by one schedule edit at the reload that first names a set; task 4.4 measures the barrier's cost.
 - [`bevy-ts types` must build the app without a GPU, and plugins may touch the device during build] → Types are read after `Plugin::build`, before `finish`, where Bevy's renderer creates its device; a plugin that needs a device in `build` is reported and its types are skipped (task 3.4 verifies with `bevy_rapier3d` and `bevy_egui`, the 0.20 plugins available today).
-- [`ScriptMaterial` puts many layouts behind one `TypeId`-keyed bind group allocator] → `allocate_unprepared` takes the layout per call, so non-bindless allocation per kind should work; task 6.1 is a spike, and the fallback is one Rust type per kind from a fixed pool registered at startup.
-- [A shared cache serves executables] → SHA-256 verified before execution; the cache location is the project's own choice; no default remote.
+- [A shared cache serves executables] → SHA-256 verified before execution, which proves integrity, not authenticity (whoever can write the cache can replace both); the cache location is the project's own choice; no default remote.
 - [Exact version pins make bevy-ts upgrades a Cargo upgrade too] → The error names the versions; `bevy-ts upgrade` can rewrite the pin later.
 - [Third-party plugins lag Bevy: avian and bevy_hanabi are still on Bevy 0.19 while bevy-ts is on 0.20] → A project can only use plugins that support bevy-ts's Bevy version, as any Bevy app; bevy-ts's own Bevy upgrades are announced with the plugin versions known to work, and `bevy-ts.json` cannot override the Bevy version. Physics today means `bevy_rapier3d` 0.37 or waiting for avian on 0.20.
-- [Native functions run synchronously inside the JS stage, so a slow one stalls the frame] → They are Rust and batched; the per-system timing in `bevy-ts/systems` attributes time spent in native calls separately.
+- [Exported methods run synchronously inside the JS stage, so a slow one stalls the frame] → They are Rust, with batched variants for bulk work; the per-system timing in `bevy-ts/systems` attributes time spent in method calls separately.
+- [Every port ships four artefacts per method (op, codec, types, JS glue)] → `#[bevy_ts::export]` generates all four from the Rust signature.
 
 ## Migration Plan
 
 None: additive. Projects without a native crate are unchanged and keep the prebuilt engine. Protocol minor bump for N5.
 
 ## Operator rulings
+
+- 2026-10-20: applied the native review (docs/research/dx.md). TS calls Rust through exported
+  system params (`#[bevy_ts::export]`), not named functions. The project's Rust is a plain Bevy
+  plugin named in config, with no `native!` macro. Unreadable leaves are holes, so `Res<Time>` works.
+  The aliasing rejection is dropped. Slots exist only for named sets. The Rapier port runs in
+  `FixedUpdate`. Only the directory shared cache ships now. Script materials are their own change.
 
 - 2026-10-20: layouts come from reflection, not `repr(C)`: any reflected component whose leaves are
   plain data is a zero-copy column. Plugins are adopted by one line in `bevy-ts.json`
@@ -218,5 +245,4 @@ None: additive. Projects without a native crate are unchanged and keep the prebu
 
 ## Open Questions
 
-- Whether material instances are assets addressed by key or components on the entity (task 6.4).
 - Whether `bevy-ts build` packages per-platform game builds in this change or in a `ship` change.
