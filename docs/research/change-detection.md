@@ -110,3 +110,23 @@ Side findings:
 - flecs Queries manual, Change Detection: https://www.flecs.dev/flecs/Queries.html ; `ecs_modified_id` in `include/flecs.h`; flecs-polyglot: https://github.com/flecs-hub/flecs-polyglot
 - V8 `src/objects/js-array-buffer.h` (`kMaxSizeInHeap`): https://chromium.googlesource.com/v8/v8/+/refs/heads/main/src/objects/js-array-buffer.h ; optimized code read with `node --no-maglev --print-opt-code --code-comments`
 - bevy-ts: `docs/research/js-runtime.md`, `openspec/changes/bridge/design.md`, `openspec/changes/tsx/design.md` (decision 9)
+
+## In the engine: the cube demo's `bob` (2026-10-20)
+
+Measured after the bridge landed, release build, headless (`MinimalPlugins`), same Mac.
+`crates/bevy-ts-cli/examples/bob_bench.rs`, raw output in
+`bench/change-detection/results/bob-frame.md`. Every row's `translation.y` is written each
+frame; the TS run includes building the column views, the one call into JS and the post-run
+summary ticks. Medians over 300 frames, microseconds.
+
+| entities | accessor + tick (default) | raw arrays, no tick | raw + tick | whole `app.update()`, default |
+|---|---|---|---|---|
+| 1 | 4 | 3 | 3 | 54 |
+| 1,000 | 20 | 11 | 12 | 59 |
+| 100,000 | 667 | 556 | 575 | 709 |
+
+The tick store costs 3% on raw arrays at 100k rows (575 against 556 µs), in line with the
+write-loop numbers above; the accessor form costs 20% over raw at 100k, mostly the flyweight's
+property dispatch on the 3-lane vector sub-object, not the tick. A fixed cost of about 3 µs per
+run covers the call into V8 and the view setup. At 100k entities `bob` takes about 0.7 ms of a
+16.7 ms frame.

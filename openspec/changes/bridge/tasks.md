@@ -84,5 +84,5 @@
 
 ## 11. First-milestone demo
 
-- [ ] 11.1 Write `examples/cube/src/game.ts` as in design.md and walk all six demo steps, recording reload latency
-- [ ] 11.2 Measure frame cost of `bob` over 1, 1,000 and 100,000 entities, with and without the tick store, and record it next to `docs/research/change-detection.md`'s numbers
+- [x] 11.1 Write `examples/cube/src/game.ts` as in design.md and walk all six demo steps, recording reload latency
+- [x] 11.2 Measure frame cost of `bob` over 1, 1,000 and 100,000 entities, with and without the tick store, and record it next to `docs/research/change-detection.md`'s numbers
