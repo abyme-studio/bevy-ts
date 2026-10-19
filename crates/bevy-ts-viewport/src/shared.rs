@@ -104,6 +104,8 @@ pub struct Shared {
     edit: AtomicBool,
     /// The hole has keyboard focus.
     focused: AtomicBool,
+    /// Gamepad input reaches the game without focus.
+    gamepad_unfocused: AtomicBool,
     visible: AtomicBool,
     resend: AtomicBool,
     slots: Mutex<Slots>,
@@ -127,6 +129,7 @@ impl Default for Shared {
             hz: AtomicU64::new(60f64.to_bits()),
             edit: AtomicBool::new(false),
             focused: AtomicBool::new(false),
+            gamepad_unfocused: AtomicBool::new(false),
             visible: AtomicBool::new(false),
             resend: AtomicBool::new(false),
             slots: Mutex::new(Slots::default()),
@@ -274,6 +277,14 @@ impl Shared {
 
     pub fn set_focused(&self, on: bool) {
         self.focused.store(on, Ordering::Release);
+    }
+
+    pub fn set_gamepad_unfocused(&self, on: bool) {
+        self.gamepad_unfocused.store(on, Ordering::Release);
+    }
+
+    pub fn gamepad_unfocused(&self) -> bool {
+        self.gamepad_unfocused.load(Ordering::Acquire)
     }
 
     pub fn focused(&self) -> bool {

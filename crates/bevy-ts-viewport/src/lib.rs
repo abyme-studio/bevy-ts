@@ -74,6 +74,13 @@ mod plugin {
                     .init_resource::<feedback::Cursor>()
                     .add_systems(First, (methods::drain, input::apply).chain().after(count_update))
                     .add_systems(Last, feedback::send_changes)
+                    .add_systems(
+                        PreUpdate,
+                        input::gate_gamepads
+                            .in_set(bevy::input::InputSystems)
+                            .before(bevy::input::gamepad::gamepad_connection_system)
+                            .run_if(resource_exists::<Messages<bevy::input::gamepad::RawGamepadEvent>>),
+                    )
                     .set_runner(runner::runner);
                 ring::build_render(app, shared);
             }

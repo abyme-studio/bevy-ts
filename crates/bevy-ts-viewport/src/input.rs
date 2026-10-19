@@ -168,3 +168,15 @@ fn apply_one(world: &mut World, window: Entity, e: ViewportInput) {
         ViewportInput::VisibleEvent(e) => world.resource::<SharedRes>().0.set_visible(e.on),
     }
 }
+
+/// Gamepads are read in the engine (gilrs), not forwarded; while the hole has no focus their
+/// buttons and axes do not reach the game unless `viewport_mode` set `gamepadUnfocused`.
+/// Connections always pass, so a pad plugged in meanwhile is known when focus returns.
+pub(crate) fn gate_gamepads(shared: Res<SharedRes>, mut raw: ResMut<Messages<bevy::input::gamepad::RawGamepadEvent>>) {
+    use bevy::input::gamepad::RawGamepadEvent;
+    if shared.0.focused() || shared.0.gamepad_unfocused() {
+        return;
+    }
+    let kept: Vec<_> = raw.drain().filter(|e| matches!(e, RawGamepadEvent::Connection(_))).collect();
+    raw.write_batch(kept);
+}

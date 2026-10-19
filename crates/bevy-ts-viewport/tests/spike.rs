@@ -124,3 +124,117 @@ fn a_frame_lands_in_the_viewers_surface() {
     // A frame never names a slot twice in a row.
     assert!(seen.frames.windows(2).all(|w| (w[0].0, w[0].1) != (w[1].0, w[1].1)));
 }
+
+/// Flips the clear colour between two values on each `KeyD` press.
+fn flip_on_key(keys: Res<ButtonInput<KeyCode>>, mut cameras: Query<&mut Camera>, mut on: Local<bool>) {
+    if keys.just_pressed(KeyCode::KeyD) {
+        *on = !*on;
+        let c = if *on { Color::srgb(1.0, 0.0, 0.0) } else { Color::srgb(0.0, 0.0, 1.0) };
+        for mut cam in &mut cameras {
+            cam.clear_color = ClearColorConfig::Custom(c);
+        }
+    }
+}
+
+/// Task 1.5: from a key leaving the viewer to the announced frame that shows it, over 200 presses
+/// with updates paced at 120 Hz as the viewer's ticks would pace them. `SPIKE_PRESSES` overrides.
+#[test]
+#[ignore = "timing: needs a release build and a quiet machine; the viewport-latency process runs it"]
+fn key_to_pixels() {
+    use bevy_ts_viewport::shared::now_ns;
+    let mut app = App::new();
+    app.add_plugins(
+        DefaultPlugins
+            .build()
+            .disable::<WinitPlugin>()
+            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }),
+    )
+    .add_plugins(ViewportPlugin::default())
+    .add_systems(Startup, scene)
+    .add_systems(Update, flip_on_key);
+    app.finish();
+    app.cleanup();
+    let name = attach(app.world_mut()).expect("attach");
+    let viewer = Viewer::connect(&name).expect("connect");
+    viewer.send("input", serde_json::json!({ "type": "focus", "on": true })).unwrap();
+    let mut surfaces: HashMap<(u64, u64), Surface> = HashMap::new();
+    let period = Duration::from_secs_f64(1.0 / 120.0);
+    // Returns the newest frame's (ts, top-left pixel).
+    let pump = |surfaces: &mut HashMap<(u64, u64), Surface>| -> Option<(u64, [u8; 4])> {
+        let mut newest = None;
+        while let Some(m) = viewer.recv(Duration::ZERO) {
+            let Incoming::Message { method, params, port } = m else { continue };
+            let key = (params["ring"].as_u64().unwrap_or(0), params["slot"].as_u64().unwrap_or(0));
+            match method.as_str() {
+                "surface" => {
+                    let port = port.unwrap();
+                    surfaces.insert(key, Surface::from_mach_port(port).unwrap());
+                    release_port(port);
+                }
+                "frame" => newest = Some((params["ts"].as_u64().unwrap(), surfaces[&key].read(&[(0, 0)])[0])),
+                _ => {}
+            }
+        }
+        newest
+    };
+    let tick = |app: &mut App| {
+        let t0 = Instant::now();
+        app.update();
+        if let Some(rest) = period.checked_sub(t0.elapsed()) {
+            std::thread::sleep(rest);
+        }
+    };
+    let warm = Instant::now();
+    let mut last = None;
+    while last.is_none() && warm.elapsed() < Duration::from_secs(60) {
+        tick(&mut app);
+        last = pump(&mut surfaces).map(|f| f.1);
+    }
+    for _ in 0..30 {
+        tick(&mut app);
+        if let Some(f) = pump(&mut surfaces) {
+            last = Some(f.1);
+        }
+    }
+    let presses: usize = std::env::var("SPIKE_PRESSES").ok().and_then(|s| s.parse().ok()).unwrap_or(20);
+    let mut samples = vec![];
+    for i in 0..presses {
+        let before = last.unwrap();
+        // Press at a random phase of the frame, as a person would.
+        std::thread::sleep(Duration::from_micros((i as u64 * 1777) % 8333));
+        let sent = now_ns();
+        viewer.send("input", serde_json::json!({ "type": "key", "state": "down", "code": "KeyD" })).unwrap();
+        let t0 = Instant::now();
+        loop {
+            tick(&mut app);
+            if let Some((ts, px)) = pump(&mut surfaces) {
+                last = Some(px);
+                if px != before {
+                    samples.push((ts - sent) as f64 / 1e6);
+                    break;
+                }
+            }
+            assert!(t0.elapsed() < Duration::from_secs(2), "press {i} never showed");
+        }
+        viewer.send("input", serde_json::json!({ "type": "key", "state": "up", "code": "KeyD" })).unwrap();
+        for _ in 0..3 {
+            tick(&mut app);
+            if let Some(f) = pump(&mut surfaces) {
+                last = Some(f.1);
+            }
+        }
+    }
+    samples.sort_by(f64::total_cmp);
+    let at = |q: f64| samples[((samples.len() - 1) as f64 * q).round() as usize];
+    let shared = app.world().resource::<bevy_ts_viewport::shared::SharedRes>().0.clone();
+    eprintln!(
+        "key to pixels over {} presses at 120 Hz: median {:.2} ms, p95 {:.2} ms, max {:.2} ms; engine stats {}; gpu {:?} ms",
+        samples.len(),
+        at(0.5),
+        at(0.95),
+        samples.last().unwrap(),
+        shared.stats.latency(),
+        shared.stats.gpu_ms()
+    );
+    assert!(at(0.5) <= 16.7, "median key to pixels {:.2} ms is over two refreshes at 120 Hz", at(0.5));
+}

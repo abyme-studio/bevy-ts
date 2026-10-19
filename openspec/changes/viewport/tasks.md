@@ -4,7 +4,7 @@
 - [x] 1.2 In a scratch Bevy 0.20 app with no `WinitPlugin`: create three IOSurfaces, wrap each with `newTextureWithDescriptor:iosurface:plane:` on wgpu's `MTLDevice`, `texture_from_raw` (with a `drop_callback` that releases the IOSurface) and `create_texture_from_hal`; render a clear colour into one and see it in the viewer
 - [x] 1.3 Feed the slot to a handle-less `PrimaryWindow` by inserting its `ExtractedWindow` after `extract_windows`; render the cube through an unmodified `Camera3d`; record in design.md whether decision 2 holds or the `TextureView` fallback is taken
 - [x] 1.4 Announce from `Queue::on_submitted_work_done`, choose slots by last-announced and `IOSurfaceIsInUse`; run 60 s of a full-screen changing pattern at 120 Hz and record skipped frames and any tearing in captures
-- [ ] 1.5 Measure key to pixels (median, p95) and engine CPU and GPU time against the same scene in a winit window; record in design.md. No-go on tearing or a median over two refreshes goes to the operator with fallback 1 (`CARemoteLayerClient`) before group 2
+- [x] 1.5 Measure key to pixels (median, p95) and engine CPU and GPU time against the same scene in a winit window; record in design.md. No-go on tearing or a median over two refreshes goes to the operator with fallback 1 (`CARemoteLayerClient`) before group 2
 
 ## 2. Crate, CLI and protocol
 
@@ -25,7 +25,7 @@
 - [x] 4.1 Map `ViewportInput` to Bevy 0.20's winit-shaped messages (cursor, buttons, motion, wheel with units and phases, gestures, keys via a W3C `code` to `KeyCode` table from winit's, IME, focus); release keys on focus loss
 - [x] 4.2 `bevy-ts/viewport_input` over HTTP into the same queue through `BrpSender`; test `ButtonInput<KeyCode>` and a `PointerClick` observer from it
 - [x] 4.3 Send `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed` on change of the virtual window's fields
-- [ ] 4.4 Gate `gilrs` gamepad input by focus unless `gamepadUnfocused`
+- [x] 4.4 Gate `gilrs` gamepad input by focus unless `gamepadUnfocused`
 
 ## 5. Edit mode
 

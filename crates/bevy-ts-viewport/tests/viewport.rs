@@ -329,3 +329,42 @@ fn a_click_on_the_cube_fires_its_pointer_click_observer_once() {
     let stats = call(&mut app, "bevy-ts/viewport_stats", Value::Null).unwrap();
     assert!(stats["inputToFrame"]["samples"].as_u64().unwrap() > 0, "{stats}");
 }
+
+#[derive(Resource, Default, Clone)]
+struct Pads(Arc<Mutex<Vec<String>>>);
+
+#[test]
+fn gamepad_input_waits_for_focus() {
+    use bevy::input::gamepad::{GamepadButton, GamepadConnection, GamepadConnectionEvent, RawGamepadButtonChangedEvent, RawGamepadEvent};
+    let mut app = app();
+    let pads = Pads::default();
+    app.insert_resource(pads.clone()).add_systems(Update, |q: Query<&Gamepad>, log: Res<Pads>| {
+        for g in &q {
+            if g.just_pressed(GamepadButton::South) {
+                log.0.lock().unwrap().push("south".into());
+            }
+        }
+    });
+    let (_, viewer) = attach(&mut app, 400.0, 300.0, 2.0);
+    let pad = app.world_mut().spawn_empty().id();
+    let connect = GamepadConnectionEvent::new(pad, GamepadConnection::Connected { name: "pad".into(), vendor_id: None, product_id: None });
+    // As gilrs does: the connection both raw and as itself.
+    app.world_mut().write_message(RawGamepadEvent::Connection(connect.clone()));
+    app.world_mut().write_message(connect);
+    app.update();
+    assert!(app.world().get::<Gamepad>(pad).is_some(), "the connection passes the gate");
+    let press = |app: &mut App, v: f32| {
+        app.world_mut().write_message(RawGamepadEvent::Button(RawGamepadButtonChangedEvent::new(pad, GamepadButton::South, v)));
+        app.update();
+    };
+    press(&mut app, 1.0);
+    press(&mut app, 0.0);
+    assert!(pads.0.lock().unwrap().is_empty(), "no focus, no gamepad");
+    viewer.send("input", json!({ "type": "focus", "on": true })).unwrap();
+    std::thread::sleep(Duration::from_millis(20));
+    app.update();
+    assert!(app.world().resource::<bevy_ts_viewport::shared::SharedRes>().0.focused());
+    press(&mut app, 1.0);
+    let pressed = app.world().get::<Gamepad>(pad).unwrap().pressed(GamepadButton::South);
+    assert_eq!(*pads.0.lock().unwrap(), vec!["south"], "pressed now: {pressed}");
+}
