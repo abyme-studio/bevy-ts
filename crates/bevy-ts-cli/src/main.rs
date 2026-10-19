@@ -100,7 +100,6 @@ fn run_dev(args: DevArgs) {
     {
         let mut info = app.world_mut().resource_mut::<RuntimeInfo>();
         info.entry = Some(compiler.entry.clone());
-        info.inspector = args.inspect.map(|a| a.to_string());
     }
     app.run();
 }

@@ -98,7 +98,26 @@ pub fn compile_file(path: &Path, source: &str, dev: bool) -> Result<Compiled, Ve
     let mut map: serde_json::Value = serde_json::from_str(&map).unwrap_or(serde_json::json!({"version": 3, "mappings": ""}));
     map["sources"] = serde_json::json!([file_url(path)]);
     map["sourcesContent"] = serde_json::json!([source]);
-    Ok(Compiled { code: out.code, source_map: map.to_string(), imports })
+    let map = map.to_string();
+    // Inline too, so debuggers attached over CDP map breakpoints to the TS file themselves.
+    let code = format!("{}\n//# sourceMappingURL=data:application/json;base64,{}\n", out.code, base64(map.as_bytes()));
+    Ok(Compiled { code, source_map: map, imports })
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            if i <= c.len() {
+                out.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 /// Finds the file a relative import names, as the engine's loader does.

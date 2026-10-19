@@ -51,3 +51,12 @@ pub fn updates(app: &mut App, n: usize) {
         app.update();
     }
 }
+
+/// As `app`, with the V8 inspector on an ephemeral port.
+pub fn app_with_inspector(entry: &Path) -> App {
+    let mut app = App::new();
+    let options = V8Options { inspect: Some(std::net::SocketAddr::from(([127, 0, 0, 1], 0))) };
+    app.add_plugins(MinimalPlugins).add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(true));
+    app.insert_resource(DevSource(Arc::new(Compiler::new(entry, true).unwrap())));
+    app
+}

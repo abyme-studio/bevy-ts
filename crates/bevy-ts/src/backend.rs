@@ -199,6 +199,11 @@ pub trait ScriptBackend: 'static {
     /// Calls made into JS so far (system runs, startups, entries, loads), for tests and stats.
     fn calls_into_js(&self) -> u64;
 
+    /// Where a debugger can attach, when the engine serves one.
+    fn inspector_address(&self) -> Option<String> {
+        None
+    }
+
     /// JS heap in use, in bytes, when the engine can tell.
     fn heap_used(&self) -> Option<usize> {
         None

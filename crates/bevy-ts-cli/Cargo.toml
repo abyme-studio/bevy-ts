@@ -25,3 +25,4 @@ path = "src/lib.rs"
 [dev-dependencies]
 bevy = { workspace = true }
 jsonschema = { version = "0.33", default-features = false }
+tungstenite = "0.28"

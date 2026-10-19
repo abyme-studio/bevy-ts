@@ -543,6 +543,10 @@ impl ScriptBackend for V8Backend {
     fn heap_used(&self) -> Option<usize> {
         None
     }
+
+    fn inspector_address(&self) -> Option<String> {
+        self.inspector.as_ref().map(|i| format!("ws://{}/{}", i.address(), inspector::TARGET_ID))
+    }
 }
 
 impl V8Backend {

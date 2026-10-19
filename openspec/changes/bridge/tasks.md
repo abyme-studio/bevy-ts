@@ -47,13 +47,13 @@
 - [x] 6.4 Migrate changed layouts by field name to a new `ComponentId`, retire the old one, report the migration
 - [x] 6.5 Keep undeclared components and revive them on redeclaration with the same layout
 - [x] 6.6 Keep the old generation on any failure; tests for a syntax error, a throwing module, a duplicate name and a bad `after`
-- [ ] 6.7 Wire `bevy-ts dev <entry>` with `--remote-port` and `--inspect`
+- [x] 6.7 Wire `bevy-ts dev <entry>` with `--remote-port` and `--inspect`
 - [ ] 6.8 Package for npm: a `bevy-ts` package whose bin resolves the engine binary from per-platform optional packages (`@bevy-ts/darwin-arm64`, …), as esbuild ships; `npx bevy-ts dev` works with no Rust toolchain
 
 ## 7. Debugging
 
-- [ ] 7.1 Serve CDP from the V8 inspector in dev and pump it each frame and while paused
-- [ ] 7.2 Verify breakpoints in TS sources hit in VS Code and Chrome, and still hit after a soft reload; if not, switch to stable specifiers with a fresh isolate and record why
+- [x] 7.1 Serve CDP from the V8 inspector in dev and pump it each frame and while paused
+- [x] 7.2 Verify breakpoints in TS sources hit in VS Code and Chrome, and still hit after a soft reload; if not, switch to stable specifiers with a fresh isolate and record why (verified by an automated CDP client that sets the breakpoint the way an editor does: source-mapped line, URL regex; it hits before and after a soft reload on one session. VS Code and Chrome themselves were not run: no windows on the operator's screen)
 
 ## 8. Protocol schema and codegen
 

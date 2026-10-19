@@ -81,6 +81,7 @@ impl Plugin for BevyTsPlugin {
     fn build(&self, app: &mut App) {
         let backend = (self.backend)();
         let engine = backend.engine();
+        let inspector = backend.inspector_address();
         app.insert_non_send(runtime::ScriptRuntime::new(backend, self.dev));
         app.register_type::<commands::TsSpawned>();
         app.init_resource::<components::TsComponents>()
@@ -94,7 +95,7 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<generation::Generations>()
             .init_resource::<runtime::ScriptClock>()
             .init_resource::<runtime::ScriptFrame>()
-            .insert_resource(runtime::RuntimeInfo { dev: self.dev, engine, ..Default::default() });
+            .insert_resource(runtime::RuntimeInfo { dev: self.dev, engine, inspector, ..Default::default() });
 
         let mut native = layout::NativeLayouts::default();
         native.register_transform(app.world_mut());
