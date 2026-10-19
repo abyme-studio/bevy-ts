@@ -582,6 +582,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy-ts",
+ "bevy-ts-levels",
  "bevy-ts-remote",
  "bevy-ts-tsx",
  "jsonschema",

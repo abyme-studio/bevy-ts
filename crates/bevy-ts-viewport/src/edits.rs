@@ -1,6 +1,7 @@
 //! Viewport edits: a gizmo drag writes the world live and, on release, becomes one edit routed
-//! by provenance: `tsx` (the editor rewrites the literal), `locked` (bound, or rejected this
-//! session), `transient` (no source describes the entity), `bsn` once `levels` exists.
+//! by provenance: `bsn` (levels routes it and bevy-ts writes the level file), `tsx` (the editor
+//! rewrites the literal), `locked` (bound, or rejected this session), `transient` (no source
+//! describes the entity).
 
 use crate::edit::{EditState, Mode, Selection};
 use bevy::gizmos::transform_gizmo::{TransformGizmoFocus, TransformGizmoMode, TransformGizmoSettings, TransformGizmoState};
@@ -60,15 +61,21 @@ fn lock_key(world: &World, e: Entity) -> u64 {
     world.get::<TsxNode>(e).map_or(e.to_bits(), |n| n.id)
 }
 
-/// The route for one `Transform` field of `e`.
+/// The TSX element name levels and tsx key `Transform` by.
+const TRANSFORM_ELEMENT: &str = "Transform";
+
+/// The route for one `Transform` field of `e`: levels' when it has a say, then tsx provenance.
 pub fn route(world: &World, e: Entity, field: &'static str) -> Value {
     if let Some(reason) = world.get_resource::<EditLog>().and_then(|l| l.locks.get(&(lock_key(world, e), field))) {
         return json!({ "kind": "locked", "reason": reason });
     }
+    if let Some(r) = bevy_ts_levels::route(world, e, TRANSFORM_ELEMENT, field) {
+        return r;
+    }
     let Some(node) = world.get::<TsxNode>(e) else {
         return json!({ "kind": "transient" });
     };
-    let owned = node.components.get("Transform");
+    let owned = node.components.get(TRANSFORM_ELEMENT);
     let provenance = owned.and_then(|c| c.fields.get(field)).map(|f| f.provenance);
     let element = owned.and_then(|c| c.source.clone()).or_else(|| node.source.first().cloned());
     match provenance {
@@ -94,7 +101,7 @@ fn mode_field(mode: TransformGizmoMode) -> &'static str {
 }
 
 pub(crate) fn build(app: &mut App) {
-    app.init_resource::<EditLog>().add_systems(
+    app.init_resource::<EditLog>().add_systems(Update, level_results).add_systems(
         PostUpdate,
         (lock_inert_fields.before(bevy::gizmos::transform_gizmo::TransformGizmoSystems), track_drags.after(bevy::gizmos::transform_gizmo::TransformGizmoSystems), expire)
             .run_if(|s: Res<EditState>| s.mode == Mode::Edit),
@@ -162,7 +169,50 @@ pub fn record(world: &mut World, e: Entity, field: &'static str, before: Transfo
     log.edits.push(Edit { id, entity: e, node, field, before, after, route, status, reason: None, at: Instant::now(), rev: 0 });
     let i = log.edits.len() - 1;
     log.touch(i);
+    // A `bsn` edit is bevy-ts's to write: hand it to levels now; the outcome arrives later.
+    if status == "pending" && world.resource::<EditLog>().edits[i].route["kind"] == "bsn" {
+        let value = field_json(&after, field);
+        if let Err(reason) = bevy_ts_levels::write(world, id, e, TRANSFORM_ELEMENT, field, value) {
+            settle(world, i, "rejected", Some(reason), true);
+        }
+    }
     id
+}
+
+fn field_json(t: &Transform, field: &str) -> Value {
+    match field {
+        "translation" => json!(t.translation.to_array()),
+        "rotation" => json!(t.rotation.to_array()),
+        _ => json!(t.scale.to_array()),
+    }
+}
+
+/// Ends edit `i` with `status`; `restore` puts its `before` back.
+fn settle(world: &mut World, i: usize, status: &'static str, reason: Option<String>, restore_before: bool) {
+    if restore_before {
+        restore(world, i);
+    }
+    let mut log = world.resource_mut::<EditLog>();
+    log.edits[i].status = status;
+    log.edits[i].reason = reason;
+    log.touch(i);
+}
+
+/// Levels' answers to `bsn` edits: `written` and `rebased` keep the edit; `conflict` leaves the
+/// world to follow the disk (levels reloads it); `refused` restores `before`.
+fn level_results(world: &mut World) {
+    let Some(mut results) = world.get_resource_mut::<bevy_ts_levels::WriteResults>() else { return };
+    let results = results.drain();
+    for r in results {
+        let Some(i) = find(world, r.id) else { continue };
+        let reason = r.reason.clone().or_else(|| (!r.message.is_empty()).then(|| r.message.clone()));
+        match r.status {
+            "written" => settle(world, i, "written", None, false),
+            "rebased" => settle(world, i, "written", Some("rebased".into()), false),
+            "conflict" => settle(world, i, "rejected", Some(reason.unwrap_or_else(|| "conflict".into())), false),
+            _ => settle(world, i, "rejected", Some(reason.unwrap_or_else(|| "refused".into())), true),
+        }
+    }
 }
 
 /// `tsx` edits with no answer in 10 s stay applied and become `unconfirmed`.
