@@ -54,7 +54,7 @@ Prior art, read 2026-10-19:
 ## Decisions
 
 ### 1. Upstream's file grammar plus four named extensions, checked against vendored `bevy_bsn`
-bevy-ts reads exactly what `bevy_bsn` (PR #26043) parses, plus four extensions. Each extension has a reason and a condition under which we drop it:
+bevy-ts reads exactly what `bevy_bsn` (PR #26043) parses, plus four extensions and U1 (negative numbers, found by the spike below). Each extension has a reason and a condition under which we drop it:
 
 | Extension | Why | Leaves when |
 |---|---|---|
@@ -62,6 +62,7 @@ bevy-ts reads exactly what `bevy_bsn` (PR #26043) parses, plus four extensions. 
 | E2 `@path::Comp { @prop: v, field: v }` in files | A level must place a TS scene component with props. It is the macro's `@SceneComp { … }` form, character for character. | Upstream ships function or scene-component support in files (post-MVP in #14437) |
 | E3 a `#Name` child of an inclusion merges with the included child of that name | A level must override a prefab's inner entity. | Upstream defines child overrides of inclusions (decision 4) |
 | E4 quoted names `#"mesh#0"` | They address unkeyed prefab children, whose key segment is not an identifier. | Upstream accepts them (Jackdaw already does) |
+| U1 negative numbers `-4.0` | Levels place things at negative coordinates; the macro accepts them, #26043's lexer does not. | Upstream's file lexer accepts them |
 
 A file that uses no extension parses with vendored `bevy_bsn` to the same tree as with ours. A differential test runs over every fixture and every level in `examples/`. `bevy-ts levels check --upstream` lists which extensions a file uses.
 
@@ -285,12 +286,16 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 ## Spike findings (task 1.1, 2026-10-20)
 
 - **#26043's lexer has no comments.** `/` is an unexpected character (`bevy_bsn/src/lex.rs` at 81f44028). E1 stays an extension.
-- **#26043's lexer has no negative numbers.** `-` and `--` are lexed before numbers, so `-4.0` is `Minus` then `Float(4.0)` and the parser rejects it; `+4.0` lexes as one float. The macro accepts negatives and levels need them, so bevy-ts accepts them and `levels check --upstream` lists them as `U1`, an upstream gap rather than an extension. The differential test pins this.
+- **#26043's lexer has no negative numbers.** `-` and `--` are lexed before numbers, so `-4.0` is `Minus` then `Float(4.0)` and the parser rejects it; `+4.0` lexes as one float. The macro accepts negatives and levels need them, so bevy-ts accepts them and `levels check --upstream` lists them as extension `U1`. The differential test pins this.
 - **Upstream's `ParseStream` reads a lex error as the end of input** (`peek_token` returns `None`), so its parser accepts the prefix of a file that fails to lex. The differential test lexes upstream's way first.
 - **Upstream's root rule parses one entity** and stops at `--`. A level's top level is a scene-list body (the rule inside `Children [ … ]`), and the differential test compares it with that rule.
 - **`@name` in an ordinary patch is refused**, as the macro refuses it ("Scene prop fields are not supported in normal component patches").
 
 ## Operator rulings
+
+- 2026-10-20: comments (E1) and negative numbers (U1) stay bevy-ts extensions for now; no upstream
+  PRs. The differential test exempts them by name, so the switch to upstream stays a deletion once
+  Bevy's lexer has them.
 
 - 2026-10-20: placeable prefabs are scene components, `class X extends SceneComponent` with
   `static scene(props)`, placed with Bevy's own `@Comp { @prop: v, field: v }`. Plain function prefabs

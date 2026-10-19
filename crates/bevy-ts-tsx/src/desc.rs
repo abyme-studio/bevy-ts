@@ -82,6 +82,9 @@ pub struct ComponentDesc {
     pub props: Map<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<SourceLocation>,
+    /// Props a level file sets (levels), with where: controlled, with provenance `override`.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub overrides: std::collections::BTreeMap<String, SourceLocation>,
 }
 
 /// A node's identity: a stable hash (FNV-1a, 64 bit) of its root and key path, the same in
@@ -153,6 +156,9 @@ pub fn normalize_with(files: &mut Files, nodes: &mut [NodeDesc]) {
         }
         for c in &mut n.components {
             if let Some(s) = &mut c.source {
+                s.file = files.display(&s.file);
+            }
+            for s in c.overrides.values_mut() {
                 s.file = files.display(&s.file);
             }
         }

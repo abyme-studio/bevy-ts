@@ -136,7 +136,10 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
         .resource::<TsxTree>()
         .roots
         .keys()
-        .filter(|k| k.as_str() != RUNTIME_ROOT && !section.roots.iter().any(|r| &r.name == *k))
+        .filter(|k| {
+            let tree = world.resource::<TsxTree>();
+            k.as_str() != RUNTIME_ROOT && !tree.external.contains(*k) && !section.roots.iter().any(|r| &r.name == *k)
+        })
         .cloned()
         .collect();
     for name in gone {
@@ -150,6 +153,25 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
         warn_two_writers(world, generation);
     }
     total
+}
+
+/// Reconciles a root a Rust plugin describes (levels' T2): a description built in Rust, partly
+/// expanded in JS, under the same rules as an `app.scene` root. A resolve error touches nothing.
+/// Call it from an exclusive system or a section apply step, at a frame boundary.
+pub fn reconcile_external(world: &mut World, name: &str, location: Option<bevy_ts::backend::SourceLocation>, nodes: &[desc::NodeDesc]) -> Result<ReconcileStats, ScriptError> {
+    let resolved = resolve_tree(world, name, nodes, (&[], &[]))?;
+    world.resource_mut::<TsxTree>().external.insert(name.to_string());
+    let stats = apply_root(world, name, location, &resolved, None, reconcile::Prune::Root);
+    world.resource_mut::<TsxTree>().journal.close();
+    Ok(stats)
+}
+
+/// Unmounts an external root and forgets it.
+pub fn unmount_external(world: &mut World, name: &str) -> ReconcileStats {
+    world.resource_mut::<TsxTree>().external.remove(name);
+    let stats = unmount_root(world, name);
+    world.resource_mut::<TsxTree>().journal.close();
+    stats
 }
 
 /// A bound field has one writer, its binding. Under dev, a TS system whose `write` set holds the

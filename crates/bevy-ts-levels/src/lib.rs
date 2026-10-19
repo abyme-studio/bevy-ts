@@ -7,6 +7,8 @@
 //! adopting Bevy's loader deletes [`syntax`] and the loader.
 
 pub mod check;
+pub mod compose;
+pub mod engine;
 pub mod syntax;
 
 #[cfg(test)]

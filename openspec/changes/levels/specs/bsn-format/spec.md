@@ -15,12 +15,13 @@ A differential test SHALL parse every fixture and every example level with both 
 - **WHEN** `room.bsn` uses only `#Name`, type patches, `Children […]` and `--`
 - **THEN** both parsers produce the same tree, and `bevy-ts levels check --upstream room.bsn` reports no extensions
 
-### Requirement: Four named extensions, and nothing else
-Beyond upstream's grammar, bevy-ts SHALL accept exactly four extensions:
+### Requirement: Five named extensions, and nothing else
+Beyond upstream's grammar, bevy-ts SHALL accept exactly five extensions:
 - E1 `//` and `/* */` comments
 - E2 scene component instances in files, `@path::Comp { @prop: value, field: value, … }`, Bevy's `bsn!` form
 - E3 a `#Name` child of an inclusion merges with the included child of that name
 - E4 quoted names `#"…"`
+- U1 negative number literals (`-4.0`), which the `bsn!` macro accepts and #26043's file lexer does not
 
 It SHALL reject anything else upstream's file grammar lacks, with file, line, column and the construct named. That includes `{expr}`, closures, `on(…)`, `~` templates, ranges, struct update and list or map values. `bevy-ts levels check --upstream <file>` SHALL list the extensions a file uses, with their locations.
 

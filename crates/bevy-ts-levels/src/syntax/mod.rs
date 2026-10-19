@@ -91,13 +91,14 @@ pub enum Extension {
     ChildOverride,
     /// E4: a quoted name `#"…"`.
     QuotedName,
-    /// Not an extension: a negative number literal. Upstream's file lexer at #26043 lexes `-4.0`
-    /// as `-` then `4.0` and its parser rejects it; the `bsn!` macro accepts it, so bevy-ts does.
+    /// U1: a negative number literal. Upstream's file lexer at #26043 lexes `-4.0` as `-` then
+    /// `4.0` and its parser rejects it; the `bsn!` macro accepts it, so bevy-ts does (operator,
+    /// 2026-10-20: an extension until Bevy's lexer has it).
     NegativeNumber,
 }
 
 impl Extension {
-    /// `E1` to `E4`, or `U1` for the upstream lexer gap.
+    /// `E1` to `E4`, or `U1`.
     pub fn code(self) -> &'static str {
         match self {
             Extension::Comments => "E1",
@@ -114,7 +115,7 @@ impl Extension {
             Extension::Prefab => "scene component instance",
             Extension::ChildOverride => "child of an inclusion, merged by name",
             Extension::QuotedName => "quoted name",
-            Extension::NegativeNumber => "negative number (upstream's file lexer rejects it)",
+            Extension::NegativeNumber => "negative number",
         }
     }
 

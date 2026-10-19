@@ -501,8 +501,13 @@ dependencies = [
 name = "bevy-ts-levels"
 version = "0.1.0"
 dependencies = [
+ "bevy",
+ "bevy-ts",
+ "bevy-ts-tsx",
  "memchr",
  "nom 8.0.0",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

@@ -19,6 +19,8 @@ pub enum Provenance {
     Default,
     /// `f={() => ...}`: written only by its binding, never from a literal.
     Bound,
+    /// Set by a level file's patch (levels): written as a controlled field is, from the file.
+    Override,
 }
 
 /// One field of a component tsx inserted.
@@ -37,6 +39,9 @@ pub struct OwnedComponent {
     /// The element that set it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<SourceLocation>,
+    /// Where each `override` field is set in a level file.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub overrides: BTreeMap<String, SourceLocation>,
 }
 
 /// On every entity tsx spawned: what made it and what tsx owns on it.
@@ -183,6 +188,8 @@ pub struct RootState {
 #[derive(Resource, Default, Debug)]
 pub struct TsxTree {
     pub roots: BTreeMap<String, RootState>,
+    /// Roots a Rust plugin describes (a level's `level:<path>`): no generation unmounts them.
+    pub external: BTreeSet<String>,
     pub entities: HashMap<u64, Entity>,
     pub tombstones: HashMap<u64, Tombstone>,
     /// The last reconcile's writes.

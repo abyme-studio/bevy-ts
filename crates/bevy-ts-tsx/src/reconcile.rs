@@ -367,7 +367,7 @@ fn apply_node(
 fn owned(r: &Resolved) -> OwnedComponent {
     let mut fields = BTreeMap::new();
     for (f, v) in &r.controlled {
-        fields.insert(f.clone(), FieldState { provenance: Provenance::Controlled, applied: v.clone() });
+        fields.insert(f.clone(), FieldState { provenance: r.controlled_provenance(f), applied: v.clone() });
     }
     for (f, v) in &r.initial {
         fields.insert(f.clone(), FieldState { provenance: Provenance::Initial, applied: v.clone() });
@@ -378,7 +378,7 @@ fn owned(r: &Resolved) -> OwnedComponent {
     for f in r.bound.keys() {
         fields.insert(f.clone(), FieldState { provenance: Provenance::Bound, applied: Value::Null });
     }
-    OwnedComponent { fields, source: r.source.clone() }
+    OwnedComponent { fields, source: r.source.clone(), overrides: r.overrides.clone() }
 }
 
 fn insert(world: &mut World, e: Entity, r: &Resolved) {
@@ -497,16 +497,18 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
             components.insert(r.key.clone(), owned(r));
             continue;
         };
-        let mut state = OwnedComponent { fields: BTreeMap::new(), source: r.source.clone() };
+        let mut state = OwnedComponent { fields: BTreeMap::new(), source: r.source.clone(), overrides: r.overrides.clone() };
         match &r.target {
             Target::Native { id, layout, .. } => {
                 for (f, v) in &r.controlled {
-                    let same = prev.fields.get(f).is_some_and(|s| s.provenance == Provenance::Controlled && &s.applied == v);
+                    // A field whose owner changed (an override added or removed) is written.
+                    let provenance = r.controlled_provenance(f);
+                    let same = prev.fields.get(f).is_some_and(|s| s.provenance == provenance && &s.applied == v);
                     // A system may have removed the component; tsx does not put it back.
                     if !same && write_field(world, e, *id, layout, f, v) {
                         stats.written += 1;
                     }
-                    state.fields.insert(f.clone(), FieldState { provenance: Provenance::Controlled, applied: v.clone() });
+                    state.fields.insert(f.clone(), FieldState { provenance, applied: v.clone() });
                 }
                 // Initial and default fields are never written to an existing component; they
                 // keep the value written on insert.

@@ -66,9 +66,16 @@ pub struct Resolved {
     /// The site of each bound native-layout field (design decision 11).
     pub sites: BTreeMap<String, u32>,
     pub source: Option<SourceLocation>,
+    /// Controlled fields a level file sets, with where (provenance `override`).
+    pub overrides: BTreeMap<String, SourceLocation>,
 }
 
 impl Resolved {
+    /// `override` for a field a level file sets, else `controlled`.
+    pub fn controlled_provenance(&self, field: &str) -> crate::tree::Provenance {
+        if self.overrides.contains_key(field) { crate::tree::Provenance::Override } else { crate::tree::Provenance::Controlled }
+    }
+
     /// The bytes to insert: defaults, then initial and controlled values.
     pub fn insert_bytes(&self) -> Option<Vec<u8>> {
         let Target::Native { layout, defaults, .. } = &self.target else { return None };
@@ -196,6 +203,7 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
         bound: BTreeMap::new(),
         sites: BTreeMap::new(),
         source: c.source.clone(),
+        overrides: c.overrides.clone(),
     };
     match c.kind {
         ComponentKind::Ts => {
@@ -264,6 +272,7 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts) 
             sites: BTreeMap::new(),
             defaults: BTreeMap::new(),
             source: node.location(),
+            overrides: BTreeMap::new(),
         });
     }
     for c in &node.components {
