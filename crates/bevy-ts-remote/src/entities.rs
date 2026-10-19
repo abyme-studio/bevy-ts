@@ -36,9 +36,10 @@ fn info(world: &World, entity: Entity) -> Value {
     })
 }
 
-/// Observers and resource entities are bookkeeping, not scene content.
+/// Observers and resource entities are bookkeeping, not scene content; `ScriptHidden` entities
+/// are the editor's.
 fn internal(e: &EntityRef) -> bool {
-    e.contains::<Observer>() || e.contains::<bevy::ecs::resource::IsResource>()
+    e.contains::<Observer>() || e.contains::<bevy::ecs::resource::IsResource>() || e.contains::<bevy_ts::ScriptHidden>()
 }
 
 fn all_entities(world: &World) -> Vec<Entity> {

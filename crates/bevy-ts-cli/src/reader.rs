@@ -15,8 +15,8 @@ use crate::compile::line_col;
 use bevy_ts::backend::{ScriptError, SourceLocation};
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
-    BindingPattern, Declaration, ExportDefaultDeclarationKind, Expression, FormalParameters, ImportDeclarationSpecifier, Program,
-    Statement, TSImportTypeQualifier, TSSignature, TSTupleElement, TSType, TSTypeName, TSTypeParameterDeclaration,
+    BindingPattern, Class, ClassElement, Declaration, ExportDefaultDeclarationKind, Expression, FormalParameters, ImportDeclarationSpecifier, Program,
+    Statement, TSImportTypeQualifier, TSLiteral, TSSignature, TSTupleElement, TSType, TSTypeName, TSTypeParameterDeclaration,
 };
 use oxc::parser::Parser;
 use oxc::span::{SourceType, Span};
@@ -39,8 +39,10 @@ const KINDS: &[&str] = &[
     "Entity", "With", "Without", "Changed", "Added", "Add", "Insert", "Remove",
 ];
 
-/// Field types a `Local` may hold.
-const FIELD_TYPES: &[&str] = &["f32", "f64", "i32", "u32", "u8", "bool", "vec2", "vec3", "quat", "entity"];
+/// Field type names, which are types only and never bound.
+const FIELD_TYPES: &[&str] = &[
+    "f32", "f64", "i8", "u8", "i16", "u16", "i32", "u32", "bool", "vec2", "vec3", "vec4", "quat", "entity", "Vec2", "Vec3", "Vec3Like", "Vec4", "Quat",
+];
 
 /// Utility types that compute a type; the reader names them in its error.
 const COMPUTED: &[&str] = &[
@@ -88,9 +90,13 @@ enum Ty {
     Ref { name: String, args: Vec<Ty>, span: Span },
     Tuple(Vec<Ty>, Span),
     /// An object type's members; `None` for a member that is not a plain property.
-    Object(Vec<(String, Option<Ty>, Span)>, Span),
+    Object(Vec<Member>, Span),
     /// `import("bevy-ts").App`.
     App,
+    /// A union of string literals: an enum field type.
+    Strings(Vec<String>, Span),
+    /// `boolean`, `string` or `number`.
+    Keyword(&'static str, Span),
     /// Anything else, unreadable; `what` says what it is.
     Other { what: &'static str, span: Span },
 }
@@ -134,23 +140,49 @@ fn ty(t: &TSType) -> Ty {
         TSType::TSIndexedAccessType(_) => other("an indexed access type"),
         TSType::TSTypeQuery(_) => other("a typeof type"),
         TSType::TSTypeOperatorType(_) => other("a type operator"),
-        TSType::TSUnionType(_) => other("a union type"),
+        TSType::TSUnionType(u) => {
+            let lits: Option<Vec<String>> = u
+                .types
+                .iter()
+                .map(|t| match t {
+                    TSType::TSLiteralType(l) => match &l.literal {
+                        TSLiteral::StringLiteral(s) => Some(s.value.to_string()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            match lits {
+                Some(v) => Ty::Strings(v, u.span),
+                None => other("a union type"),
+            }
+        }
+        TSType::TSBooleanKeyword(k) => Ty::Keyword("boolean", k.span),
+        TSType::TSStringKeyword(k) => Ty::Keyword("string", k.span),
+        TSType::TSNumberKeyword(k) => Ty::Keyword("number", k.span),
         TSType::TSIntersectionType(_) => other("an intersection type"),
         TSType::TSFunctionType(_) | TSType::TSConstructorType(_) => other("a function type"),
         TSType::TSArrayType(_) => other("an array type"),
-        TSType::TSLiteralType(_) | TSType::TSTemplateLiteralType(_) => other("a literal type"),
+        TSType::TSLiteralType(l) => match &l.literal {
+            TSLiteral::StringLiteral(s) => Ty::Strings(vec![s.value.to_string()], l.span),
+            _ => other("a literal type"),
+        },
+        TSType::TSTemplateLiteralType(_) => other("a literal type"),
         _ => other("a built-in type"),
     }
 }
 
-fn members(m: &[TSSignature]) -> Vec<(String, Option<Ty>, Span)> {
+/// An object type's member: its name, its type (`None` if it is not a plain property), and `?`.
+type Member = (String, Option<Ty>, Span, bool);
+
+fn members(m: &[TSSignature]) -> Vec<Member> {
     m.iter()
         .map(|s| match s {
-            TSSignature::TSPropertySignature(p) if !p.computed && !p.optional => match p.key.static_name() {
-                Some(name) => (name.to_string(), p.type_annotation.as_ref().map(|a| ty(&a.type_annotation)), p.span),
-                None => (String::new(), None, p.span),
+            TSSignature::TSPropertySignature(p) if !p.computed => match p.key.static_name() {
+                Some(name) => (name.to_string(), p.type_annotation.as_ref().map(|a| ty(&a.type_annotation)), p.span, p.optional),
+                None => (String::new(), None, p.span, false),
             },
-            s => (String::new(), None, oxc::span::GetSpan::span(s)),
+            s => (String::new(), None, oxc::span::GetSpan::span(s), false),
         })
         .collect()
 }
@@ -187,6 +219,153 @@ struct Param {
     span: Span,
 }
 
+/// Bases a data class extends, from `bevy-ts`. `States(...)` and `SystemSet` are read too.
+const DATA: &[&str] = &["Component", "SceneComponent", "ReflectComponent", "Resource", "Message", "Event", "EntityEvent"];
+
+/// A class declaring a component, resource, message, event, state machine or system set.
+#[derive(Debug)]
+struct DataClass {
+    name: String,
+    span: Span,
+    /// The bevy-ts base: one of [`DATA`], `States` or `SystemSet`.
+    base: String,
+    states: Vec<String>,
+    path: Option<String>,
+    propagate: bool,
+    fields: Vec<FieldSrc>,
+    scene: Option<SceneSrc>,
+    /// Failures found while extracting: (where, what).
+    errors: Vec<(Span, String)>,
+}
+
+#[derive(Debug)]
+struct FieldSrc {
+    name: String,
+    ty: Option<Ty>,
+    default: Option<Value>,
+    span: Span,
+}
+
+/// `static scene({ speed = 2 }: { speed?: f32 })`: the props type and the destructured defaults.
+#[derive(Debug)]
+struct SceneSrc {
+    ty: Option<Ty>,
+    defaults: HashMap<String, Option<Value>>,
+    span: Span,
+}
+
+/// A literal default: a number, a bool, a string, a vector as an array or `vec3(...)`/`quat(...)`.
+fn literal(e: &Expression) -> Option<Value> {
+    let num = |e: &Expression| match e {
+        Expression::NumericLiteral(n) => Some(n.value),
+        Expression::UnaryExpression(u) if u.operator.as_str() == "-" => match &u.argument {
+            Expression::NumericLiteral(n) => Some(-n.value),
+            _ => None,
+        },
+        _ => None,
+    };
+    // Whole numbers as integers, so the JSON reads as written.
+    let number = |n: f64| if n.fract() == 0.0 && n.abs() < 9e15 { json!(n as i64) } else { json!(n) };
+    if let Some(n) = num(e) {
+        return Some(number(n));
+    }
+    match e {
+        Expression::BooleanLiteral(b) => Some(json!(b.value)),
+        Expression::StringLiteral(s) => Some(json!(s.value.as_str())),
+        Expression::ArrayExpression(a) => a.elements.iter().map(|el| el.as_expression().and_then(num).map(number)).collect::<Option<Vec<_>>>().map(Value::Array),
+        Expression::CallExpression(c) => {
+            let Expression::Identifier(callee) = &c.callee else { return None };
+            let args = c.arguments.iter().map(|a| a.as_expression().and_then(num)).collect::<Option<Vec<_>>>()?;
+            let (lanes, fill): (usize, &[f64]) = match callee.name.as_str() {
+                "vec2" => (2, &[0.0, 0.0]),
+                "vec3" => (3, &[0.0, 0.0, 0.0]),
+                "vec4" => (4, &[0.0, 0.0, 0.0, 0.0]),
+                "quat" => (4, &[0.0, 0.0, 0.0, 1.0]),
+                _ => return None,
+            };
+            Some(Value::Array((0..lanes).map(|i| number(args.get(i).copied().unwrap_or(fill[i]))).collect()))
+        }
+        Expression::ParenthesizedExpression(p) => literal(&p.expression),
+        _ => None,
+    }
+}
+
+/// The `bevy-ts` export a local name is, if it is imported from `bevy-ts`.
+fn bevy_ts_name<'f>(f: &'f FileInfo, local: &str) -> Option<&'f str> {
+    f.imports.get(local).filter(|i| i.spec == "bevy-ts" || i.spec.starts_with("bevy-ts/")).map(|i| i.imported.as_str())
+}
+
+/// Reads a class extending a bevy-ts data base, `States(...)` or `SystemSet`.
+fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
+    let id = c.id.as_ref()?;
+    let (base, states) = match &c.heritage.as_ref()?.expression {
+        Expression::Identifier(b) => {
+            let name = bevy_ts_name(f, b.name.as_str())?;
+            if !DATA.contains(&name) && name != "SystemSet" {
+                return None;
+            }
+            (name.to_string(), Vec::new())
+        }
+        Expression::CallExpression(call) => {
+            let Expression::Identifier(callee) = &call.callee else { return None };
+            if bevy_ts_name(f, callee.name.as_str()) != Some("States") {
+                return None;
+            }
+            let values = call.arguments.iter().filter_map(|a| match a.as_expression() {
+                Some(Expression::StringLiteral(s)) => Some(s.value.to_string()),
+                _ => None,
+            });
+            ("States".to_string(), values.collect())
+        }
+        _ => return None,
+    };
+    let mut d = DataClass { name: id.name.to_string(), span: id.span, base, states, path: None, propagate: false, fields: Vec::new(), scene: None, errors: Vec::new() };
+    for el in &c.body.body {
+        match el {
+            ClassElement::PropertyDefinition(p) if !p.computed => {
+                let Some(name) = p.key.static_name() else { continue };
+                if p.r#static {
+                    match (name.as_ref(), &p.value) {
+                        ("path", Some(Expression::StringLiteral(s))) => d.path = Some(s.value.to_string()),
+                        ("path", _) => d.errors.push((p.span, "static path must be a string literal".into())),
+                        ("propagate", Some(Expression::BooleanLiteral(b))) => d.propagate = b.value,
+                        _ => {}
+                    }
+                    continue;
+                }
+                let default = p.value.as_ref().and_then(literal);
+                d.fields.push(FieldSrc { name: name.to_string(), ty: p.type_annotation.as_ref().map(|a| ty(&a.type_annotation)), default, span: p.span });
+            }
+            ClassElement::MethodDefinition(m) if m.r#static && m.key.static_name().as_deref() == Some("scene") => {
+                let mut scene = SceneSrc { ty: None, defaults: HashMap::new(), span: m.span };
+                if let Some(param) = m.value.params.items.first() {
+                    scene.ty = param.type_annotation.as_ref().map(|a| ty(&a.type_annotation));
+                    if let BindingPattern::ObjectPattern(o) = &param.pattern {
+                        for prop in &o.properties {
+                            let Some(key) = prop.key.static_name() else { continue };
+                            let default = match &prop.value {
+                                BindingPattern::AssignmentPattern(a) => literal(&a.right).or(Some(Value::Null)),
+                                _ => None,
+                            };
+                            scene.defaults.insert(key.to_string(), default);
+                        }
+                    }
+                }
+                d.scene = Some(scene);
+            }
+            _ => {}
+        }
+    }
+    Some(d)
+}
+
+/// The Rust-style module path of a root-relative file: `src/units/tank.ts` is `units::tank`.
+pub fn module_path(rel: &str) -> String {
+    let rel = rel.strip_prefix("src/").unwrap_or(rel);
+    let rel = rel.rsplit_once('.').map_or(rel, |(stem, ext)| if ext.contains('/') { rel } else { stem });
+    rel.split('/').map(|seg| seg.replace(['-', '.'], "_")).collect::<Vec<_>>().join("::")
+}
+
 /// What the reader needs from one file.
 #[derive(Debug)]
 pub(crate) struct FileInfo {
@@ -203,6 +382,7 @@ pub(crate) struct FileInfo {
     /// Local name to the names it is exported as.
     exports: HashMap<String, Vec<String>>,
     functions: Vec<Func>,
+    classes: Vec<DataClass>,
     imports_bevy_ts: bool,
 }
 
@@ -241,6 +421,7 @@ pub(crate) fn extract(program: &Program, path: &Path, source: &str, root: &Path)
         values: BTreeSet::new(),
         exports: HashMap::new(),
         functions: Vec::new(),
+        classes: Vec::new(),
         imports_bevy_ts: false,
     };
     for stmt in &program.body {
@@ -299,6 +480,9 @@ pub(crate) fn extract(program: &Program, path: &Path, source: &str, root: &Path)
                     f.values.insert(id.name.to_string());
                     export(id.name.as_str(), f);
                 }
+                if let Some(d) = data_class(c, f) {
+                    f.classes.push(d);
+                }
             }
             Declaration::TSEnumDeclaration(e) if !e.declare => {
                 f.values.insert(e.id.name.to_string());
@@ -332,6 +516,10 @@ pub(crate) fn extract(program: &Program, path: &Path, source: &str, root: &Path)
                 ExportDefaultDeclarationKind::ClassDeclaration(c) => {
                     if let Some(id) = &c.id {
                         f.values.insert(id.name.to_string());
+                        f.exports.entry(id.name.to_string()).or_default().push("default".into());
+                    }
+                    if let Some(d) = data_class(c, &f) {
+                        f.classes.push(d);
                     }
                 }
                 ExportDefaultDeclarationKind::TSInterfaceDeclaration(i) if i.extends.is_empty() => {
@@ -380,7 +568,7 @@ struct Fail {
 enum Head {
     Kind { name: String, args: Vec<Ty>, span: Span, scope: Scope },
     Value(Value),
-    Bundle(Vec<(String, Option<Ty>, Span)>, Scope),
+    Bundle(Vec<Member>, Scope),
     Tuple(Vec<Ty>, Scope),
     App,
 }
@@ -392,6 +580,9 @@ pub(crate) struct Declarations {
     pub code: String,
     /// Relative specifiers the declarations need evaluated (modules whose names are bound).
     pub imports: Vec<String>,
+    /// Data classes by local name, with the declaration their static block hands
+    /// `__bevyts.data(this, ...)` (JSON).
+    pub classes: Vec<(String, String)>,
 }
 
 struct Reader {
@@ -449,9 +640,10 @@ fn read_with(file: FileInfo, root: &Path, ports: Vec<String>) -> Result<Declarat
     if !errors.is_empty() {
         return Err(errors);
     }
+    let classes: Vec<_> = file.classes.iter().map(|c| (c.name.clone(), r.class(c, &scope).to_string())).collect();
     if !file.imports_bevy_ts && !any_read {
         // A module that never names bevy-ts declares nothing: helpers in plain modules stay plain.
-        return Ok(Declarations { code: String::new(), imports: Vec::new() });
+        return Ok(Declarations { code: String::new(), imports: Vec::new(), classes });
     }
     let mut code = String::new();
     let binds = r.binds(&file);
@@ -471,7 +663,7 @@ fn read_with(file: FileInfo, root: &Path, ports: Vec<String>) -> Result<Declarat
         code.push_str(&d);
         code.push('\n');
     }
-    Ok(Declarations { code, imports })
+    Ok(Declarations { code, imports, classes })
 }
 
 impl Reader {
@@ -502,7 +694,7 @@ impl Reader {
                 }
                 Ty::Tuple(ts, _) => ts.iter().for_each(|a| walk(a, file, params, out)),
                 Ty::Object(ms, _) => ms.iter().filter_map(|m| m.1.as_ref()).for_each(|a| walk(a, file, params, out)),
-                Ty::App | Ty::Other { .. } => {}
+                Ty::App | Ty::Other { .. } | Ty::Strings(..) | Ty::Keyword(..) => {}
             }
         }
         let mut out = BTreeSet::new();
@@ -551,6 +743,172 @@ impl Reader {
         self.lookup(&target, &there, depth + 1)
     }
 
+    /// A data class's declaration (design decision 13): kind, name, fields and scene props.
+    fn class(&mut self, c: &DataClass, scope: &Scope) -> Value {
+        let file = &scope.file;
+        let at = |span: Span| {
+            let (line, column) = line_col(&file.source, span.start);
+            (line, column)
+        };
+        let (line, column) = at(c.span);
+        let export = file.exports.get(&c.name).and_then(|e| e.first()).cloned();
+        let kind = match c.base.as_str() {
+            "Component" => "component",
+            "SceneComponent" => "sceneComponent",
+            "ReflectComponent" => "reflectComponent",
+            "Resource" => "resource",
+            "Message" => "message",
+            "Event" => "event",
+            "EntityEvent" => "entityEvent",
+            "States" => "state",
+            _ => "set",
+        };
+        let shown = export.as_deref().filter(|e| *e != "default").unwrap_or(&c.name);
+        let name = c.path.clone().unwrap_or_else(|| format!("{}::{shown}", module_path(&file.rel)));
+        let mut d = json!({ "kind": kind, "name": name, "at": { "file": file.rel, "line": line, "column": column } });
+        if let Some(e) = &export {
+            d["id"] = json!(format!("{}#{e}", file.rel));
+        }
+        let mut errors: Vec<(Span, String)> = c.errors.clone();
+        if kind == "state" {
+            if c.states.is_empty() {
+                errors.push((c.span, "States(...) takes the values as string literals: States(\"Menu\", \"Playing\")".into()));
+            }
+            d["values"] = json!(c.states);
+        } else if kind != "set" {
+            let mut fields = Vec::new();
+            for f in &c.fields {
+                if kind == "entityEvent" && f.name == "entity" {
+                    continue; // the target, carried beside the payload
+                }
+                let Some(t) = &f.ty else {
+                    errors.push((f.span, format!("field {} of {} needs a type (f32, u32, bool, Entity, Vec3, Quat, a string-literal union, ...)", f.name, c.name)));
+                    continue;
+                };
+                match self.field_ty(t, scope, false, 0) {
+                    Ok(ty) => {
+                        let mut field = json!({ "name": f.name, "type": ty });
+                        if let Some(v) = &f.default {
+                            field["default"] = v.clone();
+                        }
+                        fields.push(field);
+                    }
+                    Err((span, why)) => errors.push((span, format!("{} field {}: {why}", c.name, f.name))),
+                }
+            }
+            d["fields"] = json!(fields);
+            if kind == "entityEvent" {
+                d["propagate"] = json!(c.propagate);
+            }
+        }
+        if let Some(sc) = &c.scene {
+            if kind != "sceneComponent" {
+                errors.push((sc.span, format!("{}: static scene belongs to a SceneComponent", c.name)));
+            }
+            match self.props(sc, scope) {
+                Ok(props) => {
+                    for p in &props {
+                        if c.fields.iter().any(|f| Some(f.name.as_str()) == p["name"].as_str()) {
+                            errors.push((sc.span, format!("{}: {} is both a field and a scene prop", c.name, p["name"].as_str().unwrap_or(""))));
+                        }
+                    }
+                    d["scene"] = json!({ "props": props });
+                }
+                Err((span, why)) => errors.push((span, format!("{} scene props: {why}", c.name))),
+            }
+        } else if kind == "sceneComponent" {
+            d["scene"] = json!({ "props": [] });
+        }
+        if let Some((span, why)) = errors.first() {
+            let (line, column) = at(*span);
+            d["error"] = json!(format!("{}:{line}:{column}: {why}", file.rel));
+        }
+        d
+    }
+
+    /// A scene's props: each property of its props type, with the destructured default.
+    fn props(&mut self, sc: &SceneSrc, scope: &Scope) -> Result<Vec<Value>, (Span, String)> {
+        let Some(t) = &sc.ty else {
+            return if sc.defaults.is_empty() { Ok(Vec::new()) } else { Err((sc.span, "annotate the props type: scene({ speed = 2 }: { speed?: f32 })".into())) };
+        };
+        let (members, s) = self.object(t, scope, 0)?;
+        let mut out = Vec::new();
+        for (name, t, span, optional) in members {
+            let Some(t) = t else { return Err((span, "props are plain named properties".into())) };
+            let mut p = json!({ "name": name, "type": self.field_ty(&t, &s, true, 0)?, "optional": optional });
+            match sc.defaults.get(&name) {
+                Some(Some(Value::Null)) => p["hasDefault"] = json!(true),
+                Some(Some(v)) => p["default"] = v.clone(),
+                _ => {}
+            }
+            out.push(p);
+        }
+        Ok(out)
+    }
+
+    /// The members of an object type, following aliases and interfaces by name.
+    fn object(&mut self, t: &Ty, scope: &Scope, depth: u32) -> Result<(Vec<Member>, Scope), (Span, String)> {
+        match t {
+            Ty::Object(ms, _) => Ok((ms.clone(), scope.clone())),
+            Ty::Ref { name, args, span } if args.is_empty() && depth < 32 => match self.lookup(&scope.file, name, 0) {
+                Some((file, there)) => {
+                    let body = file.named[&there].body.clone();
+                    self.object(&body, &Scope { file, subst: Rc::default() }, depth + 1)
+                }
+                None => Err((*span, format!("{name} is not an object type declared in a project module"))),
+            },
+            t => Err((span_of(t), "the props type is an object type, an alias of one or an interface".into())),
+        }
+    }
+
+    /// A field type: `f32`, `bool`, `Vec3`, `Entity`, a string-literal union, or an alias of one.
+    /// `string` only where `strings` (scene props).
+    fn field_ty(&mut self, t: &Ty, scope: &Scope, strings: bool, depth: u32) -> Result<Value, (Span, String)> {
+        const NAMED: &[(&str, &str)] = &[
+            ("f32", "f32"), ("f64", "f64"), ("i8", "i8"), ("u8", "u8"), ("i16", "i16"), ("u16", "u16"), ("i32", "i32"), ("u32", "u32"),
+            ("bool", "bool"), ("Vec2", "vec2"), ("vec2", "vec2"), ("Vec3", "vec3"), ("vec3", "vec3"), ("Vec3Like", "vec3"),
+            ("Vec4", "vec4"), ("vec4", "vec4"), ("Quat", "quat"), ("quat", "quat"), ("Entity", "entity"), ("entity", "entity"),
+        ];
+        let bad = |span: Span, text: &str| {
+            (span, format!("{text} is not a field type (f32, f64, i8..u32, bool, Vec2, Vec3, Vec4, Quat, Entity, a string-literal union){}", if strings { " or string" } else { "" }))
+        };
+        if depth > 32 {
+            return Err((span_of(t), "type aliases nest too deep (a cycle?)".into()));
+        }
+        match t {
+            Ty::Strings(v, _) => Ok(json!({ "kind": "enum", "variants": v })),
+            Ty::Keyword("boolean", _) => Ok(json!({ "kind": "bool" })),
+            Ty::Keyword("string", _) if strings => Ok(json!({ "kind": "string" })),
+            Ty::Keyword("string", span) => Err((*span, "strings are not supported; components hold fixed-size data only".into())),
+            Ty::Keyword(k, span) => Err(bad(*span, k)),
+            Ty::Ref { name, args, span } if args.is_empty() => {
+                if let Some((t, s)) = scope.subst.get(name) {
+                    let (t, s) = (t.clone(), s.clone());
+                    return self.field_ty(&t, &s, strings, depth + 1);
+                }
+                if let Some((_, k)) = NAMED.iter().find(|(n, _)| n == name) {
+                    return Ok(json!({ "kind": k }));
+                }
+                match self.lookup(&scope.file, name, 0) {
+                    Some((file, there)) => {
+                        let body = file.named[&there].body.clone();
+                        self.field_ty(&body, &Scope { file, subst: Rc::default() }, strings, depth + 1)
+                    }
+                    None => Err(bad(*span, name)),
+                }
+            }
+            t => {
+                let span = span_of(t);
+                Err(bad(span, &scope.file.source[span.start as usize..span.end as usize]))
+            }
+        }
+    }
+
+    fn unreadable(&self, scope: &Scope, span: Span, what: &str) -> Fail {
+        let text = &scope.file.source[span.start as usize..span.end as usize];
+        self.fail(scope, span, format!("`{text}` is {what}; a param type is a bevy-ts param kind, an alias of one or a param bundle. Use system(() => ...) for computed types"))
+    }
+
     fn fail(&self, scope: &Scope, span: Span, message: impl Into<String>) -> Fail {
         Fail { file: scope.file.clone(), span, message: message.into(), type_import: false }
     }
@@ -564,6 +922,8 @@ impl Reader {
             Ty::Tuple(ts, _) => return Ok(Head::Tuple(ts.clone(), scope.clone())),
             Ty::Object(ms, _) => return Ok(Head::Bundle(ms.clone(), scope.clone())),
             Ty::App => return Ok(Head::App),
+            Ty::Strings(_, span) => return Err(self.unreadable(scope, *span, "a string-literal union")),
+            Ty::Keyword(_, span) => return Err(self.unreadable(scope, *span, "a built-in type")),
             Ty::Other { what, span } => {
                 let text = &scope.file.source[span.start as usize..span.end as usize];
                 return Err(self.fail(scope, *span, format!("`{text}` is {what}; a param type is a bevy-ts param kind, an alias of one or a param bundle. Use system(() => ...) for computed types")));
@@ -650,8 +1010,8 @@ impl Reader {
             }
             Head::Bundle(members, s) => {
                 let mut fields = Vec::new();
-                for (name, t, span) in members {
-                    let Some(t) = t else {
+                for (name, t, span, optional) in members {
+                    let (Some(t), false) = (t, optional) else {
                         return Err(self.fail(&s, span, "a param bundle holds plain named properties only"));
                     };
                     fields.push(json!({ "name": name, "param": self.param(&t, &s)? }));
@@ -685,9 +1045,10 @@ impl Reader {
                 let fields = match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
                     Head::Bundle(members, ls) => members
                         .into_iter()
-                        .map(|(n, t, sp)| match t.as_ref().map(|t| self.field_type(t, &ls)) {
-                            Some(Some(ft)) => Ok(json!({ "name": n, "type": ft })),
-                            _ => Err(self.fail(&ls, sp, format!("Local field {n} is not a field type ({})", FIELD_TYPES.join(", ")))),
+                        .map(|(n, t, sp, _)| match t.as_ref().map(|t| self.field_ty(t, &ls, false, 0)) {
+                            Some(Ok(ft)) => Ok(json!({ "name": n, "type": ft })),
+                            Some(Err((sp, why))) => Err(self.fail(&ls, sp, format!("Local field {n}: {why}"))),
+                            None => Err(self.fail(&ls, sp, format!("Local field {n} needs a field type"))),
                         })
                         .collect::<Result<Vec<_>, _>>()?,
                     _ => return Err(self.fail(s, span, "Local takes an object of field types: Local<{ n: u32 }>")),
@@ -717,19 +1078,6 @@ impl Reader {
                 Ok(json!({ "kind": "port", "name": port, "args": refs }))
             }
             other => Err(self.fail(s, span, format!("{other}<...> is not a system param; it belongs inside a Query or On"))),
-        }
-    }
-
-    fn field_type(&mut self, t: &Ty, scope: &Scope) -> Option<String> {
-        match t {
-            Ty::Ref { name, args, .. } if args.is_empty() => match scope.subst.get(name) {
-                Some((t, s)) => {
-                    let (t, s) = (t.clone(), s.clone());
-                    self.field_type(&t, &s)
-                }
-                None => FIELD_TYPES.contains(&name.as_str()).then(|| name.clone()),
-            },
-            _ => None,
         }
     }
 
@@ -767,7 +1115,7 @@ impl Reader {
 
 fn span_of(t: &Ty) -> Span {
     match t {
-        Ty::Ref { span, .. } | Ty::Other { span, .. } | Ty::Tuple(_, span) | Ty::Object(_, span) => *span,
+        Ty::Ref { span, .. } | Ty::Other { span, .. } | Ty::Tuple(_, span) | Ty::Object(_, span) | Ty::Strings(_, span) | Ty::Keyword(_, span) => *span,
         Ty::App => Span::default(),
     }
 }
@@ -783,6 +1131,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(dir.join("package.json"), "{}").unwrap();
         for (f, src) in files {
+            std::fs::create_dir_all(dir.join(f).parent().unwrap()).unwrap();
             std::fs::write(dir.join(f), src).unwrap();
         }
         dir.canonicalize().unwrap()
@@ -854,7 +1203,7 @@ mod tests {
         assert_eq!(params("drag"), json!([{ "kind": "query", "data": [m(&r("Velocity"))], "filter": [{ "with": r("Collider") }] }]));
         // Reflect tier is the type checker's to refuse; the syntax reads.
         assert_eq!(params("bad"), json!([{ "kind": "query", "data": [m(&r("Collider"))], "filter": [] }]));
-        assert_eq!(params("spawnWave"), json!([{ "kind": "commands" }, { "kind": "local", "fields": [{ "name": "n", "type": "u32" }] }]));
+        assert_eq!(params("spawnWave"), json!([{ "kind": "commands" }, { "kind": "local", "fields": [{ "name": "n", "type": { "kind": "u32" } }] }]));
         assert_eq!(params("pause"), json!([{ "kind": "nextState", "state": r("Game") }]));
         assert_eq!(
             params("applyDamage"),
@@ -917,9 +1266,9 @@ mod tests {
             &[
                 (
                     "src/enemies.ts",
-                    "import { Transform, Tag, type Query, type Mut, type With } from \"bevy-ts\";\nexport class Alive extends Tag(\"game::Alive\") {}\nexport type Movers<T> = Query<[T, Mut<Transform>], With<Alive>>;\n",
+                    "import { Transform, Component, type Query, type Mut, type With } from \"bevy-ts\";\nexport class Alive extends Component {}\nexport type Movers<T> = Query<[T, Mut<Transform>], With<Alive>>;\n",
                 ),
-                ("src/enemy.ts", "import { Component } from \"bevy-ts\";\nexport class Enemy extends Component(\"game::Enemy\", {}) {}\n"),
+                ("src/enemy.ts", "import { Component } from \"bevy-ts\";\nexport class Enemy extends Component {}\n"),
                 (
                     "src/game.ts",
                     "import type { Movers } from \"./enemies.ts\";\nimport { Enemy } from \"./enemy.ts\";\nexport function move(q: Movers<Enemy>) {}\n",
@@ -965,7 +1314,7 @@ mod tests {
             "pick",
             &[(
                 "src/game.ts",
-                "import { type Query, Component } from \"bevy-ts\";\nclass A extends Component(\"a\", {}) {}\ninterface Bundle { a: Query<[A]> }\nexport function f(\n  b: Pick<Bundle, \"a\">,\n) {}\n",
+                "import { type Query, Component } from \"bevy-ts\";\nclass A extends Component {}\ninterface Bundle { a: Query<[A]> }\nexport function f(\n  b: Pick<Bundle, \"a\">,\n) {}\n",
             )],
         );
         let d = declared(&compile(&dir.join("src/game.ts"), &dir));
@@ -975,10 +1324,10 @@ mod tests {
 
     #[test]
     fn bundles_locals_states_and_lazy_errors() {
-        let src = r#"import { type Query, type Res, type State, type Local, type Mut, type Option, type On, type Remove, type Commands, Component, Resource, States, f32 } from "bevy-ts";
-export class Pos extends Component("pos", { x: f32 }) {}
-export class Clock extends Resource("clock", { t: f32 }) {}
-export class Mode extends States("mode", ["A", "B"]) {}
+        let src = r#"import { type Query, type Res, type State, type Local, type Mut, type Option, type On, type Remove, type Commands, Component, Resource, States, type f32 } from "bevy-ts";
+export class Pos extends Component { x: f32 = 0 }
+export class Clock extends Resource { declare t: f32 }
+export class Mode extends States("A", "B") {}
 interface Movers { q: Query<[Option<Mut<Pos>>]>; clock: Res<Clock> }
 type Counter<T> = Local<{ n: T; at: vec3 }>;
 type Env = { mode: State<Mode>; cmd: Commands };
@@ -1005,7 +1354,7 @@ export const arrow = (q: Query<[Pos]>) => {};
                     { "name": "mode", "param": { "kind": "state", "state": ["src/game.ts", "Mode"] } },
                     { "name": "cmd", "param": { "kind": "commands" } },
                 ] },
-                { "kind": "local", "fields": [{ "name": "n", "type": "u32" }, { "name": "at", "type": "vec3" }] },
+                { "kind": "local", "fields": [{ "name": "n", "type": { "kind": "u32" } }, { "name": "at", "type": { "kind": "vec3" } }] },
                 { "kind": "on", "lifecycle": "remove", "component": pos },
             ])
         );
@@ -1015,7 +1364,7 @@ export const arrow = (q: Query<[Pos]>) => {};
         assert!(d["helper"].get("id").is_none());
         assert!(err("untyped").contains("param x has no type"), "{}", err("untyped"));
         assert!(err("wrong").starts_with("src/game.ts:12:26: \"Pos\" is a value, not a system param"), "{}", err("wrong"));
-        assert!(err("local").contains("Local field n is not a field type"), "{}", err("local"));
+        assert!(err("local").contains("Local field n: number is not a field type"), "{}", err("local"));
     }
 
     #[test]
@@ -1034,6 +1383,112 @@ export const arrow = (q: Query<[Pos]>) => {};
         let read = |ports: &[&str]| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), ports.iter().map(|s| s.to_string()).collect()).ok().unwrap().code);
         assert_eq!(read(&["ReadRapierContext"])["cast"]["params"], json!([{ "kind": "port", "name": "ReadRapierContext", "args": [["src/game.ts", "Collider"]] }]));
         assert!(read(&[])["cast"]["error"].as_str().unwrap().contains("ReadRapierContext is not a system param kind"));
+    }
+
+    /// The `__bevyts.data(this, ...)` declarations in compiled code, by class name.
+    fn data(code: &str) -> BTreeMap<String, Value> {
+        let mut out = BTreeMap::new();
+        let flat: String = code.lines().map(str::trim).collect::<Vec<_>>().join("");
+        for part in flat.split("class ").skip(1) {
+            let name: String = part.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if let Some(rest) = part.split_once("__bevyts.data(this, ").map(|(_, r)| r) {
+                let mut de = serde_json::Deserializer::from_str(rest).into_iter::<Value>();
+                if let Some(Ok(v)) = de.next() {
+                    out.insert(name, v);
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn reads_the_prototype_classes() {
+        let (path, root) = bench("systems.ts");
+        let d = data(&compile(&path, &root));
+        assert_eq!(
+            d["Enemy"],
+            json!({ "kind": "component", "name": "systems::Enemy", "id": "systems.ts#Enemy", "at": d["Enemy"]["at"], "fields": [{ "name": "speed", "type": { "kind": "f32" }, "default": 2 }] })
+        );
+        assert_eq!(d["Health"]["fields"].as_array().unwrap().len(), 2);
+        assert_eq!(d["Alive"]["fields"], json!([]));
+        assert_eq!(d["Score"]["kind"], json!("resource"));
+        assert_eq!(d["Game"], json!({ "kind": "state", "name": "systems::Game", "id": "systems.ts#Game", "at": d["Game"]["at"], "values": ["Menu", "Playing", "Paused"] }));
+        assert_eq!(d["Damage"]["fields"], json!([{ "name": "target", "type": { "kind": "entity" } }, { "name": "amount", "type": { "kind": "f32" } }]));
+        assert_eq!(d["Explode"]["kind"], json!("entityEvent"));
+        assert_eq!(d["Explode"]["propagate"], json!(false));
+        assert_eq!(d["Shield"]["name"], json!("game::Shield"), "static path pins the name");
+        assert_eq!(d["EnemySet"]["kind"], json!("set"));
+
+        let (path, root) = bench("prefab.tsx");
+        let d = data(&compile(&path, &root));
+        assert_eq!(d["Grunt"]["kind"], json!("sceneComponent"));
+        assert_eq!(d["Grunt"]["fields"], json!([{ "name": "team", "type": { "kind": "u8" }, "default": 0 }]));
+        assert_eq!(
+            d["Grunt"]["scene"],
+            json!({ "props": [
+                { "name": "at", "type": { "kind": "vec3" }, "optional": true, "default": [0, 0, 0] },
+                { "name": "speed", "type": { "kind": "f32" }, "optional": true, "default": 2 },
+            ] })
+        );
+    }
+
+    #[test]
+    fn class_fields_props_and_their_errors() {
+        let src = r#"import { Component, SceneComponent, EntityEvent, type f32, type u8, type Entity } from "bevy-ts";
+type Team = "red" | "blue";
+interface Props { label: string; size?: f32; team?: Team }
+export class Badge extends Component { team: Team = "red"; declare owner: Entity; on: boolean = true }
+export class Sign extends SceneComponent {
+  height: f32 = 1;
+  static scene({ label, size = 2, team = pick() }: Props) { return null; }
+}
+export class Bad extends Component { name: string = "x" }
+export class Bare extends Component { hp = 3 }
+export class Clash extends SceneComponent { size: f32 = 1; static scene({ size = 1 }: { size?: f32 }) { return null; } }
+export class Boom extends EntityEvent { static propagate = true; declare entity: Entity; declare radius: f32 }
+export default class Main extends Component { n: u8 = 1 }
+class Local extends Component { x: f32 = vec3(1, 2).x }
+"#;
+        let dir = tmp("classes", &[("src/units/my-tank.ts", src)]);
+        let code = compile(&dir.join("src/units/my-tank.ts"), &dir);
+        let d = data(&code);
+        assert_eq!(d["Badge"]["name"], json!("units::my_tank::Badge"));
+        assert_eq!(
+            d["Badge"]["fields"],
+            json!([
+                { "name": "team", "type": { "kind": "enum", "variants": ["red", "blue"] }, "default": "red" },
+                { "name": "owner", "type": { "kind": "entity" } },
+                { "name": "on", "type": { "kind": "bool" }, "default": true },
+            ])
+        );
+        assert_eq!(
+            d["Sign"]["scene"]["props"],
+            json!([
+                { "name": "label", "type": { "kind": "string" }, "optional": false },
+                { "name": "size", "type": { "kind": "f32" }, "optional": true, "default": 2 },
+                { "name": "team", "type": { "kind": "enum", "variants": ["red", "blue"] }, "optional": true, "hasDefault": true },
+            ])
+        );
+        let err = |c: &str| d[c]["error"].as_str().unwrap_or_default().to_string();
+        assert!(err("Bad").starts_with("src/units/my-tank.ts:9:"), "{}", err("Bad"));
+        assert!(err("Bad").contains("Bad field name: strings are not supported"), "{}", err("Bad"));
+        assert!(err("Bare").contains("field hp of Bare needs a type"), "{}", err("Bare"));
+        assert!(err("Clash").contains("size is both a field and a scene prop"), "{}", err("Clash"));
+        assert_eq!(d["Boom"]["fields"], json!([{ "name": "radius", "type": { "kind": "f32" } }]), "an entity event's target is not a field");
+        assert_eq!(d["Boom"]["propagate"], json!(true));
+        assert_eq!(d["Main"]["name"], json!("units::my_tank::Main"));
+        assert_eq!(d["Main"]["id"], json!("src/units/my-tank.ts#default"));
+        assert_eq!(d["Local"]["name"], json!("units::my_tank::Local"));
+        assert!(d["Local"].get("id").is_none());
+        assert_eq!(d["Local"]["fields"], json!([{ "name": "x", "type": { "kind": "f32" } }]), "a computed default is the runtime's");
+    }
+
+    #[test]
+    fn module_paths_are_rust_style() {
+        assert_eq!(module_path("src/game.ts"), "game");
+        assert_eq!(module_path("src/enemies.tsx"), "enemies");
+        assert_eq!(module_path("src/units/tank.ts"), "units::tank");
+        assert_eq!(module_path("levels/my-level.ts"), "levels::my_level");
     }
 
     #[test]

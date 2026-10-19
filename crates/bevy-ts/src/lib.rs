@@ -37,8 +37,14 @@ pub mod prelude {
     pub use crate::backend::{ModuleSet, ScriptBackend, ScriptError};
     pub use crate::manifest::Stage;
     pub use crate::plugin_api::BevyTsAppExt;
-    pub use crate::{BevyTsPlugin, BevyTsSet};
+    pub use crate::{BevyTsPlugin, BevyTsSet, ScriptHidden};
 }
+
+/// Marks an entity TS never sees: every TS query skips it, TS lifecycle observers ignore it, and
+/// `bevy-ts/entities` leaves it out. For editor-only entities (viewport's editor camera, gizmos).
+#[derive(Component, Reflect, Default, Clone, Copy, Debug)]
+#[reflect(Component, Default)]
+pub struct ScriptHidden;
 
 /// The system set each bevy-ts stage runs in, so Rust plugins can order around it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,7 +96,7 @@ impl Plugin for BevyTsPlugin {
         let engine = backend.engine();
         let inspector = backend.inspector_address();
         app.insert_non_send(runtime::ScriptRuntime::new(backend, self.dev));
-        app.register_type::<commands::TsSpawned>();
+        app.register_type::<commands::TsSpawned>().register_type::<ScriptHidden>();
         app.init_resource::<components::TsComponents>()
             .init_resource::<systems::TsSystems>()
             .init_resource::<commands::CommandKinds>()

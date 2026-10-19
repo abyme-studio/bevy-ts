@@ -116,6 +116,7 @@ fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool
     }
 
     let declarations = if declare { reader::read(info, root)? } else { reader::Declarations::default() };
+    inject_class_declarations(&allocator, &mut program, &declarations.classes);
     let end = location(path, source, Span::new(source.len() as u32, source.len() as u32));
     imports.extend(declarations.imports.iter().map(|spec| (spec.clone(), end.clone())));
 
@@ -132,6 +133,45 @@ fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool
     // Declarations go after the code, so every mapped line keeps its place.
     let code = format!("{}{}\n//# sourceMappingURL=data:application/json;base64,{}\n", out.code, declarations.code, base64(map.as_bytes()));
     Ok(Compiled { code, source_map: map, imports })
+}
+
+/// Gives each data class a trailing `static { __bevyts.data(this, {...}); }`, so its name, fields
+/// and scene props are on the class from the moment it is defined (tsx reads `componentName` at
+/// module load). The block has no source spans, so the source map is unchanged.
+fn inject_class_declarations<'a>(allocator: &'a Allocator, program: &mut oxc::ast::ast::Program<'a>, classes: &[(String, String)]) {
+    use oxc::ast::ast::{Declaration, ExportDefaultDeclarationKind};
+    use oxc::ast_visit::VisitMut;
+    struct NoSpans;
+    impl<'a> VisitMut<'a> for NoSpans {
+        fn visit_span(&mut self, span: &mut Span) {
+            *span = Span::default();
+        }
+    }
+    for (name, decl) in classes {
+        let snippet = allocator.alloc_str(&format!("class _ {{ static {{ __bevyts.data(this, {decl}); }} }}"));
+        let mut parsed = Parser::new(allocator, snippet, SourceType::mjs()).parse();
+        let Some(Statement::ClassDeclaration(mut holder)) = parsed.program.body.pop() else { continue };
+        let Some(mut block) = holder.body.body.pop() else { continue };
+        NoSpans.visit_class_element(&mut block);
+        let class = program.body.iter_mut().find_map(|stmt| {
+            let c = match stmt {
+                Statement::ClassDeclaration(c) => c,
+                Statement::ExportDeclaration(e) => match &mut e.declaration {
+                    Declaration::ClassDeclaration(c) => c,
+                    _ => return None,
+                },
+                Statement::ExportDefaultDeclaration(e) => match &mut e.declaration {
+                    ExportDefaultDeclarationKind::ClassDeclaration(c) => c,
+                    _ => return None,
+                },
+                _ => return None,
+            };
+            (c.id.as_ref().is_some_and(|id| id.name == name.as_str())).then_some(c)
+        });
+        if let Some(c) = class {
+            c.body.body.push(block);
+        }
+    }
 }
 
 fn base64(bytes: &[u8]) -> String {

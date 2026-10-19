@@ -30,12 +30,57 @@ pub struct FieldDecl {
     pub hints: FieldHints,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ComponentDecl {
+    /// The Rust-style path (`enemies::Grunt`), or the class's `static path`.
     pub name: String,
     pub fields: Vec<FieldDecl>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SourceLocation>,
+    /// `module#export` for an exported class.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// A scene component's scene: its props, read from `static scene(props)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scene: Option<SceneDecl>,
+}
+
+/// A scene component's `static scene(props)`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SceneDecl {
+    pub props: Vec<PropDecl>,
+}
+
+/// One scene prop: its type from the props type, its default from the destructuring.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PropDecl {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: PropType,
+    /// A literal default the compile step read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<serde_json::Value>,
+    /// A default the compile step could not read as a literal; the scene function computes it.
+    #[serde(default)]
+    pub has_default: bool,
+    /// `?` in the props type.
+    #[serde(default)]
+    pub optional: bool,
+}
+
+/// A prop's type: a component field type, or a string (props only, never a column).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PropType {
+    String { kind: StringKind },
+    Field(FieldType),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StringKind {
+    String,
 }
 
 impl ComponentDecl {

@@ -25,7 +25,12 @@ const _: () = assert!(size_of::<Tick>() == 4 && align_of::<Tick>() == 4);
 pub const TIME: &str = "Time";
 
 pub fn time_layout() -> ComponentLayout {
-    ComponentLayout::c_layout([("delta", &FieldType::F32), ("elapsed", &FieldType::F64), ("frame", &FieldType::U32)])
+    ComponentLayout::c_layout([
+        ("delta_secs", &FieldType::F32),
+        ("elapsed_secs", &FieldType::F32),
+        ("delta_secs_f64", &FieldType::F64),
+        ("elapsed_secs_f64", &FieldType::F64),
+    ])
 }
 
 /// One data column of a query.
@@ -400,6 +405,7 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], ts: 
     for id in without {
         b.without_id(id);
     }
+    b.without::<crate::ScriptHidden>();
     Ok(QueryParam { state: b.build(), columns, changed, added })
 }
 
@@ -748,11 +754,12 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     }
                 },
                 RunParam::Time => {
-                    // `{ delta: f32, elapsed: f64, frame: u32 }`: three u64 words. The frame is
-                    // pointed at once `scratch.time` stops growing (below).
-                    scratch.time.push((frame.dt as f32).to_bits() as u64);
+                    // Bevy's field names, `{ delta_secs: f32, elapsed_secs: f32, delta_secs_f64: f64,
+                    // elapsed_secs_f64: f64 }`: three u64 words. The frame is pointed at once
+                    // `scratch.time` stops growing (below).
+                    scratch.time.push((frame.dt as f32).to_bits() as u64 | ((frame.elapsed as f32).to_bits() as u64) << 32);
+                    scratch.time.push(frame.dt.to_bits());
                     scratch.time.push(frame.elapsed.to_bits());
-                    scratch.time.push(frame.frame as u32 as u64);
                     ParamFrame::None
                 }
                 RunParam::Local(i) => {

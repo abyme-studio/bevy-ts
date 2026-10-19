@@ -151,6 +151,24 @@ pub fn component_by_name(world: &World, name: &str) -> Option<(ComponentId, Comp
     world.get_resource::<TsComponents>()?.live(name).map(|c| (c.id, c.layout.clone()))
 }
 
+/// A live TS component's declaration by declared name (`enemies::Grunt`) or `module#export`,
+/// with its fields and, for a scene component, its scene props.
+pub fn component_decl(world: &World, name_or_id: &str) -> Option<crate::manifest::ComponentDecl> {
+    let registry = world.get_resource::<TsComponents>()?;
+    registry
+        .live(name_or_id)
+        .or_else(|| registry.current().find(|c| c.state == crate::components::ComponentState::Live && c.decl.id.as_deref() == Some(name_or_id)))
+        .map(|c| c.decl.clone())
+}
+
+/// Every live scene component's declaration, sorted by name: what a level may place.
+pub fn scene_components(world: &World) -> Vec<crate::manifest::ComponentDecl> {
+    let Some(registry) = world.get_resource::<TsComponents>() else { return Vec::new() };
+    let mut out: Vec<_> = registry.current().filter(|c| c.state == crate::components::ComponentState::Live && c.decl.scene.is_some()).map(|c| c.decl.clone()).collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
 /// Encodes a map of field names to values into a live TS component's native bytes, defaults
 /// filled in, type errors naming the field.
 pub fn encode_component(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<u8>, ValueError> {

@@ -21,7 +21,7 @@ impl LocalStore {
     fn new(fields: &[FieldDecl]) -> Self {
         let layout = ComponentLayout::c_layout(fields.iter().map(|f| (f.name.as_str(), &f.ty)));
         let mut store = LocalStore { fields: fields.to_vec(), bytes: vec![0; layout.size.div_ceil(16).max(1)], layout };
-        let decl = crate::manifest::ComponentDecl { name: "Local".into(), fields: fields.to_vec(), location: None };
+        let decl = crate::manifest::ComponentDecl { name: "Local".into(), fields: fields.to_vec(), ..Default::default() };
         if let Ok(init) = value::encode_component(&decl, &store.layout, &serde_json::Map::new()) {
             store.data_mut()[..init.len()].copy_from_slice(&init);
         }

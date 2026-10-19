@@ -223,6 +223,7 @@ fn component_decls(manifest: &crate::manifest::Manifest) -> Vec<crate::manifest:
         name: r.name.clone(),
         fields: r.fields.clone(),
         location: r.location.clone(),
+        ..Default::default()
     }));
     all
 }

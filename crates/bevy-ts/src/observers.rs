@@ -59,16 +59,19 @@ pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
             continue;
         }
         let watch = ids.clone();
-        let push = move |entity: Entity, components: &[ComponentId], queue: Option<ResMut<ObserverQueue>>| {
+        let push = move |entity: Entity, components: &[ComponentId], queue: Option<ResMut<ObserverQueue>>, hidden: Query<(), With<crate::ScriptHidden>>| {
             let Some(mut queue) = queue else { return };
+            if hidden.contains(entity) {
+                return;
+            }
             for id in components.iter().filter(|c| watch.contains(c)) {
                 queue.0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes: vec![], path: vec![entity] });
             }
         };
         let observer = match kind {
-            Lifecycle::Add => Observer::new(move |ev: On<Add<()>>, q: Option<ResMut<ObserverQueue>>| push(ev.event().entity, ev.trigger().components, q)),
-            Lifecycle::Insert => Observer::new(move |ev: On<Insert<()>>, q: Option<ResMut<ObserverQueue>>| push(ev.event().entity, ev.trigger().components, q)),
-            Lifecycle::Remove => Observer::new(move |ev: On<Remove<()>>, q: Option<ResMut<ObserverQueue>>| push(ev.event().entity, ev.trigger().components, q)),
+            Lifecycle::Add => Observer::new(move |ev: On<Add<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>| push(ev.event().entity, ev.trigger().components, q, h)),
+            Lifecycle::Insert => Observer::new(move |ev: On<Insert<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>| push(ev.event().entity, ev.trigger().components, q, h)),
+            Lifecycle::Remove => Observer::new(move |ev: On<Remove<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>| push(ev.event().entity, ev.trigger().components, q, h)),
         };
         spawned.push(world.spawn(observer.with_components(ids)).id());
     }

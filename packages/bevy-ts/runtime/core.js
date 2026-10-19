@@ -324,74 +324,126 @@ class Quat {
 Object.assign(Quat.prototype, QUAT_READ, QUAT_WRITE);
 
 // ---------------------------------------------------------------------------------------------
-// Declarations: one class each
+// Declarations: plain classes whose fields the compile step read (operator ruling 2026-10-20)
+//
+// `class Health extends Component { hp: f32 = 100 }` compiles with a trailing
+// `static { __bevyts.data(this, {...}) }` holding its Rust-style name, fields and scene props
+// (design decision 13), so the class carries `componentName` from the moment it is defined.
 
 /** What kind of declaration a class is. */
 const KIND = Symbol.for("bevy-ts.kind");
+const STATE_VALUES = Symbol("bevy-ts.states");
 
-function declare(kind, name, fields, extra, at) {
-  const g = S.loading;
-  const decl = { name, fields: fieldDecls(name, fields, at), location: at, ...extra };
-  // A class whose instances are values: `new Health({ hp: 3 })`.
-  const C = class {
-    constructor(init) {
-      if (init) Object.assign(this, init);
+class Data {
+  /** `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. */
+  static of(values) {
+    const v = new this();
+    if (values) for (const k of Object.keys(values)) v[k] = values[k];
+    return v;
+  }
+}
+export class Component extends Data {}
+/** Bevy's `#[derive(SceneComponent)]`: a component whose `static scene(props)` is spawned with it. */
+export class SceneComponent extends Component {}
+/** A Rust component reachable only through reflection: typed, usable in filters and TSX. */
+export class ReflectComponent extends Data {}
+export class Resource extends Data {}
+export class Message extends Data {}
+export class Event extends Data {}
+/** An event that targets its `entity`; `static propagate = true` bubbles it up `ChildOf`. */
+export class EntityEvent extends Data {}
+/** `class EnemySet extends SystemSet {}`, Rust's `#[derive(SystemSet)] struct EnemySet;`. */
+export class SystemSet {}
+
+/** `class Game extends States("Menu", "Playing") {}`; `Game.Playing` is a value. */
+export function States(...values) {
+  const at = callerLocation();
+  if (values.length === 0 || values.some((v) => typeof v !== "string")) throw declError("States(...values): values are strings, States(\"Menu\", \"Playing\")", at);
+  const B = class {};
+  B[STATE_VALUES] = values;
+  return B;
+}
+
+const DATA_KIND = {
+  component: "component",
+  sceneComponent: "component",
+  reflectComponent: "component",
+  resource: "resource",
+  message: "message",
+  event: "event",
+  entityEvent: "event",
+  state: "state",
+  set: "set",
+};
+
+/** Scene components of every loaded generation by name and by `module#export`, for tsx's expand entry. */
+const SCENES = new Map();
+
+/** The scene component class a level names (`enemies::Grunt` or `src/enemies.tsx#Grunt`), in the live generation. */
+export function sceneComponent(nameOrId) {
+  const g = S.loading || S.gens.get(S.live);
+  return (g && g.sceneComponents.get(nameOrId)) || SCENES.get(nameOrId);
+}
+
+function vectorJson(v) {
+  return v && typeof v.toArray === "function" ? v.toArray() : v;
+}
+
+/** The compile step's class declaration, run by the class's static block. */
+function dataFn(C, d) {
+  const at = d.at;
+  if (d.error) throw declError(d.error, at);
+  const kind = DATA_KIND[d.kind];
+  if (!kind) throw declError(`${C.name}: unknown declaration kind ${d.kind}`, at);
+  const own = (k, v) => Object.defineProperty(C, k, { value: v, writable: true, configurable: true, enumerable: false });
+  own("componentName", d.name);
+  own(KIND, kind);
+  own("id", -1);
+  own("layout", null);
+  own("declId", d.id);
+  own("source", d.kind === "reflectComponent" ? "rust" : "ts");
+  if (kind === "set") {
+    own("set", d.name);
+  } else if (kind === "state") {
+    const values = d.values;
+    own("values", values);
+    own("decl", { name: d.name, values: [...values], location: at });
+    for (const v of values) own(v, Object.freeze({ state: d.name, value: v, machine: C }));
+  } else {
+    // Defaults: the class's own initialisers (any expression), else the literal the compiler read.
+    let inst = null;
+    try {
+      inst = new C();
+    } catch {}
+    const fields = d.fields.map((f) => {
+      const out = { name: f.name, type: f.type, hints: {} };
+      const v = inst ? vectorJson(inst[f.name]) : undefined;
+      if (v !== undefined) out.default = v;
+      else if (f.default !== undefined) out.default = f.default;
+      return out;
+    });
+    const decl = { name: d.name, fields, location: at };
+    if (d.id) decl.id = d.id;
+    if (d.kind === "entityEvent") Object.assign(decl, { entity: true, propagate: !!d.propagate });
+    if (d.kind === "event") Object.assign(decl, { entity: false, propagate: false });
+    own("decl", decl);
+    own("fieldNames", fields.map((f) => f.name));
+    if (d.kind === "sceneComponent") {
+      decl.scene = { props: d.scene.props };
+      own("sceneProps", d.scene.props.map((p) => p.name));
     }
-  };
-  Object.defineProperty(C, "name", { value: name.split("::").pop() });
-  C.componentName = name;
-  C.source = "ts";
-  C[KIND] = kind;
-  C.schema = fields;
-  C.decl = decl;
-  C.id = -1;
-  C.layout = null;
-  if (g) g.classes.push(C);
-  return C;
-}
-
-/** `class Enemy extends Component("game::Enemy", { speed: f32 }) {}` */
-export function Component(name, fields, options) {
-  const at = callerLocation();
-  if (typeof name !== "string" || !name) throw declError("Component(name, fields): name must be a non-empty string", at);
-  return declare("component", name, fields, { options: options || {} }, at);
-}
-
-/** A component with no fields: a marker for filters. */
-export function Tag(name) {
-  return declare("component", name, {}, {}, callerLocation());
-}
-
-export function Resource(name, fields) {
-  return declare("resource", name, fields, {}, callerLocation());
-}
-
-export function Message(name, fields) {
-  return declare("message", name, fields, {}, callerLocation());
-}
-
-export function Event(name, fields) {
-  return declare("event", name, fields, { entity: false, propagate: false }, callerLocation());
-}
-
-/** An event that targets an entity; `propagate` bubbles it up `ChildOf`. */
-export function EntityEvent(name, fields, opts) {
-  return declare("event", name, fields, { entity: true, propagate: !!(opts && opts.propagate) }, callerLocation());
-}
-
-/** `class Game extends States("game::Game", ["Menu", "Playing"]) {}`; `Game.Playing` is a value. */
-export function States(name, values) {
-  const at = callerLocation();
-  if (!Array.isArray(values) || values.length === 0) throw declError(`States(${name}): values must be a non-empty array`, at);
-  const C = class {};
-  Object.defineProperty(C, "name", { value: name.split("::").pop() });
-  C.componentName = name;
-  C[KIND] = "state";
-  C.values = values;
-  C.decl = { name, values: [...values], location: at };
-  for (const v of values) C[v] = Object.freeze({ state: name, value: v, machine: C });
-  if (S.loading) S.loading.classes.push(C);
-  return C;
+  }
+  const g = S.loading;
+  if (g) {
+    g.classes.push(C);
+    if (d.kind === "sceneComponent") {
+      g.sceneComponents.set(d.name, C);
+      if (d.id) g.sceneComponents.set(d.id, C);
+    }
+  } else if (d.kind === "sceneComponent") {
+    SCENES.set(d.name, C);
+    if (d.id) SCENES.set(d.id, C);
+  }
 }
 
 /** A Rust component with a native layout (`Transform`). */
@@ -461,8 +513,8 @@ export const Transform = nativeClass("Transform", "bevy_transform::components::t
   scale: vec3.default([1, 1, 1]),
 });
 
-/** `Res<Time>`: `delta` and `elapsed` in seconds, and the frame number. */
-export const Time = nativeClass("Time", "bevy_time::time::Time", { delta: f32, elapsed: f64, frame: u32 }, "resource");
+/** `Res<Time>`: Bevy's own field names; the fixed step in `FixedUpdate`. */
+export const Time = nativeClass("Time", "bevy_time::time::Time", { delta_secs: f32, elapsed_secs: f32, delta_secs_f64: f64, elapsed_secs_f64: f64 }, "resource");
 
 // ---------------------------------------------------------------------------------------------
 // Schedules, sets, conditions, system configs
@@ -700,7 +752,7 @@ export const app = {
   insertResource(value) {
     const g = loadingOrThrow("insertResource");
     const C = value && value.constructor;
-    if (!C || C[KIND] !== "resource") throw declError("insertResource: pass a Resource instance (new Score({ value: 0 }))", callerLocation());
+    if (!C || C[KIND] !== "resource") throw declError("insertResource: pass a Resource value (Score.of({ value: 0 }))", callerLocation());
     g.resourceInserts.set(C.componentName, { ...value });
     return app;
   },
@@ -886,9 +938,14 @@ function resolveCondition(c) {
   return rest;
 }
 
+function setName(x, at) {
+  if (x && typeof x.set === "string") return x.set;
+  throw declError(`inSet: ${String(x && x.name)} is not a system set (class X extends SystemSet {} or systemSet(name))`, at);
+}
+
 function orderTargets(list, at) {
   return list.flat().map((x) => {
-    if (x && x.set) return x.set;
+    if (x && typeof x.set === "string") return x.set;
     const id = identityOf(x);
     if (!id) throw declError(`ordering on ${String(x && x.name)}: not a registered system or set`, at);
     return id;
@@ -942,6 +999,7 @@ function newGeneration(number) {
     entryFns: new Map(),
     sections: new Map(),
     scenes: new Map(),
+    sceneComponents: new Map(),
     sceneErrors: [],
     tsx: new TsxContext(),
     built: null,
@@ -980,6 +1038,17 @@ function end() {
   } finally {
     S.loading = null;
   }
+  const seen = new Map();
+  for (const C of g.classes) {
+    if (C.source !== "ts") continue;
+    const key = `${C[KIND] === "state" || C[KIND] === "set" ? C[KIND] : "data"}\u0000${C.componentName}`;
+    const other = seen.get(key);
+    if (other && other !== C) {
+      const where = (X) => (X.decl && X.decl.location ? `${X.decl.location.file}:${X.decl.location.line}` : X.name);
+      throw declError(`${C.componentName} is declared twice: ${where(other)} and ${where(C)}; pin one with static path = "..."`, C.decl && C.decl.location);
+    }
+    seen.set(key, C);
+  }
   S.gens.set(g.number, g);
   const byKind = (k) => g.classes.filter((C) => C[KIND] === k);
   const manifest = {
@@ -994,7 +1063,7 @@ function end() {
       params: manifestParams(s.params),
       after: orderTargets(s.r.after, s.at),
       before: orderTargets(s.r.before, s.at),
-      sets: s.r.sets.map((x) => x.set),
+      sets: s.r.sets.map((x) => setName(x, s.at)),
       condition: s.r.conditions.length ? { kind: "all", conditions: s.r.conditions.map(resolveCondition) } : undefined,
       location: s.at,
     })),
@@ -1468,10 +1537,10 @@ class MessageWriterParam {
     this.ctx = ctx;
     this.pending = null;
   }
-  /** Queues a message: a `Message` instance or a plain object of its fields. */
+  /** Queues a message: a `Message` value or a plain object of its fields. */
   write(value) {
     this.flush();
-    this.ctx.commands.write(value instanceof this.cls ? value : new this.cls(value));
+    this.ctx.commands.write(value instanceof this.cls ? value : this.cls.of(value));
   }
   /** A writable view on a fresh slot; written when the run ends or at the next `next`/`write`. */
   next() {
@@ -1490,24 +1559,28 @@ class MessageWriterParam {
   }
 }
 
-class OnParam {
-  constructor(cls, lifecycle) {
-    this.cls = cls;
-    this.lifecycle = lifecycle;
-    this.entity = undefined;
-    this.event = cls ? new cls.Read() : {};
-    this.stopped = false;
-  }
-  bind(frame) {
-    // [ArrayBuffer, entity]
-    if (this.cls) bindRow(this.event, this.cls, frame[0], null, 0);
-    this.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
-    this.stopped = false;
-  }
-  /** `propagate(false)` stops an entity event from bubbling further up `ChildOf`. */
-  propagate(on) {
-    this.stopped = !on;
-  }
+/**
+ * An observer's `On<E>`: the event's fields directly (`explode.radius`, as Rust's `On` derefs to
+ * the event), the target as `entity`, and `propagate(on)`.
+ */
+function makeOn(cls) {
+  const o = cls ? new cls.Read() : {};
+  Object.defineProperty(o, "entity", { value: undefined, writable: true, enumerable: true });
+  Object.defineProperty(o, "stopped", { value: false, writable: true });
+  Object.defineProperty(o, "propagate", {
+    value(on) {
+      o.stopped = !on;
+    },
+  });
+  Object.defineProperty(o, "bind", {
+    value(frame) {
+      // [ArrayBuffer, entity]
+      if (cls) bindRow(o, cls, frame[0], null, 0);
+      o.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
+      o.stopped = false;
+    },
+  });
+  return o;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1616,7 +1689,7 @@ function buildSystem(g, s) {
         };
       }
       case "on": {
-        const o = new OnParam(p.cls, p.lifecycle);
+        const o = makeOn(p.cls);
         ctx.on = o;
         consumers.push((frame) => o.bind(frame));
         return o;
@@ -1764,7 +1837,7 @@ class Commands {
     if (this.poolUsed >= this.pool.length) throw new Error(`spawn pool exhausted: at most ${this.pool.length} spawns per call`);
     return this.pool[this.poolUsed++];
   }
-  /** Spawns an entity with components (`new Health({ hp: 3 })`, or a class for its defaults), or mounts a prefab element. */
+  /** Spawns an entity with components (`Health.of({ hp: 3 })`, or a class for its defaults), or mounts a prefab element. */
   spawn(...parts) {
     if (parts.length === 1 && isElement(parts[0])) {
       this.mount(parts[0]);
@@ -1779,15 +1852,21 @@ class Commands {
   entity(e) {
     return new EntityCommands(this, e);
   }
-  /** Triggers a global event, or (`target`, entity event) an entity event. */
-  trigger(a, b) {
-    const [target, event] = b === undefined ? [undefined, a] : [a, b];
+  /** Triggers an event; an entity event carries its target, `Explode.of({ entity: e, radius: 3 })`. */
+  trigger(event) {
     const E = event && event.constructor;
-    if (!E || E[KIND] !== "event") throw new TypeError("trigger: pass an Event or EntityEvent instance");
+    if (!E || E[KIND] !== "event") throw new TypeError("trigger: pass an Event or EntityEvent value (Explode.of({ entity, radius: 3 }))");
     const r = this.res && this.res.events[E.componentName];
     if (!r) throw new Error(`${E.componentName} is not a declared event`);
-    if (E.decl.entity && target === undefined) throw new TypeError(`${E.name} is an EntityEvent: trigger(target, event)`);
-    const bytes = encodeWithLayout(E, r.layout, event);
+    let target;
+    let values = event;
+    if (E.decl.entity) {
+      target = event.entity;
+      if (target === undefined || target === null) throw new TypeError(`${E.name} is an EntityEvent: give its target, ${E.name}.of({ entity, ... })`);
+      values = { ...event };
+      delete values.entity;
+    }
+    const bytes = encodeWithLayout(E, r.layout, values);
     const w = new Writer();
     w.u8(OP_TRIGGER);
     w.u32(r.index);
@@ -1799,10 +1878,10 @@ class Commands {
     w.raw(bytes);
     this.op(w.bytes());
   }
-  /** Writes a message (a `Message` instance). */
+  /** Writes a message (`Damage.of({ ... })`). */
   write(message) {
     const M = message && message.constructor;
-    if (!M || M[KIND] !== "message") throw new TypeError("write: pass a Message instance (new Damage({ ... }))");
+    if (!M || M[KIND] !== "message") throw new TypeError("write: pass a Message value (Damage.of({ ... }))");
     const r = this.res && this.res.messages[M.componentName];
     if (!r) throw new Error(`${M.componentName} is not a declared message`);
     this.writeBytes(M, encodeWithLayout(M, r.layout, message));
@@ -1922,7 +2001,7 @@ function encodeComponentsOp(op, e, parts) {
     // A class alone means its defaults.
     const C = typeof part === "function" ? part : part && part.constructor;
     const values = typeof part === "function" ? {} : part;
-    if (!C || !C.componentName || (C[KIND] && C[KIND] !== "component")) throw new TypeError(`spawn/insert: ${String(part)} is not a component (new Health({ hp: 3 }))`);
+    if (!C || !C.componentName || (C[KIND] && C[KIND] !== "component")) throw new TypeError(`spawn/insert: ${String(part)} is not a component (Health.of({ hp: 3 }))`);
     const bytes = encodeWithLayout(C, C.layout, values);
     w.u32(idOf(C));
     w.u32(bytes.length);
@@ -2069,7 +2148,7 @@ function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {
   return [out.slice(), len, over, used];
 }
 
-globalThis.__bevyts = { begin, end, abort, commit, discard, runSystem, callEntry, bind: bindModule, declare: declareFn };
+globalThis.__bevyts = { begin, end, abort, commit, discard, runSystem, callEntry, bind: bindModule, declare: declareFn, data: dataFn };
 
 // A binding that changed outside the tsx host call (a signal a system set) asks Rust for one
 // through the running call's commands.

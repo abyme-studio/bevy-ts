@@ -362,6 +362,7 @@ mod tests {
                 .map(|(n, t, d)| FieldDecl { name: n.to_string(), ty: t.clone(), default: d.clone(), hints: Default::default() })
                 .collect(),
             location: None,
+            ..Default::default()
         }
     }
 

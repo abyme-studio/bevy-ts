@@ -34,6 +34,7 @@ fn health() -> ComponentDecl {
             FieldDecl { name: "max".into(), ty: FieldType::F32, default: Some(json!(100)), hints: Default::default() },
         ],
         location: None,
+        ..Default::default()
     }
 }
 
