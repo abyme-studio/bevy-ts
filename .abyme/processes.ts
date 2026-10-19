@@ -7,6 +7,9 @@ export default {
   "bench-bindings-js": {
     cmd: "deno run --v8-flags=--expose-gc bench/bindings/fire-paths.js | tee bench/bindings/results/v8-jit.md",
   },
+  "ports-proof": {
+    cmd: "cd bench/ports && cargo test -- --nocapture 2>&1 | tee results/cargo-test.txt",
+  },
   build: { cmd: "cargo build --workspace --all-targets" },
   test: { cmd: "cargo test --workspace" },
   clippy: { cmd: "cargo clippy --workspace --all-targets -- -D warnings" },

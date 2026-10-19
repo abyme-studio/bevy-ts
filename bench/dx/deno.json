@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "bevy-ts"
+  },
+  "imports": {
+    "bevy-ts": "./bevy-ts/mod.ts",
+    "bevy-ts/jsx-runtime": "./bevy-ts/jsx-runtime.ts",
+    "bevy-ts/rapier": "./bevy-ts/rapier.ts"
+  }
+}

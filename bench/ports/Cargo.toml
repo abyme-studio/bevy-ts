@@ -1,0 +1,16 @@
+[package]
+name = "ports-proof"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Proves what generated port code can do with `core::mem::offset_of!` and reflection on a
+# third-party component that is not `#[repr(C)]`: bevy_rapier3d 0.37 on Bevy 0.20.
+# `cargo test` runs the passing cases; the doctests in src/lib.rs are the compile_fail cases.
+
+[dependencies]
+bevy_rapier3d = { version = "0.37", default-features = false, features = ["dim3"] }
+bevy_ecs = { version = "0.20", default-features = false, features = ["std", "bevy_reflect"] }
+bevy_reflect = "0.20"
+bevy_math = "0.20"
+bevy_transform = "0.20"

@@ -1,0 +1,212 @@
+    Updating crates.io index
+     Locking 251 packages to latest Rust 1.98.0 compatible versions
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling autocfg v1.5.1
+   Compiling libm v0.2.16
+   Compiling serde_core v1.0.229
+   Compiling equivalent v1.0.3
+   Compiling crossbeam-utils v0.8.23
+   Compiling pin-project-lite v0.2.17
+   Compiling parking v2.2.1
+   Compiling foldhash v0.2.0
+   Compiling winnow v1.0.4
+   Compiling hashbrown v0.17.1
+   Compiling rand_core v0.10.1
+   Compiling futures-core v0.3.34
+   Compiling toml_datetime v1.1.2+spec-1.1.0
+   Compiling fastrand v2.5.0
+   Compiling futures-io v0.3.34
+   Compiling num-traits v0.2.19
+   Compiling rand v0.10.3
+   Compiling serde v1.0.229
+   Compiling indexmap v2.14.2
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling cfg-if v1.0.5
+   Compiling thiserror v2.0.21
+   Compiling futures-lite v2.6.1
+   Compiling unicode-segmentation v1.13.3
+   Compiling toml_edit v0.25.17+spec-1.1.0
+   Compiling event-listener v5.4.2
+   Compiling typeid v1.0.3
+   Compiling convert_case v0.10.0
+   Compiling unicode-xid v0.2.6
+   Compiling smallvec v1.16.3
+   Compiling spin v0.12.3
+   Compiling event-listener-strategy v0.5.4
+   Compiling downcast-rs v2.0.2
+   Compiling bitflags v2.13.2
+   Compiling erased-serde v0.4.10
+   Compiling mutants v0.0.3
+   Compiling rustc-hash v2.1.3
+   Compiling thread_local v1.1.10
+   Compiling objc2 v0.6.5
+   Compiling slab v0.4.12
+   Compiling libc v0.2.191
+   Compiling disqualified v1.1.0
+   Compiling version_check v0.9.5
+   Compiling cfg_aliases v0.2.2
+   Compiling objc2-encode v4.1.0
+   Compiling log v0.4.34
+   Compiling inventory v0.3.25
+   Compiling arrayvec v0.7.8
+   Compiling bevy_ptr v0.20.0
+   Compiling nix v0.31.3
+   Compiling slotmap v1.1.1
+   Compiling async-task v4.7.1
+   Compiling atomic-waker v1.1.2
+   Compiling nonmax v0.5.5
+   Compiling fixedbitset v0.5.7
+   Compiling bumpalo v3.20.3
+   Compiling matrixmultiply v0.3.11
+   Compiling rawpointer v0.2.1
+   Compiling heapless v0.8.0
+   Compiling byteorder v1.5.0
+   Compiling hash32 v0.3.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling typenum v1.20.1
+   Compiling const-fnv1a-hash v1.1.0
+   Compiling unsynn v0.3.0
+   Compiling syn v2.0.119
+   Compiling syn v3.0.9
+   Compiling bevy_macro_utils v0.20.0
+   Compiling concurrent-queue v2.5.0
+   Compiling derive_more-impl v2.1.1
+   Compiling async-channel v2.5.0
+   Compiling approx v0.5.1
+   Compiling bevy_reflect_derive v0.20.0
+   Compiling assert_type_match v0.1.1
+   Compiling async-executor v1.14.0
+   Compiling bevy_ecs_macro_logic v0.20.0
+   Compiling crossbeam-queue v0.3.14
+   Compiling bevy_ecs_macros v0.20.0
+   Compiling bevy_derive v0.20.0
+   Compiling num-integer v0.1.47
+   Compiling num-complex v0.4.6
+   Compiling block2 v0.6.2
+   Compiling num-rational v0.4.2
+   Compiling crossbeam-channel v0.5.17
+   Compiling hashbrown v0.16.1
+   Compiling nalgebra-macros v0.3.0
+   Compiling ordered-float v5.5.0
+   Compiling bytemuck_derive v1.12.1
+   Compiling thiserror-impl v2.0.21
+   Compiling dispatch2 v0.3.1
+   Compiling num-derive v0.5.1
+   Compiling profiling-procmacros v1.0.18
+   Compiling ena v0.14.4
+   Compiling ctrlc v3.5.2
+   Compiling either v1.19.0
+   Compiling static_assertions v1.1.0
+   Compiling profiling v1.0.18
+   Compiling bevy_platform v0.20.0
+   Compiling derive_more v2.1.1
+   Compiling bevy_utils v0.20.0
+   Compiling bytemuck v1.25.2
+   Compiling rstar v0.13.0
+   Compiling variadics_please v2.0.0
+   Compiling bevy_tasks v0.20.0
+   Compiling glam v0.33.12
+   Compiling wide v1.7.1
+   Compiling bevy_reflect v0.20.0
+   Compiling simba v0.10.2
+   Compiling nalgebra v0.35.0
+   Compiling bevy_ecs v0.20.0
+   Compiling bevy_math v0.20.0
+   Compiling bevy_shape v0.20.0
+   Compiling glamx v0.3.1
+   Compiling parry3d v0.31.1
+   Compiling rapier3d v0.36.1
+   Compiling bevy_app v0.20.0
+   Compiling bevy_time v0.20.0
+   Compiling bevy_input v0.20.0
+   Compiling bevy_transform v0.20.0
+   Compiling bevy_diagnostic v0.20.0
+   Compiling bevy_internal v0.20.0
+   Compiling bevy v0.20.0
+   Compiling bevy_rapier3d v0.37.0
+   Compiling ports-proof v0.0.0 (/Users/rjm/dev/bevy-ts/bench/ports)
+warning: unused import: `Vec3`
+  --> src/lib.rs:32:27
+   |
+32 |     use bevy_math::{Quat, Vec3};
+   |                           ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: linker stderr: ld64.lld: /Users/rjm/dev/bevy-ts/bench/ports/target/debug/deps/libobjc2_encode-60a88e16051d5a0b.rlib(objc2_encode-60a88e16051d5a0b.objc2_encode.87f29f07b0e1bbb1-cgu.0.rcgu.o) has version 12.0.0, which is newer than target minimum of 11.0.0
+         ld64.lld: /Users/rjm/dev/bevy-ts/bench/ports/target/debug/deps/libobjc2_encode-60a88e16051d5a0b.rlib(objc2_encode-60a88e16051d5a0b.objc2_encode.87f29f07b0e1bbb1-cgu.1.rcgu.o) has version 12.0.0, which is newer than target minimum of 11.0.0
+         ld64.lld: /Users/rjm/dev/bevy-ts/bench/ports/target/debug/deps/libcrossbeam_utils-b019e7ff3253bfce.rlib(crossbeam_utils-b019e7ff3253bfce.crossbeam_utils.5efa6befb5ada458-cgu.0.rcgu.o) has version 12.0.0, which is newer than target minimum of 11.0.0
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `ports-proof` (lib test) generated 2 warnings (run `cargo fix --lib -p ports-proof --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized] target(s) in 39.54s
+     Running unittests src/lib.rs (target/debug/deps/ports_proof-f541ab5685bddbd7)
+
+running 5 tests
+Transform: size 48 align 16 translation.z @24 rotation @0 scale.x @28
+Velocity: size 24 align 4 linear @0 angular @12
+RigidBody bytes: [0, 1, 2, 3]
+Option<Entity>: size 8
+test tests::nested_paths ... ok
+test tests::third_party_non_repr_c_struct ... ok
+test tests::fieldless_enum_bytes_are_read_not_assumed ... ok
+Velocity via reflection: [("linear.x", 0, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("linear.y", 4, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("linear.z", 8, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("angular.x", 12, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("angular.y", 16, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("angular.z", 20, TypeId(0x1f814bf16f812452b283244dea52bee6))]
+Transform via reflection: [("translation.x", 16, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("translation.y", 20, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("translation.z", 24, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("rotation.x", 0, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("rotation.y", 4, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("rotation.z", 8, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("rotation.w", 12, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("scale.x", 28, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("scale.y", 32, TypeId(0x1f814bf16f812452b283244dea52bee6)), ("scale.z", 36, TypeId(0x1f814bf16f812452b283244dea52bee6))]
+LockedAxes via reflection: [("0", 0, TypeId(0xcfb1622e7734f8af272d8d182905dc25))]
+test tests::reflection_gives_the_same_offsets ... ok
+zero-copy write: 1000 rows of rapier Velocity written through an f32 view
+test tests::zero_copy_write_through_a_float_view ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests ports_proof
+
+running 4 tests
+error[E0609]: no field `x` on type `Quat`
+  --> src/lib.rs:21:48
+   |
+21 | let _ = core::mem::offset_of!(bevy_math::Quat, x);
+   |                                                ^
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0609`.
+error[E0609]: no field `y` on type `Vec3A`
+  --> src/lib.rs:24:49
+   |
+24 | let _ = core::mem::offset_of!(bevy_math::Vec3A, y);
+   |                                                 ^
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0609`.
+test src/lib.rs - (line 20) - compile fail ... ok
+test src/lib.rs - (line 23) - compile fail ... ok
+error[E0658]: using enums in offset_of is experimental
+  --> src/lib.rs:15:71
+   |
+15 | let _ = core::mem::offset_of!(bevy_rapier3d::prelude::CollisionEvent, Started.0);
+   |                                                                       ^^^^^^^
+   |
+   = note: see issue #120141 <https://github.com/rust-lang/rust/issues/120141> for more information
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0658`.
+test src/lib.rs - (line 14) - compile fail ... ok
+error[E0616]: field `0` of struct `bevy_rapier3d::dynamics::LockedAxes` is private
+  --> src/lib.rs:10:67
+   |
+10 | let _ = core::mem::offset_of!(bevy_rapier3d::prelude::LockedAxes, 0);
+   |                                                                   ^ private field
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0616`.
+test src/lib.rs - (line 8) - compile fail ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
