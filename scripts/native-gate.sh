@@ -18,7 +18,7 @@ scripts/gen-protocol.sh --check
 protocol=$?
 scripts/gen-bevy-types.sh --check
 bevy=$?
-openspec validate native --strict
+openspec validate --specs --strict
 spec=$?
 echo "gate: clippy=$clippy tests=$tests deno=$deno npm=$npm protocol=$protocol bevy=$bevy spec=$spec"
 [[ $clippy == 0 && $tests == 0 && $deno == 0 && $npm == 0 && $protocol == 0 && $bevy == 0 && $spec == 0 ]]
