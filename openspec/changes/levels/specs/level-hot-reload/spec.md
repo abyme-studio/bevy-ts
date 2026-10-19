@@ -35,7 +35,7 @@ Entities SHALL keep their identity, and so their state, when their name path is 
 - **THEN** enemy `a` does not come back, until a `restart`
 
 ### Requirement: A bad file changes nothing
-A level file that fails to parse or resolve SHALL be rejected whole. Failures include an unknown prefab, component, field or name, a type mismatch, a duplicate name or an inclusion cycle. Its level, and every level including it, SHALL stay exactly as it was. Each error SHALL carry file, line and column, and SHALL stream on `bevy-ts/level+watch` and the terminal. The next good save SHALL apply against the last good one.
+A level file that fails to parse or resolve SHALL be rejected whole. Failures include an unknown prefab, component, field or name, a type mismatch, a duplicate name, an override of a bound field or an inclusion cycle. Its level, and every level including it, SHALL stay exactly as it was. Each error SHALL carry file, line and column, and SHALL stream on `bevy-ts/level+watch` and the terminal. The next good save SHALL apply against the last good one.
 
 #### Scenario: A typo in a component name
 - **WHEN** `Transfrom { … }` is saved at `arena.bsn:12:5`

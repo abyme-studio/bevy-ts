@@ -4,7 +4,7 @@
 
 - TSX defines prefabs. Levels and per-instance overrides are `.bsn` files the viewport writes. bevy-ts loads and writes `.bsn` itself until Bevy's loader lands, and stays close enough to upstream that the switch is a deletion.
 - The editor follows a passed-through prop one level up to a literal call-site argument. Otherwise the edit goes to `.bsn`.
-- A bound prop has one owner, its binding. scene-bindings research recommends Godot's rule for a `.bsn` override of a bound field: the override pins that instance.
+- A bound prop has one owner, its binding. No system writes it, and the viewport shows it read-only (tsx ruling). So a `.bsn` override of a bound field is refused.
 
 Prior art, read 2026-10-19:
 
@@ -131,17 +131,17 @@ Transform { translation: Vec3 { x: 3.0, z: -4.0 } }
 - `prefab(name, props, fn)` registers the prefab under a component-style name. Its props use `component()`'s field types, so Rust can type-check `.bsn` values, the inspector can show props, and the writer can emit them.
 - Plain-function prefabs still work in TSX, but a level cannot call them.
 - Expansion is one host call per reconcile that has any instances to expand (`tsx`'s B2 entry). It sends `(name, props)` per instance and gets descriptions back.
-- An instance root's `Transform` is the level's. A prefab that sets the root `Transform` gets it overridden by the level's patch, which follows the expansion. Placement is therefore always a component override and never a prop the engine would have to trace. tsx decision 10 says the engine cannot tell whether `translation={at}` came from a literal.
+- An instance root's `Transform` is the level's, unless the prefab binds it (decision 6). A prefab that sets the root `Transform` with a literal or a prop gets it overridden by the level's patch, which follows the expansion. Placement is therefore always a component override and never a prop the engine would have to trace. tsx decision 10 says the engine cannot tell whether `translation={at}` came from a literal.
 
 - *Beat: name prefabs by file and export (`:"src/enemy.tsx#Enemy"`).* It parses with upstream today. But a cached inclusion takes no props, so props would need a fake component, and renaming a file would break every level.
 - *Beat: untyped props (JSON passed through).* The writer could not emit them, the inspector could not show them, and errors would surface inside the prefab function rather than at the line in the level.
 
-### 6. Override values are controlled; a bound field is pinned by an override
+### 6. Override values are controlled; overriding a bound field is a load error
 - An override is a declared value with provenance `override`. It is written when the declared value changes against the last applied value, and is otherwise left alone (tsx rule 3). A system that moves an enemy keeps it moved across reloads that leave its `Transform` override unchanged.
 - Removing an override makes the field's declared value the prefab's again, so it is written.
-- An override of a field the prefab binds (`bound`) pins that instance: the instance leaves the binding site, the field takes the override value, and its provenance is `override` with `pinned_from` naming the site. The viewport shows a revert. Reverting deletes the override line, and the instance rejoins the site.
+- An override of a field the prefab binds (`bound`) fails the load, with the level's file, line and column and the binding's site location and expression. That holds for an instance root's `Transform` too. The viewport never produces one, because the field's route is `locked`. A level designer who needs one lamp brighter than the rest makes the binding read a prop (`intensity={() => base * alarm()}` with `base` a prefab prop) and overrides the prop.
 
-- *Beat: reject overrides of bound fields.* A level designer then cannot place one lamp brighter than the rest without editing TSX. The pin keeps one owner per instance either way.
+- *Beat: the override pins that instance (Godot's rule, recommended by scene-bindings research).* It breaks the ruling that a bound prop has one owner, its binding, and makes a field's owner depend on a level file the TSX author cannot see.
 - *Beat: `initial` semantics for overrides* (seed once, never re-write). Editing a value in the file would then do nothing until restart, the same reason tsx rejected all-initial.
 
 ### 7. Edits arrive as operations on name paths; a policy picks the target file
@@ -209,7 +209,7 @@ The viewport ruling sends an edit to `.bsn` when the editor finds no literal. Fo
 - `BsnLevel` asset: the lossless tree, content hash, the extensions used, and diagnostics.
 - `LevelInstance` component, on each level-placed entity (viewport's D5): the level path, the name path, and the owner chain (level frames outermost first, then the TSX source chain).
 - `Levels` resource: open levels with base hashes; an include graph for reload fan-out; and a pending write queue with conflict state.
-- `TsxNode` provenance gains `override { file, line, column, pinned_from? }`.
+- `TsxNode` provenance gains `override { file, line, column }`.
 
 **Wire:**
 - To JS: `expand([(instance node id, prefab name, props JSON)])` through tsx's host entry (B2), returning descriptions.
@@ -239,7 +239,7 @@ On top of bridge's and tsx's rules:
 
 - **T1 (tsx).** `prefab(name, props, fn)`: a registry of named prefabs with `component()`-typed props, callable from Rust through a host entry with `(name, props)` per instance.
 - **T2 (tsx).** External roots: a Rust plugin can submit a description for a named root (`level:<path>`) built in Rust and partly expanded in JS. It is reconciled under the same rules and generation boundary as `app.scene` roots.
-- **T3 (tsx).** Provenance `override` with location and `pinned_from`, and the ability to pin a bound field per instance: remove the instance from its site.
+- **T3 (tsx).** Provenance `override` with location, and, before reconciling a level description, a lookup of which expanded fields are `bound` with their site location and expression, so levels can refuse overrides of them.
 - **T4 (tsx).** An overlay root: a description layered over an `app.scene` root by key path, for decision 11.
 - **V1 (viewport).** The `bsn` route payload is the owner chain plus the chosen target under `levels.prefabEdits`. Under `override`, entities inside a level-instanced prefab route `bsn`, not `tsx`. The `bsn` write confirmation is `level+watch`'s `written`, `rebased` or `conflict`.
 
@@ -278,6 +278,10 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
   scenes. Bevy 0.20 ships no `.bsn` loader, so bevy-ts loads and writes `.bsn` itself until
   Bevy's lands, staying as close to upstream BSN syntax and semantics as possible so the switch is
   a deletion. Viewport edits arrive routed by provenance; `bsn` routes are this change's.
+
+- 2026-10-19 (tsx ruling, applied here): a bound prop has one owner, its binding. A `.bsn`
+  override of a bound field is refused with a load error naming the file, line and binding; it
+  does not pin the instance.
 
 ## Open Questions
 

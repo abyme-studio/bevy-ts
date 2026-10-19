@@ -24,7 +24,7 @@
 - **THEN** the load fails at that line with "game::Enemy has no prop speed", listing its props
 
 ### Requirement: The instance root's Transform is the level's
-A component patch on an instance entity SHALL override the expansion's root components field by field. For `Transform`, it SHALL do so whatever the prefab declared, bound fields included (see pinning). Placement of a level-instanced prefab SHALL always be a `Transform` override on the instance, never a prop.
+A component patch on an instance entity SHALL override the expansion's root components field by field. For `Transform`, it SHALL do so whatever the prefab declared, except a bound field (see the bound-field requirement). Placement of a level-instanced prefab SHALL always be a `Transform` override on the instance, never a prop.
 
 #### Scenario: A prefab that sets its own translation
 - **WHEN** a prefab's root declares `<Transform translation={[0, 0, -4]} />` and the level patches `translation: Vec3 { x: 3.0 }`
@@ -63,12 +63,12 @@ A level entity's node id SHALL be derived from the level path and the `#Name` pa
 - **WHEN** two top-level entities are both `#Crate`
 - **THEN** the load fails naming both lines
 
-### Requirement: A bound field overridden by a level is pinned
-A level override of a field the prefab binds SHALL pin that instance. The instance leaves the binding site, and the field takes the override value with provenance `override` and `pinned_from` naming the site. Removing the override SHALL return the instance to the site, and the binding SHALL write the field on the next frame.
+### Requirement: A level cannot override a bound field
+A bound prop has one owner, its binding. A level override of a field the prefab binds SHALL fail the load, with the level's file, line and column, and the binding's site location and expression. This SHALL hold at any depth, and for an instance root's `Transform` too.
 
-#### Scenario: One brighter lamp
-- **WHEN** `Lamp` binds `PointLight.intensity` to an alarm signal, and `#Lamp3` overrides `intensity: 20.0`
-- **THEN** lamp 3 stays at 20 when the alarm changes, the other lamps follow the alarm, and `level_node` shows `intensity` pinned from the site in `lamp.tsx`
+#### Scenario: Overriding a bound intensity
+- **WHEN** `Lamp` binds `PointLight.intensity` to an alarm signal, and `#Lamp3` in `arena.bsn` overrides `intensity: 20.0`
+- **THEN** the load fails at that line with "PointLight.intensity is bound at lamp.tsx:7:20 (() => alarm() ? 8 : 2) and cannot be overridden", and the world is unchanged
 
 ### Requirement: Level provenance and protocol reads
 Each level-placed entity SHALL carry a `LevelInstance` component with its level path, name path and owner chain. The owner chain lists the level frames, outermost first, then the TSX source chain. tsx provenance SHALL gain `override` with file, line and column. bevy-ts SHALL add these methods to protocol 1.2:

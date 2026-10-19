@@ -10,6 +10,7 @@ The operator ruled (2026-10-19) that TSX defines prefabs, what a thing is, and t
 - Identity: an entity's id is the level path plus its `#Name` path. Names are unique among siblings. The writer names an unnamed entity the first time it writes to it. Renames go through a writer operation, so the entity is kept.
 - A lossless, span-keeping parse and a writer that edits by splicing text. A one-field edit changes one line. Comments, order and hand formatting are kept, and new entries copy the file's indentation.
 - `.bsn` edits arrive as `viewport` `bsn` routes and as `bevy-ts/level_write` operations from the protocol: set field, revert override, set prop, add instance, add entity, delete, rename and reparent.
+- A level override of a field the prefab binds is a load error naming the file, line and binding site (tsx ruling: a bound prop has one owner, its binding).
 - Hot reload: a `.bsn` file saved by anyone applies to the running world under `tsx`'s state rules. Override values are controlled, simulation state survives, a bad file is rejected whole, and tombstones hold.
 - Conflicts: the disk wins. Each write carries the content hash it was based on. On a mismatch bevy-ts reloads the disk version, then replays the edit by name path or rejects it with `conflict`. It never does a text merge.
 - Assets: string values in `Handle` fields are asset paths, as upstream defines them. `./` and `../` resolve against the level file. A missing asset is a warning with file, line and column, and the level still loads.
@@ -34,5 +35,5 @@ None. `tsx` and `viewport` are not archived. What this change needs from them is
 - New crate `bevy-ts-levels`, depending on `bevy-ts`, `bevy-ts-tsx` and `bevy-ts-remote`. It holds the vendored `bevy_bsn` syntax module (MIT/Apache-2.0), the lossless parser, the `BsnLevel` asset loader, level roots, the writer and the protocol methods.
 - npm package: `prefab()` and `app.level()` in `bevy-ts`.
 - `protocol/bevy-ts.openrpc.json`: `bevy-ts/level_*` methods. This is a minor bump to 1.2, after viewport's 1.1.
-- Needs additions to `tsx`: registered prefabs, external roots, `override` provenance and pinned bound fields. It also changes `viewport`'s route payload: the owner chain and the prefab-edit policy. Both are listed in design.md.
+- Needs additions to `tsx`: registered prefabs, external roots, `override` provenance and binding-site lookups for refusing overrides of bound fields. It also changes `viewport`'s route payload: the owner chain and the prefab-edit policy. Both are listed in design.md.
 - New dependency: none beyond Bevy's own. The parser is hand-written, as upstream's is, and `nom` comes in only through the vendored differential test module.

@@ -16,7 +16,7 @@
 - [ ] 2.6 E3 merge by name into expansion children (keys and quoted `tsx` segments), new children otherwise; reject removal of prefab-internal entities
 - [ ] 2.7 `:"x.bsn"` inclusion with overrides through any depth and a cycle check
 - [ ] 2.8 Identity: node ids from level path and name path, duplicate-name errors, positional ids and warnings for unnamed entities; `LevelInstance` component with owner chains
-- [ ] 2.9 Confirm tsx T3: `override` provenance with location; pin a bound field per instance and unpin on revert; test the one-brighter-lamp scenario
+- [ ] 2.9 Confirm tsx T3: `override` provenance with location; refuse an override of a bound field with a load error naming file, line, site and expression; test it, including a bound root `Transform`
 
 ## 3. Writer
 
