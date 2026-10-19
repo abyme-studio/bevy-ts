@@ -24,7 +24,8 @@ export class Shield extends Component { static path = "game::Shield"; strength: 
 export class Grunt extends SceneComponent {
   team: u8 = 0;
   static scene({ at = [0, 0, 0], speed = 2 }: { at?: Vec3Like; speed?: f32 }) {
-    return { type: "entity", props: { at, speed } };
+    void at, speed;
+    return null;
   }
 }
 

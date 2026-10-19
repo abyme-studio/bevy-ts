@@ -347,7 +347,7 @@ fn three_clicks_in_one_frame_run_their_handlers_in_order_in_one_call() {
 #[test]
 fn a_binding_reads_a_resource_with_res_and_follows_it() {
     let src = r##"import { app, Resource, u32, res } from "bevy-ts";
-export class Score extends Resource("game::Score", { value: u32 }) {}
+export class Score extends Resource { static path = "game::Score"; declare value: u32 }
 app.insertResource(new Score({ value: 7 }));
 app.scene("hud", () => <text key="score" color={() => (res(Score).value > 10 ? "#ffdd00" : "#ffffff")}>{() => `Score ${res(Score).value}`}</text>);
 "##;

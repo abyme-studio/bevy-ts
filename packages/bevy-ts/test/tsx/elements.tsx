@@ -1,11 +1,21 @@
 // Type tests for TSX elements: `deno check` (and `tsc -p test`) must pass, and every
 // `@ts-expect-error` must be an error.
-import { app, Component, f32, Startup, vec3 } from "bevy-ts";
-import type { Commands } from "bevy-ts";
+import { app, Component, SceneComponent, Startup } from "bevy-ts";
+import type { Commands, f32, u8, Vec3 } from "bevy-ts";
 import { Transform, Name } from "bevy-ts/bevy";
 
-class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}
-class Mover extends Component("game::Mover", { velocity: vec3, maxSpeed: f32 }) {}
+class Health extends Component { hp: f32 = 100; max: f32 = 100 }
+class Mover extends Component { declare velocity: Vec3; declare maxSpeed: f32 }
+/** A scene component's element takes its fields and its scene's props. */
+class Grunt extends SceneComponent {
+  team: u8 = 0;
+  static scene({ speed = 2 }: { speed?: f32 }) {
+    return <entity name="grunt"><Mover maxSpeed={speed} /></entity>;
+  }
+}
+export const Squad = () => <entity><Grunt team={1} speed={3} /></entity>;
+// @ts-expect-error  `sped` is neither a field nor a prop of Grunt
+export const BadSquad = () => <entity><Grunt sped={3} /></entity>;
 
 export const Enemy = ({ at, hp = 100 }: { at: [number, number, number]; hp?: number }) => (
   <entity name="enemy">
@@ -32,7 +42,7 @@ app.scene("arena", () => (
 
 // The value form still works for commands.
 export function spawnOne(commands: Commands) {
-  commands.spawn(new Health({ hp: 3 }), new Transform());
+  commands.spawn(Health.of({ hp: 3 }), Transform.of());
 }
 app.addSystems(Startup, spawnOne);
 
@@ -97,6 +107,6 @@ export const Clicky = () => (
 export const BadClick = () => <entity onClick={() => {}} />;
 
 // A resource read in a binding, no hook.
-import { Resource, res, u32 } from "bevy-ts";
-class Score extends Resource("game::Score", { value: u32 }) {}
+import { Resource, res, type u32 } from "bevy-ts";
+class Score extends Resource { value: u32 = 0 }
 export const ScoreLine = () => <text color={() => (res(Score).value > 10 ? "#fd0" : "#fff")}>{() => `Score ${res(Score).value}`}</text>;

@@ -376,8 +376,13 @@ const DATA_KIND = {
   set: "set",
 };
 
-/** Scene components of every loaded generation by name and by `module#export`, for tsx's expand entry. */
+/** Scene components defined outside a generation (built-in modules), by name and by `module#export`. */
 const SCENES = new Map();
+/**
+ * Classes defined outside a generation: a built-in module's (a port's `bevy-ts/rapier`), which
+ * evaluates once. Every generation declares them as its own.
+ */
+const OUTSIDE = [];
 
 /** The scene component class a level names (`enemies::Grunt` or `src/enemies.tsx#Grunt`), in the live generation. */
 export function sceneComponent(nameOrId) {
@@ -440,9 +445,14 @@ function dataFn(C, d) {
       g.sceneComponents.set(d.name, C);
       if (d.id) g.sceneComponents.set(d.id, C);
     }
-  } else if (d.kind === "sceneComponent") {
-    SCENES.set(d.name, C);
-    if (d.id) SCENES.set(d.id, C);
+  } else {
+    const i = OUTSIDE.findIndex((X) => X.componentName === d.name && X[KIND] === kind);
+    if (i >= 0) OUTSIDE[i] = C;
+    else OUTSIDE.push(C);
+    if (d.kind === "sceneComponent") {
+      SCENES.set(d.name, C);
+      if (d.id) SCENES.set(d.id, C);
+    }
   }
 }
 
@@ -988,7 +998,7 @@ function resolveRegistrations(g) {
 function newGeneration(number) {
   return {
     number,
-    classes: [],
+    classes: [...OUTSIDE],
     bindings: new Map(),
     registrations: [],
     systems: [],

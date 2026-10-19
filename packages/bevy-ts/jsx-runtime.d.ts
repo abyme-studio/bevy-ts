@@ -1,7 +1,7 @@
 // `bevy-ts/jsx-runtime`: the automatic JSX runtime (`"jsxImportSource": "bevy-ts"`). Elements
 // are plain descriptions: an `<entity>`, component elements on it (`<Health initialHp={100} />`),
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
-import type { Commands, ComponentClass, ElementProps, Entity, For, NodeRef } from "bevy-ts";
+import type { Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
 
 /** What a picking handler receives: the event, and the call's `commands` and `frame`. */
 export interface PointerEvent {
@@ -153,8 +153,10 @@ export declare namespace JSX {
     ? P
     : C extends { readonly __nameElement: true }
       ? { value: string } & KeyAttribute
-      : C extends ComponentClass<infer S, any>
-      ? ElementProps<S> & KeyAttribute
+      : C extends { scene(props: infer Props): unknown } & (abstract new () => infer I)
+      ? ElementProps<I> & Props & KeyAttribute
+      : C extends abstract new () => infer I
+      ? I extends Component | ReflectComponent ? ElementProps<I> & KeyAttribute : P & KeyAttribute
       : P & KeyAttribute;
   interface IntrinsicElements {
     entity: EntityProps & KeyAttribute;
