@@ -1,0 +1,408 @@
+    Finished `bench` profile [optimized] target(s) in 0.15s
+     Running unittests src/lib.rs (target/release/deps/bindings_bench-1b3e66d64cd2d46e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches/paths.rs (target/release/deps/paths-351d4bf3c67c9058)
+Benchmarking tick_scan/1k
+Benchmarking tick_scan/1k: Warming up for 300.00 ms
+Benchmarking tick_scan/1k: Collecting 30 samples in estimated 2.0005 s (598k iterations)
+Benchmarking tick_scan/1k: Analyzing
+tick_scan/1k            time:   [3.0173 µs 3.1979 µs 3.4332 µs]
+                        thrpt:  [291.27 Melem/s 312.70 Melem/s 331.42 Melem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  1 (3.33%) high mild
+  1 (3.33%) high severe
+
+Benchmarking tick_scan_shuffled/1k
+Benchmarking tick_scan_shuffled/1k: Warming up for 300.00 ms
+Benchmarking tick_scan_shuffled/1k: Collecting 30 samples in estimated 2.0004 s (610k iterations)
+Benchmarking tick_scan_shuffled/1k: Analyzing
+tick_scan_shuffled/1k   time:   [3.1253 µs 3.2253 µs 3.3560 µs]
+                        thrpt:  [297.97 Melem/s 310.04 Melem/s 319.97 Melem/s]
+Found 3 outliers among 30 measurements (10.00%)
+  1 (3.33%) high mild
+  2 (6.67%) high severe
+
+Benchmarking system_all/1k
+Benchmarking system_all/1k: Warming up for 300.00 ms
+Benchmarking system_all/1k: Collecting 30 samples in estimated 2.0001 s (3.2M iterations)
+Benchmarking system_all/1k: Analyzing
+system_all/1k           time:   [619.85 ns 647.87 ns 682.26 ns]
+                        thrpt:  [1.4657 Gelem/s 1.5435 Gelem/s 1.6133 Gelem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+
+Benchmarking patch_apply/1k/0.1%
+Benchmarking patch_apply/1k/0.1%: Warming up for 300.00 ms
+Benchmarking patch_apply/1k/0.1%: Collecting 30 samples in estimated 2.0000 s (256M iterations)
+Benchmarking patch_apply/1k/0.1%: Analyzing
+patch_apply/1k/0.1%     time:   [8.9308 ns 10.049 ns 11.657 ns]
+                        thrpt:  [85.788 Melem/s 99.510 Melem/s 111.97 Melem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  2 (6.67%) high severe
+
+Benchmarking mark_k/1k/0.1%
+Benchmarking mark_k/1k/0.1%: Warming up for 300.00 ms
+Benchmarking mark_k/1k/0.1%: Collecting 30 samples in estimated 2.0000 s (372M iterations)
+Benchmarking mark_k/1k/0.1%: Analyzing
+mark_k/1k/0.1%          time:   [5.3265 ns 5.6601 ns 6.0748 ns]
+                        thrpt:  [164.61 Melem/s 176.68 Melem/s 187.74 Melem/s]
+Found 4 outliers among 30 measurements (13.33%)
+  1 (3.33%) high mild
+  3 (10.00%) high severe
+
+Benchmarking system_changed/1k/0.1%
+Benchmarking system_changed/1k/0.1%: Warming up for 300.00 ms
+Benchmarking system_changed/1k/0.1%: Collecting 30 samples in estimated 2.0003 s (3.1M iterations)
+Benchmarking system_changed/1k/0.1%: Analyzing
+system_changed/1k/0.1%  time:   [395.39 ns 412.45 ns 430.73 ns]
+                        thrpt:  [2.3216 Gelem/s 2.4246 Gelem/s 2.5291 Gelem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  1 (3.33%) high mild
+  1 (3.33%) high severe
+
+Benchmarking patch_apply/1k/1%
+Benchmarking patch_apply/1k/1%: Warming up for 300.00 ms
+Benchmarking patch_apply/1k/1%: Collecting 30 samples in estimated 2.0000 s (27M iterations)
+Benchmarking patch_apply/1k/1%: Analyzing
+patch_apply/1k/1%       time:   [69.089 ns 70.058 ns 70.992 ns]
+                        thrpt:  [140.86 Melem/s 142.74 Melem/s 144.74 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking mark_k/1k/1%
+Benchmarking mark_k/1k/1%: Warming up for 300.00 ms
+Benchmarking mark_k/1k/1%: Collecting 30 samples in estimated 2.0000 s (60M iterations)
+Benchmarking mark_k/1k/1%: Analyzing
+mark_k/1k/1%            time:   [30.024 ns 30.906 ns 32.014 ns]
+                        thrpt:  [312.36 Melem/s 323.56 Melem/s 333.06 Melem/s]
+Found 3 outliers among 30 measurements (10.00%)
+  2 (6.67%) high mild
+  1 (3.33%) high severe
+
+Benchmarking system_changed/1k/1%
+Benchmarking system_changed/1k/1%: Warming up for 300.00 ms
+Benchmarking system_changed/1k/1%: Collecting 30 samples in estimated 2.0000 s (4.4M iterations)
+Benchmarking system_changed/1k/1%: Analyzing
+system_changed/1k/1%    time:   [487.78 ns 503.08 ns 517.86 ns]
+                        thrpt:  [1.9310 Gelem/s 1.9877 Gelem/s 2.0501 Gelem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking patch_apply/1k/10%
+Benchmarking patch_apply/1k/10%: Warming up for 300.00 ms
+Benchmarking patch_apply/1k/10%: Collecting 30 samples in estimated 2.0000 s (3.0M iterations)
+Benchmarking patch_apply/1k/10%: Analyzing
+patch_apply/1k/10%      time:   [1.9290 µs 2.2666 µs 2.6115 µs]
+                        thrpt:  [38.292 Melem/s 44.120 Melem/s 51.840 Melem/s]
+
+Benchmarking mark_k/1k/10%
+Benchmarking mark_k/1k/10%: Warming up for 300.00 ms
+Benchmarking mark_k/1k/10%: Collecting 30 samples in estimated 2.0003 s (2.0M iterations)
+Benchmarking mark_k/1k/10%: Analyzing
+mark_k/1k/10%           time:   [649.06 ns 770.43 ns 893.25 ns]
+                        thrpt:  [111.95 Melem/s 129.80 Melem/s 154.07 Melem/s]
+
+Benchmarking system_changed/1k/10%
+Benchmarking system_changed/1k/10%: Warming up for 300.00 ms
+Benchmarking system_changed/1k/10%: Collecting 30 samples in estimated 2.0005 s (818k iterations)
+Benchmarking system_changed/1k/10%: Analyzing
+system_changed/1k/10%   time:   [1.5989 µs 1.9987 µs 2.4201 µs]
+                        thrpt:  [413.21 Melem/s 500.32 Melem/s 625.42 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking patch_apply/1k/100%
+Benchmarking patch_apply/1k/100%: Warming up for 300.00 ms
+Benchmarking patch_apply/1k/100%: Collecting 30 samples in estimated 2.0047 s (48k iterations)
+Benchmarking patch_apply/1k/100%: Analyzing
+patch_apply/1k/100%     time:   [18.483 µs 25.641 µs 33.993 µs]
+                        thrpt:  [29.418 Melem/s 39.000 Melem/s 54.105 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking mark_k/1k/100%
+Benchmarking mark_k/1k/100%: Warming up for 300.00 ms
+Benchmarking mark_k/1k/100%: Collecting 30 samples in estimated 2.0029 s (293k iterations)
+Benchmarking mark_k/1k/100%: Analyzing
+mark_k/1k/100%          time:   [6.2869 µs 7.7061 µs 9.4357 µs]
+                        thrpt:  [105.98 Melem/s 129.77 Melem/s 159.06 Melem/s]
+Found 3 outliers among 30 measurements (10.00%)
+  2 (6.67%) high mild
+  1 (3.33%) high severe
+
+Benchmarking system_changed/1k/100%
+Benchmarking system_changed/1k/100%: Warming up for 300.00 ms
+Benchmarking system_changed/1k/100%: Collecting 30 samples in estimated 2.0007 s (189k iterations)
+Benchmarking system_changed/1k/100%: Analyzing
+system_changed/1k/100%  time:   [7.9704 µs 9.5877 µs 12.118 µs]
+                        thrpt:  [82.522 Melem/s 104.30 Melem/s 125.46 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+
+Benchmarking tick_scan/10k
+Benchmarking tick_scan/10k: Warming up for 300.00 ms
+Benchmarking tick_scan/10k: Collecting 30 samples in estimated 2.0109 s (21k iterations)
+Benchmarking tick_scan/10k: Analyzing
+tick_scan/10k           time:   [58.193 µs 63.980 µs 69.549 µs]
+                        thrpt:  [143.78 Melem/s 156.30 Melem/s 171.84 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+
+Benchmarking tick_scan_shuffled/10k
+Benchmarking tick_scan_shuffled/10k: Warming up for 300.00 ms
+Benchmarking tick_scan_shuffled/10k: Collecting 30 samples in estimated 2.0197 s (26k iterations)
+Benchmarking tick_scan_shuffled/10k: Analyzing
+tick_scan_shuffled/10k  time:   [66.946 µs 73.302 µs 79.308 µs]
+                        thrpt:  [126.09 Melem/s 136.42 Melem/s 149.38 Melem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  1 (3.33%) high mild
+  1 (3.33%) high severe
+
+Benchmarking system_all/10k
+Benchmarking system_all/10k: Warming up for 300.00 ms
+Benchmarking system_all/10k: Collecting 30 samples in estimated 2.0037 s (205k iterations)
+Benchmarking system_all/10k: Analyzing
+system_all/10k          time:   [11.879 µs 12.852 µs 13.804 µs]
+                        thrpt:  [724.44 Melem/s 778.08 Melem/s 841.81 Melem/s]
+
+Benchmarking patch_apply/10k/0.1%
+Benchmarking patch_apply/10k/0.1%: Warming up for 300.00 ms
+Benchmarking patch_apply/10k/0.1%: Collecting 30 samples in estimated 2.0000 s (13M iterations)
+Benchmarking patch_apply/10k/0.1%: Analyzing
+patch_apply/10k/0.1%    time:   [137.27 ns 147.45 ns 157.80 ns]
+                        thrpt:  [63.373 Melem/s 67.820 Melem/s 72.851 Melem/s]
+
+Benchmarking mark_k/10k/0.1%
+Benchmarking mark_k/10k/0.1%: Warming up for 300.00 ms
+Benchmarking mark_k/10k/0.1%: Collecting 30 samples in estimated 2.0000 s (32M iterations)
+Benchmarking mark_k/10k/0.1%: Analyzing
+mark_k/10k/0.1%         time:   [61.043 ns 68.829 ns 76.138 ns]
+                        thrpt:  [131.34 Melem/s 145.29 Melem/s 163.82 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking system_changed/10k/0.1%
+Benchmarking system_changed/10k/0.1%: Warming up for 300.00 ms
+Benchmarking system_changed/10k/0.1%: Collecting 30 samples in estimated 2.0037 s (178k iterations)
+Benchmarking system_changed/10k/0.1%: Analyzing
+system_changed/10k/0.1% time:   [7.0178 µs 8.4418 µs 10.071 µs]
+                        thrpt:  [992.96 Melem/s 1.1846 Gelem/s 1.4249 Gelem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  1 (3.33%) high mild
+  1 (3.33%) high severe
+
+Benchmarking patch_apply/10k/1%
+Benchmarking patch_apply/10k/1%: Warming up for 300.00 ms
+Benchmarking patch_apply/10k/1%: Collecting 30 samples in estimated 2.0012 s (671k iterations)
+Benchmarking patch_apply/10k/1%: Analyzing
+patch_apply/10k/1%      time:   [1.6465 µs 1.9205 µs 2.2160 µs]
+                        thrpt:  [45.126 Melem/s 52.069 Melem/s 60.735 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+
+Benchmarking mark_k/10k/1%
+Benchmarking mark_k/10k/1%: Warming up for 300.00 ms
+Benchmarking mark_k/10k/1%: Collecting 30 samples in estimated 2.0000 s (2.6M iterations)
+Benchmarking mark_k/10k/1%: Analyzing
+mark_k/10k/1%           time:   [739.71 ns 906.55 ns 1.0747 µs]
+                        thrpt:  [93.052 Melem/s 110.31 Melem/s 135.19 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking system_changed/10k/1%
+Benchmarking system_changed/10k/1%: Warming up for 300.00 ms
+Benchmarking system_changed/10k/1%: Collecting 30 samples in estimated 2.0076 s (117k iterations)
+Benchmarking system_changed/10k/1%: Analyzing
+system_changed/10k/1%   time:   [8.2364 µs 8.9987 µs 9.9741 µs]
+                        thrpt:  [1.0026 Gelem/s 1.1113 Gelem/s 1.2141 Gelem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  2 (6.67%) high severe
+
+Benchmarking patch_apply/10k/10%
+Benchmarking patch_apply/10k/10%: Warming up for 300.00 ms
+Benchmarking patch_apply/10k/10%: Collecting 30 samples in estimated 2.0074 s (78k iterations)
+Benchmarking patch_apply/10k/10%: Analyzing
+patch_apply/10k/10%     time:   [23.988 µs 25.387 µs 27.016 µs]
+                        thrpt:  [37.015 Melem/s 39.391 Melem/s 41.687 Melem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  2 (6.67%) high mild
+
+Benchmarking mark_k/10k/10%
+Benchmarking mark_k/10k/10%: Warming up for 300.00 ms
+Benchmarking mark_k/10k/10%: Collecting 30 samples in estimated 2.0030 s (292k iterations)
+Benchmarking mark_k/10k/10%: Analyzing
+mark_k/10k/10%          time:   [6.6880 µs 7.0813 µs 7.4830 µs]
+                        thrpt:  [133.64 Melem/s 141.22 Melem/s 149.52 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high severe
+
+Benchmarking system_changed/10k/10%
+Benchmarking system_changed/10k/10%: Warming up for 300.00 ms
+Benchmarking system_changed/10k/10%: Collecting 30 samples in estimated 2.0001 s (118k iterations)
+Benchmarking system_changed/10k/10%: Analyzing
+system_changed/10k/10%  time:   [13.558 µs 14.145 µs 14.901 µs]
+                        thrpt:  [671.09 Melem/s 706.97 Melem/s 737.57 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking patch_apply/10k/100%
+Benchmarking patch_apply/10k/100%: Warming up for 300.00 ms
+Benchmarking patch_apply/10k/100%: Collecting 30 samples in estimated 2.0369 s (9300 iterations)
+Benchmarking patch_apply/10k/100%: Analyzing
+patch_apply/10k/100%    time:   [195.43 µs 215.87 µs 244.49 µs]
+                        thrpt:  [40.901 Melem/s 46.324 Melem/s 51.170 Melem/s]
+Found 4 outliers among 30 measurements (13.33%)
+  1 (3.33%) high mild
+  3 (10.00%) high severe
+
+Benchmarking mark_k/10k/100%
+Benchmarking mark_k/10k/100%: Warming up for 300.00 ms
+Benchmarking mark_k/10k/100%: Collecting 30 samples in estimated 2.0201 s (34k iterations)
+Benchmarking mark_k/10k/100%: Analyzing
+mark_k/10k/100%         time:   [55.404 µs 57.069 µs 58.875 µs]
+                        thrpt:  [169.85 Melem/s 175.23 Melem/s 180.49 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking system_changed/10k/100%
+Benchmarking system_changed/10k/100%: Warming up for 300.00 ms
+Benchmarking system_changed/10k/100%: Collecting 30 samples in estimated 2.0152 s (28k iterations)
+Benchmarking system_changed/10k/100%: Analyzing
+system_changed/10k/100% time:   [68.588 µs 70.034 µs 71.524 µs]
+                        thrpt:  [139.81 Melem/s 142.79 Melem/s 145.80 Melem/s]
+
+Benchmarking tick_scan/100k
+Benchmarking tick_scan/100k: Warming up for 300.00 ms
+Benchmarking tick_scan/100k: Collecting 30 samples in estimated 2.0028 s (5580 iterations)
+Benchmarking tick_scan/100k: Analyzing
+tick_scan/100k          time:   [352.28 µs 360.39 µs 371.04 µs]
+                        thrpt:  [269.51 Melem/s 277.48 Melem/s 283.87 Melem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking tick_scan_shuffled/100k
+Benchmarking tick_scan_shuffled/100k: Warming up for 300.00 ms
+Benchmarking tick_scan_shuffled/100k: Collecting 30 samples in estimated 2.2389 s (3255 iterations)
+Benchmarking tick_scan_shuffled/100k: Analyzing
+tick_scan_shuffled/100k time:   [666.45 µs 839.10 µs 1.0632 ms]
+                        thrpt:  [94.057 Melem/s 119.17 Melem/s 150.05 Melem/s]
+Found 5 outliers among 30 measurements (16.67%)
+  5 (16.67%) high severe
+
+Benchmarking system_all/100k
+Benchmarking system_all/100k: Warming up for 300.00 ms
+Benchmarking system_all/100k: Collecting 30 samples in estimated 2.0118 s (33k iterations)
+Benchmarking system_all/100k: Analyzing
+system_all/100k         time:   [57.578 µs 58.289 µs 59.180 µs]
+                        thrpt:  [1.6897 Gelem/s 1.7156 Gelem/s 1.7368 Gelem/s]
+Found 1 outliers among 30 measurements (3.33%)
+  1 (3.33%) high mild
+
+Benchmarking patch_apply/100k/0.1%
+Benchmarking patch_apply/100k/0.1%: Warming up for 300.00 ms
+Benchmarking patch_apply/100k/0.1%: Collecting 30 samples in estimated 2.0004 s (1.9M iterations)
+Benchmarking patch_apply/100k/0.1%: Analyzing
+patch_apply/100k/0.1%   time:   [957.92 ns 989.56 ns 1.0276 µs]
+                        thrpt:  [97.313 Melem/s 101.05 Melem/s 104.39 Melem/s]
+
+Benchmarking mark_k/100k/0.1%
+Benchmarking mark_k/100k/0.1%: Warming up for 300.00 ms
+Benchmarking mark_k/100k/0.1%: Collecting 30 samples in estimated 2.0001 s (7.3M iterations)
+Benchmarking mark_k/100k/0.1%: Analyzing
+mark_k/100k/0.1%        time:   [273.89 ns 277.34 ns 280.91 ns]
+                        thrpt:  [355.99 Melem/s 360.57 Melem/s 365.11 Melem/s]
+
+Benchmarking system_changed/100k/0.1%
+Benchmarking system_changed/100k/0.1%: Warming up for 300.00 ms
+Benchmarking system_changed/100k/0.1%: Collecting 30 samples in estimated 2.0155 s (57k iterations)
+Benchmarking system_changed/100k/0.1%: Analyzing
+system_changed/100k/0.1%
+                        time:   [31.411 µs 32.080 µs 32.927 µs]
+                        thrpt:  [3.0370 Gelem/s 3.1172 Gelem/s 3.1836 Gelem/s]
+Found 4 outliers among 30 measurements (13.33%)
+  1 (3.33%) low severe
+  2 (6.67%) low mild
+  1 (3.33%) high severe
+
+Benchmarking patch_apply/100k/1%
+Benchmarking patch_apply/100k/1%: Warming up for 300.00 ms
+Benchmarking patch_apply/100k/1%: Collecting 30 samples in estimated 2.0011 s (162k iterations)
+Benchmarking patch_apply/100k/1%: Analyzing
+patch_apply/100k/1%     time:   [11.370 µs 11.767 µs 12.246 µs]
+                        thrpt:  [81.658 Melem/s 84.980 Melem/s 87.947 Melem/s]
+
+Benchmarking mark_k/100k/1%
+Benchmarking mark_k/100k/1%: Warming up for 300.00 ms
+Benchmarking mark_k/100k/1%: Collecting 30 samples in estimated 2.0014 s (597k iterations)
+Benchmarking mark_k/100k/1%: Analyzing
+mark_k/100k/1%          time:   [3.0158 µs 3.1063 µs 3.1928 µs]
+                        thrpt:  [313.20 Melem/s 321.92 Melem/s 331.59 Melem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  2 (6.67%) high mild
+
+Benchmarking system_changed/100k/1%
+Benchmarking system_changed/100k/1%: Warming up for 300.00 ms
+Benchmarking system_changed/100k/1%: Collecting 30 samples in estimated 2.0164 s (46k iterations)
+Benchmarking system_changed/100k/1%: Analyzing
+system_changed/100k/1%  time:   [45.462 µs 46.421 µs 47.556 µs]
+                        thrpt:  [2.1028 Gelem/s 2.1542 Gelem/s 2.1996 Gelem/s]
+Found 3 outliers among 30 measurements (10.00%)
+  1 (3.33%) low mild
+  2 (6.67%) high mild
+
+Benchmarking patch_apply/100k/10%
+Benchmarking patch_apply/100k/10%: Warming up for 300.00 ms
+Benchmarking patch_apply/100k/10%: Collecting 30 samples in estimated 2.0644 s (12k iterations)
+Benchmarking patch_apply/100k/10%: Analyzing
+patch_apply/100k/10%    time:   [201.39 µs 218.93 µs 239.19 µs]
+                        thrpt:  [41.808 Melem/s 45.677 Melem/s 49.655 Melem/s]
+
+Benchmarking mark_k/100k/10%
+Benchmarking mark_k/100k/10%: Warming up for 300.00 ms
+Benchmarking mark_k/100k/10%: Collecting 30 samples in estimated 2.0170 s (44k iterations)
+Benchmarking mark_k/100k/10%: Analyzing
+mark_k/100k/10%         time:   [43.852 µs 48.755 µs 54.244 µs]
+                        thrpt:  [184.35 Melem/s 205.11 Melem/s 228.04 Melem/s]
+
+Benchmarking system_changed/100k/10%
+Benchmarking system_changed/100k/10%: Warming up for 300.00 ms
+Benchmarking system_changed/100k/10%: Collecting 30 samples in estimated 2.0377 s (20k iterations)
+Benchmarking system_changed/100k/10%: Analyzing
+system_changed/100k/10% time:   [80.922 µs 85.193 µs 89.662 µs]
+                        thrpt:  [1.1153 Gelem/s 1.1738 Gelem/s 1.2358 Gelem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  2 (6.67%) low mild
+
+Benchmarking patch_apply/100k/100%
+Benchmarking patch_apply/100k/100%: Warming up for 300.00 ms
+Benchmarking patch_apply/100k/100%: Collecting 30 samples in estimated 2.4017 s (1860 iterations)
+Benchmarking patch_apply/100k/100%: Analyzing
+patch_apply/100k/100%   time:   [1.3120 ms 1.4400 ms 1.6211 ms]
+                        thrpt:  [61.686 Melem/s 69.443 Melem/s 76.218 Melem/s]
+Found 3 outliers among 30 measurements (10.00%)
+  1 (3.33%) high mild
+  2 (6.67%) high severe
+
+Benchmarking mark_k/100k/100%
+Benchmarking mark_k/100k/100%: Warming up for 300.00 ms
+Benchmarking mark_k/100k/100%: Collecting 30 samples in estimated 2.0275 s (5580 iterations)
+Benchmarking mark_k/100k/100%: Analyzing
+mark_k/100k/100%        time:   [427.36 µs 519.38 µs 598.46 µs]
+                        thrpt:  [167.10 Melem/s 192.54 Melem/s 233.99 Melem/s]
+Found 6 outliers among 30 measurements (20.00%)
+  6 (20.00%) high severe
+
+Benchmarking system_changed/100k/100%
+Benchmarking system_changed/100k/100%: Warming up for 300.00 ms
+Benchmarking system_changed/100k/100%: Collecting 30 samples in estimated 2.1426 s (2325 iterations)
+Benchmarking system_changed/100k/100%: Analyzing
+system_changed/100k/100%
+                        time:   [776.73 µs 859.45 µs 950.83 µs]
+                        thrpt:  [105.17 Melem/s 116.35 Melem/s 128.74 Melem/s]
+Found 2 outliers among 30 measurements (6.67%)
+  2 (6.67%) high severe
+

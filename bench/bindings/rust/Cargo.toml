@@ -1,0 +1,21 @@
+[package]
+name = "bindings-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+bevy_ecs = { version = "0.20", default-features = false }
+bevy_platform = { version = "0.20", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "paths"
+harness = false
+
+[profile.bench]
+debug = false
+lto = "thin"
+codegen-units = 1
