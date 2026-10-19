@@ -158,7 +158,8 @@ export declare abstract class Component extends Data { readonly [tierBrand]?: "l
 export declare abstract class SceneComponent extends Component {
   /** The scene props type's keys, in order. */
   static readonly sceneProps: readonly string[];
-  static scene(props: object): Element | null;
+  // `static scene(props)` is not declared here, so a subclass writes it without `override`
+  // (deno checks with noImplicitOverride). JSX reads its props type from the subclass.
 }
 /** A Rust component reachable only through reflection (a ported type the layout rule refuses). */
 export declare abstract class ReflectComponent extends Data { readonly [tierBrand]?: "reflect" }

@@ -12,7 +12,7 @@ use crate::ui::UiKind;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::query::QueryBuilder;
 use bevy::prelude::*;
-use bevy_ts::backend::ScriptError;
+use bevy_ts::backend::{ScriptError, SourceLocation};
 use bevy_ts::components::TsComponents;
 use bevy_ts::layout::{ComponentLayout, NativeLayouts};
 use bevy_ts::{plugin_api, value};
@@ -39,7 +39,13 @@ struct Payload {
     rows: Vec<(u32, Vec<(String, Value)>)>,
     /// Picking events since the last call, in arrival order: handler id, event.
     events: Vec<(u32, Value)>,
+    /// Scene component instances to expand (levels): name or `module#export`, props, location.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expand: Option<Vec<ExpandWire>>,
 }
+
+/// An `expand` item as it crosses: name or `module#export`, props, location.
+type ExpandWire = (String, Map<String, Value>, SourceLocation);
 
 #[derive(Deserialize, Default)]
 #[serde(default)]
@@ -52,6 +58,9 @@ struct Response {
     needs: Vec<(Option<u64>, String)>,
     /// Sites whose reads were fixed by their first run: site, own components read.
     sites: Vec<(u32, Vec<String>)>,
+    /// One description per `expand` item, in order; null where it failed (its error is in
+    /// `errors`).
+    expanded: Option<Vec<Option<NodeDesc>>>,
     errors: Vec<ScriptError>,
 }
 
@@ -442,6 +451,61 @@ fn slot_op(world: &mut World, slot: u32, group: String, mut nodes: Vec<NodeDesc>
             s.groups.remove(&group);
         }
     }
+}
+
+/// One scene component instance for [`expand`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExpandItem {
+    /// The scene component's name (`enemies::Grunt`) or `module#export`.
+    pub component: String,
+    /// Its scene props and fields together, as a JSX call passes them.
+    pub props: Map<String, Value>,
+    /// Where the instance is placed (a level file), for errors.
+    pub at: SourceLocation,
+}
+
+fn header(payload: &Payload) -> Vec<u8> {
+    let header = serde_json::to_vec(payload).expect("serializable");
+    let mut bytes = Vec::with_capacity(4 + header.len());
+    bytes.extend((header.len() as u32).to_le_bytes());
+    bytes.extend(header);
+    bytes
+}
+
+/// Expands scene component instances through their TS `scene`, all in one host call: one
+/// description per item, in order (the scene component added to its root, prefab sources
+/// included), or every item's errors with their locations. Mount the result with
+/// [`crate::reconcile_external`]; bindings in it start in the frame after.
+pub fn expand(world: &mut World, items: &[ExpandItem]) -> Result<Vec<NodeDesc>, Vec<ScriptError>> {
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+    let payload = Payload {
+        expand: Some(items.iter().map(|i| (i.component.clone(), i.props.clone(), i.at.clone())).collect()),
+        ..Default::default()
+    };
+    world.resource_mut::<TsxTree>().reactive.calls += 1;
+    let out = plugin_api::call_entry(world, ENTRY, &header(&payload)).map_err(|e| vec![e])?;
+    let mut response: Response = serde_json::from_slice(&out).map_err(|e| vec![ScriptError::new(format!("tsx expand returned bad output: {e}"))])?;
+    let expanded = response.expanded.take().unwrap_or_default();
+    let errors = std::mem::take(&mut response.errors);
+    // Whatever else the call produced (patches, mounts) applies as in any call.
+    apply(world, response);
+    if !errors.is_empty() || expanded.len() != items.len() || expanded.iter().any(Option::is_none) {
+        let mut errors: Vec<ScriptError> = errors.into_iter().map(|mut e| {
+            if let Some(l) = &mut e.location {
+                l.file = crate::desc::display_file(&l.file);
+            }
+            e
+        }).collect();
+        if errors.is_empty() {
+            errors.push(ScriptError::new("scene component expansion returned no description"));
+        }
+        return Err(errors);
+    }
+    let mut nodes: Vec<NodeDesc> = expanded.into_iter().flatten().collect();
+    normalize_sources(&mut nodes);
+    Ok(nodes)
 }
 
 /// `tsx/flush`: JS changed a binding outside a host call.

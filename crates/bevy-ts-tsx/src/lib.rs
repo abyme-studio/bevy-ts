@@ -28,6 +28,7 @@ use bevy_ts::layout::NativeLayouts;
 use bevy_ts::log::{LogLevel, ScriptLog};
 use bevy_ts::plugin_api::BevyTsAppExt;
 
+pub use crate::host::{ExpandItem, expand};
 pub use crate::tree::{Provenance, TsxNode, TsxTree};
 
 /// The manifest section `app.scene` writes.

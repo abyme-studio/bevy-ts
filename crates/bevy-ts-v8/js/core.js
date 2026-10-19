@@ -2166,6 +2166,7 @@ globalThis.__bevyts = { begin, end, abort, commit, discard, runSystem, callEntry
 // A binding that changed outside the tsx host call (a signal a system set) asks Rust for one
 // through the running call's commands.
 setHost({
+  sceneComponent,
   requestFlush() {
     const c = S.calling;
     if (!c) return false;

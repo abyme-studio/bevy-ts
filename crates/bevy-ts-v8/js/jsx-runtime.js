@@ -581,8 +581,11 @@ function componentValue(C, json, row) {
 let hostFlush = null;
 
 /** Lets the host say how to ask Rust for a host call from outside one (a signal set by a system). */
+let hostSceneComponent = null;
+
 export function setHost(host) {
   hostFlush = host && host.requestFlush;
+  hostSceneComponent = host && host.sceneComponent;
   if (host && host.dev !== undefined) devMode = host.dev;
 }
 
@@ -696,6 +699,22 @@ export class TsxContext {
     this.bindings.set(id, b);
     site.instances.set(id, b);
     return { $b: id, $s: site.id };
+  }
+
+  /** One scene component instance, by name or `module#export`: its description, or null. */
+  expand(name, props, at) {
+    const C = hostSceneComponent ? hostSceneComponent(name) : null;
+    if (!C || typeof C.scene !== "function") {
+      this.error(new Error(`no scene component named ${name}`), at || null);
+      return null;
+    }
+    try {
+      const nodes = runScene(this, () => describe(create(C, props || {}, undefined, at, false), this));
+      return nodes[0] || null;
+    } catch (e) {
+      this.error(e, (e && e.bevyTsLocation) || at || null);
+      return null;
+    }
   }
 
   /** A picking handler: Rust observes the event on the entity and delivers it by id. */
@@ -814,7 +833,12 @@ export class TsxContext {
           }
         }
       });
-      return this.output();
+      // Scene component instances a Rust plugin (levels) asks for: described after this call's
+      // computations started, so their bindings wait until the plugin has mounted them.
+      const expanded = (payload.expand || []).map(([name, props, at]) => this.expand(name, props, at));
+      const out = this.output();
+      if (payload.expand) out.expanded = expanded;
+      return out;
     } finally {
       this.inCall = false;
       this.flushRequested = false;
