@@ -18,6 +18,21 @@ Prefab and UI component functions SHALL run once per mount and once per reload. 
 - **WHEN** a system lowers the player's `hp`
 - **THEN** in the same frame one host call delivers it and the HUD text shows the new value
 
+### Requirement: Bindings on native-layout fields are derived fields with one owner
+A binding on a field of a component with a native layout SHALL be grouped by site (the element and prop in source) together with every instance of that element. Each frame Rust SHALL find the instances whose reads changed without calling JS, and SHALL deliver them in the per-frame host call. JS SHALL evaluate the site's closure once per changed instance through the row accessors and SHALL write the field through the column view with the run's tick only when the value differs from the row's. The reconciler SHALL NOT write a bound field from a literal. A site's reads SHALL be fixed at its first evaluation; under `bevy-ts dev`, a later run that reads something new SHALL be an error naming the site. A binding on a reflected component SHALL follow the `useComponent` path above instead.
+
+#### Scenario: Ten thousand bound lights, one hundred alarms change
+- **WHEN** a prefab binds `PointLight.intensity` to its own `Alarm`, is instanced 10,000 times, and a system changes 100 alarms in one frame
+- **THEN** one host call runs the site's closure 100 times, 100 `PointLight` rows are written, and the frame costs within 2× of a TS system doing the same
+
+#### Scenario: A quiet frame
+- **WHEN** no instance's reads changed in a frame
+- **THEN** no host call is made and no `PointLight` change tick moves
+
+#### Scenario: Same value
+- **WHEN** an alarm changes but the binding evaluates to the value already in the row
+- **THEN** the row is not written and its change tick does not move
+
 ### Requirement: Reading an accessor outside a tracking scope warns in dev
 Under `bevy-ts dev`, reading a signal or `useComponent` accessor directly in a component body or a prop value (not inside a function binding, `computed` or `effect`) SHALL log a warning once per location, because the value will never update.
 

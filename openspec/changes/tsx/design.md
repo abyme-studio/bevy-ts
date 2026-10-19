@@ -49,7 +49,7 @@ The retained tree is a Rust resource plus a `TsxNode` component on each reconcil
 - *Beat: diff against the world.* Every reload would reset whatever a system moved, healed or despawned, which is exactly the simulation state a reload must keep.
 
 ### 3. Reactivity is explicit accessors over the standard JSX transform
-Components and prefabs run once (Solid). A prop or child whose value is a function is a binding: `hp={() => base() * 2}`, `<text>{() => `HP ${health().hp}`}</text>`. The reactive core (`signal`, `computed`, `effect`, owners and cleanup) is a small module inside `bevy-ts`. Bindings re-run when what they read changes and queue one patch for one field of one node.
+Components and prefabs run once (Solid). A prop or child whose value is a function is a binding: `hp={() => base() * 2}`, `<text>{() => `HP ${health().hp}`}</text>`. The reactive core (`signal`, `computed`, `effect`, owners and cleanup) is a small module inside `bevy-ts`. Bindings re-run when what they read changes and queue one patch for one field of one node (a binding on a native-layout field runs per site instead, decision 11).
 
 - *Beat: React-style re-render with a VDOM diff (bevy-react).* Every state change re-runs whole components and diffs subtrees in JS; bevy-react's own table shows that cost growing with tree size. Hook state would also need Fast Refresh machinery to survive reload.
 - *Beat: Solid's compiler (automatic wrapping of `{expr}`).* It reads better, but needs a Babel or custom oxc pass in bridge's compile step, changes what `tsc` sees, and is a second compiler to keep in step with oxc. Explicit `() =>` costs four characters and keeps TSX standard. Revisit once the API settles.
@@ -106,18 +106,33 @@ Bindings and handlers stay in JS and cross as ids (bevy-react's rule for handler
 - *Beat: a bridge TS system with a `Changed` filter.* It wakes JS whenever any entity's `Health` changes, including every enemy taking damage, to find out that the HUD only shows the player.
 - *Beat: polling from JS each frame.* One crossing per frame, forever, for UI that is usually still.
 - Components with a native layout (TS components, `Transform`) are read from their columns; reflected Rust components (`Text`, `Node`) through bridge's reflected reads and change ticks (bridge decision 14).
+- This per-pair check serves UI subscriptions and cross-entity reads. A binding that writes a native-layout field takes decision 11's per-site path, because per-pair checks cost 64 µs per frame at 10k subscriptions and 360 to 839 µs at 100k, quiet frames included (`docs/research/scene-bindings.md`).
 
 ### 10. The editor maps through the reconciler, and parses source itself
 Each reconciled entity's `TsxNode` holds its key path, the source chain (the element that made it, then each prefab call site above it, outermost last), and per prop its provenance (`controlled`, `initial`, `bound`, `default`) and last applied value. The protocol serves these. The editor, not bevy-ts, parses the file at a location and rewrites it, choosing the frame in the chain that sits in the file it has open (Triplex's rule: you edit the call site in the file you are in). A prop is writable when the editor finds a literal at that site; bevy-ts does not judge.
 
 - *Beat: a compile pass that marks literal props and spans.* It duplicates what the editor's parser must do anyway and couples the runtime to formatting.
 
+### 11. A scene binding is a derived field with one owner, run per site (recommendation, pending the operator)
+A binding on a component element's field, `<PointLight intensity={() => (alarm().on ? 8 : 2)} />`, is allowed on any element, scene or UI, and means: this field is a function of what the binding reads, and the binding is its only writer. A binding whose target has a native layout is not one Solid effect per instance. It is grouped by *site*, the element and prop in source, one per prefab element however many instances exist, and runs as a generated system:
+
+- Rust finds the site's instances whose reads changed, with no JS call: the instance's own components by their change ticks in table order (what `Changed<T>` does), another entity's components through decision 9's per-pair check, a signal through its version (a change re-runs every instance of the site).
+- One host call per frame for all sites with changes carries the changed rows. JS runs the site's one closure per row through the flyweight accessors a TS system uses (bridge decision 5), compares with the current value and writes through the column view with the run's tick (bridge decision 6). A derived value that did not change writes nothing, so `Changed<PointLight>` does not move.
+- A site's reads are fixed at its first evaluation, as a system's query is. A later run that reads something new is a dev error naming the site.
+- The reconciler never writes a bound field from a literal (provenance `bound`). A TS system whose `write` set holds the component warns in dev, naming the system and the site. A `.bsn` override of a bound field is the `levels` change's call; recommended is Godot's rule, the override pins that instance (it leaves the site) and the viewport shows a revert. The viewport shows a bound prop read-only with its expression and site location.
+- A binding on a reflected component (`Text`, `Node`) keeps decision 9's path. The split is by target component kind, which the runtime can check, not by "is this UI".
+
+Measured 2026-10-19 (`docs/research/scene-bindings.md`, `bench/bindings/`): per-instance effects cost 85 µs a frame at 10k instances with 1% changed against 10 to 18 for a system, 12.4 ms against 0.23 at 100k with 10% changed, 282 ms against 1.3 with every instance changed, plus 42 ms and 66 MB to mount 100k effects. Unreal moved UMG from polled bindings to change-driven bindings with declared sources and compare-before-write (Viewmodel); Unity's UI Toolkit bindings skip unchanged data-source versions; Bevy's own direction is reactivity through change detection with "something similar to system syntax" for reactive scenes.
+
+- *Beat: UI only.* Enforceable, but the line is not where the problems are: a `<text>` binding and a `PointLight` binding have the same ownership question and the same cost curve, and a world-space label sits on both sides. It outlaws the most readable form of "this field follows that one" to dodge a cost cliff this decision removes.
+- *Beat: Solid effects everywhere (the previous draft).* Right for UI, 50 to 200× too slow at prefab scale, a per-frame tick-check tax proportional to subscriptions, and a two-writer rule that is only a warning once the fight is on.
+
 ## Data model
 
 **JS, per generation (dies on reload):**
 - Description node: `{ type, key?, props, children, source? }`. `type` is `"entity"`, an intrinsic name, a component handle, or a prefab function. Prefab nodes are expanded at creation, so a finished description holds only entities, component elements and intrinsics, each entity carrying the source chain of the prefab calls that produced it.
 - Owner tree: one owner per mounted scene root and per reactive scope (`<Show>`, `<For>` item), holding effects and cleanups; disposing an owner unsubscribes its bindings.
-- Binding table: id → `{ node key path, component, field, effect }`. Handler table: id → function.
+- Binding table: id → `{ node key path, component, field, effect }`. Handler table: id → function. Site table (decision 11): site id → `{ closure, reads, component, field }`; its instances live in Rust.
 - Signals and `useComponent` accessors.
 
 **Wire, JS to Rust:**
@@ -126,7 +141,7 @@ Each reconciled entity's `TsxNode` holds its key path, the source chain (the ele
 
 **Rust, survives reloads (it is ECS state):**
 - `TsxNode` component: `node_id: u64` (hash of root name and key path), key path, element types, source chain, owned components (inserted by tsx), last applied controlled values per field, provenance per prop, binding and handler ids of the current generation.
-- `TsxTree` resource: root name → root node; node id → entity; tombstones for nodes despawned by anything other than tsx; the static-subtree BSN cache by content hash; subscriptions; pending picking events.
+- `TsxTree` resource: root name → root node; node id → entity; tombstones for nodes despawned by anything other than tsx; the static-subtree BSN cache by content hash; subscriptions; binding sites with their instances (write entity, read entities, signal versions); pending picking events.
 
 ## Hot-reload state rules
 
@@ -211,7 +226,8 @@ A `damage` system lowers `hp` of every `Health` near the player each frame; a `b
 
 - [BSN may not be constructible from runtime data in 0.20; its API is macro-first] → Task 3.1 is a spike; the fallback is raw insertion behind the same reconciler, losing only the static-subtree cache.
 - [Explicit `() =>` bindings are easy to forget: `{health().hp}` reads once and never updates] → A dev warning when an accessor is read outside a tracking scope during a scene or prefab call, naming the source location.
-- [A controlled bound prop on a field a system writes every frame makes the two fight] → Dev warning when a binding targets a field in some TS system's `write` set; docs: TSX describes, systems move.
+- [A bound field a TS system also writes has two owners] → Dev warning at load when a site's component is in some TS system's `write` set, naming the system and the site; the site's own tick (bridge decision 6) says who wrote a row last; docs: a bound field has one writer.
+- [A site's reads are fixed at first evaluation, so `a() ? b() : c()` reads `b` on some instances and `c` on others] → Dev error naming the site; read both, or move the branch into the value.
 - [Type-scoped sibling keys still shift within one type] → Dev warning for unkeyed siblings from arrays; docs recommend keys for anything with state.
 - [Tombstones can surprise: an enemy deleted in play stays gone after a reload] → It is the point of rule 8; `bevy-ts/tsx_tree` lists tombstones and `restart` clears them.
 - [The host call adds a JSON-free but still real crossing per frame with UI changes] → One call per frame at most, carrying all changes; a HUD that changes every frame costs one call per frame, which bevy-react measures at well under a millisecond for small batches.
@@ -234,6 +250,6 @@ None: new crate and modules. Protocol minor bump for the `bevy-ts/tsx_*` methods
 
 ## Open Questions
 
-- Whether bindings should be allowed on controlled props of scene entities at all, or only in UI. Allowed for now, with the dev warning above.
+- Decision 11 is a recommendation from `docs/research/scene-bindings.md`, not a ruling: bindings allowed on scene props as derived fields with one owner, run per site, against UI only. The operator confirms. If the ruling is UI only, decision 11, task 5.7 and the reactive-ui requirement "Bindings on native-layout fields are derived fields with one owner" go, and a function-valued prop on a component element becomes a `tsc` and load error.
 - Whether `<For>` over a signal is enough for HUD lists until `useQuery` exists.
 - Whether a `.bsn` export (`bevy-ts bake`) should wait for Bevy's `.bsn` loader or ship as a text writer first.
