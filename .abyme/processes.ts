@@ -41,4 +41,6 @@ export default {
   "viewport-gate": { cmd: "scripts/viewport-gate.sh" },
   // The same gate for levels task groups.
   "levels-gate": { cmd: "scripts/viewport-gate.sh 2>&1 | tee target/levels-gate.log" },
+  // The gate a systems-api task group lands on.
+  "systems-gate": { cmd: "scripts/systems-gate.sh 2>&1 | tee target/systems-gate.log" },
 } satisfies ProcessFile;
