@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli"]
+members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen"]
 exclude = ["bench"]
 
 [workspace.package]

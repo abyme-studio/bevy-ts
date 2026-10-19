@@ -1,0 +1,1193 @@
+{
+  "openrpc": "1.3.2",
+  "info": {
+    "title": "bevy-ts Remote Protocol",
+    "version": "1.0.0",
+    "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump."
+  },
+  "methods": [
+    {
+      "name": "bevy-ts/hello",
+      "summary": "Handshake: protocol, bevy-ts, Bevy and JS engine versions, entry, generation, dev features.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [],
+      "result": {
+        "name": "hello",
+        "schema": {
+          "$ref": "#/components/schemas/HelloResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/discover",
+      "summary": "The OpenRPC document this server was built with.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [],
+      "result": {
+        "name": "document",
+        "schema": {
+          "$ref": "#/components/schemas/OpenRpcDocument"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/reload",
+      "summary": "Recompiles from disk and applies the result (dev only).",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ReloadParams"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "report",
+        "schema": {
+          "$ref": "#/components/schemas/ReloadReport"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/reload+watch",
+      "summary": "One message per reload attempt from any cause: compiling, then applied or failed.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [],
+      "result": {
+        "name": "message",
+        "schema": {
+          "$ref": "#/components/schemas/ReloadWatchMessage"
+        }
+      },
+      "x-bevy-ts-watch": true
+    },
+    {
+      "name": "bevy-ts/schema",
+      "summary": "One schema per component, TS (live and undeclared) and reflected Rust, in registry.schema's shape.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/SchemaParams"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "schemas",
+        "schema": {
+          "$ref": "#/components/schemas/SchemaResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/get_components",
+      "summary": "world.get_components for TS and reflected components.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/GetComponentsParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/GetComponentsResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/get_components+watch",
+      "summary": "Streams components whose change tick moved since the last message.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/GetComponentsParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/GetComponentsWatchResult"
+        }
+      },
+      "x-bevy-ts-watch": true
+    },
+    {
+      "name": "bevy-ts/mutate_components",
+      "summary": "Writes one field of a TS or reflected component and marks it changed.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/MutateComponentsParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "type": "null"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/pause",
+      "summary": "Stops or resumes every bevy-ts stage and Time<Virtual>; rendering keeps running.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/PauseParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/PauseResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/step",
+      "summary": "While paused, runs that many frames and pauses again.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/StepParams"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/PauseResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/entities",
+      "summary": "A snapshot of every entity: id, Name, parent and component names.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/EntitiesResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/entities+watch",
+      "summary": "The snapshot, then at most one message per frame of structural changes.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [],
+      "result": {
+        "name": "message",
+        "schema": {
+          "$ref": "#/components/schemas/EntitiesWatchMessage"
+        }
+      },
+      "x-bevy-ts-watch": true
+    },
+    {
+      "name": "bevy-ts/systems",
+      "summary": "TS systems with stage, access, generation, last run time and last error.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/SystemsResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/log+watch",
+      "summary": "console.* output and bevy-ts errors and warnings.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [],
+      "result": {
+        "name": "message",
+        "schema": {
+          "$ref": "#/components/schemas/LogWatchMessage"
+        }
+      },
+      "x-bevy-ts-watch": true
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Entity": {
+        "description": "An entity id: Entity::to_bits.",
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "SourceLocation": {
+        "type": "object",
+        "required": [
+          "file",
+          "line",
+          "column"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "column": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "ScriptError": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/SourceLocation"
+          },
+          "stack": {
+            "type": "string"
+          }
+        }
+      },
+      "HelloResult": {
+        "type": "object",
+        "required": [
+          "protocol",
+          "bevyTs",
+          "bevy",
+          "engine",
+          "generation",
+          "dev"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "description": "The protocol version (semver) this server speaks."
+          },
+          "bevyTs": {
+            "type": "string"
+          },
+          "bevy": {
+            "type": "string"
+          },
+          "engine": {
+            "type": "string",
+            "description": "The JS engine and its version."
+          },
+          "entry": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The entry file, under bevy-ts dev."
+          },
+          "generation": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "dev": {
+            "$ref": "#/components/schemas/DevFeatures"
+          }
+        }
+      },
+      "DevFeatures": {
+        "type": "object",
+        "required": [
+          "reload"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "reload": {
+            "type": "boolean"
+          },
+          "inspector": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The CDP address when the inspector is on."
+          }
+        }
+      },
+      "ReloadParams": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "restart": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "ReloadStatus": {
+        "type": "string",
+        "enum": [
+          "compiling",
+          "applied",
+          "failed"
+        ]
+      },
+      "Migration": {
+        "type": "object",
+        "required": [
+          "component",
+          "entities",
+          "kept",
+          "added",
+          "reset",
+          "removed"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "component": {
+            "type": "string"
+          },
+          "entities": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "kept": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reset": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ReloadReport": {
+        "type": "object",
+        "required": [
+          "seq",
+          "generation",
+          "status",
+          "errors",
+          "migrations",
+          "durationMs"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "generation": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReloadStatus"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScriptError"
+            }
+          },
+          "migrations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Migration"
+            }
+          },
+          "durationMs": {
+            "type": "number"
+          }
+        }
+      },
+      "SchemaParams": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only these components (type paths, TS names or short paths)."
+          },
+          "source": {
+            "$ref": "#/components/schemas/ComponentSource"
+          }
+        }
+      },
+      "ComponentSource": {
+        "type": "string",
+        "enum": [
+          "ts",
+          "rust"
+        ]
+      },
+      "FieldType": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "f32",
+              "f64",
+              "i8",
+              "u8",
+              "i16",
+              "u16",
+              "i32",
+              "u32",
+              "bool",
+              "vec2",
+              "vec3",
+              "vec4",
+              "quat",
+              "entity",
+              "enum",
+              "array"
+            ]
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "of": {
+            "$ref": "#/components/schemas/FieldType"
+          },
+          "len": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "FieldLayout": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "offset"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldType"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        }
+      },
+      "Layout": {
+        "type": "object",
+        "required": [
+          "size",
+          "align",
+          "fields"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "size": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "align": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldLayout"
+            }
+          }
+        }
+      },
+      "FieldHints": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "step": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "TsFieldInfo": {
+        "type": "object",
+        "required": [
+          "type",
+          "offset",
+          "hints"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/FieldType"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "default": {},
+          "hints": {
+            "$ref": "#/components/schemas/FieldHints"
+          }
+        }
+      },
+      "TsSchemaExtension": {
+        "type": "object",
+        "required": [
+          "source",
+          "declared",
+          "layout",
+          "fields"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "ts"
+            ]
+          },
+          "file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "declared": {
+            "type": "boolean",
+            "description": "False for a component the live generation no longer declares; its data stays."
+          },
+          "layout": {
+            "$ref": "#/components/schemas/Layout"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TsFieldInfo"
+            }
+          }
+        }
+      },
+      "ComponentSchema": {
+        "description": "A component's schema in the shape stock registry.schema uses, plus x-bevy-ts for TS components.",
+        "type": "object",
+        "required": [
+          "typePath",
+          "shortPath",
+          "kind"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "typePath": {
+            "type": "string"
+          },
+          "shortPath": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "required": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reflectTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "x-bevy-ts": {
+            "$ref": "#/components/schemas/TsSchemaExtension"
+          }
+        }
+      },
+      "SchemaResult": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/ComponentSchema"
+        }
+      },
+      "GetComponentsParams": {
+        "type": "object",
+        "required": [
+          "entity",
+          "components"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "strict": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "BrpError": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int16"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {}
+        }
+      },
+      "GetComponentsResult": {
+        "type": "object",
+        "required": [
+          "components",
+          "errors"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BrpError"
+            }
+          }
+        }
+      },
+      "GetComponentsWatchResult": {
+        "type": "object",
+        "required": [
+          "components",
+          "removed",
+          "errors"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BrpError"
+            }
+          }
+        }
+      },
+      "MutateComponentsParams": {
+        "type": "object",
+        "required": [
+          "entity",
+          "component",
+          "path",
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "component": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": ".field, .field.x|y|z|w or .field[i] for TS components; a reflect path for Rust ones."
+          },
+          "value": {}
+        }
+      },
+      "PauseParams": {
+        "type": "object",
+        "required": [
+          "paused"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "paused": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PauseResult": {
+        "type": "object",
+        "required": [
+          "paused",
+          "frame"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "paused": {
+            "type": "boolean"
+          },
+          "frame": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        }
+      },
+      "StepParams": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "frames": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "default": 1
+          }
+        }
+      },
+      "EntityInfo": {
+        "type": "object",
+        "required": [
+          "entity",
+          "components"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Entity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "EntitiesResult": {
+        "type": "object",
+        "required": [
+          "seq",
+          "entities"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityInfo"
+            }
+          }
+        }
+      },
+      "Reparented": {
+        "type": "object",
+        "required": [
+          "entity"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "parent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Entity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Renamed": {
+        "type": "object",
+        "required": [
+          "entity"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ComponentsChanged": {
+        "type": "object",
+        "required": [
+          "entity",
+          "components"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "EntitiesWatchMessage": {
+        "description": "The first message carries `snapshot`; later ones carry one frame's structural changes. A gap in `seq` means resubscribe.",
+        "type": "object",
+        "required": [
+          "seq"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "snapshot": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityInfo"
+            }
+          },
+          "spawned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityInfo"
+            }
+          },
+          "despawned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entity"
+            }
+          },
+          "reparented": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Reparented"
+            }
+          },
+          "renamed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Renamed"
+            }
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComponentsChanged"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComponentsChanged"
+            }
+          }
+        }
+      },
+      "Stage": {
+        "type": "string",
+        "enum": [
+          "preUpdate",
+          "update",
+          "postUpdate",
+          "fixedUpdate"
+        ]
+      },
+      "SystemInfo": {
+        "type": "object",
+        "required": [
+          "name",
+          "stage",
+          "read",
+          "write",
+          "generation",
+          "lastRunMicros"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "read": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "write": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "generation": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "lastRunMicros": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "lastError": {
+            "$ref": "#/components/schemas/ScriptError"
+          }
+        }
+      },
+      "SystemsResult": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SystemInfo"
+        }
+      },
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "debug",
+          "info",
+          "warn",
+          "error"
+        ]
+      },
+      "LogEntry": {
+        "type": "object",
+        "required": [
+          "seq",
+          "level",
+          "message",
+          "generation",
+          "count"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "level": {
+            "$ref": "#/components/schemas/LogLevel"
+          },
+          "message": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/SourceLocation"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1
+          }
+        }
+      },
+      "LogWatchMessage": {
+        "type": "object",
+        "required": [
+          "entries"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogEntry"
+            }
+          }
+        }
+      },
+      "ReloadWatchMessage": {
+        "type": "object",
+        "required": [
+          "reports"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "reports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReloadReport"
+            }
+          }
+        }
+      },
+      "OpenRpcDocument": {
+        "type": "object",
+        "required": [
+          "openrpc",
+          "info",
+          "methods"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "openrpc": {
+            "type": "string"
+          },
+          "info": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  }
+}

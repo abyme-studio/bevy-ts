@@ -6,14 +6,28 @@
   "type": "module",
   "types": "./index.d.ts",
   "exports": {
-    ".": { "types": "./index.d.ts" },
-    "./bevy": { "types": "./bevy.d.ts" },
-    "./jsx-runtime": { "types": "./jsx-runtime.d.ts" },
-    "./jsx-dev-runtime": { "types": "./jsx-dev-runtime.d.ts" },
-    "./protocol": { "types": "./protocol.d.ts" }
+    ".": {
+      "types": "./index.d.ts"
+    },
+    "./bevy": {
+      "types": "./bevy.d.ts"
+    },
+    "./jsx-runtime": {
+      "types": "./jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./jsx-dev-runtime.d.ts"
+    },
+    "./protocol": {
+      "types": "./protocol.d.ts"
+    }
   },
-  "files": ["*.d.ts", "bin"],
+  "files": [
+    "*.d.ts",
+    "bin"
+  ],
   "devDependencies": {
+    "json-schema-to-typescript": "^15.0.4",
     "typescript": "^5.9.0"
   },
   "scripts": {

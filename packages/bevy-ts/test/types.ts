@@ -46,3 +46,7 @@ app.startup("scene", ({ commands }) => {
   // @ts-expect-error a Rust component without a layout cannot be read
   app.system("bad", { read: [GlobalTransform], run() {} });
 });
+import type { Methods, HelloResult, PROTOCOL_VERSION } from "bevy-ts/protocol";
+const v: typeof PROTOCOL_VERSION = "1.0.0";
+const h: Methods["bevy-ts/hello"]["result"] = {} as HelloResult;
+void v; void h;

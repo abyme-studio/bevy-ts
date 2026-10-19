@@ -96,6 +96,7 @@ fn run_dev(args: DevArgs) {
 
     let mut app = base_app(args.headless, V8Options { inspect: args.inspect });
     app.insert_resource(channel).insert_resource(DevSource(compiler.clone()));
+    app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     {
         let mut info = app.world_mut().resource_mut::<RuntimeInfo>();
         info.entry = Some(compiler.entry.clone());

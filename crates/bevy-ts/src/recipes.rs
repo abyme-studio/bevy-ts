@@ -92,6 +92,8 @@ pub fn register(app: &mut App) {
     });
     app.add_ts_native_recipe("cuboid", |world, e, params| {
         let p: CuboidParams = parse(params)?;
+        // Placement first, so the entity is placed even if rendering is missing.
+        world.entity_mut(e).insert(p.place.transform());
         let size = Vec3::from(p.size.unwrap_or([1.0, 1.0, 1.0]));
         let base_color = color(p.color.as_deref().unwrap_or("#ffffff"))?;
         let mesh = world
@@ -102,7 +104,7 @@ pub fn register(app: &mut App) {
             .get_resource_mut::<Assets<StandardMaterial>>()
             .ok_or("cuboid needs the PBR plugin (no Assets<StandardMaterial>)")?
             .add(StandardMaterial { base_color, ..default() });
-        world.entity_mut(e).insert((Mesh3d(mesh), MeshMaterial3d(material), p.place.transform()));
+        world.entity_mut(e).insert((Mesh3d(mesh), MeshMaterial3d(material)));
         Ok(())
     });
 }
