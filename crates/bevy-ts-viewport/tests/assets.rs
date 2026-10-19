@@ -174,7 +174,8 @@ fn thumbnails_of_an_image_and_a_gltf_leave_the_game_alone() {
     write_png(&dir.join("textures/floor.png"), 32, 16, [10, 200, 10, 255]);
     write_gltf(&dir.join("models/enemy.gltf"));
     let mut app = app(&dir);
-    let cameras_before: Vec<(Entity, bool, isize)> = app.world_mut().query::<(Entity, &Camera)>().iter(app.world()).map(|(e, c)| (e, c.is_active, c.order)).collect();
+    let mut cameras_before: Vec<(Entity, bool, isize)> = app.world_mut().query::<(Entity, &Camera)>().iter(app.world()).map(|(e, c)| (e, c.is_active, c.order)).collect();
+    cameras_before.sort();
 
     let t = call(&mut app, "bevy-ts/asset_thumbnail", json!({ "path": "textures/floor.png", "size": 64 }));
     let img = decode(t["png"].as_str().unwrap());
@@ -201,7 +202,8 @@ fn thumbnails_of_an_image_and_a_gltf_leave_the_game_alone() {
     for _ in 0..4 {
         app.update();
     }
-    let cameras_after: Vec<(Entity, bool, isize)> = app.world_mut().query::<(Entity, &Camera)>().iter(app.world()).map(|(e, c)| (e, c.is_active, c.order)).collect();
+    let mut cameras_after: Vec<(Entity, bool, isize)> = app.world_mut().query::<(Entity, &Camera)>().iter(app.world()).map(|(e, c)| (e, c.is_active, c.order)).collect();
+    cameras_after.sort();
     assert_eq!(cameras_before, cameras_after, "the game's cameras are untouched and the thumbnail camera is gone");
     // Cached by path and mtime.
     let again = call(&mut app, "bevy-ts/asset_thumbnail", json!({ "path": "models/enemy.gltf", "size": 128 }));

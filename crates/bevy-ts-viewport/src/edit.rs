@@ -27,8 +27,10 @@ pub const THUMBNAIL_LAYER: usize = 30;
 /// Bevy's transform gizmo draws its handles on this layer with an overlay camera of its own.
 const BEVY_GIZMO_LAYER: usize = 15;
 
-/// On everything the edit tools spawn: never part of the game, its lists or its source.
+/// On everything the edit tools spawn: never part of the game, its lists or its source. It
+/// requires bevy-ts's `ScriptHidden`, so TS queries and `bevy-ts/entities` skip it.
 #[derive(Component, Debug, Default, Clone, Copy)]
+#[require(bevy_ts::ScriptHidden)]
 pub struct EditorOnly;
 
 /// The editor camera: a Rust controller, so it works when TS fails to load.
@@ -137,6 +139,12 @@ pub(crate) fn build(app: &mut App) {
     }
     app.world_mut().resource_mut::<TransformGizmoSettings>().confine_cursor = false;
     app.add_observer(mark_bevy_gizmo)
+        .add_observer(|add: On<Add<TransformGizmoRoot>>, mut commands: Commands| {
+            commands.entity(add.entity).insert(EditorOnly);
+        })
+        .add_observer(|add: On<Add<TransformGizmoMeshMarker>>, mut commands: Commands| {
+            commands.entity(add.entity).insert(EditorOnly);
+        })
         .add_observer(camera_added)
         .add_systems(
             Update,

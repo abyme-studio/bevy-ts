@@ -29,7 +29,7 @@
 
 ## 5. Edit mode
 
-- [ ] 5.1 `bevy-ts/viewport_mode`: pause through bridge, remember and deactivate game cameras, `EditorOnly` marker, layer 31, excluded from `entities+watch`, `tsx_tree`, TS queries; `bevy-ts/step` in edit mode
+- [x] 5.1 `bevy-ts/viewport_mode`: pause through bridge, remember and deactivate game cameras, `EditorOnly` marker, layer 31, excluded from `entities+watch`, `tsx_tree`, TS queries; `bevy-ts/step` in edit mode
 - [x] 5.2 Editor camera: spawn at the game camera's pose and projection, fly, orbit, dolly, pinch, frame selection; `bevy-ts/viewport_camera`
 - [x] 5.3 Gizmos: grid, selection and hover bounds, light and camera icons, `TransformGizmoPlugin` on the primary selection, `W`/`E`/`R`/`X`/`Escape`; `ui` option for game UI over the editor view
 - [x] 5.4 Picking: editor pointer with game mouse input off, prefab-instance-root resolution from `TsxNode` source chains, ⌥ and ⇧ clicks, `bevy-ts/viewport_pick`; test that TSX `onClick` does not fire in edit mode

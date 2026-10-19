@@ -86,7 +86,17 @@ fn edit_app() -> App {
     let mut app = app_with(|app| {
         app.add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin).add_systems(Startup, edit_scene).add_systems(Update, bob);
     });
-    for _ in 0..3 {
+    app.update();
+    // One game camera: the shared scene's camera and cube are not this test's.
+    let extra: Vec<Entity> = app
+        .world_mut()
+        .query_filtered::<Entity, (Or<(With<Camera>, With<TheCube>)>, Without<GameCamera>, Without<EditorOnly>)>()
+        .iter(app.world())
+        .collect();
+    for e in extra {
+        app.world_mut().despawn(e);
+    }
+    for _ in 0..2 {
         app.update();
     }
     app
@@ -176,7 +186,7 @@ fn edit_pauses_and_views_from_the_game_cameras_pose_and_play_restores() {
     assert!(!game_active);
     let cam = call(&mut app, "bevy-ts/viewport_camera", Value::Null).unwrap();
     let t = Vec3::new(cam["translation"][0].as_f64().unwrap() as f32, cam["translation"][1].as_f64().unwrap() as f32, cam["translation"][2].as_f64().unwrap() as f32);
-    assert!(t.distance(game_pose.translation()) < 1e-4, "the editor camera starts at the game camera's pose");
+    assert!(t.distance(game_pose.translation()) < 1e-4, "the editor camera starts at the game camera's pose: {t} vs {}", game_pose.translation());
     assert!(app.world_mut().query_filtered::<(), (With<EditorCamera>, With<EditorOnly>)>().iter(app.world()).count() == 1);
 
     let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();

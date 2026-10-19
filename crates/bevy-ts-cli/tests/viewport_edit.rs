@@ -129,6 +129,14 @@ fn a_literal_drag_is_written_by_the_editor_and_a_computed_one_rejected() {
     assert_eq!(r["paused"], true);
     updates(&mut app, 2);
 
+    // Editor-only entities are not the game's: absent from bevy-ts/entities.
+    let listed = call(&mut app, "bevy-ts/entities", Value::Null).to_string();
+    let editor: Vec<u64> = app.world_mut().query_filtered::<Entity, With<bevy_ts_viewport::edit::EditorOnly>>().iter(app.world()).map(Entity::to_bits).collect();
+    assert!(editor.len() >= 2, "the editor camera and Bevy's gizmo overlay camera at least");
+    for e in editor {
+        assert!(!listed.contains(&e.to_string()), "editor entity {e} listed: {listed}");
+    }
+
     // The editor selects b by its line in game.tsx.
     let sel = call(&mut app, "bevy-ts/viewport_select", json!({ "file": "game.tsx", "line": B_LINE }));
     let b = enemy(&mut app, "b");

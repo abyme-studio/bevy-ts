@@ -207,6 +207,7 @@ None: a new crate, a CLI flag, protocol 1.1 (additions only). abyme pins major 1
 
 ## Edit mode as built
 
+- `EditorOnly` requires bevy-ts's `ScriptHidden` (systems-api, 437157d): TS queries, TS lifecycle observers, `bevy-ts/entities` and `entities+watch` skip everything the edit tools spawn, Bevy's gizmo handles and overlay camera included. Editor entities are not TSX nodes, so `tsx_tree` never had them.
 - Picking is a ray cast from the editor camera (`MeshRayCast`, plus light and camera icons as spheres), not an editor pointer in `bevy_picking`: any pointer's events reach game observers, so the stock mouse pointer is turned off (`PointerInputSettings::is_mouse_enabled`) and no picking pointer exists in edit mode at all. Game `PointerClick` observers and TSX `onPointer*` handlers stay silent. UI and sprite hits are not cast yet.
 - Bevy 0.20's `TransformGizmoPlugin` draws its handles on its own layer 15 with an overlay camera; the overlay camera is marked editor-only, ordered after the editor camera (-10, -9) and active only in edit mode. Grid, outlines and icons are `EditorGizmos` on layer 31. The editor camera sees layers 0 to 29 and 31, not the thumbnail layer 30.
 - `ui: false` keeps game UI off by leaving the default UI camera an inactive game camera; `ui: true` makes the editor camera `IsDefaultUiCamera`.
@@ -216,7 +217,7 @@ None: a new crate, a CLI flag, protocol 1.1 (additions only). abyme pins major 1
 
 ## Assets as built
 
-- The root is Bevy's file reader root (`BEVY_ASSET_ROOT`, else `CARGO_MANIFEST_DIR`, else the executable's folder, joined with `assets`), overridable with the `AssetRoot` resource. `bevy-ts dev` does not yet point Bevy at the project's `assets/`; that is bridge's to set, and the listing follows whatever Bevy reads.
+- The root is Bevy's file reader root (`BEVY_ASSET_ROOT`, else `CARGO_MANIFEST_DIR`, else the executable's folder, joined with `assets`), overridable with the `AssetRoot` resource. `bevy-ts dev` points Bevy at `<project>/assets` (systems-api, 437157d); the listing follows whatever Bevy reads.
 - `assets+watch` polls the root every 250 ms while someone watches, diffing size, mtime and load state; Bevy's `file_watcher` feature is not on in the engine build, and polling needs no new feature.
 - `asset_thumbnail` answers images at once (decoded by Bevy, scaled on the CPU). Meshes and glTF scenes render offscreen on layer 30 over a few frames and read back; until then the answer is `pending: true` and the client asks again (`bevy_remote` methods cannot wait across frames). Fonts get no thumbnail yet (`png: null`). PNGs are written with stored deflate blocks and base64 by hand, so no image or base64 crate was added.
 
