@@ -1,4 +1,9 @@
-## ADDED Requirements
+# edit-mode Specification
+
+## Purpose
+Edit mode: the same engine and world, paused, seen from an editor camera with engine-drawn gizmos, picking that selects what the source placed, and a selection synced with the editor, in a viewport or the engine's own window.
+
+## Requirements
 
 ### Requirement: Play and edit modes
 `bevy-ts/viewport_mode` (`mode`: `play` or `edit`, optional `ui`, optional `gamepadUnfocused`) SHALL switch modes and answer the mode in force. Entering `edit` SHALL pause as `bevy-ts/pause` does, deactivate every game camera (remembering which were active), activate the editor camera on the virtual window, and enable the editor tools. Entering `play` SHALL restore the game cameras' active flags, deactivate the editor camera and tools, and resume unless the game was paused before edit was entered. `bevy-ts/step` SHALL work in edit mode and render the stepped frame through the editor camera. A reload SHALL keep the mode.
@@ -33,7 +38,7 @@ In edit mode the engine SHALL draw, with `bevy_gizmos` on layer 31: a ground gri
 - **THEN** the light is selected and its outline and transform handles are drawn
 
 ### Requirement: Picking selects what the source placed
-In edit mode game pointer input SHALL be off (`PointerInputSettings` mouse disabled) and an editor pointer (`PointerId::Custom`) SHALL be driven from viewport input instead, so game `Pointer<…>` observers and TSX handlers do not fire. A click with no drag SHALL pick with `bevy_picking`'s mesh, sprite and UI backends and select, from the topmost hit, the nearest ancestor that is a prefab instance root (an entity whose TSX source chain has a call site, or a `.bsn` level instance); ⌥-click SHALL select the hit entity itself; ⇧-click SHALL add to or remove from the selection; a click on nothing SHALL clear it. `bevy-ts/viewport_pick` (`x`, `y`) SHALL answer every hit at that point, nearest first, with entity, depth and the entity the click would select, without changing the selection.
+In edit mode game pointer input SHALL be off (`PointerInputSettings` mouse disabled) and no picking pointer SHALL exist, so game `Pointer<…>` observers and TSX handlers do not fire. A click with no drag SHALL pick by a ray cast from the editor camera against meshes and against light and camera icons, and select, from the topmost hit, the nearest ancestor that is a prefab instance root (an entity whose TSX source chain has a call site, or a `.bsn` level instance); ⌥-click SHALL select the hit entity itself; ⇧-click SHALL add to or remove from the selection; a click on nothing SHALL clear it. `bevy-ts/viewport_pick` (`x`, `y`) SHALL answer every hit at that point, nearest first, with entity, depth and the entity the click would select, without changing the selection.
 
 #### Scenario: Clicking an enemy's eye
 - **WHEN** the operator clicks enemy `b`'s `eye` child mesh

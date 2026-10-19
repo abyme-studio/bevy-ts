@@ -1,4 +1,9 @@
-## ADDED Requirements
+# shared-surface Specification
+
+## Purpose
+Viewport mode: the engine with no window of its own renders into a ring of IOSurfaces another process shows, over a Mach channel per viewer, paced by that viewer's display, behind a virtual primary window game code cannot tell from a real one.
+
+## Requirements
 
 ### Requirement: Viewport mode runs the engine with no window of its own
 `bevy-ts dev --viewport <entry>` SHALL start the engine with no native window and no winit event loop, load the game as `bevy-ts dev` does, and wait for a viewer to attach. Simulation SHALL run from start; nothing SHALL be rendered until a viewer is attached and visible. `bevy-ts dev` without `--viewport` SHALL keep bridge's behaviour (a window of its own). Viewport mode SHALL be available on macOS only; on other platforms `--viewport` SHALL fail with a message naming the platform.
@@ -76,11 +81,11 @@ Every viewport method except `viewport_attach`, `viewport_detach`, `viewport_res
 - **WHEN** a client calls `bevy-ts/viewport_mode` with `edit` against `bevy-ts dev` in its own window
 - **THEN** the game pauses and the editor camera, gizmos and picking work in that window
 
-### Requirement: Protocol 1.1
-The viewport methods (`bevy-ts/viewport_attach`, `viewport_detach`, `viewport_resize`, `viewport_input`, `viewport_mode`, `viewport_camera`, `viewport_pick`, `viewport_select`, `viewport_selection+watch`, `viewport_edits+watch`, `viewport_edit_result`, `viewport_revert`, `viewport_stats`, `assets`, `assets+watch`, `asset_thumbnail`) and the channel's message types (`input`, carrying one `ViewportInput` event, `surface`, `frame`, `tick`, `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed`) SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"`, as protocol 1.1.0, generated into Rust and TS types by bridge's pipeline. Channel messages SHALL be JSON-RPC 2.0 notifications whose `method` is the message type, so one schema covers HTTP and the channel. `bevy-ts/hello` SHALL report `viewport: true|false`.
+### Requirement: The viewport in the protocol contract
+The viewport methods (`bevy-ts/viewport_attach`, `viewport_detach`, `viewport_resize`, `viewport_input`, `viewport_mode`, `viewport_camera`, `viewport_pick`, `viewport_select`, `viewport_selection+watch`, `viewport_edits+watch`, `viewport_edit_result`, `viewport_revert`, `viewport_stats`, `assets`, `assets+watch`, `asset_thumbnail`) and the channel's message types (`input`, carrying one `ViewportInput` event, `surface`, `frame`, `tick`, `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed`) SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"`, as an additions-only minor bump of the contract (1.2.0 when it landed; 1.5.0 with the `display` and level-route fields), generated into Rust and TS types by bridge's pipeline. Channel messages SHALL be JSON-RPC 2.0 notifications whose `method` is the message type, so one schema covers HTTP and the channel. `bevy-ts/hello` SHALL report `viewport: true|false`.
 
 #### Scenario: An old client
-- **WHEN** a 1.0 client connects to a 1.1 engine
+- **WHEN** a 1.0 client connects to an engine serving the viewport methods
 - **THEN** every 1.0 method answers as before
 
 #### Scenario: A game built without the viewport crate

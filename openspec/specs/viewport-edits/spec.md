@@ -1,4 +1,9 @@
-## ADDED Requirements
+# viewport-edits Specification
+
+## Purpose
+Gizmo drags in edit mode become edits routed by provenance to the one owner that may persist them: the editor for TSX literals, bevy-ts for `.bsn` levels, nobody for bound fields and entities no source describes.
+
+## Requirements
 
 ### Requirement: Every selected field has an edit route
 For the primary selection the engine SHALL compute, per field the gizmo can change (`Transform.translation`, `rotation`, `scale`), a route, sent with the selection and in each edit:
@@ -14,7 +19,7 @@ When an entity has both a level instance and a `TsxNode` (a `.bsn` level instanc
 
 #### Scenario: A bound field
 - **WHEN** an entity whose `Transform.translation` is a binding `() => follow(player())` is selected
-- **THEN** the route is `locked`, the translate handles are drawn dimmed and do not start a drag, and rotate and scale still work if their fields are not bound
+- **THEN** the route is `locked`, the translate handles are inert (the gizmo loses its focus while that mode is on) and do not start a drag, and rotate and scale still work if their fields are not bound
 
 ### Requirement: A drag edits the world live and becomes one edit on release
 In edit mode a transform gizmo drag SHALL write the entity's `Transform` every frame of the drag, directly in the world, and render it. On release the engine SHALL emit one `ViewportEdit` on `bevy-ts/viewport_edits+watch`: `id`, `entity`, `component` (type path), `field`, `before` and `after` (JSON as `bevy-ts/get_components` gives it), and `route`. `Escape` during a drag SHALL restore `before` and emit nothing. A drag SHALL NOT start on a `locked` field.
