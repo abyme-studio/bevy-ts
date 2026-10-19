@@ -3,7 +3,14 @@
   "version": "0.1.0",
   "description": "TypeScript for Bevy: components, systems and hot reload without recompiling Rust",
   "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rjmathieson/bevy-ts"
+  },
   "type": "module",
+  "bin": {
+    "bevy-ts": "bin/bevy-ts.js"
+  },
   "types": "./index.d.ts",
   "exports": {
     ".": {
@@ -26,6 +33,13 @@
     "*.d.ts",
     "bin"
   ],
+  "optionalDependencies": {
+    "@bevy-ts/darwin-arm64": "0.1.0",
+    "@bevy-ts/darwin-x64": "0.1.0",
+    "@bevy-ts/linux-x64": "0.1.0",
+    "@bevy-ts/linux-arm64": "0.1.0",
+    "@bevy-ts/win32-x64": "0.1.0"
+  },
   "devDependencies": {
     "json-schema-to-typescript": "^15.0.4",
     "typescript": "^5.9.0"

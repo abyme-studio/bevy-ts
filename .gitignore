@@ -1,3 +1,6 @@
 target/
 node_modules/
 .DS_Store
+dist/
+packages/platforms/*/bin/bevy-ts
+packages/platforms/*/bin/bevy-ts.exe

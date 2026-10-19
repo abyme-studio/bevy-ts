@@ -48,7 +48,7 @@
 - [x] 6.5 Keep undeclared components and revive them on redeclaration with the same layout
 - [x] 6.6 Keep the old generation on any failure; tests for a syntax error, a throwing module, a duplicate name and a bad `after`
 - [x] 6.7 Wire `bevy-ts dev <entry>` with `--remote-port` and `--inspect`
-- [ ] 6.8 Package for npm: a `bevy-ts` package whose bin resolves the engine binary from per-platform optional packages (`@bevy-ts/darwin-arm64`, …), as esbuild ships; `npx bevy-ts dev` works with no Rust toolchain
+- [x] 6.8 Package for npm: a `bevy-ts` package whose bin resolves the engine binary from per-platform optional packages (`@bevy-ts/darwin-arm64`, …), as esbuild ships; `npx bevy-ts dev` works with no Rust toolchain
 
 ## 7. Debugging
 

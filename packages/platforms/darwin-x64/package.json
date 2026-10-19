@@ -1,0 +1,20 @@
+{
+  "name": "@bevy-ts/darwin-x64",
+  "version": "0.1.0",
+  "description": "The bevy-ts engine binary for darwin-x64",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rjmathieson/bevy-ts"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin"
+  ],
+  "preferUnplugged": true
+}
