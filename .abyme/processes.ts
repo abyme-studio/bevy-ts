@@ -38,4 +38,6 @@ export default {
   "viewport-latency": { cmd: "SPIKE_PRESSES=200 cargo test --release -p bevy-ts-viewport --test spike key_to_pixels -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-latency.log | tail -8" },
   "viewport-spike": { cmd: "SPIKE_SECS=60 cargo test --release -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },
   "viewport-gate": { cmd: "scripts/viewport-gate.sh" },
+  // The same gate for levels task groups.
+  "levels-gate": { cmd: "scripts/viewport-gate.sh 2>&1 | tee target/levels-gate.log" },
 } satisfies ProcessFile;
