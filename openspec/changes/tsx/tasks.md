@@ -32,7 +32,7 @@
 
 - [x] 5.1 Write the reactive core in `bevy-ts` (`signal`, `computed`, `effect`, `untrack`, `onCleanup`, owners, `ref`) with unit tests
 - [x] 5.2 Turn function props and children into bindings with ids; queue `patch` and `patchReflect` ops into the tsx op stream
-- [ ] 5.3 Implement `ref.get(C)` and `res(R)` reads inside bindings (no hooks, no `use*` exports): register a subscription per binding, check change ticks in `PostUpdate` in Rust, deliver changed values in one host call per frame, apply the returned patches before `Last` (`ref.get` done 2026-10-20; `res(R)` waits for systems-api's resources)
+- [x] 5.3 Implement `ref.get(C)` and `res(R)` reads inside bindings (no hooks, no `use*` exports): register a subscription per binding, check change ticks in `PostUpdate` in Rust, deliver changed values in one host call per frame, apply the returned patches before `Last`
 - [x] 5.4 Test that a frame with no subscribed change makes zero host calls, and that a player hit writes exactly one `Text`
 - [x] 5.5 Implement `<Show>` and `<For>` with subtree mount and unmount and owner disposal
 - [x] 5.6 Add the dev warnings: a signal, `ref.get` or `res` read outside a tracking scope, unkeyed array siblings, a binding site whose component is in some TS system's `write` set (naming the system and the site)

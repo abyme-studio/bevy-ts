@@ -135,7 +135,8 @@ function create(type, props, key, source, isStatic) {
 function fieldNames(C) {
   if (Array.isArray(C.fieldNames)) return C.fieldNames;
   if (C.layout && C.layout.fields) return C.layout.fields.map((f) => f.name);
-  if (C.fields && typeof C.fields === "object") return Object.keys(C.fields);
+  const schema = C.fields || C.schema;
+  if (schema && typeof schema === "object") return Object.keys(schema);
   return [];
 }
 
@@ -538,6 +539,22 @@ export function ref(entity) {
   return new NodeRef(entity);
 }
 
+/** What `readResource` returns outside tsx code, so `res(R)` stays a system parameter there. */
+export const NOT_TSX = Symbol.for("bevy-ts.not-tsx");
+
+/**
+ * `res(R)` in a binding, a scene or a site: the resource's current value; inside a binding, the
+ * binding re-runs when it changes. Rust finds the resource's entity and watches it as any pair.
+ */
+export function readResource(R) {
+  const ctx = Ctx;
+  if (!ctx || (!Listener && !RowInstance && describing === 0)) return NOT_TSX;
+  if (typeof R !== "function" || typeof R.componentName !== "string") throw new TypeError(`res(R): ${String(R)} is not a resource`);
+  untrackedRead(`res(${R.componentName})`);
+  if (RowInstance) throw new SitePairRead();
+  return ctx.read(null, R);
+}
+
 const LANE_NAMES = ["x", "y", "z", "w"];
 
 /** A delivered component value: plain fields, vectors with `.x`/`.y`/`.z` and `toArray()`. */
@@ -546,7 +563,8 @@ function componentValue(C, json, row) {
   const out = {};
   for (const k of Object.keys(json)) {
     const v = json[k];
-    const kind = C.fields && C.fields[k] && C.fields[k].spec ? C.fields[k].spec.kind : null;
+    const schema = C.fields || C.schema;
+    const kind = schema && schema[k] && schema[k].spec ? schema[k].spec.kind : null;
     if (Array.isArray(v) && (kind === "vec2" || kind === "vec3" || kind === "vec4" || kind === "quat")) {
       const vec = { toArray: () => v.slice() };
       v.forEach((n, i) => (vec[LANE_NAMES[i]] = n));

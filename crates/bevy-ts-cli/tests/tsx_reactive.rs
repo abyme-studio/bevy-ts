@@ -343,3 +343,27 @@ fn three_clicks_in_one_frame_run_their_handlers_in_order_in_one_call() {
     app.update();
     assert_eq!(text(&mut app, &["bar", "log"]), "new-A@1 ");
 }
+
+#[test]
+fn a_binding_reads_a_resource_with_res_and_follows_it() {
+    let src = r##"import { app, Resource, u32, res } from "bevy-ts";
+export class Score extends Resource("game::Score", { value: u32 }) {}
+app.insertResource(new Score({ value: 7 }));
+app.scene("hud", () => <text key="score" color={() => (res(Score).value > 10 ? "#ffdd00" : "#ffffff")}>{() => `Score ${res(Score).value}`}</text>);
+"##;
+    let (_dir, mut app) = setup("rx-res", src);
+    assert_eq!(text(&mut app, &["score"]), "Score 7", "{:?}", errors(&app));
+    let before = calls(&app);
+    updates(&mut app, 5);
+    assert_eq!(calls(&app), before, "a still resource costs no call");
+    let (id, _) = plugin_api::component_by_name(app.world(), "game::Score").unwrap();
+    let e = app.world().resource_entities().get(id).expect("the resource's entity");
+    let mut m = app.world_mut().get_mut_by_id(e, id).unwrap();
+    // SAFETY: Score is one u32.
+    unsafe { std::ptr::copy_nonoverlapping(42u32.to_le_bytes().as_ptr(), m.as_mut().as_ptr(), 4) };
+    app.update();
+    assert_eq!(calls(&app), before + 1);
+    assert_eq!(text(&mut app, &["score"]), "Score 42");
+    let t = node(&mut app, &["score"]).unwrap();
+    assert_eq!(app.world().get::<TextColor>(t).unwrap().0, Color::from(Srgba::hex("#ffdd00").unwrap()));
+}

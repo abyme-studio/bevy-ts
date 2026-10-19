@@ -10,7 +10,7 @@
 // is one call from Rust (`runSystem`) with one frame per param; Rust detaches every buffer when
 // the call returns. Field setters store the run's tick in the row's changed tick.
 
-import { TsxContext, describe, runScene, setHost } from "bevy-ts/jsx-runtime";
+import { NOT_TSX, TsxContext, describe, readResource, runScene, setHost } from "bevy-ts/jsx-runtime";
 
 // TSX's reactive surface, from the JSX runtime: no hooks, bindings read `ref.get(C)` directly.
 export { signal, computed, effect, untrack, onCleanup, batch, ref, Show, For, px, percent, vw, vh, em, rem } from "bevy-ts/jsx-runtime";
@@ -607,6 +607,9 @@ function setupParam(what, desc) {
   return holder;
 }
 export function res(R) {
+  // In tsx code (a binding, a scene), `res(R)` reads the resource; elsewhere it is a parameter.
+  const v = readResource(R);
+  if (v !== NOT_TSX) return v;
   return setupParam("res()", { kind: "res", resource: R, live: true });
 }
 export function resMut(R) {

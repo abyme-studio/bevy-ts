@@ -1,7 +1,7 @@
 // `bevy-ts/jsx-runtime`: the automatic JSX runtime (`"jsxImportSource": "bevy-ts"`). Elements
 // are plain descriptions: an `<entity>`, component elements on it (`<Health initialHp={100} />`),
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
-import type { Commands, ComponentType, Entity, For, NodeRef } from "bevy-ts";
+import type { Commands, ComponentClass, ElementProps, Entity, For, NodeRef } from "bevy-ts";
 
 /** What a picking handler receives: the event, and the call's `commands` and `frame`. */
 export interface PointerEvent {
@@ -139,7 +139,8 @@ type DescElement = Element;
 export declare namespace JSX {
   type Element = DescElement;
   /** What may be a tag: an intrinsic, a component handle, or a prefab. */
-  type ElementType = string | ComponentType<any> | ((props: any) => Element | null);
+  type ElementType = string | (abstract new (...args: any) => any) | ((props: any) => Element | null);
+  interface ElementClass {}
   interface ElementChildrenAttribute {
     children: {};
   }
@@ -148,7 +149,13 @@ export declare namespace JSX {
    * Every tag takes `key`: identity among siblings; without it, `type#n` (n counts siblings of
    * that type). On `<For>`, `key` is the item key function instead.
    */
-  type LibraryManagedAttributes<C, P> = C extends typeof For ? P : P & KeyAttribute;
+  type LibraryManagedAttributes<C, P> = C extends typeof For
+    ? P
+    : C extends { readonly __nameElement: true }
+      ? { value: string } & KeyAttribute
+      : C extends ComponentClass<infer S, any>
+      ? ElementProps<S> & KeyAttribute
+      : P & KeyAttribute;
   interface IntrinsicElements {
     entity: EntityProps & KeyAttribute;
     mesh: MeshProps;

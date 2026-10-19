@@ -1,10 +1,11 @@
 // Type tests for TSX elements: `deno check` (and `tsc -p test`) must pass, and every
 // `@ts-expect-error` must be an error.
-import { app, component, f32, vec3 } from "bevy-ts";
+import { app, Component, f32, Startup, vec3 } from "bevy-ts";
+import type { Commands } from "bevy-ts";
 import { Transform, Name } from "bevy-ts/bevy";
 
-const Health = component("game::Health", { hp: f32.default(100), max: f32.default(100) });
-const Mover = component("game::Mover", { velocity: vec3, maxSpeed: f32 });
+class Health extends Component("game::Health", { hp: f32.default(100), max: f32.default(100) }) {}
+class Mover extends Component("game::Mover", { velocity: vec3, maxSpeed: f32 }) {}
 
 export const Enemy = ({ at, hp = 100 }: { at: [number, number, number]; hp?: number }) => (
   <entity name="enemy">
@@ -30,9 +31,10 @@ app.scene("arena", () => (
 ));
 
 // The value form still works for commands.
-app.startup("s", ({ commands }) => {
-  commands.spawn(Health({ hp: 3 }), Transform);
-});
+export function spawnOne(commands: Commands) {
+  commands.spawn(new Health({ hp: 3 }), new Transform());
+}
+app.addSystems(Startup, spawnOne);
 
 export const Bad = () => (
   <entity>
@@ -93,3 +95,8 @@ export const Clicky = () => (
 );
 // @ts-expect-error picking props are onPointer* with Bevy's event names
 export const BadClick = () => <entity onClick={() => {}} />;
+
+// A resource read in a binding, no hook.
+import { Resource, res, u32 } from "bevy-ts";
+class Score extends Resource("game::Score", { value: u32 }) {}
+export const ScoreLine = () => <text color={() => (res(Score).value > 10 ? "#fd0" : "#fff")}>{() => `Score ${res(Score).value}`}</text>;

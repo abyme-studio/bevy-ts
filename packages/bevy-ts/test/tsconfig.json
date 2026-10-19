@@ -4,6 +4,5 @@
     "paths": { "bevy-ts": ["../index.d.ts"], "bevy-ts/*": ["../*.d.ts"] }
   },
   "include": ["."],
-  // tsx moves its element types onto component classes after systems-api lands.
-  "exclude": ["tsx", "vitest"]
+  "exclude": ["vitest"]
 }

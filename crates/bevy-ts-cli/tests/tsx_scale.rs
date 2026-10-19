@@ -14,9 +14,9 @@ use std::time::Instant;
 
 fn game(n: usize, color: &str) -> String {
     format!(
-        r##"import {{ app, component, f32, ref, px }} from "bevy-ts";
+        r##"import {{ app, Component, f32, ref, px }} from "bevy-ts";
 import {{ Transform }} from "bevy-ts/bevy";
-export const Health = component("game::Health", {{ hp: f32.default(100), max: f32.default(100) }});
+export class Health extends Component("game::Health", {{ hp: f32.default(100), max: f32.default(100) }}) {{}}
 const Enemy = ({{ at, hp = 100 }}: {{ at: [number, number, number]; hp?: number }}) => (
   <entity name="enemy">
     <Transform translation={{at}} />

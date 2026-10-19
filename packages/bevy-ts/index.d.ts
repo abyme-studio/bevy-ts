@@ -407,8 +407,29 @@ export declare const app: App;
 
 // ---------- TSX ----------
 
-export interface Element { readonly type: unknown; readonly props: unknown; readonly key?: string }
-export type Child = Element | string | number | (() => string | number) | readonly Child[] | null | false | undefined;
+export type Element = import("bevy-ts/jsx-runtime").Element;
+export type Child = import("bevy-ts/jsx-runtime").Child;
+
+/**
+ * A component element's props (`<Health initialHp={100} max={100} />`): each field controlled
+ * (`f`, written on insert and whenever the declared value changes; `() => value` binds it) or
+ * initial (`initialF`, written on insert only). Giving both for one field is a type error for
+ * components of up to 12 fields (TS expands the alternatives per field); larger components
+ * take both spellings in types and fail at load instead.
+ */
+export type ElementProps<S> = AtMost12<keyof S & string> extends true ? ExclusiveProps<S> : PlainProps<S>;
+type PlainProps<S> = { [K in keyof S]?: Init<S>[K] | (() => Init<S>[K]) } & {
+  [K in keyof S & string as `initial${Capitalize<K>}`]?: Init<S>[K];
+};
+type OneField<K extends string, V> =
+  | ({ [P in K]?: V | (() => V) } & { [P in `initial${Capitalize<K>}`]?: never })
+  | ({ [P in K]?: never } & { [P in `initial${Capitalize<K>}`]?: V });
+type U2I<U> = (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void ? I : never;
+type ExclusiveProps<S> = [keyof S & string] extends [never]
+  ? {}
+  : U2I<{ [K in keyof S & string]: { v: OneField<K, Init<S>[K]> } }[keyof S & string]> extends { v: infer I } ? I : never;
+type LastOf<U> = U2I<U extends unknown ? () => U : never> extends () => infer R ? R : never;
+type AtMost12<U, N extends unknown[] = []> = [U] extends [never] ? true : N["length"] extends 12 ? false : AtMost12<Exclude<U, LastOf<U>>, [...N, 1]>;
 
 
 // ---------------------------------------------------------------------------------------------

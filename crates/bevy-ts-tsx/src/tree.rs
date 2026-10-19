@@ -147,7 +147,8 @@ pub struct Reactive {
     /// Refs JS has not been told about.
     pub new_refs: Vec<u32>,
     pub slots: HashMap<u32, SlotState>,
-    pub subs: HashMap<(Entity, String), Subscription>,
+    /// Pairs bindings read: an entity's component, or (no entity) a resource.
+    pub subs: HashMap<(Option<Entity>, String), Subscription>,
     pub sites: HashMap<u32, SiteState>,
     /// Picking events queued by observers for the next host call: handler id, event.
     pub events: Vec<(u32, serde_json::Value)>,

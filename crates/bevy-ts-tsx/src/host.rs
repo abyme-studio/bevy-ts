@@ -30,7 +30,8 @@ const MAX_ROUNDS: usize = 8;
 #[derive(Serialize, Default)]
 struct Payload {
     refs: Vec<(u32, u64)>,
-    values: Vec<(u64, String, Value)>,
+    /// Pair values; no entity for a resource (`res(R)`).
+    values: Vec<(Option<u64>, String, Value)>,
     drop: Vec<u32>,
     /// Site instances and their entities, once mounted.
     instances: Vec<(u32, u64)>,
@@ -46,9 +47,9 @@ struct Response {
     patches: Vec<(u32, Value)>,
     mounts: Vec<(u32, String, Vec<NodeDesc>)>,
     unmounts: Vec<(u32, String)>,
-    subscribe: Vec<(u64, String)>,
-    unsubscribe: Vec<(u64, String)>,
-    needs: Vec<(u64, String)>,
+    subscribe: Vec<(Option<u64>, String)>,
+    unsubscribe: Vec<(Option<u64>, String)>,
+    needs: Vec<(Option<u64>, String)>,
     /// Sites whose reads were fixed by their first run: site, own components read.
     sites: Vec<(u32, Vec<String>)>,
     errors: Vec<ScriptError>,
@@ -63,6 +64,30 @@ fn component(world: &World, name: &str) -> Option<(ComponentId, ComponentLayout)
 }
 
 /// A component's current value as JSON, or null when the entity or component is gone.
+/// The entity a pair reads: its own, or a resource's entity.
+fn target(world: &World, e: Option<Entity>, id: ComponentId) -> Option<Entity> {
+    match e {
+        Some(e) => Some(e),
+        None => world.resource_entities().get(id),
+    }
+}
+
+/// A pair key from JS: an entity's bits, or null for a resource.
+fn key(bits: Option<u64>) -> Option<Option<Entity>> {
+    match bits {
+        None => Some(None),
+        Some(b) => Entity::try_from_bits(b).map(Some),
+    }
+}
+
+fn read_pair(world: &World, e: Option<Entity>, name: &str) -> Value {
+    let Some((id, _)) = component(world, name) else { return Value::Null };
+    match target(world, e, id) {
+        Some(t) => read(world, t, name),
+        None => Value::Null,
+    }
+}
+
 fn read(world: &World, e: Entity, name: &str) -> Value {
     let Some((id, layout)) = component(world, name) else { return Value::Null };
     let Some(ptr) = world.get_entity(e).ok().and_then(|em| em.get_by_id(id).ok()) else { return Value::Null };
@@ -93,10 +118,10 @@ fn frame_inner(world: &mut World) {
     let now = world.read_change_tick();
     let mut changed = Vec::new();
     for ((e, name), sub) in &reactive.subs {
-        let moved = match world.get_entity(*e) {
-            Ok(em) => em.get_change_ticks_by_id(sub.id).is_none_or(|t| t.is_changed(sub.last, now)),
-            // Despawned: tell JS once (null), then stop watching.
-            Err(_) => true,
+        let moved = match target(world, *e, sub.id).and_then(|t| world.get_entity(t).ok()) {
+            Some(em) => em.get_change_ticks_by_id(sub.id).is_none_or(|t| t.is_changed(sub.last, now)),
+            // Despawned (or the resource removed): tell JS once (null), then stop watching.
+            None => true,
         };
         if moved {
             changed.push((*e, name.clone()));
@@ -177,7 +202,7 @@ fn changed_rows(world: &mut World, now: bevy::ecs::change_detection::Tick) -> Ve
     out
 }
 
-fn run(world: &mut World, changed: Vec<(Entity, String)>, mut rows: Vec<u8>) {
+fn run(world: &mut World, changed: Vec<(Option<Entity>, String)>, mut rows: Vec<u8>) {
     let mut payload = Payload::default();
     {
         let mut tree = world.remove_resource::<TsxTree>().expect("tsx tree");
@@ -262,9 +287,9 @@ fn run(world: &mut World, changed: Vec<(Entity, String)>, mut rows: Vec<u8>) {
 }
 
 /// The current values of `pairs`, marking them delivered now.
-fn deliver(world: &mut World, pairs: &[(Entity, String)]) -> Vec<(u64, String, Value)> {
+fn deliver(world: &mut World, pairs: &[(Option<Entity>, String)]) -> Vec<(Option<u64>, String, Value)> {
     let now = world.read_change_tick();
-    let values: Vec<_> = pairs.iter().map(|(e, name)| (e.to_bits(), name.clone(), read(world, *e, name))).collect();
+    let values: Vec<_> = pairs.iter().map(|(e, name)| (e.map(|e| e.to_bits()), name.clone(), read_pair(world, *e, name))).collect();
     let mut tree = world.resource_mut::<TsxTree>();
     for ((e, name), (_, _, v)) in pairs.iter().zip(&values) {
         if v.is_null() {
@@ -277,18 +302,18 @@ fn deliver(world: &mut World, pairs: &[(Entity, String)]) -> Vec<(u64, String, V
 }
 
 /// Applies a host call's output; returns the pairs JS read but has no value for.
-fn apply(world: &mut World, r: Response) -> Vec<(Entity, String)> {
+fn apply(world: &mut World, r: Response) -> Vec<(Option<Entity>, String)> {
     for e in r.errors {
         log_error(world, e.message, e.location);
     }
     let now = world.read_change_tick();
     for (bits, name) in &r.unsubscribe {
-        if let Some(e) = Entity::try_from_bits(*bits) {
+        if let Some(e) = key(*bits) {
             world.resource_mut::<TsxTree>().reactive.subs.remove(&(e, name.clone()));
         }
     }
     for (bits, name) in &r.subscribe {
-        let Some(e) = Entity::try_from_bits(*bits) else { continue };
+        let Some(e) = key(*bits) else { continue };
         match component(world, name) {
             Some((id, _)) => {
                 world.resource_mut::<TsxTree>().reactive.subs.insert((e, name.clone()), Subscription { id, last: now });
@@ -323,7 +348,7 @@ fn apply(world: &mut World, r: Response) -> Vec<(Entity, String)> {
     for (slot, group, nodes) in r.mounts {
         slot_op(world, slot, group, nodes, true);
     }
-    r.needs.into_iter().filter_map(|(bits, name)| Entity::try_from_bits(bits).map(|e| (e, name))).collect()
+    r.needs.into_iter().filter_map(|(bits, name)| key(bits).map(|e| (e, name))).collect()
 }
 
 /// Writes one bound prop, unless it already holds the value.

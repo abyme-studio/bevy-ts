@@ -6,7 +6,8 @@ export { Time, Transform } from "bevy-ts";
 
 export declare const GlobalTransform: ComponentClass<{}, "reflect">;
 export type GlobalTransform = InstanceType<typeof GlobalTransform>;
-export declare const Name: ComponentClass<{}, "reflect">;
+/** `Name`; as an element, `<Name value="..." />` (or `<entity name="...">`). */
+export declare const Name: ComponentClass<{}, "reflect"> & { readonly __nameElement: true };
 export type Name = InstanceType<typeof Name>;
 export declare const ChildOf: ComponentClass<{}, "reflect">;
 export type ChildOf = InstanceType<typeof ChildOf>;
