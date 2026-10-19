@@ -246,8 +246,9 @@ None: new crate and modules. Protocol minor bump for the `bevy-ts/tsx_*` methods
 
 - 2026-10-19: TSX defines prefabs, what a thing is. Levels (where things are) and per-instance
   overrides are `.bsn` text files, which the IDE's viewport writes, as Godot writes `.tscn` and
-  Unity its scenes; Bevy's own editor plans the same. A literal prop inside a prefab may still be
-  rewritten in its TSX; a computed one is shown read-only. So the reconciler keeps each element's
+  Unity its scenes; Bevy's own editor plans the same. A literal prop inside a prefab is rewritten in its
+  TSX only by an explicit "Apply to prefab" (`levels.prefabEdits` defaults to `override`, operator
+  2026-10-19); a computed one is shown read-only. So the reconciler keeps each element's
   source location (file, line, column, key), and a `.bsn` level must be able to instance a TSX
   prefab by name and override its props. Loading and writing `.bsn` (bevy-ts ships its own loader
   until Bevy's lands) is a later change, `levels`; this change leaves room for it.

@@ -169,7 +169,7 @@ The writer's own writes are recognised by hash when the watcher reports them, so
 - *Beat: last writer wins (overwrite with our version).* It silently drops an agent's edit.
 - *Beat: a three-way text merge.* Name-path replay gives the same result for the cases that matter (different entities or fields), states the real conflict (same field) plainly, and needs no merge machinery.
 
-### 9. Open with the operator: is TSX rewritten by viewport edits, or only by "Apply to prefab"?
+### 9. TSX is rewritten only by "Apply to prefab" by default (operator, 2026-10-19)
 Take an entity inside a level-instanced prefab (enemy `b`'s `#eye`) or a prefab's own field (its mesh colour). Two policies are possible, chosen by `levels.prefabEdits` in the project config. Both are specced, and both run on the owner chain of decision 7.
 
 | | `override` (Unity's default; recommended) | `source` |
@@ -273,6 +273,9 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 
 ## Operator rulings
 
+- 2026-10-19: `levels.prefabEdits` defaults to `override`. A viewport edit is a per-instance `.bsn`
+  override; "Apply to prefab" rewrites the TSX literal. `source` stays a setting a project may choose.
+
 - 2026-10-19: TSX defines prefabs, what a thing is. Levels (where things are) and per-instance
   overrides are `.bsn` text files the IDE viewport writes, as Godot writes `.tscn` and Unity its
   scenes. Bevy 0.20 ships no `.bsn` loader, so bevy-ts loads and writes `.bsn` itself until
@@ -285,6 +288,5 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 
 ## Open Questions
 
-- Whether TSX is ever rewritten by viewport edits (`source`) or only by an explicit "Apply to prefab" (`override`). Decision 9 specs both behind `levels.prefabEdits`. `override` is recommended and is the default until the operator rules.
 - The exact upstream prop syntax inside `@SceneComp { … }` (`prop: v` against `@prop: v`). Task 1.1 pins E2 to whatever the 0.20 macro accepts.
 - Whether upstream's eventual child-override form matches E3's merge by name. Watch #23637 and the loader PR.
