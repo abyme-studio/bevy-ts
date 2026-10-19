@@ -84,4 +84,4 @@
 - [x] 12.6 Manifest: component declarations carry `id` and `scene` (props with type, default, `optional`); plugin API `component_decl` and `scene_components`; a runtime registry of scene components by name and `module#export` (`sceneComponent(name)`) for tsx's expand entry (levels decision 5)
 - [x] 12.7 `bevy_ts::ScriptHidden`: TS queries, TS lifecycle observers and `bevy-ts/entities`(`+watch`) skip marked entities (viewport's edit mode)
 - [x] 12.8 npm types, type tests, the cube example and walk, `bob_bench`, rapier/thrusters examples and the CLI and tsx integration tests on the new forms
-- [ ] 12.9 Release walk; tell bevy-ts-tsx, bevy-ts-levels-impl and bevy-ts-viewport-impl the commit
+- [x] 12.9 Release walk (all six steps pass); tell bevy-ts-tsx, bevy-ts-levels-impl and bevy-ts-viewport-impl the commit
