@@ -1,0 +1,2 @@
+    Checking dx-rust-side v0.0.0 (/Users/rjm/dev/bevy-ts/bench/dx/rust)
+    Finished `dev` profile [unoptimized] target(s) in 0.76s

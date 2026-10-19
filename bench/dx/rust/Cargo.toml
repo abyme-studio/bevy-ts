@@ -1,0 +1,11 @@
+[package]
+name = "dx-rust-side"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# The Rust Bevy column of docs/research/dx.md, compiled: `cargo check`.
+
+[dependencies]
+bevy = "0.20"
+bevy_rapier3d = { version = "0.37", default-features = false, features = ["dim3"] }

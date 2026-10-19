@@ -1,5 +1,5 @@
 // A prefab, entity-local event props, and spawning a prefab from a system.
-import { app, Commands, Local, Query, Res, system, Time, Transform, u32, f32, Update, inState } from "bevy-ts";
+import { app, commands, f32, inState, local, query, res, system, Time, Transform, u32, Update } from "bevy-ts";
 import { Collider, RigidBody } from "bevy-ts/rapier";
 import { Alive, Enemy, Explode, Game, Health } from "./systems.ts";
 
@@ -19,15 +19,18 @@ export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]
   </entity>
 );
 
-export const waves = system(
-  { commands: Commands, time: Res(Time), s: Local({ timer: f32, wave: u32 }), alive: Query([Enemy]) },
-  ({ commands, time, s, alive }) => {
+export const waves = system(() => {
+  const cmd = commands();
+  const time = res(Time);
+  const s = local({ timer: f32, wave: u32 });
+  const alive = query(Enemy);
+  return () => {
     s.timer += time.delta;
     if (s.timer < 5 || alive.len > 20) return;
     s.timer = 0;
     s.wave += 1;
-    for (let i = 0; i < s.wave; i++) commands.spawn(<Grunt at={[i * 2 - s.wave, 0, -12]} speed={2 + s.wave * 0.5} />);
-  },
-);
+    for (let i = 0; i < s.wave; i++) cmd.spawn(<Grunt at={[i * 2 - s.wave, 0, -12]} speed={2 + s.wave * 0.5} />);
+  };
+});
 
 app.addSystems(Update, waves.runIf(inState(Game.Playing)));

@@ -3,7 +3,7 @@
 // POD type, offsets from offset_of! or reflection); the constructors, sets and functions are
 // the curated part. Types only.
 import type {
-  ComponentHandle, Entity, Field, MessageType, Param, Plugin, ReadonlyVec3, SystemSet,
+  ComponentHandle, Entity, Field, MessageType, Plugin, ReadonlyVec3, SystemSet,
 } from "./mod.ts";
 import { bool, entity, f32, vec3 } from "./mod.ts";
 
@@ -61,8 +61,8 @@ export interface RapierContext {
   /** One host call for many rays (native decision 8). */
   castRays(rays: Float32Array, maxToi: number, out: { entity: Uint32Array; toi: Float32Array }): number;
 }
-/** `ReadRapierContext`, read-only world access declared in Rust. */
-export declare const RapierContext: Param<RapierContext>;
+/** `ReadRapierContext` in a setup: read-only world access declared in Rust. */
+export declare function rapierContext(): RapierContext;
 
 /** `RapierPhysicsPlugin::<NoUserData>::default()`, already added by the port's Rust half. */
 export declare const RapierPhysics: Plugin;

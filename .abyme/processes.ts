@@ -10,6 +10,9 @@ export default {
   "ports-proof": {
     cmd: "cd bench/ports && cargo test -- --nocapture 2>&1 | tee results/cargo-test.txt",
   },
+  "dx-rust-check": {
+    cmd: "cd bench/dx/rust && cargo check 2>&1 | tee ../results/rust-check.txt",
+  },
   build: { cmd: "cargo build --workspace --all-targets" },
   "tsx-test": { cmd: "cargo test -p bevy-ts-tsx -- --nocapture 2>&1 | tee target/tsx-test.log | tail -80" },
   test: { cmd: "cargo test --workspace 2>&1 | tee target/test.log | grep -E \"^test result|FAILED|panicked\"" },

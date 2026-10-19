@@ -176,13 +176,20 @@ export interface Query<R extends unknown[]> extends Iterable<R> {
   readonly tables: readonly Table[];
 }
 
-// ---------- System params ----------
+// ---------- System params: setup form ----------
+// `system(() => { const q = query(...); return () => { ...per frame } })`. The outer function runs
+// once per generation at load and declares what the system uses; the returned body runs each
+// frame. Declaring calls (`query`, `res`, `local`, ...) outside a setup are a load error.
 
-declare const paramBrand: unique symbol;
-/** A system parameter descriptor resolving to `T` inside the system body. */
-export interface Param<T> { readonly [paramBrand]: T }
-
-export declare function Query<const Ds extends readonly QueryDatum[]>(data: Ds, filter?: Filter): Param<Query<Row<Ds>>>;
+/** A query, refined by chained filters (zod-style). Filters keep the row type. */
+export interface QueryBuilder<R extends unknown[]> extends Query<R> {
+  with(...cs: readonly ComponentType[]): QueryBuilder<R>;
+  without(...cs: readonly ComponentType[]): QueryBuilder<R>;
+  /** Rows whose component changed since this system last ran (bridge per-row ticks). */
+  changed(...cs: readonly LayoutComponent[]): QueryBuilder<R>;
+  added(...cs: readonly ComponentType[]): QueryBuilder<R>;
+}
+export declare function query<const Ds extends readonly QueryDatum[]>(...data: Ds): QueryBuilder<Row<Ds>>;
 
 export interface ResourceType<N extends string = string, S extends Schema = Schema> {
   readonly name: N;
@@ -190,10 +197,11 @@ export interface ResourceType<N extends string = string, S extends Schema = Sche
   readonly resource: true;
 }
 export declare function resource<const N extends string, const S extends Schema>(name: N, fields: S): ResourceType<N, S>;
-export declare function Res<R extends ResourceType>(r: R): Param<Ref<R["schema"]>>;
-export declare function ResMut<R extends ResourceType>(r: R): Param<MutRef<R["schema"]>>;
-/** Per-system state with a layout. Lives in Rust, keyed by the system's id, so it survives reloads. */
-export declare function Local<const S extends Schema>(fields: S): Param<MutRef<S>>;
+/** In a setup: the resource's view for the system. In a TSX binding: a tracked read. */
+export declare function res<R extends ResourceType>(r: R): Ref<R["schema"]>;
+export declare function resMut<R extends ResourceType>(r: R): MutRef<R["schema"]>;
+/** Per-system state with a layout. Lives in Rust under the system's id, so it survives reloads. */
+export declare function local<const S extends Schema>(fields: S): MutRef<S>;
 
 export interface MessageType<N extends string = string, S extends Schema = Schema> {
   readonly name: N;
@@ -201,17 +209,17 @@ export interface MessageType<N extends string = string, S extends Schema = Schem
   readonly message: true;
 }
 export declare function message<const N extends string, const S extends Schema>(name: N, fields: S): MessageType<N, S>;
-export interface MessageWriterOf<S> {
+export interface MessageWriter<S> {
   write(value: Value<S>): void;
   /** Allocation-free: a writable view on a fresh slot. */
   next(): MutRef<S>;
 }
-export interface MessageReaderOf<S> extends Iterable<Ref<S>> {
+export interface MessageReader<S> extends Iterable<Ref<S>> {
   each(f: (m: Ref<S>) => void): void;
   readonly len: number;
 }
-export declare function MessageWriter<M extends MessageType>(m: M): Param<MessageWriterOf<M["schema"]>>;
-export declare function MessageReader<M extends MessageType>(m: M): Param<MessageReaderOf<M["schema"]>>;
+export declare function writer<M extends MessageType>(m: M): MessageWriter<M["schema"]>;
+export declare function reader<M extends MessageType>(m: M): MessageReader<M["schema"]>;
 
 export interface EventType<N extends string = string, S extends Schema = Schema, E extends boolean = boolean> {
   readonly name: N;
@@ -240,7 +248,7 @@ export interface EntityCommands {
   despawn(): void;
   readonly id: Entity;
 }
-export declare const Commands: Param<Commands>;
+export declare function commands(): Commands;
 
 // ---------- Rust resources bevy-ts ships typed ----------
 
@@ -249,9 +257,6 @@ export declare const Transform: ComponentHandle<"bevy_transform::components::tra
   translation: typeof vec3;
   rotation: typeof quat;
   scale: typeof vec3;
-}, "layout">;
-export declare const GlobalTransform: ComponentHandle<"bevy_transform::components::global_transform::GlobalTransform", {
-  translation: typeof vec3;
 }, "layout">;
 
 // ---------- States ----------
@@ -265,8 +270,7 @@ export declare function states<const N extends string, const V extends string>(
   name: N,
   values: readonly V[],
 ): StateType<N, V> & { readonly [K in V]: StateValue<N, K> };
-export declare function State<S extends StateType>(s: S): Param<{ readonly current: keyof S["values"] }>;
-export declare function NextState<S extends StateType>(s: S): Param<{ set(v: S["values"][keyof S["values"]]): void }>;
+export declare function nextState<S extends StateType>(s: S): { set(v: S["values"][keyof S["values"]]): void };
 
 // ---------- Systems, schedules, ordering ----------
 
@@ -290,12 +294,7 @@ export interface System extends SystemConfig {
   /** `module#export`, assigned by the loader: the identity hot reload keys on. */
   readonly id: string;
 }
-type Resolve<P> = { [K in keyof P]: P[K] extends Param<infer T> ? T : never };
-
-export declare function system<const P extends Record<string, Param<unknown>>>(
-  params: P,
-  run: (p: Resolve<P>) => void,
-): System;
+export declare function system(setup: () => () => void): System;
 /** Chain: each runs after the previous, as Bevy's `.chain()`. */
 export declare function chain(...s: readonly (System | SystemConfig)[]): SystemConfig;
 
@@ -327,10 +326,10 @@ export declare function Remove(c: ComponentType): Pattern<{}, true>;
 export declare const PointerClick: EventType<"bevy_picking::events::PointerClick", { x: typeof f32; y: typeof f32 }, true>;
 
 export interface Observer { readonly id: string }
-export declare function observer<S extends Schema, E extends boolean, const P extends Record<string, Param<unknown>>>(
+/** Same setup form as `system`; the body receives the trigger. */
+export declare function observer<S extends Schema, E extends boolean>(
   on: Pattern<S, E>,
-  params: P,
-  run: (on: Trigger<S, E>, p: Resolve<P>) => void,
+  setup: () => (on: Trigger<S, E>) => void,
 ): Observer;
 
 // ---------- App and plugins ----------
@@ -360,6 +359,5 @@ export interface NodeRef {
   readonly entity: Entity;
 }
 export declare function ref(): NodeRef;
-export declare function res<R extends ResourceType>(r: R): Ref<R["schema"]>;
 export declare function useComponent<C extends LayoutComponent>(target: NodeRef, c: C): () => Ref<C["schema"]>;
 export declare function px(n: number): string;
