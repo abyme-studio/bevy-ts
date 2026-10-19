@@ -61,6 +61,16 @@ pub struct ProjectConfig {
     pub features: Vec<String>,
     #[serde(default, rename = "engineCache")]
     pub engine_cache: Option<String>,
+    #[serde(default)]
+    pub levels: LevelsConfig,
+}
+
+/// `levels` in `bevy-ts.json`.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct LevelsConfig {
+    /// `override` (the default) or `source`: where a viewport edit inside a placed prefab goes.
+    #[serde(default, rename = "prefabEdits")]
+    pub prefab_edits: Option<String>,
 }
 
 /// A project: its root (the directory holding `bevy-ts.json`) and config.

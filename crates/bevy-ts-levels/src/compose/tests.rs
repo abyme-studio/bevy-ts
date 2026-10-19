@@ -38,10 +38,12 @@ impl Schema for TestSchema {
             "enemies::Grunt" | "Grunt" => Ok(SceneSchema {
                 component: ComponentSchema { name: "enemies::Grunt".into(), kind: ComponentKind::Ts, fields: vec![f("team", FieldType::U8, json!(0))], is_name: false },
                 props: vec![f("hp", FieldType::F32, json!(100.0))],
+                required: vec![],
             }),
             "Lamp" | "Drone" => Ok(SceneSchema {
                 component: ComponentSchema { name: path.into(), kind: ComponentKind::Ts, fields: vec![], is_name: false },
                 props: vec![],
+                required: vec![],
             }),
             _ => Err(format!("unknown scene component {path}")),
         }

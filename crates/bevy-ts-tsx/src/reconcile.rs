@@ -525,6 +525,14 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
                     .map(|(f, v)| (f, v, Provenance::Initial))
                     .chain(r.defaults.iter().map(|(f, v)| (f, v, Provenance::Default)))
                 {
+                    // A level override removed (levels rule 4): the field takes its default again.
+                    if p == Provenance::Default && prev.fields.get(f).is_some_and(|s| s.provenance == Provenance::Override) {
+                        if write_field(world, e, *id, layout, f, v) {
+                            stats.written += 1;
+                        }
+                        state.fields.insert(f.clone(), FieldState { provenance: p, applied: v.clone() });
+                        continue;
+                    }
                     let applied = prev.fields.get(f).map_or_else(|| v.clone(), |s| s.applied.clone());
                     state.fields.insert(f.clone(), FieldState { provenance: p, applied });
                 }

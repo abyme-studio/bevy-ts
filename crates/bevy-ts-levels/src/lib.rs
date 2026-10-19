@@ -10,8 +10,12 @@ pub mod check;
 pub mod compose;
 pub mod edit;
 pub mod engine;
+pub mod route;
 pub mod syntax;
 pub mod writer;
+
+pub use edit::{WriteResult, WriteResults};
+pub use route::{PrefabEdits, route, write};
 
 #[cfg(test)]
 #[allow(warnings, clippy::all, clippy::pedantic)]

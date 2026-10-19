@@ -36,7 +36,8 @@ pub fn asset_root(project_root: &std::path::Path) -> std::path::PathBuf {
 /// Bevy's `AssetPlugin` reading from `root` (an absolute path, so the binary's location and the
 /// working directory do not matter).
 pub fn asset_plugin(root: &std::path::Path) -> AssetPlugin {
-    AssetPlugin { file_path: root.to_string_lossy().into_owned(), ..default() }
+    // Watched, so a level saved by anyone reloads (levels decision 3).
+    AssetPlugin { file_path: root.to_string_lossy().into_owned(), watch_for_changes_override: Some(true), ..default() }
 }
 
 pub struct HeadlessPlugin;

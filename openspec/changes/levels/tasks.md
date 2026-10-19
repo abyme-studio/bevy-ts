@@ -29,13 +29,13 @@
 
 ## 4. Hot reload
 
-- [ ] 4.1 Watch level files through Bevy's file watcher; reconcile a file and its includers at one frame boundary; recognise the writer's own writes by hash
+- [x] 4.1 Watch level files through Bevy's file watcher; reconcile a file and its includers at one frame boundary; recognise the writer's own writes by hash
 - [ ] 4.2 Tests for every level hot-reload rule in design.md: unchanged overrides kept, removed overrides reverted, prop change keeps `initial*`, reorder respawns nothing, tombstones, bad file changes nothing
 - [ ] 4.3 Re-expand all instances inside each TS generation and fail the generation when a level fails under it
 
 ## 5. Viewport routes and protocol
 
-- [ ] 5.1 Confirm viewport V1; compute the owner chain and target per field under `levels.prefabEdits` (`override` default, `source`), and turn `bsn` edits into writer batches
+- [x] 5.1 Confirm viewport V1; compute the owner chain and target per field under `levels.prefabEdits` (`override` default, `source`), and turn `bsn` edits into writer batches
 - [ ] 5.2 `level_apply` to the next owner inward: a two-file transaction between `.bsn` files, and the tsx-route transaction that removes the override only on `written`
 - [ ] 5.3 Add `bevy-ts/level_list`, `level_node`, `level_write`, `level_apply` and `level+watch` to `protocol/bevy-ts.openrpc.json` as 1.2; regenerate types; conformance tests
 

@@ -386,3 +386,151 @@ mod writes {
         assert_eq!(find(&mut f, 2.0), second, "the positional id after it moved, not the entity");
     }
 }
+
+mod hot_reload {
+    use super::*;
+    use bevy_ts_levels::engine::content_hash;
+
+    /// Saves `file` and waits until every level including it has applied the new text.
+    fn save(f: &mut Fixture, file: &str, text: &str) {
+        write(&f.dir, file, text);
+        let hash = content_hash(text.as_bytes());
+        let errors = f.errors().len();
+        f.app.world().resource::<AssetServer>().reload(file.to_string());
+        for _ in 0..300 {
+            f.app.update();
+            if f.errors().len() > errors {
+                return;
+            }
+            let levels = f.app.world().resource::<Levels>();
+            if levels.affected(file).iter().all(|l| levels.roots[l].applied.get(file) == Some(&hash)) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        panic!("{file} never reloaded");
+    }
+
+    fn arena() -> Fixture {
+        let mut f = fixture(&format!("reload-{:?}", std::thread::current().id()).replace(['(', ')'], ""), &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        f
+    }
+
+    fn spawned(f: &Fixture) -> usize {
+        f.app.world().resource::<TsxTree>().last.spawned
+    }
+
+    #[test]
+    fn an_unchanged_override_is_not_written_again() {
+        let mut f = arena();
+        let b = f.by_name("EnemyB");
+        f.app.world_mut().get_mut::<Transform>(b).unwrap().translation.x = 7.0;
+        save(&mut f, "levels/arena.bsn", &ARENA.replace("Health { max: 250.0 }", "Health { max: 300.0 }"));
+        assert_eq!(f.translation(b).x, 7.0, "a system's move survives");
+        assert_eq!(f.hp(b).1, 300.0);
+    }
+
+    #[test]
+    fn a_removed_override_takes_the_default_again() {
+        let mut f = arena();
+        let a = f.by_name("EnemyA");
+        save(&mut f, "levels/arena.bsn", &ARENA.replace("Transform { translation: Vec3 { x: -3.0, z: -4.0 } }", "Transform { translation: Vec3 { x: -3.0 } }"));
+        assert_eq!(f.translation(a), Vec3::new(-3.0, 0.0, 0.0));
+        let node = f.app.world().get::<TsxNode>(a).unwrap();
+        assert_eq!(node.components["Transform"].fields["translation"].provenance, Provenance::Override);
+        save(&mut f, "levels/arena.bsn", &ARENA.replace("Transform { translation: Vec3 { x: -3.0, z: -4.0 } }\n", "Transform\n"));
+        assert_eq!(f.translation(a), Vec3::ZERO);
+    }
+
+    #[test]
+    fn reordering_respawns_nothing() {
+        let mut f = arena();
+        let (a, b) = (f.by_name("EnemyA"), f.by_name("EnemyB"));
+        let a_text = "#EnemyA\nTransform { translation: Vec3 { x: -3.0, z: -4.0 } }\ngame::Health { hp: 100.0, max: 100.0 }\n--\n";
+        let b_text = "#EnemyB\nTransform { translation: Vec3 { x: 3.0, z: -4.0 } }\nHealth { max: 250.0 }\n--\n";
+        let swapped = ARENA.replace(a_text, "").replace(b_text, &format!("{b_text}{a_text}"));
+        assert_ne!(swapped, ARENA);
+        save(&mut f, "levels/arena.bsn", &swapped);
+        assert_eq!((f.by_name("EnemyA"), f.by_name("EnemyB")), (a, b));
+        assert_eq!(spawned(&f), 0);
+    }
+
+    #[test]
+    fn a_despawned_entity_stays_dead() {
+        let mut f = arena();
+        let a = f.by_name("EnemyA");
+        f.app.world_mut().despawn(a);
+        save(&mut f, "levels/arena.bsn", &ARENA.replace("max: 250.0", "max: 260.0"));
+        let world = f.app.world_mut();
+        assert!(world.query::<&Name>().iter(world).all(|n| n.as_str() != "EnemyA"), "tombstoned (rule 7)");
+    }
+
+    #[test]
+    fn an_included_file_reloads_every_includer_copy() {
+        let mut f = arena();
+        save(&mut f, "levels/room.bsn", &ROOM.replace("x: 10.0", "x: 12.0"));
+        let world = f.app.world_mut();
+        let scales: Vec<f32> = world.query::<(&Name, &Transform)>().iter(world).filter(|(n, _)| n.as_str() == "Floor").map(|(_, t)| t.scale.x).collect();
+        assert_eq!(scales, [12.0, 12.0]);
+    }
+
+    #[test]
+    fn a_bad_file_changes_nothing_and_names_its_place() {
+        let mut f = arena();
+        let b = f.by_name("EnemyB");
+        save(&mut f, "levels/arena.bsn", &ARENA.replace("Health { max: 250.0 }", "Health { max: {250.0} }"));
+        assert_eq!(f.hp(b).1, 250.0);
+        let errors = f.errors();
+        assert!(errors.iter().any(|e| e.starts_with("levels/arena.bsn:8:15 levels: expressions are not supported")), "{errors:?}");
+        // Fixed, it applies.
+        save(&mut f, "levels/arena.bsn", &ARENA.replace("max: 250.0", "max: 270.0"));
+        assert_eq!(f.hp(b).1, 270.0);
+    }
+
+    #[test]
+    fn a_generation_whose_types_break_a_level_fails() {
+        let mut f = arena();
+        f.fake.push(FakeProgram {
+            manifest: Manifest { components: vec![], ..Default::default() },
+            sections: vec![Section { name: "levels".into(), bytes: serde_json::to_vec(&json!({ "levels": ["levels/arena.bsn"] })).unwrap(), location: None }],
+            ..Default::default()
+        });
+        let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+        assert_eq!(r.status, ReloadStatus::Failed, "{r:?}");
+        assert!(r.errors.iter().any(|e| e.message.contains("unknown component game::Health")), "{:?}", r.errors);
+    }
+}
+
+mod viewport_routes {
+    use super::*;
+    use bevy_ts_levels::{WriteResults, route, write as write_field};
+
+    #[test]
+    fn a_level_entity_routes_bsn_and_a_drag_writes_one_lane() {
+        let mut f = fixture("routes", &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        let b = f.by_name("EnemyB");
+        let r = route(f.app.world(), b, "Transform", "translation").unwrap();
+        assert_eq!(r["kind"], "bsn");
+        assert_eq!(r["namePath"], json!(["EnemyB"]));
+        assert_eq!(r["target"], json!({ "file": "levels/arena.bsn", "namePath": ["EnemyB"] }));
+        assert_eq!(r["policy"], "override");
+        write_field(f.app.world_mut(), 42, b, "Transform", "translation", json!([5.0, 0.0, -4.0])).unwrap();
+        let results = f.app.world_mut().resource_mut::<WriteResults>().drain();
+        assert_eq!((results[0].id, results[0].status), (42, "written"), "{results:?}");
+        let text = std::fs::read_to_string(f.dir.join("levels/arena.bsn")).unwrap();
+        assert_eq!(text, ARENA.replace("x: 3.0, z: -4.0", "x: 5.0, z: -4.0"));
+        assert_eq!(f.translation(b).x, 5.0);
+        let floor = {
+            let world = f.app.world_mut();
+            world.query::<(Entity, &Name)>().iter(world).find(|(_, n)| n.as_str() == "Floor").map(|(e, _)| e).unwrap()
+        };
+        let r = route(f.app.world(), floor, "Transform", "scale").unwrap();
+        assert_eq!(r["owners"].as_array().unwrap().len(), 3);
+        let loose = f.app.world_mut().spawn(Transform::default()).id();
+        assert!(route(f.app.world(), loose, "Transform", "translation").is_none());
+    }
+}

@@ -181,6 +181,9 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_systems(Update, headless::screenshot_on_request)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
+    if let Some(root) = assets {
+        app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
+    }
     app
 }
 
@@ -211,6 +214,11 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);
     app.insert_resource(channel).insert_resource(DevSource(compiler.clone()));
+    if let Ok(Some(project)) = crate::project::find(&compiler.root)
+        && project.config.levels.prefab_edits.as_deref() == Some("source")
+    {
+        app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().prefab_edits = bevy_ts_levels::PrefabEdits::Source;
+    }
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     bevy_ts_tsx::protocol::add_methods(&mut app);
     {

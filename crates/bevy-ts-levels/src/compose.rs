@@ -49,6 +49,8 @@ pub struct ComponentSchema {
 pub struct SceneSchema {
     pub component: ComponentSchema,
     pub props: Vec<FieldSchema>,
+    /// Props with no default that are not optional: an instance must set them.
+    pub required: Vec<String>,
 }
 
 /// The types a level is checked against: Bevy's registry and the generation's TS components.
@@ -185,23 +187,42 @@ struct Env<'a> {
 
 /// Composes the level at `path`.
 pub fn compose(path: &str, files: &mut dyn Files, schema: &dyn Schema, expander: &mut dyn Expander) -> Result<Composed, Vec<ScriptError>> {
+    let prepared = prepare(path, files, schema)?;
+    let expansions = if prepared.requests.is_empty() { Vec::new() } else { expander.expand(&prepared.requests)? };
+    prepared.finish(expansions)
+}
+
+/// A level read and typed, waiting for its scene component instances to be expanded: the first
+/// half of [`compose`], for callers whose expansion needs what the reading borrowed (the world).
+pub struct Prepared {
+    top: Vec<LNode>,
+    /// One per scene component instance, in order; [`Prepared::finish`] takes one description each.
+    pub requests: Vec<ExpandRequest>,
+    files: BTreeSet<String>,
+    warnings: Vec<ScriptError>,
+}
+
+/// Reads and types the level at `path` and every file it includes.
+pub fn prepare(path: &str, files: &mut dyn Files, schema: &dyn Schema) -> Result<Prepared, Vec<ScriptError>> {
     let mut env = Env { files, schema, requests: Vec::new(), stack: Vec::new(), seen: BTreeSet::new(), warnings: Vec::new() };
     let top = load(&mut env, path, None).map_err(|e| vec![e])?;
-    let mut expansions: Vec<Option<NodeDesc>> = if env.requests.is_empty() {
-        Vec::new()
-    } else {
-        let out = expander.expand(&env.requests)?;
-        if out.len() != env.requests.len() {
-            return Err(vec![ScriptError::new(format!("expansion returned {} descriptions for {} instances", out.len(), env.requests.len()))]);
+    Ok(Prepared { top, requests: env.requests, files: env.seen, warnings: env.warnings })
+}
+
+impl Prepared {
+    /// Builds the description from the instances' expansions, one per request.
+    pub fn finish(self, expansions: Vec<NodeDesc>) -> Result<Composed, Vec<ScriptError>> {
+        if expansions.len() != self.requests.len() {
+            return Err(vec![ScriptError::new(format!("expansion returned {} descriptions for {} instances", expansions.len(), self.requests.len()))]);
         }
-        out.into_iter().map(Some).collect()
-    };
-    let mut composed = Composed { files: env.seen, warnings: env.warnings, ..Default::default() };
-    for n in top {
-        let node = finish(n, None, &mut expansions, &[], &[], schema, &mut composed.owners).map_err(|e| vec![e])?;
-        composed.nodes.push(node);
+        let mut expansions: Vec<Option<NodeDesc>> = expansions.into_iter().map(Some).collect();
+        let mut composed = Composed { files: self.files, warnings: self.warnings, ..Default::default() };
+        for n in self.top {
+            let node = finish(n, None, &mut expansions, &[], &[], &mut composed.owners).map_err(|e| vec![e])?;
+            composed.nodes.push(node);
+        }
+        Ok(composed)
     }
-    Ok(composed)
 }
 
 fn load(env: &mut Env, path: &str, at: Option<(&FileCtx, Span)>) -> Result<Vec<LNode>, ScriptError> {
@@ -267,6 +288,9 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
                         };
                         props.insert(f.name.clone(), convert(ctx, &format!("{}.{}", scene.component.name, f.name), &f.value, &s.ty, &s.default)?);
                     }
+                    if let Some(missing) = scene.required.iter().find(|r| !props.contains_key(*r)) {
+                        return Err(ctx.err(format!("{} needs @{missing}", scene.component.name), p.span));
+                    }
                     env.requests.push(ExpandRequest { component: scene.component.name.clone(), props, at: ctx.at(p.span) });
                     node.base = Base::Scene(env.requests.len() - 1);
                 }
@@ -314,7 +338,6 @@ fn finish(
     expansions: &mut [Option<NodeDesc>],
     parent: &[String],
     frames: &[Frame],
-    schema: &dyn Schema,
     owners: &mut BTreeMap<Vec<String>, Vec<Frame>>,
 ) -> Result<NodeDesc, ScriptError> {
     let key = key.unwrap_or_else(|| l.key.clone());
@@ -344,14 +367,14 @@ fn finish(
         }
         Base::Include(mut nodes) if nodes.len() == 1 => {
             let inner = nodes.pop().expect("one");
-            let mut n = finish(inner, Some(key.clone()), expansions, parent, &chain, schema, owners)?;
+            let mut n = finish(inner, Some(key.clone()), expansions, parent, &chain, owners)?;
             n.source.push(at.clone());
             n
         }
         Base::Include(nodes) => {
             let mut children = Vec::new();
             for inner in nodes {
-                children.push(finish(inner, None, expansions, &path, &chain, schema, owners)?);
+                children.push(finish(inner, None, expansions, &path, &chain, owners)?);
             }
             NodeDesc {
                 key: key.clone(),
@@ -375,7 +398,7 @@ fn finish(
         apply_patch(&mut node, p)?;
     }
     for child in l.children {
-        merge_child(&mut node, child, expansions, &path, &chain, schema, owners)?;
+        merge_child(&mut node, child, expansions, &path, &chain, owners)?;
     }
     Ok(node)
 }
@@ -388,12 +411,11 @@ fn merge_child(
     expansions: &mut [Option<NodeDesc>],
     path: &[String],
     chain: &[Frame],
-    schema: &dyn Schema,
     owners: &mut BTreeMap<Vec<String>, Vec<Frame>>,
 ) -> Result<(), ScriptError> {
     let existing = child.name.as_ref().and_then(|n| node.children.iter().position(|c| &c.key == n));
     let Some(i) = existing else {
-        node.children.push(finish(child, None, expansions, path, chain, schema, owners)?);
+        node.children.push(finish(child, None, expansions, path, chain, owners)?);
         return Ok(());
     };
     if !matches!(child.base, Base::None) {
@@ -409,7 +431,7 @@ fn merge_child(
         apply_patch(target, p)?;
     }
     for grandchild in child.children {
-        merge_child(target, grandchild, expansions, &cpath, &cchain, schema, owners)?;
+        merge_child(target, grandchild, expansions, &cpath, &cchain, owners)?;
     }
     Ok(())
 }

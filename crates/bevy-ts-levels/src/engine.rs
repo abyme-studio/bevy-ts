@@ -2,7 +2,7 @@
 //! `tsx` as external roots named `level:<path>`, the world's types as a [`Schema`], and the
 //! `LevelInstance` component on every level-placed entity.
 
-use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, Expander, FieldSchema, Files, Frame, SceneSchema, Schema, ValueType};
+use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, FieldSchema, Files, Frame, SceneSchema, Schema, ValueType};
 use crate::syntax::{self, EntityList, Entry, Extension, ParsedFile};
 use bevy::asset::io::Reader;
 use bevy::asset::{AssetLoadFailedEvent, AssetLoader, LoadContext, ReflectHandle, UntypedAssetLoadFailedEvent};
@@ -154,11 +154,13 @@ pub struct Levels {
     pub roots: BTreeMap<String, LevelRoot>,
     /// Where asset paths are on disk, for the writer: Bevy's default `assets` folder unless set.
     pub asset_root: std::path::PathBuf,
+    /// The project's `levels.prefabEdits`.
+    pub prefab_edits: crate::route::PrefabEdits,
 }
 
 impl Default for Levels {
     fn default() -> Self {
-        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets") }
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default() }
     }
 }
 
@@ -217,14 +219,29 @@ pub fn close(world: &mut World, path: &str) {
     }
 }
 
-fn check_section(_: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> Result<(), Vec<ScriptError>> {
+fn check_section(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> Result<(), Vec<ScriptError>> {
     let s: LevelSection = serde_json::from_slice(input.bytes).map_err(|e| vec![ScriptError::at(format!("levels section: {e}"), input.location.clone())])?;
     for p in &s.levels {
         if !p.ends_with(".bsn") {
             return Err(vec![ScriptError::at(format!("app.level({p:?}): expected a path to a .bsn file"), input.location.clone())]);
         }
     }
-    Ok(())
+    // Rule 9: a generation under which a loaded level no longer reads fails whole. Expansions
+    // need the new generation's JS, so they are checked once it is live.
+    let mut errors = Vec::new();
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    let schema = WorldSchema::pending(world, input.components, &registry);
+    let mut files = LoadedFiles { server: world.resource::<AssetServer>(), assets: world.resource::<Assets<BsnLevel>>(), hashes: BTreeMap::new() };
+    for p in &s.levels {
+        if files.parsed(p).is_err() {
+            continue;
+        }
+        if let Err(e) = compose::prepare(p, &mut files, &schema) {
+            errors.extend(e.into_iter().filter(|e| !e.message.ends_with(": not loaded")));
+        }
+    }
+    if errors.is_empty() { Ok(()) } else { Err(errors) }
 }
 
 fn apply_section(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection) {
@@ -379,9 +396,25 @@ impl Files for LoadedFiles<'_> {
 /// The world's components as levels see them: layout-tier Rust components, `Name`, and the
 /// live generation's TS components, by full path or unambiguous short name.
 pub struct WorldSchema<'w> {
-    pub ts: &'w TsComponents,
+    /// The generation's TS components: the live ones, or a pending generation's while checking.
+    pub ts: Vec<bevy_ts::manifest::ComponentDecl>,
     pub native: &'w NativeLayouts,
     pub registry: &'w TypeRegistry,
+}
+
+impl<'w> WorldSchema<'w> {
+    /// The live generation's types.
+    pub fn live(world: &'w World, registry: &'w TypeRegistry) -> Self {
+        let ts = world.resource::<TsComponents>();
+        let decls = ts.current().filter(|c| ts.live(&c.decl.name).is_some()).map(|c| c.decl.clone()).collect();
+        WorldSchema { ts: decls, native: world.resource::<NativeLayouts>(), registry }
+    }
+
+    /// A pending generation's types, while it is checked.
+    pub fn pending(world: &'w World, pending: &bevy_ts::components::PendingComponents, registry: &'w TypeRegistry) -> Self {
+        let decls = pending.iter().filter_map(|(name, ..)| pending.decl(name).cloned()).collect();
+        WorldSchema { ts: decls, native: world.resource::<NativeLayouts>(), registry }
+    }
 }
 
 fn short(path: &str) -> &str {
@@ -390,14 +423,13 @@ fn short(path: &str) -> &str {
 
 impl WorldSchema<'_> {
     fn ts_schema(&self, name: &str) -> Option<ComponentSchema> {
-        let c = self.ts.live(name)?;
-        let fields = c
-            .decl
+        let decl = self.ts.iter().find(|d| d.name == name)?;
+        let fields = decl
             .fields
             .iter()
             .map(|f| FieldSchema { name: f.name.clone(), ty: ValueType::Field(f.ty.clone()), default: f.default.clone().unwrap_or_else(|| value::zero(&f.ty)) })
             .collect();
-        Some(ComponentSchema { name: c.decl.name.clone(), kind: ComponentKind::Ts, fields, is_name: false })
+        Some(ComponentSchema { name: decl.name.clone(), kind: ComponentKind::Ts, fields, is_name: false })
     }
 
     /// What a reflected field holds.
@@ -470,7 +502,7 @@ impl Schema for WorldSchema<'_> {
         if let Some(s) = self.ts_schema(path) {
             return Ok(s);
         }
-        let mut candidates: Vec<String> = self.ts.current().filter(|c| self.ts.live(&c.decl.name).is_some() && short(&c.decl.name) == path).map(|c| c.decl.name.clone()).collect();
+        let mut candidates: Vec<String> = self.ts.iter().filter(|d| short(&d.name) == path).map(|d| d.name.clone()).collect();
         let native_full = self.native.iter().any(|n| n.type_path == path);
         match self.native.ambiguous(path) {
             Some(paths) if !native_full => candidates.extend(paths.iter().cloned()),
@@ -508,26 +540,65 @@ impl Schema for WorldSchema<'_> {
     }
 
     fn scene(&self, path: &str) -> Result<SceneSchema, String> {
-        Err(format!("@{path}: scene components cannot be placed yet; their props are read by systems-api's compile pass (levels task 2.5)"))
+        // By name, by id (`src/enemies.tsx#Grunt`), or by a short name only one has.
+        let by = |f: &dyn Fn(&bevy_ts::manifest::ComponentDecl) -> bool| self.ts.iter().filter(|d| f(d)).cloned().collect::<Vec<_>>();
+        let mut found = by(&|d| d.name == path || d.id.as_deref() == Some(path));
+        if found.is_empty() {
+            found = by(&|d| short(&d.name) == path && d.scene.is_some());
+        }
+        let decl = match found.as_slice() {
+            [one] => one.clone(),
+            [] => return Err(format!("unknown scene component {path}")),
+            many => return Err(format!("{path} is ambiguous: {}; write the full path", many.iter().map(|d| d.name.as_str()).collect::<Vec<_>>().join(", "))),
+        };
+        let Some(scene) = &decl.scene else {
+            return Err(format!("{} is not a scene component: a level places classes that extend SceneComponent with a static scene()", decl.name));
+        };
+        let component = self.ts_schema(&decl.name).ok_or_else(|| format!("{} is not live", decl.name))?;
+        let props = scene
+            .props
+            .iter()
+            .map(|p| {
+                let (ty, zero) = match &p.ty {
+                    bevy_ts::manifest::PropType::Field(t) => (ValueType::Field(t.clone()), value::zero(t)),
+                    bevy_ts::manifest::PropType::String { .. } => (ValueType::String, Value::String(String::new())),
+                };
+                FieldSchema { name: p.name.clone(), ty, default: p.default.clone().unwrap_or(zero) }
+            })
+            .collect();
+        let required = scene.props.iter().filter(|p| p.default.is_none() && !p.has_default && !p.optional).map(|p| p.name.clone()).collect();
+        Ok(SceneSchema { component, props, required })
     }
 }
 
-/// No scene component is placeable until task 2.5, so nothing reaches this.
-struct NoExpander;
-
-impl Expander for NoExpander {
-    fn expand(&mut self, _: &[ExpandRequest]) -> Result<Vec<NodeDesc>, Vec<ScriptError>> {
-        Err(vec![ScriptError::new("scene component expansion is not available yet")])
-    }
+/// Expands scene component instances through tsx's host entry: one call for all of them.
+fn expand(world: &mut World, requests: &[ExpandRequest]) -> Result<Vec<NodeDesc>, Vec<ScriptError>> {
+    let _ = (world, requests);
+    Err(vec![ScriptError::new("scene component expansion is not available yet (tsx's expand entry)")])
 }
 
-/// Composes one level from the loaded files.
-pub fn compose_level(world: &World, path: &str) -> (Result<Composed, Vec<ScriptError>>, BTreeMap<String, u64>) {
-    let mut files = LoadedFiles { server: world.resource::<AssetServer>(), assets: world.resource::<Assets<BsnLevel>>(), hashes: BTreeMap::new() };
-    let registry = world.resource::<AppTypeRegistry>().read();
-    let schema = WorldSchema { ts: world.resource::<TsComponents>(), native: world.resource::<NativeLayouts>(), registry: &registry };
-    let r = compose::compose(path, &mut files, &schema, &mut NoExpander);
-    (r, files.hashes)
+/// Composes one level from the loaded files, expanding its instances.
+pub fn compose_level(world: &mut World, path: &str) -> (Result<Composed, Vec<ScriptError>>, BTreeMap<String, u64>) {
+    let (prepared, hashes) = {
+        let mut files = LoadedFiles { server: world.resource::<AssetServer>(), assets: world.resource::<Assets<BsnLevel>>(), hashes: BTreeMap::new() };
+        let registry = world.resource::<AppTypeRegistry>().read();
+        let schema = WorldSchema::live(world, &registry);
+        let p = compose::prepare(path, &mut files, &schema);
+        (p, files.hashes)
+    };
+    let prepared = match prepared {
+        Ok(p) => p,
+        Err(e) => return (Err(e), hashes),
+    };
+    let expansions = if prepared.requests.is_empty() {
+        Vec::new()
+    } else {
+        match expand(world, &prepared.requests) {
+            Ok(e) => e,
+            Err(e) => return (Err(e), hashes),
+        }
+    };
+    (prepared.finish(expansions), hashes)
 }
 
 fn log(world: &mut World, level: LogLevel, e: &ScriptError) {
