@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The gate a native task group lands on: clippy, every workspace test, the JS runtime tests,
-# the npm package check and vitest, the protocol check and the change's strict validation.
+# the npm package check and vitest, the protocol and bevy-ts/bevy checks and the change's strict validation.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p target
@@ -16,7 +16,9 @@ deno=${PIPESTATUS[0]}
 npm=$?
 scripts/gen-protocol.sh --check
 protocol=$?
+scripts/gen-bevy-types.sh --check
+bevy=$?
 openspec validate native --strict
 spec=$?
-echo "gate: clippy=$clippy tests=$tests deno=$deno npm=$npm protocol=$protocol spec=$spec"
-[[ $clippy == 0 && $tests == 0 && $deno == 0 && $npm == 0 && $protocol == 0 && $spec == 0 ]]
+echo "gate: clippy=$clippy tests=$tests deno=$deno npm=$npm protocol=$protocol bevy=$bevy spec=$spec"
+[[ $clippy == 0 && $tests == 0 && $deno == 0 && $npm == 0 && $protocol == 0 && $bevy == 0 && $spec == 0 ]]
