@@ -177,6 +177,10 @@ None: a new crate, a CLI flag, protocol 1.1 (additions only). abyme pins major 1
 
 ## Operator rulings
 
+- 2026-10-19: the editor follows a passed-through prop one level up to a literal call-site argument;
+  otherwise the edit goes to `.bsn`. Play mode hidden keeps simulating at 60 Hz. Game UI over the
+  edit view is off by default, with a toggle (`ui: false`).
+
 - 2026-10-19: the game draws inside abyme's macOS window from the start, in a native hole, as
   abyme's browser view puts a WKWebView behind its page. The engine renders to an offscreen target
   shared across processes as a GPU surface (IOSurface on macOS); abyme's app draws it in the hole;
@@ -187,6 +191,3 @@ None: a new crate, a CLI flag, protocol 1.1 (additions only). abyme pins major 1
 
 ## Open Questions
 
-- Whether the editor follows a passed-through prop (`translation={at}`) up the source chain to a literal call-site argument, or placement waits for `levels`. abyme's change decides; it changes how useful drags are before `levels`.
-- Whether play mode hidden should keep simulating at 60 Hz (as specced) or pause, as Godot's embedded game does not.
-- Whether game UI should show over the editor view by default (`ui: false` is specced).
