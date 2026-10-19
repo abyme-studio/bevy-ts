@@ -33,6 +33,8 @@ export declare const vec2: Field<"vec2">;
 /** A field type in schemas, and a scratch-vector constructor in code: `vec3(0, 1, 0)`. */
 export declare const vec3: Field<"vec3"> & ((x?: number, y?: number, z?: number) => Vec3);
 export type vec3 = Vec3;
+/** A vector prop or initial value: a tuple or a vector. */
+export type Vec3Like = readonly [number, number, number] | ReadonlyVec3;
 export declare const quat: Field<"quat"> & (() => Quat);
 export type quat = Quat;
 export declare const entity: Field<"entity">;
@@ -210,8 +212,8 @@ export interface Commands {
   /** Components (`Health.of({ hp: 3 })`) or a prefab element (`<Grunt speed={3} />`). */
   spawn(...parts: readonly (Component | ReflectComponent | Element)[]): Entity;
   entity(e: Entity): EntityCommands;
-  trigger(target: Entity, event: EntityEvent): void;
-  trigger(event: Event): void;
+  /** As Rust's `commands.trigger(Explode { entity, radius })`: an entity event carries its target. */
+  trigger(event: EntityEvent | Event): void;
   write(message: Message): void;
 }
 export interface EntityCommands {
@@ -227,13 +229,11 @@ declare const lifecycleBrand: unique symbol;
 export type Add<C> = { readonly [lifecycleBrand]: ["add", C] };
 export type Insert<C> = { readonly [lifecycleBrand]: ["insert", C] };
 export type Remove<C> = { readonly [lifecycleBrand]: ["remove", C] };
-/** An observer's first parameter, as Bevy's `On<Explode>` / `On<Add<Health>>`. */
-export interface On<E> {
-  readonly event: E extends { readonly [lifecycleBrand]: unknown } ? {} : ReadView<E>;
-  readonly entity: Entity;
-  /** Stop bubbling. */
-  propagate(on: boolean): void;
-}
+/** An observer's first parameter, as Bevy's `On<Explode>` / `On<Add<Health>>`: the event's fields
+ *  directly (`explode.radius`, as Rust's `On` derefs to the event), plus `propagate`. */
+export type On<E> =
+  & (E extends { readonly [lifecycleBrand]: unknown } ? { readonly entity: Entity } : ReadView<E>)
+  & { /** Stop bubbling. */ propagate(on: boolean): void };
 /** bevy_picking 0.20's `PointerClick`, an entity event that bubbles. */
 export declare class PointerClick extends EntityEvent { static readonly path: "bevy_picking::events::PointerClick"; declare x: f32; declare y: f32 }
 
@@ -248,16 +248,19 @@ export declare function resourceExists(r: abstract new (...a: never) => unknown)
 export declare function onMessage(m: abstract new (...a: never) => unknown): Condition;
 export declare function not(c: Condition): Condition;
 
-export interface SystemSet { readonly set: string }
-export declare function systemSet(name: string): SystemSet;
+/** `class EnemySet extends SystemSet {}`, as Rust's `#[derive(SystemSet)] struct EnemySet;`. Named like a component. */
+export declare abstract class SystemSet { static readonly path?: string; protected readonly __set?: true }
+type SetRef = abstract new () => SystemSet;
+/** A set a Rust crate exposed by name (`app.ts_set("rapier:step", ...)`); ports export typed ones. */
+export declare function systemSet(name: string): SetRef;
 
 type Systemish = SystemFn | System | SystemConfig;
 /** Bevy's tuple of systems and its config methods: `systems(a, b).after(x).runIf(c)`. */
 export interface SystemConfig {
-  after(...x: readonly (Systemish | SystemSet)[]): SystemConfig;
-  before(...x: readonly (Systemish | SystemSet)[]): SystemConfig;
+  after(...x: readonly (Systemish | SetRef)[]): SystemConfig;
+  before(...x: readonly (Systemish | SetRef)[]): SystemConfig;
   runIf(c: Condition): SystemConfig;
-  inSet(s: SystemSet): SystemConfig;
+  inSet(s: SetRef): SystemConfig;
 }
 export declare function systems(...s: readonly Systemish[]): SystemConfig;
 /** Each runs after the previous, as Bevy's `.chain()`. */
@@ -314,7 +317,7 @@ export declare class Time extends Resource {
 
 export interface App {
   addSystems(schedule: Schedule, ...systems: readonly Systemish[]): App;
-  addObserver(o: (on: On<never>, ...params: never[]) => void): App;
+  addObserver(o: (on: never, ...params: never[]) => void): App;
   addPlugins(...p: readonly Plugin[]): App;
   initState(initial: StateValue): App;
   insertResource(r: Resource): App;

@@ -77,7 +77,7 @@ function decl(t: ts.TypeNode, sf: ts.SourceFile, sub: Map<string, string> = new 
 const DATA = new Set(["Component", "ReflectComponent", "Resource", "Message", "Event", "EntityEvent"]);
 const KINDS: Record<string, string> = {
   f32: "f32", f64: "f64", i8: "i8", u8: "u8", i16: "i16", u16: "u16", i32: "i32", u32: "u32",
-  bool: "bool", boolean: "bool", Entity: "entity", Vec2: "vec2", Vec3: "vec3", Vec4: "vec4", Quat: "quat",
+  bool: "bool", boolean: "bool", Entity: "entity", Vec2: "vec2", Vec3: "vec3", Vec3Like: "vec3", Vec4: "vec4", Quat: "quat",
 };
 function fieldKind(t: ts.TypeNode, sf: ts.SourceFile): string {
   if (ts.isUnionTypeNode(t) && t.types.every((u) => ts.isLiteralTypeNode(u) && ts.isStringLiteral(u.literal))) {
@@ -90,6 +90,7 @@ function fieldKind(t: ts.TypeNode, sf: ts.SourceFile): string {
 function readData(n: ts.ClassDeclaration, sf: ts.SourceFile, file: string) {
   const base = n.heritageClauses?.[0]?.types[0]?.expression.getText(sf) ?? "";
   if (base.startsWith("States(")) return console.log(`${n.name!.text}: states ${base.slice(6)}`);
+  if (base === "SystemSet") return console.log(`${n.name!.text}: set "${file}#${n.name!.text}"`);
   if (!DATA.has(base)) return;
   let path = `${file}#${n.name!.text}`;
   const fields: string[] = [];
@@ -110,6 +111,34 @@ function readData(n: ts.ClassDeclaration, sf: ts.SourceFile, file: string) {
 
 const sf = load(resolve(Deno.args[0]));
 const rel = Deno.args[0].replace(/^.*?examples\//, "examples/");
+// Prefabs: exported arrow functions in .tsx whose one parameter is a destructured, typed props object.
+// Name `module#export`, pinned by `Name.path = "..."`; props and defaults read as fields.
+const pinned = new Map<string, string>();
+for (const n of sf.statements) {
+  if (ts.isExpressionStatement(n) && ts.isBinaryExpression(n.expression) && ts.isPropertyAccessExpression(n.expression.left)
+    && n.expression.left.name.text === "path" && ts.isStringLiteral(n.expression.right)) {
+    pinned.set(n.expression.left.expression.getText(sf), n.expression.right.text);
+  }
+}
+function readPrefab(name: string, fn: ts.ArrowFunction) {
+  const p = fn.parameters[0];
+  if (!p || !p.type || !ts.isTypeLiteralNode(p.type) || !ts.isObjectBindingPattern(p.name)) return;
+  const defaults = new Map(p.name.elements.map((e) => [e.name.getText(sf), e.initializer?.getText(sf)]));
+  try {
+    const props = p.type.members.map((m) => {
+      const ps = m as ts.PropertySignature, k = ps.name.getText(sf), d = defaults.get(k);
+      return `${k}: ${fieldKind(ps.type!, sf)}${d ? ` = ${d}` : ""}`;
+    });
+    console.log(`${name}: prefab "${pinned.get(name) ?? `${rel}#${name}`}" { ${props.join(", ")} }`);
+  } catch (e) { console.log(`${name}: ERROR ${(e as Error).message}`); }
+}
+for (const n of sf.statements) {
+  if (ts.isVariableStatement(n) && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+    for (const d of n.declarationList.declarations) {
+      if (d.initializer && ts.isArrowFunction(d.initializer) && Deno.args[0].endsWith(".tsx")) readPrefab(d.name.getText(sf), d.initializer);
+    }
+  }
+}
 for (const n of sf.statements) {
   if (ts.isClassDeclaration(n) && n.name && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) readData(n, sf, rel);
   if (ts.isFunctionDeclaration(n) && n.name && n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {

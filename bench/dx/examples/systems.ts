@@ -4,7 +4,7 @@
 import {
   type Add, app, chain, type Changed, Component, type Commands, type Entity, EntityEvent, type f32, FixedUpdate,
   inState, type Local, Message, type MessageReader, type MessageWriter, type Mut, type NextState, type On,
-  OnEnter, type Option, type Query, type Res, type ResMut, Resource, States, systems, systemSet, Time,
+  OnEnter, type Option, type Query, type Res, type ResMut, Resource, States, systems, SystemSet, Time,
   Transform, type u32, Update, vec3, type With, type Without,
 } from "bevy-ts";
 import { Collider, Velocity } from "bevy-ts/rapier";
@@ -86,7 +86,7 @@ export function pause(next: NextState<Game>) {
   next.set("Paused");
 }
 
-export const EnemySet = systemSet("game::Enemies");
+export class EnemySet extends SystemSet {}
 
 // ---------- 3. A message and an observer ----------
 
@@ -102,7 +102,7 @@ export function applyDamage(
     h.hp -= d.amount;
     if (h.hp <= 0) {
       score.value += 1;
-      commands.trigger(d.target, Explode.of({ radius: 3 }));
+      commands.trigger(Explode.of({ entity: d.target, radius: 3 }));
     }
   });
   // @ts-expect-error  amount is a number
@@ -118,7 +118,7 @@ export function onExplode(
   const [, at] = q.get(explode.entity) ?? [];
   if (!at) return;
   q.each((e, t) => {
-    if (t.translation.distance(at.translation) < explode.event.radius) damage.write({ target: e, amount: 50 });
+    if (t.translation.distance(at.translation) < explode.radius) damage.write({ target: e, amount: 50 });
   });
   commands.entity(explode.entity).despawn();
 }

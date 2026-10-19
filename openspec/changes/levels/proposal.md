@@ -6,7 +6,7 @@ The operator ruled (2026-10-19) that TSX defines prefabs, what a thing is, and t
 
 - A `.bsn` reader for upstream's file grammar (the `bevy_bsn` subset from Bevy PR #26043) plus four named extensions: comments, prefab instances `@game::Enemy { … }`, quoted names `#"…"`, and child overrides that merge by name. A differential test against vendored `bevy_bsn` keeps the extension-free part identical to upstream.
 - Levels: `app.level("levels/arena.bsn")` loads a file as a reconciled root. Each top-level entity is a named entity. It can instance a TSX prefab by registered name with props, layer component overrides after it, override the prefab's keyed children by name, and include another level (`:"levels/room.bsn"`).
-- TSX prefabs gain an optional registered form, `prefab("game::Enemy", props, fn)`, with a typed props schema so a text file can call them. Plain-function prefabs keep working inside TSX.
+- Every exported TSX prefab is callable from a level by name, `module#export` or a pinned `Enemy.path = "game::Enemy"`, with props read from its props type by the compile step (operator ruling 2026-10-20); no registration call.
 - Identity: an entity's id is the level path plus its `#Name` path. Names are unique among siblings. The writer names an unnamed entity the first time it writes to it. Renames go through a writer operation, so the entity is kept.
 - A lossless, span-keeping parse and a writer that edits by splicing text. A one-field edit changes one line. Comments, order and hand formatting are kept, and new entries copy the file's indentation.
 - `.bsn` edits arrive as `viewport` `bsn` routes and as `bevy-ts/level_write` operations from the protocol: set field, revert override, set prop, add instance, add entity, delete, rename and reparent.
@@ -33,7 +33,7 @@ None. `tsx` and `viewport` are not archived. What this change needs from them is
 ## Impact
 
 - New crate `bevy-ts-levels`, depending on `bevy-ts`, `bevy-ts-tsx` and `bevy-ts-remote`. It holds the vendored `bevy_bsn` syntax module (MIT/Apache-2.0), the lossless parser, the `BsnLevel` asset loader, level roots, the writer and the protocol methods.
-- npm package: `prefab()` and `app.level()` in `bevy-ts`.
+- npm package: `app.level()` in `bevy-ts`.
 - `protocol/bevy-ts.openrpc.json`: `bevy-ts/level_*` methods. This is a minor bump to 1.2, after viewport's 1.1.
 - Needs additions to `tsx`: registered prefabs, external roots, `override` provenance and binding-site lookups for refusing overrides of bound fields. It also changes `viewport`'s route payload: the owner chain and the prefab-edit policy. Both are listed in design.md.
 - New dependency: none beyond Bevy's own. The parser is hand-written, as upstream's is, and `nom` comes in only through the vendored differential test module.

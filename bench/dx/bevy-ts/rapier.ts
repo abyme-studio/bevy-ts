@@ -2,7 +2,8 @@
 // Data types are generated from the engine's registry (layout tier where leaves are plain data,
 // offsets from reflection); constructors, sets and exported params are the curated part.
 import { Component, Message, ReflectComponent } from "./mod.ts";
-import type { Entity, f32, ReadonlyVec3, SystemSet, Vec3 } from "./mod.ts";
+import type { Entity, f32, ReadonlyVec3, Vec3 } from "./mod.ts";
+import { SystemSet } from "./mod.ts";
 
 /** `Velocity { pub linear: Vec3, pub angular: Vec3 }`: not repr(C); a column all the same. */
 export declare class Velocity extends Component {
@@ -35,8 +36,12 @@ export declare class CollisionEvent extends Message {
   declare b: Entity;
   declare sensor: boolean;
 }
-/** `PhysicsSet`, exposed as named sets (native decision 7). */
-export declare const PhysicsSet: { readonly SyncBackend: SystemSet; readonly StepSimulation: SystemSet; readonly Writeback: SystemSet };
+/** `PhysicsSet`'s variants, exposed by the port as sets (native decision 7). */
+export declare const PhysicsSet: {
+  readonly SyncBackend: abstract new () => SystemSet;
+  readonly StepSimulation: abstract new () => SystemSet;
+  readonly Writeback: abstract new () => SystemSet;
+};
 
 export interface RayHit { readonly entity: Entity; readonly toi: number; readonly point: ReadonlyVec3 }
 /** `ReadRapierContext`, exported by the port with `#[bevy_ts::export]` (native decision 8). */

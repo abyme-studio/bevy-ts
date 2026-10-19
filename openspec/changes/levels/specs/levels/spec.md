@@ -12,11 +12,11 @@
 - **WHEN** `game.tsx` calls `app.level("levels/arena.bsn")`, which holds a light and two enemies
 - **THEN** the light and both enemies spawn, and `bevy-ts/tsx_tree` lists them under root `level:levels/arena.bsn`
 
-### Requirement: A level instances a TSX prefab by registered name
-`prefab(name, props, fn)` SHALL register a TSX prefab under a component-style name, with props declared in `component()`'s field types. In a level, `@name { prop: value, … }` SHALL call that prefab with those props, and its expansion SHALL be the entity's base, with the entity's later patches layered on top. Props not given SHALL take their declared defaults. An unknown prefab, an unknown prop or a wrongly typed prop SHALL fail the load at its location. A prefab that is a plain function SHALL NOT be callable from a level.
+### Requirement: A level instances a TSX prefab by name
+Every exported TSX prefab, a plain function from one destructured, typed props object to an element, SHALL be callable from a level, with no registration call (operator ruling 2026-10-20). Its name SHALL default to `<module path>#<export>` (`src/enemy.tsx#Enemy`) and MAY be pinned with `Enemy.path = "game::Enemy"`. The compile step (script-runtime) SHALL read its props from the props type, with the same field types as components (`f32`, `Vec3Like`, `Entity`, a string-literal union, ...), and their defaults from the destructuring. In a level, `@name { prop: value, … }` SHALL call that prefab with those props, and its expansion SHALL be the entity's base, with the entity's later patches layered on top. Props not given SHALL take their defaults. An unknown prefab, an unknown prop or a wrongly typed prop SHALL fail the load at its location. A prefab whose props type the compile step cannot read SHALL be usable in TSX and refused by a level with that reason.
 
 #### Scenario: Enemy b with more health
-- **WHEN** `arena.bsn` has `#EnemyB @game::Enemy { hp: 250.0 } Transform { translation: Vec3 { x: 3.0, z: -4.0 } }`
+- **WHEN** `enemy.tsx` exports `Enemy = ({ hp = 100 }: { hp?: f32 }) => ...` with `Enemy.path = "game::Enemy"`, and `arena.bsn` has `#EnemyB @game::Enemy { hp: 250.0 } Transform { translation: Vec3 { x: 3.0, z: -4.0 } }`
 - **THEN** one enemy spawns at `[3, 0, -4]` with `Health.max` 250 and `Health.hp` 250
 
 #### Scenario: A prop the prefab does not declare

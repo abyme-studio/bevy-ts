@@ -8,7 +8,7 @@
 
 ## 2. Loading levels
 
-- [ ] 2.1 Confirm tsx T1 (`prefab()` registry with typed props and a host entry) and T2 (external roots); add `prefab()` and `app.level()` to the TS package with types
+- [ ] 2.1 Confirm tsx T1 (exported prefabs by name with props read by the compile step, and a host entry) and T2 (external roots); add `app.level()` to the TS package with types
 - [ ] 2.2 `BsnLevel` asset loader (`bsn` extension) and tree-to-description conversion: names as keys, patches as controlled component elements, `Children` lists
 - [ ] 2.3 Value typing: Rust components through the type registry with short-path resolution and ambiguity errors, TS components through layouts; errors with file, line, column
 - [ ] 2.4 Asset paths in `Handle` fields: asset-root and `./`/`../` relative resolution, `ReflectConvert` where 0.20 has it (verify) and own conversion otherwise; missing-asset warnings

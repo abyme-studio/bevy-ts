@@ -112,15 +112,16 @@ E3 extends this into prefab instances. In an instance's `Children [ … ]`, an e
 - *Beat: positional ids.* Inserting one entity would shift every later one.
 - *Beat: an `Override("eye")` marker component for child overrides.* It parses with upstream today, but it reads worse, and it is no closer to the semantics upstream will choose.
 
-### 5. Prefabs are called by registered name with typed props; the instance root's Transform is the level's
-```ts
-export const Enemy = prefab("game::Enemy", { hp: f32.default(100) }, ({ hp }) => (
+### 5. Prefabs are called by name with typed props; the instance root's Transform is the level's
+```tsx
+export const Enemy = ({ hp = 100 }: { hp?: f32 }) => (
   <entity name="enemy">
     <Health initialHp={hp} max={hp} />
     <mesh shape="cuboid" size={[1, 1, 1]} color="#c33" />
     <entity key="eye"><Transform translation={[0, 0.6, 0.5]} /></entity>
   </entity>
-));
+);
+Enemy.path = "game::Enemy";
 ```
 ```
 #EnemyB
@@ -128,8 +129,8 @@ export const Enemy = prefab("game::Enemy", { hp: f32.default(100) }, ({ hp }) =>
 Transform { translation: Vec3 { x: 3.0, z: -4.0 } }
 ```
 
-- `prefab(name, props, fn)` registers the prefab under a component-style name. Its props use `component()`'s field types, so Rust can type-check `.bsn` values, the inspector can show props, and the writer can emit them.
-- Plain-function prefabs still work in TSX, but a level cannot call them.
+- Every exported prefab is callable from a level, with no registration (operator ruling 2026-10-20, as with components and systems). Its name is `module#export` unless `Enemy.path` pins it. The compile step reads its props from the props type and their defaults from the destructuring, with components' field types. That lets Rust type-check `.bsn` values, the inspector show props, and the writer emit them.
+- *Beat: `prefab(name, props, fn)` with a runtime props schema (the previous draft).* A name string and a schema object beside the TS type said the same thing twice.
 - Expansion is one host call per reconcile that has any instances to expand (`tsx`'s B2 entry). It sends `(name, props)` per instance and gets descriptions back.
 - An instance root's `Transform` is the level's, unless the prefab binds it (decision 6). A prefab that sets the root `Transform` with a literal or a prop gets it overridden by the level's patch, which follows the expansion. Placement is therefore always a component override and never a prop the engine would have to trace. tsx decision 10 says the engine cannot tell whether `translation={at}` came from a literal.
 
@@ -237,7 +238,7 @@ On top of bridge's and tsx's rules:
 
 ## Depends on tsx and viewport
 
-- **T1 (tsx).** `prefab(name, props, fn)`: a registry of named prefabs with `component()`-typed props, callable from Rust through a host entry with `(name, props)` per instance.
+- **T1 (tsx).** Exported prefabs by name (`module#export` or a pinned `path`), with props read by the compile step, callable from Rust through a host entry with `(name, props)` per instance.
 - **T2 (tsx).** External roots: a Rust plugin can submit a description for a named root (`level:<path>`) built in Rust and partly expanded in JS. It is reconciled under the same rules and generation boundary as `app.scene` roots.
 - **T3 (tsx).** Provenance `override` with location, and, before reconciling a level description, a lookup of which expanded fields are `bound` with their site location and expression, so levels can refuse overrides of them.
 - **T4 (tsx).** An overlay root: a description layered over an `app.scene` root by key path, for decision 11.
@@ -272,6 +273,9 @@ On top of bridge's and tsx's rules:
 None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions only). For Bevy's loader: bump the vendored `bevy_bsn`, run the differential test, and when upstream's `BsnLevel`-equivalent asset lands, swap our parser and loader for it behind decision 3's level root. Files using no extension need no change. Files using E1 to E4 are rewritten by `bevy-ts levels migrate` once upstream has the matching forms.
 
 ## Operator rulings
+
+- 2026-10-20: prefabs need no registration. Every exported prefab is callable by `module#export` or a
+  pinned `Enemy.path`, with props read from its props type (docs/research/dx.md).
 
 - 2026-10-19: `levels.prefabEdits` defaults to `override`. A viewport edit is a per-instance `.bsn`
   override; "Apply to prefab" rewrites the TSX literal. `source` stays a setting a project may choose.

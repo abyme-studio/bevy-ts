@@ -207,7 +207,7 @@ fn pause(mut next: ResMut<NextState<Game>>) {
 
 ```ts
 export class Game extends States("Menu", "Playing", "Paused") {}
-export const EnemySet = systemSet("game::Enemies");
+export class EnemySet extends SystemSet {}
 
 app.initState(Game.Menu)
   .addSystems(OnEnter(Game.Playing), spawnWave)
@@ -271,7 +271,7 @@ export function applyDamage(damage: MessageReader<Damage>, q: Query<[Mut<Health>
     h.hp -= d.amount;
     if (h.hp <= 0) {
       score.value += 1;
-      commands.trigger(d.target, Explode.of({ radius: 3 }));
+      commands.trigger(Explode.of({ entity: d.target, radius: 3 }));
     }
   });
 }
@@ -281,7 +281,7 @@ export function onExplode(explode: On<Explode>, q: Query<[Entity, Transform], Wi
   const [, at] = q.get(explode.entity) ?? [];
   if (!at) return;
   q.each((e, t) => {
-    if (t.translation.distance(at.translation) < explode.event.radius) damage.write({ target: e, amount: 50 });
+    if (t.translation.distance(at.translation) < explode.radius) damage.write({ target: e, amount: 50 });
   });
   commands.entity(explode.entity).despawn();
 }
@@ -356,8 +356,8 @@ fn spawn_grunt(mut commands: Commands) {
 ```
 
 ```tsx
-export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]; speed?: number }) => (
-  <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(entity, Explode.of({ radius: 3 }))}>
+export const Grunt = ({ at = [0, 0, 0], speed = 2 }: { at?: Vec3Like; speed?: f32 }) => (
+  <entity name="grunt" onPointerClick={({ entity, commands }) => commands.trigger(Explode.of({ entity, radius: 3 }))}>
     <Transform translation={at} />
     <Enemy speed={speed} />
     <Health initialHp={100} max={100} />
@@ -367,6 +367,7 @@ export const Grunt = ({ at, speed = 2 }: { at: readonly [number, number, number]
     <mesh shape="cuboid" size={[1, 1, 1]} color="#c33" />
   </entity>
 );
+Grunt.path = "game::Grunt"; // a .bsn level calls it as @game::Grunt { speed: 3.0 }
 
 export function waves(commands: Commands, time: Res<Time>, s: Local<{ timer: f32; wave: u32 }>) {
   s.timer += time.delta_secs;
@@ -422,7 +423,7 @@ export const Hud = ({ player }: { player: NodeRef }) => (
   <node style={{ position: "absolute", top: px(12), left: px(12) }} background="#0008">
     <text size={20}>{() => `HP ${Math.ceil(player.get(Health).hp)} / ${player.get(Health).max}`}</text>
     <text size={16} color={() => (res(Score).value > 10 ? "#fd0" : "#fff")}>{() => `Score ${res(Score).value}`}</text>
-    <button onPointerClick={({ commands }) => commands.trigger(player.entity, Explode.of({ radius: 5 }))}>
+    <button onPointerClick={({ commands }) => commands.trigger(Explode.of({ entity: player.entity, radius: 5 }))}>
       <text>Boom</text>
     </button>
   </node>
