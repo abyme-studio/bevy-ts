@@ -266,7 +266,8 @@ impl Drop for Service {
 pub struct Viewer {
     host: mach_port_t,
     reply: mach_port_t,
-    rx: Receiver<Incoming>,
+    /// Behind a lock so a viewer can be shared with a thread that only sends (its ticks).
+    rx: Mutex<Receiver<Incoming>>,
 }
 
 impl Viewer {
@@ -297,7 +298,7 @@ impl Viewer {
         if kr != KERN_SUCCESS {
             return Err(format!("hello failed: {kr}"));
         }
-        Ok(Viewer { host, reply, rx })
+        Ok(Viewer { host, reply, rx: Mutex::new(rx) })
     }
 
     pub fn send(&self, method: &str, params: Value) -> Result<(), kern_return_t> {
@@ -311,7 +312,7 @@ impl Viewer {
     }
 
     pub fn recv(&self, timeout: Duration) -> Option<Incoming> {
-        self.rx.recv_timeout(timeout).ok()
+        self.rx.lock().unwrap().recv_timeout(timeout).ok()
     }
 }
 
