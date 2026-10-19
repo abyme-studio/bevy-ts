@@ -163,7 +163,7 @@ fn a_level_loads_as_a_reconciled_root() {
     assert_eq!(node.components["game::Health"].overrides["max"].to_string(), "levels/arena.bsn:8:10");
     let inst = f.app.world().get::<LevelInstance>(floors[0]).unwrap();
     let files: Vec<&str> = inst.owners.iter().map(|o| o.file.as_str()).collect();
-    assert_eq!(files, ["levels/arena.bsn", "levels/room.bsn", "levels/room.bsn"]);
+    assert_eq!(files, ["levels/arena.bsn", "levels/room.bsn"]);
 }
 
 #[test]
@@ -529,7 +529,7 @@ mod viewport_routes {
             world.query::<(Entity, &Name)>().iter(world).find(|(_, n)| n.as_str() == "Floor").map(|(e, _)| e).unwrap()
         };
         let r = route(f.app.world(), floor, "Transform", "scale").unwrap();
-        assert_eq!(r["owners"].as_array().unwrap().len(), 3);
+        assert_eq!(r["owners"].as_array().unwrap().len(), 2);
         let loose = f.app.world_mut().spawn(Transform::default()).id();
         assert!(route(f.app.world(), loose, "Transform", "translation").is_none());
     }

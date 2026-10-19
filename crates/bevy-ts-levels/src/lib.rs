@@ -10,6 +10,7 @@ pub mod check;
 pub mod compose;
 pub mod edit;
 pub mod engine;
+pub mod protocol;
 pub mod route;
 pub mod syntax;
 pub mod writer;

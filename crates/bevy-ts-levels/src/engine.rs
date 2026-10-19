@@ -156,15 +156,46 @@ pub struct Levels {
     pub asset_root: std::path::PathBuf,
     /// The project's `levels.prefabEdits`.
     pub prefab_edits: crate::route::PrefabEdits,
+    /// `level+watch` messages by sequence number, the latest 256.
+    pub events: std::collections::VecDeque<(u64, Value)>,
+    pub seq: u64,
+    /// Recently seen versions of level files by content hash, so a write made against an older
+    /// version can tell which fields the disk changed since (the latest 32).
+    pub history: std::collections::VecDeque<(u64, Arc<ParsedFile>)>,
 }
 
 impl Default for Levels {
     fn default() -> Self {
-        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default() }
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default() }
     }
 }
 
 impl Levels {
+    /// Records a `level+watch` message.
+    pub fn emit(&mut self, message: Value) {
+        self.seq += 1;
+        self.events.push_back((self.seq, message));
+        while self.events.len() > 256 {
+            self.events.pop_front();
+        }
+    }
+
+    /// Remembers a version of a file.
+    pub fn remember(&mut self, hash: u64, parsed: Arc<ParsedFile>) {
+        if self.history.iter().any(|(h, _)| *h == hash) {
+            return;
+        }
+        self.history.push_back((hash, parsed));
+        while self.history.len() > 32 {
+            self.history.pop_front();
+        }
+    }
+
+    /// A remembered version by hash.
+    pub fn version(&self, hash: u64) -> Option<Arc<ParsedFile>> {
+        self.history.iter().find(|(h, _)| *h == hash).map(|(_, p)| p.clone())
+    }
+
     /// Every level that is, or includes, `file`.
     pub fn affected(&self, file: &str) -> Vec<String> {
         self.roots.iter().filter(|(p, r)| p.as_str() == file || r.files.contains(file)).map(|(p, _)| p.clone()).collect()
@@ -297,6 +328,7 @@ fn watch(
     mut missing: Local<MessageCursor<UntypedAssetLoadFailedEvent>>,
 ) {
     let mut changed = Vec::new();
+    let mut external = Vec::new();
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
     {
@@ -345,10 +377,16 @@ fn watch(
                 let hash = assets.get(*id).map(|a| a.hash);
                 let applied = levels.roots.values().any(|r| r.applied.get(&file).is_some_and(|h| Some(*h) == hash)) && levels.affected(&file).iter().all(|l| levels.roots[l].applied.contains_key(&file));
                 if !applied {
+                    if matches!(ev, AssetEvent::Modified { .. }) {
+                        external.push((file.clone(), hash));
+                    }
                     changed.push(file);
                 }
             }
         }
+    }
+    for (file, hash) in external {
+        world.resource_mut::<Levels>().emit(serde_json::json!({ "event": "external", "level": file, "hash": hash.map(crate::edit::hash_text) }));
     }
     for file in changed {
         let affected = world.resource::<Levels>().affected(&file);
@@ -625,6 +663,14 @@ pub fn reconcile_level(world: &mut World, path: &str) {
         r.dirty = false;
     }
     let (result, hashes) = compose_level(world, path);
+    let versions: Vec<(u64, Arc<ParsedFile>)> = {
+        let server = world.resource::<AssetServer>();
+        let assets = world.resource::<Assets<BsnLevel>>();
+        hashes.keys().filter_map(|f| server.get_handle::<BsnLevel>(f.clone()).and_then(|h| assets.get(&h)).map(|a| (a.hash, a.parsed.clone()))).collect()
+    };
+    for (h, p) in versions {
+        world.resource_mut::<Levels>().remember(h, p);
+    }
     let composed = match result {
         Ok(c) => c,
         // An inclusion the last edit added is still loading: try again when it has.
@@ -638,7 +684,10 @@ pub fn reconcile_level(world: &mut World, path: &str) {
             for e in &errors {
                 log(world, LogLevel::Error, e);
             }
-            if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
+            let diagnostics: Vec<Value> = errors.iter().map(|e| serde_json::json!({ "message": e.message, "location": e.location })).collect();
+            let mut levels = world.resource_mut::<Levels>();
+            levels.emit(serde_json::json!({ "event": "failed", "level": path, "diagnostics": diagnostics }));
+            if let Some(r) = levels.roots.get_mut(path) {
                 r.error = errors.into_iter().next();
             }
             return;
@@ -671,6 +720,8 @@ pub fn reconcile_level(world: &mut World, path: &str) {
         r.warnings = composed.warnings;
         r.assets = assets;
     }
+    let hash = world.resource::<Levels>().roots.get(path).and_then(|r| r.applied.get(path)).copied();
+    world.resource_mut::<Levels>().emit(serde_json::json!({ "event": "loaded", "level": path, "hash": hash.map(crate::edit::hash_text) }));
 }
 
 /// Strings in overridden component fields are asset paths: only handle fields take strings.

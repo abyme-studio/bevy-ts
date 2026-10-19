@@ -82,6 +82,7 @@ fn load_text(world: &mut World, file: &str, text: &str) -> Result<(), String> {
     let server = world.resource::<AssetServer>().clone();
     let includes = paths.iter().map(|p| server.load::<BsnLevel>(crate::compose::resolve_path(file, p))).collect();
     let level = BsnLevel { includes, hash: content_hash(text.as_bytes()), parsed: std::sync::Arc::new(parsed) };
+    world.resource_mut::<Levels>().remember(level.hash, level.parsed.clone());
     let handle = server.get_handle::<BsnLevel>(file.to_string()).unwrap_or_else(|| server.load::<BsnLevel>(file.to_string()));
     let mut assets = world.resource_mut::<Assets<BsnLevel>>();
     if assets.contains(&handle) {
@@ -120,6 +121,12 @@ fn field_text(file: &ParsedFile, path: &[String], component: &str, field: &[Stri
 pub fn write_level(world: &mut World, req: WriteRequest) -> WriteResult {
     let result = write_inner(world, &req);
     world.resource_mut::<WriteResults>().0.push(result.clone());
+    if result.status != "refused" {
+        let event = if result.status == "conflict" { "conflict" } else { result.status };
+        world.resource_mut::<Levels>().emit(serde_json::json!({
+            "event": event, "level": result.file, "hash": result.hash, "lines": result.lines, "id": result.id, "reason": result.reason,
+        }));
+    }
     result
 }
 
@@ -134,11 +141,7 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
     let mut status = "written";
     if disk_hash != req.base {
         // Someone else wrote the file: the world follows the disk first.
-        let base = {
-            let server = world.resource::<AssetServer>();
-            let assets = world.resource::<Assets<BsnLevel>>();
-            server.get_handle::<BsnLevel>(req.file.clone()).and_then(|h| assets.get(&h)).filter(|a| a.hash == req.base).map(|a| a.parsed.clone())
-        };
+        let base = world.resource::<Levels>().version(req.base);
         if let Err(e) = load_text(world, &req.file, &disk) {
             return WriteResult::refused(req, "conflict", "unparseable", e);
         }

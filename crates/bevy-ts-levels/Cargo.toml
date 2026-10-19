@@ -9,7 +9,8 @@ license.workspace = true
 name = "bevy_ts_levels"
 
 [dependencies]
-bevy = { workspace = true, features = ["std", "bevy_asset"] }
+bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_remote"] }
+bevy-ts-remote.workspace = true
 bevy-ts.workspace = true
 bevy-ts-tsx.workspace = true
 serde.workspace = true

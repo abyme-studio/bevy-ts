@@ -186,7 +186,10 @@ fn includes_resolve_and_own_their_frames() {
     assert_eq!(props(&c.nodes[1], "Transform")["translation"], json!([20.0, 0.0, 0.0]));
     let floor = &c.owners[&vec!["RoomA".to_string(), "Floor".to_string()]];
     let files: Vec<&str> = floor.iter().map(|f| f.file.as_str()).collect();
-    assert_eq!(files, ["levels/arena.bsn", "levels/rooms/room.bsn", "levels/rooms/room.bsn"]);
+    assert_eq!(files, ["levels/arena.bsn", "levels/rooms/room.bsn"]);
+    // Each frame holds the node's path in its own file.
+    assert_eq!(floor[0].path, ["RoomA", "Floor"]);
+    assert_eq!(floor[1].path, ["Room", "Floor"]);
     assert_eq!(c.files.len(), 2);
 }
 

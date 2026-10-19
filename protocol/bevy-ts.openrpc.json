@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names."
   },
   "methods": [
@@ -579,6 +579,91 @@
         "name": "result",
         "schema": {
           "$ref": "#/components/schemas/AssetThumbnailResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/level_list",
+      "summary": "Open levels: hash, included files, extensions used, diagnostics.",
+      "x-bevy-ts-crate": "bevy-ts-levels",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/LevelListResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/level_node",
+      "summary": "One level-placed entity by entity or name path: its owner chain, its overrides with locations, the scene component it instances.",
+      "x-bevy-ts-crate": "bevy-ts-levels",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/LevelNodeParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/LevelNodeResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/level_write",
+      "summary": "A batch of writer operations on one level file, made against a content hash. The disk wins: a moved file is reloaded first, then the batch replays by name path or is a conflict.",
+      "x-bevy-ts-crate": "bevy-ts-levels",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/LevelWriteParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/LevelWriteResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/level_apply",
+      "summary": "Moves an override one owner inward: into the next .bsn file in one transaction, or, when that is TSX, hands the editor the edit and the batch that removes the override.",
+      "x-bevy-ts-crate": "bevy-ts-levels",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/LevelApplyParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/LevelApplyResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/level+watch",
+      "summary": "Level events: loaded, failed, written, external, rebased, conflict.",
+      "x-bevy-ts-crate": "bevy-ts-levels",
+      "x-bevy-ts-watch": true,
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/LevelWatchMessage"
         }
       }
     },
@@ -1897,13 +1982,14 @@
         "type": "string"
       },
       "TsxProvenance": {
-        "description": "How a field got its value: `controlled` (`f`), `initial` (`initialF`), `default` (neither), `bound` (`f={() => ...}`).",
+        "description": "How a field got its value: `controlled` (`f`), `initial` (`initialF`), `default` (neither), `bound` (`f={() => ...}`), `override` (set by a level file).",
         "type": "string",
         "enum": [
           "controlled",
           "initial",
           "default",
-          "bound"
+          "bound",
+          "override"
         ]
       },
       "TsxTreeNode": {
@@ -3833,6 +3919,843 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "LevelHash": {
+        "description": "A level file's content hash: FNV-1a of its bytes, 16 hex digits.",
+        "type": "string"
+      },
+      "LevelDiagnostic": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "LevelExtensionUse": {
+        "description": "A use of a .bsn extension: E1 comments, E2 scene component instances, E3 child overrides, E4 quoted names, U1 negative numbers.",
+        "type": "object",
+        "required": [
+          "code",
+          "line",
+          "column"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "U1"
+            ]
+          },
+          "line": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "column": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "LevelInfo": {
+        "type": "object",
+        "required": [
+          "path",
+          "files",
+          "extensions",
+          "diagnostics"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The level's asset path."
+          },
+          "hash": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelHash"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The root file's hash as last applied."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The level and every file it includes."
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelExtensionUse"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelDiagnostic"
+            },
+            "description": "The last load's error and warnings."
+          }
+        }
+      },
+      "LevelListResult": {
+        "type": "object",
+        "required": [
+          "levels"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "levels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelInfo"
+            }
+          }
+        }
+      },
+      "LevelNodeParams": {
+        "description": "Give `entity`, or `level` and `namePath`.",
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "level": {
+            "type": "string"
+          },
+          "namePath": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "LevelOverride": {
+        "type": "object",
+        "required": [
+          "component",
+          "field",
+          "location"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "component": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "value": {},
+          "location": {
+            "$ref": "#/components/schemas/SourceLocation"
+          }
+        }
+      },
+      "LevelNodeResult": {
+        "type": "object",
+        "required": [
+          "level",
+          "namePath",
+          "owners",
+          "overrides"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "type": "string"
+          },
+          "namePath": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "entity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Entity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelOwner"
+            },
+            "description": "Every level frame that could hold an edit, outermost first."
+          },
+          "source": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceLocation"
+            },
+            "description": "The TSX source chain inside the instance, innermost first."
+          },
+          "overrides": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelOverride"
+            }
+          },
+          "prefab": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The scene component the entity instances, if any."
+          }
+        }
+      },
+      "LevelValue": {
+        "description": "A value the writer prints: a number (a float), {int}, a bool, a string, {type, lanes} for a vector or {path} for a variant or constant.",
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "required": [
+              "int"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "int": {
+                "type": "integer"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "lanes"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "lanes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "LevelOp": {
+        "description": "One writer operation on a name path.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path",
+              "component",
+              "field",
+              "value"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "set"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "component": {
+                "type": "string"
+              },
+              "field": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "value": {
+                "$ref": "#/components/schemas/LevelValue"
+              },
+              "containers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path",
+              "component",
+              "field"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "revert"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "component": {
+                "type": "string"
+              },
+              "field": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path",
+              "prop",
+              "value"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "set_prop"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "prop": {
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/components/schemas/LevelValue"
+              },
+              "field": {
+                "type": "boolean",
+                "description": "A scene component field rather than an @prop."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "parent",
+              "name"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "enum": [
+                  "add_entity",
+                  "add_instance"
+                ]
+              },
+              "parent": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "name": {
+                "type": "string"
+              },
+              "scene": {
+                "type": "string",
+                "description": "add_instance: the scene component."
+              },
+              "include": {
+                "type": "string",
+                "description": "add_instance: a level to include instead."
+              },
+              "props": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LevelValue"
+                }
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LevelValue"
+                }
+              },
+              "patches": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "component"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "component": {
+                      "type": "string"
+                    },
+                    "fields": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/LevelValue"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "delete"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path",
+              "to"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "rename"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "to": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path",
+              "parent"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "reparent"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "parent": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "parent",
+              "index",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "restore"
+              },
+              "parent": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "index": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "LevelWriteParams": {
+        "type": "object",
+        "required": [
+          "file",
+          "base",
+          "ops"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "file": {
+            "type": "string"
+          },
+          "base": {
+            "$ref": "#/components/schemas/LevelHash"
+          },
+          "ops": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelOp"
+            }
+          }
+        }
+      },
+      "LevelWriteResult": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "status",
+          "lines",
+          "inverse"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "file": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "written",
+              "rebased",
+              "conflict",
+              "refused"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "conflict: `target removed` or `changed on disk`; refused: `not-found`, `prefab-internal`, `exists`, `invalid`, `internal` or `io`."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hash": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "description": "Changed line ranges in the new file, 1-based, inclusive."
+          },
+          "disk": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "conflict: the disk's value of the field, as written."
+          },
+          "inverse": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelOp"
+            },
+            "description": "The batch that undoes this one."
+          }
+        }
+      },
+      "LevelApplyParams": {
+        "type": "object",
+        "required": [
+          "entity",
+          "component",
+          "field"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "component": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        }
+      },
+      "LevelApplyResult": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "written",
+              "tsx",
+              "refused"
+            ],
+            "description": "written: moved to the next .bsn owner inward; tsx: the next owner is TSX, so the editor writes `edit` and, on success, sends `then` with level_write."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelWriteResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelWriteResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "edit": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "element",
+                  "prop",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "element": {
+                    "$ref": "#/components/schemas/SourceLocation"
+                  },
+                  "prop": {
+                    "type": "string"
+                  },
+                  "value": {}
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelWriteParams"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "LevelWatchMessage": {
+        "type": "object",
+        "required": [
+          "event",
+          "level"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "event": {
+            "type": "string",
+            "enum": [
+              "loaded",
+              "failed",
+              "written",
+              "external",
+              "rebased",
+              "conflict"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "description": "The file the event is about."
+          },
+          "hash": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0,
+            "description": "written, rebased, conflict: the batch's id."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelDiagnostic"
             }
           }
         }

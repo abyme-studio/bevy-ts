@@ -504,6 +504,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy-ts",
+ "bevy-ts-remote",
  "bevy-ts-tsx",
  "memchr",
  "nom 8.0.0",

@@ -344,7 +344,7 @@ fn finish(
     let mut path = parent.to_vec();
     path.push(key.clone());
     let mut chain = frames.to_vec();
-    chain.push(Frame { file: l.ctx.path.clone(), path: l.name_path.clone(), at: l.ctx.at(l.span) });
+    set_frame(&mut chain, Frame { file: l.ctx.path.clone(), path: l.name_path.clone(), at: l.ctx.at(l.span) });
     let at = l.ctx.at(l.span);
     let mut node = match l.base {
         Base::None => NodeDesc {
@@ -376,7 +376,8 @@ fn finish(
         Base::Include(nodes) => {
             let mut children = Vec::new();
             for inner in nodes {
-                children.push(finish(inner, None, expansions, &path, &chain, owners)?);
+                let below = descend(&chain, &inner.key);
+                children.push(finish(inner, None, expansions, &path, &below, owners)?);
             }
             NodeDesc {
                 key: key.clone(),
@@ -394,8 +395,13 @@ fn finish(
     if l.name.is_some() {
         node.name = l.name.clone();
     }
-    // An included root already holds its inner frames.
-    owners.entry(path.clone()).or_insert_with(|| chain.clone());
+    // An included root already holds its inner frames, which its children descend from too.
+    match owners.get(&path) {
+        Some(inner) => chain = inner.clone(),
+        None => {
+            owners.insert(path.clone(), chain.clone());
+        }
+    }
     for p in &l.patches {
         apply_patch(&mut node, p)?;
     }
@@ -403,6 +409,26 @@ fn finish(
         merge_child(&mut node, child, expansions, &path, &chain, owners)?;
     }
     Ok(node)
+}
+
+/// A child's frames: each of its parent's, one name deeper.
+fn descend(chain: &[Frame], key: &str) -> Vec<Frame> {
+    chain
+        .iter()
+        .map(|f| {
+            let mut f = f.clone();
+            f.path.push(key.to_string());
+            f
+        })
+        .collect()
+}
+
+/// One frame per file: a node written in a file it already has a frame in replaces it.
+fn set_frame(chain: &mut Vec<Frame>, frame: Frame) {
+    match chain.iter_mut().find(|f| f.file == frame.file) {
+        Some(f) => *f = frame,
+        None => chain.push(frame),
+    }
 }
 
 /// E3: a named child that matches a child of the base (by key, or a quoted `tsx` key segment)
@@ -417,7 +443,8 @@ fn merge_child(
 ) -> Result<(), ScriptError> {
     let existing = child.name.as_ref().and_then(|n| node.children.iter().position(|c| &c.key == n));
     let Some(i) = existing else {
-        node.children.push(finish(child, None, expansions, path, chain, owners)?);
+        let below = descend(chain, &child.key);
+        node.children.push(finish(child, None, expansions, path, &below, owners)?);
         return Ok(());
     };
     if !matches!(child.base, Base::None) {
@@ -425,8 +452,8 @@ fn merge_child(
     }
     let mut cpath = path.to_vec();
     cpath.push(child.key.clone());
-    let mut cchain = chain.to_vec();
-    cchain.push(Frame { file: child.ctx.path.clone(), path: child.name_path.clone(), at: child.ctx.at(child.span) });
+    let mut cchain = descend(chain, &child.key);
+    set_frame(&mut cchain, Frame { file: child.ctx.path.clone(), path: child.name_path.clone(), at: child.ctx.at(child.span) });
     owners.insert(cpath.clone(), cchain.clone());
     let target = &mut node.children[i];
     for p in &child.patches {

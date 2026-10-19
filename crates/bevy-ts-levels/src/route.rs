@@ -115,22 +115,42 @@ pub fn write(world: &mut World, edit_id: u64, entity: Entity, component: &str, f
     let r = route(world, entity, component, field).ok_or("levels does not own this field")?;
     let file = r["target"]["file"].as_str().ok_or("no target")?.to_string();
     let path: Vec<String> = serde_json::from_value(r["target"]["namePath"].clone()).map_err(|e| e.to_string())?;
-    let (schema, before) = {
-        let registry = world.resource::<AppTypeRegistry>().clone();
-        let registry = registry.read();
-        let schema = WorldSchema::live(world, &registry).component(component)?;
-        let node = world.get::<TsxNode>(entity).ok_or("not a tsx node")?;
-        let before = node.components.get(component).map(|c| c.fields.iter().map(|(k, s)| (k.clone(), s.applied.clone())).collect::<serde_json::Map<_, _>>()).unwrap_or_default();
-        (schema, before)
+    let before = world
+        .get::<TsxNode>(entity)
+        .and_then(|n| n.components.get(component))
+        .map(|c| c.fields.iter().map(|(k, s)| (k.clone(), s.applied.clone())).collect::<serde_json::Map<_, _>>())
+        .unwrap_or_default();
+    let ops = set_ops(world, &path, component, field, &after, &before)?;
+    if ops.is_empty() {
+        return Ok(());
+    }
+    let base = loaded_hash(world, &file).ok_or("the level is not loaded")?;
+    write_level(world, WriteRequest { id: edit_id, file, base, ops });
+    Ok(())
+}
+
+/// The loaded asset's hash of a level file: what the world shows.
+pub fn loaded_hash(world: &World, file: &str) -> Option<u64> {
+    let server = world.resource::<AssetServer>();
+    server.get_handle::<BsnLevel>(file.to_string()).and_then(|h| world.resource::<Assets<BsnLevel>>().get(&h).map(|a| a.hash))
+}
+
+/// `set` operations writing `after` into `component.field` at `path`: for a whole vector, one per
+/// lane that differs from `before` (the component's current fields).
+pub fn set_ops(world: &World, path: &[String], component: &str, field: &str, after: &Value, before: &serde_json::Map<String, Value>) -> Result<Vec<Op>, String> {
+    let schema = {
+        let registry = world.resource::<AppTypeRegistry>().read();
+        WorldSchema::live(world, &registry).component(component)?
     };
     let mut segs: Vec<String> = field.split('.').map(String::from).collect();
     let top = segs[0].clone();
     let fs = schema.fields.iter().find(|f| f.name == top).ok_or_else(|| format!("{component} has no field {top}"))?;
+    let path = path.to_vec();
     let mut ops = Vec::new();
     match &fs.ty {
         ValueType::Field(t) if vector_type(t).is_some() && segs.len() == 1 => {
             let ty = vector_type(t).expect("a vector");
-            let new = lanes(&after).ok_or_else(|| format!("expected a {ty}, got {after}"))?;
+            let new = lanes(after).ok_or_else(|| format!("expected a {ty}, got {after}"))?;
             let old = before.get(&top).and_then(lanes).unwrap_or_default();
             for (i, v) in new.iter().enumerate() {
                 if old.get(i) != Some(v) {
@@ -142,17 +162,9 @@ pub fn write(world: &mut World, edit_id: u64, entity: Entity, component: &str, f
         ValueType::Field(t) if vector_type(t).is_some() => {
             let ty = vector_type(t).expect("a vector");
             segs.truncate(2);
-            ops.push(Op::Set { path: path.clone(), component: component.into(), field: segs, value: WValue::Float { v: after.as_f64().ok_or("expected a number")?, f32: true }, containers: vec![ty.into()] });
+            ops.push(Op::Set { path, component: component.into(), field: segs, value: WValue::Float { v: after.as_f64().ok_or("expected a number")?, f32: true }, containers: vec![ty.into()] });
         }
-        ty => ops.push(Op::Set { path: path.clone(), component: component.into(), field: vec![top], value: wvalue(ty, &after)?, containers: Vec::new() }),
+        ty => ops.push(Op::Set { path, component: component.into(), field: vec![top], value: wvalue(ty, after)?, containers: Vec::new() }),
     }
-    if ops.is_empty() {
-        return Ok(());
-    }
-    let base = {
-        let server = world.resource::<AssetServer>();
-        server.get_handle::<BsnLevel>(file.clone()).and_then(|h| world.resource::<Assets<BsnLevel>>().get(&h).map(|a| a.hash)).ok_or("the level is not loaded")?
-    };
-    write_level(world, WriteRequest { id: edit_id, file, base, ops });
-    Ok(())
+    Ok(ops)
 }

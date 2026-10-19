@@ -36,8 +36,8 @@
 ## 5. Viewport routes and protocol
 
 - [x] 5.1 Confirm viewport V1; compute the owner chain and target per field under `levels.prefabEdits` (`override` default, `source`), and turn `bsn` edits into writer batches
-- [ ] 5.2 `level_apply` to the next owner inward: a two-file transaction between `.bsn` files, and the tsx-route transaction that removes the override only on `written`
-- [ ] 5.3 Add `bevy-ts/level_list`, `level_node`, `level_write`, `level_apply` and `level+watch` to `protocol/bevy-ts.openrpc.json` as 1.2; regenerate types; conformance tests
+- [x] 5.2 `level_apply` to the next owner inward: a two-file transaction between `.bsn` files, and the tsx-route transaction that removes the override only on `written`
+- [x] 5.3 Add `bevy-ts/level_list`, `level_node`, `level_write`, `level_apply` and `level+watch` to `protocol/bevy-ts.openrpc.json` as 1.2; regenerate types; conformance tests
 
 ## 6. First demo
 

@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.5.0";
+pub const VERSION: &str = "1.6.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +49,11 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/assets", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/assets+watch", crate_name: "bevy-ts-viewport", watch: true },
     Method { name: "bevy-ts/asset_thumbnail", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/level_list", crate_name: "bevy-ts-levels", watch: false },
+    Method { name: "bevy-ts/level_node", crate_name: "bevy-ts-levels", watch: false },
+    Method { name: "bevy-ts/level_write", crate_name: "bevy-ts-levels", watch: false },
+    Method { name: "bevy-ts/level_apply", crate_name: "bevy-ts-levels", watch: false },
+    Method { name: "bevy-ts/level+watch", crate_name: "bevy-ts-levels", watch: true },
 ];
 
 /// Notifications on a viewport's Mach channel, as (method, the side that sends it).
@@ -1599,6 +1604,428 @@ pub struct Layout {
     pub fields: ::std::vec::Vec<FieldLayout>,
     pub size: u32,
 }
+///`LevelApplyParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelApplyParams {
+    pub component: ::std::string::String,
+    pub entity: Entity,
+    pub field: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub id: ::std::option::Option<u64>,
+}
+///`LevelApplyResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelApplyResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub edit: ::std::option::Option<LevelApplyResultEdit>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub inner: ::std::option::Option<LevelWriteResult>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub outer: ::std::option::Option<LevelWriteResult>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<::std::string::String>,
+    ///written: moved to the next .bsn owner inward; tsx: the next owner is TSX, so the editor writes `edit` and, on success, sends `then` with level_write.
+    pub status: LevelApplyResultStatus,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub then: ::std::option::Option<LevelWriteParams>,
+}
+///`LevelApplyResultEdit`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelApplyResultEdit {
+    pub element: SourceLocation,
+    pub prop: ::std::string::String,
+    pub value: ::serde_json::Value,
+}
+///written: moved to the next .bsn owner inward; tsx: the next owner is TSX, so the editor writes `edit` and, on success, sends `then` with level_write.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum LevelApplyResultStatus {
+    #[serde(rename = "written")]
+    Written,
+    #[serde(rename = "tsx")]
+    Tsx,
+    #[serde(rename = "refused")]
+    Refused,
+}
+impl ::std::fmt::Display for LevelApplyResultStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Written => f.write_str("written"),
+            Self::Tsx => f.write_str("tsx"),
+            Self::Refused => f.write_str("refused"),
+        }
+    }
+}
+impl ::std::str::FromStr for LevelApplyResultStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "written" => Ok(Self::Written),
+            "tsx" => Ok(Self::Tsx),
+            "refused" => Ok(Self::Refused),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelApplyResultStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelApplyResultStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`LevelDiagnostic`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelDiagnostic {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub location: ::std::option::Option<SourceLocation>,
+    pub message: ::std::string::String,
+}
+///A use of a .bsn extension: E1 comments, E2 scene component instances, E3 child overrides, E4 quoted names, U1 negative numbers.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelExtensionUse {
+    pub code: LevelExtensionUseCode,
+    pub column: u32,
+    pub line: u32,
+}
+///`LevelExtensionUseCode`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum LevelExtensionUseCode {
+    E1,
+    E2,
+    E3,
+    E4,
+    U1,
+}
+impl ::std::fmt::Display for LevelExtensionUseCode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::E1 => f.write_str("E1"),
+            Self::E2 => f.write_str("E2"),
+            Self::E3 => f.write_str("E3"),
+            Self::E4 => f.write_str("E4"),
+            Self::U1 => f.write_str("U1"),
+        }
+    }
+}
+impl ::std::str::FromStr for LevelExtensionUseCode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "E1" => Ok(Self::E1),
+            "E2" => Ok(Self::E2),
+            "E3" => Ok(Self::E3),
+            "E4" => Ok(Self::E4),
+            "U1" => Ok(Self::U1),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelExtensionUseCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelExtensionUseCode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///A level file's content hash: FNV-1a of its bytes, 16 hex digits.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+#[serde(transparent)]
+pub struct LevelHash(pub ::std::string::String);
+impl ::std::ops::Deref for LevelHash {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<LevelHash> for ::std::string::String {
+    fn from(value: LevelHash) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::std::string::String> for LevelHash {
+    fn from(value: ::std::string::String) -> Self {
+        Self(value)
+    }
+}
+impl ::std::fmt::Display for LevelHash {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl ::std::str::FromStr for LevelHash {
+    type Err = ::std::convert::Infallible;
+    fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+        Ok(Self(value.to_string()))
+    }
+}
+///`LevelInfo`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelInfo {
+    ///The last load's error and warnings.
+    pub diagnostics: ::std::vec::Vec<LevelDiagnostic>,
+    pub extensions: ::std::vec::Vec<LevelExtensionUse>,
+    ///The level and every file it includes.
+    pub files: ::std::vec::Vec<::std::string::String>,
+    ///The root file's hash as last applied.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hash: ::std::option::Option<LevelHash>,
+    ///The level's asset path.
+    pub path: ::std::string::String,
+}
+///`LevelListResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelListResult {
+    pub levels: ::std::vec::Vec<LevelInfo>,
+}
+///Give `entity`, or `level` and `namePath`.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct LevelNodeParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub entity: ::std::option::Option<Entity>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub level: ::std::option::Option<::std::string::String>,
+    #[serde(
+        rename = "namePath",
+        default,
+        skip_serializing_if = "::std::vec::Vec::is_empty"
+    )]
+    pub name_path: ::std::vec::Vec<::std::string::String>,
+}
+///`LevelNodeResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelNodeResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub entity: ::std::option::Option<Entity>,
+    pub level: ::std::string::String,
+    #[serde(rename = "namePath")]
+    pub name_path: ::std::vec::Vec<::std::string::String>,
+    pub overrides: ::std::vec::Vec<LevelOverride>,
+    ///Every level frame that could hold an edit, outermost first.
+    pub owners: ::std::vec::Vec<LevelOwner>,
+    ///The scene component the entity instances, if any.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub prefab: ::std::option::Option<::std::string::String>,
+    ///The TSX source chain inside the instance, innermost first.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub source: ::std::vec::Vec<SourceLocation>,
+}
+///One writer operation on a name path.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum LevelOp {
+    Variant0 {
+        component: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        containers: ::std::vec::Vec<::std::string::String>,
+        field: ::std::vec::Vec<::std::string::String>,
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
+        value: LevelValue,
+    },
+    Variant1 {
+        component: ::std::string::String,
+        field: ::std::vec::Vec<::std::string::String>,
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
+    },
+    Variant2 {
+        ///A scene component field rather than an @prop.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        field: ::std::option::Option<bool>,
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
+        prop: ::std::string::String,
+        value: LevelValue,
+    },
+    Variant3 {
+        #[serde(
+            default,
+            skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        )]
+        fields: ::std::collections::HashMap<::std::string::String, LevelValue>,
+        ///add_instance: a level to include instead.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        include: ::std::option::Option<::std::string::String>,
+        name: ::std::string::String,
+        op: LevelOpVariant3Op,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        parent: ::std::vec::Vec<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        patches: ::std::vec::Vec<LevelOpVariant3PatchesItem>,
+        #[serde(
+            default,
+            skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        )]
+        props: ::std::collections::HashMap<::std::string::String, LevelValue>,
+        ///add_instance: the scene component.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        scene: ::std::option::Option<::std::string::String>,
+    },
+    Variant4 {
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
+    },
+    Variant5 {
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
+        to: ::std::string::String,
+    },
+    Variant6 {
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        parent: ::std::vec::Vec<::std::string::String>,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
+    },
+    Variant7 {
+        index: u32,
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        parent: ::std::vec::Vec<::std::string::String>,
+        text: ::std::string::String,
+    },
+}
+///`LevelOpVariant3Op`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum LevelOpVariant3Op {
+    #[serde(rename = "add_entity")]
+    AddEntity,
+    #[serde(rename = "add_instance")]
+    AddInstance,
+}
+impl ::std::fmt::Display for LevelOpVariant3Op {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::AddEntity => f.write_str("add_entity"),
+            Self::AddInstance => f.write_str("add_instance"),
+        }
+    }
+}
+impl ::std::str::FromStr for LevelOpVariant3Op {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "add_entity" => Ok(Self::AddEntity),
+            "add_instance" => Ok(Self::AddInstance),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelOpVariant3Op {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelOpVariant3Op {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`LevelOpVariant3PatchesItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelOpVariant3PatchesItem {
+    pub component: ::std::string::String,
+    #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
+    pub fields: ::std::collections::HashMap<::std::string::String, LevelValue>,
+}
+///`LevelOverride`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelOverride {
+    pub component: ::std::string::String,
+    pub field: ::std::string::String,
+    pub location: SourceLocation,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub value: ::std::option::Option<::serde_json::Value>,
+}
 ///`LevelOwner`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -1615,6 +2042,216 @@ pub struct LevelTarget {
     pub file: ::std::string::String,
     #[serde(rename = "namePath")]
     pub name_path: ::std::vec::Vec<::std::string::String>,
+}
+///A value the writer prints: a number (a float), {int}, a bool, a string, {type, lanes} for a vector or {path} for a variant or constant.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum LevelValue {
+    Variant0(f64),
+    Variant1(bool),
+    Variant2(::std::string::String),
+    Variant3 { int: i64 },
+    Variant4 {
+        lanes: ::std::collections::HashMap<::std::string::String, f64>,
+        #[serde(rename = "type")]
+        type_: ::std::string::String,
+    },
+    Variant5 { path: ::std::string::String },
+}
+impl ::std::convert::From<f64> for LevelValue {
+    fn from(value: f64) -> Self {
+        Self::Variant0(value)
+    }
+}
+impl ::std::convert::From<bool> for LevelValue {
+    fn from(value: bool) -> Self {
+        Self::Variant1(value)
+    }
+}
+///`LevelWatchMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelWatchMessage {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub diagnostics: ::std::vec::Vec<LevelDiagnostic>,
+    pub event: LevelWatchMessageEvent,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hash: ::std::option::Option<LevelHash>,
+    ///written, rebased, conflict: the batch's id.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub id: ::std::option::Option<u64>,
+    ///The file the event is about.
+    pub level: ::std::string::String,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub lines: ::std::vec::Vec<[u32; 2usize]>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<::std::string::String>,
+}
+///`LevelWatchMessageEvent`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum LevelWatchMessageEvent {
+    #[serde(rename = "loaded")]
+    Loaded,
+    #[serde(rename = "failed")]
+    Failed,
+    #[serde(rename = "written")]
+    Written,
+    #[serde(rename = "external")]
+    External,
+    #[serde(rename = "rebased")]
+    Rebased,
+    #[serde(rename = "conflict")]
+    Conflict,
+}
+impl ::std::fmt::Display for LevelWatchMessageEvent {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Loaded => f.write_str("loaded"),
+            Self::Failed => f.write_str("failed"),
+            Self::Written => f.write_str("written"),
+            Self::External => f.write_str("external"),
+            Self::Rebased => f.write_str("rebased"),
+            Self::Conflict => f.write_str("conflict"),
+        }
+    }
+}
+impl ::std::str::FromStr for LevelWatchMessageEvent {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "loaded" => Ok(Self::Loaded),
+            "failed" => Ok(Self::Failed),
+            "written" => Ok(Self::Written),
+            "external" => Ok(Self::External),
+            "rebased" => Ok(Self::Rebased),
+            "conflict" => Ok(Self::Conflict),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelWatchMessageEvent {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelWatchMessageEvent {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`LevelWriteParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelWriteParams {
+    pub base: LevelHash,
+    pub file: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub id: ::std::option::Option<u64>,
+    pub ops: ::std::vec::Vec<LevelOp>,
+}
+///`LevelWriteResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelWriteResult {
+    ///conflict: the disk's value of the field, as written.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub disk: ::std::option::Option<::std::string::String>,
+    pub file: ::std::string::String,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hash: ::std::option::Option<LevelHash>,
+    pub id: u64,
+    ///The batch that undoes this one.
+    pub inverse: ::std::vec::Vec<LevelOp>,
+    ///Changed line ranges in the new file, 1-based, inclusive.
+    pub lines: ::std::vec::Vec<[u32; 2usize]>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub message: ::std::option::Option<::std::string::String>,
+    ///conflict: `target removed` or `changed on disk`; refused: `not-found`, `prefab-internal`, `exists`, `invalid`, `internal` or `io`.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<::std::string::String>,
+    pub status: LevelWriteResultStatus,
+}
+///`LevelWriteResultStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum LevelWriteResultStatus {
+    #[serde(rename = "written")]
+    Written,
+    #[serde(rename = "rebased")]
+    Rebased,
+    #[serde(rename = "conflict")]
+    Conflict,
+    #[serde(rename = "refused")]
+    Refused,
+}
+impl ::std::fmt::Display for LevelWriteResultStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Written => f.write_str("written"),
+            Self::Rebased => f.write_str("rebased"),
+            Self::Conflict => f.write_str("conflict"),
+            Self::Refused => f.write_str("refused"),
+        }
+    }
+}
+impl ::std::str::FromStr for LevelWriteResultStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "written" => Ok(Self::Written),
+            "rebased" => Ok(Self::Rebased),
+            "conflict" => Ok(Self::Conflict),
+            "refused" => Ok(Self::Refused),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelWriteResultStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelWriteResultStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///`LogEntry`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -2582,7 +3219,7 @@ pub struct TsxNodeResult {
     pub source: ::std::vec::Vec<SourceLocation>,
     pub types: ::std::vec::Vec<::std::string::String>,
 }
-///How a field got its value: `controlled` (`f`), `initial` (`initialF`), `default` (neither), `bound` (`f={() => ...}`).
+///How a field got its value: `controlled` (`f`), `initial` (`initialF`), `default` (neither), `bound` (`f={() => ...}`), `override` (set by a level file).
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
@@ -2604,6 +3241,8 @@ pub enum TsxProvenance {
     Default,
     #[serde(rename = "bound")]
     Bound,
+    #[serde(rename = "override")]
+    Override,
 }
 impl ::std::fmt::Display for TsxProvenance {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -2612,6 +3251,7 @@ impl ::std::fmt::Display for TsxProvenance {
             Self::Initial => f.write_str("initial"),
             Self::Default => f.write_str("default"),
             Self::Bound => f.write_str("bound"),
+            Self::Override => f.write_str("override"),
         }
     }
 }
@@ -2625,6 +3265,7 @@ impl ::std::str::FromStr for TsxProvenance {
             "initial" => Ok(Self::Initial),
             "default" => Ok(Self::Default),
             "bound" => Ok(Self::Bound),
+            "override" => Ok(Self::Override),
             _ => Err("invalid value".into()),
         }
     }

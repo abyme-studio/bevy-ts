@@ -313,6 +313,14 @@ None for users: this is a new crate, new TS APIs, and protocol 1.2 (additions on
 - **A removed override writes the default** when the prefab does not declare the field (tsx writes a field that goes from `override` to `default`).
 - **`route()` / `write()` for viewport** live in this crate; viewport depends on it. `write` turns a whole vector into `set`s on the lanes that differ from what the entity has, so a drag along x writes `x` alone.
 
+## Implementation notes (5.2, 5.3)
+
+- **Protocol 1.6.0** (viewport took 1.5.0): `level_list`, `level_node`, `level_write`, `level_apply`, `level+watch`, and `override` in `TsxProvenance`. Hashes are 16 hex digits. `level+watch` sends one message per poll, in order; a write reports its reconcile's `loaded` before its own `written`.
+- **Owner frames are one per file**, each holding the entity's path in that file (`arena.bsn: RoomA/Lamp`, `room.bsn: Room/Lamp`), outermost first.
+- **Apply to a `.bsn` owner** writes the inner file, then reverts the outer override; if the revert fails, the inner write's inverse is applied, so the pair is one transaction.
+- **Apply to TSX** answers `status: "tsx"` with the element, prop and value for the editor, and `then`, the `level_write` batch that removes the override. The editor sends `then` after it wrote the TSX, so the override goes only on `written`; on `rejected` it sends nothing and the override stays.
+- **A write against an older version** compares fields with that version, found in a short history of recent file versions by hash.
+
 ## Operator rulings
 
 - 2026-10-20: comments (E1) and negative numbers (U1) stay bevy-ts extensions for now; no upstream
