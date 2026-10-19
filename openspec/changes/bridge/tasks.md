@@ -74,13 +74,13 @@
 
 ## 10. Plugin API for feature crates
 
-- [ ] 10.1 Manifest sections: registration, a JS writer in `bevy-ts`, delivery at apply time after declarations, rejection with TS locations failing the generation
-- [ ] 10.2 Host-invoked entries as the seam's fifth operation (fake backend and V8), with system error rules and a zero-call test when the plugin makes no call
-- [ ] 10.3 Plugin command kinds: opcode registration, JS append API, in-order application with built-in commands, an error for unknown opcodes
-- [ ] 10.4 Component id and layout lookup by name, and field-map-to-native-bytes encoding with defaults
-- [ ] 10.5 Change ticks by `ComponentId` and reflected JSON read/write by type path; test against `Text`
-- [ ] 10.6 Restart notification between despawn and first-time apply
-- [ ] 10.7 A test feature crate that uses every extension point against the fake backend
+- [x] 10.1 Manifest sections: registration, a JS writer in `bevy-ts`, delivery at apply time after declarations, rejection with TS locations failing the generation
+- [x] 10.2 Host-invoked entries as the seam's fifth operation (fake backend and V8), with system error rules and a zero-call test when the plugin makes no call
+- [x] 10.3 Plugin command kinds: opcode registration, JS append API, in-order application with built-in commands, an error for unknown opcodes
+- [x] 10.4 Component id and layout lookup by name, and field-map-to-native-bytes encoding with defaults
+- [x] 10.5 Change ticks by `ComponentId` and reflected JSON read/write by type path; test against `Text`
+- [x] 10.6 Restart notification between despawn and first-time apply
+- [x] 10.7 A test feature crate that uses every extension point against the fake backend
 
 ## 11. First-milestone demo
 
