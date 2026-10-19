@@ -157,6 +157,11 @@ pub trait BevyTsNativeExt {
     /// Exports a param TS systems can take (`rapier: ReadRapierContext`) and call. Its methods
     /// come from `#[export]` on its `impl`.
     fn ts_param<P: ExportParam>(&mut self) -> &mut Self;
+
+    /// Ships a built-in TS module (`bevy-ts/rapier`): `js` is served to TS under the specifier,
+    /// `dts` declares it in `native.d.ts`. Classes it defines with `__bevyts.data` are declared
+    /// by every generation.
+    fn ts_module(&mut self, specifier: &str, js: &str, dts: &str) -> &mut Self;
 }
 
 impl BevyTsNativeExt for App {
@@ -172,6 +177,13 @@ impl BevyTsNativeExt for App {
     #[track_caller]
     fn ts_set(&mut self, name: &str, schedule: impl ScheduleLabel, set: impl SystemSet) -> &mut Self {
         bevy_ts::sets::expose(self, name, schedule, set);
+        self
+    }
+
+    fn ts_module(&mut self, specifier: &str, js: &str, dts: &str) -> &mut Self {
+        if let Err(e) = bevy_ts::modules::register(specifier, js, dts) {
+            panic!("{e}");
+        }
         self
     }
 

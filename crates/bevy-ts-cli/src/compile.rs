@@ -270,7 +270,7 @@ impl Compiler {
             match compile_with(&path, &source, self.dev, &self.root, self.declarations) {
                 Ok(c) => {
                     for (spec, at) in &c.imports {
-                        if BUILTINS.contains(&spec.as_str()) {
+                        if BUILTINS.contains(&spec.as_str()) || bevy_ts::modules::is_registered(spec) {
                             continue;
                         }
                         if !is_relative(spec) {

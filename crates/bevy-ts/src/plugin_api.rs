@@ -210,3 +210,23 @@ pub fn write_reflected(world: &mut World, entity: Entity, type_path: &str, value
     rc.insert(&mut e, reflected.as_partial_reflect(), &registry);
     Ok(())
 }
+
+/// Pushes a message into a TS message type's queue from Rust, by the name the TS class pins
+/// (`static path`), field values as JSON. Returns `false` when the live generation declares no
+/// such message, so a port can forward its Rust messages only when TS reads them.
+pub fn write_message(world: &mut World, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<bool, String> {
+    let Some(mut payloads) = world.get_resource_mut::<crate::messages::TsPayloads>() else { return Ok(false) };
+    let Some(i) = payloads.message(name) else { return Ok(false) };
+    let queue = &mut payloads.messages[i];
+    let mut bytes = vec![0u8; queue.layout.size];
+    for f in &queue.layout.fields {
+        let Some(v) = values.get(&f.name) else { continue };
+        crate::value::encode_field(&format!("{name}.{}", f.name), &f.ty, v, &mut bytes[f.offset..f.offset + f.ty.size()])
+            .map_err(|e| e.to_string())?;
+    }
+    if let Some(k) = values.keys().find(|k| queue.layout.field(k).is_none()) {
+        return Err(format!("{name} has no field {k}"));
+    }
+    queue.push(&bytes);
+    Ok(true)
+}

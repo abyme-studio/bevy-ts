@@ -19,6 +19,7 @@ pub mod log;
 pub mod manifest;
 pub mod memory;
 pub mod messages;
+pub mod modules;
 pub mod observers;
 pub mod plugin_api;
 #[cfg(feature = "pbr")]

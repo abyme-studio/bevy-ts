@@ -81,6 +81,12 @@ impl ModuleLoader for Loader {
         if let Some(b) = Self::builtin(specifier) {
             return ModuleSpecifier::parse(b).map_err(JsErrorBox::from_err);
         }
+        // A port's module (`bevy-ts/rapier`), served as `bevy-ts:rapier`.
+        if let Some(name) = specifier.strip_prefix("bevy-ts/")
+            && bevy_ts::modules::is_registered(specifier)
+        {
+            return ModuleSpecifier::parse(&format!("bevy-ts:{name}")).map_err(JsErrorBox::from_err);
+        }
         if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/') || specifier.starts_with("file:") {
             let url = deno_core::resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)?;
             return match self.find(&url) {
@@ -104,7 +110,10 @@ impl ModuleLoader for Loader {
             BUILTIN_BEVY => Some(BEVY_JS.to_string()),
             BUILTIN_JSX => Some(JSX_JS.to_string()),
             BUILTIN_JSX_DEV => Some(JSX_DEV_JS.to_string()),
-            s => self.modules.borrow().get(s).map(|m| m.code.clone()),
+            s => match s.strip_prefix("bevy-ts:") {
+                Some(name) => bevy_ts::modules::js(&format!("bevy-ts/{name}")),
+                None => self.modules.borrow().get(s).map(|m| m.code.clone()),
+            },
         };
         ModuleLoadResponse::Sync(match code {
             Some(code) => Ok(ModuleSource::new(ModuleType::JavaScript, ModuleSourceCode::String(code.into()), specifier, None)),

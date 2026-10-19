@@ -8,11 +8,12 @@
 //! - Rapier's sets under stable names: `rapier:sync-backend`, `rapier:step`, `rapier:writeback`;
 //! - `ReadRapierContext`, an exported param TS systems take to cast rays, one host call per ray
 //!   or per batch;
-//! - colliders, which have no `Reflect`, through the `rapier/collider` command:
-//!   `commands.custom("rapier/collider", { entity, cuboid: [hx, hy, hz] })` (or `ball: r`,
-//!   `capsuleY: [halfHeight, r]`, and `sensor: true`).
+//! - `bevy-ts/rapier`, its TS module: `Collider.cuboid(commands, e, hx, hy, hz)` and friends
+//!   (Rapier's `Collider` has no `Reflect`; they insert it through the `rapier/collider`
+//!   command), and `CollisionEvent` flattened to `{ kind, a, b, sensor }`, which a TS system
+//!   reads with `MessageReader<CollisionEvent>`.
 
-use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::{SystemParam, SystemState};
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use bevy_ts_native::prelude::*;
@@ -29,7 +30,37 @@ impl Plugin for PortPlugin {
             .ts_set("rapier:step", FixedUpdate, PhysicsSet::StepSimulation)
             .ts_set("rapier:writeback", FixedUpdate, PhysicsSet::Writeback)
             .ts_param::<RapierQuery<'static, 'static>>()
-            .add_ts_command_kind("rapier/collider", insert_collider);
+            .ts_module("bevy-ts/rapier", include_str!("../ts/rapier.js"), include_str!("../ts/rapier.d.ts"))
+            .add_ts_command_kind("rapier/collider", insert_collider)
+            .add_systems(FixedUpdate, forward_collisions.after(PhysicsSet::Writeback));
+    }
+}
+
+/// Copies Rapier's `CollisionEvent`s into the TS message of the same name, flattened, when the
+/// live generation reads it.
+fn forward_collisions(world: &mut World, reader: &mut SystemState<MessageReader<CollisionEvent>>) {
+    let events: Vec<CollisionEvent> = reader.get_mut(world).expect("messages are registered").read().copied().collect();
+    for ev in events {
+        let (kind, a, b, flags) = match ev {
+            CollisionEvent::Started(a, b, f) => ("Started", a, b, f),
+            CollisionEvent::Stopped(a, b, f) => ("Stopped", a, b, f),
+        };
+        let values = serde_json::json!({
+            "kind": kind,
+            "a": a.to_bits(),
+            "b": b.to_bits(),
+            "sensor": flags.contains(bevy_rapier3d::rapier::geometry::CollisionEventFlags::SENSOR),
+        });
+        let name = "bevy_rapier3d::pipeline::events::CollisionEvent";
+        match bevy_ts_native::bevy_ts::plugin_api::write_message(world, name, values.as_object().unwrap()) {
+            Ok(true) => {}
+            // TS does not read collisions this generation.
+            Ok(false) => return,
+            Err(e) => {
+                warn!("bevy-ts-rapier3d: {e}");
+                return;
+            }
+        }
     }
 }
 
@@ -58,7 +89,8 @@ fn insert_collider(world: &mut World, bytes: &[u8]) -> Result<(), String> {
     };
     let entity = Entity::try_from_bits(c.entity).ok_or_else(|| format!("rapier/collider: {} is not an entity", c.entity))?;
     let mut e = world.get_entity_mut(entity).map_err(|e| format!("rapier/collider: {e}"))?;
-    e.insert(collider);
+    // TS reads collisions as messages, so every collider it makes reports them.
+    e.insert((collider, ActiveEvents::COLLISION_EVENTS));
     if c.sensor {
         e.insert(Sensor);
     }

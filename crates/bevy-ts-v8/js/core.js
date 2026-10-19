@@ -465,6 +465,10 @@ function nativeClass(name, typePath, fields, kind = "component") {
     constructor(init) {
       if (init) Object.assign(this, init);
     }
+    /** `Velocity.of({ linear: [0, 3, 0] })`, as for TS classes. */
+    static of(values) {
+      return new this(values);
+    }
   };
   Object.defineProperty(C, "name", { value: name });
   C.componentName = name;
@@ -492,6 +496,10 @@ export function nativeComponent(name, fields) {
   const C = class {
     constructor(init) {
       if (init) Object.assign(this, init);
+    }
+    /** `Velocity.of({ linear: [0, 3, 0] })`, as for TS classes. */
+    static of(values) {
+      return new this(values);
     }
   };
   Object.defineProperty(C, "name", { value: name.split("::").pop() });

@@ -122,3 +122,42 @@ fn an_unknown_param_kind_fails_the_load() {
     );
     assert!(errors.iter().any(|e| e.message.contains("Prob")), "{errors:?}");
 }
+
+const MODULE_JS: &str = r#"import { Message } from "bevy-ts";
+export class Bump extends Message {
+  static {
+    __bevyts.data(this, { kind: "message", name: "test::Bump", fields: [{ name: "kind", type: { kind: "enum", variants: ["Soft", "Hard"] } }, { name: "who", type: { kind: "entity" } }] });
+  }
+}
+export function twice(x) { return x * 2; }
+"#;
+
+/// A Rust system forwarding into the module's message, as a port does with Rapier's events.
+fn bump(world: &mut World) {
+    let values = serde_json::json!({ "kind": "Hard", "who": Entity::from_bits(9).to_bits() });
+    let _ = bevy_ts::plugin_api::write_message(world, "test::Bump", values.as_object().unwrap());
+}
+
+#[test]
+fn a_port_module_serves_classes_and_rust_writes_its_messages() {
+    let src = r#"import { app, Update } from "bevy-ts";
+import type { MessageReader } from "bevy-ts";
+import { Bump, twice } from "bevy-ts/test-module";
+
+export function read(r: MessageReader<Bump>) {
+  r.each((m) => console.log(`bump ${m.kind} ${m.who} ${twice(21)}`));
+}
+
+app.addMessage(Bump).addSystems(Update, read);
+"#;
+    let dir = project("exported-module", &[("game.ts", src)]);
+    let mut app = app(&dir.join("game.ts"));
+    app.ts_module("bevy-ts/test-module", MODULE_JS, "export declare class Bump {}\n");
+    app.add_systems(PreUpdate, bump);
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    app.update();
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l == "bump Hard 9 42"), "{m:?}");
+}
