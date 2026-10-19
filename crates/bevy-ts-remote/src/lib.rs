@@ -164,6 +164,7 @@ fn hello(In(_): In<Option<Value>>, world: &World) -> BrpResult {
             reload: world.contains_resource::<generation::DevSource>(),
             inspector: info.inspector.clone(),
         },
+        viewport: Some(world.resource::<RemoteMethods>().get("bevy-ts/viewport_attach").is_some()),
     };
     serde_json::to_value(result).map_err(|e| internal(e.to_string()))
 }

@@ -8,24 +8,24 @@
 
 ## 2. Crate, CLI and protocol
 
-- [ ] 2.1 Create `bevy-ts-viewport` (macOS only) and `bevy-ts dev --viewport`, which starts with no window, the virtual primary window at 1280×720 at 2x, and the viewport runner; other platforms fail with a message
-- [ ] 2.2 Add the 1.1 methods and channel notifications to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate`, regenerate Rust and TS types, bump to 1.1.0, add `viewport` to `bevy-ts/hello`
-- [ ] 2.3 Implement the Mach channel: per-attach bootstrap check-in, `hello`/`bye`, dead-port detach, a receive thread pushing into a lock-free queue, and sending with a timeout; `viewport_attach` and `viewport_detach`
+- [x] 2.1 Create `bevy-ts-viewport` (macOS only) and `bevy-ts dev --viewport`, which starts with no window, the virtual primary window at 1280×720 at 2x, and the viewport runner; other platforms fail with a message
+- [x] 2.2 Add the 1.1 methods and channel notifications to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate`, regenerate Rust and TS types, bump to 1.1.0, add `viewport` to `bevy-ts/hello`
+- [x] 2.3 Implement the Mach channel: per-attach bootstrap check-in, `hello`/`bye`, dead-port detach, a receive thread pushing into a lock-free queue, and sending with a timeout; `viewport_attach` and `viewport_detach`
 
 ## 3. Shared surface
 
-- [ ] 3.1 Move the spike's ring into the crate: allocation rounded up to 256, `surface` messages, slot choice, completion-driven `frame`, skip counting
-- [ ] 3.2 Resize: coalesce per frame, crop within the ring, new ring numbering, release of the old ring after the new ring's first frame; `WindowResized` and `WindowScaleFactorChanged` on the virtual window
-- [ ] 3.3 Runner: `tick`-driven updates with drop-while-busy, the 100 ms `hz` fallback, hidden play at 60 Hz without rendering, idle edit mode updating only on requests, reloads and input
-- [ ] 3.4 `bevy-ts/viewport_stats`: frames, skipped, dropped ticks, GPU time, input-to-frame median and p95
-- [ ] 3.5 Tests with the throwaway viewer as a harness: attach, resize storm, scale change, viewer killed mid-frame, re-attach replacing the first viewer
+- [x] 3.1 Move the spike's ring into the crate: allocation rounded up to 256, `surface` messages, slot choice, completion-driven `frame`, skip counting
+- [x] 3.2 Resize: coalesce per frame, crop within the ring, new ring numbering, release of the old ring after the new ring's first frame; `WindowResized` and `WindowScaleFactorChanged` on the virtual window
+- [x] 3.3 Runner: `tick`-driven updates with drop-while-busy, the 100 ms `hz` fallback, hidden play at 60 Hz without rendering, idle edit mode updating only on requests, reloads and input
+- [x] 3.4 `bevy-ts/viewport_stats`: frames, skipped, dropped ticks, GPU time, input-to-frame median and p95
+- [x] 3.5 Tests with the throwaway viewer as a harness: attach, resize storm, scale change, viewer killed mid-frame, re-attach replacing the first viewer
 
 ## 4. Input
 
-- [ ] 4.1 Map `ViewportInput` to Bevy 0.20's winit-shaped messages (cursor, buttons, motion, wheel with units and phases, gestures, keys via a W3C `code` to `KeyCode` table from winit's, IME, focus); release keys on focus loss
-- [ ] 4.2 `bevy-ts/viewport_input` over HTTP into the same queue through `BrpSender`; test `ButtonInput<KeyCode>` and a `PointerClick` observer from it
-- [ ] 4.3 Send `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed` on change of the virtual window's fields
-- [ ] 4.4 Gate `gilrs` gamepad input by focus unless `gamepad_unfocused`
+- [x] 4.1 Map `ViewportInput` to Bevy 0.20's winit-shaped messages (cursor, buttons, motion, wheel with units and phases, gestures, keys via a W3C `code` to `KeyCode` table from winit's, IME, focus); release keys on focus loss
+- [x] 4.2 `bevy-ts/viewport_input` over HTTP into the same queue through `BrpSender`; test `ButtonInput<KeyCode>` and a `PointerClick` observer from it
+- [x] 4.3 Send `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed` on change of the virtual window's fields
+- [ ] 4.4 Gate `gilrs` gamepad input by focus unless `gamepadUnfocused`
 
 ## 5. Edit mode
 

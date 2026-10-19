@@ -22,6 +22,7 @@ bevy-ts-tsx = { path = "crates/bevy-ts-tsx" }
 bevy-ts-native = { path = "crates/bevy-ts-native" }
 bevy-ts-native-derive = { path = "crates/bevy-ts-native-derive" }
 bevy-ts-cli = { path = "crates/bevy-ts-cli" }
+bevy-ts-viewport = { path = "crates/bevy-ts-viewport" }
 
 [profile.dev]
 opt-level = 1

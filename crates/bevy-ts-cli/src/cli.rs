@@ -1,6 +1,6 @@
 //! The engine binary's command line, shared by the prebuilt binary and every project engine.
 //!
-//! `bevy-ts dev <entry.ts> [--headless] [--remote-port <port>] [--inspect[=<port>]]`
+//! `bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]`
 
 use bevy::prelude::*;
 use bevy_ts::backend::{CompiledModule, ModuleSet};
@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const USAGE: &str = "usage:
-  bevy-ts dev <entry.ts> [--headless] [--remote-port <port>] [--inspect[=<port>]]
+  bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]
   bevy-ts build [<project dir>]
   bevy-ts types [--out <file>]
   bevy-ts skeleton [--headless]";
@@ -26,17 +26,20 @@ const USAGE: &str = "usage:
 pub struct DevArgs {
     pub entry: String,
     pub headless: bool,
+    /// No window of its own: render for a viewer that attaches over the protocol (macOS).
+    pub viewport: bool,
     pub remote_port: u16,
     pub inspect: Option<SocketAddr>,
 }
 
 fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
     let mut entry = None;
-    let mut out = DevArgs { entry: String::new(), headless: false, remote_port: 15702, inspect: None };
+    let mut out = DevArgs { entry: String::new(), headless: false, viewport: false, remote_port: 15702, inspect: None };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--headless" => out.headless = true,
+            "--viewport" => out.viewport = true,
             "--remote-port" => {
                 out.remote_port = it.next().and_then(|p| p.parse().ok()).ok_or("--remote-port takes a port")?;
             }
@@ -54,6 +57,9 @@ fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
         }
     }
     out.entry = entry.ok_or("missing <entry.ts>")?;
+    if out.headless && out.viewport {
+        return Err("--headless and --viewport cannot be combined".into());
+    }
     Ok(out)
 }
 
@@ -112,13 +118,36 @@ pub struct Engine {
     pub identity: EngineIdentity,
 }
 
+/// How the engine shows its frames.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Display {
+    /// A window of its own.
+    Window,
+    /// An offscreen image, no window.
+    Headless,
+    /// IOSurfaces a viewer shows, no window (`--viewport`, macOS).
+    Viewport,
+}
+
 /// Bevy's default plugins, bevy-ts and tsx, then `extra` (the project's plugins), so they can
 /// order against `BevyTsSet` and see bevy-ts's resources.
-pub fn base_app(engine: &Engine, extra: impl Plugin, headless_mode: bool, options: V8Options) -> App {
+pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options) -> App {
     let mut app = App::new();
-    app.add_plugins(headless::default_plugins(headless_mode));
-    if headless_mode {
-        app.add_plugins(headless::HeadlessPlugin);
+    app.add_plugins(headless::default_plugins(display != Display::Window));
+    match display {
+        Display::Headless => {
+            app.add_plugins(headless::HeadlessPlugin);
+        }
+        #[cfg(target_os = "macos")]
+        Display::Viewport => {
+            app.add_plugins(bevy_ts_viewport::ViewportPlugin { windowed: false });
+        }
+        #[cfg(target_os = "macos")]
+        Display::Window => {
+            app.add_plugins(bevy_ts_viewport::ViewportPlugin { windowed: true });
+        }
+        #[cfg(not(target_os = "macos"))]
+        _ => {}
     }
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(true))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
@@ -139,7 +168,18 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     let (tx, channel) = DevChannel::new();
     dev::spawn_watcher(compiler.clone(), tx);
 
-    let mut app = base_app(engine, extra, args.headless, V8Options { inspect: args.inspect });
+    let display = if args.viewport {
+        if !bevy_ts_viewport::supported() {
+            eprintln!("bevy-ts dev: --viewport is macOS only; this is {}", std::env::consts::OS);
+            std::process::exit(2);
+        }
+        Display::Viewport
+    } else if args.headless {
+        Display::Headless
+    } else {
+        Display::Window
+    };
+    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect });
     app.insert_resource(channel).insert_resource(DevSource(compiler.clone()));
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     bevy_ts_tsx::protocol::add_methods(&mut app);
@@ -173,7 +213,8 @@ fn skeleton(engine: &Engine, extra: impl Plugin, headless_mode: bool) {
     let path = std::env::current_dir().unwrap().join("skeleton.js");
     let set = ModuleSet { entry: path.clone(), modules: vec![CompiledModule { path, code: SKELETON_JS.into(), source_map: None }] };
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).unwrap();
-    let mut app = base_app(engine, extra, headless_mode, V8Options::default());
+    let display = if headless_mode { Display::Headless } else { Display::Window };
+    let mut app = base_app(engine, extra, display, V8Options::default());
     app.insert_resource(channel)
         .add_systems(Startup, scene)
         .add_systems(PostUpdate, report_changed.after(bevy_ts::BevyTsSet::PostUpdate))

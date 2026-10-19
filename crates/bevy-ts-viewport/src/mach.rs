@@ -12,7 +12,7 @@ use mach2::traps::mach_task_self;
 use serde_json::{Value, json};
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -101,8 +101,11 @@ fn parse(data: &[u8], port: Option<mach_port_t>) -> Incoming {
     }
 }
 
+/// A received message's id, the port it carried, and its payload length.
+type Received = (i32, Option<mach_port_t>, usize);
+
 /// Receives one message on `port`; `None` once the port is gone.
-fn receive(port: mach_port_t, buf: &mut Rcv) -> Option<Result<(i32, Option<mach_port_t>, usize), kern_return_t>> {
+fn receive(port: mach_port_t, buf: &mut Rcv) -> Option<Result<Received, kern_return_t>> {
     buf.m.header = mach_msg_header_t::default();
     let kr = unsafe {
         mach_msg(&mut buf.m.header, MACH_RCV_MSG, 0, size_of::<Rcv>() as u32, port, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL)
@@ -308,10 +311,7 @@ impl Viewer {
     }
 
     pub fn recv(&self, timeout: Duration) -> Option<Incoming> {
-        match self.rx.recv_timeout(timeout) {
-            Ok(m) => Some(m),
-            Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => None,
-        }
+        self.rx.recv_timeout(timeout).ok()
     }
 }
 

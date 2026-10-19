@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.1.0";
+pub const VERSION: &str = "1.2.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,8 +33,312 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/tsx_node", crate_name: "bevy-ts-tsx", watch: false },
     Method { name: "bevy-ts/tsx_find", crate_name: "bevy-ts-tsx", watch: false },
     Method { name: "bevy-ts/tsx_tree+watch", crate_name: "bevy-ts-tsx", watch: true },
+    Method { name: "bevy-ts/viewport_attach", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_detach", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_resize", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_input", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_mode", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_camera", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_pick", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_select", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_selection+watch", crate_name: "bevy-ts-viewport", watch: true },
+    Method { name: "bevy-ts/viewport_edits+watch", crate_name: "bevy-ts-viewport", watch: true },
+    Method { name: "bevy-ts/viewport_edit_result", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_revert", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_stats", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/assets", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/assets+watch", crate_name: "bevy-ts-viewport", watch: true },
+    Method { name: "bevy-ts/asset_thumbnail", crate_name: "bevy-ts-viewport", watch: false },
 ];
 
+/// Notifications on a viewport's Mach channel, as (method, the side that sends it).
+pub const CHANNEL: &[(&str, &str)] = &[
+    ("hello", "viewer"),
+    ("bye", "viewer"),
+    ("input", "viewer"),
+    ("tick", "viewer"),
+    ("resize", "viewer"),
+    ("visible", "viewer"),
+    ("focus", "viewer"),
+    ("surface", "engine"),
+    ("frame", "engine"),
+    ("cursor", "engine"),
+    ("cursor_grab", "engine"),
+    ("cursor_warp", "engine"),
+    ("ime_area", "engine"),
+    ("ime_allowed", "engine"),
+];
+
+///`AssetChange`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetChange {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub asset: ::std::option::Option<AssetInfo>,
+    pub change: AssetChangeChange,
+    pub path: ::std::string::String,
+}
+///`AssetChangeChange`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum AssetChangeChange {
+    #[serde(rename = "added")]
+    Added,
+    #[serde(rename = "removed")]
+    Removed,
+    #[serde(rename = "modified")]
+    Modified,
+    #[serde(rename = "load_state")]
+    LoadState,
+}
+impl ::std::fmt::Display for AssetChangeChange {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Added => f.write_str("added"),
+            Self::Removed => f.write_str("removed"),
+            Self::Modified => f.write_str("modified"),
+            Self::LoadState => f.write_str("load_state"),
+        }
+    }
+}
+impl ::std::str::FromStr for AssetChangeChange {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "added" => Ok(Self::Added),
+            "removed" => Ok(Self::Removed),
+            "modified" => Ok(Self::Modified),
+            "load_state" => Ok(Self::LoadState),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for AssetChangeChange {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AssetChangeChange {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`AssetInfo`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetInfo {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub error: ::std::option::Option<::std::string::String>,
+    pub kind: AssetKind,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub labels: ::std::vec::Vec<::std::string::String>,
+    #[serde(rename = "loadState")]
+    pub load_state: AssetLoadState,
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub loader: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub modified: ::std::option::Option<u64>,
+    pub path: ::std::string::String,
+    pub size: u64,
+}
+///`AssetKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum AssetKind {
+    #[serde(rename = "image")]
+    Image,
+    #[serde(rename = "mesh")]
+    Mesh,
+    #[serde(rename = "audio")]
+    Audio,
+    #[serde(rename = "font")]
+    Font,
+    #[serde(rename = "shader")]
+    Shader,
+    #[serde(rename = "scene")]
+    Scene,
+    #[serde(rename = "other")]
+    Other,
+}
+impl ::std::fmt::Display for AssetKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Image => f.write_str("image"),
+            Self::Mesh => f.write_str("mesh"),
+            Self::Audio => f.write_str("audio"),
+            Self::Font => f.write_str("font"),
+            Self::Shader => f.write_str("shader"),
+            Self::Scene => f.write_str("scene"),
+            Self::Other => f.write_str("other"),
+        }
+    }
+}
+impl ::std::str::FromStr for AssetKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "image" => Ok(Self::Image),
+            "mesh" => Ok(Self::Mesh),
+            "audio" => Ok(Self::Audio),
+            "font" => Ok(Self::Font),
+            "shader" => Ok(Self::Shader),
+            "scene" => Ok(Self::Scene),
+            "other" => Ok(Self::Other),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for AssetKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AssetKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`AssetLoadState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum AssetLoadState {
+    #[serde(rename = "not_loaded")]
+    NotLoaded,
+    #[serde(rename = "loading")]
+    Loading,
+    #[serde(rename = "loaded")]
+    Loaded,
+    #[serde(rename = "failed")]
+    Failed,
+}
+impl ::std::fmt::Display for AssetLoadState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::NotLoaded => f.write_str("not_loaded"),
+            Self::Loading => f.write_str("loading"),
+            Self::Loaded => f.write_str("loaded"),
+            Self::Failed => f.write_str("failed"),
+        }
+    }
+}
+impl ::std::str::FromStr for AssetLoadState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "not_loaded" => Ok(Self::NotLoaded),
+            "loading" => Ok(Self::Loading),
+            "loaded" => Ok(Self::Loaded),
+            "failed" => Ok(Self::Failed),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for AssetLoadState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for AssetLoadState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`AssetThumbnailParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetThumbnailParams {
+    pub path: ::std::string::String,
+    pub size: ::std::num::NonZeroU32,
+}
+///`AssetThumbnailResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetThumbnailResult {
+    pub path: ::std::string::String,
+    ///Base64 PNG; null for kinds with no thumbnail.
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub png: ::std::option::Option<::std::string::String>,
+    pub size: u32,
+}
+///`AssetsParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct AssetsParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub kind: ::std::option::Option<AssetKind>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub prefix: ::std::option::Option<::std::string::String>,
+}
+///`AssetsResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetsResult {
+    pub assets: ::std::vec::Vec<AssetInfo>,
+    pub root: ::std::string::String,
+}
+///The full list first, then the changes of each frame that had any.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct AssetsWatchMessage {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub assets: ::std::vec::Vec<AssetInfo>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub changes: ::std::vec::Vec<AssetChange>,
+}
 ///`BrpError`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct BrpError {
@@ -131,6 +435,85 @@ pub struct ComponentsChanged {
     pub components: ::std::vec::Vec<::std::string::String>,
     pub entity: Entity,
 }
+///`CursorGrabMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CursorGrabMessage {
+    pub mode: CursorGrabMessageMode,
+}
+///`CursorGrabMessageMode`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum CursorGrabMessageMode {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "confined")]
+    Confined,
+    #[serde(rename = "locked")]
+    Locked,
+}
+impl ::std::fmt::Display for CursorGrabMessageMode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::None => f.write_str("none"),
+            Self::Confined => f.write_str("confined"),
+            Self::Locked => f.write_str("locked"),
+        }
+    }
+}
+impl ::std::str::FromStr for CursorGrabMessageMode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "none" => Ok(Self::None),
+            "confined" => Ok(Self::Confined),
+            "locked" => Ok(Self::Locked),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CursorGrabMessageMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CursorGrabMessageMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`CursorMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CursorMessage {
+    ///A CSS cursor name, or hidden.
+    pub icon: ::std::string::String,
+}
+///`CursorWarpMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct CursorWarpMessage {
+    pub x: f64,
+    pub y: f64,
+}
 ///`DevFeatures`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -140,6 +523,169 @@ pub struct DevFeatures {
     pub inspector: ::std::option::Option<::std::string::String>,
     pub reload: bool,
 }
+///Who may persist an edit to this field: bsn (bevy-ts, levels), tsx (the editor), locked (bound or rejected), transient (ECS only).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditRoute {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub binding: ::std::option::Option<SourceLocation>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub element: ::std::option::Option<SourceLocation>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub expression: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub instance: ::std::option::Option<::std::string::String>,
+    pub kind: EditRouteKind,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub level: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub path: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub prop: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<::std::string::String>,
+    ///tsx: the entity's source chain.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub source: ::std::vec::Vec<SourceLocation>,
+}
+///`EditRouteKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum EditRouteKind {
+    #[serde(rename = "bsn")]
+    Bsn,
+    #[serde(rename = "tsx")]
+    Tsx,
+    #[serde(rename = "locked")]
+    Locked,
+    #[serde(rename = "transient")]
+    Transient,
+}
+impl ::std::fmt::Display for EditRouteKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Bsn => f.write_str("bsn"),
+            Self::Tsx => f.write_str("tsx"),
+            Self::Locked => f.write_str("locked"),
+            Self::Transient => f.write_str("transient"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditRouteKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "bsn" => Ok(Self::Bsn),
+            "tsx" => Ok(Self::Tsx),
+            "locked" => Ok(Self::Locked),
+            "transient" => Ok(Self::Transient),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditRouteKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditRouteKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`EditStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum EditStatus {
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "written")]
+    Written,
+    #[serde(rename = "rejected")]
+    Rejected,
+    #[serde(rename = "transient")]
+    Transient,
+    #[serde(rename = "unconfirmed")]
+    Unconfirmed,
+    #[serde(rename = "reverted")]
+    Reverted,
+}
+impl ::std::fmt::Display for EditStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Pending => f.write_str("pending"),
+            Self::Written => f.write_str("written"),
+            Self::Rejected => f.write_str("rejected"),
+            Self::Transient => f.write_str("transient"),
+            Self::Unconfirmed => f.write_str("unconfirmed"),
+            Self::Reverted => f.write_str("reverted"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "pending" => Ok(Self::Pending),
+            "written" => Ok(Self::Written),
+            "rejected" => Ok(Self::Rejected),
+            "transient" => Ok(Self::Transient),
+            "unconfirmed" => Ok(Self::Unconfirmed),
+            "reverted" => Ok(Self::Reverted),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`Empty`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct Empty {}
 ///`EntitiesResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -242,6 +788,14 @@ pub struct FieldLayout {
     pub offset: u32,
     #[serde(rename = "type")]
     pub type_: FieldType,
+}
+///`FieldRoutes`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FieldRoutes {
+    pub rotation: EditRoute,
+    pub scale: EditRoute,
+    pub translation: EditRoute,
 }
 ///`FieldType`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -365,6 +919,199 @@ impl ::std::convert::TryFrom<::std::string::String> for FieldTypeKind {
         value.parse()
     }
 }
+///The hole gained or lost keyboard focus.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FocusEvent {
+    pub on: bool,
+    #[serde(rename = "type")]
+    pub type_: FocusEventType,
+}
+///`FocusEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum FocusEventType {
+    #[serde(rename = "focus")]
+    Focus,
+}
+impl ::std::fmt::Display for FocusEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Focus => f.write_str("focus"),
+        }
+    }
+}
+impl ::std::str::FromStr for FocusEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "focus" => Ok(Self::Focus),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for FocusEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for FocusEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`FrameMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FrameMessage {
+    pub h: u32,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub layer: ::std::option::Option<u32>,
+    pub ring: u32,
+    pub seq: u64,
+    pub slot: u32,
+    pub ts: u64,
+    pub w: u32,
+}
+///A trackpad gesture.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct GestureEvent {
+    ///Pinch: scale delta; rotate: radians.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub delta: ::std::option::Option<f64>,
+    pub kind: GestureEventKind,
+    #[serde(rename = "type")]
+    pub type_: GestureEventType,
+}
+///`GestureEventKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum GestureEventKind {
+    #[serde(rename = "pinch")]
+    Pinch,
+    #[serde(rename = "rotate")]
+    Rotate,
+    #[serde(rename = "double_tap")]
+    DoubleTap,
+}
+impl ::std::fmt::Display for GestureEventKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Pinch => f.write_str("pinch"),
+            Self::Rotate => f.write_str("rotate"),
+            Self::DoubleTap => f.write_str("double_tap"),
+        }
+    }
+}
+impl ::std::str::FromStr for GestureEventKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "pinch" => Ok(Self::Pinch),
+            "rotate" => Ok(Self::Rotate),
+            "double_tap" => Ok(Self::DoubleTap),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for GestureEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GestureEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`GestureEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum GestureEventType {
+    #[serde(rename = "gesture")]
+    Gesture,
+}
+impl ::std::fmt::Display for GestureEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Gesture => f.write_str("gesture"),
+        }
+    }
+}
+impl ::std::str::FromStr for GestureEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "gesture" => Ok(Self::Gesture),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for GestureEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GestureEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`GetComponentsParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -405,6 +1152,283 @@ pub struct HelloResult {
     pub generation: u64,
     ///The protocol version (semver) this server speaks.
     pub protocol: ::std::string::String,
+    ///Whether bevy-ts-viewport methods are served (protocol 1.2).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewport: ::std::option::Option<bool>,
+}
+///`ImeAreaMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ImeAreaMessage {
+    pub h: f64,
+    pub w: f64,
+    pub x: f64,
+    pub y: f64,
+}
+///Input method composition.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ImeEvent {
+    ///UTF-8 byte range in the preedit text.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub cursor: ::std::option::Option<[u32; 2usize]>,
+    pub kind: ImeEventKind,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub text: ::std::option::Option<::std::string::String>,
+    #[serde(rename = "type")]
+    pub type_: ImeEventType,
+}
+///`ImeEventKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ImeEventKind {
+    #[serde(rename = "enabled")]
+    Enabled,
+    #[serde(rename = "preedit")]
+    Preedit,
+    #[serde(rename = "commit")]
+    Commit,
+    #[serde(rename = "disabled")]
+    Disabled,
+}
+impl ::std::fmt::Display for ImeEventKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Enabled => f.write_str("enabled"),
+            Self::Preedit => f.write_str("preedit"),
+            Self::Commit => f.write_str("commit"),
+            Self::Disabled => f.write_str("disabled"),
+        }
+    }
+}
+impl ::std::str::FromStr for ImeEventKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "enabled" => Ok(Self::Enabled),
+            "preedit" => Ok(Self::Preedit),
+            "commit" => Ok(Self::Commit),
+            "disabled" => Ok(Self::Disabled),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImeEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImeEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ImeEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ImeEventType {
+    #[serde(rename = "ime")]
+    Ime,
+}
+impl ::std::fmt::Display for ImeEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Ime => f.write_str("ime"),
+        }
+    }
+}
+impl ::std::str::FromStr for ImeEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "ime" => Ok(Self::Ime),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ImeEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ImeEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///A key.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct KeyEvent {
+    ///W3C KeyboardEvent.code, e.g. KeyW.
+    pub code: ::std::string::String,
+    ///The logical key.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub key: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub mods: ::std::option::Option<Modifiers>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub repeat: ::std::option::Option<bool>,
+    pub state: KeyEventState,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub text: ::std::option::Option<::std::string::String>,
+    #[serde(rename = "type")]
+    pub type_: KeyEventType,
+}
+///`KeyEventState`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum KeyEventState {
+    #[serde(rename = "down")]
+    Down,
+    #[serde(rename = "up")]
+    Up,
+}
+impl ::std::fmt::Display for KeyEventState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Down => f.write_str("down"),
+            Self::Up => f.write_str("up"),
+        }
+    }
+}
+impl ::std::str::FromStr for KeyEventState {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "down" => Ok(Self::Down),
+            "up" => Ok(Self::Up),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for KeyEventState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for KeyEventState {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`KeyEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum KeyEventType {
+    #[serde(rename = "key")]
+    Key,
+}
+impl ::std::fmt::Display for KeyEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Key => f.write_str("key"),
+        }
+    }
+}
+impl ::std::str::FromStr for KeyEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "key" => Ok(Self::Key),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for KeyEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for KeyEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`LatencyStats`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LatencyStats {
+    #[serde(
+        rename = "medianMs",
+        deserialize_with = "::std::option::Option::deserialize"
+    )]
+    pub median_ms: ::std::option::Option<f64>,
+    #[serde(rename = "p95Ms", deserialize_with = "::std::option::Option::deserialize")]
+    pub p95_ms: ::std::option::Option<f64>,
+    pub samples: u64,
 }
 ///`Layout`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -506,6 +1530,19 @@ pub struct Migration {
     pub removed: ::std::vec::Vec<::std::string::String>,
     pub reset: ::std::vec::Vec<::std::string::String>,
 }
+///Modifier keys held; absent means up.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct Modifiers {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub alt: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub ctrl: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub meta: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub shift: ::std::option::Option<bool>,
+}
 ///`MutateComponentsParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -515,6 +1552,12 @@ pub struct MutateComponentsParams {
     ///.field, .field.x|y|z|w or .field[i] for TS components; a reflect path for Rust ones.
     pub path: ::std::string::String,
     pub value: ::serde_json::Value,
+}
+///`OnMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct OnMessage {
+    pub on: bool,
 }
 ///`OpenRpcDocument`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -537,6 +1580,221 @@ pub struct PauseParams {
 pub struct PauseResult {
     pub frame: u64,
     pub paused: bool,
+}
+///`PickHit`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PickHit {
+    pub depth: f64,
+    pub entity: Entity,
+    pub selects: Entity,
+}
+///A pointer event in the hole.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PointerEvent {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub button: ::std::option::Option<PointerEventButton>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub clicks: ::std::option::Option<u32>,
+    ///Raw motion, kept while the cursor is locked.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub dx: ::std::option::Option<f64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub dy: ::std::option::Option<f64>,
+    pub kind: PointerEventKind,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub mods: ::std::option::Option<Modifiers>,
+    #[serde(rename = "type")]
+    pub type_: PointerEventType,
+    ///Points from the hole's top left.
+    pub x: f64,
+    pub y: f64,
+}
+///`PointerEventButton`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum PointerEventButton {
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "right")]
+    Right,
+    #[serde(rename = "middle")]
+    Middle,
+    #[serde(rename = "back")]
+    Back,
+    #[serde(rename = "forward")]
+    Forward,
+}
+impl ::std::fmt::Display for PointerEventButton {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Left => f.write_str("left"),
+            Self::Right => f.write_str("right"),
+            Self::Middle => f.write_str("middle"),
+            Self::Back => f.write_str("back"),
+            Self::Forward => f.write_str("forward"),
+        }
+    }
+}
+impl ::std::str::FromStr for PointerEventButton {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "left" => Ok(Self::Left),
+            "right" => Ok(Self::Right),
+            "middle" => Ok(Self::Middle),
+            "back" => Ok(Self::Back),
+            "forward" => Ok(Self::Forward),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for PointerEventButton {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PointerEventButton {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`PointerEventKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum PointerEventKind {
+    #[serde(rename = "move")]
+    Move,
+    #[serde(rename = "down")]
+    Down,
+    #[serde(rename = "up")]
+    Up,
+    #[serde(rename = "enter")]
+    Enter,
+    #[serde(rename = "leave")]
+    Leave,
+}
+impl ::std::fmt::Display for PointerEventKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Move => f.write_str("move"),
+            Self::Down => f.write_str("down"),
+            Self::Up => f.write_str("up"),
+            Self::Enter => f.write_str("enter"),
+            Self::Leave => f.write_str("leave"),
+        }
+    }
+}
+impl ::std::str::FromStr for PointerEventKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "move" => Ok(Self::Move),
+            "down" => Ok(Self::Down),
+            "up" => Ok(Self::Up),
+            "enter" => Ok(Self::Enter),
+            "leave" => Ok(Self::Leave),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for PointerEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PointerEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`PointerEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum PointerEventType {
+    #[serde(rename = "pointer")]
+    Pointer,
+}
+impl ::std::fmt::Display for PointerEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Pointer => f.write_str("pointer"),
+        }
+    }
+}
+impl ::std::str::FromStr for PointerEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "pointer" => Ok(Self::Pointer),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for PointerEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PointerEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///`ReloadParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
@@ -638,6 +1896,14 @@ pub struct Reparented {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub parent: ::std::option::Option<Entity>,
 }
+///`RingInfo`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RingInfo {
+    pub h: u32,
+    pub ring: u32,
+    pub w: u32,
+}
 ///`SchemaParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
@@ -686,6 +1952,84 @@ pub struct ScriptError {
     pub message: ::std::string::String,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub stack: ::std::option::Option<::std::string::String>,
+}
+///`SelectionItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SelectionItem {
+    pub entity: Entity,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub instance: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub level: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub name: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub node: ::std::option::Option<u64>,
+    pub primary: bool,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub routes: ::std::option::Option<FieldRoutes>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub source: ::std::vec::Vec<SourceLocation>,
+}
+///`SelectionOrigin`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum SelectionOrigin {
+    #[serde(rename = "viewport")]
+    Viewport,
+    #[serde(rename = "editor")]
+    Editor,
+    #[serde(rename = "engine")]
+    Engine,
+}
+impl ::std::fmt::Display for SelectionOrigin {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Viewport => f.write_str("viewport"),
+            Self::Editor => f.write_str("editor"),
+            Self::Engine => f.write_str("engine"),
+        }
+    }
+}
+impl ::std::str::FromStr for SelectionOrigin {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "viewport" => Ok(Self::Viewport),
+            "editor" => Ok(Self::Editor),
+            "engine" => Ok(Self::Engine),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for SelectionOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for SelectionOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///`SourceLocation`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -772,6 +2116,17 @@ impl ::std::default::Default for StepParams {
         }
     }
 }
+///Carries the IOSurface's Mach port.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SurfaceMessage {
+    pub h: u32,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub layer: ::std::option::Option<u32>,
+    pub ring: u32,
+    pub slot: u32,
+    pub w: u32,
+}
 ///`SystemInfo`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -808,6 +2163,14 @@ impl ::std::convert::From<::std::vec::Vec<SystemInfo>> for SystemsResult {
     fn from(value: ::std::vec::Vec<SystemInfo>) -> Self {
         Self(value)
     }
+}
+///`TickMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TickMessage {
+    #[serde(rename = "targetTs", skip_serializing_if = "::std::option::Option::is_none")]
+    pub target_ts: ::std::option::Option<u64>,
+    pub ts: u64,
 }
 ///`TsFieldInfo`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -1113,6 +2476,622 @@ pub struct TsxTreeWatchMessage {
     pub tombstoned: ::std::vec::Vec<TsxNodeId>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub written: ::std::vec::Vec<TsxNodeId>,
+}
+///`ViewportAttachParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportAttachParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub display: ::std::option::Option<u32>,
+    ///Points.
+    pub h: f64,
+    ///The display's refresh, for pacing before the first tick.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hz: ::std::option::Option<f64>,
+    ///Device pixels per point.
+    pub scale: f64,
+    ///Points.
+    pub w: f64,
+}
+///`ViewportAttachResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportAttachResult {
+    pub protocol: ::std::string::String,
+    ///The Mach bootstrap name to look up and say hello on.
+    pub service: ::std::string::String,
+}
+///The editor camera's pose.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportCamera {
+    ///Vertical field of view, radians.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub fov: ::std::option::Option<f64>,
+    pub rotation: [f64; 4usize],
+    ///Orthographic scale.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub scale: ::std::option::Option<f64>,
+    pub translation: [f64; 3usize],
+}
+///`ViewportCameraParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportCameraParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub fov: ::std::option::Option<f64>,
+    ///Frame the selection.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub frame: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub rotation: ::std::option::Option<[f64; 4usize]>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub scale: ::std::option::Option<f64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub translation: ::std::option::Option<[f64; 3usize]>,
+}
+///`ViewportDetachResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportDetachResult {
+    pub detached: bool,
+}
+///`ViewportEdit`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportEdit {
+    pub after: ::serde_json::Value,
+    pub before: ::serde_json::Value,
+    pub component: ::std::string::String,
+    pub entity: Entity,
+    pub field: ::std::string::String,
+    pub id: u64,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<::std::string::String>,
+    pub route: EditRoute,
+    pub status: EditStatus,
+}
+///`ViewportEditResultParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportEditResultParams {
+    pub id: u64,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub location: ::std::option::Option<SourceLocation>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<::std::string::String>,
+    pub status: ViewportEditResultParamsStatus,
+}
+///`ViewportEditResultParamsStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ViewportEditResultParamsStatus {
+    #[serde(rename = "written")]
+    Written,
+    #[serde(rename = "rejected")]
+    Rejected,
+}
+impl ::std::fmt::Display for ViewportEditResultParamsStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Written => f.write_str("written"),
+            Self::Rejected => f.write_str("rejected"),
+        }
+    }
+}
+impl ::std::str::FromStr for ViewportEditResultParamsStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "written" => Ok(Self::Written),
+            "rejected" => Ok(Self::Rejected),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ViewportEditResultParamsStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ViewportEditResultParamsStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ViewportEditsMessage`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportEditsMessage {
+    pub edits: ::std::vec::Vec<ViewportEdit>,
+}
+///One input event from the viewer.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ViewportInput {
+    PointerEvent(PointerEvent),
+    WheelEvent(WheelEvent),
+    GestureEvent(GestureEvent),
+    KeyEvent(KeyEvent),
+    ImeEvent(ImeEvent),
+    FocusEvent(FocusEvent),
+    VisibleEvent(VisibleEvent),
+}
+impl ::std::convert::From<PointerEvent> for ViewportInput {
+    fn from(value: PointerEvent) -> Self {
+        Self::PointerEvent(value)
+    }
+}
+impl ::std::convert::From<WheelEvent> for ViewportInput {
+    fn from(value: WheelEvent) -> Self {
+        Self::WheelEvent(value)
+    }
+}
+impl ::std::convert::From<GestureEvent> for ViewportInput {
+    fn from(value: GestureEvent) -> Self {
+        Self::GestureEvent(value)
+    }
+}
+impl ::std::convert::From<KeyEvent> for ViewportInput {
+    fn from(value: KeyEvent) -> Self {
+        Self::KeyEvent(value)
+    }
+}
+impl ::std::convert::From<ImeEvent> for ViewportInput {
+    fn from(value: ImeEvent) -> Self {
+        Self::ImeEvent(value)
+    }
+}
+impl ::std::convert::From<FocusEvent> for ViewportInput {
+    fn from(value: FocusEvent) -> Self {
+        Self::FocusEvent(value)
+    }
+}
+impl ::std::convert::From<VisibleEvent> for ViewportInput {
+    fn from(value: VisibleEvent) -> Self {
+        Self::VisibleEvent(value)
+    }
+}
+///`ViewportInputParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportInputParams {
+    pub events: ::std::vec::Vec<ViewportInput>,
+}
+///`ViewportInputResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportInputResult {
+    pub queued: u32,
+}
+///`ViewportMode`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ViewportMode {
+    #[serde(rename = "play")]
+    Play,
+    #[serde(rename = "edit")]
+    Edit,
+}
+impl ::std::fmt::Display for ViewportMode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Play => f.write_str("play"),
+            Self::Edit => f.write_str("edit"),
+        }
+    }
+}
+impl ::std::str::FromStr for ViewportMode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "play" => Ok(Self::Play),
+            "edit" => Ok(Self::Edit),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ViewportMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ViewportMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ViewportModeParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportModeParams {
+    ///Pass gamepad input while the hole has no focus.
+    #[serde(
+        rename = "gamepadUnfocused",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub gamepad_unfocused: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub mode: ::std::option::Option<ViewportMode>,
+    ///Draw the game's UI over the editor view (edit only; default false).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub ui: ::std::option::Option<bool>,
+}
+///`ViewportModeResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportModeResult {
+    #[serde(rename = "gamepadUnfocused")]
+    pub gamepad_unfocused: bool,
+    pub mode: ViewportMode,
+    pub paused: bool,
+    pub ui: bool,
+}
+///`ViewportPickParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportPickParams {
+    ///Points.
+    pub x: f64,
+    pub y: f64,
+}
+///`ViewportPickResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportPickResult {
+    pub hits: ::std::vec::Vec<PickHit>,
+}
+///`ViewportResizeParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportResizeParams {
+    pub h: f64,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub hz: ::std::option::Option<f64>,
+    pub scale: f64,
+    pub w: f64,
+}
+///`ViewportRevertParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportRevertParams {
+    pub id: u64,
+}
+///Entities, or a source location resolved as bevy-ts/tsx_find resolves it.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportSelectParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub column: ::std::option::Option<u32>,
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub entities: ::std::vec::Vec<Entity>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub file: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub line: ::std::option::Option<u32>,
+}
+///`ViewportSelection`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportSelection {
+    pub items: ::std::vec::Vec<SelectionItem>,
+    pub origin: SelectionOrigin,
+}
+///`ViewportSize`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportSize {
+    pub h: f64,
+    #[serde(rename = "pixelH")]
+    pub pixel_h: u32,
+    #[serde(rename = "pixelW")]
+    pub pixel_w: u32,
+    pub scale: f64,
+    pub w: f64,
+}
+///`ViewportStats`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportStats {
+    pub attached: bool,
+    #[serde(rename = "droppedTicks")]
+    pub dropped_ticks: u64,
+    pub frames: u64,
+    ///Mean GPU time per frame, submit to completion.
+    #[serde(rename = "gpuMs", deserialize_with = "::std::option::Option::deserialize")]
+    pub gpu_ms: ::std::option::Option<f64>,
+    #[serde(rename = "inputToFrame")]
+    pub input_to_frame: LatencyStats,
+    pub mode: ViewportMode,
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub ring: ::std::option::Option<RingInfo>,
+    pub size: ViewportSize,
+    pub skipped: u64,
+    pub visible: bool,
+}
+///The hole was shown or hidden.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct VisibleEvent {
+    pub on: bool,
+    #[serde(rename = "type")]
+    pub type_: VisibleEventType,
+}
+///`VisibleEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum VisibleEventType {
+    #[serde(rename = "visible")]
+    Visible,
+}
+impl ::std::fmt::Display for VisibleEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Visible => f.write_str("visible"),
+        }
+    }
+}
+impl ::std::str::FromStr for VisibleEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "visible" => Ok(Self::Visible),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for VisibleEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for VisibleEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Scroll, with precise deltas in pixels or lines.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct WheelEvent {
+    pub dx: f64,
+    pub dy: f64,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub mods: ::std::option::Option<Modifiers>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub momentum: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub phase: ::std::option::Option<WheelEventPhase>,
+    #[serde(rename = "type")]
+    pub type_: WheelEventType,
+    pub unit: WheelEventUnit,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub x: ::std::option::Option<f64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub y: ::std::option::Option<f64>,
+}
+///`WheelEventPhase`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum WheelEventPhase {
+    #[serde(rename = "started")]
+    Started,
+    #[serde(rename = "moved")]
+    Moved,
+    #[serde(rename = "ended")]
+    Ended,
+    #[serde(rename = "cancelled")]
+    Cancelled,
+}
+impl ::std::fmt::Display for WheelEventPhase {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Started => f.write_str("started"),
+            Self::Moved => f.write_str("moved"),
+            Self::Ended => f.write_str("ended"),
+            Self::Cancelled => f.write_str("cancelled"),
+        }
+    }
+}
+impl ::std::str::FromStr for WheelEventPhase {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "started" => Ok(Self::Started),
+            "moved" => Ok(Self::Moved),
+            "ended" => Ok(Self::Ended),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for WheelEventPhase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for WheelEventPhase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`WheelEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum WheelEventType {
+    #[serde(rename = "wheel")]
+    Wheel,
+}
+impl ::std::fmt::Display for WheelEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Wheel => f.write_str("wheel"),
+        }
+    }
+}
+impl ::std::str::FromStr for WheelEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "wheel" => Ok(Self::Wheel),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for WheelEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for WheelEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`WheelEventUnit`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum WheelEventUnit {
+    #[serde(rename = "line")]
+    Line,
+    #[serde(rename = "pixel")]
+    Pixel,
+}
+impl ::std::fmt::Display for WheelEventUnit {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Line => f.write_str("line"),
+            Self::Pixel => f.write_str("pixel"),
+        }
+    }
+}
+impl ::std::str::FromStr for WheelEventUnit {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "line" => Ok(Self::Line),
+            "pixel" => Ok(Self::Pixel),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for WheelEventUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for WheelEventUnit {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 /// Generation of default values for serde.
 pub mod defaults {

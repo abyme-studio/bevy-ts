@@ -23,7 +23,7 @@ The engine SHALL apply queued events at the start of each frame, before `PreUpda
 - **THEN** the game sees `KeyW` released and `WindowFocused { focused: false }`
 
 ### Requirement: Gamepads are read in the engine, gated by focus
-Gamepads SHALL be read by the engine process itself (`gilrs`), not forwarded. While the viewport does not have focus, gamepad input SHALL NOT reach the game unless `bevy-ts/viewport_mode` set `gamepad_unfocused: true`.
+Gamepads SHALL be read by the engine process itself (`gilrs`), not forwarded. While the viewport does not have focus, gamepad input SHALL NOT reach the game unless `bevy-ts/viewport_mode` set `gamepadUnfocused: true`.
 
 #### Scenario: Typing in abyme's editor
 - **WHEN** the operator types in a file in abyme while a gamepad is connected

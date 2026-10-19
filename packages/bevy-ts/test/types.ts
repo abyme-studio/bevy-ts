@@ -47,7 +47,7 @@ app.startup("scene", ({ commands }) => {
   app.system("bad", { read: [GlobalTransform], run() {} });
 });
 import type { Methods, HelloResult, PROTOCOL_VERSION } from "bevy-ts/protocol";
-const v: typeof PROTOCOL_VERSION = "1.1.0";
+const v: typeof PROTOCOL_VERSION = "1.2.0";
 const h: Methods["bevy-ts/hello"]["result"] = {} as HelloResult;
 void v; void h;
 import type { TsxNodeResult } from "bevy-ts/protocol";

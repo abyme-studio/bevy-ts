@@ -52,7 +52,7 @@ While a viewer is attached the engine SHALL keep a Bevy `Window` entity marked `
 - **THEN** the window's scale factor becomes 1, Bevy sends `WindowScaleFactorChanged`, and frames come at the new pixel size
 
 ### Requirement: The viewer's display paces frames
-While a viewer is attached and visible, the engine SHALL run one `App::update` per `tick` message (`ts`, `target_ts`, sent by the viewer once per vsync of the hole's display) and SHALL drop ticks that arrive while an update is running. With no tick for 100 ms while visible, or before the first tick, it SHALL pace itself at `hz`. A `visible` message with `on: false`, or a detach, SHALL stop rendering; play mode SHALL then keep updating at 60 Hz without rendering, and edit mode SHALL update only on protocol requests or reloads.
+While a viewer is attached and visible, the engine SHALL run one `App::update` per `tick` message (`ts`, `targetTs`, sent by the viewer once per vsync of the hole's display) and SHALL drop ticks that arrive while an update is running. With no tick for 100 ms while visible, or before the first tick, it SHALL pace itself at `hz`. A `visible` message with `on: false`, or a detach, SHALL stop rendering; play mode SHALL then keep updating at 60 Hz without rendering, and edit mode SHALL update only on protocol requests or reloads.
 
 #### Scenario: A 120 Hz display
 - **WHEN** the hole is on a 120 Hz display and the game is light

@@ -5,16 +5,26 @@
 //! macOS only. On other platforms the crate builds empty and [`supported`] is false.
 
 #[cfg(target_os = "macos")]
+mod feedback;
+#[cfg(target_os = "macos")]
+pub mod input;
+#[cfg(target_os = "macos")]
+mod keys;
+#[cfg(target_os = "macos")]
 pub mod mach;
 #[cfg(target_os = "macos")]
+mod methods;
+#[cfg(target_os = "macos")]
 mod ring;
+#[cfg(target_os = "macos")]
+pub mod runner;
 #[cfg(target_os = "macos")]
 pub mod shared;
 #[cfg(target_os = "macos")]
 pub mod surface;
 
 #[cfg(target_os = "macos")]
-pub use ring::VirtualWindow;
+pub use ring::{UpdateCount, VirtualWindow};
 
 /// Whether viewport mode exists on this platform.
 pub const fn supported() -> bool {
@@ -36,29 +46,55 @@ mod plugin {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
 
-    /// Viewport mode. Add it to an app built without `WinitPlugin` and with no primary window;
-    /// it spawns the virtual primary window.
+    /// Viewport mode, or the viewport's edit tools in a window of the engine's own.
+    ///
+    /// Viewport mode (`windowed: false`) needs an app built without `WinitPlugin` and with no
+    /// primary window: it spawns the virtual primary window and installs the tick-driven runner.
     #[derive(Default)]
-    pub struct ViewportPlugin;
+    pub struct ViewportPlugin {
+        pub windowed: bool,
+    }
 
     impl Plugin for ViewportPlugin {
         fn build(&self, app: &mut App) {
             let shared = Arc::new(Shared::default());
-            app.insert_resource(SharedRes(shared.clone()));
-            let (w, h, scale) = DEFAULT_SIZE;
-            let mut resolution = WindowResolution::new((w * scale) as u32, (h * scale) as u32);
-            resolution.set_scale_factor(scale);
-            app.world_mut().spawn((
-                Window { title: "bevy-ts viewport".into(), resolution, ..default() },
-                PrimaryWindow,
-                VirtualWindow,
-            ));
-            ring::build_render(app, shared);
+            app.insert_resource(SharedRes(shared.clone()))
+                .init_resource::<UpdateCount>()
+                .add_systems(First, count_update);
+            if !self.windowed {
+                let (w, h, scale) = DEFAULT_SIZE;
+                let mut resolution = WindowResolution::new((w * scale) as u32, (h * scale) as u32);
+                resolution.set_scale_factor(scale);
+                app.world_mut().spawn((
+                    Window { title: "bevy-ts viewport".into(), resolution, focused: false, ..default() },
+                    PrimaryWindow,
+                    VirtualWindow,
+                ));
+                app.init_resource::<input::PendingInput>()
+                    .init_resource::<feedback::Cursor>()
+                    .add_systems(First, (methods::drain, input::apply).chain().after(count_update))
+                    .add_systems(Last, feedback::send_changes)
+                    .set_runner(runner::runner);
+                ring::build_render(app, shared);
+            }
         }
 
         fn finish(&self, app: &mut App) {
-            ring::finish_render(app);
+            // Methods go in once `RemotePlugin` (added in any order) has made `RemoteMethods`.
+            if app.world().contains_resource::<bevy::remote::RemoteMethods>() {
+                if !self.windowed {
+                    methods::add_viewer_methods(app);
+                }
+                methods::add_common_methods(app);
+            }
+            if !self.windowed {
+                ring::finish_render(app);
+            }
         }
+    }
+
+    fn count_update(mut n: ResMut<UpdateCount>) {
+        n.0 += 1;
     }
 
     static ATTACHES: AtomicU32 = AtomicU32::new(0);

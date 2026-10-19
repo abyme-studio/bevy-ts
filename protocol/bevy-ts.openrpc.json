@@ -2,8 +2,8 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.1.0",
-    "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump."
+    "version": "1.2.0",
+    "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names."
   },
   "methods": [
     {
@@ -298,6 +298,499 @@
         }
       },
       "x-bevy-ts-watch": true
+    },
+    {
+      "name": "bevy-ts/viewport_attach",
+      "summary": "Makes a viewport and checks in its Mach service; a second attach replaces the first.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportAttachParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportAttachResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_detach",
+      "summary": "Ends the viewport's service and releases its surfaces; the game keeps running.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportDetachResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_resize",
+      "summary": "Resizes the virtual window at the next frame boundary.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportResizeParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportSize"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_input",
+      "summary": "Queues viewport input events, as the channel's input messages do.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportInputParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportInputResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_mode",
+      "summary": "Switches between play and edit; answers the mode in force.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportModeParams"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportModeResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_camera",
+      "summary": "Gets or sets the editor camera's pose.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportCameraParams"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportCamera"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_pick",
+      "summary": "Every hit at a point, nearest first, and what a click there would select.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportPickParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportPickResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_select",
+      "summary": "Sets the selection by entities or by source location.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportSelectParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportSelection"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_selection+watch",
+      "summary": "The selection on open and on every change.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-watch": true,
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportSelection"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_edits+watch",
+      "summary": "Viewport edits: one per gizmo drag on release, and each status change.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-watch": true,
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportEditsMessage"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_edit_result",
+      "summary": "The editor's answer to a tsx edit.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportEditResultParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportEdit"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_revert",
+      "summary": "Restores an edit's before value.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportRevertParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportEdit"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_stats",
+      "summary": "Frames, skips, dropped ticks, GPU time and input-to-frame latency.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportStats"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/assets",
+      "summary": "Every file under the asset root, with kind, loader and load state; loads nothing.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/AssetsParams"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/AssetsResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/assets+watch",
+      "summary": "The asset list, then each frame's changes.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-watch": true,
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/AssetsWatchMessage"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/asset_thumbnail",
+      "summary": "A PNG of an asset, rendered offscreen.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/AssetThumbnailParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/AssetThumbnailResult"
+        }
+      }
+    },
+    {
+      "name": "hello",
+      "summary": "Viewer to engine on the channel: attach, with the reply port in the message.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "viewer",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/Empty"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "bye",
+      "summary": "Viewer to engine: detach.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "viewer",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/Empty"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "input",
+      "summary": "Viewer to engine: one input event per message.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "viewer",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportInput"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "tick",
+      "summary": "Viewer to engine: one per vsync of the hole's display.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "viewer",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/TickMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "resize",
+      "summary": "Viewer to engine: the hole's size.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "viewer",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportResizeParams"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "visible",
+      "summary": "Viewer to engine: the hole was shown or hidden.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "viewer",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/OnMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "focus",
+      "summary": "Viewer to engine: the hole gained or lost focus.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "viewer",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/OnMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "surface",
+      "summary": "Engine to viewer: an IOSurface of a ring, sent once per slot.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "engine",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/SurfaceMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "frame",
+      "summary": "Engine to viewer: a slot holds the newest finished frame.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "engine",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/FrameMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "cursor",
+      "summary": "Engine to viewer: the cursor icon.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "engine",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/CursorMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "cursor_grab",
+      "summary": "Engine to viewer: the cursor grab mode.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "engine",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/CursorGrabMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "cursor_warp",
+      "summary": "Engine to viewer: game code moved the cursor (points).",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "engine",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/CursorWarpMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ime_area",
+      "summary": "Engine to viewer: where the composition is (points).",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "engine",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ImeAreaMessage"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ime_allowed",
+      "summary": "Engine to viewer: whether IME is on.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "engine",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/OnMessage"
+          },
+          "required": true
+        }
+      ]
     }
   ],
   "components": {
@@ -390,6 +883,10 @@
           },
           "dev": {
             "$ref": "#/components/schemas/DevFeatures"
+          },
+          "viewport": {
+            "type": "boolean",
+            "description": "Whether bevy-ts-viewport methods are served (protocol 1.2)."
           }
         }
       },
@@ -1616,6 +2113,1488 @@
             }
           }
         }
+      },
+      "Modifiers": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "shift": {
+            "type": "boolean"
+          },
+          "ctrl": {
+            "type": "boolean"
+          },
+          "alt": {
+            "type": "boolean"
+          },
+          "meta": {
+            "type": "boolean"
+          }
+        },
+        "description": "Modifier keys held; absent means up."
+      },
+      "PointerEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "kind",
+          "x",
+          "y"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "pointer"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "move",
+              "down",
+              "up",
+              "enter",
+              "leave"
+            ]
+          },
+          "x": {
+            "type": "number",
+            "description": "Points from the hole's top left."
+          },
+          "y": {
+            "type": "number"
+          },
+          "button": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "middle",
+              "back",
+              "forward"
+            ]
+          },
+          "clicks": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "dx": {
+            "type": "number",
+            "description": "Raw motion, kept while the cursor is locked."
+          },
+          "dy": {
+            "type": "number"
+          },
+          "mods": {
+            "$ref": "#/components/schemas/Modifiers"
+          }
+        },
+        "description": "A pointer event in the hole."
+      },
+      "WheelEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "dx",
+          "dy",
+          "unit"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "wheel"
+            ]
+          },
+          "dx": {
+            "type": "number"
+          },
+          "dy": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "line",
+              "pixel"
+            ]
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "started",
+              "moved",
+              "ended",
+              "cancelled"
+            ]
+          },
+          "momentum": {
+            "type": "boolean"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "mods": {
+            "$ref": "#/components/schemas/Modifiers"
+          }
+        },
+        "description": "Scroll, with precise deltas in pixels or lines."
+      },
+      "GestureEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "gesture"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pinch",
+              "rotate",
+              "double_tap"
+            ]
+          },
+          "delta": {
+            "type": "number",
+            "description": "Pinch: scale delta; rotate: radians."
+          }
+        },
+        "description": "A trackpad gesture."
+      },
+      "KeyEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "state",
+          "code"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "key"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "down",
+              "up"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "description": "W3C KeyboardEvent.code, e.g. KeyW."
+          },
+          "key": {
+            "type": "string",
+            "description": "The logical key."
+          },
+          "text": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "boolean"
+          },
+          "mods": {
+            "$ref": "#/components/schemas/Modifiers"
+          }
+        },
+        "description": "A key."
+      },
+      "ImeEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ime"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "enabled",
+              "preedit",
+              "commit",
+              "disabled"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "UTF-8 byte range in the preedit text."
+          }
+        },
+        "description": "Input method composition."
+      },
+      "FocusEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "on"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "focus"
+            ]
+          },
+          "on": {
+            "type": "boolean"
+          }
+        },
+        "description": "The hole gained or lost keyboard focus."
+      },
+      "VisibleEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "on"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "visible"
+            ]
+          },
+          "on": {
+            "type": "boolean"
+          }
+        },
+        "description": "The hole was shown or hidden."
+      },
+      "ViewportInput": {
+        "description": "One input event from the viewer.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PointerEvent"
+          },
+          {
+            "$ref": "#/components/schemas/WheelEvent"
+          },
+          {
+            "$ref": "#/components/schemas/GestureEvent"
+          },
+          {
+            "$ref": "#/components/schemas/KeyEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ImeEvent"
+          },
+          {
+            "$ref": "#/components/schemas/FocusEvent"
+          },
+          {
+            "$ref": "#/components/schemas/VisibleEvent"
+          }
+        ]
+      },
+      "ViewportAttachParams": {
+        "type": "object",
+        "required": [
+          "w",
+          "h",
+          "scale"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "w": {
+            "type": "number",
+            "description": "Points."
+          },
+          "h": {
+            "type": "number",
+            "description": "Points."
+          },
+          "scale": {
+            "type": "number",
+            "description": "Device pixels per point."
+          },
+          "hz": {
+            "type": "number",
+            "description": "The display's refresh, for pacing before the first tick."
+          },
+          "display": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "ViewportAttachResult": {
+        "type": "object",
+        "required": [
+          "service",
+          "protocol"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "description": "The Mach bootstrap name to look up and say hello on."
+          },
+          "protocol": {
+            "type": "string"
+          }
+        }
+      },
+      "ViewportDetachResult": {
+        "type": "object",
+        "required": [
+          "detached"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "detached": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ViewportResizeParams": {
+        "type": "object",
+        "required": [
+          "w",
+          "h",
+          "scale"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "w": {
+            "type": "number"
+          },
+          "h": {
+            "type": "number"
+          },
+          "scale": {
+            "type": "number"
+          },
+          "hz": {
+            "type": "number"
+          }
+        }
+      },
+      "ViewportSize": {
+        "type": "object",
+        "required": [
+          "w",
+          "h",
+          "scale",
+          "pixelW",
+          "pixelH"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "w": {
+            "type": "number"
+          },
+          "h": {
+            "type": "number"
+          },
+          "scale": {
+            "type": "number"
+          },
+          "pixelW": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "pixelH": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "ViewportInputParams": {
+        "type": "object",
+        "required": [
+          "events"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ViewportInput"
+            }
+          }
+        }
+      },
+      "ViewportInputResult": {
+        "type": "object",
+        "required": [
+          "queued"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "queued": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "ViewportMode": {
+        "type": "string",
+        "enum": [
+          "play",
+          "edit"
+        ]
+      },
+      "ViewportModeParams": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ViewportMode"
+          },
+          "ui": {
+            "type": "boolean",
+            "description": "Draw the game's UI over the editor view (edit only; default false)."
+          },
+          "gamepadUnfocused": {
+            "type": "boolean",
+            "description": "Pass gamepad input while the hole has no focus."
+          }
+        }
+      },
+      "ViewportModeResult": {
+        "type": "object",
+        "required": [
+          "mode",
+          "ui",
+          "gamepadUnfocused",
+          "paused"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ViewportMode"
+          },
+          "ui": {
+            "type": "boolean"
+          },
+          "gamepadUnfocused": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ViewportCamera": {
+        "type": "object",
+        "required": [
+          "translation",
+          "rotation"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "translation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "fov": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Vertical field of view, radians."
+          },
+          "scale": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Orthographic scale."
+          }
+        },
+        "description": "The editor camera's pose."
+      },
+      "ViewportCameraParams": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "translation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "fov": {
+            "type": "number"
+          },
+          "scale": {
+            "type": "number"
+          },
+          "frame": {
+            "type": "boolean",
+            "description": "Frame the selection."
+          }
+        }
+      },
+      "ViewportPickParams": {
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "number",
+            "description": "Points."
+          },
+          "y": {
+            "type": "number"
+          }
+        }
+      },
+      "PickHit": {
+        "type": "object",
+        "required": [
+          "entity",
+          "depth",
+          "selects"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "depth": {
+            "type": "number"
+          },
+          "selects": {
+            "$ref": "#/components/schemas/Entity"
+          }
+        }
+      },
+      "ViewportPickResult": {
+        "type": "object",
+        "required": [
+          "hits"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PickHit"
+            }
+          }
+        }
+      },
+      "ViewportSelectParams": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "entities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entity"
+            }
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "column": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "description": "Entities, or a source location resolved as bevy-ts/tsx_find resolves it."
+      },
+      "EditRouteKind": {
+        "type": "string",
+        "enum": [
+          "bsn",
+          "tsx",
+          "locked",
+          "transient"
+        ]
+      },
+      "EditRoute": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/EditRouteKind"
+          },
+          "source": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceLocation"
+            },
+            "description": "tsx: the entity's source chain."
+          },
+          "element": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prop": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "binding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expression": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "description": "Who may persist an edit to this field: bsn (bevy-ts, levels), tsx (the editor), locked (bound or rejected), transient (ECS only)."
+      },
+      "FieldRoutes": {
+        "type": "object",
+        "required": [
+          "translation",
+          "rotation",
+          "scale"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "translation": {
+            "$ref": "#/components/schemas/EditRoute"
+          },
+          "rotation": {
+            "$ref": "#/components/schemas/EditRoute"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/EditRoute"
+          }
+        }
+      },
+      "SelectionItem": {
+        "type": "object",
+        "required": [
+          "entity",
+          "primary"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "node": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "source": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceLocation"
+            }
+          },
+          "level": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "routes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldRoutes"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SelectionOrigin": {
+        "type": "string",
+        "enum": [
+          "viewport",
+          "editor",
+          "engine"
+        ]
+      },
+      "ViewportSelection": {
+        "type": "object",
+        "required": [
+          "origin",
+          "items"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "origin": {
+            "$ref": "#/components/schemas/SelectionOrigin"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SelectionItem"
+            }
+          }
+        }
+      },
+      "EditStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "written",
+          "rejected",
+          "transient",
+          "unconfirmed",
+          "reverted"
+        ]
+      },
+      "ViewportEdit": {
+        "type": "object",
+        "required": [
+          "id",
+          "entity",
+          "component",
+          "field",
+          "before",
+          "after",
+          "route",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "component": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "before": {},
+          "after": {},
+          "route": {
+            "$ref": "#/components/schemas/EditRoute"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EditStatus"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ViewportEditsMessage": {
+        "type": "object",
+        "required": [
+          "edits"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "edits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ViewportEdit"
+            }
+          }
+        }
+      },
+      "ViewportEditResultParams": {
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "written",
+              "rejected"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/SourceLocation"
+          }
+        }
+      },
+      "ViewportRevertParams": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        }
+      },
+      "LatencyStats": {
+        "type": "object",
+        "required": [
+          "samples",
+          "medianMs",
+          "p95Ms"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "samples": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "medianMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "p95Ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      },
+      "RingInfo": {
+        "type": "object",
+        "required": [
+          "ring",
+          "w",
+          "h"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ring": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "w": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "h": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "ViewportStats": {
+        "type": "object",
+        "required": [
+          "attached",
+          "visible",
+          "mode",
+          "frames",
+          "skipped",
+          "droppedTicks",
+          "gpuMs",
+          "inputToFrame",
+          "ring",
+          "size"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "attached": {
+            "type": "boolean"
+          },
+          "visible": {
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ViewportMode"
+          },
+          "frames": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "droppedTicks": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "gpuMs": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Mean GPU time per frame, submit to completion."
+          },
+          "inputToFrame": {
+            "$ref": "#/components/schemas/LatencyStats"
+          },
+          "ring": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RingInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size": {
+            "$ref": "#/components/schemas/ViewportSize"
+          }
+        }
+      },
+      "AssetKind": {
+        "type": "string",
+        "enum": [
+          "image",
+          "mesh",
+          "audio",
+          "font",
+          "shader",
+          "scene",
+          "other"
+        ]
+      },
+      "AssetLoadState": {
+        "type": "string",
+        "enum": [
+          "not_loaded",
+          "loading",
+          "loaded",
+          "failed"
+        ]
+      },
+      "AssetInfo": {
+        "type": "object",
+        "required": [
+          "path",
+          "kind",
+          "loader",
+          "size",
+          "loadState"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssetKind"
+          },
+          "loader": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "modified": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "loadState": {
+            "$ref": "#/components/schemas/AssetLoadState"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AssetsParams": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssetKind"
+          }
+        }
+      },
+      "AssetsResult": {
+        "type": "object",
+        "required": [
+          "root",
+          "assets"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetInfo"
+            }
+          }
+        }
+      },
+      "AssetChange": {
+        "type": "object",
+        "required": [
+          "path",
+          "change"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "modified",
+              "load_state"
+            ]
+          },
+          "asset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssetInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "AssetsWatchMessage": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetInfo"
+            }
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetChange"
+            }
+          }
+        },
+        "description": "The full list first, then the changes of each frame that had any."
+      },
+      "AssetThumbnailParams": {
+        "type": "object",
+        "required": [
+          "path",
+          "size"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 512
+          }
+        }
+      },
+      "AssetThumbnailResult": {
+        "type": "object",
+        "required": [
+          "path",
+          "size",
+          "png"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "png": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base64 PNG; null for kinds with no thumbnail."
+          }
+        }
+      },
+      "SurfaceMessage": {
+        "type": "object",
+        "required": [
+          "ring",
+          "slot",
+          "w",
+          "h"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "layer": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "ring": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "slot": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "w": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "h": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "description": "Carries the IOSurface's Mach port."
+      },
+      "FrameMessage": {
+        "type": "object",
+        "required": [
+          "ring",
+          "slot",
+          "seq",
+          "w",
+          "h",
+          "ts"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "layer": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "ring": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "slot": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "w": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "h": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "ts": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        }
+      },
+      "TickMessage": {
+        "type": "object",
+        "required": [
+          "ts"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ts": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "targetTs": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        }
+      },
+      "CursorMessage": {
+        "type": "object",
+        "required": [
+          "icon"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "icon": {
+            "type": "string",
+            "description": "A CSS cursor name, or hidden."
+          }
+        }
+      },
+      "CursorGrabMessage": {
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "confined",
+              "locked"
+            ]
+          }
+        }
+      },
+      "CursorWarpMessage": {
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          }
+        }
+      },
+      "ImeAreaMessage": {
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "w": {
+            "type": "number"
+          },
+          "h": {
+            "type": "number"
+          }
+        }
+      },
+      "OnMessage": {
+        "type": "object",
+        "required": [
+          "on"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "on": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Empty": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {}
       }
     }
   }

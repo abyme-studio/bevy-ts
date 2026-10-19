@@ -14,6 +14,10 @@ use serde_json::json;
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel};
 
+/// Counts main-world updates, so a frame knows which update it shows.
+#[derive(Resource, Default, Clone, Copy)]
+pub struct UpdateCount(pub u64);
+
 /// Marks the primary window that stands for the viewport: no native handle, its swap chain the
 /// ring.
 #[derive(Component, Debug, Default, Clone, Copy)]
@@ -40,8 +44,8 @@ struct RingState {
     /// The previous ring, released once the current ring's first frame is announced.
     old: Option<Ring>,
     next_number: u32,
-    /// The slot rendered this frame: (ring, slot, w, h, seq).
-    this_frame: Option<(u32, usize, u32, u32, u64)>,
+    /// The slot rendered this frame: (ring, slot, w, h, seq, main-world update).
+    this_frame: Option<(u32, usize, u32, u32, u64, u64)>,
     seq: u64,
 }
 
@@ -77,11 +81,14 @@ pub(crate) fn finish_render(app: &mut App) {
 
 /// Before cameras are extracted: give the virtual window an `ExtractedWindow` whose swap chain is
 /// a free slot of a ring of the window's size, or none when nothing should render.
-fn prepare_slot(world: &mut World, mut query: Local<Option<QueryState<(RenderEntity, &'static Window), With<VirtualWindow>>>>) {
+type VirtualWindowQuery = QueryState<(RenderEntity, &'static Window), With<VirtualWindow>>;
+
+fn prepare_slot(world: &mut World, mut query: Local<Option<VirtualWindowQuery>>) {
     let shared = world.resource::<SharedRes>().0.clone();
-    let found = world.resource_scope(|_, mut main: Mut<MainWorld>| {
+    let (found, update) = world.resource_scope(|_, mut main: Mut<MainWorld>| {
         let q = query.get_or_insert_with(|| main.query_filtered());
-        q.single(&main).ok().map(|(e, w)| (e, w.resolution.physical_width().max(1), w.resolution.physical_height().max(1)))
+        let found = q.single(&main).ok().map(|(e, w)| (e, w.resolution.physical_width().max(1), w.resolution.physical_height().max(1)));
+        (found, main.get_resource::<UpdateCount>().map_or(0, |u| u.0))
     });
     let Some((entity, w, h)) = found else { return };
     world.resource_mut::<RingState>().this_frame = None;
@@ -105,6 +112,7 @@ fn prepare_slot(world: &mut World, mut query: Local<Option<QueryState<(RenderEnt
                     }
                 }
                 ring.current = Some(Ring { number, surfaces, slots: None });
+                shared.set_ring_info(Some((number, want.0, want.1)));
                 shared.set_ring(number);
                 shared.resend_surfaces();
             }
@@ -124,7 +132,7 @@ fn prepare_slot(world: &mut World, mut query: Local<Option<QueryState<(RenderEnt
                 match free {
                     Some(i) => {
                         ring.seq += 1;
-                        ring.this_frame = Some((current.number, i, w, h, ring.seq));
+                        ring.this_frame = Some((current.number, i, w, h, ring.seq, update));
                         slot_view = Some(slots[i].view.clone());
                     }
                     None => shared.stats.skipped(),
@@ -138,9 +146,10 @@ fn prepare_slot(world: &mut World, mut query: Local<Option<QueryState<(RenderEnt
     } else {
         let mut ring = world.resource_mut::<RingState>();
         // Detached: let the surfaces go.
-        if !shared.attached() {
+        if !shared.attached() && ring.current.is_some() {
             ring.current = None;
             ring.old = None;
+            shared.set_ring_info(None);
         }
     }
 
@@ -175,11 +184,12 @@ fn prepare_slot(world: &mut World, mut query: Local<Option<QueryState<(RenderEnt
 
 /// After the frame's submit: announce the slot once the GPU has completed it.
 fn announce(ring: Res<RingState>, queue: Res<RenderQueue>, shared: Res<SharedRes>, poller: Res<Poller>) {
-    let Some((number, slot, w, h, seq)) = ring.this_frame else { return };
+    let Some((number, slot, w, h, seq, update)) = ring.this_frame else { return };
     let shared = shared.0.clone();
     shared.mark_pending(slot);
+    let submitted = std::time::Instant::now();
     queue.on_submitted_work_done(move || {
-        shared.announce(number, slot, json!({ "ring": number, "slot": slot, "seq": seq, "w": w, "h": h }));
+        shared.announce(number, slot, submitted, update, json!({ "ring": number, "slot": slot, "seq": seq, "w": w, "h": h }));
     });
     let _ = poller.0.send(());
 }

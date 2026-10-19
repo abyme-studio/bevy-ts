@@ -93,9 +93,12 @@ fn every_method_answers_on_contract() {
     let listed: BTreeSet<String> =
         bevy_ts_remote::protocol::METHODS.iter().filter(|m| m.crate_name == bevy_ts_remote::CRATE).map(|m| m.name.to_string()).collect();
     assert_eq!(served, listed);
+    // Without the viewport plugin bevy_remote answers its methods with method-not-found.
+    assert!(app.world().resource::<RemoteMethods>().get("bevy-ts/viewport_attach").is_none());
 
     let hello = ok(&mut app, "bevy-ts/hello", None);
     assert_eq!(hello["protocol"], contract()["info"]["version"]);
+    assert_eq!(hello["viewport"], false);
     assert_eq!(hello["generation"], 1);
     assert_eq!(hello["dev"]["reload"], true);
     ok(&mut app, "bevy-ts/discover", None);

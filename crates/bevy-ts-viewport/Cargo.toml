@@ -22,3 +22,6 @@ objc2-metal = { version = "0.3.2", default-features = false, features = ["std", 
 objc2-io-surface = "0.3.2"
 objc2-core-foundation = { version = "0.3.2", features = ["CFDictionary", "CFNumber", "CFString"] }
 mach2 = "0.5"
+
+[dev-dependencies]
+jsonschema = { version = "0.33", default-features = false }

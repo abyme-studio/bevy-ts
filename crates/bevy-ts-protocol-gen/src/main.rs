@@ -37,7 +37,12 @@ pub fn generate(doc: &Value) -> String {
     let types = prettyplease::unparse(&syn::parse2::<syn::File>(space.to_stream()).expect("typify emits valid Rust"));
 
     let mut methods = String::new();
+    let mut channel = String::new();
     for m in doc["methods"].as_array().unwrap() {
+        if let Some(side) = m["x-bevy-ts-channel"].as_str() {
+            channel.push_str(&format!("    ({:?}, {:?}),\n", m["name"].as_str().unwrap(), side));
+            continue;
+        }
         methods.push_str(&format!(
             "    Method {{ name: {:?}, crate_name: {:?}, watch: {} }},\n",
             m["name"].as_str().unwrap(),
@@ -54,7 +59,9 @@ pub fn generate(doc: &Value) -> String {
          #[derive(Clone, Copy, Debug, PartialEq, Eq)]\n\
          pub struct Method {{\n    pub name: &'static str,\n    /// The crate whose plugin serves it.\n    pub crate_name: &'static str,\n    pub watch: bool,\n}}\n\n\
          /// Every method in the contract.\n\
-         pub const METHODS: &[Method] = &[\n{methods}];\n\n{types}",
+         pub const METHODS: &[Method] = &[\n{methods}];\n\n\
+         /// Notifications on a viewport's Mach channel, as (method, the side that sends it).\n\
+         pub const CHANNEL: &[(&str, &str)] = &[\n{channel}];\n\n{types}",
         version = doc["info"]["version"].as_str().unwrap(),
     )
 }
@@ -87,5 +94,20 @@ mod tests {
         assert!(src.contains("name: \"bevy-ts/example_method\", crate_name: \"bevy-ts-example\""));
         assert!(src.contains("pub struct ExampleResult"));
         assert!(src.contains("pub const VERSION: &str = \"1.1.0\""));
+    }
+
+    #[test]
+    fn channel_messages_are_listed_apart_from_methods() {
+        let doc = json!({
+            "openrpc": "1.3.2",
+            "info": { "version": "1.1.0" },
+            "methods": [
+                { "name": "frame", "x-bevy-ts-crate": "bevy-ts-viewport", "x-bevy-ts-channel": "engine", "params": [] }
+            ],
+            "components": { "schemas": {} }
+        });
+        let src = generate(&doc);
+        assert!(src.contains("(\"frame\", \"engine\")"));
+        assert!(!src.contains("Method { name: \"frame\""));
     }
 }

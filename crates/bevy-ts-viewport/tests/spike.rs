@@ -23,7 +23,7 @@ fn app() -> App {
             .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }),
     )
     .add_plugins(ScheduleRunnerPlugin::run_once())
-    .add_plugins(ViewportPlugin)
+    .add_plugins(ViewportPlugin::default())
     .add_systems(Startup, scene)
     .add_systems(Update, pattern);
     app.finish();

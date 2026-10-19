@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Play and edit modes
-`bevy-ts/viewport_mode` (`mode`: `play` or `edit`, optional `ui`, optional `gamepad_unfocused`) SHALL switch modes and answer the mode in force. Entering `edit` SHALL pause as `bevy-ts/pause` does, deactivate every game camera (remembering which were active), activate the editor camera on the virtual window, and enable the editor tools. Entering `play` SHALL restore the game cameras' active flags, deactivate the editor camera and tools, and resume unless the game was paused before edit was entered. `bevy-ts/step` SHALL work in edit mode and render the stepped frame through the editor camera. A reload SHALL keep the mode.
+`bevy-ts/viewport_mode` (`mode`: `play` or `edit`, optional `ui`, optional `gamepadUnfocused`) SHALL switch modes and answer the mode in force. Entering `edit` SHALL pause as `bevy-ts/pause` does, deactivate every game camera (remembering which were active), activate the editor camera on the virtual window, and enable the editor tools. Entering `play` SHALL restore the game cameras' active flags, deactivate the editor camera and tools, and resume unless the game was paused before edit was entered. `bevy-ts/step` SHALL work in edit mode and render the stepped frame through the editor camera. A reload SHALL keep the mode.
 
 #### Scenario: Toggling to edit and back
 - **WHEN** the cube is bobbing and a client sets `edit`, waits two seconds, then sets `play`
