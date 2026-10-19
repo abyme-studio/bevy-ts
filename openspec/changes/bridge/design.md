@@ -35,10 +35,11 @@ The `JsRuntime` is non-send data on the main thread. Each stage (`PreUpdate`, `U
 - *Beat: one real Bevy system per TS system with declared access.* It would let non-conflicting Rust systems run beside JS, but the isolate pins them all to one thread regardless, and every reload would rebuild schedules (bevy_mod_scripting's remove-and-reinsert dance). It is the later optimisation: an exclusive stage can become a non-exclusive one declaring the union of its systems' access without changing the TS API.
 
 ### 2. Columns are zero-copy, field writes are in place, structure goes through a command buffer
-"Mutations through a command buffer" is read as structural mutations: spawn, despawn, insert, remove, reparent. Field writes go straight into the column. Routing field writes through a buffer too would copy every written value twice and defeat the zero-copy columns the ruling asks for. **The operator should confirm this reading.**
+"Mutations through a command buffer" is read as structural mutations: spawn, despawn, insert, remove, reparent. Field writes go straight into the column, and their change ticks with them (decision 6). Routing field writes through a buffer too would handle every written value twice and defeat the zero-copy columns the ruling asks for; measured at 2.5× the write loop at 1M rows before Rust applies anything (`docs/research/change-detection.md`).
 
 - *Beat: copy columns in and out (Node's sandbox build, any engine with the V8 sandbox on).* That is two copies per column per run.
 - *Beat: per-entity accessor calls into Rust (bevy_mod_scripting).* That is one crossing per field access.
+- *Beat: field writes as commands.* See decision 6.
 
 ### 3. Rust computes layouts with C rules; JS only reads offsets
 TS declares field types; Rust lays out the struct (C rules, see the ts-components spec), registers it, and returns offsets with the declarations. The same rules make every field offset a multiple of its own size, so one `Float32Array`, `Int32Array` or `Uint8Array` view per element width over the same buffer indexes every field exactly.
@@ -52,15 +53,25 @@ TS declares field types; Rust lays out the struct (C rules, see the ts-component
 - *Beat: reflection access for Rust components.* That is per-field crossings again.
 
 ### 5. Two iteration surfaces over the same views
-`q.each((e, mover, t) => ...)` hands reused flyweight accessors whose getters index the typed arrays, readable and fast once V8 inlines them. `q.tables` exposes the raw arrays and offsets for hand-tuned loops. Both read the same memory.
+`q.each((e, mover, t) => ...)` hands reused flyweight accessors whose getters index the typed arrays, readable and fast once V8 inlines them; their setters also store the row's change tick (decision 6). `q.tables` exposes the raw arrays and offsets for hand-tuned loops, as `table.write(T)` (whole table marked changed) or `table.split(T)` (arrays plus `ticks`, caller marks). Both read the same memory.
 
 - *Beat: raw arrays only.* Too hostile for game code.
 - *Beat: fresh objects per row.* That means allocation per entity per frame and GC pauses.
 
-### 6. Coarse change ticks
-After a run, every row of each `write` column in each matched table is marked changed, the rule 0.20's `ContiguousMut` uses for `DerefMut`. TS components set `summary_tick` so readers can skip tables that were not written.
+### 6. Per-row change ticks, written by JS into Bevy's own tick column
+Bevy 0.20 keeps a column's changed ticks as a contiguous `u32` array parallel to its data (`Column::changed_ticks`, reachable through `Table::get_changed_ticks_slice_for`). For each `write` column the backend hands JS that array as a second zero-copy view, a `Uint32Array` beside the data, and the run's tick. A generated accessor setter stores the tick on the row it writes (`ticks[row] = tick`), so a row is changed when, and only when, a system wrote it, in the sense of Bevy's `Mut`: any write marks, a write of the same value included. After the run Rust detaches both views and sets the column's summary tick. Nothing is scanned, copied or remapped: the tick lives in the row and moves with it, and structural changes are deferred past the run anyway.
 
-- *Beat: per-row dirty bits recorded by the accessors.* That adds a write per field write. Revisit if `Changed` floods matter in practice. The visible one is `bevy-ts/get_components+watch`: a component a system writes every frame streams every frame, which is what an inspector showing a moving value wants anyway.
+`q.tables` follows `ContiguousMut`'s two surfaces: `table.write(T)` returns the raw arrays and marks the whole table changed when the run ends (the `DerefMut` rule), and `table.split(T)` returns the arrays plus `ticks` and leaves marking to the caller.
+
+Each TS system run takes its own tick from `World::increment_change_tick`, so a later TS-side `changed` read can be per system.
+
+Settled by measurement (`docs/research/change-detection.md`, 2026-10-19): on V8 the tick store costs nothing measurable when few rows are written and about a fifth of the write loop when every row of 1M is written; without a JIT the loop is bound by property dispatch, and the store costs 10 to 26% on class accessors and nothing on the closure-scoped accessors the QuickJS-ng backend will generate (each backend's runtime picks its accessor form; the setter stores the tick in all of them). `Changed<T>` in 0.20 reads every row's tick and never the summary tick, so a coarse mark is paid by every consumer on every row of every written table, Bevy's own transform propagation and render extraction included.
+
+- *Beat: marking every row of each `write` column after the run (0.20's `ContiguousMut` rule, the previous draft).* Its fill is cheap, but it makes `Changed<T>`, `bevy-ts/get_components+watch` and TSX's `useComponent` fire for every row of a table any system touched, 1M rows a frame when 3k moved. Unity DOTS lives with coarse detection only because its grain is a 16 KB chunk; a Bevy table is unbounded. Kept only as the `table.write(T)` rule, where Bevy itself applies it.
+- *Beat: a separate dirty bitset turned into ticks by Rust.* Same JS cost as the tick store, plus a scan per column per run, plus a remap if rows ever moved. The tick array is the bitset.
+- *Beat: a shadow copy diffed after the run.* One copy and one compare of every write column per run, 1 to 5 ms per 1M rows per column in Rust, whether anything changed or not. It would be the only path that marks only real changes; an author who wants that compares before writing, as Rust code uses `set_if_neq`.
+- *Beat: field writes through the command buffer.* 2.5× the write loop at 1M rows before Rust applies a single op, every value handled twice, and a system no longer sees its own writes in the same run.
+- *Beat: write intent per field, or per-page dirty bits.* Neither changes what Bevy records, which is one tick per row per component.
 
 ### 7. Commands are a binary arena, applied after each system
 JS encodes ops (opcode, entity bits, component id, native-layout bytes) into a Rust-owned `Uint8Array`; Rust applies them with `insert_by_id`/`spawn_empty_at` right after the system returns, so the next system sees them, as if each TS system were followed by `ApplyDeferred`. `spawn` returns ids from a pool pre-filled with `EntityAllocator::alloc`; unused ids are freed after the stage. Overflow is held in JS and copied after the run, so Rust never allocates mid-run. That matters on the web, where growing wasm memory detaches every live view.
@@ -130,15 +141,15 @@ The TSX crate, and any later feature crate, needs hooks the core would otherwise
 | `bevy_remote` HTTP (async task) | Parses requests, streams SSE | None; queues requests for `RemoteLast` |
 | V8 inspector server (dev only) | CDP websocket | None; queues messages the main thread pumps |
 
-A frame: `First` applies a waiting generation, then pumps the backend (timers, inspector). `PreUpdate`, `Update` and `PostUpdate` each run their Rust systems in parallel, and the bevy-ts stage exclusively inside its set. Each TS system builds views, makes one call into JS, detaches the views, marks ticks and applies commands. `FixedUpdate` does the same per fixed step. `RemoteLast` answers protocol requests and flushes watch streams. A debugger pause blocks inside the JS call, so the whole frame waits.
+A frame: `First` applies a waiting generation, then pumps the backend (timers, inspector). `PreUpdate`, `Update` and `PostUpdate` each run their Rust systems in parallel, and the bevy-ts stage exclusively inside its set. Each TS system takes a change tick, builds views (data and ticks), makes one call into JS, detaches the views, sets summary ticks and applies commands. JS writes ticks only inside that exclusive window, so no Rust system reads a column while its ticks move. `FixedUpdate` does the same per fixed step. `RemoteLast` answers protocol requests and flushes watch streams. A debugger pause blocks inside the JS call, so the whole frame waits.
 
 ## Data layout across the boundary
 
 - **Declarations, once per generation:** JS hands Rust a JSON manifest (components with fields, types, defaults and hints; systems with stage, access and order; startups; entry names; plugin sections as opaque bytes, routed to their plugins). Rust answers with ids and layouts (size, align, field offsets). JSON is fine here; it never runs per frame.
-- **Per system run, Rust to JS:** a frame descriptor in a reused `Float64Array`/`Uint32Array` pair: `dt`, `elapsed`, tick, and for each matched non-empty table its row count. For each table × component, one external `ArrayBuffer` over `[column_ptr, column_ptr + len × size)`, with lazily created typed views per element width. The entity column is copied into a reused `Uint32Array` as (index, generation) pairs. The command arena is a `Uint8Array` over Rust memory with a write cursor.
+- **Per system run, Rust to JS:** a frame descriptor in a reused `Float64Array`/`Uint32Array` pair: `dt`, `elapsed`, the run's change tick (from `World::increment_change_tick`), and for each matched non-empty table its row count. For each table × component, one external `ArrayBuffer` over `[column_ptr, column_ptr + len × size)`, with lazily created typed views per element width. For each table × `write` component, a second external `ArrayBuffer` over the column's changed ticks (`len × 4` bytes from `Table::get_changed_ticks_slice_for`), viewed as a `Uint32Array`. The entity column is copied into a reused `Uint32Array` as (index, generation) pairs. The command arena is a `Uint8Array` over Rust memory with a write cursor.
 - **Per entry call:** a payload `Uint8Array` in, bytes and the command arena back. The format is the plugin's own.
 - **Per system run, JS to Rust:** nothing but the arena's used length and the overflow, if any. Field writes are already in place.
-- **After the run:** detach every external buffer, clear the cursor.
+- **After the run:** detach every external buffer, set the summary tick of every `write` column in every matched table (a summary tick set when nothing changed is safe under Bevy's contract; a missed one is not), fill the ticks of tables taken through `table.write(T)`, clear the cursor.
 - **Value encoding for commands and protocol edits:** native layout bytes, little-endian (every target bevy-ts ships is little-endian); `entity` fields are `Entity::to_bits`, validated on read.
 
 V8 sandbox caveat: external backing stores over arbitrary pointers need the sandbox off. If a future rusty_v8 forces it on, or a platform requires it, the views become copies into sandbox memory before and after each run, behind the same backend trait. That costs speed, not API. The web backend gets zero-copy for free (wasm memory is an `ArrayBuffer`), but its views must be rebuilt after any `memory.grow`, which per-run views already do.
@@ -169,7 +180,8 @@ V8 sandbox caveat: external backing stores over arbitrary pointers need the sand
 
 ## Risks / Trade-offs
 
-- [Coarse change ticks make every written component look changed every frame] → Summary ticks keep table skipping cheap. Per-row dirty bits are a contained follow-up if `Changed` consumers suffer.
+- [A row marks changed on a write of the same value, as Bevy's `Mut` does] → Authors compare before writing when it matters, as Rust code uses `set_if_neq`; the comparing setter costs 2× the plain one on V8 and is not the default.
+- [JS cannot write `changed_by` locations under Bevy's `track_location` feature] → Dev only, off by default. When it is on, the post-run step fills `changed_by` for rows whose tick equals the run's tick with a location naming the TS system.
 - [JS can write into a `read` column: typed arrays cannot be made read-only] → Dev builds hash read columns around each run and warn. Release builds trust the declaration, which only affects change detection, since the stage is exclusive and no other thread is reading.
 - [A system that throws after writing fields leaves partial writes] → Commands from that run are discarded; field writes cannot be rolled back. Documented.
 - [Module records leak across soft reloads] → They are dev only; an automatic hard reload triggers above a heap threshold.
@@ -194,8 +206,6 @@ None: a greenfield crate. Protocol 1.0.0 ships with this change; the studio pins
   outside abyme.
 
 ## Open Questions
-
-- Decision 2's scope (structural only, or field writes too) and decision 6's alternative (per-row dirty bits) are still the operator's to choose; this draft keeps them as written.
 
 - Viewport and asset viewer: this change specs no viewport surface, picking/selection sync or asset listing. They are the `viewport` change (operator ruling below) and protocol 1.1.
 - Whether `bevy-ts/pause` should also offer single-frame stepping.

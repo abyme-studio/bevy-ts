@@ -44,7 +44,7 @@ A Rust component SHALL be usable in a TS system's `read` or `write` only if a na
 - **THEN** loading fails with an error naming `GlobalTransform`
 
 ### Requirement: Generated field accessors
-For each component, the `bevy-ts` module SHALL give TS code a typed view object whose properties read and write the fields of one row in place (`mover.speed`, `t.translation.y`), plus the raw offsets and size for code that indexes the typed arrays itself. TS types for declared components SHALL be inferred from the `component()` call without a codegen step.
+For each component, the `bevy-ts` module SHALL give TS code a typed view object whose properties read and write the fields of one row in place (`mover.speed`, `t.translation.y`), plus the raw offsets and size for code that indexes the typed arrays itself. Every setter SHALL also store the run's change tick in the row's changed tick (see ts-systems). TS types for declared components SHALL be inferred from the `component()` call without a codegen step.
 
 #### Scenario: Typed access in the editor
 - **WHEN** a system's `run` writes `mover.sped = 2`

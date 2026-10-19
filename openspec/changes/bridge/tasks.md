@@ -3,8 +3,8 @@
 - [ ] 1.1 Create the Cargo workspace (`bevy-ts`, `bevy-ts-v8`, `bevy-ts-cli` with a `bevy-ts` binary) on Bevy 0.20 and `deno_core` 0.412; the binary opens a window with a camera, a light and a cube spawned in Rust
 - [ ] 1.2 Define the backend trait in `bevy-ts` (load generation, run system, run startup, pump) and a fake backend for tests
 - [ ] 1.3 Create the `JsRuntime` on the main thread as non-send data and run one hard-coded JS script that declares one system writing `Transform`
-- [ ] 1.4 Register `Transform`'s native layout with `offset_of!` and hand its column to JS as an external `ArrayBuffer`, detached after the run
-- [ ] 1.5 Run that system from an exclusive `Update` stage system and mark the column changed; the cube bobs on screen
+- [ ] 1.4 Register `Transform`'s native layout with `offset_of!` and hand its column and its changed ticks (`Table::get_changed_ticks_slice_for`) to JS as external `ArrayBuffer`s, detached after the run
+- [ ] 1.5 Run that system from an exclusive `Update` stage system with its own change tick; the script stores the tick on the rows it writes; the cube bobs on screen and a Rust `Changed<Transform>` system sees one entity
 - [ ] 1.6 Add a test that a retained view reads length 0 after the run, and that the build fails with `v8_enable_sandbox` on
 
 ## 2. TS compilation and module loading
@@ -20,15 +20,16 @@
 - [ ] 3.1 Collect component declarations into the generation manifest and validate types, defaults and hints
 - [ ] 3.2 Compute C layouts in Rust; unit-test offsets for mixed, vector, enum, array and entity fields
 - [ ] 3.3 Register components with `new_with_layout` (table, no drop, summary tick) and return ids and offsets to JS
-- [ ] 3.4 Generate per-component accessors in the `bevy-ts` runtime from returned offsets; test that a Rust `QueryBuilder` query reads what TS wrote
+- [ ] 3.4 Generate per-component accessors in the `bevy-ts` runtime from returned offsets, setters storing `ctx.tick` into the row's tick; test that a Rust `QueryBuilder` query reads what TS wrote and that only written rows pass `Changed`
 
 ## 4. TS systems and queries
 
 - [ ] 4.1 Build a `QueryState` per system from `read`/`write`/`with`/`without` with `QueryBuilder`; reject unknown and Rust-without-layout components
-- [ ] 4.2 Per run: walk matched tables, build views per table × component, copy entity pairs, make one call into JS, detach
-- [ ] 4.3 Implement `q.each` with reused accessors and `q.tables`; test that both give identical results
+- [ ] 4.2 Per run: take a change tick, walk matched tables, build data views per table × component and tick views per table × `write` component, copy entity pairs, make one call into JS, detach
+- [ ] 4.3 Implement `q.each` with reused accessors and `q.tables` with `read`, `write` and `split`; test that `each`, `write` and `split` give identical values and that `split` marks only the rows the caller ticked
 - [ ] 4.4 Add stages `preUpdate`/`update`/`postUpdate`/`fixedUpdate` with `BevyTsSet`, declaration order, `after`, and cycle errors
-- [ ] 4.5 Set changed ticks on `write` columns after each run; add the dev-only read-column hash check
+- [ ] 4.5 After each run set summary ticks on `write` columns and fill ticks for tables taken through `table.write`; add the dev-only read-column hash check and, under `track_location`, the `changed_by` fill for rows at the run's tick
+- [ ] 4.7 Add a test that a system writing 3 of 10,000 rows leaves exactly 3 rows `Changed` and that `bevy-ts/get_components+watch` sends nothing for an unwritten entity
 - [ ] 4.6 Add a test that 10,000 entities in 4 tables cost one JS call per run
 
 ## 5. Command buffer
@@ -83,4 +84,4 @@
 ## 11. First-milestone demo
 
 - [ ] 11.1 Write `examples/cube/src/game.ts` as in design.md and walk all six demo steps, recording reload latency
-- [ ] 11.2 Measure frame cost of `bob` over 1, 1,000 and 100,000 entities and record it in `docs/`
+- [ ] 11.2 Measure frame cost of `bob` over 1, 1,000 and 100,000 entities, with and without the tick store, and record it next to `docs/research/change-detection.md`'s numbers
