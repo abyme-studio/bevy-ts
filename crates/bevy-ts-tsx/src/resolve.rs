@@ -125,7 +125,7 @@ fn split_fields(
             initial.insert(name.clone(), v.clone());
         } else {
             let known: Vec<&str> = fields.iter().map(|(n, ..)| n.as_str()).collect();
-            return Err(err(format!("{} has no field {prop} (fields: {})", c.ty, known.join(", ")), &c.source));
+            return Err(err(format!("{} has no field {prop} (fields: {})", c.ty, known.join(", ")), &at(c, prop)));
         }
     }
     for f in initial.keys() {
@@ -144,7 +144,12 @@ fn split_fields(
 
 fn check_value(c: &ComponentDesc, field: &str, ty: &FieldType, v: &Value) -> Result<(), ScriptError> {
     let mut scratch = vec![0u8; ty.size()];
-    value::encode_field(&format!("{}.{field}", c.ty), ty, v, &mut scratch).map_err(|e| err(e.to_string(), &c.source))
+    value::encode_field(&format!("{}.{field}", c.ty), ty, v, &mut scratch).map_err(|e| err(e.to_string(), &at(c, field)))
+}
+
+/// Where a prop was set: the level line of an override, else the element.
+fn at(c: &ComponentDesc, prop: &str) -> Option<SourceLocation> {
+    c.overrides.get(prop).cloned().or_else(|| c.source.clone())
 }
 
 fn parse_props<T: serde::de::DeserializeOwned>(c: &ComponentDesc) -> Result<T, ScriptError> {

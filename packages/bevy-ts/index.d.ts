@@ -413,7 +413,12 @@ export interface App {
   initState(initial: StateValue): App;
   insertResource(r: Resource): App;
   addMessage(m: abstract new () => Message): App;
-  scene(name: string, root: () => Element): App;
+  /**
+   * Declares a scene root, evaluated on every generation and reconciled by key path. `level`
+   * names its sidecar level (default `levels/<name>.bsn`), where edits with no literal to
+   * rewrite are kept as overrides.
+   */
+  scene(name: string, root: () => Element, options?: { level?: string }): App;
   /** Declares a level root: a `.bsn` file under the asset root (`"levels/arena.bsn"`), loaded and reconciled by bevy-ts-levels. */
   level(path: `${string}.bsn`): App;
   /** Declares an entry Rust plugins call by name with a byte payload. */

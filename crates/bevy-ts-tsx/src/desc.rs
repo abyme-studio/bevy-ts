@@ -25,6 +25,10 @@ pub struct RootDesc {
     pub location: Option<SourceLocation>,
     #[serde(default)]
     pub nodes: Vec<NodeDesc>,
+    /// `app.scene(name, fn, { level })`: the sidecar level its overlay comes from (levels
+    /// decision 11); `levels/<name>.bsn` when not given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
 }
 
 /// One entity, or a control-flow slot (`<Show>`, `<For>`) whose content JS mounts later.

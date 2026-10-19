@@ -190,6 +190,10 @@ pub struct TsxTree {
     pub roots: BTreeMap<String, RootState>,
     /// Roots a Rust plugin describes (a level's `level:<path>`): no generation unmounts them.
     pub external: BTreeSet<String>,
+    /// Each `app.scene` root as the live generation described it, before any overlay.
+    pub scenes: HashMap<String, crate::desc::RootDesc>,
+    /// Overlay roots by scene (levels' T4), layered over the scene by key path.
+    pub overlays: HashMap<String, Vec<crate::desc::NodeDesc>>,
     pub entities: HashMap<u64, Entity>,
     pub tombstones: HashMap<u64, Tombstone>,
     /// The last reconcile's writes.

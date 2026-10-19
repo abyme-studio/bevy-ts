@@ -305,10 +305,15 @@ fn apply_node(
     slots: &mut Vec<Vec<String>>,
 ) {
     if let Some(slot) = n.slot {
-        tree.reactive.slots.insert(
-            slot,
-            SlotState { root: root.to_string(), parent, prefix: n.path.clone(), types: n.types.clone(), groups: BTreeSet::new() },
-        );
+        // A generation clears slots first; a reconcile between generations (an overlay) keeps
+        // the groups the slot has mounted.
+        tree.reactive.slots.entry(slot).or_insert_with(|| SlotState {
+            root: root.to_string(),
+            parent,
+            prefix: n.path.clone(),
+            types: n.types.clone(),
+            groups: BTreeSet::new(),
+        });
         tree.reactive.due = true;
         slots.push(n.path.clone());
         return;

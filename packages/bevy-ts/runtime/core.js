@@ -794,7 +794,7 @@ export const app = {
    * Declares a scene root. Its function runs now, during the load, and its description goes to
    * the `tsx` reconciler with the generation; a throw fails the generation.
    */
-  scene(name, fn) {
+  scene(name, fn, options) {
     const at = callerLocation();
     const g = loadingOrThrow("app.scene");
     if (typeof fn !== "function") throw declError(`scene ${name}: must be a function returning elements`, at);
@@ -807,7 +807,9 @@ export const app = {
       if (!e || !e.bevyTsLocation) throw e;
       g.sceneErrors.push({ message: String(e.message), location: e.bevyTsLocation });
     }
-    g.scenes.set(name, { name, location: at, nodes });
+    const desc = { name, location: at, nodes };
+    if (options && typeof options.level === "string") desc.level = options.level;
+    g.scenes.set(name, desc);
     section("tsx", { roots: [...g.scenes.values()], errors: g.sceneErrors });
     return app;
   },

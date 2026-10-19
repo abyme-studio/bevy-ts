@@ -11,6 +11,7 @@ pub mod desc;
 pub mod host;
 pub mod intrinsics;
 pub mod mount;
+pub mod overlay;
 pub mod picking;
 pub mod protocol;
 pub mod reconcile;
@@ -78,10 +79,12 @@ fn check_inner(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> 
     let t = std::time::Instant::now();
     let section = parse(input.bytes).map_err(|e| vec![e])?;
     world.resource_mut::<TsxTree>().timings.parse_ms = t.elapsed().as_secs_f64() * 1e3;
+    // Overlays layer over the new generation's scenes: one that no longer fits fails it.
+    let overlaid = with_overlays(world, &section);
     if !section.errors.is_empty() {
         return Err(section.errors);
     }
-    let mut errors = resolve::check_roots(&section.roots, input.components, world.resource::<NativeLayouts>());
+    let mut errors = resolve::check_roots(&overlaid.roots, input.components, world.resource::<NativeLayouts>());
     if !intrinsics::available(world)
         && let Some(at) = section.roots.iter().find_map(|r| uses_assets(&r.nodes))
     {
@@ -102,6 +105,18 @@ struct Checked {
     section: SceneSection,
 }
 
+/// The section with each root's overlay layered over it.
+fn with_overlays(world: &World, section: &SceneSection) -> SceneSection {
+    let tree = world.resource::<TsxTree>();
+    let mut s = section.clone();
+    for r in &mut s.roots {
+        if let Some(o) = tree.overlays.get(&r.name) {
+            overlay::merge(&mut r.nodes, o);
+        }
+    }
+    s
+}
+
 /// Reconciles every root of an applied generation, and unmounts roots it no longer declares.
 pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneSection) -> ReconcileStats {
     // Ids and layouts may have changed with the generation.
@@ -120,6 +135,11 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
         r.new_instances.clear();
     }
     let mut total = ReconcileStats::default();
+    {
+        let mut tree = world.resource_mut::<TsxTree>();
+        tree.scenes = section.roots.iter().map(|r| (r.name.clone(), r.clone())).collect();
+    }
+    let section = &with_overlays(world, section);
     for r in &section.roots {
         let t = std::time::Instant::now();
         let resolved = resolve_tree(world, &r.name, &r.nodes, (&[], &[]));
@@ -155,6 +175,51 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
         warn_two_writers(world, generation);
     }
     total
+}
+
+/// Sets the overlay of `app.scene` root `scene` (levels' T4): `nodes` layer over the scene by key
+/// path, their props overriding (provenance `override`, with their locations). The scene
+/// reconciles with it now when the live generation has it, else with the next generation. An
+/// overlay that does not resolve against the scene is refused, and nothing changes.
+pub fn set_overlay(world: &mut World, scene: &str, mut nodes: Vec<desc::NodeDesc>) -> Result<ReconcileStats, Vec<ScriptError>> {
+    desc::normalize_sources(&mut nodes);
+    let Some(root) = world.resource::<TsxTree>().scenes.get(scene).cloned() else {
+        world.resource_mut::<TsxTree>().overlays.insert(scene.to_string(), nodes);
+        return Ok(ReconcileStats::default());
+    };
+    let mut merged = root.nodes.clone();
+    overlay::merge(&mut merged, &nodes);
+    let mut errors = Vec::new();
+    resolve::check_nodes(&merged, world.resource::<bevy_ts::components::TsComponents>(), world.resource::<NativeLayouts>(), &mut errors);
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    let resolved = resolve_tree(world, scene, &merged, (&[], &[])).map_err(|e| vec![e])?;
+    world.resource_mut::<TsxTree>().overlays.insert(scene.to_string(), nodes);
+    let stats = apply_root(world, scene, root.location, &resolved, None, reconcile::Prune::Root);
+    world.resource_mut::<TsxTree>().journal.close();
+    Ok(stats)
+}
+
+/// Removes a scene's overlay; the scene reconciles without it.
+pub fn clear_overlay(world: &mut World, scene: &str) -> ReconcileStats {
+    let had = world.resource_mut::<TsxTree>().overlays.remove(scene).is_some();
+    let root = world.resource::<TsxTree>().scenes.get(scene).cloned();
+    let (true, Some(root)) = (had, root) else { return ReconcileStats::default() };
+    match resolve_tree(world, scene, &root.nodes, (&[], &[])) {
+        Ok(resolved) => {
+            let stats = apply_root(world, scene, root.location, &resolved, None, reconcile::Prune::Root);
+            world.resource_mut::<TsxTree>().journal.close();
+            stats
+        }
+        Err(_) => ReconcileStats::default(),
+    }
+}
+
+/// The sidecar level of an `app.scene` root: its `level` option, or `levels/<scene>.bsn`.
+/// None when the live generation has no such scene.
+pub fn scene_level(world: &World, scene: &str) -> Option<String> {
+    world.resource::<TsxTree>().scenes.get(scene).map(|r| r.level.clone().unwrap_or_else(|| overlay::default_level(scene)))
 }
 
 /// Reconciles a root a Rust plugin describes (levels' T2): a description built in Rust, partly
