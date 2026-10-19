@@ -9,7 +9,7 @@ license.workspace = true
 name = "bevy_ts_tsx"
 
 [dependencies]
-bevy = { workspace = true, features = ["std", "bevy_ui", "bevy_ui_widgets"] }
+bevy = { workspace = true, features = ["std", "bevy_ui", "bevy_ui_widgets", "bevy_picking"] }
 bevy-ts = { workspace = true, features = ["pbr"] }
 serde.workspace = true
 serde_json.workspace = true

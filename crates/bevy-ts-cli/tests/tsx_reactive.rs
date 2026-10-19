@@ -274,3 +274,77 @@ app.scene("s", () => (
     assert!(w.message.contains("system dim") && w.message.contains("intensity"), "{}", w.message);
     assert_eq!(w.location.as_ref().map(|l| l.line), Some(6));
 }
+
+fn click(app: &mut App, e: Entity, x: f32) {
+    use bevy::camera::NormalizedRenderTarget;
+    use bevy::picking::backend::HitData;
+    use bevy::picking::events::{Pointer, PointerClick};
+    use bevy::picking::pointer::{Location, PointerButton, PointerId};
+    let pointer = Pointer::new(PointerId::Mouse, Location { target: NormalizedRenderTarget::None { width: 1, height: 1 }, position: Vec2::new(x, 1.0) });
+    let hit = HitData::new(Entity::PLACEHOLDER, 0.0, None, None);
+    app.world_mut().trigger(PointerClick { entity: e, pointer, button: PointerButton::Primary, hit, duration: std::time::Duration::ZERO, count: 1 });
+}
+
+const BUTTONS: &str = r##"import { app, component, f32, signal } from "bevy-ts";
+export const Health = component("game::Health", { hp: f32 });
+const [log, setLog] = signal("");
+const Enemy = () => <entity name="enemy"><Health initialHp={10} /></entity>;
+const Button = ({ label }: { label: string }) => (
+  <button onPointerClick={({ entity, position, button }) => setLog((l) => `${l}${label}:${button}@${position[0]} `)}>
+    <text>{label}</text>
+  </button>
+);
+app.scene("ui", () => (
+  <node key="bar">
+    <Button key="a" label="A" />
+    <Button key="b" label="B" />
+    <Button key="c" label="C" />
+    <button key="spawn" onPointerClick={({ commands, frame }) => commands.mount(<Enemy key={`e${frame}`} />)}>
+      <text>Spawn</text>
+    </button>
+    <text key="log">{() => log()}</text>
+    <entity key="inner-parent" onPointerClick={() => setLog((l) => `${l}parent `)}>
+      <entity key="child" />
+    </entity>
+  </node>
+));
+"##;
+
+#[test]
+fn three_clicks_in_one_frame_run_their_handlers_in_order_in_one_call() {
+    let (dir, mut app) = setup("rx-clicks", BUTTONS);
+    updates(&mut app, 2);
+    let [a, b, c] = ["a", "b", "c"].map(|k| node(&mut app, &["bar", k]).unwrap());
+    let before = calls(&app);
+    click(&mut app, b, 2.0);
+    click(&mut app, a, 1.0);
+    click(&mut app, c, 3.0);
+    app.update();
+    assert_eq!(calls(&app), before + 1, "one host call for three clicks");
+    assert_eq!(text(&mut app, &["bar", "log"]), "B:primary@2 A:primary@1 C:primary@3 ", "{:?}", errors(&app));
+
+    // Events do not bubble: a click on the child does not run its parent's handler.
+    let child = node(&mut app, &["bar", "inner-parent", "child"]).unwrap();
+    click(&mut app, child, 9.0);
+    app.update();
+    assert!(!text(&mut app, &["bar", "log"]).contains("parent"));
+
+    // A handler mounts an enemy through the tsx op stream.
+    let spawn = node(&mut app, &["bar", "spawn"]).unwrap();
+    click(&mut app, spawn, 0.0);
+    app.update();
+    let mounted = {
+        let world = app.world_mut();
+        world.query::<&TsxNode>().iter(world).filter(|n| n.root == "$runtime").count()
+    };
+    assert_eq!(mounted, 1, "{:?}", errors(&app));
+
+    // Editing a handler: the next click runs the new body, the button entity is unchanged.
+    let r = save(&mut app, &dir, &BUTTONS.replace("${label}:${button}", "new-${label}"));
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    assert_eq!(node(&mut app, &["bar", "a"]), Some(a));
+    click(&mut app, a, 1.0);
+    app.update();
+    assert_eq!(text(&mut app, &["bar", "log"]), "new-A@1 ");
+}

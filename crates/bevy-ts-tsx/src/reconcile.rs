@@ -28,6 +28,7 @@ pub struct RNode {
     pub comps: Arc<[Resolved]>,
     pub children: Vec<RNode>,
     pub ref_id: Option<u32>,
+    pub on: BTreeMap<String, u32>,
     /// A `<Show>`/`<For>` slot: no entity; JS mounts its content under this node's key path.
     pub slot: Option<u32>,
 }
@@ -93,7 +94,7 @@ fn resolve_with(
             t.push(n.ty.clone());
             if n.slot.is_some() {
                 let id = node_id(root, &p);
-                return Ok(RNode { id, path: p, types: t, source: n.source.clone(), comps: Arc::new([]), children: vec![], ref_id: None, slot: n.slot });
+                return Ok(RNode { id, path: p, types: t, source: n.source.clone(), comps: Arc::new([]), children: vec![], ref_id: None, on: BTreeMap::new(), slot: n.slot });
             }
             let key = content_hash(n);
             let comps = match cache.templates.get(&key) {
@@ -109,7 +110,7 @@ fn resolve_with(
                 }
             };
             let children = resolve_with(root, &n.children, (&p, &t), ts, native, cache)?;
-            Ok(RNode { id: node_id(root, &p), path: p, types: t, source: n.source.clone(), comps, children, ref_id: n.ref_id, slot: None })
+            Ok(RNode { id: node_id(root, &p), path: p, types: t, source: n.source.clone(), comps, children, ref_id: n.ref_id, on: n.on.clone(), slot: None })
         })
         .collect()
 }
@@ -181,6 +182,7 @@ pub fn apply_root(
 /// Despawns a node (descendants go with it, including entities systems parented under it) and
 /// forgets it.
 fn forget(world: &mut World, tree: &mut TsxTree, id: u64, stats: &mut ReconcileStats) {
+    tree.reactive.stale = true;
     if let Some(e) = tree.entities.remove(&id)
         && alive(world, e, id)
     {
@@ -333,6 +335,14 @@ fn apply_node(
     match entity {
         Some(e) => {
             tree.entities.insert(n.id, e);
+            crate::picking::set(world, e, &n.on);
+            for r in n.comps.iter() {
+                for (prop, site) in &r.sites {
+                    let id = r.bound[prop];
+                    tree.reactive.sites.entry(*site).or_default().instances.insert(e, id);
+                    tree.reactive.new_instances.push((id, e));
+                }
+            }
             for c in &n.children {
                 apply_node(world, tree, root, c, Some(e), seen, stats, slots);
             }

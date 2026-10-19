@@ -36,13 +36,13 @@
 - [x] 5.4 Test that a frame with no subscribed change makes zero host calls, and that a player hit writes exactly one `Text`
 - [x] 5.5 Implement `<Show>` and `<For>` with subtree mount and unmount and owner disposal
 - [x] 5.6 Add the dev warnings: a signal, `ref.get` or `res` read outside a tracking scope, unkeyed array siblings, a binding site whose component is in some TS system's `write` set (naming the system and the site)
-- [ ] 5.7 Group bindings on native-layout fields by site (design decision 11, pending the operator): Rust finds changed instances without JS (own components in table order, ref'd entities per pair, signals by version), one host call evaluates the site's closure per changed row through the row accessors and writes through the column view only when the value differs; dev error when a later run reads outside the first run's set; test that 10,000 instances of a bound prefab with 100 changed cost within 2× the equivalent TS system and that a quiet frame makes no host call
+- [x] 5.7 Group bindings on native-layout fields by site (design decision 11, pending the operator): Rust finds changed instances without JS (own components in table order, ref'd entities per pair, signals by version), one host call evaluates the site's closure per changed row through the row accessors and writes through the column view only when the value differs; dev error when a later run reads outside the first run's set; test that 10,000 instances of a bound prefab with 100 changed cost within 2× the equivalent TS system and that a quiet frame makes no host call
 
 ## 6. UI
 
 - [x] 6.1 Implement `<node>` with `style` mapped to `Node` and the length helpers, plus `background`, `border`, `radius`
 - [x] 6.2 Implement `<text>` (`Text`, `TextFont`, `TextColor`, bound children through `patchReflect`), `<image>` and `<button>`
-- [ ] 6.3 Observe `PointerClick|PointerPress|PointerRelease|PointerOver|PointerOut` on entities with `onPointer*` handlers (any `<entity>` or UI element), queue events, and deliver them in the same host call as subscriptions; test three clicks in one frame
+- [x] 6.3 Observe `PointerClick|PointerPress|PointerRelease|PointerOver|PointerOut` on entities with `onPointer*` handlers (any `<entity>` or UI element), queue events, and deliver them in the same host call as subscriptions; test three clicks in one frame
 
 ## 7. Editor hooks
 

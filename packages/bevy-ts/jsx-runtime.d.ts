@@ -1,7 +1,20 @@
 // `bevy-ts/jsx-runtime`: the automatic JSX runtime (`"jsxImportSource": "bevy-ts"`). Elements
 // are plain descriptions: an `<entity>`, component elements on it (`<Health initialHp={100} />`),
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
-import type { ComponentType, For, NodeRef } from "bevy-ts";
+import type { Commands, ComponentType, Entity, For, NodeRef } from "bevy-ts";
+
+/** What a picking handler receives: the event, and the call's `commands` and `frame`. */
+export interface PointerEvent {
+  readonly kind: "PointerClick" | "PointerPress" | "PointerRelease" | "PointerOver" | "PointerOut";
+  readonly entity: Entity;
+  /** The pointer's position in its render target. */
+  readonly position: readonly [number, number];
+  /** For click, press and release. */
+  readonly button: "primary" | "secondary" | "middle" | null;
+  readonly commands: Commands;
+  readonly frame: number;
+}
+export type PointerHandler = (event: PointerEvent) => void;
 
 export interface KeyAttribute {
   key?: string | number;
@@ -33,6 +46,12 @@ export interface EntityProps {
   ref?: NodeRef;
   /** Components and child entities. */
   children?: Child;
+  /** Entity-local observers of Bevy 0.20's picking events; they do not bubble. */
+  onPointerClick?: PointerHandler;
+  onPointerPress?: PointerHandler;
+  onPointerRelease?: PointerHandler;
+  onPointerOver?: PointerHandler;
+  onPointerOut?: PointerHandler;
 }
 
 /** A length: a number of logical pixels, or `px(8)`, `percent(50)`, `"auto"`, `"2rem"`... */

@@ -63,6 +63,8 @@ pub struct Resolved {
     pub defaults: BTreeMap<String, Value>,
     /// Fields written only by a binding (`f={() => ...}`), by binding id.
     pub bound: BTreeMap<String, u32>,
+    /// The site of each bound native-layout field (design decision 11).
+    pub sites: BTreeMap<String, u32>,
     pub source: Option<SourceLocation>,
 }
 
@@ -152,6 +154,7 @@ fn parse_props<T: serde::de::DeserializeOwned>(c: &ComponentDesc) -> Result<T, S
 /// Resolves one component element: bound props first, then the rest by kind.
 pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> Result<Resolved, ScriptError> {
     let mut bound = BTreeMap::new();
+    let mut sites = BTreeMap::new();
     let mut rest = c.clone();
     for (prop, v) in &c.props {
         let Some(id) = binding_id(v) else { continue };
@@ -159,6 +162,9 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> 
             return Err(err(format!("{}.{prop}: an initial value is written once, so it takes a value, not a binding", c.ty), &c.source));
         }
         bound.insert(prop.clone(), id);
+        if let Some(site) = crate::desc::site_id(v) {
+            sites.insert(prop.clone(), site);
+        }
         rest.props.remove(prop);
     }
     let mut r = resolve_unbound(&rest, ts, native)?;
@@ -185,6 +191,7 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> 
         _ => return Err(err(format!("<{}> props cannot be bound yet; bind a component field or a UI prop", c.ty), &c.source)),
     }
     r.bound = bound;
+    r.sites = sites;
     Ok(r)
 }
 
@@ -196,6 +203,7 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
         initial,
         defaults,
         bound: BTreeMap::new(),
+        sites: BTreeMap::new(),
         source: c.source.clone(),
     };
     match c.kind {
@@ -262,6 +270,7 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts) 
             controlled: BTreeMap::from([("value".to_string(), Value::String(name.clone()))]),
             initial: BTreeMap::new(),
             bound: BTreeMap::new(),
+            sites: BTreeMap::new(),
             defaults: BTreeMap::new(),
             source: node.location(),
         });

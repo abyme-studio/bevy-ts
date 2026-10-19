@@ -10,6 +10,7 @@ use crate::resolve;
 use crate::tree::{BindTarget, FieldState, Provenance, Subscription, TsxNode, TsxTree};
 use crate::ui::UiKind;
 use bevy::ecs::component::ComponentId;
+use bevy::ecs::query::QueryBuilder;
 use bevy::prelude::*;
 use bevy_ts::backend::ScriptError;
 use bevy_ts::components::TsComponents;
@@ -31,6 +32,12 @@ struct Payload {
     refs: Vec<(u32, u64)>,
     values: Vec<(u64, String, Value)>,
     drop: Vec<u32>,
+    /// Site instances and their entities, once mounted.
+    instances: Vec<(u32, u64)>,
+    /// Site rows whose own reads changed, as JSON (the binary rows travel after the header).
+    rows: Vec<(u32, Vec<(String, Value)>)>,
+    /// Picking events since the last call, in arrival order: handler id, event.
+    events: Vec<(u32, Value)>,
 }
 
 #[derive(Deserialize, Default)]
@@ -42,6 +49,8 @@ struct Response {
     subscribe: Vec<(u64, String)>,
     unsubscribe: Vec<(u64, String)>,
     needs: Vec<(u64, String)>,
+    /// Sites whose reads were fixed by their first run: site, own components read.
+    sites: Vec<(u32, Vec<String>)>,
     errors: Vec<ScriptError>,
 }
 
@@ -69,8 +78,16 @@ fn entity_of(world: &World, tree: &TsxTree, node: u64) -> Option<Entity> {
 
 /// `PostUpdate`: the per-frame check, and the call when something moved.
 pub fn frame(world: &mut World) {
+    let started = std::time::Instant::now();
+    world.resource_mut::<TsxTree>().reactive.last_frame_us = 0.0;
+    frame_inner(world);
+    let us = started.elapsed().as_secs_f64() * 1e6;
+    world.resource_mut::<TsxTree>().reactive.last_frame_us = us;
+}
+
+fn frame_inner(world: &mut World) {
     let reactive = &world.resource::<TsxTree>().reactive;
-    if !reactive.due && reactive.subs.is_empty() {
+    if !reactive.due && reactive.events.is_empty() && reactive.subs.is_empty() && reactive.sites.values().all(|s| s.query.is_none()) {
         return;
     }
     let now = world.read_change_tick();
@@ -85,29 +102,99 @@ pub fn frame(world: &mut World) {
             changed.push((*e, name.clone()));
         }
     }
-    if !reactive.due && changed.is_empty() {
+    let t = std::time::Instant::now();
+    let rows = changed_rows(world, now);
+    world.resource_mut::<TsxTree>().reactive.scan_us += t.elapsed().as_secs_f64() * 1e6;
+    let reactive = &world.resource::<TsxTree>().reactive;
+    if !reactive.due && reactive.events.is_empty() && changed.is_empty() && rows.is_empty() {
         return;
     }
-    run(world, changed);
+    run(world, changed, rows);
 }
 
-fn run(world: &mut World, changed: Vec<(Entity, String)>) {
+/// Site rows whose own reads changed since the site's last delivery, scanned by tick column in
+/// table order as `Changed<T>` does (column summary ticks would skip still tables, but untyped
+/// writes do not keep them), and packed as raw component bytes for JS (see `decodeRows` in the
+/// JSX runtime). No JS, no JSON. Empty when nothing changed.
+fn changed_rows(world: &mut World, now: bevy::ecs::change_detection::Tick) -> Vec<u8> {
+    let mut tree = world.remove_resource::<TsxTree>().expect("tsx tree");
+    let mut out = vec![0u8; 4];
+    let mut sites = 0u32;
+    for (site_id, site) in tree.reactive.sites.iter_mut() {
+        let Some(query) = site.query.as_mut() else { continue };
+        query.update_archetypes(world);
+        let last = site.last;
+        let start = out.len();
+        out.extend(site_id.to_le_bytes());
+        out.extend((site.reads.len() as u16).to_le_bytes());
+        for (name, _, layout) in &site.reads {
+            out.extend((name.len() as u16).to_le_bytes());
+            out.extend(name.as_bytes());
+            out.extend((layout.size as u32).to_le_bytes());
+        }
+        let count_at = out.len();
+        out.extend(0u32.to_le_bytes());
+        let mut rows = 0u32;
+        let tables = &world.storages().tables;
+        for table_id in query.matched_tables() {
+            let Some(table) = tables.get(table_id) else { continue };
+            let ticks: Vec<_> = site.reads.iter().filter_map(|(_, id, _)| table.get_changed_ticks_slice_for(*id)).collect();
+            let len = table.entity_count() as usize;
+            // SAFETY: the column holds `len` values of `layout.size` bytes, contiguous.
+            let columns: Vec<&[std::cell::UnsafeCell<u8>]> = site
+                .reads
+                .iter()
+                .filter_map(|(_, id, layout)| table.get_column(*id).map(|c| unsafe { c.get_data_slice::<u8>(len * layout.size) }))
+                .collect();
+            for (row, e) in table.entities().iter().enumerate() {
+                // SAFETY: no one writes ticks while this exclusive system holds the world.
+                if !ticks.iter().any(|t| unsafe { *t[row].get() }.is_newer_than(last, now)) {
+                    continue;
+                }
+                let Some(instance) = site.instances.get(e) else { continue };
+                out.extend(instance.to_le_bytes());
+                for (c, (_, _, layout)) in columns.iter().zip(&site.reads) {
+                    // SAFETY: `row` is in the table; nothing writes the column during this system.
+                    let bytes = unsafe { std::slice::from_raw_parts(c[row * layout.size].get(), layout.size) };
+                    out.extend_from_slice(bytes);
+                }
+                rows += 1;
+            }
+        }
+        site.last = now;
+        if rows == 0 {
+            out.truncate(start);
+        } else {
+            out[count_at..count_at + 4].copy_from_slice(&rows.to_le_bytes());
+            sites += 1;
+        }
+    }
+    world.insert_resource(tree);
+    if sites == 0 {
+        return Vec::new();
+    }
+    out[..4].copy_from_slice(&sites.to_le_bytes());
+    out
+}
+
+fn run(world: &mut World, changed: Vec<(Entity, String)>, mut rows: Vec<u8>) {
     let mut payload = Payload::default();
     {
         let mut tree = world.remove_resource::<TsxTree>().expect("tsx tree");
+        payload.events = std::mem::take(&mut tree.reactive.events);
+        payload.instances = std::mem::take(&mut tree.reactive.new_instances).into_iter().map(|(id, e)| (id, e.to_bits())).collect();
         let refs = std::mem::take(&mut tree.reactive.new_refs);
         for r in refs {
             if let Some(e) = tree.reactive.refs.get(&r).and_then(|n| entity_of(world, &tree, *n)) {
                 payload.refs.push((r, e.to_bits()));
             }
         }
-        let dead: Vec<u32> = tree
-            .reactive
-            .targets
-            .iter()
-            .filter(|(_, t)| entity_of(world, &tree, t.node).is_none() && tree.entities.contains_key(&t.node))
-            .map(|(id, _)| *id)
-            .collect();
+        // Only after a despawn can a target point at a gone node.
+        let dead: Vec<u32> = if std::mem::take(&mut tree.reactive.stale) {
+            tree.reactive.targets.iter().filter(|(_, t)| entity_of(world, &tree, t.node).is_none()).map(|(id, _)| *id).collect()
+        } else {
+            Vec::new()
+        };
         for id in &dead {
             tree.reactive.targets.remove(id);
         }
@@ -117,7 +204,13 @@ fn run(world: &mut World, changed: Vec<(Entity, String)>) {
     payload.values = deliver(world, &changed);
 
     for _ in 0..MAX_ROUNDS {
-        let bytes = serde_json::to_vec(&payload).expect("serializable");
+        let t = std::time::Instant::now();
+        // A u32 header length, the JSON header, then the binary rows (first round only).
+        let header = serde_json::to_vec(&payload).expect("serializable");
+        let mut bytes = Vec::with_capacity(4 + header.len() + rows.len());
+        bytes.extend((header.len() as u32).to_le_bytes());
+        bytes.extend(header);
+        bytes.append(&mut rows);
         world.resource_mut::<TsxTree>().reactive.calls += 1;
         let out = match plugin_api::call_entry(world, ENTRY, &bytes) {
             Ok(out) => out,
@@ -133,9 +226,13 @@ fn run(world: &mut World, changed: Vec<(Entity, String)>) {
                 break;
             }
         };
+        let t2 = std::time::Instant::now();
+        world.resource_mut::<TsxTree>().reactive.call_us += (t2 - t).as_secs_f64() * 1e6;
         let needs = apply(world, response);
+        world.resource_mut::<TsxTree>().reactive.apply_us += t2.elapsed().as_secs_f64() * 1e6;
         let refs = std::mem::take(&mut world.resource_mut::<TsxTree>().reactive.new_refs);
-        if needs.is_empty() && refs.is_empty() {
+        let instances = std::mem::take(&mut world.resource_mut::<TsxTree>().reactive.new_instances);
+        if needs.is_empty() && refs.is_empty() && instances.is_empty() {
             break;
         }
         let tree = world.resource::<TsxTree>();
@@ -144,8 +241,8 @@ fn run(world: &mut World, changed: Vec<(Entity, String)>) {
                 .into_iter()
                 .filter_map(|r| tree.reactive.refs.get(&r).and_then(|n| entity_of(world, tree, *n)).map(|e| (r, e.to_bits())))
                 .collect(),
-            values: Vec::new(),
-            drop: Vec::new(),
+            instances: instances.into_iter().map(|(id, e)| (id, e.to_bits())).collect(),
+            ..Default::default()
         };
         payload.values = deliver(world, &needs);
     }
@@ -197,6 +294,24 @@ fn apply(world: &mut World, r: Response) -> Vec<(Entity, String)> {
             None => log_error(world, format!("ref.get({name}): tsx reads components with a native layout (TS components, Transform)"), None),
         }
     }
+    for (site, names) in r.sites {
+        let reads: Vec<(String, ComponentId, ComponentLayout)> = names.iter().filter_map(|n| component(world, n).map(|(id, l)| (n.clone(), id, l))).collect();
+        if reads.len() != names.len() {
+            log_error(world, format!("a bound field reads {names:?}; tsx reads components with a native layout only"), None);
+            continue;
+        }
+        let mut builder = QueryBuilder::<Entity>::new(world);
+        for (_, id, _) in &reads {
+            builder.with_id(*id);
+        }
+        let query = builder.build();
+        let mut tree = world.resource_mut::<TsxTree>();
+        if let Some(s) = tree.reactive.sites.get_mut(&site) {
+            s.reads = reads;
+            s.query = Some(query);
+            s.last = now;
+        }
+    }
     for (id, v) in r.patches {
         patch(world, id, v);
     }
@@ -233,18 +348,28 @@ fn patch(world: &mut World, binding: u32, v: Value) {
     } else if key == resolve::MESH || key == resolve::MATERIAL || key == resolve::NAME {
         Err("this prop cannot be bound".to_string())
     } else {
-        match component(world, &key) {
-            Some((id, layout)) => match layout.field(&prop) {
-                Some(fl) => {
-                    let mut scratch = vec![0u8; fl.ty.size()];
-                    value::encode_field(&format!("{key}.{prop}"), &fl.ty, &v, &mut scratch)
-                        .map_err(|e| e.to_string())
-                        .map(|_| {
-                            reconcile::write_field(world, e, id, &layout, &prop, &v);
-                        })
-                }
-                None => Err(format!("{key} has no field {prop}")),
-            },
+        // The field's layout, without cloning the component's.
+        let field = match world.resource::<TsComponents>().live(&key) {
+            Some(c) => Some((c.id, c.layout.field(&prop).cloned())),
+            None => world.resource::<NativeLayouts>().get(&key).map(|n| (n.id, n.layout.field(&prop).cloned())),
+        };
+        match field {
+            Some((id, Some(fl))) => {
+                let mut scratch = vec![0u8; fl.ty.size()];
+                value::encode_field(&prop, &fl.ty, &v, &mut scratch).map_err(|e| e.to_string()).map(|_| {
+                    let Ok(mut em) = world.get_entity_mut(e) else { return };
+                    // A derived value equal to the row's writes nothing: its tick stays.
+                    let same = em.get_by_id(id).is_ok_and(|p| {
+                        // SAFETY: the field lies inside the component's bytes.
+                        unsafe { std::slice::from_raw_parts(p.as_ptr().add(fl.offset), scratch.len()) == scratch.as_slice() }
+                    });
+                    if !same && let Ok(mut m) = em.get_mut_by_id(id) {
+                        // SAFETY: as above; `scratch` holds the field's encoded value.
+                        unsafe { std::ptr::copy_nonoverlapping(scratch.as_ptr(), m.as_mut().as_ptr().add(fl.offset), scratch.len()) };
+                    }
+                })
+            }
+            Some((_, None)) => Err(format!("{key} has no field {prop}")),
             None => Err(format!("{key} is not a live component")),
         }
     };

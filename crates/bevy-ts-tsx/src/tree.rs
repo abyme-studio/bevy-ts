@@ -110,6 +110,25 @@ pub struct SlotState {
     pub groups: BTreeSet<String>,
 }
 
+/// A site: bindings on one element's native-layout field, across every instance. Rust scans the
+/// components the site reads on its own entity in table order and calls JS for changed rows.
+#[derive(Default)]
+pub struct SiteState {
+    /// Own reads, once JS reports them after the site's first run, with their layouts.
+    pub reads: Vec<(String, bevy::ecs::component::ComponentId, bevy_ts::layout::ComponentLayout)>,
+    /// Instance binding id by entity.
+    pub instances: HashMap<Entity, u32>,
+    /// Matches the tables holding every read, to scan their tick columns.
+    pub query: Option<QueryState<Entity>>,
+    pub last: bevy::ecs::change_detection::Tick,
+}
+
+impl std::fmt::Debug for SiteState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SiteState").field("reads", &self.reads).field("instances", &self.instances.len()).finish()
+    }
+}
+
 /// A component of an entity a binding read, watched by change tick.
 #[derive(Clone, Debug)]
 pub struct Subscription {
@@ -129,13 +148,27 @@ pub struct Reactive {
     pub new_refs: Vec<u32>,
     pub slots: HashMap<u32, SlotState>,
     pub subs: HashMap<(Entity, String), Subscription>,
+    pub sites: HashMap<u32, SiteState>,
+    /// Picking events queued by observers for the next host call: handler id, event.
+    pub events: Vec<(u32, serde_json::Value)>,
+    /// Site instances JS has not been given their entity for.
+    pub new_instances: Vec<(u32, Entity)>,
     /// A host call is due: a generation applied, a mount brought bindings, or JS asked.
     pub due: bool,
     /// Slots of a fresh generation to sweep after their first host call.
     pub sweep: bool,
+    /// Binding targets may point at gone nodes: check before the next call.
+    pub stale: bool,
     /// Host calls made, and bound values written, for tests.
     pub calls: u64,
     pub patched: u64,
+    /// Time spent, in microseconds: finding changed rows, in the host call (serialize, JS,
+    /// parse), and applying its output. For measurements.
+    pub scan_us: f64,
+    /// The last frame's tsx work (scan, call, apply), in microseconds; 0 for a frame with none.
+    pub last_frame_us: f64,
+    pub call_us: f64,
+    pub apply_us: f64,
 }
 
 /// One mounted root: the node ids it owns, in description order.

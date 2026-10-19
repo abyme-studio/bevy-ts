@@ -15,6 +15,7 @@ export default {
   },
   build: { cmd: "cargo build --workspace --all-targets" },
   "tsx-test": { cmd: "cargo test -p bevy-ts-tsx -- --nocapture 2>&1 | tee target/tsx-test.log | tail -80" },
+  "tsx-sites-bench": { cmd: "cargo test --release -p bevy-ts-cli --test tsx_sites -- --ignored --nocapture 2>&1 | tee target/tsx-sites.log | tail -20" },
   test: { cmd: "cargo test --workspace 2>&1 | tee target/test.log | grep -E \"^test result|FAILED|panicked\"" },
   "check-track-location": { cmd: "CARGO_TARGET_DIR=target/track-location cargo check -p bevy-ts --features track_location --all-targets" },
   clippy: { cmd: "cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee target/clippy.log | tail -40" },

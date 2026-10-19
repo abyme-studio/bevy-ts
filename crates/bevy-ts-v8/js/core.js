@@ -901,7 +901,11 @@ function begin(gen) {
   // The tsx host call: Rust calls it only when this generation has bindings or slots to run.
   const g = S.loading;
   g.entries.push({ name: "tsx" });
-  g.entryFns.set("tsx", (payload) => g.tsx.call(JSON.parse(text(payload))));
+  // The payload is a u32 header length, a JSON header, then site rows as raw bytes.
+  g.entryFns.set("tsx", (payload, ctx) => {
+    const n = new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getUint32(0, true);
+    return g.tsx.call(JSON.parse(text(payload.subarray(4, 4 + n))), ctx, payload.subarray(4 + n));
+  });
 }
 
 function end() {

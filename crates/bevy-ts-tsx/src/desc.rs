@@ -43,6 +43,9 @@ pub struct NodeDesc {
     /// Set on a slot: not an entity, a place where JS mounts groups of nodes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slot: Option<u32>,
+    /// Picking handlers by Bevy event name (`PointerClick`), as handler ids of the generation.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub on: std::collections::BTreeMap<String, u32>,
     /// The element that made it, then each prefab call site above it, innermost first.
     #[serde(default)]
     pub source: Vec<SourceLocation>,
@@ -128,10 +131,16 @@ pub fn normalize_sources(nodes: &mut [NodeDesc]) {
 /// A binding placeholder in a prop: `{"$b": id}`. Its value comes from the host call.
 pub fn binding_id(v: &Value) -> Option<u32> {
     let o = v.as_object()?;
-    if o.len() != 1 {
+    if o.len() > 2 || (o.len() == 2 && !o.contains_key("$s")) {
         return None;
     }
     o.get("$b")?.as_u64().map(|n| n as u32)
+}
+
+/// The site of a binding on a native-layout field: `{"$b": id, "$s": site}`.
+pub fn site_id(v: &Value) -> Option<u32> {
+    binding_id(v)?;
+    v.get("$s")?.as_u64().map(|n| n as u32)
 }
 
 #[cfg(test)]

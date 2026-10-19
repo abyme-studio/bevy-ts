@@ -149,7 +149,7 @@ Deno.test("a keyed fragment from a prefab prefixes its children's keys", () => {
 
 Deno.test("function props become bindings carried as ids", () => {
   const [e] = describe(jsx("entity", { children: jsx(Health, { max: () => 3 }) }));
-  eq(e.components[0].props.max, { $b: 1 });
+  eq(e.components[0].props.max, { $b: 1, $s: 1 });
 });
 
 Deno.test("vector views cross as arrays", () => {

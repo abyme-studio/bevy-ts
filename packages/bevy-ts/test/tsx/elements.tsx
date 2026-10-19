@@ -85,3 +85,11 @@ setOpen(true);
 export const BadStyle = () => <node style={{ widht: 3 }} />;
 // @ts-expect-error a binding reads components of a ref, not strings
 export const BadRead = () => <text>{() => player.get("Health")}</text>;
+
+export const Clicky = () => (
+  <button onPointerClick={({ commands, frame, button }) => button === "primary" && commands.mount(<Enemy key={`e${frame}`} at={[0, 0, 0]} />)}>
+    <text>Spawn</text>
+  </button>
+);
+// @ts-expect-error picking props are onPointer* with Bevy's event names
+export const BadClick = () => <entity onClick={() => {}} />;

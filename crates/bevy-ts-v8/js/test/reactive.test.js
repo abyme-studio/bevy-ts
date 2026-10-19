@@ -99,7 +99,8 @@ Deno.test("a ref wrapping an entity and vector fields", () => {
   const ctx = new TsxContext();
   const target = ref(7);
   describe(jsx("entity", { children: jsx(Health, { max: () => target.get(Transform).translation.y * 2 }) }), ctx);
-  eq(ctx.call({}).needs, [[7, "Transform"]]);
+  // A site instance that reads another entity takes the per-pair path.
+  eq(ctx.call({ instances: [[1, 99]] }).needs, [[7, "Transform"]]);
   const out = ctx.call({ values: [[7, "Transform", { translation: [1, 2, 3] }]] });
   eq(out.patches, [[1, 4]]);
 });
@@ -194,8 +195,59 @@ Deno.test("a throwing binding reports its location and others carry on", () => {
     }),
     ctx,
   );
-  const out = ctx.call({});
+  const out = ctx.call({ instances: [[1, 5], [2, 5]] });
   eq(out.patches, [[2, [1, 2, 3]]]);
   eq(out.errors.length, 1);
   if (!/nope/.test(out.errors[0].message)) throw new Error(out.errors[0].message);
+});
+
+/** Siren: a light that follows its own entity's alarm, instanced. */
+function sirens(ctx, n, extra) {
+  const Alarm = handle("game::Alarm");
+  const Light = handle("game::Light");
+  const Siren = () => {
+    const self = ref();
+    return jsx("entity", { ref: self, children: jsx(Light, { intensity: () => (self.get(Alarm).on ? 8 : 2) + (extra ? extra() : 0) }) });
+  };
+  const nodes = describe(jsxs(Fragment, { children: Array.from({ length: n }, (_, i) => jsx(Siren, {}, `s${i}`)) }), ctx);
+  return { nodes, Alarm };
+}
+
+Deno.test("bindings on native fields run per site, row by row, with no effects", () => {
+  const ctx = new TsxContext();
+  const { nodes } = sirens(ctx, 3);
+  eq(nodes.map((n) => n.components[0].props.intensity), [{ $b: 1, $s: 1 }, { $b: 2, $s: 1 }, { $b: 3, $s: 1 }]);
+  let out = ctx.call({ refs: [[1, 10], [2, 11], [3, 12]], instances: [[1, 10], [2, 11], [3, 12]] });
+  eq(out.needs, [[10, "game::Alarm"], [11, "game::Alarm"], [12, "game::Alarm"]]);
+  eq(out.subscribe, [], "own reads are not per-pair subscriptions");
+  out = ctx.call({ values: [10, 11, 12].map((e) => [e, "game::Alarm", { on: 0 }]) });
+  eq(out.patches, [[1, 2], [2, 2], [3, 2]]);
+  eq(out.sites, [[1, ["game::Alarm"]]], "the site's reads, fixed at its first run");
+  // Rust finds the changed rows; only they re-run, and a same value writes nothing.
+  out = ctx.call({ rows: [[2, [["game::Alarm", { on: 1 }]]], [3, [["game::Alarm", { on: 0 }]]]] });
+  eq(out.patches, [[2, 8]]);
+});
+
+Deno.test("a signal a site reads re-runs every instance; a new read is an error naming the site", () => {
+  const ctx = new TsxContext();
+  const [boost, setBoost] = signal(0);
+  sirens(ctx, 2, () => boost());
+  ctx.call({ refs: [[1, 10], [2, 11]], instances: [[1, 10], [2, 11]] });
+  ctx.call({ values: [[10, "game::Alarm", { on: 0 }], [11, "game::Alarm", { on: 1 }]] });
+  setBoost(1);
+  eq(ctx.call({}).patches, [[1, 3], [2, 9]]);
+});
+
+Deno.test("a site run that reads a component its first run did not is an error naming the site", () => {
+  const ctx = new TsxContext();
+  const Alarm = handle("game::Alarm");
+  const Heat = handle("game::Heat");
+  const Light = handle("game::Light");
+  const self = ref();
+  describe(jsx("entity", { ref: self, children: jsx(Light, { intensity: () => (self.get(Alarm).on ? self.get(Heat).t : 2) }) }), ctx);
+  ctx.call({ refs: [[1, 10]], instances: [[1, 10]] });
+  ctx.call({ values: [[10, "game::Alarm", { on: 0 }]] });
+  const out = ctx.call({ rows: [[1, [["game::Alarm", { on: 1 }]]]] });
+  eq(out.errors.length, 1);
+  if (!/did not read on its first run/.test(out.errors[0].message)) throw new Error(out.errors[0].message);
 });

@@ -142,6 +142,8 @@ A binding on a component element's field, `<PointLight intensity={() => (alarm()
 - The reconciler never writes a bound field from a literal (provenance `bound`). A TS system whose `write` set holds the component warns in dev, naming the system and the site. A `.bsn` override of a bound field is the `levels` change's call; recommended is Godot's rule, the override pins that instance (it leaves the site) and the viewport shows a revert. The viewport shows a bound prop read-only with its expression and site location.
 - A binding on a reflected component (`Text`, `Node`) keeps decision 9's path. The split is by target component kind, which the runtime can check, not by "is this UI".
 
+Implemented 2026-10-20. Under no hooks each prefab instance still owns its closure, so a site groups instances by element source and prop; instances run with no effect, against a cache of their own entity's values. JS learns a site's own reads on its first run and reports them; Rust then scans those components' change-tick columns in table order each frame (no JS), and sends the changed rows' raw component bytes after the host call's JSON header, which JS decodes by layout. A signal a site reads re-runs every instance; a closure that reads another entity's component takes decision 9's per-pair path for that instance; a later run that reads a component the first did not is an error naming the site. A patch whose bytes equal the row's writes nothing. Measured in release on the shared M5 Max (`crates/bevy-ts-cli/tests/tsx_sites.rs`, medians of 300 frames): 10,000 bound instances with 100 alarms changed per frame cost 170 µs a frame against 125 µs for a TS system doing the same (1.4×); the tsx work itself is 100 µs against the system's 45 µs run, most of it the host call and the 10,000-row tick scan. Column summary ticks would let a still table skip its scan, but writes through untyped pointers do not keep them, so they are not used.
+
 Measured 2026-10-19 (`docs/research/scene-bindings.md`, `bench/bindings/`): per-instance effects cost 85 µs a frame at 10k instances with 1% changed against 10 to 18 for a system, 12.4 ms against 0.23 at 100k with 10% changed, 282 ms against 1.3 with every instance changed, plus 42 ms and 66 MB to mount 100k effects. Unreal moved UMG from polled bindings to change-driven bindings with declared sources and compare-before-write (Viewmodel); Unity's UI Toolkit bindings skip unchanged data-source versions; Bevy's own direction is reactivity through change detection with "something similar to system syntax" for reactive scenes.
 
 - *Beat: UI only.* Enforceable, but the line is not where the problems are: a `<text>` binding and a `PointLight` binding have the same ownership question and the same cost curve, and a world-space label sits on both sides. It outlaws the most readable form of "this field follows that one" to dodge a cost cliff this decision removes.
@@ -260,6 +262,12 @@ None: new crate and modules. Protocol minor bump for the `bevy-ts/tsx_*` methods
 
 - 2026-10-20: picking props are `onPointerClick`, `onPointerOver`, ... (`on` plus Bevy 0.20's event
   name), allowed on any `<entity>` or UI element as entity-local observers.
+  Implemented 2026-10-20: each prop's handler gets an id per generation; the entity carries
+  `TsxHandlers` (event name to id) and one observer per event kind, attached once and kept across
+  reloads, so a reload swaps ids, not observers. An observer ignores an event whose original target
+  is a descendant (no bubbling) and queues `(handler id, { kind, entity, position, button })`;
+  the frame's `tsx` host call delivers the queue in arrival order, and a handler receives one
+  object with the event's fields plus the call's `commands` and `frame`.
 
 - 2026-10-20: TSX has no hooks. Bindings read `ref.get(C)` and `res(R)` directly; the read inside
   the binding is the subscription. `signal()` stays for UI-local state. No `use*` exports

@@ -20,6 +20,8 @@ const COMPONENT_INTRINSICS = new Set(["mesh", "material"]);
 const UI_INTRINSICS = new Set(["node", "text", "image", "button"]);
 /** Props every entity-making element takes besides its components. */
 const PICKING = /^on[A-Z]/;
+/** `on` plus a Bevy 0.20 picking event's name: an entity-local observer (operator ruling 2026-10-20). */
+const POINTER_EVENTS = new Set(["PointerClick", "PointerPress", "PointerRelease", "PointerOver", "PointerOut"]);
 
 /** Marks `Show` and `For`: control flow, described as slots rather than called as prefabs. */
 const CONTROL = Symbol.for("bevy-ts.control");
@@ -459,6 +461,7 @@ class NodeRef {
     if (this.resolved === null) throw PENDING;
     const ctx = Ctx;
     if (!ctx) throw new Error(`ref.get(${C.componentName}) outside a scene, binding or system`);
+    if (RowInstance) return RowInstance.site.read(RowInstance, this.resolved, C);
     return ctx.read(this.resolved, C);
   }
 }
@@ -471,7 +474,7 @@ export function ref(entity) {
 const LANE_NAMES = ["x", "y", "z", "w"];
 
 /** A delivered component value: plain fields, vectors with `.x`/`.y`/`.z` and `toArray()`. */
-function componentValue(C, json) {
+function componentValue(C, json, row) {
   if (json === null || typeof json !== "object") return json;
   const out = {};
   for (const k of Object.keys(json)) {
@@ -483,7 +486,8 @@ function componentValue(C, json) {
       out[k] = Object.freeze(vec);
     } else out[k] = v;
   }
-  return Object.freeze(out);
+  // Row values are fresh per delivery and read once; freezing them costs more than it guards.
+  return row ? out : Object.freeze(out);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -523,6 +527,18 @@ export class TsxContext {
     this.refIds = new Map();
     this.slots = new Map();
     this.nextSlot = 1;
+    this.sites = new Map();
+    this.sitesByKey = new Map();
+    /** Site instances waiting for a first own value, by entity. */
+    this.rowWaiting = new Map();
+    /** Work registered since the last host call, started there. */
+    this.pendingBindings = [];
+    this.pendingSlots = [];
+    this.waitingSites = new Set();
+    this.handlers = new Map();
+    this.nextHandler = 1;
+    /** Site reads fixed since the last call, for Rust: `[siteId, [component names]]`. */
+    this.siteReads = [];
     this.pairs = new Map();
     this.byName = new Map();
     this.patches = [];
@@ -568,10 +584,48 @@ export class TsxContext {
     return p.value;
   }
 
+  /** A site row's own component value, cached on the instance; no subscriptions, Rust finds changes. */
+  peek(b, C) {
+    const name = C.componentName;
+    const v = b.own[name];
+    if (v !== undefined || name in b.own) return v;
+    this.byName.set(name, C);
+    this.rowWaiting.set(b.entity, b);
+    this.needs.add({ entity: b.entity, C });
+    throw PENDING;
+  }
+
+  /**
+   * A binding on a native-layout field: one instance of a site (the element and prop in
+   * source). Instances run without effects; Rust finds the rows whose reads changed.
+   */
+  siteBind(fn, key, owner, location) {
+    let site = this.sitesByKey.get(key);
+    if (!site) {
+      site = new Site(this, this.sites.size + 1, key, location);
+      this.sites.set(site.id, site);
+      this.sitesByKey.set(key, site);
+    }
+    const id = this.nextBinding++;
+    const b = { id, fn, owner, location, last: undefined, sent: false, computation: null, site, entity: null, started: false, own: {} };
+    this.bindings.set(id, b);
+    site.instances.set(id, b);
+    return { $b: id, $s: site.id };
+  }
+
+  /** A picking handler: Rust observes the event on the entity and delivers it by id. */
+  handler(fn, location) {
+    const id = this.nextHandler++;
+    this.handlers.set(id, { fn, location });
+    return id;
+  }
+
   /** A binding: `fn` runs in the host call once its node is mounted, under `owner`. */
   bind(fn, owner, location) {
     const id = this.nextBinding++;
-    this.bindings.set(id, { id, fn, owner, location, last: undefined, computation: null });
+    const b = { id, fn, owner, location, last: undefined, computation: null };
+    this.bindings.set(id, b);
+    this.pendingBindings.push(b);
     return { $b: id };
   }
 
@@ -601,8 +655,11 @@ export class TsxContext {
     this.errors.push({ message: e && e.message ? `${e.name || "Error"}: ${e.message}` : String(e), location: location || null, stack: e && e.stack ? String(e.stack) : null });
   }
 
-  /** The `tsx` host call: deliver refs and values, start new computations, collect output. */
-  call(payload) {
+  /**
+   * The `tsx` host call: deliver refs and values, run handlers, start new computations, collect
+   * output. `rowBytes` carries site rows as raw component bytes (see `decodeRows`).
+   */
+  call(payload, callCtx, rowBytes) {
     const prev = Ctx;
     Ctx = this;
     this.inCall = true;
@@ -615,20 +672,62 @@ export class TsxContext {
             r.src.notify();
           }
         }
+        let delivered = false;
         for (const [entity, name, json] of payload.values || []) {
-          const p = this.pairs.get(`${entity}|${name}`);
-          if (!p) continue;
-          p.value = json === null ? undefined : componentValue(p.C, json);
-          p.has = true;
-          this.needs.delete(p);
-          p.src.notify();
+          const key = `${entity}|${name}`;
+          const p = this.pairs.get(key);
+          if (p) {
+            p.value = json === null ? undefined : componentValue(p.C, json);
+            p.has = true;
+            this.needs.delete(p);
+            p.src.notify();
+          }
+          const b = this.rowWaiting.get(entity);
+          if (b) {
+            const C = this.byName.get(name);
+            b.own[name] = json === null ? undefined : componentValue(C, json, true);
+            this.rowWaiting.delete(entity);
+            delivered = true;
+          }
         }
+        // Site instances that paused for a first value try again.
+        if (delivered) for (const site of this.sites.values()) if (site.paused.size) site.resume();
         for (const id of payload.drop || []) {
           const b = this.bindings.get(id);
           if (b && b.computation) b.computation.dispose();
+          if (b && b.site) b.site.instances.delete(id);
           this.bindings.delete(id);
         }
+        for (const [id, entity] of payload.instances || []) {
+          const b = this.bindings.get(id);
+          if (!b || !b.site) continue;
+          b.entity = entity;
+          b.site.waiting.push(b);
+          this.waitingSites.add(b.site);
+        }
+        // Rows whose own reads changed: refresh the cache, re-run those instances only.
+        const rerun = new Set();
+        for (const [id, values] of payload.rows || []) {
+          const b = this.bindings.get(id);
+          if (!b || b.entity === null) continue;
+          for (const [name, json] of values) b.own[name] = json === null ? undefined : componentValue(this.byName.get(name), json, true);
+          rerun.add(b);
+        }
+        if (rowBytes && rowBytes.byteLength) decodeRows(this, rowBytes, rerun);
+        for (const b of rerun) b.site.run(b);
         this.startPending();
+        // Picking events, in arrival order, with the call's commands and frame.
+        for (const [id, ev] of payload.events || []) {
+          const h = this.handlers.get(id);
+          if (!h) continue;
+          const event = { entity: ev.entity, position: ev.position, button: ev.button, kind: ev.kind };
+          const hctx = { commands: callCtx ? callCtx.commands : null, frame: callCtx ? callCtx.frame : 0, entity: ev.entity };
+          try {
+            h.fn(Object.assign(hctx, event), event);
+          } catch (e) {
+            this.error(e, h.location);
+          }
+        }
       });
       return this.output();
     } finally {
@@ -639,8 +738,10 @@ export class TsxContext {
   }
 
   startPending() {
-    for (const b of this.bindings.values()) if (!b.computation) this.startBinding(b);
-    for (const s of this.slots.values()) if (!s.computation) s.start();
+    for (const b of this.pendingBindings.splice(0)) if (!b.computation && this.bindings.has(b.id)) this.startBinding(b);
+    for (const site of this.waitingSites) site.start();
+    this.waitingSites.clear();
+    for (const s of this.pendingSlots.splice(0)) if (!s.computation) s.start();
     for (const c of this.deferred.splice(0)) c.run();
   }
 
@@ -667,6 +768,7 @@ export class TsxContext {
       subscribe,
       unsubscribe,
       needs: [...this.needs].map((p) => [p.entity, p.C.componentName]),
+      sites: this.siteReads.splice(0),
       errors: this.errors.splice(0),
     };
     this.needs.clear();
@@ -694,6 +796,216 @@ function sameValue(a, b) {
   if (Object.is(a, b)) return true;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sites: bindings on native-layout fields, grouped by element and prop (design decision 11)
+
+/** The site instance being evaluated: `ref.get` on its own entity reads the row cache. */
+let RowInstance = null;
+
+class Site {
+  constructor(ctx, id, key, location) {
+    this.ctx = ctx;
+    this.id = id;
+    this.key = key;
+    this.location = location;
+    this.instances = new Map();
+    /** Component names the site reads on its own entity; fixed at its first evaluation. */
+    this.own = null;
+    this.discovered = null;
+    /** Re-runs every instance when a signal the site read changes. */
+    this.watcher = null;
+    /** Instances given their entity, not run yet; and instances paused for a first value. */
+    this.waiting = [];
+    this.paused = new Set();
+  }
+
+  read(b, entity, C) {
+    const name = C.componentName;
+    if (entity !== b.entity) {
+      // Another entity's component: this instance takes the per-pair path (decision 9).
+      throw new SitePairRead();
+    }
+    if (this.own && !this.own.has(name)) {
+      throw located(`binding ${this.key} reads ${name}, which it did not read on its first run; read every component it may need on each run, or move the branch into the value`, this.location);
+    }
+    if (!this.own) this.discovered.add(name);
+    return this.ctx.peek(b, C);
+  }
+
+  /** Starts instances that have entities and are not running yet. */
+  start() {
+    if (!this.watcher) {
+      const prevOwner = CurrentOwner;
+      CurrentOwner = this.ctx.root;
+      try {
+        this.watcher = new Computation(
+          () => {
+            // Tracks only what the closures read besides own rows: signals and refs.
+            for (const b of this.instances.values()) if (b.started) this.run(b, true);
+          },
+          (e) => this.ctx.error(e, this.location),
+        );
+      } finally {
+        CurrentOwner = prevOwner;
+      }
+    }
+    const fresh = [];
+    for (const b of this.waiting.splice(0)) {
+      if (b.started || b.computation || !this.instances.has(b.id)) continue;
+      b.started = true;
+      fresh.push(b);
+    }
+    // New instances run under the watcher, so it learns the signals they read, without
+    // re-running the instances it already has.
+    this.runUnderWatcher(fresh);
+  }
+
+  resume() {
+    const list = [...this.paused];
+    this.paused.clear();
+    this.runUnderWatcher(list);
+  }
+
+  runUnderWatcher(list) {
+    if (!list.length) return;
+    const [l, o] = [Listener, CurrentOwner];
+    Listener = this.watcher;
+    CurrentOwner = this.watcher;
+    try {
+      for (const b of list) this.run(b, true);
+    } finally {
+      Listener = l;
+      CurrentOwner = o;
+    }
+  }
+
+  /** Evaluates one instance against its row; patches when the value differs. */
+  run(b, tracked) {
+    if (b.computation) return;
+    const prevRow = RowInstance;
+    const prevListener = Listener;
+    RowInstance = b;
+    if (!tracked) Listener = null;
+    if (!this.own) this.discovered = new Set();
+    let v;
+    try {
+      v = plainValue(b.fn());
+    } catch (e) {
+      if (e instanceof SitePairRead) {
+        RowInstance = prevRow;
+        Listener = prevListener;
+        this.ctx.startBinding(b);
+        return;
+      }
+      if (e === PENDING) {
+        this.paused.add(b);
+        return;
+      }
+      this.ctx.error(e, this.location);
+      return;
+    } finally {
+      RowInstance = prevRow;
+      Listener = prevListener;
+    }
+    if (!this.own) {
+      this.own = this.discovered;
+      this.ctx.siteReads.push([this.id, [...this.own]]);
+    }
+    if (b.sent && sameValue(v, b.last)) return;
+    b.last = v;
+    b.sent = true;
+    this.ctx.patches.push([b.id, v === undefined ? null : v]);
+    requestFlush(this.ctx);
+  }
+}
+
+class SitePairRead extends Error {}
+
+const SCALAR_WIDTH = { f32: 4, f64: 8, i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, bool: 1, entity: 8, vec2: 8, vec3: 12, vec4: 16, quat: 16 };
+
+function fieldWidth(t) {
+  if (t.kind === "enum") return t.variants.length <= 256 ? 1 : t.variants.length <= 65536 ? 2 : 4;
+  if (t.kind === "array") return fieldWidth(t.of) * t.len;
+  return SCALAR_WIDTH[t.kind];
+}
+
+function decodeField(dv, o, t) {
+  switch (t.kind) {
+    case "f32": return dv.getFloat32(o, true);
+    case "f64": return dv.getFloat64(o, true);
+    case "i8": return dv.getInt8(o);
+    case "u8": return dv.getUint8(o);
+    case "i16": return dv.getInt16(o, true);
+    case "u16": return dv.getUint16(o, true);
+    case "i32": return dv.getInt32(o, true);
+    case "u32": return dv.getUint32(o, true);
+    case "bool": return dv.getUint8(o) !== 0;
+    case "entity": return dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296;
+    case "vec2": case "vec3": case "vec4": case "quat": {
+      const n = t.kind === "vec2" ? 2 : t.kind === "vec3" ? 3 : 4;
+      const a = [];
+      for (let i = 0; i < n; i++) a.push(dv.getFloat32(o + i * 4, true));
+      const vec = { toArray: () => a.slice() };
+      a.forEach((x, i) => (vec[LANE_NAMES[i]] = x));
+      return vec;
+    }
+    case "enum": {
+      const w = fieldWidth(t);
+      const i = w === 1 ? dv.getUint8(o) : w === 2 ? dv.getUint16(o, true) : dv.getUint32(o, true);
+      return i < t.variants.length ? t.variants[i] : i;
+    }
+    case "array": {
+      const w = fieldWidth(t.of);
+      return Array.from({ length: t.len }, (_, i) => decodeField(dv, o + i * w, t.of));
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Site rows as Rust packs them: u32 sites; per site: u32 id, u16 reads, per read (u16 name
+ * length, name, u32 size); u32 rows; per row: u32 instance, then each read's bytes. Values go on
+ * the instances; each instance joins `rerun`.
+ */
+function decodeRows(ctx, bytes, rerun) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let o = 0;
+  const sites = dv.getUint32(o, true);
+  o += 4;
+  for (let s = 0; s < sites; s++) {
+    o += 4;
+    const nreads = dv.getUint16(o, true);
+    o += 2;
+    const reads = [];
+    for (let r = 0; r < nreads; r++) {
+      const len = dv.getUint16(o, true);
+      o += 2;
+      let name = "";
+      for (let i = 0; i < len; i++) name += String.fromCharCode(bytes[o + i]);
+      o += len;
+      const size = dv.getUint32(o, true);
+      o += 4;
+      const C = ctx.byName.get(name);
+      reads.push({ name, size, fields: C && C.layout ? C.layout.fields : null });
+    }
+    const rows = dv.getUint32(o, true);
+    o += 4;
+    for (let r = 0; r < rows; r++) {
+      const b = ctx.bindings.get(dv.getUint32(o, true));
+      o += 4;
+      for (const read of reads) {
+        if (b && read.fields) {
+          const v = {};
+          for (const f of read.fields) v[f.name] = decodeField(dv, o + f.offset, f.type);
+          b.own[read.name] = v;
+        }
+        o += read.size;
+      }
+      if (b && b.entity !== null) rerun.add(b);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -808,7 +1120,7 @@ function propValue(v, name, el, nested) {
   }
   if (typeof v === "function") {
     if (PICKING.test(name)) {
-      throw located(`<${typeName(el.type)} ${name}>: picking props are not available yet`, el.source);
+      throw located(`<${typeName(el.type)} ${name}>: picking props go on an <entity> or a UI element, not a component`, el.source);
     }
     if (!Describing) throw located(`<${typeName(el.type)} ${name}={...}>: a binding needs a scene`, el.source);
     return Describing.ctx.bind(v, Describing.owner, el.source);
@@ -837,7 +1149,19 @@ function plainProps(el, skip) {
 
 function describeComponent(el) {
   const kind = isComponent(el.type) ? (el.type.source === "ts" ? "ts" : "rust") : "intrinsic";
-  const d = { type: typeName(el.type), kind, props: plainProps(el) };
+  const native = isComponent(el.type) && (el.type.source === "ts" || el.type.native === true);
+  const props = {};
+  for (const k in el.props) {
+    const v = el.props[k];
+    if (v === undefined) continue;
+    if (native && typeof v === "function" && Describing) {
+      // A binding on a native-layout field runs per site: the element and prop in source.
+      const at = el.source;
+      const key = `${at ? `${at.file}:${at.line}:${at.column}` : "?"} ${typeName(el.type)}.${k}`;
+      props[k] = Describing.ctx.siteBind(v, key, Describing.owner, el.source);
+    } else props[k] = propValue(v, k, el);
+  }
+  const d = { type: typeName(el.type), kind, props };
   if (el.source) d.source = el.source;
   if (el.children && (!Array.isArray(el.children) || el.children.length)) {
     throw located(`<${d.type}> takes no children`, el.source);
@@ -869,18 +1193,28 @@ function describeEntity(el, key, type) {
     node.name = String(el.props.name);
   }
   if (el.props.ref !== undefined) node.ref = Describing.ctx.refId(el.props.ref);
+  const skip = new Set(ENTITY_PROPS);
+  for (const k in el.props) {
+    const v = el.props[k];
+    if (v === undefined || !PICKING.test(k)) continue;
+    const event = k.slice(2);
+    if (!POINTER_EVENTS.has(event)) {
+      throw located(`<${typeName(el.type)} ${k}>: no such picking event; use ${[...POINTER_EVENTS].map((e) => `on${e}`).join(", ")}`, el.source);
+    }
+    if (typeof v !== "function") throw located(`<${typeName(el.type)} ${k}> takes a function`, el.source);
+    (node.on || (node.on = {}))[event] = Describing.ctx.handler(v, el.source);
+    skip.add(k);
+  }
   if (!ui) {
     for (const k in el.props) {
-      if (!ENTITY_PROPS.has(k) && el.props[k] !== undefined) {
-        throw located(PICKING.test(k) ? `<entity ${k}>: picking props are not available yet` : `<entity> has no prop ${k}; put components inside it`, el.source);
-      }
+      if (!skip.has(k) && el.props[k] !== undefined) throw located(`<entity> has no prop ${k}; put components inside it`, el.source);
     }
   }
   node.source = [el.source, ...el.chain].filter(Boolean);
   const byType = new Map();
   const childItems = [];
   if (ui) {
-    const props = plainProps(el, ENTITY_PROPS);
+    const props = plainProps(el, skip);
     if (el.type === "text") {
       const t = textContent(el);
       props.text = typeof t === "function" ? Describing.ctx.bind(t, Describing.owner, el.source) : t;
@@ -911,7 +1245,9 @@ function describeEntities(items) {
     if (el.type === "entity" || UI_INTRINSICS.has(el.type)) out.push(describeEntity(el, key, type));
     else if (typeof el.type === "function" && el.type[CONTROL]) {
       const id = Describing.ctx.nextSlot++;
-      Describing.ctx.slots.set(id, new Slot(Describing.ctx, id, el, Describing.owner));
+      const slot = new Slot(Describing.ctx, id, el, Describing.owner);
+      Describing.ctx.slots.set(id, slot);
+      Describing.ctx.pendingSlots.push(slot);
       out.push({ key, type, slot: id, source: [el.source, ...el.chain].filter(Boolean) });
     } else if (isComponent(el.type) || COMPONENT_INTRINSICS.has(el.type)) {
       throw located(`<${typeName(el.type)}> is a component element outside an <entity>`, el.source);

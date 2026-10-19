@@ -11,6 +11,7 @@ pub mod desc;
 pub mod host;
 pub mod intrinsics;
 pub mod mount;
+pub mod picking;
 pub mod reconcile;
 pub mod resolve;
 pub mod tree;
@@ -90,6 +91,8 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
         r.new_refs.clear();
         r.slots.clear();
         r.subs.clear();
+        r.sites.clear();
+        r.new_instances.clear();
     }
     let mut total = ReconcileStats::default();
     for r in &section.roots {
