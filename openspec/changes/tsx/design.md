@@ -15,7 +15,7 @@ Prior art, read 2026-10-19:
 - **Triplex** (trytriplex/triplex). A Babel plugin rewrites compiled `jsx`/`jsxs` calls to inject `__meta` (`path`, `line`, `column`, `astPath`, where `astPath` is element names from the export down with `.N` for repeated siblings) and wraps host elements so a click in the viewport finds its element. Edits go through `ts-morph` on the server (`getJsxElementAt` by line and column) and `saveSync`; undo is a stack of whole-file snapshots. Taken: source location per element, lookup by line and column, an element-path fallback, and the rule that the editor, not the runtime, parses and rewrites source.
 - **Bevy 0.20 BSN** (`bevy_scene` 0.20, BSN introduced in 0.19). `bsn!` builds a `Scene` and `bsn_list!` a `SceneList`. A BSN expression is a patch that writes only the fields it names, layered in order. Templates may read the world and the spawn context, for example to load assets. `#Name` names an entity, `:"file.bsn"` inherits a cached scene, `on(...)` attaches observers, and 0.20 adds a bottom-up `Ready` event. No `.bsn` loader ships yet (0.20 "What's Next"). Nothing retains or reconciles: BSN spawns, it does not update.
 - **bevy_ui 0.20.** `Node`, `Text`, `ImageNode`, `BackgroundColor`, `em()`/`rem()` units, feathers widgets; interaction through `bevy_picking` (`Pointer<Click>`, `Pointer<Over>`, `Pointer<Out>`) and observers.
-- **JSX source info.** React 19.2 stopped using `__source`/`__self`, but the automatic dev transform (`jsxDEV`) still carries `{fileName, lineNumber, columnNumber}` in TypeScript's `react-jsxdev`, and oxc 0.154's transformer has `development` (the `jsx_source` plugin) and `importSource`. Whether oxc's automatic dev output passes source as `jsxDEV`'s fifth argument or as a `__source` prop is unverified; the runtime accepts both (task 1.2 checks).
+- **JSX source info.** React 19.2 stopped using `__source`/`__self`, but the automatic dev transform (`jsxDEV`) still carries `{fileName, lineNumber, columnNumber}` in TypeScript's `react-jsxdev`, and oxc 0.154's transformer has `development` (the `jsx_source` plugin) and `importSource`. Checked 2026-10-20 (task 1.2): oxc 0.154 passes source as `jsxDEV`'s fifth argument, with `fileName` the absolute path bridge compiled and line and column in TS source coordinates; Rust makes the file project-relative. The runtime also reads a `__source` prop.
 
 ## Goals / Non-Goals
 
@@ -95,6 +95,24 @@ On spawn, Rust turns a description subtree into a BSN scene and spawns it, so as
 - *Beat: no BSN, raw `insert_by_id` and reflection.* It works, but loses Bevy's asset templates and diverges from where Bevy scenes are going. If BSN cannot be built from runtime data in 0.20 (unverified: its public API is macro-first), raw insertion is the fallback behind the same reconciler, decided in task 3.1.
 - `.bsn` export of a description is room left: the description is already data with names and keys.
 
+**Decided 2026-10-20 (task 3.1): direct insertion now; BSN stays open.** The spike
+(`crates/bevy-ts-tsx/tests/bsn_spike.rs`) shows BSN *can* be built from runtime data in 0.20:
+a struct implementing `Scene` pushes templates into a `ResolvedScene`, a TS component (only a
+`ComponentId` and a byte layout) goes in as a `Clone` value whose `SceneEffect` calls
+`BundleWriter::push_component_by_id`, children go through
+`get_or_insert_related_resolved_scenes::<ChildOf>()`, and a resolved `ScenePatch` spawns any
+number of times. 1,000 enemies of two entities each (release): BSN with the patch resolved once
+0.43 ms, BSN resolved per spawn 0.64 ms, direct insertion 0.28 ms. The reconciler spawns by
+direct insertion anyway, for three reasons: nothing in this change uses what BSN adds (asset
+templates load by path, but `<mesh>` builds procedural meshes; observers and `Ready` arrive with
+handlers, which are held); BSN needs `AssetPlugin` and `ScenePlugin` in every app that mounts a
+scene, including headless tests; and a spawned BSN hierarchy has to be walked back to map each
+entity to its node, where direct insertion knows each entity as it makes it. The static-subtree
+cache (decision 7) is kept in that form: resolved and encoded component elements by content hash
+(`TemplateCache`), and asset handles by props (`IntrinsicAssets`), so the second identical
+`<Enemy>` resolves nothing and builds no asset. Switching spawns to BSN is local to
+`reconcile::spawn` once `<mesh src>`, observers or `levels`' `.bsn` export want it.
+
 ### 8. Function values never cross; ids do
 Bindings and handlers stay in JS and cross as ids (bevy-react's rule for handlers). Rust holds `(node, component, field) → binding id` and `(node, event) → handler id`, and calls JS only with ids and payloads. A generation rebuilds both tables, because the closures died with the old module state.
 
@@ -136,7 +154,8 @@ Measured 2026-10-19 (`docs/research/scene-bindings.md`, `bench/bindings/`): per-
 - Signals and `useComponent` accessors.
 
 **Wire, JS to Rust:**
-- *Mount and reload:* one JSON description per scene root, in the generation manifest's `tsx` section (bridge requirement B1). JSON is fine here: it runs once per reload. Values of TS components are field-name maps; Rust encodes them with the layouts it computed.
+- *Mount and reload:* one JSON description per scene root, in the generation manifest's `tsx` section (bridge requirement B1). JSON is fine here: it runs once per reload. Values of TS components are field-name maps; Rust encodes them with the layouts it computed. Rust checks the section with the generation (`add_ts_section`) and reconciles it once the generation's components are live and migrated (`on_ts_section_applied`, which also runs, with no section, for a generation that declares no scenes). Errors the JSX runtime finds while describing (a component outside an entity, a duplicate key or component) travel in the section's `errors` with the element's location rather than as a throw, so the failed reload points at the element, not at `app.scene`.
+- *Runtime mounts:* `ctx.commands.mount(el, { parent })` appends a `tsx/mount` op (bridge B3) carrying the same JSON for one subtree; `ctx.commands.unmount(key | entity)` a `tsx/unmount` op. A mount is checked whole before it writes; a bad one writes nothing and is logged with the run's other command warnings.
 - *Runtime:* a binary tsx op stream returned from host calls (B2, B3): `patch(nodeId, componentId, fieldIndex, bytes)`, `patchReflect(nodeId, typePath, json)` for reflected components such as `Text`, `mountSubtree(parentNodeId, slot, json)`, `unmountSubtree(nodeId)`, `subscribe(subId, target, componentId)`, `unsubscribe(subId)`.
 
 **Rust, survives reloads (it is ECS state):**
@@ -232,7 +251,7 @@ A `damage` system lowers `hp` of every `Health` near the player each frame; a `b
 - [Tombstones can surprise: an enemy deleted in play stays gone after a reload] → It is the point of rule 8; `bevy-ts/tsx_tree` lists tombstones and `restart` clears them.
 - [The host call adds a JSON-free but still real crossing per frame with UI changes] → One call per frame at most, carrying all changes; a HUD that changes every frame costs one call per frame, which bevy-react measures at well under a millisecond for small batches.
 - [Reflected Rust components (`Text`, `Node`) patch through reflection and JSON] → They change rarely and per node; native-layout components use byte patches.
-- [oxc's automatic dev output shape for source is unverified] → The runtime accepts `jsxDEV`'s source argument and a `__source` prop; task 1.2 pins which.
+- [oxc's automatic dev output shape for source] → Pinned by task 1.2: `jsxDEV`'s fifth argument. The runtime also accepts a `__source` prop.
 
 ## Migration Plan
 
