@@ -127,7 +127,7 @@ Verdict: skip TypeGPU as a dependency; borrow its schema-per-WGSL-type idea for 
 The prebuilt engine ships Bevy's default plugins, `bevy_remote` and bevy-ts's crates, and no third-party plugin. A project that wants avian, bevy_hanabi or any other plugin adds it in its native crate.
 
 - *Beat: a curated set of plugins in the prebuilt engine.* Every included plugin pins its version for every user, grows the download for those who do not use it, and lags Bevy releases; it would also make bevy-ts responsible for those plugins' types in `bevy-ts/bevy`.
-- *Beat: prebuilt flavours (`@bevy-ts/engine-physics-*`).* Combinations multiply per platform. Left open (below) because physics is the one case common enough to matter.
+- *Beat: prebuilt flavours (`@bevy-ts/engine-physics-*`).* Combinations multiply per platform. Physics included: the operator ruled (2026-10-19) that the prebuilt engine ships none.
 
 ## Depends on bridge
 
@@ -160,9 +160,14 @@ The prebuilt engine ships Bevy's default plugins, `bevy_remote` and bevy-ts's cr
 
 None: additive. Projects without a native crate are unchanged and keep the prebuilt engine. Protocol minor bump for N5.
 
+## Operator rulings
+
+- 2026-10-19: the prebuilt engine ships no physics and there are no prebuilt flavours. A project
+  adds physics (bevy_rapier3d today, avian once it supports Bevy 0.20) through its native crate,
+  built once per Rust change or fetched from the shared engine cache.
+
 ## Open Questions
 
-- Prebuilt flavours for physics: ship one `@bevy-ts/*-physics` engine with avian, so the most common native need needs no toolchain, or keep "third-party means native crate" strict (decision 11). Needs the operator.
 - Whether native resources (single-row layout-tier views, `res: [NavSettings]`) belong here or with TS-defined resources in a later change.
 - Whether material instances are assets addressed by key or components on the entity (task 6.4).
 - Whether `bevy-ts build` packages per-platform game builds in this change or in a `ship` change.
