@@ -28,6 +28,17 @@ pub fn default_plugins(headless: bool) -> bevy::app::PluginGroupBuilder {
     }
 }
 
+/// A project's asset root: `assets/` beside its `package.json`, `tsconfig.json` or `bevy-ts.json`.
+pub fn asset_root(project_root: &std::path::Path) -> std::path::PathBuf {
+    project_root.join("assets")
+}
+
+/// Bevy's `AssetPlugin` reading from `root` (an absolute path, so the binary's location and the
+/// working directory do not matter).
+pub fn asset_plugin(root: &std::path::Path) -> AssetPlugin {
+    AssetPlugin { file_path: root.to_string_lossy().into_owned(), ..default() }
+}
+
 pub struct HeadlessPlugin;
 
 impl Plugin for HeadlessPlugin {
@@ -58,4 +69,37 @@ pub fn screenshot_on_request(mut commands: Commands, offscreen: Option<Res<Offsc
         None => Screenshot::primary_window(),
     };
     commands.spawn(shot).observe(save_to_disk(path));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::asset::io::AssetSourceId;
+
+    #[test]
+    fn dev_reads_assets_from_the_project() {
+        let project = std::env::temp_dir().join("bevy-ts-assets-root");
+        let _ = std::fs::remove_dir_all(&project);
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        std::fs::create_dir_all(project.join("assets/textures")).unwrap();
+        std::fs::write(project.join("package.json"), "{}").unwrap();
+        std::fs::write(project.join("src/game.ts"), "").unwrap();
+        std::fs::write(project.join("assets/textures/hello.txt"), "hi").unwrap();
+        // The root `bevy-ts dev` hands Bevy: `assets/` beside the project's manifest.
+        let compiler = crate::compile::Compiler::new(project.join("src/game.ts"), true).unwrap();
+        let root = asset_root(&compiler.root);
+        assert_eq!(root, project.canonicalize().unwrap().join("assets"));
+
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, asset_plugin(&root)));
+        let server = app.world().resource::<AssetServer>().clone();
+        let source = server.get_source(AssetSourceId::Default).unwrap();
+        let bytes = bevy::tasks::block_on(async {
+            let mut reader = source.reader().read(std::path::Path::new("textures/hello.txt")).await.unwrap();
+            let mut out = Vec::new();
+            reader.read_to_end(&mut out).await.unwrap();
+            out
+        });
+        assert_eq!(bytes, b"hi");
+    }
 }

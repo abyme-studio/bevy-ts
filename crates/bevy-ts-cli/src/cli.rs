@@ -12,6 +12,7 @@ use crate::{dev, headless};
 use bevy_ts::engine::EngineIdentity;
 use bevy_ts_v8::V8Options;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -150,10 +151,15 @@ pub enum Display {
 }
 
 /// Bevy's default plugins, bevy-ts and tsx, then `extra` (the project's plugins), so they can
-/// order against `BevyTsSet` and see bevy-ts's resources.
-pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options) -> App {
+/// order against `BevyTsSet` and see bevy-ts's resources. `assets` is Bevy's asset root, the
+/// project's `assets/` under `bevy-ts dev`; `None` keeps Bevy's default.
+pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>) -> App {
     let mut app = App::new();
-    app.add_plugins(headless::default_plugins(display != Display::Window));
+    let plugins = headless::default_plugins(display != Display::Window);
+    match assets {
+        Some(root) => app.add_plugins(plugins.set(headless::asset_plugin(root))),
+        None => app.add_plugins(plugins),
+    };
     match display {
         Display::Headless => {
             app.add_plugins(headless::HeadlessPlugin);
@@ -200,7 +206,8 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     } else {
         Display::Window
     };
-    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect });
+    let assets = headless::asset_root(&compiler.root);
+    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets));
     app.insert_resource(channel).insert_resource(DevSource(compiler.clone()));
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     bevy_ts_tsx::protocol::add_methods(&mut app);
@@ -243,7 +250,7 @@ fn skeleton(engine: &Engine, extra: impl Plugin, headless_mode: bool) {
     let set = ModuleSet { entry: path.clone(), modules: vec![CompiledModule { path, code: SKELETON_JS.into(), source_map: None }] };
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).unwrap();
     let display = if headless_mode { Display::Headless } else { Display::Window };
-    let mut app = base_app(engine, extra, display, V8Options::default());
+    let mut app = base_app(engine, extra, display, V8Options::default(), None);
     app.insert_resource(channel)
         .add_systems(Startup, scene)
         .add_systems(PostUpdate, report_changed.after(bevy_ts::BevyTsSet::PostUpdate))
