@@ -1,7 +1,7 @@
 # remote-protocol Specification
 
 ## Purpose
-TBD - created by archiving change bridge. Update Purpose after archive.
+The `bevy-ts/*` methods served on stock `bevy_remote`, through which editors, the inspector and tools read and change a running bevy-ts engine, and the versioned OpenRPC document that types them.
 
 ## Requirements
 

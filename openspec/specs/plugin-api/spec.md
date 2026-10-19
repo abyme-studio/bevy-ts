@@ -1,7 +1,7 @@
 # plugin-api Specification
 
 ## Purpose
-TBD - created by archiving change bridge. Update Purpose after archive.
+The public Rust API through which feature crates (tsx, levels, viewport, ports) extend bevy-ts without changing it: manifest sections, host-invoked entries, command kinds, component lookup, reflection and restart notification.
 
 ## Requirements
 
