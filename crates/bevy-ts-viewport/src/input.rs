@@ -19,6 +19,23 @@ use std::time::Instant;
 #[derive(Resource, Default)]
 pub struct PendingInput(pub Vec<(Instant, ViewportInput)>);
 
+/// The modifiers on the viewer's last pointer, wheel or key event: what an `NSEvent` says is
+/// held, which the edit tools read alongside `ButtonInput<KeyCode>`.
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct Modifiers {
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub meta: bool,
+}
+
+impl Modifiers {
+    fn from(m: &Option<p::Modifiers>) -> Modifiers {
+        let m = m.clone().unwrap_or_default();
+        Modifiers { shift: m.shift.unwrap_or(false), ctrl: m.ctrl.unwrap_or(false), alt: m.alt.unwrap_or(false), meta: m.meta.unwrap_or(false) }
+    }
+}
+
 /// Parses one event and queues it; a malformed event is logged and dropped.
 pub(crate) fn queue_at(world: &mut World, at: Instant, params: Value) -> bool {
     match serde_json::from_value::<ViewportInput>(params.clone()) {
@@ -79,6 +96,15 @@ pub(crate) fn apply(world: &mut World) {
 }
 
 fn apply_one(world: &mut World, window: Entity, e: ViewportInput) {
+    let mods = match &e {
+        ViewportInput::PointerEvent(e) => Some(Modifiers::from(&e.mods)),
+        ViewportInput::WheelEvent(e) => Some(Modifiers::from(&e.mods)),
+        ViewportInput::KeyEvent(e) => Some(Modifiers::from(&e.mods)),
+        _ => None,
+    };
+    if let Some(m) = mods {
+        world.insert_resource(m);
+    }
     match e {
         ViewportInput::PointerEvent(e) => {
             let pos = Vec2::new(e.x as f32, e.y as f32);

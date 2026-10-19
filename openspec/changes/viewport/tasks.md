@@ -30,18 +30,18 @@
 ## 5. Edit mode
 
 - [ ] 5.1 `bevy-ts/viewport_mode`: pause through bridge, remember and deactivate game cameras, `EditorOnly` marker, layer 31, excluded from `entities+watch`, `tsx_tree`, TS queries; `bevy-ts/step` in edit mode
-- [ ] 5.2 Editor camera: spawn at the game camera's pose and projection, fly, orbit, dolly, pinch, frame selection; `bevy-ts/viewport_camera`
-- [ ] 5.3 Gizmos: grid, selection and hover bounds, light and camera icons, `TransformGizmoPlugin` on the primary selection, `W`/`E`/`R`/`X`/`Escape`; `ui` option for game UI over the editor view
-- [ ] 5.4 Picking: editor pointer with game mouse input off, prefab-instance-root resolution from `TsxNode` source chains, ⌥ and ⇧ clicks, `bevy-ts/viewport_pick`; test that TSX `onClick` does not fire in edit mode
-- [ ] 5.5 Selection sync: `viewport_select` by entities or by location (through tsx's lookup), `viewport_selection+watch` with origin, node id, source chain and primary flag; selection kept across reloads by node id
+- [x] 5.2 Editor camera: spawn at the game camera's pose and projection, fly, orbit, dolly, pinch, frame selection; `bevy-ts/viewport_camera`
+- [x] 5.3 Gizmos: grid, selection and hover bounds, light and camera icons, `TransformGizmoPlugin` on the primary selection, `W`/`E`/`R`/`X`/`Escape`; `ui` option for game UI over the editor view
+- [x] 5.4 Picking: editor pointer with game mouse input off, prefab-instance-root resolution from `TsxNode` source chains, ⌥ and ⇧ clicks, `bevy-ts/viewport_pick`; test that TSX `onClick` does not fire in edit mode
+- [x] 5.5 Selection sync: `viewport_select` by entities or by location (through tsx's lookup), `viewport_selection+watch` with origin, node id, source chain and primary flag; selection kept across reloads by node id
 - [ ] 5.6 Check edit mode in windowed `bevy-ts dev` with the same tests
 
 ## 6. Edits
 
-- [ ] 6.1 Routes per gizmo field from tsx provenance (`tsx`, `locked`, `transient`; `bsn` left as a stub for `levels`), sent with the selection; `locked` handles dimmed and inert
-- [ ] 6.2 Live drag writes, `Escape` restore, one `ViewportEdit` on release on `viewport_edits+watch`
-- [ ] 6.3 `viewport_edit_result` (`written` keeps; `rejected` restores and locks the field), the 10 s `unconfirmed` state, `viewport_revert`
-- [ ] 6.4 Test the round trip with a scripted editor: drag enemy `b`, rewrite the literal in `game.tsx`, answer `written`, check no jump after the reload and `b` still selected; repeat with a computed prop and `rejected`
+- [x] 6.1 Routes per gizmo field from tsx provenance (`tsx`, `locked`, `transient`; `bsn` left as a stub for `levels`), sent with the selection; `locked` handles dimmed and inert
+- [x] 6.2 Live drag writes, `Escape` restore, one `ViewportEdit` on release on `viewport_edits+watch`
+- [x] 6.3 `viewport_edit_result` (`written` keeps; `rejected` restores and locks the field), the 10 s `unconfirmed` state, `viewport_revert`
+- [x] 6.4 Test the round trip with a scripted editor: drag enemy `b`, rewrite the literal in `game.tsx`, answer `written`, check no jump after the reload and `b` still selected; repeat with a computed prop and `rejected`
 
 ## 7. Assets
 

@@ -2945,11 +2945,10 @@
           },
           "node": {
             "type": [
-              "integer",
+              "string",
               "null"
             ],
-            "format": "uint64",
-            "minimum": 0
+            "description": "The TSX node id, 16 hex digits as bevy-ts/tsx_node gives it."
           },
           "source": {
             "type": "array",

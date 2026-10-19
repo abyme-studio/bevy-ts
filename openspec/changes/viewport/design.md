@@ -205,5 +205,14 @@ None: a new crate, a CLI flag, protocol 1.1 (additions only). abyme pins major 1
 - Idle edit mode wakes on any channel message or every 100 ms, which is how protocol requests and reloads are served without a hook into `bevy_remote`'s queue.
 - `MeshPickingPlugin` is not in Bevy's `DefaultPlugins`; a game that wants mesh picking adds it, in a window or a hole.
 
+## Edit mode as built
+
+- Picking is a ray cast from the editor camera (`MeshRayCast`, plus light and camera icons as spheres), not an editor pointer in `bevy_picking`: any pointer's events reach game observers, so the stock mouse pointer is turned off (`PointerInputSettings::is_mouse_enabled`) and no picking pointer exists in edit mode at all. Game `PointerClick` observers and TSX `onPointer*` handlers stay silent. UI and sprite hits are not cast yet.
+- Bevy 0.20's `TransformGizmoPlugin` draws its handles on its own layer 15 with an overlay camera; the overlay camera is marked editor-only, ordered after the editor camera (-10, -9) and active only in edit mode. Grid, outlines and icons are `EditorGizmos` on layer 31. The editor camera sees layers 0 to 29 and 31, not the thumbnail layer 30.
+- `ui: false` keeps game UI off by leaving the default UI camera an inactive game camera; `ui: true` makes the editor camera `IsDefaultUiCamera`.
+- A locked field's handles are inert by taking the gizmo's focus away while that field's mode is on (Bevy's gizmo has no per-handle dimming).
+- The prefab instance root is the highest ancestor with the hit's innermost call site and chain depth; `viewport_select` by location goes through the served `bevy-ts/tsx_find`. Selection items carry the node id as tsx's 16-digit hex.
+- Pointer events' `mods` count as held modifiers for ⌥ and ⇧ clicks, since a viewer may not forward modifier key events.
+
 ## Open Questions
 

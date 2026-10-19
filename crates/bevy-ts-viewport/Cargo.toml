@@ -12,6 +12,7 @@ name = "bevy_ts_viewport"
 bevy = { workspace = true, features = ["3d", "bevy_remote"] }
 bevy-ts.workspace = true
 bevy-ts-remote.workspace = true
+bevy-ts-tsx.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
@@ -24,4 +25,5 @@ objc2-core-foundation = { version = "0.3.2", features = ["CFDictionary", "CFNumb
 mach2 = "0.5"
 
 [dev-dependencies]
+bevy-ts.workspace = true
 jsonschema = { version = "0.33", default-features = false }

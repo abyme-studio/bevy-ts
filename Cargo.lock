@@ -577,6 +577,7 @@ dependencies = [
  "bevy",
  "bevy-ts",
  "bevy-ts-remote",
+ "bevy-ts-tsx",
  "jsonschema",
  "mach2",
  "objc2-core-foundation",
