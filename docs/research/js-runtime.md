@@ -1,4 +1,4 @@
-# JS runtime for bevyts
+# JS runtime for bevy-ts
 
 Recommendation: V8 through `deno_core` 0.412 (`v8` crate 152.2) for desktop, behind a bridge that only knows "call a system, hand it column views, take back a command buffer", so the web build can use the browser's engine and a QuickJS-ng backend can be added later for iOS and consoles.
 
@@ -24,18 +24,18 @@ Researched 2026-10-19. Versions are from crates.io and GitHub on that date.
 - **Zero-copy needs the V8 sandbox off.** `v8_enable_sandbox` is an opt-in feature of the crate. With it on, `new_backing_store_from_ptr` only accepts memory inside the sandbox, and Node's sandbox build has to copy for the same reason. Keep it off, which is the default. Never turn it on without redesigning the bridge.
 - **Column views live for one system run.** Bevy tables reallocate and entities move between archetypes. Build the backing stores from column pointers right before a JS system runs, defer structural changes to the command buffer, and detach the buffers afterwards. This applies to every engine.
 - **Hot reload is cheap because Rust owns the state.** Components live in the ECS, so a reload can throw the JS context away and evaluate the new modules. No engine-level module replacement is needed. Deno's `--watch-hmr` (`Debugger.setScriptSource`) is a bonus for keeping closures alive, not a requirement.
-- **TypeScript is a host-side compile step on every engine.** No engine here strips types. Use `oxc_transformer` 0.154 (2026-10-13) or `deno_ast` 0.53.3 (swc, 2026-07-09) in the `bevyts dev` process, plus a custom JSX runtime. `deno_core` does not handle TS on its own.
+- **TypeScript is a host-side compile step on every engine.** No engine here strips types. Use `oxc_transformer` 0.154 (2026-10-13) or `deno_ast` 0.53.3 (swc, 2026-07-09) in the `bevy-ts dev` process, plus a custom JSX runtime. `deno_core` does not handle TS on its own.
 - **Threading: one isolate, one batch stage.** Isolates and runtimes are `!Send` in every Rust binding (rquickjs's `parallel` feature aside), so JS systems run as a main-thread or exclusive stage while Rust systems run in parallel around it. Parallel JS means one isolate per worker with no shared JS heap. That is a later optimisation, not a reason to pick an engine. bevy-react runs V8 on its own thread for UI and measures about 1 ms (1k nodes) to 6 ms (10k nodes) per thread hop. That is fine for a reconciler and wrong for per-frame systems.
 - **Debugger: only V8 and Hermes speak CDP out of the box.** On QuickJS-ng, TS authors get no breakpoints, which costs more day to day than the speed gap.
 - **The platforms outside desktop shrink V8's lead.** iOS allows no JIT for third-party engines, or for JSC through its API. Consoles forbid writable executable memory. On the web, the engine is the browser's own. So the bridge must be engine-neutral at the "buffers in, command buffer out" level. Bevy's wasm memory is already an ArrayBuffer, so the web backend gets zero-copy for free. A notarized macOS build needs the `com.apple.security.cs.allow-jit` entitlement for V8.
 
 ## Prior art
 
-- **bevy-react 0.8.1 (2026-10-14, Bevy 0.20):** React/TSX to `bevy_ui` over `deno_core` natively, and the browser's engine on wasm. One batch of ops per React commit; JSON flush is about 0.5 µs per op, and JS reconciliation dominates. This is close to bevyts's TSX half and confirms deno_core plus a web fallback.
+- **bevy-react 0.8.1 (2026-10-14, Bevy 0.20):** React/TSX to `bevy_ui` over `deno_core` natively, and the browser's engine on wasm. One batch of ops per React commit; JSON flush is about 0.5 µs per op, and JS reconciliation dominates. This is close to bevy-ts's TSX half and confirms deno_core plus a web fallback.
 - **bevy_superui / `superui_js` 0.4.0 (2026-10-10):** a "JS engine boundary (V8 native, browser web)" plus a Solid-style TSX transpiler. Same split as above, with fine-grained reactivity.
-- **bevy_mod_scripting 0.23.0 (2026-10-14):** Lua, Luau and Rune through `bevy_reflect`, with no JS and no wasm. Its reflection-per-access model is what bevyts avoids. Its README still says "not yet optimized".
+- **bevy_mod_scripting 0.23.0 (2026-10-14):** Lua, Luau and Rune through `bevy_reflect`, with no JS and no wasm. Its reflection-per-access model is what bevy-ts avoids. Its README still says "not yet optimized".
 - **bevy_mod_js_scripting:** `deno_core` natively and the browser on the web, as early as 2022. Abandoned (last push 2023-01-01), but it was the same architecture.
-- **Cocos Creator 3.x:** V8 natively. To avoid JSB calls, node transforms live in memory shared between C++ and JS (`NativeMemorySharedToScriptActor`), and the scene graph moved to C++. That is the same lesson as bevyts's batching rule.
+- **Cocos Creator 3.x:** V8 natively. To avoid JSB calls, node transforms live in memory shared between C++ and JS (`NativeMemorySharedToScriptActor`), and the scene graph moved to C++. That is the same lesson as bevy-ts's batching rule.
 - **GodotJS 1.0:** one binding over V8, QuickJS, QuickJS-ng, JSC and the browser. CDP debugging works only on V8, and only Safari's inspector on JSC. A multi-engine backend is practical, and the debugger is what each engine costs.
 - **PuerTS (Unity_v3.0.3, 2026-09-05):** V8 by default "best overall performance", with QuickJS "for size-sensitive" builds. The same split this note recommends.
 - **Minecraft Bedrock Script API:** QuickJS-based, ships on Xbox, PlayStation, Switch and mobile. It is the proof that QuickJS covers consoles.

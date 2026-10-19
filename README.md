@@ -1,4 +1,4 @@
-# bevyts
+# bevy-ts
 
 A TypeScript application layer for Bevy: write a Bevy app in TypeScript and TSX, change it
 without recompiling Rust.
@@ -12,9 +12,9 @@ without recompiling Rust.
 - **TSX describes the world; Bevy runs it.** A custom JSX runtime and reconciler turn TSX into
   native entities on mount and on change, never per frame. Stable keys keep runtime state across
   hot reloads; `initial*` props are never reset by a reload. Built on BSN templates where they fit.
-- **`bevyts dev src/game.ts`** launches the engine, loads the TypeScript and hot reloads it.
+- **`bevy-ts dev src/game.ts`** launches the engine, loads the TypeScript and hot reloads it.
 
-abyme's Bevy studio talks to a running game over the Bevy Remote Protocol, which bevyts extends
+abyme's Bevy studio talks to a running game over the Bevy Remote Protocol, which bevy-ts extends
 (reload, component schemas, scene reconcile, entity events). That contract is the only coupling.
 
 The JS runtime is V8 through `deno_core` on desktop (ruled 2026-10-19,
