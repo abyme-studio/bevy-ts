@@ -1,0 +1,4 @@
+{
+  // The project's own Rust: one crate, one Bevy plugin. Gameplay stays in src/.
+  "native": { "crate": "native", "plugin": "thrusters_native::GamePlugin" }
+}

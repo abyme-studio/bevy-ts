@@ -1,7 +1,7 @@
 ## 1. Bridge prerequisites (N1 to N5)
 
 - [ ] 1.1 Fill bridge's native layout registry at startup from reflection (decision 5: offsets from a value's field references, bounds and leaf-size checks, enum variant bytes read from the build, unreadable leaves as holes; test `Res<Time>` reads `delta_secs`), make it public, and route every Rust-component check in TS systems through it (N1); `Transform` takes the same path
-- [ ] 1.2 Turn `bevy-ts-cli`'s `main` into `bevy_ts_cli::run(extra: impl Plugin)` and make the prebuilt binary a one-line caller (N4)
+- [x] 1.2 Turn `bevy-ts-cli`'s `main` into `bevy_ts_cli::run(extra: impl Plugin)` and make the prebuilt binary a one-line caller (N4)
 - [ ] 1.3 Make the exclusive stage system constructible for any schedule and ordering (N3); bridge's four stages use it unchanged
 - [ ] 1.4 Add the call-host-function seam operation to the backend trait, the fake backend and `bevy-ts-v8` (deno_core op over views of JS memory) (N2)
 - [ ] 1.5 Add engine identity, exposed sets and native functions to `bevy-ts/hello` and `bevy-ts/schema` in `protocol/bevy-ts.openrpc.json`, minor bump, regenerate both sides (N5)
@@ -9,17 +9,17 @@
 ## 2. Native crate and project engine
 
 - [ ] 2.1 Create `bevy-ts-native` with the `App` extension trait (`ts_param`, `ts_set`, `ts_module`) and a `bevy` re-export; publish plan at the npm version
-- [ ] 2.2 Read `native.crate`/`native.plugin` from `bevy-ts.json`; generate `.bevy-ts/engine/` (Cargo.toml depending on the native crate by path, `main` calling `bevy_ts_cli::run` with the named plugin); print the build plan (hash, cache miss, what compiles) before building
-- [ ] 2.3 Check `Cargo.lock` for exact `bevy-ts-native` and `bevy` versions before building; error naming crate, expected and found
-- [ ] 2.4 Compute the engine hash (bevy-ts version, target, profile, features, `Cargo.lock`, workspace manifests, packaged native files); unit-test that TS and asset edits leave it unchanged
-- [ ] 2.5 Local cache `.bevy-ts/engines/<hash>/`; `cargo build` on miss with progress passed through; clear error when `cargo` is missing
-- [ ] 2.6 Shared cache: a directory (`<hash>/<target>/`), SHA-256 verification before execution; docs say it proves integrity, not authenticity. HTTP and `engine publish` are later
-- [ ] 2.7 `bevy-ts dev`: watch hashed Rust inputs, rebuild in the background, swap engines on success on the same port, load the TS generation as a restart, keep the old engine on failure
-- [ ] 2.8 Example `examples/thrusters/`: a native crate adding `bevy_rapier3d` 0.37 and one Rust system; verify a TS-only edit starts no `cargo` and a Rust edit restarts
+- [x] 2.2 Read `native.crate`/`native.plugin` from `bevy-ts.json`; generate `.bevy-ts/engine/` (Cargo.toml depending on the native crate by path, `main` calling `bevy_ts_cli::run` with the named plugin); print the build plan (hash, cache miss, what compiles) before building
+- [x] 2.3 Check `Cargo.lock` for exact `bevy-ts-native` and `bevy` versions before building; error naming crate, expected and found
+- [x] 2.4 Compute the engine hash (bevy-ts version, target, profile, features, `Cargo.lock`, workspace manifests, packaged native files); unit-test that TS and asset edits leave it unchanged
+- [x] 2.5 Local cache `.bevy-ts/engines/<hash>/`; `cargo build` on miss with progress passed through; clear error when `cargo` is missing
+- [x] 2.6 Shared cache: a directory (`<hash>/<target>/`), SHA-256 verification before execution; docs say it proves integrity, not authenticity. HTTP and `engine publish` are later
+- [x] 2.7 `bevy-ts dev`: watch hashed Rust inputs, rebuild in the background, swap engines on success on the same port, load the TS generation as a restart, keep the old engine on failure
+- [x] 2.8 Example `examples/thrusters/`: a native crate adding `bevy_rapier3d` 0.37 and one Rust system; verify a TS-only edit starts no `cargo` and a Rust edit restarts
 
 ## 3. Rust components in TS
 
-- [ ] 3.1 `bevy-ts-native-derive`: `#[derive(NativeLayout)]` for components without `Reflect`, mapping field types to bridge field types, `offset_of!` tables (public fields, no `repr(C)`); compile-fail tests for `String`, `Handle`, a private field
+- [x] 3.1 `bevy-ts-native-derive`: `#[derive(NativeLayout)]` for components without `Reflect`, mapping field types to bridge field types, `offset_of!` tables (public fields, no `repr(C)`); compile-fail tests for `String`, `Handle`, a private field
 - [ ] 3.2 Tier every reflected component at startup by decision 5; TS systems accept layout tier as query data and reflect tier only in `With`/`Without`, with the ts-components error otherwise; accessor-only `bool`/enum/`Entity` fields, immutable components refused
 - [ ] 3.3 Test that a TS write to a layout-tier Rust component is seen by a Rust system the same frame, with `Changed` exactly on written rows
 - [ ] 3.4 `bevy-ts types`: build the app, stop after `Plugin::build` before `finish`, walk the registry, emit `native.d.ts` deterministically; verify no GPU device is created with `bevy_rapier3d` and `bevy_egui`, and report plugins that need one
@@ -37,7 +37,7 @@
 
 ## 4. Ordering against Rust sets
 
-- [ ] 4.1 `app.ts_set(name, schedule, set)`, name uniqueness at startup, bevy-ts's own anchors (`bevy:transform-propagate`)
+- [x] 4.1 `app.ts_set(name, schedule, set)`, name uniqueness at startup, bevy-ts's own anchors (`bevy:transform-propagate`)
 - [ ] 4.2 Make before and after slots for a set the first time a generation names it (one schedule edit at that generation's apply), with `BevyTsSlot::before/after` sets for Rust ordering; no slots for unnamed sets
 - [ ] 4.3 Place TS systems by `.before/.after(systemSet(name))` into slots; validate one set per system, matching schedule, and TS-to-TS ordering only within a slot; reload moves systems between existing slots without touching schedules
 - [ ] 4.4 Measure the cost of one slot's barrier (Rust systems on both sides, slot present vs absent); the barrier itself is established from `multi_threaded.rs:533`; record the numbers in a research note

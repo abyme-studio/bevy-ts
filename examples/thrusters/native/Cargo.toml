@@ -1,0 +1,17 @@
+[package]
+name = "thrusters-native"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# Pinned to the bevy-ts npm version (`=x.y.z` from crates.io); a path here because this
+# example builds against the checkout.
+bevy-ts-native = { path = "../../../crates/bevy-ts-native" }
+# Bevy's derives look for a `bevy` dependency by name, so name it, at exactly the Bevy version
+# this bevy-ts was built with (bevy-ts checks Cargo.lock before building).
+bevy = { version = "=0.20.0", default-features = false }
+bevy_rapier3d = { version = "0.37", default-features = false, features = ["dim3"] }
+
+# Its own workspace, apart from the bevy-ts repository's.
+[workspace]

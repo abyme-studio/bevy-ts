@@ -23,4 +23,8 @@ export default {
   "bench-bob": { cmd: "cargo run --release -p bevy-ts-cli --example bob_bench | tee bench/change-detection/results/bob-frame.md" },
   skeleton: { cmd: "cargo run -p bevy-ts-cli -- skeleton --headless" },
   cube: { cmd: "cargo run -p bevy-ts-cli -- dev examples/cube/src/game.ts --headless" },
+  // A project engine (native crate + Rapier) built and run under the dev supervisor, headless.
+  thrusters: {
+    cmd: "cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/thrusters/src/game.ts --headless --remote-port 15790 2>&1 | tee target/thrusters.log",
+  },
 } satisfies ProcessFile;

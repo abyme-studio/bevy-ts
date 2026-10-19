@@ -4,3 +4,4 @@ node_modules/
 dist/
 packages/platforms/*/bin/bevy-ts
 packages/platforms/*/bin/bevy-ts.exe
+.bevy-ts/
