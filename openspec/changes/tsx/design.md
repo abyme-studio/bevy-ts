@@ -23,14 +23,14 @@ Prior art, read 2026-10-19:
 - Scenes, prefabs and UI written as TSX with no React, typed from `component()` declarations.
 - Writes to the world only on mount, reload and reactive change; zero JS calls in a quiet frame.
 - A reload changes what the source changed and nothing else: simulation state survives, `initial*` values are never re-applied.
-- UI where `useComponent(player, Health)` patches one text node when `Health` changes and nothing otherwise.
+- UI where `{() => `HP ${player.get(Health).hp}`}` patches one text node when `Health` changes and nothing otherwise, with no hooks.
 - Every reconciled entity maps back to a TSX element, so an editor can select it and write a prop edit back.
 
 **Non-Goals:**
 - The editor, source rewriting, undo. Only what the reconciler must expose.
 - A JSX compiler pass beyond oxc's standard automatic transform.
 - `.bsn` file export or import, BSN inheritance from files.
-- Query-driven reactive lists (`useQuery`), TS-defined resources and events, animation, a widget kit beyond `node`, `text`, `image`, `button`.
+- Query-driven reactive lists (`<For each={query(...)}>`), TS-defined resources and events, animation, a widget kit beyond `node`, `text`, `image`, `button`.
 - Per-frame motion through TSX. Systems move things; TSX describes them.
 
 ## Decisions
@@ -119,7 +119,7 @@ Bindings and handlers stay in JS and cross as ids (bevy-react's rule for handler
 - *Beat: serialise expressions for Rust to evaluate.* That is a second language.
 
 ### 9. Change detection subscriptions are checked in Rust
-`useComponent(target, Health)` registers `(entity or node, ComponentId)` with Rust. Each frame in `PostUpdate`, after the bevy-ts stages, `bevy-ts-tsx` checks those pairs' change ticks (no JS). Only if any moved, or picking events arrived, does it make one host call into JS carrying the changed values (native layout bytes) and the events; JS updates signals, effects queue patches, and the call returns one patch batch, applied before `Last`.
+A binding that reads `target.get(Health)` or `res(Score)` registers `(entity or node, ComponentId)` with Rust (no hook: the read inside the binding is the subscription, ruling 2026-10-20). Each frame in `PostUpdate`, after the bevy-ts stages, `bevy-ts-tsx` checks those pairs' change ticks (no JS). Only if any moved, or picking events arrived, does it make one host call into JS carrying the changed values (native layout bytes) and the events; JS updates signals, effects queue patches, and the call returns one patch batch, applied before `Last`.
 
 - *Beat: a bridge TS system with a `Changed` filter.* It wakes JS whenever any entity's `Health` changes, including every enemy taking damage, to find out that the HUD only shows the player.
 - *Beat: polling from JS each frame.* One crossing per frame, forever, for UI that is usually still.
@@ -151,7 +151,7 @@ Measured 2026-10-19 (`docs/research/scene-bindings.md`, `bench/bindings/`): per-
 - Description node: `{ type, key?, props, children, source? }`. `type` is `"entity"`, an intrinsic name, a component handle, or a prefab function. Prefab nodes are expanded at creation, so a finished description holds only entities, component elements and intrinsics, each entity carrying the source chain of the prefab calls that produced it.
 - Owner tree: one owner per mounted scene root and per reactive scope (`<Show>`, `<For>` item), holding effects and cleanups; disposing an owner unsubscribes its bindings.
 - Binding table: id → `{ node key path, component, field, effect }`. Handler table: id → function. Site table (decision 11): site id → `{ closure, reads, component, field }`; its instances live in Rust.
-- Signals and `useComponent` accessors.
+- Signals, and the per-binding subscriptions made by `target.get(C)` and `res(R)` reads.
 
 **Wire, JS to Rust:**
 - *Mount and reload:* one JSON description per scene root, in the generation manifest's `tsx` section (bridge requirement B1). JSON is fine here: it runs once per reload. Values of TS components are field-name maps; Rust encodes them with the layouts it computed. Rust checks the section with the generation (`add_ts_section`) and reconciles it once the generation's components are live and migrated (`on_ts_section_applied`, which also runs, with no section, for a generation that declares no scenes). Errors the JSX runtime finds while describing (a component outside an entity, a duplicate key or component) travel in the section's `errors` with the element's location rather than as a throw, so the failed reload points at the element, not at `app.scene`.
@@ -207,17 +207,14 @@ export const Enemy = ({ at, hp = 100 }: { at: Vec3; hp?: number }) => (
 );
 
 // src/hud.tsx
-export const Hud = ({ player }: { player: NodeRef }) => {
-  const health = useComponent(player, Health);
-  return (
-    <node style={{ position: "absolute", top: px(12), left: px(12), padding: px(8) }} background="#0008">
-      <text size={20}>{() => `HP ${Math.ceil(health().hp)} / ${health().max}`}</text>
-      <button onClick={(ctx) => ctx.commands.mount(<Enemy key={`e${ctx.frame}`} at={[0, 0, -6]} />)}>
-        <text>Spawn</text>
-      </button>
-    </node>
-  );
-};
+export const Hud = ({ player }: { player: NodeRef }) => (
+  <node style={{ position: "absolute", top: px(12), left: px(12), padding: px(8) }} background="#0008">
+    <text size={20}>{() => `HP ${Math.ceil(player.get(Health).hp)} / ${player.get(Health).max}`}</text>
+    <button onClick={(ctx) => ctx.commands.mount(<Enemy key={`e${ctx.frame}`} at={[0, 0, -6]} />)}>
+      <text>Spawn</text>
+    </button>
+  </node>
+);
 
 // src/game.tsx
 const player = ref();
@@ -259,6 +256,10 @@ None: new crate and modules. Protocol minor bump for the `bevy-ts/tsx_*` methods
 
 ## Operator rulings
 
+- 2026-10-20: TSX has no hooks. Bindings read `ref.get(C)` and `res(R)` directly; the read inside
+  the binding is the subscription. `signal()` stays for UI-local state. No `use*` exports
+  (docs/research/dx.md, "A UI HUD, with and without hooks").
+
 - 2026-10-19: reactive bindings are allowed on scene props, compiled to one generated system per
   binding site (decision 11, docs/research/scene-bindings.md). A bound prop has one owner, its
   binding; no system writes it, and the viewport shows it read-only.
@@ -274,5 +275,5 @@ None: new crate and modules. Protocol minor bump for the `bevy-ts/tsx_*` methods
 
 ## Open Questions
 
-- Whether `<For>` over a signal is enough for HUD lists until `useQuery` exists.
+- Whether `<For each={query(...)}>` over a query needs its own subscription kind, or `<For>` over a signal is enough for HUD lists.
 - Whether a `.bsn` export (`bevy-ts bake`) should wait for Bevy's `.bsn` loader or ship as a text writer first.

@@ -7,8 +7,15 @@ Prefab and UI component functions SHALL run once per mount and once per reload. 
 - **WHEN** a HUD with ten text nodes binds one of them to `() => count()` and `count` changes
 - **THEN** exactly one `Text` component is written and the other nine change ticks do not move
 
-### Requirement: useComponent subscribes to change detection in Rust
-`useComponent(target, C)`, where `target` is a node ref or an `Entity` and `C` is a component with a native layout, SHALL return an accessor for `C`'s current value and SHALL register the pair with Rust. After the bevy-ts stages each frame, Rust SHALL check the change ticks of subscribed pairs without calling JS. Only when one moved SHALL it deliver the new values to JS, in one host call per frame for all subscriptions and events. A subscription SHALL be dropped when its owner is disposed.
+### Requirement: TSX has no hooks
+`bevy-ts` SHALL export no `use*` functions (operator ruling 2026-10-20). A binding SHALL read game state directly: `target.get(C)` for component `C` of the entity behind node ref `target` (`ref(entity)` wraps an `Entity`), and `res(R)` for resource `R`. `signal()` SHALL remain for UI-local state that is not game state, such as a dropdown's open flag or a text field's draft.
+
+#### Scenario: A HUD without a hook
+- **WHEN** a HUD writes `<text>{() => `HP ${player.get(Health).hp}`}</text>`
+- **THEN** it shows the player's `hp` on mount and updates when it changes, with no hook call in the component body
+
+### Requirement: Reads inside bindings subscribe to change detection in Rust
+A `target.get(C)` or `res(R)` read inside a binding SHALL register the pair (entity or resource entity, `ComponentId`) with Rust for that binding. After the bevy-ts stages each frame, Rust SHALL check the change ticks of subscribed pairs without calling JS. Only when one moved SHALL it deliver the new values to JS, in one host call per frame for all subscriptions and events, and re-run the bindings that read them. A subscription SHALL be dropped when its binding's owner is disposed.
 
 #### Scenario: Enemies take damage, the player does not
 - **WHEN** the HUD subscribes to the player's `Health` and a system changes only enemies' `Health` for 60 frames
@@ -19,7 +26,7 @@ Prefab and UI component functions SHALL run once per mount and once per reload. 
 - **THEN** in the same frame one host call delivers it and the HUD text shows the new value
 
 ### Requirement: Bindings on native-layout fields are derived fields with one owner
-A binding on a field of a component with a native layout SHALL be grouped by site (the element and prop in source) together with every instance of that element. Each frame Rust SHALL find the instances whose reads changed without calling JS, and SHALL deliver them in the per-frame host call. JS SHALL evaluate the site's closure once per changed instance through the row accessors and SHALL write the field through the column view with the run's tick only when the value differs from the row's. The reconciler SHALL NOT write a bound field from a literal. A site's reads SHALL be fixed at its first evaluation; under `bevy-ts dev`, a later run that reads something new SHALL be an error naming the site. A binding on a reflected component SHALL follow the `useComponent` path above instead.
+A binding on a field of a component with a native layout SHALL be grouped by site (the element and prop in source) together with every instance of that element. Each frame Rust SHALL find the instances whose reads changed without calling JS, and SHALL deliver them in the per-frame host call. JS SHALL evaluate the site's closure once per changed instance through the row accessors and SHALL write the field through the column view with the run's tick only when the value differs from the row's. The reconciler SHALL NOT write a bound field from a literal. A site's reads SHALL be fixed at its first evaluation; under `bevy-ts dev`, a later run that reads something new SHALL be an error naming the site. A binding on a reflected component SHALL follow the per-pair path above instead.
 
 #### Scenario: Ten thousand bound lights, one hundred alarms change
 - **WHEN** a prefab binds `PointLight.intensity` to its own `Alarm`, is instanced 10,000 times, and a system changes 100 alarms in one frame
@@ -34,10 +41,10 @@ A binding on a field of a component with a native layout SHALL be grouped by sit
 - **THEN** the row is not written and its change tick does not move
 
 ### Requirement: Reading an accessor outside a tracking scope warns in dev
-Under `bevy-ts dev`, reading a signal or `useComponent` accessor directly in a component body or a prop value (not inside a function binding, `computed` or `effect`) SHALL log a warning once per location, because the value will never update.
+Under `bevy-ts dev`, reading a signal, `target.get(C)` or `res(R)` directly in a component body or a prop value (not inside a function binding, `computed` or `effect`) SHALL log a warning once per location, because the value will never update.
 
 #### Scenario: A forgotten arrow
-- **WHEN** a HUD writes `<text>{health().hp}</text>`
+- **WHEN** a HUD writes `<text>{player.get(Health).hp}</text>`
 - **THEN** a warning names `hud.tsx` and the line, and the text shows the value at mount
 
 ### Requirement: Control flow components

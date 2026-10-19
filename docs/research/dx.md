@@ -4,7 +4,7 @@
    - Components, resources, messages, events and states are one class each: `class Enemy extends Component("game::Enemy", { speed: f32 }) {}`.
    - Systems register Bevy's way: `app.addSystems(Update, chain(a, b).runIf(inState(Game.Playing)))`. Observers are functions whose first parameter is `On<E>`; plugins are functions of `app`.
    - Systems are identified by `module#export`. Access comes from `Mut<...>` and is checked by `tsc`. `q.each` is the hot loop. There is no ParamSet.
-   - Not yet ruled: no hooks in TSX (a binding reads `ref.get(C)`).
+   - No hooks in TSX (ruled 2026-10-20): a binding reads `ref.get(C)` and `res(R)`; `signal()` stays for UI-local state.
 2. **Plugins (not yet ruled):** take layouts from reflection, not from `repr(C)`. Any reflected component whose leaves are plain data becomes a zero-copy column with no generated code, Rapier's `Velocity` included. Adopting a plugin is one line in `bevy-ts.json`. bevy-ts publishes thin curated ports only for what reflection cannot reach: Rapier now, and leafwing, avian and hanabi once they are on Bevy 0.20.
 
 Researched and measured 2026-10-19 and 2026-10-20 on this Mac (Apple M5 Max, macOS 25.4; deno 2.9.7 with V8 15.0.245 and TypeScript 6.0.3; rustc 1.98). Bevy 0.20.0 source is from `~/dev/refs/bevy-0.20`. Plugin sources are from crates.io: `bevy_rapier3d` 0.37.0, `avian3d` 0.7.0, `bevy_hanabi` 0.19.0, `leafwing-input-manager` 0.22.0 and `bevy_tweening` 0.16.0.
@@ -394,7 +394,7 @@ export const HudWithHooks = ({ player }: { player: NodeRef }) => {
 };
 ```
 
-Proposed (not yet ruled), with no hook:
+Ruled 2026-10-20, with no hook:
 
 ```tsx
 export const Hud = ({ player }: { player: NodeRef }) => (
@@ -410,7 +410,7 @@ export const Hud = ({ player }: { player: NodeRef }) => (
 
 Rust needs a marker component and a system per changing label. TSX says the label is a function of `Health` in place.
 
-`player.get(Health)` inside `() => ...` is a tracked read. The site learns its reads on first evaluation, as a system learns its query (tsx decision 11). Rust re-runs the site only when that row's `Health` tick moves. This is decision 9's per-pair check, with no JS call in a quiet frame. Outside a binding, `player.get` is a dev error naming the location.
+`player.get(Health)` inside `() => ...` is a tracked read. The site learns its reads on first evaluation, as a system learns its query (tsx decision 11). Rust re-runs the site only when that row's `Health` tick moves. This is decision 9's per-pair check, with no JS call in a quiet frame. Outside a binding, `player.get` logs a dev warning naming the location, because the value would never update.
 
 Both TSX versions cost the same. The hook buys nothing the binding does not already know, and it adds a placement rule. It also hands agents the React idiom: `useComponent` is one step from `useState` and `useEffect`, which is how bevy-ts would become bevy-react.
 
@@ -717,13 +717,15 @@ Bridge is archived, so its capabilities live in `openspec/specs/`.
   - *Plugins:* functions of `app`, re-run per generation.
 - `commands.spawn` takes component instances or a prefab element.
 
+### Applied: tsx has no hooks (ruled 2026-10-20)
+
+- `useComponent` is removed. A binding reads `ref.get(C)` and `res(R)` directly; the read inside the binding is the subscription, checked per pair in Rust (decision 9) or per site (decision 11). There are no `use*` exports, and `signal()` stays for UI-local state.
+- `useQuery` becomes the open question of `<For each={query(...)}>`.
+- Edited: `openspec/changes/tsx` design (decision 9, goals, data model, demo, rulings), `reactive-ui` spec, tasks 5.3 and 5.6, proposal.
+
 ### Not yet ruled
 
-- **tsx (no hooks):**
-  - `useComponent` is removed in favour of `ref.get(C)` and `res(R)` read inside bindings, resolved per site (decision 11) or per pair (decision 9). No `use*` names, and `signal()` stays for UI-local state.
-  - The `useQuery` question becomes `<For each={query(...)}>`.
-  - Picking handlers become entity-local observer props (`onPointerClick`, ...) on any `<entity>` or UI element. The design's `Pointer<Click>` is the 0.19 name; 0.20's is `PointerClick`.
-  - B3 becomes `commands.spawn(<Prefab />)`.
+- **tsx, picking and spawning:** picking handlers become entity-local observer props (`onPointerClick`, ...) named after Bevy 0.20's `PointerClick`, and B3 becomes `commands.spawn(<Prefab />)`.
 - **native (reflection-derived layouts, one-line adoption):**
   - *Decision 5:* layout tier no longer requires `#[repr(C)]` or a derive. Any reflected component whose leaves are plain data qualifies, with the guards above. Bridge decision 4 is generalised the same way, so `Transform` stops being a special case.
   - *New decision:* adoption by `bevy-ts.json` (`native.ports`, `native.crates`), with curated `bevy-ts-<name>` ports.
