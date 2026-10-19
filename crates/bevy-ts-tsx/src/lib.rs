@@ -18,7 +18,7 @@ pub mod resolve;
 pub mod tree;
 pub mod ui;
 
-use crate::desc::{SceneSection, normalize_sources};
+use crate::desc::SceneSection;
 use crate::reconcile::{apply_root, resolve_tree, unmount_root};
 use crate::tree::{ReconcileStats, RUNTIME_ROOT};
 use bevy::prelude::*;
@@ -37,15 +37,16 @@ pub struct TsxPlugin;
 
 fn parse(bytes: &[u8]) -> Result<SceneSection, ScriptError> {
     let mut s: SceneSection = serde_json::from_slice(bytes).map_err(|e| ScriptError::new(format!("tsx section: {e}")))?;
+    let mut files = desc::Files::new();
     for e in &mut s.errors {
         if let Some(l) = &mut e.location {
-            l.file = desc::display_file(&l.file);
+            l.file = files.display(&l.file);
         }
     }
     for r in &mut s.roots {
-        normalize_sources(&mut r.nodes);
+        desc::normalize_with(&mut files, &mut r.nodes);
         if let Some(l) = &mut r.location {
-            l.file = desc::display_file(&l.file);
+            l.file = files.display(&l.file);
         }
     }
     Ok(s)
@@ -65,7 +66,16 @@ pub(crate) fn uses_assets(nodes: &[desc::NodeDesc]) -> Option<Option<bevy_ts::ba
 
 /// Checks a generation's scenes against its pending components. Touches nothing.
 fn check(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> Result<(), Vec<ScriptError>> {
+    let t = std::time::Instant::now();
+    let r = check_inner(world, input);
+    world.resource_mut::<TsxTree>().timings.check_ms = t.elapsed().as_secs_f64() * 1e3;
+    r
+}
+
+fn check_inner(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> Result<(), Vec<ScriptError>> {
+    let t = std::time::Instant::now();
     let section = parse(input.bytes).map_err(|e| vec![e])?;
+    world.resource_mut::<TsxTree>().timings.parse_ms = t.elapsed().as_secs_f64() * 1e3;
     if !section.errors.is_empty() {
         return Err(section.errors);
     }
@@ -75,7 +85,19 @@ fn check(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> Result
     {
         errors.push(ScriptError::at("<mesh> and <material> need the render plugins (no Assets<Mesh>)", at));
     }
-    if errors.is_empty() { Ok(()) } else { Err(errors) }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    // Applied after commit; parsing a large section twice would double a reload's cost.
+    world.insert_resource(Checked { generation: input.generation, section });
+    Ok(())
+}
+
+/// The section a generation's check parsed, kept for its apply step.
+#[derive(Resource)]
+struct Checked {
+    generation: u64,
+    section: SceneSection,
 }
 
 /// Reconciles every root of an applied generation, and unmounts roots it no longer declares.
@@ -97,8 +119,15 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
     }
     let mut total = ReconcileStats::default();
     for r in &section.roots {
-        match resolve_tree(world, &r.name, &r.nodes, (&[], &[])) {
-            Ok(nodes) => total.add(&apply_root(world, &r.name, r.location.clone(), &nodes, None, reconcile::Prune::Root)),
+        let t = std::time::Instant::now();
+        let resolved = resolve_tree(world, &r.name, &r.nodes, (&[], &[]));
+        world.resource_mut::<TsxTree>().timings.resolve_ms = t.elapsed().as_secs_f64() * 1e3;
+        match resolved {
+            Ok(nodes) => {
+                let t = std::time::Instant::now();
+                total.add(&apply_root(world, &r.name, r.location.clone(), &nodes, None, reconcile::Prune::Root));
+                world.resource_mut::<TsxTree>().timings.reconcile_ms = t.elapsed().as_secs_f64() * 1e3;
+            }
             // Checked with the generation; only a bug lands here.
             Err(e) => world.resource_mut::<ScriptLog>().push(LogLevel::Error, format!("tsx: {}", e.message), e.location, generation),
         }
@@ -150,8 +179,17 @@ fn warn_two_writers(world: &mut World, generation: u64) {
 }
 
 fn apply(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection) {
+    let t = std::time::Instant::now();
+    apply_inner(world, applied);
+    world.resource_mut::<TsxTree>().timings.apply_ms = t.elapsed().as_secs_f64() * 1e3;
+}
+
+fn apply_inner(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection) {
     // A generation without the section declares no scenes: every scene root unmounts.
-    let section = if applied.present {
+    let checked = world.remove_resource::<Checked>().filter(|c| c.generation == applied.generation);
+    let section = if let Some(c) = checked {
+        c.section
+    } else if applied.present {
         match parse(applied.bytes) {
             Ok(s) => s,
             Err(e) => {

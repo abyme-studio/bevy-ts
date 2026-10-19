@@ -190,6 +190,17 @@ pub struct TsxTree {
     pub reconciles: u64,
     pub reactive: Reactive,
     pub journal: Journal,
+    pub timings: Timings,
+}
+
+/// The last generation's tsx time, for measurements: checking the section, applying it.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Timings {
+    pub check_ms: f64,
+    pub apply_ms: f64,
+    pub parse_ms: f64,
+    pub resolve_ms: f64,
+    pub reconcile_ms: f64,
 }
 
 impl TsxTree {

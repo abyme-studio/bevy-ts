@@ -105,26 +105,58 @@ pub fn node_id(root: &str, path: &[String]) -> u64 {
 /// A file as the protocol shows it: project-relative when under the working directory, never a
 /// `file://` URL.
 pub fn display_file(file: &str) -> String {
-    let path = file.strip_prefix("file://").unwrap_or(file);
-    let path = path.split('?').next().unwrap_or(path);
-    match std::env::current_dir().ok().and_then(|cwd| std::path::Path::new(path).strip_prefix(cwd).ok().map(|p| p.to_path_buf())) {
-        Some(rel) => rel.display().to_string(),
-        None => path.to_string(),
+    Files::new().display(file)
+}
+
+/// Shows files relative to the working directory, read once; each distinct file is worked out
+/// once, as a section names the same few files thousands of times.
+pub struct Files {
+    cwd: Option<std::path::PathBuf>,
+    seen: std::collections::HashMap<String, String>,
+}
+
+impl Files {
+    pub fn new() -> Self {
+        Files { cwd: std::env::current_dir().ok(), seen: Default::default() }
+    }
+
+    pub fn display(&mut self, file: &str) -> String {
+        if let Some(d) = self.seen.get(file) {
+            return d.clone();
+        }
+        let path = file.strip_prefix("file://").unwrap_or(file);
+        let path = path.split('?').next().unwrap_or(path);
+        let shown = match self.cwd.as_ref().and_then(|cwd| std::path::Path::new(path).strip_prefix(cwd).ok()) {
+            Some(rel) => rel.display().to_string(),
+            None => path.to_string(),
+        };
+        self.seen.insert(file.to_string(), shown.clone());
+        shown
+    }
+}
+
+impl Default for Files {
+    fn default() -> Self {
+        Files::new()
     }
 }
 
 /// Makes every source location in a node tree project-relative.
 pub fn normalize_sources(nodes: &mut [NodeDesc]) {
+    normalize_with(&mut Files::new(), nodes);
+}
+
+pub fn normalize_with(files: &mut Files, nodes: &mut [NodeDesc]) {
     for n in nodes {
         for s in &mut n.source {
-            s.file = display_file(&s.file);
+            s.file = files.display(&s.file);
         }
         for c in &mut n.components {
             if let Some(s) = &mut c.source {
-                s.file = display_file(&s.file);
+                s.file = files.display(&s.file);
             }
         }
-        normalize_sources(&mut n.children);
+        normalize_with(files, &mut n.children);
     }
 }
 
