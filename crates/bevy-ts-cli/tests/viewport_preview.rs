@@ -88,7 +88,7 @@ fn preview_entities_never_reach_a_ts_query_or_the_entity_list() {
     .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true))
     .add_plugins(bevy_ts_tsx::TsxPlugin)
     .insert_resource(bevy_ts_viewport::assets::AssetRoot(dir.join("assets")))
-    .insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.ts"), true).unwrap())));
+    .insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap())));
     bevy_ts_remote::add_methods(&mut app);
     app.finish();
     app.cleanup();
@@ -231,6 +231,11 @@ fn an_engine_whose_entry_throws_stays_up_and_runs_the_game_after_the_fix() {
     assert_eq!(hello["protocol"], bevy_ts_remote::protocol::VERSION);
     Stream::open(port, "bevy-ts/log+watch").until("the first load's error never reached the log", |v| v.to_string().contains("broken on open"));
     assert_eq!(post(port, "bevy-ts/hello", Value::Null).unwrap()["generation"], 0, "an empty world: nothing applied");
+    // The asset methods read the project's assets/, not the binary's directory.
+    let assets = post(port, "bevy-ts/assets", Value::Null).unwrap();
+    let root = std::path::PathBuf::from(assets["root"].as_str().unwrap());
+    assert_eq!(root.canonicalize().unwrap(), dir.join("assets").canonicalize().unwrap(), "{assets}");
+    assert!(assets["assets"].as_array().unwrap().iter().any(|a| a["path"] == "models/grunt.gltf"), "{assets}");
     let preview = until(port, "bevy-ts/asset_preview", json!({ "path": "models/grunt.gltf" }), "no preview with a failed game", |v| v["preview"].is_u64());
     assert_eq!(preview["kind"], "mesh");
 

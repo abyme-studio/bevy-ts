@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><style>html,body{margin:0;height:100%;background:#111}#host{width:100%;height:100%}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body><div id="host"></div>
+<script type="module">
+// abyme's web/plugins/src/viewers/Model.tsx show(), verbatim in substance: same renderer settings,
+// lights, grid, orbit controls and an animation loop that draws every display frame.
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+const host = document.getElementById("host");
+// ?hz=120 draws on a timer instead of requestAnimationFrame, which headless Chrome throttles to
+// ~10 Hz; ?dpr=2 renders at a Retina pane's pixel ratio.
+const params = new URLSearchParams(location.search);
+const hz = Number(params.get("hz")) || 0;
+const dpr = Number(params.get("dpr")) || window.devicePixelRatio || 1;
+const gltf = await new GLTFLoader().loadAsync("./model.glb");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(dpr);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+host.append(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#111111");
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2));
+const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(3, 5, 4); scene.add(sun);
+scene.add(gltf.scene);
+const box = new THREE.Box3().setFromObject(gltf.scene);
+const size = box.getSize(new THREE.Vector3()).length() || 1;
+const centre = box.getCenter(new THREE.Vector3());
+const grid = new THREE.GridHelper(size * 2, 20, 0x888888, 0x333333); grid.position.y = box.min.y; scene.add(grid);
+const camera = new THREE.PerspectiveCamera(45, 1, size / 100, size * 100);
+const controls = new OrbitControls(camera, renderer.domElement);
+camera.position.copy(centre).add(new THREE.Vector3(size * 0.6, size * 0.45, size * 0.9));
+controls.target.copy(centre); controls.update();
+const mixer = new THREE.AnimationMixer(gltf.scene);
+if (gltf.animations[0]) mixer.clipAction(gltf.animations[0]).play();
+const timer = new THREE.Timer();
+const gl = renderer.getContext();
+const fit = () => { const w = host.clientWidth || 1, h = host.clientHeight || 1; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); };
+new ResizeObserver(fit).observe(host); fit();
+let frames = 0; const t0 = performance.now();
+// The camera turns slowly, as a user orbiting would, so every frame draws something new.
+const draw = (time) => {
+  timer.update(time); mixer.update(timer.getDelta());
+  controls.target.copy(centre);
+  camera.position.copy(centre).add(new THREE.Vector3(Math.sin(time / 2000) * size, size * 0.45, Math.cos(time / 2000) * size));
+  controls.update(); renderer.render(scene, camera); frames++;
+  window.__fps = frames / ((performance.now() - t0) / 1000);
+};
+if (hz) {
+  // A timer loop against the clock, so the page draws `hz` times a second like a display link.
+  let next = performance.now();
+  const loop = () => {
+    draw(performance.now());
+    next += 1000 / hz;
+    const now = performance.now();
+    if (now - next > 100) next = now;
+    setTimeout(loop, Math.max(0, next - now));
+  };
+  loop();
+} else {
+  renderer.setAnimationLoop(draw);
+}
+window.__ready = true;
+</script></body></html>

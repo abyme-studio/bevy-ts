@@ -1,0 +1,6 @@
+{
+  "name": "asset-preview-threejs",
+  "private": true,
+  "description": "abyme's three.js model viewer (web/plugins/src/viewers/Model.tsx), standalone, for asset-preview task 4.2",
+  "dependencies": { "three": "0.186.1" }
+}

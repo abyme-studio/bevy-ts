@@ -48,6 +48,11 @@ export default {
   "viewport-spike": { cmd: "SPIKE_SECS=60 cargo test --release -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },
   "viewport-gate": { cmd: "scripts/viewport-gate.sh" },
   // Change asset-preview: several viewports and preview scenes.
+  // Change asset-preview, task 4.2; `preview-bench-threejs` runs while a three.js viewer shows the model.
+  "preview-bench": { cmd: "PREVIEW_MODEL=$HOME/dev/spikes/mesh-conform/inputs/alicia.glb scripts/preview-bench.sh 2>&1 | tee -a target/preview-bench.log" },
+  "preview-bench-idle": { cmd: "PREVIEW_MODEL=$HOME/dev/spikes/mesh-conform/inputs/alicia.glb scripts/preview-bench.sh idle idle-edit 2>&1 | tee -a target/preview-bench.log" },
+  "three-viewer": { cmd: "cd bench/asset-preview && npm install --silent && cp $HOME/dev/spikes/mesh-conform/inputs/alicia.glb model.glb && python3 -m http.server 8791" },
+  "preview-bench-threejs": { cmd: "PREVIEW_MODEL=$HOME/dev/spikes/mesh-conform/inputs/alicia.glb scripts/preview-bench.sh threejs 2>&1 | tee -a target/preview-bench.log" },
   "viewport-preview-cli": { cmd: "cargo test -p bevy-ts-cli --test viewport_preview -- --nocapture 2>&1 | grep -v ld64 | tee target/viewport-preview-cli.log | grep -E 'test |panicked|left|right|assert|^thread|error' | tail -30" },
   "viewport-preview": { cmd: "cargo test -p bevy-ts-viewport --test preview -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-preview.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -40" },
   // The same gate for levels task groups.
