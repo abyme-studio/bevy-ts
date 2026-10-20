@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names."
   },
   "methods": [
@@ -4139,6 +4139,13 @@
               "null"
             ],
             "description": "The scene component the entity instances, if any."
+          },
+          "props": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelProp"
+            },
+            "description": "A scene component instance's @props, beside its fields; empty for anything else. (1.7)"
           }
         }
       },
@@ -4299,6 +4306,34 @@
               },
               "value": {
                 "$ref": "#/components/schemas/LevelValue"
+              },
+              "field": {
+                "type": "boolean",
+                "description": "A scene component field rather than an @prop."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path",
+              "prop"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "revert_prop"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "prop": {
+                "type": "string"
               },
               "field": {
                 "type": "boolean",
@@ -4603,7 +4638,8 @@
             "type": "string"
           },
           "field": {
-            "type": "string"
+            "type": "string",
+            "description": "A field of `component`, or `@prop` for a scene prop of the instance's scene component (1.7)."
           },
           "id": {
             "type": "integer",
@@ -4671,7 +4707,22 @@
                   "prop": {
                     "type": "string"
                   },
-                  "value": {}
+                  "value": {},
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "element",
+                      "default"
+                    ],
+                    "description": "element: set `prop` on the element at `element`; default: rewrite the default of `prop` in the scene's destructuring at `element` (`static scene({ hp = 100 })`). (1.7)"
+                  },
+                  "chain": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SourceLocation"
+                    },
+                    "description": "The element that sets the field, then each prefab call site above it, innermost first: for following a passed-through prop. (1.7)"
+                  }
                 }
               },
               {
@@ -4757,6 +4808,52 @@
             "items": {
               "$ref": "#/components/schemas/LevelDiagnostic"
             }
+          }
+        }
+      },
+      "LevelProp": {
+        "description": "One @prop of a scene component instance: its type, the value it takes, and whether the level sets it.",
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "value",
+          "overridden"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldType"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "value": {
+            "description": "The level's value, or the scene's default when the level does not set it."
+          },
+          "overridden": {
+            "type": "boolean",
+            "description": "The level sets it (`@prop: v`)."
+          },
+          "location": {
+            "$ref": "#/components/schemas/SourceLocation",
+            "description": "Where the level sets it."
           }
         }
       }

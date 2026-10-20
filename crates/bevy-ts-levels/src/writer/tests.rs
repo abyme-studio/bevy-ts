@@ -170,8 +170,22 @@ fn setting_props() {
     roundtrip(ARENA, &[Op::SetProp { path: p("EnemyB"), prop: "hp".into(), value: f(400.0), field: false }], &["-@game::Enemy { @hp: 250.0 }", "+@game::Enemy { @hp: 400.0 }"]);
     let w = ok(ARENA, &[Op::SetProp { path: p("EnemyB"), prop: "team".into(), value: WValue::Int(2), field: true }]);
     assert_eq!(diff(ARENA, &w.text), ["-@game::Enemy { @hp: 250.0 }", "+@game::Enemy { @hp: 250.0, team: 2 }"]);
-    let w = ok(ARENA, &[Op::SetProp { path: p("EnemyA"), prop: "hp".into(), value: f(1.0), field: false }]);
-    assert_eq!(diff(ARENA, &w.text), ["-@game::Enemy", "+@game::Enemy { @hp: 1.0 }"]);
+    let w = roundtrip(ARENA, &[Op::SetProp { path: p("EnemyA"), prop: "hp".into(), value: f(1.0), field: false }], &["-@game::Enemy", "+@game::Enemy { @hp: 1.0 }"]);
+    assert_eq!(w.inverse, [Op::RevertProp { path: p("EnemyA"), prop: "hp".into(), field: false }]);
+}
+
+#[test]
+fn reverting_props() {
+    let w = roundtrip(ARENA, &[Op::RevertProp { path: p("EnemyB"), prop: "hp".into(), field: false }], &["-@game::Enemy { @hp: 250.0 }", "+@game::Enemy"]);
+    assert_eq!(w.inverse, [Op::SetProp { path: p("EnemyB"), prop: "hp".into(), value: WValue::Float { v: 250.0, f32: false }, field: false }]);
+    let src = ARENA.replace("{ @hp: 250.0 }", "{ @hp: 250.0, team: 2 }");
+    let w = ok(&src, &[Op::RevertProp { path: p("EnemyB"), prop: "hp".into(), field: false }]);
+    assert_eq!(diff(&src, &w.text), ["-@game::Enemy { @hp: 250.0, team: 2 }", "+@game::Enemy { team: 2 }"]);
+    // A field and a prop are told apart by `@`.
+    let e = apply(&src, &[Op::RevertProp { path: p("EnemyB"), prop: "hp".into(), field: true }]).unwrap_err();
+    assert_eq!(e.reason, "not-found");
+    let e = apply(ARENA, &[Op::RevertProp { path: p("EnemyA"), prop: "hp".into(), field: false }]).unwrap_err();
+    assert_eq!(e.reason, "not-found");
 }
 
 #[test]

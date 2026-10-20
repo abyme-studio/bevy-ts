@@ -2,7 +2,7 @@
 //! `tsx` as external roots named `level:<path>`, the world's types as a [`Schema`], and the
 //! `LevelInstance` component on every level-placed entity.
 
-use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, FieldSchema, Files, Frame, SceneSchema, Schema, ValueType};
+use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, FieldSchema, Files, Frame, ScenePlacement, SceneSchema, Schema, ValueType};
 use crate::syntax::{self, EntityList, Entry, Extension, ParsedFile};
 use bevy::asset::io::Reader;
 use bevy::asset::{AssetLoadFailedEvent, AssetLoader, LoadContext, ReflectHandle, UntypedAssetLoadFailedEvent};
@@ -113,6 +113,9 @@ pub struct LevelInstance {
     pub name_path: Vec<String>,
     /// Every level frame that could hold an edit, outermost first.
     pub owners: Vec<OwnerFrame>,
+    /// A scene component instance's props as placed.
+    #[serde(skip)]
+    pub scene: Option<ScenePlacement>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -761,7 +764,7 @@ pub fn reconcile_level(world: &mut World, path: &str) {
         log(world, LogLevel::Warn, w);
     }
     let stamp_root = overlay.clone().unwrap_or(root.clone());
-    stamp_instances(world, path, &stamp_root, &composed.owners);
+    stamp_instances(world, path, &stamp_root, &composed.owners, &composed.scenes);
     let mut assets = BTreeMap::new();
     asset_paths(&composed.nodes, &mut assets);
     if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
@@ -798,13 +801,13 @@ fn strip_names(nodes: &mut [NodeDesc]) {
 }
 
 /// `LevelInstance` on every entity the level placed or overrode.
-fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap<Vec<String>, Vec<Frame>>) {
+fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap<Vec<String>, Vec<Frame>>, scenes: &BTreeMap<Vec<String>, ScenePlacement>) {
     let mut writes = Vec::new();
     {
         let tree = world.resource::<TsxTree>();
         for (key_path, frames) in owners {
             let Some(e) = tree.entity(node_id(root, key_path)) else { continue };
-            let inst = LevelInstance { level: level.to_string(), name_path: key_path.clone(), owners: frames.iter().map(OwnerFrame::from).collect() };
+            let inst = LevelInstance { level: level.to_string(), name_path: key_path.clone(), owners: frames.iter().map(OwnerFrame::from).collect(), scene: scenes.get(key_path).cloned() };
             writes.push((e, inst));
         }
     }

@@ -251,6 +251,8 @@ struct FieldSrc {
 struct SceneSrc {
     ty: Option<Ty>,
     defaults: HashMap<String, Option<Value>>,
+    /// Each destructured prop's span.
+    sites: HashMap<String, Span>,
     span: Span,
 }
 
@@ -337,7 +339,7 @@ fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
                 d.fields.push(FieldSrc { name: name.to_string(), ty: p.type_annotation.as_ref().map(|a| ty(&a.type_annotation)), default, span: p.span });
             }
             ClassElement::MethodDefinition(m) if m.r#static && m.key.static_name().as_deref() == Some("scene") => {
-                let mut scene = SceneSrc { ty: None, defaults: HashMap::new(), span: m.span };
+                let mut scene = SceneSrc { ty: None, defaults: HashMap::new(), sites: HashMap::new(), span: m.span };
                 if let Some(param) = m.value.params.items.first() {
                     scene.ty = param.type_annotation.as_ref().map(|a| ty(&a.type_annotation));
                     if let BindingPattern::ObjectPattern(o) = &param.pattern {
@@ -348,6 +350,7 @@ fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
                                 _ => None,
                             };
                             scene.defaults.insert(key.to_string(), default);
+                            scene.sites.insert(key.to_string(), prop.span);
                         }
                     }
                 }
@@ -805,7 +808,10 @@ impl Reader {
             if kind != "sceneComponent" {
                 errors.push((sc.span, format!("{}: static scene belongs to a SceneComponent", c.name)));
             }
-            match self.props(sc, scope) {
+            match self.props(sc, scope, &|span| {
+                let (line, column) = at(span);
+                json!({ "file": file.rel, "line": line, "column": column })
+            }) {
                 Ok(props) => {
                     for p in &props {
                         if c.fields.iter().any(|f| Some(f.name.as_str()) == p["name"].as_str()) {
@@ -827,7 +833,7 @@ impl Reader {
     }
 
     /// A scene's props: each property of its props type, with the destructured default.
-    fn props(&mut self, sc: &SceneSrc, scope: &Scope) -> Result<Vec<Value>, (Span, String)> {
+    fn props(&mut self, sc: &SceneSrc, scope: &Scope, at: &dyn Fn(Span) -> Value) -> Result<Vec<Value>, (Span, String)> {
         let Some(t) = &sc.ty else {
             return if sc.defaults.is_empty() { Ok(Vec::new()) } else { Err((sc.span, "annotate the props type: scene({ speed = 2 }: { speed?: f32 })".into())) };
         };
@@ -840,6 +846,9 @@ impl Reader {
                 Some(Some(Value::Null)) => p["hasDefault"] = json!(true),
                 Some(Some(v)) => p["default"] = v.clone(),
                 _ => {}
+            }
+            if let Some(span) = sc.sites.get(&name) {
+                p["location"] = at(*span);
             }
             out.push(p);
         }
@@ -1433,8 +1442,8 @@ export const arrow = (q: Query<[Pos]>) => {};
         assert_eq!(
             d["Grunt"]["scene"],
             json!({ "props": [
-                { "name": "at", "type": { "kind": "vec3" }, "optional": true, "default": [0, 0, 0] },
-                { "name": "speed", "type": { "kind": "f32" }, "optional": true, "default": 2 },
+                { "name": "at", "type": { "kind": "vec3" }, "optional": true, "default": [0, 0, 0], "location": { "file": "prefab.tsx", "line": 10, "column": 18 } },
+                { "name": "speed", "type": { "kind": "f32" }, "optional": true, "default": 2, "location": { "file": "prefab.tsx", "line": 10, "column": 34 } },
             ] })
         );
     }
@@ -1471,9 +1480,9 @@ class Local extends Component { x: f32 = vec3(1, 2).x }
         assert_eq!(
             d["Sign"]["scene"]["props"],
             json!([
-                { "name": "label", "type": { "kind": "string" }, "optional": false },
-                { "name": "size", "type": { "kind": "f32" }, "optional": true, "default": 2 },
-                { "name": "team", "type": { "kind": "enum", "variants": ["red", "blue"] }, "optional": true, "hasDefault": true },
+                { "name": "label", "type": { "kind": "string" }, "optional": false, "location": { "file": "src/units/my-tank.ts", "line": 7, "column": 18 } },
+                { "name": "size", "type": { "kind": "f32" }, "optional": true, "default": 2, "location": { "file": "src/units/my-tank.ts", "line": 7, "column": 25 } },
+                { "name": "team", "type": { "kind": "enum", "variants": ["red", "blue"] }, "optional": true, "hasDefault": true, "location": { "file": "src/units/my-tank.ts", "line": 7, "column": 35 } },
             ])
         );
         let err = |c: &str| d[c]["error"].as_str().unwrap_or_default().to_string();

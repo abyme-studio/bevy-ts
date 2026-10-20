@@ -89,12 +89,32 @@ pub struct Frame {
     pub at: SourceLocation,
 }
 
+/// A scene component instance's props: every prop its scene declares, with the level's value or
+/// the default.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScenePlacement {
+    pub component: String,
+    pub props: Vec<PlacedProp>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlacedProp {
+    pub name: String,
+    /// The prop's type, as the manifest writes it (`{ "kind": "f32" }`).
+    pub ty: Value,
+    pub value: Value,
+    /// Where the level sets it; `None` when it takes its default.
+    pub location: Option<SourceLocation>,
+}
+
 /// A composed level.
 #[derive(Clone, Debug, Default)]
 pub struct Composed {
     pub nodes: Vec<NodeDesc>,
     /// The level frames of every node the level made or overrode, outermost first, by key path.
     pub owners: BTreeMap<Vec<String>, Vec<Frame>>,
+    /// The scene component instances' props as placed, by key path.
+    pub scenes: BTreeMap<Vec<String>, ScenePlacement>,
     /// The level and every file it includes, for reload fan-out.
     pub files: BTreeSet<String>,
     pub warnings: Vec<ScriptError>,
@@ -180,6 +200,7 @@ struct Env<'a> {
     files: &'a mut dyn Files,
     schema: &'a dyn Schema,
     requests: Vec<ExpandRequest>,
+    scenes: Vec<ScenePlacement>,
     stack: Vec<String>,
     seen: BTreeSet<String>,
     warnings: Vec<ScriptError>,
@@ -198,15 +219,17 @@ pub struct Prepared {
     top: Vec<LNode>,
     /// One per scene component instance, in order; [`Prepared::finish`] takes one description each.
     pub requests: Vec<ExpandRequest>,
+    /// Each request's props as placed.
+    scenes: Vec<ScenePlacement>,
     files: BTreeSet<String>,
     warnings: Vec<ScriptError>,
 }
 
 /// Reads and types the level at `path` and every file it includes.
 pub fn prepare(path: &str, files: &mut dyn Files, schema: &dyn Schema) -> Result<Prepared, Vec<ScriptError>> {
-    let mut env = Env { files, schema, requests: Vec::new(), stack: Vec::new(), seen: BTreeSet::new(), warnings: Vec::new() };
+    let mut env = Env { files, schema, requests: Vec::new(), scenes: Vec::new(), stack: Vec::new(), seen: BTreeSet::new(), warnings: Vec::new() };
     let top = load(&mut env, path, None).map_err(|e| vec![e])?;
-    Ok(Prepared { top, requests: env.requests, files: env.seen, warnings: env.warnings })
+    Ok(Prepared { top, requests: env.requests, scenes: env.scenes, files: env.seen, warnings: env.warnings })
 }
 
 impl Prepared {
@@ -215,10 +238,10 @@ impl Prepared {
         if expansions.len() != self.requests.len() {
             return Err(vec![ScriptError::new(format!("expansion returned {} descriptions for {} instances", expansions.len(), self.requests.len()))]);
         }
-        let mut expansions: Vec<Option<NodeDesc>> = expansions.into_iter().map(Some).collect();
+        let mut expansions: Vec<Option<(NodeDesc, ScenePlacement)>> = expansions.into_iter().zip(self.scenes).map(Some).collect();
         let mut composed = Composed { files: self.files, warnings: self.warnings, ..Default::default() };
         for n in self.top {
-            let node = finish(n, None, &mut expansions, &[], &[], &mut composed.owners).map_err(|e| vec![e])?;
+            let node = finish(n, None, &mut expansions, &[], &[], &mut composed).map_err(|e| vec![e])?;
             composed.nodes.push(node);
         }
         Ok(composed)
@@ -280,6 +303,7 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
                 Entry::Prefab(p) => {
                     let scene = env.schema.scene(&p.path.joined()).map_err(|m| ctx.err(m, p.path.span))?;
                     let mut props = Map::new();
+                    let mut set_at = BTreeMap::new();
                     for f in p.fields.named() {
                         let (list, what) = if f.prop { (&scene.props, "scene prop") } else { (&scene.component.fields, "field") };
                         let Some(s) = list.iter().find(|s| s.name == f.name) else {
@@ -287,10 +311,27 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
                             return Err(ctx.err(format!("{} has no {what} {} ({what}s: {})", scene.component.name, f.name, known.join(", ")), f.name_span));
                         };
                         props.insert(f.name.clone(), convert(ctx, &format!("{}.{}", scene.component.name, f.name), &f.value, &s.ty, &s.default)?);
+                        if f.prop {
+                            set_at.insert(f.name.clone(), ctx.at(f.name_span));
+                        }
                     }
                     if let Some(missing) = scene.required.iter().find(|r| !props.contains_key(*r)) {
                         return Err(ctx.err(format!("{} needs @{missing}", scene.component.name), p.span));
                     }
+                    let placed = scene
+                        .props
+                        .iter()
+                        .map(|s| PlacedProp {
+                            name: s.name.clone(),
+                            ty: match &s.ty {
+                                ValueType::Field(t) => serde_json::to_value(t).unwrap_or(Value::Null),
+                                _ => json!({ "kind": "string" }),
+                            },
+                            value: props.get(&s.name).cloned().unwrap_or_else(|| s.default.clone()),
+                            location: set_at.get(&s.name).cloned(),
+                        })
+                        .collect();
+                    env.scenes.push(ScenePlacement { component: scene.component.name.clone(), props: placed });
                     env.requests.push(ExpandRequest { component: scene.component.name.clone(), props, at: ctx.at(p.span) });
                     node.base = Base::Scene(env.requests.len() - 1);
                 }
@@ -335,10 +376,10 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
 fn finish(
     l: LNode,
     key: Option<String>,
-    expansions: &mut [Option<NodeDesc>],
+    expansions: &mut [Option<(NodeDesc, ScenePlacement)>],
     parent: &[String],
     frames: &[Frame],
-    owners: &mut BTreeMap<Vec<String>, Vec<Frame>>,
+    out: &mut Composed,
 ) -> Result<NodeDesc, ScriptError> {
     let key = key.unwrap_or_else(|| l.key.clone());
     let mut path = parent.to_vec();
@@ -359,7 +400,8 @@ fn finish(
             children: Vec::new(),
         },
         Base::Scene(i) => {
-            let mut n = expansions[i].take().expect("each expansion is used once");
+            let (mut n, placed) = expansions[i].take().expect("each expansion is used once");
+            out.scenes.insert(path.clone(), placed);
             n.key = key.clone();
             // The level is the outermost call site; tsx's expansion already names the `@` entry.
             if n.source.last().is_none_or(|s| s.file != at.file) {
@@ -369,7 +411,7 @@ fn finish(
         }
         Base::Include(mut nodes) if nodes.len() == 1 => {
             let inner = nodes.pop().expect("one");
-            let mut n = finish(inner, Some(key.clone()), expansions, parent, &chain, owners)?;
+            let mut n = finish(inner, Some(key.clone()), expansions, parent, &chain, out)?;
             n.source.push(at.clone());
             n
         }
@@ -377,7 +419,7 @@ fn finish(
             let mut children = Vec::new();
             for inner in nodes {
                 let below = descend(&chain, &inner.key);
-                children.push(finish(inner, None, expansions, &path, &below, owners)?);
+                children.push(finish(inner, None, expansions, &path, &below, out)?);
             }
             NodeDesc {
                 key: key.clone(),
@@ -396,17 +438,17 @@ fn finish(
         node.name = l.name.clone();
     }
     // An included root already holds its inner frames, which its children descend from too.
-    match owners.get(&path) {
+    match out.owners.get(&path) {
         Some(inner) => chain = inner.clone(),
         None => {
-            owners.insert(path.clone(), chain.clone());
+            out.owners.insert(path.clone(), chain.clone());
         }
     }
     for p in &l.patches {
         apply_patch(&mut node, p)?;
     }
     for child in l.children {
-        merge_child(&mut node, child, expansions, &path, &chain, owners)?;
+        merge_child(&mut node, child, expansions, &path, &chain, out)?;
     }
     Ok(node)
 }
@@ -436,15 +478,15 @@ fn set_frame(chain: &mut Vec<Frame>, frame: Frame) {
 fn merge_child(
     node: &mut NodeDesc,
     child: LNode,
-    expansions: &mut [Option<NodeDesc>],
+    expansions: &mut [Option<(NodeDesc, ScenePlacement)>],
     path: &[String],
     chain: &[Frame],
-    owners: &mut BTreeMap<Vec<String>, Vec<Frame>>,
+    out: &mut Composed,
 ) -> Result<(), ScriptError> {
     let existing = child.name.as_ref().and_then(|n| node.children.iter().position(|c| &c.key == n));
     let Some(i) = existing else {
         let below = descend(chain, &child.key);
-        node.children.push(finish(child, None, expansions, path, &below, owners)?);
+        node.children.push(finish(child, None, expansions, path, &below, out)?);
         return Ok(());
     };
     if !matches!(child.base, Base::None) {
@@ -454,13 +496,13 @@ fn merge_child(
     cpath.push(child.key.clone());
     let mut cchain = descend(chain, &child.key);
     set_frame(&mut cchain, Frame { file: child.ctx.path.clone(), path: child.name_path.clone(), at: child.ctx.at(child.span) });
-    owners.insert(cpath.clone(), cchain.clone());
+    out.owners.insert(cpath.clone(), cchain.clone());
     let target = &mut node.children[i];
     for p in &child.patches {
         apply_patch(target, p)?;
     }
     for grandchild in child.children {
-        merge_child(target, grandchild, expansions, &cpath, &cchain, owners)?;
+        merge_child(target, grandchild, expansions, &cpath, &cchain, out)?;
     }
     Ok(())
 }

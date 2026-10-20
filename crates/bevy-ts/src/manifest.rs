@@ -67,6 +67,9 @@ pub struct PropDecl {
     /// `?` in the props type.
     #[serde(default)]
     pub optional: bool,
+    /// The prop in the scene's destructuring (`hp = 100`), where Apply writes its default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<SourceLocation>,
 }
 
 /// A prop's type: a component field type, or a string (props only, never a column).

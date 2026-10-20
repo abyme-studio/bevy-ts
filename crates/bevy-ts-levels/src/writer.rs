@@ -84,6 +84,8 @@ pub enum Op {
     Revert { path: Vec<String>, component: String, field: Vec<String> },
     /// Sets a scene prop (`@hp`) or a scene component field on an instance.
     SetProp { path: Vec<String>, prop: String, value: WValue, field: bool },
+    /// Removes a scene prop (`@hp`) or a scene component field from an instance's `@Comp { … }`.
+    RevertProp { path: Vec<String>, prop: String, field: bool },
     /// Adds an entity under `parent` (the top level when empty).
     Add { parent: Vec<String>, name: String, base: Base, patches: Vec<NewPatch> },
     Delete { path: Vec<String> },
@@ -368,6 +370,7 @@ fn plan(file: &ParsedFile, op: &Op, create_top: bool) -> Result<Plan, Refused> {
         Op::Set { path, component, field, value, containers } => plan_set(file, path, component, field, value, containers, create_top),
         Op::Revert { path, component, field } => plan_revert(file, path, component, field),
         Op::SetProp { path, prop, value, field } => plan_set_prop(file, path, prop, value, *field),
+        Op::RevertProp { path, prop, field } => plan_revert_prop(file, path, prop, *field),
         Op::Add { parent, name, base, patches } => plan_add(file, parent, name, base, patches),
         Op::Delete { path } => plan_delete(file, path),
         Op::Rename { path, to } => plan_rename(file, path, to),
@@ -775,9 +778,30 @@ fn plan_set_prop(file: &ParsedFile, path: &[String], prop: &str, value: &WValue,
         None => {
             let at = if is_field { "" } else { "@" };
             add_field(file, &p.fields, p.path.span.end, &format!("{at}{prop}: {}", value.print()), &mut out);
-            None
+            Some(Op::RevertProp { path: path.to_vec(), prop: prop.into(), field: is_field })
         }
     };
+    Ok((out, inverse.into_iter().collect(), vec![path.to_vec()], Vec::new()))
+}
+
+fn plan_revert_prop(file: &ParsedFile, path: &[String], prop: &str, is_field: bool) -> Result<Plan, Refused> {
+    let f = find(file, path).ok_or_else(|| refuse("not-found", format!("no entity {}", path.join("/"))))?;
+    let Some(Entry::Prefab(p)) = f.entity.inclusion() else { return Err(refuse("invalid", format!("{} is not a scene component instance", path.join("/")))) };
+    let at = if is_field { "" } else { "@" };
+    let named = p.fields.named();
+    let Some(x) = named.iter().find(|x| x.name == prop && x.prop == !is_field) else {
+        return Err(refuse("not-found", format!("{} sets no {at}{prop}", path.join("/"))));
+    };
+    let inverse = to_wvalue(file, &x.value).map(|v| Op::SetProp { path: path.to_vec(), prop: prop.into(), value: v, field: is_field });
+    let mut out = Vec::new();
+    match &p.fields {
+        // The only one: the braces go with it (`@Comp`).
+        Fields::Named { close, .. } if named.len() == 1 => out.push((p.path.span.end, close.end, String::new())),
+        fields => {
+            let (s, e) = field_removal(file, fields, prop).ok_or_else(|| refuse("invalid", "not a named field"))?;
+            out.push((s, e, String::new()));
+        }
+    }
     Ok((out, inverse.into_iter().collect(), vec![path.to_vec()], Vec::new()))
 }
 

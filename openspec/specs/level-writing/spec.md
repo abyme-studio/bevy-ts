@@ -10,6 +10,7 @@ How a level changes: the viewport, agents and the protocol edit `.bsn` files thr
 - `set`: name path, component, field path, value
 - `revert`: remove an override
 - `set_prop`
+- `revert_prop`: remove a scene prop or scene component field from an instance's `@Comp { … }`, and the braces when it was the only one
 - `add_instance`: a prefab with props, or an included level
 - `add_entity`
 - `delete`
@@ -78,9 +79,21 @@ The instance root's `Transform` SHALL route `bsn` to the outermost level under b
 ### Requirement: Apply moves an override one owner inward
 `bevy-ts/level_apply` (`entity`, field, target frame) SHALL move an override from its file to the next owner inward. When that owner is another `.bsn` file, the writer SHALL write the inner file and remove the outer override in one transaction. When it is TSX, bevy-ts SHALL emit a `tsx` route edit, and SHALL remove the `.bsn` override only after the editor answers `written`. If the answer is `rejected`, the override SHALL stay and the apply SHALL report the reason.
 
+The `tsx` edit SHALL point at the element that sets the field (`<Transform translation={…} />`), not the entity element it is in, with the source chain above it for a passed-through prop. A field only a level sets has no TSX owner, and its apply SHALL be refused.
+
+An `@prop` (field `@hp`, component the scene component) SHALL move the same way. Into a `.bsn` owner it is a `set_prop` there and a `revert_prop` in its own file, in one transaction. Into TSX the edit SHALL be the prop's default in the scene's `static scene({ hp = … })` destructuring (`target: "default"`), and the batch that follows SHALL be the `revert_prop`. A prop the scene computes its default for, or does not destructure, SHALL be refused.
+
 #### Scenario: Apply to prefab
 - **WHEN** the operator applies enemy `b`'s eye override to the prefab and the editor writes `enemy.tsx`
 - **THEN** the `#eye` override lines leave `arena.bsn`, and both enemies' eyes take the new value
+
+#### Scenario: The edit names the element that sets the field
+- **WHEN** the eye's `translation` is overridden, and `enemy.tsx` has `<entity key="eye">` on line 16 and `<Transform translation={…} />` on line 17
+- **THEN** the edit's element is line 17, prop `translation`
+
+#### Scenario: Applying an @prop
+- **WHEN** grunt `b`'s `@hp: 250.0` is overridden in `arena.bsn` and the operator applies it to the prefab
+- **THEN** the edit sets the default of `hp` in `Grunt`'s `static scene({ hp = 100 })` to `250`, and after the editor answers `written`, `arena.bsn` reads `@enemies::Grunt`
 
 ### Requirement: Scenes without a level get a sidecar level
 When the editor answers `rejected` with `computed` for an entity of an `app.scene` root that no level placed, bevy-ts SHALL write the edit as an override in that scene's sidecar level, `levels/<scene>.bsn` or the path given by `app.scene(name, fn, { level })`. The sidecar SHALL be created on first write, and SHALL layer over the scene by `tsx` key path.

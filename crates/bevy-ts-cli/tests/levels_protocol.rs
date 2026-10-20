@@ -64,11 +64,13 @@ import { Transform } from "bevy-ts/bevy";
 export class Health extends Component { hp: f32 = 100; max: f32 = 100 }
 export class Grunt extends SceneComponent {
   team: u8 = 0;
-  static scene({ hp = 100 }: { hp?: f32 }) {
+  static scene({ hp = 100, speed = 2 }: { hp?: f32; speed?: f32 }) {
     return (
       <entity name="grunt">
         <Health initialHp={hp} max={hp} />
-        <entity key="eye"><Transform translation={[0, 0.6, 0.5]} /></entity>
+        <entity key="eye">
+          <Transform translation={[0, 0.6, 0.5]} />
+        </entity>
       </entity>
     );
   }
@@ -154,6 +156,13 @@ fn every_level_method_answers_on_contract() {
     assert_eq!(node["prefab"], "enemies::Grunt");
     assert_eq!(node["overrides"][0]["component"], "Transform");
     assert_eq!(node["overrides"][0]["location"]["line"], 4);
+    // The scene component's @props beside its fields: what the level sets, and the defaults.
+    let props = node["props"].as_array().expect("props");
+    assert_eq!(props.len(), 2, "{node}");
+    assert_eq!((&props[0]["name"], &props[0]["value"], &props[0]["overridden"], &props[0]["type"]), (&json!("hp"), &json!(250.0), &json!(true), &json!({ "kind": "f32" })), "{node}");
+    assert_eq!((&props[0]["location"]["file"], &props[0]["location"]["line"]), (&json!("levels/arena.bsn"), &json!(3)), "{node}");
+    assert_eq!((&props[1]["name"], &props[1]["value"], &props[1]["overridden"]), (&json!("speed"), &json!(2), &json!(false)), "{node}");
+    assert!(props[1].get("location").is_none_or(Value::is_null), "{node}");
 
     // A write, then its inverse.
     let w = ok(&mut app, "bevy-ts/level_write", Some(json!({
@@ -191,5 +200,28 @@ fn every_level_method_answers_on_contract() {
     let t = ok(&mut app, "bevy-ts/level_apply", Some(json!({ "entity": eye["entity"], "component": "Transform", "field": "translation" })));
     assert_eq!(t["status"], "tsx", "{t}");
     assert!(t["edit"]["element"]["file"].as_str().unwrap().ends_with("enemies.tsx"), "{t}");
+    // The element that sets `translation`, `<Transform>`, not the eye's `<entity>` above it.
+    assert_eq!((t["edit"]["element"]["line"].as_u64(), t["edit"]["prop"].as_str()), (Some(11), Some("translation")), "{t}");
+    assert_eq!(t["edit"]["chain"][0], t["edit"]["element"], "{t}");
     assert_eq!(t["then"]["ops"][0]["op"], "revert");
+
+    // Apply an @prop: TSX is next, so the edit is the scene's destructured default.
+    let grunt = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["GruntB"] })));
+    let a = ok(&mut app, "bevy-ts/level_apply", Some(json!({ "entity": grunt["entity"], "component": "enemies::Grunt", "field": "@hp", "id": 9 })));
+    assert_eq!(a["status"], "tsx", "{a}");
+    assert_eq!((a["edit"]["target"].as_str(), a["edit"]["prop"].as_str(), &a["edit"]["value"]), (Some("default"), Some("hp"), &json!(250.0)), "{a}");
+    assert!(a["edit"]["element"]["file"].as_str().unwrap().ends_with("enemies.tsx"), "{a}");
+    assert_eq!((a["edit"]["element"]["line"].as_u64(), a["edit"]["element"]["column"].as_u64()), (Some(6), Some(18)), "{a}");
+    assert_eq!(a["then"]["ops"], json!([{ "op": "revert_prop", "path": ["GruntB"], "prop": "hp", "field": false }]), "{a}");
+    // The editor wrote the default; the batch removes the override.
+    let w = ok(&mut app, "bevy-ts/level_write", Some(a["then"].clone()));
+    assert_eq!(w["status"], "written", "{w}");
+    assert!(arena().contains("#GruntB\n@enemies::Grunt\nTransform"), "{}", arena());
+    assert_eq!(w["inverse"][0]["op"], "set_prop", "{w}");
+    settle(&mut app);
+    let after = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["GruntB"] })));
+    assert_eq!((&after["props"][0]["value"], &after["props"][0]["overridden"]), (&json!(100), &json!(false)), "{after}");
+    // A prop nothing overrides: nothing to apply.
+    let none = ok(&mut app, "bevy-ts/level_apply", Some(json!({ "entity": grunt["entity"], "component": "enemies::Grunt", "field": "@speed" })));
+    assert_eq!((none["status"].as_str(), none["reason"].as_str()), (Some("refused"), Some("no override")), "{none}");
 }

@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.6.0";
+pub const VERSION: &str = "1.7.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1610,6 +1610,7 @@ pub struct Layout {
 pub struct LevelApplyParams {
     pub component: ::std::string::String,
     pub entity: Entity,
+    ///A field of `component`, or `@prop` for a scene prop of the instance's scene component (1.7).
     pub field: ::std::string::String,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub id: ::std::option::Option<u64>,
@@ -1635,9 +1636,70 @@ pub struct LevelApplyResult {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct LevelApplyResultEdit {
+    ///The element that sets the field, then each prefab call site above it, innermost first: for following a passed-through prop. (1.7)
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub chain: ::std::vec::Vec<SourceLocation>,
     pub element: SourceLocation,
     pub prop: ::std::string::String,
+    ///element: set `prop` on the element at `element`; default: rewrite the default of `prop` in the scene's destructuring at `element` (`static scene({ hp = 100 })`). (1.7)
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub target: ::std::option::Option<LevelApplyResultEditTarget>,
     pub value: ::serde_json::Value,
+}
+///element: set `prop` on the element at `element`; default: rewrite the default of `prop` in the scene's destructuring at `element` (`static scene({ hp = 100 })`). (1.7)
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum LevelApplyResultEditTarget {
+    #[serde(rename = "element")]
+    Element,
+    #[serde(rename = "default")]
+    Default,
+}
+impl ::std::fmt::Display for LevelApplyResultEditTarget {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Element => f.write_str("element"),
+            Self::Default => f.write_str("default"),
+        }
+    }
+}
+impl ::std::str::FromStr for LevelApplyResultEditTarget {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "element" => Ok(Self::Element),
+            "default" => Ok(Self::Default),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelApplyResultEditTarget {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelApplyResultEditTarget {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///written: moved to the next .bsn owner inward; tsx: the next owner is TSX, so the editor writes `edit` and, on success, sends `then` with level_write.
 #[derive(
@@ -1868,6 +1930,9 @@ pub struct LevelNodeResult {
     ///The scene component the entity instances, if any.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub prefab: ::std::option::Option<::std::string::String>,
+    ///A scene component instance's @props, beside its fields; empty for anything else. (1.7)
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub props: ::std::vec::Vec<LevelProp>,
     ///The TSX source chain inside the instance, innermost first.
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub source: ::std::vec::Vec<SourceLocation>,
@@ -1904,6 +1969,15 @@ pub enum LevelOp {
         value: LevelValue,
     },
     Variant3 {
+        ///A scene component field rather than an @prop.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        field: ::std::option::Option<bool>,
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
+        prop: ::std::string::String,
+    },
+    Variant4 {
         #[serde(
             default,
             skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
@@ -1913,11 +1987,11 @@ pub enum LevelOp {
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         include: ::std::option::Option<::std::string::String>,
         name: ::std::string::String,
-        op: LevelOpVariant3Op,
+        op: LevelOpVariant4Op,
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
         parent: ::std::vec::Vec<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        patches: ::std::vec::Vec<LevelOpVariant3PatchesItem>,
+        patches: ::std::vec::Vec<LevelOpVariant4PatchesItem>,
         #[serde(
             default,
             skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
@@ -1927,25 +2001,25 @@ pub enum LevelOp {
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         scene: ::std::option::Option<::std::string::String>,
     },
-    Variant4 {
+    Variant5 {
         op: ::serde_json::Value,
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
         path: ::std::vec::Vec<::std::string::String>,
     },
-    Variant5 {
+    Variant6 {
         op: ::serde_json::Value,
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
         path: ::std::vec::Vec<::std::string::String>,
         to: ::std::string::String,
     },
-    Variant6 {
+    Variant7 {
         op: ::serde_json::Value,
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
         parent: ::std::vec::Vec<::std::string::String>,
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
         path: ::std::vec::Vec<::std::string::String>,
     },
-    Variant7 {
+    Variant8 {
         index: u32,
         op: ::serde_json::Value,
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
@@ -1953,7 +2027,7 @@ pub enum LevelOp {
         text: ::std::string::String,
     },
 }
-///`LevelOpVariant3Op`
+///`LevelOpVariant4Op`
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
@@ -1966,13 +2040,13 @@ pub enum LevelOp {
     PartialEq,
     PartialOrd
 )]
-pub enum LevelOpVariant3Op {
+pub enum LevelOpVariant4Op {
     #[serde(rename = "add_entity")]
     AddEntity,
     #[serde(rename = "add_instance")]
     AddInstance,
 }
-impl ::std::fmt::Display for LevelOpVariant3Op {
+impl ::std::fmt::Display for LevelOpVariant4Op {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::AddEntity => f.write_str("add_entity"),
@@ -1980,7 +2054,7 @@ impl ::std::fmt::Display for LevelOpVariant3Op {
         }
     }
 }
-impl ::std::str::FromStr for LevelOpVariant3Op {
+impl ::std::str::FromStr for LevelOpVariant4Op {
     type Err = self::error::ConversionError;
     fn from_str(
         value: &str,
@@ -1992,7 +2066,7 @@ impl ::std::str::FromStr for LevelOpVariant3Op {
         }
     }
 }
-impl ::std::convert::TryFrom<&str> for LevelOpVariant3Op {
+impl ::std::convert::TryFrom<&str> for LevelOpVariant4Op {
     type Error = self::error::ConversionError;
     fn try_from(
         value: &str,
@@ -2000,7 +2074,7 @@ impl ::std::convert::TryFrom<&str> for LevelOpVariant3Op {
         value.parse()
     }
 }
-impl ::std::convert::TryFrom<::std::string::String> for LevelOpVariant3Op {
+impl ::std::convert::TryFrom<::std::string::String> for LevelOpVariant4Op {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2008,10 +2082,10 @@ impl ::std::convert::TryFrom<::std::string::String> for LevelOpVariant3Op {
         value.parse()
     }
 }
-///`LevelOpVariant3PatchesItem`
+///`LevelOpVariant4PatchesItem`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct LevelOpVariant3PatchesItem {
+pub struct LevelOpVariant4PatchesItem {
     pub component: ::std::string::String,
     #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
     pub fields: ::std::collections::HashMap<::std::string::String, LevelValue>,
@@ -2034,6 +2108,35 @@ pub struct LevelOwner {
     pub line: u32,
     #[serde(rename = "namePath")]
     pub name_path: ::std::vec::Vec<::std::string::String>,
+}
+///One @prop of a scene component instance: its type, the value it takes, and whether the level sets it.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelProp {
+    ///Where the level sets it.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub location: ::std::option::Option<SourceLocation>,
+    pub name: ::std::string::String,
+    ///The level sets it (`@prop: v`).
+    pub overridden: bool,
+    #[serde(rename = "type")]
+    pub type_: LevelPropType,
+    ///The level's value, or the scene's default when the level does not set it.
+    pub value: ::serde_json::Value,
+}
+///`LevelPropType`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+pub struct LevelPropType {
+    #[serde(flatten, skip_serializing_if = "::std::option::Option::is_none")]
+    pub subtype_0: ::std::option::Option<::std::boxed::Box<FieldType>>,
+    #[serde(flatten, skip_serializing_if = "::std::option::Option::is_none")]
+    pub subtype_1: ::std::option::Option<LevelPropTypeSubtype1>,
+}
+///`LevelPropTypeSubtype1`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelPropTypeSubtype1 {
+    pub kind: ::serde_json::Value,
 }
 ///`LevelTarget`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

@@ -82,9 +82,15 @@ Each level-placed entity SHALL carry a `LevelInstance` component with its level 
 - `bevy-ts/level_list`: open levels with content hash, extensions used and diagnostics.
 - `bevy-ts/level_node` (`entity` or level and name path): the owner chain, every override with its location, and the instance's props.
 
+For a scene component instance, `level_node` SHALL report every prop its scene declares, beside the component's fields: name, type, the value it takes, and whether the level sets it, with the location of the `@prop` when it does. A prop the level does not set SHALL report its default.
+
 #### Scenario: Inspecting enemy b
 - **WHEN** a client calls `bevy-ts/level_node` for enemy `b`'s entity
 - **THEN** it gets `levels/arena.bsn`, name path `EnemyB`, prefab `game::Enemy` with `hp: 250`, and a `Transform.translation` override at the patch's line
+
+#### Scenario: A grunt's props
+- **WHEN** `#GruntB` is placed with `@enemies::Grunt { @hp: 250.0 }` and `Grunt`'s scene is `static scene({ hp = 100, speed = 2 })`
+- **THEN** `level_node` reports `hp` as f32 `250.0`, overridden at that line, and `speed` as `2`, not overridden
 
 #### Scenario: Querying placed instances
 - **WHEN** `arena.bsn` places three `@enemies::Enemy { ... }` and a TS system takes `Query<[Enemy]>`
