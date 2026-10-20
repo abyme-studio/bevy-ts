@@ -76,8 +76,8 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: npm with trusted publishing (>= 11.5.1)
-        run: npm install -g npm@^11.5.1 && npm --version
+      - name: npm with trusted publishing and dist-tag over OIDC (>= 11.21)
+        run: npm install -g npm@^11.21.0 && npm --version
       - name: Version, dist-tag and whether to publish
         id: release
         run: |
@@ -140,3 +140,15 @@ jobs:
           flags="--provenance --access public --tag $TAG"
           [ "$PUBLISH" = true ] || flags="$flags --dry-run"
           cd packages/bevy-ts && npm publish $flags
+      # Until bevy-ts has a stable version, `latest` follows the newest pre-release too, so a plain
+      # `npm i bevy-ts` gets it. Needs "Allow npm dist-tag" on each package's trusted publisher.
+      - name: latest follows pre-releases until a stable release
+        if: ${{ steps.release.outputs.publish == 'true' && steps.release.outputs.tag == 'next' }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          for pkg in bevy-ts $(echo "${{ steps.platforms.outputs.published }}" | tr , ' ' | sed 's|^|@bevy-ts/|; s| | @bevy-ts/|g'); do
+            stable=$(npm view "$pkg" versions --json | node -e 'const v=[].concat(JSON.parse(require("fs").readFileSync(0,"utf8")));console.log(v.some(x=>!x.includes("-")))')
+            [ "$stable" = false ] || { echo "$pkg has a stable version; latest left alone"; continue; }
+            npm dist-tag add "$pkg@$VERSION" latest || echo "::warning::could not move $pkg latest to $VERSION (Allow npm dist-tag unset?)"
+          done
