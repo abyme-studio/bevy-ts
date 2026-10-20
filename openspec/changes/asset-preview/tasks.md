@@ -2,7 +2,7 @@
 
 - [x] 1.1 Key viewports by id in `bevy-ts-viewport` (service, ring, pacing, input queue, camera target); `view` on `viewport_attach`, replace-per-view; the game viewport keeps the virtual window, edit mode, picking and edits
 - [x] 1.2 `viewport` on `viewport_detach`, `viewport_resize`, `viewport_input`, `viewport_camera`, `viewport_stats`, defaulting to the game viewport; render only attached and visible viewports
-- [x] 1.3 Tests: two viewports deliver frames at their own pace; input to one moves only its camera; a 1.6 client (no `view`, no `viewport`) behaves as before
+- [x] 1.3 Tests: two viewports deliver frames at their own pace; input to one moves only its camera; a 1.7 client (no `view`, no `viewport`) behaves as before
 
 ## 2. Preview scenes
 
@@ -18,6 +18,6 @@
 
 ## 4. Contract, measurement, docs
 
-- [x] 4.1 Protocol 1.7.0: the new methods and fields (`view`, `viewport`, `asset_preview*`), regenerated Rust and TS types, CI diff check
-- [ ] 4.2 Measure on this Mac, for the arena and the same model (`models/grunt.glb` or an equal glTF): the game's frame time (CPU and GPU, p50 and p99) with no preview, with an engine preview attached and visible, attached and hidden, and with abyme's three.js viewer showing the model beside the game; the RSS and GPU memory of each and the engine's idle cost with no viewport visible. Record it in `docs/research/asset-preview.md` and get the operator's ruling before landing
-- [ ] 4.3 Docs: the viewport and asset-preview sections of the README and `docs/`; a note for abyme's `bevy-studio` on switching its glTF view to the engine preview when `hello` reports 1.7
+- [x] 4.1 Protocol 1.8.0: the new methods and fields (`view`, `viewport`, `asset_preview*`), regenerated Rust and TS types, CI diff check
+- [x] 4.2 Measure on this Mac, for the arena and the same model (`models/grunt.glb` or an equal glTF): the game's frame time (CPU and GPU, p50 and p99) with no preview, with an engine preview attached and visible, attached and hidden, and with abyme's three.js viewer showing the model beside the game; the RSS and GPU memory of each and the engine's idle cost with no viewport visible. Record it in `docs/research/asset-preview.md` and get the operator's ruling before landing
+- [x] 4.3 Docs: the viewport and asset-preview sections of the README and `docs/`; a note for abyme's `bevy-studio` on switching its glTF view to the engine preview when `hello` reports 1.8

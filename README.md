@@ -19,6 +19,8 @@ without recompiling Rust.
 
 abyme's Bevy studio talks to a running game over the Bevy Remote Protocol, which bevy-ts extends
 (reload, component schemas, scene reconcile, entity events). That contract is the only coupling.
+With `bevy-ts dev --viewport` the engine renders into the studio's panes, the game's and live
+previews of the project's models by the game's own renderer ([docs/viewport.md](docs/viewport.md)).
 
 The JS runtime is V8 through `deno_core` on desktop (ruled 2026-10-19,
 [docs/research/js-runtime.md](docs/research/js-runtime.md)). The bridge stays engine-neutral:

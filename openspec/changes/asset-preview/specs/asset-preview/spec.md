@@ -22,8 +22,8 @@ Input on a preview's viewport SHALL be handled in Rust with no JS call: a drag o
 - **THEN** the next frames show the walk cycle, and no other entity's animation changes
 
 ### Requirement: Asset preview in the protocol contract
-`asset_preview`, `asset_preview_control` and `asset_preview_close`, `viewport_attach`'s `view` and its answer's `viewport`, the optional `viewport` on the viewport methods SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"` as an additions-only minor bump to 1.7.0, generated into Rust and TS types by bridge's pipeline.
+`asset_preview`, `asset_preview_control` and `asset_preview_close`, `viewport_attach`'s `view` and its answer's `viewport`, the optional `viewport` on the viewport methods SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"` as an additions-only minor bump to 1.8.0, generated into Rust and TS types by bridge's pipeline.
 
 #### Scenario: An engine without preview support
-- **WHEN** a client calls `bevy-ts/asset_preview` on a 1.6 engine
+- **WHEN** a client calls `bevy-ts/asset_preview` on a 1.7 engine
 - **THEN** it gets method-not-found, and the studio keeps showing the asset with three.js

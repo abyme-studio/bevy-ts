@@ -82,7 +82,7 @@ fn a_preview_viewport_runs_beside_the_game_and_input_moves_only_its_camera() {
 }
 
 #[test]
-fn a_one_six_client_gets_the_game_viewport() {
+fn a_client_without_views_gets_the_game_viewport() {
     let mut app = app();
     let r = call(&mut app, "bevy-ts/viewport_attach", json!({ "w": 300, "h": 200, "scale": 1 })).unwrap();
     assert_eq!(r["viewport"], 0);

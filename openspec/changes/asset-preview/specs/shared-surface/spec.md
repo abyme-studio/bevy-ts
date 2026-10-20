@@ -15,6 +15,6 @@
 - **WHEN** a client has the game viewport attached and attaches a second viewport with `view: { preview: 3 }`
 - **THEN** both services deliver frames at their own viewers' pace, input sent to the preview's channel moves only the preview camera, and the game viewport's frames are unchanged
 
-#### Scenario: A 1.6 client
+#### Scenario: A 1.7 client
 - **WHEN** a client calls `viewport_attach` without `view`, then `viewport_resize` without `viewport`
 - **THEN** both act on the game viewport, as before

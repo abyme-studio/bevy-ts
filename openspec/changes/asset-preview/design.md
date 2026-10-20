@@ -57,8 +57,8 @@ That needs the engine to survive a TS failure on the first load. Today a failed 
 - *Beat: preview mode, a game-less engine started only for previews (this change's first draft).* With the engine always up it is a second engine process for nothing, and a second set of loaded assets.
 - *Beat: require a successful load before the studio attaches.* A broken save on opening the project would leave the studio with nothing to show and nowhere to show the error.
 
-### 4. Protocol 1.7.0
-New methods `asset_preview`, `asset_preview_control` and `asset_preview_close`. The new fields are `view` and `viewport` on viewport methods, all additions only. A 1.6 client attaching without `view` gets the game viewport as before.
+### 4. Protocol 1.8.0
+New methods `asset_preview`, `asset_preview_control` and `asset_preview_close`. The new fields are `view` and `viewport` on viewport methods, all additions only. A 1.7 client attaching without `view` gets the game viewport as before.
 
 ## Risks / Trade-offs
 
@@ -70,13 +70,16 @@ New methods `asset_preview`, `asset_preview_control` and `asset_preview_close`. 
 
 ## Migration Plan
 
-None. Additions only, and clients without `view` are unchanged. Protocol 1.7.0.
+None. Additions only, and clients without `view` are unchanged. Protocol 1.8.0.
 
 ## Operator rulings
 
 - 2026-10-20: the engine previews assets itself, with three.js kept until this lands. The studio
   keeps the project's engine running in edit mode while the project is open, as Unity's editor
   does; preview mode is dropped; the engine survives a failed first load.
+- 2026-10-20, on task 4.2's numbers (`docs/research/asset-preview.md`): land the engine preview as
+  measured. While visible it adds 0.6 ms to the game's GPU p50 and 376 MB, against three.js's
+  628 MB and about 19% CPU in the browser.
 
 ## Open Questions
 

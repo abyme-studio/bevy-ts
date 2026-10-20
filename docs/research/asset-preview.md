@@ -4,6 +4,9 @@ Measured 2026-10-20 on an M5 Max (18 cores, 128 GB, macOS 26.4). The question: d
 previewing a model with the game's own renderer, beside the running game, cost the game more than
 abyme's three.js viewer does?
 
+**Ruling (operator, 2026-10-20):** land the engine preview as measured: +0.6 ms game GPU p50 and
++376 MB while visible, against three.js's +628 MB and about 19% CPU.
+
 ## Method
 
 - **Game:** the arena (`examples/arena`) under the release `bevy-ts dev --viewport`, its game
