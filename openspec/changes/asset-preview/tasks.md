@@ -19,5 +19,5 @@
 ## 4. Contract, measurement, docs
 
 - [ ] 4.1 Protocol 1.7.0: the new methods and fields, regenerated Rust and TS types, CI diff check
-- [ ] 4.2 Measure the arena's frame time with no preview, one preview attached and visible, and one attached and hidden, on this Mac; record it in `docs/research/` and get the operator's ruling before landing
+- [ ] 4.2 Measure on this Mac, for the arena and the same model (`models/grunt.glb` or an equal glTF): the game's frame time (CPU and GPU, p50 and p99) with no preview, with an engine preview attached and visible, attached and hidden, and with abyme's three.js viewer showing the model beside the game; the RSS and GPU memory of each; and preview mode's idle RSS against three.js's added memory in the web view. Record it in `docs/research/asset-preview.md` and get the operator's ruling before landing
 - [ ] 4.3 Docs: the viewport and asset-preview sections of the README and `docs/`; a note for abyme's `bevy-studio` on switching its glTF view to the engine preview when `hello` reports 1.7

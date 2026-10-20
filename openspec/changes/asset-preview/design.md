@@ -65,7 +65,8 @@ New methods `asset_preview`, `asset_preview_control` and `asset_preview_close`. 
 
 ## Risks / Trade-offs
 
-- [GPU time of a second camera while a preview is visible beside the game] → It renders only while attached and visible, paced by its viewer, at the pane's size. Task 4.2 measures the game's frame time with one preview open on this Mac before landing, and the operator rules on the number.
+- [The preview's draw runs inside the game's frame, so a GPU-bound game slows by its cost; three.js competes for the GPU outside that frame] → It renders only while attached and visible, paced by its viewer, at the pane's size. Task 4.2 measures the game's frame time and memory with an engine preview against three.js on the same model before landing, and the operator rules on the numbers.
+- [Preview mode costs a whole engine process where three.js reuses the open web view] → It starts only when a preview is asked for with no game running, and task 4.2 measures its idle memory.
 - [Ten preview layers] → An eleventh closes the least recently attached; the studio shows one or two at a time.
 - [A preview's lights or environment leaking into the game] → Lights render only on the preview's layer (`RenderLayers` on lights); task 2.4 tests that the game's frames are byte-identical with a preview open.
 - [Assets loaded for a preview stay in memory while the game also uses them] → They are the same handles, so nothing is loaded twice; closing a preview drops its handles.
