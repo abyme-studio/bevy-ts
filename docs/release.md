@@ -28,9 +28,9 @@ out of `bevy-ts`, and carries on. Then, with npm >= 11.15 and the operator's 2FA
 npm trust github @bevy-ts/<platform> --repo abyme-studio/bevy-ts --file release.yml --allow-publish --yes
 ```
 
-then on npmjs.com tick "Allow npm dist-tag" on that trusted publisher
-(the workflow moves `latest` with it); or do it all on npmjs.com: the package > Settings > Trusted publishing > GitHub Actions, repository
-`abyme-studio/bevy-ts`, workflow `release.yml`, with "Allow npm dist-tag" ticked.
+or on npmjs.com: the package > Settings > Trusted publishing > GitHub Actions, repository
+`abyme-studio/bevy-ts`, workflow `release.yml`. `bevy-ts`'s trusted publisher also has "Allow npm dist-tag", which moves
+`latest`.
 `npm trust list <package>` shows what is set.
 
 `bevy-ts` and `@bevy-ts/darwin-arm64` were first published by hand from the operator's Mac at

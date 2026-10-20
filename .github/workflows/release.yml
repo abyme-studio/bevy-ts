@@ -141,14 +141,14 @@ jobs:
           [ "$PUBLISH" = true ] || flags="$flags --dry-run"
           cd packages/bevy-ts && npm publish $flags
       # Until bevy-ts has a stable version, `latest` follows the newest pre-release too, so a plain
-      # `npm i bevy-ts` gets it. Needs "Allow npm dist-tag" on each package's trusted publisher.
+      # `npm i bevy-ts` gets it. Needs "Allow npm dist-tag" on bevy-ts's trusted publisher. The
+      # platform packages are pinned by exact version, so their `latest` does not matter.
       - name: latest follows pre-releases until a stable release
         if: ${{ steps.release.outputs.publish == 'true' && steps.release.outputs.tag == 'next' }}
         env:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
-          for pkg in bevy-ts $(echo "${{ steps.platforms.outputs.published }}" | tr , ' ' | sed 's|^|@bevy-ts/|; s| | @bevy-ts/|g'); do
-            stable=$(npm view "$pkg" versions --json | node -e 'const v=[].concat(JSON.parse(require("fs").readFileSync(0,"utf8")));console.log(v.some(x=>!x.includes("-")))')
-            [ "$stable" = false ] || { echo "$pkg has a stable version; latest left alone"; continue; }
-            npm dist-tag add "$pkg@$VERSION" latest || echo "::warning::could not move $pkg latest to $VERSION (Allow npm dist-tag unset?)"
-          done
+          stable=$(npm view bevy-ts versions --json | node -e 'const v=[].concat(JSON.parse(require("fs").readFileSync(0,"utf8")));console.log(v.some(x=>!x.includes("-")))')
+          if [ "$stable" = false ]; then
+            npm dist-tag add "bevy-ts@$VERSION" latest || echo "::warning::could not move bevy-ts latest to $VERSION (Allow npm dist-tag unset?)"
+          fi
