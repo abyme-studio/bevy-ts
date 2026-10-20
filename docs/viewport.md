@@ -51,6 +51,13 @@ ruling 2026-10-20). A project whose TS fails on the first load runs with an empt
 the asset methods and previews answer, the error is on the log and `reload+watch`, and the next
 good save applies as generation 1.
 
+The studio starts that engine itself; a project adds nothing for it, no abyme process entry. For a
+folder with `bevy-ts.json` and no game serving it, the studio runs
+`npx --yes bevy-ts dev --viewport <entry> --remote-port <first free port from 15702>` as a kept
+process. The entry is the first of `src/game.tsx`, `src/game.ts`, `src/main.tsx` and `src/main.ts`
+that exists. The studio switches to edit mode once `hello` answers, and ends the process when no page
+shows the project.
+
 ## For abyme's `bevy-studio`
 
 When `hello.protocol` is 1.8 or later, the studio's glTF view can show the engine's preview
