@@ -31,6 +31,5 @@ npm trust github @bevy-ts/<platform> --repo abyme-studio/bevy-ts --file release.
 or on npmjs.com: the package > Settings > Trusted publishing > GitHub Actions, repository
 `abyme-studio/bevy-ts`, workflow `release.yml`. `npm trust list <package>` shows what is set.
 
-`bevy-ts@0.1.0-alpha.0` was published by hand from the operator's Mac. `@bevy-ts/darwin-arm64`
-exists on npm without a version (that hand publish did not complete), which is enough for a
-trusted publisher; the workflow publishes its first version.
+`bevy-ts` and `@bevy-ts/darwin-arm64` were first published by hand from the operator's Mac at
+`0.1.0-alpha.0`; npm made that `latest` as well as `next`.
