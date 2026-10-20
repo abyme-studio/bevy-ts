@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.9.0";
+pub const VERSION: &str = "1.10.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,8 +61,9 @@ pub const METHODS: &[Method] = &[
 
 /// Notifications on a viewport's Mach channel, as (method, the side that sends it).
 pub const CHANNEL: &[(&str, &str)] = &[
-    ("hello", "viewer"),
+    ("hello", "both"),
     ("bye", "viewer"),
+    ("replaced", "engine"),
     ("input", "viewer"),
     ("tick", "viewer"),
     ("resize", "viewer"),
@@ -1236,6 +1237,143 @@ pub struct FrameTimes {
     pub gpu_p99_ms: ::std::option::Option<f64>,
     pub samples: u32,
 }
+///One button of a gamepad.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct GamepadButtonState {
+    pub pressed: bool,
+    ///0 to 1.
+    pub value: f64,
+}
+///A gamepad on the viewer's device, W3C Gamepad API standard mapping (1.10). A state is sent only on change.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct GamepadEvent {
+    ///In the W3C standard mapping's order, -1 to 1, y down; on connected and state.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub axes: ::std::vec::Vec<f64>,
+    ///In the W3C standard mapping's order; on connected and state.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub buttons: ::std::vec::Vec<GamepadButtonState>,
+    ///The W3C Gamepad id.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub id: ::std::option::Option<::std::string::String>,
+    ///The W3C Gamepad index.
+    pub index: u32,
+    pub kind: GamepadEventKind,
+    #[serde(rename = "type")]
+    pub type_: GamepadEventType,
+}
+///`GamepadEventKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum GamepadEventKind {
+    #[serde(rename = "connected")]
+    Connected,
+    #[serde(rename = "state")]
+    State,
+    #[serde(rename = "disconnected")]
+    Disconnected,
+}
+impl ::std::fmt::Display for GamepadEventKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Connected => f.write_str("connected"),
+            Self::State => f.write_str("state"),
+            Self::Disconnected => f.write_str("disconnected"),
+        }
+    }
+}
+impl ::std::str::FromStr for GamepadEventKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "connected" => Ok(Self::Connected),
+            "state" => Ok(Self::State),
+            "disconnected" => Ok(Self::Disconnected),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for GamepadEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GamepadEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`GamepadEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum GamepadEventType {
+    #[serde(rename = "gamepad")]
+    Gamepad,
+}
+impl ::std::fmt::Display for GamepadEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Gamepad => f.write_str("gamepad"),
+        }
+    }
+}
+impl ::std::str::FromStr for GamepadEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "gamepad" => Ok(Self::Gamepad),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for GamepadEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GamepadEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///A trackpad gesture.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -1452,6 +1590,17 @@ pub struct GetComponentsWatchResult {
     pub errors: ::std::collections::HashMap<::std::string::String, BrpError>,
     pub removed: ::std::vec::Vec<::std::string::String>,
 }
+///hello, either way.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct HelloMessage {
+    ///From the engine (1.10): the input types it reads.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub inputs: ::std::vec::Vec<InputType>,
+    ///From the viewer (1.10); absent from an older one.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewer: ::std::option::Option<ViewerInfo>,
+}
 ///`HelloResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -1610,6 +1759,89 @@ impl ::std::convert::TryFrom<&str> for ImeEventType {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String> for ImeEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///A ViewportInput type.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum InputType {
+    #[serde(rename = "pointer")]
+    Pointer,
+    #[serde(rename = "wheel")]
+    Wheel,
+    #[serde(rename = "gesture")]
+    Gesture,
+    #[serde(rename = "key")]
+    Key,
+    #[serde(rename = "ime")]
+    Ime,
+    #[serde(rename = "touch")]
+    Touch,
+    #[serde(rename = "gamepad")]
+    Gamepad,
+    #[serde(rename = "focus")]
+    Focus,
+    #[serde(rename = "visible")]
+    Visible,
+}
+impl ::std::fmt::Display for InputType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Pointer => f.write_str("pointer"),
+            Self::Wheel => f.write_str("wheel"),
+            Self::Gesture => f.write_str("gesture"),
+            Self::Key => f.write_str("key"),
+            Self::Ime => f.write_str("ime"),
+            Self::Touch => f.write_str("touch"),
+            Self::Gamepad => f.write_str("gamepad"),
+            Self::Focus => f.write_str("focus"),
+            Self::Visible => f.write_str("visible"),
+        }
+    }
+}
+impl ::std::str::FromStr for InputType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "pointer" => Ok(Self::Pointer),
+            "wheel" => Ok(Self::Wheel),
+            "gesture" => Ok(Self::Gesture),
+            "key" => Ok(Self::Key),
+            "ime" => Ok(Self::Ime),
+            "touch" => Ok(Self::Touch),
+            "gamepad" => Ok(Self::Gamepad),
+            "focus" => Ok(Self::Focus),
+            "visible" => Ok(Self::Visible),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for InputType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for InputType {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -3053,6 +3285,13 @@ pub struct Reparented {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub parent: ::std::option::Option<Entity>,
 }
+///To the viewer a newer hello replaced (1.10).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ReplacedMessage {
+    ///The new viewer's, as its hello gave it; {} when it named none.
+    pub viewer: ::serde_json::Value,
+}
 ///`RingInfo`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -3363,6 +3602,150 @@ pub struct TickMessage {
     pub target_ts: ::std::option::Option<u64>,
     pub ts: u64,
 }
+///Touches on a phone's screen (1.10).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TouchEvent {
+    pub kind: TouchEventKind,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub mods: ::std::option::Option<Modifiers>,
+    ///Every touch still down after the event. A touch absent that was down has ended (cancelled, on cancel).
+    pub touches: ::std::vec::Vec<TouchPoint>,
+    #[serde(rename = "type")]
+    pub type_: TouchEventType,
+}
+///`TouchEventKind`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum TouchEventKind {
+    #[serde(rename = "start")]
+    Start,
+    #[serde(rename = "move")]
+    Move,
+    #[serde(rename = "end")]
+    End,
+    #[serde(rename = "cancel")]
+    Cancel,
+}
+impl ::std::fmt::Display for TouchEventKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Start => f.write_str("start"),
+            Self::Move => f.write_str("move"),
+            Self::End => f.write_str("end"),
+            Self::Cancel => f.write_str("cancel"),
+        }
+    }
+}
+impl ::std::str::FromStr for TouchEventKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "start" => Ok(Self::Start),
+            "move" => Ok(Self::Move),
+            "end" => Ok(Self::End),
+            "cancel" => Ok(Self::Cancel),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for TouchEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TouchEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`TouchEventType`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum TouchEventType {
+    #[serde(rename = "touch")]
+    Touch,
+}
+impl ::std::fmt::Display for TouchEventType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Touch => f.write_str("touch"),
+        }
+    }
+}
+impl ::std::str::FromStr for TouchEventType {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "touch" => Ok(Self::Touch),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for TouchEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TouchEventType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///One touch down.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TouchPoint {
+    ///0 to 1.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub force: ::std::option::Option<f64>,
+    ///Stable while the touch is down.
+    pub id: u64,
+    ///The contact's radius in points.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub rx: ::std::option::Option<f64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub ry: ::std::option::Option<f64>,
+    ///Points from the hole's top left.
+    pub x: f64,
+    pub y: f64,
+}
 ///`TsFieldInfo`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -3672,6 +4055,74 @@ pub struct TsxTreeWatchMessage {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub written: ::std::vec::Vec<TsxNodeId>,
 }
+///Who is viewing (1.10).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewerInfo {
+    ///The name of the device that shows the surface.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub device: ::std::option::Option<::std::string::String>,
+    ///app: abyme.app's surface view; stream: abyme-stream.
+    pub kind: ViewerInfoKind,
+    ///The device is a phone.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub mobile: ::std::option::Option<bool>,
+}
+///app: abyme.app's surface view; stream: abyme-stream.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ViewerInfoKind {
+    #[serde(rename = "app")]
+    App,
+    #[serde(rename = "stream")]
+    Stream,
+}
+impl ::std::fmt::Display for ViewerInfoKind {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::App => f.write_str("app"),
+            Self::Stream => f.write_str("stream"),
+        }
+    }
+}
+impl ::std::str::FromStr for ViewerInfoKind {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "app" => Ok(Self::App),
+            "stream" => Ok(Self::Stream),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ViewerInfoKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ViewerInfoKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`ViewportAttachParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -3844,6 +4295,8 @@ pub enum ViewportInput {
     ImeEvent(ImeEvent),
     FocusEvent(FocusEvent),
     VisibleEvent(VisibleEvent),
+    TouchEvent(TouchEvent),
+    GamepadEvent(GamepadEvent),
 }
 impl ::std::convert::From<PointerEvent> for ViewportInput {
     fn from(value: PointerEvent) -> Self {
@@ -3878,6 +4331,16 @@ impl ::std::convert::From<FocusEvent> for ViewportInput {
 impl ::std::convert::From<VisibleEvent> for ViewportInput {
     fn from(value: VisibleEvent) -> Self {
         Self::VisibleEvent(value)
+    }
+}
+impl ::std::convert::From<TouchEvent> for ViewportInput {
+    fn from(value: TouchEvent) -> Self {
+        Self::TouchEvent(value)
+    }
+}
+impl ::std::convert::From<GamepadEvent> for ViewportInput {
+    fn from(value: GamepadEvent) -> Self {
+        Self::GamepadEvent(value)
     }
 }
 ///`ViewportInputParams`

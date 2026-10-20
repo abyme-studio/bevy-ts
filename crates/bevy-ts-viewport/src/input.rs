@@ -8,16 +8,40 @@ use bevy::input::ButtonState;
 use bevy::input::gestures::{DoubleTapGesture, PinchGesture, RotationGesture};
 use bevy::input::keyboard::{KeyboardFocusLost, KeyboardInput};
 use bevy::input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
-use bevy::input::touch::TouchPhase;
+use bevy::input::gamepad::{
+    GamepadAxis, GamepadButton, GamepadConnection, GamepadConnectionEvent, RawGamepadAxisChangedEvent, RawGamepadButtonChangedEvent,
+    RawGamepadEvent,
+};
+use bevy::input::touch::{ForceTouch, TouchInput, TouchPhase};
 use bevy::prelude::*;
 use bevy::window::{CursorEntered, CursorLeft, CursorMoved, Ime, WindowEvent, WindowFocused};
 use bevy_ts_remote::protocol::{self as p, ViewportInput};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::time::Instant;
+
+/// The `input` types the game viewport reads, which its viewer's `hello` is answered with.
+pub const INPUTS: &[&str] = &["pointer", "wheel", "gesture", "key", "ime", "touch", "gamepad", "focus", "visible"];
 
 /// Events to apply this frame, with when each arrived.
 #[derive(Resource, Default)]
 pub struct PendingInput(pub Vec<(Instant, ViewportInput)>);
+
+/// What the viewer last said its touches and gamepads were: it sends each as a whole, and Bevy
+/// wants what changed.
+#[derive(Resource, Default)]
+pub struct Remote {
+    touches: BTreeMap<u64, Vec2>,
+    pads: BTreeMap<u32, Pad>,
+}
+
+/// A viewer's gamepad: its own entity, as gilrs gives each pad, and its last buttons and axes.
+struct Pad {
+    entity: Entity,
+    connected: bool,
+    buttons: Vec<f32>,
+    axes: Vec<f32>,
+}
 
 /// The modifiers on the viewer's last pointer, wheel or key event: what an `NSEvent` says is
 /// held, which the edit tools read alongside `ButtonInput<KeyCode>`.
@@ -100,6 +124,7 @@ fn apply_one(world: &mut World, window: Entity, e: ViewportInput) {
         ViewportInput::PointerEvent(e) => Some(Modifiers::from(&e.mods)),
         ViewportInput::WheelEvent(e) => Some(Modifiers::from(&e.mods)),
         ViewportInput::KeyEvent(e) => Some(Modifiers::from(&e.mods)),
+        ViewportInput::TouchEvent(e) => Some(Modifiers::from(&e.mods)),
         _ => None,
     };
     if let Some(m) = mods {
@@ -192,10 +217,138 @@ fn apply_one(world: &mut World, window: Entity, e: ViewportInput) {
             write(world, WindowFocused { window, focused: e.on });
         }
         ViewportInput::VisibleEvent(e) => world.resource::<SharedRes>().0.set_visible(e.on),
+        ViewportInput::TouchEvent(e) => touch(world, window, e),
+        ViewportInput::GamepadEvent(e) => gamepad(world, e),
     }
 }
 
-/// Gamepads are read in the engine (gilrs), not forwarded; while the hole has no focus their
+/// `touches` is every touch down after the event: one new is `Started`, one that moved `Moved`,
+/// and one gone `Ended` (`Canceled` on `cancel`) where it was last.
+fn touch(world: &mut World, window: Entity, e: p::TouchEvent) {
+    let gone = if e.kind == p::TouchEventKind::Cancel { TouchPhase::Canceled } else { TouchPhase::Ended };
+    let mut was = std::mem::take(&mut world.resource_mut::<Remote>().touches);
+    let mut now = BTreeMap::new();
+    let mut out = vec![];
+    for t in &e.touches {
+        let position = Vec2::new(t.x as f32, t.y as f32);
+        let phase = match was.remove(&t.id) {
+            None => Some(TouchPhase::Started),
+            Some(before) if before != position => Some(TouchPhase::Moved),
+            Some(_) => None,
+        };
+        if let Some(phase) = phase {
+            out.push(TouchInput { phase, position, window, force: t.force.map(ForceTouch::Normalized), id: t.id });
+        }
+        now.insert(t.id, position);
+    }
+    for (id, position) in was {
+        out.push(TouchInput { phase: gone, position, window, force: None, id });
+    }
+    world.resource_mut::<Remote>().touches = now;
+    for t in out {
+        write(world, t);
+    }
+}
+
+/// A button of the W3C standard mapping.
+fn pad_button(i: usize) -> GamepadButton {
+    use GamepadButton::*;
+    match i {
+        0 => South,
+        1 => East,
+        2 => West,
+        3 => North,
+        4 => LeftTrigger,
+        5 => RightTrigger,
+        6 => LeftTrigger2,
+        7 => RightTrigger2,
+        8 => Select,
+        9 => Start,
+        10 => LeftThumb,
+        11 => RightThumb,
+        12 => DPadUp,
+        13 => DPadDown,
+        14 => DPadLeft,
+        15 => DPadRight,
+        16 => Mode,
+        n => Other(n as u32),
+    }
+}
+
+/// An axis of the W3C standard mapping, and its sign: the W3C's y is down, Bevy's up.
+fn pad_axis(i: usize) -> (GamepadAxis, f32) {
+    match i {
+        0 => (GamepadAxis::LeftStickX, 1.0),
+        1 => (GamepadAxis::LeftStickY, -1.0),
+        2 => (GamepadAxis::RightStickX, 1.0),
+        3 => (GamepadAxis::RightStickY, -1.0),
+        n => (GamepadAxis::Other(n as u32), 1.0),
+    }
+}
+
+/// A viewer's gamepad becomes the raw events gilrs writes for a native one, so the focus gate,
+/// `GamepadSettings` and game code treat both alike. A `state` writes what changed.
+fn gamepad(world: &mut World, e: p::GamepadEvent) {
+    let entity = match world.resource::<Remote>().pads.get(&e.index) {
+        Some(pad) => pad.entity,
+        None => {
+            let entity = world.spawn_empty().id();
+            let pad = Pad { entity, connected: false, buttons: vec![], axes: vec![] };
+            world.resource_mut::<Remote>().pads.insert(e.index, pad);
+            entity
+        }
+    };
+    let connected = world.resource::<Remote>().pads[&e.index].connected;
+    let connection = match e.kind {
+        p::GamepadEventKind::Disconnected if connected => Some(GamepadConnection::Disconnected),
+        p::GamepadEventKind::Connected | p::GamepadEventKind::State if !connected => {
+            let name = e.id.clone().unwrap_or_else(|| format!("gamepad {}", e.index));
+            Some(GamepadConnection::Connected { name, vendor_id: None, product_id: None })
+        }
+        _ => None,
+    };
+    if let Some(connection) = connection {
+        let on = matches!(connection, GamepadConnection::Connected { .. });
+        let m = GamepadConnectionEvent::new(entity, connection);
+        world.write_message(RawGamepadEvent::Connection(m.clone()));
+        world.write_message(m);
+        let mut remote = world.resource_mut::<Remote>();
+        let pad = remote.pads.get_mut(&e.index).unwrap();
+        pad.connected = on;
+        pad.buttons.clear();
+        pad.axes.clear();
+    }
+    if e.kind == p::GamepadEventKind::Disconnected {
+        return;
+    }
+    let mut out = vec![];
+    let mut remote = world.resource_mut::<Remote>();
+    let pad = remote.pads.get_mut(&e.index).unwrap();
+    pad.buttons.resize(pad.buttons.len().max(e.buttons.len()), 0.0);
+    for (i, b) in e.buttons.iter().enumerate() {
+        // A digital button some browsers report pressed at 0.
+        let v = if b.pressed && b.value == 0.0 { 1.0 } else { b.value as f32 };
+        if pad.buttons[i] != v {
+            pad.buttons[i] = v;
+            out.push(RawGamepadEvent::Button(RawGamepadButtonChangedEvent::new(entity, pad_button(i), v)));
+        }
+    }
+    pad.axes.resize(pad.axes.len().max(e.axes.len()), 0.0);
+    for (i, a) in e.axes.iter().enumerate() {
+        let (axis, sign) = pad_axis(i);
+        let v = *a as f32 * sign;
+        if pad.axes[i] != v {
+            pad.axes[i] = v;
+            out.push(RawGamepadEvent::Axis(RawGamepadAxisChangedEvent::new(entity, axis, v)));
+        }
+    }
+    for m in out {
+        world.write_message(m);
+    }
+}
+
+/// Gamepads are read in the engine (gilrs), and a viewer's arrive as `gamepad` input written as
+/// gilrs writes them; while the hole has no focus their
 /// buttons and axes do not reach the game unless `viewport_mode` set `gamepadUnfocused`.
 /// Connections always pass, so a pad plugged in meanwhile is known when focus returns.
 pub(crate) fn gate_gamepads(shared: Res<SharedRes>, mut raw: ResMut<Messages<bevy::input::gamepad::RawGamepadEvent>>) {
@@ -225,5 +378,110 @@ mod surface_shapes {
         ] {
             serde_json::from_value::<ViewportInput>(e.clone()).unwrap_or_else(|err| panic!("{e}: {err}"));
         }
+    }
+}
+
+#[cfg(test)]
+mod stream_input {
+    use super::*;
+    use bevy::ecs::message::MessageCursor;
+    use serde_json::json;
+
+    fn world() -> (World, Entity) {
+        let mut world = World::new();
+        world.init_resource::<Remote>();
+        world.init_resource::<Messages<TouchInput>>();
+        world.init_resource::<Messages<WindowEvent>>();
+        world.init_resource::<Messages<RawGamepadEvent>>();
+        world.init_resource::<Messages<GamepadConnectionEvent>>();
+        let window = world.spawn_empty().id();
+        (world, window)
+    }
+
+    fn send(world: &mut World, window: Entity, e: Value) {
+        apply_one(world, window, serde_json::from_value(e.clone()).unwrap_or_else(|err| panic!("{e}: {err}")));
+    }
+
+    fn read<M: Message + Clone>(world: &World, cursor: &mut MessageCursor<M>) -> Vec<M> {
+        cursor.read(world.resource::<Messages<M>>()).cloned().collect()
+    }
+
+    #[test]
+    fn parses_touch_gamepad_and_hello() {
+        for e in [
+            json!({ "type": "touch", "kind": "start", "touches": [{ "id": 3_000_000_000u64, "x": 1.0, "y": 2.0, "rx": 8.0, "ry": 9.0, "force": 0.5 }],
+                    "mods": { "shift": false } }),
+            json!({ "type": "touch", "kind": "end", "touches": [] }),
+            json!({ "type": "gamepad", "kind": "connected", "index": 0, "id": "Xbox Wireless Controller",
+                    "buttons": [{ "pressed": true, "value": 1.0 }], "axes": [0.0, -1.0] }),
+            json!({ "type": "gamepad", "kind": "disconnected", "index": 0 }),
+        ] {
+            serde_json::from_value::<ViewportInput>(e.clone()).unwrap_or_else(|err| panic!("{e}: {err}"));
+        }
+        let hello: p::HelloMessage = serde_json::from_value(json!({ "viewer": { "kind": "stream", "device": "iPhone", "mobile": true } })).unwrap();
+        assert_eq!(hello.viewer.unwrap().kind, p::ViewerInfoKind::Stream);
+        serde_json::from_value::<p::HelloMessage>(json!({})).unwrap();
+        for t in INPUTS {
+            serde_json::from_value::<p::InputType>(json!(t)).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_touch_sequence_is_bevy_touch_input() {
+        let (mut world, window) = world();
+        let mut cursor = world.resource::<Messages<TouchInput>>().get_cursor();
+        let t = |id: u64, x: f64, y: f64| json!({ "id": id, "x": x, "y": y, "force": 0.5 });
+        send(&mut world, window, json!({ "type": "touch", "kind": "start", "touches": [t(1, 10.0, 20.0)] }));
+        send(&mut world, window, json!({ "type": "touch", "kind": "start", "touches": [t(1, 10.0, 20.0), t(2, 50.0, 60.0)] }));
+        send(&mut world, window, json!({ "type": "touch", "kind": "move", "touches": [t(1, 12.0, 21.0), t(2, 50.0, 60.0)] }));
+        send(&mut world, window, json!({ "type": "touch", "kind": "end", "touches": [t(2, 50.0, 60.0)] }));
+        send(&mut world, window, json!({ "type": "touch", "kind": "cancel", "touches": [] }));
+        let got: Vec<_> = read(&world, &mut cursor).into_iter().map(|t| (t.id, t.phase, t.position, t.window)).collect();
+        assert_eq!(got, vec![
+            (1, TouchPhase::Started, Vec2::new(10.0, 20.0), window),
+            (2, TouchPhase::Started, Vec2::new(50.0, 60.0), window),
+            (1, TouchPhase::Moved, Vec2::new(12.0, 21.0), window),
+            (1, TouchPhase::Ended, Vec2::new(12.0, 21.0), window),
+            (2, TouchPhase::Canceled, Vec2::new(50.0, 60.0), window),
+        ]);
+        let mut w = world.resource::<Messages<WindowEvent>>().get_cursor();
+        assert_eq!(w.read(world.resource::<Messages<WindowEvent>>()).filter(|e| matches!(e, WindowEvent::TouchInput(_))).count(), 5);
+    }
+
+    #[test]
+    fn a_gamepad_state_is_bevy_raw_gamepad_events_by_the_standard_mapping() {
+        let (mut world, window) = world();
+        let mut raw = world.resource::<Messages<RawGamepadEvent>>().get_cursor();
+        let mut conn = world.resource::<Messages<GamepadConnectionEvent>>().get_cursor();
+        let b = |v: f64| json!({ "pressed": v > 0.5, "value": v });
+        let mut buttons = vec![b(0.0); 17];
+        buttons[0] = b(1.0);
+        buttons[7] = b(0.4);
+        buttons[12] = json!({ "pressed": true, "value": 0.0 });
+        send(&mut world, window, json!({ "type": "gamepad", "kind": "connected", "index": 2, "id": "pad", "buttons": buttons, "axes": [0.5, 0.25, 0.0, -1.0] }));
+        let connected = read(&world, &mut conn);
+        assert_eq!(connected.len(), 1);
+        let pad = connected[0].gamepad;
+        assert!(matches!(&connected[0].connection, GamepadConnection::Connected { name, .. } if name == "pad"));
+        let got: Vec<_> = read(&world, &mut raw)
+            .into_iter()
+            .filter_map(|e| match e {
+                RawGamepadEvent::Button(b) => Some(format!("{:?} {}", b.button, b.value)),
+                RawGamepadEvent::Axis(a) => Some(format!("{:?} {}", a.axis, a.value)),
+                RawGamepadEvent::Connection(c) => {
+                    assert_eq!(c.gamepad, pad);
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(got, ["South 1", "RightTrigger2 0.4", "DPadUp 1", "LeftStickX 0.5", "LeftStickY -0.25", "RightStickY 1"]);
+        // A state writes only what changed.
+        buttons[0] = b(0.0);
+        send(&mut world, window, json!({ "type": "gamepad", "kind": "state", "index": 2, "buttons": buttons, "axes": [0.5, 0.25, 0.0, -1.0] }));
+        let got: Vec<_> = read(&world, &mut raw).into_iter().map(|e| format!("{e:?}")).collect();
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(got[0].contains("South") && got[0].contains(&format!("{pad:?}")), "{got:?}");
+        send(&mut world, window, json!({ "type": "gamepad", "kind": "disconnected", "index": 2 }));
+        assert!(matches!(read(&world, &mut conn)[..], [GamepadConnectionEvent { connection: GamepadConnection::Disconnected, gamepad }] if gamepad == pad));
     }
 }

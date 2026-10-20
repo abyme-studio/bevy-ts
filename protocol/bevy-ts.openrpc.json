@@ -2,8 +2,8 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.9.0",
-    "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names."
+    "version": "1.10.0",
+    "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
     {
@@ -745,14 +745,14 @@
     },
     {
       "name": "hello",
-      "summary": "Viewer to engine on the channel: attach, with the reply port in the message.",
+      "summary": "Viewer to engine on the channel: attach, with the reply port in the message, naming the viewer. Engine to viewer: the answer to each hello, listing the input types the engine reads (1.10).",
       "x-bevy-ts-crate": "bevy-ts-viewport",
-      "x-bevy-ts-channel": "viewer",
+      "x-bevy-ts-channel": "both",
       "params": [
         {
           "name": "params",
           "schema": {
-            "$ref": "#/components/schemas/Empty"
+            "$ref": "#/components/schemas/HelloMessage"
           },
           "required": true
         }
@@ -768,6 +768,21 @@
           "name": "params",
           "schema": {
             "$ref": "#/components/schemas/Empty"
+          },
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "replaced",
+      "summary": "Engine to viewer: a newer hello took the viewport; this viewer is now gone (1.10).",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-channel": "engine",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ReplacedMessage"
           },
           "required": true
         }
@@ -2741,6 +2756,219 @@
         },
         "description": "The hole was shown or hidden."
       },
+      "TouchEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "kind",
+          "touches"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "touch"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "start",
+              "move",
+              "end",
+              "cancel"
+            ]
+          },
+          "touches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TouchPoint"
+            },
+            "description": "Every touch still down after the event. A touch absent that was down has ended (cancelled, on cancel)."
+          },
+          "mods": {
+            "$ref": "#/components/schemas/Modifiers"
+          }
+        },
+        "description": "Touches on a phone's screen (1.10)."
+      },
+      "TouchPoint": {
+        "type": "object",
+        "required": [
+          "id",
+          "x",
+          "y"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "Stable while the touch is down."
+          },
+          "x": {
+            "type": "number",
+            "description": "Points from the hole's top left."
+          },
+          "y": {
+            "type": "number"
+          },
+          "rx": {
+            "type": "number",
+            "description": "The contact's radius in points."
+          },
+          "ry": {
+            "type": "number"
+          },
+          "force": {
+            "type": "number",
+            "description": "0 to 1."
+          }
+        },
+        "description": "One touch down."
+      },
+      "GamepadEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "kind",
+          "index"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "gamepad"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "state",
+              "disconnected"
+            ]
+          },
+          "index": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The W3C Gamepad index."
+          },
+          "id": {
+            "type": "string",
+            "description": "The W3C Gamepad id."
+          },
+          "buttons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GamepadButtonState"
+            },
+            "description": "In the W3C standard mapping's order; on connected and state."
+          },
+          "axes": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "In the W3C standard mapping's order, -1 to 1, y down; on connected and state."
+          }
+        },
+        "description": "A gamepad on the viewer's device, W3C Gamepad API standard mapping (1.10). A state is sent only on change."
+      },
+      "GamepadButtonState": {
+        "type": "object",
+        "required": [
+          "pressed",
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "pressed": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "number",
+            "description": "0 to 1."
+          }
+        },
+        "description": "One button of a gamepad."
+      },
+      "ViewerInfo": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "app",
+              "stream"
+            ],
+            "description": "app: abyme.app's surface view; stream: abyme-stream."
+          },
+          "device": {
+            "type": "string",
+            "description": "The name of the device that shows the surface."
+          },
+          "mobile": {
+            "type": "boolean",
+            "description": "The device is a phone."
+          }
+        },
+        "description": "Who is viewing (1.10)."
+      },
+      "InputType": {
+        "type": "string",
+        "enum": [
+          "pointer",
+          "wheel",
+          "gesture",
+          "key",
+          "ime",
+          "touch",
+          "gamepad",
+          "focus",
+          "visible"
+        ],
+        "description": "A ViewportInput type."
+      },
+      "HelloMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "viewer": {
+            "$ref": "#/components/schemas/ViewerInfo",
+            "description": "From the viewer (1.10); absent from an older one."
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InputType"
+            },
+            "description": "From the engine (1.10): the input types it reads."
+          }
+        },
+        "description": "hello, either way."
+      },
+      "ReplacedMessage": {
+        "type": "object",
+        "required": [
+          "viewer"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "viewer": {
+            "description": "The new viewer's, as its hello gave it; {} when it named none."
+          }
+        },
+        "description": "To the viewer a newer hello replaced (1.10)."
+      },
       "ViewportInput": {
         "description": "One input event from the viewer.",
         "oneOf": [
@@ -2764,6 +2992,12 @@
           },
           {
             "$ref": "#/components/schemas/VisibleEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TouchEvent"
+          },
+          {
+            "$ref": "#/components/schemas/GamepadEvent"
           }
         ]
       },

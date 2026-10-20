@@ -245,12 +245,13 @@ impl Shared {
         list.iter().find(|s| s.should_render()).map_or_else(|| self.hz(), |s| s.hz())
     }
 
-    /// Checks in `name` as the viewport's channel, replacing any earlier one.
-    pub fn open(self: &Arc<Self>, name: &str) -> Result<(), String> {
+    /// Checks in `name` as the viewport's channel, replacing any earlier one; `inputs` are the
+    /// `input` types its world reads.
+    pub fn open(self: &Arc<Self>, name: &str, inputs: &'static [&'static str]) -> Result<(), String> {
         self.close();
         let tx = self.inbox_tx.lock().unwrap().clone();
         let me = Arc::downgrade(self);
-        let service = Service::open(name, move |m| {
+        let service = Service::open(name, inputs, move |m| {
             if let Some(me) = me.upgrade() {
                 match &m {
                     Incoming::Hello => {

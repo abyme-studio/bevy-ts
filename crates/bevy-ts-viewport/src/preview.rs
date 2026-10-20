@@ -355,7 +355,7 @@ pub(crate) fn attach(world: &mut World, id: u32, name: &str, w: f64, h: f64, sca
     if let Some(hz) = hz {
         p.shared.set_hz(hz);
     }
-    p.shared.open(name).map_err(internal)?;
+    p.shared.open(name, INPUTS).map_err(internal)?;
     previews.next_viewport += 1;
     let viewport = previews.next_viewport;
     if let Some(old) = p.viewport.replace(viewport) {
@@ -442,6 +442,9 @@ fn drain(world: &mut World) {
 }
 
 const LOOK: f32 = 0.008;
+
+/// What a preview's orbit camera reads, which its viewer's `hello` is answered with.
+const INPUTS: &[&str] = &["pointer", "wheel", "gesture", "key", "visible"];
 
 /// Orbit on a drag, zoom on the wheel or a pinch, reframe on `f`.
 fn input(world: &mut World, id: u32, e: ViewportInput) {

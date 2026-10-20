@@ -35,6 +35,17 @@ Viewport mode: the engine with no window of its own renders into a ring of IOSur
 - **WHEN** a client calls `viewport_attach` without `view`, then `viewport_resize` without `viewport`
 - **THEN** both act on the game viewport, as before
 
+### Requirement: One viewer at a time, and the last hello wins
+A viewer's `hello` MAY name it as `viewer: { kind, device, mobile }` (`kind`: `app` for abyme.app's surface view, `stream` for abyme-stream; `device` the device that shows it; `mobile` true for a phone). The engine SHALL answer every `hello` on a viewport's channel with its own `hello` `{ inputs }`, listing the `ViewportInput` types that viewport reads (the game viewport all of them; a preview `pointer`, `wheel`, `gesture`, `key` and `visible`). A second `hello` on a viewport that has a viewer SHALL first send that viewer `replaced { viewer }`, naming the new one as its `hello` gave it (`{}` when it named none), and then treat it as gone, as a dead reply port is; the viewport stays attached, and the new viewer gets the ring's `surface` messages again before its first `frame`.
+
+#### Scenario: The phone takes the game
+- **WHEN** abyme.app is attached and abyme-stream sends `hello` with `viewer: { kind: "stream", device: "iPhone", mobile: true }` on the same service
+- **THEN** abyme.app gets `replaced` naming that viewer and no frame after it, and the stream gets `hello` with `inputs`, three `surface` messages and then frames
+
+#### Scenario: A viewer that names nothing
+- **WHEN** a 1.9 viewer sends `hello` with empty params
+- **THEN** it is attached as before and answered with `hello` `{ inputs }`, which it may ignore
+
 ### Requirement: Frames render into a ring of three shared surfaces
 The engine SHALL own a ring of three IOSurfaces (`BGRA`, tagged sRGB, sized in device pixels) and render the viewport's camera output directly into Metal textures created on them, with no copy. Each IOSurface SHALL be sent to the viewer once, as a Mach port from `IOSurfaceCreateMachPort`, in a `surface` message (`layer`, `ring`, `slot`, `w`, `h`). Each finished frame SHALL be announced by a `frame` message (`layer`, `ring`, `slot`, `seq`, `w`, `h`, `ts` in ns on `CLOCK_UPTIME_RAW`) sent only after the GPU has completed every command buffer that writes that slot. The engine SHALL NOT render into the slot it last announced, nor into a slot for which `IOSurfaceIsInUse` is true; when no slot is free, it SHALL skip that frame's render and count it. `layer` names the stacked surface a ring belongs to: 0 is the viewport's picture, the only layer this change makes, and a message without `layer` SHALL mean layer 0; rings, slots and ring numbers are per layer, and a viewer SHALL ignore a layer it does not know.
 
@@ -90,7 +101,7 @@ Every viewport method except `viewport_attach`, `viewport_detach`, `viewport_res
 - **THEN** the game pauses and the editor camera, gizmos and picking work in that window
 
 ### Requirement: The viewport in the protocol contract
-The viewport methods (`bevy-ts/viewport_attach`, `viewport_detach`, `viewport_resize`, `viewport_input`, `viewport_mode`, `viewport_camera`, `viewport_pick`, `viewport_select`, `viewport_selection+watch`, `viewport_edits+watch`, `viewport_edit_result`, `viewport_revert`, `viewport_stats`, `assets`, `assets+watch`, `asset_thumbnail`) and the channel's message types (`input`, carrying one `ViewportInput` event, `surface`, `frame`, `tick`, `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed`) SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"`, as an additions-only minor bump of the contract (1.2.0 when it landed; 1.5.0 with the `display` and level-route fields), generated into Rust and TS types by bridge's pipeline. Channel messages SHALL be JSON-RPC 2.0 notifications whose `method` is the message type, so one schema covers HTTP and the channel. `bevy-ts/hello` SHALL report `viewport: true|false`.
+The viewport methods (`bevy-ts/viewport_attach`, `viewport_detach`, `viewport_resize`, `viewport_input`, `viewport_mode`, `viewport_camera`, `viewport_pick`, `viewport_select`, `viewport_selection+watch`, `viewport_edits+watch`, `viewport_edit_result`, `viewport_revert`, `viewport_stats`, `assets`, `assets+watch`, `asset_thumbnail`) and the channel's message types (`hello`, sent by both sides, `input`, carrying one `ViewportInput` event, `surface`, `frame`, `tick`, `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed`, `replaced`) SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"`, as an additions-only minor bump of the contract (1.2.0 when it landed; 1.5.0 with the `display` and level-route fields; 1.10.0 with the `hello` answer, `replaced`, `touch` and `gamepad`), generated into Rust and TS types by bridge's pipeline. Channel messages SHALL be JSON-RPC 2.0 notifications whose `method` is the message type, so one schema covers HTTP and the channel. `bevy-ts/hello` SHALL report `viewport: true|false`.
 
 #### Scenario: An old client
 - **WHEN** a 1.0 client connects to an engine serving the viewport methods

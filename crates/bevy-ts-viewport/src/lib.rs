@@ -81,6 +81,7 @@ mod plugin {
                     VirtualWindow,
                 ));
                 app.init_resource::<input::PendingInput>()
+                    .init_resource::<input::Remote>()
                     .init_resource::<feedback::Cursor>()
                     .add_systems(First, (methods::drain, input::apply).chain().after(count_update))
                     .add_systems(Last, feedback::send_changes)
@@ -131,7 +132,7 @@ mod plugin {
     pub fn attach(world: &mut World) -> Result<String, String> {
         let shared = world.resource::<SharedRes>().0.clone();
         let name = service_name();
-        shared.open(&name)?;
+        shared.open(&name, input::INPUTS)?;
         Ok(name)
     }
 }

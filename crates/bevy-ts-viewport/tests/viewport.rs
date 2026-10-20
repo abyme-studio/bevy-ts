@@ -249,3 +249,68 @@ fn gamepad_input_waits_for_focus() {
     let pressed = app.world().get::<Gamepad>(pad).unwrap().pressed(GamepadButton::South);
     assert_eq!(*pads.0.lock().unwrap(), vec!["south"], "pressed now: {pressed}");
 }
+
+#[test]
+fn hello_is_answered_and_a_second_hello_replaces_the_first() {
+    let mut app = app();
+    let (service, viewer1) = attach(&mut app, 400.0, 300.0, 2.0);
+    let mut seen1 = Seen::default();
+    run_until(&mut app, &viewer1, &mut seen1, LONG, |s| !s.frames.is_empty());
+    let hello = seen1.other.iter().find(|(m, _)| m == "hello").expect("hello is answered");
+    assert_eq!(hello.1["inputs"], json!(bevy_ts_viewport::input::INPUTS));
+    let who = json!({ "kind": "stream", "device": "iPhone", "mobile": true });
+    let viewer2 = Viewer::connect_as(&service, who.clone()).unwrap();
+    let mut seen2 = Seen::default();
+    run_until(&mut app, &viewer2, &mut seen2, LONG, |s| !s.frames.is_empty());
+    assert_eq!(seen2.surfaces.len(), 3, "the new viewer is sent the ring again");
+    assert!(seen2.other.iter().any(|(m, p)| m == "hello" && p["inputs"].is_array()));
+    pump(&viewer1, &mut seen1, Duration::from_millis(20));
+    assert!(seen1.other.contains(&("replaced".to_string(), json!({ "viewer": who }))), "{:?}", seen1.other);
+    let n = seen1.frames.len();
+    for _ in 0..3 {
+        app.update();
+    }
+    pump(&viewer1, &mut seen1, Duration::from_millis(20));
+    assert_eq!(seen1.frames.len(), n, "the replaced viewer gets nothing more");
+    let stats = call(&mut app, "bevy-ts/viewport_stats", Value::Null).unwrap();
+    assert_eq!(stats["attached"], true);
+}
+
+#[test]
+fn a_viewers_gamepad_reaches_the_game_with_focus() {
+    use bevy::input::gamepad::{GamepadAxis, GamepadButton};
+    let mut app = app();
+    let pads = Pads::default();
+    app.insert_resource(pads.clone()).add_systems(Update, |q: Query<&Gamepad>, log: Res<Pads>| {
+        for g in &q {
+            if g.just_pressed(GamepadButton::South) {
+                log.0.lock().unwrap().push("south".into());
+            }
+            if g.get(GamepadAxis::LeftStickY).is_some_and(|y| y > 0.9) {
+                log.0.lock().unwrap().push("up".into());
+            }
+        }
+    });
+    let (_, viewer) = attach(&mut app, 400.0, 300.0, 2.0);
+    let pad = |kind: &str, south: f64, y: f64| {
+        json!({ "type": "gamepad", "kind": kind, "index": 0, "id": "pad",
+                "buttons": [{ "pressed": south > 0.5, "value": south }], "axes": [0.0, y] })
+    };
+    let send = |app: &mut App, e: Value| {
+        viewer.send("input", e).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        app.update();
+    };
+    send(&mut app, pad("connected", 0.0, 0.0));
+    app.update();
+    assert_eq!(app.world_mut().query::<&Gamepad>().iter(app.world()).count(), 1, "the connection passes the gate");
+    send(&mut app, pad("state", 1.0, 0.0));
+    assert!(pads.0.lock().unwrap().is_empty(), "no focus, no gamepad");
+    send(&mut app, json!({ "type": "focus", "on": true }));
+    send(&mut app, pad("state", 0.0, 0.0));
+    send(&mut app, pad("state", 1.0, -1.0));
+    assert_eq!(*pads.0.lock().unwrap(), vec!["south", "up"]);
+    send(&mut app, json!({ "type": "gamepad", "kind": "disconnected", "index": 0 }));
+    app.update();
+    assert_eq!(app.world_mut().query::<&Gamepad>().iter(app.world()).count(), 0);
+}

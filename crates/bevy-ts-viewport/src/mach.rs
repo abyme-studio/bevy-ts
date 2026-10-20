@@ -1,7 +1,9 @@
 //! The viewport's Mach channel, in the framing of abyme's browser host (`ipc/ipc.h`): the engine
 //! checks in one bootstrap name per attach; a viewer looks it up and sends `hello` with a reply
 //! port. Each message is a JSON string and at most one Mach port. The JSON is a JSON-RPC 2.0
-//! notification whose method and params are in `protocol/bevy-ts.openrpc.json`.
+//! notification whose method and params are in `protocol/bevy-ts.openrpc.json`. The engine answers
+//! each `hello` with its own, listing the input types it reads; the last `hello` wins, and the
+//! viewer it replaced is told `replaced` before it is forgotten.
 
 use mach2::bootstrap::{bootstrap_check_in, bootstrap_look_up, bootstrap_port};
 use mach2::kern_return::{KERN_SUCCESS, kern_return_t};
@@ -145,7 +147,8 @@ pub struct Service {
 
 impl Service {
     /// Checks in `name` and receives on a thread of its own, calling `on` for each message.
-    pub fn open(name: &str, mut on: impl FnMut(Incoming) + Send + 'static) -> Result<Service, String> {
+    /// `inputs` are the `input` types the engine reads, which it answers each `hello` with.
+    pub fn open(name: &str, inputs: &'static [&'static str], mut on: impl FnMut(Incoming) + Send + 'static) -> Result<Service, String> {
         let c = CString::new(name).map_err(|e| e.to_string())?;
         let mut port = MACH_PORT_NULL;
         let kr = unsafe { bootstrap_check_in(bootstrap_port, c.as_ptr(), &mut port) };
@@ -185,8 +188,12 @@ impl Service {
                         continue;
                     }
                     match parse(&buf.m.data[..len], carried) {
-                        Incoming::Message { method, port: Some(reply), .. } if method == "hello" => {
+                        Incoming::Message { method, params, port: Some(reply) } if method == "hello" => {
                             let mut viewer = thread.viewer.lock().unwrap();
+                            if *viewer != MACH_PORT_NULL {
+                                let who = params.get("viewer").cloned().unwrap_or_else(|| json!({}));
+                                send_to(*viewer, notification("replaced", json!({ "viewer": who })).as_bytes(), MACH_PORT_NULL, 0);
+                            }
                             Inner::drop_viewer(&mut viewer);
                             *viewer = reply;
                             let mut prev = MACH_PORT_NULL;
@@ -204,6 +211,7 @@ impl Service {
                                     mach_port_deallocate(mach_task_self(), prev);
                                 }
                             }
+                            send_to(reply, notification("hello", json!({ "inputs": inputs })).as_bytes(), MACH_PORT_NULL, 0);
                             drop(viewer);
                             on(Incoming::Hello);
                         }
@@ -272,6 +280,11 @@ pub struct Viewer {
 
 impl Viewer {
     pub fn connect(name: &str) -> Result<Viewer, String> {
+        Viewer::connect_as(name, Value::Null)
+    }
+
+    /// Connects naming the viewer in `hello` (`{ kind, device, mobile }`); `Null` names none.
+    pub fn connect_as(name: &str, who: Value) -> Result<Viewer, String> {
         let c = CString::new(name).map_err(|e| e.to_string())?;
         let mut host = MACH_PORT_NULL;
         let kr = unsafe { bootstrap_look_up(bootstrap_port, c.as_ptr(), &mut host) };
@@ -293,7 +306,7 @@ impl Viewer {
                 }
             })
             .map_err(|e| e.to_string())?;
-        let hello = notification("hello", json!({}));
+        let hello = notification("hello", if who.is_null() { json!({}) } else { json!({ "viewer": who }) });
         let kr = send_to(host, hello.as_bytes(), reply, MACH_MSG_TYPE_MAKE_SEND);
         if kr != KERN_SUCCESS {
             return Err(format!("hello failed: {kr}"));
