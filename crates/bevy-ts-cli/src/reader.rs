@@ -808,9 +808,11 @@ impl Reader {
             if kind != "sceneComponent" {
                 errors.push((sc.span, format!("{}: static scene belongs to a SceneComponent", c.name)));
             }
+            // Absolute, like every other source location the protocol serves (tsx element sources,
+            // level owners), so an editor can open it as is.
             match self.props(sc, scope, &|span| {
                 let (line, column) = at(span);
-                json!({ "file": file.rel, "line": line, "column": column })
+                json!({ "file": file.path.display().to_string(), "line": line, "column": column })
             }) {
                 Ok(props) => {
                     for p in &props {
@@ -1442,8 +1444,8 @@ export const arrow = (q: Query<[Pos]>) => {};
         assert_eq!(
             d["Grunt"]["scene"],
             json!({ "props": [
-                { "name": "at", "type": { "kind": "vec3" }, "optional": true, "default": [0, 0, 0], "location": { "file": "prefab.tsx", "line": 10, "column": 18 } },
-                { "name": "speed", "type": { "kind": "f32" }, "optional": true, "default": 2, "location": { "file": "prefab.tsx", "line": 10, "column": 34 } },
+                { "name": "at", "type": { "kind": "vec3" }, "optional": true, "default": [0, 0, 0], "location": { "file": path.display().to_string(), "line": 10, "column": 18 } },
+                { "name": "speed", "type": { "kind": "f32" }, "optional": true, "default": 2, "location": { "file": path.display().to_string(), "line": 10, "column": 34 } },
             ] })
         );
     }
@@ -1480,9 +1482,9 @@ class Local extends Component { x: f32 = vec3(1, 2).x }
         assert_eq!(
             d["Sign"]["scene"]["props"],
             json!([
-                { "name": "label", "type": { "kind": "string" }, "optional": false, "location": { "file": "src/units/my-tank.ts", "line": 7, "column": 18 } },
-                { "name": "size", "type": { "kind": "f32" }, "optional": true, "default": 2, "location": { "file": "src/units/my-tank.ts", "line": 7, "column": 25 } },
-                { "name": "team", "type": { "kind": "enum", "variants": ["red", "blue"] }, "optional": true, "hasDefault": true, "location": { "file": "src/units/my-tank.ts", "line": 7, "column": 35 } },
+                { "name": "label", "type": { "kind": "string" }, "optional": false, "location": { "file": dir.join("src/units/my-tank.ts").display().to_string(), "line": 7, "column": 18 } },
+                { "name": "size", "type": { "kind": "f32" }, "optional": true, "default": 2, "location": { "file": dir.join("src/units/my-tank.ts").display().to_string(), "line": 7, "column": 25 } },
+                { "name": "team", "type": { "kind": "enum", "variants": ["red", "blue"] }, "optional": true, "hasDefault": true, "location": { "file": dir.join("src/units/my-tank.ts").display().to_string(), "line": 7, "column": 35 } },
             ])
         );
         let err = |c: &str| d[c]["error"].as_str().unwrap_or_default().to_string();

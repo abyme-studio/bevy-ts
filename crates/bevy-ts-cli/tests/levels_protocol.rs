@@ -210,7 +210,8 @@ fn every_level_method_answers_on_contract() {
     let a = ok(&mut app, "bevy-ts/level_apply", Some(json!({ "entity": grunt["entity"], "component": "enemies::Grunt", "field": "@hp", "id": 9 })));
     assert_eq!(a["status"], "tsx", "{a}");
     assert_eq!((a["edit"]["target"].as_str(), a["edit"]["prop"].as_str(), &a["edit"]["value"]), (Some("default"), Some("hp"), &json!(250.0)), "{a}");
-    assert!(a["edit"]["element"]["file"].as_str().unwrap().ends_with("enemies.tsx"), "{a}");
+    let site = a["edit"]["element"]["file"].as_str().unwrap();
+    assert!(site.starts_with('/') && site.ends_with("enemies.tsx"), "an absolute path, like every other location: {a}");
     assert_eq!((a["edit"]["element"]["line"].as_u64(), a["edit"]["element"]["column"].as_u64()), (Some(6), Some(18)), "{a}");
     assert_eq!(a["then"]["ops"], json!([{ "op": "revert_prop", "path": ["GruntB"], "prop": "hp", "field": false }]), "{a}");
     // The editor wrote the default; the batch removes the override.
