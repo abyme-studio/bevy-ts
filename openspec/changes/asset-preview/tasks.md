@@ -11,13 +11,13 @@
 - [ ] 2.3 Orbit, zoom and `f` from the preview viewport's input in Rust; `asset_preview_control` for glTF animations; `asset_preview_close`; 30 s keep-alive after detach
 - [ ] 2.4 Tests: the arena's frames are byte-identical with a preview open; preview entities never reach a TS query or `entities+watch`; an eleventh preview evicts the oldest
 
-## 3. Preview mode
+## 3. Always up
 
-- [ ] 3.1 `bevy-ts preview --assets <dir>`: viewport mode with no entry, asset watcher on, `hello.mode: "preview"`, method-not-found for game methods, nothing rendered with no viewport
-- [ ] 3.2 Test: a file dropped into the asset dir shows in `assets+watch` and previews
+- [ ] 3.1 A failed first generation applies an empty generation and keeps serving the protocol, thumbnails and previews; the next good save applies as a first load
+- [ ] 3.2 Test: `bevy-ts dev --viewport` on a project whose entry throws answers `hello` and `asset_preview`, reports `failed`, and runs the game after the fix
 
 ## 4. Contract, measurement, docs
 
-- [ ] 4.1 Protocol 1.7.0: the new methods and fields, regenerated Rust and TS types, CI diff check
-- [ ] 4.2 Measure on this Mac, for the arena and the same model (`models/grunt.glb` or an equal glTF): the game's frame time (CPU and GPU, p50 and p99) with no preview, with an engine preview attached and visible, attached and hidden, and with abyme's three.js viewer showing the model beside the game; the RSS and GPU memory of each; and preview mode's idle RSS against three.js's added memory in the web view. Record it in `docs/research/asset-preview.md` and get the operator's ruling before landing
+- [ ] 4.1 Protocol 1.7.0: the new methods and fields (`view`, `viewport`, `asset_preview*`), regenerated Rust and TS types, CI diff check
+- [ ] 4.2 Measure on this Mac, for the arena and the same model (`models/grunt.glb` or an equal glTF): the game's frame time (CPU and GPU, p50 and p99) with no preview, with an engine preview attached and visible, attached and hidden, and with abyme's three.js viewer showing the model beside the game; the RSS and GPU memory of each and the engine's idle cost with no viewport visible. Record it in `docs/research/asset-preview.md` and get the operator's ruling before landing
 - [ ] 4.3 Docs: the viewport and asset-preview sections of the README and `docs/`; a note for abyme's `bevy-studio` on switching its glTF view to the engine preview when `hello` reports 1.7

@@ -7,13 +7,12 @@ The viewport (archived change `viewport`, specs `shared-surface`, `edit-mode`, `
 - **Thumbnails are stills.** `asset_thumbnail` already loads a mesh or glTF and renders it offscreen on render layer 30, with a fixed camera and light, then reads one frame back as a PNG (`crates/bevy-ts-viewport/src/assets.rs`).
 - **Editor-only entities.** Editor entities carry `EditorOnly`, render only on layer 31, and are hidden from TS queries, the protocol and `.bsn` writing (`edit-mode`).
 
-abyme's studio shows glTF files with three.js (`bevy-studio` task 5.2). The operator wants the engine to preview instead, with three.js kept until this lands.
+abyme's studio shows glTF files with three.js (`bevy-studio` task 5.2). The operator wants the engine to preview instead, with three.js kept until this lands. The operator also ruled (2026-10-20) that the studio keeps the project's engine running in edit mode while the project is open, as Unity's editor does, so a preview always has an engine.
 
 ## Goals / Non-Goals
 
 **Goals:**
 - A live preview of a mesh or glTF scene rendered by the game's own renderer, orbitable, beside the running game.
-- The same preview with no game running.
 - No change for clients that attach one game viewport.
 
 **Non-Goals:**
@@ -46,27 +45,25 @@ The camera frames the scene's bounds on load. The viewport's input orbits (drag)
 
 `asset_preview_control { preview, play?, animation?, speed? }` plays a glTF animation through an `AnimationPlayer` on the preview root. `asset_preview_close` despawns the scene and frees its layer. Detaching a preview's viewport keeps the scene for 30 seconds, so a pane that closes and reopens does not reload.
 
-Tonemapping, exposure and environment lighting come from the game's main camera when a game runs, so the preview matches the game. In preview mode they are the defaults.
+Tonemapping, exposure and environment lighting come from the game's main camera, so the preview matches the game. With no main camera (an empty world, decision 3) they are the defaults.
 
 - *Beat: a separate `World` or sub-app per preview.* It would be clean isolation, but assets live in the main world's `Assets` and would load twice. The render-layer and marker isolation that thumbnails and edit mode already use is enough.
 
-### 3. Preview mode: the engine with no game
-`bevy-ts preview --assets <dir>` runs the prebuilt engine in viewport mode with no entry module:
+### 3. The engine is always up while a project is open, even when its TS fails
+The studio starts the project's engine in edit mode when the project opens, and keeps it running (operator ruling 2026-10-20). Previews therefore always render in that engine; there is no engine without a game.
 
-- **What it loads:** no TS generation, and the asset root is `<dir>`. Hot reload of assets still works through Bevy's file watcher.
-- **What it serves:** the same protocol port as `dev`, answering `hello` with `mode: "preview"` and `viewport: true`. Methods that need a game (`reload`, `tsx_*`, `level_*`, `viewport_mode`, picking, edits) answer method-not-found.
-- **Who runs it:** abyme starts it as a process. One per asset root is enough, and it idles at no GPU cost with no viewport attached.
+That needs the engine to survive a TS failure on the first load. Today a failed reload keeps the previous generation, but a first load has none. A failed first generation SHALL instead apply an empty generation: no systems, no scenes, an empty world. The engine keeps serving the protocol, previews and thumbnails, reports the error on `reload+watch` and the log, and the next good save applies as a first load.
 
-- *Beat: require a running game to preview.* The asset view is most useful before there is a game, when a modeller drops files in.
-- *Beat: three.js only, no engine preview.* It is what we have, and it does not show the game's renderer.
+- *Beat: preview mode, a game-less engine started only for previews (this change's first draft).* With the engine always up it is a second engine process for nothing, and a second set of loaded assets.
+- *Beat: require a successful load before the studio attaches.* A broken save on opening the project would leave the studio with nothing to show and nowhere to show the error.
 
 ### 4. Protocol 1.7.0
-New methods `asset_preview`, `asset_preview_control` and `asset_preview_close`. The new fields are `view` and `viewport` on viewport methods and `mode` on `hello`, all additions only. A 1.6 client attaching without `view` gets the game viewport as before.
+New methods `asset_preview`, `asset_preview_control` and `asset_preview_close`. The new fields are `view` and `viewport` on viewport methods, all additions only. A 1.6 client attaching without `view` gets the game viewport as before.
 
 ## Risks / Trade-offs
 
 - [The preview's draw runs inside the game's frame, so a GPU-bound game slows by its cost; three.js competes for the GPU outside that frame] → It renders only while attached and visible, paced by its viewer, at the pane's size. Task 4.2 measures the game's frame time and memory with an engine preview against three.js on the same model before landing, and the operator rules on the numbers.
-- [Preview mode costs a whole engine process where three.js reuses the open web view] → It starts only when a preview is asked for with no game running, and task 4.2 measures its idle memory.
+- [An open project always costs one engine process, as in Unity] → Ruled by the operator; the engine renders nothing while no viewport is visible, and task 4.2 records its idle cost.
 - [Ten preview layers] → An eleventh closes the least recently attached; the studio shows one or two at a time.
 - [A preview's lights or environment leaking into the game] → Lights render only on the preview's layer (`RenderLayers` on lights); task 2.4 tests that the game's frames are byte-identical with a preview open.
 - [Assets loaded for a preview stay in memory while the game also uses them] → They are the same handles, so nothing is loaded twice; closing a preview drops its handles.
@@ -74,6 +71,12 @@ New methods `asset_preview`, `asset_preview_control` and `asset_preview_close`. 
 ## Migration Plan
 
 None. Additions only, and clients without `view` are unchanged. Protocol 1.7.0.
+
+## Operator rulings
+
+- 2026-10-20: the engine previews assets itself, with three.js kept until this lands. The studio
+  keeps the project's engine running in edit mode while the project is open, as Unity's editor
+  does; preview mode is dropped; the engine survives a failed first load.
 
 ## Open Questions
 
