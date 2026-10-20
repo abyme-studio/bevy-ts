@@ -206,3 +206,24 @@ pub(crate) fn gate_gamepads(shared: Res<SharedRes>, mut raw: ResMut<Messages<bev
     let kept: Vec<_> = raw.drain().filter(|e| matches!(e, RawGamepadEvent::Connection(_))).collect();
     raw.write_batch(kept);
 }
+
+#[cfg(test)]
+mod surface_shapes {
+    use super::ViewportInput;
+    use serde_json::json;
+
+    /// The surface protocol's events, shared with abyme's browser host (protocol 1.9): the engine
+    /// accepts the fields it may ignore instead of refusing the event as malformed.
+    #[test]
+    fn accepts_the_surface_protocols_optional_fields() {
+        for e in [
+            json!({ "type": "pointer", "kind": "move", "x": 10.0, "y": 20.0, "buttons": ["left", "back"],
+                    "mods": { "shift": true, "ctrl": false, "alt": false, "meta": false, "caps": true } }),
+            json!({ "type": "gesture", "kind": "pinch", "delta": 0.1, "x": 5.0, "y": 6.0, "phase": "moved" }),
+            json!({ "type": "wheel", "dx": 0.0, "dy": -3.0, "unit": "pixel", "phase": "started", "momentum": false,
+                    "mods": { "caps": false } }),
+        ] {
+            serde_json::from_value::<ViewportInput>(e.clone()).unwrap_or_else(|err| panic!("{e}: {err}"));
+        }
+    }
+}

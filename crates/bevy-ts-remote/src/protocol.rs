@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.8.0";
+pub const VERSION: &str = "1.9.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1244,8 +1244,16 @@ pub struct GestureEvent {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub delta: ::std::option::Option<f64>,
     pub kind: GestureEventKind,
+    ///As WheelEvent.phase (1.9). The engine may ignore it.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub phase: ::std::option::Option<GestureEventPhase>,
     #[serde(rename = "type")]
     pub type_: GestureEventType,
+    ///Points from the hole's top left (1.9).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub x: ::std::option::Option<f64>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub y: ::std::option::Option<f64>,
 }
 ///`GestureEventKind`
 #[derive(
@@ -1299,6 +1307,69 @@ impl ::std::convert::TryFrom<&str> for GestureEventKind {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String> for GestureEventKind {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///As WheelEvent.phase (1.9). The engine may ignore it.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum GestureEventPhase {
+    #[serde(rename = "started")]
+    Started,
+    #[serde(rename = "moved")]
+    Moved,
+    #[serde(rename = "ended")]
+    Ended,
+    #[serde(rename = "cancelled")]
+    Cancelled,
+}
+impl ::std::fmt::Display for GestureEventPhase {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Started => f.write_str("started"),
+            Self::Moved => f.write_str("moved"),
+            Self::Ended => f.write_str("ended"),
+            Self::Cancelled => f.write_str("cancelled"),
+        }
+    }
+}
+impl ::std::str::FromStr for GestureEventPhase {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "started" => Ok(Self::Started),
+            "moved" => Ok(Self::Moved),
+            "ended" => Ok(Self::Ended),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for GestureEventPhase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GestureEventPhase {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
@@ -2542,6 +2613,9 @@ pub struct Migration {
 pub struct Modifiers {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub alt: ::std::option::Option<bool>,
+    ///Caps Lock on (1.9). The engine may ignore it.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub caps: ::std::option::Option<bool>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub ctrl: ::std::option::Option<bool>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -2608,6 +2682,9 @@ pub struct PickHit {
 pub struct PointerEvent {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub button: ::std::option::Option<PointerEventButton>,
+    ///Buttons held during the event (1.9). The engine may ignore it.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub buttons: ::std::vec::Vec<PointerEventButtonsItem>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub clicks: ::std::option::Option<u32>,
     ///Raw motion, kept while the cursor is locked.
@@ -2684,6 +2761,73 @@ impl ::std::convert::TryFrom<&str> for PointerEventButton {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String> for PointerEventButton {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`PointerEventButtonsItem`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum PointerEventButtonsItem {
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "right")]
+    Right,
+    #[serde(rename = "middle")]
+    Middle,
+    #[serde(rename = "back")]
+    Back,
+    #[serde(rename = "forward")]
+    Forward,
+}
+impl ::std::fmt::Display for PointerEventButtonsItem {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Left => f.write_str("left"),
+            Self::Right => f.write_str("right"),
+            Self::Middle => f.write_str("middle"),
+            Self::Back => f.write_str("back"),
+            Self::Forward => f.write_str("forward"),
+        }
+    }
+}
+impl ::std::str::FromStr for PointerEventButtonsItem {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "left" => Ok(Self::Left),
+            "right" => Ok(Self::Right),
+            "middle" => Ok(Self::Middle),
+            "back" => Ok(Self::Back),
+            "forward" => Ok(Self::Forward),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for PointerEventButtonsItem {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PointerEventButtonsItem {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,
