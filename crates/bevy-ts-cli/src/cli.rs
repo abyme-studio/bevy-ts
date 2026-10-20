@@ -183,6 +183,9 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(extra);
     if let Some(root) = assets {
         app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
+        // The asset list, thumbnails and previews read the project's assets, not the binary's.
+        #[cfg(target_os = "macos")]
+        app.insert_resource(bevy_ts_viewport::assets::AssetRoot(root.to_path_buf()));
     }
     app
 }
