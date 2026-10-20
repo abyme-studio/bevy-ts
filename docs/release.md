@@ -6,25 +6,31 @@ installed as `bevy-ts`'s optional dependencies the way esbuild and Biome ship. P
 under the `next` dist-tag, so `npm i bevy-ts` installs nothing until a stable release; use
 `npm i bevy-ts@next`.
 
-## First publish, by hand, from the operator's Mac
+## Releasing, from CI
 
-The packages do not exist on npm yet, so trusted publishing cannot be configured; the first version
-is published by hand, on the operator's go.
+Push a tag: `git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1`. The `release` workflow
+builds each platform's engine on its native runner, publishes the platform packages with
+provenance through npm trusted publishing (OIDC, no token, no 2FA), then publishes `bevy-ts`
+listing only the platforms now on npm at that version. A version with a `-` goes out under `next`,
+one without under `latest`. Re-running is safe: a package already on npm at the version is skipped.
 
-1. The operator creates the npm org `bevy-ts` and runs `npm login`.
-2. `node scripts/set-npm-version.mjs 0.1.0-alpha.0 darwin-arm64` sets every version and lists only
-   `darwin-arm64` in `bevy-ts`'s optional dependencies, the one platform this Mac builds.
-3. `scripts/pack-npm.sh` builds the release engine and packs `@bevy-ts/darwin-arm64` and `bevy-ts`
-   into `dist/npm`. Inspect them (`tar tzf`).
-4. `npm publish dist/npm/bevy-ts-darwin-arm64-0.1.0-alpha.0.tgz --access public --tag next`, then
-   `npm publish dist/npm/bevy-ts-0.1.0-alpha.0.tgz --access public --tag next`.
-5. On npmjs.com, for each published package: Settings > Trusted publishing > GitHub Actions,
-   repository `abyme-studio/bevy-ts`, workflow `release.yml`.
-6. Each new platform package must also be published once by hand, or with an `NPM_TOKEN` secret in
-   the repository, before trusted publishing can take it over.
+Dry run: Actions > release > Run workflow, with a version and `publish` unticked.
 
-## Later releases, from CI
+macOS engines are built with `MACOSX_DEPLOYMENT_TARGET=14.0`, the oldest macOS Apple still patches.
 
-Actions > release > Run workflow, with the version (for example `0.1.0-alpha.1`), the dist-tag and
-`publish` ticked; unticked is a dry run. Each platform builds on its own native runner. The ones that
-build are published with provenance, then `bevy-ts` is published listing only those.
+## A package new to npm
+
+npm sets a trusted publisher only on a package that exists, so a platform package's first version
+is published once by hand on the operator's go; until then the workflow warns, leaves that platform
+out of `bevy-ts`, and carries on. Then, with npm >= 11.15 and the operator's 2FA:
+
+```sh
+npm trust github @bevy-ts/<platform> --repo abyme-studio/bevy-ts --file release.yml --allow-publish --yes
+```
+
+or on npmjs.com: the package > Settings > Trusted publishing > GitHub Actions, repository
+`abyme-studio/bevy-ts`, workflow `release.yml`. `npm trust list <package>` shows what is set.
+
+`bevy-ts@0.1.0-alpha.0` was published by hand from the operator's Mac. `@bevy-ts/darwin-arm64`
+exists on npm without a version (that hand publish did not complete), which is enough for a
+trusted publisher; the workflow publishes its first version.

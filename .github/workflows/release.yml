@@ -1,12 +1,18 @@
 name: release
-# Builds the engine on each platform's native runner, publishes the platform packages that built,
-# then bevy-ts listing only those in optionalDependencies. Run by hand (Actions > release > Run).
-# Dry run by default: nothing reaches npm until `publish` is ticked.
+# Builds the engine on each platform's native runner, publishes the platform packages, then bevy-ts
+# listing in optionalDependencies only the platforms that are on npm at this version.
 #
-# Auth: npm trusted publishing (OIDC, `id-token: write`) once each package exists on npm and has
-# this repository and workflow set as its trusted publisher. Until then, an NPM_TOKEN secret is used.
-# The first publish of each package is by hand from the operator's Mac (docs/release.md).
+# Release: push a tag `v<version>` (git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1).
+# A pre-release version goes out under dist-tag `next`, a stable one under `latest`.
+# Dry run: Actions > release > Run workflow; nothing reaches npm unless `publish` is ticked.
+#
+# Auth: npm trusted publishing (OIDC). Each package has abyme-studio/bevy-ts, release.yml as its
+# trusted publisher; there is no npm token. A package that does not exist on npm yet cannot have a
+# trusted publisher, so its publish fails here and it is left out of bevy-ts (docs/release.md).
+# Re-running is safe: a package already on npm at this version is skipped, not republished.
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
@@ -28,6 +34,10 @@ jobs:
   build:
     name: engine ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
+    env:
+      # Oldest macOS Apple still patches (14 Sonoma, beside 15 and 26). Without it the C deps build
+      # for the runner's SDK (blake3_neon came out at 26.5) and the binary claims 11.0 it cannot run.
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
     strategy:
       fail-fast: false
       matrix:
@@ -66,6 +76,22 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: npm with trusted publishing (>= 11.5.1)
+        run: npm install -g npm@^11.5.1 && npm --version
+      - name: Version, dist-tag and whether to publish
+        id: release
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then
+            version="${GITHUB_REF_NAME#v}"
+            case "$version" in *-*) tag=next ;; *) tag=latest ;; esac
+            publish=true
+          else
+            version="${{ inputs.version }}"; tag="${{ inputs.tag }}"; publish="${{ inputs.publish }}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "bevy-ts $version under $tag, publish=$publish"
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -76,22 +102,41 @@ jobs:
           [ -n "$list" ] || { echo "no engine built" >&2; exit 1; }
           echo "platforms=$list" >> "$GITHUB_OUTPUT"
           echo "Built: $list"
-      - name: Set versions and optionalDependencies
-        run: node scripts/set-npm-version.mjs "${{ inputs.version }}" "${{ steps.built.outputs.platforms }}"
       - name: Publish the platform packages
+        id: platforms
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          PUBLISH: ${{ steps.release.outputs.publish }}
         run: |
-          flags="--provenance --access public --tag ${{ inputs.tag }}"
-          [ "${{ inputs.publish }}" = "true" ] || flags="$flags --dry-run"
+          node scripts/set-npm-version.mjs "$VERSION" "${{ steps.built.outputs.platforms }}"
+          flags="--provenance --access public --tag $TAG"
+          [ "$PUBLISH" = true ] || flags="$flags --dry-run"
+          ok=()
           for p in $(echo "${{ steps.built.outputs.platforms }}" | tr , ' '); do
+            if [ -n "$(npm view "@bevy-ts/$p@$VERSION" version 2>/dev/null)" ]; then
+              echo "@bevy-ts/$p@$VERSION is already on npm; skipped"; ok+=("$p"); continue
+            fi
+            mkdir -p packages/platforms/$p/bin
             install -m 755 artifacts/engine-$p/* packages/platforms/$p/bin/
-            (cd packages/platforms/$p && npm publish $flags)
+            if (cd packages/platforms/$p && npm publish $flags); then
+              ok+=("$p")
+            else
+              echo "::warning::@bevy-ts/$p@$VERSION did not publish (no trusted publisher yet?); left out of bevy-ts"
+            fi
           done
+          [ ${#ok[@]} -gt 0 ] || { echo "no platform package published" >&2; exit 1; }
+          echo "published=$(IFS=,; echo "${ok[*]}")" >> "$GITHUB_OUTPUT"
       - name: Publish bevy-ts
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          PUBLISH: ${{ steps.release.outputs.publish }}
         run: |
-          flags="--provenance --access public --tag ${{ inputs.tag }}"
-          [ "${{ inputs.publish }}" = "true" ] || flags="$flags --dry-run"
+          if [ -n "$(npm view "bevy-ts@$VERSION" version 2>/dev/null)" ]; then
+            echo "bevy-ts@$VERSION is already on npm; skipped"; exit 0
+          fi
+          node scripts/set-npm-version.mjs "$VERSION" "${{ steps.platforms.outputs.published }}"
+          flags="--provenance --access public --tag $TAG"
+          [ "$PUBLISH" = true ] || flags="$flags --dry-run"
           cd packages/bevy-ts && npm publish $flags
