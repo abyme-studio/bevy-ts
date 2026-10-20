@@ -47,6 +47,10 @@ export default {
   "viewport-latency": { cmd: "SPIKE_PRESSES=200 cargo test --release -p bevy-ts-viewport --test spike key_to_pixels -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-latency.log | tail -8" },
   "viewport-spike": { cmd: "SPIKE_SECS=60 cargo test --release -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },
   "viewport-gate": { cmd: "scripts/viewport-gate.sh" },
+  // docs/research/viewport-pacing.md: the arena in edit mode at 120 Hz ticks, with the per-frame trace.
+  // The same, alternating the engine's threads at default QoS (0) and user-interactive (1), so both see one machine load.
+  "viewport-pacing-ab": { cmd: "bash -c 'cargo test --release -p bevy-ts-cli --test viewport_pacing --no-run 2>/dev/null; for q in 0 1 0 1 0 1; do echo qos=$q; BEVY_TS_VIEWPORT_QOS=$q cargo test --release -p bevy-ts-cli --test viewport_pacing -- --ignored --nocapture 2>&1 | grep -E fps; uptime; done 2>&1 | tee target/viewport-pacing-ab.log'" },
+  "viewport-pacing": { cmd: "BEVY_TS_VIEWPORT_TRACE=$PWD/target/viewport-pacing.trace PACING_SAMPLE=$PWD/target/viewport-pacing.sample cargo test --release -p bevy-ts-cli --test viewport_pacing -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-pacing.log | grep -E '^engine|fps|^stats|test |panicked|assert|^thread' | tail -20" },
   // Change asset-preview: several viewports and preview scenes.
   // Change asset-preview, task 4.2; `preview-bench-threejs` runs while a three.js viewer shows the model.
   "preview-bench": { cmd: "PREVIEW_MODEL=$HOME/dev/spikes/mesh-conform/inputs/alicia.glb scripts/preview-bench.sh 2>&1 | tee -a target/preview-bench.log" },

@@ -30,6 +30,8 @@ pub mod runner;
 pub mod shared;
 #[cfg(target_os = "macos")]
 pub mod surface;
+#[cfg(target_os = "macos")]
+mod trace;
 
 #[cfg(target_os = "macos")]
 pub use ring::{UpdateCount, ViewportWindow, VirtualWindow};

@@ -17,7 +17,7 @@ const HIDDEN_HZ: f64 = 60.0;
 const IDLE_POLL: Duration = Duration::from_millis(100);
 
 /// Why the runner updates now.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum Wake {
     Tick,
     Timer,
@@ -70,11 +70,13 @@ pub fn runner(mut app: App) -> AppExit {
         } else {
             Duration::from_secs_f64(1.0 / HIDDEN_HZ)
         };
-        wait(&shared, last + period);
+        let why = wait(&shared, last + period);
         last = Instant::now();
         shared.hub.wake.lock().unwrap().updating = true;
         let started = Instant::now();
+        crate::trace::mark("update", why as u64, 0);
         app.update();
+        crate::trace::mark("updated", 0, 0);
         shared.stats.add_update(started.elapsed().as_nanos() as u64);
         shared.hub.wake.lock().unwrap().updating = false;
         if let Some(exit) = app.should_exit() {

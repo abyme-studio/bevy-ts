@@ -158,8 +158,12 @@ fn prepare_one(ring: &mut RingState, shared: &Shared, device: &RenderDevice, w: 
                         ring.seq += 1;
                         ring.this_frame = Some((current.number, i, w, h, ring.seq, update));
                         slot_view = Some(slots[i].view.clone());
+                        crate::trace::mark("slot", i as u64, update);
                     }
-                    None => shared.stats.skipped(),
+                    None => {
+                        crate::trace::mark("skip", update, 0);
+                        shared.stats.skipped()
+                    }
                 }
             }
         }
@@ -220,6 +224,7 @@ fn announce(rings: Res<Rings>, queue: Res<RenderQueue>, poller: Res<Poller>, dev
     for ring in rings.0.values() {
         let (Some((number, slot, w, h, seq, update)), Some(shared)) = (ring.this_frame, ring.shared.clone()) else { continue };
         shared.mark_pending(slot);
+        crate::trace::mark("submit", seq, update);
         let submitted = std::time::Instant::now();
         queue.on_submitted_work_done(move || {
             shared.announce(number, slot, submitted, update, json!({ "ring": number, "slot": slot, "seq": seq, "w": w, "h": h }));

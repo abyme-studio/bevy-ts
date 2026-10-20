@@ -268,6 +268,7 @@ impl Shared {
                     }
                     _ => {}
                 }
+                crate::trace::mark("msg", 0, 0);
                 let _ = tx.send((Instant::now(), m));
                 me.poke();
             }
@@ -345,6 +346,7 @@ impl Shared {
         }
         let mut w = self.hub.wake.lock().unwrap();
         w.last_tick = Some(std::time::Instant::now());
+        crate::trace::mark("tick", w.updating as u64, w.tick as u64);
         if w.updating || w.tick {
             self.stats.dropped_ticks.fetch_add(1, Ordering::Relaxed);
         } else {
@@ -467,6 +469,7 @@ impl Shared {
             s.announced_ring = Some(s.announced_ring.map_or(ring, |r| r.max(ring)));
         }
         params["ts"] = json!(now_ns());
+        crate::trace::mark("done", params["seq"].as_u64().unwrap_or(0), update);
         self.stats.frames.fetch_add(1, Ordering::Relaxed);
         self.send("frame", params);
         self.input_shown(update);
