@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds the release engine for this machine, copies it into its platform package, and packs
-# both npm packages into dist/npm. Publishing is a separate, deliberate step.
+# both npm packages into dist/npm. Publishing is a separate, deliberate step (docs/release.md).
+# Set versions and optionalDependencies first: node scripts/set-npm-version.mjs <version> <platform>.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 case "$(uname -s)-$(uname -m)" in

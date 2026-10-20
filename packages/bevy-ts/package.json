@@ -1,11 +1,12 @@
 {
   "name": "bevy-ts",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.0",
   "description": "TypeScript for Bevy: components, systems and hot reload without recompiling Rust",
   "license": "MIT OR Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rjmathieson/bevy-ts"
+    "url": "git+https://github.com/abyme-studio/bevy-ts.git",
+    "directory": "packages/bevy-ts"
   },
   "type": "module",
   "bin": {
@@ -53,11 +54,11 @@
     "plugins"
   ],
   "optionalDependencies": {
-    "@bevy-ts/darwin-arm64": "0.1.0",
-    "@bevy-ts/darwin-x64": "0.1.0",
-    "@bevy-ts/linux-arm64": "0.1.0",
-    "@bevy-ts/linux-x64": "0.1.0",
-    "@bevy-ts/win32-x64": "0.1.0"
+    "@bevy-ts/darwin-arm64": "0.1.0-alpha.0",
+    "@bevy-ts/darwin-x64": "0.1.0-alpha.0",
+    "@bevy-ts/linux-arm64": "0.1.0-alpha.0",
+    "@bevy-ts/linux-x64": "0.1.0-alpha.0",
+    "@bevy-ts/win32-x64": "0.1.0-alpha.0"
   },
   "devDependencies": {
     "json-schema-to-typescript": "^15.0.4",
@@ -67,5 +68,9 @@
   "scripts": {
     "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p test",
     "test": "vitest run --config test/vitest/vitest.config.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
   }
 }

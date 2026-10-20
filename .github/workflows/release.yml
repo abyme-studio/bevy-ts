@@ -1,0 +1,97 @@
+name: release
+# Builds the engine on each platform's native runner, publishes the platform packages that built,
+# then bevy-ts listing only those in optionalDependencies. Run by hand (Actions > release > Run).
+# Dry run by default: nothing reaches npm until `publish` is ticked.
+#
+# Auth: npm trusted publishing (OIDC, `id-token: write`) once each package exists on npm and has
+# this repository and workflow set as its trusted publisher. Until then, an NPM_TOKEN secret is used.
+# The first publish of each package is by hand from the operator's Mac (docs/release.md).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version for every package (e.g. 0.1.0-alpha.1)
+        required: true
+      tag:
+        description: npm dist-tag
+        default: next
+      publish:
+        description: Publish to npm (unticked is a dry run)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    name: engine ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: darwin-arm64, runner: macos-15 }
+          - { platform: darwin-x64, runner: macos-15-intel }
+          - { platform: linux-x64, runner: ubuntu-24.04 }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm }
+          - { platform: win32-x64, runner: windows-2025 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux build dependencies (Bevy)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-config
+      - name: Build the release engine
+        run: cargo build --release -p bevy-ts-cli
+      - name: Stage the binary
+        shell: bash
+        run: |
+          exe=bevy-ts; [[ "${{ matrix.platform }}" == win32-* ]] && exe=bevy-ts.exe
+          mkdir -p out && cp "target/release/$exe" out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-${{ matrix.platform }}
+          path: out/
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Which platforms built
+        id: built
+        run: |
+          list=$(ls artifacts | sed -n 's/^engine-//p' | paste -sd, -)
+          [ -n "$list" ] || { echo "no engine built" >&2; exit 1; }
+          echo "platforms=$list" >> "$GITHUB_OUTPUT"
+          echo "Built: $list"
+      - name: Set versions and optionalDependencies
+        run: node scripts/set-npm-version.mjs "${{ inputs.version }}" "${{ steps.built.outputs.platforms }}"
+      - name: Publish the platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          flags="--provenance --access public --tag ${{ inputs.tag }}"
+          [ "${{ inputs.publish }}" = "true" ] || flags="$flags --dry-run"
+          for p in $(echo "${{ steps.built.outputs.platforms }}" | tr , ' '); do
+            install -m 755 artifacts/engine-$p/* packages/platforms/$p/bin/
+            (cd packages/platforms/$p && npm publish $flags)
+          done
+      - name: Publish bevy-ts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          flags="--provenance --access public --tag ${{ inputs.tag }}"
+          [ "${{ inputs.publish }}" = "true" ] || flags="$flags --dry-run"
+          cd packages/bevy-ts && npm publish $flags
