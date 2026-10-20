@@ -47,6 +47,9 @@ export default {
   "viewport-latency": { cmd: "SPIKE_PRESSES=200 cargo test --release -p bevy-ts-viewport --test spike key_to_pixels -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-latency.log | tail -8" },
   "viewport-spike": { cmd: "SPIKE_SECS=60 cargo test --release -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },
   "viewport-gate": { cmd: "scripts/viewport-gate.sh" },
+  // Change asset-preview: several viewports and preview scenes.
+  "viewport-preview-cli": { cmd: "cargo test -p bevy-ts-cli --test viewport_preview -- --nocapture 2>&1 | grep -v ld64 | tee target/viewport-preview-cli.log | grep -E 'test |panicked|left|right|assert|^thread|error' | tail -30" },
+  "viewport-preview": { cmd: "cargo test -p bevy-ts-viewport --test preview -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-preview.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -40" },
   // The same gate for levels task groups.
   "levels-bench": { cmd: "cargo test --release -p bevy-ts-cli --test levels_bench -- --ignored --nocapture 2>&1 | tee target/levels-bench.log | grep -E '^\\||test result|panicked'" },
   "levels-walks": { cmd: "cargo test --release -p bevy-ts-cli --test levels_walk --test arena_walk -- --nocapture --test-threads 1 2>&1 | grep -vE 'ld64|INFO|WARN|^\\s+\\||^\\s+=' | tee target/levels-walks.log | tail -60" },

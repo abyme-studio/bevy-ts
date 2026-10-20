@@ -1,16 +1,18 @@
-//! The render world's half: keep a ring for the virtual window's size, pick a free slot, feed it
+//! The render world's half: keep a ring per viewport window for its size, pick a free slot, feed it
 //! to Bevy as the window's swap chain, and announce it once the GPU has finished it.
 
 use crate::shared::{Shared, SharedRes, Target};
 use crate::surface::{self, FORMAT, SLOTS, Slot, Surface};
 use bevy::prelude::*;
 use bevy::render::camera::extract_cameras;
+use bevy::render::render_resource::TextureView;
 use bevy::render::renderer::{RenderDevice, RenderQueue};
 use bevy::render::sync_world::RenderEntity;
 use bevy::render::view::ExtractedWindow;
 use bevy::render::{ExtractSchedule, MainWorld, Render, RenderApp, RenderSystems};
 use bevy::window::PresentMode;
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel};
 
@@ -22,6 +24,11 @@ pub struct UpdateCount(pub u64);
 /// ring.
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct VirtualWindow;
+
+/// A window that stands for another viewport (a preview's): its swap chain that viewport's ring.
+/// It is never primary, and nothing writes window input to it.
+#[derive(Component, Clone)]
+pub struct ViewportWindow(pub Arc<Shared>);
 
 /// A ring: three surfaces of one allocation, and textures over their top-left `w` by `h`.
 struct Ring {
@@ -37,8 +44,11 @@ impl Ring {
     }
 }
 
-/// The render world's ring state.
+/// The render world's ring state, per viewport window (by main-world entity).
 #[derive(Resource, Default)]
+struct Rings(HashMap<Entity, RingState>);
+
+#[derive(Default)]
 struct RingState {
     current: Option<Ring>,
     /// The previous ring, released once the current ring's first frame is announced.
@@ -47,6 +57,8 @@ struct RingState {
     /// The slot rendered this frame: (ring, slot, w, h, seq, main-world update).
     this_frame: Option<(u32, usize, u32, u32, u64, u64)>,
     seq: u64,
+    /// The viewport the ring belongs to.
+    shared: Option<Arc<Shared>>,
 }
 
 /// Wakes the thread that polls the device, so `on_submitted_work_done` fires as soon as the GPU
@@ -58,7 +70,7 @@ pub(crate) fn build_render(app: &mut App, shared: Arc<Shared>) {
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
     render_app
         .insert_resource(SharedRes(shared))
-        .init_resource::<RingState>()
+        .init_resource::<Rings>()
         .add_systems(ExtractSchedule, prepare_slot.before(extract_cameras))
         .add_systems(Render, announce.in_set(RenderSystems::Cleanup));
 }
@@ -79,25 +91,37 @@ pub(crate) fn finish_render(app: &mut App) {
     render_app.insert_resource(Poller(tx));
 }
 
-/// Before cameras are extracted: give the virtual window an `ExtractedWindow` whose swap chain is
-/// a free slot of a ring of the window's size, or none when nothing should render.
-type VirtualWindowQuery = QueryState<(RenderEntity, &'static Window), With<VirtualWindow>>;
+/// Before cameras are extracted: give each viewport window an `ExtractedWindow` whose swap chain
+/// is a free slot of a ring of the window's size, or none when nothing should render.
+type ViewportWindowQuery = QueryState<(Entity, RenderEntity, &'static Window, Option<&'static ViewportWindow>), Or<(With<VirtualWindow>, With<ViewportWindow>)>>;
 
-fn prepare_slot(world: &mut World, mut query: Local<Option<VirtualWindowQuery>>) {
-    let shared = world.resource::<SharedRes>().0.clone();
+fn prepare_slot(world: &mut World, mut query: Local<Option<ViewportWindowQuery>>) {
+    let game = world.resource::<SharedRes>().0.clone();
     let (found, update) = world.resource_scope(|_, mut main: Mut<MainWorld>| {
         let q = query.get_or_insert_with(|| main.query_filtered());
-        let found = q.single(&main).ok().map(|(e, w)| (e, w.resolution.physical_width().max(1), w.resolution.physical_height().max(1)));
+        let found: Vec<_> = q
+            .iter(&main)
+            .map(|(e, re, w, v)| (e, re, w.resolution.physical_width().max(1), w.resolution.physical_height().max(1), v.map_or_else(|| game.clone(), |v| v.0.clone())))
+            .collect();
         (found, main.get_resource::<UpdateCount>().map_or(0, |u| u.0))
     });
-    let Some((entity, w, h)) = found else { return };
-    world.resource_mut::<RingState>().this_frame = None;
+    // A viewport window that is gone takes its ring with it.
+    world.resource_mut::<Rings>().0.retain(|e, _| found.iter().any(|f| f.0 == *e));
+    for (main, entity, w, h, shared) in found {
+        let mut rings = world.resource_mut::<Rings>();
+        let mut ring = std::mem::take(rings.0.entry(main).or_default());
+        let device = world.resource::<RenderDevice>().clone();
+        let slot_view = prepare_one(&mut ring, &shared, &device, w, h, update);
+        ring.shared = Some(shared.clone());
+        world.resource_mut::<Rings>().0.insert(main, ring);
+        extract_window(world, entity, w, h, slot_view, &shared);
+    }
+}
 
+fn prepare_one(ring: &mut RingState, shared: &Shared, device: &RenderDevice, w: u32, h: u32, update: u64) -> Option<TextureView> {
+    ring.this_frame = None;
     let mut slot_view = None;
     if shared.should_render() {
-        let device = world.resource::<RenderDevice>().clone();
-        let mut ring = world.resource_mut::<RingState>();
-        let ring = &mut *ring;
         // A ring of the rounded size.
         let want = surface::round_up(w, h);
         if ring.current.as_ref().is_none_or(|r| r.alloc() != want) {
@@ -124,7 +148,7 @@ fn prepare_slot(world: &mut World, mut query: Local<Option<VirtualWindowQuery>>)
                 }
             }
             if current.slots.as_ref().is_none_or(|(size, _)| *size != (w, h)) {
-                let slots: Option<Vec<_>> = current.surfaces.iter().map(|s| surface::make_slot(&device, s, w, h)).collect();
+                let slots: Option<Vec<_>> = current.surfaces.iter().map(|s| surface::make_slot(device, s, w, h)).collect();
                 current.slots = slots.map(|s| ((w, h), s));
             }
             if let Some((_, slots)) = &current.slots {
@@ -143,16 +167,16 @@ fn prepare_slot(world: &mut World, mut query: Local<Option<VirtualWindowQuery>>)
         if ring.old.is_some() && shared.announced_ring().is_some_and(|n| ring.current.as_ref().is_some_and(|c| c.number == n)) {
             ring.old = None;
         }
-    } else {
-        let mut ring = world.resource_mut::<RingState>();
+    } else if !shared.attached() && ring.current.is_some() {
         // Detached: let the surfaces go.
-        if !shared.attached() && ring.current.is_some() {
-            ring.current = None;
-            ring.old = None;
-            shared.set_ring_info(None);
-        }
+        ring.current = None;
+        ring.old = None;
+        shared.set_ring_info(None);
     }
+    slot_view
+}
 
+fn extract_window(world: &mut World, entity: Entity, w: u32, h: u32, slot_view: Option<TextureView>, shared: &Shared) {
     let has_view = slot_view.is_some();
     let mut e = world.entity_mut(entity);
     match e.get_mut::<ExtractedWindow>() {
@@ -182,14 +206,27 @@ fn prepare_slot(world: &mut World, mut query: Local<Option<VirtualWindowQuery>>)
     shared.set_target(if has_view { Target::Rendering } else { Target::Idle });
 }
 
-/// After the frame's submit: announce the slot once the GPU has completed it.
-fn announce(ring: Res<RingState>, queue: Res<RenderQueue>, shared: Res<SharedRes>, poller: Res<Poller>) {
-    let Some((number, slot, w, h, seq, update)) = ring.this_frame else { return };
-    let shared = shared.0.clone();
-    shared.mark_pending(slot);
-    let submitted = std::time::Instant::now();
-    queue.on_submitted_work_done(move || {
-        shared.announce(number, slot, submitted, update, json!({ "ring": number, "slot": slot, "seq": seq, "w": w, "h": h }));
-    });
-    let _ = poller.0.send(());
+/// After the frame's submit: announce each slot rendered once the GPU has completed it.
+fn announce(rings: Res<Rings>, queue: Res<RenderQueue>, poller: Res<Poller>, device: Res<RenderDevice>, game: Res<SharedRes>, mut n: Local<u32>) {
+    // The device's allocation, every 30 frames, for viewport_stats.
+    *n += 1;
+    if *n % 30 == 1
+        && let Some(hal) = unsafe { device.wgpu_device().as_hal::<wgpu_hal::api::Metal>() }
+    {
+        use objc2_metal::MTLDevice;
+        game.0.hub.gpu_allocated.store(hal.raw_device().currentAllocatedSize() as u64, std::sync::atomic::Ordering::Relaxed);
+    }
+    let mut any = false;
+    for ring in rings.0.values() {
+        let (Some((number, slot, w, h, seq, update)), Some(shared)) = (ring.this_frame, ring.shared.clone()) else { continue };
+        shared.mark_pending(slot);
+        let submitted = std::time::Instant::now();
+        queue.on_submitted_work_done(move || {
+            shared.announce(number, slot, submitted, update, json!({ "ring": number, "slot": slot, "seq": seq, "w": w, "h": h }));
+        });
+        any = true;
+    }
+    if any {
+        let _ = poller.0.send(());
+    }
 }

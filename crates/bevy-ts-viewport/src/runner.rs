@@ -1,17 +1,16 @@
 //! The viewport runner: no winit, no window. While a viewer is attached and visible, one update
-//! per `tick` from the viewer's display link, paced at the attach's `hz` before the first tick or
+//! per `tick` from the leading viewer's display link (the game's while it is visible, else the
+//! first visible preview's), paced at the attach's `hz` before the first tick or
 //! when ticks stop for 100 ms. Hidden or detached, play keeps updating at 60 Hz without rendering
 //! and edit updates only when something arrives (input, a channel message) or every 100 ms to
 //! serve protocol requests and reloads.
 
-use crate::shared::{Shared, SharedRes};
+use crate::shared::{Shared, SharedRes, TICK_TIMEOUT};
 use bevy::app::{AppExit, PluginsState};
 use bevy::prelude::*;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Ticks older than this no longer pace frames.
-const TICK_TIMEOUT: Duration = Duration::from_millis(100);
 /// Hidden play mode's rate.
 const HIDDEN_HZ: f64 = 60.0;
 /// How often an idle edit mode wakes to serve protocol requests.
@@ -26,7 +25,7 @@ enum Wake {
 }
 
 fn wait(shared: &Shared, next_timer: Instant) -> Wake {
-    let mut w = shared.wake.lock().unwrap();
+    let mut w = shared.hub.wake.lock().unwrap();
     loop {
         if w.tick {
             w.tick = false;
@@ -34,8 +33,9 @@ fn wait(shared: &Shared, next_timer: Instant) -> Wake {
             return Wake::Tick;
         }
         let now = Instant::now();
-        let ticking = w.last_tick.is_some_and(|t| now.duration_since(t) < TICK_TIMEOUT) && shared.should_render();
-        if w.other && (!ticking || !shared.should_render()) {
+        let rendering = shared.any_rendering();
+        let ticking = w.last_tick.is_some_and(|t| now.duration_since(t) < TICK_TIMEOUT) && rendering;
+        if w.other && !ticking {
             w.other = false;
             return Wake::Message;
         }
@@ -47,7 +47,7 @@ fn wait(shared: &Shared, next_timer: Instant) -> Wake {
             }
             continue;
         }
-        w = shared.wake_cv.wait_timeout(w, deadline - now).unwrap().0;
+        w = shared.hub.wake_cv.wait_timeout(w, deadline - now).unwrap().0;
     }
 }
 
@@ -63,8 +63,8 @@ pub fn runner(mut app: App) -> AppExit {
     let shared: Arc<Shared> = app.world().resource::<SharedRes>().0.clone();
     let mut last = Instant::now();
     loop {
-        let period = if shared.should_render() {
-            Duration::from_secs_f64(1.0 / shared.hz())
+        let period = if shared.any_rendering() {
+            Duration::from_secs_f64(1.0 / shared.pace_hz())
         } else if shared.edit() {
             IDLE_POLL
         } else {
@@ -72,9 +72,11 @@ pub fn runner(mut app: App) -> AppExit {
         };
         wait(&shared, last + period);
         last = Instant::now();
-        shared.wake.lock().unwrap().updating = true;
+        shared.hub.wake.lock().unwrap().updating = true;
+        let started = Instant::now();
         app.update();
-        shared.wake.lock().unwrap().updating = false;
+        shared.stats.add_update(started.elapsed().as_nanos() as u64);
+        shared.hub.wake.lock().unwrap().updating = false;
         if let Some(exit) = app.should_exit() {
             return exit;
         }

@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names."
   },
   "methods": [
@@ -301,7 +301,7 @@
     },
     {
       "name": "bevy-ts/viewport_attach",
-      "summary": "Makes a viewport and checks in its Mach service; a second attach replaces the first.",
+      "summary": "Makes a viewport for a view (the game, or a preview) and checks in its Mach service; a second attach of a view replaces that view's viewport.",
       "x-bevy-ts-crate": "bevy-ts-viewport",
       "params": [
         {
@@ -323,7 +323,15 @@
       "name": "bevy-ts/viewport_detach",
       "summary": "Ends the viewport's service and releases its surfaces; the game keeps running.",
       "x-bevy-ts-crate": "bevy-ts-viewport",
-      "params": [],
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportDetachParams"
+          },
+          "required": false
+        }
+      ],
       "result": {
         "name": "result",
         "schema": {
@@ -393,7 +401,7 @@
     },
     {
       "name": "bevy-ts/viewport_camera",
-      "summary": "Gets or sets the editor camera's pose.",
+      "summary": "Gets or sets the editor camera's pose, or a preview viewport's camera.",
       "x-bevy-ts-crate": "bevy-ts-viewport",
       "params": [
         {
@@ -521,7 +529,15 @@
       "name": "bevy-ts/viewport_stats",
       "summary": "Frames, skips, dropped ticks, GPU time and input-to-frame latency.",
       "x-bevy-ts-crate": "bevy-ts-viewport",
-      "params": [],
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportStatsParams"
+          },
+          "required": false
+        }
+      ],
       "result": {
         "name": "result",
         "schema": {
@@ -579,6 +595,66 @@
         "name": "result",
         "schema": {
           "$ref": "#/components/schemas/AssetThumbnailResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/asset_preview",
+      "summary": "Loads a mesh or glTF scene into an isolated preview scene a viewport can attach to.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/AssetPreviewParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/AssetPreviewResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/asset_preview_control",
+      "summary": "Plays, pauses or switches a preview's glTF animation.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/AssetPreviewControlParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/AssetPreviewControlResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/asset_preview_close",
+      "summary": "Despawns a preview's scene and frees its render layer.",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/AssetPreviewCloseParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/AssetPreviewCloseResult"
         }
       }
     },
@@ -2688,12 +2764,16 @@
             ],
             "format": "uint32",
             "minimum": 0
+          },
+          "view": {
+            "$ref": "#/components/schemas/ViewportView"
           }
         }
       },
       "ViewportAttachResult": {
         "type": "object",
         "required": [
+          "viewport",
           "service",
           "protocol"
         ],
@@ -2705,6 +2785,12 @@
           },
           "protocol": {
             "type": "string"
+          },
+          "viewport": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The viewport's id for the other viewport methods; the game viewport is 0."
           }
         }
       },
@@ -2749,6 +2835,12 @@
             "format": "uint32",
             "minimum": 0,
             "description": "The display the hole is on (CGDirectDisplayID), when it moves display."
+          },
+          "viewport": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "A viewport id from viewport_attach; default the game viewport (0)."
           }
         }
       },
@@ -2796,6 +2888,12 @@
             "items": {
               "$ref": "#/components/schemas/ViewportInput"
             }
+          },
+          "viewport": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "A viewport id from viewport_attach; default the game viewport (0)."
           }
         }
       },
@@ -2932,7 +3030,13 @@
           },
           "frame": {
             "type": "boolean",
-            "description": "Frame the selection."
+            "description": "Frame the selection, or a preview's scene."
+          },
+          "viewport": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "A viewport id from viewport_attach; default the game viewport (0)."
           }
         }
       },
@@ -3475,6 +3579,18 @@
           },
           "size": {
             "$ref": "#/components/schemas/ViewportSize"
+          },
+          "frameTimes": {
+            "$ref": "#/components/schemas/FrameTimes"
+          },
+          "gpuAllocatedBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0,
+            "description": "The GPU device's allocated bytes (Metal currentAllocatedSize), engine-wide."
           }
         }
       },
@@ -4854,6 +4970,240 @@
           "location": {
             "$ref": "#/components/schemas/SourceLocation",
             "description": "Where the level sets it."
+          }
+        }
+      },
+      "ViewportView": {
+        "description": "What a viewport shows: \"game\", or a preview from asset_preview.",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "game"
+            ]
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "preview": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "ViewportDetachParams": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "viewport": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "A viewport id from viewport_attach; default the game viewport (0)."
+          }
+        }
+      },
+      "ViewportStatsParams": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "viewport": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "A viewport id from viewport_attach; default the game viewport (0)."
+          }
+        }
+      },
+      "AssetPreviewParams": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "An asset path under the asset root: a mesh or glTF scene."
+          }
+        }
+      },
+      "AssetPreviewResult": {
+        "type": "object",
+        "required": [
+          "path",
+          "pending",
+          "preview",
+          "kind",
+          "animations"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "boolean",
+            "description": "The asset is loading: ask again."
+          },
+          "preview": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The preview id to attach a viewport to with view { preview }; null while pending."
+          },
+          "kind": {
+            "type": "string"
+          },
+          "animations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The glTF's animation names (or Animation<i> when unnamed), in file order."
+          }
+        }
+      },
+      "AssetPreviewControlParams": {
+        "type": "object",
+        "required": [
+          "preview"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "preview": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "animation": {
+            "type": "string",
+            "description": "The animation to switch to, by name."
+          },
+          "play": {
+            "type": "boolean",
+            "description": "Play (true) or pause (false)."
+          },
+          "speed": {
+            "type": "number",
+            "description": "Playback speed, 1 is normal."
+          }
+        }
+      },
+      "AssetPreviewControlResult": {
+        "type": "object",
+        "required": [
+          "preview",
+          "animation",
+          "playing",
+          "speed",
+          "animations"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "preview": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "animation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "playing": {
+            "type": "boolean"
+          },
+          "speed": {
+            "type": "number"
+          },
+          "animations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AssetPreviewCloseParams": {
+        "type": "object",
+        "required": [
+          "preview"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "preview": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "AssetPreviewCloseResult": {
+        "type": "object",
+        "required": [
+          "closed"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FrameTimes": {
+        "type": "object",
+        "required": [
+          "samples",
+          "cpuP50Ms",
+          "cpuP99Ms",
+          "gpuP50Ms",
+          "gpuP99Ms"
+        ],
+        "additionalProperties": false,
+        "description": "Over the last 1000: the engine's update time (CPU, engine-wide) and this viewport's frames from submit to GPU completion.",
+        "properties": {
+          "samples": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "cpuP50Ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cpuP99Ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "gpuP50Ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "gpuP99Ms": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         }
       }

@@ -2,6 +2,7 @@
 //! picking that selects what the source placed, and a selection the editor follows. Works in the
 //! hole and in `bevy-ts dev`'s own window alike.
 
+use crate::preview::{PREVIEW_LAYERS, PreviewOnly};
 use crate::shared::SharedRes;
 use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
@@ -164,8 +165,8 @@ fn mark_bevy_gizmo(add: On<Add<Camera>>, mut commands: Commands, layers: Query<&
 }
 
 /// A game camera spawned in edit mode (a reload's, a TS system's) stays off until play.
-fn camera_added(add: On<Add<Camera>>, mut state: ResMut<EditState>, mut cameras: Query<&mut Camera, Without<EditorOnly>>, editor: Query<(), With<EditorOnly>>) {
-    if state.mode != Mode::Edit || editor.contains(add.entity) {
+fn camera_added(add: On<Add<Camera>>, mut state: ResMut<EditState>, mut cameras: Query<&mut Camera, (Without<EditorOnly>, Without<PreviewOnly>)>) {
+    if state.mode != Mode::Edit {
         return;
     }
     if let Ok(mut c) = cameras.get_mut(add.entity) {
@@ -228,7 +229,7 @@ fn enter_edit(world: &mut World) {
     set_paused(world, true);
     // Game cameras off, remembered; the first active one on the primary window gives the
     // editor camera its first pose.
-    let mut q = world.query_filtered::<(Entity, &mut Camera, &GlobalTransform, Option<&Projection>, Option<&RenderTarget>), Without<EditorOnly>>();
+    let mut q = world.query_filtered::<(Entity, &mut Camera, &GlobalTransform, Option<&Projection>, Option<&RenderTarget>), (Without<EditorOnly>, Without<PreviewOnly>)>();
     let mut cameras = vec![];
     let mut pose: Option<(GlobalTransform, Projection)> = None;
     for (e, mut c, gt, proj, target) in q.iter_mut(world) {
@@ -254,7 +255,8 @@ fn enter_edit(world: &mut World) {
             let t = gt.compute_transform();
             let forward = t.forward().as_vec3();
             let (yaw, pitch, _) = t.rotation.to_euler(EulerRot::YXZ);
-            let layers = RenderLayers::from_layers(&(0..THUMBNAIL_LAYER).chain([EDITOR_LAYER]).collect::<Vec<_>>());
+            // Every layer but the previews' and the thumbnails'.
+            let layers = RenderLayers::from_layers(&(0..PREVIEW_LAYERS.start).chain([EDITOR_LAYER]).collect::<Vec<_>>());
             world
                 .spawn((
                     Name::new("bevy-ts editor camera"),
@@ -353,7 +355,7 @@ pub struct Hit {
 pub(crate) fn hits(world: &mut World, ray: Ray3d, exact: bool) -> Vec<Hit> {
     let mut state = bevy::ecs::system::SystemState::<(
         MeshRayCast,
-        Query<(), Or<(With<EditorOnly>, With<TransformGizmoMeshMarker>, With<TransformGizmoRoot>)>>,
+        Query<(), Or<(With<EditorOnly>, With<PreviewOnly>, With<TransformGizmoMeshMarker>, With<TransformGizmoRoot>)>>,
     )>::new(world);
     let mut found: Vec<(Entity, f32)> = {
         let Ok((mut cast, editor)) = state.get_mut(world) else { return vec![] };
@@ -362,7 +364,7 @@ pub(crate) fn hits(world: &mut World, ray: Ray3d, exact: bool) -> Vec<Hit> {
         cast.cast_ray(ray, &settings).iter().map(|(e, h)| (*e, h.distance)).collect()
     };
     // Icons: a sphere of radius ICON at lights and cameras with no mesh.
-    let mut icons = world.query_filtered::<(Entity, &GlobalTransform), (Without<Mesh3d>, Without<EditorOnly>, Or<(With<PointLight>, With<SpotLight>, With<DirectionalLight>, With<Camera>)>)>();
+    let mut icons = world.query_filtered::<(Entity, &GlobalTransform), (Without<Mesh3d>, Without<EditorOnly>, Without<PreviewOnly>, Or<(With<PointLight>, With<SpotLight>, With<DirectionalLight>, With<Camera>)>)>();
     for (e, gt) in icons.iter(world) {
         let c = gt.translation() - ray.origin;
         let along = c.dot(*ray.direction);
@@ -666,7 +668,7 @@ fn draw_gizmos(world: &mut World) {
     let outlines: Vec<(Entity, bool)> = sel.items.iter().map(|(e, _)| (*e, true)).chain(sel.hovered.map(|e| (e, false))).collect();
     let boxes: Vec<((Vec3, Vec3), bool)> = outlines.iter().filter_map(|(e, s)| bounds(world, *e).map(|b| (b, *s))).collect();
     let icons: Vec<(Vec3, bool)> = world
-        .query_filtered::<(&GlobalTransform, Has<Camera>), (Without<Mesh3d>, Without<EditorOnly>, Or<(With<PointLight>, With<SpotLight>, With<DirectionalLight>, With<Camera>)>)>()
+        .query_filtered::<(&GlobalTransform, Has<Camera>), (Without<Mesh3d>, Without<EditorOnly>, Without<PreviewOnly>, Or<(With<PointLight>, With<SpotLight>, With<DirectionalLight>, With<Camera>)>)>()
         .iter(world)
         .map(|(gt, cam)| (gt.translation(), cam))
         .collect();

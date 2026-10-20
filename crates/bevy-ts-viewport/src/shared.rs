@@ -7,8 +7,11 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::{Arc, Condvar, Mutex, Weak};
+use std::time::{Duration, Instant};
+
+/// Ticks older than this no longer pace frames.
+pub(crate) const TICK_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// `CLOCK_UPTIME_RAW` in nanoseconds, the clock `frame` and `tick` timestamps use.
 pub fn now_ns() -> u64 {
@@ -31,6 +34,25 @@ pub struct Stats {
     pub gpu_frames: AtomicU64,
     /// Input arrival to the frame that first reflects it, the last `LATENCY_SAMPLES`, in ns.
     latency: Mutex<VecDeque<u64>>,
+    /// The engine's update time (CPU) and this viewport's submit-to-completion time (GPU), the
+    /// last `LATENCY_SAMPLES` of each, in ns.
+    update: Mutex<VecDeque<u64>>,
+    gpu: Mutex<VecDeque<u64>>,
+}
+
+fn push_sample(q: &Mutex<VecDeque<u64>>, ns: u64) {
+    let mut l = q.lock().unwrap();
+    if l.len() == LATENCY_SAMPLES {
+        l.pop_front();
+    }
+    l.push_back(ns);
+}
+
+/// The `q` quantile of `samples` in ms.
+fn quantile(samples: &Mutex<VecDeque<u64>>) -> impl Fn(f64) -> Option<f64> {
+    let mut v: Vec<u64> = samples.lock().unwrap().iter().copied().collect();
+    v.sort_unstable();
+    move |q: f64| (!v.is_empty()).then(|| v[((v.len() - 1) as f64 * q).round() as usize] as f64 / 1e6)
 }
 
 const LATENCY_SAMPLES: usize = 1000;
@@ -46,19 +68,26 @@ impl Stats {
     }
 
     pub(crate) fn add_latency(&self, ns: u64) {
-        let mut l = self.latency.lock().unwrap();
-        if l.len() == LATENCY_SAMPLES {
-            l.pop_front();
-        }
-        l.push_back(ns);
+        push_sample(&self.latency, ns);
+    }
+
+    /// One engine update took `ns`.
+    pub(crate) fn add_update(&self, ns: u64) {
+        push_sample(&self.update, ns);
     }
 
     /// `{ samples, medianMs, p95Ms }`.
     pub fn latency(&self) -> Value {
-        let mut v: Vec<u64> = self.latency.lock().unwrap().iter().copied().collect();
-        v.sort_unstable();
-        let at = |q: f64| (!v.is_empty()).then(|| v[((v.len() - 1) as f64 * q).round() as usize] as f64 / 1e6);
-        json!({ "samples": v.len(), "medianMs": at(0.5), "p95Ms": at(0.95) })
+        let n = self.latency.lock().unwrap().len();
+        let at = quantile(&self.latency);
+        json!({ "samples": n, "medianMs": at(0.5), "p95Ms": at(0.95) })
+    }
+
+    /// `{ samples, cpuP50Ms, cpuP99Ms, gpuP50Ms, gpuP99Ms }` over the last 1000 updates and frames.
+    pub fn frame_times(&self) -> Value {
+        let n = self.update.lock().unwrap().len().max(self.gpu.lock().unwrap().len());
+        let (cpu, gpu) = (quantile(&self.update), quantile(&self.gpu));
+        json!({ "samples": n, "cpuP50Ms": cpu(0.5), "cpuP99Ms": cpu(0.99), "gpuP50Ms": gpu(0.5), "gpuP99Ms": gpu(0.99) })
     }
 }
 
@@ -94,14 +123,35 @@ pub(crate) struct Wake {
     pub updating: bool,
 }
 
-pub struct Shared {
-    service: Mutex<Option<Service>>,
+/// What an engine's viewports share: the runner's wake, edit mode, and the viewports
+/// themselves, the game's first, so the leading viewport's ticks pace the runner.
+#[derive(Default)]
+pub struct Hub {
     pub(crate) wake: Mutex<Wake>,
-    pub(crate) wake_cv: std::sync::Condvar,
-    /// Pacing before the first tick and when ticks stop, in Hz (bits of an f64).
-    hz: AtomicU64,
+    pub(crate) wake_cv: Condvar,
     /// Edit mode: idle until something asks for a frame.
     edit: AtomicBool,
+    viewports: Mutex<Vec<Weak<Shared>>>,
+    /// The Metal device's allocated bytes, sampled by the render world.
+    pub(crate) gpu_allocated: AtomicU64,
+}
+
+impl Hub {
+    fn viewports(&self) -> Vec<Arc<Shared>> {
+        let mut list = self.viewports.lock().unwrap();
+        list.retain(|w| w.strong_count() > 0);
+        list.iter().filter_map(Weak::upgrade).collect()
+    }
+}
+
+/// One viewport's state: its channel, ring, pacing, input queue and counters.
+pub struct Shared {
+    pub(crate) hub: Arc<Hub>,
+    service: Mutex<Option<Service>>,
+    /// Pacing before the first tick and when ticks stop, in Hz (bits of an f64).
+    hz: AtomicU64,
+    /// When this viewport's viewer last ticked.
+    last_tick: Mutex<Option<Instant>>,
     /// The hole has keyboard focus.
     focused: AtomicBool,
     /// Gamepad input reaches the game without focus.
@@ -123,11 +173,10 @@ impl Default for Shared {
     fn default() -> Self {
         let (tx, rx) = channel();
         Shared {
+            hub: Arc::new(Hub::default()),
             service: Mutex::new(None),
-            wake: Mutex::new(Wake::default()),
-            wake_cv: std::sync::Condvar::new(),
             hz: AtomicU64::new(60f64.to_bits()),
-            edit: AtomicBool::new(false),
+            last_tick: Mutex::new(None),
             focused: AtomicBool::new(false),
             gamepad_unfocused: AtomicBool::new(false),
             visible: AtomicBool::new(false),
@@ -148,6 +197,54 @@ impl Default for Shared {
 pub struct SharedRes(pub Arc<Shared>);
 
 impl Shared {
+    /// The game viewport, the first of a new hub.
+    pub fn game() -> Arc<Shared> {
+        let s = Arc::new(Shared::default());
+        s.hub.viewports.lock().unwrap().push(Arc::downgrade(&s));
+        s
+    }
+
+    /// Another viewport on this one's hub, paced by the same runner.
+    pub fn sibling(&self) -> Arc<Shared> {
+        let s = Arc::new(Shared { hub: self.hub.clone(), ..Shared::default() });
+        self.hub.viewports.lock().unwrap().push(Arc::downgrade(&s));
+        s
+    }
+
+    /// Whether this viewport renders and its viewer ticked lately.
+    fn ticking(&self, now: Instant) -> bool {
+        self.should_render() && self.last_tick.lock().unwrap().is_some_and(|t| now.duration_since(t) < TICK_TIMEOUT)
+    }
+
+    /// Whether this viewport's ticks pace the runner: the first ticking viewport leads, the
+    /// game's while it renders, so a preview never adds updates to a visible game. A hidden or
+    /// detached viewport's ticks pace nothing: its viewer's display link may keep running.
+    fn leads(&self, now: Instant) -> bool {
+        if !self.should_render() {
+            return false;
+        }
+        match self.hub.viewports().into_iter().find(|s| s.ticking(now)) {
+            Some(leader) => std::ptr::eq(Arc::as_ptr(&leader), self),
+            None => true,
+        }
+    }
+
+    /// What the GPU device has allocated, in bytes, when the render world has said.
+    pub fn gpu_allocated(&self) -> Option<u64> {
+        Some(self.hub.gpu_allocated.load(Ordering::Relaxed)).filter(|b| *b > 0)
+    }
+
+    /// Whether any viewport of the hub renders.
+    pub fn any_rendering(&self) -> bool {
+        self.should_render() || self.hub.viewports().iter().any(|s| s.should_render())
+    }
+
+    /// The pace while no ticks come: the first rendering viewport's attach `hz`.
+    pub fn pace_hz(&self) -> f64 {
+        let list = self.hub.viewports();
+        list.iter().find(|s| s.should_render()).map_or_else(|| self.hz(), |s| s.hz())
+    }
+
     /// Checks in `name` as the viewport's channel, replacing any earlier one.
     pub fn open(self: &Arc<Self>, name: &str) -> Result<(), String> {
         self.close();
@@ -240,20 +337,25 @@ impl Shared {
     }
 
     fn on_tick(&self) {
-        let mut w = self.wake.lock().unwrap();
+        let now = Instant::now();
+        *self.last_tick.lock().unwrap() = Some(now);
+        if !self.leads(now) {
+            return;
+        }
+        let mut w = self.hub.wake.lock().unwrap();
         w.last_tick = Some(std::time::Instant::now());
         if w.updating || w.tick {
             self.stats.dropped_ticks.fetch_add(1, Ordering::Relaxed);
         } else {
             w.tick = true;
-            self.wake_cv.notify_all();
+            self.hub.wake_cv.notify_all();
         }
     }
 
     /// Wakes the runner for something other than a tick.
     pub fn poke(&self) {
-        self.wake.lock().unwrap().other = true;
-        self.wake_cv.notify_all();
+        self.hub.wake.lock().unwrap().other = true;
+        self.hub.wake_cv.notify_all();
     }
 
     pub fn set_hz(&self, hz: f64) {
@@ -267,12 +369,12 @@ impl Shared {
     }
 
     pub fn set_edit(&self, on: bool) {
-        self.edit.store(on, Ordering::Release);
+        self.hub.edit.store(on, Ordering::Release);
         self.poke();
     }
 
     pub fn edit(&self) -> bool {
-        self.edit.load(Ordering::Acquire)
+        self.hub.edit.load(Ordering::Acquire)
     }
 
     pub fn set_focused(&self, on: bool) {
@@ -351,7 +453,9 @@ impl Shared {
     /// The GPU finished `slot` of `ring`, submitted at `submitted` for main-world update
     /// `update`: tell the viewer.
     pub(crate) fn announce(&self, ring: u32, slot: usize, submitted: Instant, update: u64, mut params: Value) {
-        self.stats.gpu_ns.fetch_add(submitted.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        let gpu = submitted.elapsed().as_nanos() as u64;
+        self.stats.gpu_ns.fetch_add(gpu, Ordering::Relaxed);
+        push_sample(&self.stats.gpu, gpu);
         self.stats.gpu_frames.fetch_add(1, Ordering::Relaxed);
         {
             let mut s = self.slots.lock().unwrap();
@@ -365,5 +469,20 @@ impl Shared {
         self.stats.frames.fetch_add(1, Ordering::Relaxed);
         self.send("frame", params);
         self.input_shown(update);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_hidden_viewports_ticks_pace_nothing() {
+        let game = Shared::game();
+        let preview = game.sibling();
+        game.on_tick();
+        preview.on_tick();
+        assert!(!game.hub.wake.lock().unwrap().tick, "no viewport renders: their display links do not drive updates");
+        assert!(!game.any_rendering());
     }
 }

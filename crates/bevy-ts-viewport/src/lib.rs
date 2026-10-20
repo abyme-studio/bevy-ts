@@ -21,6 +21,8 @@ pub mod mach;
 #[cfg(target_os = "macos")]
 mod methods;
 #[cfg(target_os = "macos")]
+pub mod preview;
+#[cfg(target_os = "macos")]
 mod ring;
 #[cfg(target_os = "macos")]
 pub mod runner;
@@ -30,7 +32,7 @@ pub mod shared;
 pub mod surface;
 
 #[cfg(target_os = "macos")]
-pub use ring::{UpdateCount, VirtualWindow};
+pub use ring::{UpdateCount, ViewportWindow, VirtualWindow};
 
 /// Whether viewport mode exists on this platform.
 pub const fn supported() -> bool {
@@ -49,7 +51,6 @@ mod plugin {
     use crate::shared::{Shared, SharedRes};
     use bevy::prelude::*;
     use bevy::window::{PrimaryWindow, WindowResolution};
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     /// Viewport mode, or the viewport's edit tools in a window of the engine's own.
@@ -63,7 +64,7 @@ mod plugin {
 
     impl Plugin for ViewportPlugin {
         fn build(&self, app: &mut App) {
-            let shared = Arc::new(Shared::default());
+            let shared = Shared::game();
             app.insert_resource(SharedRes(shared.clone()))
                 .init_resource::<UpdateCount>()
                 .add_systems(First, count_update);
@@ -91,6 +92,7 @@ mod plugin {
                             .run_if(resource_exists::<Messages<bevy::input::gamepad::RawGamepadEvent>>),
                     )
                     .set_runner(runner::runner);
+                preview::build(app);
                 ring::build_render(app, shared);
             }
         }
@@ -100,6 +102,7 @@ mod plugin {
             if app.world().contains_resource::<bevy::remote::RemoteMethods>() {
                 if !self.windowed {
                     methods::add_viewer_methods(app);
+                    preview::add_methods(app);
                 }
                 methods::add_common_methods(app);
                 methods::add_edit_methods(app);
@@ -118,10 +121,16 @@ mod plugin {
 
     static ATTACHES: AtomicU32 = AtomicU32::new(0);
 
-    /// Opens a new channel for a viewer, replacing any earlier one, and answers its bootstrap name.
+    /// A bootstrap name unique to the process and the attach.
+    pub fn service_name() -> String {
+        format!("dev.bevy-ts.viewport.{}.{}", std::process::id(), ATTACHES.fetch_add(1, Ordering::Relaxed))
+    }
+
+    /// Opens a new channel for the game viewport's viewer, replacing any earlier one, and answers
+    /// its bootstrap name.
     pub fn attach(world: &mut World) -> Result<String, String> {
         let shared = world.resource::<SharedRes>().0.clone();
-        let name = format!("dev.bevy-ts.viewport.{}.{}", std::process::id(), ATTACHES.fetch_add(1, Ordering::Relaxed));
+        let name = service_name();
         shared.open(&name)?;
         Ok(name)
     }

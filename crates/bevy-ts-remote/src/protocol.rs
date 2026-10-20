@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.7.0";
+pub const VERSION: &str = "1.8.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +49,9 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/assets", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/assets+watch", crate_name: "bevy-ts-viewport", watch: true },
     Method { name: "bevy-ts/asset_thumbnail", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/asset_preview", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/asset_preview_control", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/asset_preview_close", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/level_list", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level_node", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level_write", crate_name: "bevy-ts-levels", watch: false },
@@ -301,6 +304,65 @@ impl ::std::convert::TryFrom<::std::string::String> for AssetLoadState {
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
     }
+}
+///`AssetPreviewCloseParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetPreviewCloseParams {
+    pub preview: u32,
+}
+///`AssetPreviewCloseResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetPreviewCloseResult {
+    pub closed: bool,
+}
+///`AssetPreviewControlParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetPreviewControlParams {
+    ///The animation to switch to, by name.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub animation: ::std::option::Option<::std::string::String>,
+    ///Play (true) or pause (false).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub play: ::std::option::Option<bool>,
+    pub preview: u32,
+    ///Playback speed, 1 is normal.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub speed: ::std::option::Option<f64>,
+}
+///`AssetPreviewControlResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetPreviewControlResult {
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub animation: ::std::option::Option<::std::string::String>,
+    pub animations: ::std::vec::Vec<::std::string::String>,
+    pub playing: bool,
+    pub preview: u32,
+    pub speed: f64,
+}
+///`AssetPreviewParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetPreviewParams {
+    ///An asset path under the asset root: a mesh or glTF scene.
+    pub path: ::std::string::String,
+}
+///`AssetPreviewResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct AssetPreviewResult {
+    ///The glTF's animation names (or Animation<i> when unnamed), in file order.
+    pub animations: ::std::vec::Vec<::std::string::String>,
+    pub kind: ::std::string::String,
+    pub path: ::std::string::String,
+    ///The asset is loading: ask again.
+    pub pending: bool,
+    ///The preview id to attach a viewport to with view { preview }; null while pending.
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub preview: ::std::option::Option<u32>,
 }
 ///`AssetThumbnailParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -1147,6 +1209,32 @@ pub struct FrameMessage {
     pub slot: u32,
     pub ts: u64,
     pub w: u32,
+}
+///Over the last 1000: the engine's update time (CPU, engine-wide) and this viewport's frames from submit to GPU completion.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FrameTimes {
+    #[serde(
+        rename = "cpuP50Ms",
+        deserialize_with = "::std::option::Option::deserialize"
+    )]
+    pub cpu_p50_ms: ::std::option::Option<f64>,
+    #[serde(
+        rename = "cpuP99Ms",
+        deserialize_with = "::std::option::Option::deserialize"
+    )]
+    pub cpu_p99_ms: ::std::option::Option<f64>,
+    #[serde(
+        rename = "gpuP50Ms",
+        deserialize_with = "::std::option::Option::deserialize"
+    )]
+    pub gpu_p50_ms: ::std::option::Option<f64>,
+    #[serde(
+        rename = "gpuP99Ms",
+        deserialize_with = "::std::option::Option::deserialize"
+    )]
+    pub gpu_p99_ms: ::std::option::Option<f64>,
+    pub samples: u32,
 }
 ///A trackpad gesture.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3453,6 +3541,8 @@ pub struct ViewportAttachParams {
     pub hz: ::std::option::Option<f64>,
     ///Device pixels per point.
     pub scale: f64,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub view: ::std::option::Option<ViewportView>,
     ///Points.
     pub w: f64,
 }
@@ -3463,6 +3553,8 @@ pub struct ViewportAttachResult {
     pub protocol: ::std::string::String,
     ///The Mach bootstrap name to look up and say hello on.
     pub service: ::std::string::String,
+    ///The viewport's id for the other viewport methods; the game viewport is 0.
+    pub viewport: u32,
 }
 ///The editor camera's pose.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3483,7 +3575,7 @@ pub struct ViewportCamera {
 pub struct ViewportCameraParams {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub fov: ::std::option::Option<f64>,
-    ///Frame the selection.
+    ///Frame the selection, or a preview's scene.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub frame: ::std::option::Option<bool>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
@@ -3492,6 +3584,17 @@ pub struct ViewportCameraParams {
     pub scale: ::std::option::Option<f64>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub translation: ::std::option::Option<[f64; 3usize]>,
+    ///A viewport id from viewport_attach; default the game viewport (0).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewport: ::std::option::Option<u32>,
+}
+///`ViewportDetachParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportDetachParams {
+    ///A viewport id from viewport_attach; default the game viewport (0).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewport: ::std::option::Option<u32>,
 }
 ///`ViewportDetachResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3638,6 +3741,9 @@ impl ::std::convert::From<VisibleEvent> for ViewportInput {
 #[serde(deny_unknown_fields)]
 pub struct ViewportInputParams {
     pub events: ::std::vec::Vec<ViewportInput>,
+    ///A viewport id from viewport_attach; default the game viewport (0).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewport: ::std::option::Option<u32>,
 }
 ///`ViewportInputResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3751,6 +3857,9 @@ pub struct ViewportResizeParams {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub hz: ::std::option::Option<f64>,
     pub scale: f64,
+    ///A viewport id from viewport_attach; default the game viewport (0).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewport: ::std::option::Option<u32>,
     pub w: f64,
 }
 ///`ViewportRevertParams`
@@ -3798,7 +3907,18 @@ pub struct ViewportStats {
     pub attached: bool,
     #[serde(rename = "droppedTicks")]
     pub dropped_ticks: u64,
+    #[serde(
+        rename = "frameTimes",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub frame_times: ::std::option::Option<FrameTimes>,
     pub frames: u64,
+    ///The GPU device's allocated bytes (Metal currentAllocatedSize), engine-wide.
+    #[serde(
+        rename = "gpuAllocatedBytes",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub gpu_allocated_bytes: ::std::option::Option<u64>,
     ///Mean GPU time per frame, submit to completion.
     #[serde(rename = "gpuMs", deserialize_with = "::std::option::Option::deserialize")]
     pub gpu_ms: ::std::option::Option<f64>,
@@ -3810,6 +3930,27 @@ pub struct ViewportStats {
     pub size: ViewportSize,
     pub skipped: u64,
     pub visible: bool,
+}
+///`ViewportStatsParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportStatsParams {
+    ///A viewport id from viewport_attach; default the game viewport (0).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub viewport: ::std::option::Option<u32>,
+}
+///What a viewport shows: "game", or a preview from asset_preview.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub enum ViewportView {
+    #[serde(rename = "game")]
+    Game,
+    #[serde(rename = "preview")]
+    Preview(u32),
+}
+impl ::std::convert::From<u32> for ViewportView {
+    fn from(value: u32) -> Self {
+        Self::Preview(value)
+    }
 }
 ///The hole was shown or hidden.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

@@ -36,10 +36,10 @@ pub(crate) fn add_viewer_methods(app: &mut App) {
     add_method(app, CRATE, "bevy-ts/viewport_input", input);
 }
 
-/// HTTP input joins the channel's queue, one `input` message per event.
+/// HTTP input joins the viewport's channel queue, one `input` message per event.
 fn input(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     let p: protocol::ViewportInputParams = required(p)?;
-    let shared = world.resource::<SharedRes>().0.clone();
+    let shared = viewport_shared(world, p.viewport)?;
     let n = p.events.len();
     for e in p.events {
         let params = serde_json::to_value(e).map_err(|e| internal(e.to_string()))?;
@@ -47,6 +47,24 @@ fn input(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     }
     to_value(protocol::ViewportInputResult { queued: n as u32 })
 }
+
+/// The viewport an id names: none or 0 is the game's, others a preview's.
+fn viewport_shared(world: &World, viewport: Option<u32>) -> Result<std::sync::Arc<crate::shared::Shared>, BrpError> {
+    match viewport {
+        None | Some(GAME) => Ok(world.resource::<SharedRes>().0.clone()),
+        Some(v) => preview_of(world, v).map(|p| p.shared.clone()),
+    }
+}
+
+fn preview_of(world: &World, viewport: u32) -> Result<&crate::preview::Preview, BrpError> {
+    world
+        .get_resource::<crate::preview::Previews>()
+        .and_then(|p| p.by_viewport(viewport))
+        .ok_or_else(|| invalid(format!("no viewport {viewport}")))
+}
+
+/// The game viewport's id.
+pub const GAME: u32 = 0;
 
 /// Registers the methods every mode serves.
 pub(crate) fn add_common_methods(app: &mut App) {
@@ -58,18 +76,30 @@ fn attach(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     if !(p.w > 0.0 && p.h > 0.0 && p.scale > 0.0) {
         return Err(invalid("w, h and scale must be positive"));
     }
+    if let Some(protocol::ViewportView::Preview(id)) = p.view {
+        let service = crate::service_name();
+        let viewport = crate::preview::attach(world, id, &service, p.w, p.h, p.scale, p.hz)?;
+        return to_value(protocol::ViewportAttachResult { viewport, service, protocol: protocol::VERSION.into() });
+    }
     if let Some(hz) = p.hz {
         world.resource::<SharedRes>().0.set_hz(hz);
     }
     apply_size(world, p.w, p.h, p.scale);
     let service = crate::attach(world).map_err(internal)?;
-    to_value(protocol::ViewportAttachResult { service, protocol: protocol::VERSION.into() })
+    to_value(protocol::ViewportAttachResult { viewport: GAME, service, protocol: protocol::VERSION.into() })
 }
 
-fn detach(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
-    let shared = world.resource::<SharedRes>().0.clone();
-    let was = shared.service_name().is_some();
-    shared.close();
+fn detach(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
+    let p: protocol::ViewportDetachParams = optional(p)?;
+    let was = match p.viewport {
+        None | Some(GAME) => {
+            let shared = world.resource::<SharedRes>().0.clone();
+            let was = shared.service_name().is_some();
+            shared.close();
+            was
+        }
+        Some(v) => crate::preview::detach(world, v).ok_or_else(|| invalid(format!("no viewport {v}")))?,
+    };
     to_value(protocol::ViewportDetachResult { detached: was })
 }
 
@@ -78,14 +108,26 @@ fn resize(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     if !(p.w > 0.0 && p.h > 0.0 && p.scale > 0.0) {
         return Err(invalid("w, h and scale must be positive"));
     }
+    let shared = viewport_shared(world, p.viewport)?;
     if let Some(hz) = p.hz {
-        world.resource::<SharedRes>().0.set_hz(hz);
+        shared.set_hz(hz);
     }
-    to_value(apply_size(world, p.w, p.h, p.scale))
+    match p.viewport {
+        None | Some(GAME) => to_value(apply_size(world, p.w, p.h, p.scale)),
+        Some(v) => {
+            let window = preview_of(world, v)?.window();
+            to_value(crate::preview::resize(world, window, p.w, p.h, p.scale))
+        }
+    }
 }
 
-fn stats(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
-    let shared = world.resource::<SharedRes>().0.clone();
+fn stats(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
+    let p: protocol::ViewportStatsParams = optional(p)?;
+    let shared = viewport_shared(world, p.viewport)?;
+    let size = match p.viewport {
+        None | Some(GAME) => window_size(world),
+        Some(v) => crate::preview::window_size(world, preview_of(world, v)?.window()),
+    };
     let s = &shared.stats;
     Ok(json!({
         "attached": shared.attached(),
@@ -96,9 +138,20 @@ fn stats(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
         "droppedTicks": s.dropped_ticks.load(Ordering::Relaxed),
         "gpuMs": s.gpu_ms(),
         "inputToFrame": s.latency(),
+        "frameTimes": frame_times(&world.resource::<SharedRes>().0, &shared),
+        "gpuAllocatedBytes": shared.gpu_allocated(),
         "ring": shared.ring_info(),
-        "size": window_size(world),
+        "size": size,
     }))
+}
+
+/// The engine's update times (kept by the game viewport) with this viewport's GPU times.
+fn frame_times(game: &crate::shared::Shared, this: &crate::shared::Shared) -> Value {
+    let mut v = this.stats.frame_times();
+    let cpu = game.stats.frame_times();
+    v["cpuP50Ms"] = cpu["cpuP50Ms"].clone();
+    v["cpuP99Ms"] = cpu["cpuP99Ms"].clone();
+    v
 }
 
 /// The primary window's size as the protocol reports it.
@@ -213,6 +266,9 @@ fn mode(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
 
 fn camera(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     let p: protocol::ViewportCameraParams = optional(p)?;
+    if let Some(v) = p.viewport.filter(|v| *v != GAME) {
+        return crate::preview::camera(world, v, &p);
+    }
     let Some(cam) = world.resource::<EditState>().camera else {
         return Err(invalid("no editor camera yet: enter edit mode first"));
     };

@@ -130,3 +130,100 @@ pub fn attach(app: &mut App, w: f64, h: f64, scale: f64) -> (String, Viewer) {
 }
 
 pub const LONG: Duration = Duration::from_secs(60);
+
+/// A one-mesh glTF, a unit cube under one node, buffer inline, with a translation animation per
+/// name in `animations`.
+pub fn write_gltf(path: &std::path::Path, animations: &[&str]) {
+    let p: [[f32; 3]; 8] = [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5], [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5]];
+    let idx: [u16; 36] = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5];
+    let mut buf = vec![];
+    for c in p.iter().flatten() {
+        buf.extend_from_slice(&c.to_le_bytes());
+    }
+    for i in idx {
+        buf.extend_from_slice(&i.to_le_bytes());
+    }
+    // Keyframe times, then translations: 0 to 1 m up over a second.
+    for t in [0.0f32, 1.0] {
+        buf.extend_from_slice(&t.to_le_bytes());
+    }
+    for c in [0.0f32, 0.0, 0.0, 0.0, 1.0, 0.0] {
+        buf.extend_from_slice(&c.to_le_bytes());
+    }
+    let uri = format!("data:application/octet-stream;base64,{}", bevy_ts_viewport::assets::base64(&buf));
+    let anims: Vec<Value> = animations
+        .iter()
+        .map(|n| json!({ "name": n, "channels": [{ "sampler": 0, "target": { "node": 1, "path": "translation" } }], "samplers": [{ "input": 2, "output": 3 }] }))
+        .collect();
+    let mut doc = json!({
+        "asset": { "version": "2.0" },
+        "scene": 0, "scenes": [{ "nodes": [0] }], "nodes": [{ "name": "root", "children": [1] }, { "name": "cube", "mesh": 0 }],
+        "meshes": [{ "primitives": [{ "attributes": { "POSITION": 0 }, "indices": 1 }] }],
+        "buffers": [{ "byteLength": buf.len(), "uri": uri }],
+        "bufferViews": [
+            { "buffer": 0, "byteOffset": 0, "byteLength": 96 },
+            { "buffer": 0, "byteOffset": 96, "byteLength": 72 },
+            { "buffer": 0, "byteOffset": 168, "byteLength": 8 },
+            { "buffer": 0, "byteOffset": 176, "byteLength": 24 }
+        ],
+        "accessors": [
+            { "bufferView": 0, "componentType": 5126, "count": 8, "type": "VEC3", "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] },
+            { "bufferView": 1, "componentType": 5123, "count": 36, "type": "SCALAR" },
+            { "bufferView": 2, "componentType": 5126, "count": 2, "type": "SCALAR", "min": [0.0], "max": [1.0] },
+            { "bufferView": 3, "componentType": 5126, "count": 2, "type": "VEC3" }
+        ]
+    });
+    if !anims.is_empty() {
+        doc["animations"] = json!(anims);
+    }
+    std::fs::write(path, doc.to_string()).unwrap();
+}
+
+/// A fresh asset root under the temp dir with `models/`.
+pub fn asset_root(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join("bevy-ts-viewport-preview").join(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("models")).unwrap();
+    dir
+}
+
+/// The test app over an asset root.
+pub fn app_at(dir: &std::path::Path) -> App {
+    let mut app = App::new();
+    app.add_plugins(
+        DefaultPlugins
+            .build()
+            .disable::<WinitPlugin>()
+            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
+            .set(AssetPlugin { file_path: dir.display().to_string(), ..default() }),
+    )
+    .add_plugins(RemotePlugin::default())
+    .add_plugins(ViewportPlugin::default())
+    .insert_resource(bevy_ts_viewport::assets::AssetRoot(dir.to_path_buf()))
+    .add_systems(Startup, scene);
+    app.finish();
+    app.cleanup();
+    app.update();
+    app
+}
+
+/// Asks `asset_preview` until it answers a preview.
+pub fn open_preview(app: &mut App, path: &str) -> Value {
+    let t0 = Instant::now();
+    loop {
+        let r = call(app, "bevy-ts/asset_preview", json!({ "path": path })).unwrap();
+        if r["pending"] == false {
+            return r;
+        }
+        assert!(t0.elapsed() < LONG, "{path} never loaded");
+        std::thread::sleep(Duration::from_millis(2));
+        app.update();
+    }
+}
+
+/// Attaches a viewer to `view`; answers the viewport id and the viewer.
+pub fn attach_view(app: &mut App, w: f64, h: f64, view: Value) -> (u64, Viewer) {
+    let r = call(app, "bevy-ts/viewport_attach", json!({ "w": w, "h": h, "scale": 1, "hz": 120, "view": view })).unwrap();
+    let viewer = Viewer::connect(r["service"].as_str().unwrap()).unwrap();
+    (r["viewport"].as_u64().unwrap(), viewer)
+}
