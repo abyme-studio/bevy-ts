@@ -113,14 +113,23 @@ struct Slots {
 /// What wakes the runner: a tick, input or another message, under one lock with a condvar.
 #[derive(Default)]
 pub(crate) struct Wake {
-    /// A tick arrived and no update has consumed it.
+    /// A tick arrived and no update has consumed it; one that arrives during an update is kept,
+    /// so the next update starts as soon as that one ends.
     pub tick: bool,
     /// Something other than a tick arrived (input, resize, a channel event).
     pub other: bool,
     /// When the last tick arrived.
     pub last_tick: Option<std::time::Instant>,
-    /// An update is running; a tick now is dropped.
+    /// An update is running.
     pub updating: bool,
+}
+
+impl Wake {
+    /// A tick arrived: kept, even during an update, unless one is already waiting. False when
+    /// dropped.
+    pub(crate) fn keep_tick(&mut self) -> bool {
+        !std::mem::replace(&mut self.tick, true)
+    }
 }
 
 /// What an engine's viewports share: the runner's wake, edit mode, and the viewports
@@ -347,11 +356,10 @@ impl Shared {
         let mut w = self.hub.wake.lock().unwrap();
         w.last_tick = Some(std::time::Instant::now());
         crate::trace::mark("tick", w.updating as u64, w.tick as u64);
-        if w.updating || w.tick {
-            self.stats.dropped_ticks.fetch_add(1, Ordering::Relaxed);
-        } else {
-            w.tick = true;
+        if !(crate::trace::earlier_pacing() && w.updating) && w.keep_tick() {
             self.hub.wake_cv.notify_all();
+        } else {
+            self.stats.dropped_ticks.fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -488,5 +496,13 @@ mod tests {
         preview.on_tick();
         assert!(!game.hub.wake.lock().unwrap().tick, "no viewport renders: their display links do not drive updates");
         assert!(!game.any_rendering());
+    }
+
+    #[test]
+    fn a_tick_during_an_update_is_kept_and_a_second_dropped() {
+        let mut w = Wake { updating: true, ..Wake::default() };
+        assert!(w.keep_tick(), "the tick waits for the update to end");
+        assert!(w.tick);
+        assert!(!w.keep_tick(), "a second is dropped");
     }
 }

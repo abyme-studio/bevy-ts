@@ -1,6 +1,8 @@
 //! A per-frame timeline for pacing work: with `BEVY_TS_VIEWPORT_TRACE=<file>`, each tick, wake,
 //! update, slot pick, submit and GPU completion is a line `<ns> <event> <a> <b>` in the file, the
-//! time on `now_ns`'s clock. Off, each call is one relaxed load.
+//! time on `now_ns`'s clock. Off, each call is one relaxed load. `BEVY_TS_VIEWPORT_PACING=0`
+//! restores the pacing before docs/research/viewport-pacing.md (default QoS, a tick during an
+//! update dropped), to measure against.
 
 use crate::shared::now_ns;
 use std::fs::File;
@@ -19,4 +21,10 @@ pub(crate) fn mark(event: &str, a: u64, b: u64) {
         let line = format!("{} {event} {a} {b}\n", now_ns());
         let _ = f.lock().unwrap().write_all(line.as_bytes());
     }
+}
+
+/// Whether `BEVY_TS_VIEWPORT_PACING=0` asked for the earlier pacing.
+pub(crate) fn earlier_pacing() -> bool {
+    static EARLIER: OnceLock<bool> = OnceLock::new();
+    *EARLIER.get_or_init(|| std::env::var_os("BEVY_TS_VIEWPORT_PACING").is_some_and(|v| v == "0"))
 }

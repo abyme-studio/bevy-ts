@@ -156,6 +156,17 @@ pub enum Display {
 pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>) -> App {
     let mut app = App::new();
     let plugins = headless::default_plugins(display != Display::Window);
+    // The compute pool runs the frame's systems: its threads are raised with the main thread's
+    // while a viewport renders.
+    #[cfg(target_os = "macos")]
+    let plugins = if display == Display::Viewport {
+        let mut options = bevy::app::TaskPoolOptions::default();
+        options.compute.on_thread_spawn = Some(std::sync::Arc::new(bevy_ts_viewport::qos::register_this_thread));
+        options.compute.on_thread_destroy = Some(std::sync::Arc::new(bevy_ts_viewport::qos::unregister_this_thread));
+        plugins.set(bevy::app::TaskPoolPlugin { task_pool_options: options })
+    } else {
+        plugins
+    };
     match assets {
         Some(root) => app.add_plugins(plugins.set(headless::asset_plugin(root))),
         None => app.add_plugins(plugins),

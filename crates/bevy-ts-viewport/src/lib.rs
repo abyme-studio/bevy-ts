@@ -23,6 +23,8 @@ mod methods;
 #[cfg(target_os = "macos")]
 pub mod preview;
 #[cfg(target_os = "macos")]
+pub mod qos;
+#[cfg(target_os = "macos")]
 mod ring;
 #[cfg(target_os = "macos")]
 pub mod runner;

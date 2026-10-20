@@ -72,7 +72,8 @@ pub(crate) fn build_render(app: &mut App, shared: Arc<Shared>) {
         .insert_resource(SharedRes(shared))
         .init_resource::<Rings>()
         .add_systems(ExtractSchedule, prepare_slot.before(extract_cameras))
-        .add_systems(Render, announce.in_set(RenderSystems::Cleanup));
+        .add_systems(Render, announce.in_set(RenderSystems::Cleanup))
+        .add_systems(Render, register_render_thread);
 }
 
 pub(crate) fn finish_render(app: &mut App) {
@@ -208,6 +209,13 @@ fn extract_window(world: &mut World, entity: Entity, w: u32, h: u32, slot_view: 
         }
     }
     shared.set_target(if has_view { Target::Rendering } else { Target::Idle });
+}
+
+/// Exclusive, so it runs on the render thread: adds that thread to the frame's threads.
+fn register_render_thread(_: &mut World, mut done: Local<bool>) {
+    if !std::mem::replace(&mut *done, true) {
+        crate::qos::register_this_thread();
+    }
 }
 
 /// After the frame's submit: announce each slot rendered once the GPU has completed it.

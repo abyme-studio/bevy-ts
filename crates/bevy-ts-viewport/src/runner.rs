@@ -1,6 +1,7 @@
 //! The viewport runner: no winit, no window. While a viewer is attached and visible, one update
 //! per `tick` from the leading viewer's display link (the game's while it is visible, else the
-//! first visible preview's), paced at the attach's `hz` before the first tick or
+//! first visible preview's; a tick that arrives during an update starts the next one as soon as
+//! it ends, and a second is dropped), paced at the attach's `hz` before the first tick or
 //! when ticks stop for 100 ms. Hidden or detached, play keeps updating at 60 Hz without rendering
 //! and edit updates only when something arrives (input, a channel message) or every 100 ms to
 //! serve protocol requests and reloads.
@@ -61,8 +62,10 @@ pub fn runner(mut app: App) -> AppExit {
         app.cleanup();
     }
     let shared: Arc<Shared> = app.world().resource::<SharedRes>().0.clone();
+    crate::qos::register_this_thread();
     let mut last = Instant::now();
     loop {
+        crate::qos::set(shared.any_rendering());
         let period = if shared.any_rendering() {
             Duration::from_secs_f64(1.0 / shared.pace_hz())
         } else if shared.edit() {

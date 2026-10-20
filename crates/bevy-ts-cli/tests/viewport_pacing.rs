@@ -49,15 +49,22 @@ fn n(v: &Value, k: &str) -> u64 {
     v[k].as_u64().unwrap_or(0)
 }
 
+/// The engine's CPU time so far, in seconds, from `ps` (10 ms resolution).
+fn cpu_secs(pid: u32) -> f64 {
+    let out = Command::new("ps").args(["-o", "time=", "-p", &pid.to_string()]).output().unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().split(':').fold(0.0, |acc, part| acc * 60.0 + part.parse::<f64>().unwrap_or(0.0))
+}
+
 /// One phase's numbers, from the stats before and after and the frames the viewer saw.
-fn report(name: &str, before: &Value, after: &Value, secs: f64, gaps: &mut Vec<f64>) {
+fn report(name: &str, before: &Value, after: &Value, secs: f64, cpu: f64, gaps: &mut Vec<f64>) {
     gaps.sort_by(f64::total_cmp);
     let at = |q: f64| gaps.get(((gaps.len().max(1) - 1) as f64 * q).round() as usize).copied().unwrap_or(0.0);
     let ft = &after["frameTimes"];
     let lat = &after["inputToFrame"];
     println!(
-        "{name}: {:.0} fps, {} skipped, {} dropped ticks; frame gap p50 {:.1} p95 {:.1} max {:.1} ms; cpu p50 {:.2} p99 {:.2} ms, gpu p50 {:.2} p99 {:.2} ms; input to frame median {:.1} p95 {:.1} ms ({} samples)",
+        "{name}: {:.0} fps, engine CPU {:.0}%, {} skipped, {} dropped ticks; frame gap p50 {:.1} p95 {:.1} max {:.1} ms; cpu p50 {:.2} p99 {:.2} ms, gpu p50 {:.2} p99 {:.2} ms; input to frame median {:.1} p95 {:.1} ms ({} samples)",
         (n(after, "frames") - n(before, "frames")) as f64 / secs,
+        cpu / secs * 100.0,
         n(after, "skipped") - n(before, "skipped"),
         n(after, "droppedTicks") - n(before, "droppedTicks"),
         at(0.5),
@@ -95,17 +102,20 @@ fn pump(viewer: &Viewer, last: &mut Option<Instant>, gaps: &mut Vec<f64>, wait: 
 }
 
 /// Runs `f` while pumping the viewer, for `secs`.
-fn phase(viewer: &Viewer, port: u16, name: &str, secs: f64, mut f: impl FnMut(f64)) {
+fn phase(viewer: &Viewer, port: u16, pid: u32, name: &str, secs: f64, mut f: impl FnMut(f64)) {
     let (mut last, mut gaps) = (None, vec![]);
     pump(viewer, &mut last, &mut vec![], Duration::ZERO);
     let before = post(port, "bevy-ts/viewport_stats", Value::Null).unwrap();
+    let cpu0 = cpu_secs(pid);
     let t0 = Instant::now();
     while t0.elapsed().as_secs_f64() < secs {
         f(t0.elapsed().as_secs_f64());
         pump(viewer, &mut last, &mut gaps, Duration::from_millis(1));
     }
+    let secs = t0.elapsed().as_secs_f64();
+    let cpu = cpu_secs(pid) - cpu0;
     let after = post(port, "bevy-ts/viewport_stats", Value::Null).unwrap();
-    report(name, &before, &after, t0.elapsed().as_secs_f64(), &mut gaps);
+    report(name, &before, &after, secs, cpu, &mut gaps);
 }
 
 #[test]
@@ -140,7 +150,7 @@ fn the_arena_in_edit_mode_at_120_hz() {
         let (viewer, ticking) = (viewer.clone(), ticking.clone());
         std::thread::spawn(move || {
             // A display link's thread is high priority: a default one jitters on a busy machine.
-            // (Not `runner::interactive`, which `BEVY_TS_VIEWPORT_QOS=0` turns off for the engine.)
+            // As the engine's frame threads are while visible.
             unsafe { pthread_set_qos_class_self_np(0x21, 0) };
             let period = Duration::from_nanos(8_333_333);
             let mut next = Instant::now();
@@ -159,12 +169,12 @@ fn the_arena_in_edit_mode_at_120_hz() {
         frames += pump(&viewer, &mut last, &mut vec![], Duration::from_millis(20));
         assert!(t0.elapsed() < Duration::from_secs(60), "no frames");
     }
-    phase(&viewer, port, "play at rest", 2.0, |_| {});
+    phase(&viewer, port, pid, "play at rest", 2.0, |_| {});
     post(port, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
-    phase(&viewer, port, "edit settling", 1.0, |_| {});
+    phase(&viewer, port, pid, "edit settling", 1.0, |_| {});
     // `PACING_SAMPLE=<file>`: a call-stack profile of the engine over this phase.
     let sampler = std::env::var("PACING_SAMPLE").ok().map(|f| Command::new("sample").args([&pid.to_string(), "3", "-file", &f]).stdout(Stdio::null()).spawn().unwrap());
-    phase(&viewer, port, "edit at rest", 3.0, |_| {});
+    phase(&viewer, port, pid, "edit at rest", 3.0, |_| {});
     if let Some(mut s) = sampler {
         let _ = s.wait();
     }
@@ -172,9 +182,9 @@ fn the_arena_in_edit_mode_at_120_hz() {
     // Keys at spread phases of the tick, about 6 a second.
     let mut k = 0u64;
     let mut next = 0.0;
-    phase(&viewer, port, "edit keys", 3.0, |t| {
+    phase(&viewer, port, pid, "edit keys", 3.0, |t| {
         if t >= next {
-            let state = if k % 2 == 0 { "down" } else { "up" };
+            let state = if k.is_multiple_of(2) { "down" } else { "up" };
             viewer.send("input", json!({ "type": "key", "state": state, "code": "KeyQ" })).unwrap();
             k += 1;
             next = t + 0.083 + (k * 1777 % 8333) as f64 / 1e6;
@@ -184,13 +194,18 @@ fn the_arena_in_edit_mode_at_120_hz() {
     // A pointer drag across the hole, a move every ~4 ms as a trackpad sends them.
     let mut i = 0u64;
     let mut next = 0.0;
-    phase(&viewer, port, "edit pointer moves", 3.0, |t| {
+    phase(&viewer, port, pid, "edit pointer moves", 3.0, |t| {
         if t >= next {
             viewer.send("input", json!({ "type": "pointer", "kind": "move", "x": 40 + i % 400, "y": 160 })).unwrap();
             i += 1;
             next = t + 0.004;
         }
     });
+    // Hidden: no frames; edit updates only on requests, play at 60 Hz, at default QoS.
+    viewer.send("visible", json!({ "on": false })).unwrap();
+    phase(&viewer, port, pid, "edit hidden", 3.0, |_| {});
+    post(port, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+    phase(&viewer, port, pid, "play hidden", 3.0, |_| {});
     println!("stats: {}", post(port, "bevy-ts/viewport_stats", Value::Null).unwrap());
     ticking.store(false, Ordering::Relaxed);
     ticker.join().unwrap();

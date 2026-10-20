@@ -19,7 +19,9 @@ rest (2 s), edit settling (1 s), edit at rest (3 s), keys (~6 a second, 3 s) and
 per-frame timeline: each tick and whether it was dropped, each update's start and end and why it
 woke, the slot picked at extract, the submit and the GPU's completion. `PACING_SAMPLE=<file>` has
 the test run `sample` on the engine over edit at rest. The process `viewport-pacing-ab` runs the
-test six times, alternating `BEVY_TS_VIEWPORT_QOS=0` and the default.
+test six times, alternating `BEVY_TS_VIEWPORT_PACING=0` (the pacing before this note: default QoS,
+a tick during an update dropped) and the current pacing, so both see one machine load. (The
+experiment below toggled QoS alone, with a knob since folded into this one.)
 
 The test's viewer does not show its surfaces, so the window server never holds a slot: skips from
 a slot in use are not reproduced here (abyme saw 2). Not measured in abyme.app itself.
@@ -82,7 +84,8 @@ Default QoS reaches 117 fps only in the run where the load dipped; user-interact
 under this load: the remaining dropped ticks (5 to 50 per 3 s) are updates past 8.33 ms, each
 costing a whole refresh, which is what proposal B addresses.
 
-## Proposals
+## The proposals as sent
+
 
 A: user-interactive QoS for the engine's frame threads in viewport mode. No extra CPU; the engine
 outranks default-QoS work (builds, other agents) while it runs.
@@ -91,4 +94,49 @@ B: latch one tick that arrives during an update and run the next update as soon 
 instead of dropping it (a change to "The viewer's display paces frames"). A 9 ms update would give
 ~110 fps instead of 60; an overrun frame lands up to one update late instead of on the next vsync.
 
-Both are the operator's to rule on; sent to bevy-ts-dx on 2026-10-20.
+Both were the operator's to rule on; sent to bevy-ts-dx on 2026-10-20.
+
+## Rulings (operator, 2026-10-20)
+
+- A, yes, scoped: the main, render and compute-pool threads are user-interactive only while a
+  viewport is attached and visible, and back at their default class when every viewport is hidden
+  or detached, and outside viewport mode. `crates/bevy-ts-viewport/src/qos.rs`: each thread
+  registers itself (the runner, the render world's first frame, the compute pool's
+  `on_thread_spawn`), and the runner puts a QoS override on every registered thread when
+  `any_rendering` turns on and ends them when it turns off.
+- B, yes: a tick that arrives during an update is kept and starts the next update as soon as that
+  one ends; a second before then is dropped (`Wake::keep_tick`). shared-surface "The viewer's
+  display paces frames" says so, with the scenario "An update overruns a refresh".
+
+## After
+
+`viewport-pacing-ab`, the ticker at user-interactive, alternating `BEVY_TS_VIEWPORT_PACING=0`
+(before) and the current pacing (after), load 34 to 69, three runs each:
+
+| phase | before fps | after fps |
+|---|---|---|
+| play at rest | 100 / 56 / 93 | 121 / 124 / 121 |
+| edit at rest | 92 / 51 / 110 | 112 / 120 / 121 |
+| edit keys | 84 / 59 / 85 | 107 / 121 / 120 |
+| edit pointer moves | 87 / 48 / 89 | 111 / 121 / 121 |
+
+| | before | after |
+|---|---|---|
+| dropped ticks, edit at rest (3 s) | 91 / 212 / 33 | 25 / 0 / 0 |
+| skipped, all visible phases | 0 | 2 (one slot pick each, two runs) |
+| update p99, edit | 30 to 104 ms | 5 to 23 ms |
+| key to frame median, p95 | 21.6, 157 / 39.4, 99.5 / 22.1, 70.1 ms | 20.3, 41.4 / 17.5, 23.0 / 15.2, 20.7 ms |
+| pointer to frame median | 21 to 39 ms | 16 to 19 ms |
+| engine CPU, edit at rest | 92 / 58 / 138% | 160 / 182 / 149% |
+| engine CPU, edit hidden | 10 / 11 / 11% | 9 / 11 / 11% |
+| engine CPU, play hidden | 30 / 33 / 33% | 29 / 35 / 28% |
+
+Visible, the engine now keeps the display's rate on this loaded machine, and its tail is a fifth
+of what it was. Key to frame is within two refreshes (16.7 ms) in one run of three; the other two
+are 17.5 and 20.3 ms, so the budget is met only when the load dips. Hidden, CPU is unchanged: the
+threads are back at their default class and the latch only acts while ticks come. Visible CPU rises
+with the frames rendered (about 1.0 to 1.25% per fps before, 1.2 to 1.5% after): more updates, a
+little more each, likely the back-to-back update after an overrun.
+
+Still unverified: abyme.app itself (its viewer holds slots, which the test's does not, so skips
+from a slot in use are not reproduced), and a quiet machine.

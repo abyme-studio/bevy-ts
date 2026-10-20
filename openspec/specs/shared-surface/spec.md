@@ -76,11 +76,15 @@ While a viewer is attached the engine SHALL keep a Bevy `Window` entity marked `
 - **THEN** the window's scale factor becomes 1, Bevy sends `WindowScaleFactorChanged`, and frames come at the new pixel size
 
 ### Requirement: The viewer's display paces frames
-While a viewer is attached and visible, the engine SHALL run one `App::update` per `tick` message (`ts`, `targetTs`, sent by the viewer once per vsync of the hole's display) and SHALL drop ticks that arrive while an update is running. With no tick for 100 ms while visible, or before the first tick, it SHALL pace itself at `hz`. A `visible` message with `on: false`, or a detach, SHALL stop rendering; play mode SHALL then keep updating at 60 Hz without rendering, and edit mode SHALL update only on protocol requests or reloads.
+While a viewer is attached and visible, the engine SHALL run one `App::update` per `tick` message (`ts`, `targetTs`, sent by the viewer once per vsync of the hole's display). A tick that arrives while an update is running SHALL start the next update as soon as that one ends; a second tick before then SHALL be dropped. While any viewport is attached and visible, the threads that make a frame (the main thread, the render thread and the compute pool) SHALL run in the user-interactive QoS class, and in their default class otherwise. With no tick for 100 ms while visible, or before the first tick, it SHALL pace itself at `hz`. A `visible` message with `on: false`, or a detach, SHALL stop rendering; play mode SHALL then keep updating at 60 Hz without rendering, and edit mode SHALL update only on protocol requests or reloads.
 
 #### Scenario: A 120 Hz display
 - **WHEN** the hole is on a 120 Hz display and the game is light
 - **THEN** `bevy-ts/viewport_stats` reports 120 frames a second and no skipped frames
+
+#### Scenario: An update overruns a refresh
+- **WHEN** an update takes 9 ms on a 120 Hz display
+- **THEN** the tick that arrived during it starts the next update when it ends, frames come at about 110 a second rather than 60, and `droppedTicks` counts only ticks that arrived while one was already waiting
 
 #### Scenario: The pane is hidden
 - **WHEN** the viewer sends `visible` with `on: false` in play mode
