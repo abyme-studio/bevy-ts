@@ -138,5 +138,10 @@ threads are back at their default class and the latch only acts while ticks come
 with the frames rendered (about 1.0 to 1.25% per fps before, 1.2 to 1.5% after): more updates, a
 little more each, likely the back-to-back update after an overrun.
 
-Still unverified: abyme.app itself (its viewer holds slots, which the test's does not, so skips
-from a slot in use are not reproduced), and a quiet machine.
+In abyme.app (bevy-studio's measured launch, release engine at 1fa2829, arena, edit mode; that
+window ticks at 60 Hz): 59 fps, 0 dropped ticks, GPU 1.46 ms, 2 skipped during the click, drag and
+resize, input to frame median 34.9 ms and p95 36.2 ms over 31 samples (before: 39 fps of 120,
+95 dropped, 33.4 and 170 ms). The rate holds and the tail is gone; the median, about two refreshes
+at 60 Hz, and the two skips look like the viewer holding the shown slot until its next vsync, which
+bevy-studio is looking at on abyme's side. Not yet measured: a 120 Hz window in abyme.app, and a
+quiet machine.
