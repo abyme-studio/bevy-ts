@@ -1,7 +1,7 @@
 # asset-preview Specification
 
 ## Purpose
-TBD - created by archiving change asset-preview. Update Purpose after archive.
+A mesh or glTF scene from the game's assets, shown in a viewport of its own while the game runs: its own render layer, camera and light rig, lit like the game, orbited and animated in Rust, and invisible to the game's systems, its entity lists and the protocol's entity methods.
 
 ## Requirements
 
