@@ -46,6 +46,11 @@ Start the executable. With `game/game.json` beside it, an engine started with no
 that game, wherever it was started from (a double-click works). `bevy-ts play <folder>
 [--headless]` plays the game folder named (the one holding `game.json`), for trying a build.
 
+Walked 2026-10-22 on the operator's M5 Max (macOS 26.4): `bevy-ts build examples/cube`, then a
+Finder double-click on `dist/aarch64-apple-darwin/cube` opened a window with the cube bobbing. The
+arena has no camera of its own (the studio supplies one under `bevy-ts dev`), so a built arena
+shows black until the game spawns a camera.
+
 A shipped game loads its scripts once, as one generation: no compiler, no file watcher, no remote
 protocol, no inspector, none of the studio's viewport tools, bevy-ts in non-dev mode, and assets read from `game/assets/` unwatched.
 Nothing listens on a port. An engine refuses a `game.json` built by another bevy-ts version and

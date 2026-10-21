@@ -30,7 +30,7 @@
 - [x] 5.2 Integration: a script with two errors gives two `problem` events and `failed`, exit 1, an earlier `<out>` unchanged and no partial folder left
 - [x] 5.3 Integration: `--targets --json` and a non-host `--target`
 - [x] 5.4 Build `examples/thrusters` once by hand and record the `progress` events seen (cargo is too slow for the suite)
-- [ ] 5.5 Start a built arena by double-click from Finder on the operator's Mac and record it in `docs/build.md`
+- [x] 5.5 Start a built game by double-click from Finder on the operator's Mac and record it in `docs/build.md` (the cube: the arena has no camera of its own)
 
 ## 6. Docs
 
