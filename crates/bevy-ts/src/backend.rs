@@ -46,14 +46,66 @@ impl fmt::Display for SourceLocation {
     }
 }
 
-/// A file as errors and the protocol show it: relative to `cwd` when under it, never a `file://`
-/// URL or a generation tag (`?gen=3`).
-pub fn display_file(file: &str, cwd: Option<&std::path::Path>) -> String {
-    let path = file.strip_prefix("file://").unwrap_or(file);
-    let path = path.split('?').next().unwrap_or(path);
-    match cwd.and_then(|cwd| std::path::Path::new(path).strip_prefix(cwd).ok()) {
+/// A file as errors and the protocol show it: relative to the working directory when under it,
+/// never a `file://` URL (decoded) or a generation tag (`?gen=3`). Other URLs (`bevy-ts:core`)
+/// are shown as they are.
+pub fn display_file(file: &str) -> String {
+    display_file_from(file, std::env::current_dir().ok().as_deref())
+}
+
+/// [`display_file`] against a given working directory, for callers that resolve many files.
+pub fn display_file_from(file: &str, cwd: Option<&std::path::Path>) -> String {
+    let file = file.split('?').next().unwrap_or(file);
+    let path = match file.strip_prefix("file://") {
+        Some(rest) => percent_decode(rest.strip_prefix("localhost").unwrap_or(rest)),
+        None if has_scheme(file) => return file.to_string(),
+        None => file.to_string(),
+    };
+    match cwd.and_then(|cwd| std::path::Path::new(&path).strip_prefix(cwd).ok()) {
         Some(rel) => rel.display().to_string(),
-        None => path.to_string(),
+        None => path,
+    }
+}
+
+/// `scheme:` before any `/`, and not a Windows drive (`C:`).
+fn has_scheme(s: &str) -> bool {
+    let Some(i) = s.find(':') else { return false };
+    let scheme = &s[..i];
+    scheme.len() > 1 && scheme.starts_with(|c: char| c.is_ascii_alphabetic()) && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        match (b[i], b.get(i + 1).and_then(|c| hex(*c)), b.get(i + 2).and_then(|c| hex(*c))) {
+            (b'%', Some(h), Some(l)) => {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+            }
+            (c, ..) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn files_show_decoded_and_relative() {
+        let cwd = Some(Path::new("/p"));
+        assert_eq!(display_file_from("file:///p/src/my%20game.ts?gen=3", cwd), "src/my game.ts");
+        assert_eq!(display_file_from("/p/src/glow.wgsl", cwd), "src/glow.wgsl");
+        assert_eq!(display_file_from("/elsewhere/a.ts", cwd), "/elsewhere/a.ts");
+        assert_eq!(display_file_from("bevy-ts:core", cwd), "bevy-ts:core");
     }
 }
 

@@ -100,22 +100,8 @@ fn parse_location(s: &str) -> Option<SourceLocation> {
     let mut parts = s.rsplitn(3, ':');
     let column = parts.next()?.parse().ok()?;
     let line = parts.next()?.parse().ok()?;
-    let file = display_path(parts.next()?);
+    let file = bevy_ts::backend::display_file(parts.next()?);
     Some(SourceLocation { file, line, column })
-}
-
-/// A file URL as a path relative to the working directory when it is under it.
-pub fn display_path(file: &str) -> String {
-    let file = file.split('?').next().unwrap_or(file);
-    let Ok(url) = deno_core::url::Url::parse(file) else { return file.to_string() };
-    if url.scheme() != "file" {
-        return file.to_string();
-    }
-    let Ok(path) = url.to_file_path() else { return file.to_string() };
-    match std::env::current_dir().ok().and_then(|cwd| path.strip_prefix(&cwd).ok().map(Path::to_path_buf)) {
-        Some(rel) => rel.display().to_string(),
-        None => path.display().to_string(),
-    }
 }
 
 fn is_builtin(file: &str) -> bool {
@@ -129,7 +115,7 @@ fn script_error(e: &JsError) -> ScriptError {
     for f in &e.frames {
         let Some(file) = &f.file_name else { continue };
         let (line, column) = (f.line_number.unwrap_or(0) as u32, f.column_number.unwrap_or(0) as u32);
-        let shown = if is_builtin(file) { file.clone() } else { display_path(file) };
+        let shown = if is_builtin(file) { file.clone() } else { bevy_ts::backend::display_file(file) };
         let name = f.function_name.as_deref().unwrap_or("<anonymous>");
         stack.push_str(&format!("    at {name} ({shown}:{line}:{column})\n"));
         if location.is_none() && !is_builtin(file) {
@@ -173,7 +159,7 @@ struct JsLocation {
 
 impl From<JsLocation> for SourceLocation {
     fn from(l: JsLocation) -> Self {
-        SourceLocation { file: display_path(&l.file), line: l.line, column: l.column }
+        SourceLocation { file: bevy_ts::backend::display_file(&l.file), line: l.line, column: l.column }
     }
 }
 
@@ -646,7 +632,7 @@ impl V8Backend {
 fn relocate_manifest(m: &mut Manifest) {
     let fix = |l: &mut Option<SourceLocation>| {
         if let Some(l) = l {
-            l.file = display_path(&l.file);
+            l.file = bevy_ts::backend::display_file(&l.file);
         }
     };
     m.components.iter_mut().for_each(|c| fix(&mut c.location));

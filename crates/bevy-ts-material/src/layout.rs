@@ -139,9 +139,7 @@ impl ParamsLayout {
         let mut fields = Vec::new();
         let mut end = 0;
         for (name, ty) in params {
-            if !is_ident(name) {
-                return Err(format!("param {name:?} is not a WGSL identifier"));
-            }
+            check_name("param", name)?;
             if let ParamType::Array { len: 0, .. } = ty {
                 return Err(format!("param {name}: an array needs at least one element"));
             }
@@ -190,6 +188,39 @@ impl ParamsLayout {
             }
         }
     }
+}
+
+/// WGSL keywords and reserved words: no name the generated code declares may be one.
+const RESERVED: &[&str] = &[
+    "alias", "break", "case", "const", "const_assert", "continue", "continuing", "default", "diagnostic", "discard", "else", "enable",
+    "false", "fn", "for", "if", "let", "loop", "override", "requires", "return", "struct", "switch", "true", "var", "while", "NULL",
+    "Self", "abstract", "active", "alignas", "alignof", "as", "asm", "asm_fragment", "async", "attribute", "auto", "await", "become",
+    "cast", "catch", "class", "co_await", "co_return", "co_yield", "coherent", "column_major", "common", "compile",
+    "compile_fragment", "concept", "const_cast", "consteval", "constexpr", "constinit", "crate", "debugger", "decltype", "delete",
+    "demote", "demote_to_helper", "do", "dynamic_cast", "enum", "explicit", "export", "extends", "extern", "external",
+    "fallthrough", "filter", "final", "finally", "friend", "from", "fxgroup", "get", "goto", "groupshared", "highp", "impl",
+    "implements", "import", "inline", "instanceof", "interface", "layout", "lowp", "macro", "macro_rules", "match", "mediump",
+    "meta", "mod", "module", "move", "mut", "mutable", "namespace", "new", "nil", "noexcept", "noinline", "nointerpolation",
+    "noperspective", "null", "nullptr", "of", "operator", "package", "packoffset", "partition", "pass", "patch", "pixelfragment",
+    "precise", "precision", "premerge", "priv", "protected", "pub", "public", "readonly", "ref", "regardless", "register",
+    "reinterpret_cast", "require", "resource", "restrict", "self", "set", "shared", "sizeof", "smooth", "snorm", "static",
+    "static_assert", "static_cast", "std", "subroutine", "super", "target", "template", "this", "thread_local", "throw", "trait",
+    "try", "type", "typedef", "typeid", "typename", "typeof", "union", "unless", "unorm", "unsafe", "unsized", "use", "using",
+    "varying", "virtual", "volatile", "wgsl", "where", "with", "writeonly", "yield",
+];
+
+/// A name the generated WGSL declares: an identifier, not reserved, not starting with `__`.
+fn check_name(what: &str, name: &str) -> Result<(), String> {
+    if !is_ident(name) {
+        return Err(format!("{what} {name:?} is not a WGSL identifier"));
+    }
+    if name.starts_with("__") {
+        return Err(format!("{what} {name}: WGSL names may not start with __"));
+    }
+    if RESERVED.contains(&name) {
+        return Err(format!("{what} {name} is a WGSL reserved word"));
+    }
+    Ok(())
 }
 
 fn is_ident(s: &str) -> bool {
@@ -258,31 +289,41 @@ pub fn color(value: &Value) -> Result<[f32; 4], String> {
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Bindings {
     /// The struct's WGSL name: the material name's last segment plus `Params`.
-    pub struct_name: String,
-    pub params: ParamsLayout,
-    pub textures: Vec<String>,
+    struct_name: String,
+    params: ParamsLayout,
+    textures: Vec<String>,
 }
 
 impl Bindings {
-    /// Lays out `params` and checks `textures` against them: every name a WGSL identifier, and no
-    /// two generated declarations (`params`, each texture and its `<name>_sampler`) the same.
+    /// Lays out `params` and checks `textures` against them: every name a WGSL identifier that is
+    /// not reserved, and no two names among the params, `params`, the struct and each texture and
+    /// its `<name>_sampler` the same (params and textures share `<material>`'s props).
     pub fn new<'a>(material: &str, params: impl IntoIterator<Item = (&'a str, &'a ParamType)>, textures: &[String]) -> Result<Self, String> {
         let params = ParamsLayout::new(params)?;
-        let mut names = std::collections::HashSet::from(["params".to_string()]);
+        let struct_name = struct_name(material);
+        let mut names: std::collections::HashSet<String> = params.fields.iter().map(|f| f.name.clone()).collect();
+        names.extend(["params".to_string(), struct_name.clone()]);
         for t in textures {
-            if !is_ident(t) {
-                return Err(format!("texture {t:?} is not a WGSL identifier"));
-            }
-            if params.field(t).is_some() {
-                return Err(format!("{t} is both a param and a texture"));
-            }
+            check_name("texture", t)?;
             for n in [t.clone(), format!("{t}_sampler")] {
                 if !names.insert(n.clone()) {
-                    return Err(format!("texture {t} declares {n}, which another declaration already uses"));
+                    return Err(format!("texture {t} declares {n}, which a param or another declaration already uses"));
                 }
             }
         }
-        Ok(Bindings { struct_name: struct_name(material), params, textures: textures.to_vec() })
+        Ok(Bindings { struct_name, params, textures: textures.to_vec() })
+    }
+
+    pub fn struct_name(&self) -> &str {
+        &self.struct_name
+    }
+
+    pub fn params(&self) -> &ParamsLayout {
+        &self.params
+    }
+
+    pub fn textures(&self) -> &[String] {
+        &self.textures
     }
 
     pub fn params_binding(&self) -> Option<u32> {
@@ -413,8 +454,16 @@ mod tests {
         assert!(new(&["noise"]).is_ok());
         assert!(new(&["noise-map"]).unwrap_err().contains("not a WGSL identifier"));
         assert!(new(&["params"]).unwrap_err().contains("params"));
-        assert!(new(&["pulse"]).unwrap_err().contains("both a param and a texture"));
+        assert!(new(&["pulse"]).unwrap_err().contains("pulse"));
         assert!(new(&["a", "a_sampler"]).unwrap_err().contains("a_sampler"));
+        assert!(new(&["GlowParams"]).unwrap_err().contains("GlowParams"));
+        assert!(new(&["loop"]).unwrap_err().contains("reserved"));
+        assert!(new(&["__x"]).unwrap_err().contains("__"));
+        // The spec's scenario: a param named like a texture's sampler.
+        let p = [("noise_sampler", B(F32))];
+        let e = Bindings::new("game::Glow", p.iter().map(|(n, t)| (*n, t)), &["noise".into()]).unwrap_err();
+        assert!(e.contains("noise_sampler"), "{e}");
+        assert!(ParamsLayout::new([("loop", &B(F32))]).unwrap_err().contains("reserved"));
     }
 
     #[test]
@@ -427,11 +476,8 @@ mod tests {
 
     #[test]
     fn generated_bindings() {
-        let b = Bindings {
-            struct_name: struct_name("game::Glow"),
-            params: layout(&[("color", B(Color)), ("pulse", B(F32))]),
-            textures: vec!["noise".into()],
-        };
+        let p = [("color", B(Color)), ("pulse", B(F32))];
+        let b = Bindings::new("game::Glow", p.iter().map(|(n, t)| (*n, t)), &["noise".into()]).unwrap();
         let w = b.wgsl("game::Glow");
         assert!(w.contains("struct GlowParams {\n    color: vec4<f32>,\n    pulse: f32,\n}"), "{w}");
         assert!(w.contains("@group(3) @binding(0) var<uniform> params: GlowParams;"), "{w}");
@@ -442,7 +488,7 @@ mod tests {
 
     #[test]
     fn no_params_means_textures_from_binding_0() {
-        let b = Bindings { struct_name: "TParams".into(), params: ParamsLayout::default(), textures: vec!["a".into()] };
+        let b = Bindings::new("t", [], &["a".into()]).unwrap();
         assert_eq!(b.texture_binding(0), 0);
         assert!(!b.wgsl("t").contains("struct"));
     }

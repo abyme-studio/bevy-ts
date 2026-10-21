@@ -57,9 +57,9 @@ impl Kind {
         let vis = ShaderStages::VERTEX_FRAGMENT;
         let mut entries = Vec::new();
         if let Some(b) = bindings.params_binding() {
-            entries.push(uniform_buffer_sized(false, NonZeroU64::new(bindings.params.size as u64)).build(b, vis));
+            entries.push(uniform_buffer_sized(false, NonZeroU64::new(bindings.params().size as u64)).build(b, vis));
         }
-        for i in 0..bindings.textures.len() {
+        for i in 0..bindings.textures().len() {
             let b = bindings.texture_binding(i);
             entries.push(texture_2d(TextureSampleType::Float { filterable: true }).build(b, vis));
             entries.push(sampler(SamplerBindingType::Filtering).build(b + 1, vis));
@@ -74,7 +74,7 @@ impl Kind {
 #[derive(Asset, TypePath, Clone)]
 pub struct ScriptMaterial {
     pub kind: Arc<Kind>,
-    /// The params struct's bytes, `kind.bindings.params.size` long.
+    /// The params struct's bytes, `kind.bindings.params().size` long.
     pub data: Vec<u8>,
     /// One per texture of the kind; `None` binds Bevy's white fallback.
     pub textures: Vec<Option<Handle<Image>>>,
@@ -164,7 +164,7 @@ impl ErasedRenderAsset for ScriptMaterial {
             data_buffer = source.data.clone();
             resources.push((b, UnpreparedBindingResource::Data(0..data_buffer.len() as u32)));
         }
-        for i in 0..kind.bindings.textures.len() {
+        for i in 0..kind.bindings.textures().len() {
             let view = match source.textures.get(i).and_then(Option::as_ref) {
                 Some(h) => match images.get(h) {
                     Some(img) => img.texture_view.clone(),

@@ -94,13 +94,13 @@ impl ModuleLoader for Loader {
                 None if referrer.starts_with("bevy-ts:") => Ok(url),
                 None => Err(JsErrorBox::generic(format!(
                     "cannot import {specifier:?} from {}: no such module in the compiled graph",
-                    crate::display_path(referrer)
+                    bevy_ts::backend::display_file(referrer)
                 ))),
             };
         }
         Err(JsErrorBox::generic(format!(
             "cannot import {specifier:?} from {}: bare npm specifiers are not supported; import relative files or bevy-ts modules",
-            crate::display_path(referrer)
+            bevy_ts::backend::display_file(referrer)
         )))
     }
 

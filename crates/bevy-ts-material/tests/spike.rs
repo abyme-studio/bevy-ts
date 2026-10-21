@@ -8,7 +8,7 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
-use bevy_ts_material::layout::{Base, Bindings, ParamType, ParamsLayout, struct_name};
+use bevy_ts_material::layout::{Base, Bindings, ParamType, struct_name};
 use bevy_ts_material::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
@@ -17,11 +17,8 @@ const W: u32 = 320;
 const H: u32 = 180;
 
 fn kind(world: &mut World, name: &str, params: &[(&str, ParamType)], textures: &[&str], body: &str) -> Arc<Kind> {
-    let bindings = Bindings {
-        struct_name: struct_name(name),
-        params: ParamsLayout::new(params.iter().map(|(n, t)| (*n, t))).unwrap(),
-        textures: textures.iter().map(|t| t.to_string()).collect(),
-    };
+    let textures: Vec<String> = textures.iter().map(|t| t.to_string()).collect();
+    let bindings = Bindings::new(name, params.iter().map(|(n, t)| (*n, t)), &textures).unwrap();
     let src = format!("import bevy_pbr::render::forward_io::VertexOutput;\n\n{body}\n{}", bindings.wgsl(name));
     let path = format!("bevy_ts_material/spike/{}.wesl", struct_name(name).to_lowercase());
     let shader = world.resource_mut::<Assets<Shader>>().add(Shader::from_wesl(src, path));
@@ -29,11 +26,11 @@ fn kind(world: &mut World, name: &str, params: &[(&str, ParamType)], textures: &
 }
 
 fn instance(kind: &Arc<Kind>, values: serde_json::Value) -> ScriptMaterial {
-    let mut data = kind.bindings.params.defaults();
+    let mut data = kind.bindings.params().defaults();
     for (k, v) in values.as_object().unwrap() {
-        kind.bindings.params.encode(k, v, &mut data).unwrap();
+        kind.bindings.params().encode(k, v, &mut data).unwrap();
     }
-    ScriptMaterial { kind: kind.clone(), data, textures: vec![None; kind.bindings.textures.len()] }
+    ScriptMaterial { kind: kind.clone(), data, textures: vec![None; kind.bindings.textures().len()] }
 }
 
 #[test]

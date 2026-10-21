@@ -109,12 +109,6 @@ pub fn node_id(root: &str, path: &[String]) -> u64 {
     h
 }
 
-/// A file as the protocol shows it: project-relative when under the working directory, never a
-/// `file://` URL.
-pub fn display_file(file: &str) -> String {
-    Files::new().display(file)
-}
-
 /// Shows files relative to the working directory, read once; each distinct file is worked out
 /// once, as a section names the same few files thousands of times.
 pub struct Files {
@@ -131,7 +125,7 @@ impl Files {
         if let Some(d) = self.seen.get(file) {
             return d.clone();
         }
-        let shown = bevy_ts::backend::display_file(file, self.cwd.as_deref());
+        let shown = bevy_ts::backend::display_file_from(file, self.cwd.as_deref());
         self.seen.insert(file.to_string(), shown.clone());
         shown
     }

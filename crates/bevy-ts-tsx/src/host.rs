@@ -494,7 +494,7 @@ pub fn expand(world: &mut World, items: &[ExpandItem]) -> Result<Vec<NodeDesc>, 
     if !errors.is_empty() || expanded.len() != items.len() || expanded.iter().any(Option::is_none) {
         let mut errors: Vec<ScriptError> = errors.into_iter().map(|mut e| {
             if let Some(l) = &mut e.location {
-                l.file = crate::desc::display_file(&l.file);
+                l.file = bevy_ts::backend::display_file(&l.file);
             }
             e
         }).collect();

@@ -99,7 +99,7 @@ fn a_schema_change_re_encodes_instances_by_name() {
     assert_eq!(f32_at(&app, &h, 16), 0.0, "speed defaults to 0");
     assert_eq!(f32_at(&app, &h, 20), 2.0, "pulse re-encoded at its new offset");
     let m = app.world().resource::<Assets<ScriptMaterial>>().get(&h).unwrap();
-    assert!(m.kind.bindings.params.field("speed").is_some());
+    assert!(m.kind.bindings.params().field("speed").is_some());
     assert!(fragment_source(&app).contains("    speed: f32,\n"));
 }
 
@@ -168,4 +168,18 @@ fn a_bad_texture_name_fails_the_load_at_the_material() {
     let e = &r.errors[0];
     assert!(e.message.contains("game::Glow") && e.message.contains("noise-map"), "{e:?}");
     assert_eq!(e.location.clone().expect("the material() call").line, 5);
+}
+
+#[test]
+fn a_bad_declaration_after_a_scene_is_reported_at_its_material_call() {
+    let plain = "import { app } from \"bevy-ts\";\n\napp.scene(\"plain\", () => <entity name=\"plain\" />);\n";
+    // `loop` is reserved: the materials check rejects it at material(); the scene's element is quiet.
+    let main = format!("import \"./plain.tsx\";\n{}", game("loop: f32", "loop={2}"));
+    let dir = project("materials-order-bad", &[("plain.tsx", plain), ("game.tsx", &main), ("glow.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+    assert!(r.errors[0].message.contains("reserved"), "{:?}", r.errors);
+    assert_eq!(r.errors[0].location.clone().expect("material()").line, 6);
 }

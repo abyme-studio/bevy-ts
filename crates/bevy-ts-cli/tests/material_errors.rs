@@ -34,8 +34,14 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 ";
 
 fn game(params: &str) -> String {
+    game_with(params, "")
+}
+
+/// `extra` goes into material()'s options (`, textures: { noise: texture2d }`, `, vertex: vert`).
+fn game_with(params: &str, extra: &str) -> String {
+    let vert = if extra.contains("vertex") { "import vert from \"./vert.wgsl\";\n" } else { "" };
     format!(
-        "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ color, f32, material }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n\nexport const Glow = material(\"game::Glow\", {{ params: {{ {params} }}, fragment: glow }});\n\nexport function camera(commands: Commands) {{\n  commands.spawnNative(\"camera3d\", {{ position: [0, 0, 4], lookAt: [0, 0, 0] }});\n}}\napp.addSystems(Startup, camera);\n\napp.scene(\"s\", () => (\n  <entity name=\"cube\">\n    <mesh shape=\"cuboid\" />\n    <material kind={{Glow}} color=\"#ff8800\" pulse={{2}} />\n  </entity>\n));\n"
+        "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ color, f32, material, texture2d }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n{vert}\nexport const Glow = material(\"game::Glow\", {{ params: {{ {params} }}, fragment: glow{extra} }});\n\nexport function camera(commands: Commands) {{\n  commands.spawnNative(\"camera3d\", {{ position: [0, 0, 4], lookAt: [0, 0, 0] }});\n}}\napp.addSystems(Startup, camera);\n\napp.scene(\"s\", () => (\n  <entity name=\"cube\">\n    <mesh shape=\"cuboid\" />\n    <material kind={{Glow}} color=\"#ff8800\" pulse={{2}} />\n  </entity>\n));\n"
     )
 }
 
@@ -158,15 +164,18 @@ fn a_param_the_schema_lacks_names_its_line() {
 #[test]
 fn an_error_in_the_generated_params_names_the_schema() {
     let (dir, mut app) = setup("material-errors-generated");
+    // The file already declares `noise`; a texture of that name makes the generated code declare
+    // it again.
+    save_wgsl(&mut app, &dir, &WGSL.replace("const FLOOR: f32 = 0.25;", "const FLOOR: f32 = 0.25;\nconst noise: f32 = 1.0;"));
     let before = fragment(&app);
-    // `loop` is a WGSL keyword: the generated struct cannot declare it.
-    write(&dir, "game.tsx", &game("color: color, pulse: f32, loop: f32"));
+    write(&dir, "game.tsx", &game_with("color: color, pulse: f32", ", textures: { noise: texture2d }"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     let e = logs(&app).into_iter().rev().find(|e| e.level == LogLevel::Error).expect("an error");
-    assert!(e.message.contains("game::Glow") && e.message.contains("generated from its params"), "{}", e.message);
-    assert!(e.location.expect("the material's location").file.ends_with("game.tsx"));
-    assert_eq!(fragment(&app).1, before.1, "the old shader source stays");
+    assert!(e.message.contains("game::Glow") && e.message.contains("`noise`") && e.message.contains("generated from its params"), "{}", e.message);
+    assert!(e.location.clone().expect("the material() call").file.ends_with("game.tsx"));
+    assert!(e.message.contains("previous material keeps drawing"), "{}", e.message);
+    assert_eq!(fragment(&app), before, "the old shader stays");
 }
 
 #[test]
@@ -183,4 +192,47 @@ fn a_broken_first_shader_is_reported_by_the_renderer_at_its_line() {
         }
     }
     error_at(&app, 9);
+    // A second broken save, with no drawing shader to check it against first: the renderer's
+    // failure is reported too.
+    let n = errors(&app).len();
+    save_wgsl(&mut app, &dir, &WGSL.replace("params.color.rgb * glow", "params.colour.rgb * glow"));
+    for _ in 0..600 {
+        app.update();
+        if errors(&app).len() > n {
+            break;
+        }
+    }
+    let m = error_at(&app, 12);
+    assert!(m.contains("colour"), "{m}");
+}
+
+#[test]
+fn adding_a_broken_vertex_shader_keeps_the_material_drawing() {
+    let (dir, mut app) = setup("material-errors-vertex");
+    let before = fragment(&app);
+    write(&dir, "vert.wgsl", "import bevy_pbr::render::forward_io::VertexOutput;\n\n@vertex\nfn vertex() -> VertexOutput {\n    return 1.0;\n}\n");
+    write(&dir, "game.tsx", &game_with("color: color, pulse: f32", ", vertex: vert"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let e = logs(&app).into_iter().rev().find(|e| e.level == LogLevel::Error).expect("an error");
+    let at = e.location.clone().expect("a location");
+    assert!(at.file.ends_with("vert.wgsl") && e.message.contains("previous material keeps drawing"), "{} @ {at:?}", e.message);
+    assert_eq!(at.line, 5, "{}", e.message);
+    let kinds = app.world().resource::<MaterialKinds>();
+    let k = &kinds.live["game::Glow"];
+    assert!(k.vertex.is_none() && k.wanted.is_some(), "kept as it was");
+    assert_eq!(fragment(&app), before);
+}
+
+#[test]
+fn a_save_the_live_schema_accepts_applies_while_a_newer_one_waits() {
+    let (dir, mut app) = setup("material-errors-fallback");
+    write(&dir, "game.tsx", &game("color: color, speed: f32").replace("pulse={2}", "speed={3}"));
+    reload(&mut app, false);
+    error_at(&app, 9);
+    // Valid only under the live schema (it still reads params.pulse): the live shader takes it.
+    save_wgsl(&mut app, &dir, &WGSL.replace("0.25", "0.75"));
+    let k = &app.world().resource::<MaterialKinds>().live["game::Glow"];
+    assert!(k.wanted.is_some(), "the newer schema still waits");
+    assert!(fragment(&app).1.unwrap().contains("const FLOOR: f32 = 0.75;"));
 }

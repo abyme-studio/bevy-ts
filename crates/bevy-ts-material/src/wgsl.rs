@@ -8,7 +8,7 @@
 //! the prelude followed by the file verbatim. naga's line `n` is then the file's line `n - k`, `k`
 //! the prelude's lines; past the file's last line is the generated params code.
 
-use crate::kinds::{MaterialDecl, display};
+use crate::kinds::{MaterialDecl, show};
 use crate::layout::Bindings;
 use bevy::asset::AssetId;
 use bevy::prelude::*;
@@ -48,7 +48,7 @@ pub enum Checked {
 /// Checks a combined source under `defs`. `shaders` holds Bevy's shader modules.
 pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &MaterialDecl, defs: &[ShaderDefVal]) -> Checked {
     let author_lines = combined.find("\n// bevy-ts: the params").map_or(combined.lines().count(), |i| combined[..i].lines().count());
-    let at = |line: usize, column: u32| Some(SourceLocation { file: display(file), line: line as u32, column });
+    let at = |line: usize, column: u32| Some(SourceLocation { file: show(file), line: line as u32, column });
     let fail = |m: String, loc| Checked::Errors(vec![ScriptError::at(format!("material {}: {m}", decl.name), loc)]);
 
     // The file as WESL: its imports, and the names it declares.
@@ -112,6 +112,11 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
                     }
                 }
                 _ if matches!(*d.error, wesl::Error::ResolveError(_)) => fail(d.error.to_string(), decl.at()),
+                // No span: an error naming a declaration the params generate (`duplicate
+                // declaration of `noise``) is the schema's.
+                (_, None) if generated_names(decl).iter().any(|n| d.error.to_string().contains(&format!("`{n}`"))) => {
+                    fail(format!("{} in the declarations generated from its params", d.error), decl.at())
+                }
                 _ => Checked::Unverified(d.error.to_string()),
             };
         }
@@ -147,8 +152,12 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
     let module = match naga::front::wgsl::parse_str(&source) {
         Ok(m) => m,
         Err(e) => {
-            let loc = e.location(&source);
-            let label = e.labels().next().map(|(_, l)| l.to_string()).filter(|l| !l.is_empty());
+            // The first label in the author's part, else the first: a type the error names may be
+            // declared in the prelude while the mistake is in the file.
+            let in_file = |span: naga::Span| span.location(&source).line_number as usize > k;
+            let label = e.labels().find(|(span, _)| in_file(*span)).or_else(|| e.labels().next());
+            let loc = label.map(|(span, _)| span.location(&source)).or_else(|| e.location(&source));
+            let label = label.map(|(_, l)| l.to_string()).filter(|l| !l.is_empty());
             let msg = match label {
                 Some(l) if l != e.message() => format!("{}: {l}", e.message()),
                 _ => e.message().to_string(),
@@ -168,13 +177,26 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
             src = s.source();
         }
         // The innermost span is the expression; the outer one the function.
-        let loc = e.spans().map(|(span, _)| span.location(&source)).filter(|l| l.line_number > 0).last();
+        // The innermost span in the author's part, else the innermost.
+        let spans: Vec<_> = e.spans().map(|(span, _)| span.location(&source)).filter(|l| l.line_number > 0).collect();
+        let loc = spans.iter().rev().find(|l| l.line_number as usize > k).or(spans.last()).copied();
         return match loc {
             Some(l) => map(l.line_number, l.line_position, msg),
             None => fail(msg, decl.at()),
         };
     }
     Checked::Ok
+}
+
+/// The names the generated declarations use: `params`, the struct, each texture and sampler.
+fn generated_names(decl: &MaterialDecl) -> Vec<String> {
+    let Ok(b) = decl.bindings() else { return Vec::new() };
+    let mut names = vec!["params".to_string(), b.struct_name().to_string()];
+    for t in b.textures() {
+        names.push(t.clone());
+        names.push(format!("{t}_sampler"));
+    }
+    names
 }
 
 /// A global declaration's name.
@@ -345,19 +367,15 @@ pub struct WatchState {
     pub defs: HashMap<AssetId<Shader>, Vec<ShaderDefVal>>,
     /// Pipelines that failed: the shader, the pipeline's defs and the renderer's message.
     pub failed: Vec<(AssetId<Shader>, Vec<ShaderDefVal>, String)>,
-    /// Failures already passed on, so each is told once per source.
+    /// Failures already passed on, so each is told once per source. A superseded source's
+    /// failure can still arrive after a replacement; the main world drops it on re-checking.
     seen: HashSet<(AssetId<Shader>, String)>,
-    /// Stages whose pipelines were queued again since their shader was last replaced. Until then
-    /// a failed pipeline is the superseded source's, which pipelined rendering may still show.
-    armed: HashSet<AssetId<Shader>>,
 }
 
 impl WatchState {
-    /// A stage's shader was replaced: failures of the old source are dropped, and the new source's
-    /// count once its pipelines are queued again.
+    /// A stage's shader was replaced: the failures of its old source are dropped.
     pub fn replaced(&mut self, id: AssetId<Shader>) {
         self.ours.insert(id);
-        self.armed.remove(&id);
         self.seen.retain(|(s, _)| *s != id);
         self.failed.retain(|(s, ..)| *s != id);
     }
@@ -382,14 +400,11 @@ pub fn watch_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>,
                 CachedPipelineState::Ok(_) => {
                     w.defs.insert(id, defs.clone());
                 }
-                CachedPipelineState::Err(e) if w.armed.contains(&id) => {
+                CachedPipelineState::Err(e) => {
                     let msg = e.to_string();
                     if w.seen.insert((id, msg.clone())) {
                         w.failed.push((id, defs.clone(), msg));
                     }
-                }
-                CachedPipelineState::Queued | CachedPipelineState::Creating(_) => {
-                    w.armed.insert(id);
                 }
                 _ => {}
             }
