@@ -27,4 +27,4 @@ None.
 - `protocol/bevy-ts.openrpc.json`: 1.11.0, regenerated Rust and TS types. asset-catalog also bumps from 1.10; whichever lands second takes the next minor.
 - `docs/viewport.md`: the tools, the orientation gizmo and `camera`, and a note for abyme's studio.
 - Performance: one more small camera render (the orientation gizmo's corner) per frame, in edit mode only, while the game viewport is visible. Nothing in play. This needs the operator's go before build (performance is on the ask-first list); the cost is measured in tasks.
-- abyme: `bevy-viewport` builds the toolbar and the message against this, gated on `hello.protocol >= 1.11`.
+- abyme: `bevy-viewport` builds the toolbar and the message against this. It does not fall back: an engine older than 1.11 gets a "bevy-ts too old, update to 1.11" view.

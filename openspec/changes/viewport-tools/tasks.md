@@ -19,4 +19,4 @@
 
 - [ ] 4.1 Protocol 1.11.0: the three methods, `ViewportTools`, `camera`; regenerated Rust and TS types; CI diff check
 - [ ] 4.2 Measure the arena in edit mode on this Mac with and without the orientation gizmo: frame time (CPU and GPU, p50 and p99); record it in `docs/research/viewport-tools.md` and get the operator's ruling before landing
-- [ ] 4.3 Docs: the tools, the orientation gizmo and `camera` in `docs/viewport.md`, and a note for abyme's studio to gate on `hello.protocol >= 1.11`
+- [ ] 4.3 Docs: the tools, the orientation gizmo and `camera` in `docs/viewport.md`, and a note that abyme's studio needs 1.11 and shows an older engine as too old
