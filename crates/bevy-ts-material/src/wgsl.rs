@@ -123,10 +123,9 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
     let mangler = wesl::mangler::EscapeMangler;
     for (local, (path, item)) in &imports {
         let mangled = mangler.mangle(path, item);
-        match prelude.global_declarations.iter().filter_map(decl_ident).find(|i| *i.name() == mangled) {
-            Some(mut ident) => ident.rename(local.clone()),
-            // Imported but unused: stripped, which is fine.
-            None => {}
+        // An import the file does not use was stripped; nothing to rename.
+        if let Some(mut ident) = prelude.global_declarations.iter().filter_map(decl_ident).find(|i| *i.name() == mangled) {
+            ident.rename(local.clone());
         }
     }
     let prelude = format!("{prelude}\n");

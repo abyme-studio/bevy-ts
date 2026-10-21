@@ -223,9 +223,12 @@ impl ErasedRenderAsset for ScriptMaterial {
     }
 }
 
+type VisibilityOrMaterialChanged = Or<(Changed<ViewVisibility>, Changed<ScriptMaterial3d>)>;
+type MeshOrMaterialChanged = Or<(Changed<Mesh3d>, AssetChanged<Mesh3d>, Changed<ScriptMaterial3d>, AssetChanged<ScriptMaterial3d>)>;
+
 fn extract_instances(
     mut instances: ResMut<RenderMaterialInstances>,
-    changed: Extract<Query<(Entity, &ViewVisibility, &ScriptMaterial3d), Or<(Changed<ViewVisibility>, Changed<ScriptMaterial3d>)>>>,
+    changed: Extract<Query<(Entity, &ViewVisibility, &ScriptMaterial3d), VisibilityOrMaterialChanged>>,
     mut removed: Extract<RemovedComponents<ScriptMaterial3d>>,
 ) {
     let tick = instances.current_change_tick;
@@ -242,7 +245,7 @@ fn extract_instances(
 }
 
 fn check_entities_needing_specialization(
-    needs: Query<Entity, (Or<(Changed<Mesh3d>, AssetChanged<Mesh3d>, Changed<ScriptMaterial3d>, AssetChanged<ScriptMaterial3d>)>, With<ScriptMaterial3d>)>,
+    needs: Query<Entity, (MeshOrMaterialChanged, With<ScriptMaterial3d>)>,
     mut out: ResMut<EntitiesNeedingSpecialization<ScriptMaterial>>,
     mut removed_mesh: RemovedComponents<Mesh3d>,
     mut removed_material: RemovedComponents<ScriptMaterial3d>,
