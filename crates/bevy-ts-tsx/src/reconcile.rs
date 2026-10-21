@@ -462,7 +462,7 @@ fn owned(r: &Resolved) -> OwnedComponent {
     OwnedComponent { fields, source: r.source.clone(), overrides: r.overrides.clone() }
 }
 
-fn insert(world: &mut World, e: Entity, r: &Resolved) {
+pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
     match &r.target {
         Target::Native { id, .. } => {
             let bytes = r.insert_bytes().expect("native target");

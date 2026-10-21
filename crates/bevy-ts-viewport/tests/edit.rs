@@ -237,6 +237,39 @@ fn a_click_selects_the_prefab_instance_alt_the_exact_entity() {
     assert_eq!(selection(&mut app)["items"].as_array().unwrap().len(), 0, "a click on nothing clears");
 }
 
+#[test]
+fn a_pick_answers_world_points_and_the_ground() {
+    let mut app = edit_app();
+    let s = scene(&app);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    updates(&mut app, 2);
+    // Level, a metre above the floor: the upper half of the hole is sky.
+    {
+        let world = app.world_mut();
+        let mut q = world.query_filtered::<&mut Transform, With<EditorCamera>>();
+        *q.single_mut(world).unwrap() = Transform::from_xyz(0.0, 1.0, 10.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y);
+    }
+    updates(&mut app, 2);
+
+    let c = center(&app, s.free);
+    let at = screen(&mut app, c);
+    let pick = call(&mut app, "bevy-ts/viewport_pick", json!({ "x": at.x, "y": at.y })).unwrap();
+    assert_eq!(pick["hits"][0]["entity"], s.free.to_bits());
+    let p: Vec<f32> = serde_json::from_value(pick["hits"][0]["point"].clone()).unwrap();
+    let local = (Vec3::from_slice(&p) - c).abs();
+    assert!((local.max_element() - 0.5).abs() < 1e-3, "the point is on the cube's surface: {local}");
+
+    let at = screen(&mut app, Vec3::new(0.0, 0.0, 4.0));
+    let pick = call(&mut app, "bevy-ts/viewport_pick", json!({ "x": at.x, "y": at.y })).unwrap();
+    assert_eq!(pick["hits"].as_array().unwrap().len(), 0, "{pick}");
+    let g: Vec<f32> = serde_json::from_value(pick["ground"].clone()).unwrap();
+    assert!(g[1].abs() < 1e-4 && (g[0]).abs() < 1e-3 && (g[2] - 4.0).abs() < 1e-3, "{g:?}");
+
+    let pick = call(&mut app, "bevy-ts/viewport_pick", json!({ "x": at.x, "y": 2.0 })).unwrap();
+    assert_eq!(pick["hits"].as_array().unwrap().len(), 0, "{pick}");
+    assert_eq!(pick["ground"], Value::Null, "the sky has no ground");
+}
+
 #[derive(Resource, Default, Clone)]
 struct Clicks(Arc<Mutex<u32>>);
 

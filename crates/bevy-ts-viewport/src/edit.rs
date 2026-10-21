@@ -378,6 +378,11 @@ pub(crate) fn hits(world: &mut World, ray: Ray3d, exact: bool) -> Vec<Hit> {
 
 const ICON: f32 = 0.35;
 
+/// Where the ray meets the plane y = 0 in front of the camera, if it does.
+pub fn ground(ray: Ray3d) -> Option<Vec3> {
+    ray.intersect_plane(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y)).map(|t| ray.get_point(t))
+}
+
 /// The nearest ancestor-or-self that is a prefab instance root: the highest entity of the hit's
 /// own instance (same innermost call site in its TSX source chain). An entity with no call site
 /// selects itself.

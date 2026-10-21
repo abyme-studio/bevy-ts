@@ -44,6 +44,48 @@ answers `{ preview, kind, animations, pending }`. While the asset loads it answe
 - **Lifetime.** `asset_preview_close { preview }` despawns it. A preview with no viewport attached
   closes after 30 seconds, so a pane that closes and reopens does not reload.
 
+## The asset list and thumbnails
+
+`bevy-ts/assets { prefix?, kind? }` lists every file under the asset root without loading any.
+Each entry has `path`, `kind`, `loader`, `size`, `modified`, `loadState` and `thumbnail`; a loaded
+glTF also has its `labels`. `assets+watch` sends the whole list once, then each file added,
+modified, removed or changing load state.
+
+| kind | extensions | `thumbnail` | what it draws |
+|---|---|---|---|
+| `image` | png, jpg, ktx2, hdr, … | true | the image scaled to fit, on clear, at once |
+| `mesh` | gltf, glb, obj | true | the model, rendered offscreen |
+| `scene` | `.bsn` | true | the level, rendered offscreen |
+| `scene` | `.scn.ron` | false | — |
+| `audio`, `font`, `shader`, `other` | | false | — |
+
+`bevy-ts/asset_thumbnail { path, size }` (`size` at most 512) answers `{ png, pending }`. An image
+answers at once. A mesh or a level answers `pending: true` until it is drawn; ask again each frame
+or so. Anything with `thumbnail: false`, or that fails to load or compose, answers `png: null` with
+no `pending`. Answers are cached by path, modification time and size.
+
+A mesh or level is drawn on render layer 30 by a camera of its own, from three-quarters, framed
+to its bounds, then read back and despawned. Nothing on the viewport's ring or the game's cameras
+changes.
+
+A level is composed as loading it would: includes resolved, scene components expanded through
+their TS `scene()`. Only what draws is spawned: `Transform`, `Visibility`, `<mesh>` and
+`<material>`, `Mesh3d`/`MeshMaterial3d`, lights and glTF scene roots. Every entity carries
+`EditorOnly` (so `ScriptHidden`) from its first insert, so no TS query or observer, no physics and
+no reconciler sees it, and it is absent from `tsx_tree` and `entities+watch`. A level whose look
+comes from a TS system at runtime shows its authored look.
+
+What a level thumbnail costs (task 3.4, release, M-series Mac, 128 px):
+
+LEVEL_COSTS
+
+## Picking
+
+`bevy-ts/viewport_pick { x, y }` (edit mode) answers every hit at that point, nearest first, each
+with `entity`, `depth`, its world `point` `[x, y, z]` and the entity a click there `selects`, and a
+`ground` `[x, y, z]`: where the ray meets the plane y = 0 in front of the camera, or null when it
+does not (pointing at the sky). A model dropped on empty floor goes at `ground`.
+
 ## An engine that is always up
 
 The studio keeps the project's engine running in edit mode while the project is open (operator

@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.15.0";
+pub const VERSION: &str = "1.17.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +168,8 @@ pub struct AssetInfo {
     pub modified: ::std::option::Option<u64>,
     pub path: ::std::string::String,
     pub size: u64,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub thumbnail: ::std::option::Option<bool>,
 }
 ///`AssetKind`
 #[derive(
@@ -3142,6 +3144,8 @@ pub struct PauseResult {
 pub struct PickHit {
     pub depth: f64,
     pub entity: Entity,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub point: ::std::option::Option<[f64; 3usize]>,
     pub selects: Entity,
 }
 ///A pointer event in the hole.
@@ -4723,6 +4727,8 @@ pub struct ViewportPickParams {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportPickResult {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub ground: ::std::option::Option<[f64; 3usize]>,
     pub hits: ::std::vec::Vec<PickHit>,
 }
 ///`ViewportResizeParams`

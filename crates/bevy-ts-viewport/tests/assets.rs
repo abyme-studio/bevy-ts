@@ -209,3 +209,139 @@ fn thumbnails_of_an_image_and_a_gltf_leave_the_game_alone() {
     let again = call(&mut app, "bevy-ts/asset_thumbnail", json!({ "path": "models/enemy.gltf", "size": 128 }));
     assert_eq!(again["png"].as_str(), Some(png.as_str()));
 }
+
+// ---- the arena's example assets ----
+
+fn arena_assets() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena/assets")
+}
+
+/// A crate: a unit cube with per-face normals and one PBR material, buffer inline.
+fn crate_gltf() -> String {
+    let faces: [([f32; 3], [f32; 3], [f32; 3]); 6] = [
+        ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+        ([-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]),
+        ([0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]),
+        ([0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0]),
+        ([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        ([0.0, 0.0, -1.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+    ];
+    let (mut pos, mut nrm, mut idx) = (vec![], vec![], vec![]);
+    for (n, u, v) in faces {
+        let n = Vec3::from(n);
+        let (u, v) = (Vec3::from(u), Vec3::from(v));
+        // Counter-clockwise seen from outside: u × v is the normal.
+        let base = (pos.len()) as u16;
+        for (a, b) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
+            pos.push((n + u * a + v * b) * 0.5);
+            nrm.push(n);
+        }
+        idx.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+    let mut buf = vec![];
+    for p in pos.iter().chain(&nrm) {
+        for c in p.to_array() {
+            buf.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    for i in &idx {
+        buf.extend_from_slice(&i.to_le_bytes());
+    }
+    let vbytes = pos.len() * 12;
+    let uri = format!("data:application/octet-stream;base64,{}", bevy_ts_viewport::assets::base64(&buf));
+    let doc = json!({
+        "asset": { "version": "2.0", "generator": "bevy-ts-viewport tests/assets.rs" },
+        "scene": 0, "scenes": [{ "nodes": [0] }], "nodes": [{ "name": "crate", "mesh": 0 }],
+        "materials": [{ "name": "wood", "pbrMetallicRoughness": { "baseColorFactor": [0.55, 0.36, 0.18, 1.0], "metallicFactor": 0.0, "roughnessFactor": 0.8 } }],
+        "meshes": [{ "name": "crate", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1 }, "indices": 2, "material": 0 }] }],
+        "buffers": [{ "byteLength": buf.len(), "uri": uri }],
+        "bufferViews": [
+            { "buffer": 0, "byteOffset": 0, "byteLength": vbytes },
+            { "buffer": 0, "byteOffset": vbytes, "byteLength": vbytes },
+            { "buffer": 0, "byteOffset": vbytes * 2, "byteLength": idx.len() * 2 }
+        ],
+        "accessors": [
+            { "bufferView": 0, "componentType": 5126, "count": pos.len(), "type": "VEC3", "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] },
+            { "bufferView": 1, "componentType": 5126, "count": nrm.len(), "type": "VEC3" },
+            { "bufferView": 2, "componentType": 5123, "count": idx.len(), "type": "SCALAR" }
+        ]
+    });
+    serde_json::to_string_pretty(&doc).unwrap() + "\n"
+}
+
+/// A 64×64 checker of 8-pixel squares.
+fn checker_png() -> Vec<u8> {
+    let rgba: Vec<u8> = (0..64 * 64).flat_map(|i| if ((i % 64) / 8 + (i / 64) / 8) % 2 == 0 { [220, 220, 220, 255] } else { [60, 60, 60, 255] }).collect();
+    png(64, 64, &rgba)
+}
+
+/// A 0.2 s 880 Hz sine, 16-bit mono at 22050 Hz, faded out.
+fn hit_wav() -> Vec<u8> {
+    let rate = 22050u32;
+    let n = rate / 5;
+    let samples: Vec<i16> = (0..n).map(|i| {
+        let t = i as f32 / rate as f32;
+        let fade = 1.0 - i as f32 / n as f32;
+        ((t * 880.0 * std::f32::consts::TAU).sin() * fade * 0.5 * i16::MAX as f32) as i16
+    }).collect();
+    let data = samples.len() as u32 * 2;
+    let mut out = vec![];
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&(rate * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data.to_le_bytes());
+    for s in samples {
+        out.extend_from_slice(&s.to_le_bytes());
+    }
+    out
+}
+
+/// The arena's model, texture and sound are made here. With `BEVY_TS_WRITE_ARENA_ASSETS=1` this
+/// writes them; otherwise it checks the committed files are what it makes.
+#[test]
+fn the_arenas_assets_are_generated_here() {
+    let dir = arena_assets();
+    let files: [(&str, Vec<u8>); 3] = [("models/crate.gltf", crate_gltf().into_bytes()), ("textures/checker.png", checker_png()), ("sounds/hit.wav", hit_wav())];
+    for (path, bytes) in files {
+        let full = dir.join(path);
+        if std::env::var_os("BEVY_TS_WRITE_ARENA_ASSETS").is_some() {
+            std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+            std::fs::write(&full, &bytes).unwrap();
+        }
+        assert!(std::fs::read(&full).ok() == Some(bytes), "{path} is stale: rerun with BEVY_TS_WRITE_ARENA_ASSETS=1");
+    }
+}
+
+#[test]
+fn the_arena_lists_every_kind_and_draws_the_crate() {
+    let mut app = app(&arena_assets());
+    let r = call(&mut app, "bevy-ts/assets", Value::Null);
+    let by: std::collections::BTreeMap<String, Value> = r["assets"].as_array().unwrap().iter().map(|a| (a["path"].as_str().unwrap().to_string(), a.clone())).collect();
+    for (path, kind, thumbnail) in [("models/crate.gltf", "mesh", true), ("textures/checker.png", "image", true), ("sounds/hit.wav", "audio", false), ("levels/arena.bsn", "scene", true)] {
+        assert_eq!(by[path]["kind"], kind, "{path}");
+        assert_eq!(by[path]["thumbnail"], thumbnail, "{path}");
+    }
+    let t = call(&mut app, "bevy-ts/asset_thumbnail", json!({ "path": "sounds/hit.wav", "size": 64 }));
+    assert!(t["png"].is_null() && t["pending"] == false, "{t}");
+    let t0 = Instant::now();
+    let png = loop {
+        let t = call(&mut app, "bevy-ts/asset_thumbnail", json!({ "path": "models/crate.gltf", "size": 128 }));
+        if let Some(p) = t["png"].as_str() {
+            break p.to_string();
+        }
+        assert!(t0.elapsed() < Duration::from_secs(60), "the crate's thumbnail never finished");
+        std::thread::sleep(Duration::from_millis(5));
+        app.update();
+    };
+    let img = decode(&png);
+    let p = &img.data.as_ref().unwrap()[((64 * 128 + 64) * 4) as usize..][..4];
+    assert!(p[3] > 0 && p[0] > p[2], "the crate is drawn, brown: {p:?}");
+}

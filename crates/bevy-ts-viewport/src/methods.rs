@@ -329,9 +329,9 @@ fn pick(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     };
     let hits: Vec<Value> = edit::hits(world, ray, false)
         .into_iter()
-        .map(|h| json!({ "entity": h.entity.to_bits(), "depth": h.depth, "selects": h.selects.to_bits() }))
+        .map(|h| json!({ "entity": h.entity.to_bits(), "depth": h.depth, "point": ray.get_point(h.depth).to_array(), "selects": h.selects.to_bits() }))
         .collect();
-    Ok(json!({ "hits": hits }))
+    Ok(json!({ "hits": hits, "ground": edit::ground(ray).map(|g| g.to_array()) }))
 }
 
 fn select(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {

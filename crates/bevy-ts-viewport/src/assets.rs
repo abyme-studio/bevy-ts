@@ -4,7 +4,7 @@
 use crate::edit::{EditorOnly, THUMBNAIL_LAYER};
 use crate::methods::{internal, invalid, required, to_value, CRATE};
 use bevy::asset::io::file::FileAssetReader;
-use bevy::asset::{AssetPath, LoadState, RenderAssetUsages};
+use bevy::asset::{AssetPath, LoadState, RecursiveDependencyLoadState, RenderAssetUsages};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
@@ -12,7 +12,10 @@ use bevy::prelude::*;
 use bevy::remote::{BrpResult};
 use bevy::render::gpu_readback::{Readback, ReadbackComplete};
 use bevy::render::render_resource::{TextureFormat, TextureUsages};
+use bevy_ts_levels::engine::BsnLevel;
+use bevy_ts_levels::picture::spawn_level_picture;
 use bevy_ts_remote::protocol;
+use std::any::TypeId;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -52,6 +55,16 @@ pub fn kind(path: &str) -> &'static str {
         "ttf" | "otf" => "font",
         "wgsl" | "wesl" | "glsl" | "vert" | "frag" => "shader",
         _ => "other",
+    }
+}
+
+/// Whether `asset_thumbnail` draws this file: images, meshes and `.bsn` levels. The listing's
+/// `thumbnail` and the method both ask here, so they never disagree.
+pub fn has_thumbnail(path: &str) -> bool {
+    match kind(path) {
+        "image" | "mesh" => true,
+        "scene" => path.to_ascii_lowercase().ends_with(".bsn"),
+        _ => false,
     }
 }
 
@@ -140,6 +153,7 @@ fn info(world: &World, f: &File) -> Value {
         "modified": f.modified,
         "loadState": state,
         "error": error,
+        "thumbnail": has_thumbnail(&f.path),
     });
     if k == "mesh" && state == "loaded" {
         v["labels"] = json!(gltf_labels(world, &f.path));
@@ -306,6 +320,10 @@ fn thumbnail(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     if world.resource::<Thumbnails>().jobs.contains_key(&key) {
         return answer(None, true);
     }
+    if !has_thumbnail(&p.path) {
+        world.resource_mut::<Thumbnails>().cache.insert(key, None);
+        return answer(None, false);
+    }
     match kind(&p.path) {
         "image" => {
             let png = image_thumbnail(&root.join(&p.path), size).map_err(internal)?;
@@ -319,6 +337,12 @@ fn thumbnail(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
             } else {
                 world.resource::<AssetServer>().load::<bevy::world_serialization::WorldAsset>(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(p.path.clone())).untyped()
             };
+            world.resource_mut::<Thumbnails>().jobs.insert(key, Job::Loading { handle, size, since: Instant::now() });
+            answer(None, true)
+        }
+        // A `.bsn` level, in a game that reads levels.
+        "scene" if world.contains_resource::<Assets<BsnLevel>>() => {
+            let handle = world.resource::<AssetServer>().load::<BsnLevel>(p.path.clone()).untyped();
             world.resource_mut::<Thumbnails>().jobs.insert(key, Job::Loading { handle, size, since: Instant::now() });
             answer(None, true)
         }
@@ -363,6 +387,22 @@ fn thumbnails(world: &mut World) {
     for key in keys {
         let job = world.resource_mut::<Thumbnails>().jobs.remove(&key).unwrap();
         let next = match job {
+            Job::Loading { handle, size, since } if handle.type_id() == TypeId::of::<BsnLevel>() => {
+                let server = world.resource::<AssetServer>();
+                let failed = matches!(server.get_load_state(handle.id()), Some(LoadState::Failed(_)))
+                    || matches!(server.get_recursive_dependency_load_state(handle.id()), Some(RecursiveDependencyLoadState::Failed(_)));
+                if server.is_loaded_with_dependencies(handle.id()) {
+                    start_level_render(world, &key.0, size)
+                } else if failed || since.elapsed() > LOAD_TIMEOUT {
+                    None
+                } else {
+                    Some(Job::Loading { handle, size, since })
+                }
+                .or_else(|| {
+                    world.resource_mut::<Thumbnails>().cache.entry(key.clone()).or_insert(None);
+                    None
+                })
+            }
             Job::Loading { handle, size, since } => {
                 let state = world.resource::<AssetServer>().get_load_state(handle.id());
                 match state {
@@ -411,12 +451,17 @@ fn thumbnails(world: &mut World) {
     }
 }
 
+/// A level composed and spawned as a picture on layer 30, then staged as any subject; None when
+/// it does not compose.
+fn start_level_render(world: &mut World, path: &str, size: u32) -> Option<Job> {
+    let subject = spawn_level_picture(world, path, (EditorOnly, RenderLayers::layer(THUMBNAIL_LAYER))).ok()?;
+    world.entity_mut(subject).insert(ThumbnailSubject);
+    Some(stage(world, subject, size))
+}
+
 /// The isolated scene: the asset, a light and a camera rendering layer 30 into an image.
 fn start_render(world: &mut World, handle: &UntypedHandle, size: u32) -> Job {
     let layer = RenderLayers::layer(THUMBNAIL_LAYER);
-    let mut image = Image::new_target_texture(size, size, TextureFormat::Rgba8UnormSrgb, None);
-    image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
-    let image = world.resource_mut::<Assets<Image>>().add(image);
     let subject = if let Ok(mesh) = handle.clone().try_typed::<Mesh>() {
         let material = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::default());
         world.spawn((Mesh3d(mesh), MeshMaterial3d(material), Transform::default(), layer.clone(), EditorOnly)).id()
@@ -424,6 +469,15 @@ fn start_render(world: &mut World, handle: &UntypedHandle, size: u32) -> Job {
         let scene = handle.clone().typed::<bevy::world_serialization::WorldAsset>();
         world.spawn((bevy::world_serialization::WorldAssetRoot(scene), Transform::default(), Visibility::default(), EditorOnly, ThumbnailSubject)).id()
     };
+    stage(world, subject, size)
+}
+
+/// A light and a camera on layer 30 rendering into an image, around `subject`.
+fn stage(world: &mut World, subject: Entity, size: u32) -> Job {
+    let layer = RenderLayers::layer(THUMBNAIL_LAYER);
+    let mut image = Image::new_target_texture(size, size, TextureFormat::Rgba8UnormSrgb, None);
+    image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
+    let image = world.resource_mut::<Assets<Image>>().add(image);
     let light = world
         .spawn((DirectionalLight { illuminance: 8000.0, ..default() }, Transform::from_xyz(3.0, 6.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y), layer.clone(), EditorOnly))
         .id();
@@ -567,6 +621,24 @@ mod tests {
         assert_eq!(kind("levels/arena.bsn"), "scene");
         assert_eq!(kind("scenes/a.scn.ron"), "scene");
         assert_eq!(kind("notes.txt"), "other");
+    }
+
+    #[test]
+    fn thumbnails_by_kind() {
+        for (path, want) in [
+            ("textures/floor.png", true),
+            ("models/enemy.glb", true),
+            ("models/crate.gltf", true),
+            ("models/rock.obj", true),
+            ("levels/arena.BSN", true),
+            ("scenes/a.scn.ron", false),
+            ("sounds/hit.wav", false),
+            ("fonts/ui.ttf", false),
+            ("shaders/glow.wgsl", false),
+            ("notes.txt", false),
+        ] {
+            assert_eq!(has_thumbnail(path), want, "{path}");
+        }
     }
 
     #[test]
