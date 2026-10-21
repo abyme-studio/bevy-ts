@@ -263,3 +263,77 @@ fn measure_level_thumbnails() {
         println!("| {path} | {entities} | {compose:.2} | {frames} | {:.2} / {max:.2} | {idle:.2} |", median(&mut times));
     }
 }
+
+/// The arena's crate, and a level that places it through a glTF scene root (`WorldAssetRoot`,
+/// Bevy 0.20's name for `SceneRoot`).
+fn with_crate() -> Vec<(&'static str, String)> {
+    let model = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena/assets/models/crate.gltf");
+    let props = "#Crate\nWorldAssetRoot(\"models/crate.gltf#Scene0\")\nTransform { translation: Vec3 { x: 2.0 } }\n--\n#Guard\n@enemy::Enemy\n";
+    vec![("assets/models/crate.gltf", std::fs::read_to_string(model).unwrap()), ("assets/levels/props.bsn", props.to_string())]
+}
+
+#[test]
+fn a_models_parts_in_a_level_thumbnail_are_hidden_from_the_first_frame() {
+    let dir = arena("viewport-thumbnail-model", &with_crate());
+    let mut app = app(&dir);
+    let before: std::collections::HashSet<Entity> = app.world_mut().query::<Entity>().iter(app.world()).collect();
+    watch(&mut app, "bevy-ts/entities+watch").unwrap();
+    let mut meshes = 0;
+    let (img, _, _) = thumbnail(&mut app, "levels/props.bsn", 128, |app| {
+        let world = app.world_mut();
+        let mut q = world.query::<(Entity, Has<bevy_ts::ScriptHidden>, Option<&bevy::camera::visibility::RenderLayers>, Has<Mesh3d>)>();
+        for (e, hidden, layers, mesh) in q.iter(world) {
+            // Observers and resources are bookkeeping, as the entity list counts them.
+            if before.contains(&e) || world.get::<Observer>(e).is_some() || world.entity(e).contains::<bevy::ecs::resource::IsResource>() {
+                continue;
+            }
+            if !hidden {
+                let names: Vec<String> = world.entity(e).archetype().components().iter().map(|c| world.components().get_name(*c).unwrap().to_string()).collect();
+                panic!("a new entity {e} is not script-hidden: {names:?}");
+            }
+            if mesh {
+                meshes += 1;
+                assert_eq!(layers, Some(&bevy::camera::visibility::RenderLayers::layer(30)), "a new mesh {e} is not on the thumbnail layer");
+            }
+        }
+        if let Some(delta) = watch(app, "bevy-ts/entities+watch") {
+            assert!(delta["spawned"].as_array().is_none_or(|s| s.is_empty()), "the entity list saw the thumbnail: {delta:#}");
+        }
+    });
+    assert!(meshes > 0, "the crate's mesh was spawned");
+    let brown = img.data.as_ref().unwrap().chunks(4).filter(|p| p[3] > 0 && p[0] > p[1] && p[1] > p[2] && (p[0] as u32) < 2 * p[1] as u32).count();
+    assert!(brown > 20, "the crate is drawn ({brown} pixels)");
+}
+
+fn red(img: &Image) -> usize {
+    img.data.as_ref().unwrap().chunks(4).filter(|p| p[3] > 0 && p[0] as u32 > 2 * p[1].max(p[2]) as u32).count()
+}
+
+#[test]
+fn thumbnails_asked_together_do_not_see_each_other() {
+    let dir = arena("viewport-thumbnail-together", &with_crate());
+    let mut app = app(&dir);
+    let (alone, _, _) = thumbnail(&mut app, "levels/arena.bsn", 128, |_| {});
+    // A new modification time, so the arena is drawn again rather than served from the cache.
+    let file = dir.join("assets/levels/arena.bsn");
+    std::thread::sleep(Duration::from_millis(5));
+    std::fs::write(&file, std::fs::read(&file).unwrap()).unwrap();
+    let ask = |app: &mut App, path: &str| call(app, "bevy-ts/asset_thumbnail", json!({ "path": path, "size": 128 }))["png"].as_str().map(decode);
+    assert!(ask(&mut app, "levels/arena.bsn").is_none() && ask(&mut app, "models/crate.gltf").is_none());
+    let (mut arena, mut model) = (None, None);
+    for _ in 0..2000 {
+        app.update();
+        arena = arena.or_else(|| ask(&mut app, "levels/arena.bsn"));
+        model = model.or_else(|| ask(&mut app, "models/crate.gltf"));
+        if arena.is_some() && model.is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let (arena, model) = (arena.expect("the arena never finished"), model.expect("the crate never finished"));
+    assert_eq!(red(&model), 0, "the crate's picture holds no enemy");
+    assert!(red(&model) == 0 && model.data.as_ref().unwrap()[((64 * 128 + 64) * 4) as usize + 3] > 0, "the crate fills its own picture");
+    let alpha = |img: &Image| img.data.as_ref().unwrap().chunks(4).filter(|p| p[3] > 0).count();
+    assert_eq!(alpha(&arena), alpha(&alone), "the arena drawn beside the crate is the arena drawn alone");
+    assert_eq!(red(&arena), red(&alone));
+}

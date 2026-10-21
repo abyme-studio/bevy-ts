@@ -4,7 +4,7 @@
 - A level is composed by `bevy_ts_levels::compose_level` (includes resolved, scene components expanded through TS `scene()` in one `bevy_ts_tsx::expand` call) and then reconciled into the game as root `level:<path>`. Nothing spawns a composed level anywhere else.
 - `viewport_pick` returns `edit::hits(ray)`: entity, distance along the ray, and the entity a click selects. The ray is `editor_ray`.
 - The arena's `assets/` holds only `levels/arena.bsn` and `levels/room.bsn`.
-- abyme's half is team bevy-assets (spec@bevy-assets agreed this protocol, 2026-10-22). viewport-tools (spec@viewport-gizmos) does not touch picking. engine-components, viewport-tools and this change all bump from 1.10; lead@bevy-ts plans 1.11.0, 1.12.0 and 1.13.0 in that order.
+- abyme's half is team bevy-assets (spec@bevy-assets agreed this protocol, 2026-10-22). viewport-tools (spec@viewport-gizmos) does not touch picking. Main is at 1.15.0 and viewport-tools takes 1.16.0; lead@bevy-ts plans 1.17.0 for this change.
 
 ## Goals / Non-Goals
 
@@ -24,7 +24,7 @@
 4. **`thumbnail` is decided by `kind` and extension in one function** next to `kind()`, so the listing and `asset_thumbnail` can never disagree.
 5. **Pick points come from the ray.** `point = origin + direction × depth` per hit (mesh hits already give the distance; icon hits use the distance along the ray to the icon's centre). `ground` is the ray's crossing of y = 0 when `direction.y` points toward the plane and the crossing is in front of the camera; null otherwise. Both are plain `[f32; 3]`.
 6. **Example assets are generated, not downloaded.** A `.gltf` crate with an embedded base64 buffer and a PBR material, a 64×64 checker `.png` (written with `assets.rs`'s own PNG writer) and a short sine `.wav`, made by a test helper and committed. No third-party art, no licence question.
-7. **Protocol: the next free minor (planned 1.13.0).** `AssetInfo.thumbnail` (boolean, required in what the engine sends, optional for older engines in clients), `PickHit.point`, `ViewportPickResult.ground` (nullable). The number is set when it lands, from main; lead@bevy-ts names it.
+7. **Protocol: the next free minor (planned 1.17.0).** `AssetInfo.thumbnail` (boolean, required in what the engine sends, optional for older engines in clients), `PickHit.point`, `ViewportPickResult.ground` (nullable). The number is set when it lands, from main; lead@bevy-ts names it.
 
 ## Alignment with Bevy
 

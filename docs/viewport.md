@@ -55,7 +55,7 @@ modified, removed or changing load state.
 |---|---|---|---|
 | `image` | png, jpg, ktx2, hdr, … | true | the image scaled to fit, on clear, at once |
 | `mesh` | gltf, glb, obj | true | the model, rendered offscreen |
-| `scene` | `.bsn` | true | the level, rendered offscreen |
+| `scene` | `.bsn` | true in a game that reads levels | the level, rendered offscreen |
 | `scene` | `.scn.ron` | false | — |
 | `audio`, `font`, `shader`, `other` | | false | — |
 
@@ -66,11 +66,13 @@ no `pending`. Answers are cached by path, modification time and size.
 
 A mesh or level is drawn on render layer 30 by a camera of its own, from three-quarters, framed
 to its bounds, then read back and despawned. Nothing on the viewport's ring or the game's cameras
-changes.
+changes. One is drawn at a time: the others asked for wait, loaded, until it is read back, so no
+picture holds another's subject. Whatever a glTF's scene spawns under a thumbnail is marked
+`EditorOnly` and put on layer 30 the moment it is attached.
 
 A level is composed as loading it would: includes resolved, scene components expanded through
-their TS `scene()`. Only what draws is spawned: `Transform`, `Visibility`, `<mesh>` and
-`<material>`, `Mesh3d`/`MeshMaterial3d`, lights and glTF scene roots. Every entity carries
+their TS `scene()`. Only what draws is spawned: `Transform`, `Visibility`, `<mesh>`, `<material>`
+(script materials too), `Mesh3d`/`MeshMaterial3d`, lights and glTF scene roots. Every entity carries
 `EditorOnly` (so `ScriptHidden`) from its first insert, so no TS query or observer, no physics and
 no reconciler sees it, and it is absent from `tsx_tree` and `entities+watch`. A level whose look
 comes from a TS system at runtime shows its authored look.

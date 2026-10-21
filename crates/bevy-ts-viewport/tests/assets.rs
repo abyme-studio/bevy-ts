@@ -328,7 +328,8 @@ fn the_arena_lists_every_kind_and_draws_the_crate() {
     let mut app = app(&arena_assets());
     let r = call(&mut app, "bevy-ts/assets", Value::Null);
     let by: std::collections::BTreeMap<String, Value> = r["assets"].as_array().unwrap().iter().map(|a| (a["path"].as_str().unwrap().to_string(), a.clone())).collect();
-    for (path, kind, thumbnail) in [("models/crate.gltf", "mesh", true), ("textures/checker.png", "image", true), ("sounds/hit.wav", "audio", false), ("levels/arena.bsn", "scene", true)] {
+    for (path, kind, thumbnail) in [("models/crate.gltf", "mesh", true), ("textures/checker.png", "image", true), ("sounds/hit.wav", "audio", false), ("levels/arena.bsn", "scene", false)] {
+        // No LevelsPlugin in this app: a level gets no thumbnail here.
         assert_eq!(by[path]["kind"], kind, "{path}");
         assert_eq!(by[path]["thumbnail"], thumbnail, "{path}");
     }

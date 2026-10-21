@@ -32,7 +32,7 @@ impl Default for AssetRoot {
 }
 
 pub(crate) fn build(app: &mut App) {
-    app.init_resource::<AssetRoot>().init_resource::<Listing>().init_resource::<Thumbnails>().add_systems(Update, (poll, thumbnails));
+    app.init_resource::<AssetRoot>().init_resource::<Listing>().init_resource::<Thumbnails>().add_systems(Update, (poll, thumbnails)).add_observer(mark_parts);
 }
 
 pub(crate) fn add_methods(app: &mut App) {
@@ -58,14 +58,19 @@ pub fn kind(path: &str) -> &'static str {
     }
 }
 
-/// Whether `asset_thumbnail` draws this file: images, meshes and `.bsn` levels. The listing's
-/// `thumbnail` and the method both ask here, so they never disagree.
-pub fn has_thumbnail(path: &str) -> bool {
+/// Whether `asset_thumbnail` draws this file: images, meshes and `.bsn` levels, the levels only
+/// in a game that reads them (`levels`). The listing's `thumbnail` and the method both ask here,
+/// so they never disagree.
+pub fn has_thumbnail(path: &str, levels: bool) -> bool {
     match kind(path) {
         "image" | "mesh" => true,
-        "scene" => path.to_ascii_lowercase().ends_with(".bsn"),
+        "scene" => levels && path.to_ascii_lowercase().ends_with(".bsn"),
         _ => false,
     }
+}
+
+fn levels_served(world: &World) -> bool {
+    world.contains_resource::<Assets<BsnLevel>>()
 }
 
 /// One file under the root: its asset path, size and modification time (ms since the epoch).
@@ -153,7 +158,7 @@ fn info(world: &World, f: &File) -> Value {
         "modified": f.modified,
         "loadState": state,
         "error": error,
-        "thumbnail": has_thumbnail(&f.path),
+        "thumbnail": has_thumbnail(&f.path, levels_served(world)),
     });
     if k == "mesh" && state == "loaded" {
         v["labels"] = json!(gltf_labels(world, &f.path));
@@ -320,7 +325,7 @@ fn thumbnail(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     if world.resource::<Thumbnails>().jobs.contains_key(&key) {
         return answer(None, true);
     }
-    if !has_thumbnail(&p.path) {
+    if !has_thumbnail(&p.path, levels_served(world)) {
         world.resource_mut::<Thumbnails>().cache.insert(key, None);
         return answer(None, false);
     }
@@ -340,8 +345,8 @@ fn thumbnail(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
             world.resource_mut::<Thumbnails>().jobs.insert(key, Job::Loading { handle, size, since: Instant::now() });
             answer(None, true)
         }
-        // A `.bsn` level, in a game that reads levels.
-        "scene" if world.contains_resource::<Assets<BsnLevel>>() => {
+        // A `.bsn` level: has_thumbnail said the game reads levels.
+        "scene" => {
             let handle = world.resource::<AssetServer>().load::<BsnLevel>(p.path.clone()).untyped();
             world.resource_mut::<Thumbnails>().jobs.insert(key, Job::Loading { handle, size, since: Instant::now() });
             answer(None, true)
@@ -382,11 +387,23 @@ const LOAD_TIMEOUT: Duration = Duration::from_secs(20);
 /// Frames to let a scene spawn and its bounds settle before framing it.
 const SETTLE_FRAMES: u32 = 3;
 
+/// One stage at a time: every subject sits at the origin on layer 30, so two would be drawn in
+/// each other's pictures. A loaded job waits while another renders or reads back.
+fn staged(world: &World) -> bool {
+    world.resource::<Thumbnails>().jobs.values().any(|j| !matches!(j, Job::Loading { .. }))
+}
+
 fn thumbnails(world: &mut World) {
     let keys: Vec<_> = world.resource::<Thumbnails>().jobs.keys().cloned().collect();
     for key in keys {
         let job = world.resource_mut::<Thumbnails>().jobs.remove(&key).unwrap();
         let next = match job {
+            Job::Loading { handle, size, since } if staged(world) => {
+                let server = world.resource::<AssetServer>();
+                let loaded = if handle.type_id() == TypeId::of::<BsnLevel>() { server.is_loaded_with_dependencies(handle.id()) } else { matches!(server.get_load_state(handle.id()), Some(LoadState::Loaded)) };
+                // Loaded and queued: the timeout is for loading, not for the queue.
+                Some(Job::Loading { handle, size, since: if loaded { Instant::now() } else { since } })
+            }
             Job::Loading { handle, size, since } if handle.type_id() == TypeId::of::<BsnLevel>() => {
                 let server = world.resource::<AssetServer>();
                 let failed = matches!(server.get_load_state(handle.id()), Some(LoadState::Failed(_)))
@@ -454,7 +471,7 @@ fn thumbnails(world: &mut World) {
 /// A level composed and spawned as a picture on layer 30, then staged as any subject; None when
 /// it does not compose.
 fn start_level_render(world: &mut World, path: &str, size: u32) -> Option<Job> {
-    let subject = spawn_level_picture(world, path, (EditorOnly, RenderLayers::layer(THUMBNAIL_LAYER))).ok()?;
+    let subject = spawn_level_picture(world, path, (EditorOnly, RenderLayers::layer(THUMBNAIL_LAYER), ThumbnailPart)).ok()?;
     world.entity_mut(subject).insert(ThumbnailSubject);
     Some(stage(world, subject, size))
 }
@@ -467,7 +484,7 @@ fn start_render(world: &mut World, handle: &UntypedHandle, size: u32) -> Job {
         world.spawn((Mesh3d(mesh), MeshMaterial3d(material), Transform::default(), layer.clone(), EditorOnly)).id()
     } else {
         let scene = handle.clone().typed::<bevy::world_serialization::WorldAsset>();
-        world.spawn((bevy::world_serialization::WorldAssetRoot(scene), Transform::default(), Visibility::default(), EditorOnly, ThumbnailSubject)).id()
+        world.spawn((bevy::world_serialization::WorldAssetRoot(scene), Transform::default(), Visibility::default(), layer.clone(), EditorOnly, ThumbnailPart, ThumbnailSubject)).id()
     };
     stage(world, subject, size)
 }
@@ -497,6 +514,23 @@ fn stage(world: &mut World, subject: Entity, size: u32) -> Job {
 
 #[derive(Component)]
 struct ThumbnailSubject;
+
+/// On every entity of a thumbnail's subject. What a scene spawner attaches under one is marked
+/// the moment it is attached, before any system, extraction or watch can see it.
+#[derive(Component, Clone, Copy)]
+struct ThumbnailPart;
+
+fn mark_parts(insert: On<Insert<ChildOf>>, parents: Query<&ChildOf>, parts: Query<(), With<ThumbnailPart>>, children: Query<&Children>, mut commands: Commands) {
+    let e = insert.entity;
+    let Ok(parent) = parents.get(e) else { return };
+    if !parts.contains(parent.parent()) || parts.contains(e) {
+        return;
+    }
+    // A subtree attached whole brings its descendants with it.
+    for d in std::iter::once(e).chain(children.iter_descendants(e)) {
+        commands.entity(d).insert((ThumbnailPart, EditorOnly, RenderLayers::layer(THUMBNAIL_LAYER)));
+    }
+}
 
 #[derive(Component)]
 struct ThumbnailCamera;
@@ -637,8 +671,9 @@ mod tests {
             ("shaders/glow.wgsl", false),
             ("notes.txt", false),
         ] {
-            assert_eq!(has_thumbnail(path), want, "{path}");
+            assert_eq!(has_thumbnail(path, true), want, "{path}");
         }
+        assert!(!has_thumbnail("levels/arena.bsn", false), "no level thumbnails in a game without levels");
     }
 
     #[test]

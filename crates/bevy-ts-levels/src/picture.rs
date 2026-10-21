@@ -19,7 +19,7 @@ fn short_name(type_path: &str) -> &str {
 }
 
 /// Composes the level at `path` and spawns its nodes under one root, keeping `Transform`,
-/// `Visibility`, mesh and material intrinsics, `Mesh3d`/`MeshMaterial3d`, lights and glTF scene
+/// `Visibility`, mesh, material and script-material intrinsics, `Mesh3d`/`MeshMaterial3d`, lights and glTF scene
 /// roots. Every entity is spawned with `marker` (which should hold `ScriptHidden`) before any
 /// other component. Returns the root, or the compose errors; nothing is logged.
 pub fn spawn_level_picture(world: &mut World, path: &str, marker: impl Bundle + Clone) -> Result<Entity, Vec<ScriptError>> {
@@ -56,11 +56,13 @@ fn spawn(world: &mut World, nodes: &[Node], parent: Entity, transform: Option<be
         for r in &n.comps {
             match &r.target {
                 Target::Native { id, .. } if Some(*id) == transform => bevy_ts_tsx::reconcile::insert(world, e, r),
-                Target::Mesh(_) | Target::Material(_) => bevy_ts_tsx::reconcile::insert(world, e, r),
+                Target::Mesh(_) | Target::Material(_) | Target::ScriptMaterial { .. } => bevy_ts_tsx::reconcile::insert(world, e, r),
                 Target::Reflect { type_path } if DRAWS.contains(&short_name(type_path)) => {
                     let props = r.controlled.clone().into_iter().collect();
-                    // A field that does not read is left at its default: a picture logs nothing.
-                    let _ = bevy_ts_tsx::reflected::insert(world, e, type_path, &props);
+                    // A component that does not read is left out: the game's log stays the game's.
+                    if let Err(m) = bevy_ts_tsx::reflected::insert(world, e, type_path, &props) {
+                        debug!("level picture: {type_path}: {m}");
+                    }
                 }
                 _ => {}
             }
