@@ -146,12 +146,13 @@ fn deleting_takes_leading_comments_and_one_separator() {
 fn adding_an_instance_copies_the_style() {
     let w = roundtrip(ARENA, &[Op::Add {
         parent: Vec::new(),
-        name: "EnemyC".into(),
+        name: Some("EnemyC".into()),
         base: Base::Scene { component: "game::Enemy".into(), props: vec![("hp".into(), f(50.0))], fields: vec![] },
         patches: vec![NewPatch { component: "Transform".into(), fields: vec![("translation".into(), WValue::Vector { ty: "Vec3".into(), lanes: vec![("x".into(), 6.0)] })] }],
+        asset: None,
     }], &["+--", "+#EnemyC", "+@game::Enemy { @hp: 50.0 }", "+Transform { translation: Vec3 { x: 6.0 } }"]);
     assert!(w.text.ends_with("}\n--\n#EnemyC\n@game::Enemy { @hp: 50.0 }\nTransform { translation: Vec3 { x: 6.0 } }\n"), "{}", w.text);
-    let room = ok("#Room Transform\n", &[Op::Add { parent: p("Room"), name: "Door".into(), base: Base::Include("levels/door.bsn".into()), patches: vec![] }]);
+    let room = ok("#Room Transform\n", &[Op::Add { parent: p("Room"), name: Some("Door".into()), base: Base::Include("levels/door.bsn".into()), patches: vec![], asset: None }]);
     assert_eq!(room.text, "#Room Transform\nChildren [\n    #Door\n    :\"levels/door.bsn\"\n]\n");
 }
 
@@ -159,10 +160,10 @@ fn adding_an_instance_copies_the_style() {
 fn renaming_and_reparenting() {
     roundtrip(ARENA, &[Op::Rename { path: p("EnemyA"), to: "Grunt".into() }], &["-#EnemyA", "+#Grunt"]);
     let src = "#A Marker\n--\n#B\nMarker\nChildren [\n    #C Marker\n]\n";
-    let w = ok(src, &[Op::Reparent { path: p("A"), parent: p("B") }]);
+    let w = ok(src, &[Op::Reparent { path: p("A"), parent: p("B"), index: None }]);
     assert_eq!(w.text, "#B\nMarker\nChildren [\n    #C Marker\n    --\n    #A Marker\n]\n");
-    let back = ok(&w.text, &w.inverse);
-    assert_eq!(back.text, "#B\nMarker\nChildren [\n    #C Marker\n]\n--\n#A Marker\n");
+    // The inverse puts it back where it was.
+    assert_eq!(ok(&w.text, &w.inverse).text, src);
 }
 
 #[test]
@@ -232,4 +233,122 @@ fn a_sidecar_creates_paths_from_the_top() {
     assert_eq!(w.text, "#\"PlayerUnit#0\"\nChildren [\n    #gun\n    Transform { scale: Vec3 { x: 2.0 } }\n]\n");
     let w2 = apply_sidecar(&w.text, &[set("Hud#0", "Transform", "scale", WValue::Vector { ty: "Vec3".into(), lanes: vec![("y".into(), 3.0)] })]).unwrap();
     assert!(w2.text.ends_with("]\n--\n#\"Hud#0\"\nTransform { scale: Vec3 { y: 3.0 } }\n"), "{}", w2.text);
+}
+
+fn add(parent: &str, name: Option<&str>, base: Base, patches: Vec<NewPatch>, asset: Option<&str>) -> Op {
+    Op::Add { parent: p(parent), name: name.map(String::from), base, patches, asset: asset.map(String::from) }
+}
+
+fn scene(component: &str) -> Base {
+    Base::Scene { component: component.into(), props: vec![], fields: vec![] }
+}
+
+fn patch(component: &str, fields: Vec<(&str, WValue)>) -> NewPatch {
+    NewPatch { component: component.into(), fields: fields.into_iter().map(|(n, v)| (n.into(), v)).collect() }
+}
+
+#[test]
+fn an_unnamed_add_takes_the_first_free_name() {
+    let enemy = || add("", None, scene("enemy::Enemy"), vec![], None);
+    let w = ok(ARENA, &[enemy(), enemy()]);
+    assert_eq!(w.created, [p("Enemy"), p("Enemy2")]);
+    assert!(w.text.ends_with("}\n--\n#Enemy\n@enemy::Enemy\n--\n#Enemy2\n@enemy::Enemy\n"), "{}", w.text);
+    // The base loses its digits; a taken base takes the next number.
+    assert_eq!(ok(ARENA, &[add("", None, scene("game::Enemy3"), vec![], None)]).created, [p("Enemy")]);
+    assert_eq!(ok("#shelf Marker\n", &[add("", None, Base::None, vec![], Some("models/shelf.glb"))]).created, [p("shelf2")]);
+    // An asset's stem, a first patch's short name, else Entity.
+    assert_eq!(ok(ARENA, &[add("", None, Base::None, vec![], Some("models/crate.glb#Scene1"))]).created, [p("crate")]);
+    assert_eq!(ok(ARENA, &[add("", None, Base::None, vec![patch("bevy_light::PointLight", vec![])], None)]).created, [p("PointLight")]);
+    assert_eq!(ok(ARENA, &[add("", None, Base::None, vec![], None)]).created, [p("Entity")]);
+    // A given name that is taken is refused.
+    assert_eq!(apply(ARENA, &[add("", Some("EnemyA"), Base::None, vec![], None)]).unwrap_err().reason, "exists");
+}
+
+#[test]
+fn a_reparent_and_its_inverse_give_the_file_back() {
+    let src = "#A Marker\n--\n#B Marker\n--\n#C Marker\n";
+    let w = ok(src, &[Op::Reparent { path: p("A"), parent: p("C"), index: None }]);
+    assert_eq!(w.text, "#B Marker\n--\n#C Marker\nChildren [\n    #A Marker\n]\n");
+    assert_eq!(w.renamed, [(p("A"), p("C/A"))]);
+    assert_eq!(w.inverse, [Op::Reparent { path: p("C/A"), parent: p(""), index: Some(0) }]);
+    assert_eq!(ok(&w.text, &w.inverse).text, src);
+    // The same parent with an index reorders, and keeps the path.
+    for (index, expect) in [(1, "#B Marker\n--\n#A Marker\n--\n#C Marker\n"), (2, "#B Marker\n--\n#C Marker\n--\n#A Marker\n")] {
+        let w = ok(src, &[Op::Reparent { path: p("A"), parent: p(""), index: Some(index) }]);
+        assert_eq!(w.text, expect);
+        assert!(w.renamed.is_empty());
+        assert_eq!(ok(&w.text, &w.inverse).text, src);
+    }
+    // A child with its comment, out and back.
+    let room = "#Room\nChildren [\n    // The lamp.\n    #Lamp Marker\n    --\n    #Door Marker\n]\n--\n#Hall Marker\n";
+    let w = ok(room, &[Op::Reparent { path: p("Room/Lamp"), parent: p(""), index: Some(0) }]);
+    assert_eq!(w.text, "// The lamp.\n#Lamp Marker\n--\n#Room\nChildren [\n    #Door Marker\n]\n--\n#Hall Marker\n");
+    assert_eq!(ok(&w.text, &w.inverse).text, room);
+    let w = ok(room, &[Op::Reparent { path: p("Room/Lamp"), parent: p("Hall"), index: None }]);
+    assert_eq!(ok(&w.text, &w.inverse).text, room);
+    assert_eq!(apply(room, &[Op::Reparent { path: p("Room"), parent: p("Room/Door"), index: None }]).unwrap_err().reason, "invalid");
+}
+
+#[test]
+fn a_middle_delete_and_its_restore_give_the_file_back() {
+    let src = "#A Marker\n--\n// B is the boss.\n#B Marker\n--\n#C Marker\n";
+    let w = ok(src, &[Op::Delete { path: p("B") }]);
+    assert_eq!(w.inverse, [Op::Restore { parent: p(""), index: 1, text: "// B is the boss.\n#B Marker".into() }]);
+    let back = ok(&w.text, &w.inverse);
+    assert_eq!(back.text, src);
+    assert_eq!(back.created, [p("B")]);
+    let room = "#Room\nChildren [\n    #Lamp Marker\n    --\n    #Door\n    Marker\n    --\n    #Hall Marker\n]\n";
+    let w = ok(room, &[Op::Delete { path: p("Room/Door") }]);
+    assert_eq!(ok(&w.text, &w.inverse).text, room);
+    // An only child goes with its list, and comes back with it.
+    let one = "#Room Marker\nChildren [\n    #Lamp Marker\n]\n";
+    let w = ok(one, &[Op::Delete { path: p("Room/Lamp") }]);
+    assert_eq!(w.text, "#Room Marker\n");
+    assert_eq!(ok(&w.text, &w.inverse).text, one);
+}
+
+#[test]
+fn components_are_added_and_removed_as_patches() {
+    let src = "#Crate\nTransform\n--\n#PointLight\nPointLight { intensity: 1500.0 }\n";
+    let add_c = |path: &str, c: &str, fields: Vec<(String, WValue)>| Op::AddComponent { path: p(path), component: c.into(), fields, text: None };
+    let w = roundtrip(src, &[add_c("Crate", "NotShadowCaster", vec![])], &["+NotShadowCaster"]);
+    assert_eq!(w.inverse, [Op::RemoveComponent { path: p("Crate"), component: "NotShadowCaster".into() }]);
+    roundtrip(src, &[add_c("Crate", "game::Health", vec![("max".into(), f(4.0))])], &["+game::Health { max: 4.0 }"]);
+    assert_eq!(apply(src, &[add_c("PointLight", "PointLight", vec![])]).unwrap_err().reason, "exists");
+    let w = roundtrip(src, &[Op::RemoveComponent { path: p("PointLight"), component: "PointLight".into() }], &["-PointLight { intensity: 1500.0 }"]);
+    assert_eq!(w.inverse, [Op::AddComponent { path: p("PointLight"), component: "PointLight".into(), fields: vec![], text: Some("PointLight { intensity: 1500.0 }".into()) }]);
+    assert_eq!(apply(src, &[Op::RemoveComponent { path: p("Crate"), component: "PointLight".into() }]).unwrap_err().reason, "not-found");
+}
+
+#[test]
+fn an_asset_is_placed_by_its_path() {
+    let at = patch("Transform", vec![("translation", WValue::Vector { ty: "Vec3".into(), lanes: vec![("x".into(), 2.0), ("y".into(), 0.0), ("z".into(), 1.0)] })]);
+    let w = roundtrip("#Floor Marker\n", &[add("", None, Base::None, vec![at], Some("models/crate.glb"))], &[
+        "+--",
+        "+#crate",
+        "+SceneRoot(\"models/crate.glb#Scene0\")",
+        "+Transform { translation: Vec3 { x: 2.0, y: 0.0, z: 1.0 } }",
+    ]);
+    assert_eq!(w.created, [p("crate")]);
+    assert!(ok("", &[add("", None, Base::None, vec![], Some("models/tree.gltf#Scene2"))]).text.contains("SceneRoot(\"models/tree.gltf#Scene2\")"));
+    assert_eq!(ok("", &[add("", None, Base::None, vec![], Some("levels/room.bsn"))]).text, "#room\n:\"levels/room.bsn\"\n");
+    assert_eq!(apply("", &[add("", None, Base::None, vec![], Some("textures/wood.png"))]).unwrap_err().reason, "invalid");
+}
+
+#[test]
+fn what_a_prefab_gives_cannot_be_changed_or_parented() {
+    let with_eye = ok(ARENA, &[set("EnemyB/eye", "Transform", "translation.y", f(0.8))]).text;
+    for op in [
+        Op::Delete { path: p("EnemyB/eye") },
+        Op::Rename { path: p("EnemyB/eye"), to: "eye2".into() },
+        Op::Reparent { path: p("EnemyB/eye"), parent: p(""), index: None },
+        Op::Reparent { path: p("EnemyA"), parent: p("EnemyB"), index: None },
+        Op::RemoveComponent { path: p("EnemyB/eye"), component: "Transform".into() },
+        add("EnemyB", None, Base::None, vec![], None),
+        add("EnemyB/eye", None, Base::None, vec![], None),
+    ] {
+        assert_eq!(apply(&with_eye, std::slice::from_ref(&op)).unwrap_err().reason, "prefab-internal", "{op:?}");
+    }
+    assert!(written(&syntax::parse(&with_eye).unwrap(), &p("EnemyB")));
+    assert!(!written(&syntax::parse(&with_eye).unwrap(), &p("EnemyB/eye")));
 }

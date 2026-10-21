@@ -23,6 +23,7 @@ pub fn add_methods(app: &mut App) {
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_node", node);
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_write", write);
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_apply", apply);
+    bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_catalog", catalog);
     bevy_ts_remote::add_watching_method(app, CRATE, "bevy-ts/level+watch", watch);
     app.init_resource::<Watchers>();
 }
@@ -108,12 +109,15 @@ pub fn op_from_json(v: &Value) -> Result<Op, String> {
                     .collect::<Result<_, String>>()?,
                 _ => Vec::new(),
             };
-            Op::Add { parent: path("parent")?, name: s("name")?, base, patches }
+            let name = o.get("name").and_then(Value::as_str).map(String::from);
+            Op::Add { parent: path("parent")?, name, base, patches, asset: o.get("asset").and_then(Value::as_str).map(String::from) }
         }
         "delete" => Op::Delete { path: path("path")? },
         "rename" => Op::Rename { path: path("path")?, to: s("to")? },
-        "reparent" => Op::Reparent { path: path("path")?, parent: path("parent")? },
+        "reparent" => Op::Reparent { path: path("path")?, parent: path("parent")?, index: o.get("index").and_then(Value::as_u64).map(|i| i as usize) },
         "restore" => Op::Restore { parent: path("parent")?, index: o.get("index").and_then(Value::as_u64).unwrap_or(0) as usize, text: s("text")? },
+        "add_component" => Op::AddComponent { path: path("path")?, component: s("component")?, fields: values(o.get("fields"))?, text: o.get("text").and_then(Value::as_str).map(String::from) },
+        "remove_component" => Op::RemoveComponent { path: path("path")?, component: s("component")? },
         other => return Err(format!("unknown op {other}")),
     })
 }
@@ -128,8 +132,14 @@ pub fn op_to_json(op: &Op) -> Value {
         Op::Revert { path, component, field } => json!({ "op": "revert", "path": path, "component": component, "field": field }),
         Op::SetProp { path, prop, value, field } => json!({ "op": "set_prop", "path": path, "prop": prop, "value": value_to_json(value), "field": field }),
         Op::RevertProp { path, prop, field } => json!({ "op": "revert_prop", "path": path, "prop": prop, "field": field }),
-        Op::Add { parent, name, base, patches } => {
-            let mut o = json!({ "op": "add_entity", "parent": parent, "name": name });
+        Op::Add { parent, name, base, patches, asset } => {
+            let mut o = json!({ "op": "add_entity", "parent": parent });
+            if let Some(n) = name {
+                o["name"] = json!(n);
+            }
+            if let Some(a) = asset {
+                o["asset"] = json!(a);
+            }
             match base {
                 Base::None => {}
                 Base::Scene { component, props, fields } => {
@@ -150,8 +160,25 @@ pub fn op_to_json(op: &Op) -> Value {
         }
         Op::Delete { path } => json!({ "op": "delete", "path": path }),
         Op::Rename { path, to } => json!({ "op": "rename", "path": path, "to": to }),
-        Op::Reparent { path, parent } => json!({ "op": "reparent", "path": path, "parent": parent }),
+        Op::Reparent { path, parent, index } => {
+            let mut o = json!({ "op": "reparent", "path": path, "parent": parent });
+            if let Some(i) = index {
+                o["index"] = json!(i);
+            }
+            o
+        }
         Op::Restore { parent, index, text } => json!({ "op": "restore", "parent": parent, "index": index, "text": text }),
+        Op::AddComponent { path, component, fields, text } => {
+            let mut o = json!({ "op": "add_component", "path": path, "component": component });
+            if !fields.is_empty() {
+                o["fields"] = kv(fields);
+            }
+            if let Some(t) = text {
+                o["text"] = json!(t);
+            }
+            o
+        }
+        Op::RemoveComponent { path, component } => json!({ "op": "remove_component", "path": path, "component": component }),
     }
 }
 
@@ -160,6 +187,7 @@ pub fn result_json(r: &WriteResult) -> Value {
         "id": r.id, "file": r.file, "status": r.status, "reason": r.reason,
         "message": if r.message.is_empty() { Value::Null } else { json!(r.message) },
         "hash": r.hash, "lines": r.lines.iter().map(|(a, b)| json!([a, b])).collect::<Vec<_>>(), "disk": r.disk,
+        "created": r.created.iter().map(|(p, e)| json!({ "namePath": p, "entity": e.map(|e| e.to_bits()) })).collect::<Vec<_>>(),
         "inverse": r.inverse.iter().map(op_to_json).collect::<Vec<_>>(),
     })
 }
@@ -241,7 +269,31 @@ pub(crate) fn node(In(p): In<Option<Value>>, world: &World) -> BrpResult {
                 .collect()
         })
         .unwrap_or_default();
-    Ok(json!({ "level": level, "namePath": n.key_path, "entity": e.to_bits(), "owners": owners, "source": n.source, "overrides": overrides, "prefab": prefab, "props": props }))
+    // Components the file adds that its prefab does not give: set where the file writes them,
+    // other than the scene component the entity instances and its `#Name`.
+    let patches: Vec<&String> = n.components.iter().filter(|(k, c)| prefab.as_ref() != Some(*k) && k.as_str() != "Name" && c.source.as_ref().is_some_and(|s| s.file == level)).map(|(k, _)| k).collect();
+    Ok(json!({ "level": level, "namePath": n.key_path, "entity": e.to_bits(), "owners": owners, "source": n.source, "overrides": overrides, "prefab": prefab, "props": props, "patches": patches }))
+}
+
+/// The live generation's scene components a level can place, by name.
+pub fn catalog(In(_): In<Option<Value>>, world: &World) -> BrpResult {
+    let ts = world.resource::<TsComponents>();
+    let mut scenes: Vec<Value> = ts
+        .current()
+        .filter(|c| ts.live(&c.decl.name).is_some())
+        .filter_map(|c| {
+            let scene = c.decl.scene.as_ref()?;
+            let props: Vec<Value> = scene
+                .props
+                .iter()
+                .map(|p| json!({ "name": p.name, "type": p.ty, "default": p.default, "required": p.default.is_none() && !p.has_default && !p.optional }))
+                .collect();
+            let at = c.decl.location.as_ref();
+            Some(json!({ "name": c.decl.name, "file": at.map(|l| &l.file), "line": at.map(|l| l.line), "props": props }))
+        })
+        .collect();
+    scenes.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    Ok(json!({ "scenes": scenes }))
 }
 
 fn parse_hash(s: &str) -> Result<u64, BrpError> {
@@ -251,7 +303,11 @@ fn parse_hash(s: &str) -> Result<u64, BrpError> {
 pub(crate) fn write(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     let o = params(p)?;
     let file = string(&o, "file")?;
-    let base = parse_hash(&string(&o, "base")?)?;
+    // A file that does not exist yet (a sidecar's first write) has base null.
+    let base = match o.get("base") {
+        Some(Value::Null) => crate::engine::content_hash(b""),
+        _ => parse_hash(&string(&o, "base")?)?,
+    };
     let ops: Vec<Op> = o.get("ops").and_then(Value::as_array).ok_or_else(|| invalid("ops is required"))?.iter().map(op_from_json).collect::<Result<_, _>>().map_err(invalid)?;
     let id = o.get("id").and_then(Value::as_u64).unwrap_or(0);
     let r = write_level(world, WriteRequest { id, file, base, ops });

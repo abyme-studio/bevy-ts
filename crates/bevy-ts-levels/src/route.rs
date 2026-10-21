@@ -195,22 +195,11 @@ pub fn write_sidecar(world: &mut World, edit_id: u64, entity: Entity, component:
     }
     let file = bevy_ts_tsx::scene_level(world, &scene).ok_or_else(|| format!("{scene} is not an app.scene root"))?;
     let ops = set_ops(world, &path, component, field, &after, &serde_json::Map::new())?;
-    if world.resource::<Levels>().roots.contains_key(&file) {
-        let base = loaded_hash(world, &file).unwrap_or(0);
-        write_level(world, WriteRequest { id: edit_id, file, base, ops });
-        return Ok(());
-    }
-    // The first write: the file is written with the edit, then opened, so its first load is
-    // already the edited text; the scene follows when it has loaded.
-    let disk_path = world.resource::<Levels>().asset_root.join(&file);
-    let disk = std::fs::read_to_string(&disk_path).unwrap_or_default();
-    let w = crate::writer::apply_sidecar(&disk, &ops).map_err(|e| e.message)?;
-    std::fs::create_dir_all(disk_path.parent().unwrap_or(std::path::Path::new("."))).map_err(|e| e.to_string())?;
-    std::fs::write(&disk_path, &w.text).map_err(|e| e.to_string())?;
-    crate::engine::open_sidecar(world, &scene, &file);
-    let hash = crate::edit::hash_text(crate::engine::content_hash(w.text.as_bytes()));
-    let result = crate::edit::WriteResult { id: edit_id, file: file.clone(), status: "written", reason: None, message: String::new(), hash: Some(hash.clone()), lines: w.lines, disk: None, inverse: w.inverse };
-    world.resource_mut::<Levels>().emit(json!({ "event": "written", "level": file, "hash": hash, "lines": result.lines, "id": edit_id }));
-    world.resource_mut::<crate::edit::WriteResults>().0.push(result);
+    // The first write creates the file and opens it over the scene (`write_level`).
+    let base = match loaded_hash(world, &file) {
+        Some(h) => h,
+        None => crate::engine::content_hash(std::fs::read_to_string(world.resource::<Levels>().asset_root.join(&file)).unwrap_or_default().as_bytes()),
+    };
+    write_level(world, WriteRequest { id: edit_id, file, base, ops });
     Ok(())
 }

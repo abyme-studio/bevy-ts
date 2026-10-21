@@ -334,6 +334,7 @@ fn apply_node(
     let entity = match known {
         _ if tree.tombstones.contains_key(&n.id) => None,
         Some(e) if alive(world, e, n.id) => {
+            reparent(world, e, root, parent);
             let before = stats.clone();
             if update(world, e, n, stats) {
                 tree.journal.open.moved.push(n.id);
@@ -424,6 +425,24 @@ pub fn log_error(world: &mut World, message: String, location: Option<SourceLoca
 /// Applied values of a component's fields, leaving out bound ones not delivered yet.
 fn applied(c: &OwnedComponent) -> Map<String, Value> {
     c.fields.iter().filter(|(_, s)| !s.applied.is_null()).map(|(k, s)| (k.clone(), s.applied.clone())).collect()
+}
+
+/// A kept node whose key path moved to another parent (a level's `reparent`) follows it. A
+/// root node leaves only a parent of its own root, not one something else gave it.
+fn reparent(world: &mut World, e: Entity, root: &str, parent: Option<Entity>) {
+    let current = world.get::<ChildOf>(e).map(ChildOf::parent);
+    if current == parent {
+        return;
+    }
+    match parent {
+        Some(p) => {
+            world.entity_mut(e).insert(ChildOf(p));
+        }
+        None if current.and_then(|c| world.get::<TsxNode>(c)).is_some_and(|n| n.root == root) => {
+            world.entity_mut(e).remove::<ChildOf>();
+        }
+        None => {}
+    }
 }
 
 fn spawn(world: &mut World, root: &str, n: &RNode, parent: Option<Entity>, stats: &mut ReconcileStats) -> Entity {

@@ -226,3 +226,84 @@ fn every_level_method_answers_on_contract() {
     let none = ok(&mut app, "bevy-ts/level_apply", Some(json!({ "entity": grunt["entity"], "component": "enemies::Grunt", "field": "@speed" })));
     assert_eq!((none["status"].as_str(), none["reason"].as_str()), (Some("refused"), Some("no override")), "{none}");
 }
+
+/// The arena example (`examples/arena`) as a fresh project, `extra` appended to its level, with
+/// the tsx and level methods served.
+fn arena_app(name: &str, extra: &str) -> App {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena");
+    let mut files: Vec<(String, String)> = ["enemy.tsx", "player.tsx", "hud.tsx", "game.tsx"].iter().map(|f| (format!("src/{f}"), std::fs::read_to_string(root.join("src").join(f)).unwrap())).collect();
+    for f in ["arena.bsn", "room.bsn"] {
+        let mut src = std::fs::read_to_string(root.join("assets/levels").join(f)).unwrap();
+        if f == "arena.bsn" {
+            src.push_str(extra);
+        }
+        files.push((format!("assets/levels/{f}"), src));
+    }
+    let mut list: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+    list.push(("package.json", "{}"));
+    let dir = project(name, &list);
+    let mut app = app(&dir.join("src/game.tsx"));
+    let assets = dir.join("assets").canonicalize().unwrap();
+    app.add_plugins((AssetPlugin { file_path: assets.to_string_lossy().into_owned(), ..Default::default() }, RemotePlugin::default()))
+        .init_asset::<Mesh>()
+        .init_asset::<StandardMaterial>()
+        .add_plugins(LevelsPlugin);
+    app.world_mut().resource_mut::<Levels>().asset_root = assets;
+    bevy_ts_tsx::protocol::add_methods(&mut app);
+    bevy_ts_levels::protocol::add_methods(&mut app);
+    assert!(reload(&mut app, false).errors.is_empty());
+    settle(&mut app);
+    app
+}
+
+fn row<'a>(tree: &'a Value, root: &str, key_path: &[&str]) -> &'a Value {
+    let r = tree["roots"].as_array().unwrap().iter().find(|r| r["name"] == root).unwrap_or_else(|| panic!("no root {root}"));
+    r["nodes"].as_array().unwrap().iter().find(|n| n["keyPath"] == json!(key_path)).unwrap_or_else(|| panic!("no row {key_path:?} in {root}"))
+}
+
+#[test]
+fn arena_tree_rows_say_their_level() {
+    let mut app = arena_app("levels-tree-rows", "--\n#Spot\nTransform { translation: Vec3 { y: 1.0 } }\n");
+    let tree = call(&mut app, "bevy-ts/tsx_tree", None).unwrap().unwrap();
+    let arena = "level:levels/arena.bsn";
+    // Written in the file: a placed instance, an inclusion, a plain entity.
+    assert_eq!(row(&tree, arena, &["EnemyB"])["level"], json!({ "file": "levels/arena.bsn", "namePath": ["EnemyB"], "written": true }));
+    assert_eq!(row(&tree, arena, &["RoomA"])["level"], json!({ "file": "levels/arena.bsn", "namePath": ["RoomA"], "written": true }));
+    assert_eq!(row(&tree, arena, &["Spot"])["level"], json!({ "file": "levels/arena.bsn", "namePath": ["Spot"], "written": true }));
+    // Not written there: the prefab's eye, and the included room's guard and its eye.
+    assert_eq!(row(&tree, arena, &["EnemyB", "eye"])["level"], json!({ "file": "levels/arena.bsn", "namePath": ["EnemyB", "eye"], "written": false }));
+    assert_eq!(row(&tree, arena, &["RoomA", "Guard"])["level"], json!({ "file": "levels/arena.bsn", "namePath": ["RoomA", "Guard"], "written": false }));
+    assert_eq!(row(&tree, arena, &["RoomA", "Guard", "eye"])["level"], json!({ "file": "levels/arena.bsn", "namePath": ["RoomA", "Guard", "eye"], "written": false }));
+    // The TSX scene: its root names its sidecar (none on disk), its rows are TSX-only.
+    let scene = tree["roots"].as_array().unwrap().iter().find(|r| r["name"] == "arena").expect("the arena scene");
+    assert_eq!(scene["sidecar"], "levels/arena.bsn", "{scene}");
+    assert!(scene["nodes"].as_array().unwrap().iter().all(|n| n.get("level").is_none()), "{scene}");
+    assert!(tree["roots"].as_array().unwrap().iter().find(|r| r["name"] == arena).unwrap().get("sidecar").is_none(), "a level root is no app.scene root");
+    // The watch's snapshot carries the same rows.
+    let snapshot = call(&mut app, "bevy-ts/tsx_tree+watch", None).unwrap().unwrap();
+    let watched = json!({ "roots": snapshot["snapshot"] });
+    assert_eq!(row(&watched, arena, &["EnemyB", "eye"])["level"], row(&tree, arena, &["EnemyB", "eye"])["level"]);
+
+    // `patches`: what the file adds that no prefab gives.
+    let b = call(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["EnemyB"] }))).unwrap().unwrap();
+    assert_eq!(b["patches"], json!([]), "{b}");
+    let spot = call(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["Spot"] }))).unwrap().unwrap();
+    assert_eq!(spot["patches"], json!(["Transform"]), "{spot}");
+    let room = call(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["RoomA"] }))).unwrap().unwrap();
+    assert_eq!(room["patches"], json!([]), "room.bsn gives its Transform: {room}");
+}
+
+#[test]
+fn the_arena_catalog_lists_its_scene_components() {
+    let mut app = arena_app("levels-catalog", "");
+    let catalog = ok(&mut app, "bevy-ts/level_catalog", None);
+    let scenes = catalog["scenes"].as_array().unwrap();
+    assert_eq!(scenes.iter().map(|s| s["name"].as_str().unwrap()).collect::<Vec<_>>(), ["enemy::Enemy"], "{catalog:#}");
+    let enemy = &scenes[0];
+    assert!(enemy["file"].as_str().unwrap().ends_with("src/enemy.tsx"), "{enemy}");
+    assert_eq!(enemy["line"], 13, "{enemy}");
+    let props = enemy["props"].as_array().unwrap();
+    assert_eq!(props.iter().map(|p| p["name"].as_str().unwrap()).collect::<Vec<_>>(), ["hp", "at"], "{enemy}");
+    assert_eq!((&props[0]["type"], &props[0]["default"], &props[0]["required"]), (&json!({ "kind": "f32" }), &json!(100), &json!(false)), "{enemy}");
+    assert_eq!(props[1]["required"], false, "{enemy}");
+}

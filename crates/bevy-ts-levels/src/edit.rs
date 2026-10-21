@@ -2,7 +2,8 @@
 //! made against; when the file on disk has moved on, the world first follows the disk, then the
 //! batch is replayed by name path on the new text, or refused as a conflict. Never a text merge.
 
-use crate::engine::{BsnLevel, Levels, content_hash, reconcile_level, root_name};
+use crate::compose::Schema;
+use crate::engine::{BsnLevel, Levels, WorldSchema, content_hash, open_sidecar, reconcile_level, root_name};
 use crate::syntax::{self, Fields, ParsedFile, ValueKind};
 use crate::writer::{self, Op};
 use bevy::prelude::*;
@@ -42,11 +43,14 @@ pub struct WriteResult {
     pub disk: Option<String>,
     #[serde(skip)]
     pub inverse: Vec<Op>,
+    /// What the batch added, by name path, with its entity once reconciled.
+    #[serde(skip)]
+    pub created: Vec<(Vec<String>, Option<Entity>)>,
 }
 
 impl WriteResult {
     fn refused(req: &WriteRequest, status: &'static str, reason: &str, message: impl Into<String>) -> Self {
-        WriteResult { id: req.id, file: req.file.clone(), status, reason: Some(reason.into()), message: message.into(), hash: None, lines: Vec::new(), disk: None, inverse: Vec::new() }
+        WriteResult { id: req.id, file: req.file.clone(), status, reason: Some(reason.into()), message: message.into(), hash: None, lines: Vec::new(), disk: None, inverse: Vec::new(), created: Vec::new() }
     }
 }
 
@@ -163,8 +167,17 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         }
         status = "rebased";
     }
-    let sidecar = world.resource::<Levels>().roots.get(&req.file).is_some_and(|r| r.overlay.is_some());
-    let written = match if sidecar { writer::apply_sidecar(&disk, &req.ops) } else { writer::apply(&disk, &req.ops) } {
+    // A sidecar level layers over its scene: open, or a scene's sidecar path written first now.
+    let open = world.resource::<Levels>().roots.get(&req.file).map(|r| r.overlay.clone());
+    let scene = match &open {
+        Some(overlay) => overlay.clone(),
+        None => sidecar_of(world, &req.file),
+    };
+    let mut ops = req.ops.clone();
+    if let Err(e) = check_world(world, &req.file, scene.as_deref(), &mut ops) {
+        return WriteResult::refused(req, "refused", e.reason, e.message);
+    }
+    let written = match if scene.is_some() { writer::apply_sidecar(&disk, &ops) } else { writer::apply(&disk, &ops) } {
         Ok(w) => w,
         Err(e) if status == "rebased" && e.reason == "not-found" => return WriteResult::refused(req, "conflict", "target removed", e.message),
         Err(e) => return WriteResult::refused(req, "refused", e.reason, e.message),
@@ -172,19 +185,81 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
     if let Err(e) = write_atomic(&disk_path, &written.text) {
         return WriteResult::refused(req, "refused", "io", format!("{}: {e}", disk_path.display()));
     }
-    // Renames keep their entities: the retained tree moves before the reload sees the file.
-    let roots: Vec<String> = world.resource::<Levels>().roots.keys().filter(|p| *p == &req.file).cloned().collect();
-    for root in roots {
+    let root = scene.clone().unwrap_or_else(|| root_name(&req.file));
+    // Renames and moves keep their entities: the retained tree moves before the reload sees the file.
+    if open.is_some() {
         for (from, to) in &written.renamed {
-            bevy_ts_tsx::rekey(world, &root_name(&root), from, to);
+            bevy_ts_tsx::rekey(world, &root, from, to);
         }
+    }
+    if let (None, Some(scene)) = (&open, &scene) {
+        open_sidecar(world, scene, &req.file);
     }
     let hash = content_hash(written.text.as_bytes());
     if let Err(e) = load_text(world, &req.file, &written.text) {
         return WriteResult::refused(req, "refused", "internal", e);
     }
     reconcile_affected(world, &req.file);
-    WriteResult { id: req.id, file: req.file.clone(), status, reason: None, message: String::new(), hash: Some(hash_text(hash)), lines: written.lines, disk: None, inverse: written.inverse }
+    let tree = world.resource::<bevy_ts_tsx::TsxTree>();
+    let created = written.created.iter().map(|p| (p.clone(), tree.entity(bevy_ts_tsx::desc::node_id(&root, p)))).collect();
+    WriteResult { id: req.id, file: req.file.clone(), status, reason: None, message: String::new(), hash: Some(hash_text(hash)), lines: written.lines, disk: None, inverse: written.inverse, created }
+}
+
+/// The `app.scene` root whose sidecar level is `file`, if any.
+fn sidecar_of(world: &World, file: &str) -> Option<String> {
+    let scenes: Vec<String> = world.resource::<bevy_ts_tsx::TsxTree>().scenes.keys().cloned().collect();
+    scenes.into_iter().find(|s| bevy_ts_tsx::scene_level(world, s).as_deref() == Some(file))
+}
+
+/// The component as its schema names it, and the shortest suffix of `component` that resolves to
+/// the same type.
+fn resolve_component(world: &World, component: &str) -> Option<(String, String)> {
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    let schema = WorldSchema::live(world, &registry);
+    let full = schema.component(component).ok()?.name;
+    let segments: Vec<&str> = component.split("::").collect();
+    let short = (1..=segments.len()).map(|k| segments[segments.len() - k..].join("::")).find(|c| schema.component(c).is_ok_and(|s| s.name == full))?;
+    Some((full, short))
+}
+
+/// Checks that need the world, before the writer (design decision 1): a component the entity has
+/// cannot be added; one its prefab gives cannot be removed; a sidecar's TSX entities are the
+/// scene's to rename, delete and move. A new patch is written in its shortest form.
+fn check_world(world: &World, file: &str, scene: Option<&str>, ops: &mut [Op]) -> Result<(), writer::Refused> {
+    let root = scene.map_or_else(|| root_name(file), String::from);
+    let tree = world.resource::<bevy_ts_tsx::TsxTree>();
+    let node = |path: &[String]| tree.entity(bevy_ts_tsx::desc::node_id(&root, path)).and_then(|e| world.get::<bevy_ts_tsx::TsxNode>(e));
+    let refuse = |reason: &'static str, message: String| writer::Refused { reason, message };
+    for op in ops.iter_mut() {
+        match op {
+            Op::AddComponent { path, component, text, .. } => {
+                let Some((full, short)) = resolve_component(world, component) else { continue };
+                if node(path).is_some_and(|n| n.components.contains_key(&full)) {
+                    return Err(refuse("exists", format!("{} already has {full}", path.join("/"))));
+                }
+                if text.is_none() {
+                    *component = short;
+                }
+            }
+            Op::RemoveComponent { path, component } => {
+                let Some((full, _)) = resolve_component(world, component) else { continue };
+                // A component the file does not add has its source elsewhere: the prefab's.
+                let given = node(path).and_then(|n| n.components.get(&full)).and_then(|c| c.source.as_ref()).is_some_and(|s| s.file != file);
+                if given {
+                    return Err(refuse("prefab-internal", format!("{full} comes from {}'s prefab; .bsn cannot remove it", path.join("/"))));
+                }
+            }
+            Op::Delete { path } | Op::Rename { path, .. } | Op::Reparent { path, .. } if scene.is_some() => {
+                let tsx = node(path).is_some_and(|n| n.source.first().is_none_or(|s| !s.file.ends_with(".bsn")));
+                if tsx {
+                    return Err(refuse("prefab-internal", format!("{} is made in TSX; edit it there", path.join("/"))));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Reconciles every open level that is, or includes, `file`, now.

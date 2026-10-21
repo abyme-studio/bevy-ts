@@ -86,13 +86,20 @@ pub enum Op {
     SetProp { path: Vec<String>, prop: String, value: WValue, field: bool },
     /// Removes a scene prop (`@hp`) or a scene component field from an instance's `@Comp { … }`.
     RevertProp { path: Vec<String>, prop: String, field: bool },
-    /// Adds an entity under `parent` (the top level when empty).
-    Add { parent: Vec<String>, name: String, base: Base, patches: Vec<NewPatch> },
+    /// Adds an entity under `parent` (the top level when empty). With no name the writer picks a
+    /// free one; `asset` places a model (`SceneRoot`) or includes a `.bsn`.
+    Add { parent: Vec<String>, name: Option<String>, base: Base, patches: Vec<NewPatch>, asset: Option<String> },
     Delete { path: Vec<String> },
     Rename { path: Vec<String>, to: String },
-    Reparent { path: Vec<String>, parent: Vec<String> },
+    /// Moves an entity to `index` among `parent`'s written children (last when absent).
+    Reparent { path: Vec<String>, parent: Vec<String>, index: Option<usize> },
     /// Puts raw entity text back under `parent` at `index`: the inverse of a delete.
     Restore { parent: Vec<String>, index: usize, text: String },
+    /// Appends a patch of `component` with `fields`, or `text` as written (the inverse of a
+    /// remove, so every field comes back as it was).
+    AddComponent { path: Vec<String>, component: String, fields: Vec<(String, WValue)>, text: Option<String> },
+    /// Removes the entity's whole patch of `component`.
+    RemoveComponent { path: Vec<String>, component: String },
 }
 
 /// A batch's result: the new text, the changed lines (1-based, inclusive, in the new text) and
@@ -105,6 +112,9 @@ pub struct Written {
     /// Name paths the batch renamed, in order (a `rename`, or an unnamed entity the write named
     /// and the positional ids after it): the engine moves their nodes so the entities stay.
     pub renamed: Vec<(Vec<String>, Vec<String>)>,
+    /// Name paths of the entities the batch added (an add or a restore), in order, as they are
+    /// after the whole batch.
+    pub created: Vec<Vec<String>>,
 }
 
 /// Why a batch was refused.
@@ -136,9 +146,19 @@ fn apply_with(src: &str, ops: &[Op], create_top: bool) -> Result<Written, Refuse
     let mut inverse = Vec::new();
     let mut changed: Vec<(usize, usize)> = Vec::new();
     let mut renamed = Vec::new();
+    let mut created: Vec<Vec<String>> = Vec::new();
     for op in ops {
         let file = syntax::parse(&text).map_err(|d| refuse("internal", format!("the file does not parse: {}", d.message)))?;
         let (splices, inv, touched, renames) = plan(&file, op, create_top)?;
+        // What earlier ops added moves with this one's renames.
+        for (from, to) in &renames {
+            for c in created.iter_mut().filter(|c| c.starts_with(from)) {
+                *c = to.iter().chain(&c[from.len()..]).cloned().collect();
+            }
+        }
+        if matches!(op, Op::Add { .. } | Op::Restore { .. }) {
+            created.push(touched[0].clone());
+        }
         renamed.extend(renames);
         let (next, ranges) = splice(&text, &splices);
         let parsed = syntax::parse(&next).map_err(|d| refuse("internal", format!("the edit would not parse: {} ({op:?})", d.message)))?;
@@ -153,7 +173,7 @@ fn apply_with(src: &str, ops: &[Op], create_top: bool) -> Result<Written, Refuse
     let mut lines: Vec<(u32, u32)> = changed.iter().map(|&(s, e)| (index.line(s), index.line(e.max(s + 1) - 1).max(index.line(s)))).collect();
     lines.sort();
     lines.dedup();
-    Ok(Written { text, lines, inverse, renamed })
+    Ok(Written { text, lines, inverse, renamed, created })
 }
 
 fn shift(splices: &[(usize, usize, String)], at: usize) -> usize {
@@ -371,11 +391,13 @@ fn plan(file: &ParsedFile, op: &Op, create_top: bool) -> Result<Plan, Refused> {
         Op::Revert { path, component, field } => plan_revert(file, path, component, field),
         Op::SetProp { path, prop, value, field } => plan_set_prop(file, path, prop, value, *field),
         Op::RevertProp { path, prop, field } => plan_revert_prop(file, path, prop, *field),
-        Op::Add { parent, name, base, patches } => plan_add(file, parent, name, base, patches),
+        Op::Add { parent, name, base, patches, asset } => plan_add(file, parent, name.as_deref(), base, patches, asset.as_deref()),
         Op::Delete { path } => plan_delete(file, path),
         Op::Rename { path, to } => plan_rename(file, path, to),
-        Op::Reparent { path, parent } => plan_reparent(file, path, parent),
+        Op::Reparent { path, parent, index } => plan_reparent(file, path, parent, *index),
         Op::Restore { parent, index, text } => plan_restore(file, parent, *index, text),
+        Op::AddComponent { path, component, fields, text } => plan_add_component(file, path, component, fields, text.as_deref()),
+        Op::RemoveComponent { path, component } => plan_remove_component(file, path, component),
     }?;
     if let Op::Rename { path, to } = op {
         let mut new = path.clone();
@@ -805,7 +827,7 @@ fn plan_revert_prop(file: &ParsedFile, path: &[String], prop: &str, is_field: bo
     Ok((out, inverse.into_iter().collect(), vec![path.to_vec()], Vec::new()))
 }
 
-fn entity_text(name: &str, base: &Base, patches: &[NewPatch], indent: &str) -> String {
+fn entity_text(name: &str, base: &Base, head: Option<&str>, patches: &[NewPatch], indent: &str) -> String {
     let mut lines = vec![name_text(name)];
     match base {
         Base::None => {}
@@ -816,30 +838,123 @@ fn entity_text(name: &str, base: &Base, patches: &[NewPatch], indent: &str) -> S
             lines.push(if f.is_empty() { format!("@{component}") } else { format!("@{component} {{ {} }}", f.join(", ")) });
         }
     }
+    lines.extend(head.map(String::from));
     lines.extend(patches.iter().map(NewPatch::print));
     lines.join(&format!("\n{indent}"))
 }
 
-fn plan_add(file: &ParsedFile, parent: &[String], name: &str, base: &Base, patches: &[NewPatch]) -> Result<Plan, Refused> {
-    let mut out = Vec::new();
-    let mut path = parent.to_vec();
-    path.push(name.to_string());
+/// The entities of a list that hold something: what an index counts.
+fn written_items(list: &EntityList) -> impl Iterator<Item = (usize, &Entity)> {
+    list.items.iter().enumerate().filter(|(_, e)| !e.entries.is_empty())
+}
+
+/// The index among written siblings of the list's `raw`-th item.
+fn written_index(list: &EntityList, raw: usize) -> usize {
+    written_items(list).take_while(|(i, _)| *i < raw).count()
+}
+
+/// Whether some proper ancestor on `path` is an instance: what is below it is its prefab's.
+fn under_instance(file: &ParsedFile, path: &[String]) -> bool {
+    (1..path.len()).any(|n| find(file, &path[..n]).is_some_and(|a| a.entity.inclusion().is_some()))
+}
+
+/// Whether the entity at `path` is written in the file, rather than coming from a prefab or an
+/// included level (an override entry under an instance is not).
+pub fn written(file: &ParsedFile, path: &[String]) -> bool {
+    !path.is_empty() && !under_instance(file, path) && find(file, path).is_some()
+}
+
+/// The entity at `path`, refused unless it is written in the file.
+fn written_entity<'a>(file: &'a ParsedFile, path: &[String]) -> Result<Found<'a>, Refused> {
+    if under_instance(file, path) {
+        // Godot cannot delete or move an instanced child either.
+        return Err(refuse("prefab-internal", format!("{} belongs to its prefab; a level cannot change it", path.join("/"))));
+    }
+    find(file, path).ok_or_else(|| refuse("not-found", format!("no entity {}", path.join("/"))))
+}
+
+/// The parent a new or moved entity goes under: the top level, or an entity written in the file
+/// that is not an instance (an instance's children are its prefab's).
+fn written_parent<'a>(file: &'a ParsedFile, parent: &[String]) -> Result<Option<&'a Entity>, Refused> {
     if parent.is_empty() {
-        if find_in(&file.entities, name).is_some() {
-            return Err(refuse("exists", format!("an entity named {name} is already at the top level")));
+        return Ok(None);
+    }
+    let p = written_entity(file, parent)?;
+    if p.entity.inclusion().is_some() {
+        return Err(refuse("prefab-internal", format!("the children of {} are its prefab's", parent.join("/"))));
+    }
+    Ok(Some(p.entity))
+}
+
+fn list_of<'a>(file: &'a ParsedFile, parent: Option<&'a Entity>) -> &'a EntityList {
+    parent.map_or(&file.entities, |p| children(p).unwrap_or(&EMPTY))
+}
+
+/// The first free name among `list`'s entities from `base` without its trailing digits:
+/// `Base`, `Base2`, `Base3`, …
+fn free_name(list: &EntityList, base: &str) -> String {
+    let base = base.trim_end_matches(|c: char| c.is_ascii_digit());
+    let base = if base.is_empty() { "Entity" } else { base };
+    let taken = |s: &str| list.items.iter().any(|x| x.name().is_some_and(|m| m.name == s));
+    if !taken(base) {
+        return base.to_string();
+    }
+    (2..).map(|n| format!("{base}{n}")).find(|n| !taken(n)).expect("a free name")
+}
+
+/// `crate` for `models/crate.glb#Scene0`.
+fn file_stem(path: &str) -> &str {
+    let file = path.split('#').next().unwrap_or(path).rsplit('/').next().unwrap_or(path);
+    file.split('.').next().unwrap_or(file)
+}
+
+/// What an unnamed new entity is named after: its scene component, its include's or asset's
+/// file, its first patch, or `Entity`.
+fn name_base<'a>(base: &'a Base, asset: Option<&'a str>, patches: &'a [NewPatch]) -> &'a str {
+    match (asset, base) {
+        (Some(a), _) => file_stem(a),
+        (None, Base::Scene { component, .. }) => component.rsplit("::").next().unwrap_or(component),
+        (None, Base::Include(p)) => file_stem(p),
+        (None, Base::None) => patches.first().map_or("Entity", |p| p.component.rsplit("::").next().unwrap_or(&p.component)),
+    }
+}
+
+fn plan_add(file: &ParsedFile, parent: &[String], name: Option<&str>, base: &Base, patches: &[NewPatch], asset: Option<&str>) -> Result<Plan, Refused> {
+    let p = written_parent(file, parent)?;
+    let list = list_of(file, p);
+    // An asset is a model (`SceneRoot`) or a level to include.
+    let (base, head) = match asset {
+        None => (base.clone(), None),
+        Some(_) if *base != Base::None => return Err(refuse("invalid", "an asset is placed alone: give asset, scene or include")),
+        Some(a) => {
+            let file_part = a.split('#').next().unwrap_or(a);
+            match file_part.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
+                Some("glb" | "gltf") => {
+                    let labelled = if a.contains('#') { a.to_string() } else { format!("{a}#Scene0") };
+                    (Base::None, Some(format!("SceneRoot({})", quote(&labelled))))
+                }
+                Some("bsn") => (Base::Include(a.to_string()), None),
+                _ => return Err(refuse("invalid", format!("{a}: a level places .glb, .gltf and .bsn assets"))),
+            }
         }
-        let list = &file.entities;
-        let indent = child_indent(file, None, list);
-        let text = entity_text(name, base, patches, &indent);
-        append_top(file, &text, &indent, &mut out);
-    } else {
-        let p = find(file, parent).ok_or_else(|| refuse("not-found", format!("no entity {}", parent.join("/"))))?;
-        if children(p.entity).and_then(|c| find_in(c, name)).is_some() {
-            return Err(refuse("exists", format!("{} already has a child named {name}", parent.join("/"))));
+    };
+    let name = match name {
+        Some(n) => {
+            if find_in(list, n).is_some() {
+                return Err(refuse("exists", if parent.is_empty() { format!("an entity named {n} is already at the top level") } else { format!("{} already has a child named {n}", parent.join("/")) }));
+            }
+            n.to_string()
         }
-        let indent = child_indent(file, Some(p.entity), children(p.entity).unwrap_or(&EMPTY));
-        let text = entity_text(name, base, patches, &indent);
-        append_child(file, p.entity, &text, &mut out);
+        None => free_name(list, name_base(&base, asset, patches)),
+    };
+    let mut path = parent.to_vec();
+    path.push(name.clone());
+    let mut out = Vec::new();
+    let indent = child_indent(file, p, list);
+    let text = entity_text(&name, &base, head.as_deref(), patches, &indent);
+    match p {
+        None => append_top(file, &text, &indent, &mut out),
+        Some(p) => append_child(file, p, &text, &mut out),
     }
     Ok((out, vec![Op::Delete { path: path.clone() }], vec![path], Vec::new()))
 }
@@ -862,15 +977,50 @@ fn append_top(file: &ParsedFile, text: &str, indent: &str, out: &mut Vec<(usize,
     out.push((at, at, format!("{sep}\n{indent}{text}{trail}")));
 }
 
+/// Where an entity's block starts: its leading comments on lines of their own.
+fn block_start(file: &ParsedFile, e: &Entity) -> usize {
+    let src = &file.source;
+    let trivia = file.trivia_before(e.span.start);
+    let text = &src[trivia.start..trivia.end];
+    // The comment lines right above the entity are its own: not one on the line of the token
+    // before, nor any above a blank line.
+    let mut own = if src[line_start(src, trivia.start)..trivia.start].trim().is_empty() { trivia.start } else { text.find('\n').map_or(trivia.start, |i| trivia.start + i + 1) };
+    if let Some(i) = text.rfind("\n\n") {
+        own = own.max(trivia.start + i + 2);
+    }
+    own.min(line_start(src, e.span.start))
+}
+
+/// An entity's block as text: its leading comments and itself, the first line unindented.
+fn block_text(file: &ParsedFile, e: &Entity) -> String {
+    file.source[block_start(file, e)..e.span.end].trim_start_matches([' ', '\t']).to_string()
+}
+
+/// Puts entity text under `parent` (the top level when None) before its `index`-th written
+/// child, or last. Lines after the first are already indented for their place.
+fn insert_child(file: &ParsedFile, parent: Option<&Entity>, index: Option<usize>, text: &str, out: &mut Vec<(usize, usize, String)>) {
+    let list = list_of(file, parent);
+    let indent = child_indent(file, parent, list);
+    match (index.and_then(|i| written_items(list).nth(i)), parent) {
+        (Some((_, e)), _) => {
+            let s = block_start(file, e);
+            if s == line_start(&file.source, s) {
+                out.push((s, s, format!("{indent}{text}\n{indent}--\n")));
+            } else {
+                out.push((e.span.start, e.span.start, format!("{text}\n{indent}--\n{indent}")));
+            }
+        }
+        (None, None) => append_top(file, text, &indent, out),
+        (None, Some(p)) => append_child(file, p, text, out),
+    }
+}
+
 /// The bytes of an entity a delete removes: its leading comments (those on lines of their own
 /// before it), its span, and one adjacent `--` with its line.
 fn entity_removal(file: &ParsedFile, list: &EntityList, index: usize) -> (usize, usize) {
     let src = &file.source;
     let e = &list.items[index];
-    let trivia = file.trivia_before(e.span.start);
-    // Comments after the first newline of the trivia belong to the entity.
-    let own = src[trivia.start..trivia.end].find('\n').map_or(trivia.start, |i| trivia.start + i + 1);
-    let mut start = own.min(line_start(src, e.span.start));
+    let mut start = block_start(file, e);
     let (mut end, _) = after_line(file, e.span.end);
     if let Some(sep) = list.separators.get(index) {
         let (sep_end, _) = after_line(file, sep.end);
@@ -889,36 +1039,42 @@ fn entity_removal(file: &ParsedFile, list: &EntityList, index: usize) -> (usize,
     (start, end)
 }
 
-fn plan_delete(file: &ParsedFile, path: &[String]) -> Result<Plan, Refused> {
-    let Some(f) = find(file, path) else {
-        // Under an instance and not in the file: it is the prefab's (Godot cannot delete an
-        // instanced child either).
-        let inside = (1..path.len()).rev().find_map(|n| find(file, &path[..n])).is_some_and(|a| a.entity.inclusion().is_some());
-        return Err(if inside { refuse("prefab-internal", format!("{} belongs to its prefab; a level cannot delete it", path.join("/"))) } else { refuse("not-found", format!("no entity {}", path.join("/"))) });
-    };
-    let (start, end) = entity_removal(file, f.list, f.index);
-    let text = file.text(f.entity.span).to_string();
-    let parent = path[..path.len() - 1].to_vec();
-    Ok((vec![(start, end, String::new())], vec![Op::Restore { parent, index: f.index, text }], vec![path.to_vec()], Vec::new()))
+/// What removing a found entity takes: its block, or its parent's whole `Children [ … ]` when it
+/// is the only child.
+fn removal(file: &ParsedFile, path: &[String], f: &Found) -> (usize, usize) {
+    if path.len() > 1 && written_items(f.list).count() == 1 {
+        let parent = find(file, &path[..path.len() - 1]).expect("the parent of a found entity");
+        if let Some(r) = parent.entity.related("Children") {
+            let (s, e, _) = entry_removal(file, parent.entity, &Entry::Related(r.clone()));
+            return (s, e);
+        }
+    }
+    entity_removal(file, f.list, f.index)
 }
 
-fn plan_restore(file: &ParsedFile, parent: &[String], _index: usize, text: &str) -> Result<Plan, Refused> {
-    let mut out = Vec::new();
+fn plan_delete(file: &ParsedFile, path: &[String]) -> Result<Plan, Refused> {
+    let f = written_entity(file, path)?;
+    let (start, end) = removal(file, path, &f);
+    let text = block_text(file, f.entity);
+    let parent = path[..path.len() - 1].to_vec();
+    Ok((vec![(start, end, String::new())], vec![Op::Restore { parent, index: written_index(f.list, f.index), text }], vec![path.to_vec()], Vec::new()))
+}
+
+fn plan_restore(file: &ParsedFile, parent: &[String], index: usize, text: &str) -> Result<Plan, Refused> {
+    let p = written_parent(file, parent)?;
     let name = syntax::parse(text).ok().and_then(|p| p.entities.items.first().and_then(|e| e.name().map(|n| n.name.clone()))).unwrap_or_default();
-    let mut path = parent.to_vec();
-    path.push(name.clone());
-    if parent.is_empty() {
-        let indent = child_indent(file, None, &file.entities);
-        append_top(file, text, &indent, &mut out);
-    } else {
-        let p = find(file, parent).ok_or_else(|| refuse("not-found", format!("no entity {}", parent.join("/"))))?;
-        append_child(file, p.entity, text, &mut out);
+    if !name.is_empty() && find_in(list_of(file, p), &name).is_some() {
+        return Err(refuse("exists", format!("a sibling is already named {name}")));
     }
+    let mut path = parent.to_vec();
+    path.push(name);
+    let mut out = Vec::new();
+    insert_child(file, p, Some(index), text, &mut out);
     Ok((out, vec![Op::Delete { path: path.clone() }], vec![path], Vec::new()))
 }
 
 fn plan_rename(file: &ParsedFile, path: &[String], to: &str) -> Result<Plan, Refused> {
-    let f = find(file, path).ok_or_else(|| refuse("not-found", format!("no entity {}", path.join("/"))))?;
+    let f = written_entity(file, path)?;
     if find_in(f.list, to).is_some() {
         return Err(refuse("exists", format!("a sibling is already named {to}")));
     }
@@ -932,41 +1088,68 @@ fn plan_rename(file: &ParsedFile, path: &[String], to: &str) -> Result<Plan, Ref
     Ok((out, vec![Op::Rename { path: new_path.clone(), to: back }], vec![path.to_vec(), new_path], Vec::new()))
 }
 
-fn plan_reparent(file: &ParsedFile, path: &[String], parent: &[String]) -> Result<Plan, Refused> {
-    let f = find(file, path).ok_or_else(|| refuse("not-found", format!("no entity {}", path.join("/"))))?;
+fn plan_reparent(file: &ParsedFile, path: &[String], parent: &[String], index: Option<usize>) -> Result<Plan, Refused> {
+    let f = written_entity(file, path)?;
     if parent.starts_with(path) {
         return Err(refuse("invalid", "an entity cannot move under itself"));
     }
+    let p = written_parent(file, parent)?;
     let name = f.entity.name().map(|n| n.name.clone()).ok_or_else(|| refuse("invalid", "name the entity before moving it"))?;
-    let (start, end) = entity_removal(file, f.list, f.index);
+    let old_parent = path[..path.len() - 1].to_vec();
+    if old_parent != parent && find_in(list_of(file, p), &name).is_some() {
+        return Err(refuse("exists", format!("{} already has a child named {name}", parent.join("/"))));
+    }
+    let old_index = written_index(f.list, f.index);
+    let (start, end) = removal(file, path, &f);
+    // The insertion is planned on the text without the entity, then mapped back.
+    let (mid_text, _) = splice(&file.source, &[(start, end, String::new())]);
+    let mid = syntax::parse(&mid_text).map_err(|d| refuse("internal", format!("the file without {} does not parse: {}", path.join("/"), d.message)))?;
+    let mp = if parent.is_empty() { None } else { Some(find(&mid, parent).ok_or_else(|| refuse("internal", format!("{} is gone", parent.join("/"))))?.entity) };
     // Re-indent the entity's lines to the new place.
     let old_indent = entity_indent(file, f.entity);
-    let mut out = vec![(start, end, String::new())];
-    let new_indent = if parent.is_empty() {
-        child_indent(file, None, &file.entities)
-    } else {
-        let p = find(file, parent).ok_or_else(|| refuse("not-found", format!("no entity {}", parent.join("/"))))?;
-        if children(p.entity).and_then(|c| find_in(c, &name)).is_some() {
-            return Err(refuse("exists", format!("{} already has a child named {name}", parent.join("/"))));
-        }
-        child_indent(file, Some(p.entity), children(p.entity).unwrap_or(&EMPTY))
-    };
-    let body: Vec<String> = file
-        .text(f.entity.span)
+    let new_indent = child_indent(&mid, mp, list_of(&mid, mp));
+    let block = block_text(file, f.entity);
+    let body: Vec<String> = block
         .lines()
         .enumerate()
-        .map(|(i, l)| if i == 0 { l.to_string() } else { format!("{new_indent}{}", l.strip_prefix(old_indent.as_str()).unwrap_or(l.trim_start())) })
+        .map(|(i, l)| if i == 0 || l.is_empty() { l.to_string() } else { format!("{new_indent}{}", l.strip_prefix(old_indent.as_str()).unwrap_or(l.trim_start())) })
         .collect();
-    let text = body.join("\n");
-    if parent.is_empty() {
-        append_top(file, &text, &new_indent, &mut out);
-    } else {
-        let p = find(file, parent).expect("checked");
-        append_child(file, p.entity, &text, &mut out);
-    }
+    let mut ins = Vec::new();
+    insert_child(&mid, mp, index, &body.join("\n"), &mut ins);
+    let len = end - start;
+    let back = |x: usize| if x < start { x } else { x + len };
+    let mut out = vec![(start, end, String::new())];
+    out.extend(ins.into_iter().map(|(s, e, t)| (back(s), back(e), t)));
     let mut new_path = parent.to_vec();
     new_path.push(name);
-    Ok((out, vec![Op::Reparent { path: new_path.clone(), parent: path[..path.len() - 1].to_vec() }], vec![path.to_vec(), new_path], Vec::new()))
+    let renames = if new_path != path { vec![(path.to_vec(), new_path.clone())] } else { Vec::new() };
+    let inverse = Op::Reparent { path: new_path.clone(), parent: old_parent, index: Some(old_index) };
+    Ok((out, vec![inverse], vec![path.to_vec(), new_path], renames))
+}
+
+fn plan_add_component(file: &ParsedFile, path: &[String], component: &str, fields: &[(String, WValue)], text: Option<&str>) -> Result<Plan, Refused> {
+    let f = written_entity(file, path)?;
+    if patch_of(f.entity, component).is_some() {
+        return Err(refuse("exists", format!("{} already has {component}", path.join("/"))));
+    }
+    let body = match text {
+        Some(t) => t.to_string(),
+        None => NewPatch { component: written_name(file, component), fields: fields.to_vec() }.print(),
+    };
+    let mut out = Vec::new();
+    add_entry(file, f.entity, &body, &mut out);
+    Ok((out, vec![Op::RemoveComponent { path: path.to_vec(), component: component.into() }], vec![path.to_vec()], Vec::new()))
+}
+
+fn plan_remove_component(file: &ParsedFile, path: &[String], component: &str) -> Result<Plan, Refused> {
+    let f = written_entity(file, path)?;
+    let p = patch_of(f.entity, component).ok_or_else(|| refuse("not-found", format!("{} has no {component} patch", path.join("/"))))?;
+    if f.entity.name().is_none() && f.entity.entries.len() == 1 {
+        return Err(refuse("invalid", format!("{component} is all {} has; delete the entity instead", path.join("/"))));
+    }
+    let text = file.text(p.span).to_string();
+    let out = vec![entry_removal(file, f.entity, &Entry::Patch(p.clone()))];
+    Ok((out, vec![Op::AddComponent { path: path.to_vec(), component: component.into(), fields: Vec::new(), text: Some(text) }], vec![path.to_vec()], Vec::new()))
 }
 
 /// The head of every named entity (its entries but its relationship lists), by name path, as

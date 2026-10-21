@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
@@ -687,6 +687,18 @@
         "name": "result",
         "schema": {
           "$ref": "#/components/schemas/LevelNodeResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/level_catalog",
+      "summary": "The scene components of the running generation a level can place, with file, line and props (1.12). No watch: it changes only when a TS reload applies.",
+      "x-bevy-ts-crate": "bevy-ts-levels",
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/LevelCatalogResult"
         }
       }
     },
@@ -2174,6 +2186,32 @@
           "tombstoned": {
             "description": "Despawned by something other than tsx; not respawned until a restart or a key change.",
             "type": "boolean"
+          },
+          "level": {
+            "description": "(1.12) Set when a level placed the entity; absent for a TSX-only node.",
+            "type": "object",
+            "required": [
+              "file",
+              "namePath",
+              "written"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "file": {
+                "type": "string",
+                "description": "The outermost level file (a sidecar's path for a scene overlay)."
+              },
+              "namePath": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "written": {
+                "type": "boolean",
+                "description": "Written in that file, rather than coming from a prefab, an included level or the scene's TSX."
+              }
+            }
           }
         }
       },
@@ -2203,6 +2241,10 @@
             "items": {
               "$ref": "#/components/schemas/TsxTreeNode"
             }
+          },
+          "sidecar": {
+            "type": "string",
+            "description": "(1.12) An app.scene root's sidecar level path, whether or not the file exists."
           }
         }
       },
@@ -4576,6 +4618,13 @@
               "$ref": "#/components/schemas/LevelProp"
             },
             "description": "A scene component instance's @props, beside its fields; empty for anything else. (1.7)"
+          },
+          "patches": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "(1.12) Components the file adds that the entity's prefab does not give, named as LevelOverride.component names them."
           }
         }
       },
@@ -4775,8 +4824,7 @@
             "type": "object",
             "required": [
               "op",
-              "parent",
-              "name"
+              "parent"
             ],
             "additionalProperties": false,
             "properties": {
@@ -4794,7 +4842,8 @@
                 "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "description": "Optional (1.12): without it the writer picks the first free sibling name."
               },
               "scene": {
                 "type": "string",
@@ -4836,6 +4885,10 @@
                     }
                   }
                 }
+              },
+              "asset": {
+                "type": "string",
+                "description": "add_entity (1.12): a .glb or .gltf path, written as SceneRoot(\"path#Scene0\"), or a .bsn to include."
               }
             }
           },
@@ -4908,6 +4961,12 @@
                   "type": "string"
                 },
                 "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "index": {
+                "type": "integer",
+                "format": "uint64",
+                "minimum": 0,
+                "description": "(1.12) The place among the parent's written children; last when absent."
               }
             }
           },
@@ -4940,6 +4999,67 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path",
+              "component"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "add_component"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "component": {
+                "type": "string",
+                "description": "As LevelOverride.component names it, or any path a .bsn patch resolves."
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LevelValue"
+                }
+              },
+              "text": {
+                "type": "string",
+                "description": "The patch as written; the inverse of a remove_component carries it."
+              }
+            },
+            "description": "(1.12)"
+          },
+          {
+            "type": "object",
+            "required": [
+              "op",
+              "path",
+              "component"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "const": "remove_component"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A name path from the file's top; `#n` is the n-th unnamed sibling."
+              },
+              "component": {
+                "type": "string"
+              }
+            },
+            "description": "(1.12)"
           }
         ]
       },
@@ -4961,7 +5081,15 @@
             "type": "string"
           },
           "base": {
-            "$ref": "#/components/schemas/LevelHash"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelHash"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null (1.12): the file does not exist yet."
           },
           "ops": {
             "type": "array",
@@ -5049,6 +5177,36 @@
               "$ref": "#/components/schemas/LevelOp"
             },
             "description": "The batch that undoes this one."
+          },
+          "created": {
+            "type": "array",
+            "description": "(1.12) One per entity the batch added, in order; entity is null when the level is not open.",
+            "items": {
+              "type": "object",
+              "required": [
+                "namePath",
+                "entity"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "namePath": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "entity": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Entity"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -5518,6 +5676,78 @@
               "number",
               "null"
             ]
+          }
+        }
+      },
+      "LevelCatalogResult": {
+        "type": "object",
+        "required": [
+          "scenes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "scenes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelCatalogScene"
+            }
+          }
+        }
+      },
+      "LevelCatalogScene": {
+        "type": "object",
+        "required": [
+          "name",
+          "props"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "props": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelCatalogProp"
+            }
+          }
+        }
+      },
+      "LevelCatalogProp": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "default",
+          "required"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "description": "The prop's type as the manifest writes it ({ \"kind\": \"f32\" })."
+          },
+          "default": {
+            "description": "The literal default, or null."
+          },
+          "required": {
+            "type": "boolean"
           }
         }
       }

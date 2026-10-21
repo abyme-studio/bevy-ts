@@ -116,6 +116,10 @@ pub struct LevelInstance {
     /// A scene component instance's props as placed.
     #[serde(skip)]
     pub scene: Option<ScenePlacement>,
+    /// Written in the level's own file, rather than coming from a prefab, an included level or
+    /// (for a sidecar) the scene's TSX.
+    #[serde(skip)]
+    pub written: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -352,6 +356,7 @@ impl Plugin for LevelsPlugin {
         app.on_ts_section_applied(SECTION, apply_section);
         app.on_ts_section_applied(bevy_ts_tsx::SECTION, after_generation);
         app.on_ts_restart(after_restart);
+        app.insert_resource(bevy_ts_tsx::protocol::TreeProvenance(tree_level));
         app.add_systems(Startup, open_pending);
         app.add_systems(Update, watch.before(bevy_ts::BevyTsSet::Update));
     }
@@ -805,9 +810,17 @@ fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap
     let mut writes = Vec::new();
     {
         let tree = world.resource::<TsxTree>();
+        let parsed = world.resource::<Levels>().roots.get(level).and_then(|r| world.resource::<Assets<BsnLevel>>().get(&r.handle)).map(|a| a.parsed.clone());
+        let sidecar = root != root_name(level);
         for (key_path, frames) in owners {
             let Some(e) = tree.entity(node_id(root, key_path)) else { continue };
-            let inst = LevelInstance { level: level.to_string(), name_path: key_path.clone(), owners: frames.iter().map(OwnerFrame::from).collect(), scene: scenes.get(key_path).cloned() };
+            let mut inst = LevelInstance { level: level.to_string(), name_path: key_path.clone(), owners: frames.iter().map(OwnerFrame::from).collect(), scene: scenes.get(key_path).cloned(), written: false };
+            // Looked up in the file only when the instance changed (design, Risks).
+            inst.written = match world.get::<LevelInstance>(e) {
+                Some(old) if LevelInstance { written: old.written, ..inst.clone() } == *old => old.written,
+                // A sidecar's override of a TSX entity is not written there: the scene made it.
+                _ => parsed.as_ref().is_some_and(|p| crate::writer::written(p, key_path)) && (!sidecar || world.get::<TsxNode>(e).and_then(|n| n.source.last()).is_some_and(|s| s.file.ends_with(".bsn"))),
+            };
             writes.push((e, inst));
         }
     }
@@ -823,4 +836,17 @@ fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap
     for e in stale {
         world.entity_mut(e).remove::<LevelInstance>();
     }
+}
+
+/// A `tsx_tree` row's `level`: an entity the level placed or overrode, from its `LevelInstance`;
+/// a prefab's inner entity, from the scene component instance above it, never written.
+fn tree_level(world: &World, e: Entity, n: &TsxNode) -> Option<Value> {
+    if let Some(inst) = world.get::<LevelInstance>(e) {
+        return Some(serde_json::json!({ "file": inst.level, "namePath": inst.name_path, "written": inst.written }));
+    }
+    let tree = world.resource::<TsxTree>();
+    (1..n.key_path.len()).rev().find_map(|i| {
+        let inst = world.get::<LevelInstance>(tree.entity(node_id(&n.root, &n.key_path[..i]))?)?;
+        inst.scene.as_ref().map(|_| serde_json::json!({ "file": inst.level, "namePath": n.key_path, "written": false }))
+    })
 }

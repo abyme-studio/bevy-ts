@@ -36,6 +36,12 @@ fn parse_id(s: &str) -> Result<u64, BrpError> {
     u64::from_str_radix(s, 16).map_err(|_| invalid(format!("{s:?} is not a tsx node id")))
 }
 
+/// Fills `level` on `tsx_tree` rows: a plugin that places entities from files (levels) registers
+/// it, and tsx knows nothing of what it reads. With it, each `app.scene` root also carries
+/// `sidecar`, its sidecar level's path; without it, rows and roots carry neither.
+#[derive(Resource, Clone, Copy)]
+pub struct TreeProvenance(pub fn(&World, Entity, &TsxNode) -> Option<Value>);
+
 fn live(world: &World, tree: &TsxTree, id: u64) -> Option<(Entity, TsxNode)> {
     let e = *tree.entities.get(&id)?;
     world.get::<TsxNode>(e).filter(|n| n.id == id).map(|n| (e, n.clone()))
@@ -43,14 +49,18 @@ fn live(world: &World, tree: &TsxTree, id: u64) -> Option<(Entity, TsxNode)> {
 
 fn tree_node(world: &World, tree: &TsxTree, id: u64) -> Option<Value> {
     if let Some((e, n)) = live(world, tree, id) {
-        return Some(json!({
+        let mut row = json!({
             "node": id_str(id),
             "entity": e.to_bits(),
             "keyPath": n.key_path,
             "type": n.types.last(),
             "source": n.source.first(),
             "tombstoned": false,
-        }));
+        });
+        if let Some(level) = world.get_resource::<TreeProvenance>().and_then(|p| (p.0)(world, e, &n)) {
+            row["level"] = level;
+        }
+        return Some(row);
     }
     let t = tree.tombstones.get(&id)?;
     Some(json!({
@@ -74,7 +84,13 @@ fn roots(world: &World) -> Vec<Value> {
             ids.dedup();
             let mut nodes: Vec<Value> = ids.into_iter().filter_map(|id| tree_node(world, tree, id)).collect();
             nodes.sort_by(|a, b| a["keyPath"].to_string().cmp(&b["keyPath"].to_string()));
-            json!({ "name": name, "location": r.location, "nodes": nodes })
+            let mut root = json!({ "name": name, "location": r.location, "nodes": nodes });
+            if world.contains_resource::<TreeProvenance>()
+                && let Some(sidecar) = crate::scene_level(world, name)
+            {
+                root["sidecar"] = json!(sidecar);
+            }
+            root
         })
         .collect()
 }

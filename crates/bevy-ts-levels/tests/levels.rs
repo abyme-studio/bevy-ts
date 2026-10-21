@@ -283,7 +283,7 @@ mod writes {
     use super::*;
     use bevy_ts_levels::edit::{WriteRequest, write_level};
     use bevy_ts_levels::engine::content_hash;
-    use bevy_ts_levels::writer::{Op, WValue};
+    use bevy_ts_levels::writer::{Base, NewPatch, Op, WValue};
 
     fn p(s: &str) -> Vec<String> {
         s.split('/').map(String::from).collect()
@@ -384,6 +384,69 @@ mod writes {
         assert!(file(&f).starts_with("#Transform1 Transform { translation: Vec3 { x: 1.5 } }"), "{}", file(&f));
         assert_eq!(find(&mut f, 1.5), first);
         assert_eq!(find(&mut f, 2.0), second, "the positional id after it moved, not the entity");
+    }
+    fn set_hp(f: &mut Fixture, e: Entity, hp: f32) {
+        let (id, _) = plugin_api::component_by_name(f.app.world(), "game::Health").unwrap();
+        let mut ptr = f.app.world_mut().get_mut_by_id(e, id).unwrap();
+        // SAFETY: Health is two f32s, hp first.
+        unsafe { ptr.as_mut().as_ptr().cast::<f32>().write_unaligned(hp) };
+    }
+
+    #[test]
+    fn a_reparent_keeps_the_entity_and_its_state() {
+        let mut f = arena();
+        let (a, b) = (f.by_name("EnemyA"), f.by_name("EnemyB"));
+        set_hp(&mut f, b, 42.0);
+        let r = write(&mut f, ARENA, vec![Op::Reparent { path: p("EnemyB"), parent: p("EnemyA"), index: None }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(f.by_name("EnemyB"), b);
+        assert_eq!(f.app.world().get::<ChildOf>(b).map(ChildOf::parent), Some(a));
+        assert_eq!(f.app.world().get::<TsxNode>(b).unwrap().key_path, ["EnemyA", "EnemyB"]);
+        assert_eq!(f.hp(b), (42.0, 250.0), "the state stays");
+        let moved = file(&f);
+        let back = write(&mut f, &moved, r.inverse.clone());
+        assert_eq!(back.status, "written", "{back:?}");
+        assert_eq!(file(&f), ARENA);
+        assert_eq!(f.by_name("EnemyB"), b);
+        assert_eq!(f.app.world().get::<TsxNode>(b).unwrap().key_path, ["EnemyB"]);
+        assert_eq!(f.hp(b), (42.0, 250.0));
+    }
+
+    #[test]
+    fn an_add_returns_the_entity_it_spawned() {
+        let mut f = arena();
+        let transform = NewPatch { component: "Transform".into(), fields: vec![("translation".into(), WValue::Vector { ty: "Vec3".into(), lanes: vec![("x".into(), 7.0)] })] };
+        let r = write(&mut f, ARENA, vec![Op::Add { parent: Vec::new(), name: None, base: Base::None, patches: vec![transform], asset: None }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(r.created.len(), 1);
+        let (path, e) = &r.created[0];
+        assert_eq!(path, &p("Transform"));
+        let e = e.expect("spawned");
+        assert_eq!(f.by_name("Transform"), e);
+        assert_eq!(f.translation(e).x, 7.0);
+    }
+
+    #[test]
+    fn components_are_checked_against_the_world() {
+        let mut f = arena();
+        let room = f.by_name("RoomB");
+        // The included room gives RoomB its Transform: the file's patch overrides it, and cannot remove it.
+        let r = write(&mut f, ARENA, vec![Op::RemoveComponent { path: p("RoomB"), component: "Transform".into() }]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("prefab-internal")), "{r:?}");
+        // A new patch takes the shortest name that resolves.
+        let add = Op::AddComponent { path: p("RoomB"), component: "game::Health".into(), fields: vec![("max".into(), WValue::Float { v: 9.0, f32: true })], text: None };
+        let r = write(&mut f, ARENA, vec![add.clone()]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(file(&f).contains("Transform { translation: Vec3 { x: 20.0 } }\nHealth { max: 9.0 }\n"), "{}", file(&f));
+        assert_eq!(f.hp(room).1, 9.0);
+        let now = file(&f);
+        let again = write(&mut f, &now, vec![Op::AddComponent { path: p("RoomA"), component: "Transform".into(), fields: vec![], text: None }]);
+        assert_eq!((again.status, again.reason.as_deref()), ("refused", Some("exists")), "the room gives RoomA a Transform: {again:?}");
+        let back = write(&mut f, &now, r.inverse.clone());
+        assert_eq!(back.status, "written", "{back:?}");
+        assert_eq!(file(&f), ARENA);
+        let (id, _) = plugin_api::component_by_name(f.app.world(), "game::Health").unwrap();
+        assert!(!f.app.world().entity(room).contains_id(id), "the component went with its patch");
     }
 }
 
@@ -590,5 +653,33 @@ mod sidecar {
         apply(&mut g);
         let p = g.by_name("player");
         assert_eq!(g.translation(p), Vec3::new(2.0, 0.0, -4.0));
+    }
+    #[test]
+    fn an_add_to_a_scene_with_no_level_creates_its_sidecar() {
+        use bevy_ts_levels::edit::{WriteRequest, write_level};
+        use bevy_ts_levels::engine::content_hash;
+        use bevy_ts_levels::writer::{Base, NewPatch, Op, WValue};
+        let mut f = fixture("sidecar-add", &[]);
+        apply(&mut f);
+        let file = "levels/arena.bsn";
+        let health = NewPatch { component: "game::Health".into(), fields: vec![("max".into(), WValue::Float { v: 5.0, f32: true })] };
+        let ops = vec![Op::Add { parent: Vec::new(), name: Some("Light".into()), base: Base::None, patches: vec![health], asset: None }];
+        let r = write_level(f.app.world_mut(), WriteRequest { id: 1, file: file.into(), base: content_hash(b""), ops });
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(std::fs::read_to_string(f.dir.join(file)).unwrap(), "#Light\ngame::Health { max: 5.0 }\n");
+        assert_eq!(f.app.world().resource::<Levels>().roots[file].overlay.as_deref(), Some("arena"));
+        let light = r.created[0].1.expect("spawned in the scene");
+        assert_eq!(f.app.world().get::<TsxNode>(light).unwrap().root, "arena");
+        assert_eq!(f.hp(light).1, 5.0);
+        // The scene's TSX entities stay the scene's.
+        let text = std::fs::read_to_string(f.dir.join(file)).unwrap();
+        for op in [Op::Delete { path: vec!["p".into()] }, Op::Rename { path: vec!["p".into()], to: "q".into() }] {
+            let r = write_level(f.app.world_mut(), WriteRequest { id: 2, file: file.into(), base: content_hash(text.as_bytes()), ops: vec![op] });
+            assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("prefab-internal")), "{r:?}");
+        }
+        // What the sidecar added, it can delete.
+        let r = write_level(f.app.world_mut(), WriteRequest { id: 3, file: file.into(), base: content_hash(text.as_bytes()), ops: r.inverse.clone() });
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(f.app.world().get_entity(light).is_err());
     }
 }

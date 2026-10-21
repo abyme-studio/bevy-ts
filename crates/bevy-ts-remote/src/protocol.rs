@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.11.0";
+pub const VERSION: &str = "1.12.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,6 +54,7 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/asset_preview_close", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/level_list", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level_node", crate_name: "bevy-ts-levels", watch: false },
+    Method { name: "bevy-ts/level_catalog", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level_write", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level_apply", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level+watch", crate_name: "bevy-ts-levels", watch: true },
@@ -2311,6 +2312,35 @@ impl ::std::convert::TryFrom<::std::string::String> for LevelApplyResultStatus {
         value.parse()
     }
 }
+///`LevelCatalogProp`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelCatalogProp {
+    ///The literal default, or null.
+    pub default: ::serde_json::Value,
+    pub name: ::std::string::String,
+    pub required: bool,
+    ///The prop's type as the manifest writes it ({ "kind": "f32" }).
+    #[serde(rename = "type")]
+    pub type_: ::serde_json::Value,
+}
+///`LevelCatalogResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelCatalogResult {
+    pub scenes: ::std::vec::Vec<LevelCatalogScene>,
+}
+///`LevelCatalogScene`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelCatalogScene {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub file: ::std::option::Option<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub line: ::std::option::Option<u32>,
+    pub name: ::std::string::String,
+    pub props: ::std::vec::Vec<LevelCatalogProp>,
+}
 ///`LevelDiagnostic`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -2478,6 +2508,9 @@ pub struct LevelNodeResult {
     pub overrides: ::std::vec::Vec<LevelOverride>,
     ///Every level frame that could hold an edit, outermost first.
     pub owners: ::std::vec::Vec<LevelOwner>,
+    ///(1.12) Components the file adds that the entity's prefab does not give, named as LevelOverride.component names them.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub patches: ::std::vec::Vec<::std::string::String>,
     ///The scene component the entity instances, if any.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub prefab: ::std::option::Option<::std::string::String>,
@@ -2529,6 +2562,9 @@ pub enum LevelOp {
         prop: ::std::string::String,
     },
     Variant4 {
+        ///add_entity (1.12): a .glb or .gltf path, written as SceneRoot("path#Scene0"), or a .bsn to include.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        asset: ::std::option::Option<::std::string::String>,
         #[serde(
             default,
             skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
@@ -2537,7 +2573,9 @@ pub enum LevelOp {
         ///add_instance: a level to include instead.
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         include: ::std::option::Option<::std::string::String>,
-        name: ::std::string::String,
+        ///Optional (1.12): without it the writer picks the first free sibling name.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        name: ::std::option::Option<::std::string::String>,
         op: LevelOpVariant4Op,
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
         parent: ::std::vec::Vec<::std::string::String>,
@@ -2564,6 +2602,9 @@ pub enum LevelOp {
         to: ::std::string::String,
     },
     Variant7 {
+        ///(1.12) The place among the parent's written children; last when absent.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        index: ::std::option::Option<u64>,
         op: ::serde_json::Value,
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
         parent: ::std::vec::Vec<::std::string::String>,
@@ -2576,6 +2617,27 @@ pub enum LevelOp {
         ///A name path from the file's top; `#n` is the n-th unnamed sibling.
         parent: ::std::vec::Vec<::std::string::String>,
         text: ::std::string::String,
+    },
+    Variant9 {
+        ///As LevelOverride.component names it, or any path a .bsn patch resolves.
+        component: ::std::string::String,
+        #[serde(
+            default,
+            skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
+        )]
+        fields: ::std::collections::HashMap<::std::string::String, LevelValue>,
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
+        ///The patch as written; the inverse of a remove_component carries it.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        text: ::std::option::Option<::std::string::String>,
+    },
+    Variant10 {
+        component: ::std::string::String,
+        op: ::serde_json::Value,
+        ///A name path from the file's top; `#n` is the n-th unnamed sibling.
+        path: ::std::vec::Vec<::std::string::String>,
     },
 }
 ///`LevelOpVariant4Op`
@@ -2816,7 +2878,9 @@ impl ::std::convert::TryFrom<::std::string::String> for LevelWatchMessageEvent {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct LevelWriteParams {
-    pub base: LevelHash,
+    ///null (1.12): the file does not exist yet.
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub base: ::std::option::Option<LevelHash>,
     pub file: ::std::string::String,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub id: ::std::option::Option<u64>,
@@ -2826,6 +2890,9 @@ pub struct LevelWriteParams {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct LevelWriteResult {
+    ///(1.12) One per entity the batch added, in order; entity is null when the level is not open.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub created: ::std::vec::Vec<LevelWriteResultCreatedItem>,
     ///conflict: the disk's value of the field, as written.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub disk: ::std::option::Option<::std::string::String>,
@@ -2843,6 +2910,15 @@ pub struct LevelWriteResult {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub reason: ::std::option::Option<::std::string::String>,
     pub status: LevelWriteResultStatus,
+}
+///`LevelWriteResultCreatedItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelWriteResultCreatedItem {
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub entity: ::std::option::Option<Entity>,
+    #[serde(rename = "namePath")]
+    pub name_path: ::std::vec::Vec<::std::string::String>,
 }
 ///`LevelWriteResultStatus`
 #[derive(
@@ -4172,6 +4248,9 @@ pub struct TsxRoot {
     pub location: ::std::option::Option<SourceLocation>,
     pub name: ::std::string::String,
     pub nodes: ::std::vec::Vec<TsxTreeNode>,
+    ///(1.12) An app.scene root's sidecar level path, whether or not the file exists.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub sidecar: ::std::option::Option<::std::string::String>,
 }
 ///`TsxTreeNode`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -4181,6 +4260,8 @@ pub struct TsxTreeNode {
     pub entity: ::std::option::Option<Entity>,
     #[serde(rename = "keyPath")]
     pub key_path: ::std::vec::Vec<::std::string::String>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub level: ::std::option::Option<TsxTreeNodeLevel>,
     pub node: TsxNodeId,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub source: ::std::option::Option<SourceLocation>,
@@ -4189,6 +4270,17 @@ pub struct TsxTreeNode {
     ///The element type that made the node: `entity`, a UI tag, or the outermost prefab.
     #[serde(rename = "type")]
     pub type_: ::std::string::String,
+}
+///(1.12) Set when a level placed the entity; absent for a TSX-only node.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxTreeNodeLevel {
+    ///The outermost level file (a sidecar's path for a scene overlay).
+    pub file: ::std::string::String,
+    #[serde(rename = "namePath")]
+    pub name_path: ::std::vec::Vec<::std::string::String>,
+    ///Written in that file, rather than coming from a prefab, an included level or the scene's TSX.
+    pub written: bool,
 }
 ///`TsxTreeResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
