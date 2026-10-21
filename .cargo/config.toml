@@ -1,0 +1,4 @@
+# sccache shares compiled registry crates (Bevy and the rest) across every worktree.
+# The wrapper falls back to plain rustc where sccache is not installed (CI); docs/build-cache.md.
+[build]
+rustc-wrapper = "scripts/rustc-wrapper.sh"
