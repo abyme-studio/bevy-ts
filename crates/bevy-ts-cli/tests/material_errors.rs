@@ -248,7 +248,8 @@ fn until_error(app: &mut App, n: usize) {
     }
 }
 
-// macOS only, as this whole file is: Metal has no f64, every other capability the check assumes.
+// Metal has no f64 (every other capability the check assumes): macOS only.
+#[cfg(target_os = "macos")]
 #[test]
 fn a_failure_only_the_device_sees_is_reported_with_the_renderers_message() {
     let (dir, mut app) = setup("material-errors-device");
