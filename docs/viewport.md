@@ -75,9 +75,16 @@ their TS `scene()`. Only what draws is spawned: `Transform`, `Visibility`, `<mes
 no reconciler sees it, and it is absent from `tsx_tree` and `entities+watch`. A level whose look
 comes from a TS system at runtime shows its authored look.
 
-What a level thumbnail costs (task 3.4, release, M-series Mac, 128 px):
+What a level thumbnail costs (asset-catalog task 3.4: release, Apple M5 Max under a load average
+of about 22 from other builds, 128 px, three rounds each; `thumbnail-bench`):
 
-LEVEL_COSTS
+| level | entities | compose and spawn | frames to PNG | frame while rendering, median / max | idle frame |
+|---|---|---|---|---|---|
+| `levels/arena.bsn` | 10 | 0.5–1.2 ms | 10 | 3.0–3.6 / 3.6–9.2 ms | 2.7 ms |
+| generated, 100 enemies | 200 | 3.4–5.3 ms | 10 | 2.9–3.4 / 6.2–6.9 ms | 2.7 ms |
+
+Composing runs once, in the frame the level's files finish loading; that frame is the max. The
+other frames cost what a glTF thumbnail does.
 
 ## Picking
 

@@ -71,8 +71,12 @@ export default {
   "viewport-preview": { cmd: "cargo test -p bevy-ts-viewport --test preview -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-preview.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -40" },
   // Change asset-catalog: level thumbnails that the game never sees, and what they cost (task 3.4).
   "viewport-thumbnail": { cmd: "cargo test -p bevy-ts-cli --test viewport_thumbnail -- --nocapture 2>&1 | grep -v ld64 | tee target/viewport-thumbnail.log | grep -E 'test |panicked|left|right|assert|^thread|error' | tail -30" },
-  "thumbnail-bench": { cmd: "cargo test --release -p bevy-ts-cli --test viewport_thumbnail -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/thumbnail-bench.log | grep -E '^\\||test |panicked' | tail -20" },
+  "thumbnail-bench": { cmd: "uptime && cargo test --release -p bevy-ts-cli --test viewport_thumbnail -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/thumbnail-bench.log | grep -E '^\\||test |panicked' | tail -20 && uptime" },
   "gen-protocol": { cmd: "scripts/gen-protocol.sh 2>&1 | tail -5" },
+  // Every test the change touches, in one run: viewport, levels, tsx unit, and the cli tests on thumbnails and levels.
+  "asset-catalog-tests": { cmd: "bash -c 'set -o pipefail; (cargo test -p bevy-ts-viewport --lib --test assets --test edit -- --test-threads=1 && cargo test -p bevy-ts-levels && cargo test -p bevy-ts-tsx --lib && cargo test -p bevy-ts-cli --test viewport_thumbnail --test viewport_level --test viewport_edit --test viewport_preview --test levels_protocol) 2>&1 | grep -v ld64 | tee target/asset-catalog-tests.log | grep -E \"^test result|FAILED|panicked|^error\"'" },
+  // The last round before asset-catalog lands: everything, once.
+  "asset-catalog-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/asset-catalog-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo gate exit $?'" },
   "arena-assets": { cmd: "BEVY_TS_WRITE_ARENA_ASSETS=1 cargo test -p bevy-ts-viewport --test assets the_arenas_assets -- --nocapture 2>&1 | grep -v ld64 | tail -5" },
   // The same gate for levels task groups.
   "levels-bench": { cmd: "cargo test --release -p bevy-ts-cli --test levels_bench -- --ignored --nocapture 2>&1 | tee target/levels-bench.log | grep -E '^\\||test result|panicked'" },

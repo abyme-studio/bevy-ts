@@ -13,7 +13,7 @@
 - [x] 3.1 In `crates/bevy-ts-levels`, a function that composes a level (`compose_level`) and spawns its resolved nodes as a detached tree keeping only `Transform`, `Visibility`, mesh and material intrinsics, `Mesh3d`/`MeshMaterial3d`, lights and glTF scene roots, each entity spawned with `EditorOnly`, `ScriptHidden` and layer 30 in its first insert; it returns the tree's root or the compose errors
 - [x] 3.2 A level job in `assets.rs`: load the `.bsn` and its includes, wait for `is_loaded_with_dependencies`, spawn through 4.1, then the existing render, frame and read-back steps; a compose error caches `png: null`
 - [x] 3.3 Test on `examples/arena` while it plays: `levels/arena.bsn` at 128 answers `pending`, then a 128×128 PNG with drawn pixels; meanwhile no TS system saw a new `Foe`, `tsx_tree` and `entities+watch` are unchanged, no rapier body was added, and every thumbnail entity is gone after the read-back
-- [ ] 3.4 Measure the arena level and a generated 200-entity level: compose time, frames to the PNG, and frame time while it renders. Write the numbers in `docs/viewport.md` and in the report to lead@bevy-ts
+- [x] 3.4 Measure the arena level and a generated 200-entity level: compose time, frames to the PNG, and frame time while it renders. Write the numbers in `docs/viewport.md` and in the report to lead@bevy-ts
 
 ## 4. Pick points
 
