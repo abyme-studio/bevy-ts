@@ -1,6 +1,6 @@
 ## Context
 
-- `crates/bevy-ts-viewport/src/assets.rs` serves `assets`, `assets+watch` and `asset_thumbnail`. Thumbnails run as jobs: `Loading` (wait for the handle), `Rendering` (spawn the subject, a light and a camera on layer 30 into an image, settle, frame the bounds), `Reading` (a `Readback`, then PNG). Images skip the jobs. Every other kind answers `png: null`, fonts included, though the `asset-list` spec says fonts get a sample line.
+- `crates/bevy-ts-viewport/src/assets.rs` serves `assets`, `assets+watch` and `asset_thumbnail`. Thumbnails run as jobs: `Loading` (wait for the handle), `Rendering` (spawn the subject, a light and a camera on layer 30 into an image, settle, frame the bounds), `Reading` (a `Readback`, then PNG). Images skip the jobs. Every other kind answers `png: null`, fonts included, though the `asset-list` spec says fonts get a sample line; this change drops that promise.
 - A level is composed by `bevy_ts_levels::compose_level` (includes resolved, scene components expanded through TS `scene()` in one `bevy_ts_tsx::expand` call) and then reconciled into the game as root `level:<path>`. Nothing spawns a composed level anywhere else.
 - `viewport_pick` returns `edit::hits(ray)`: entity, distance along the ray, and the entity a click selects. The ray is `editor_ray`.
 - The arena's `assets/` holds only `levels/arena.bsn` and `levels/room.bsn`.
@@ -8,9 +8,9 @@
 
 ## Goals / Non-Goals
 
-**Goals:** a thumbnail for every level and font; the listing says which assets have one; a world point for a drop; an example that shows every kind.
+**Goals:** a thumbnail for every level; the listing says which assets have one; a world point for a drop; an example that shows every kind.
 
-**Non-Goals:** audio waveforms, shader previews, `.scn.ron` thumbnails, live level previews, any import or spawn method (abyme copies files and writes levels itself).
+**Non-Goals:** font thumbnails, audio waveforms, shader previews, `.scn.ron` thumbnails, live level previews, any import or spawn method (abyme copies files and writes levels itself).
 
 ## Decisions
 
@@ -20,11 +20,25 @@
    - Rejected: drawing the live level's entities. It works only for a level that is loaded, and shows its state in play, not the file.
    - The level's own lights are kept; the thumbnail's light is added as for a mesh, so an unlit level still reads.
 2. **Composing runs TS.** Expansion calls each placed prefab's `scene()` once, as loading the level would. `scene()` is a pure description (the levels spec forbids side effects in it), so this changes no game state. It runs in the job's `Loading` step once every file the level includes is loaded (`is_loaded_with_dependencies`), then the job goes on to `Rendering` with the spawned tree as subject. A compose error caches `png: null` and logs nothing to the game's log.
-3. **Fonts render as `Text2d`.** A job loads the `Font`, then spawns a `Camera2d` into the image and a `Text2d` "Aa Bb 123" in that font sized to the width, both on layer 30, and reads back as meshes do. No new dependency.
+3. **Fonts get no thumbnail.** Bevy's editor plans previews of 2D and 3D assets only (see Alignment with Bevy), so the spec's sample-line promise is removed rather than built.
 4. **`thumbnail` is decided by `kind` and extension in one function** next to `kind()`, so the listing and `asset_thumbnail` can never disagree.
 5. **Pick points come from the ray.** `point = origin + direction × depth` per hit (mesh hits already give the distance; icon hits use the distance along the ray to the icon's centre). `ground` is the ray's crossing of y = 0 when `direction.y` points toward the plane and the crossing is in front of the camera; null otherwise. Both are plain `[f32; 3]`.
 6. **Example assets are generated, not downloaded.** A `.gltf` crate with an embedded base64 buffer and a PBR material, a 64×64 checker `.png` (written with `assets.rs`'s own PNG writer) and a short sine `.wav`, made by a test helper and committed. No third-party art, no licence question.
 7. **Protocol: the next free minor (planned 1.13.0).** `AssetInfo.thumbnail` (boolean, required in what the engine sends, optional for older engines in clients), `PickHit.point`, `ViewportPickResult.ground` (nullable). The number is set when it lands, from main; lead@bevy-ts names it.
+
+## Alignment with Bevy
+
+Operator's rule (2026-10-22): build only what Bevy's own editor has or discusses. Each piece:
+
+| Piece | Where Bevy has or discusses it | Kept |
+|---|---|---|
+| Mesh and glTF thumbnails (shipped) | `bevy_editor_prototypes/crates/bevy_asset_preview`: "for 3d assets this will require a quick render of the asset at a low resolution", cached while the asset is unchanged | yes |
+| `.bsn` level thumbnails | the same crate's "3d assets"; bevy_editor_prototypes#137 treats scenes as assets dragged into the viewport | yes |
+| Font thumbnails | not in `bevy_asset_preview`, the asset browser, the design book or the requirements discussion (bevy#7100) | cut |
+| `thumbnail` flag and kind icons | `bevy_asset_browser` shows a file icon per entry, and `bevy_asset_preview` previews only 2D and 3D assets | yes |
+| `point` per pick hit | Bevy's picking reports a hit's world `position` (`bevy_picking::backend::HitData`) | yes |
+| `ground` for a drop on empty floor | bevy_editor_prototypes#137: "if we support dragging assets (such as scenes) into the viewport to load them" | yes |
+| Example models, textures, sounds | Bevy's own `assets/` ships `models/`, `textures/` and `sounds/` for its examples | yes |
 
 ## Risks / Trade-offs
 
