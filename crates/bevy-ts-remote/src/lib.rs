@@ -5,6 +5,7 @@
 //! [`add_watching_method`], so a method is served only when its crate's plugin is added.
 
 pub mod protocol;
+pub mod editor;
 mod entities;
 mod values;
 

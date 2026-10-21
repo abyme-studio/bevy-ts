@@ -288,3 +288,101 @@ fn a_watch_stays_quiet_for_rows_a_system_does_not_write() {
         }
     }
 }
+
+fn editor(s: &Value, path: &str) -> Value {
+    s[path]["x-bevy-ts-editor"].clone()
+}
+
+#[test]
+fn ts_components_are_the_games_and_addable_while_declared() {
+    let src = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src/game.ts")).unwrap();
+    let dir = project("protocol-editor-ts", &[("game.ts", &src)]);
+    let mut app = app(&dir.join("game.ts"));
+    app.add_plugins(RemotePlugin::default());
+    bevy_ts_remote::add_methods(&mut app);
+    reload(&mut app, false);
+    app.update();
+    let s = ok(&mut app, "bevy-ts/schema", Some(json!({ "names": ["game::Mover"] })));
+    assert_eq!(editor(&s, "game::Mover"), json!({ "origin": "game", "internal": false, "addable": true, "category": "game" }));
+
+    // A reload drops Mover while the cube still holds its data.
+    write(&dir, "game.ts", "import { app } from \"bevy-ts\";\nexport {};\n");
+    reload(&mut app, false);
+    let s = ok(&mut app, "bevy-ts/schema", Some(json!({ "names": ["game::Mover"] })));
+    assert_eq!(s["game::Mover"]["x-bevy-ts"]["declared"], false, "{s:#}");
+    assert_eq!(editor(&s, "game::Mover")["addable"], false);
+}
+
+/// The engine `bevy-ts dev --headless` runs: Bevy's default plugins, bevy-ts, tsx and levels, no
+/// ports, with the cube example loaded.
+fn bare_engine(identity: bevy_ts::engine::EngineIdentity) -> App {
+    let src = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src/game.ts")).unwrap();
+    let name = format!("protocol-{}", std::thread::current().name().unwrap_or("x").replace("::", "-"));
+    let dir = project(&name, &[("game.ts", &src)]);
+    let engine = bevy_ts_cli::Engine { identity };
+    let mut app = bevy_ts_cli::cli::base_app(&engine, bevy_ts_cli::Prebuilt, bevy_ts_cli::cli::Display::Headless, Default::default(), None);
+    app.insert_resource(bevy_ts::generation::DevSource(std::sync::Arc::new(bevy_ts_cli::compile::Compiler::new(&dir.join("game.ts"), true).unwrap())));
+    app.add_plugins(RemotePlugin::default());
+    bevy_ts_remote::add_methods(&mut app);
+    app.finish();
+    app.cleanup();
+    reload(&mut app, false);
+    app.update();
+    app
+}
+
+#[test]
+fn the_engines_components_are_its_own() {
+    let mut app = bare_engine(bevy_ts::engine::EngineIdentity::prebuilt("0.0.0", "test"));
+    let s = ok(&mut app, "bevy-ts/schema", None);
+    let global = "bevy_transform::components::global_transform::GlobalTransform";
+    let transform = "bevy_transform::components::transform::Transform";
+    assert_eq!(editor(&s, global), json!({ "origin": "engine", "internal": true, "addable": false, "category": "transform" }));
+    assert_eq!(editor(&s, transform), json!({ "origin": "engine", "internal": false, "addable": true, "category": "transform" }));
+    assert_eq!(editor(&s, "game::Mover")["origin"], "game");
+    assert_eq!(editor(&s, "bevy_camera::clear_color::ClearColor")["addable"], false, "a resource is never added to an entity");
+
+    let mut plugin = Vec::new();
+    for (path, e) in s.as_object().unwrap() {
+        let e = &e["x-bevy-ts-editor"];
+        assert!(e.is_object(), "{path} has no x-bevy-ts-editor");
+        // This test binary's own reflected types are auto-registered; they are no crate's.
+        if e["origin"] == "plugin" && !path.starts_with("protocol::") {
+            plugin.push(path.clone());
+        }
+        if e["internal"] == true {
+            assert_eq!(e["origin"], "engine", "{path}");
+        }
+    }
+    assert!(plugin.is_empty(), "a bare engine has plugin components; list their crates in BEVY_CRATES: {plugin:?}");
+    let unknown: Vec<_> = bevy_ts_remote::editor::INTERNAL.iter().filter(|p| s.get(**p).is_none()).collect();
+    assert!(unknown.is_empty(), "INTERNAL names components the registry does not know: {unknown:?}");
+}
+
+#[test]
+fn the_native_crates_components_are_the_games() {
+    // This test binary's crate stands in for the project's native crate.
+    let native = bevy_ts::engine::NativeIdentity { name: "protocol".into(), version: "0.1.0".into() };
+    let mut app = bare_engine(bevy_ts::engine::EngineIdentity::project("test", Some(native)));
+    app.register_type::<Fuel>();
+    let s = ok(&mut app, "bevy-ts/schema", Some(json!({ "names": ["protocol::Fuel"] })));
+    assert_eq!(editor(&s, "protocol::Fuel"), json!({ "origin": "game", "internal": false, "addable": true, "category": "game" }));
+}
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+struct Fuel {
+    litres: f32,
+}
+
+/// Prints every registered component of the bare engine with its editor info, for completing
+/// `INTERNAL`: `cargo test -p bevy-ts-cli --test protocol list_components -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn list_components() {
+    let mut app = bare_engine(bevy_ts::engine::EngineIdentity::prebuilt("0.0.0", "test"));
+    let s = ok(&mut app, "bevy-ts/schema", None);
+    for (path, e) in s.as_object().unwrap() {
+        println!("{path} {}", e["x-bevy-ts-editor"]);
+    }
+}

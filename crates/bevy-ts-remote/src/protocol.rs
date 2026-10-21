@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.10.0";
+pub const VERSION: &str = "1.11.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -418,7 +418,7 @@ pub struct BrpError {
     pub data: ::std::option::Option<::serde_json::Value>,
     pub message: ::std::string::String,
 }
-///A component's schema in the shape stock registry.schema uses, plus x-bevy-ts for TS components.
+///A component's schema in the shape stock registry.schema uses, plus x-bevy-ts for TS components and x-bevy-ts-editor for every component.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct ComponentSchema {
     pub kind: ::std::string::String,
@@ -443,6 +443,11 @@ pub struct ComponentSchema {
         skip_serializing_if = "::std::option::Option::is_none"
     )]
     pub x_bevy_ts: ::std::option::Option<TsSchemaExtension>,
+    #[serde(
+        rename = "x-bevy-ts-editor",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub x_bevy_ts_editor: ::std::option::Option<EditorInfo>,
 }
 ///`ComponentSource`
 #[derive(
@@ -813,6 +818,161 @@ impl ::std::convert::TryFrom<&str> for EditStatus {
     }
 }
 impl ::std::convert::TryFrom<::std::string::String> for EditStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///How an editor treats a component: whose it is, whether the engine maintains it, whether Add component may offer it, and its icon category.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct EditorInfo {
+    pub addable: bool,
+    pub category: EditorInfoCategory,
+    pub internal: bool,
+    pub origin: EditorInfoOrigin,
+}
+///`EditorInfoCategory`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum EditorInfoCategory {
+    #[serde(rename = "transform")]
+    Transform,
+    #[serde(rename = "render")]
+    Render,
+    #[serde(rename = "light")]
+    Light,
+    #[serde(rename = "camera")]
+    Camera,
+    #[serde(rename = "physics")]
+    Physics,
+    #[serde(rename = "audio")]
+    Audio,
+    #[serde(rename = "ui")]
+    Ui,
+    #[serde(rename = "animation")]
+    Animation,
+    #[serde(rename = "game")]
+    Game,
+    #[serde(rename = "other")]
+    Other,
+}
+impl ::std::fmt::Display for EditorInfoCategory {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Transform => f.write_str("transform"),
+            Self::Render => f.write_str("render"),
+            Self::Light => f.write_str("light"),
+            Self::Camera => f.write_str("camera"),
+            Self::Physics => f.write_str("physics"),
+            Self::Audio => f.write_str("audio"),
+            Self::Ui => f.write_str("ui"),
+            Self::Animation => f.write_str("animation"),
+            Self::Game => f.write_str("game"),
+            Self::Other => f.write_str("other"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditorInfoCategory {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "transform" => Ok(Self::Transform),
+            "render" => Ok(Self::Render),
+            "light" => Ok(Self::Light),
+            "camera" => Ok(Self::Camera),
+            "physics" => Ok(Self::Physics),
+            "audio" => Ok(Self::Audio),
+            "ui" => Ok(Self::Ui),
+            "animation" => Ok(Self::Animation),
+            "game" => Ok(Self::Game),
+            "other" => Ok(Self::Other),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorInfoCategory {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorInfoCategory {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`EditorInfoOrigin`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum EditorInfoOrigin {
+    #[serde(rename = "engine")]
+    Engine,
+    #[serde(rename = "game")]
+    Game,
+    #[serde(rename = "plugin")]
+    Plugin,
+}
+impl ::std::fmt::Display for EditorInfoOrigin {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Engine => f.write_str("engine"),
+            Self::Game => f.write_str("game"),
+            Self::Plugin => f.write_str("plugin"),
+        }
+    }
+}
+impl ::std::str::FromStr for EditorInfoOrigin {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "engine" => Ok(Self::Engine),
+            "game" => Ok(Self::Game),
+            "plugin" => Ok(Self::Plugin),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for EditorInfoOrigin {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for EditorInfoOrigin {
     type Error = self::error::ConversionError;
     fn try_from(
         value: ::std::string::String,

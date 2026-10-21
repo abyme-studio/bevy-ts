@@ -35,7 +35,7 @@ Alternative: derive Bevy's crates from Cargo metadata at build time. Rejected: t
 Alternative: infer "maintained" from required components or from lacking `ReflectDefault`. Rejected: GlobalTransform has `ReflectDefault`, and many authored components lack it.
 
 ### Addable from reflection
-Addable = `reflectTypes` contains `Component` and (`Default` or `FromWorld`), `componentInfo.mutable` is true, and not internal. TS: declared by the live generation. This only gates what Add component offers.
+Addable = the registration has `ReflectComponent` and (`ReflectDefault` or `ReflectFromWorld`), not `ReflectResource`, the component is mutable, and it is not internal. Read from the `TypeRegistration`, not the stock JSON: `reflectTypes` never lists `FromWorld`. Bevy 0.20 stores resources as components, so `ClearColor`, `AmbientLight` and the like are registered components; an entity is never given one. TS: declared by the live generation. This only gates what Add component offers.
 
 ### Category from a table keyed by type path, then crate
 `CATEGORIES` maps a type path first, then a crate, to a category: `bevy_transform` → transform, `bevy_light` and light types → light, `Camera*` → camera, `bevy_audio` → audio, `bevy_ui` and `bevy_text` → ui, `bevy_animation` → animation, `bevy_render`/`bevy_pbr`/`bevy_sprite`/`bevy_mesh` → render, `bevy_rapier3d` and `bevy_ts_rapier3d` → physics. Unlisted engine and plugin types are `other`; game types are `game`.

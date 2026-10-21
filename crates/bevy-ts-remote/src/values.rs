@@ -84,6 +84,7 @@ pub(crate) fn ts_schema(c: &TsComponent) -> Value {
             "layout": c.layout,
             "fields": fields,
         },
+        "x-bevy-ts-editor": crate::editor::ts(c),
     })
 }
 
@@ -104,9 +105,14 @@ pub(crate) fn schema(In(p): In<Option<Value>>, world: &World) -> BrpResult {
     if p.source != Some(protocol::ComponentSource::Ts) {
         let stock = export_registry_types(In(Some(json!({ "with_crates": [], "type_limit": { "with": ["Component"] } }))), world)?;
         if let Value::Object(all) = stock {
-            for (path, s) in all {
+            let native = crate::editor::native_crate(world);
+            let registry = world.resource::<AppTypeRegistry>().read();
+            for (path, mut s) in all {
                 let short = s.get("shortPath").and_then(Value::as_str).unwrap_or_default().to_string();
                 if matches(&p.names, &path, &short) {
+                    if let Some(reg) = registry.get_with_type_path(&path) {
+                        s["x-bevy-ts-editor"] = json!(crate::editor::reflected(reg, world, native.as_deref()));
+                    }
                     out.insert(path, s);
                 }
             }
