@@ -1,4 +1,4 @@
-//! Reflect-tier Rust components, those with no native layout (`Mesh3d`, `SceneRoot`): inserted
+//! Reflect-tier Rust components, those with no native layout (`Mesh3d`, `WorldAssetRoot`): inserted
 //! from their `Default` and written field by field through reflection, so a changed prop writes
 //! one field as a controlled field does. A string in a `Handle<T>` field is an asset path, loaded
 //! as a `Handle<T>` (levels decision 12; 0.20 registers no `ReflectConvert` for handles).

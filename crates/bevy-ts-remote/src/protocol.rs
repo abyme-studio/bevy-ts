@@ -2564,7 +2564,7 @@ pub enum LevelOp {
         prop: ::std::string::String,
     },
     Variant4 {
-        ///add_entity (1.12): a .glb or .gltf path, written as SceneRoot("path#Scene0"), or a .bsn to include.
+        ///add_entity (1.12): a .glb or .gltf path, written as WorldAssetRoot("path#Scene0"), or a .bsn to include.
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         asset: ::std::option::Option<::std::string::String>,
         #[serde(

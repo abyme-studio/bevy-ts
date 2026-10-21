@@ -334,11 +334,11 @@ fn an_asset_is_placed_by_its_path() {
     let w = roundtrip("#Floor Marker\n", &[add("", None, Base::None, vec![at], Some("models/crate.glb"))], &[
         "+--",
         "+#crate",
-        "+SceneRoot(\"models/crate.glb#Scene0\")",
+        "+WorldAssetRoot(\"models/crate.glb#Scene0\")",
         "+Transform { translation: Vec3 { x: 2.0, y: 0.0, z: 1.0 } }",
     ]);
     assert_eq!(w.created, [p("crate")]);
-    assert!(ok("", &[add("", None, Base::None, vec![], Some("models/tree.gltf#Scene2"))]).text.contains("SceneRoot(\"models/tree.gltf#Scene2\")"));
+    assert!(ok("", &[add("", None, Base::None, vec![], Some("models/tree.gltf#Scene2"))]).text.contains("WorldAssetRoot(\"models/tree.gltf#Scene2\")"));
     assert_eq!(ok("", &[add("", None, Base::None, vec![], Some("levels/room.bsn"))]).text, "#room\n:\"levels/room.bsn\"\n");
     assert_eq!(apply("", &[add("", None, Base::None, vec![], Some("textures/wood.png"))]).unwrap_err().reason, "invalid");
 }

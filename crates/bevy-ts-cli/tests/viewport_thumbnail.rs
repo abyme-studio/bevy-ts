@@ -264,8 +264,7 @@ fn measure_level_thumbnails() {
     }
 }
 
-/// The arena's crate, and a level that places it through a glTF scene root (`WorldAssetRoot`,
-/// Bevy 0.20's name for `SceneRoot`).
+/// The arena's crate, and a level that places it through a glTF scene root (`WorldAssetRoot`).
 fn with_crate() -> Vec<(&'static str, String)> {
     let model = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena/assets/models/crate.gltf");
     let props = "#Crate\nWorldAssetRoot(\"models/crate.gltf#Scene0\")\nTransform { translation: Vec3 { x: 2.0 } }\n--\n#Guard\n@enemy::Enemy\n";

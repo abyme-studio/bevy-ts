@@ -197,7 +197,7 @@ Both SHALL take `component` as a string: the component's name as `LevelOverride.
 
 ### Requirement: An asset is placed by its path
 `add_entity` with `asset` SHALL write the patch that spawns it:
-- a `.glb` or `.gltf` path: `SceneRoot("path#SceneN")`, with `#Scene0` when the path has no label
+- a `.glb` or `.gltf` path: `WorldAssetRoot("path#SceneN")`, with `#Scene0` when the path has no label
 - a `.bsn` path: an inclusion, as `add_instance` with `include`
 - any other type: refused with `invalid`
 
@@ -205,7 +205,7 @@ Its patches, such as a `Transform`, SHALL follow.
 
 #### Scenario: Dropping a model
 - **WHEN** a client sends `add_entity` with `asset: "models/crate.glb"` and a `Transform` patch with translation `[2, 0, 1]`
-- **THEN** the file gains `#crate`, `SceneRoot("models/crate.glb#Scene0")` and the `Transform`, and the crate model spawns there
+- **THEN** the file gains `#crate`, `WorldAssetRoot("models/crate.glb#Scene0")` and the `Transform`, and the crate model spawns there
 
 ### Requirement: The catalog of what a level can add
 `bevy-ts/level_catalog` SHALL answer `scenes`: every scene component of the current generation that a level can place, with name, file, line, and props (name, type, default, required). It SHALL list no built-in entities: an empty entity is `add_entity` with no base, and an asset is `add_entity` with `asset`. The catalog SHALL have no watch: it changes only when a TS reload applies.

@@ -37,7 +37,7 @@ with `viewport_select`.
   component (`Enemy`), the include's or asset's file (`room`, `crate`), the first patch, or
   `Entity`, without trailing digits: `Enemy`, `Enemy2`, `Enemy3`. A given name that is taken is
   refused with `exists`.
-- **Assets.** `asset: "models/crate.glb"` writes `SceneRoot("models/crate.glb#Scene0")` (a
+- **Assets.** `asset: "models/crate.glb"` writes `WorldAssetRoot("models/crate.glb#Scene0")` (a
   label in the path is kept); a `.bsn` asset is included like `add_instance`'s `include`; any
   other type is `invalid`.
 - **Components.** A component is named as `LevelOverride.component` names it, or by any path a
@@ -88,6 +88,6 @@ stay TSX's to rename, delete and move (`prefab-internal`).
 ## Not here
 
 No built-in primitives and no duplicate. Bevy's own editor (bevy_editor_prototypes, its roadmap,
-BSN) has neither: it spawns an empty entity, drops a glTF as a `SceneRoot`, and adds and removes
+BSN) has neither: it spawns an empty entity, drops a glTF as a `WorldAssetRoot`, and adds and removes
 components. A game that wants a cube ships it as its own scene component, which the catalog then
 lists.

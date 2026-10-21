@@ -87,7 +87,7 @@ pub enum Op {
     /// Removes a scene prop (`@hp`) or a scene component field from an instance's `@Comp { … }`.
     RevertProp { path: Vec<String>, prop: String, field: bool },
     /// Adds an entity under `parent` (the top level when empty). With no name the writer picks a
-    /// free one; `asset` places a model (`SceneRoot`) or includes a `.bsn`.
+    /// free one; `asset` places a model (`WorldAssetRoot`) or includes a `.bsn`.
     Add { parent: Vec<String>, name: Option<String>, base: Base, patches: Vec<NewPatch>, asset: Option<String> },
     Delete { path: Vec<String> },
     Rename { path: Vec<String>, to: String },
@@ -1005,7 +1005,7 @@ fn name_base<'a>(base: &'a Base, asset: Option<&'a str>, patches: &'a [NewPatch]
 fn plan_add(file: &ParsedFile, parent: &[String], name: Option<&str>, base: &Base, patches: &[NewPatch], asset: Option<&str>) -> Result<Plan, Refused> {
     let p = written_parent(file, parent)?;
     let list = list_of(file, p);
-    // An asset is a model (`SceneRoot`) or a level to include.
+    // An asset is a model (`WorldAssetRoot`) or a level to include.
     let (base, head) = match asset {
         None => (base.clone(), None),
         Some(_) if *base != Base::None => return Err(refuse("invalid", "an asset is placed alone: give asset, scene or include")),
@@ -1014,7 +1014,7 @@ fn plan_add(file: &ParsedFile, parent: &[String], name: Option<&str>, base: &Bas
             match file_part.rsplit('.').next().map(str::to_ascii_lowercase).as_deref() {
                 Some("glb" | "gltf") => {
                     let labelled = if a.contains('#') { a.to_string() } else { format!("{a}#Scene0") };
-                    (Base::None, Some(format!("SceneRoot({})", quote(&labelled))))
+                    (Base::None, Some(format!("WorldAssetRoot({})", quote(&labelled))))
                 }
                 Some("bsn") => (Base::Include(a.to_string()), None),
                 _ => return Err(refuse("invalid", format!("{a}: a level places .glb, .gltf and .bsn assets"))),
