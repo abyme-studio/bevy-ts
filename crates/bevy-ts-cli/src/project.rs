@@ -1,8 +1,11 @@
 //! `bevy-ts.json`: the project file. Found by walking up from the entry (or the working
-//! directory). Only `native`, `features` and `engineCache` concern the engine.
+//! directory). Only `native`, `features` and `engineCache` concern the engine; `name` and
+//! `entry` concern `bevy-ts build`.
 //!
 //! ```jsonc
 //! {
+//!   "name": "arena",                           // the built game's name; else the folder's
+//!   "entry": "src/game.tsx",                   // the entry, relative to this file
 //!   "native": {
 //!     "crate": "native",                       // the project's own Rust, optional,
 //!     "plugin": "native::GamePlugin",          // and its Bevy plugin
@@ -55,6 +58,12 @@ impl NativeConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct ProjectConfig {
+    /// The game's name in a build.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The entry module, relative to the project root.
+    #[serde(default)]
+    pub entry: Option<String>,
     #[serde(default)]
     pub native: Option<NativeConfig>,
     #[serde(default)]
@@ -189,5 +198,14 @@ mod tests {
         assert!(!c.native.unwrap().needs_engine());
         let s = parse(r#"{ "a": "// not a comment" }"#);
         assert!(s.is_ok());
+    }
+
+    #[test]
+    fn name_and_entry_are_optional() {
+        let c = parse(r#"{ "name": "arena", "entry": "src/main.ts" }"#).unwrap();
+        assert_eq!(c.name.as_deref(), Some("arena"));
+        assert_eq!(c.entry.as_deref(), Some("src/main.ts"));
+        let c = parse("{}").unwrap();
+        assert!(c.name.is_none() && c.entry.is_none());
     }
 }

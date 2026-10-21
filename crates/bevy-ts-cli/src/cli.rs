@@ -1,6 +1,7 @@
 //! The engine binary's command line, shared by the prebuilt binary and every project engine.
 //!
-//! `bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]`
+//! `bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]`,
+//! `bevy-ts build`, `bevy-ts play`, and a bare start that plays the `game/` beside the binary.
 
 use bevy::prelude::*;
 use bevy_ts::backend::{CompiledModule, ModuleSet};
@@ -18,7 +19,9 @@ use std::time::Duration;
 
 const USAGE: &str = "usage:
   bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]
-  bevy-ts build [<project dir>]
+  bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--json]
+  bevy-ts build --targets [--json]
+  bevy-ts play <game folder> [--headless]
   bevy-ts types [--out <file>]
   bevy-ts transform <file.ts> [--dev]
   bevy-ts skeleton [--headless]
@@ -102,7 +105,22 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
                 std::process::exit(2);
             }
         },
-        Some("build") => std::process::exit(crate::supervise::build(args.get(1).map(String::as_str))),
+        Some("build") => std::process::exit(crate::build::run(&args[1..])),
+        Some("play") => {
+            let headless = args[1..].iter().any(|a| a == "--headless");
+            let folders: Vec<&String> = args[1..].iter().filter(|a| !a.starts_with("--")).collect();
+            match (folders.as_slice(), args[1..].iter().find(|a| a.starts_with("--") && *a != "--headless")) {
+                ([folder], None) => std::process::exit(crate::play::run(&engine, extra, Path::new(folder), headless)),
+                (_, Some(bad)) => {
+                    eprintln!("bevy-ts play: unknown option {bad}\n{USAGE}");
+                    std::process::exit(2);
+                }
+                _ => {
+                    eprintln!("bevy-ts play: name one game folder\n{USAGE}");
+                    std::process::exit(2);
+                }
+            }
+        }
         Some("types") => {
             if engine.identity.kind == bevy_ts::engine::EngineKind::Prebuilt
                 && let Some(code) = crate::supervise::types_in_project(&args[1..])
@@ -135,6 +153,11 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
             std::process::exit(2);
         }
         Some("skeleton") => skeleton(&engine, extra, args.iter().any(|a| a == "--headless")),
+        // A built game: the engine plays the `game/` beside it, wherever it was started from.
+        None if crate::play::beside_exe().is_some() => {
+            let folder = crate::play::beside_exe().expect("checked above");
+            std::process::exit(crate::play::run(&engine, extra, &folder, false))
+        }
         _ => {
             eprintln!("{USAGE}");
             std::process::exit(2);
@@ -160,8 +183,9 @@ pub enum Display {
 
 /// Bevy's default plugins, bevy-ts and tsx, then `extra` (the project's plugins), so they can
 /// order against `BevyTsSet` and see bevy-ts's resources. `assets` is Bevy's asset root, the
-/// project's `assets/` under `bevy-ts dev`; `None` keeps Bevy's default.
-pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>) -> App {
+/// project's `assets/` under `bevy-ts dev`; `None` keeps Bevy's default. `dev` runs bevy-ts in dev
+/// mode and watches the assets; a shipped game runs with neither.
+pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool) -> App {
     let mut app = App::new();
     let plugins = headless::default_plugins(display != Display::Window);
     // The compute pool runs the frame's systems: its threads are raised with the main thread's
@@ -176,7 +200,8 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         plugins
     };
     match assets {
-        Some(root) => app.add_plugins(plugins.set(headless::asset_plugin(root))),
+        Some(root) if dev => app.add_plugins(plugins.set(headless::asset_plugin(root))),
+        Some(root) => app.add_plugins(plugins.set(headless::asset_plugin_unwatched(root))),
         None => app.add_plugins(plugins),
     };
     match display {
@@ -194,7 +219,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         #[cfg(not(target_os = "macos"))]
         _ => {}
     }
-    app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(true))
+    app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(dev))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
@@ -232,7 +257,7 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
         Display::Window
     };
     let assets = headless::asset_root(&compiler.root);
-    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets));
+    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true);
     // Compile only once the plugins have exported their params: the compile step reads them as
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);
@@ -284,7 +309,7 @@ fn skeleton(engine: &Engine, extra: impl Plugin, headless_mode: bool) {
     let set = ModuleSet { entry: path.clone(), modules: vec![CompiledModule { path, code: SKELETON_JS.into(), source_map: None }] };
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).unwrap();
     let display = if headless_mode { Display::Headless } else { Display::Window };
-    let mut app = base_app(engine, extra, display, V8Options::default(), None);
+    let mut app = base_app(engine, extra, display, V8Options::default(), None, true);
     app.insert_resource(channel)
         .add_systems(Startup, scene)
         .add_systems(PostUpdate, report_changed.after(bevy_ts::BevyTsSet::PostUpdate))

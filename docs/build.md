@@ -1,0 +1,97 @@
+# Building a game
+
+`bevy-ts build` turns a project into a folder another person can run on the same platform. No
+Rust toolchain is needed unless the project has Rust ([native.md](native.md)).
+
+```sh
+bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--json]
+bevy-ts build --targets [--json]
+```
+
+- The project root is `<project dir>` (default: the working directory) or its nearest ancestor
+  holding `bevy-ts.json`, `tsconfig.json` or `package.json`.
+- The name is `bevy-ts.json`'s `name`, else the root folder's name.
+- The entry is `--entry` (relative to the working directory), else `bevy-ts.json`'s `entry`
+  (relative to the root), else the first of `src/game.tsx`, `src/game.ts`, `src/main.tsx`,
+  `src/main.ts`.
+- `--out` defaults to `<project>/dist/<target>`.
+
+## The folder
+
+```
+dist/aarch64-apple-darwin/
+  arena                 the release engine, renamed after the game (arena.exe on Windows)
+  game/
+    game.json           { "name", "entry", "bevyTs", "engine" }
+    scripts/src/…       every module of the entry's graph, compiled, at its path in the project
+    assets/…            a copy of the project's assets/, levels included
+```
+
+- The engine is a copy of the prebuilt engine running the build, or, for a project with Rust, the
+  project engine in the release profile (from the caches, or built by cargo).
+- Scripts are compiled as under `bevy-ts dev`, with the production JSX transform and source maps
+  that keep only the file's path in the project (`src/enemy.tsx`), never its text. A thrown error
+  still names the TS file and line.
+- The folder is written as `<out>.partial-<pid>` beside `<out>` and renamed onto it only when
+  whole. A failed build leaves an earlier `<out>` untouched and no partial folder. The exit code is
+  0 only when the folder is whole.
+
+## Playing it
+
+Start the executable. With `game/game.json` beside it, an engine started with no arguments plays
+that game, wherever it was started from (a double-click works). `bevy-ts play <folder>
+[--headless]` plays the game folder named (the one holding `game.json`), for trying a build.
+
+A shipped game loads its scripts once, as one generation: no compiler, no file watcher, no remote
+protocol, no inspector, bevy-ts in non-dev mode, and assets read from `game/assets/` unwatched.
+Nothing listens on a port. An engine refuses a `game.json` built by another bevy-ts version and
+names both.
+
+## Events
+
+With `--json`, stdout holds only JSON objects, one per line. abyme's Build dialog reads them.
+
+| event | fields | when |
+| --- | --- | --- |
+| `step` | `name`, `index` (1-based), `total` (4) | a step starts |
+| `progress` | `done`, `total` | while cargo builds a project engine |
+| `log` | `line` | anything a step prints, cargo's output included |
+| `problem` | `message`, `file`?, `line`?, `column`? | each script error; `file` absolute, line and column 1-based |
+| `done` | `out`, `run` | last, on success: the folder and its executable, absolute |
+| `failed` | `message` | last, on failure |
+
+The steps are `Compiling scripts`, `Preparing engine`, `Copying assets` and `Writing game`.
+`progress.total` is the number of packages in the engine crate's `cargo metadata` resolve, so it
+is approximate; `done` counts the crates cargo has finished and never passes it.
+
+Without `--json`, steps, logs and problems go to stderr as text, and on success stdout holds
+only the executable's path.
+
+## Targets
+
+`bevy-ts build --targets --json` prints one line, `{"targets":[…]}`, each target with `id`,
+`label`, `host`, `ready` and `why` (`null` when ready):
+
+| id | label |
+| --- | --- |
+| `aarch64-apple-darwin` | macOS (Apple silicon) |
+| `x86_64-apple-darwin` | macOS (Intel) |
+| `aarch64-unknown-linux-gnu` | Linux (ARM64) |
+| `x86_64-unknown-linux-gnu` | Linux (x64) |
+| `x86_64-pc-windows-msvc` | Windows (x64) |
+
+Only the running engine's own target builds; the others say `cross builds are not supported
+yet`, and `--target` naming one fails with that message before anything is written.
+
+## What a player's machine needs
+
+- The same platform as the build: an Apple silicon build does not run on an Intel Mac.
+- Linux: the libraries Bevy links, which the game does not carry: ALSA (`libasound2`), udev
+  (`libudev1`), a Vulkan driver (`mesa-vulkan-drivers` or the GPU vendor's), and X11 or Wayland
+  client libraries (`libx11-6`, `libxkbcommon0`, `libwayland-client0`).
+- macOS: the engine is not signed or notarised. A downloaded folder is quarantined, and Gatekeeper
+  refuses to open it; the player right-clicks the executable and picks Open once, or runs
+  `xattr -dr com.apple.quarantine <folder>`. A folder built on the same Mac is not quarantined.
+
+Not yet: cross builds, a macOS `.app` bundle, icons, signing and notarisation, installers, and
+minified scripts.

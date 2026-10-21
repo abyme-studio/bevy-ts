@@ -66,7 +66,8 @@ not inputs, so a TS edit never rebuilds anything.
 - Under `bevy-ts dev`, a Rust save rebuilds in the background while the game runs. On success the
   engine restarts on the same port and loads the TS as a restart; on a compile error the old
   engine keeps running and cargo's errors are printed. World state does not cross the restart.
-- `bevy-ts build` builds the release engine.
+- `bevy-ts build` ships the project engine in the release profile inside a game folder
+  ([build.md](build.md)).
 
 ### Sharing engines in a team
 

@@ -15,6 +15,8 @@ without recompiling Rust.
 - **`bevy-ts dev src/game.ts`** launches the engine, loads the TypeScript and hot reloads it.
 - **Custom materials without Rust**: a params schema in TS and the shader in a `.wgsl` file,
   hot reloaded ([docs/materials.md](docs/materials.md)).
+- **`bevy-ts build`** makes a folder another person can run: the engine renamed after the game,
+  its compiled scripts and assets, with progress as JSON events ([docs/build.md](docs/build.md)).
 - **Rust when it must be**: a project adopts Bevy plugins in one line of `bevy-ts.json`, or adds
   its own Rust as one Bevy plugin; bevy-ts then builds a project engine, only when Rust changes,
   cached by hash ([docs/native.md](docs/native.md)).

@@ -1,11 +1,13 @@
 //! The `bevy-ts` binary's library half: host-side TS compilation, the dev watcher and headless
 //! runs.
 
+pub mod build;
 pub mod cli;
 pub mod compile;
 pub mod dev;
 pub mod engine;
 pub mod headless;
+pub mod play;
 pub mod project;
 pub mod reader;
 pub mod supervise;

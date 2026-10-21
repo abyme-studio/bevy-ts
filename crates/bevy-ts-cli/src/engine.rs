@@ -532,7 +532,7 @@ pub fn fetch_shared(cache: &Path, hash: &str, into: &Path) -> Result<Option<Path
     Ok(Some(dst))
 }
 
-fn make_executable(path: &Path) -> Result<(), String> {
+pub fn make_executable(path: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -572,19 +572,124 @@ fn target_dir(plan: &Plan) -> PathBuf {
     std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| plan.engine_dir().join("target"))
 }
 
-/// Builds the engine for `hash` with `cargo`, cargo's progress passed through, and installs it
-/// in the local cache.
-pub fn build(plan: &Plan, hash: &str) -> Result<PathBuf, String> {
+/// What [`obtain`] reports while it works.
+pub enum Event {
+    /// A line of text: bevy-ts's own, or cargo's.
+    Log(String),
+    /// Crates cargo has finished, of about `total` (`done` never passes it).
+    Progress { done: usize, total: usize },
+}
+
+/// Where [`obtain`] reports.
+pub enum Sink<'a> {
+    /// Text on stderr, cargo's output inherited: `bevy-ts dev`'s supervisor and `types`.
+    Stderr,
+    /// Each line and cargo's progress as an [`Event`]: `bevy-ts build`.
+    Events(&'a mut dyn FnMut(Event)),
+}
+
+impl Sink<'_> {
+    fn log(&mut self, text: &str) {
+        match self {
+            Sink::Stderr => eprintln!("{}", text.trim_end_matches('\n')),
+            Sink::Events(f) => {
+                for line in text.lines() {
+                    f(Event::Log(line.to_string()));
+                }
+            }
+        }
+    }
+}
+
+/// The number of packages in the engine crate's resolve: about how many units cargo compiles.
+fn package_count(manifest: &Path, target: &Path) -> Option<usize> {
+    let out = cargo()
+        .ok()?
+        .args(["metadata", "--format-version", "1", "--manifest-path"])
+        .arg(manifest)
+        .env("CARGO_TARGET_DIR", target)
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    v["resolve"]["nodes"].as_array().map(Vec::len).filter(|n| *n > 0)
+}
+
+/// Runs cargo with JSON messages: each finished crate is a [`Event::Progress`] step, everything
+/// else cargo prints a [`Event::Log`] line.
+fn run_cargo_reporting(mut cmd: Command, total: Option<usize>, report: &mut dyn FnMut(Event)) -> Result<std::process::ExitStatus, String> {
+    use std::io::BufRead;
+    enum Line {
+        Out(String),
+        Err(String),
+    }
+    cmd.arg("--message-format=json-render-diagnostics").stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| format!("cargo build: {e}"))?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let out = child.stdout.take().expect("piped");
+    let err = child.stderr.take().expect("piped");
+    let tx_err = tx.clone();
+    std::thread::spawn(move || {
+        for l in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            let _ = tx.send(Line::Out(l));
+        }
+    });
+    std::thread::spawn(move || {
+        for l in std::io::BufReader::new(err).lines().map_while(Result::ok) {
+            let _ = tx_err.send(Line::Err(l));
+        }
+    });
+    let mut done = 0;
+    if let Some(total) = total {
+        report(Event::Progress { done, total });
+    }
+    for line in rx {
+        match line {
+            Line::Err(l) => report(Event::Log(l)),
+            Line::Out(l) => match serde_json::from_str::<serde_json::Value>(&l) {
+                Ok(m) => match m["reason"].as_str() {
+                    Some("compiler-artifact") => {
+                        done += 1;
+                        if let Some(total) = total {
+                            report(Event::Progress { done: done.min(total), total });
+                        }
+                    }
+                    Some("compiler-message") => {
+                        for r in m["message"]["rendered"].as_str().unwrap_or_default().lines() {
+                            report(Event::Log(r.to_string()));
+                        }
+                    }
+                    _ => {}
+                },
+                Err(_) => report(Event::Log(l)),
+            },
+        }
+    }
+    child.wait().map_err(|e| format!("cargo build: {e}"))
+}
+
+/// Builds the engine for `hash` with `cargo` and installs it in the local cache. On
+/// [`Sink::Stderr`] cargo's output is passed through; on [`Sink::Events`] it is reported.
+pub fn build(plan: &Plan, hash: &str, sink: &mut Sink) -> Result<PathBuf, String> {
     plan.check_lock()?;
     let mut cmd = cargo().map_err(|e| format!("{e}; engine {hash} needs a Rust toolchain or a shared engine cache entry"))?;
     let dir = generate(plan, hash)?;
-    eprintln!("bevy-ts: building project engine {hash} ({})", plan.profile.name());
+    sink.log(&format!("bevy-ts: building project engine {hash} ({})", plan.profile.name()));
     cmd.arg("build").arg("--manifest-path").arg(dir.join("Cargo.toml")).args(["--bin", "bevy-ts-engine"]);
     if plan.profile == Profile::Release {
         cmd.arg("--release");
     }
     cmd.env("CARGO_TARGET_DIR", target_dir(plan));
-    let status = cmd.status().map_err(|e| format!("cargo build: {e}"))?;
+    let status = match sink {
+        Sink::Stderr => cmd.status().map_err(|e| format!("cargo build: {e}"))?,
+        Sink::Events(report) => {
+            let total = package_count(&dir.join("Cargo.toml"), &target_dir(plan));
+            run_cargo_reporting(cmd, total, &mut **report)?
+        }
+    };
     if !status.success() {
         return Err(format!("cargo build failed for project engine {hash}"));
     }
@@ -612,8 +717,8 @@ pub fn describe(plan: &Plan, hash: &str, why: &str) -> String {
 }
 
 /// The engine binary for the plan's current hash: the local cache, then the shared directory,
-/// then a build when `may_build`, which prints what it compiles and why first.
-pub fn obtain(plan: &Plan, may_build: bool) -> Result<(PathBuf, String, Origin), String> {
+/// then a build when `may_build`, which reports what it compiles and why first.
+pub fn obtain(plan: &Plan, may_build: bool, sink: &mut Sink) -> Result<(PathBuf, String, Origin), String> {
     let hash = plan.hash()?;
     let local = plan.cache_dir(&hash).join(exe_name());
     if local.is_file() {
@@ -626,7 +731,7 @@ pub fn obtain(plan: &Plan, may_build: bool) -> Result<(PathBuf, String, Origin),
             Ok(Some(p)) => return Ok((p, hash, Origin::SharedCache)),
             Ok(None) => why.push_str(&format!(" nor the shared cache {}", dir.join(&hash).join(TARGET).display())),
             Err(e) => {
-                eprintln!("bevy-ts: {e}");
+                sink.log(&format!("bevy-ts: {e}"));
                 why.push_str(&format!("; the shared cache copy failed verification ({e})"));
             }
         }
@@ -634,8 +739,8 @@ pub fn obtain(plan: &Plan, may_build: bool) -> Result<(PathBuf, String, Origin),
     if !may_build {
         return Err(format!("project engine {hash} is {why}"));
     }
-    eprint!("{}", describe(plan, &hash, &why));
-    build(plan, &hash).map(|p| (p, hash, Origin::Built))
+    sink.log(&describe(plan, &hash, &why));
+    build(plan, &hash, sink).map(|p| (p, hash, Origin::Built))
 }
 
 #[cfg(test)]

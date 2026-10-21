@@ -38,6 +38,10 @@ export default {
   thrusters: {
     cmd: "cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/thrusters/src/game.ts --headless --remote-port 15790 2>&1 | tee target/thrusters.log",
   },
+  // Change build-command, task 5.4: a project engine built by `bevy-ts build`, its events kept.
+  "build-thrusters": {
+    cmd: "bash -c 'cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts build examples/thrusters --json --out target/thrusters-dist > target/build-thrusters.jsonl; echo exit $?; grep -c progress target/build-thrusters.jsonl; grep -v log target/build-thrusters.jsonl | tail -8'",
+  },
   "viewport-test": { cmd: "cargo test -p bevy-ts-viewport -- --nocapture --test-threads=1 2>&1 | tee target/viewport-test.log | tail -60" },
   "viewport-one": { cmd: "cargo test -p bevy-ts-viewport --test viewport -- --nocapture --test-threads=1 $VIEWPORT_TEST 2>&1 | grep -v ld64 | tee target/viewport-one.log | tail -30" },
   "viewport-edit": { cmd: "cargo test -p bevy-ts-viewport --test edit -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-edit.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -40" },

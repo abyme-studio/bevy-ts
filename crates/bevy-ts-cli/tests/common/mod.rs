@@ -6,8 +6,15 @@ use bevy_ts::log::{LogEntry, ScriptLog};
 use bevy_ts::BevyTsPlugin;
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_v8::V8Options;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
+use std::sync::mpsc::{Receiver, channel};
+use std::time::{Duration, Instant};
+
+/// The `bevy-ts` binary under test.
+pub const BIN: &str = env!("CARGO_BIN_EXE_bevy-ts");
 
 /// A fresh directory of TS files under the temp dir.
 pub fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
@@ -134,4 +141,42 @@ pub fn calls(app: &App) -> u64 {
 
 pub fn tick(app: &mut App) -> u32 {
     app.world_mut().read_change_tick().get()
+}
+
+/// Spawns `bevy-ts play <folder> --headless` with its stderr lines on a channel.
+pub fn play(folder: &Path) -> (Child, Receiver<String>) {
+    let mut child = Command::new(BIN)
+        .args(["play", folder.to_str().unwrap(), "--headless"])
+        .env("NO_COLOR", "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let (tx, rx) = channel();
+    let err = child.stderr.take().unwrap();
+    std::thread::spawn(move || {
+        for l in BufReader::new(err).lines().map_while(Result::ok) {
+            let _ = tx.send(l);
+        }
+    });
+    (child, rx)
+}
+
+/// Lines until every needle has been seen, or the deadline.
+pub fn wait_for(rx: &Receiver<String>, needles: &[&str], within: Duration) -> Vec<String> {
+    let deadline = Instant::now() + within;
+    let mut seen = Vec::new();
+    while !needles.iter().all(|n| seen.iter().any(|l: &String| l.contains(n))) {
+        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(l) => seen.push(l),
+            Err(_) => panic!("never saw {needles:?}; got:\n{}", seen.join("\n")),
+        }
+    }
+    seen
+}
+
+/// The TCP ports a process listens on, from `lsof`.
+pub fn listening(pid: u32) -> Vec<String> {
+    let out = Command::new("lsof").args(["-a", "-p", &pid.to_string(), "-iTCP", "-sTCP:LISTEN", "-Fn"]).output().expect("lsof");
+    String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.strip_prefix('n').map(str::to_string)).collect()
 }

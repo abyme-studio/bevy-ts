@@ -63,14 +63,16 @@ pub fn transform(path: &Path, dev: bool) -> Result<String, Vec<ScriptError>> {
 /// Compiles one TS or TSX file. System signatures are read before types are stripped and their
 /// declarations appended after the code, with identities relative to `root`.
 pub fn compile_module(path: &Path, source: &str, dev: bool, root: &Path) -> Result<Compiled, Vec<ScriptError>> {
-    compile_with(path, source, dev, root, true)
+    compile_with(path, source, dev, root, true, false)
 }
 
 /// Whether the engine's compiles append declarations. Off until `core.js` defines
 /// `__bevyts.bind`/`declare` (the runtime half of systems-api); `transform` always appends.
 pub const ENGINE_DECLARATIONS: bool = true;
 
-fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool) -> Result<Compiled, Vec<ScriptError>> {
+/// `release` writes the source map for a shipped game: `sources` relative to `root` and no
+/// `sourcesContent`, so the game ships no TS text.
+fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool, release: bool) -> Result<Compiled, Vec<ScriptError>> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).map_err(|e| vec![ScriptError::new(format!("{}: {e}", bevy_ts::backend::display_path(path)))])?;
     let parsed = Parser::new(&allocator, source, source_type).parse();
@@ -121,8 +123,18 @@ fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool
     let map = out.map.map(|m| m.to_json_string()).unwrap_or_default();
     // Point the map at the TS file by URL, with its text, so stacks and debuggers show TS.
     let mut map: serde_json::Value = serde_json::from_str(&map).unwrap_or(serde_json::json!({"version": 3, "mappings": ""}));
-    map["sources"] = serde_json::json!([file_url(path)]);
-    map["sourcesContent"] = serde_json::json!([source]);
+    if release {
+        let rel = path.strip_prefix(root).unwrap_or(path);
+        let rel = rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+        map["sources"] = serde_json::json!([rel]);
+        if let Some(m) = map.as_object_mut() {
+            m.remove("sourcesContent");
+            m.remove("file");
+        }
+    } else {
+        map["sources"] = serde_json::json!([file_url(path)]);
+        map["sourcesContent"] = serde_json::json!([source]);
+    }
     let map = map.to_string();
     // Inline too, so debuggers attached over CDP map breakpoints to the TS file themselves.
     // Declarations go after the code, so every mapped line keeps its place.
@@ -185,6 +197,28 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
+/// Decodes standard base64, padding optional; other bytes are skipped.
+pub fn decode_base64(s: &str) -> Vec<u8> {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = Vec::with_capacity(s.len() / 4 * 3);
+    let (mut acc, mut bits) = (0u32, 0);
+    for v in s.bytes().filter_map(|c| T.iter().position(|t| *t == c)) {
+        acc = (acc << 6 | v as u32) & 0xffffff;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    out
+}
+
+/// The source map a compiled module carries inline, if any.
+pub fn inline_source_map(code: &str) -> Option<String> {
+    let (_, b64) = code.rsplit_once("//# sourceMappingURL=data:application/json;base64,")?;
+    String::from_utf8(decode_base64(b64.trim())).ok()
+}
+
 /// Finds the file a relative import names, as the engine's loader does.
 pub fn resolve_relative(from: &Path, spec: &str) -> Option<PathBuf> {
     let base = from.parent()?.join(spec);
@@ -242,6 +276,8 @@ pub struct Compiler {
     /// Append system declarations to each module.
     pub declarations: bool,
     pub dev: bool,
+    /// Compile for a shipped game: production JSX and source maps without source text.
+    pub release: bool,
     /// Every file the last compile read, for the watcher.
     files: Mutex<BTreeSet<PathBuf>>,
 }
@@ -252,7 +288,13 @@ impl Compiler {
         // Canonical, so paths match what the file watcher reports (/var vs /private/var).
         let entry = entry.canonicalize().unwrap_or_else(|_| normalize(&entry));
         let root = reader::project_root(&entry);
-        Ok(Compiler { entry, root, declarations: ENGINE_DECLARATIONS, dev, files: Mutex::new(BTreeSet::new()) })
+        Ok(Compiler { entry, root, declarations: ENGINE_DECLARATIONS, dev, release: false, files: Mutex::new(BTreeSet::new()) })
+    }
+
+    /// A compiler for `bevy-ts build`: as `bevy-ts dev`'s, but with production JSX and source maps
+    /// that carry no source text.
+    pub fn for_release(entry: impl AsRef<Path>) -> std::io::Result<Self> {
+        Ok(Compiler { release: true, ..Compiler::new(entry, false)? })
     }
 
     /// Files the last compile read (also those that failed).
@@ -278,7 +320,7 @@ impl Compiler {
                     continue;
                 }
             };
-            match compile_with(&path, &source, self.dev, &self.root, self.declarations) {
+            match compile_with(&path, &source, self.dev, &self.root, self.declarations, self.release) {
                 Ok(c) => {
                     for (spec, at) in &c.imports {
                         if BUILTINS.contains(&spec.as_str()) || bevy_ts::modules::is_registered(spec) {
@@ -411,5 +453,24 @@ mod tests {
         let set = Compiler::new(dir.join("game.ts"), false).unwrap().compile_graph().unwrap();
         let names: Vec<_> = set.modules.iter().map(|m| m.path.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert_eq!(names, vec!["game.ts", "util.ts"]);
+    }
+
+    #[test]
+    fn a_release_compile_ships_no_ts_source() {
+        let arena = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena/src/game.tsx");
+        let compiler = Compiler::for_release(&arena).unwrap();
+        let set = compiler.compile_graph().unwrap();
+        assert!(set.modules.len() >= 4, "{}", set.modules.len());
+        for m in &set.modules {
+            let source = std::fs::read_to_string(&m.path).unwrap();
+            let rel = m.path.strip_prefix(&compiler.root).unwrap().to_string_lossy().to_string();
+            let map: serde_json::Value = serde_json::from_str(&inline_source_map(&m.code).unwrap()).unwrap();
+            assert_eq!(map["sources"], serde_json::json!([rel]), "{}", m.path.display());
+            assert!(map.get("sourcesContent").is_none(), "{map}");
+            assert!(!m.code.contains(&source), "{} holds its TS source", m.path.display());
+            assert!(!m.code.contains("jsx-dev-runtime"), "{}", m.path.display());
+            // A typed signature does not survive.
+            assert!(!m.code.contains("Query<["), "{}", m.path.display());
+        }
     }
 }

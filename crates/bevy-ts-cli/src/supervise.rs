@@ -20,7 +20,7 @@ fn find_project(start: &Path) -> Result<Option<Project>, String> {
     project::find(start)
 }
 
-fn plan_for(start: &Path, profile: Profile) -> Result<Option<Plan>, String> {
+pub(crate) fn plan_for(start: &Path, profile: Profile) -> Result<Option<Plan>, String> {
     match find_project(start)? {
         Some(p) => Plan::new(&p, profile),
         None => Ok(None),
@@ -31,7 +31,7 @@ fn spawn(exe: &Path, raw: &[String]) -> Result<Child, String> {
     Command::new(exe).arg("dev").args(raw).spawn().map_err(|e| format!("starting {}: {e}", exe.display()))
 }
 
-fn origin_note(o: &Origin) -> &'static str {
+pub(crate) fn origin_note(o: &Origin) -> &'static str {
     match o {
         Origin::LocalCache => "cached",
         Origin::SharedCache => "from the shared cache",
@@ -51,7 +51,7 @@ pub fn dev_in_project(args: &DevArgs, raw: &[String]) -> Option<i32> {
             return Some(1);
         }
     };
-    let (exe, mut hash, origin) = match engine::obtain(&plan, true) {
+    let (exe, mut hash, origin) = match engine::obtain(&plan, true, &mut engine::Sink::Stderr) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("bevy-ts dev: {e}");
@@ -138,7 +138,7 @@ fn start_build(entry: &Path, current: &str, tx: &std::sync::mpsc::Sender<Result<
     std::thread::Builder::new()
         .name("bevy-ts-engine-build".into())
         .spawn(move || {
-            let r = engine::obtain(&plan, true);
+            let r = engine::obtain(&plan, true, &mut engine::Sink::Stderr);
             let _ = tx.send(r);
         })
         .expect("spawn the engine build thread");
@@ -187,32 +187,6 @@ fn watch(plan: &Plan) -> Option<Receiver<()>> {
     Some(rx)
 }
 
-/// `bevy-ts build [<dir>]`: the project engine in the release profile, from the caches or built.
-pub fn build(dir: Option<&str>) -> i32 {
-    let start = dir.map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
-    match plan_for(&start, Profile::Release) {
-        Ok(None) => {
-            eprintln!("bevy-ts build: this project has no Rust; it runs on the prebuilt engine");
-            0
-        }
-        Ok(Some(plan)) => match engine::obtain(&plan, true) {
-            Ok((exe, hash, origin)) => {
-                println!("{}", exe.display());
-                eprintln!("bevy-ts build: project engine {hash} ({})", origin_note(&origin));
-                0
-            }
-            Err(e) => {
-                eprintln!("bevy-ts build: {e}");
-                1
-            }
-        },
-        Err(e) => {
-            eprintln!("bevy-ts build: {e}");
-            1
-        }
-    }
-}
-
 /// Writes `.bevy-ts/types/native.d.ts` from a project engine's registry.
 fn regenerate_types(plan: &Plan, exe: &Path) {
     let out = plan.root.join(".bevy-ts/types/native.d.ts");
@@ -234,7 +208,7 @@ pub fn types_in_project(raw: &[String]) -> Option<i32> {
             return Some(1);
         }
     };
-    let (exe, _, _) = match engine::obtain(&plan, true) {
+    let (exe, _, _) = match engine::obtain(&plan, true, &mut engine::Sink::Stderr) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("bevy-ts types: {e}");
