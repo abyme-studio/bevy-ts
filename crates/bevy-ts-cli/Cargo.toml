@@ -10,7 +10,7 @@ name = "bevy-ts"
 path = "src/main.rs"
 
 [dependencies]
-bevy = { workspace = true, features = ["3d", "bevy_remote", "file_watcher"] }
+bevy = { workspace = true, features = ["3d", "bevy_ui_render", "bevy_remote", "file_watcher"] }
 bevy-ts = { workspace = true, features = ["pbr"] }
 bevy-ts-v8.workspace = true
 bevy-ts-remote.workspace = true
