@@ -64,6 +64,12 @@ The steps are `Compiling scripts`, `Preparing engine`, `Copying assets` and `Wri
 `progress.total` is the number of packages in the engine crate's `cargo metadata` resolve, so it
 is approximate; `done` counts the crates cargo has finished and never passes it.
 
+Measured 2026-10-22 on an M5 Max, `bevy-ts build examples/thrusters --json` with a cold release
+cache: 2,496 lines, all JSON; 652 `progress` events rising from `0/763` to `651/763`, then
+`Copying assets`, `Writing game` and `done`; 1,839 `log` lines, cargo's included. The bar stops
+near 85%, not 100%: a package count overstates the crates cargo builds for one target. The built
+`thrusters` played headless, its native plugin and TS system both running.
+
 Without `--json`, steps, logs and problems go to stderr as text, and on success stdout holds
 only the executable's path.
 

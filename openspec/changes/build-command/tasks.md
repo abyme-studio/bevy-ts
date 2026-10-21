@@ -29,7 +29,7 @@
 - [x] 5.1 Integration: `bevy-ts build examples/arena --json --out <tmp>`; every line parses, four steps, last `done`; then `bevy-ts play` the folder headless and see the arena's systems run
 - [x] 5.2 Integration: a script with two errors gives two `problem` events and `failed`, exit 1, an earlier `<out>` unchanged and no partial folder left
 - [x] 5.3 Integration: `--targets --json` and a non-host `--target`
-- [ ] 5.4 Build `examples/thrusters` once by hand and record the `progress` events seen (cargo is too slow for the suite)
+- [x] 5.4 Build `examples/thrusters` once by hand and record the `progress` events seen (cargo is too slow for the suite)
 - [ ] 5.5 Start a built arena by double-click from Finder on the operator's Mac and record it in `docs/build.md`
 
 ## 6. Docs
