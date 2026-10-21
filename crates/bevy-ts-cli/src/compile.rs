@@ -205,6 +205,22 @@ pub fn resolve_relative(from: &Path, spec: &str) -> Option<PathBuf> {
     candidates.into_iter().find(|c| c.is_file()).map(|c| c.canonicalize().unwrap_or_else(|_| normalize(&c)))
 }
 
+/// The extension of a shader file a module imports (script-runtime: a `.wgsl` import).
+pub const SHADER_EXT: &str = ".wgsl";
+
+/// The file a relative `.wgsl` import names: exactly that path, no extension guessing.
+pub fn resolve_shader(from: &Path, spec: &str) -> Option<PathBuf> {
+    let p = from.parent()?.join(spec);
+    p.is_file().then(|| p.canonicalize().unwrap_or_else(|_| normalize(&p)))
+}
+
+/// A `.wgsl` import's synthetic module: its default export is an opaque shader-file value naming
+/// the file. The WGSL stays on the host; script materials read it there.
+pub fn shader_module(path: &Path) -> String {
+    let p = serde_json::to_string(&path.to_string_lossy()).expect("a string");
+    format!("export default Object.freeze({{ kind: \"shaderFile\", path: {p} }});\n")
+}
+
 fn normalize(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for c in p.components() {
@@ -280,6 +296,18 @@ impl Compiler {
                             ));
                             continue;
                         }
+                        if spec.ends_with(SHADER_EXT) {
+                            match resolve_shader(&path, spec) {
+                                Some(p) => {
+                                    files.insert(p.clone());
+                                    if seen.insert(p.clone()) {
+                                        modules.push(CompiledModule { code: shader_module(&p), path: p, source_map: None });
+                                    }
+                                }
+                                None => errors.push(ScriptError::at(format!("cannot find shader file {spec:?}"), Some(at.clone()))),
+                            }
+                            continue;
+                        }
                         match resolve_relative(&path, spec) {
                             Some(p) => queue.push_back(p),
                             None => errors.push(ScriptError::at(format!("cannot find module {spec:?}"), Some(at.clone()))),
@@ -350,6 +378,29 @@ mod tests {
         let loc = e[0].location.clone().unwrap();
         assert!(loc.file.ends_with("game.ts"));
         assert_eq!(loc.line, 2);
+    }
+
+    #[test]
+    fn a_wgsl_import_is_a_shader_file_value() {
+        let dir = tmp("wgsl", &[("game.ts", "import glow from \"./glow.wgsl\";\nexport const g = glow;\n"), ("glow.wgsl", "fn f() {}\n")]);
+        let c = Compiler::new(dir.join("game.ts"), false).unwrap();
+        let set = c.compile_graph().unwrap();
+        let wgsl = dir.join("glow.wgsl").canonicalize().unwrap();
+        let m = set.modules.iter().find(|m| m.path == wgsl).expect("a synthetic module");
+        assert!(m.code.contains("\"shaderFile\""), "{}", m.code);
+        assert!(m.code.contains(&*wgsl.to_string_lossy()), "{}", m.code);
+        assert!(!m.code.contains("fn f"), "WGSL stays on the host: {}", m.code);
+        assert!(c.files().contains(&wgsl), "the shader file is watched");
+    }
+
+    #[test]
+    fn a_missing_wgsl_import_fails_at_its_line() {
+        let dir = tmp("wgsl-missing", &[("game.ts", "import { app } from \"bevy-ts\";\n\nimport glow from \"./glw.wgsl\";\n")]);
+        let e = Compiler::new(dir.join("game.ts"), false).unwrap().compile_graph().unwrap_err();
+        assert!(e[0].message.contains("\"./glw.wgsl\""), "{e:?}");
+        let loc = e[0].location.clone().unwrap();
+        assert!(loc.file.ends_with("game.ts"));
+        assert_eq!(loc.line, 3);
     }
 
     #[test]

@@ -6,6 +6,12 @@ export default function bevyTs() {
   return {
     name: "bevy-ts",
     enforce: "pre",
+    // A `.wgsl` import is a shader-file value, as in the engine; the WGSL is not loaded.
+    load(id) {
+      const file = id.split("?")[0];
+      if (!file.endsWith(".wgsl")) return null;
+      return `export default Object.freeze({ kind: "shaderFile", path: ${JSON.stringify(file)} });\n`;
+    },
     transform(code, id) {
       const file = id.split("?")[0];
       if (!TS_FILE.test(file) || file.includes("/node_modules/")) return null;

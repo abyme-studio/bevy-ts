@@ -405,6 +405,7 @@ fn insert(world: &mut World, e: Entity, r: &Resolved) {
         }
         Target::Mesh(p) => intrinsics::insert_mesh(world, e, p),
         Target::Material(p) => intrinsics::insert_material(world, e, p),
+        Target::ScriptMaterial { kind, props } => intrinsics::insert_script_material(world, e, kind, props, r.source.clone()),
         Target::Ui(kind) => {
             let props: Map<String, Value> = r.controlled.clone().into_iter().collect();
             if let Err(m) = ui::insert(world, e, *kind, &props) {

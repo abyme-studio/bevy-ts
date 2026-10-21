@@ -46,6 +46,8 @@ pub enum Target {
     Name,
     Mesh(MeshProps),
     Material(MaterialProps),
+    /// `<material kind={K} ...params />`: a script material instance of kind `kind`.
+    ScriptMaterial { kind: String, props: Map<String, Value> },
     /// A reflect-tier Rust component, by type path: written field by field through reflection.
     Reflect { type_path: String },
     Ui(UiKind),
@@ -156,6 +158,22 @@ fn parse_props<T: serde::de::DeserializeOwned>(c: &ComponentDesc) -> Result<T, S
     serde_json::from_value(Value::Object(c.props.clone())).map_err(|e| err(format!("<{}>: {e}", c.ty), &c.source))
 }
 
+/// `<material kind={K} .../>`'s kind name (`K` describes as `{ name }`) and its other props.
+/// Checked against the kind's schema by the tsx section's check, which sees the generation's
+/// materials.
+pub fn script_material(c: &ComponentDesc) -> Result<(String, Map<String, Value>), ScriptError> {
+    let mut props = c.props.clone();
+    let kind = match props.remove("kind") {
+        Some(Value::String(s)) => s,
+        Some(Value::Object(o)) => match o.get("name") {
+            Some(Value::String(s)) => s.clone(),
+            _ => return Err(err("<material kind={...}> takes a kind from material() in bevy-ts/material", &c.source)),
+        },
+        _ => return Err(err("<material kind={...}> takes a kind from material() in bevy-ts/material", &c.source)),
+    };
+    Ok((kind, props))
+}
+
 /// Resolves one component element: bound props first, then the rest by kind.
 pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> Result<Resolved, ScriptError> {
     let mut bound = BTreeMap::new();
@@ -259,6 +277,11 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(resolved(Target::Mesh(props), (controlled, BTreeMap::new(), BTreeMap::new())))
         }
+        ComponentKind::Intrinsic if c.ty == MATERIAL && c.props.contains_key("kind") => {
+            let (kind, props) = script_material(c)?;
+            let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Ok(resolved(Target::ScriptMaterial { kind, props }, (controlled, BTreeMap::new(), BTreeMap::new())))
+        }
         ComponentKind::Intrinsic if c.ty == MATERIAL => {
             let props: MaterialProps = parse_props(c)?;
             props.check().map_err(|m| err(format!("<material>: {m}"), &c.source))?;
@@ -300,7 +323,7 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts) 
     }
     // Mesh `color` and a `<material>` on one entity would both own the material.
     let mesh_color = out.iter().any(|r| matches!(&r.target, Target::Mesh(MeshProps { color: Some(_), .. })));
-    if mesh_color && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Material(_))) {
+    if mesh_color && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Material(_) | Target::ScriptMaterial { .. })) {
         return Err(err("give the colour on <material> or on <mesh color>, not both", &m.source));
     }
     Ok(out)

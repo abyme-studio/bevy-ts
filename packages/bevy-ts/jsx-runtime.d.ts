@@ -132,6 +132,17 @@ export interface MaterialProps {
   roughness?: number;
   emissive?: string;
   unlit?: boolean;
+  kind?: never;
+}
+
+/**
+ * `<material kind={Glow} color="#f80" pulse={2} />`: a script material from `material()` in
+ * `bevy-ts/material`, with its params by name and its textures as asset paths. Checked against
+ * the kind's schema when the generation loads.
+ */
+export interface ScriptMaterialProps {
+  kind: { readonly name: string };
+  [param: string]: unknown;
 }
 
 type DescElement = Element;
@@ -161,7 +172,7 @@ export declare namespace JSX {
   interface IntrinsicElements {
     entity: EntityProps & KeyAttribute;
     mesh: MeshProps;
-    material: MaterialProps;
+    material: MaterialProps | ScriptMaterialProps;
     node: NodeProps & KeyAttribute;
     button: NodeProps & KeyAttribute;
     text: TextProps & KeyAttribute;

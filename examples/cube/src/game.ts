@@ -1,5 +1,6 @@
 import { app, Component, type f32, Startup, Time, Transform, Update } from "bevy-ts";
 import type { Commands, Mut, Query, Res } from "bevy-ts";
+import "./glow.tsx";
 
 export class Mover extends Component {
   speed: f32 = 1;

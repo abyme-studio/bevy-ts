@@ -28,6 +28,7 @@ fn types_app(engine: &Engine, extra: impl Plugin) -> App {
     let fake = bevy_ts::fake::FakeHandle::default();
     app.add_plugins(BevyTsPlugin::new(move || Box::new(fake.backend())))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
+        .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     app

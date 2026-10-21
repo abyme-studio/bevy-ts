@@ -30,6 +30,10 @@
       "types": "./jsx-dev-runtime.d.ts",
       "default": "./runtime/jsx-dev-runtime.js"
     },
+    "./material": {
+      "types": "./material.d.ts",
+      "default": "./runtime/material.js"
+    },
     "./protocol": {
       "types": "./protocol.d.ts"
     },

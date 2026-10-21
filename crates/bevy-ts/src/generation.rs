@@ -32,6 +32,9 @@ pub enum DevEvent {
     Compiling,
     /// A compiled set, or the errors that stopped it.
     Compiled(Result<ModuleSet, Vec<ScriptError>>, Duration),
+    /// Files of the graph that are not modules (`.wgsl`) changed, and nothing else: no
+    /// generation starts; [`crate::plugin_api::FileHandlers`] see the paths.
+    FilesChanged(Vec<std::path::PathBuf>),
 }
 
 /// Where compiled generations arrive from the watcher thread.
@@ -440,6 +443,12 @@ pub fn apply_pending(world: &mut World) {
             }
             DevEvent::Compiled(Err(errors), took) => {
                 compile_failed(world, errors, took);
+            }
+            DevEvent::FilesChanged(paths) => {
+                let handlers = world.get_resource::<crate::plugin_api::FileHandlers>().cloned().unwrap_or_default();
+                for h in &handlers.0 {
+                    h(world, &paths);
+                }
             }
         }
     }

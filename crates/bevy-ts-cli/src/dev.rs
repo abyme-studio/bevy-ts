@@ -1,7 +1,7 @@
 //! `bevy-ts dev`: compile on a background thread, watch every loaded file, and send each
 //! compiled module set to the engine as the next generation.
 
-use crate::compile::Compiler;
+use crate::compile::{Compiler, SHADER_EXT};
 use bevy_ts::generation::DevEvent;
 use notify::{RecursiveMode, Watcher};
 use std::collections::BTreeSet;
@@ -59,12 +59,21 @@ fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
     rewatch(&files, &mut dirs);
     loop {
         let Ok(first) = events.recv() else { return };
-        let mut relevant = touches(&first, &files);
+        let mut touched = BTreeSet::new();
+        touches(&first, &files, &mut touched);
         let deadline = Instant::now() + SETTLE;
         while let Ok(e) = events.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-            relevant |= touches(&e, &files);
+            touches(&e, &files, &mut touched);
         }
-        if !relevant {
+        if touched.is_empty() {
+            continue;
+        }
+        // Shader files are not modules: a save of only those changes no JS, so it starts no
+        // generation (script-materials design decision 3).
+        if touched.iter().all(|p| p.to_string_lossy().ends_with(SHADER_EXT)) {
+            if tx.send(DevEvent::FilesChanged(touched.into_iter().collect())).is_err() {
+                return;
+            }
             continue;
         }
         if !compile(&compiler, &tx) {
@@ -75,10 +84,11 @@ fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
     }
 }
 
-fn touches(e: &notify::Result<notify::Event>, files: &BTreeSet<PathBuf>) -> bool {
-    let Ok(e) = e else { return false };
+/// Adds the graph's files an event touched to `out`.
+fn touches(e: &notify::Result<notify::Event>, files: &BTreeSet<PathBuf>, out: &mut BTreeSet<PathBuf>) {
+    let Ok(e) = e else { return };
     if e.kind.is_access() {
-        return false;
+        return;
     }
-    e.paths.iter().any(|p| files.contains(p))
+    out.extend(e.paths.iter().filter(|p| files.contains(*p)).cloned());
 }

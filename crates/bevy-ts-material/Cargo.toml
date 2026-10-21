@@ -1,0 +1,18 @@
+[package]
+name = "bevy-ts-material"
+description = "Script materials for bevy-ts: WGSL files and a parameter schema declared in TS, drawn by one erased Rust material"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "bevy_ts_material"
+
+[dependencies]
+bevy = { workspace = true, features = ["3d"] }
+bevy-ts.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+bevy = { workspace = true, features = ["3d", "debug"] }

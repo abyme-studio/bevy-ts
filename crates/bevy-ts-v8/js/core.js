@@ -848,6 +848,21 @@ export function section(name, value) {
   g.sections.set(name, { bytes, location: at });
 }
 
+/**
+ * The loading generation's list for a JSON section, `{ items: [...] }`, created on first use. For
+ * a built-in module, which is evaluated once, whose declarations come from each generation's code
+ * (`material()` in `bevy-ts/material`). The section's location is the first caller's.
+ */
+export function sectionItems(name) {
+  const g = loadingOrThrow(`sectionItems(${name})`);
+  let s = g.sections.get(name);
+  if (!s || !s.items) {
+    s = { items: [], location: callerLocation() };
+    g.sections.set(name, s);
+  }
+  return s.items;
+}
+
 /** Decodes UTF-8 bytes, for entries that take text or JSON payloads. */
 export function text(bytes) {
   return decoder.decode(bytes);
@@ -1092,7 +1107,7 @@ function end() {
     })),
     entries: g.entries,
   };
-  const sections = [...g.sections].map(([name, s]) => [name, s.bytes, s.location || null]);
+  const sections = [...g.sections].map(([name, s]) => [name, s.items ? encoder.encode(JSON.stringify({ items: s.items })) : s.bytes, s.location || null]);
   return [JSON.stringify(manifest), sections];
 }
 

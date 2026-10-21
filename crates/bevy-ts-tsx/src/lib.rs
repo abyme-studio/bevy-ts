@@ -67,6 +67,20 @@ pub(crate) fn uses_assets(nodes: &[desc::NodeDesc]) -> Option<Option<bevy_ts::ba
     None
 }
 
+/// Every `<material kind>` against the kinds the generation declares (its `materials` section is
+/// checked first: `material()` runs before the scenes are described).
+fn check_script_materials(world: &World, generation: u64, nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
+    for n in nodes {
+        for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::MATERIAL && c.props.contains_key("kind")) {
+            let Ok((kind, props)) = resolve::script_material(c) else { continue };
+            if let Err(m) = bevy_ts_material::kinds::check_props(world, Some(generation), &kind, &props) {
+                errors.push(ScriptError::at(format!("<material>: {m}"), c.source.clone()));
+            }
+        }
+        check_script_materials(world, generation, &n.children, errors);
+    }
+}
+
 /// Checks a generation's scenes against its pending components. Touches nothing.
 fn check(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> Result<(), Vec<ScriptError>> {
     let t = std::time::Instant::now();
@@ -89,6 +103,9 @@ fn check_inner(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> 
         && let Some(at) = section.roots.iter().find_map(|r| uses_assets(&r.nodes))
     {
         errors.push(ScriptError::at("<mesh> and <material> need the render plugins (no Assets<Mesh>)", at));
+    }
+    for r in &overlaid.roots {
+        check_script_materials(world, input.generation, &r.nodes, &mut errors);
     }
     if !errors.is_empty() {
         return Err(errors);

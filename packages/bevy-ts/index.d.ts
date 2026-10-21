@@ -1,3 +1,4 @@
+/// <reference path="./wgsl.d.ts" />
 // Types for `bevy-ts`: the ruled surface (operator, 2026-10-20; docs/research/dx.md). The runtime
 // is built into the engine binary.
 //
@@ -427,6 +428,8 @@ export interface App {
 
 /** Writes a manifest section for a Rust plugin. */
 export declare function section(name: string, value: Uint8Array | string | object): void;
+/** The loading generation's `{ items }` list for a JSON section, for a built-in module's per-generation declarations. */
+export declare function sectionItems(name: string): unknown[];
 /** Decodes UTF-8 bytes. */
 export declare function text(bytes: Uint8Array): string;
 /** A plugin: an exported function taking the app, as Bevy's `fn build(&self, app: &mut App)`. */

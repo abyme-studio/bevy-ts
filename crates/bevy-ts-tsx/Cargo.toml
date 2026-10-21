@@ -12,6 +12,7 @@ name = "bevy_ts_tsx"
 bevy = { workspace = true, features = ["std", "bevy_ui", "bevy_ui_widgets", "bevy_picking"] }
 bevy-ts = { workspace = true, features = ["pbr"] }
 bevy-ts-remote.workspace = true
+bevy-ts-material.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

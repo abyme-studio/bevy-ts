@@ -1,7 +1,9 @@
 //! `<mesh>` and `<material>`: asset intrinsics built in Rust. Equal props share one asset
-//! handle, so a thousand identical enemies make one mesh and one material.
+//! handle, so a thousand identical enemies make one mesh and one material. `<material kind={K}>`
+//! is a script material (bevy-ts-material), shared the same way.
 
 use bevy::prelude::*;
+use bevy_ts_material::ScriptMaterial3d;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -164,9 +166,23 @@ pub fn remove_mesh(world: &mut World, e: Entity, p: &MeshProps) {
 
 pub fn insert_material(world: &mut World, e: Entity, p: &MaterialProps) {
     let m = material_handle(world, p);
-    world.entity_mut(e).insert(MeshMaterial3d(m));
+    world.entity_mut(e).remove::<ScriptMaterial3d>().insert(MeshMaterial3d(m));
+}
+
+/// `<material kind={K} .../>`: the kind's instance for these props (equal props share one).
+pub fn insert_script_material(world: &mut World, e: Entity, kind: &str, props: &serde_json::Map<String, serde_json::Value>, at: Option<bevy_ts::backend::SourceLocation>) {
+    if !world.contains_resource::<bevy_ts_material::MaterialKinds>() {
+        crate::reconcile::log_error(world, "<material kind>: script materials need ScriptMaterialPlugin".into(), at);
+        return;
+    }
+    match bevy_ts_material::kinds::instance(world, kind, props) {
+        Some(h) => {
+            world.entity_mut(e).remove::<MeshMaterial3d<StandardMaterial>>().insert(ScriptMaterial3d(h));
+        }
+        None => crate::reconcile::log_error(world, format!("<material kind>: no material {kind}"), at),
+    }
 }
 
 pub fn remove_material(world: &mut World, e: Entity) {
-    world.entity_mut(e).remove::<MeshMaterial3d<StandardMaterial>>();
+    world.entity_mut(e).remove::<(MeshMaterial3d<StandardMaterial>, ScriptMaterial3d)>();
 }

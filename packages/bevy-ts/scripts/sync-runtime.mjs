@@ -5,12 +5,19 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
-const files = ["core.js", "bevy.js", "jsx-runtime.js", "jsx-dev-runtime.js"];
+// [source under crates/, destination under the package]
+const files = [
+  ...["core.js", "bevy.js", "jsx-runtime.js", "jsx-dev-runtime.js"].map((f) => [`bevy-ts-v8/js/${f}`, `runtime/${f}`]),
+  // `bevy-ts/material` ships in the prebuilt engine, so its module and types ship here too.
+  ["bevy-ts-material/ts/material.js", "runtime/material.js"],
+  ["bevy-ts-material/ts/material.d.ts", "material.d.ts"],
+];
 let stale = [];
-for (const f of files) {
-  const src = readFileSync(here(`../../../crates/bevy-ts-v8/js/${f}`), "utf8");
-  const out = `// @generated from crates/bevy-ts-v8/js/${f} by scripts/sync-runtime.mjs. Do not edit.\n${src}`;
-  const dest = here(`../runtime/${f}`);
+for (const [from, to] of files) {
+  const f = to;
+  const src = readFileSync(here(`../../../crates/${from}`), "utf8");
+  const out = `// @generated from crates/${from} by scripts/sync-runtime.mjs. Do not edit.\n${src}`;
+  const dest = here(`../${to}`);
   let cur = "";
   try {
     cur = readFileSync(dest, "utf8");
