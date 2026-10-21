@@ -5,6 +5,9 @@ draws it with no Rust and no project engine. The code is `crates/bevy-ts-materia
 is `bevy-ts/material`. Render passes, compute and other render-world work stay Rust, in the native
 crate.
 
+`bevy-ts dev examples/cube/src/glow.tsx` runs the cube example with one, `game::Glow`, and
+`node examples/cube/glow-walk.mjs` walks editing it live.
+
 ## Declaring one
 
 ```tsx

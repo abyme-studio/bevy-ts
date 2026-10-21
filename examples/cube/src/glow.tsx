@@ -1,5 +1,7 @@
-// A script material (bevy-ts/material): its params in TS, its shader in glow.wgsl, no Rust.
+// The cube example with a script material (bevy-ts/material): its params in TS, its shader in
+// glow.wgsl, no Rust. Run this file as the entry: `bevy-ts dev examples/cube/src/glow.tsx`.
 // Save glow.wgsl and the cube redraws with no reload; change the params and it re-encodes.
+import "./game.ts";
 import { app } from "bevy-ts";
 import { Transform } from "bevy-ts/bevy";
 import { color, f32, material } from "bevy-ts/material";

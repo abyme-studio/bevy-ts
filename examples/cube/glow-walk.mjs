@@ -1,5 +1,6 @@
 // Walks the script-material demo (openspec/changes/script-materials, task 1.7) against the real
-// engine binary, headless: game::Glow on the cube example, its shader in glow.wgsl, edited live.
+// engine binary, headless: game::Glow on the cube example (entry src/glow.tsx), its shader in
+// glow.wgsl, edited live.
 //
 //   node examples/cube/glow-walk.mjs [path/to/bevy-ts]    (default target/release/bevy-ts)
 //
@@ -13,7 +14,7 @@ const root = resolve(import.meta.dirname, "../..");
 const bin = resolve(process.argv[2] ?? join(root, "target/release/bevy-ts"));
 const dir = mkdtempSync(join(tmpdir(), "bevy-ts-glow-"));
 cpSync(join(root, "examples/cube/src"), join(dir, "src"), { recursive: true });
-const game = join(dir, "src/game.ts");
+const game = join(dir, "src/glow.tsx");
 const wgsl = join(dir, "src/glow.wgsl");
 const original = readFileSync(wgsl, "utf8");
 const PORT = 15932;
