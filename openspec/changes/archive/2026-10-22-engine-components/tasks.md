@@ -18,4 +18,4 @@
 
 ## 4. Docs
 
-- [ ] 4.1 Sync the `remote-protocol` delta into `openspec/specs/remote-protocol/spec.md` on archive, and run `cargo test --workspace` and `pnpm check` and `pnpm test` in `packages/bevy-ts` green
+- [x] 4.1 Sync the `remote-protocol` delta into `openspec/specs/remote-protocol/spec.md` on archive, and run `cargo test --workspace` and `pnpm check` and `pnpm test` in `packages/bevy-ts` green
