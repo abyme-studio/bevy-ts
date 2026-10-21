@@ -54,7 +54,11 @@ pub fn read_game(folder: &Path) -> Result<GameFile, String> {
     Ok(game)
 }
 
-/// Every module under `scripts/`, its source map taken from the code.
+/// The extensions a compiled module keeps: the build writes each with its source's name.
+const SCRIPT_EXTENSIONS: [&str; 8] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+
+/// Every module under `scripts/`, its source map taken from the code. Other files (a Finder
+/// `.DS_Store`) are skipped.
 pub fn read_scripts(folder: &Path, game: &GameFile) -> Result<ModuleSet, String> {
     let scripts = folder.join("scripts");
     let scripts = scripts.canonicalize().map_err(|e| format!("{}: {e}", scripts.display()))?;
@@ -78,33 +82,44 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
         let path = e.path();
+        let hidden = e.file_name().to_string_lossy().starts_with('.');
         if e.file_type()?.is_dir() {
-            walk(&path, out)?;
-        } else {
+            if !hidden {
+                walk(&path, out)?;
+            }
+        } else if !hidden && path.extension().is_some_and(|x| SCRIPT_EXTENSIONS.iter().any(|s| x == *s)) {
             out.push(path);
         }
     }
     Ok(())
 }
 
-/// Plays the game in `folder` (the one holding `game.json`). Returns the exit code when it cannot.
-pub fn run(engine: &Engine, extra: impl Plugin, folder: &Path, headless: bool) -> i32 {
+/// The app that plays the game in `folder` (the one holding `game.json`), its one generation
+/// queued: bevy-ts in non-dev mode, assets unwatched, no protocol, inspector or studio tools.
+pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display) -> Result<App, String> {
     let folder = std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf());
-    let set = match read_game(&folder).and_then(|game| read_scripts(&folder, &game)) {
-        Ok(set) => set,
-        Err(e) => {
-            eprintln!("bevy-ts play: {e}");
-            return 1;
-        }
-    };
+    let set = read_game(&folder).and_then(|game| read_scripts(&folder, &game))?;
     let entry = set.entry.clone();
     let (tx, channel) = DevChannel::new();
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).expect("the channel is open");
-    let display = if headless { Display::Headless } else { Display::Window };
     let assets = folder.join("assets");
     let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false);
     app.insert_resource(channel);
     app.world_mut().resource_mut::<RuntimeInfo>().entry = Some(entry);
-    app.run();
-    0
+    Ok(app)
+}
+
+/// Plays the game in `folder`. Returns the exit code when it cannot.
+pub fn run(engine: &Engine, extra: impl Plugin, folder: &Path, headless: bool) -> i32 {
+    let display = if headless { Display::Headless } else { Display::Window };
+    match app(engine, extra, folder, display) {
+        Ok(mut app) => {
+            app.run();
+            0
+        }
+        Err(e) => {
+            eprintln!("bevy-ts play: {e}");
+            1
+        }
+    }
 }

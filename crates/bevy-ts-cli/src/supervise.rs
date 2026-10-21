@@ -20,7 +20,7 @@ fn find_project(start: &Path) -> Result<Option<Project>, String> {
     project::find(start)
 }
 
-pub(crate) fn plan_for(start: &Path, profile: Profile) -> Result<Option<Plan>, String> {
+fn plan_for(start: &Path, profile: Profile) -> Result<Option<Plan>, String> {
     match find_project(start)? {
         Some(p) => Plan::new(&p, profile),
         None => Ok(None),

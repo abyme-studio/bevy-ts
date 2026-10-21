@@ -89,6 +89,7 @@ fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool
     }
     let mut program = parsed.program;
     let info = reader::extract(&program, path, source, root);
+    let info = if release { info.with_relative_locations() } else { info };
     let semantic = SemanticBuilder::new().build(&program).semantic;
     let mut options = TransformOptions::default();
     options.jsx.runtime = JsxRuntime::Automatic;
@@ -124,9 +125,7 @@ fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool
     // Point the map at the TS file by URL, with its text, so stacks and debuggers show TS.
     let mut map: serde_json::Value = serde_json::from_str(&map).unwrap_or(serde_json::json!({"version": 3, "mappings": ""}));
     if release {
-        let rel = path.strip_prefix(root).unwrap_or(path);
-        let rel = rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
-        map["sources"] = serde_json::json!([rel]);
+        map["sources"] = serde_json::json!([reader::relative(root, path)]);
         if let Some(m) = map.as_object_mut() {
             m.remove("sourcesContent");
             m.remove("file");
@@ -469,6 +468,8 @@ mod tests {
             assert!(map.get("sourcesContent").is_none(), "{map}");
             assert!(!m.code.contains(&source), "{} holds its TS source", m.path.display());
             assert!(!m.code.contains("jsx-dev-runtime"), "{}", m.path.display());
+            let root = compiler.root.to_string_lossy();
+            assert!(!m.code.contains(&*root), "{} names the project folder", m.path.display());
             // A typed signature does not survive.
             assert!(!m.code.contains("Query<["), "{}", m.path.display());
         }

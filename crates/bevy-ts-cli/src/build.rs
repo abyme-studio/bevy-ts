@@ -170,6 +170,10 @@ pub fn name_and_entry(root: &Path, config: Option<&project::ProjectConfig>, flag
     if name.is_empty() || name.contains(['/', '\\']) || name == "." || name == ".." {
         return Err(format!("{name:?} is not a file name; set `name` in bevy-ts.json"));
     }
+    // The executable sits beside `game/`; on a case-insensitive disk `Game` is the same name.
+    if name.eq_ignore_ascii_case(GAME_DIR) {
+        return Err(format!("a game cannot be named {name:?}: its executable would collide with the {GAME_DIR}/ folder; set another `name` in bevy-ts.json"));
+    }
     let entry = if let Some(e) = flag {
         std::path::absolute(e).map_err(|err| format!("{e}: {err}"))?
     } else if let Some(e) = config.and_then(|c| c.entry.as_deref()) {
@@ -183,6 +187,33 @@ pub fn name_and_entry(root: &Path, config: Option<&project::ProjectConfig>, flag
         return Err(format!("the entry {} does not exist", entry.display()));
     }
     Ok((name, entry))
+}
+
+/// The folder to write: `--out` (relative to the working directory), else `<root>/dist/<target>`,
+/// with its parent made and resolved through symlinks. Refuses a folder holding the project or
+/// inside its assets, a file, and an existing folder that is not an earlier build (no
+/// `game/game.json`), since the build replaces it.
+pub fn resolve_out(root: &Path, flag: Option<&str>, target: &str) -> Result<PathBuf, String> {
+    let out = match flag {
+        Some(o) => std::path::absolute(o).map_err(|e| format!("{o}: {e}"))?,
+        None => root.join("dist").join(target),
+    };
+    let (Some(parent), Some(leaf)) = (out.parent(), out.file_name()) else {
+        return Err(format!("--out {}: not a folder the build can replace", out.display()));
+    };
+    std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    let out = parent.canonicalize().map_err(|e| format!("{}: {e}", parent.display()))?.join(leaf);
+    let shown = out.display();
+    if root.starts_with(&out) || out.starts_with(root.join("assets")) {
+        return Err(format!("--out {shown} would overwrite the project or its assets"));
+    }
+    if out.is_file() {
+        return Err(format!("--out {shown} is a file"));
+    }
+    if out.is_dir() && !out.join(GAME_DIR).join(GAME_FILE).is_file() {
+        return Err(format!("--out {shown} exists and is not an earlier build (no {GAME_DIR}/{GAME_FILE}); the build replaces it, so name a new folder"));
+    }
+    Ok(out)
 }
 
 /// `bevy-ts build …`; returns the exit code.
@@ -252,15 +283,8 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
     let root = project_root(&start)?;
     let project = project::find(&root)?;
     let (name, entry) = name_and_entry(&root, project.as_ref().map(|p| &p.config), args.entry.as_deref())?;
-    let out = match &args.out {
-        Some(o) => std::path::absolute(o).map_err(|e| format!("{o}: {e}"))?,
-        None => root.join("dist").join(target),
-    };
-    if root.starts_with(&out) || out.starts_with(root.join("assets")) {
-        return Err(format!("--out {} would overwrite the project or its assets", out.display()));
-    }
-    let parent = out.parent().ok_or_else(|| format!("{}: no parent folder", out.display()))?;
-    std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    let out = resolve_out(&root, args.out.as_deref(), target)?;
+    let parent = out.parent().expect("resolve_out names a folder with a parent");
     let leaf = out.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let partial_dir = parent.join(format!("{leaf}.partial-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&partial_dir);
@@ -270,7 +294,9 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
 
     // 1. Scripts, compiled for release, each at its path under the root.
     report.step(1);
-    let compiler = Compiler::for_release(&entry).map_err(|e| format!("{}: {e}", entry.display()))?;
+    let mut compiler = Compiler::for_release(&entry).map_err(|e| format!("{}: {e}", entry.display()))?;
+    // One root for the folder's layout and the source maps' paths.
+    compiler.root = root.clone();
     let set = match compiler.compile_graph() {
         Ok(set) => set,
         Err(errors) => {
@@ -287,7 +313,7 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
         let dst = scripts.join(rel(&m.path)?);
         write(&dst, m.code.as_bytes())?;
     }
-    let entry_rel = rel(&set.entry)?.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+    let entry_rel = crate::reader::relative(&root, &set.entry);
     report.log(&format!("compiled {} modules from {}", set.modules.len(), entry_rel));
 
     // 2. The release engine: the project engine for a project with Rust, else this binary.
@@ -415,6 +441,42 @@ mod tests {
         assert_eq!(name_and_entry(&d, Some(&config), Some(flag.to_str().unwrap())).unwrap().1, flag);
         let bad = project::parse(r#"{ "name": "../x" }"#).unwrap();
         assert!(name_and_entry(&d, Some(&bad), None).is_err());
+    }
+
+    #[test]
+    fn a_game_named_game_is_refused() {
+        let d = tmp("named-game");
+        std::fs::create_dir_all(d.join("src")).unwrap();
+        std::fs::write(d.join("src/game.ts"), "").unwrap();
+        for n in ["game", "Game"] {
+            let config = project::parse(&format!(r#"{{ "name": "{n}" }}"#)).unwrap();
+            let e = name_and_entry(&d, Some(&config), None).unwrap_err();
+            assert!(e.contains("collide"), "{e}");
+        }
+    }
+
+    #[test]
+    fn out_refuses_what_it_would_destroy() {
+        let root = tmp("out");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        std::fs::write(root.join("notes.txt"), "keep").unwrap();
+        let at = |p: &Path| p.to_str().unwrap().to_string();
+        // The project, through a symlinked path to it (macOS /var is /private/var).
+        let linked = std::env::temp_dir().join(format!("bevy-ts-build-out-{}", std::process::id()));
+        let e = resolve_out(&root, Some(&at(&linked)), "t").unwrap_err();
+        assert!(e.contains("overwrite the project"), "{e}");
+        assert!(resolve_out(&root, Some(&at(&root.join("assets/x"))), "t").unwrap_err().contains("assets"));
+        // An existing folder that is not a build, and a file.
+        assert!(resolve_out(&root, Some(&at(&root.join("src"))), "t").unwrap_err().contains("not an earlier build"));
+        assert!(resolve_out(&root, Some(&at(&root.join("notes.txt"))), "t").unwrap_err().contains("is a file"));
+        // A new folder, the default, and an earlier build are fine.
+        assert_eq!(resolve_out(&root, None, "t").unwrap(), root.join("dist/t"));
+        let earlier = root.join("dist/old");
+        std::fs::create_dir_all(earlier.join("game")).unwrap();
+        std::fs::write(earlier.join("game/game.json"), "{}").unwrap();
+        assert_eq!(resolve_out(&root, Some(&at(&earlier)), "t").unwrap(), earlier);
+        assert!(root.join("src").is_dir() && root.join("notes.txt").is_file());
     }
 
     #[test]

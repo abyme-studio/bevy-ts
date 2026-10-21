@@ -14,7 +14,10 @@ bevy-ts build --targets [--json]
 - The entry is `--entry` (relative to the working directory), else `bevy-ts.json`'s `entry`
   (relative to the root), else the first of `src/game.tsx`, `src/game.ts`, `src/main.tsx`,
   `src/main.ts`.
-- `--out` defaults to `<project>/dist/<target>`.
+- `--out` defaults to `<project>/dist/<target>`. The build replaces it, so it refuses an `--out`
+  that holds the project, lies in its `assets/`, is a file, or is an existing folder that is not an
+  earlier build (no `game/game.json`).
+- A game cannot be named `game` (any case): its executable would collide with `game/`.
 
 ## The folder
 
@@ -30,7 +33,8 @@ dist/aarch64-apple-darwin/
 - The engine is a copy of the prebuilt engine running the build, or, for a project with Rust, the
   project engine in the release profile (from the caches, or built by cargo).
 - Scripts are compiled as under `bevy-ts dev`, with the production JSX transform and source maps
-  that keep only the file's path in the project (`src/enemy.tsx`), never its text. A thrown error
+  that keep only the file's path in the project (`src/enemy.tsx`), never its text. No path of
+  the build machine is shipped. A thrown error
   still names the TS file and line.
 - The folder is written as `<out>.partial-<pid>` beside `<out>` and renamed onto it only when
   whole. A failed build leaves an earlier `<out>` untouched and no partial folder. The exit code is
@@ -43,7 +47,7 @@ that game, wherever it was started from (a double-click works). `bevy-ts play <f
 [--headless]` plays the game folder named (the one holding `game.json`), for trying a build.
 
 A shipped game loads its scripts once, as one generation: no compiler, no file watcher, no remote
-protocol, no inspector, bevy-ts in non-dev mode, and assets read from `game/assets/` unwatched.
+protocol, no inspector, none of the studio's viewport tools, bevy-ts in non-dev mode, and assets read from `game/assets/` unwatched.
 Nothing listens on a port. An engine refuses a `game.json` built by another bevy-ts version and
 names both.
 

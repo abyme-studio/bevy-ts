@@ -40,7 +40,8 @@ fn tmp(name: &str) -> PathBuf {
 #[test]
 fn the_arena_builds_and_plays() {
     let arena = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena");
-    let out = tmp("build-arena").join("arena");
+    // Canonical, as the build reports it (macOS /var is /private/var).
+    let out = tmp("build-arena").canonicalize().unwrap().join("arena");
     let (code, events) = build(&[arena.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{events:#?}");
     let steps: Vec<_> = of(&events, "step").iter().map(|s| (s["index"].as_u64().unwrap(), s["total"].as_u64().unwrap())).collect();

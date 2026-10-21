@@ -61,7 +61,7 @@ pub fn project_root(entry: &Path) -> PathBuf {
 }
 
 /// `to` relative to the directory `from`, with `/` separators.
-fn relative(from: &Path, to: &Path) -> String {
+pub(crate) fn relative(from: &Path, to: &Path) -> String {
     let from: Vec<_> = from.components().collect();
     let to_c: Vec<_> = to.components().collect();
     let common = from.iter().zip(&to_c).take_while(|(a, b)| a == b).count();
@@ -387,6 +387,17 @@ pub(crate) struct FileInfo {
     functions: Vec<Func>,
     classes: Vec<DataClass>,
     imports_bevy_ts: bool,
+    /// Source locations relative to the root, as a shipped game's source maps name files.
+    relative_locations: bool,
+}
+
+impl FileInfo {
+    /// Locations in the declarations relative to the root: a shipped game carries no build
+    /// machine's folders.
+    pub(crate) fn with_relative_locations(mut self) -> Self {
+        self.relative_locations = true;
+        self
+    }
 }
 
 fn type_params(p: &Option<oxc::allocator::Box<TSTypeParameterDeclaration>>) -> Vec<String> {
@@ -417,6 +428,7 @@ pub(crate) fn extract(program: &Program, path: &Path, source: &str, root: &Path)
     let mut f = FileInfo {
         path: path.to_path_buf(),
         rel: relative(root, path),
+        relative_locations: false,
         source: source.to_string(),
         named: HashMap::new(),
         imports: HashMap::new(),
@@ -809,10 +821,11 @@ impl Reader {
                 errors.push((sc.span, format!("{}: static scene belongs to a SceneComponent", c.name)));
             }
             // Absolute, like every other source location the protocol serves (tsx element sources,
-            // level owners), so an editor can open it as is.
+            // level owners), so an editor can open it as is; root-relative in a release compile.
+            let located = if file.relative_locations { file.rel.clone() } else { file.path.display().to_string() };
             match self.props(sc, scope, &|span| {
                 let (line, column) = at(span);
-                json!({ "file": file.path.display().to_string(), "line": line, "column": column })
+                json!({ "file": located, "line": line, "column": column })
             }) {
                 Ok(props) => {
                     for p in &props {

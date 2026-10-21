@@ -153,10 +153,13 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
             std::process::exit(2);
         }
         Some("skeleton") => skeleton(&engine, extra, args.iter().any(|a| a == "--headless")),
-        // A built game: the engine plays the `game/` beside it, wherever it was started from.
-        None if crate::play::beside_exe().is_some() => {
-            let folder = crate::play::beside_exe().expect("checked above");
-            std::process::exit(crate::play::run(&engine, extra, &folder, false))
+        None => {
+            // A built game: the engine plays the `game/` beside it, wherever it was started from.
+            if let Some(folder) = crate::play::beside_exe() {
+                std::process::exit(crate::play::run(&engine, extra, &folder, false));
+            }
+            eprintln!("{USAGE}");
+            std::process::exit(2);
         }
         _ => {
             eprintln!("{USAGE}");
@@ -212,11 +215,11 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         Display::Viewport => {
             app.add_plugins(bevy_ts_viewport::ViewportPlugin { windowed: false });
         }
+        // The studio's edit and asset tools in the engine's own window; a shipped game has none.
         #[cfg(target_os = "macos")]
-        Display::Window => {
+        Display::Window if studio_tools(display, dev) => {
             app.add_plugins(bevy_ts_viewport::ViewportPlugin { windowed: true });
         }
-        #[cfg(not(target_os = "macos"))]
         _ => {}
     }
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(dev))
@@ -230,9 +233,17 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
         // The asset list, thumbnails and previews read the project's assets, not the binary's.
         #[cfg(target_os = "macos")]
-        app.insert_resource(bevy_ts_viewport::assets::AssetRoot(root.to_path_buf()));
+        if dev {
+            app.insert_resource(bevy_ts_viewport::assets::AssetRoot(root.to_path_buf()));
+        }
     }
     app
+}
+
+/// Whether the app carries the studio's viewport tooling (edit, assets, previews): under `bevy-ts
+/// dev` with a window or a viewport, never in a shipped game.
+pub fn studio_tools(display: Display, dev: bool) -> bool {
+    dev && display != Display::Headless
 }
 
 fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {

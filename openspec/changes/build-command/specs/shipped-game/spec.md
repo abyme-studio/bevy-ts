@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: An engine plays the game folder beside it
-An engine started with no arguments SHALL play the game in the `game/` folder beside its executable when `game/game.json` exists there, and SHALL print its usage and exit 2 otherwise. `bevy-ts play <game folder>` SHALL play the game in the named folder (the folder holding `game.json`). Playing SHALL NOT depend on the working directory.
+An engine started with no arguments SHALL play the game in the `game/` folder beside its executable when `game/game.json` exists there, and SHALL print its usage and exit 2 otherwise. `bevy-ts play <game folder> [--headless]` SHALL play the game in the named folder (the folder holding `game.json`), in a window, or with `--headless` offscreen with no window. Playing SHALL NOT depend on the working directory.
 
 #### Scenario: Starting a built game
 - **WHEN** the operator runs `dist/aarch64-apple-darwin/arena` from their home folder
@@ -12,7 +12,7 @@ An engine started with no arguments SHALL play the game in the `game/` folder be
 - **THEN** it prints its usage and exits 2, as it does today
 
 ### Requirement: A shipped game runs without dev tooling
-Playing SHALL load the modules under `game/scripts/` once, as one generation, from `game.json`'s entry, with no TS compiler, no file watcher, no remote protocol server and no inspector, and with bevy-ts in non-dev mode (`BevyTsPlugin::dev(false)`). Assets SHALL be read from `game/assets/` with Bevy's file watcher off. A script that throws SHALL report as under `bevy-ts dev`, mapped through the shipped source maps to the TS file and line.
+Playing SHALL load the modules under `game/scripts/` once, as one generation, from `game.json`'s entry, with no TS compiler, no file watcher, no remote protocol server, no inspector and none of the studio's viewport tools (edit, assets, previews), and with bevy-ts in non-dev mode (`BevyTsPlugin::dev(false)`). Assets SHALL be read from `game/assets/` with Bevy's file watcher off. A script that throws SHALL report as under `bevy-ts dev`, mapped through the shipped source maps to the TS file and line.
 
 #### Scenario: Nothing listens
 - **WHEN** a built game is playing

@@ -40,6 +40,8 @@ fn cube_game(name: &str, version: &str) -> PathBuf {
         common::write(&game.join("scripts"), &m.path.strip_prefix(&compiler.root).unwrap().to_string_lossy(), &m.code);
     }
     std::fs::create_dir_all(game.join("assets")).unwrap();
+    // Finder litters folders; a shipped game ignores what is not a script.
+    std::fs::write(game.join("scripts/src/.DS_Store"), [0xff, 0xfe, 0x00, 0x01]).unwrap();
     let file = GameFile { name: "cube".into(), entry: "src/game.ts".into(), bevy_ts: version.into(), engine: "prebuilt".into() };
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
     game
@@ -65,6 +67,24 @@ fn a_hand_made_cube_plays_without_dev_tooling() {
     let at = lines.iter().position(|l| l.contains("enemy exploded")).unwrap();
     let stack = lines[at..].iter().take(3).cloned().collect::<Vec<_>>().join("\n");
     assert!(stack.contains("src/enemy.ts:6:"), "{stack}");
+}
+
+#[test]
+fn a_played_game_carries_no_studio_tools_or_protocol() {
+    use bevy_ts_cli::cli::{Display, Engine, Prebuilt, studio_tools};
+    assert!(!studio_tools(Display::Window, false));
+    assert!(studio_tools(Display::Window, true));
+    let game = cube_game("play-tools", env!("CARGO_PKG_VERSION"));
+    let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
+    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
+    let world = app.world();
+    assert!(!world.contains_resource::<bevy::remote::RemoteMethods>(), "the protocol is served");
+    assert!(!world.resource::<bevy_ts::runtime::RuntimeInfo>().dev);
+    #[cfg(target_os = "macos")]
+    {
+        assert!(!world.contains_resource::<bevy_ts_viewport::assets::AssetRoot>());
+        assert!(!world.contains_resource::<bevy_ts_viewport::shared::SharedRes>());
+    }
 }
 
 #[test]

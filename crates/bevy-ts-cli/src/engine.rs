@@ -601,11 +601,12 @@ impl Sink<'_> {
     }
 }
 
-/// The number of packages in the engine crate's resolve: about how many units cargo compiles.
+/// The number of packages in the engine crate's resolve for this target: about how many units
+/// cargo compiles.
 fn package_count(manifest: &Path, target: &Path) -> Option<usize> {
     let out = cargo()
         .ok()?
-        .args(["metadata", "--format-version", "1", "--manifest-path"])
+        .args(["metadata", "--format-version", "1", "--filter-platform", TARGET, "--manifest-path"])
         .arg(manifest)
         .env("CARGO_TARGET_DIR", target)
         .stderr(Stdio::null())
