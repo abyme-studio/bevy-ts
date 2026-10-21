@@ -294,6 +294,27 @@ fn arena_tree_rows_say_their_level() {
 }
 
 #[test]
+fn a_level_tree_lists_its_nodes_in_file_order() {
+    // Crate comes last in the file, and its children Zed then Bolt: not alphabetical.
+    let mut app = arena_app("levels-tree-order", "--\n#Crate\nTransform\nChildren [\n    #Zed\n    Transform\n    --\n    #Bolt\n    Transform\n]\n");
+    let order = |v: &Value| -> Vec<Vec<String>> {
+        let r = v["roots"].as_array().unwrap().iter().find(|r| r["name"] == "level:levels/arena.bsn").expect("the arena level");
+        r["nodes"].as_array().unwrap().iter().map(|n| serde_json::from_value(n["keyPath"].clone()).unwrap()).collect()
+    };
+    let tree = call(&mut app, "bevy-ts/tsx_tree", None).unwrap().unwrap();
+    let paths = order(&tree);
+    let top: Vec<&str> = paths.iter().filter(|p| p.len() == 1).map(|p| p[0].as_str()).collect();
+    assert_eq!(top, ["EnemyA", "EnemyB", "RoomA", "RoomB", "Crate"], "{paths:?}");
+    let at = |k: &[&str]| paths.iter().position(|p| p == k).unwrap_or_else(|| panic!("no {k:?} in {paths:?}"));
+    assert!(at(&["Crate"]) < at(&["Crate", "Zed"]) && at(&["Crate", "Zed"]) < at(&["Crate", "Bolt"]), "{paths:?}");
+    // Children follow their parent, before its next sibling.
+    assert_eq!(at(&["RoomA", "Guard"]), at(&["RoomA"]) + 1, "{paths:?}");
+    // The watch's snapshot lists them the same way.
+    let snapshot = call(&mut app, "bevy-ts/tsx_tree+watch", None).unwrap().unwrap();
+    assert_eq!(order(&json!({ "roots": snapshot["snapshot"] })), paths);
+}
+
+#[test]
 fn the_arena_catalog_lists_its_scene_components() {
     let mut app = arena_app("levels-catalog", "");
     let catalog = ok(&mut app, "bevy-ts/level_catalog", None);

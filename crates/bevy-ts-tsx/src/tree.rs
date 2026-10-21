@@ -177,11 +177,14 @@ pub struct Reactive {
     pub apply_us: f64,
 }
 
-/// One mounted root: the node ids it owns, in description order.
+/// One mounted root: the node ids it owns.
 #[derive(Clone, Debug, Default)]
 pub struct RootState {
     pub location: Option<SourceLocation>,
     pub nodes: BTreeSet<u64>,
+    /// Each node's (and slot's) index among its described siblings, so `tsx_tree` lists the root
+    /// in description order (a level's in file order).
+    pub order: HashMap<u64, u32>,
 }
 
 /// The tree's index: roots, node id to entity, tombstones.

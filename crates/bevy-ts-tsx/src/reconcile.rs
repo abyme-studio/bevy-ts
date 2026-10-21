@@ -151,6 +151,7 @@ pub fn apply_root(
         apply_node(world, &mut tree, root, n, parent, &mut seen, &mut stats, &mut slots);
     }
     let state = tree.roots.entry(root.to_string()).or_default();
+    record_order(&mut state.order, nodes);
     if location.is_some() {
         state.location = location;
     }
@@ -194,6 +195,15 @@ fn forget(world: &mut World, tree: &mut TsxTree, id: u64, stats: &mut ReconcileS
     tree.tombstones.remove(&id);
     for r in tree.roots.values_mut() {
         r.nodes.remove(&id);
+        r.order.remove(&id);
+    }
+}
+
+/// Records each described node's index among its siblings, down the whole description.
+fn record_order(order: &mut HashMap<u64, u32>, nodes: &[RNode]) {
+    for (i, n) in nodes.iter().enumerate() {
+        order.insert(n.id, i as u32);
+        record_order(order, &n.children);
     }
 }
 
@@ -255,6 +265,7 @@ pub fn unmount_node(world: &mut World, id: u64) -> bool {
         tree.tombstones.remove(&i);
         for r in tree.roots.values_mut() {
             r.nodes.remove(&i);
+            r.order.remove(&i);
         }
     }
     world.insert_resource(tree);

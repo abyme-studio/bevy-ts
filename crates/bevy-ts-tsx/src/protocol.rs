@@ -3,6 +3,7 @@
 //! tree (`tsx_tree`), and follow what each reconcile changed (`tsx_tree+watch`). The editor, not
 //! bevy-ts, parses and rewrites source at these locations.
 
+use crate::desc::node_id;
 use crate::tree::{Change, TsxNode, TsxTree};
 use bevy::prelude::*;
 use bevy::remote::{BrpError, BrpResult, error_codes};
@@ -73,6 +74,13 @@ fn tree_node(world: &World, tree: &TsxTree, id: u64) -> Option<Value> {
     }))
 }
 
+/// A row's place in description order, parents first: at each step of its key path, the step's
+/// index among its siblings, then its key (siblings mounted apart, a slot's groups, tie on index).
+fn description_order(root: &str, order: &HashMap<u64, u32>, key_path: &Value) -> Vec<(u32, String)> {
+    let path: Vec<String> = serde_json::from_value(key_path.clone()).unwrap_or_default();
+    (1..=path.len()).map(|i| (order.get(&node_id(root, &path[..i])).copied().unwrap_or(u32::MAX), path[i - 1].clone())).collect()
+}
+
 fn roots(world: &World) -> Vec<Value> {
     let tree = world.resource::<TsxTree>();
     tree.roots
@@ -82,8 +90,13 @@ fn roots(world: &World) -> Vec<Value> {
             ids.extend(tree.tombstones.iter().filter(|(_, t)| &t.root == name).map(|(id, _)| *id));
             ids.sort();
             ids.dedup();
-            let mut nodes: Vec<Value> = ids.into_iter().filter_map(|id| tree_node(world, tree, id)).collect();
-            nodes.sort_by(|a, b| a["keyPath"].to_string().cmp(&b["keyPath"].to_string()));
+            let mut nodes: Vec<(Vec<(u32, String)>, Value)> = ids
+                .into_iter()
+                .filter_map(|id| tree_node(world, tree, id))
+                .map(|row| (description_order(name, &r.order, &row["keyPath"]), row))
+                .collect();
+            nodes.sort_by(|a, b| a.0.cmp(&b.0));
+            let nodes: Vec<Value> = nodes.into_iter().map(|(_, row)| row).collect();
             let mut root = json!({ "name": name, "location": r.location, "nodes": nodes });
             if world.contains_resource::<TreeProvenance>()
                 && let Some(sidecar) = crate::scene_level(world, name)
