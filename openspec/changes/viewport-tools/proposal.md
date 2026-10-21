@@ -8,7 +8,7 @@ The studio's viewport has no tool strip: the operator can pick move, rotate, sca
 - **`bevy-ts/viewport_tools+watch`** sends `ViewportTools` on open and on every change, from the method (`origin: "editor"`) or from `W E R X` in the viewport (`origin: "viewport"`), so the strip follows the keys. No snap key.
 - **Orientation gizmo.** In edit mode the engine draws an axis gizmo in the game viewport's top-right corner. A click on an axis end turns the editor camera to look down that axis; a drag from it orbits. Clicks there never pick. Input comes through `viewport_input`; no new method.
 - **"No camera".** `ViewportModeResult` gains `camera: bool`: false in play when no active game camera renders to the primary window. **`bevy-ts/viewport_mode+watch`** sends the full `ViewportModeResult` on open and on every change. The engine draws nothing for it; the studio shows the message.
-- **Protocol 1.11.0**, additions only.
+- **Protocol: the next free minor on main when this lands** (planned 1.12, after engine-components), additions only.
 - **Out of scope:** abyme's toolbar and "no camera" message (team `bevy-viewport`); configurable snap steps; a snap key; a camera hint overlay.
 
 ## Capabilities
@@ -24,7 +24,7 @@ None.
 ## Impact
 
 - `crates/bevy-ts-viewport`: `edit.rs` (tool state, keys, orientation gizmo and its input, camera presence), `methods.rs` (three methods), `tests/edit.rs`.
-- `protocol/bevy-ts.openrpc.json`: 1.11.0, regenerated Rust and TS types. asset-catalog also bumps from 1.10; whichever lands second takes the next minor.
+- `protocol/bevy-ts.openrpc.json`: the next free minor, regenerated Rust and TS types. engine-components (planned 1.11) and asset-catalog (planned 1.13) also bump; lead@bevy-ts names the version this lands as.
 - `docs/viewport.md`: the tools, the orientation gizmo and `camera`, and a note for abyme's studio.
 - Performance: one more small camera render (the orientation gizmo's corner) per frame, in edit mode only, while the game viewport is visible. Nothing in play. This needs the operator's go before build (performance is on the ask-first list); the cost is measured in tasks.
-- abyme: `bevy-viewport` builds the toolbar and the message against this. It does not fall back: an engine older than 1.11 gets a "bevy-ts too old, update to 1.11" view.
+- abyme: `bevy-viewport` builds the toolbar and the message against this. It does not fall back: an engine older than the version this lands as gets a "bevy-ts too old" view.

@@ -17,6 +17,6 @@
 
 ## 4. Contract, measurement, docs
 
-- [ ] 4.1 Protocol 1.11.0: the three methods, `ViewportTools`, `camera`; regenerated Rust and TS types; CI diff check
+- [ ] 4.1 Protocol: the next free minor on main at landing (planned 1.12): the three methods, `ViewportTools`, `camera`; regenerated Rust and TS types; CI diff check
 - [ ] 4.2 Measure the arena in edit mode on this Mac with and without the orientation gizmo: frame time (CPU and GPU, p50 and p99); record it in `docs/research/viewport-tools.md` and get the operator's ruling before landing
-- [ ] 4.3 Docs: the tools, the orientation gizmo and `camera` in `docs/viewport.md`, and a note that abyme's studio needs 1.11 and shows an older engine as too old
+- [ ] 4.3 Docs: the tools, the orientation gizmo and `camera` in `docs/viewport.md`, and a note that abyme's studio needs the version this landed as and shows an older engine as too old

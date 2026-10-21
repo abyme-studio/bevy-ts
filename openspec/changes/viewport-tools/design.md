@@ -21,4 +21,4 @@ Edit mode (`crates/bevy-ts-viewport/src/edit.rs`) already runs Bevy 0.20's `Tran
 
 - [The corner camera costs a render pass in edit mode] → No clear, a 96 px viewport and a handful of lines; measured in tasks against edit mode without it, and the operator's go asked before build.
 - [A press in the corner hides a gizmo handle or entity under it] → The square is small and in a corner; frame or orbit to reach what is under it.
-- [asset-catalog also bumps the protocol from 1.10] → Whichever lands second rebases to the next minor and regenerates types.
+- [engine-components and asset-catalog also bump the protocol] → This takes the next free minor on main when it lands (planned 1.12), rebases and regenerates types; the number is not pinned before then.
