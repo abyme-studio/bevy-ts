@@ -13,7 +13,7 @@
 
 #### Scenario: Snapped move
 - **WHEN** snap is on and the operator drags enemy `b`'s x handle from 3 by 1.4 units
-- **THEN** enemy `b`'s x is 4 during the drag and in the edit on release
+- **THEN** enemy `b`'s x is 4.5 during the drag and in the edit on release
 
 ### Requirement: Orientation gizmo
 In edit mode the engine SHALL draw, in the game viewport only, an orientation gizmo in the top-left corner: a 96 logical px square inset 8 px from the top and left edges, showing the world's axes as the editor camera sees them, with `+X` red, `+Y` green and `+Z` blue as filled ends and the negative axes as hollow ends. It SHALL NOT be drawn in play, in asset previews or in the engine's own window. A click with no drag on an axis end SHALL turn the editor camera to look down that axis at its focus point, keeping its distance from the focus. A press in the square SHALL NOT pick, change the selection or start a gizmo drag.

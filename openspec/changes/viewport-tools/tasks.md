@@ -2,7 +2,7 @@
 
 - [ ] 1.1 A `ViewportTools` resource (mode, space, snap, origin, change counter) as the one writer of `TransformGizmoSettings` mode, space and snap; `edit_keys` writes it with `origin: viewport`
 - [ ] 1.2 `bevy-ts/viewport_tools` and `bevy-ts/viewport_tools+watch` in `methods.rs`
-- [ ] 1.3 Tests in `tests/edit.rs`: the method sets the gizmo and answers the steps; `KeyX` streams `space: local` with `origin: viewport`; a snapped x drag of 1.4 from 3 ends at 4; tools survive a mode switch and a reload
+- [ ] 1.3 Tests in `tests/edit.rs`: the method sets the gizmo and answers the steps; `KeyX` streams `space: local` with `origin: viewport`; a snapped x drag of 1.4 from 3 ends at 4.5; tools survive a mode switch and a reload
 
 ## 2. Orientation gizmo
 
