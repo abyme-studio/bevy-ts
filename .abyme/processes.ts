@@ -74,4 +74,5 @@ export default {
   // Change script-materials.
   "material-test": { cmd: "cargo test -p bevy-ts-material -- --nocapture 2>&1 | grep -v ld64 | tee target/material-test.log | grep -E '^test |test result|panicked|^error|^warning|left|right' | tail -40" },
   "materials-cli": { cmd: "cargo test -p bevy-ts-cli --test materials --test material_errors --test tsx -- --nocapture --test-threads 1 2>&1 | grep -v ld64 | tee target/materials-cli.log | grep -E '^test |test result|panicked|^error|left|right|assert' | tail -40" },
+  "glow-walk": { cmd: "cargo build -p bevy-ts-cli && node examples/cube/glow-walk.mjs target/debug/bevy-ts 2>&1 | tee target/glow-walk.log" },
 } satisfies ProcessFile;

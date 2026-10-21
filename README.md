@@ -13,6 +13,8 @@ without recompiling Rust.
   native entities on mount and on change, never per frame. Stable keys keep runtime state across
   hot reloads; `initial*` props are never reset by a reload. Built on BSN templates where they fit.
 - **`bevy-ts dev src/game.ts`** launches the engine, loads the TypeScript and hot reloads it.
+- **Custom materials without Rust**: a params schema in TS and the shader in a `.wgsl` file,
+  hot reloaded ([docs/materials.md](docs/materials.md)).
 - **Rust when it must be**: a project adopts Bevy plugins in one line of `bevy-ts.json`, or adds
   its own Rust as one Bevy plugin; bevy-ts then builds a project engine, only when Rust changes,
   cached by hash ([docs/native.md](docs/native.md)).

@@ -6,4 +6,4 @@
 - [x] 1.4 `bevy-ts/material`'s `material()` declaration in the generation manifest, `fragment`/`vertex` as shader-file values (strings rejected); a `.wgsl` save replaces the shader asset in place with no new generation; param-schema changes re-encode instances by name
 - [x] 1.5 WGSL errors: check with `wesl` and `naga`, map spans to the author's `file:line:col` (author lines unchanged, declarations appended), report an error past the author's last line against the TS schema, keep the old shader; tests for both
 - [x] 1.6 Decide whether instances are keyed assets or components on the entity, then add TSX `<material kind={...} />`
-- [ ] 1.7 Demo: a `game::Glow` material on the cube example with its shader in `glow.wgsl`, edited live, in the prebuilt engine with no native crate
+- [x] 1.7 Demo: a `game::Glow` material on the cube example with its shader in `glow.wgsl`, edited live, in the prebuilt engine with no native crate
