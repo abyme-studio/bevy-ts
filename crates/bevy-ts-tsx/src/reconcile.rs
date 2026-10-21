@@ -147,11 +147,14 @@ pub fn apply_root(
     let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
     let mut seen = BTreeSet::new();
     let mut slots = Vec::new();
+    let added = tree.journal.open.added.len();
     for n in nodes {
         apply_node(world, &mut tree, root, n, parent, &mut seen, &mut stats, &mut slots);
     }
     let state = tree.roots.entry(root.to_string()).or_default();
-    record_order(&mut state.order, nodes);
+    // Sibling lists whose order changed, by the key path of one of their children.
+    let mut lists = Vec::new();
+    record_order(&mut state.order, nodes, &mut lists);
     if location.is_some() {
         state.location = location;
     }
@@ -161,6 +164,12 @@ pub fn apply_root(
     };
     state.nodes.extend(seen);
     tree.moved.retain(|_, r| r != root);
+    let new: Vec<u64> = tree.journal.open.added[added..].to_vec();
+    lists.extend(new.into_iter().filter_map(|id| key_path(world, &tree, id)));
+    for path in lists {
+        let list = (root.to_string(), tree.parent_row(root, &path));
+        tree.journal.open.ordered.push(list);
+    }
     for id in candidates {
         let path = key_path(world, &tree, id);
         let inside = match (&prune, &path) {
@@ -181,29 +190,67 @@ pub fn apply_root(
     stats
 }
 
+/// The root and key path of a row: a live node's, or a tombstone's.
+fn row_path(world: &World, tree: &TsxTree, id: u64) -> Option<(String, Vec<String>)> {
+    let live = tree.entities.get(&id).and_then(|e| world.get::<TsxNode>(*e)).filter(|n| n.id == id).map(|n| (n.root.clone(), n.key_path.clone()));
+    live.or_else(|| tree.tombstones.get(&id).map(|t| (t.root.clone(), t.key_path.clone())))
+}
+
+/// The rows of `root` under `path`: tsx nodes among `e`'s descendants, and tombstones.
+fn subtree(world: &World, tree: &TsxTree, e: Option<Entity>, root: &str, path: &[String]) -> Vec<u64> {
+    let under = |r: &str, p: &[String]| r == root && p.len() > path.len() && p.starts_with(path);
+    let mut ids: Vec<u64> = e
+        .map(|e| descendants(world, e))
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|d| world.get::<TsxNode>(d))
+        .filter(|n| under(&n.root, &n.key_path))
+        .map(|n| n.id)
+        .collect();
+    ids.extend(tree.tombstones.iter().filter(|(_, t)| under(&t.root, &t.key_path)).map(|(id, _)| *id));
+    ids
+}
+
 /// Despawns a node (descendants go with it, including entities systems parented under it) and
-/// forgets it.
+/// forgets it and every row under it. Its sibling list is recorded as changed.
 fn forget(world: &mut World, tree: &mut TsxTree, id: u64, stats: &mut ReconcileStats) {
+    if !tree.roots.values().any(|r| r.nodes.contains(&id)) && !tree.tombstones.contains_key(&id) {
+        return;
+    }
     tree.reactive.stale = true;
-    tree.journal.open.removed.push(id);
-    if let Some(e) = tree.entities.remove(&id)
-        && alive(world, e, id)
-    {
+    let e = tree.entities.get(&id).copied().filter(|e| alive(world, *e, id));
+    let mut ids = vec![id];
+    if let Some((root, path)) = row_path(world, tree, id) {
+        ids.extend(subtree(world, tree, e, &root, &path));
+        let list = (root.clone(), tree.parent_row(&root, &path));
+        tree.journal.open.ordered.push(list);
+    }
+    if let Some(e) = e {
         world.despawn(e);
         stats.despawned += 1;
     }
-    tree.tombstones.remove(&id);
-    for r in tree.roots.values_mut() {
-        r.nodes.remove(&id);
-        r.order.remove(&id);
+    for i in ids {
+        tree.journal.open.removed.push(i);
+        tree.entities.remove(&i);
+        tree.tombstones.remove(&i);
+        for r in tree.roots.values_mut() {
+            r.nodes.remove(&i);
+            r.order.remove(&i);
+        }
     }
 }
 
-/// Records each described node's index among its siblings, down the whole description.
-fn record_order(order: &mut HashMap<u64, u32>, nodes: &[RNode]) {
+/// Records each described node's index among its siblings, down the whole description. A
+/// sibling list whose known nodes are now in another order is pushed to `changed`, by the key
+/// path of one of its children.
+fn record_order(order: &mut HashMap<u64, u32>, nodes: &[RNode], changed: &mut Vec<Vec<String>>) {
+    let old: Vec<u32> = nodes.iter().filter_map(|n| order.get(&n.id).copied()).collect();
+    if old.windows(2).any(|w| w[0] > w[1]) {
+        changed.push(nodes[0].path.clone());
+    }
     for (i, n) in nodes.iter().enumerate() {
         order.insert(n.id, i as u32);
-        record_order(order, &n.children);
+        record_order(order, &n.children, changed);
     }
 }
 
@@ -232,6 +279,7 @@ pub fn unmount_root(world: &mut World, root: &str) -> ReconcileStats {
     let mut stats = ReconcileStats::default();
     let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
     if let Some(state) = tree.roots.remove(root) {
+        tree.journal.open.removed.extend(&state.nodes);
         for id in state.nodes {
             if let Some(e) = tree.entities.remove(&id)
                 && alive(world, e, id)
@@ -256,11 +304,16 @@ pub fn unmount_node(world: &mut World, id: u64) -> bool {
         return false;
     };
     let ids: Vec<u64> = descendants(world, e).into_iter().filter_map(|d| world.get::<TsxNode>(d).map(|n| n.id)).collect();
+    if let Some((root, path)) = row_path(world, &tree, id) {
+        let list = (root.clone(), tree.parent_row(&root, &path));
+        tree.journal.open.ordered.push(list);
+    }
     if alive(world, e, id) {
         world.despawn(e);
         removed = true;
     }
     for i in std::iter::once(id).chain(ids) {
+        tree.journal.open.removed.push(i);
         tree.entities.remove(&i);
         tree.tombstones.remove(&i);
         for r in tree.roots.values_mut() {

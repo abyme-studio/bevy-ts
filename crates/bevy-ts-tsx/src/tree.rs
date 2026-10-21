@@ -226,6 +226,18 @@ impl TsxTree {
     pub fn entity(&self, id: u64) -> Option<Entity> {
         self.entities.get(&id).copied()
     }
+
+    /// Whether `id` is a row of `root` in `tsx_tree`: a node it owns or a tombstone.
+    pub fn is_row(&self, root: &str, id: u64) -> bool {
+        self.roots.get(root).is_some_and(|r| r.nodes.contains(&id)) || self.tombstones.get(&id).is_some_and(|t| t.root == root)
+    }
+
+    /// The node id of the nearest ancestor row of the node at `path`, or None at the root's top.
+    /// Slot steps (`<Show>`, `<For>`) are in a key path but are not rows, so they are skipped.
+    /// This is a row's `parent` and the key of the sibling list it is in.
+    pub fn parent_row(&self, root: &str, path: &[String]) -> Option<u64> {
+        (1..path.len()).rev().map(|i| crate::desc::node_id(root, &path[..i])).find(|id| self.is_row(root, *id))
+    }
 }
 
 /// What one reconcile changed, by node id, for `bevy-ts/tsx_tree+watch`.
@@ -238,6 +250,8 @@ pub struct Change {
     pub moved: Vec<u64>,
     /// Nodes whose values tsx wrote (controlled fields, inserted or removed components).
     pub written: Vec<u64>,
+    /// Sibling lists that gained a child, lost one or changed order: (root, parent row).
+    pub ordered: Vec<(String, Option<u64>)>,
 }
 
 impl Change {

@@ -72,7 +72,10 @@ Each `bevy-ts/tsx_tree` node a level placed carries `level: { file, namePath, wr
 `written` is false for what a prefab or an included level gives, so an editor greys what it
 cannot rename, delete or move. `level_node` lists `patches`, the components the file adds that
 the prefab does not give. A level's nodes come in file order, each parent before its
-children, so a `level_write` reparent index can be counted from the tree.
+children, so a `level_write` reparent index can be counted from the tree. Every row names its
+`root` and `parent`, its nearest ancestor row. `tsx_tree+watch` keeps that order without a
+re-read: `removed` lists whole subtrees, and `ordered` gives the full child order of each
+sibling list that gained, lost or reordered a child, a move within the file included.
 
 ## Scenes without a level
 

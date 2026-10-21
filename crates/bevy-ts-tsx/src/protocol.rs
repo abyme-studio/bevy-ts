@@ -4,13 +4,13 @@
 //! bevy-ts, parses and rewrites source at these locations.
 
 use crate::desc::node_id;
-use crate::tree::{Change, TsxNode, TsxTree};
+use crate::tree::{Change, RootState, TsxNode, TsxTree};
 use bevy::prelude::*;
 use bevy::remote::{BrpError, BrpResult, error_codes};
 use bevy_ts::runtime::ScriptFrame;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 /// The crate the contract lists these methods under.
 pub const CRATE: &str = "bevy-ts-tsx";
@@ -48,6 +48,10 @@ fn live(world: &World, tree: &TsxTree, id: u64) -> Option<(Entity, TsxNode)> {
     world.get::<TsxNode>(e).filter(|n| n.id == id).map(|n| (e, n.clone()))
 }
 
+fn parent(tree: &TsxTree, root: &str, path: &[String]) -> Value {
+    json!(tree.parent_row(root, path).map(id_str))
+}
+
 fn tree_node(world: &World, tree: &TsxTree, id: u64) -> Option<Value> {
     if let Some((e, n)) = live(world, tree, id) {
         let mut row = json!({
@@ -57,6 +61,8 @@ fn tree_node(world: &World, tree: &TsxTree, id: u64) -> Option<Value> {
             "type": n.types.last(),
             "source": n.source.first(),
             "tombstoned": false,
+            "root": n.root,
+            "parent": parent(tree, &n.root, &n.key_path),
         });
         if let Some(level) = world.get_resource::<TreeProvenance>().and_then(|p| (p.0)(world, e, &n)) {
             row["level"] = level;
@@ -71,6 +77,8 @@ fn tree_node(world: &World, tree: &TsxTree, id: u64) -> Option<Value> {
         "type": "entity",
         "source": t.source.first(),
         "tombstoned": true,
+        "root": t.root,
+        "parent": parent(tree, &t.root, &t.key_path),
     }))
 }
 
@@ -81,22 +89,27 @@ fn description_order(root: &str, order: &HashMap<u64, u32>, key_path: &Value) ->
     (1..=path.len()).map(|i| (order.get(&node_id(root, &path[..i])).copied().unwrap_or(u32::MAX), path[i - 1].clone())).collect()
 }
 
+/// A root's rows, in description order.
+fn rows(world: &World, tree: &TsxTree, name: &str, r: &RootState) -> Vec<Value> {
+    let mut ids: Vec<u64> = r.nodes.iter().copied().collect();
+    ids.extend(tree.tombstones.iter().filter(|(_, t)| t.root == name).map(|(id, _)| *id));
+    ids.sort();
+    ids.dedup();
+    let mut nodes: Vec<(Vec<(u32, String)>, Value)> = ids
+        .into_iter()
+        .filter_map(|id| tree_node(world, tree, id))
+        .map(|row| (description_order(name, &r.order, &row["keyPath"]), row))
+        .collect();
+    nodes.sort_by(|a, b| a.0.cmp(&b.0));
+    nodes.into_iter().map(|(_, row)| row).collect()
+}
+
 fn roots(world: &World) -> Vec<Value> {
     let tree = world.resource::<TsxTree>();
     tree.roots
         .iter()
         .map(|(name, r)| {
-            let mut ids: Vec<u64> = r.nodes.iter().copied().collect();
-            ids.extend(tree.tombstones.iter().filter(|(_, t)| &t.root == name).map(|(id, _)| *id));
-            ids.sort();
-            ids.dedup();
-            let mut nodes: Vec<(Vec<(u32, String)>, Value)> = ids
-                .into_iter()
-                .filter_map(|id| tree_node(world, tree, id))
-                .map(|row| (description_order(name, &r.order, &row["keyPath"]), row))
-                .collect();
-            nodes.sort_by(|a, b| a.0.cmp(&b.0));
-            let nodes: Vec<Value> = nodes.into_iter().map(|(_, row)| row).collect();
+            let nodes = rows(world, tree, name, r);
             let mut root = json!({ "name": name, "location": r.location, "nodes": nodes });
             if world.contains_resource::<TreeProvenance>()
                 && let Some(sidecar) = crate::scene_level(world, name)
@@ -204,7 +217,10 @@ fn message(world: &World, seq: u64, changes: &[(u64, Change)]) -> Value {
         merged.tombstoned.extend(&c.tombstoned);
         merged.moved.extend(&c.moved);
         merged.written.extend(&c.written);
+        merged.ordered.extend(c.ordered.iter().cloned());
     }
+    // A node removed and added again since the last message is still there.
+    merged.removed.retain(|id| !tree.roots.iter().any(|(name, _)| tree.is_row(name, *id)));
     let ids = |v: &[u64]| v.iter().map(|id| id_str(*id)).collect::<Vec<_>>();
     let mut m = Map::new();
     m.insert("seq".into(), json!(seq));
@@ -229,7 +245,35 @@ fn message(world: &World, seq: u64, changes: &[(u64, Change)]) -> Value {
     if !merged.written.is_empty() {
         m.insert("written".into(), json!(ids(&merged.written)));
     }
+    let ordered = ordered(world, tree, &merged.ordered);
+    if !ordered.is_empty() {
+        m.insert("ordered".into(), json!(ordered));
+    }
     Value::Object(m)
+}
+
+/// Each sibling list's full order as the live tree has it now, skipping lists whose parent is gone.
+fn ordered(world: &World, tree: &TsxTree, lists: &[(String, Option<u64>)]) -> Vec<Value> {
+    let lists: BTreeSet<&(String, Option<u64>)> = lists.iter().collect();
+    let mut children: HashMap<&str, HashMap<Option<String>, Vec<Value>>> = HashMap::new();
+    let mut out = Vec::new();
+    for (root, parent) in lists {
+        let Some(r) = tree.roots.get(root) else { continue };
+        if parent.is_some_and(|p| !tree.is_row(root, p)) {
+            continue;
+        }
+        let by_parent = children.entry(root).or_insert_with(|| {
+            let mut by_parent: HashMap<Option<String>, Vec<Value>> = HashMap::new();
+            for row in rows(world, tree, root, r) {
+                by_parent.entry(row["parent"].as_str().map(str::to_string)).or_default().push(row["node"].clone());
+            }
+            by_parent
+        });
+        let parent = parent.map(id_str);
+        let list = by_parent.get(&parent).cloned().unwrap_or_default();
+        out.push(json!({ "root": root, "parent": parent, "children": list }));
+    }
+    out
 }
 
 pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {

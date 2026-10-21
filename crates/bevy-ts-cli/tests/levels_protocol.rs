@@ -28,9 +28,17 @@ fn rewrite(v: &mut Value) {
 }
 
 fn validate(method: &str, result: &Value) {
+    validate_in("bevy-ts-levels", method, result);
+}
+
+fn validate_tsx(message: &Value) {
+    validate_in("bevy-ts-tsx", "bevy-ts/tsx_tree+watch", message);
+}
+
+fn validate_in(krate: &str, method: &str, result: &Value) {
     let doc = contract();
     let m = doc["methods"].as_array().unwrap().iter().find(|m| m["name"] == method).unwrap_or_else(|| panic!("{method} not in the contract"));
-    assert_eq!(m["x-bevy-ts-crate"], "bevy-ts-levels");
+    assert_eq!(m["x-bevy-ts-crate"], krate);
     let mut schema = m["result"]["schema"].clone();
     let mut defs = doc["components"]["schemas"].clone();
     rewrite(&mut schema);
@@ -327,4 +335,144 @@ fn the_arena_catalog_lists_its_scene_components() {
     assert_eq!(props.iter().map(|p| p["name"].as_str().unwrap()).collect::<Vec<_>>(), ["hp", "at"], "{enemy}");
     assert_eq!((&props[0]["type"], &props[0]["default"], &props[0]["required"]), (&json!({ "kind": "f32" }), &json!(100), &json!(false)), "{enemy}");
     assert_eq!(props[1]["required"], false, "{enemy}");
+}
+
+const ORDER: &str = "#A
+Transform
+Children [
+    #a1
+    Transform
+    --
+    #a2
+    Transform
+]
+--
+#B
+Transform
+";
+
+/// What a watching client holds: each root's rows, and each parent's children in order.
+#[derive(Debug, Default, PartialEq)]
+struct Client {
+    rows: std::collections::BTreeMap<String, Value>,
+    /// By root and parent (its JSON text: a node id or null).
+    lists: std::collections::BTreeMap<(String, String), Vec<Value>>,
+}
+
+impl Client {
+    fn from_roots(roots: &Value) -> Client {
+        let mut c = Client::default();
+        for r in roots.as_array().unwrap() {
+            for n in r["nodes"].as_array().unwrap() {
+                c.rows.insert(n["node"].as_str().unwrap().to_string(), n["keyPath"].clone());
+                c.lists.entry((r["name"].as_str().unwrap().to_string(), n["parent"].to_string())).or_default().push(n["node"].clone());
+            }
+        }
+        c
+    }
+
+    fn apply(&mut self, m: &Value) {
+        for n in m["added"].as_array().into_iter().flatten() {
+            self.rows.insert(n["node"].as_str().unwrap().to_string(), n["keyPath"].clone());
+        }
+        for id in m["removed"].as_array().into_iter().flatten() {
+            self.rows.remove(id.as_str().unwrap());
+            let key = id.to_string();
+            self.lists.retain(|(_, p), _| *p != key);
+            self.lists.values_mut().for_each(|l| l.retain(|c| c != id));
+        }
+        for o in m["ordered"].as_array().into_iter().flatten() {
+            self.lists.insert((o["root"].as_str().unwrap().to_string(), o["parent"].to_string()), o["children"].as_array().unwrap().clone());
+        }
+        self.lists.retain(|_, l| !l.is_empty());
+    }
+}
+
+/// Runs frames, polling the watch each one so it stays subscribed, until the level settles;
+/// returns the messages sent.
+fn watch_until_settled(app: &mut App) -> Vec<Value> {
+    let mut out = Vec::new();
+    for _ in 0..300 {
+        app.update();
+        if let Some(m) = call(app, "bevy-ts/tsx_tree+watch", None).unwrap() {
+            assert!(m.get("snapshot").is_none(), "the watch resubscribed: {m}");
+            out.push(m);
+        }
+        let levels = app.world().resource::<Levels>();
+        if levels.roots.values().all(|r| !r.dirty) && !out.is_empty() {
+            return out;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    panic!("no watch message: {:?}", messages(app));
+}
+
+#[test]
+fn watch_deltas_keep_a_client_in_tsx_tree_order() {
+    let dir = project("levels-watch-order", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", ORDER)]);
+    let mut app = level_app(&dir);
+    bevy_ts_tsx::protocol::add_methods(&mut app);
+    assert!(reload(&mut app, false).errors.is_empty());
+    settle(&mut app);
+    let level = "level:levels/arena.bsn";
+    let tree = |app: &mut App| call(app, "bevy-ts/tsx_tree", None).unwrap().unwrap();
+    let id = |t: &Value, k: &[&str]| row(t, level, k)["node"].clone();
+    let first = call(&mut app, "bevy-ts/tsx_tree+watch", None).unwrap().unwrap();
+    validate_tsx(&first);
+    let mut client = Client::from_roots(&first["snapshot"]);
+    let t = tree(&mut app);
+    assert_eq!(client, Client::from_roots(&t["roots"]));
+    let (a, b, a1, a2) = (id(&t, &["A"]), id(&t, &["B"]), id(&t, &["A", "a1"]), id(&t, &["A", "a2"]));
+    assert_eq!((&row(&t, level, &["A", "a1"])["parent"], &row(&t, level, &["A"])["parent"]), (&a, &Value::Null));
+    assert_eq!(row(&t, level, &["A"])["root"], level);
+    let lists = |ms: &[Value]| -> Vec<Value> { ms.iter().flat_map(|m| m["ordered"].as_array().cloned().unwrap_or_default()).collect() };
+    let has = |ms: &[Value], key: &str| ms.iter().any(|m| m.get(key).is_some());
+
+    // A move within the file: B before A, an order change only.
+    std::fs::write(dir.join("assets/levels/arena.bsn"), ORDER.replace("#A\n", "#TMP\n").replace("--\n#B\nTransform\n", "").replacen("#TMP\n", "#B\nTransform\n--\n#A\n", 1)).unwrap();
+    let ms = watch_until_settled(&mut app);
+    ms.iter().for_each(validate_tsx);
+    assert!(!has(&ms, "added") && !has(&ms, "removed"), "{ms:?}");
+    assert!(lists(&ms).contains(&json!({ "root": level, "parent": null, "children": [b, a] })), "{ms:?}");
+    ms.iter().for_each(|m| client.apply(m));
+    assert_eq!(client, Client::from_roots(&tree(&mut app)["roots"]));
+
+    // An add between siblings: C at index 1 under A.
+    let base = ok(&mut app, "bevy-ts/level_list", None)["levels"][0]["hash"].clone();
+    let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": base, "ops": [{ "op": "restore", "parent": ["A"], "index": 1, "text": "#C\nTransform" }] })));
+    assert_eq!(w["status"], "written", "{w}");
+    let ms = watch_until_settled(&mut app);
+    ms.iter().for_each(validate_tsx);
+    let t = tree(&mut app);
+    let c = id(&t, &["A", "C"]);
+    let added: Vec<Value> = ms.iter().flat_map(|m| m["added"].as_array().cloned().unwrap_or_default()).collect();
+    assert!(added.iter().any(|r| r["node"] == c && r["parent"] == a), "{ms:?}");
+    assert!(lists(&ms).contains(&json!({ "root": level, "parent": a, "children": [a1, c, a2] })), "{ms:?}");
+    ms.iter().for_each(|m| client.apply(m));
+    assert_eq!(client, Client::from_roots(&t["roots"]));
+
+    // A reparent: a2 from A to B.
+    let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": w["hash"], "ops": [{ "op": "reparent", "path": ["A", "a2"], "parent": ["B"] }] })));
+    assert_eq!(w["status"], "written", "{w}");
+    let ms = watch_until_settled(&mut app);
+    ms.iter().for_each(validate_tsx);
+    let t = tree(&mut app);
+    let parents: Vec<Value> = lists(&ms).iter().map(|l| l["parent"].clone()).collect();
+    assert!(parents.contains(&a) && parents.contains(&b), "{ms:?}");
+    ms.iter().for_each(|m| client.apply(m));
+    assert_eq!(client, Client::from_roots(&t["roots"]));
+    assert_eq!(row(&t, level, &["B", "a2"])["parent"], b);
+
+    // Removing a parent: its whole subtree is removed, and its list is not sent.
+    let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": w["hash"], "ops": [{ "op": "delete", "path": ["A"] }] })));
+    assert_eq!(w["status"], "written", "{w}");
+    let ms = watch_until_settled(&mut app);
+    ms.iter().for_each(validate_tsx);
+    let removed: Vec<Value> = ms.iter().flat_map(|m| m["removed"].as_array().cloned().unwrap_or_default()).collect();
+    for n in [&a, &a1, &c] {
+        assert!(removed.contains(n), "{n} not removed: {ms:?}");
+    }
+    assert!(lists(&ms).iter().all(|l| l["parent"] != a), "{ms:?}");
+    ms.iter().for_each(|m| client.apply(m));
+    assert_eq!(client, Client::from_roots(&tree(&mut app)["roots"]));
 }

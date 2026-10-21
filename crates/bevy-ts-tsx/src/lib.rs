@@ -262,7 +262,8 @@ pub fn reconcile_external(world: &mut World, name: &str, location: Option<bevy_t
 }
 
 /// Moves every node of `root` under key path `from` to `to`, keeping its entity and state: a
-/// rename the next reconcile then finds in place (levels' writer `rename`). Returns how many
+/// rename the next reconcile then finds in place (levels' writer `rename`). The watch sees the old
+/// ids removed and the new ones added, and the old and new sibling lists changed. Returns how many
 /// nodes moved; none when `to` is taken.
 pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> usize {
     let moves: Vec<(Entity, u64, Vec<String>)> = {
@@ -280,6 +281,10 @@ pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> u
     if moves.iter().any(|(_, _, p)| tree.entities.contains_key(&desc::node_id(root, p)) && !moves.iter().any(|(_, old, _)| *old == desc::node_id(root, p))) {
         return 0;
     }
+    if moves.is_empty() {
+        return 0;
+    }
+    let from_list = (root.to_string(), tree.parent_row(root, from));
     let mut ids = std::collections::HashMap::new();
     if moves.iter().any(|(_, _, p)| p == to) {
         world.resource_mut::<TsxTree>().moved.insert(desc::node_id(root, to), root.to_string());
@@ -303,7 +308,15 @@ pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> u
     }
     if let Some(state) = tree.roots.get_mut(root) {
         state.nodes = state.nodes.iter().map(|id| ids.get(id).copied().unwrap_or(*id)).collect();
+        for old in ids.keys().filter(|old| !ids.values().any(|new| new == *old)) {
+            state.order.remove(old);
+        }
     }
+    let to_list = (root.to_string(), tree.parent_row(root, to));
+    let journal = &mut tree.journal.open;
+    journal.removed.extend(ids.keys().filter(|old| !ids.values().any(|new| new == *old)));
+    journal.added.extend(ids.values().filter(|new| !ids.contains_key(new)));
+    journal.ordered.extend([from_list, to_list]);
     for t in tree.reactive.targets.values_mut() {
         if let Some(n) = ids.get(&t.node) {
             t.node = *n;

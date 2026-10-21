@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.12.1",
+    "version": "1.15.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
@@ -2212,6 +2212,21 @@
                 "description": "Written in that file, rather than coming from a prefab, an included level or the scene's TSX."
               }
             }
+          },
+          "root": {
+            "description": "(1.15) The root the node is in.",
+            "type": "string"
+          },
+          "parent": {
+            "description": "(1.15) The node id of the nearest ancestor row, or null at the root's top. Slot steps (`<Show>`, `<For>`) are in the key path but are not rows.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TsxNodeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -2470,7 +2485,7 @@
         }
       },
       "TsxTreeWatchMessage": {
-        "description": "The first message carries `snapshot`; later ones carry one reconcile's changes: nodes added, removed, tombstoned, whose source moved, and whose values tsx wrote. A gap in `seq` means resubscribe.",
+        "description": "The first message carries `snapshot`; later ones carry one reconcile's changes: nodes added, removed, tombstoned, whose source moved, whose values tsx wrote, and sibling lists whose order changed. A client that applies `added` and `removed`, then replaces each `ordered` parent's children with `children`, holds the tree `tsx_tree` returns. A gap in `seq` means resubscribe.",
         "type": "object",
         "required": [
           "seq"
@@ -2498,7 +2513,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TsxNodeId"
-            }
+            },
+            "description": "Every node gone, its whole subtree included (1.15)."
           },
           "tombstoned": {
             "type": "array",
@@ -2513,6 +2529,45 @@
             }
           },
           "written": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxNodeId"
+            }
+          },
+          "ordered": {
+            "description": "(1.15) Each sibling list that gained a child, lost one or changed order since the last message, with its full order as `tsx_tree` gives it. A list whose parent was removed is not sent.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TsxOrdered"
+            }
+          }
+        }
+      },
+      "TsxOrdered": {
+        "description": "One sibling list's full child order.",
+        "type": "object",
+        "required": [
+          "root",
+          "parent",
+          "children"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "parent": {
+            "description": "The list's parent row, or null for the root's top.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TsxNodeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "children": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TsxNodeId"

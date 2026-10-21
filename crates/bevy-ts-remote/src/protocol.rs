@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.12.1";
+pub const VERSION: &str = "1.15.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -4173,6 +4173,16 @@ pub struct TsxNodeResult {
     pub source: ::std::vec::Vec<SourceLocation>,
     pub types: ::std::vec::Vec<::std::string::String>,
 }
+///One sibling list's full child order.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxOrdered {
+    pub children: ::std::vec::Vec<TsxNodeId>,
+    ///The list's parent row, or null for the root's top.
+    #[serde(deserialize_with = "::std::option::Option::deserialize")]
+    pub parent: ::std::option::Option<TsxNodeId>,
+    pub root: ::std::string::String,
+}
 ///How a field got its value: `controlled` (`f`), `initial` (`initialF`), `default` (neither), `bound` (`f={() => ...}`), `override` (set by a level file).
 #[derive(
     ::serde::Deserialize,
@@ -4263,6 +4273,12 @@ pub struct TsxTreeNode {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub level: ::std::option::Option<TsxTreeNodeLevel>,
     pub node: TsxNodeId,
+    ///(1.15) The node id of the nearest ancestor row, or null at the root's top. Slot steps (`<Show>`, `<For>`) are in the key path but are not rows.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub parent: ::std::option::Option<TsxNodeId>,
+    ///(1.15) The root the node is in.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub root: ::std::option::Option<::std::string::String>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub source: ::std::option::Option<SourceLocation>,
     ///Despawned by something other than tsx; not respawned until a restart or a key change.
@@ -4289,7 +4305,7 @@ pub struct TsxTreeResult {
     pub roots: ::std::vec::Vec<TsxRoot>,
     pub seq: u64,
 }
-///The first message carries `snapshot`; later ones carry one reconcile's changes: nodes added, removed, tombstoned, whose source moved, and whose values tsx wrote. A gap in `seq` means resubscribe.
+///The first message carries `snapshot`; later ones carry one reconcile's changes: nodes added, removed, tombstoned, whose source moved, whose values tsx wrote, and sibling lists whose order changed. A client that applies `added` and `removed`, then replaces each `ordered` parent's children with `children`, holds the tree `tsx_tree` returns. A gap in `seq` means resubscribe.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct TsxTreeWatchMessage {
@@ -4297,6 +4313,10 @@ pub struct TsxTreeWatchMessage {
     pub added: ::std::vec::Vec<TsxTreeNode>,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub moved: ::std::vec::Vec<TsxMoved>,
+    ///(1.15) Each sibling list that gained a child, lost one or changed order since the last message, with its full order as `tsx_tree` gives it. A list whose parent was removed is not sent.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub ordered: ::std::vec::Vec<TsxOrdered>,
+    ///Every node gone, its whole subtree included (1.15).
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub removed: ::std::vec::Vec<TsxNodeId>,
     pub seq: u64,
