@@ -23,10 +23,12 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
 ```
 
 - `params` take `f32`, `i32`, `u32`, `vec2f`, `vec3f`, `vec4f`, `mat4x4f`, `color` (linear RGBA,
-  written as `"#f80"` or sRGB `[r, g, b, a?]`) and `array(of, len)`. Unset params are zero; colors
-  are white.
+  written as `"#f80"` or sRGB `[r, g, b, a?]`) and `array(of, len)`. Unset params are zero;
+  colors, and the elements of a color array, are white.
 - `textures: { noise: texture2d }` adds a 2D texture and a filtering sampler; the prop is an asset
-  path (`noise="textures/noise.png"`). Unset, it binds a white fallback.
+  path (`noise="textures/noise.png"`). Unset, it binds a white fallback. A texture's name must be a
+  WGSL identifier that no param, `params` or another texture's `<name>_sampler` uses; otherwise the
+  load fails at the `material()` call.
 - `fragment` (required) and `vertex` are `.wgsl` imports, resolved relative to the importing file
   and watched. A WGSL string is rejected. `alphaMode` is `"opaque"` (default), `"blend"`,
   `"premultiplied"`, `"add"`, `"multiply"`, `"alphaToCoverage"` or `{ mask: 0.5 }`.
@@ -64,7 +66,10 @@ layout is separate from components, which keep C rules.
 - Saving a `.wgsl` file replaces the shader of every material that names it, in place. No JS runs
   and no generation starts.
 - A changed params schema rebuilds the kind and re-encodes every instance by param name, as
-  components migrate by field name. A param that is gone is dropped, with a warning.
+  components migrate by field name. A param that is gone is dropped, with a warning. If the
+  shaders no longer check out under the new schema (a renamed param the file still reads), the
+  kind keeps drawing as it was and the error is reported; saving the fixed `.wgsl` then applies
+  the new schema with no TS change.
 - Before a save replaces a shader that draws, bevy-ts checks it: it compiles the file with
   Bevy's modules and the shader defs the live pipeline uses, then validates it with naga. An error
   names the material and your `file:line:col`, and the previous shader keeps drawing. An error in

@@ -131,12 +131,7 @@ impl Files {
         if let Some(d) = self.seen.get(file) {
             return d.clone();
         }
-        let path = file.strip_prefix("file://").unwrap_or(file);
-        let path = path.split('?').next().unwrap_or(path);
-        let shown = match self.cwd.as_ref().and_then(|cwd| std::path::Path::new(path).strip_prefix(cwd).ok()) {
-            Some(rel) => rel.display().to_string(),
-            None => path.to_string(),
-        };
+        let shown = bevy_ts::backend::display_file(file, self.cwd.as_deref());
         self.seen.insert(file.to_string(), shown.clone());
         shown
     }

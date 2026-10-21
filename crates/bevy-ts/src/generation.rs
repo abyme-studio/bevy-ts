@@ -310,7 +310,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: M
     // Plugin sections, with the pending components already resolvable.
     for s in &sections {
         let Some(handler) = handlers.0.get(&s.name).cloned() else { continue };
-        let input = SectionInput { generation: number, bytes: &s.bytes, location: s.location.clone(), components: &pending };
+        let input = SectionInput { generation: number, bytes: &s.bytes, location: s.location.clone(), components: &pending, sections: &sections };
         if let Err(errors) = handler(world, &input) {
             components::abandon(world, pending);
             restore(world, old_payloads);

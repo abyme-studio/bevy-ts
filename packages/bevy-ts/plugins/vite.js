@@ -8,9 +8,9 @@ export default function bevyTs() {
     enforce: "pre",
     // A `.wgsl` import is a shader-file value, as in the engine; the WGSL is not loaded.
     load(id) {
-      const file = id.split("?")[0];
-      if (!file.endsWith(".wgsl")) return null;
-      return `export default Object.freeze({ kind: "shaderFile", path: ${JSON.stringify(file)} });\n`;
+      // `./x.wgsl?raw` and `?url` keep Vite's own meaning.
+      if (!id.endsWith(".wgsl")) return null;
+      return `export default Object.freeze({ kind: "shaderFile", path: ${JSON.stringify(id)} });\n`;
     },
     transform(code, id) {
       const file = id.split("?")[0];

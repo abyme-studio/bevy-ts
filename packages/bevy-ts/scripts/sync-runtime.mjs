@@ -14,7 +14,6 @@ const files = [
 ];
 let stale = [];
 for (const [from, to] of files) {
-  const f = to;
   const src = readFileSync(here(`../../../crates/${from}`), "utf8");
   const out = `// @generated from crates/${from} by scripts/sync-runtime.mjs. Do not edit.\n${src}`;
   const dest = here(`../${to}`);
@@ -23,7 +22,7 @@ for (const [from, to] of files) {
     cur = readFileSync(dest, "utf8");
   } catch {}
   if (cur !== out) {
-    if (process.argv.includes("--check")) stale.push(f);
+    if (process.argv.includes("--check")) stale.push(to);
     else writeFileSync(dest, out);
   }
 }

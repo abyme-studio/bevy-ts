@@ -156,14 +156,17 @@ impl ParamsLayout {
         self.fields.iter().find(|f| f.name == name)
     }
 
-    /// Default bytes: zeros, with colors white.
+    /// Default bytes: zeros, with colors (and color array elements) white.
     pub fn defaults(&self) -> Vec<u8> {
         let mut bytes = vec![0u8; self.size];
+        let white = |bytes: &mut Vec<u8>, at: usize| (0..4).for_each(|i| put(bytes, at + 4 * i, 1f32.to_le_bytes()));
         for f in &self.fields {
-            if f.ty == ParamType::Base(Base::Color) {
-                for i in 0..4 {
-                    put(&mut bytes, f.offset + 4 * i, 1f32.to_le_bytes());
+            match &f.ty {
+                ParamType::Base(Base::Color) => white(&mut bytes, f.offset),
+                ParamType::Array { array: Base::Color, len } => {
+                    (0..*len as usize).for_each(|i| white(&mut bytes, f.offset + i * ParamType::stride(Base::Color)));
                 }
+                _ => {}
             }
         }
         bytes
@@ -261,6 +264,27 @@ pub struct Bindings {
 }
 
 impl Bindings {
+    /// Lays out `params` and checks `textures` against them: every name a WGSL identifier, and no
+    /// two generated declarations (`params`, each texture and its `<name>_sampler`) the same.
+    pub fn new<'a>(material: &str, params: impl IntoIterator<Item = (&'a str, &'a ParamType)>, textures: &[String]) -> Result<Self, String> {
+        let params = ParamsLayout::new(params)?;
+        let mut names = std::collections::HashSet::from(["params".to_string()]);
+        for t in textures {
+            if !is_ident(t) {
+                return Err(format!("texture {t:?} is not a WGSL identifier"));
+            }
+            if params.field(t).is_some() {
+                return Err(format!("{t} is both a param and a texture"));
+            }
+            for n in [t.clone(), format!("{t}_sampler")] {
+                if !names.insert(n.clone()) {
+                    return Err(format!("texture {t} declares {n}, which another declaration already uses"));
+                }
+            }
+        }
+        Ok(Bindings { struct_name: struct_name(material), params, textures: textures.to_vec() })
+    }
+
     pub fn params_binding(&self) -> Option<u32> {
         (!self.params.fields.is_empty()).then_some(0)
     }
@@ -371,6 +395,26 @@ mod tests {
         assert!(l.encode("w", &json!([1.5, 2]), &mut b).unwrap_err().contains("integer"));
         assert!(l.encode("pulse", &json!("x"), &mut b).is_err());
         assert!(l.encode("speed", &json!(1), &mut b).unwrap_err().contains("no param speed"));
+    }
+
+    #[test]
+    fn color_array_elements_default_white_like_a_color() {
+        let l = layout(&[("c", B(Color)), ("cs", ParamType::Array { array: Color, len: 2 })]);
+        let b = l.defaults();
+        let at = |o: usize| f32::from_le_bytes(b[o..o + 4].try_into().unwrap());
+        assert_eq!([at(0), at(12)], [1.0, 1.0]);
+        assert_eq!([at(16), at(28), at(32), at(44)], [1.0, 1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn texture_names_are_identifiers_that_do_not_clash() {
+        let p = [("pulse", B(F32))];
+        let new = |t: &[&str]| Bindings::new("game::Glow", p.iter().map(|(n, t)| (*n, t)), &t.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert!(new(&["noise"]).is_ok());
+        assert!(new(&["noise-map"]).unwrap_err().contains("not a WGSL identifier"));
+        assert!(new(&["params"]).unwrap_err().contains("params"));
+        assert!(new(&["pulse"]).unwrap_err().contains("both a param and a texture"));
+        assert!(new(&["a", "a_sampler"]).unwrap_err().contains("a_sampler"));
     }
 
     #[test]

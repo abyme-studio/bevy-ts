@@ -107,36 +107,3 @@ fn two_layouts_behind_one_allocator() {
     panic!("left and right pixels never became red and green: {last:?}");
 }
 
-/// Scratch: what the pipeline cache reports for a type error on the author's line 6.
-#[test]
-#[ignore]
-fn scratch_broken_shader_error() {
-    let mut app = App::new();
-    app.add_plugins(
-        DefaultPlugins
-            .build()
-            .disable::<WinitPlugin>()
-            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }),
-    )
-    .add_plugins(ScriptMaterialRenderPlugin);
-    app.finish();
-    app.cleanup();
-    let world = app.world_mut();
-    let k = kind(
-        world,
-        "spike::Broken",
-        &[("color", ParamType::Base(Base::Color))],
-        &[],
-        "@fragment\nfn fragment(in: VertexOutput) -> @location(0) vec4<f32> {\n    let a = 1.0;\n    let b: u32 = a;\n    return params.speed;\n}",
-    );
-    let a = world.resource_mut::<Assets<ScriptMaterial>>().add(instance(&k, json!({})));
-    let mut target = Image::new_target_texture(W, H, TextureFormat::Rgba8UnormSrgb, None);
-    target.asset_usage = bevy::asset::RenderAssetUsages::default();
-    let target = world.resource_mut::<Assets<Image>>().add(target);
-    let cube = world.resource_mut::<Assets<Mesh>>().add(Cuboid::new(1.5, 1.5, 1.5));
-    world.spawn((Camera3d::default(), RenderTarget::Image(target.into()), Transform::from_xyz(0.0, 0.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y)));
-    world.spawn((Mesh3d(cube), ScriptMaterial3d(a)));
-    for _ in 0..120 {
-        app.update();
-    }
-}

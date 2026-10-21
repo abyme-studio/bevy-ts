@@ -46,6 +46,17 @@ impl fmt::Display for SourceLocation {
     }
 }
 
+/// A file as errors and the protocol show it: relative to `cwd` when under it, never a `file://`
+/// URL or a generation tag (`?gen=3`).
+pub fn display_file(file: &str, cwd: Option<&std::path::Path>) -> String {
+    let path = file.strip_prefix("file://").unwrap_or(file);
+    let path = path.split('?').next().unwrap_or(path);
+    match cwd.and_then(|cwd| std::path::Path::new(path).strip_prefix(cwd).ok()) {
+        Some(rel) => rel.display().to_string(),
+        None => path.to_string(),
+    }
+}
+
 /// An error from compiling, loading, declaring or running TS, located in TS source when known.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScriptError {

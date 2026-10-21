@@ -67,17 +67,22 @@ pub(crate) fn uses_assets(nodes: &[desc::NodeDesc]) -> Option<Option<bevy_ts::ba
     None
 }
 
-/// Every `<material kind>` against the kinds the generation declares (its `materials` section is
-/// checked first: `material()` runs before the scenes are described).
-fn check_script_materials(world: &World, generation: u64, nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
+/// Every `<material kind>` against the kinds the generation declares. Bound props are left to
+/// `resolve`, which fails them on their own.
+fn check_script_materials(plugin: bool, decls: &std::collections::BTreeMap<String, bevy_ts_material::kinds::MaterialDecl>, nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
     for n in nodes {
         for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::MATERIAL && c.props.contains_key("kind")) {
-            let Ok((kind, props)) = resolve::script_material(c) else { continue };
-            if let Err(m) = bevy_ts_material::kinds::check_props(world, Some(generation), &kind, &props) {
+            let Ok((kind, mut props)) = resolve::script_material(c) else { continue };
+            if !plugin {
+                errors.push(ScriptError::at("<material kind>: script materials need ScriptMaterialPlugin", c.source.clone()));
+                continue;
+            }
+            props.retain(|_, v| desc::binding_id(v).is_none());
+            if let Err(m) = bevy_ts_material::kinds::check_props(decls, &kind, &props) {
                 errors.push(ScriptError::at(format!("<material>: {m}"), c.source.clone()));
             }
         }
-        check_script_materials(world, generation, &n.children, errors);
+        check_script_materials(plugin, decls, &n.children, errors);
     }
 }
 
@@ -104,8 +109,16 @@ fn check_inner(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> 
     {
         errors.push(ScriptError::at("<mesh> and <material> need the render plugins (no Assets<Mesh>)", at));
     }
-    for r in &overlaid.roots {
-        check_script_materials(world, input.generation, &r.nodes, &mut errors);
+    // The generation's kinds, read from its own `materials` section: sections are checked in the
+    // order JS wrote them, and a scene may run before the first `material()`.
+    match bevy_ts_material::kinds::section_decls(input.sections) {
+        Ok(decls) => {
+            let plugin = world.contains_resource::<bevy_ts_material::MaterialKinds>();
+            for r in &overlaid.roots {
+                check_script_materials(plugin, &decls, &r.nodes, &mut errors);
+            }
+        }
+        Err(e) => errors.push(ScriptError::new(e)),
     }
     if !errors.is_empty() {
         return Err(errors);

@@ -113,11 +113,36 @@ fn a_type_error_names_the_authors_line_and_the_old_shader_stays() {
     let m = error_at(&app, 12);
     assert!(m.contains("previous shader keeps drawing"), "{m}");
     assert_eq!(fragment(&app), before, "the shader asset is untouched");
-    // Fixed again: replaced, no error.
+    // Fixed again: replaced, and no error, not even a stale one from the renderer.
     let n = errors(&app).len();
     save_wgsl(&mut app, &dir, &WGSL.replace("0.25", "0.5"));
+    updates(&mut app, 120);
     assert_eq!(errors(&app).len(), n, "{:?}", errors(&app));
     assert!(fragment(&app).1.unwrap().contains("const FLOOR: f32 = 0.5;"));
+}
+
+#[test]
+fn a_rejected_schema_change_is_retried_when_the_wgsl_is_fixed() {
+    let (dir, mut app) = setup("material-errors-retry");
+    let before = fragment(&app);
+    // pulse renamed to speed in TS while glow.wgsl still reads params.pulse: rejected, kept.
+    write(&dir, "game.tsx", &game("color: color, speed: f32").replace("pulse={2}", "speed={3}"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let m = error_at(&app, 9);
+    assert!(m.contains("previous material keeps drawing"), "{m}");
+    assert_eq!(fragment(&app), before);
+    // The shader fixed, with no TS touched: the newer schema applies.
+    save_wgsl(&mut app, &dir, &WGSL.replace("params.pulse", "params.speed"));
+    let kinds = app.world().resource::<MaterialKinds>();
+    let k = &kinds.live["game::Glow"];
+    assert!(k.wanted.is_none(), "applied");
+    assert!(k.decl.params.iter().any(|p| p.name == "speed"));
+    assert!(fragment(&app).1.unwrap().contains("    speed: f32,\n"));
+    let world = app.world_mut();
+    let h = world.query::<&bevy_ts_material::ScriptMaterial3d>().single(world).unwrap().0.clone();
+    let m = app.world().resource::<Assets<bevy_ts_material::ScriptMaterial>>().get(&h).unwrap();
+    assert_eq!(f32::from_le_bytes(m.data[16..20].try_into().unwrap()), 3.0, "speed re-encoded from the props");
 }
 
 #[test]

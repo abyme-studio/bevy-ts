@@ -3,7 +3,7 @@
 //! kind gets its shaders rebuilt in place and its instances re-encoded by param name. A saved
 //! `.wgsl` file replaces its shaders in place with no generation at all.
 
-use crate::layout::{Bindings, ParamType, ParamsLayout, struct_name};
+use crate::layout::{Bindings, ParamType};
 use crate::render::{Kind, ScriptMaterial};
 use crate::wgsl;
 use bevy::prelude::*;
@@ -50,8 +50,7 @@ pub struct MaterialDecl {
 
 impl MaterialDecl {
     pub fn bindings(&self) -> Result<Bindings, String> {
-        let params = ParamsLayout::new(self.params.iter().map(|p| (p.name.as_str(), &p.ty)))?;
-        Ok(Bindings { struct_name: struct_name(&self.name), params, textures: self.textures.clone() })
+        Bindings::new(&self.name, self.params.iter().map(|p| (p.name.as_str(), &p.ty)), &self.textures)
     }
 
     pub fn alpha_mode(&self) -> Result<AlphaMode, String> {
@@ -72,7 +71,7 @@ impl MaterialDecl {
     /// The material's location, file shown relative to the working directory.
     pub fn at(&self) -> Option<SourceLocation> {
         self.location.clone().map(|mut l| {
-            l.file = display(Path::new(l.file.strip_prefix("file://").unwrap_or(&l.file)));
+            l.file = display_file(&l.file);
             l
         })
     }
@@ -83,17 +82,28 @@ struct Section {
     items: Vec<MaterialDecl>,
 }
 
+/// A file as errors show it: relative to the working directory when under it.
+pub fn display_file(file: &str) -> String {
+    bevy_ts::backend::display_file(file, std::env::current_dir().ok().as_deref())
+}
+
 pub fn display(path: &Path) -> String {
-    match std::env::current_dir().ok().and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf)) {
-        Some(p) => p.display().to_string(),
-        None => path.display().to_string(),
-    }
+    display_file(&path.to_string_lossy())
+}
+
+/// The kinds a generation declares, read from its `materials` section (none when it wrote none).
+pub fn section_decls(sections: &[bevy_ts::manifest::Section]) -> Result<BTreeMap<String, MaterialDecl>, String> {
+    let Some(s) = sections.iter().find(|s| s.name == SECTION) else { return Ok(BTreeMap::new()) };
+    let section: Section = serde_json::from_slice(&s.bytes).map_err(|e| format!("materials section: {e}"))?;
+    Ok(section.items.into_iter().map(|d| (d.name.clone(), d)).collect())
 }
 
 /// One shader stage of a kind: its file, the shader asset every instance draws with (replaced in
 /// place on change), and the last source that compiled.
 #[derive(Debug)]
 pub struct Stage {
+    /// `fragment` or `vertex`.
+    pub label: &'static str,
     pub file: PathBuf,
     pub handle: Handle<Shader>,
     /// The combined source the asset holds now; `None` until one compiles.
@@ -103,6 +113,9 @@ pub struct Stage {
 /// One live kind.
 pub struct KindState {
     pub decl: MaterialDecl,
+    /// A newer declaration whose shaders did not check out: the kind keeps drawing as `decl`, and
+    /// a later `.wgsl` save retries this one.
+    pub wanted: Option<MaterialDecl>,
     pub kind: Arc<Kind>,
     pub fragment: Stage,
     pub vertex: Option<Stage>,
@@ -110,24 +123,14 @@ pub struct KindState {
     pub instances: BTreeMap<String, (Handle<ScriptMaterial>, Map<String, Value>)>,
 }
 
-/// Every live kind, and the kinds the generation being checked declares.
+/// Every live kind, and the kinds the generation being applied declares.
 #[derive(Resource, Default)]
 pub struct MaterialKinds {
     pub live: BTreeMap<String, KindState>,
-    /// Set by the section's check, so `<material kind>` checks against the generation's kinds.
+    /// Set by the section's check for its apply step.
     pub pending: Option<(u64, BTreeMap<String, MaterialDecl>)>,
     /// Shader assets made, for tests.
     pub shaders_built: usize,
-}
-
-impl MaterialKinds {
-    /// A kind's declaration, as the generation being checked declares it, else as live.
-    pub fn decl(&self, generation: Option<u64>, name: &str) -> Option<&MaterialDecl> {
-        match (&self.pending, generation) {
-            (Some((g, decls)), Some(n)) if *g == n => decls.get(name),
-            _ => self.live.get(name).map(|k| &k.decl),
-        }
-    }
 }
 
 /// The section's check: every declaration parses and lays out. WGSL problems do not fail a
@@ -168,6 +171,7 @@ pub fn apply(world: &mut World, generation: u64, present: bool) {
         match kinds.remove(&name) {
             Some(mut k) if k.decl == decl => {
                 // Same declaration: the files may still have changed since the last generation.
+                k.wanted = None;
                 refresh_stage(world, generation, &k.decl, &k.kind.bindings, &mut k.fragment);
                 if let Some(v) = &mut k.vertex {
                     refresh_stage(world, generation, &k.decl, &k.kind.bindings, v);
@@ -187,10 +191,10 @@ pub fn apply(world: &mut World, generation: u64, present: bool) {
     world.resource_mut::<MaterialKinds>().live = kinds;
 }
 
-fn new_stage(world: &mut World, file: &Path) -> Stage {
+fn new_stage(world: &mut World, label: &'static str, file: &Path) -> Stage {
     // An empty placeholder until a source compiles: materials of the kind draw nothing.
     let handle = world.resource_mut::<Assets<Shader>>().reserve_handle();
-    Stage { file: file.to_path_buf(), handle, source: None }
+    Stage { label, file: file.to_path_buf(), handle, source: None }
 }
 
 /// A kind built from `decl`, reusing the shader assets of `old` (replaced in place) and
@@ -206,11 +210,13 @@ fn rebuild(world: &mut World, generation: u64, decl: MaterialDecl, old: Option<K
         for e in errors {
             log.push(LogLevel::Error, format!("{}; the previous material keeps drawing", e.message), e.location, generation);
         }
-        return old.expect("checked");
+        let mut old = old.expect("checked");
+        old.wanted = Some(decl);
+        return old;
     }
     let (mut fragment, mut vertex, instances) = match old {
         Some(o) => (o.fragment, o.vertex, o.instances),
-        None => (new_stage(world, &decl.fragment), None, BTreeMap::new()),
+        None => (new_stage(world, "fragment", &decl.fragment), None, BTreeMap::new()),
     };
     fragment.file = decl.fragment.clone();
     vertex = match (&decl.vertex, vertex) {
@@ -218,7 +224,7 @@ fn rebuild(world: &mut World, generation: u64, decl: MaterialDecl, old: Option<K
             v.file = f.clone();
             Some(v)
         }
-        (Some(f), None) => Some(new_stage(world, f)),
+        (Some(f), None) => Some(new_stage(world, "vertex", f)),
         (None, _) => None,
     };
     refresh_stage(world, generation, &decl, &bindings, &mut fragment);
@@ -226,7 +232,7 @@ fn rebuild(world: &mut World, generation: u64, decl: MaterialDecl, old: Option<K
         refresh_stage(world, generation, &decl, &bindings, v);
     }
     let kind = Arc::new(Kind::new(&decl.name, bindings, Some(fragment.handle.clone()), vertex.as_ref().map(|v| v.handle.clone()), alpha));
-    let mut state = KindState { decl, kind, fragment, vertex, instances };
+    let mut state = KindState { decl, wanted: None, kind, fragment, vertex, instances };
     let keys: Vec<String> = state.instances.keys().cloned().collect();
     for key in keys {
         let (handle, props) = state.instances[&key].clone();
@@ -250,70 +256,74 @@ fn rebuild(world: &mut World, generation: u64, decl: MaterialDecl, old: Option<K
 
 /// Checks a changed kind's stages under the defs they draw with, before anything is replaced.
 fn precheck(world: &World, decl: &MaterialDecl, bindings: &Bindings, old: &KindState) -> Result<(), Vec<ScriptError>> {
-    let watch = world.resource::<wgsl::PipelineWatch>().0.lock().unwrap();
     let mut errors = Vec::new();
     let stages = [(Some(&decl.fragment), Some(&old.fragment)), (decl.vertex.as_ref(), old.vertex.as_ref())];
     for (file, stage) in stages {
         let (Some(file), Some(stage)) = (file, stage) else { continue };
-        let (Some(defs), Some(_)) = (watch.defs.get(&stage.handle.id()), &stage.source) else { continue };
-        let Ok(text) = std::fs::read_to_string(file) else { continue };
-        let combined = wgsl::combine(&text, bindings, &decl.name);
-        if let wgsl::Checked::Errors(e) = wgsl::check(world.resource::<Assets<Shader>>(), &combined, file, decl, defs) {
+        if let Err(e) = next_source(world, decl, bindings, stage, file) {
             errors.extend(e);
         }
     }
     if errors.is_empty() { Ok(()) } else { Err(errors) }
 }
 
-/// Reads a stage's file and, if its combined source differs from what the asset holds, checks it
-/// and replaces the asset in place. On an error the old shader stays.
-fn refresh_stage(world: &mut World, generation: u64, decl: &MaterialDecl, bindings: &Bindings, stage: &mut Stage) {
-    let text = match std::fs::read_to_string(&stage.file) {
-        Ok(t) => t,
-        Err(e) => {
-            let msg = format!("material {}: cannot read {}: {e}", decl.name, display(&stage.file));
-            world.resource_mut::<ScriptLog>().push(LogLevel::Error, msg, decl.at(), generation);
-            return;
-        }
-    };
+/// The combined source `file` gives a stage under `bindings`, checked: `None` when it is what the
+/// stage already holds. A stage that draws is checked under the defs it draws with; one that does
+/// not has nothing to keep, so it is not checked here and the renderer's errors are mapped instead.
+fn next_source(world: &World, decl: &MaterialDecl, bindings: &Bindings, stage: &Stage, file: &Path) -> Result<Option<String>, Vec<ScriptError>> {
+    let text = std::fs::read_to_string(file)
+        .map_err(|e| vec![ScriptError::at(format!("material {}: cannot read {}: {e}", decl.name, display(file)), decl.at())])?;
     let combined = wgsl::combine(&text, bindings, &decl.name);
     if stage.source.as_deref() == Some(combined.as_str()) {
-        return;
+        return Ok(None);
     }
-    // A shader that draws is kept until its replacement checks out under the defs it draws with.
-    // With none drawing yet there is nothing to keep; the renderer's errors are mapped instead.
-    let watch = world.resource::<wgsl::PipelineWatch>().clone();
-    let defs = watch.0.lock().unwrap().defs.get(&stage.handle.id()).cloned();
+    // Cloned out, so the render world's per-frame watch never waits on a check.
+    let defs = world.resource::<wgsl::PipelineWatch>().0.lock().unwrap().defs.get(&stage.handle.id()).cloned();
     if let (Some(defs), Some(_)) = (defs, &stage.source) {
-        match wgsl::check(world.resource::<Assets<Shader>>(), &combined, &stage.file, decl, &defs) {
-            wgsl::Checked::Errors(errors) => {
-                let mut log = world.resource_mut::<ScriptLog>();
-                for e in errors {
-                    log.push(LogLevel::Error, format!("{}; the previous shader keeps drawing", e.message), e.location, generation);
-                }
-                return;
-            }
+        match wgsl::check(world.resource::<Assets<Shader>>(), &combined, file, decl, &defs) {
+            wgsl::Checked::Errors(errors) => return Err(errors),
             wgsl::Checked::Unverified(why) => debug!("material {}: not checked before replacing its shader: {why}", decl.name),
             wgsl::Checked::Ok => {}
         }
     }
-    let _ = text;
-    {
-        let mut w = watch.0.lock().unwrap();
-        w.ours.insert(stage.handle.id());
-        w.replaced(stage.handle.id());
-    }
-    let path = format!("bevy_ts/materials/{}.wesl", shader_path(&decl.name, &stage.file));
+    Ok(Some(combined))
+}
+
+/// Reads a stage's file and, if its combined source differs from what the asset holds, checks it
+/// and replaces the asset in place. On an error the old shader stays.
+fn refresh_stage(world: &mut World, generation: u64, decl: &MaterialDecl, bindings: &Bindings, stage: &mut Stage) {
+    let combined = match next_source(world, decl, bindings, stage, &stage.file) {
+        Ok(Some(c)) => c,
+        Ok(None) => return,
+        Err(errors) => {
+            let keeps = stage.source.is_some();
+            let mut log = world.resource_mut::<ScriptLog>();
+            for e in errors {
+                let m = if keeps { format!("{}; the previous shader keeps drawing", e.message) } else { e.message };
+                log.push(LogLevel::Error, m, e.location, generation);
+            }
+            return;
+        }
+    };
+    world.resource::<wgsl::PipelineWatch>().0.lock().unwrap().replaced(stage.handle.id());
+    let path = format!("bevy_ts/materials/{}.wesl", shader_path(&decl.name, stage.label));
     world.resource_mut::<Assets<Shader>>().insert(stage.handle.id(), Shader::from_wesl(combined.clone(), path)).expect("a reserved shader handle");
     world.resource_mut::<MaterialKinds>().shaders_built += 1;
     stage.source = Some(combined);
 }
 
-/// A shader asset's path: the kind and the file stem, as WESL module path segments.
-fn shader_path(kind: &str, file: &Path) -> String {
-    let seg = |s: &str| s.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect::<String>();
-    let stem = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    format!("{}/{}", kind.split("::").map(seg).collect::<Vec<_>>().join("/"), seg(&stem))
+/// A shader asset's path, which Bevy keys shader modules by: the kind, encoded exactly (`[a-z0-9]`
+/// kept, every other byte `_xx` in hex), then the stage.
+fn shader_path(kind: &str, stage: &str) -> String {
+    let mut k = String::from("k");
+    for b in kind.bytes() {
+        if b.is_ascii_lowercase() || b.is_ascii_digit() {
+            k.push(b as char);
+        } else {
+            k.push_str(&format!("_{b:02x}"));
+        }
+    }
+    format!("{k}/{stage}")
 }
 
 /// Main world: pipelines the renderer failed to build for a stage, reported against the author's
@@ -344,11 +354,22 @@ pub fn report_pipeline_errors(world: &mut World) {
     }
 }
 
-/// `.wgsl` files saved with no module changed: every stage naming one is re-read and replaced.
+/// `.wgsl` files saved with no module changed: every stage naming one is re-read and replaced. A
+/// kind waiting on a newer declaration retries it whole.
 pub fn files_changed(world: &mut World, paths: &[PathBuf]) {
     let generation = world.resource::<bevy_ts::generation::Generations>().live;
     let mut kinds = std::mem::take(&mut world.resource_mut::<MaterialKinds>().live);
-    for k in kinds.values_mut() {
+    let names: Vec<String> = kinds.keys().cloned().collect();
+    for name in names {
+        let k = kinds.get(&name).expect("listed");
+        let Some(wanted) = k.wanted.clone() else { continue };
+        let files = [Some(&wanted.fragment), wanted.vertex.as_ref(), Some(&k.fragment.file), k.vertex.as_ref().map(|v| &v.file)];
+        if files.into_iter().flatten().any(|f| paths.contains(f)) {
+            let k = kinds.remove(&name).expect("listed");
+            kinds.insert(name, rebuild(world, generation, wanted, Some(k)));
+        }
+    }
+    for k in kinds.values_mut().filter(|k| k.wanted.is_none()) {
         let bindings = k.kind.bindings.clone();
         if paths.contains(&k.fragment.file) {
             refresh_stage(world, generation, &k.decl, &bindings, &mut k.fragment);
@@ -402,10 +423,10 @@ fn world_textures(world: &World, k: &KindState, props: &Map<String, Value>) -> V
         .collect()
 }
 
-/// Checks `<material kind={K} .../>`'s props against the kind the generation declares.
-pub fn check_props(world: &World, generation: Option<u64>, kind: &str, props: &Map<String, Value>) -> Result<(), String> {
-    let kinds = world.get_resource::<MaterialKinds>().ok_or("script materials need the material plugin")?;
-    let decl = kinds.decl(generation, kind).ok_or_else(|| format!("no material {kind}; declare it with material({kind:?}, ...) from bevy-ts/material"))?;
+/// Checks `<material kind={K} .../>`'s props against the kinds a generation declares
+/// ([`section_decls`]).
+pub fn check_props(decls: &BTreeMap<String, MaterialDecl>, kind: &str, props: &Map<String, Value>) -> Result<(), String> {
+    let decl = decls.get(kind).ok_or_else(|| format!("no material {kind}; declare it with material({kind:?}, ...) from bevy-ts/material"))?;
     let bindings = decl.bindings()?;
     let mut scratch = bindings.params.defaults();
     for (p, v) in props {
@@ -437,4 +458,17 @@ pub fn instance(world: &mut World, kind: &str, props: &Map<String, Value>) -> Op
     let h = world.resource_mut::<Assets<ScriptMaterial>>().add(material);
     world.resource_mut::<MaterialKinds>().live.get_mut(kind)?.instances.insert(key, (h.clone(), props.clone()));
     Some(h)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shader_paths_are_exact_per_kind_and_stage() {
+        assert_eq!(shader_path("game::Glow", "fragment"), "kgame_3a_3a_47low/fragment");
+        assert_ne!(shader_path("game::Glow", "fragment"), shader_path("Game::glow", "fragment"));
+        assert_ne!(shader_path("game::Glow", "fragment"), shader_path("game::Glow", "vertex"));
+        assert_ne!(shader_path("a_b", "fragment"), shader_path("a::b", "fragment"));
+    }
 }

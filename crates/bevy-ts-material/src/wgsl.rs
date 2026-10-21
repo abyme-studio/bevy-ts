@@ -347,11 +347,17 @@ pub struct WatchState {
     pub failed: Vec<(AssetId<Shader>, Vec<ShaderDefVal>, String)>,
     /// Failures already passed on, so each is told once per source.
     seen: HashSet<(AssetId<Shader>, String)>,
+    /// Stages whose pipelines were queued again since their shader was last replaced. Until then
+    /// a failed pipeline is the superseded source's, which pipelined rendering may still show.
+    armed: HashSet<AssetId<Shader>>,
 }
 
 impl WatchState {
-    /// A stage's shader was replaced: its old failures may come back and are told again.
+    /// A stage's shader was replaced: failures of the old source are dropped, and the new source's
+    /// count once its pipelines are queued again.
     pub fn replaced(&mut self, id: AssetId<Shader>) {
+        self.ours.insert(id);
+        self.armed.remove(&id);
         self.seen.retain(|(s, _)| *s != id);
         self.failed.retain(|(s, ..)| *s != id);
     }
@@ -372,14 +378,18 @@ pub fn watch_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>,
                 continue;
             }
             match &p.state {
+                // Defs belong to the pipeline, not the source: any compiled one will do.
                 CachedPipelineState::Ok(_) => {
                     w.defs.insert(id, defs.clone());
                 }
-                CachedPipelineState::Err(e) => {
+                CachedPipelineState::Err(e) if w.armed.contains(&id) => {
                     let msg = e.to_string();
                     if w.seen.insert((id, msg.clone())) {
                         w.failed.push((id, defs.clone(), msg));
                     }
+                }
+                CachedPipelineState::Queued | CachedPipelineState::Creating(_) => {
+                    w.armed.insert(id);
                 }
                 _ => {}
             }

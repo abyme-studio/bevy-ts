@@ -35,10 +35,7 @@ pub fn line_col(source: &str, offset: u32) -> (u32, u32) {
 }
 
 fn display(path: &Path) -> String {
-    match std::env::current_dir().ok().and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf)) {
-        Some(p) => p.display().to_string(),
-        None => path.display().to_string(),
-    }
+    bevy_ts::backend::display_file(&path.to_string_lossy(), std::env::current_dir().ok().as_deref())
 }
 
 fn location(path: &Path, source: &str, span: Span) -> SourceLocation {

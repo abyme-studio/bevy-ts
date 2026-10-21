@@ -127,3 +127,45 @@ fn an_unknown_param_fails_the_scene_at_its_element() {
     assert!(e.message.contains("no param or texture speed") && e.message.contains("pulse"), "{e:?}");
     assert_eq!(e.location.clone().expect("a location").line, 10);
 }
+
+#[test]
+fn a_scene_described_before_the_first_material_still_checks() {
+    // plain.tsx's app.scene runs first, so the `tsx` section is written before `materials`.
+    let plain = "import { app } from \"bevy-ts\";\n\napp.scene(\"plain\", () => <entity name=\"plain\" />);\n";
+    let main = format!("import \"./plain.tsx\";\n{}", game("color: color, pulse: f32", "pulse={2}"));
+    let dir = project("materials-order", &[("plain.tsx", plain), ("game.tsx", &main), ("glow.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let (e, h) = cube(&mut app);
+    // A param added in the same save as its use is accepted.
+    write(&dir, "game.tsx", &format!("import \"./plain.tsx\";\n{}", game("color: color, pulse: f32, speed: f32", "pulse={2} speed={3}")));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let (e2, h2) = cube(&mut app);
+    assert_eq!(e2, e);
+    assert_ne!(h2, h, "new props, a new instance");
+    assert_eq!(f32_at(&app, &h2, 20), 3.0, "speed");
+}
+
+#[test]
+fn a_bound_param_fails_once_with_the_spec_message() {
+    let dir = project("materials-bound", &[("game.tsx", &game("pulse: f32", "pulse={() => 2}")), ("glow.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+    assert!(r.errors[0].message.contains("props cannot be bound yet"), "{:?}", r.errors);
+}
+
+#[test]
+fn a_bad_texture_name_fails_the_load_at_the_material() {
+    let src = "import { app } from \"bevy-ts\";\nimport { f32, material, texture2d } from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n\nexport const Glow = material(\"game::Glow\", { params: { pulse: f32 }, textures: { \"noise-map\": texture2d }, fragment: glow });\n";
+    let dir = project("materials-texture-name", &[("game.ts", src), ("glow.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.ts"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    let e = &r.errors[0];
+    assert!(e.message.contains("game::Glow") && e.message.contains("noise-map"), "{e:?}");
+    assert_eq!(e.location.clone().expect("the material() call").line, 5);
+}

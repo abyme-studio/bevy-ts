@@ -26,6 +26,9 @@ pub struct SectionInput<'a> {
     pub location: Option<SourceLocation>,
     /// The generation's components, already registered.
     pub components: &'a PendingComponents,
+    /// Every section the generation wrote, so a check can read another's without depending on
+    /// the order sections are checked in.
+    pub sections: &'a [crate::manifest::Section],
 }
 
 /// A manifest section handler. Returning errors fails the whole generation.
