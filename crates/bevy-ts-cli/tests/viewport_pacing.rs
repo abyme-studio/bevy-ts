@@ -126,11 +126,14 @@ fn the_arena_in_edit_mode_at_120_hz() {
     let arena = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena");
     assert!(Command::new("cp").args(["-R", arena.to_str().unwrap(), dir.to_str().unwrap()]).status().unwrap().success());
     let bin = std::env::var("BEVY_TS_BINARY").unwrap_or_else(|_| env!("CARGO_BIN_EXE_bevy-ts").to_string());
-    let port = 15900 + (std::process::id() % 40) as u16;
+    // A port the OS says is free: a fixed range collides with other engines, and the bench would
+    // attach to theirs.
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
     let child = Command::new(&bin)
         .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // `PACING_ENGINE_LOG=<file>`: the engine's stderr, to see why a run failed.
+        .stderr(std::env::var("PACING_ENGINE_LOG").map_or_else(|_| Stdio::null(), |f| std::fs::File::create(f).unwrap().into()))
         .spawn()
         .unwrap();
     let pid = child.id();
@@ -166,7 +169,8 @@ fn the_arena_in_edit_mode_at_120_hz() {
     let (mut last, mut frames) = (None, 0);
     let t0 = Instant::now();
     while frames < 10 {
-        frames += pump(&viewer, &mut last, &mut vec![], Duration::from_millis(20));
+        // A short wait: pump returns only at a gap, and frames at 120 Hz leave none of 20 ms.
+        frames += pump(&viewer, &mut last, &mut vec![], Duration::from_millis(1));
         assert!(t0.elapsed() < Duration::from_secs(60), "no frames");
     }
     phase(&viewer, port, pid, "play at rest", 2.0, |_| {});
