@@ -70,7 +70,7 @@ fn the_arena_builds_and_plays() {
     }
 
     let (mut child, rx) = play(&game);
-    let lines = wait_for(&rx, &["generation 1 applied: 3 systems"], Duration::from_secs(60));
+    let lines = wait_for(&rx, &["generation 1 applied: 4 systems"], Duration::from_secs(60));
     std::thread::sleep(Duration::from_secs(2));
     let ports = listening(child.id());
     let _ = child.kill();

@@ -42,6 +42,10 @@ export default {
   "build-thrusters": {
     cmd: "bash -c 'cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts build examples/thrusters --json --out target/thrusters-dist > target/build-thrusters.jsonl; echo exit $?; grep -c progress target/build-thrusters.jsonl; grep -v log target/build-thrusters.jsonl | tail -8'",
   },
+  // The arena built and played headless, a screenshot at frame 60 (its game camera, not the editor's).
+  "arena-shot": {
+    cmd: "bash -c 'cargo build -p bevy-ts-cli && rm -f target/arena-shot.png && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts build examples/arena --out target/arena-dist > target/arena-shot.log 2>&1 && BEVY_TS_SCREENSHOT=$PWD/target/arena-shot.png timeout 60 ./target/debug/bevy-ts play target/arena-dist/game --headless >> target/arena-shot.log 2>&1; ls -la target/arena-dist target/arena-shot.png; tail -5 target/arena-shot.log'",
+  },
   "viewport-test": { cmd: "cargo test -p bevy-ts-viewport -- --nocapture --test-threads=1 2>&1 | tee target/viewport-test.log | tail -60" },
   "viewport-one": { cmd: "cargo test -p bevy-ts-viewport --test viewport -- --nocapture --test-threads=1 $VIEWPORT_TEST 2>&1 | grep -v ld64 | tee target/viewport-one.log | tail -30" },
   "viewport-edit": { cmd: "cargo test -p bevy-ts-viewport --test edit -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-edit.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -40" },
