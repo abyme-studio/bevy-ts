@@ -38,7 +38,7 @@ In edit mode the engine SHALL draw, with `bevy_gizmos` on layer 31: a ground gri
 - **THEN** the light is selected and its outline and transform handles are drawn
 
 ### Requirement: Picking selects what the source placed
-In edit mode game pointer input SHALL be off (`PointerInputSettings` mouse disabled) and no picking pointer SHALL exist, so game `Pointer<…>` observers and TSX handlers do not fire. A click with no drag SHALL pick by a ray cast from the editor camera against meshes and against light and camera icons, and select, from the topmost hit, the nearest ancestor that is a prefab instance root (an entity whose TSX source chain has a call site, or a `.bsn` level instance); ⌥-click SHALL select the hit entity itself; ⇧-click SHALL add to or remove from the selection; a click on nothing SHALL clear it. `bevy-ts/viewport_pick` (`x`, `y`) SHALL answer every hit at that point, nearest first, with entity, depth and the entity the click would select, without changing the selection.
+In edit mode game pointer input SHALL be off (`PointerInputSettings` mouse disabled) and no picking pointer SHALL exist, so game `Pointer<…>` observers and TSX handlers do not fire. A click with no drag SHALL pick by a ray cast from the editor camera against meshes and against light and camera icons, and select, from the topmost hit, the nearest ancestor that is a prefab instance root (an entity whose TSX source chain has a call site, or a `.bsn` level instance); ⌥-click SHALL select the hit entity itself; ⇧-click SHALL add to or remove from the selection; a click on nothing SHALL clear it. `bevy-ts/viewport_pick` (`x`, `y`) SHALL answer every hit at that point, nearest first, with entity, depth, its world `point` `[x, y, z]` and the entity the click would select, and a `ground` `[x, y, z]`, where the ray meets the plane y = 0 in front of the camera, or null when it does not, without changing the selection.
 
 #### Scenario: Clicking an enemy's eye
 - **WHEN** the operator clicks enemy `b`'s `eye` child mesh
@@ -47,6 +47,14 @@ In edit mode game pointer input SHALL be off (`PointerInputSettings` mouse disab
 #### Scenario: A button in the HUD during edit
 - **WHEN** the operator clicks the HUD's Spawn button in edit mode with `ui: true`
 - **THEN** the button's `<button>` entity is selected and no enemy is spawned
+
+#### Scenario: Where a dropped model lands
+- **WHEN** the studio calls `viewport_pick` at a point over empty floor below the horizon, then at a point on enemy `b`
+- **THEN** the first answers no hits and a `ground` with y = 0; the second's first hit has a `point` on `b`'s surface
+
+#### Scenario: Pointing at the sky
+- **WHEN** the studio calls `viewport_pick` at a point above the horizon with nothing there
+- **THEN** it answers no hits and `ground: null`
 
 ### Requirement: Selection is synced with the editor
 `bevy-ts/viewport_selection+watch` SHALL send the selection on open and on every change, from a click or from `bevy-ts/viewport_select`. Each selected item SHALL carry the entity (`Entity::to_bits`), its `Name`, its TSX node id and source chain when it has a `TsxNode` (as `bevy-ts/tsx_node` gives it), its `.bsn` level path and instance when a level placed it, and `primary: true` on the one the gizmo acts on. `bevy-ts/viewport_select` (`entities`, or `file`, `line`, `column` resolved as `bevy-ts/tsx_find` resolves them) SHALL set the selection, and the change SHALL be streamed back with `origin: "editor"`; a click's change SHALL have `origin: "viewport"`.
