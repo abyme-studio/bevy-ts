@@ -33,11 +33,15 @@ Rust SHALL record the author's line count for each shader. A WESL or WGSL parse 
 - **THEN** the error names `game::Glow` and `src/glow.wgsl:8`
 
 ### Requirement: Material instances are shared assets keyed by kind and props
-A TSX `<material kind={...} />` SHALL resolve to a `ScriptMaterial` asset keyed by its kind and its props, shared by every element with equal props, as `<material>`'s `StandardMaterial` cache shares by props. The entity SHALL hold `ScriptMaterial3d(handle)`. A param bound to a function (`prop={() => ...}`) SHALL NOT be supported in this change, as on the other asset intrinsics.
+A TSX `<material kind={...} />` SHALL resolve to a `ScriptMaterial` asset keyed by its kind and its props, shared by every element with equal props, as `<material>`'s `StandardMaterial` cache shares by props. The entity SHALL hold `ScriptMaterial3d(handle)`. A param bound to a function (`prop={() => ...}`) SHALL fail the load at the element with `<material> props cannot be bound yet; bind a component field or a UI prop`, as on `<mesh>` and `<material>`.
 
 #### Scenario: Two equal instances
 - **WHEN** two meshes carry `<material kind={Glow} color="#f80" pulse={2} />`
 - **THEN** both hold the same `ScriptMaterial3d` handle, and a third with `pulse={3}` holds another
+
+#### Scenario: A bound param
+- **WHEN** an element writes `<material kind={Glow} pulse={() => t.value} />`
+- **THEN** the load fails at that element with `<material> props cannot be bound yet; bind a component field or a UI prop`
 
 ### Requirement: Render-world work beyond materials stays Rust
 Render passes, render-graph systems, compute pipelines, GPU readback and custom draw functions SHALL be written in the native crate. bevy-ts SHALL NOT run JS on the render thread or in the render world.
