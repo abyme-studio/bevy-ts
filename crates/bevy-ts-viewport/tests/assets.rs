@@ -316,7 +316,10 @@ fn the_arenas_assets_are_generated_here() {
             std::fs::create_dir_all(full.parent().unwrap()).unwrap();
             std::fs::write(&full, &bytes).unwrap();
         }
-        assert!(std::fs::read(&full).ok() == Some(bytes), "{path} is stale: rerun with BEVY_TS_WRITE_ARENA_ASSETS=1");
+        let on_disk = std::fs::read(&full).unwrap_or_default();
+        // JSON by value: key order follows serde_json's features, which a workspace build unifies.
+        let same = if path.ends_with(".gltf") { serde_json::from_slice::<Value>(&on_disk).ok() == serde_json::from_slice::<Value>(&bytes).ok() } else { on_disk == bytes };
+        assert!(same, "{path} is stale: rerun with BEVY_TS_WRITE_ARENA_ASSETS=1");
     }
 }
 
