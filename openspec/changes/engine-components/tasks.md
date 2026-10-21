@@ -1,7 +1,7 @@
 ## 1. Contract
 
 - [x] 1.1 Add `EditorInfo` (`origin`, `internal`, `addable`, `category`, all required; `origin` and `category` as string enums) to `protocol/bevy-ts.openrpc.json` and an optional `x-bevy-ts-editor` property on `ComponentSchema`; bump `info.version` to 1.11.0
-- [ ] 1.2 Regenerate the Rust and TS types (`bevy-ts-protocol-gen`, `packages/bevy-ts/scripts/gen-protocol.mjs`) and check the drift check passes
+- [x] 1.2 Regenerate the Rust and TS types (`bevy-ts-protocol-gen`, `packages/bevy-ts/scripts/gen-protocol.mjs`) and check the drift check passes
 
 ## 2. Engine
 
