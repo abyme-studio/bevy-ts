@@ -19,4 +19,5 @@ Custom materials are data (WGSL plus parameters), so a project should get them w
 
 - New crate `bevy-ts-material`, in the prebuilt engine; the default engine grows by it only.
 - New TS module `bevy-ts/material`.
+- New direct dependencies of `bevy-ts-material`: `wesl` 0.6 and `naga` 30, for checking shaders and mapping errors (operator approved, 2026-10-21).
 - The script loader (script-runtime) resolves a relative `.wgsl` import and watches the file; the bundled types gain a `*.wgsl` module declaration.
