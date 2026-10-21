@@ -59,7 +59,11 @@ The base SHALL lose its trailing digits, then take the first free of `Base`, `Ba
 - **THEN** the file gains `#Enemy` and then `#Enemy2`
 
 ### Requirement: Reparent keeps the entity and its place
-`reparent` SHALL move the entity to `index` among the parent's written children, or last when `index` is absent. A reparent to the same parent with an index SHALL reorder. It SHALL keep the entity and its ECS state, as `rename` does, by moving its node in the retained tree before the reload. Its inverse SHALL return the entity to its old parent at its old index. `restore` SHALL insert at its index. A move under the entity itself SHALL be refused with `invalid`. The parent SHALL always be a name path in the same file.
+`reparent` SHALL move the entity to `index` among the parent's written children, or last when `index` is absent. `index` SHALL count those children after the entity is taken out, so it is the entity's final place: with `[A, B, C]`, moving `A` with index 1 gives `[B, A, C]`. A reparent to the same parent with an index SHALL reorder. It SHALL keep the entity and its ECS state, as `rename` does, by moving its node in the retained tree before the reload. Its inverse SHALL return the entity to its old parent at its old index. `restore` SHALL insert at its index. A move under the entity itself SHALL be refused with `invalid`. The parent SHALL always be a name path in the same file.
+
+#### Scenario: Reordering by index
+- **WHEN** the top level is `A`, `B`, `C` and a client reparents `A` to the top level with index 1
+- **THEN** the order is `B`, `A`, `C`, and `A` keeps its entity bits
 
 #### Scenario: Undoing a reparent
 - **WHEN** `A` is the first of three top-level entities, a client reparents it under `C`, then sends the inverse
