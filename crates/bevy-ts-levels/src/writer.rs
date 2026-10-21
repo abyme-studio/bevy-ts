@@ -154,16 +154,21 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
     // Paths earlier ops changed, and lists whose positional ids they shifted.
     let mut claimed: Vec<Vec<String>> = Vec::new();
     let mut shifted: Vec<Vec<String>> = Vec::new();
-    let reused = |claimed: &[Vec<String>], shifted: &[Vec<String>], p: &[String]| {
-        let positional = (1..=p.len()).any(|i| p[i - 1].starts_with('#') && shifted.iter().any(|l| l[..] == p[..i - 1]));
-        (positional || claimed.iter().any(|c| p.starts_with(c))).then(|| refuse("invalid", format!("an earlier op in this batch changed {}: split this batch", p.join("/"))))
+    // An unnamed entity's `#n` names a place, not an entity, and ops on places run in order: an
+    // inverse names them as they are when it runs, so it always applies. Only a component op,
+    // which the engine checks against the world before the batch, needs a `#n` the batch left.
+    let reused = |claimed: &[Vec<String>], shifted: &[Vec<String>], p: &[String], checked: bool| {
+        let place = p.iter().any(|s| s.starts_with('#'));
+        let moved_place = checked && (1..=p.len()).any(|i| p[i - 1].starts_with('#') && shifted.iter().any(|l| l[..] == p[..i - 1]));
+        (moved_place || (!place && claimed.iter().any(|c| p.starts_with(c)))).then(|| refuse("invalid", format!("an earlier op in this batch changed {}: split this batch", p.join("/"))))
     };
     for (at, op) in ops.iter().enumerate() {
         let at_op = |mut e: Refused| {
             e.at = at;
             e
         };
-        if let Some(e) = op_paths(op).into_iter().find_map(|p| reused(&claimed, &shifted, p)) {
+        let checked = matches!(op, Op::AddComponent { .. } | Op::RemoveComponent { .. });
+        if let Some(e) = op_paths(op).into_iter().find_map(|p| reused(&claimed, &shifted, p, checked)) {
             return Err(at_op(e));
         }
         let file = syntax::parse(&text).map_err(|d| at_op(refuse("internal", format!("the file does not parse: {}", d.message))))?;
@@ -171,10 +176,11 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
         // Where the op lands may not be what an earlier op changed either: a deleted entity's
         // node would be taken over.
         let adds = matches!(op, Op::Add { .. } | Op::Restore { .. });
-        if let Some(e) = renames.iter().map(|(_, to)| to).chain(adds.then(|| &touched[0])).find_map(|p| reused(&claimed, &shifted, p)) {
+        if let Some(e) = renames.iter().map(|(_, to)| to).chain(adds.then(|| &touched[0])).find_map(|p| reused(&claimed, &shifted, p, false)) {
             return Err(at_op(e));
         }
-        // What earlier ops added moves with this one's renames.
+        // What earlier ops added moves with this one's renames, and with unnamed siblings put
+        // back or taken out before it.
         for (from, to) in &renames {
             for c in created.iter_mut().filter(|c| c.starts_with(from)) {
                 *c = to.iter().chain(&c[from.len()..]).cloned().collect();
@@ -184,12 +190,14 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
         }
         match op {
             Op::Add { .. } | Op::Restore { .. } => {
+                shift_places(&mut created, &touched[0], 1);
                 created.push(touched[0].clone());
                 claimed.push(touched[0].clone());
                 shifted.push(touched[0][..touched[0].len() - 1].to_vec());
             }
             Op::Delete { path } => {
                 created.retain(|c| !c.starts_with(path));
+                shift_places(&mut created, path, -1);
                 claimed.push(path.clone());
                 shifted.push(path[..path.len() - 1].to_vec());
             }
@@ -210,6 +218,21 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
     lines.sort();
     lines.dedup();
     Ok(Written { text, lines, inverse, renamed, created })
+}
+
+/// Moves the `#n` of `created` entries at or after `at`'s place in its list by `by`, when `at` is
+/// an unnamed entity put in (1) or taken out (-1).
+fn shift_places(created: &mut [Vec<String>], at: &[String], by: isize) {
+    let Some((last, list)) = at.split_last() else { return };
+    let Some(k) = last.strip_prefix('#').and_then(|n| n.parse::<isize>().ok()) else { return };
+    for c in created.iter_mut().filter(|c| c.len() > list.len() && c.starts_with(list)) {
+        let seg = &mut c[list.len()];
+        if let Some(j) = seg.strip_prefix('#').and_then(|n| n.parse::<isize>().ok())
+            && (j > k || (j == k && by > 0))
+        {
+            *seg = format!("#{}", j + by);
+        }
+    }
 }
 
 /// The name paths an op names: its target, or the parent it adds under.
@@ -785,7 +808,12 @@ fn plan_revert(file: &ParsedFile, path: &[String], component: &str, field: &[Str
     let f = find(file, path).ok_or_else(|| refuse("not-found", format!("no entity {}", path.join("/"))))?;
     let p = patch_of(f.entity, component).ok_or_else(|| refuse("not-found", format!("{} has no {component} override", path.join("/"))))?;
     let old = value_at(&p.fields, field).ok_or_else(|| refuse("not-found", format!("{} has no {component}.{} override", path.join("/"), field.join("."))))?;
-    let inverse = to_wvalue(file, old).map(|v| Op::Set { path: path.to_vec(), component: component.into(), field: field.to_vec(), value: v, containers: Vec::new() });
+    // The typed values on the way to the leaf (`Vec3`), so the inverse can write them again.
+    let containers = (1..field.len()).map(|i| match value_at(&p.fields, &field[..i]).map(|v| &v.kind) {
+        Some(ValueKind::Type(t)) => t.path.joined(),
+        _ => String::new(),
+    });
+    let inverse = to_wvalue(file, old).map(|v| Op::Set { path: path.to_vec(), component: component.into(), field: field.to_vec(), value: v, containers: containers.collect() });
     // The fields that hold the leaf, and whether removing it empties them.
     let (holder, holder_end, leaf) = if field.len() == 1 {
         (&p.fields, p.path.span.end, &field[0])

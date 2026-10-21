@@ -602,6 +602,32 @@ mod writes {
         let lamp = r.created[0].1.expect("spawned");
         assert_eq!(g.app.world().get::<TsxNode>(lamp).unwrap().root, "level:levels/room.bsn");
     }
+    #[test]
+    fn the_earliest_refusal_wins() {
+        let mut f = arena();
+        let r = write(&mut f, ARENA, vec![Op::AddComponent { path: p("RoomA"), component: "Transform".into(), fields: vec![], text: None }, Op::Delete { path: p("Nobody") }]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("exists")), "op 0's refusal: {r:?}");
+    }
+
+    #[test]
+    fn an_add_that_unmerges_an_included_file_reports_itself() {
+        let hut = "#Hut Transform\n";
+        let mut f = fixture("unmerge", &[("levels/arena.bsn", "#Hall\n:\"levels/hut.bsn\"\n"), ("levels/hut.bsn", hut)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        let r = to_hut(&mut f, hut, vec![Op::Add { parent: vec![], name: Some("Lamp".into()), base: Base::None, patches: vec![], asset: None }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(r.created[0].1, Some(f.by_name("Lamp")), "the lamp, not the including Hall: {r:?}");
+    }
+
+    #[test]
+    fn a_move_that_merges_an_included_file_keeps_the_entity() {
+        let mut f = multi();
+        let a = f.by_name("A");
+        let r = to_hut(&mut f, MULTI, vec![Op::Delete { path: p("Shed") }, Op::Rename { path: p("Hut/A"), to: "B".into() }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(f.by_name("B"), a, "hut.bsn now merges into Hall, and B is still A's entity");
+    }
 }
 
 mod hot_reload {
@@ -701,7 +727,11 @@ mod hot_reload {
         assert_eq!(f.hp(b).1, 250.0);
         let errors = f.errors();
         assert!(errors.iter().any(|e| e.starts_with("levels/arena.bsn:8:15 levels: expressions are not supported")), "{errors:?}");
-        // Fixed, it applies.
+        // Fixed, it applies. Late reports of the bad file come first, so `save` does not take
+        // them for the fixed file's.
+        for _ in 0..20 {
+            f.app.update();
+        }
         save(&mut f, "levels/arena.bsn", &ARENA.replace("max: 250.0", "max: 270.0"));
         assert_eq!(f.hp(b).1, 270.0);
     }

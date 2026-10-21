@@ -183,13 +183,15 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         let resolve = |c: &str| schema.component(c).ok().map(|s| s.name);
         shorten(&schema, &mut ops);
         // The writer first: it refuses a batch that reuses a path it changed, so each op's path
-        // names the entity the world has now.
-        // What the world refuses says more than the file's `not-found`: a prefab's component, or
-        // a scene's TSX entity, is not in the file either.
+        // names the entity the world has now. The refusal of the earliest op wins; on one op,
+        // the world's says more than the file's `not-found` (a prefab's component, or a scene's
+        // TSX entity, is not in the file either).
         match writer::apply(&disk, &ops, scene.is_some(), Some(&resolve)) {
             Ok(w) => check_world(world, &schema, &req.file, scene.as_deref(), &ops).map(|()| w),
-            Err(e) if e.reason == "not-found" => Err(check_world(world, &schema, &req.file, scene.as_deref(), &ops[..=e.at]).err().filter(|w| w.at == e.at).unwrap_or(e)),
-            Err(e) => Err(e),
+            Err(e) => match check_world(world, &schema, &req.file, scene.as_deref(), &ops[..=e.at]) {
+                Err(w) if w.at < e.at || e.reason == "not-found" => Err(w),
+                _ => Err(e),
+            },
         }
     };
     let written = match planned {
@@ -202,11 +204,14 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
     }
     // Renames and moves keep their entities: the retained tree moves, in every placement of the
     // file, before the reload sees it.
-    let tops = syntax::parse(&disk).map_or(1, |f| f.entities.items.iter().filter(|e| !e.entries.is_empty()).count());
-    let places = placements(world, &req.file, scene.as_deref(), tops).unwrap_or_default();
+    // Where a path lands is read from the new text: an included file that now has one top
+    // merges it into the including entity.
+    let places = placements(world, &req.file, scene.as_deref()).unwrap_or_default();
+    let top_after = syntax::parse(&written.text).ok().and_then(|f| single_top(&f));
     for p in &places {
+        let after = p.after(top_after.clone());
         for (from, to) in &written.renamed {
-            if let (Some(a), Some(b)) = (p.key_of(from), p.key_of(to)) {
+            if let (Some(a), Some(b)) = (p.key_of(from), after.key_of(to)) {
                 bevy_ts_tsx::rekey(world, &p.root, &a, &b);
             }
         }
@@ -219,7 +224,9 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         return WriteResult::refused(req, "refused", "internal", e);
     }
     reconcile_affected(world, &req.file);
-    // What the batch added: in the file's own root when it is open, else its first inclusion.
+    // What the batch added, placed as the reload placed it: in the file's own root when it is
+    // open, else its first inclusion.
+    let places = placements(world, &req.file, scene.as_deref()).unwrap_or_default();
     let tree = world.resource::<TsxTree>();
     let created = written.created.iter().map(|p| (p.clone(), places.iter().filter_map(|pl| tree.entity(node_id(&pl.root, &pl.key_of(p)?))).next())).collect();
     WriteResult { id: req.id, file: req.file.clone(), status, reason: None, message: String::new(), hash: Some(hash_text(hash)), lines: written.lines, disk: None, inverse: written.inverse, created }
@@ -239,37 +246,52 @@ fn shortest(schema: &WorldSchema, component: &str, full: &str) -> Option<String>
 
 /// Where a file's entities are in the world: an open level that is the file, or one inclusion
 /// of it in an open level.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Placement {
     /// The tsx root.
     root: String,
     /// The key of the entity that includes the file; empty for the file's own root.
     key: Vec<String>,
-    /// A file with one top entity merges it into the including entity; one with several puts
-    /// them under it.
-    merged: bool,
+    included: bool,
+    /// An included file's one top entity, merged into the including entity (compose's
+    /// `Frame::merged`); a file with several tops puts them under it.
+    top: Option<String>,
     /// The files of the including frames above the file, outermost first.
     above: Vec<String>,
 }
 
 impl Placement {
     fn key_of(&self, path: &[String]) -> Option<Vec<String>> {
-        let rest = if self.merged { path.get(1..)? } else { path };
+        let rest = match &self.top {
+            Some(top) => path.split_first().filter(|(first, _)| *first == top)?.1,
+            None => path,
+        };
         Some(self.key.iter().chain(rest).cloned().collect())
+    }
+
+    /// The placement once the file has `top` as its one top entity, or several (None).
+    fn after(&self, top: Option<String>) -> Placement {
+        Placement { top: if self.included { top } else { None }, ..self.clone() }
     }
 }
 
-/// Every placement of `file` (with `tops` top entities): its own root first, then each
-/// inclusion in an open level; or by key path in a sidecar's scene. None when no open level
-/// shows the file.
-fn placements(world: &World, file: &str, scene: Option<&str>, tops: usize) -> Option<Vec<Placement>> {
+/// The name path segment of a file's one top entity, when it has exactly one.
+fn single_top(file: &ParsedFile) -> Option<String> {
+    let mut tops = file.entities.items.iter().filter(|e| !e.entries.is_empty());
+    let (first, None) = (tops.next()?, tops.next()) else { return None };
+    Some(first.name().map_or_else(|| "#0".to_string(), |n| n.name.clone()))
+}
+
+/// Every placement of `file`: its own root first, then each inclusion in an open level, as
+/// compose placed it; or by key path in a sidecar's scene. None when no open level shows the file.
+fn placements(world: &World, file: &str, scene: Option<&str>) -> Option<Vec<Placement>> {
     if let Some(scene) = scene {
-        return Some(vec![Placement { root: scene.to_string(), key: Vec::new(), merged: false, above: Vec::new() }]);
+        return Some(vec![Placement { root: scene.to_string(), key: Vec::new(), included: false, top: None, above: Vec::new() }]);
     }
     let levels = world.resource::<Levels>();
     let mut out: Vec<Placement> = Vec::new();
     if let Some(r) = levels.roots.get(file) {
-        out.push(Placement { root: r.overlay.clone().unwrap_or_else(|| root_name(file)), key: Vec::new(), merged: false, above: Vec::new() });
+        out.push(Placement { root: r.overlay.clone().unwrap_or_else(|| root_name(file)), key: Vec::new(), included: false, top: None, above: Vec::new() });
     }
     let mut shown = !out.is_empty();
     for (level, r) in levels.roots.iter().filter(|(p, r)| p.as_str() != file && r.files.contains(file)) {
@@ -277,10 +299,10 @@ fn placements(world: &World, file: &str, scene: Option<&str>, tops: usize) -> Op
         let root = r.overlay.clone().unwrap_or_else(|| root_name(level));
         for (key, frames) in &r.owners {
             let Some(i) = frames.iter().position(|f| f.file == file && f.path.len() == 1) else { continue };
-            let merged = tops == 1;
-            let key = if merged { key.clone() } else { key[..key.len().saturating_sub(1)].to_vec() };
+            let f = &frames[i];
+            let (key, top) = if f.merged { (key.clone(), Some(f.path[0].clone())) } else { (key[..key.len().saturating_sub(1)].to_vec(), None) };
             if !out.iter().any(|p| p.root == root && p.key == key) {
-                out.push(Placement { root: root.clone(), key, merged, above: frames[..i].iter().map(|f| f.file.clone()).collect() });
+                out.push(Placement { root: root.clone(), key, included: true, top, above: frames[..i].iter().map(|f| f.file.clone()).collect() });
             }
         }
     }
@@ -324,8 +346,7 @@ fn made_in_tsx(n: &TsxNode) -> bool {
 /// overrides. A component removed then added in the batch counts as removed.
 fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&str>, ops: &[Op]) -> Result<(), writer::Refused> {
     let refuse = |at: usize, reason: &'static str, message: String| writer::Refused { at, reason, message };
-    let tops = world.resource::<AssetServer>().get_handle::<BsnLevel>(file.to_string()).and_then(|h| world.resource::<Assets<BsnLevel>>().get(&h)).map_or(1, |l| l.parsed.entities.items.iter().filter(|e| !e.entries.is_empty()).count());
-    let places = placements(world, file, scene, tops);
+    let places = placements(world, file, scene);
     let mut added: Vec<(&[String], String)> = Vec::new();
     let mut removed: Vec<(&[String], String)> = Vec::new();
     for (at, op) in ops.iter().enumerate() {

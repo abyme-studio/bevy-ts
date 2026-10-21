@@ -87,6 +87,9 @@ pub struct Frame {
     pub file: String,
     pub path: Vec<String>,
     pub at: SourceLocation,
+    /// An included file's one top entity, merged into the entity that includes it (which then
+    /// has its key). A file with several tops puts them under that entity instead.
+    pub merged: bool,
 }
 
 /// A scene component instance's props: every prop its scene declares, with the level's value or
@@ -385,7 +388,7 @@ fn finish(
     let mut path = parent.to_vec();
     path.push(key.clone());
     let mut chain = frames.to_vec();
-    set_frame(&mut chain, Frame { file: l.ctx.path.clone(), path: l.name_path.clone(), at: l.ctx.at(l.span) });
+    set_frame(&mut chain, Frame { file: l.ctx.path.clone(), path: l.name_path.clone(), at: l.ctx.at(l.span), merged: false });
     let at = l.ctx.at(l.span);
     let mut node = match l.base {
         Base::None => NodeDesc {
@@ -411,7 +414,11 @@ fn finish(
         }
         Base::Include(mut nodes) if nodes.len() == 1 => {
             let inner = nodes.pop().expect("one");
+            let file = inner.ctx.path.clone();
             let mut n = finish(inner, Some(key.clone()), expansions, parent, &chain, out)?;
+            if let Some(f) = out.owners.get_mut(&path).and_then(|c| c.iter_mut().find(|f| f.file == file)) {
+                f.merged = true;
+            }
             n.source.push(at.clone());
             n
         }
@@ -495,7 +502,7 @@ fn merge_child(
     let mut cpath = path.to_vec();
     cpath.push(child.key.clone());
     let mut cchain = descend(chain, &child.key);
-    set_frame(&mut cchain, Frame { file: child.ctx.path.clone(), path: child.name_path.clone(), at: child.ctx.at(child.span) });
+    set_frame(&mut cchain, Frame { file: child.ctx.path.clone(), path: child.name_path.clone(), at: child.ctx.at(child.span), merged: false });
     out.owners.insert(cpath.clone(), cchain.clone());
     let target = &mut node.children[i];
     for p in &child.patches {

@@ -438,8 +438,6 @@ fn where_an_op_lands_cannot_be_what_the_batch_changed() {
         vec![Op::Delete { path: p("P/X") }, Op::Reparent { path: p("X"), parent: p("P"), index: None }],
         vec![Op::Delete { path: p("Crate") }, add("", Some("Crate"), Base::None, vec![], None)],
         vec![Op::Delete { path: p("Crate") }, Op::Restore { parent: p(""), index: 0, text: "#Crate Marker".into() }],
-        // Two unnamed restores into one list would both be `#0`.
-        vec![Op::Restore { parent: p(""), index: 0, text: "Marker".into() }, Op::Restore { parent: p(""), index: 0, text: "Marker".into() }],
     ] {
         let e = apply(src, &ops).map(|w| w.text).unwrap_err();
         assert_eq!((e.reason, e.at), ("invalid", 1), "{ops:?}");
@@ -450,4 +448,40 @@ fn where_an_op_lands_cannot_be_what_the_batch_changed() {
 fn a_refusal_names_its_op() {
     let e = apply(ARENA, &[set("EnemyB", "Transform", "translation.x", f(5.0)), Op::Delete { path: p("Nobody") }]).unwrap_err();
     assert_eq!((e.reason, e.at), ("not-found", 1));
+}
+
+#[test]
+fn every_inverse_applies_and_round_trips() {
+    // A list of named and unnamed entities.
+    let src = "#A Marker\n--\nMarker\n--\n#B Marker\nChildren [\n    #C Marker\n]\n--\nMarker\n--\n#D Marker\n";
+    let comp = |path: &str| Op::AddComponent { path: p(path), component: "Tag".into(), fields: vec![], text: None };
+    let batches: Vec<Vec<Op>> = vec![
+        vec![Op::Delete { path: p("#0") }, Op::Delete { path: p("A") }],
+        vec![Op::Delete { path: p("#0") }, add("", Some("X"), Base::None, vec![], None)],
+        vec![Op::Delete { path: p("#0") }, Op::Delete { path: p("#0") }],
+        vec![Op::Delete { path: p("#1") }, Op::Delete { path: p("#0") }, Op::Delete { path: p("D") }],
+        vec![Op::Rename { path: p("A"), to: "A2".into() }, Op::Delete { path: p("#1") }],
+        vec![Op::Reparent { path: p("D"), parent: p("B"), index: Some(0) }, Op::Delete { path: p("#0") }],
+        vec![Op::Reparent { path: p("B/C"), parent: p(""), index: Some(1) }, add("B", None, Base::None, vec![], None)],
+    ];
+    // Field and component edits undo by value: a written-to unnamed entity keeps its new name,
+    // and a patch comes back on its own line. Their inverses still apply, both ways.
+    let w = ok(src, &[set("#1", "Transform", "translation.x", f(1.0)), comp("D"), Op::RemoveComponent { path: p("A"), component: "Marker".into() }]);
+    let back = ok(&w.text, &w.inverse);
+    ok(&back.text, &back.inverse);
+    for ops in batches {
+        let w = apply(src, &ops).unwrap_or_else(|e| panic!("{ops:?}: {e:?}"));
+        let back = apply(&w.text, &w.inverse).unwrap_or_else(|e| panic!("undo of {ops:?}: {:?}: {e:?}", w.inverse));
+        assert_eq!(back.text, src, "undo of {ops:?}");
+        let again = apply(&back.text, &back.inverse).unwrap_or_else(|e| panic!("redo of {ops:?}: {:?}: {e:?}", back.inverse));
+        assert_eq!(again.text, w.text, "redo of {ops:?}");
+    }
+}
+
+#[test]
+fn created_follows_unnamed_siblings_put_back() {
+    let src = "#A Marker\n";
+    let restore = || Op::Restore { parent: p(""), index: 0, text: "Marker".into() };
+    let w = ok(src, &[restore(), restore()]);
+    assert_eq!(w.created, [p("#1"), p("#0")], "the first restore's entity moved to #1");
 }
