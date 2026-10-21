@@ -1,4 +1,4 @@
-//! Task 8.2: the eight demo steps of `openspec/changes/tsx/design.md` ("First demo") against
+//! Task 8.2: the eight demo steps of `openspec/changes/archive/2026-10-21-tsx/design.md` ("First demo") against
 //! `examples/arena/src`, in V8, headless and in-process: reload latency (compile and apply, no
 //! watcher) and tsx host calls per frame. The enemies are placed by `assets/levels/arena.bsn`
 //! (levels task 6.1), so their edits are level edits. Prints one line per step; `examples/arena/WALK.md`

@@ -1,6 +1,6 @@
 # Arena demo walk
 
-The eight demo steps of `openspec/changes/tsx/design.md` ("First demo") against `examples/arena/src`, in V8, headless and in-process, by `crates/bevy-ts-cli/tests/arena_walk.rs`:
+The eight demo steps of `openspec/changes/archive/2026-10-21-tsx/design.md` ("First demo") against `examples/arena/src`, in V8, headless and in-process, by `crates/bevy-ts-cli/tests/arena_walk.rs`:
 
 ```
 cargo test --release -p bevy-ts-cli --test arena_walk -- --nocapture

@@ -29,7 +29,7 @@ app.system("siren", { read: [Alarm], write: [PointLight] }, (q) => {
 });
 ```
 
-Both are fine for one siren. The open question in `openspec/changes/tsx` is whether the first form should be allowed on scene elements at all (today: "allowed for now, with a dev warning"), because five things hang on it:
+Both are fine for one siren. The open question in `openspec/changes/archive/2026-10-21-tsx` is whether the first form should be allowed on scene elements at all (today: "allowed for now, with a dev warning"), because five things hang on it:
 
 1. Cost when `Siren` is instanced 10,000 times and all of them change.
 2. Who may write `intensity`: the binding, a system, the IDE, a `.bsn` level?
@@ -130,7 +130,7 @@ What it beat:
 - **A. UI only.** Simplest rule, and enforceable. But the line is not where the problems are: a `<text>` binding and a `PointLight` binding have the same ownership question and the same cost curve, and a world-space label is on both sides of the line. It makes the most readable form of "this field follows that one" illegal to avoid a cost cliff that C removes.
 - **B. Solid effects everywhere (the draft).** Right for UI, wrong by 50 to 200× at prefab scale, with a per-frame tax proportional to subscriptions and 66 MB of heap at 100k instances. Its two-writer rule is a dev warning that only fires once the fight is happening.
 
-## Changes made to `openspec/changes/tsx`
+## Changes made to `openspec/changes/archive/2026-10-21-tsx`
 
 - `design.md`: decision 11 added under Decisions, marked a recommendation pending the operator: scene bindings are derived fields with one owner, grouped by site, run as a generated system over changed instances with fixed reads and compare-before-write; reflected targets keep decision 9. Decisions 3 and 9 point at it. The data model names the site table (JS) and site instances (Rust). The two-writer risk now names both locations and the per-site tick; a fixed-reads risk is added. The first open question becomes "the operator confirms decision 11".
 - `tasks.md`: 5.6 names both locations in the two-writer warning; 5.7 added: sites, the Rust check, per-row evaluation in one host call, compare-before-write, the dev error for a new read, and a test that 10,000 bound instances with 100 changed cost within 2× the equivalent TS system.
@@ -146,4 +146,4 @@ If the operator rules A instead: delete decision 11, task 5.7 and the requiremen
 - Unity 6 UI Toolkit: Runtime data binding https://docs.unity3d.com/6000.0/Documentation/Manual/UIE-runtime-binding.html ; Define a data source https://docs.unity3d.com/Manual/UIE-runtime-binding-define-data-source.html ; Binding modes and update triggers https://docs.unity3d.com/6000.0/Documentation/Manual/UIE-runtime-binding-mode-update.html
 - Unreal Engine: Driving UI updates with events https://dev.epicgames.com/documentation/en-us/unreal-engine/driving-ui-updates-with-events-in-unreal-engine ; UMG best practices https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-best-practices-in-unreal-engine ; UMG Viewmodel https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-viewmodel-for-unreal-engine ; Property binding https://dev.epicgames.com/documentation/en-us/unreal-engine/property-binding-for-umg-in-unreal-engine
 - Bevy: UI vision document https://hackmd.io/@bevy/HkjcMkJFC ; cart, Next Generation Scene / UI https://github.com/bevyengine/bevy/discussions/14437 ; `bevy_ui_widgets` 0.20 `src/lib.rs` (`~/dev/refs/bevy-0.20`); `bevy_cobweb` and `bevy_cobweb_ui` READMEs (`~/dev/refs`)
-- bevy-ts: `openspec/changes/tsx/design.md` (decisions 3, 5, 9, 10, operator rulings), `openspec/changes/bridge/design.md` (decisions 5, 6), `docs/research/change-detection.md`, `bench/bindings/`
+- bevy-ts: `openspec/changes/archive/2026-10-21-tsx/design.md` (decisions 3, 5, 9, 10, operator rulings), `openspec/changes/bridge/design.md` (decisions 5, 6), `docs/research/change-detection.md`, `bench/bindings/`

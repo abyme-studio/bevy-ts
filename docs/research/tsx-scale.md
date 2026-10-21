@@ -1,6 +1,6 @@
 # TSX at scale: mount, reload and HUD cost
 
-Task 8.3 of `openspec/changes/tsx`. Measured 2026-10-20 on the shared Apple M5 Max (other agents building), release, V8 15.0, Bevy 0.20, with `crates/bevy-ts-cli/tests/tsx_scale.rs`:
+Task 8.3 of `openspec/changes/archive/2026-10-21-tsx`. Measured 2026-10-20 on the shared Apple M5 Max (other agents building), release, V8 15.0, Bevy 0.20, with `crates/bevy-ts-cli/tests/tsx_scale.rs`:
 
 ```
 cargo test --release -p bevy-ts-cli --test tsx_scale -- --ignored --nocapture --test-threads 1

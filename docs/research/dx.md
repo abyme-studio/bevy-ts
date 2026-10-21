@@ -754,7 +754,7 @@ Bridge is archived, so its capabilities live in `openspec/specs/`.
 
 - `useComponent` is removed. A binding reads `ref.get(C)` and `res(R)` directly; the read inside the binding is the subscription, checked per pair in Rust (decision 9) or per site (decision 11). There are no `use*` exports, and `signal()` stays for UI-local state.
 - `useQuery` becomes the open question of `<For each={query(...)}>`.
-- Edited: `openspec/changes/tsx` design (decision 9, goals, data model, demo, rulings), `reactive-ui` spec, tasks 5.3 and 5.6, proposal.
+- Edited: `openspec/changes/archive/2026-10-21-tsx` design (decision 9, goals, data model, demo, rulings), `reactive-ui` spec, tasks 5.3 and 5.6, proposal.
 
 ### Applied: reflection-derived layouts and one-line plugin adoption (ruled 2026-10-20)
 

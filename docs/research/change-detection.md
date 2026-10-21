@@ -109,7 +109,7 @@ Side findings:
 - Unity Entities 1.3 manual, EntityQuery filters: https://docs.unity3d.com/Packages/com.unity.entities@1.3/manual/systems-entityquery-filters.html ; `ArchetypeChunk.DidChange`: https://docs.unity3d.com/Packages/com.unity.entities@1.3/api/Unity.Entities.ArchetypeChunk.DidChange.html ; a representative false-positive thread: https://discussions.unity.com/t/what-caused-the-changed-status-of-a-chunk-to-be-reset/764751
 - flecs Queries manual, Change Detection: https://www.flecs.dev/flecs/Queries.html ; `ecs_modified_id` in `include/flecs.h`; flecs-polyglot: https://github.com/flecs-hub/flecs-polyglot
 - V8 `src/objects/js-array-buffer.h` (`kMaxSizeInHeap`): https://chromium.googlesource.com/v8/v8/+/refs/heads/main/src/objects/js-array-buffer.h ; optimized code read with `node --no-maglev --print-opt-code --code-comments`
-- bevy-ts: `docs/research/js-runtime.md`, `openspec/changes/bridge/design.md`, `openspec/changes/tsx/design.md` (decision 9)
+- bevy-ts: `docs/research/js-runtime.md`, `openspec/changes/bridge/design.md`, `openspec/changes/archive/2026-10-21-tsx/design.md` (decision 9)
 
 ## In the engine: the cube demo's `bob` (2026-10-20)
 
