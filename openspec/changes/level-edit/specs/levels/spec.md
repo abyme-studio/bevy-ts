@@ -24,17 +24,3 @@ Each `bevy-ts/tsx_tree` node of a level-placed entity, in the tree and in `tsx_t
 #### Scenario: Tree rows of the arena
 - **WHEN** a client calls `bevy-ts/tsx_tree` on the arena
 - **THEN** `#EnemyB`'s node has `level: { file: "levels/arena.bsn", namePath: ["EnemyB"], written: true }`, its eye's node has `namePath: ["EnemyB", "eye"]` and `written: false`, and `#RoomA`'s `#Lamp` from `room.bsn` has `file: "levels/arena.bsn"` and `written: false`
-
-## ADDED Requirements
-
-### Requirement: bevy-ts ships primitive shape scene components
-The bevy-ts package SHALL ship three scene components, in every generation whether or not the project imports them:
-- `bevy_ts::Cube` with props `size` (Vec3, `[1, 1, 1]`) and `color` (string, `#cccccc`)
-- `bevy_ts::Sphere` with props `radius` (f32, `0.5`) and `color`
-- `bevy_ts::Plane` with props `size` (Vec2, `[10, 10]`) and `color`
-
-Each SHALL expand to an entity with a `Transform` and the matching `<mesh>`. A level SHALL place them as any scene component, `@bevy_ts::Cube { @size: … }`. `level_catalog` SHALL list them as built-ins, not under `scenes`.
-
-#### Scenario: A cube in a level
-- **WHEN** a level has `#Box @bevy_ts::Cube { @color: "#3366cc" }`
-- **THEN** a blue unit cube spawns, and `level_node` reports its `size` as the default `[1, 1, 1]`
