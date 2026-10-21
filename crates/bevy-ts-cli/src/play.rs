@@ -54,8 +54,9 @@ pub fn read_game(folder: &Path) -> Result<GameFile, String> {
     Ok(game)
 }
 
-/// The extensions a compiled module keeps: the build writes each with its source's name.
-const SCRIPT_EXTENSIONS: [&str; 8] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+/// The extensions a compiled module keeps: the build writes each with its source's name, and a
+/// shader as the `.wgsl` file itself.
+const SCRIPT_EXTENSIONS: [&str; 9] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "wgsl"];
 
 /// Every module under `scripts/`, its source map taken from the code. Other files (a Finder
 /// `.DS_Store`) are skipped.
@@ -66,6 +67,12 @@ pub fn read_scripts(folder: &Path, game: &GameFile) -> Result<ModuleSet, String>
     walk(&scripts, &mut files).map_err(|e| format!("{}: {e}", scripts.display()))?;
     let mut modules = Vec::with_capacity(files.len());
     for path in files {
+        // A shipped shader is the WGSL itself; its module names the shipped file, as `bevy-ts dev`'s
+        // names the project's.
+        if path.to_string_lossy().ends_with(crate::compile::SHADER_EXT) {
+            modules.push(CompiledModule { code: crate::compile::shader_module(&path), path, source_map: None });
+            continue;
+        }
         let code = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let source_map = crate::compile::inline_source_map(&code);
         modules.push(CompiledModule { path, code, source_map });

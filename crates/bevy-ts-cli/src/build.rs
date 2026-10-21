@@ -311,7 +311,12 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
     let scripts = game.join("scripts");
     for m in &set.modules {
         let dst = scripts.join(rel(&m.path)?);
-        write(&dst, m.code.as_bytes())?;
+        // A `.wgsl` import's module only names the file: ship the shader, not the build machine's path.
+        if m.path.to_string_lossy().ends_with(crate::compile::SHADER_EXT) {
+            write(&dst, &std::fs::read(&m.path).map_err(|e| format!("{}: {e}", m.path.display()))?)?;
+        } else {
+            write(&dst, m.code.as_bytes())?;
+        }
     }
     let entry_rel = crate::reader::relative(&root, &set.entry);
     report.log(&format!("compiled {} modules from {}", set.modules.len(), entry_rel));

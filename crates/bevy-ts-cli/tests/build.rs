@@ -137,3 +137,27 @@ fn targets_list_five_and_only_the_host_builds() {
     assert_eq!(code, Some(1));
     assert_eq!(events, vec![serde_json::json!({ "event": "failed", "message": format!("{id}: cross builds are not supported yet") })]);
 }
+
+#[test]
+fn a_shader_ships_as_its_file_and_plays_from_there() {
+    let project = common::project(
+        "build-shader",
+        &[
+            ("tsconfig.json", "{}"),
+            ("src/game.ts", "import glow from \"./glow.wgsl\";\nexport const g = glow;\n"),
+            ("src/glow.wgsl", "fn glow() {}\n"),
+        ],
+    );
+    let out = project.join("dist/here");
+    let (code, events) = build(&[project.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{events:#?}");
+    let shipped = out.join("game/scripts/src/glow.wgsl");
+    assert_eq!(std::fs::read_to_string(&shipped).unwrap(), "fn glow() {}\n");
+    let game = out.join("game");
+    let file = bevy_ts_cli::play::read_game(&game).unwrap();
+    let set = bevy_ts_cli::play::read_scripts(&game, &file).unwrap();
+    let m = set.modules.iter().find(|m| m.path.ends_with("src/glow.wgsl")).expect("the shader's module");
+    assert!(m.code.contains("\"shaderFile\"") && m.code.contains(&*m.path.to_string_lossy()), "{}", m.code);
+    assert!(m.path.starts_with(game.canonicalize().unwrap()), "{}", m.path.display());
+}
+

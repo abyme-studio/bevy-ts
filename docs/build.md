@@ -27,6 +27,7 @@ dist/aarch64-apple-darwin/
   game/
     game.json           { "name", "entry", "bevyTs", "engine" }
     scripts/src/…       every module of the entry's graph, compiled, at its path in the project
+                        (a `.wgsl` a module imports ships as the shader file itself)
     assets/…            a copy of the project's assets/, levels included
 ```
 
