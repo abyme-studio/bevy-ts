@@ -374,6 +374,8 @@ pub struct WatchState {
     pub ours: HashSet<AssetId<Shader>>,
     /// The defs of a pipeline that compiled, per stage shader.
     pub defs: HashMap<AssetId<Shader>, Vec<ShaderDefVal>>,
+    /// Stage shaders with a built pipeline as of the last render frame: what draws now.
+    pub drawing: HashSet<AssetId<Shader>>,
     /// Each stage's source version: bumped by the main world when it replaces the shader.
     pub version: HashMap<AssetId<Shader>, u64>,
     /// The versions the render world extracted with the shader assets of the same frame.
@@ -420,6 +422,7 @@ pub fn watch_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>,
     if w.ours.is_empty() {
         return;
     }
+    let mut drawing = HashSet::new();
     for p in cache.pipelines() {
         let PipelineDescriptor::RenderPipelineDescriptor(d) = &p.descriptor else { continue };
         let stages = std::iter::once((d.vertex.shader.id(), &d.vertex.shader_defs)).chain(d.fragment.as_ref().map(|f| (f.shader.id(), &f.shader_defs)));
@@ -430,6 +433,7 @@ pub fn watch_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>,
             match &p.state {
                 // Defs belong to the pipeline, not the source: any compiled one will do.
                 CachedPipelineState::Ok(_) => {
+                    drawing.insert(id);
                     w.defs.insert(id, defs.clone());
                 }
                 CachedPipelineState::Err(e) => {
@@ -443,4 +447,5 @@ pub fn watch_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>,
             }
         }
     }
+    w.drawing = drawing;
 }

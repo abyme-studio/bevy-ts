@@ -248,6 +248,7 @@ fn until_error(app: &mut App, n: usize) {
     }
 }
 
+// macOS only, as this whole file is: Metal has no f64, every other capability the check assumes.
 #[test]
 fn a_failure_only_the_device_sees_is_reported_with_the_renderers_message() {
     let (dir, mut app) = setup("material-errors-device");
@@ -275,4 +276,19 @@ fn a_stale_failure_is_not_reported_against_a_fixed_file_the_check_skips() {
     save_wgsl(&mut app, &dir, &unchecked);
     updates(&mut app, 240);
     assert_eq!(errors(&app).len(), n, "{:?}", &errors(&app)[n..]);
+}
+
+#[test]
+fn nothing_is_said_to_keep_drawing_after_the_renderer_rejected_the_last_shader() {
+    let (dir, mut app) = setup("material-errors-not-drawing");
+    // A file the check skips, broken: installed, the renderer rejects it, nothing draws.
+    let unchecked = WGSL.replace("const FLOOR: f32 = 0.25;", "const FLOOR: f32 = 0.25;\n@if(BEVY_TS_NEVER) const UNUSED: f32 = 1.0;");
+    let n = errors(&app).len();
+    save_wgsl(&mut app, &dir, &unchecked.replace("params.color.rgb * glow, params.color.a", "params.color.rgb * glow, 1u"));
+    until_error(&mut app, n);
+    updates(&mut app, 10);
+    // A checkable broken save now: its error must not claim a previous shader draws.
+    save_wgsl(&mut app, &dir, &WGSL.replace("sin(globals.time * params.pulse)", "sin(globals.time * params.speed)"));
+    let m = error_at(&app, 9);
+    assert!(!m.contains("keeps drawing"), "{m}");
 }

@@ -232,7 +232,7 @@ fn rebuild(world: &mut World, generation: u64, decl: MaterialDecl, old: Option<K
     }
     if let Some(mut old) = old {
         if !errors.is_empty() {
-            let suffix = if old.fragment.source.is_some() { "; the previous material keeps drawing" } else { "" };
+            let suffix = if draws(world, &old.fragment) { "; the previous material keeps drawing" } else { "" };
             log_errors(world, generation, errors, suffix);
             old.wanted = Some(decl);
             return old;
@@ -294,6 +294,11 @@ fn build(
     state
 }
 
+/// Whether a pipeline built from the stage's shader draws now: not merely installed, built.
+fn draws(world: &World, stage: &Stage) -> bool {
+    world.resource::<wgsl::PipelineWatch>().0.lock().unwrap().drawing.contains(&stage.handle.id())
+}
+
 /// The defs a stage's live pipeline was built with. Cloned out, so the render world's per-frame
 /// watch never waits on a check.
 fn live_defs(world: &World, stage: &Stage) -> Option<Vec<bevy::shader::ShaderDefVal>> {
@@ -346,8 +351,8 @@ fn refresh_stage(world: &mut World, decl: &MaterialDecl, bindings: &Bindings, st
             Vec::new()
         }
         Ok(None) => Vec::new(),
-        // Only a stage that draws has a previous shader to keep.
-        Err(errors) if stage.source.is_some() => with_suffix(errors, "; the previous shader keeps drawing"),
+        // Only a stage whose shader built has a previous shader to keep.
+        Err(errors) if draws(world, stage) => with_suffix(errors, "; the previous shader keeps drawing"),
         Err(errors) => errors,
     }
 }
