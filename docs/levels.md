@@ -48,8 +48,8 @@ with `viewport_select`.
 - **Reparent and restore** go to `index` among the parent's written children, or last. Both
   keep comments with the entity, so a move or a delete and its inverse give the file back byte
   for byte. A reparent keeps the entity and its state, as a rename does.
-- **A batch does not reuse what it changed.** An op may not name a path an earlier op of the
-  same batch deleted, renamed, moved or added, or anything under it, nor a positional `#n` in a
+- **A batch does not reuse what it changed.** An op may not name, or land on, a path an earlier
+  op of the same batch deleted, renamed, moved or added, or anything under it, nor a positional `#n` in a
   list an earlier op added to or took from: that batch is `invalid`; split it. A component
   removed then added on the same entity is fine, so `[remove_component Foo, add_component Foo
   { … }]` replaces a patch. The world checks (`exists`, a prefab's component) see the world before

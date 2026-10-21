@@ -429,3 +429,25 @@ fn a_whitespace_line_ends_what_an_entity_owns() {
     assert_eq!(w.text, "#A Marker\n--\n// Section two.\n    \n#C Marker\n");
     assert_eq!(ok(&w.text, &w.inverse).text, src);
 }
+
+#[test]
+fn where_an_op_lands_cannot_be_what_the_batch_changed() {
+    let src = "#P Marker\nChildren [\n    #X Marker\n]\n--\n#A Marker\n--\n#B Marker\n--\n#X Marker\n--\n#Crate Marker\n";
+    for ops in [
+        vec![Op::Delete { path: p("A") }, Op::Rename { path: p("B"), to: "A".into() }],
+        vec![Op::Delete { path: p("P/X") }, Op::Reparent { path: p("X"), parent: p("P"), index: None }],
+        vec![Op::Delete { path: p("Crate") }, add("", Some("Crate"), Base::None, vec![], None)],
+        vec![Op::Delete { path: p("Crate") }, Op::Restore { parent: p(""), index: 0, text: "#Crate Marker".into() }],
+        // Two unnamed restores into one list would both be `#0`.
+        vec![Op::Restore { parent: p(""), index: 0, text: "Marker".into() }, Op::Restore { parent: p(""), index: 0, text: "Marker".into() }],
+    ] {
+        let e = apply(src, &ops).map(|w| w.text).unwrap_err();
+        assert_eq!((e.reason, e.at), ("invalid", 1), "{ops:?}");
+    }
+}
+
+#[test]
+fn a_refusal_names_its_op() {
+    let e = apply(ARENA, &[set("EnemyB", "Transform", "translation.x", f(5.0)), Op::Delete { path: p("Nobody") }]).unwrap_err();
+    assert_eq!((e.reason, e.at), ("not-found", 1));
+}

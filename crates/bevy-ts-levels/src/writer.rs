@@ -120,13 +120,15 @@ pub struct Written {
 /// Why a batch was refused.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Refused {
+    /// The op it refused, by index in the batch.
+    pub at: usize,
     /// `not-found`, `prefab-internal`, `exists`, `invalid` or `internal`.
     pub reason: &'static str,
     pub message: String,
 }
 
 fn refuse(reason: &'static str, message: impl Into<String>) -> Refused {
-    Refused { reason, message: message.into() }
+    Refused { at: 0, reason, message: message.into() }
 }
 
 /// Names the type a component path resolves to (`Health` and `game::Health` alike): the engine
@@ -152,15 +154,26 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
     // Paths earlier ops changed, and lists whose positional ids they shifted.
     let mut claimed: Vec<Vec<String>> = Vec::new();
     let mut shifted: Vec<Vec<String>> = Vec::new();
-    for op in ops {
-        for p in op_paths(op) {
-            let positional = (1..=p.len()).any(|i| p[i - 1].starts_with('#') && shifted.iter().any(|l| l[..] == p[..i - 1]));
-            if positional || claimed.iter().any(|c| p.starts_with(c)) {
-                return Err(refuse("invalid", format!("an earlier op in this batch changed {}: split this batch", p.join("/"))));
-            }
+    let reused = |claimed: &[Vec<String>], shifted: &[Vec<String>], p: &[String]| {
+        let positional = (1..=p.len()).any(|i| p[i - 1].starts_with('#') && shifted.iter().any(|l| l[..] == p[..i - 1]));
+        (positional || claimed.iter().any(|c| p.starts_with(c))).then(|| refuse("invalid", format!("an earlier op in this batch changed {}: split this batch", p.join("/"))))
+    };
+    for (at, op) in ops.iter().enumerate() {
+        let at_op = |mut e: Refused| {
+            e.at = at;
+            e
+        };
+        if let Some(e) = op_paths(op).into_iter().find_map(|p| reused(&claimed, &shifted, p)) {
+            return Err(at_op(e));
         }
-        let file = syntax::parse(&text).map_err(|d| refuse("internal", format!("the file does not parse: {}", d.message)))?;
-        let (splices, inv, touched, renames) = plan(&file, op, sidecar, resolve)?;
+        let file = syntax::parse(&text).map_err(|d| at_op(refuse("internal", format!("the file does not parse: {}", d.message))))?;
+        let (splices, inv, touched, renames) = plan(&file, op, sidecar, resolve).map_err(at_op)?;
+        // Where the op lands may not be what an earlier op changed either: a deleted entity's
+        // node would be taken over.
+        let adds = matches!(op, Op::Add { .. } | Op::Restore { .. });
+        if let Some(e) = renames.iter().map(|(_, to)| to).chain(adds.then(|| &touched[0])).find_map(|p| reused(&claimed, &shifted, p)) {
+            return Err(at_op(e));
+        }
         // What earlier ops added moves with this one's renames.
         for (from, to) in &renames {
             for c in created.iter_mut().filter(|c| c.starts_with(from)) {
@@ -184,8 +197,8 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
         }
         renamed.extend(renames);
         let (next, ranges) = splice(&text, &splices);
-        let parsed = syntax::parse(&next).map_err(|d| refuse("internal", format!("the edit would not parse: {} ({op:?})", d.message)))?;
-        verify(&file, &parsed, &touched)?;
+        let parsed = syntax::parse(&next).map_err(|d| at_op(refuse("internal", format!("the edit would not parse: {} ({op:?})", d.message))))?;
+        verify(&file, &parsed, &touched).map_err(at_op)?;
         // Earlier changed ranges move with this op's splices.
         changed = changed.into_iter().map(|(s, e)| (shift(&splices, s), shift(&splices, e))).collect();
         changed.extend(ranges);

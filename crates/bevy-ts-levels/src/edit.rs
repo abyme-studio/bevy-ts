@@ -188,7 +188,7 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         // a scene's TSX entity, is not in the file either.
         match writer::apply(&disk, &ops, scene.is_some(), Some(&resolve)) {
             Ok(w) => check_world(world, &schema, &req.file, scene.as_deref(), &ops).map(|()| w),
-            Err(e) if e.reason == "not-found" => Err(check_world(world, &schema, &req.file, scene.as_deref(), &ops).err().unwrap_or(e)),
+            Err(e) if e.reason == "not-found" => Err(check_world(world, &schema, &req.file, scene.as_deref(), &ops[..=e.at]).err().filter(|w| w.at == e.at).unwrap_or(e)),
             Err(e) => Err(e),
         }
     };
@@ -202,7 +202,8 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
     }
     // Renames and moves keep their entities: the retained tree moves, in every placement of the
     // file, before the reload sees it.
-    let places = placements(world, &req.file, scene.as_deref()).unwrap_or_default();
+    let tops = syntax::parse(&disk).map_or(1, |f| f.entities.items.iter().filter(|e| !e.entries.is_empty()).count());
+    let places = placements(world, &req.file, scene.as_deref(), tops).unwrap_or_default();
     for p in &places {
         for (from, to) in &written.renamed {
             if let (Some(a), Some(b)) = (p.key_of(from), p.key_of(to)) {
@@ -218,9 +219,9 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         return WriteResult::refused(req, "refused", "internal", e);
     }
     reconcile_affected(world, &req.file);
-    // What the batch added, in the file's first placement.
+    // What the batch added: in the file's own root when it is open, else its first inclusion.
     let tree = world.resource::<TsxTree>();
-    let created = written.created.iter().map(|p| (p.clone(), places.first().and_then(|pl| tree.entity(node_id(&pl.root, &pl.key_of(p)?))))).collect();
+    let created = written.created.iter().map(|p| (p.clone(), places.iter().filter_map(|pl| tree.entity(node_id(&pl.root, &pl.key_of(p)?))).next())).collect();
     WriteResult { id: req.id, file: req.file.clone(), status, reason: None, message: String::new(), hash: Some(hash_text(hash)), lines: written.lines, disk: None, inverse: written.inverse, created }
 }
 
@@ -236,46 +237,50 @@ fn shortest(schema: &WorldSchema, component: &str, full: &str) -> Option<String>
     (1..=segments.len()).map(|k| segments[segments.len() - k..].join("::")).find(|c| schema.component(c).is_ok_and(|s| s.name == full))
 }
 
-/// Where a file's entities are in the world: an open level that is or includes it.
+/// Where a file's entities are in the world: an open level that is the file, or one inclusion
+/// of it in an open level.
 #[derive(Debug)]
 struct Placement {
     /// The tsx root.
     root: String,
-    /// The key of the entity an included file's top entity merges into.
+    /// The key of the entity that includes the file; empty for the file's own root.
     key: Vec<String>,
-    /// That top entity's name; None for a level's own file, whose paths are its keys.
-    top: Option<String>,
+    /// A file with one top entity merges it into the including entity; one with several puts
+    /// them under it.
+    merged: bool,
     /// The files of the including frames above the file, outermost first.
     above: Vec<String>,
 }
 
 impl Placement {
     fn key_of(&self, path: &[String]) -> Option<Vec<String>> {
-        match &self.top {
-            None => Some(path.to_vec()),
-            Some(top) => (path.first() == Some(top)).then(|| self.key.iter().chain(&path[1..]).cloned().collect()),
-        }
+        let rest = if self.merged { path.get(1..)? } else { path };
+        Some(self.key.iter().chain(rest).cloned().collect())
     }
 }
 
-/// Every placement of `file`: its own root, each inclusion in an open level, or by key path in a
-/// sidecar's scene. None when no open level shows the file.
-fn placements(world: &World, file: &str, scene: Option<&str>) -> Option<Vec<Placement>> {
+/// Every placement of `file` (with `tops` top entities): its own root first, then each
+/// inclusion in an open level; or by key path in a sidecar's scene. None when no open level
+/// shows the file.
+fn placements(world: &World, file: &str, scene: Option<&str>, tops: usize) -> Option<Vec<Placement>> {
     if let Some(scene) = scene {
-        return Some(vec![Placement { root: scene.to_string(), key: Vec::new(), top: None, above: Vec::new() }]);
+        return Some(vec![Placement { root: scene.to_string(), key: Vec::new(), merged: false, above: Vec::new() }]);
     }
-    let mut out = Vec::new();
-    let mut shown = false;
-    for (level, r) in world.resource::<Levels>().roots.iter().filter(|(p, r)| p.as_str() == file || r.files.contains(file)) {
+    let levels = world.resource::<Levels>();
+    let mut out: Vec<Placement> = Vec::new();
+    if let Some(r) = levels.roots.get(file) {
+        out.push(Placement { root: r.overlay.clone().unwrap_or_else(|| root_name(file)), key: Vec::new(), merged: false, above: Vec::new() });
+    }
+    let mut shown = !out.is_empty();
+    for (level, r) in levels.roots.iter().filter(|(p, r)| p.as_str() != file && r.files.contains(file)) {
         shown = true;
         let root = r.overlay.clone().unwrap_or_else(|| root_name(level));
-        if level == file {
-            out.push(Placement { root, key: Vec::new(), top: None, above: Vec::new() });
-            continue;
-        }
         for (key, frames) in &r.owners {
-            if let Some(i) = frames.iter().position(|f| f.file == file && f.path.len() == 1) {
-                out.push(Placement { root: root.clone(), key: key.clone(), top: Some(frames[i].path[0].clone()), above: frames[..i].iter().map(|f| f.file.clone()).collect() });
+            let Some(i) = frames.iter().position(|f| f.file == file && f.path.len() == 1) else { continue };
+            let merged = tops == 1;
+            let key = if merged { key.clone() } else { key[..key.len().saturating_sub(1)].to_vec() };
+            if !out.iter().any(|p| p.root == root && p.key == key) {
+                out.push(Placement { root: root.clone(), key, merged, above: frames[..i].iter().map(|f| f.file.clone()).collect() });
             }
         }
     }
@@ -318,16 +323,17 @@ fn made_in_tsx(n: &TsxNode) -> bool {
 /// its prefab gives only what comes from the file or below it, not the including level's
 /// overrides. A component removed then added in the batch counts as removed.
 fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&str>, ops: &[Op]) -> Result<(), writer::Refused> {
-    let refuse = |reason: &'static str, message: String| writer::Refused { reason, message };
-    let places = placements(world, file, scene);
+    let refuse = |at: usize, reason: &'static str, message: String| writer::Refused { at, reason, message };
+    let tops = world.resource::<AssetServer>().get_handle::<BsnLevel>(file.to_string()).and_then(|h| world.resource::<Assets<BsnLevel>>().get(&h)).map_or(1, |l| l.parsed.entities.items.iter().filter(|e| !e.entries.is_empty()).count());
+    let places = placements(world, file, scene, tops);
     let mut added: Vec<(&[String], String)> = Vec::new();
     let mut removed: Vec<(&[String], String)> = Vec::new();
-    for op in ops {
+    for (at, op) in ops.iter().enumerate() {
         match op {
             Op::AddComponent { path, component, .. } | Op::RemoveComponent { path, component } => {
                 let Ok(full) = schema.component(component).map(|s| s.name) else { continue };
                 let Some(places) = &places else {
-                    return Err(refuse("invalid", format!("no open level shows {file}: open one that places it to change its components")));
+                    return Err(refuse(at, "invalid", format!("no open level shows {file}: open one that places it to change its components")));
                 };
                 // Where each placement's component comes from, if from the file or below it.
                 let sources: Vec<Option<&str>> = nodes_of(world, places, path)
@@ -339,13 +345,13 @@ fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&s
                 let key = (&path[..], full.clone());
                 if matches!(op, Op::AddComponent { .. }) {
                     if !sources.is_empty() && !removed.contains(&key) {
-                        return Err(refuse("exists", format!("{} already has {full}", path.join("/"))));
+                        return Err(refuse(at, "exists", format!("{} already has {full}", path.join("/"))));
                     }
                     removed.retain(|r| r != &key);
                     added.push(key);
                 } else {
                     if sources.iter().any(|s| s.is_some_and(|s| s != file)) && !added.contains(&key) {
-                        return Err(refuse("prefab-internal", format!("{full} comes from {}'s prefab; .bsn cannot remove it", path.join("/"))));
+                        return Err(refuse(at, "prefab-internal", format!("{full} comes from {}'s prefab; .bsn cannot remove it", path.join("/"))));
                     }
                     added.retain(|a| a != &key);
                     removed.push(key);
@@ -354,7 +360,7 @@ fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&s
             Op::Delete { path } | Op::Rename { path, .. } | Op::Reparent { path, .. } if scene.is_some() => {
                 let places = places.as_deref().unwrap_or_default();
                 if nodes_of(world, places, path).iter().any(|(n, _)| made_in_tsx(n)) {
-                    return Err(refuse("prefab-internal", format!("{} is made in TSX; edit it there", path.join("/"))));
+                    return Err(refuse(at, "prefab-internal", format!("{} is made in TSX; edit it there", path.join("/"))));
                 }
             }
             _ => {}

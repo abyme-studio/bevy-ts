@@ -554,6 +554,54 @@ mod writes {
         assert_eq!(r.status, "written", "hut.bsn removes its own patch: {r:?}");
         assert_eq!(std::fs::read_to_string(f.dir.join("levels/hut.bsn")).unwrap(), hut);
     }
+    #[test]
+    fn the_writers_refusal_of_an_earlier_op_stands() {
+        let mut f = arena();
+        let r = write(&mut f, ARENA, vec![Op::Delete { path: p("Nobody") }, Op::AddComponent { path: p("RoomA"), component: "Transform".into(), fields: vec![], text: None }]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("not-found")), "op 0 is the batch's first problem: {r:?}");
+    }
+
+    const MULTI: &str = "#Hut\nTransform\nChildren [\n    #A Transform\n]\n--\n#Shed Transform\n";
+
+    fn multi() -> Fixture {
+        let mut f = fixture(&format!("multi-{:?}", std::thread::current().id()).replace(['(', ')'], ""), &[("levels/arena.bsn", "#Hall\n:\"levels/hut.bsn\"\n"), ("levels/hut.bsn", MULTI)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        f
+    }
+
+    fn to_hut(f: &mut Fixture, base: &str, ops: Vec<Op>) -> bevy_ts_levels::edit::WriteResult {
+        write_level(f.app.world_mut(), WriteRequest { id: 3, file: "levels/hut.bsn".into(), base: content_hash(base.as_bytes()), ops })
+    }
+
+    #[test]
+    fn a_reparent_across_tops_of_an_included_file_keeps_the_entity() {
+        let mut f = multi();
+        let (a, shed) = (f.by_name("A"), f.by_name("Shed"));
+        let r = to_hut(&mut f, MULTI, vec![Op::Reparent { path: p("Hut/A"), parent: p("Shed"), index: None }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(f.by_name("A"), a, "the entity stays");
+        assert_eq!(f.app.world().get::<ChildOf>(a).map(ChildOf::parent), Some(shed));
+    }
+
+    #[test]
+    fn created_resolves_where_the_entity_is() {
+        // A second top of an included file, and a path a later op renamed.
+        let mut f = multi();
+        let add = |parent: &str, name: &str| Op::Add { parent: p(parent), name: Some(name.into()), base: Base::None, patches: vec![], asset: None };
+        let r = to_hut(&mut f, MULTI, vec![add("Shed", "Lamp"), add("Hut", "Bulb"), Op::Rename { path: p("Hut"), to: "Hall2".into() }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(r.created.iter().map(|(p, _)| p.join("/")).collect::<Vec<_>>(), ["Shed/Lamp", "Hall2/Bulb"]);
+        assert_eq!((r.created[0].1, r.created[1].1), (Some(f.by_name("Lamp")), Some(f.by_name("Bulb"))), "{r:?}");
+        // A file open by itself and included elsewhere: its own root.
+        let mut g = fixture("created-own", &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        g.load(&["levels/arena.bsn", "levels/room.bsn"]);
+        g.settle();
+        let r = write_level(g.app.world_mut(), WriteRequest { id: 4, file: "levels/room.bsn".into(), base: content_hash(ROOM.as_bytes()), ops: vec![Op::Add { parent: p("Room"), name: Some("Lamp".into()), base: Base::None, patches: vec![], asset: None }] });
+        assert_eq!(r.status, "written", "{r:?}");
+        let lamp = r.created[0].1.expect("spawned");
+        assert_eq!(g.app.world().get::<TsxNode>(lamp).unwrap().root, "level:levels/room.bsn");
+    }
 }
 
 mod hot_reload {
