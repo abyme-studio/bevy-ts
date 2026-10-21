@@ -263,7 +263,7 @@ pub fn reconcile_external(world: &mut World, name: &str, location: Option<bevy_t
 
 /// Moves every node of `root` under key path `from` to `to`, keeping its entity and state: a
 /// rename the next reconcile then finds in place (levels' writer `rename`). The watch sees the old
-/// ids removed and the new ones added, and the old and new sibling lists changed. Returns how many
+/// ids removed and the new ones added, and every sibling list they leave or join changed. Returns how many
 /// nodes moved; none when `to` is taken.
 pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> usize {
     let moves: Vec<(Entity, u64, Vec<String>)> = {
@@ -312,11 +312,13 @@ pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> u
             state.order.remove(old);
         }
     }
-    let to_list = (root.to_string(), tree.parent_row(root, to));
+    // The old and new lists of the moved node, and the list each moved node is in under its new id.
+    let mut lists = vec![from_list];
+    lists.extend(moves.iter().map(|(_, _, path)| (root.to_string(), tree.parent_row(root, path))));
     let journal = &mut tree.journal.open;
     journal.removed.extend(ids.keys().filter(|old| !ids.values().any(|new| new == *old)));
     journal.added.extend(ids.values().filter(|new| !ids.contains_key(new)));
-    journal.ordered.extend([from_list, to_list]);
+    journal.ordered.extend(lists);
     for t in tree.reactive.targets.values_mut() {
         if let Some(n) = ids.get(&t.node) {
             t.node = *n;

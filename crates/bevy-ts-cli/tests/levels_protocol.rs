@@ -463,8 +463,18 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
     assert_eq!(client, Client::from_roots(&t["roots"]));
     assert_eq!(row(&t, level, &["B", "a2"])["parent"], b);
 
+    // A rename of a node with children: its children's list comes under its new id.
+    let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": w["hash"], "ops": [{ "op": "rename", "path": ["A"], "to": "A2" }] })));
+    assert_eq!(w["status"], "written", "{w}");
+    let ms = watch_until_settled(&mut app);
+    ms.iter().for_each(validate_tsx);
+    let t = tree(&mut app);
+    ms.iter().for_each(|m| client.apply(m));
+    assert_eq!(client, Client::from_roots(&t["roots"]));
+    let (a, a1, c) = (id(&t, &["A2"]), id(&t, &["A2", "a1"]), id(&t, &["A2", "C"]));
+
     // Removing a parent: its whole subtree is removed, and its list is not sent.
-    let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": w["hash"], "ops": [{ "op": "delete", "path": ["A"] }] })));
+    let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": w["hash"], "ops": [{ "op": "delete", "path": ["A2"] }] })));
     assert_eq!(w["status"], "written", "{w}");
     let ms = watch_until_settled(&mut app);
     ms.iter().for_each(validate_tsx);

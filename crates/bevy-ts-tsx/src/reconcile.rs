@@ -280,6 +280,9 @@ pub fn unmount_root(world: &mut World, root: &str) -> ReconcileStats {
     let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
     if let Some(state) = tree.roots.remove(root) {
         tree.journal.open.removed.extend(&state.nodes);
+        // Its tombstones stay (dead until a restart) but leave the tree with it.
+        let dead: Vec<u64> = tree.tombstones.iter().filter(|(id, t)| t.root == root && !state.nodes.contains(id)).map(|(id, _)| *id).collect();
+        tree.journal.open.removed.extend(dead);
         for id in state.nodes {
             if let Some(e) = tree.entities.remove(&id)
                 && alive(world, e, id)
