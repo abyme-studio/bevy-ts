@@ -1,0 +1,6 @@
+{
+  "id": "arena",
+  "title": "Arena",
+  "description": "A player and a HUD in TSX, enemies placed by a level file, and systems that bob, hurt and cull them.",
+  "entry": "src/game.tsx"
+}

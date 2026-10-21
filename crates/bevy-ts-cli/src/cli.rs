@@ -22,7 +22,10 @@ const USAGE: &str = "usage:
   bevy-ts types [--out <file>]
   bevy-ts transform <file.ts> [--dev]
   bevy-ts skeleton [--headless]
-  bevy-ts levels check [--upstream] <file.bsn>…";
+  bevy-ts levels check [--upstream] <file.bsn>…
+from the npm launcher (`npx bevy-ts`), not this binary:
+  bevy-ts new <dir> [--example <id>] [--no-install] [--json]
+  bevy-ts examples [--json]";
 
 /// Parsed `bevy-ts dev` options.
 #[derive(Debug, Clone)]
@@ -126,6 +129,11 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
                 std::process::exit(2);
             }
         },
+        // The npm launcher's own commands: the examples ship in the npm package, not the binary.
+        Some(cmd @ ("new" | "examples")) => {
+            eprintln!("bevy-ts {cmd}: run it through the npm launcher, `npx bevy-ts {cmd}`; the engine binary has no examples");
+            std::process::exit(2);
+        }
         Some("skeleton") => skeleton(&engine, extra, args.iter().any(|a| a == "--headless")),
         _ => {
             eprintln!("{USAGE}");

@@ -13,5 +13,6 @@ export default {
       { find: /^bevy-ts$/, replacement: pkg("runtime/core.js") },
     ],
   },
-  test: { include: ["test/vitest/*.test.ts"] },
+  // examples.test.ts spawns tsc and npm pack, slow on a loaded machine.
+  test: { include: ["test/vitest/*.test.ts"], testTimeout: 60_000 },
 };

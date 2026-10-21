@@ -17,6 +17,17 @@ without recompiling Rust.
   its own Rust as one Bevy plugin; bevy-ts then builds a project engine, only when Rust changes,
   cached by hash ([docs/native.md](docs/native.md)).
 
+## Start
+
+```sh
+npx bevy-ts new my-game      # a project from the cube example, installed
+cd my-game && npx bevy-ts dev src/game.ts
+```
+
+`npx bevy-ts examples` lists the examples; `new my-game --example arena` starts from another.
+`new` pins bevy-ts at the version that ran it, installs with the package manager that ran it
+(`--no-install` skips that) and refuses a directory that is not empty. No Rust toolchain needed.
+
 abyme's Bevy studio talks to a running game over the Bevy Remote Protocol, which bevy-ts extends
 (reload, component schemas, scene reconcile, entity events). That contract is the only coupling.
 With `bevy-ts dev --viewport` the engine renders into the studio's panes, the game's and live

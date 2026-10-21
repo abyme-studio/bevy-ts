@@ -51,7 +51,8 @@
     "*.js",
     "bin",
     "runtime",
-    "plugins"
+    "plugins",
+    "examples"
   ],
   "optionalDependencies": {
     "@bevy-ts/darwin-arm64": "0.1.0-alpha.0",
@@ -67,7 +68,8 @@
   },
   "scripts": {
     "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p test",
-    "test": "vitest run --config test/vitest/vitest.config.mjs"
+    "prepack": "node scripts/sync-examples.mjs",
+    "test": "node scripts/sync-examples.mjs && vitest run --config test/vitest/vitest.config.mjs"
   },
   "publishConfig": {
     "access": "public",

@@ -35,3 +35,19 @@ or on npmjs.com: the package > Settings > Trusted publishing > GitHub Actions, r
 
 `bevy-ts` and `@bevy-ts/darwin-arm64` were first published by hand from the operator's Mac at
 `0.1.0-alpha.0`; npm made that `latest` as well as `next`.
+
+## The packed examples
+
+`bevy-ts` carries the examples `bevy-ts new` and `bevy-ts examples` read, under `examples/`. They
+are not committed there: `prepack` (`scripts/sync-examples.mjs`) copies them from the repository's
+`examples/`, so `npm publish` in the release workflow picks them up with no step of its own.
+
+An example ships when its directory holds an `example.json`: `id` (`[a-z0-9-]+`, unique),
+`title`, `description` and `entry` (the entry file, relative to the example). The package takes
+its `src/`, `assets/`, `bevy-ts.json`, `README.md`, `thumbnail.png` and `example.json`, nothing
+else; walks and `tsconfig.json` stay in the repository. Only an example that runs on the prebuilt
+engine may ship: packing fails on one with anything under `native` in `bevy-ts.json`. `cube` and
+`arena` ship; `rapier` and `thrusters` wait for bevy-ts's crates on crates.io.
+
+`pnpm test` in `packages/bevy-ts` syncs the examples, makes a project from each and type-checks it,
+and checks `npm pack --dry-run` holds exactly them.
