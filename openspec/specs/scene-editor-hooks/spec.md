@@ -20,7 +20,7 @@ For each component element on a node, the reconciler SHALL expose each field's p
 - **THEN** `Health.hp` is `initial` with 250, `Health.max` is `controlled` with 250, and both point at `enemy.tsx`'s `<Health>` line
 
 ### Requirement: Protocol methods for the scene tree
-bevy-ts SHALL add to `protocol/bevy-ts.openrpc.json`, as a minor version bump: `bevy-ts/tsx_tree` (every root with its nodes: node id, entity, key path, element type, source, tombstoned), `bevy-ts/tsx_node` (`entity` or `node`: the source chain, components and provenance above), `bevy-ts/tsx_find` (`file`, `line`, `column`: every entity whose source chain contains that location, so one prefab element maps to all its instances) and `bevy-ts/tsx_tree+watch` (the tree, then one message per reconcile with nodes added, removed, tombstoned and source locations moved).
+bevy-ts SHALL add to `protocol/bevy-ts.openrpc.json`, as a minor version bump: `bevy-ts/tsx_tree` (every root with its nodes, in description order with each parent before its children, a level's in file order: node id, entity, key path, element type, source, tombstoned), `bevy-ts/tsx_node` (`entity` or `node`: the source chain, components and provenance above), `bevy-ts/tsx_find` (`file`, `line`, `column`: every entity whose source chain contains that location, so one prefab element maps to all its instances) and `bevy-ts/tsx_tree+watch` (the tree, then one message per reconcile with nodes added, removed, tombstoned and source locations moved).
 
 #### Scenario: Finding all instances of a prefab element
 - **WHEN** a client calls `bevy-ts/tsx_find` with the `<entity>` line inside `Enemy`

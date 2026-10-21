@@ -71,7 +71,8 @@ base) and a dragged asset (`add_entity` with `asset`). It changes only when a TS
 Each `bevy-ts/tsx_tree` node a level placed carries `level: { file, namePath, written }`;
 `written` is false for what a prefab or an included level gives, so an editor greys what it
 cannot rename, delete or move. `level_node` lists `patches`, the components the file adds that
-the prefab does not give.
+the prefab does not give. A level's nodes come in file order, each parent before its
+children, so a `level_write` reparent index can be counted from the tree.
 
 ## Scenes without a level
 
