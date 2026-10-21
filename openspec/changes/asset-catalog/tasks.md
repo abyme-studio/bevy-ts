@@ -1,6 +1,6 @@
 ## 1. Protocol
 
-- [ ] 1.1 `protocol/bevy-ts.openrpc.json` 1.12.0 (rebase to the next free minor if viewport-tools has not taken 1.11.0, or has and another bump landed): `AssetInfo.thumbnail` (boolean), `PickHit.point` and `ViewportPickResult.ground` (nullable) as `[number, number, number]`
+- [ ] 1.1 `protocol/bevy-ts.openrpc.json` at the next free minor on main when this lands (planned 1.13.0, after engine-components 1.11.0 and viewport-tools 1.12.0; lead@bevy-ts confirms the number), and the same number in the shared-surface spec: `AssetInfo.thumbnail` (boolean), `PickHit.point` and `ViewportPickResult.ground` (nullable) as `[number, number, number]`
 - [ ] 1.2 Regenerate Rust and TS types through bridge's pipeline (`packages/bevy-ts/protocol.d.ts`, `crates/bevy-ts-remote`); the contract tests pass
 
 ## 2. The listing
