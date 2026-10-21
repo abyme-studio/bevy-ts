@@ -198,6 +198,16 @@ fn new_stage(world: &mut World, file: &Path) -> Stage {
 fn rebuild(world: &mut World, generation: u64, decl: MaterialDecl, old: Option<KindState>) -> KindState {
     let bindings = decl.bindings().expect("checked");
     let alpha = decl.alpha_mode().expect("checked");
+    // A kind that draws keeps its schema, layout and shaders until the new ones check out.
+    if let Some(o) = &old
+        && let Err(errors) = precheck(world, &decl, &bindings, o)
+    {
+        let mut log = world.resource_mut::<ScriptLog>();
+        for e in errors {
+            log.push(LogLevel::Error, format!("{}; the previous material keeps drawing", e.message), e.location, generation);
+        }
+        return old.expect("checked");
+    }
     let (mut fragment, mut vertex, instances) = match old {
         Some(o) => (o.fragment, o.vertex, o.instances),
         None => (new_stage(world, &decl.fragment), None, BTreeMap::new()),
@@ -211,11 +221,6 @@ fn rebuild(world: &mut World, generation: u64, decl: MaterialDecl, old: Option<K
         (Some(f), None) => Some(new_stage(world, f)),
         (None, _) => None,
     };
-    // The generated declarations changed with the schema, so every stage rebuilds.
-    fragment.source = None;
-    if let Some(v) = &mut vertex {
-        v.source = None;
-    }
     refresh_stage(world, generation, &decl, &bindings, &mut fragment);
     if let Some(v) = &mut vertex {
         refresh_stage(world, generation, &decl, &bindings, v);
@@ -243,6 +248,23 @@ fn rebuild(world: &mut World, generation: u64, decl: MaterialDecl, old: Option<K
     state
 }
 
+/// Checks a changed kind's stages under the defs they draw with, before anything is replaced.
+fn precheck(world: &World, decl: &MaterialDecl, bindings: &Bindings, old: &KindState) -> Result<(), Vec<ScriptError>> {
+    let watch = world.resource::<wgsl::PipelineWatch>().0.lock().unwrap();
+    let mut errors = Vec::new();
+    let stages = [(Some(&decl.fragment), Some(&old.fragment)), (decl.vertex.as_ref(), old.vertex.as_ref())];
+    for (file, stage) in stages {
+        let (Some(file), Some(stage)) = (file, stage) else { continue };
+        let (Some(defs), Some(_)) = (watch.defs.get(&stage.handle.id()), &stage.source) else { continue };
+        let Ok(text) = std::fs::read_to_string(file) else { continue };
+        let combined = wgsl::combine(&text, bindings, &decl.name);
+        if let wgsl::Checked::Errors(e) = wgsl::check(world.resource::<Assets<Shader>>(), &combined, file, decl, defs) {
+            errors.extend(e);
+        }
+    }
+    if errors.is_empty() { Ok(()) } else { Err(errors) }
+}
+
 /// Reads a stage's file and, if its combined source differs from what the asset holds, checks it
 /// and replaces the asset in place. On an error the old shader stays.
 fn refresh_stage(world: &mut World, generation: u64, decl: &MaterialDecl, bindings: &Bindings, stage: &mut Stage) {
@@ -258,12 +280,28 @@ fn refresh_stage(world: &mut World, generation: u64, decl: &MaterialDecl, bindin
     if stage.source.as_deref() == Some(combined.as_str()) {
         return;
     }
-    if let Err(errors) = wgsl::check(world, &combined, &text, &stage.file, decl) {
-        let mut log = world.resource_mut::<ScriptLog>();
-        for e in errors {
-            log.push(LogLevel::Error, e.message, e.location, generation);
+    // A shader that draws is kept until its replacement checks out under the defs it draws with.
+    // With none drawing yet there is nothing to keep; the renderer's errors are mapped instead.
+    let watch = world.resource::<wgsl::PipelineWatch>().clone();
+    let defs = watch.0.lock().unwrap().defs.get(&stage.handle.id()).cloned();
+    if let (Some(defs), Some(_)) = (defs, &stage.source) {
+        match wgsl::check(world.resource::<Assets<Shader>>(), &combined, &stage.file, decl, &defs) {
+            wgsl::Checked::Errors(errors) => {
+                let mut log = world.resource_mut::<ScriptLog>();
+                for e in errors {
+                    log.push(LogLevel::Error, format!("{}; the previous shader keeps drawing", e.message), e.location, generation);
+                }
+                return;
+            }
+            wgsl::Checked::Unverified(why) => debug!("material {}: not checked before replacing its shader: {why}", decl.name),
+            wgsl::Checked::Ok => {}
         }
-        return;
+    }
+    let _ = text;
+    {
+        let mut w = watch.0.lock().unwrap();
+        w.ours.insert(stage.handle.id());
+        w.replaced(stage.handle.id());
     }
     let path = format!("bevy_ts/materials/{}.wesl", shader_path(&decl.name, &stage.file));
     world.resource_mut::<Assets<Shader>>().insert(stage.handle.id(), Shader::from_wesl(combined.clone(), path)).expect("a reserved shader handle");
@@ -276,6 +314,34 @@ fn shader_path(kind: &str, file: &Path) -> String {
     let seg = |s: &str| s.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect::<String>();
     let stem = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     format!("{}/{}", kind.split("::").map(seg).collect::<Vec<_>>().join("/"), seg(&stem))
+}
+
+/// Main world: pipelines the renderer failed to build for a stage, reported against the author's
+/// file by re-checking the stage's source under the failing pipeline's defs.
+pub fn report_pipeline_errors(world: &mut World) {
+    let Some(watch) = world.get_resource::<wgsl::PipelineWatch>().cloned() else { return };
+    let failed = std::mem::take(&mut watch.0.lock().unwrap().failed);
+    if failed.is_empty() {
+        return;
+    }
+    let generation = world.resource::<bevy_ts::generation::Generations>().live;
+    let kinds = world.resource::<MaterialKinds>();
+    let mut out = Vec::new();
+    for (id, defs, message) in failed {
+        let found = kinds.live.values().find_map(|k| {
+            std::iter::once(&k.fragment).chain(k.vertex.as_ref()).find(|s| s.handle.id() == id).map(|s| (k, s))
+        });
+        let Some((k, stage)) = found else { continue };
+        let Some(source) = &stage.source else { continue };
+        match wgsl::check(world.resource::<Assets<Shader>>(), source, &stage.file, &k.decl, &defs) {
+            wgsl::Checked::Errors(errors) => out.extend(errors.into_iter().map(|e| (e.message, e.location))),
+            _ => out.push((format!("material {}: the renderer could not build its shader: {message}", k.decl.name), k.decl.at())),
+        }
+    }
+    let mut log = world.resource_mut::<ScriptLog>();
+    for (m, at) in out {
+        log.push(LogLevel::Error, m, at, generation);
+    }
 }
 
 /// `.wgsl` files saved with no module changed: every stage naming one is re-read and replaced.

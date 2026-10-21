@@ -73,5 +73,5 @@ export default {
   "systems-gate": { cmd: "bash -c 'mkdir -p target && set -o pipefail && scripts/systems-gate.sh 2>&1 | tee target/systems-gate.log'" },
   // Change script-materials.
   "material-test": { cmd: "cargo test -p bevy-ts-material -- --nocapture 2>&1 | grep -v ld64 | tee target/material-test.log | grep -E '^test |test result|panicked|^error|^warning|left|right' | tail -40" },
-  "materials-cli": { cmd: "cargo test -p bevy-ts-cli --test materials --test tsx -- --nocapture 2>&1 | grep -v ld64 | tee target/materials-cli.log | grep -E '^test |test result|panicked|^error|left|right|assert' | tail -40" },
+  "materials-cli": { cmd: "cargo test -p bevy-ts-cli --test materials --test material_errors --test tsx -- --nocapture --test-threads 1 2>&1 | grep -v ld64 | tee target/materials-cli.log | grep -E '^test |test result|panicked|^error|left|right|assert' | tail -40" },
 } satisfies ProcessFile;

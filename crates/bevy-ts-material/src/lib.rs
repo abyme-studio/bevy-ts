@@ -29,6 +29,7 @@ impl Plugin for ScriptMaterialPlugin {
             .init_resource::<MaterialKinds>()
             .add_ts_section(kinds::SECTION, |world, input| kinds::check(world, input.generation, input.bytes, input.location.clone()))
             .on_ts_section_applied(kinds::SECTION, |world, s| kinds::apply(world, s.generation, s.present))
-            .on_ts_files_changed(kinds::files_changed);
+            .on_ts_files_changed(kinds::files_changed)
+            .add_systems(Update, kinds::report_pipeline_errors);
     }
 }

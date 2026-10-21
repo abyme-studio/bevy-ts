@@ -13,6 +13,10 @@ bevy = { workspace = true, features = ["3d"] }
 bevy-ts.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The WGSL check before a shader is replaced (operator-approved 2026-10-21): the versions Bevy
+# 0.20 and wgpu 30 already build, with their features.
+wesl = { version = "0.6", features = ["naga-ext"] }
+naga = { version = "30", features = ["wgsl-in"] }
 
 [dev-dependencies]
-bevy = { workspace = true, features = ["3d", "debug"] }
+bevy = { workspace = true, features = ["3d"] }

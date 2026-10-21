@@ -101,8 +101,14 @@ impl Plugin for ScriptMaterialRenderPlugin {
             .add_plugins(ErasedRenderAssetPlugin::<ScriptMaterial>::default())
             .init_resource::<EntitiesNeedingSpecialization<ScriptMaterial>>()
             .add_systems(PostUpdate, check_entities_needing_specialization.after(AssetEventSystems));
+        let watch = crate::wgsl::PipelineWatch::default();
+        app.insert_resource(watch.clone());
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
-        render_app.add_systems(RenderStartup, init_render_resources).add_systems(
+        render_app
+            .insert_resource(watch)
+            .add_systems(bevy::render::Render, crate::wgsl::watch_pipelines.in_set(bevy::render::RenderSystems::Cleanup))
+            .add_systems(RenderStartup, init_render_resources)
+            .add_systems(
             ExtractSchedule,
             (
                 extract_instances,

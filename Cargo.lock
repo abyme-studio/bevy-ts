@@ -520,8 +520,10 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy-ts",
+ "naga",
  "serde",
  "serde_json",
+ "wesl",
 ]
 
 [[package]]
@@ -995,7 +997,6 @@ dependencies = [
  "indexmap",
  "log",
  "nonmax",
- "rand 0.10.3",
  "serde",
  "slotmap",
  "smallvec",
