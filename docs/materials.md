@@ -78,8 +78,19 @@ layout is separate from components, which keep C rules.
   names the material and your `file:line:col`, and the previous shader keeps drawing. An error in
   the generated part names the material's schema in TS instead. With no shader drawing yet, the
   renderer's error is mapped the same way and the material draws nothing until fixed.
+- A failure the check cannot see (a device capability such as `f64` on Metal) is reported with
+  the renderer's own message. A renderer failure from a source older than the current one is
+  never reported against the current file.
+
+## Known limits
+
 - The check skips files that use inline module paths (`a::b::c(...)`) or `@if` outside the
-  imports; those reach the renderer unchecked.
+  imports; those reach the renderer unchecked, and its failures are reported with its message.
+- The check validates each stage alone, with every capability. A vertex output that does not
+  match the fragment's input fails at pipeline creation, which Bevy does not catch: wgpu treats it
+  as a device error.
+- A renderer failure is reported a frame after it happens: Bevy may apply a saved shader a frame
+  late, so failures wait one frame to be sure they belong to the current source.
 
 ## How it works
 

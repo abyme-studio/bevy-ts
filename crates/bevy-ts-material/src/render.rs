@@ -107,6 +107,7 @@ impl Plugin for ScriptMaterialRenderPlugin {
         render_app
             .insert_resource(watch)
             .add_systems(bevy::render::Render, crate::wgsl::watch_pipelines.in_set(bevy::render::RenderSystems::Cleanup))
+            .add_systems(ExtractSchedule, crate::wgsl::extract_versions)
             .add_systems(RenderStartup, init_render_resources)
             .add_systems(
             ExtractSchedule,

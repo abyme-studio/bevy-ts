@@ -172,7 +172,7 @@ fn an_error_in_the_generated_params_names_the_schema() {
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     let e = logs(&app).into_iter().rev().find(|e| e.level == LogLevel::Error).expect("an error");
-    assert!(e.message.contains("game::Glow") && e.message.contains("`noise`") && e.message.contains("generated from its params"), "{}", e.message);
+    assert!(e.message.contains("game::Glow") && e.message.contains("`noise`") && e.message.contains("params or textures generate"), "{}", e.message);
     assert!(e.location.clone().expect("the material() call").file.ends_with("game.tsx"));
     assert!(e.message.contains("previous material keeps drawing"), "{}", e.message);
     assert_eq!(fragment(&app), before, "the old shader stays");
@@ -191,7 +191,8 @@ fn a_broken_first_shader_is_reported_by_the_renderer_at_its_line() {
             break;
         }
     }
-    error_at(&app, 9);
+    let m = error_at(&app, 9);
+    assert!(!m.contains("keeps drawing"), "nothing drew, so nothing is kept: {m}");
     // A second broken save, with no drawing shader to check it against first: the renderer's
     // failure is reported too.
     let n = errors(&app).len();
@@ -235,4 +236,43 @@ fn a_save_the_live_schema_accepts_applies_while_a_newer_one_waits() {
     let k = &app.world().resource::<MaterialKinds>().live["game::Glow"];
     assert!(k.wanted.is_some(), "the newer schema still waits");
     assert!(fragment(&app).1.unwrap().contains("const FLOOR: f32 = 0.75;"));
+}
+
+/// Updates until an error past the first `n` is logged, or 600 frames.
+fn until_error(app: &mut App, n: usize) {
+    for _ in 0..600 {
+        app.update();
+        if errors(app).len() > n {
+            return;
+        }
+    }
+}
+
+#[test]
+fn a_failure_only_the_device_sees_is_reported_with_the_renderers_message() {
+    let (dir, mut app) = setup("material-errors-device");
+    let n = errors(&app).len();
+    // Valid WGSL to the check (every capability), but Metal has no f64.
+    save_wgsl(&mut app, &dir, &WGSL.replace("let uv = in.uv;", "let uv = in.uv;\n    let wide: f64 = 1.0lf;"));
+    until_error(&mut app, n);
+    let e = errors(&app);
+    assert!(e.len() > n, "the renderer's failure is reported");
+    let last = e.last().unwrap();
+    assert!(last.contains("game::Glow") && last.contains("renderer could not build"), "{last}");
+}
+
+#[test]
+fn a_stale_failure_is_not_reported_against_a_fixed_file_the_check_skips() {
+    let (dir, mut app) = setup("material-errors-stale");
+    // `@if` outside the imports: the check skips the file, so only the renderer sees it.
+    let unchecked = WGSL.replace("const FLOOR: f32 = 0.25;", "const FLOOR: f32 = 0.25;\n@if(BEVY_TS_NEVER) const UNUSED: f32 = 1.0;");
+    let n = errors(&app).len();
+    save_wgsl(&mut app, &dir, &unchecked.replace("params.color.rgb * glow, params.color.a", "params.color.rgb * glow, 1u"));
+    until_error(&mut app, n);
+    assert!(errors(&app).len() > n, "the broken file is reported");
+    // Fixed (still unchecked): its pipelines compile, and the old failure is not told again.
+    let n = errors(&app).len();
+    save_wgsl(&mut app, &dir, &unchecked);
+    updates(&mut app, 240);
+    assert_eq!(errors(&app).len(), n, "{:?}", &errors(&app)[n..]);
 }

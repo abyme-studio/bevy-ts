@@ -53,6 +53,11 @@ pub fn display_file(file: &str) -> String {
     display_file_from(file, std::env::current_dir().ok().as_deref())
 }
 
+/// [`display_file`] for a path.
+pub fn display_path(path: &std::path::Path) -> String {
+    display_file(&path.to_string_lossy())
+}
+
 /// [`display_file`] against a given working directory, for callers that resolve many files.
 pub fn display_file_from(file: &str, cwd: Option<&std::path::Path>) -> String {
     let file = file.split('?').next().unwrap_or(file);

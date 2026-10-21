@@ -209,6 +209,14 @@ const RESERVED: &[&str] = &[
     "varying", "virtual", "volatile", "wgsl", "where", "with", "writeonly", "yield",
 ];
 
+/// Predeclared WGSL types and type aliases a module-scope name may not take.
+const PREDECLARED: &[&str] = &[
+    "bool", "f16", "f32", "i32", "u32", "vec2", "vec3", "vec4", "vec2f", "vec3f", "vec4f", "vec2i", "vec3i", "vec4i", "vec2u",
+    "vec3u", "vec4u", "vec2h", "vec3h", "vec4h", "mat2x2", "mat2x3", "mat2x4", "mat3x2", "mat3x3", "mat3x4", "mat4x2", "mat4x3",
+    "mat4x4", "mat2x2f", "mat2x3f", "mat2x4f", "mat3x2f", "mat3x3f", "mat3x4f", "mat4x2f", "mat4x3f", "mat4x4f", "atomic",
+    "array", "ptr", "sampler", "sampler_comparison",
+];
+
 /// A name the generated WGSL declares: an identifier, not reserved, not starting with `__`.
 fn check_name(what: &str, name: &str) -> Result<(), String> {
     if !is_ident(name) {
@@ -286,7 +294,7 @@ pub fn color(value: &Value) -> Result<[f32; 4], String> {
 
 /// What a material binds, in binding order: the params struct (if any), then each texture and
 /// its sampler.
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Bindings {
     /// The struct's WGSL name: the material name's last segment plus `Params`.
     struct_name: String,
@@ -301,10 +309,17 @@ impl Bindings {
     pub fn new<'a>(material: &str, params: impl IntoIterator<Item = (&'a str, &'a ParamType)>, textures: &[String]) -> Result<Self, String> {
         let params = ParamsLayout::new(params)?;
         let struct_name = struct_name(material);
+        if struct_name.starts_with("__") {
+            return Err(format!("its params struct would be {struct_name}; WGSL names may not start with __"));
+        }
         let mut names: std::collections::HashSet<String> = params.fields.iter().map(|f| f.name.clone()).collect();
         names.extend(["params".to_string(), struct_name.clone()]);
         for t in textures {
             check_name("texture", t)?;
+            // A texture is a module-scope declaration: it may not shadow a predeclared type.
+            if PREDECLARED.contains(&t.as_str()) || t.starts_with("texture_") {
+                return Err(format!("texture {t} is a predeclared WGSL name"));
+            }
             for n in [t.clone(), format!("{t}_sampler")] {
                 if !names.insert(n.clone()) {
                     return Err(format!("texture {t} declares {n}, which a param or another declaration already uses"));
@@ -459,6 +474,9 @@ mod tests {
         assert!(new(&["GlowParams"]).unwrap_err().contains("GlowParams"));
         assert!(new(&["loop"]).unwrap_err().contains("reserved"));
         assert!(new(&["__x"]).unwrap_err().contains("__"));
+        assert!(new(&["sampler"]).unwrap_err().contains("predeclared"));
+        assert!(new(&["texture_2d"]).unwrap_err().contains("predeclared"));
+        assert!(Bindings::new("game::__Glow", [], &[]).unwrap_err().contains("__GlowParams"));
         // The spec's scenario: a param named like a texture's sampler.
         let p = [("noise_sampler", B(F32))];
         let e = Bindings::new("game::Glow", p.iter().map(|(n, t)| (*n, t)), &["noise".into()]).unwrap_err();

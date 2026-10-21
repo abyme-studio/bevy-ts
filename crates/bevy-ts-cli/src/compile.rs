@@ -34,13 +34,11 @@ pub fn line_col(source: &str, offset: u32) -> (u32, u32) {
     (line, col)
 }
 
-fn display(path: &Path) -> String {
-    bevy_ts::backend::display_file(&path.to_string_lossy())
-}
+
 
 fn location(path: &Path, source: &str, span: Span) -> SourceLocation {
     let (line, column) = line_col(source, span.start);
-    SourceLocation { file: display(path), line, column }
+    SourceLocation { file: bevy_ts::backend::display_path(path), line, column }
 }
 
 fn file_url(path: &Path) -> String {
@@ -58,7 +56,7 @@ pub fn compile_file(path: &Path, source: &str, dev: bool) -> Result<Compiled, Ve
 pub fn transform(path: &Path, dev: bool) -> Result<String, Vec<ScriptError>> {
     let path = std::env::current_dir().map(|cwd| cwd.join(path)).unwrap_or_else(|_| path.to_path_buf());
     let path = path.canonicalize().unwrap_or_else(|_| normalize(&path));
-    let source = std::fs::read_to_string(&path).map_err(|e| vec![ScriptError::new(format!("{}: {e}", display(&path)))])?;
+    let source = std::fs::read_to_string(&path).map_err(|e| vec![ScriptError::new(format!("{}: {e}", bevy_ts::backend::display_path(&path)))])?;
     compile_module(&path, &source, dev, &reader::project_root(&path)).map(|c| c.code)
 }
 
@@ -74,7 +72,7 @@ pub const ENGINE_DECLARATIONS: bool = true;
 
 fn compile_with(path: &Path, source: &str, dev: bool, root: &Path, declare: bool) -> Result<Compiled, Vec<ScriptError>> {
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(path).map_err(|e| vec![ScriptError::new(format!("{}: {e}", display(path)))])?;
+    let source_type = SourceType::from_path(path).map_err(|e| vec![ScriptError::new(format!("{}: {e}", bevy_ts::backend::display_path(path)))])?;
     let parsed = Parser::new(&allocator, source, source_type).parse();
     if parsed.diagnostics.has_errors() {
         return Err(parsed
@@ -276,7 +274,7 @@ impl Compiler {
             let source = match std::fs::read_to_string(&path) {
                 Ok(s) => s,
                 Err(e) => {
-                    errors.push(ScriptError::new(format!("{}: {e}", display(&path))));
+                    errors.push(ScriptError::new(format!("{}: {e}", bevy_ts::backend::display_path(&path))));
                     continue;
                 }
             };

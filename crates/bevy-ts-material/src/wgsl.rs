@@ -8,7 +8,7 @@
 //! the prelude followed by the file verbatim. naga's line `n` is then the file's line `n - k`, `k`
 //! the prelude's lines; past the file's last line is the generated params code.
 
-use crate::kinds::{MaterialDecl, show};
+use crate::kinds::MaterialDecl;
 use crate::layout::Bindings;
 use bevy::asset::AssetId;
 use bevy::prelude::*;
@@ -48,7 +48,7 @@ pub enum Checked {
 /// Checks a combined source under `defs`. `shaders` holds Bevy's shader modules.
 pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &MaterialDecl, defs: &[ShaderDefVal]) -> Checked {
     let author_lines = combined.find("\n// bevy-ts: the params").map_or(combined.lines().count(), |i| combined[..i].lines().count());
-    let at = |line: usize, column: u32| Some(SourceLocation { file: show(file), line: line as u32, column });
+    let at = |line: usize, column: u32| Some(SourceLocation { file: bevy_ts::backend::display_path(file), line: line as u32, column });
     let fail = |m: String, loc| Checked::Errors(vec![ScriptError::at(format!("material {}: {m}", decl.name), loc)]);
 
     // The file as WESL: its imports, and the names it declares.
@@ -70,6 +70,16 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
     let main_path = ModulePath { origin: PathOrigin::Absolute, components: vec!["bevy_ts_check".into()] };
     let imports = flatten_imports(&tu.imports, &main_path);
     let main_names: HashSet<String> = tu.global_declarations.iter().filter_map(decl_ident).map(|i| i.name().clone()).collect();
+    // The file declaring a name the params generate (a texture named like its own `const`): the
+    // schema's error, named exactly, before anything is compiled.
+    let generated = generated_names(decl);
+    let mut declared: HashMap<String, usize> = HashMap::new();
+    for i in tu.global_declarations.iter().filter_map(decl_ident) {
+        *declared.entry(i.name().clone()).or_default() += 1;
+    }
+    if let Some(n) = generated.iter().find(|n| declared.get(*n).copied().unwrap_or_default() > 1) {
+        return fail(format!("the file declares `{n}`, which its params or textures generate"), decl.at());
+    }
 
     // Bevy's modules, by module path, as its shader cache resolves them.
     let mut modules: HashMap<ModulePath, &str> = HashMap::new();
@@ -112,11 +122,6 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
                     }
                 }
                 _ if matches!(*d.error, wesl::Error::ResolveError(_)) => fail(d.error.to_string(), decl.at()),
-                // No span: an error naming a declaration the params generate (`duplicate
-                // declaration of `noise``) is the schema's.
-                (_, None) if generated_names(decl).iter().any(|n| d.error.to_string().contains(&format!("`{n}`"))) => {
-                    fail(format!("{} in the declarations generated from its params", d.error), decl.at())
-                }
                 _ => Checked::Unverified(d.error.to_string()),
             };
         }
@@ -188,10 +193,14 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
     Checked::Ok
 }
 
-/// The names the generated declarations use: `params`, the struct, each texture and sampler.
+/// The names the generated declarations use: `params` and the struct (when there are params),
+/// each texture and sampler.
 fn generated_names(decl: &MaterialDecl) -> Vec<String> {
     let Ok(b) = decl.bindings() else { return Vec::new() };
-    let mut names = vec!["params".to_string(), b.struct_name().to_string()];
+    let mut names = Vec::new();
+    if b.params_binding().is_some() {
+        names.extend(["params".to_string(), b.struct_name().to_string()]);
+    }
     for t in b.textures() {
         names.push(t.clone());
         names.push(format!("{t}_sampler"));
@@ -365,20 +374,43 @@ pub struct WatchState {
     pub ours: HashSet<AssetId<Shader>>,
     /// The defs of a pipeline that compiled, per stage shader.
     pub defs: HashMap<AssetId<Shader>, Vec<ShaderDefVal>>,
-    /// Pipelines that failed: the shader, the pipeline's defs and the renderer's message.
-    pub failed: Vec<(AssetId<Shader>, Vec<ShaderDefVal>, String)>,
-    /// Failures already passed on, so each is told once per source. A superseded source's
-    /// failure can still arrive after a replacement; the main world drops it on re-checking.
-    seen: HashSet<(AssetId<Shader>, String)>,
+    /// Each stage's source version: bumped by the main world when it replaces the shader.
+    pub version: HashMap<AssetId<Shader>, u64>,
+    /// The versions the render world extracted with the shader assets of the same frame.
+    extracted: HashMap<AssetId<Shader>, u64>,
+    /// The versions extracted one frame earlier. Bevy may apply an extracted shader a frame late
+    /// (its cache lock busy), so a failure is tagged with the version that has had a whole frame
+    /// to apply: one frame of delay, never an old source's failure reported against a new one.
+    applied: HashMap<AssetId<Shader>, u64>,
+    /// Pipelines that failed: the shader, the source version it was built from, the pipeline's
+    /// defs and the renderer's message.
+    pub failed: Vec<Failure>,
+    /// Failures already passed on, so each is told once per version.
+    seen: HashSet<(AssetId<Shader>, u64, String)>,
+}
+
+/// A pipeline the renderer failed to build from a stage's shader.
+pub struct Failure {
+    pub shader: AssetId<Shader>,
+    pub version: u64,
+    pub defs: Vec<ShaderDefVal>,
+    pub message: String,
 }
 
 impl WatchState {
-    /// A stage's shader was replaced: the failures of its old source are dropped.
+    /// A stage's shader was replaced: a newer source version.
     pub fn replaced(&mut self, id: AssetId<Shader>) {
         self.ours.insert(id);
-        self.seen.retain(|(s, _)| *s != id);
-        self.failed.retain(|(s, ..)| *s != id);
+        *self.version.entry(id).or_default() += 1;
     }
+}
+
+/// Render world, at extract: the source versions that go with the shader assets this frame
+/// extracts.
+pub fn extract_versions(watch: Res<PipelineWatch>) {
+    let mut w = watch.0.lock().unwrap();
+    let now = w.version.clone();
+    w.applied = std::mem::replace(&mut w.extracted, now);
 }
 
 /// Render world, every frame: records our pipelines' defs and failures.
@@ -401,9 +433,10 @@ pub fn watch_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>,
                     w.defs.insert(id, defs.clone());
                 }
                 CachedPipelineState::Err(e) => {
-                    let msg = e.to_string();
-                    if w.seen.insert((id, msg.clone())) {
-                        w.failed.push((id, defs.clone(), msg));
+                    let message = e.to_string();
+                    let version = w.applied.get(&id).copied().unwrap_or_default();
+                    if w.seen.insert((id, version, message.clone())) {
+                        w.failed.push(Failure { shader: id, version, defs: defs.clone(), message });
                     }
                 }
                 _ => {}
