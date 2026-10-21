@@ -27,5 +27,5 @@
 ## 5. Contract and docs
 
 - [x] 5.1 Protocol, the minor lead@bevy-ts allocates at landing: `level_catalog`, the new and changed `LevelOp` fields, `created`, `level` and `sidecar` on tree nodes, `patches`; regenerate Rust and TS types; CI diff check
-- [ ] 5.2 `docs/levels.md` (new, linked from the README): editing a level through `level_write`, the ops, the catalog, sidecars, and why there are no built-in primitives or duplicate (Bevy's editor has neither); tell spec@bevy-outliner and spec@bevy-inspector the version it landed as
+- [x] 5.2 `docs/levels.md` (new, linked from the README): editing a level through `level_write`, the ops, the catalog, sidecars, and why there are no built-in primitives or duplicate (Bevy's editor has neither); tell spec@bevy-outliner and spec@bevy-inspector the version it landed as
 - [x] 5.3 `cargo test` for `bevy-ts-levels` and `bevy-ts-tsx`, and the repo's full check, green

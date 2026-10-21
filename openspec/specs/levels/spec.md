@@ -80,13 +80,15 @@ A bound prop has one owner, its binding. A level override of a field the prefab 
 ### Requirement: Level provenance and protocol reads
 Each level-placed entity SHALL carry a `LevelInstance` component with its level path, name path and owner chain. The owner chain lists the level frames, outermost first, then the TSX source chain. tsx provenance SHALL gain `override` with file, line and column. bevy-ts SHALL add these methods to protocol 1.2:
 - `bevy-ts/level_list`: open levels with content hash, extensions used and diagnostics.
-- `bevy-ts/level_node` (`entity` or level and name path): the owner chain, every override with its location, and the instance's props.
+- `bevy-ts/level_node` (`entity` or level and name path): the owner chain, every override with its location, the instance's props, and `patches`, the components the file adds to the entity that its prefab does not give: a string array of component names, named as `LevelOverride.component` names them (`PointLight`, `enemy::Health`).
 
 For a scene component instance, `level_node` SHALL report every prop its scene declares, beside the component's fields: name, type, the value it takes, and whether the level sets it, with the location of the `@prop` when it does. A prop the level does not set SHALL report its default.
 
+Each `bevy-ts/tsx_tree` node of a level-placed entity, in the tree and in `tsx_tree+watch`, SHALL carry `level`: `file`, the outermost level file; `namePath`, its path from that file's top; and `written`, true when the entity is written in that file rather than coming from a prefab or an included level. A node with no `level` SHALL be TSX-only.
+
 #### Scenario: Inspecting enemy b
 - **WHEN** a client calls `bevy-ts/level_node` for enemy `b`'s entity
-- **THEN** it gets `levels/arena.bsn`, name path `EnemyB`, prefab `game::Enemy` with `hp: 250`, and a `Transform.translation` override at the patch's line
+- **THEN** it gets `levels/arena.bsn`, name path `EnemyB`, prefab `game::Enemy` with `hp: 250`, a `Transform.translation` override at the patch's line, and empty `patches`
 
 #### Scenario: A grunt's props
 - **WHEN** `#GruntB` is placed with `@enemies::Grunt { @hp: 250.0 }` and `Grunt`'s scene is `static scene({ hp = 100, speed = 2 })`
@@ -95,3 +97,7 @@ For a scene component instance, `level_node` SHALL report every prop its scene d
 #### Scenario: Querying placed instances
 - **WHEN** `arena.bsn` places three `@enemies::Enemy { ... }` and a TS system takes `Query<[Enemy]>`
 - **THEN** the system sees three rows, one per placed root, each with its `team` field as the level set it
+
+#### Scenario: Tree rows of the arena
+- **WHEN** a client calls `bevy-ts/tsx_tree` on the arena
+- **THEN** `#EnemyB`'s node has `level: { file: "levels/arena.bsn", namePath: ["EnemyB"], written: true }`, its eye's node has `namePath: ["EnemyB", "eye"]` and `written: false`, and `#RoomA`'s `#Lamp` from `room.bsn` has `file: "levels/arena.bsn"` and `written: false`
