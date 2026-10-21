@@ -3,7 +3,7 @@
 ### Requirement: Level provenance and protocol reads
 Each level-placed entity SHALL carry a `LevelInstance` component with its level path, name path and owner chain. The owner chain lists the level frames, outermost first, then the TSX source chain. tsx provenance SHALL gain `override` with file, line and column. bevy-ts SHALL add these methods to protocol 1.2:
 - `bevy-ts/level_list`: open levels with content hash, extensions used and diagnostics.
-- `bevy-ts/level_node` (`entity` or level and name path): the owner chain, every override with its location, the instance's props, and `patches`, the components the file adds to the entity that its prefab does not give.
+- `bevy-ts/level_node` (`entity` or level and name path): the owner chain, every override with its location, the instance's props, and `patches`, the components the file adds to the entity that its prefab does not give: a string array of component names, named as `LevelOverride.component` names them (`PointLight`, `enemy::Health`).
 
 For a scene component instance, `level_node` SHALL report every prop its scene declares, beside the component's fields: name, type, the value it takes, and whether the level sets it, with the location of the `@prop` when it does. A prop the level does not set SHALL report its default.
 

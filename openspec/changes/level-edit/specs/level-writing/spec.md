@@ -82,6 +82,8 @@ The base SHALL lose its trailing digits, then take the first free of `Base`, `Ba
 ### Requirement: Components are added and removed as patches
 `add_component` SHALL append a patch, `Comp` or `Comp { field: value, … }`, in the entity's style, and the component SHALL take its defaults for fields not given. It SHALL be refused with `exists` when the entity already has the component, from the file or from its prefab. Its inverse SHALL be `remove_component`.
 
+Both SHALL take `component` as a string: the component's name as `LevelOverride.component` gives it (`PointLight`, `enemy::Health`), or any path a `.bsn` patch resolves (a full type path, or a short name only one type has). They SHALL match a patch by the type it resolves to, not by its text, and a new patch SHALL write the shortest form the registry resolves unambiguously.
+
 `remove_component` SHALL remove the entity's whole patch of that component from the file. It SHALL be refused with `not-found` when the file has no such patch, and with `prefab-internal` when the entity's prefab gives the component, since `.bsn` has no removed marker. Its inverse SHALL be `add_component` with `text`, the removed patch's bytes, so every field comes back as it was.
 
 #### Scenario: Adding and removing a component
