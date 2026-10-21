@@ -480,9 +480,8 @@ mod writes {
     #[test]
     fn a_batch_is_checked_through_its_own_changes() {
         let mut f = arena();
-        // The room gives RoomA its Transform, under its new name too.
         let r = write(&mut f, ARENA, vec![Op::Rename { path: p("RoomA"), to: "Hall".into() }, Op::AddComponent { path: p("Hall"), component: "Transform".into(), fields: vec![], text: None }]);
-        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("exists")), "{r:?}");
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("invalid")), "a batch does not reuse a path it changed: {r:?}");
         // What the batch added, it can remove.
         let add = Op::AddComponent { path: p("RoomB"), component: "game::Health".into(), fields: vec![], text: None };
         let r = write(&mut f, ARENA, vec![add, Op::RemoveComponent { path: p("RoomB"), component: "Health".into() }]);
@@ -506,6 +505,54 @@ mod writes {
         // A level no open level shows has no world to check against.
         let r = to(&mut f, "levels/loose.bsn", "#Loose Transform\n", vec![Op::AddComponent { path: p("Loose"), component: "game::Health".into(), fields: vec![], text: None }]);
         assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("invalid")), "{r:?}");
+    }
+    #[test]
+    fn an_empty_path_is_refused_not_a_panic() {
+        let mut f = arena();
+        for op in [Op::Rename { path: vec![], to: "X".into() }, Op::Delete { path: vec![] }, Op::Reparent { path: vec![], parent: p("EnemyA"), index: None }] {
+            let r = write(&mut f, ARENA, vec![op]);
+            assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("not-found")), "{r:?}");
+        }
+    }
+
+    #[test]
+    fn a_reorder_in_an_included_level_orders_the_world() {
+        let arena = "#Hall\n:\"levels/hut.bsn\"\n";
+        let hut = "#Hut\nTransform\nChildren [\n    #A Transform\n    --\n    #B Transform\n]\n";
+        let mut f = fixture("included-order", &[("levels/arena.bsn", arena), ("levels/hut.bsn", hut)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        let (hall, a, b) = (f.by_name("Hall"), f.by_name("A"), f.by_name("B"));
+        let r = write_level(f.app.world_mut(), WriteRequest { id: 1, file: "levels/hut.bsn".into(), base: content_hash(hut.as_bytes()), ops: vec![Op::Reparent { path: p("Hut/A"), parent: p("Hut"), index: Some(1) }] });
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(f.app.world().get::<Children>(hall).unwrap().to_vec(), [b, a]);
+        assert_eq!(f.by_name("A"), a, "the entity stays");
+    }
+
+    #[test]
+    fn a_move_leaves_no_stale_mark() {
+        let mut f = arena();
+        assert_eq!(bevy_ts_tsx::rekey(f.app.world_mut(), "level:levels/arena.bsn", &p("Nobody"), &p("Somebody")), 0);
+        assert!(f.app.world().resource::<TsxTree>().moved.is_empty(), "nothing moved, nothing marked");
+        let r = write(&mut f, ARENA, vec![Op::Rename { path: p("EnemyA"), to: "Grunt".into() }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(f.app.world().resource::<TsxTree>().moved.is_empty(), "the reconcile used the mark");
+    }
+
+    #[test]
+    fn an_including_levels_override_is_not_the_files() {
+        let arena = "#Hall\n:\"levels/hut.bsn\"\ngame::Health { max: 9.0 }\n--\n#Hall2\n:\"levels/hut.bsn\"\n";
+        let hut = "#Hut\nTransform\n";
+        let mut f = fixture("included-twice", &[("levels/arena.bsn", arena), ("levels/hut.bsn", hut)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        let add = Op::AddComponent { path: p("Hut"), component: "game::Health".into(), fields: vec![], text: None };
+        let r = write_level(f.app.world_mut(), WriteRequest { id: 1, file: "levels/hut.bsn".into(), base: content_hash(hut.as_bytes()), ops: vec![add] });
+        assert_eq!(r.status, "written", "arena.bsn's Health on Hall is not hut.bsn's: {r:?}");
+        let now = std::fs::read_to_string(f.dir.join("levels/hut.bsn")).unwrap();
+        let r = write_level(f.app.world_mut(), WriteRequest { id: 2, file: "levels/hut.bsn".into(), base: content_hash(now.as_bytes()), ops: r.inverse.clone() });
+        assert_eq!(r.status, "written", "hut.bsn removes its own patch: {r:?}");
+        assert_eq!(std::fs::read_to_string(f.dir.join("levels/hut.bsn")).unwrap(), hut);
     }
 }
 

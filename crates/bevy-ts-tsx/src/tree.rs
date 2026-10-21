@@ -196,8 +196,9 @@ pub struct TsxTree {
     pub overlays: HashMap<String, Vec<crate::desc::NodeDesc>>,
     pub entities: HashMap<u64, Entity>,
     /// Nodes a rekey moved to a new key path (a level's rename or reparent): the next reconcile
-    /// puts each under its described parent, in description order.
-    pub moved: std::collections::HashSet<u64>,
+    /// puts each under its described parent, in description order. By root, so a reconcile of
+    /// the root clears what it did not reach.
+    pub moved: HashMap<u64, String>,
     pub tombstones: HashMap<u64, Tombstone>,
     /// The last reconcile's writes.
     pub last: ReconcileStats,

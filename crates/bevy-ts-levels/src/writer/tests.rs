@@ -1,5 +1,13 @@
 use super::*;
 
+fn apply(src: &str, ops: &[Op]) -> Result<Written, Refused> {
+    super::apply(src, ops, false, None)
+}
+
+fn apply_sidecar(src: &str, ops: &[Op]) -> Result<Written, Refused> {
+    super::apply(src, ops, true, None)
+}
+
 fn p(s: &str) -> Vec<String> {
     if s.is_empty() { Vec::new() } else { s.split('/').map(String::from).collect() }
 }
@@ -359,10 +367,10 @@ fn a_patch_is_matched_by_the_type_it_resolves_to() {
     let resolve = |c: &str| matches!(c, "Health" | "game::Health").then(|| "game::Health".to_string());
     let remove = [Op::RemoveComponent { path: p("A"), component: "Health".into() }];
     assert_eq!(apply(src, &remove).unwrap_err().reason, "not-found", "by text alone, Health is not game::Health");
-    let w = apply_resolved(src, &remove, false, &resolve).unwrap();
+    let w = super::apply(src, &remove, false, Some(&resolve)).unwrap();
     assert_eq!(w.text, "#A\nTransform\n");
     let add = [Op::AddComponent { path: p("A"), component: "Health".into(), fields: vec![], text: None }];
-    assert_eq!(apply_resolved(src, &add, false, &resolve).unwrap_err().reason, "exists");
+    assert_eq!(super::apply(src, &add, false, Some(&resolve)).unwrap_err().reason, "exists");
 }
 
 #[test]
@@ -378,9 +386,40 @@ fn an_unnamed_entity_comes_back_by_its_place() {
 
 #[test]
 fn what_a_batch_adds_then_deletes_is_not_created() {
-    let w = ok(ARENA, &[add("", Some("Lamp"), Base::None, vec![], None), Op::Delete { path: p("Lamp") }]);
+    let w = ok(ARENA, &[add("Shelf", Some("Lamp"), Base::None, vec![], None), Op::Delete { path: p("Shelf") }]);
     assert!(w.created.is_empty(), "{:?}", w.created);
-    assert_eq!(w.text, ARENA);
+}
+
+#[test]
+fn a_batch_cannot_reuse_a_path_it_changed() {
+    let comp = |path: &str| Op::AddComponent { path: p(path), component: "Marker".into(), fields: vec![], text: None };
+    let src = "#A Transform\n--\n#B Transform\n--\nCrate\n--\nCrate\n";
+    for ops in [
+        vec![Op::Delete { path: p("A") }, Op::Rename { path: p("B"), to: "A".into() }, comp("A")],
+        vec![Op::Rename { path: p("A"), to: "C".into() }, add("", Some("A"), Base::None, vec![], None), comp("A")],
+        vec![Op::Reparent { path: p("A"), parent: p("B"), index: None }, comp("B/A")],
+        vec![add("A", Some("Lamp"), Base::None, vec![], None), comp("A/Lamp")],
+        // Positional ids shift when their list changes.
+        vec![Op::Delete { path: p("#0") }, comp("#0")],
+        vec![add("", None, Base::None, vec![], None), comp("#1")],
+    ] {
+        assert_eq!(apply(src, &ops).map(|w| w.text).unwrap_err().reason, "invalid", "{ops:?}");
+    }
+    // Ops on paths nothing earlier changed are fine, a component removed then added too.
+    ok(src, &[Op::Delete { path: p("A") }, comp("B")]);
+    ok(src, &[Op::RemoveComponent { path: p("A"), component: "Transform".into() }, Op::AddComponent { path: p("A"), component: "Transform".into(), fields: vec![], text: None }]);
+}
+
+#[test]
+fn a_resolved_type_never_falls_back_to_text() {
+    let src = "#A\nHealth\nTransform\n";
+    let resolve = |c: &str| match c {
+        "Health" | "b::Health" => Some("b::Health".to_string()),
+        "a::Health" => Some("a::Health".to_string()),
+        _ => None,
+    };
+    let e = super::apply(src, &[Op::RemoveComponent { path: p("A"), component: "a::Health".into() }], false, Some(&resolve)).unwrap_err();
+    assert_eq!(e.reason, "not-found", "a::Health is not the file's b::Health");
 }
 
 #[test]

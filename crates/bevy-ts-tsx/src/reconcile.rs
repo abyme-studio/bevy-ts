@@ -159,6 +159,7 @@ pub fn apply_root(
         Prune::Root | Prune::Under(_) => state.nodes.difference(&seen).copied().collect(),
     };
     state.nodes.extend(seen);
+    tree.moved.retain(|_, r| r != root);
     for id in candidates {
         let path = key_path(world, &tree, id);
         let inside = match (&prune, &path) {
@@ -330,11 +331,12 @@ fn apply_node(
         tree.reactive.new_refs.push(r);
         tree.reactive.due = true;
     }
+    let moved = tree.moved.remove(&n.id).is_some();
     let known = tree.entities.get(&n.id).copied();
     let entity = match known {
         _ if tree.tombstones.contains_key(&n.id) => None,
         Some(e) if alive(world, e, n.id) => {
-            if tree.moved.remove(&n.id) {
+            if moved {
                 reparent(world, e, root, parent);
             }
             let before = stats.clone();
@@ -364,7 +366,7 @@ fn apply_node(
                     tree.reactive.new_instances.push((id, e));
                 }
             }
-            let reorder = n.children.iter().any(|c| tree.moved.contains(&c.id));
+            let reorder = n.children.iter().any(|c| tree.moved.contains_key(&c.id));
             for c in &n.children {
                 apply_node(world, tree, root, c, Some(e), seen, stats, slots);
             }

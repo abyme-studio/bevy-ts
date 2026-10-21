@@ -129,46 +129,57 @@ fn refuse(reason: &'static str, message: impl Into<String>) -> Refused {
     Refused { reason, message: message.into() }
 }
 
-/// Applies a batch to `src`, one operation after another, each re-parsed and checked. The whole
-/// batch applies or none of it.
-pub fn apply(src: &str, ops: &[Op]) -> Result<Written, Refused> {
-    apply_with(src, ops, false, &|_| None)
-}
-
-/// [`apply`] for a sidecar level (decision 11), where a `set` on a name path the file lacks
-/// creates it from the top: the file layers over a TSX scene, so every path is an override.
-pub fn apply_sidecar(src: &str, ops: &[Op]) -> Result<Written, Refused> {
-    apply_with(src, ops, true, &|_| None)
-}
-
 /// Names the type a component path resolves to (`Health` and `game::Health` alike): the engine
 /// passes the world's schema. Without one, patches match by their text.
 pub type Resolve<'a> = &'a dyn Fn(&str) -> Option<String>;
 
-/// [`apply`] or [`apply_sidecar`], matching `add_component` and `remove_component` patches by
-/// the type they resolve to.
-pub fn apply_resolved(src: &str, ops: &[Op], sidecar: bool, resolve: Resolve) -> Result<Written, Refused> {
-    apply_with(src, ops, sidecar, resolve)
-}
-
-fn apply_with(src: &str, ops: &[Op], create_top: bool, resolve: Resolve) -> Result<Written, Refused> {
+/// Applies a batch to `src`, one operation after another, each re-parsed and checked. The whole
+/// batch applies or none of it. In a sidecar level (decision 11) a `set` on a name path the file
+/// lacks creates it from the top: the file layers over a TSX scene, so every path is an override.
+/// With `resolve`, `add_component` and `remove_component` match patches by the type they resolve
+/// to.
+///
+/// An op may not touch a path an earlier op of the batch deleted, renamed, moved or created, or
+/// what is below it, nor a positional `#n` in a list an earlier op added to or took from: split
+/// such a batch.
+pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> Result<Written, Refused> {
+    let resolve = resolve.unwrap_or(&|_| None);
     let mut text = src.to_string();
     let mut inverse = Vec::new();
     let mut changed: Vec<(usize, usize)> = Vec::new();
     let mut renamed = Vec::new();
     let mut created: Vec<Vec<String>> = Vec::new();
+    // Paths earlier ops changed, and lists whose positional ids they shifted.
+    let mut claimed: Vec<Vec<String>> = Vec::new();
+    let mut shifted: Vec<Vec<String>> = Vec::new();
     for op in ops {
+        for p in op_paths(op) {
+            let positional = (1..=p.len()).any(|i| p[i - 1].starts_with('#') && shifted.iter().any(|l| l[..] == p[..i - 1]));
+            if positional || claimed.iter().any(|c| p.starts_with(c)) {
+                return Err(refuse("invalid", format!("an earlier op in this batch changed {}: split this batch", p.join("/"))));
+            }
+        }
         let file = syntax::parse(&text).map_err(|d| refuse("internal", format!("the file does not parse: {}", d.message)))?;
-        let (splices, inv, touched, renames) = plan(&file, op, create_top, resolve)?;
+        let (splices, inv, touched, renames) = plan(&file, op, sidecar, resolve)?;
         // What earlier ops added moves with this one's renames.
         for (from, to) in &renames {
             for c in created.iter_mut().filter(|c| c.starts_with(from)) {
                 *c = to.iter().chain(&c[from.len()..]).cloned().collect();
             }
+            claimed.extend([from.clone(), to.clone()]);
+            shifted.extend([from[..from.len() - 1].to_vec(), to[..to.len() - 1].to_vec()]);
         }
         match op {
-            Op::Add { .. } | Op::Restore { .. } => created.push(touched[0].clone()),
-            Op::Delete { path } => created.retain(|c| !c.starts_with(path)),
+            Op::Add { .. } | Op::Restore { .. } => {
+                created.push(touched[0].clone());
+                claimed.push(touched[0].clone());
+                shifted.push(touched[0][..touched[0].len() - 1].to_vec());
+            }
+            Op::Delete { path } => {
+                created.retain(|c| !c.starts_with(path));
+                claimed.push(path.clone());
+                shifted.push(path[..path.len() - 1].to_vec());
+            }
             _ => {}
         }
         renamed.extend(renames);
@@ -186,6 +197,16 @@ fn apply_with(src: &str, ops: &[Op], create_top: bool, resolve: Resolve) -> Resu
     lines.sort();
     lines.dedup();
     Ok(Written { text, lines, inverse, renamed, created })
+}
+
+/// The name paths an op names: its target, or the parent it adds under.
+fn op_paths(op: &Op) -> Vec<&[String]> {
+    match op {
+        Op::Set { path, .. } | Op::Revert { path, .. } | Op::SetProp { path, .. } | Op::RevertProp { path, .. } | Op::Delete { path } | Op::Rename { path, .. } => vec![path],
+        Op::AddComponent { path, .. } | Op::RemoveComponent { path, .. } => vec![path],
+        Op::Reparent { path, parent, .. } => vec![path, parent],
+        Op::Add { parent, .. } | Op::Restore { parent, .. } => vec![parent],
+    }
 }
 
 fn shift(splices: &[(usize, usize, String)], at: usize) -> usize {
@@ -308,12 +329,11 @@ fn patch_of<'a>(e: &'a Entity, component: &str) -> Option<&'a Patch> {
 
 /// The patch for `component` by the type both resolve to, else by text.
 fn patch_typed<'a>(e: &'a Entity, component: &str, resolve: Resolve) -> Option<&'a Patch> {
-    if let Some(ty) = resolve(component)
-        && let Some(p) = e.patches().find(|p| resolve(&p.path.joined()).as_ref() == Some(&ty))
-    {
-        return Some(p);
+    match resolve(component) {
+        // A type the world knows: only a patch of that type, whatever its text.
+        Some(ty) => e.patches().find(|p| resolve(&p.path.joined()).as_ref() == Some(&ty)),
+        None => patch_of(e, component),
     }
-    patch_of(e, component)
 }
 
 /// How the file names `component` in a new patch: as an existing patch of it does, else as given.

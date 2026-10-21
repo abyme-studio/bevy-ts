@@ -281,7 +281,9 @@ pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> u
         return 0;
     }
     let mut ids = std::collections::HashMap::new();
-    world.resource_mut::<TsxTree>().moved.insert(desc::node_id(root, to));
+    if moves.iter().any(|(_, _, p)| p == to) {
+        world.resource_mut::<TsxTree>().moved.insert(desc::node_id(root, to), root.to_string());
+    }
     for (e, old, path) in &moves {
         let id = desc::node_id(root, path);
         ids.insert(*old, id);

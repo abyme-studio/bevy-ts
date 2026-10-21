@@ -106,7 +106,7 @@ fn run(n: usize) -> String {
     let text = std::fs::read_to_string(dir.join("assets/levels/arena.bsn")).unwrap();
     let op = Op::Set { path: vec!["G7".into()], component: "Transform".into(), field: vec!["translation".into(), "x".into()], value: WValue::Float { v: 99.0, f32: true }, containers: vec!["Vec3".into()] };
     let t = Instant::now();
-    let w = bevy_ts_levels::writer::apply(&text, &[op]).unwrap();
+    let w = bevy_ts_levels::writer::apply(&text, &[op], false, None).unwrap();
     let splice = ms(t);
     let t = Instant::now();
     bevy_ts_levels::syntax::parse(&w.text).unwrap();
