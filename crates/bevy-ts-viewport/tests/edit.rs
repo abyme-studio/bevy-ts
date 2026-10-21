@@ -9,7 +9,7 @@ use bevy::picking::events::PointerClick;
 use bevy::prelude::*;
 use bevy_ts::backend::SourceLocation;
 use bevy_ts_tsx::tree::{FieldState, OwnedComponent, Provenance, TsxNode};
-use bevy_ts_viewport::edit::{EditorCamera, EditorOnly};
+use bevy_ts_viewport::edit::{EditorCamera, EditorOnly, Mode};
 use common::*;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -44,14 +44,15 @@ fn node(id: u64, source: Vec<SourceLocation>, translation: Provenance) -> TsxNod
     TsxNode { id, root: "game".into(), key_path: vec!["b".into()], types: vec!["Enemy".into()], source, components }
 }
 
-/// A game camera, a bobbing enemy prefab instance `b` (a body and an `eye` child) placed at
+/// A game camera, a shadow-casting light (as the `directionalLight` recipe makes), a bobbing enemy
+/// prefab instance `b` (a body and an `eye` child) placed at
 /// `game.tsx:5`, and a cube no source describes.
 fn edit_scene(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     let mesh = meshes.add(Cuboid::from_size(Vec3::ONE));
     let small = meshes.add(Cuboid::from_size(Vec3::splat(0.4)));
     let mat = MeshMaterial3d(materials.add(StandardMaterial::default()));
     commands.spawn((GameCamera, Camera3d::default(), Transform::from_xyz(0.0, 0.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y)));
-    commands.spawn((DirectionalLight::default(), Transform::from_xyz(3.0, 6.0, 2.0).looking_at(Vec3::ZERO, Vec3::Y)));
+    commands.spawn((DirectionalLight { shadow_maps_enabled: true, ..default() }, Transform::from_xyz(3.0, 6.0, 2.0).looking_at(Vec3::ZERO, Vec3::Y)));
     let root = commands
         .spawn((
             Name::new("b"),
@@ -421,4 +422,55 @@ fn an_unanswered_edit_becomes_unconfirmed_and_revert_moves_it_back() {
     let r = call(&mut app, "bevy-ts/viewport_revert", json!({ "id": id })).unwrap();
     assert_eq!(r["status"], "reverted");
     assert_eq!(app.world().get::<Transform>(s.root).unwrap().translation.x, before.translation.x);
+}
+
+/// The free cube's middle pixel and a corner of clear colour in the game view, as `[b, g, r, a]`,
+/// after `n` more frames.
+fn free_pixel(app: &mut App, viewer: &bevy_ts_viewport::mach::Viewer, seen: &mut Seen, n: usize) -> ([u8; 4], [u8; 4]) {
+    let n = seen.frames.len() + n;
+    run_until(app, viewer, seen, LONG, |s| s.frames.len() >= n);
+    let p = center(app, scene(app).free);
+    let world = app.world_mut();
+    let mut q = world.query_filtered::<(&Camera, &GlobalTransform), With<GameCamera>>();
+    let (c, gt) = q.single(world).unwrap();
+    let at = c.world_to_viewport(gt, p).unwrap();
+    let f = seen.frames.last().unwrap();
+    let px = seen.surfaces[&(f["ring"].as_u64().unwrap(), f["slot"].as_u64().unwrap())].read(&[(at.x as u32, at.y as u32), (2, 2)]);
+    (px[0], px[1])
+}
+
+/// A mode switch to make in `Last`, after `PostUpdate`, where an HTTP request lands.
+#[derive(Resource, Default)]
+struct SwitchTo(Option<Mode>);
+
+fn switch_late(world: &mut World) {
+    if let Some(mode) = world.resource_mut::<SwitchTo>().0.take() {
+        bevy_ts_viewport::edit::set_mode(world, mode, None, None);
+    }
+}
+
+fn switch(app: &mut App, mode: Mode) {
+    app.world_mut().resource_mut::<SwitchTo>().0 = Some(mode);
+}
+
+#[test]
+fn meshes_stay_lit_after_edit_and_back_to_play() {
+    let mut app = edit_app();
+    app.init_resource::<SwitchTo>().add_systems(Last, switch_late);
+    let (_, viewer) = attach(&mut app, 160.0, 120.0, 1.0);
+    let mut seen = Seen::default();
+    let (lit, clear) = free_pixel(&mut app, &viewer, &mut seen, 6);
+    println!("play {lit:?} clear {clear:?}");
+    assert!(lit[..3].iter().zip(&clear[..3]).all(|(l, c)| l > c), "the cube is lit, brighter than the clear colour, in play: {lit:?} vs {clear:?}");
+    switch(&mut app, Mode::Edit);
+    free_pixel(&mut app, &viewer, &mut seen, 6);
+    // The walk's edit mode resized the hole and changed its scale.
+    call(&mut app, "bevy-ts/viewport_resize", json!({ "w": 200, "h": 100, "scale": 2 })).unwrap();
+    free_pixel(&mut app, &viewer, &mut seen, 6);
+    call(&mut app, "bevy-ts/viewport_resize", json!({ "w": 160, "h": 120, "scale": 1 })).unwrap();
+    free_pixel(&mut app, &viewer, &mut seen, 6);
+    switch(&mut app, Mode::Play);
+    let (again, _) = free_pixel(&mut app, &viewer, &mut seen, 6);
+    println!("play again {again:?}");
+    assert_eq!(lit, again, "the cube is lit as before after edit then play");
 }

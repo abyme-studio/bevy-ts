@@ -74,6 +74,10 @@ pub struct EditState {
     /// Game cameras and whether each was active on entering edit.
     game_cameras: Vec<(Entity, bool)>,
     pub camera: Option<Entity>,
+    /// Cameras a mode switch turns on, at the start of the next frame. A switch comes over HTTP
+    /// in `RemoteLast`, after `PostUpdate` built this frame's per-camera state (light cascades,
+    /// frusta, visible entities): a camera on from then has none, and the renderer panics on it.
+    activate: Vec<Entity>,
 }
 
 /// Where a selection change came from.
@@ -147,6 +151,7 @@ pub(crate) fn build(app: &mut App) {
             commands.entity(add.entity).insert(EditorOnly);
         })
         .add_observer(camera_added)
+        .add_systems(First, activate_cameras)
         .add_systems(
             Update,
             (keep_selection, edit_keys, camera_controller, click_to_select, gizmo_focus, draw_gizmos)
@@ -172,6 +177,15 @@ fn camera_added(add: On<Add<Camera>>, mut state: ResMut<EditState>, mut cameras:
     if let Ok(mut c) = cameras.get_mut(add.entity) {
         state.game_cameras.push((add.entity, c.is_active));
         c.is_active = false;
+    }
+}
+
+/// Turns on the cameras the last mode switch left to turn on.
+fn activate_cameras(mut state: ResMut<EditState>, mut cameras: Query<&mut Camera>) {
+    for e in std::mem::take(&mut state.activate) {
+        if let Ok(mut c) = cameras.get_mut(e) {
+            c.is_active = true;
+        }
     }
 }
 
@@ -228,11 +242,13 @@ fn enter_edit(world: &mut World) {
     let was_paused = is_paused(world);
     set_paused(world, true);
     // Game cameras off, remembered; the first active one on the primary window gives the
-    // editor camera its first pose.
+    // editor camera its first pose. One play turned on this frame counts as on.
+    let pending = std::mem::take(&mut world.resource_mut::<EditState>().activate);
     let mut q = world.query_filtered::<(Entity, &mut Camera, &GlobalTransform, Option<&Projection>, Option<&RenderTarget>), (Without<EditorOnly>, Without<PreviewOnly>)>();
     let mut cameras = vec![];
     let mut pose: Option<(GlobalTransform, Projection)> = None;
     for (e, mut c, gt, proj, target) in q.iter_mut(world) {
+        c.is_active |= pending.contains(&e);
         let on_window = target.is_none_or(|t| matches!(t, RenderTarget::Window(_)));
         if c.is_active && on_window && pose.is_none() {
             pose = Some((*gt, proj.cloned().unwrap_or_default()));
@@ -246,10 +262,7 @@ fn enter_edit(world: &mut World) {
     }
     let camera = world.resource::<EditState>().camera.filter(|e| world.get_entity(*e).is_ok());
     let camera = match camera {
-        Some(e) => {
-            world.get_mut::<Camera>(e).unwrap().is_active = true;
-            e
-        }
+        Some(e) => e,
         None => {
             let (gt, projection) = pose.unwrap_or((GlobalTransform::from(Transform::from_xyz(-6.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y)), Projection::default()));
             let t = gt.compute_transform();
@@ -261,7 +274,7 @@ fn enter_edit(world: &mut World) {
                 .spawn((
                     Name::new("bevy-ts editor camera"),
                     Camera3d::default(),
-                    Camera { order: -10, ..default() },
+                    Camera { order: -10, is_active: false, ..default() },
                     projection,
                     t,
                     layers,
@@ -272,10 +285,8 @@ fn enter_edit(world: &mut World) {
                 .id()
         }
     };
-    let overlay: Vec<Entity> = world.query_filtered::<Entity, (With<Camera>, With<EditorOnly>, Without<EditorCamera>)>().iter(world).collect();
-    for e in overlay {
-        world.get_mut::<Camera>(e).unwrap().is_active = true;
-    }
+    let mut activate: Vec<Entity> = world.query_filtered::<Entity, (With<Camera>, With<EditorOnly>, Without<EditorCamera>)>().iter(world).collect();
+    activate.push(camera);
     world.resource_mut::<GizmoConfigStore>().config_mut::<EditorGizmos>().0.enabled = true;
     let mut s = world.resource_mut::<EditState>();
     s.mode = Mode::Edit;
@@ -283,19 +294,16 @@ fn enter_edit(world: &mut World) {
     s.mouse_was_enabled = mouse_was_enabled;
     s.game_cameras = cameras;
     s.camera = Some(camera);
+    s.activate = activate;
 }
 
 fn enter_play(world: &mut World) {
-    let (cameras, was_paused, mouse) = {
+    let (was_paused, mouse) = {
         let mut s = world.resource_mut::<EditState>();
         s.mode = Mode::Play;
-        (std::mem::take(&mut s.game_cameras), s.was_paused, s.mouse_was_enabled)
+        s.activate = std::mem::take(&mut s.game_cameras).into_iter().filter(|(_, active)| *active).map(|(e, _)| e).collect();
+        (s.was_paused, s.mouse_was_enabled)
     };
-    for (e, active) in cameras {
-        if let Some(mut c) = world.get_mut::<Camera>(e) {
-            c.is_active = active;
-        }
-    }
     let editor: Vec<Entity> = world.query_filtered::<Entity, (With<Camera>, With<EditorOnly>)>().iter(world).collect();
     for e in editor {
         world.get_mut::<Camera>(e).unwrap().is_active = false;
