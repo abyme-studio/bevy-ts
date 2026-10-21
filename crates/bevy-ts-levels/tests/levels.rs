@@ -448,6 +448,65 @@ mod writes {
         let (id, _) = plugin_api::component_by_name(f.app.world(), "game::Health").unwrap();
         assert!(!f.app.world().entity(room).contains_id(id), "the component went with its patch");
     }
+    #[test]
+    fn a_reorder_orders_the_worlds_children() {
+        let src = "#Room\nTransform\nChildren [\n    #A Transform\n    --\n    #B Transform\n    --\n    #C Transform\n]\n";
+        let mut f = fixture("reorder", &[("levels/arena.bsn", src)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        let (room, a, b, c) = (f.by_name("Room"), f.by_name("A"), f.by_name("B"), f.by_name("C"));
+        let order = |f: &Fixture| f.app.world().get::<Children>(room).unwrap().to_vec();
+        assert_eq!(order(&f), [a, b, c]);
+        let r = write(&mut f, src, vec![Op::Reparent { path: p("Room/A"), parent: p("Room"), index: Some(1) }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(order(&f), [b, a, c], "the world follows the file's order");
+        assert_eq!(f.by_name("A"), a);
+        let now = file(&f);
+        assert_eq!(write(&mut f, &now, r.inverse.clone()).status, "written");
+        assert_eq!(order(&f), [a, b, c]);
+        assert_eq!(file(&f), src);
+    }
+
+    #[test]
+    fn a_parent_game_code_gave_survives_a_reconcile() {
+        let mut f = arena();
+        let (a, b) = (f.by_name("EnemyA"), f.by_name("EnemyB"));
+        f.app.world_mut().entity_mut(a).insert(ChildOf(b));
+        let r = write(&mut f, ARENA, vec![set_x("EnemyB", 5.0)]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(f.app.world().get::<ChildOf>(a).map(ChildOf::parent), Some(b), "only a node a write moved is re-parented");
+    }
+
+    #[test]
+    fn a_batch_is_checked_through_its_own_changes() {
+        let mut f = arena();
+        // The room gives RoomA its Transform, under its new name too.
+        let r = write(&mut f, ARENA, vec![Op::Rename { path: p("RoomA"), to: "Hall".into() }, Op::AddComponent { path: p("Hall"), component: "Transform".into(), fields: vec![], text: None }]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("exists")), "{r:?}");
+        // What the batch added, it can remove.
+        let add = Op::AddComponent { path: p("RoomB"), component: "game::Health".into(), fields: vec![], text: None };
+        let r = write(&mut f, ARENA, vec![add, Op::RemoveComponent { path: p("RoomB"), component: "Health".into() }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(file(&f), ARENA);
+    }
+
+    #[test]
+    fn an_included_level_is_checked_through_the_level_that_opens_it() {
+        let arena = "#Hall\n:\"levels/hut.bsn\"\n";
+        let hut = "#Hut\n:\"levels/post.bsn\"\n";
+        let post = "#Post\ngame::Health { max: 3.0 }\n";
+        let mut f = fixture("included", &[("levels/arena.bsn", arena), ("levels/hut.bsn", hut), ("levels/post.bsn", post), ("levels/loose.bsn", "#Loose Transform\n")]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        let to = |f: &mut Fixture, file: &str, base: &str, ops: Vec<Op>| write_level(f.app.world_mut(), WriteRequest { id: 8, file: file.into(), base: content_hash(base.as_bytes()), ops });
+        let r = to(&mut f, "levels/hut.bsn", hut, vec![Op::AddComponent { path: p("Hut"), component: "game::Health".into(), fields: vec![], text: None }]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("exists")), "post.bsn gives it: {r:?}");
+        let r = to(&mut f, "levels/hut.bsn", hut, vec![Op::RemoveComponent { path: p("Hut"), component: "game::Health".into() }]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("prefab-internal")), "{r:?}");
+        // A level no open level shows has no world to check against.
+        let r = to(&mut f, "levels/loose.bsn", "#Loose Transform\n", vec![Op::AddComponent { path: p("Loose"), component: "game::Health".into(), fields: vec![], text: None }]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("invalid")), "{r:?}");
+    }
 }
 
 mod hot_reload {

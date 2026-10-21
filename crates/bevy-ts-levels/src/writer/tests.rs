@@ -276,7 +276,7 @@ fn a_reparent_and_its_inverse_give_the_file_back() {
     for (index, expect) in [(1, "#B Marker\n--\n#A Marker\n--\n#C Marker\n"), (2, "#B Marker\n--\n#C Marker\n--\n#A Marker\n")] {
         let w = ok(src, &[Op::Reparent { path: p("A"), parent: p(""), index: Some(index) }]);
         assert_eq!(w.text, expect);
-        assert!(w.renamed.is_empty());
+        assert_eq!(w.renamed, [(p("A"), p("A"))], "a reorder is a move the engine follows");
         assert_eq!(ok(&w.text, &w.inverse).text, src);
     }
     // A child with its comment, out and back.
@@ -351,4 +351,42 @@ fn what_a_prefab_gives_cannot_be_changed_or_parented() {
     }
     assert!(written(&syntax::parse(&with_eye).unwrap(), &p("EnemyB")));
     assert!(!written(&syntax::parse(&with_eye).unwrap(), &p("EnemyB/eye")));
+}
+
+#[test]
+fn a_patch_is_matched_by_the_type_it_resolves_to() {
+    let src = "#A\ngame::Health { max: 3.0 }\nTransform\n";
+    let resolve = |c: &str| matches!(c, "Health" | "game::Health").then(|| "game::Health".to_string());
+    let remove = [Op::RemoveComponent { path: p("A"), component: "Health".into() }];
+    assert_eq!(apply(src, &remove).unwrap_err().reason, "not-found", "by text alone, Health is not game::Health");
+    let w = apply_resolved(src, &remove, false, &resolve).unwrap();
+    assert_eq!(w.text, "#A\nTransform\n");
+    let add = [Op::AddComponent { path: p("A"), component: "Health".into(), fields: vec![], text: None }];
+    assert_eq!(apply_resolved(src, &add, false, &resolve).unwrap_err().reason, "exists");
+}
+
+#[test]
+fn an_unnamed_entity_comes_back_by_its_place() {
+    let src = "#A Marker\n--\nCrate\n--\nCrate\n";
+    let w = ok(src, &[Op::Delete { path: p("#1") }]);
+    let back = ok(&w.text, &w.inverse);
+    assert_eq!(back.text, src);
+    assert_eq!(back.created, [p("#1")]);
+    // Redo: the restore's inverse deletes the same entity.
+    assert_eq!(ok(&back.text, &back.inverse).text, w.text);
+}
+
+#[test]
+fn what_a_batch_adds_then_deletes_is_not_created() {
+    let w = ok(ARENA, &[add("", Some("Lamp"), Base::None, vec![], None), Op::Delete { path: p("Lamp") }]);
+    assert!(w.created.is_empty(), "{:?}", w.created);
+    assert_eq!(w.text, ARENA);
+}
+
+#[test]
+fn a_whitespace_line_ends_what_an_entity_owns() {
+    let src = "#A Marker\n--\n// Section two.\n    \n#B Marker\n--\n#C Marker\n";
+    let w = ok(src, &[Op::Delete { path: p("B") }]);
+    assert_eq!(w.text, "#A Marker\n--\n// Section two.\n    \n#C Marker\n");
+    assert_eq!(ok(&w.text, &w.inverse).text, src);
 }

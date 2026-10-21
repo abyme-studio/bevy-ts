@@ -17,7 +17,7 @@
 
 It SHALL return the new content hash, the changed line ranges, the inverse batch, and `created`: one `{ namePath, entity }` per entity the batch added, in order. The write SHALL reconcile the level before it replies, so `entity` is the spawned entity's bits, or null only when the level is not open. bevy-ts SHALL be the only component that writes `.bsn` files. Viewport `bsn` edits SHALL become these operations inside the engine.
 
-An operation on an entity that is not written in the file (a prefab's inner entity, or an included level's) SHALL be refused with `prefab-internal`, except `set` and `revert`, which write overrides. A parent that is not written in the file SHALL be refused the same way.
+An operation on an entity that is not written in the file (a prefab's inner entity, or an included level's) SHALL be refused with `prefab-internal`, except `set` and `revert`, which write overrides. A parent that is not written in the file SHALL be refused the same way. So SHALL an instance as the parent of `add_entity`, `add_instance`, `reparent` or `restore`: its children are its prefab's, and a child added there could not be deleted.
 
 #### Scenario: Setting a translation
 - **WHEN** a client sends `set` on `EnemyB`, `Transform.translation.x`, `5.0`, with the current hash

@@ -195,6 +195,9 @@ pub struct TsxTree {
     /// Overlay roots by scene (levels' T4), layered over the scene by key path.
     pub overlays: HashMap<String, Vec<crate::desc::NodeDesc>>,
     pub entities: HashMap<u64, Entity>,
+    /// Nodes a rekey moved to a new key path (a level's rename or reparent): the next reconcile
+    /// puts each under its described parent, in description order.
+    pub moved: std::collections::HashSet<u64>,
     pub tombstones: HashMap<u64, Tombstone>,
     /// The last reconcile's writes.
     pub last: ReconcileStats,

@@ -334,7 +334,9 @@ fn apply_node(
     let entity = match known {
         _ if tree.tombstones.contains_key(&n.id) => None,
         Some(e) if alive(world, e, n.id) => {
-            reparent(world, e, root, parent);
+            if tree.moved.remove(&n.id) {
+                reparent(world, e, root, parent);
+            }
             let before = stats.clone();
             if update(world, e, n, stats) {
                 tree.journal.open.moved.push(n.id);
@@ -362,8 +364,12 @@ fn apply_node(
                     tree.reactive.new_instances.push((id, e));
                 }
             }
+            let reorder = n.children.iter().any(|c| tree.moved.contains(&c.id));
             for c in &n.children {
                 apply_node(world, tree, root, c, Some(e), seen, stats, slots);
+            }
+            if reorder {
+                order_children(world, tree, e, n);
             }
         }
         None => tombstone_subtree(world, tree, root, n, seen, stats),
@@ -427,8 +433,9 @@ fn applied(c: &OwnedComponent) -> Map<String, Value> {
     c.fields.iter().filter(|(_, s)| !s.applied.is_null()).map(|(k, s)| (k.clone(), s.applied.clone())).collect()
 }
 
-/// A kept node whose key path moved to another parent (a level's `reparent`) follows it. A
-/// root node leaves only a parent of its own root, not one something else gave it.
+/// A node a rekey moved (a level's `reparent`) follows its described parent. A root node leaves
+/// only a parent of its own root, not one something else gave it. Nodes nothing moved keep
+/// whatever parent game code gave them.
 fn reparent(world: &mut World, e: Entity, root: &str, parent: Option<Entity>) {
     let current = world.get::<ChildOf>(e).map(ChildOf::parent);
     if current == parent {
@@ -442,6 +449,15 @@ fn reparent(world: &mut World, e: Entity, root: &str, parent: Option<Entity>) {
             world.entity_mut(e).remove::<ChildOf>();
         }
         None => {}
+    }
+}
+
+/// Puts `e`'s children in description order, after a moved child arrived or moved among them.
+/// Children tsx did not make keep their order, after the described ones.
+fn order_children(world: &mut World, tree: &TsxTree, e: Entity, n: &RNode) {
+    let order: HashMap<Entity, usize> = n.children.iter().enumerate().filter_map(|(i, c)| Some((*tree.entities.get(&c.id)?, i))).collect();
+    if let Some(mut children) = world.get_mut::<Children>(e) {
+        children.sort_by_key(|c| order.get(c).copied().unwrap_or(usize::MAX));
     }
 }
 

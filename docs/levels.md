@@ -48,6 +48,12 @@ with `viewport_select`.
 - **Reparent and restore** go to `index` among the parent's written children, or last. Both
   keep comments with the entity, so a move or a delete and its inverse give the file back byte
   for byte. A reparent keeps the entity and its state, as a rename does.
+- **A batch is checked as it goes.** The world checks (`exists`, a prefab's component) see the
+  world before the batch, followed through the batch's own earlier ops: a renamed or moved entity
+  is checked as itself, one the batch deleted is new, and a component it added or removed counts.
+  So `[remove_component Foo, add_component Foo { … }]` replaces a patch. A file no open level
+  shows has no world to check: its `add_component` and `remove_component` are `invalid` until a
+  level that places it is open. An included file is checked through the level that includes it.
 - **What a prefab gives is the prefab's.** An entity under an instance (a prefab's or an
   included level's), and an instance's children list, are refused with `prefab-internal` for
   everything but `set` and `revert`, which write overrides. Edit the prefab, or open the included

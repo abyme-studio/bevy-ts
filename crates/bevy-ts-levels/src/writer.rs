@@ -132,16 +132,26 @@ fn refuse(reason: &'static str, message: impl Into<String>) -> Refused {
 /// Applies a batch to `src`, one operation after another, each re-parsed and checked. The whole
 /// batch applies or none of it.
 pub fn apply(src: &str, ops: &[Op]) -> Result<Written, Refused> {
-    apply_with(src, ops, false)
+    apply_with(src, ops, false, &|_| None)
 }
 
 /// [`apply`] for a sidecar level (decision 11), where a `set` on a name path the file lacks
 /// creates it from the top: the file layers over a TSX scene, so every path is an override.
 pub fn apply_sidecar(src: &str, ops: &[Op]) -> Result<Written, Refused> {
-    apply_with(src, ops, true)
+    apply_with(src, ops, true, &|_| None)
 }
 
-fn apply_with(src: &str, ops: &[Op], create_top: bool) -> Result<Written, Refused> {
+/// Names the type a component path resolves to (`Health` and `game::Health` alike): the engine
+/// passes the world's schema. Without one, patches match by their text.
+pub type Resolve<'a> = &'a dyn Fn(&str) -> Option<String>;
+
+/// [`apply`] or [`apply_sidecar`], matching `add_component` and `remove_component` patches by
+/// the type they resolve to.
+pub fn apply_resolved(src: &str, ops: &[Op], sidecar: bool, resolve: Resolve) -> Result<Written, Refused> {
+    apply_with(src, ops, sidecar, resolve)
+}
+
+fn apply_with(src: &str, ops: &[Op], create_top: bool, resolve: Resolve) -> Result<Written, Refused> {
     let mut text = src.to_string();
     let mut inverse = Vec::new();
     let mut changed: Vec<(usize, usize)> = Vec::new();
@@ -149,15 +159,17 @@ fn apply_with(src: &str, ops: &[Op], create_top: bool) -> Result<Written, Refuse
     let mut created: Vec<Vec<String>> = Vec::new();
     for op in ops {
         let file = syntax::parse(&text).map_err(|d| refuse("internal", format!("the file does not parse: {}", d.message)))?;
-        let (splices, inv, touched, renames) = plan(&file, op, create_top)?;
+        let (splices, inv, touched, renames) = plan(&file, op, create_top, resolve)?;
         // What earlier ops added moves with this one's renames.
         for (from, to) in &renames {
             for c in created.iter_mut().filter(|c| c.starts_with(from)) {
                 *c = to.iter().chain(&c[from.len()..]).cloned().collect();
             }
         }
-        if matches!(op, Op::Add { .. } | Op::Restore { .. }) {
-            created.push(touched[0].clone());
+        match op {
+            Op::Add { .. } | Op::Restore { .. } => created.push(touched[0].clone()),
+            Op::Delete { path } => created.retain(|c| !c.starts_with(path)),
+            _ => {}
         }
         renamed.extend(renames);
         let (next, ranges) = splice(&text, &splices);
@@ -294,6 +306,16 @@ fn patch_of<'a>(e: &'a Entity, component: &str) -> Option<&'a Patch> {
     e.patches().find(|p| p.path.joined() == component).or_else(|| e.patches().find(|p| p.path.last() == short && (p.path.segments.len() == 1 || component.ends_with(&p.path.joined()))))
 }
 
+/// The patch for `component` by the type both resolve to, else by text.
+fn patch_typed<'a>(e: &'a Entity, component: &str, resolve: Resolve) -> Option<&'a Patch> {
+    if let Some(ty) = resolve(component)
+        && let Some(p) = e.patches().find(|p| resolve(&p.path.joined()).as_ref() == Some(&ty))
+    {
+        return Some(p);
+    }
+    patch_of(e, component)
+}
+
 /// How the file names `component` in a new patch: as an existing patch of it does, else as given.
 fn written_name(file: &ParsedFile, component: &str) -> String {
     let short = component.rsplit("::").next().unwrap_or(component);
@@ -385,7 +407,7 @@ fn ensure_named(file: &ParsedFile, path: &[String], splices: &mut Vec<(usize, us
     out
 }
 
-fn plan(file: &ParsedFile, op: &Op, create_top: bool) -> Result<Plan, Refused> {
+fn plan(file: &ParsedFile, op: &Op, create_top: bool, resolve: Resolve) -> Result<Plan, Refused> {
     let (s, i, t, mut renames) = match op {
         Op::Set { path, component, field, value, containers } => plan_set(file, path, component, field, value, containers, create_top),
         Op::Revert { path, component, field } => plan_revert(file, path, component, field),
@@ -396,8 +418,8 @@ fn plan(file: &ParsedFile, op: &Op, create_top: bool) -> Result<Plan, Refused> {
         Op::Rename { path, to } => plan_rename(file, path, to),
         Op::Reparent { path, parent, index } => plan_reparent(file, path, parent, *index),
         Op::Restore { parent, index, text } => plan_restore(file, parent, *index, text),
-        Op::AddComponent { path, component, fields, text } => plan_add_component(file, path, component, fields, text.as_deref()),
-        Op::RemoveComponent { path, component } => plan_remove_component(file, path, component),
+        Op::AddComponent { path, component, fields, text } => plan_add_component(file, path, component, fields, text.as_deref(), resolve),
+        Op::RemoveComponent { path, component } => plan_remove_component(file, path, component, resolve),
     }?;
     if let Op::Rename { path, to } = op {
         let mut new = path.clone();
@@ -985,8 +1007,11 @@ fn block_start(file: &ParsedFile, e: &Entity) -> usize {
     // The comment lines right above the entity are its own: not one on the line of the token
     // before, nor any above a blank line.
     let mut own = if src[line_start(src, trivia.start)..trivia.start].trim().is_empty() { trivia.start } else { text.find('\n').map_or(trivia.start, |i| trivia.start + i + 1) };
-    if let Some(i) = text.rfind("\n\n") {
-        own = own.max(trivia.start + i + 2);
+    let breaks: Vec<usize> = text.match_indices('\n').map(|(i, _)| i).collect();
+    for w in breaks.windows(2) {
+        if text[w[0] + 1..w[1]].trim().is_empty() {
+            own = own.max(trivia.start + w[1] + 1);
+        }
     }
     own.min(line_start(src, e.span.start))
 }
@@ -1066,8 +1091,10 @@ fn plan_restore(file: &ParsedFile, parent: &[String], index: usize, text: &str) 
     if !name.is_empty() && find_in(list_of(file, p), &name).is_some() {
         return Err(refuse("exists", format!("a sibling is already named {name}")));
     }
+    // An unnamed entity is named by its place among unnamed siblings (`#n`).
+    let seg = if name.is_empty() { format!("#{}", written_items(list_of(file, p)).take(index).filter(|(_, e)| e.name().is_none()).count()) } else { name };
     let mut path = parent.to_vec();
-    path.push(name);
+    path.push(seg);
     let mut out = Vec::new();
     insert_child(file, p, Some(index), text, &mut out);
     Ok((out, vec![Op::Delete { path: path.clone() }], vec![path], Vec::new()))
@@ -1122,14 +1149,15 @@ fn plan_reparent(file: &ParsedFile, path: &[String], parent: &[String], index: O
     out.extend(ins.into_iter().map(|(s, e, t)| (back(s), back(e), t)));
     let mut new_path = parent.to_vec();
     new_path.push(name);
-    let renames = if new_path != path { vec![(path.to_vec(), new_path.clone())] } else { Vec::new() };
+    // A reorder keeps the path, and is still a move the engine follows.
+    let renames = vec![(path.to_vec(), new_path.clone())];
     let inverse = Op::Reparent { path: new_path.clone(), parent: old_parent, index: Some(old_index) };
     Ok((out, vec![inverse], vec![path.to_vec(), new_path], renames))
 }
 
-fn plan_add_component(file: &ParsedFile, path: &[String], component: &str, fields: &[(String, WValue)], text: Option<&str>) -> Result<Plan, Refused> {
+fn plan_add_component(file: &ParsedFile, path: &[String], component: &str, fields: &[(String, WValue)], text: Option<&str>, resolve: Resolve) -> Result<Plan, Refused> {
     let f = written_entity(file, path)?;
-    if patch_of(f.entity, component).is_some() {
+    if patch_typed(f.entity, component, resolve).is_some() {
         return Err(refuse("exists", format!("{} already has {component}", path.join("/"))));
     }
     let body = match text {
@@ -1141,9 +1169,9 @@ fn plan_add_component(file: &ParsedFile, path: &[String], component: &str, field
     Ok((out, vec![Op::RemoveComponent { path: path.to_vec(), component: component.into() }], vec![path.to_vec()], Vec::new()))
 }
 
-fn plan_remove_component(file: &ParsedFile, path: &[String], component: &str) -> Result<Plan, Refused> {
+fn plan_remove_component(file: &ParsedFile, path: &[String], component: &str, resolve: Resolve) -> Result<Plan, Refused> {
     let f = written_entity(file, path)?;
-    let p = patch_of(f.entity, component).ok_or_else(|| refuse("not-found", format!("{} has no {component} patch", path.join("/"))))?;
+    let p = patch_typed(f.entity, component, resolve).ok_or_else(|| refuse("not-found", format!("{} has no {component} patch", path.join("/"))))?;
     if f.entity.name().is_none() && f.entity.entries.len() == 1 {
         return Err(refuse("invalid", format!("{component} is all {} has; delete the entity instead", path.join("/"))));
     }

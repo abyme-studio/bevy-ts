@@ -4,6 +4,8 @@
 
 use crate::compose::Schema;
 use crate::engine::{BsnLevel, Levels, WorldSchema, content_hash, open_sidecar, reconcile_level, root_name};
+use bevy_ts_tsx::desc::node_id;
+use bevy_ts_tsx::{TsxNode, TsxTree};
 use crate::syntax::{self, Fields, ParsedFile, ValueKind};
 use crate::writer::{self, Op};
 use bevy::prelude::*;
@@ -174,10 +176,17 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         None => sidecar_of(world, &req.file),
     };
     let mut ops = req.ops.clone();
-    if let Err(e) = check_world(world, &req.file, scene.as_deref(), &mut ops) {
-        return WriteResult::refused(req, "refused", e.reason, e.message);
-    }
-    let written = match if scene.is_some() { writer::apply_sidecar(&disk, &ops) } else { writer::apply(&disk, &ops) } {
+    let planned = {
+        let registry = world.resource::<AppTypeRegistry>().clone();
+        let registry = registry.read();
+        let schema = WorldSchema::live(world, &registry);
+        let resolve = |c: &str| schema.component(c).ok().map(|s| s.name);
+        match check_world(world, &schema, &req.file, scene.as_deref(), &mut ops) {
+            Ok(()) => writer::apply_resolved(&disk, &ops, scene.is_some(), &resolve),
+            Err(e) => return WriteResult::refused(req, "refused", e.reason, e.message),
+        }
+    };
+    let written = match planned {
         Ok(w) => w,
         Err(e) if status == "rebased" && e.reason == "not-found" => return WriteResult::refused(req, "conflict", "target removed", e.message),
         Err(e) => return WriteResult::refused(req, "refused", e.reason, e.message),
@@ -200,60 +209,127 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         return WriteResult::refused(req, "refused", "internal", e);
     }
     reconcile_affected(world, &req.file);
-    let tree = world.resource::<bevy_ts_tsx::TsxTree>();
-    let created = written.created.iter().map(|p| (p.clone(), tree.entity(bevy_ts_tsx::desc::node_id(&root, p)))).collect();
+    let tree = world.resource::<TsxTree>();
+    let created = written.created.iter().map(|p| (p.clone(), tree.entity(node_id(&root, p)))).collect();
     WriteResult { id: req.id, file: req.file.clone(), status, reason: None, message: String::new(), hash: Some(hash_text(hash)), lines: written.lines, disk: None, inverse: written.inverse, created }
 }
 
 /// The `app.scene` root whose sidecar level is `file`, if any.
 fn sidecar_of(world: &World, file: &str) -> Option<String> {
-    let scenes: Vec<String> = world.resource::<bevy_ts_tsx::TsxTree>().scenes.keys().cloned().collect();
+    let scenes: Vec<String> = world.resource::<TsxTree>().scenes.keys().cloned().collect();
     scenes.into_iter().find(|s| bevy_ts_tsx::scene_level(world, s).as_deref() == Some(file))
 }
 
-/// The component as its schema names it, and the shortest suffix of `component` that resolves to
-/// the same type.
-fn resolve_component(world: &World, component: &str) -> Option<(String, String)> {
-    let registry = world.resource::<AppTypeRegistry>().clone();
-    let registry = registry.read();
-    let schema = WorldSchema::live(world, &registry);
-    let full = schema.component(component).ok()?.name;
+/// The shortest suffix of `component` that resolves to the type `full`.
+fn shortest(schema: &WorldSchema, component: &str, full: &str) -> Option<String> {
     let segments: Vec<&str> = component.split("::").collect();
-    let short = (1..=segments.len()).map(|k| segments[segments.len() - k..].join("::")).find(|c| schema.component(c).is_ok_and(|s| s.name == full))?;
-    Some((full, short))
+    (1..=segments.len()).map(|k| segments[segments.len() - k..].join("::")).find(|c| schema.component(c).is_ok_and(|s| s.name == full))
+}
+
+/// The tsx nodes the entity at `path` in `file` is in the world: through every open level that
+/// is or includes the file (an included room is placed once per inclusion), or by key path in a
+/// sidecar's scene. None when no open level shows the file.
+fn nodes_of<'w>(world: &'w World, file: &str, scene: Option<&str>, path: &[String]) -> Option<Vec<&'w TsxNode>> {
+    let tree = world.resource::<TsxTree>();
+    let node = |root: &str, key: &[String]| tree.entity(node_id(root, key)).and_then(|e| world.get::<TsxNode>(e));
+    let levels = world.resource::<Levels>();
+    let mut shown = false;
+    let mut out = Vec::new();
+    if let Some(scene) = scene {
+        shown = true;
+        out.extend(node(scene, path));
+    } else {
+        for (level, r) in levels.roots.iter().filter(|(p, r)| p.as_str() == file || r.files.contains(file)) {
+            shown = true;
+            let root = r.overlay.clone().unwrap_or_else(|| root_name(level));
+            for (key, frames) in &r.owners {
+                if frames.iter().any(|f| f.file == file && f.path == path) {
+                    out.extend(node(&root, key));
+                }
+            }
+        }
+    }
+    shown.then_some(out)
+}
+
+/// Whether a node was made by the scene's TSX rather than a level: its outermost source, the
+/// call site, is not a `.bsn` (a scene instance a sidecar placed has the prefab's TSX first).
+fn made_in_tsx(n: &TsxNode) -> bool {
+    n.source.last().is_none_or(|s| !s.file.ends_with(".bsn"))
 }
 
 /// Checks that need the world, before the writer (design decision 1): a component the entity has
 /// cannot be added; one its prefab gives cannot be removed; a sidecar's TSX entities are the
 /// scene's to rename, delete and move. A new patch is written in its shortest form.
-fn check_world(world: &World, file: &str, scene: Option<&str>, ops: &mut [Op]) -> Result<(), writer::Refused> {
-    let root = scene.map_or_else(|| root_name(file), String::from);
-    let tree = world.resource::<bevy_ts_tsx::TsxTree>();
-    let node = |path: &[String]| tree.entity(bevy_ts_tsx::desc::node_id(&root, path)).and_then(|e| world.get::<bevy_ts_tsx::TsxNode>(e));
+///
+/// The world is as it was before the batch: each op is checked through the batch's earlier
+/// renames and moves, an entity the batch deleted is new, and a component it added or removed
+/// counts as added or removed.
+fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&str>, ops: &mut [Op]) -> Result<(), writer::Refused> {
     let refuse = |reason: &'static str, message: String| writer::Refused { reason, message };
+    // Where each path the batch moved was before it: (path now, path in the world).
+    let mut moved: Vec<(Vec<String>, Vec<String>)> = Vec::new();
+    let origin = |moved: &[(Vec<String>, Vec<String>)], path: &[String]| -> Vec<String> {
+        for (now, was) in moved.iter().rev() {
+            if path.starts_with(now) {
+                return was.iter().chain(&path[now.len()..]).cloned().collect();
+            }
+        }
+        path.to_vec()
+    };
+    let mut gone: Vec<Vec<String>> = Vec::new();
+    let mut added: Vec<(Vec<String>, String)> = Vec::new();
+    let mut removed: Vec<(Vec<String>, String)> = Vec::new();
     for op in ops.iter_mut() {
         match op {
-            Op::AddComponent { path, component, text, .. } => {
-                let Some((full, short)) = resolve_component(world, component) else { continue };
-                if node(path).is_some_and(|n| n.components.contains_key(&full)) {
-                    return Err(refuse("exists", format!("{} already has {full}", path.join("/"))));
+            Op::AddComponent { .. } | Op::RemoveComponent { .. } => {
+                let (path, component, add, plain) = match &*op {
+                    Op::AddComponent { path, component, text, .. } => (path.clone(), component.clone(), true, text.is_none()),
+                    Op::RemoveComponent { path, component } => (path.clone(), component.clone(), false, false),
+                    _ => unreachable!("matched"),
+                };
+                if gone.iter().any(|g| path.starts_with(g)) {
+                    continue;
                 }
-                if text.is_none() {
-                    *component = short;
+                let was = origin(&moved, &path);
+                let Ok(full) = schema.component(&component).map(|s| s.name) else { continue };
+                let Some(nodes) = nodes_of(world, file, scene, &was) else {
+                    return Err(refuse("invalid", format!("no open level shows {file}: open one that places it to change its components")));
+                };
+                let key = (was, full.clone());
+                if add {
+                    let has = nodes.iter().any(|n| n.components.contains_key(&full)) && !removed.contains(&key);
+                    if has {
+                        return Err(refuse("exists", format!("{} already has {full}", path.join("/"))));
+                    }
+                    if plain
+                        && let Some(short) = shortest(schema, &component, &full)
+                        && let Op::AddComponent { component, .. } = op
+                    {
+                        *component = short;
+                    }
+                    removed.retain(|r| r != &key);
+                    added.push(key);
+                } else {
+                    // A component the file does not add has its source elsewhere: the prefab's.
+                    let given = nodes.iter().any(|n| n.components.get(&full).and_then(|c| c.source.as_ref()).is_some_and(|s| s.file != file)) && !added.contains(&key);
+                    if given {
+                        return Err(refuse("prefab-internal", format!("{full} comes from {}'s prefab; .bsn cannot remove it", path.join("/"))));
+                    }
+                    added.retain(|a| a != &key);
+                    removed.push(key);
                 }
             }
-            Op::RemoveComponent { path, component } => {
-                let Some((full, _)) = resolve_component(world, component) else { continue };
-                // A component the file does not add has its source elsewhere: the prefab's.
-                let given = node(path).and_then(|n| n.components.get(&full)).and_then(|c| c.source.as_ref()).is_some_and(|s| s.file != file);
-                if given {
-                    return Err(refuse("prefab-internal", format!("{full} comes from {}'s prefab; .bsn cannot remove it", path.join("/"))));
-                }
-            }
-            Op::Delete { path } | Op::Rename { path, .. } | Op::Reparent { path, .. } if scene.is_some() => {
-                let tsx = node(path).is_some_and(|n| n.source.first().is_none_or(|s| !s.file.ends_with(".bsn")));
-                if tsx {
+            Op::Delete { path } | Op::Rename { path, .. } | Op::Reparent { path, .. } => {
+                let was = origin(&moved, path);
+                if scene.is_some() && !gone.iter().any(|g| path.starts_with(g)) && nodes_of(world, file, scene, &was).is_some_and(|n| n.iter().any(|n| made_in_tsx(n))) {
                     return Err(refuse("prefab-internal", format!("{} is made in TSX; edit it there", path.join("/"))));
+                }
+                match op {
+                    Op::Delete { path } => gone.push(path.clone()),
+                    Op::Rename { path, to } => moved.push((path[..path.len() - 1].iter().chain(std::iter::once(&*to)).cloned().collect(), was)),
+                    Op::Reparent { path, parent, .. } => moved.push((parent.iter().chain(path.last()).cloned().collect(), was)),
+                    _ => {}
                 }
             }
             _ => {}
@@ -271,4 +347,22 @@ fn reconcile_affected(world: &mut World, file: &str) {
 
 fn reconcile_text(world: &mut World, level: &str) {
     reconcile_level(world, level);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy_ts::backend::SourceLocation;
+
+    fn at(file: &str) -> SourceLocation {
+        SourceLocation { file: file.into(), line: 1, column: 1 }
+    }
+
+    #[test]
+    fn a_scene_instance_a_sidecar_placed_is_the_sidecars() {
+        let node = |source: Vec<SourceLocation>| TsxNode { id: 0, root: "main".into(), key_path: vec![], types: vec![], source, components: Default::default() };
+        assert!(!made_in_tsx(&node(vec![at("src/enemy.tsx"), at("levels/main.bsn")])), "the call site is the sidecar's");
+        assert!(made_in_tsx(&node(vec![at("src/main.tsx")])));
+        assert!(made_in_tsx(&node(vec![])));
+    }
 }
