@@ -347,6 +347,7 @@ fn the_engines_components_are_its_own() {
     let transform = "bevy_transform::components::transform::Transform";
     assert_eq!(editor(&s, global), json!({ "origin": "engine", "internal": true, "addable": false, "category": "transform" }));
     assert_eq!(editor(&s, transform), json!({ "origin": "engine", "internal": false, "addable": true, "category": "transform" }));
+    assert_eq!(editor(&s, "bevy_ts_levels::engine::MissingComponents")["internal"], true, "level_node.missing draws placeholders");
     assert_eq!(editor(&s, "game::Mover")["origin"], "game");
     assert_eq!(editor(&s, "bevy_camera::clear_color::ClearColor")["addable"], false, "a resource is never added to an entity");
 

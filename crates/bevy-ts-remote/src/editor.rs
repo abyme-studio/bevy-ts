@@ -125,6 +125,8 @@ pub const INTERNAL: &[&str] = &[
     // bevy-ts's own markers.
     "bevy_ts::ScriptHidden",
     "bevy_ts::commands::TsSpawned",
+    // A level's placeholder entries: `level_node.missing` draws them, not a component group.
+    "bevy_ts_levels::engine::MissingComponents",
 ];
 
 /// Icon categories: a key with `::` is a type path prefix and wins over a crate key.
