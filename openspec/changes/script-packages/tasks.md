@@ -35,5 +35,5 @@
 
 ## 7. Gate
 
-- [ ] 7.1 `cargo build`, `cargo test` and `cargo clippy` on the workspace, once, last
+- [x] 7.1 `cargo build`, `cargo test` and `cargo clippy` on the workspace, once, last
 - [x] 7.2 `openspec validate script-packages --strict`
