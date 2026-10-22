@@ -128,7 +128,8 @@ it. Each entry has a `reason`:
 
 - `unregistered`: no live code registers the type, or the class is no longer a scene component.
 - `failed`: its `scene()` threw (that instance only), or the TS build failed and its empty
-  generation is live.
+  generation is live. A typo of a native name, as written (`Transfrom`), stays `unregistered`
+  then: the build did not cause it.
 - `mismatch`: the code is live but saved fields or props do not fit. The component applies with
   what fits; the entry lists only the misfits, each with why in `misfit`. An unset required prop
   makes the whole instance a placeholder.

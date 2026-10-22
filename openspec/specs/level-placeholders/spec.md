@@ -8,7 +8,7 @@ TBD - created by archiving change level-placeholders. Update Purpose after archi
 ### Requirement: Missing code makes a placeholder, not a load error
 Under `bevy-ts dev`, bevy-ts's `.bsn` loader SHALL turn each of these into a placeholder entry instead of failing the level:
 - `unregistered`: no live code registers the type a patch or a `@Comp { … }` names, or the class is no longer a scene component
-- `failed`: the type's code threw (a scene component's `scene()`), or the live generation is the empty one a failed TS build left
+- `failed`: the type's code threw (a scene component's `scene()`), or the live generation is the empty one a failed TS build left; a typo of a native name, comparing the full name as written, stays `unregistered` then
 - `mismatch`: the code is live but a saved field or prop does not fit it: no such field or prop, a wrongly typed value, or a required prop the file does not set
 
 Every other entry of the file SHALL load as it does today. A level with placeholders SHALL be open and listed like any other level.
@@ -20,6 +20,11 @@ Every other entry of the file SHALL load as it does today. A level with placehol
 #### Scenario: A typo in a plain patch
 - **WHEN** `#Crate` has `Transform { … }` and `Lootz { table: "chest_rare" }` and no type is named `Lootz`
 - **THEN** the crate spawns with its `Transform`, and `Lootz` is an `unregistered` entry
+
+#### Scenario: A typo while a failed TS build is live
+- **WHEN** the first TS build fails, and `#Boss` has `Transfrom { … }` and `game::Health { … }`
+- **THEN** `Transfrom` is an `unregistered` entry suggesting `Transform`, and `game::Health` is a `failed` entry with the build error
+- **AND** a `game::Transformer`, a TS name and no typo of `Transform` as written, is `failed` too
 
 #### Scenario: A scene that throws
 - **WHEN** `enemies::Grunt`'s `scene()` throws for `#GruntB`'s props and not for `#GruntA`'s

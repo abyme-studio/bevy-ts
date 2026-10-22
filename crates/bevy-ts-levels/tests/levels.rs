@@ -1486,6 +1486,33 @@ game::Health { max: 900.0 }
     }
 
     #[test]
+    fn a_native_typo_in_a_failed_first_build_stays_a_typo() {
+        let typo = CRATE.replace("Transform { translation: Vec3 { x: 2.0 } }", "Transfrom { translation: Vec3 { x: 2.0 } }");
+        let mut f = dev_fixture("ph-build-typo", &[("levels/crate.bsn", &typo)]);
+        f.fake.push(FakeProgram { load_error: Some(vec![ScriptError::new("Unexpected token")]), ..Default::default() });
+        let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+        assert_eq!(r.status, ReloadStatus::Failed);
+        open_now(f.app.world_mut(), "levels/crate.bsn").unwrap();
+        let boss = f.by_name("Boss");
+        let m = missing(&f, boss);
+        assert_eq!(m[0], ("Transfrom".to_string(), MissingReason::Unregistered, "unknown component Transfrom (did you mean Transform?)".to_string()));
+        assert_eq!((m[1].0.as_str(), m[1].1), ("game::Health", MissingReason::Failed));
+    }
+
+    #[test]
+    fn a_ts_name_near_a_native_one_in_a_failed_first_build_stays_failed() {
+        // `Transformer` is two edits from `Transform`: a short-name match would call it a typo.
+        let near = CRATE.replace("game::Health { max: 900.0 }", "game::Transformer { n: 3 }");
+        let mut f = dev_fixture("ph-build-near", &[("levels/crate.bsn", &near)]);
+        f.fake.push(FakeProgram { load_error: Some(vec![ScriptError::new("Unexpected token")]), ..Default::default() });
+        let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+        assert_eq!(r.status, ReloadStatus::Failed);
+        open_now(f.app.world_mut(), "levels/crate.bsn").unwrap();
+        let boss = f.by_name("Boss");
+        assert_eq!(missing(&f, boss), [("game::Transformer".to_string(), MissingReason::Failed, "Unexpected token".to_string())]);
+    }
+
+    #[test]
     fn writes_refuse_missing_and_unknown_types() {
         let mut f = crate_level("ph-refuse");
         let set = Op::Set { path: p("Crate"), component: "game::Loot".into(), field: p("rolls"), value: WValue::Int(4), containers: vec![] };

@@ -891,10 +891,19 @@ fn build_failure(world: &World) -> Option<ScriptError> {
     (last.status == bevy_ts::generation::ReloadStatus::Failed).then(|| last.errors.first().cloned()).flatten()
 }
 
+/// Whether `path`, as written, is a typo of a native name as written: `Transfrom`, not
+/// `game::Transformer`.
+fn native_typo(native: &NativeLayouts, path: &str) -> bool {
+    let d = native.iter().map(|n| distance(path, &n.ts_name)).min();
+    d.is_some_and(|d| d > 0 && d <= 2.max(path.len() / 4))
+}
+
 /// Fills each placeholder entry's `expected`, and makes every unresolved name `failed` while a
-/// failed TS build's empty generation is live. Then each entry is a warning.
+/// failed TS build's empty generation is live, but for a typo of a native name. Then each entry
+/// is a warning.
 fn resolve_missing(world: &World, composed: &mut Composed) {
     let failure = build_failure(world);
+    let native = world.resource::<NativeLayouts>();
     let declared = &world.resource::<Levels>().declared_at;
     let decl = |name: &str| -> Option<MissingAt> {
         if let Some(at) = declared.get(name) {
@@ -908,7 +917,7 @@ fn resolve_missing(world: &World, composed: &mut Composed) {
     };
     for m in composed.missing.values_mut().flatten() {
         match (&failure, m.reason) {
-            (Some(e), MissingReason::Unregistered) => {
+            (Some(e), MissingReason::Unregistered) if !native_typo(native, &m.component) => {
                 m.reason = MissingReason::Failed;
                 m.message = e.message.lines().next().unwrap_or_default().to_string();
                 m.expected = e.location.as_ref().map(MissingAt::from);
