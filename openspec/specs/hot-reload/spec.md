@@ -38,7 +38,7 @@ Every system, observer and plugin SHALL be identified by `<module path>#<export 
 - **THEN** `s.wave` is still 4 in the new generation
 
 ### Requirement: Startup systems run once per identity per world
-A system in `Startup` SHALL run once the first time a generation registering its identity is applied, and SHALL NOT run again on later reloads. A `Startup` system with a new identity SHALL run when the generation that adds it is applied. When the game has not started (an engine under `--edit` that has not entered play or stepped, see edit-mode), a `Startup` system SHALL instead run when the game starts, and a generation applied before then SHALL run none. `bevy-ts/reload` with `restart: true` SHALL despawn every entity spawned by TS, forget which `Startup` systems ran, reset `Local` storage, notify registered plugins (see plugin-api), and apply the generation as if first; in edit mode the game is then not started and `Startup` waits for play.
+A system in `Startup` SHALL run once the first time a generation registering its identity is applied, and SHALL NOT run again on later reloads. A `Startup` system with a new identity SHALL run when the generation that adds it is applied. When the game has not started (an engine under `--edit` that has not entered play or stepped, see edit-mode), a `Startup` system SHALL instead run when the game starts, and a generation applied before then SHALL run none. `bevy-ts/reload` with `restart: true` SHALL despawn every entity spawned by TS, forget which `Startup` systems ran, reset `Local` storage, remove every TS resource so the generation inserts it again with its `insertResource` value, clear every TS state and pending TS message, notify registered plugins (see plugin-api), and apply the generation as if first; in edit mode the game is then not started and `Startup` waits for play. A Stop (edit-mode) SHALL reset the world the same way, re-applying the live generation instead of compiling.
 
 #### Scenario: Editing a startup's body
 - **WHEN** the body of `Startup` system `scene` changes and reloads
@@ -47,6 +47,14 @@ A system in `Startup` SHALL run once the first time a generation registering its
 #### Scenario: A save before the first Play
 - **WHEN** an `--edit` engine has not played, `game.ts` gains `Startup` system `spawnWave` and reloads, then a client sets `play`
 - **THEN** `spawnWave` runs once, at play, with the other `Startup` systems
+
+#### Scenario: A restart resets the score
+- **WHEN** `Score` was inserted with `value: 0`, a system has raised it to 7, and a client calls `bevy-ts/reload` with `restart: true`
+- **THEN** `Score.value` is 0 after the restart
+
+#### Scenario: A restart drops a pending message
+- **WHEN** a system wrote a `Hit` message this frame and a client calls `bevy-ts/reload` with `restart: true`
+- **THEN** no reader sees that `Hit` after the restart
 
 ### Requirement: Layout changes migrate by field name
 When a component name is redeclared with a different layout, bevy-ts SHALL register a new `ComponentId` for it, copy each entity's value field by field where name and type match, fill new fields with their defaults (zero if none), drop removed fields, remove the old component from every entity, and report the migration. The old `ComponentId` SHALL become retired: hidden from the protocol and never matched by TS systems.
