@@ -3,6 +3,10 @@
 //! offscreen image the cameras render into, as Bevy's `render_ui_to_texture` example drives one on
 //! a texture, so `bevy_picking` hits and `onPointer*` handlers fire as in a window. Built on every
 //! platform.
+//!
+//! Workaround, to drop once Bevy fixes it: Bevy 0.20's `Location::is_in_viewport`
+//! (`bevy_picking/src/pointer.rs`) returns false without a `PrimaryWindow`, even for a pointer on an
+//! image, so the plugin spawns a window-less primary window the size of the image.
 
 use crate::CRATE;
 use bevy::asset::uuid::Uuid;
@@ -35,6 +39,8 @@ pub struct Pending(pub VecDeque<PointerEvent>);
 impl Plugin for OffscreenPointerPlugin {
     fn build(&self, app: &mut App) {
         let target = NormalizedRenderTarget::Image(ImageRenderTarget::from(self.image.clone()));
+        let size = app.world().resource::<Assets<Image>>().get(&self.image).map_or(UVec2::ONE, |i| i.size());
+        crate::spawn_windowless_primary(app.world_mut(), "bevy-ts headless", (size.x, size.y, 1.0));
         app.insert_resource(Target(target))
             .init_resource::<Pending>()
             .add_systems(Startup, |mut commands: Commands| {

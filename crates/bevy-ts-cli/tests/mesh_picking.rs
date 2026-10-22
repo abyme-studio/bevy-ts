@@ -105,8 +105,7 @@ fn the_headless_pointer_clicks_a_mesh() {
         y: 270.0,
     };
     app.world_mut().resource_mut::<Pending>().0.extend([ev(PointerEventKind::Move), ev(PointerEventKind::Down), ev(PointerEventKind::Up)]);
-    // Bevy 0.20's `Location::is_in_viewport` needs a `PrimaryWindow`, even for an image target:
-    // headless has none, so no ray is cast and this fails (the stop point of task 1.1).
+    // One event a frame: the move, then the press, then the release.
     for _ in 0..6 {
         app.update();
     }
