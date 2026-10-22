@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Typed text is sent once
-The viewer SHALL send each typed character once: a plain key as a `key` event's `text` (which becomes `KeyboardInput` text), and a composition as an `ime` `commit` (which becomes `Ime::Commit`), never both for the same input. IME is on while an `<input>` has focus: Bevy 0.20's `TextInput` sets `Window::ime_enabled`, so the viewer gets `ime_allowed` with `on: true`. `TextInput` inserts both a key's `text` and an IME commit, so a viewer that sent both would type each character twice; abyme's viewer sends each once (research@viewer-ime-text, 2026-10-23). The engine SHALL apply each as it arrives and SHALL NOT drop either. A character typed with Option or AltGr held arrives as key `text` with `alt` set, and Bevy's `TextInput` inserts text only with no modifier or Shift, so it is dropped upstream; bevy-ts does not work around it.
+The viewer SHALL send each typed character once: a plain key as a `key` event's `text` (which becomes `KeyboardInput` text), and a composition as an `ime` `commit` (which becomes `Ime::Commit`), never both for the same input. IME is on while an `<input>` has focus: Bevy 0.20's `TextInput` sets `Window::ime_enabled`, so the viewer gets `ime_allowed` with `on: true`. `TextInput` inserts both a key's `text` and an IME commit, so a viewer that sent both would type each character twice; abyme's viewer sends each once (research@viewer-ime-text, 2026-10-23). The engine SHALL apply each as it arrives and SHALL NOT drop either. A character typed with Option or AltGr held is dropped upstream: Bevy's `TextInput` inserts text only with no modifier or Shift, and reads modifiers from the keys held in `ButtonInput<Key>`, not from a key event's `mods`, so the viewer sends the Alt key's own `key` down first, as a native window does. bevy-ts does not work around it.
 
 #### Scenario: Plain typing with IME allowed
 - **WHEN** a focused field has turned IME on and the viewer sends `key` down for `KeyH` with `text: "h"` and no `ime` event
@@ -12,7 +12,7 @@ The viewer SHALL send each typed character once: a plain key as a `key` event's 
 - **THEN** the field's value is `"é"`, once
 
 #### Scenario: An Option character
-- **WHEN** the viewer sends `key` down for `KeyE` with `text: "´"` and `mods.alt` true
+- **WHEN** the viewer sends `key` down for `AltLeft`, then `key` down for `KeyE` with `text: "´"`, both with `mods.alt` true
 - **THEN** the field's value does not change, as in Bevy
 
 #### Scenario: Typing needs the virtual window
