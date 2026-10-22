@@ -292,7 +292,7 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
     std::fs::create_dir_all(&game).map_err(|e| format!("{}: {e}", game.display()))?;
     let mut partial = Partial(Some(partial_dir.clone()));
 
-    // 1. Scripts, compiled for release, each at its path under the root.
+    // 1. Scripts, compiled for release, each at its shipped path.
     report.step(1);
     let mut compiler = Compiler::for_release(&entry).map_err(|e| format!("{}: {e}", entry.display()))?;
     // One root for the folder's layout and the source maps' paths.
@@ -307,10 +307,12 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
             return Err(format!("{n} script error{}", if n == 1 { "" } else { "s" }));
         }
     };
-    let rel = |p: &Path| p.strip_prefix(&root).map(Path::to_path_buf).map_err(|_| format!("{} is outside the project {}", p.display(), root.display()));
+    // Game code at its path under the root, package code under `node_modules/<name>@<version>/`:
+    // the compiler's layout, which every import was rewritten for.
+    let layout = compiler.layout();
     let scripts = game.join("scripts");
     for m in &set.modules {
-        let dst = scripts.join(rel(&m.path)?);
+        let dst = scripts.join(layout.place(&m.path)?);
         // A `.wgsl` import's module only names the file: ship the shader, not the build machine's path.
         if m.path.to_string_lossy().ends_with(crate::compile::SHADER_EXT) {
             write(&dst, &std::fs::read(&m.path).map_err(|e| format!("{}: {e}", m.path.display()))?)?;

@@ -398,6 +398,17 @@ impl FileInfo {
         self.relative_locations = true;
         self
     }
+
+    /// Where the file declares a data class or a `system(...)`, if it does: package code may not
+    /// (script-runtime: "Package code is library code").
+    pub(crate) fn declares_ecs(&self) -> Option<Span> {
+        if !self.imports_bevy_ts {
+            return None;
+        }
+        let classes = self.classes.iter().map(|c| c.span);
+        let systems = self.functions.iter().filter(|f| f.setup).map(|f| f.span);
+        classes.chain(systems).min_by_key(|s| s.start)
+    }
 }
 
 fn type_params(p: &Option<oxc::allocator::Box<TSTypeParameterDeclaration>>) -> Vec<String> {
@@ -598,8 +609,9 @@ pub(crate) struct Declarations {
     pub classes: Vec<(String, String)>,
 }
 
-struct Reader {
+struct Reader<'r> {
     root: PathBuf,
+    resolver: &'r oxc_resolver::Resolver,
     ports: Vec<String>,
     files: HashMap<PathBuf, Option<Rc<FileInfo>>>,
     /// Modules (by path) a declaration referenced.
@@ -608,13 +620,13 @@ struct Reader {
 
 /// Reads one module's declarations. `Err` holds compile errors: names a param needs that are
 /// imported with `import type`. Every other failure is carried lazily as an `error` declaration.
-pub(crate) fn read(file: FileInfo, root: &Path) -> Result<Declarations, Vec<ScriptError>> {
-    read_with(file, root, port_param_kinds())
+pub(crate) fn read(file: FileInfo, root: &Path, resolver: &oxc_resolver::Resolver) -> Result<Declarations, Vec<ScriptError>> {
+    read_with(file, root, resolver, port_param_kinds())
 }
 
-fn read_with(file: FileInfo, root: &Path, ports: Vec<String>) -> Result<Declarations, Vec<ScriptError>> {
+fn read_with(file: FileInfo, root: &Path, resolver: &oxc_resolver::Resolver, ports: Vec<String>) -> Result<Declarations, Vec<ScriptError>> {
     let file = Rc::new(file);
-    let mut r = Reader { root: root.to_path_buf(), ports, files: HashMap::new(), referenced: BTreeSet::new() };
+    let mut r = Reader { root: root.to_path_buf(), resolver, ports, files: HashMap::new(), referenced: BTreeSet::new() };
     r.files.insert(file.path.clone(), Some(file.clone()));
     let scope = Scope { file: file.clone(), subst: Rc::default() };
     let mut declares = Vec::new();
@@ -683,7 +695,7 @@ fn read_with(file: FileInfo, root: &Path, ports: Vec<String>) -> Result<Declarat
     Ok(Declarations { code, imports, classes })
 }
 
-impl Reader {
+impl Reader<'_> {
     fn location(&self, f: &Fail) -> (u32, u32) {
         line_col(&f.file.source, f.span.start)
     }
@@ -751,7 +763,7 @@ impl Reader {
         if !(spec.starts_with("./") || spec.starts_with("../")) {
             return None;
         }
-        let target = crate::compile::resolve_relative(&file.path, &spec)?;
+        let target = crate::compile::resolve_path(self.resolver, &file.path, &spec)?;
         let target = self.load(&normalize(&target))?;
         self.lookup(&target, &there, depth + 1)
     }
@@ -1411,7 +1423,7 @@ export const arrow = (q: Query<[Pos]>) => {};
         let path = Path::new("/p/src/game.ts");
         let allocator = Allocator::default();
         let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
-        let read = |ports: &[&str]| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), ports.iter().map(|s| s.to_string()).collect()).ok().unwrap().code);
+        let read = |ports: &[&str]| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), ports.iter().map(|s| s.to_string()).collect()).ok().unwrap().code);
         assert_eq!(read(&["ReadRapierContext"])["cast"]["params"], json!([{ "kind": "port", "name": "ReadRapierContext", "args": [["src/game.ts", "Collider"]] }]));
         assert!(read(&[])["cast"]["error"].as_str().unwrap().contains("ReadRapierContext is not a system param kind"));
     }

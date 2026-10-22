@@ -1,11 +1,11 @@
-//! `bevy-ts dev`: compile on a background thread, watch every loaded file, and send each
-//! compiled module set to the engine as the next generation.
+//! `bevy-ts dev`: compile on a background thread, watch every loaded file and every path the
+//! resolver missed, and send each compiled module set to the engine as the next generation.
 
 use crate::compile::{Compiler, SHADER_EXT};
 use bevy_ts::generation::DevEvent;
 use notify::{RecursiveMode, Watcher};
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel};
 use std::time::{Duration, Instant};
@@ -44,26 +44,30 @@ fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
         }
     };
     // Watch directories, not files: editors save by replacing the file.
+    // A missing path is watched at its nearest folder that exists, so an install that creates it
+    // reloads (hot-reload: "Installing a package reloads").
     let mut dirs: BTreeSet<PathBuf> = BTreeSet::new();
     let mut files = compiler.files();
-    let mut rewatch = |files: &BTreeSet<PathBuf>, dirs: &mut BTreeSet<PathBuf>| {
-        for f in files {
-            if let Some(d) = f.parent()
-                && dirs.insert(d.to_path_buf())
-                && let Err(e) = watcher.watch(d, RecursiveMode::NonRecursive)
+    let mut missing = compiler.missing();
+    let mut rewatch = |files: &BTreeSet<PathBuf>, missing: &BTreeSet<PathBuf>, dirs: &mut BTreeSet<PathBuf>| {
+        let parents = files.iter().filter_map(|f| f.parent().map(Path::to_path_buf));
+        let nearest = missing.iter().filter_map(|m| nearest_folder(m, &compiler.root));
+        for d in parents.chain(nearest) {
+            if dirs.insert(d.clone())
+                && let Err(e) = watcher.watch(&d, RecursiveMode::NonRecursive)
             {
                 eprintln!("bevy-ts: cannot watch {}: {e}", d.display());
             }
         }
     };
-    rewatch(&files, &mut dirs);
+    rewatch(&files, &missing, &mut dirs);
     loop {
         let Ok(first) = events.recv() else { return };
         let mut touched = BTreeSet::new();
-        touches(&first, &files, &mut touched);
+        touches(&first, &files, &missing, &mut touched);
         let deadline = Instant::now() + SETTLE;
         while let Ok(e) = events.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-            touches(&e, &files, &mut touched);
+            touches(&e, &files, &missing, &mut touched);
         }
         if touched.is_empty() {
             continue;
@@ -80,15 +84,25 @@ fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
             return;
         }
         files = compiler.files();
-        rewatch(&files, &mut dirs);
+        missing = compiler.missing();
+        rewatch(&files, &missing, &mut dirs);
     }
 }
 
-/// Adds the graph's files an event touched to `out`.
-fn touches(e: &notify::Result<notify::Event>, files: &BTreeSet<PathBuf>, out: &mut BTreeSet<PathBuf>) {
+/// The nearest folder of `missing` that exists, unless it is above the project root: an install
+/// in the project never creates a folder there, and watching `/` or the home folder would be
+/// all noise.
+fn nearest_folder(missing: &Path, root: &Path) -> Option<PathBuf> {
+    let dir = missing.ancestors().skip(1).find(|d| d.is_dir())?;
+    (!(root.starts_with(dir) && root != dir)).then(|| dir.to_path_buf())
+}
+
+/// Adds the graph's files, and the missing paths, an event touched to `out`: a missing path is
+/// touched when it or a folder above it appears.
+fn touches(e: &notify::Result<notify::Event>, files: &BTreeSet<PathBuf>, missing: &BTreeSet<PathBuf>, out: &mut BTreeSet<PathBuf>) {
     let Ok(e) = e else { return };
     if e.kind.is_access() {
         return;
     }
-    out.extend(e.paths.iter().filter(|p| files.contains(*p)).cloned());
+    out.extend(e.paths.iter().filter(|p| files.contains(*p) || missing.iter().any(|m| m.starts_with(p))).cloned());
 }

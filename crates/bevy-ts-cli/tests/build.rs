@@ -162,3 +162,50 @@ fn a_shader_ships_as_its_file_and_plays_from_there() {
     assert!(m.path.starts_with(game.canonicalize().unwrap()), "{}", m.path.display());
 }
 
+
+/// script-packages: a linked package that reaches outside itself ships under
+/// `node_modules/<name>@<version>/`, and the folder plays with the project's `node_modules` gone.
+#[cfg(unix)]
+#[test]
+fn a_linked_package_ships_and_plays_without_node_modules() {
+    let base = tmp("build-packages").canonicalize().unwrap();
+    let write = |f: &str, src: &str| common::write(&base, f, src);
+    write("web/packages/client/package.json", r#"{"name": "@abyme/client", "version": "0.0.0", "type": "module", "exports": {"./connect": "./src/connect.ts"}}"#);
+    write(
+        "web/packages/client/src/connect.ts",
+        "import { PROTOCOL } from \"../../kernel/src/protocol.ts\";\nexport function connect(): string { return `connected over ${PROTOCOL}`; }\n",
+    );
+    write("web/packages/kernel/package.json", r#"{"name": "@abyme/kernel", "version": "0.0.0", "type": "module"}"#);
+    write("web/packages/kernel/src/protocol.ts", "export const PROTOCOL: string = \"v1\";\n");
+    write("app/package.json", r#"{"name": "linked", "type": "module"}"#);
+    write("app/src/game.ts", "import { connect } from \"@abyme/client/connect\";\nconsole.log(connect());\n");
+    std::fs::create_dir_all(base.join("app/node_modules/@abyme")).unwrap();
+    std::os::unix::fs::symlink(base.join("web/packages/client"), base.join("app/node_modules/@abyme/client")).unwrap();
+
+    let out = base.join("dist");
+    let (code, events) = build(&[base.join("app").to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{events:#?}");
+    std::fs::remove_dir_all(base.join("app/node_modules")).unwrap();
+    let game = out.join("game");
+    let scripts = game.join("scripts");
+    for f in ["src/game.ts", "node_modules/@abyme/client@0.0.0/src/connect.ts", "node_modules/@abyme/kernel@0.0.0/src/protocol.ts"] {
+        assert!(scripts.join(f).is_file(), "{f}");
+    }
+    let mut all = Vec::new();
+    files(&scripts, &mut all);
+    let machine = base.to_string_lossy().to_string();
+    for f in &all {
+        let text = std::fs::read_to_string(f).unwrap();
+        assert!(!text.contains(&machine), "{} names the build machine's {machine}", f.display());
+        let map = bevy_ts_cli::compile::inline_source_map(&text).unwrap();
+        assert!(!map.contains(&machine), "{}'s source map names {machine}", f.display());
+    }
+    let file: bevy_ts_cli::play::GameFile = serde_json::from_str(&std::fs::read_to_string(game.join("game.json")).unwrap()).unwrap();
+    let set = bevy_ts_cli::play::read_scripts(&game, &file).unwrap();
+    assert_eq!(set.modules.len(), 3);
+
+    let (mut child, rx) = play(&game);
+    wait_for(&rx, &["connected over v1"], Duration::from_secs(60));
+    let _ = child.kill();
+    let _ = child.wait();
+}

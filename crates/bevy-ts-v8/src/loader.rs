@@ -99,7 +99,7 @@ impl ModuleLoader for Loader {
             };
         }
         Err(JsErrorBox::generic(format!(
-            "cannot import {specifier:?} from {}: bare npm specifiers are not supported; import relative files or bevy-ts modules",
+            "cannot import {specifier:?} from {}: a dynamic import() of a package is not in the compiled graph; import it statically",
             bevy_ts::backend::display_file(referrer)
         )))
     }

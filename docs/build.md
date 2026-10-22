@@ -28,6 +28,8 @@ dist/aarch64-apple-darwin/
     game.json           { "name", "entry", "bevyTs", "engine" }
     scripts/src/…       every module of the entry's graph, compiled, at its path in the project
                         (a `.wgsl` a module imports ships as the shader file itself)
+    scripts/node_modules/<name>@<version>/…
+                        each npm package module the graph imports, at its path in its package
     assets/…            a copy of the project's assets/, levels included
 ```
 
@@ -37,6 +39,11 @@ dist/aarch64-apple-darwin/
   that keep only the file's path in the project (`src/enemy.tsx`), never its text. No path of
   the build machine is shipped. A thrown error
   still names the TS file and line.
+- Package modules ship under `scripts/node_modules/<name>@<version>/`, `<name>` and `<version>`
+  from the nearest `package.json` above each file, never under pnpm's `.pnpm/` folders. Every
+  import is rewritten to the relative path between the two shipped files, so the folder plays
+  with the project's `node_modules` gone. Two different files at one shipped path fail the build
+  naming both ([scripts.md](scripts.md)).
 - The folder is written as `<out>.partial-<pid>` beside `<out>` and renamed onto it only when
   whole. A failed build leaves an earlier `<out>` untouched and no partial folder. The exit code is
   0 only when the folder is whole.
