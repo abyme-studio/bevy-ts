@@ -858,7 +858,7 @@ mod sidecar {
     #[test]
     fn a_game_level_that_is_a_sidecar_reopened_by_the_editor_is_the_editors() {
         use bevy_ts_levels::engine::{Opener, close_now, open_now};
-        let mut f = fixture("sidecar-reopen", &[("levels/arena.bsn", "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n")]);
+        let mut f = fixture("sidecar-editor-reopen", &[("levels/arena.bsn", "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n")]);
         // `app.level("levels/arena.bsn")`, which is also the arena scene's sidecar.
         let mut program = scene_program();
         program.sections.insert(0, Section { name: "levels".into(), bytes: serde_json::to_vec(&json!({ "levels": ["levels/arena.bsn"] })).unwrap(), location: None });
