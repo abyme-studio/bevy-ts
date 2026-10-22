@@ -19,7 +19,7 @@ A level that names a component whose code is gone, renamed, broken or not built 
   - `level_write` refuses `set`, `set_prop` and `revert` on a missing component (`missing`), and any op that writes a type no live code registers (`unknown`). `remove_component` and every whole-entity op still work.
   - `bevy-ts levels check` is unchanged: it never resolved types, and it still fails on parse errors.
   - A shipped game (`dev(false)`) keeps the strict loader: a missing component fails the level, as today. `bevy-ts build` is unchanged.
-- **Protocol: the next free minor on main at landing** (planned 1.20; level-open took 1.19), additions only:
+- **Protocol: the next free minor on main at landing** (1.21: touch-time took 1.20), additions only:
   - `TsxTreeNode.level.missing?: { component, reason }[]`, so the Hierarchy marks a row with no call per row.
   - `LevelNodeResult.missing?: MissingComponent[]` with `component`, `reason`, `message?`, `fields`, `location`, `expected?`, `misfit?` and `overrides?`, so the Inspector draws it.
   - `level_write` refusal reasons gain `missing` and `unknown`.

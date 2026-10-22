@@ -472,11 +472,11 @@ fn header(payload: &Payload) -> Vec<u8> {
     bytes
 }
 
-/// One host call expanding every item: each item's description or `None`, and the call's errors
-/// in the order JS raised them (located in display form).
 /// Each item's description or `None`, and the call's errors.
 type Expanded = (Vec<Option<NodeDesc>>, Vec<ScriptError>);
 
+/// One host call expanding every item: each item's description or `None`, and the call's errors
+/// in the order JS raised them (located in display form).
 fn expand_call(world: &mut World, items: &[ExpandItem]) -> Result<Expanded, Vec<ScriptError>> {
     let payload = Payload {
         expand: Some(items.iter().map(|i| (i.component.clone(), i.props.clone(), i.at.clone())).collect()),

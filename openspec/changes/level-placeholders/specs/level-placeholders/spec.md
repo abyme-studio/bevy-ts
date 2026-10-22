@@ -21,7 +21,7 @@ Every other entry of the file SHALL load as it does today. A level with placehol
 - **THEN** `#GruntA` expands as usual, and `#GruntB` spawns without its expansion with a `failed` entry whose message is the error
 
 ### Requirement: The placeholder entity
-A level entity with placeholder entries SHALL spawn under its name path, with every component that did resolve: `Name`, `LevelInstance`, `Transform` and any other live patch. It SHALL carry one reflected component, `bevy_ts_levels::MissingComponents`, holding one entry per placeholder:
+A level entity with placeholder entries SHALL spawn under its name path, with every component that did resolve: `Name`, `LevelInstance`, `Transform` and any other live patch. It SHALL carry one reflected component, `bevy_ts_levels::MissingComponents` (reflected as `bevy_ts_levels::engine::MissingComponents`, the path a `bevy_remote` query names), holding one entry per placeholder:
 - `component`: the name the file writes (`game::Loot`)
 - `reason`: `unregistered`, `failed` or `mismatch`
 - `message`: one line of why
@@ -51,7 +51,7 @@ For `mismatch` on a component or a scene component whose code is live, bevy-ts S
 - **THEN** `#EnemyB` expands with `hp` at its default, and the entry lists `"@hp": "250.0"` as a misfit
 
 ### Requirement: A missing scene instance keeps its inner overrides
-Under an instance whose scene component is a placeholder, a `Children […]` entry with no base of its own (no include and no `@Comp`) SHALL NOT spawn. It SHALL be kept on the instance's entry as `overrides`: one `{ path, fields }` per entry, `path` the name path below the instance, `fields` its patches' saved text keyed `Component.field`. An entry with a base of its own SHALL spawn as for any instance. When the scene component comes back, the overrides SHALL merge into its expansion by name, as `levels` says.
+Under an instance whose scene component is a placeholder, a `Children […]` entry with no base of its own (no include and no `@Comp`) SHALL NOT spawn. It SHALL be kept on the instance's entry as `overrides`: one `{ path, fields }` per entry, `path` the name path below the instance, `fields` its patches' saved text keyed `Component.field`. An entry with a base of its own SHALL spawn as for any instance. Everything below a kept entry is kept with it, an entry with a base included, since it has no parent to spawn under. When the scene component comes back, the overrides SHALL merge into its expansion by name, as `levels` says.
 
 #### Scenario: The boss's eye
 - **WHEN** `#Boss`'s scene component is missing and its `Children […]` has `#eye Transform { translation: Vec3 { y: 0.8 } }` and `#hat @hats::Hat { }`

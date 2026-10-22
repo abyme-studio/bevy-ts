@@ -27,7 +27,7 @@ Names: the roadmap's E3 (placeholders) and E4 (Play/Stop) are not `bsn-format`'s
 - **Diagnostics are warnings.** Each entry adds a `LevelDiagnostic` with its location and a `warning:` message to the level's diagnostics, so `level_list`, `level_open` and `loaded` carry it with no new field. The terminal prints it as a warning.
 - **Strict in a shipped game.** Compose takes a `tolerant` flag, true only when `BevyTsPlugin` is in dev mode. With it false, a placeholder entry is the error it was. So `build`'s output behaves as before, with no new build step.
 - **`level_write` refuses, it does not guess.** `check_world` refuses `set`/`revert`/`set_prop`/`revert_prop` on a placeholder component (`missing`), and new types no live code registers (`unknown`). Inverse text (`add_component` with `text`, `restore`) is exempt, so undo of a removal or a delete works. `remove_component` matches a missing patch by the name written, since it does not resolve.
-- **Protocol additions.** `TsxTreeNode.level.missing?`, `LevelNodeResult.missing?`, `MissingComponent`, two refusal reasons. All optional fields, so the next free minor at landing (planned 1.20).
+- **Protocol additions.** `TsxTreeNode.level.missing?`, `LevelNodeResult.missing?`, `MissingComponent`, two refusal reasons. All optional fields, so the next free minor at landing (1.21).
 
 ## Risks / Trade-offs
 

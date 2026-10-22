@@ -121,7 +121,8 @@ sibling list that gained, lost or reordered a child, a move within the file incl
 A level that names a component whose code is gone, renamed, broken or not built yet still loads
 under `bevy-ts dev`, as Unity loads a scene with a missing script (protocol 1.21; an older engine
 fails the load). The entity spawns under its name path with everything that did resolve, and
-carries one reflected component, `bevy_ts_levels::engine::MissingComponents`, with an entry per
+carries one reflected component, `bevy_ts_levels::MissingComponents` (reflected as
+`bevy_ts_levels::engine::MissingComponents`, the path a `bevy_remote` query names), with an entry per
 placeholder. The missing type is not on the entity, so no query matches it and no system runs for
 it. Each entry has a `reason`:
 
@@ -139,8 +140,8 @@ expands it in place, merges the kept overrides by name and drops the entry.
 
 The file is the store: the writer splices text, so save, rename, reparent, delete and its undo
 keep a placeholder's text byte for byte. `level_write` refuses `set`, `revert`, `set_prop` and
-`revert_prop` on a placeholder (`missing`), and any write of a type no live code registers
-(`unknown`); `remove_component` takes a placeholder by the name the file writes, and its inverse
+`revert_prop` on a placeholder (`missing`), except a `set_prop` that sets an unset required prop,
+and any write of a type no live code registers (`unknown`); `remove_component` takes a placeholder by the name the file writes, and its inverse
 puts the text back. `tsx_tree` rows carry `level.missing` (`{ component, reason }`), `level_node`
 carries `missing` (`MissingComponent`: `fields` as saved, `location`, `expected` where the code
 was expected, when this process saw it), and each entry is a `warning:` diagnostic on

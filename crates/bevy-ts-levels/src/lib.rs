@@ -16,7 +16,9 @@ pub mod route;
 pub mod syntax;
 pub mod writer;
 
+pub use compose::{MissingComponent, MissingReason};
 pub use edit::{WriteResult, WriteResults};
+pub use engine::MissingComponents;
 pub use route::{PrefabEdits, route, write, write_from, write_sidecar};
 
 #[cfg(test)]

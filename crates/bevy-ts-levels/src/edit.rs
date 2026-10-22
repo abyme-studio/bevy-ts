@@ -360,7 +360,8 @@ fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&s
         let short = |c: &str| c.rsplit("::").next().unwrap_or(c).to_string();
         places.as_deref().unwrap_or_default().iter().filter_map(|p| tree.entity(node_id(&p.root, &p.key_of(path)?))).filter_map(|e| world.get::<MissingComponents>(e)).flat_map(|m| &m.0).any(|m| match component {
             Some(c) => m.reason != MissingReason::Mismatch && (m.component == c || short(&m.component) == short(c)),
-            None => m.scene,
+            // An unset required prop (a mismatch) is fixed by setting it.
+            None => m.scene && m.reason != MissingReason::Mismatch,
         })
     };
     let unknown = |at: usize, what: &str, component: &str| refuse(at, "unknown", format!("no live code registers {what} {component}"));
