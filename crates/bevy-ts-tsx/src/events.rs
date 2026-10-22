@@ -91,7 +91,7 @@ fn on_keyboard_input(
     mut clipboard: ResMut<Clipboard>,
     mut tree: ResMut<TsxTree>,
 ) {
-    let target = on.event().focused_entity;
+    let target = on.event_target();
     if on.original_event_target() != target {
         return;
     }
