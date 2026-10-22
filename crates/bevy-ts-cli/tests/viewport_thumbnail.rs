@@ -186,7 +186,7 @@ fn the_arena_levels_thumbnail_leaves_the_game_alone() {
 
 #[test]
 fn a_level_that_fails_to_compose_has_no_thumbnail() {
-    let dir = arena("viewport-thumbnail-broken", &[("assets/levels/broken.bsn", "#A\n@enemy::Nope\n".to_string())]);
+    let dir = arena("viewport-thumbnail-broken", &[("assets/levels/broken.bsn", "#A\nTransform\n--\n#A\nTransform\n".to_string())]);
     let mut app = app(&dir);
     let errors = app.world().resource::<bevy_ts::log::ScriptLog>().next_seq();
     call(&mut app, "bevy-ts/asset_thumbnail", json!({ "path": "levels/broken.bsn", "size": 64 }));
