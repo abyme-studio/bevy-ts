@@ -61,8 +61,13 @@ impl Plugin for HeadlessPlugin {
         image.asset_usage = bevy::asset::RenderAssetUsages::default();
         let handle = app.world_mut().resource_mut::<Assets<Image>>().add(image);
         app.insert_resource(Offscreen(handle));
-        app.add_observer(|add: On<Add<Camera>>, offscreen: Res<Offscreen>, mut commands: Commands| {
-            commands.entity(add.entity).insert(RenderTarget::Image(offscreen.0.clone().into()));
+        app.add_observer(|add: On<Add<Camera>>, offscreen: Res<Offscreen>, ui_cameras: Query<(), With<bevy::ui::IsDefaultUiCamera>>, mut commands: Commands| {
+            let mut camera = commands.entity(add.entity);
+            camera.insert(RenderTarget::Image(offscreen.0.clone().into()));
+            // Bevy's default UI camera is one that renders to the primary window, and headless has none.
+            if ui_cameras.is_empty() {
+                camera.insert(bevy::ui::IsDefaultUiCamera);
+            }
         });
     }
 }

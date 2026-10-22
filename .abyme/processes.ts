@@ -170,5 +170,7 @@ export default {
   // The gate's steps after the tests, for a lint fix that changes no behaviour.
   "ui-lint": { cmd: "bash -c 'set -o pipefail; export RUSTC_WRAPPER=; (cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/ui-lint.log | tail -30; echo exit $?'" },
   "ui-gen": { cmd: "bash -c 'export RUSTC_WRAPPER=; scripts/gen-bevy-types.sh && git diff --stat -- packages/bevy-ts/bevy.d.ts crates/bevy-ts-v8/js/bevy.js'" },
+  // Walk the gallery: build, play it headless, shots at frames 60 and 75 (target/ui-walk.png, .2.png).
+  "ui-walk": { cmd: "bash -c 'export RUSTC_WRAPPER=; cargo build -p bevy-ts-cli 2>&1 | grep -v ld64 | tail -3; rm -f target/ui-walk.png*; cd examples/ui-gallery && BEVY_TS_SCREENSHOT=$OLDPWD/target/ui-walk.png timeout 120 $OLDPWD/target/debug/bevy-ts dev src/gallery.tsx --headless > $OLDPWD/target/ui-walk.log 2>&1; ls -la $OLDPWD/target/ui-walk.png*; tail -8 $OLDPWD/target/ui-walk.log'" },
   "ui-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; (cargo test -p bevy-ts-tsx --lib && cargo test -p bevy-ts-cli --test \"ui_*\" --test tsx_reactive --test levels_scene) 2>&1 | grep -v ld64 | tee target/ui-tests.log | grep -E \"^test |^test result|FAILED|panicked|^error|left|right\"'" },
 } satisfies ProcessFile;
