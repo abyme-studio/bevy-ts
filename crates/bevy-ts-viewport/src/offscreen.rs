@@ -100,13 +100,38 @@ fn button(b: Option<PointerEventButton>) -> Option<PointerButton> {
 }
 
 /// Applies one queued event a frame: picking's hover comes from the frame before, so a press in
-/// the frame of the move that brought the pointer over a mesh would hit nothing.
-fn apply(mut pending: ResMut<Pending>, target: Res<Target>, mut last: Local<Vec2>, mut out: MessageWriter<PointerInput>) {
-    let Some(e) = pending.0.pop_front() else { return };
+/// the frame of the move that brought the pointer over a mesh would hit nothing. A `down` or `up`
+/// away from the pointer, or with no pointer yet, first moves it there, as a viewer's does, and
+/// waits a frame. `leave` cancels, and the next frame takes the pointer off the image: Bevy keeps
+/// a cancelled pointer's location and would cast from it again, but sends `PointerOut` only to a
+/// pointer that still has one.
+fn apply(
+    mut pending: ResMut<Pending>,
+    target: Res<Target>,
+    mut pointers: Query<(&PointerId, &mut PointerLocation)>,
+    mut last: Local<Option<Vec2>>,
+    mut left: Local<bool>,
+    mut out: MessageWriter<PointerInput>,
+) {
+    if std::mem::take(&mut *left) {
+        for (id, mut at) in &mut pointers {
+            if *id == POINTER {
+                at.location = None;
+            }
+        }
+    }
+    let Some(e) = pending.0.front() else { return };
     let position = Vec2::new(e.x as f32, e.y as f32);
     let location = Location { target: target.0.clone(), position };
+    let moves = matches!(e.kind, PointerEventKind::Move | PointerEventKind::Enter);
+    if !moves && e.kind != PointerEventKind::Leave && *last != Some(position) {
+        out.write(PointerInput::new(POINTER, location, PointerAction::Move { delta: position - last.unwrap_or(position) }));
+        *last = Some(position);
+        return;
+    }
+    let e = pending.0.pop_front().expect("front is some");
     let action = match e.kind {
-        PointerEventKind::Move | PointerEventKind::Enter => PointerAction::Move { delta: position - *last },
+        PointerEventKind::Move | PointerEventKind::Enter => PointerAction::Move { delta: position - last.unwrap_or(position) },
         PointerEventKind::Down => match button(e.button) {
             Some(b) => PointerAction::Press(b),
             None => return,
@@ -115,8 +140,13 @@ fn apply(mut pending: ResMut<Pending>, target: Res<Target>, mut last: Local<Vec2
             Some(b) => PointerAction::Release(b),
             None => return,
         },
-        PointerEventKind::Leave => PointerAction::Cancel,
+        PointerEventKind::Leave => {
+            *left = true;
+            *last = None;
+            out.write(PointerInput::new(POINTER, location, PointerAction::Cancel));
+            return;
+        }
     };
-    *last = position;
+    *last = Some(position);
     out.write(PointerInput::new(POINTER, location, action));
 }

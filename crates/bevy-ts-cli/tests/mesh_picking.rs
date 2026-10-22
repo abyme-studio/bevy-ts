@@ -65,49 +65,76 @@ fn no_warning_when_a_native_plugin_added_it() {
     assert!(engine(Native, true).world().contains_resource::<MeshPickingSettings>());
 }
 
+/// Pointer events on the cube, in order.
 #[derive(Resource, Default)]
-struct Clicks(Vec<Entity>);
+struct Seen(Vec<&'static str>);
 
-#[test]
-fn the_headless_pointer_clicks_a_mesh() {
-    use bevy_ts_remote::protocol::{PointerEvent, PointerEventButton, PointerEventKind, PointerEventType};
-    use bevy_ts_viewport::offscreen::{OffscreenPointerPlugin, Pending};
-    let mut app = {
-        let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-        let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, true);
-        let image = app.world().resource::<bevy_ts_cli::headless::Offscreen>().0.clone();
-        app.add_plugins(OffscreenPointerPlugin { image });
-        app.finish();
-        app.cleanup();
-        app
-    };
-    app.init_resource::<Clicks>();
+/// The headless engine with mesh picking and the offscreen pointer, a camera at z 4 and a unit
+/// cube in the middle of the image that records its pointer events.
+fn pointer_scene() -> App {
+    use bevy::picking::events::{PointerClick, PointerOut, PointerOver};
+    use bevy_ts_viewport::offscreen::OffscreenPointerPlugin;
+    let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
+    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, true);
+    let image = app.world().resource::<bevy_ts_cli::headless::Offscreen>().0.clone();
+    app.add_plugins(OffscreenPointerPlugin { image });
+    app.finish();
+    app.cleanup();
+    app.init_resource::<Seen>();
     app.world_mut().spawn((Camera3d::default(), Transform::from_xyz(0.0, 0.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y)));
     let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(Cuboid::from_size(Vec3::ONE));
-    let cube = app
-        .world_mut()
+    app.world_mut()
         .spawn((Mesh3d(mesh), Transform::default()))
-        .observe(|on: On<bevy::picking::events::PointerClick>, mut clicks: ResMut<Clicks>| clicks.0.push(on.event().entity))
-        .id();
+        .observe(|_: On<PointerClick>, mut seen: ResMut<Seen>| seen.0.push("click"))
+        .observe(|_: On<PointerOver>, mut seen: ResMut<Seen>| seen.0.push("over"))
+        .observe(|_: On<PointerOut>, mut seen: ResMut<Seen>| seen.0.push("out"));
     for _ in 0..10 {
         app.update();
     }
-    let ev = |kind| PointerEvent {
+    app
+}
+
+/// Queues pointer events at the cube's pixel and runs `frames` updates; what the cube saw.
+fn send(app: &mut App, kinds: &[bevy_ts_remote::protocol::PointerEventKind], frames: usize) -> Vec<&'static str> {
+    use bevy_ts_remote::protocol::{PointerEvent, PointerEventButton, PointerEventType};
+    let events = kinds.iter().map(|kind| PointerEvent {
         button: Some(PointerEventButton::Left),
         buttons: vec![],
         clicks: None,
         dx: None,
         dy: None,
-        kind,
+        kind: *kind,
         mods: None,
         type_: PointerEventType::Pointer,
         x: 480.0,
         y: 270.0,
-    };
-    app.world_mut().resource_mut::<Pending>().0.extend([ev(PointerEventKind::Move), ev(PointerEventKind::Down), ev(PointerEventKind::Up)]);
-    // One event a frame: the move, then the press, then the release.
-    for _ in 0..6 {
+    });
+    app.world_mut().resource_mut::<bevy_ts_viewport::offscreen::Pending>().0.extend(events);
+    for _ in 0..frames {
         app.update();
     }
-    assert_eq!(app.world().resource::<Clicks>().0, vec![cube]);
+    std::mem::take(&mut app.world_mut().resource_mut::<Seen>().0)
+}
+
+#[test]
+fn the_headless_pointer_clicks_a_mesh() {
+    use bevy_ts_remote::protocol::PointerEventKind::*;
+    let mut app = pointer_scene();
+    // One event a frame: the move, then the press, then the release.
+    assert_eq!(send(&mut app, &[Move, Down, Up], 6), ["over", "click"]);
+}
+
+#[test]
+fn a_press_without_a_move_moves_the_pointer_first() {
+    use bevy_ts_remote::protocol::PointerEventKind::*;
+    let mut app = pointer_scene();
+    assert_eq!(send(&mut app, &[Down, Up], 6), ["over", "click"]);
+}
+
+#[test]
+fn leave_takes_the_pointer_off_the_image() {
+    use bevy_ts_remote::protocol::PointerEventKind::*;
+    let mut app = pointer_scene();
+    // Without clearing its location, Bevy casts again a frame after the cancel: over, out, over.
+    assert_eq!(send(&mut app, &[Move, Leave], 8), ["over", "out"]);
 }

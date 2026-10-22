@@ -25,14 +25,16 @@ headless pointer in `crates/bevy-ts-viewport/src/offscreen.rs`.
 
 With mesh picking off, the first entity that has both a `Mesh3d` and a pointer handler logs one
 warning per process, naming the entity and `"meshPicking": true`. It shows in the terminal and in
-`bevy-ts/log+watch`. No warning when mesh picking is on, however it was added.
+`bevy-ts/log+watch`. No warning when mesh picking is on, however it was added. A handler on a
+parent of the meshes (a glTF scene's root, say) is not warned about: only an entity with both.
 
 ## Clicking headless
 
 Under `bevy-ts dev --headless`, on every platform, `bevy-ts/viewport_input` takes `pointer` events.
 They drive one pointer over the offscreen image the cameras render into (960×540), with `x`, `y`
 in its pixels. `move` and `enter` move it, `down` and `up` press and release `left`, `right` or
-`middle` (`back` and `forward` are ignored), and `leave` cancels it.
+`middle` (`back` and `forward` are ignored), and `leave` cancels it and takes it off the image.
+A `down` or `up` away from the pointer moves it there first, a frame before the press.
 
 ```json
 { "jsonrpc": "2.0", "id": 1, "method": "bevy-ts/viewport_input", "params": { "events": [

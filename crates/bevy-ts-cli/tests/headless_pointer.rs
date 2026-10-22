@@ -55,7 +55,7 @@ fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
 /// `bevy-ts dev --headless` on the cube project, its stderr lines on a channel, once it answers.
 fn dev(name: &str, config: &str) -> (Engine, Receiver<String>, u16) {
     let dir = common::project(name, &[("bevy-ts.json", config), ("tsconfig.json", "{}"), ("src/game.tsx", GAME)]);
-    let port = 16130 + (std::process::id() % 40) as u16;
+    let port = 16170 + (std::process::id() % 40) as u16;
     let mut child = Command::new(common::BIN)
         .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--headless", "--remote-port", &port.to_string()])
         .env("NO_COLOR", "1")
