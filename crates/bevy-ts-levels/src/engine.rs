@@ -268,6 +268,8 @@ fn open_as(world: &mut World, path: &str, opener: Opener, overlay: Option<String
     }
     let handle = world.resource::<AssetServer>().load::<BsnLevel>(path.to_string());
     let mut levels = world.resource_mut::<Levels>();
+    // Whatever opens a level ends an editor's close of it.
+    levels.closed.remove(path);
     levels.emit(serde_json::json!({ "event": "opened", "level": path, "opener": opener }));
     levels.roots.insert(
         path.to_string(),
@@ -978,6 +980,14 @@ pub fn open_now(world: &mut World, file: &str) -> Result<String, OpenFailure> {
         };
         if !same {
             crate::edit::load_text(world, f, text).map_err(|e| fail("load", e))?;
+            // Other open levels that include it follow the disk too.
+            let affected = world.resource::<Levels>().affected(f);
+            let mut levels = world.resource_mut::<Levels>();
+            for p in affected {
+                if let Some(r) = levels.roots.get_mut(&p) {
+                    r.dirty = true;
+                }
+            }
         }
     }
     // A scene's sidecar the editor closed layers over its scene again.
@@ -988,9 +998,7 @@ pub fn open_now(world: &mut World, file: &str) -> Result<String, OpenFailure> {
             open(world, &path, opener);
         }
     }
-    let mut levels = world.resource_mut::<Levels>();
-    levels.closed.remove(&path);
-    if let Some(r) = levels.roots.get_mut(&path) {
+    if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(&path) {
         r.dirty = false;
     }
     apply_composed(world, &path, Ok(composed), hashes);

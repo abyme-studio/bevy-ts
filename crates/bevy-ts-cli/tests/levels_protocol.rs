@@ -128,6 +128,33 @@ fn level_app(dir: &Path) -> App {
     app
 }
 
+#[test]
+fn a_level_opens_and_closes_over_the_wire() {
+    let dir = project("levels-open", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", ARENA), ("assets/levels/room.bsn", ROOM)]);
+    let mut app = level_app(&dir);
+    assert!(reload(&mut app, false).errors.is_empty());
+    settle(&mut app);
+    ok(&mut app, "bevy-ts/level+watch", None);
+    assert_eq!(ok(&mut app, "bevy-ts/level_list", None)["levels"][0]["opener"], "ts");
+
+    let o = ok(&mut app, "bevy-ts/level_open", Some(json!({ "file": "levels/room.bsn" })));
+    assert_eq!((o["status"].as_str(), o["level"]["path"].as_str(), o["level"]["opener"].as_str()), (Some("opened"), Some("levels/room.bsn"), Some("editor")), "{o}");
+    let lamp = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/room.bsn", "namePath": ["Room", "Lamp"] })));
+    assert_eq!(lamp["overrides"][0]["component"], "Transform", "{lamp}");
+    for (file, reason) in [("levels/nope.bsn", "not-found"), ("../outside.bsn", "invalid")] {
+        let f = ok(&mut app, "bevy-ts/level_open", Some(json!({ "file": file })));
+        assert_eq!((f["status"].as_str(), f["reason"].as_str()), (Some("failed"), Some(reason)), "{f}");
+    }
+    let c = ok(&mut app, "bevy-ts/level_close", Some(json!({ "file": "levels/room.bsn" })));
+    assert_eq!(c, json!({ "closed": true }));
+    assert_eq!(ok(&mut app, "bevy-ts/level_close", Some(json!({ "file": "levels/room.bsn" }))), json!({ "closed": false }));
+    let events: Vec<String> = std::iter::from_fn(|| call(&mut app, "bevy-ts/level+watch", None).unwrap())
+        .inspect(|m| validate("bevy-ts/level+watch", m))
+        .map(|m| format!("{} {}", m["event"].as_str().unwrap(), m["level"].as_str().unwrap()))
+        .collect();
+    assert_eq!(events, ["opened levels/room.bsn", "loaded levels/room.bsn", "closed levels/room.bsn"]);
+}
+
 fn settle(app: &mut App) {
     for _ in 0..300 {
         app.update();
