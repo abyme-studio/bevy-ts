@@ -24,6 +24,41 @@ export interface PointerEvent {
 }
 export type PointerHandler = (event: PointerEvent) => void;
 
+/** What every `<input>` handler receives besides its event: the call's `commands` and `frame`. */
+interface InputEventBase {
+  readonly entity: Entity;
+  readonly commands: Commands;
+  readonly frame: number;
+}
+/** Bevy's `TextEditChange`: the field applied edits, cursor moves included. */
+export interface TextEditChangeEvent extends InputEventBase {
+  readonly kind: "TextEditChange";
+  readonly value: string;
+}
+/** Bevy's `KeyboardInput`, as the focused field got it. */
+export interface KeyboardInputEvent extends InputEventBase {
+  readonly kind: "KeyboardInput";
+  /** The logical key as W3C `KeyboardEvent.key`: `"Enter"`, `"Escape"`, `"a"`. */
+  readonly key: string;
+  /** The physical key as W3C `KeyboardEvent.code`: `"KeyA"`. */
+  readonly code: string;
+  /** The text the key types, or `null`. */
+  readonly text: string | null;
+  readonly state: "down" | "up";
+  readonly repeat: boolean;
+  /** The field's text with this key and every key before it applied. */
+  readonly value: string;
+}
+/** Enter went down in the field. */
+export interface SubmitEvent extends InputEventBase {
+  readonly kind: "Submit";
+  readonly value: string;
+}
+/** Escape went down in the field; it has already lost focus. */
+export interface CancelEvent extends InputEventBase {
+  readonly kind: "Cancel";
+}
+
 export interface KeyAttribute {
   key?: string | number;
 }
@@ -245,6 +280,23 @@ export interface ImageProps extends NodeProps {
  */
 export interface ViewportProps extends Omit<NodeProps, "camera"> {
   camera: NodeRef | Entity;
+}
+
+/** `<input>`: a `Node` with Bevy's one-line `TextInput`. Its text is Bevy's editor's; to clear
+ * it, remount with a new `key`. */
+export interface InputProps extends Omit<NodeProps, "children"> {
+  size?: Bindable<number>;
+  color?: Bindable<string>;
+  /** The text at mount; a reload does not reset it. */
+  initialValue?: string;
+  maxCharacters?: Bindable<number>;
+  /** Focus the field when it mounts. */
+  autoFocus?: Bindable<boolean>;
+  onTextEditChange?: (event: TextEditChangeEvent) => void;
+  onKeyboardInput?: (event: KeyboardInputEvent) => void;
+  onSubmit?: (event: SubmitEvent) => void;
+  onCancel?: (event: CancelEvent) => void;
+  value?: never;
 }
 
 type Vec2 = [number, number];
@@ -551,5 +603,6 @@ export declare namespace JSX {
     span: SpanProps & KeyAttribute;
     image: ImageProps & KeyAttribute;
     viewport: ViewportProps & KeyAttribute;
+    input: InputProps & KeyAttribute;
   }
 }

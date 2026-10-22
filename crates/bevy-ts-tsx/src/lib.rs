@@ -12,7 +12,7 @@ pub mod host;
 pub mod intrinsics;
 pub mod mount;
 pub mod overlay;
-pub mod picking;
+pub mod events;
 pub mod protocol;
 pub mod reconcile;
 pub mod reflected;

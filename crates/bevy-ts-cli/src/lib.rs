@@ -8,6 +8,7 @@ pub mod compile;
 pub mod dev;
 pub mod engine;
 pub mod headless;
+pub mod input;
 pub mod play;
 pub mod project;
 pub mod reader;

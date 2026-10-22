@@ -1,10 +1,11 @@
-//! bevy_ui intrinsics: `<node>`, `<text>`, `<image>`, `<button>`. Each prop maps to one
-//! component (`background` and `border` to a colour or a gradient), so a changed prop writes
+//! bevy_ui intrinsics: `<node>`, `<text>`, `<image>`, `<button>`, `<input>`. Each prop maps to
+//! one component (`background` and `border` to a colour or a gradient), so a changed prop writes
 //! that component and no other: a bound `<text>` writes `Text` and leaves `TextFont`,
 //! `TextColor` and `Node` alone.
 
+use bevy::input_focus::AutoFocus;
 use bevy::prelude::*;
-use bevy::text::{FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, Underline, UnderlineColor};
+use bevy::text::{EditableText, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, Underline, UnderlineColor};
 use bevy::camera::RenderTarget;
 use bevy::image::{TextureAtlas, TextureAtlasLayout};
 use bevy::render::render_resource::TextureFormat;
@@ -14,6 +15,7 @@ use bevy::ui::{
     AngularColorStop, BackgroundGradient, BorderGradient, BoxShadow, ColorStop, ConicGradient, CornerRadius, Gradient, InlineDirection, LinearGradient, OverflowAxis,
     OverflowClipMargin, RadialGradient, RadialGradientShape, ShadowStyle, UiPosition, UiTransform, Val2, VisualBox,
 };
+use bevy::ui_widgets::TextInput;
 use serde_json::{Map, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,6 +28,7 @@ pub enum UiKind {
     Span,
     /// A `<node>` showing a camera's output: `ViewportNode`.
     Viewport,
+    Input,
 }
 
 /// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak` and `textShadow`.
@@ -40,6 +43,7 @@ impl UiKind {
             "button" => UiKind::Button,
             "span" => UiKind::Span,
             "viewport" => UiKind::Viewport,
+            "input" => UiKind::Input,
             _ => return None,
         })
     }
@@ -53,6 +57,9 @@ impl UiKind {
             ],
             UiKind::Span => SPAN_PROPS,
             UiKind::Image => &["style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "src", "color", "flipX", "flipY", "rect", "atlas", "mode"],
+            UiKind::Input => &[
+                "style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "size", "color", "initialValue", "maxCharacters", "autoFocus",
+            ],
         }
     }
 }
@@ -82,6 +89,12 @@ enum Part {
     Camera,
     /// `camera` on `<viewport>`: `ViewportNode`, the camera it shows.
     Viewport,
+    /// `initialValue`: the field's text, written on insert only.
+    Value,
+    /// `maxCharacters`: `EditableText::max_characters`.
+    Limit,
+    /// `autoFocus`: `AutoFocus`.
+    Focus,
 }
 
 fn part(kind: UiKind, prop: &str) -> Part {
@@ -102,6 +115,9 @@ fn part(kind: UiKind, prop: &str) -> Part {
         "underline" => Part::Underline,
         "strikethrough" => Part::Strikethrough,
         "src" | "flipX" | "flipY" | "rect" | "atlas" | "mode" => Part::Image,
+        "initialValue" => Part::Value,
+        "maxCharacters" => Part::Limit,
+        "autoFocus" => Part::Focus,
         "color" if kind == UiKind::Image => Part::Image,
         "camera" if kind == UiKind::Viewport => Part::Viewport,
         "camera" => Part::Camera,
@@ -1059,6 +1075,16 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
             Ok(())
         }
         Part::Camera | Part::Viewport => camera(&props["camera"]).map(|_| ()),
+        Part::Value => props["initialValue"].as_str().map(|_| ()).ok_or_else(|| "initialValue takes a string".into()),
+        Part::Limit => limit(props).map(|_| ()),
+        Part::Focus => props["autoFocus"].as_bool().map(|_| ()).ok_or_else(|| "autoFocus takes a boolean".into()),
+    }
+}
+
+fn limit(props: &Map<String, Value>) -> Result<Option<usize>, String> {
+    match props.get("maxCharacters") {
+        None => Ok(None),
+        Some(v) => v.as_u64().map(|n| Some(n as usize)).ok_or_else(|| format!("maxCharacters takes a whole number, not {v}")),
     }
 }
 
@@ -1221,6 +1247,20 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             }
             world.entity_mut(e).insert(ViewportNode { camera: c });
         }
+        // The text is Bevy's editor's from mount on: only `insert` writes it.
+        Part::Value => {}
+        Part::Limit => {
+            let max = limit(props)?;
+            if let Some(mut text) = world.get_mut::<EditableText>(e) {
+                text.max_characters = max;
+            }
+        }
+        Part::Focus if props.get("autoFocus").and_then(Value::as_bool) == Some(true) => {
+            world.entity_mut(e).insert(AutoFocus);
+        }
+        Part::Focus => {
+            world.entity_mut(e).remove::<AutoFocus>();
+        }
     }
     Ok(())
 }
@@ -1235,8 +1275,18 @@ pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         write_part(world, e, kind, props, Part::Node)?;
     }
     let mut parts: Vec<Part> = props.keys().map(|k| part(kind, k)).filter(|p| *p != Part::Node).collect();
-    if matches!(kind, UiKind::Text | UiKind::Span) {
-        parts.extend([Part::Text, Part::Font]);
+    match kind {
+        UiKind::Text | UiKind::Span => parts.extend([Part::Text, Part::Font]),
+        UiKind::Input => {
+            if props.contains_key("initialValue") {
+                check_part(kind, props, Part::Value)?;
+            }
+            let text = EditableText::new(props.get("initialValue").and_then(Value::as_str).unwrap_or_default());
+            // `EditableText` first, so the one `TextInput` requires does not replace it.
+            world.entity_mut(e).insert(text).insert(TextInput);
+            parts.push(Part::Font);
+        }
+        _ => {}
     }
     parts.sort();
     parts.dedup();
@@ -1256,6 +1306,8 @@ pub fn update(world: &mut World, e: Entity, kind: UiKind, old: &Map<String, Valu
         .chain(new.keys())
         .filter(|k| old.get(*k) != new.get(*k))
         .map(|k| part(kind, k))
+        // `initialValue` is written on insert only, like every `initial*` prop.
+        .filter(|p| *p != Part::Value)
         .collect();
     parts.sort();
     parts.dedup();
@@ -1281,6 +1333,9 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
         }
         UiKind::Viewport => {
             em.remove::<ViewportNode>();
+        }
+        UiKind::Input => {
+            em.remove::<(TextInput, EditableText, TextFont, TextColor, AutoFocus)>();
         }
         UiKind::Node => {}
     }

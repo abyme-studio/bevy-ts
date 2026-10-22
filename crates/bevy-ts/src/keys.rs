@@ -1,209 +1,231 @@
-//! W3C `KeyboardEvent.code` and `key` values to Bevy's `KeyCode` and `Key`, as winit maps them.
-//! Generated from bevy_winit 0.20's converters; W3C names that winit spells differently are aliased.
+//! W3C `KeyboardEvent.code` and `key` values to Bevy's `KeyCode` and `Key` and back, as winit
+//! maps them, and the numbers `bevy-ts/input` gives each `KeyCode`. One owner for the viewport's
+//! key events, the TSX keyboard events and `KeyCode` in TS.
+//! Generated from bevy_winit 0.20's converters; W3C names that winit spells differently are
+//! aliased, the W3C name first.
 
-use bevy::input::keyboard::{Key, KeyCode};
+use bevy::input::keyboard::{Key, KeyCode, NativeKey};
 
-/// The `KeyCode` for a W3C `code`, `None` for one winit does not know.
-pub fn key_code(code: &str) -> Option<KeyCode> {
-    Some(match code {
-        "Backquote" => KeyCode::Backquote,
-        "Backslash" => KeyCode::Backslash,
-        "BracketLeft" => KeyCode::BracketLeft,
-        "BracketRight" => KeyCode::BracketRight,
-        "Comma" => KeyCode::Comma,
-        "Digit0" => KeyCode::Digit0,
-        "Digit1" => KeyCode::Digit1,
-        "Digit2" => KeyCode::Digit2,
-        "Digit3" => KeyCode::Digit3,
-        "Digit4" => KeyCode::Digit4,
-        "Digit5" => KeyCode::Digit5,
-        "Digit6" => KeyCode::Digit6,
-        "Digit7" => KeyCode::Digit7,
-        "Digit8" => KeyCode::Digit8,
-        "Digit9" => KeyCode::Digit9,
-        "Equal" => KeyCode::Equal,
-        "IntlBackslash" => KeyCode::IntlBackslash,
-        "IntlRo" => KeyCode::IntlRo,
-        "IntlYen" => KeyCode::IntlYen,
-        "KeyA" => KeyCode::KeyA,
-        "KeyB" => KeyCode::KeyB,
-        "KeyC" => KeyCode::KeyC,
-        "KeyD" => KeyCode::KeyD,
-        "KeyE" => KeyCode::KeyE,
-        "KeyF" => KeyCode::KeyF,
-        "KeyG" => KeyCode::KeyG,
-        "KeyH" => KeyCode::KeyH,
-        "KeyI" => KeyCode::KeyI,
-        "KeyJ" => KeyCode::KeyJ,
-        "KeyK" => KeyCode::KeyK,
-        "KeyL" => KeyCode::KeyL,
-        "KeyM" => KeyCode::KeyM,
-        "KeyN" => KeyCode::KeyN,
-        "KeyO" => KeyCode::KeyO,
-        "KeyP" => KeyCode::KeyP,
-        "KeyQ" => KeyCode::KeyQ,
-        "KeyR" => KeyCode::KeyR,
-        "KeyS" => KeyCode::KeyS,
-        "KeyT" => KeyCode::KeyT,
-        "KeyU" => KeyCode::KeyU,
-        "KeyV" => KeyCode::KeyV,
-        "KeyW" => KeyCode::KeyW,
-        "KeyX" => KeyCode::KeyX,
-        "KeyY" => KeyCode::KeyY,
-        "KeyZ" => KeyCode::KeyZ,
-        "Minus" => KeyCode::Minus,
-        "Period" => KeyCode::Period,
-        "Quote" => KeyCode::Quote,
-        "Semicolon" => KeyCode::Semicolon,
-        "Slash" => KeyCode::Slash,
-        "AltLeft" => KeyCode::AltLeft,
-        "AltRight" => KeyCode::AltRight,
-        "Backspace" => KeyCode::Backspace,
-        "CapsLock" => KeyCode::CapsLock,
-        "ContextMenu" => KeyCode::ContextMenu,
-        "ControlLeft" => KeyCode::ControlLeft,
-        "ControlRight" => KeyCode::ControlRight,
-        "Enter" => KeyCode::Enter,
-        "SuperLeft" => KeyCode::SuperLeft,
-        "SuperRight" => KeyCode::SuperRight,
-        "ShiftLeft" => KeyCode::ShiftLeft,
-        "ShiftRight" => KeyCode::ShiftRight,
-        "Space" => KeyCode::Space,
-        "Tab" => KeyCode::Tab,
-        "Convert" => KeyCode::Convert,
-        "KanaMode" => KeyCode::KanaMode,
-        "Lang1" => KeyCode::Lang1,
-        "Lang2" => KeyCode::Lang2,
-        "Lang3" => KeyCode::Lang3,
-        "Lang4" => KeyCode::Lang4,
-        "Lang5" => KeyCode::Lang5,
-        "NonConvert" => KeyCode::NonConvert,
-        "Delete" => KeyCode::Delete,
-        "End" => KeyCode::End,
-        "Help" => KeyCode::Help,
-        "Home" => KeyCode::Home,
-        "Insert" => KeyCode::Insert,
-        "PageDown" => KeyCode::PageDown,
-        "PageUp" => KeyCode::PageUp,
-        "ArrowDown" => KeyCode::ArrowDown,
-        "ArrowLeft" => KeyCode::ArrowLeft,
-        "ArrowRight" => KeyCode::ArrowRight,
-        "ArrowUp" => KeyCode::ArrowUp,
-        "NumLock" => KeyCode::NumLock,
-        "Numpad0" => KeyCode::Numpad0,
-        "Numpad1" => KeyCode::Numpad1,
-        "Numpad2" => KeyCode::Numpad2,
-        "Numpad3" => KeyCode::Numpad3,
-        "Numpad4" => KeyCode::Numpad4,
-        "Numpad5" => KeyCode::Numpad5,
-        "Numpad6" => KeyCode::Numpad6,
-        "Numpad7" => KeyCode::Numpad7,
-        "Numpad8" => KeyCode::Numpad8,
-        "Numpad9" => KeyCode::Numpad9,
-        "NumpadAdd" => KeyCode::NumpadAdd,
-        "NumpadBackspace" => KeyCode::NumpadBackspace,
-        "NumpadClear" => KeyCode::NumpadClear,
-        "NumpadClearEntry" => KeyCode::NumpadClearEntry,
-        "NumpadComma" => KeyCode::NumpadComma,
-        "NumpadDecimal" => KeyCode::NumpadDecimal,
-        "NumpadDivide" => KeyCode::NumpadDivide,
-        "NumpadEnter" => KeyCode::NumpadEnter,
-        "NumpadEqual" => KeyCode::NumpadEqual,
-        "NumpadHash" => KeyCode::NumpadHash,
-        "NumpadMemoryAdd" => KeyCode::NumpadMemoryAdd,
-        "NumpadMemoryClear" => KeyCode::NumpadMemoryClear,
-        "NumpadMemoryRecall" => KeyCode::NumpadMemoryRecall,
-        "NumpadMemoryStore" => KeyCode::NumpadMemoryStore,
-        "NumpadMemorySubtract" => KeyCode::NumpadMemorySubtract,
-        "NumpadMultiply" => KeyCode::NumpadMultiply,
-        "NumpadParenLeft" => KeyCode::NumpadParenLeft,
-        "NumpadParenRight" => KeyCode::NumpadParenRight,
-        "NumpadStar" => KeyCode::NumpadStar,
-        "NumpadSubtract" => KeyCode::NumpadSubtract,
-        "Escape" => KeyCode::Escape,
-        "Fn" => KeyCode::Fn,
-        "FnLock" => KeyCode::FnLock,
-        "PrintScreen" => KeyCode::PrintScreen,
-        "ScrollLock" => KeyCode::ScrollLock,
-        "Pause" => KeyCode::Pause,
-        "BrowserBack" => KeyCode::BrowserBack,
-        "BrowserFavorites" => KeyCode::BrowserFavorites,
-        "BrowserForward" => KeyCode::BrowserForward,
-        "BrowserHome" => KeyCode::BrowserHome,
-        "BrowserRefresh" => KeyCode::BrowserRefresh,
-        "BrowserSearch" => KeyCode::BrowserSearch,
-        "BrowserStop" => KeyCode::BrowserStop,
-        "Eject" => KeyCode::Eject,
-        "LaunchApp1" => KeyCode::LaunchApp1,
-        "LaunchApp2" => KeyCode::LaunchApp2,
-        "LaunchMail" => KeyCode::LaunchMail,
-        "MediaPlayPause" => KeyCode::MediaPlayPause,
-        "MediaSelect" => KeyCode::MediaSelect,
-        "MediaStop" => KeyCode::MediaStop,
-        "MediaTrackNext" => KeyCode::MediaTrackNext,
-        "MediaTrackPrevious" => KeyCode::MediaTrackPrevious,
-        "Power" => KeyCode::Power,
-        "Sleep" => KeyCode::Sleep,
-        "AudioVolumeDown" => KeyCode::AudioVolumeDown,
-        "AudioVolumeMute" => KeyCode::AudioVolumeMute,
-        "AudioVolumeUp" => KeyCode::AudioVolumeUp,
-        "WakeUp" => KeyCode::WakeUp,
-        "Meta" => KeyCode::Meta,
-        "Hyper" => KeyCode::Hyper,
-        "Turbo" => KeyCode::Turbo,
-        "Abort" => KeyCode::Abort,
-        "Resume" => KeyCode::Resume,
-        "Suspend" => KeyCode::Suspend,
-        "Again" => KeyCode::Again,
-        "Copy" => KeyCode::Copy,
-        "Cut" => KeyCode::Cut,
-        "Find" => KeyCode::Find,
-        "Open" => KeyCode::Open,
-        "Paste" => KeyCode::Paste,
-        "Props" => KeyCode::Props,
-        "Select" => KeyCode::Select,
-        "Undo" => KeyCode::Undo,
-        "Hiragana" => KeyCode::Hiragana,
-        "Katakana" => KeyCode::Katakana,
-        "F1" => KeyCode::F1,
-        "F2" => KeyCode::F2,
-        "F3" => KeyCode::F3,
-        "F4" => KeyCode::F4,
-        "F5" => KeyCode::F5,
-        "F6" => KeyCode::F6,
-        "F7" => KeyCode::F7,
-        "F8" => KeyCode::F8,
-        "F9" => KeyCode::F9,
-        "F10" => KeyCode::F10,
-        "F11" => KeyCode::F11,
-        "F12" => KeyCode::F12,
-        "F13" => KeyCode::F13,
-        "F14" => KeyCode::F14,
-        "F15" => KeyCode::F15,
-        "F16" => KeyCode::F16,
-        "F17" => KeyCode::F17,
-        "F18" => KeyCode::F18,
-        "F19" => KeyCode::F19,
-        "F20" => KeyCode::F20,
-        "F21" => KeyCode::F21,
-        "F22" => KeyCode::F22,
-        "F23" => KeyCode::F23,
-        "F24" => KeyCode::F24,
-        "F25" => KeyCode::F25,
-        "F26" => KeyCode::F26,
-        "F27" => KeyCode::F27,
-        "F28" => KeyCode::F28,
-        "F29" => KeyCode::F29,
-        "F30" => KeyCode::F30,
-        "F31" => KeyCode::F31,
-        "F32" => KeyCode::F32,
-        "F33" => KeyCode::F33,
-        "F34" => KeyCode::F34,
-        "F35" => KeyCode::F35,
-        "MetaLeft" | "OSLeft" => KeyCode::SuperLeft,
-        "MetaRight" | "OSRight" => KeyCode::SuperRight,
-        _ => return None,
-    })
+/// Every `KeyCode` without data, in Bevy's order: W3C `code` names (the first is the one
+/// [`code_name`] gives), then the variant. A variant's index here is its number in TS.
+macro_rules! codes {
+    ($($code:literal $(| $alias:literal)* => $variant:ident,)*) => {
+        /// The `KeyCode` for a W3C `code`, `None` for one winit does not know.
+        pub fn key_code(code: &str) -> Option<KeyCode> {
+            Some(match code {
+                $($code $(| $alias)* => KeyCode::$variant,)*
+                _ => return None,
+            })
+        }
+
+        /// The W3C `code` for a `KeyCode`; `"Unidentified"` for one carrying a native code.
+        pub fn code_name(code: KeyCode) -> &'static str {
+            match code {
+                $(KeyCode::$variant => $code,)*
+                KeyCode::Unidentified(_) => "Unidentified",
+            }
+        }
+
+        /// `KeyCode`'s variants without data, by name; the index is the number TS uses.
+        pub const KEY_CODES: &[(&str, KeyCode)] = &[$((stringify!($variant), KeyCode::$variant),)*];
+    };
+}
+
+codes! {
+    "Backquote" => Backquote,
+    "Backslash" => Backslash,
+    "BracketLeft" => BracketLeft,
+    "BracketRight" => BracketRight,
+    "Comma" => Comma,
+    "Digit0" => Digit0,
+    "Digit1" => Digit1,
+    "Digit2" => Digit2,
+    "Digit3" => Digit3,
+    "Digit4" => Digit4,
+    "Digit5" => Digit5,
+    "Digit6" => Digit6,
+    "Digit7" => Digit7,
+    "Digit8" => Digit8,
+    "Digit9" => Digit9,
+    "Equal" => Equal,
+    "IntlBackslash" => IntlBackslash,
+    "IntlRo" => IntlRo,
+    "IntlYen" => IntlYen,
+    "KeyA" => KeyA,
+    "KeyB" => KeyB,
+    "KeyC" => KeyC,
+    "KeyD" => KeyD,
+    "KeyE" => KeyE,
+    "KeyF" => KeyF,
+    "KeyG" => KeyG,
+    "KeyH" => KeyH,
+    "KeyI" => KeyI,
+    "KeyJ" => KeyJ,
+    "KeyK" => KeyK,
+    "KeyL" => KeyL,
+    "KeyM" => KeyM,
+    "KeyN" => KeyN,
+    "KeyO" => KeyO,
+    "KeyP" => KeyP,
+    "KeyQ" => KeyQ,
+    "KeyR" => KeyR,
+    "KeyS" => KeyS,
+    "KeyT" => KeyT,
+    "KeyU" => KeyU,
+    "KeyV" => KeyV,
+    "KeyW" => KeyW,
+    "KeyX" => KeyX,
+    "KeyY" => KeyY,
+    "KeyZ" => KeyZ,
+    "Minus" => Minus,
+    "Period" => Period,
+    "Quote" => Quote,
+    "Semicolon" => Semicolon,
+    "Slash" => Slash,
+    "AltLeft" => AltLeft,
+    "AltRight" => AltRight,
+    "Backspace" => Backspace,
+    "CapsLock" => CapsLock,
+    "ContextMenu" => ContextMenu,
+    "ControlLeft" => ControlLeft,
+    "ControlRight" => ControlRight,
+    "Enter" => Enter,
+    "MetaLeft" | "OSLeft" | "SuperLeft" => SuperLeft,
+    "MetaRight" | "OSRight" | "SuperRight" => SuperRight,
+    "ShiftLeft" => ShiftLeft,
+    "ShiftRight" => ShiftRight,
+    "Space" => Space,
+    "Tab" => Tab,
+    "Convert" => Convert,
+    "KanaMode" => KanaMode,
+    "Lang1" => Lang1,
+    "Lang2" => Lang2,
+    "Lang3" => Lang3,
+    "Lang4" => Lang4,
+    "Lang5" => Lang5,
+    "NonConvert" => NonConvert,
+    "Delete" => Delete,
+    "End" => End,
+    "Help" => Help,
+    "Home" => Home,
+    "Insert" => Insert,
+    "PageDown" => PageDown,
+    "PageUp" => PageUp,
+    "ArrowDown" => ArrowDown,
+    "ArrowLeft" => ArrowLeft,
+    "ArrowRight" => ArrowRight,
+    "ArrowUp" => ArrowUp,
+    "NumLock" => NumLock,
+    "Numpad0" => Numpad0,
+    "Numpad1" => Numpad1,
+    "Numpad2" => Numpad2,
+    "Numpad3" => Numpad3,
+    "Numpad4" => Numpad4,
+    "Numpad5" => Numpad5,
+    "Numpad6" => Numpad6,
+    "Numpad7" => Numpad7,
+    "Numpad8" => Numpad8,
+    "Numpad9" => Numpad9,
+    "NumpadAdd" => NumpadAdd,
+    "NumpadBackspace" => NumpadBackspace,
+    "NumpadClear" => NumpadClear,
+    "NumpadClearEntry" => NumpadClearEntry,
+    "NumpadComma" => NumpadComma,
+    "NumpadDecimal" => NumpadDecimal,
+    "NumpadDivide" => NumpadDivide,
+    "NumpadEnter" => NumpadEnter,
+    "NumpadEqual" => NumpadEqual,
+    "NumpadHash" => NumpadHash,
+    "NumpadMemoryAdd" => NumpadMemoryAdd,
+    "NumpadMemoryClear" => NumpadMemoryClear,
+    "NumpadMemoryRecall" => NumpadMemoryRecall,
+    "NumpadMemoryStore" => NumpadMemoryStore,
+    "NumpadMemorySubtract" => NumpadMemorySubtract,
+    "NumpadMultiply" => NumpadMultiply,
+    "NumpadParenLeft" => NumpadParenLeft,
+    "NumpadParenRight" => NumpadParenRight,
+    "NumpadStar" => NumpadStar,
+    "NumpadSubtract" => NumpadSubtract,
+    "Escape" => Escape,
+    "Fn" => Fn,
+    "FnLock" => FnLock,
+    "PrintScreen" => PrintScreen,
+    "ScrollLock" => ScrollLock,
+    "Pause" => Pause,
+    "BrowserBack" => BrowserBack,
+    "BrowserFavorites" => BrowserFavorites,
+    "BrowserForward" => BrowserForward,
+    "BrowserHome" => BrowserHome,
+    "BrowserRefresh" => BrowserRefresh,
+    "BrowserSearch" => BrowserSearch,
+    "BrowserStop" => BrowserStop,
+    "Eject" => Eject,
+    "LaunchApp1" => LaunchApp1,
+    "LaunchApp2" => LaunchApp2,
+    "LaunchMail" => LaunchMail,
+    "MediaPlayPause" => MediaPlayPause,
+    "MediaSelect" => MediaSelect,
+    "MediaStop" => MediaStop,
+    "MediaTrackNext" => MediaTrackNext,
+    "MediaTrackPrevious" => MediaTrackPrevious,
+    "Power" => Power,
+    "Sleep" => Sleep,
+    "AudioVolumeDown" => AudioVolumeDown,
+    "AudioVolumeMute" => AudioVolumeMute,
+    "AudioVolumeUp" => AudioVolumeUp,
+    "WakeUp" => WakeUp,
+    "Meta" => Meta,
+    "Hyper" => Hyper,
+    "Turbo" => Turbo,
+    "Abort" => Abort,
+    "Resume" => Resume,
+    "Suspend" => Suspend,
+    "Again" => Again,
+    "Copy" => Copy,
+    "Cut" => Cut,
+    "Find" => Find,
+    "Open" => Open,
+    "Paste" => Paste,
+    "Props" => Props,
+    "Select" => Select,
+    "Undo" => Undo,
+    "Hiragana" => Hiragana,
+    "Katakana" => Katakana,
+    "F1" => F1,
+    "F2" => F2,
+    "F3" => F3,
+    "F4" => F4,
+    "F5" => F5,
+    "F6" => F6,
+    "F7" => F7,
+    "F8" => F8,
+    "F9" => F9,
+    "F10" => F10,
+    "F11" => F11,
+    "F12" => F12,
+    "F13" => F13,
+    "F14" => F14,
+    "F15" => F15,
+    "F16" => F16,
+    "F17" => F17,
+    "F18" => F18,
+    "F19" => F19,
+    "F20" => F20,
+    "F21" => F21,
+    "F22" => F22,
+    "F23" => F23,
+    "F24" => F24,
+    "F25" => F25,
+    "F26" => F26,
+    "F27" => F27,
+    "F28" => F28,
+    "F29" => F29,
+    "F30" => F30,
+    "F31" => F31,
+    "F32" => F32,
+    "F33" => F33,
+    "F34" => F34,
+    "F35" => F35,
 }
 
 /// The `Key` for a W3C `key` value: a named key, or the characters it types.
@@ -510,7 +532,77 @@ pub fn logical_key(key: &str) -> Key {
         "OS" => Key::Meta,
         " " => Key::Space,
         "Dead" => Key::Dead(None),
-        "" | "Unidentified" => Key::Unidentified(bevy::input::keyboard::NativeKey::Unidentified),
+        "" | "Unidentified" => Key::Unidentified(NativeKey::Unidentified),
         s => Key::Character(s.into()),
+    }
+}
+
+/// The W3C `key` value for a `Key`: the characters it types, or its name (`"Enter"`, `" "`).
+pub fn key_name(key: &Key) -> String {
+    match key {
+        Key::Character(s) => s.to_string(),
+        Key::Space => " ".into(),
+        Key::Dead(_) => "Dead".into(),
+        Key::Unidentified(_) => "Unidentified".into(),
+        // A named key's variant is its W3C name.
+        named => format!("{named:?}"),
+    }
+}
+
+/// The `KeyCode` TS numbers as `n`, `None` past the list.
+pub fn key_code_of(n: u32) -> Option<KeyCode> {
+    KEY_CODES.get(n as usize).map(|(_, k)| *k)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::reflect::enums::VariantInfo;
+    use bevy::reflect::{PartialReflect, ReflectRef, TypeInfo, Typed};
+
+    #[test]
+    fn every_code_round_trips() {
+        for (_, k) in KEY_CODES {
+            assert_eq!(key_code(code_name(*k)), Some(*k), "{k:?} as {:?}", code_name(*k));
+        }
+        assert_eq!(code_name(KeyCode::SuperLeft), "MetaLeft");
+        assert_eq!(key_code("OSLeft"), Some(KeyCode::SuperLeft));
+    }
+
+    #[test]
+    fn every_key_round_trips() {
+        let TypeInfo::Enum(info) = Key::type_info() else { panic!("Key is an enum") };
+        let mut named = 0;
+        for v in info.iter() {
+            let VariantInfo::Unit(u) = v else { continue };
+            let key = logical_key(u.name());
+            // Keys winit has no name for read back as the characters of their name.
+            if matches!(key, Key::Character(_)) {
+                continue;
+            }
+            assert_eq!(logical_key(&key_name(&key)), key, "{}", u.name());
+            named += 1;
+        }
+        assert!(named > 250, "{named} named keys");
+        for k in [Key::Character("h".into()), Key::Space, Key::Enter, Key::Escape, Key::Dead(None)] {
+            assert_eq!(logical_key(&key_name(&k)), k);
+        }
+        assert_eq!(key_name(&Key::Character("é".into())), "é");
+    }
+
+    /// Fails when Bevy adds, removes, renames or reorders a `KeyCode` variant: the TS enum and
+    /// this list are one.
+    #[test]
+    fn the_list_is_bevys_keycode() {
+        let TypeInfo::Enum(info) = KeyCode::type_info() else { panic!("KeyCode is an enum") };
+        let bevy: Vec<&str> = info.iter().filter(|v| matches!(v, VariantInfo::Unit(_))).map(|v| v.name()).collect();
+        let ours: Vec<&str> = KEY_CODES.iter().map(|(n, _)| *n).collect();
+        assert_eq!(ours, bevy);
+        for (name, k) in KEY_CODES {
+            let ReflectRef::Enum(e) = k.reflect_ref() else { unreachable!() };
+            assert_eq!(e.variant_name(), *name);
+        }
+        assert_eq!(info.iter().count(), KEY_CODES.len() + 1, "only Unidentified carries data");
+        assert_eq!(key_code_of(KEY_CODES.len() as u32), None);
     }
 }

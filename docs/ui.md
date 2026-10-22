@@ -22,6 +22,7 @@ app.scene("hud", () => (
 | `<image src>` | `ImageNode` |
 | `<viewport camera>` | `Node`, `ViewportNode` |
 | `<button>` | `Node`, `Button`, picking |
+| `<input>` | `Node`, `TextInput` (with `EditableText`) |
 
 An unknown prop, style key or word fails the load and names it with the accepted ones.
 
@@ -143,3 +144,56 @@ const mini = ref();
 `sliced` is a nine-slice: `border` in pixels, one number or `{ left, right, top, bottom }`;
 `center` and `sides` are `"stretch"` (the default) or `{ tile: n }`. `tiled` repeats along `x` and
 `y` (both by default) once the image is stretched past `stretch` (1).
+
+## Events
+
+An event prop is `on` plus a Bevy event's name and an entity-local observer of it. Every UI
+element and `<entity>` takes the picking events `onPointerClick`, `onPointerPress`,
+`onPointerRelease`, `onPointerOver` and `onPointerOut`. Events do not bubble. A handler runs in
+the frame's one host call, in arrival order, and gets the event with the call's `commands` and
+`frame`.
+
+## `<input>`
+
+A one-line text field: Bevy 0.20's `TextInput`. Focus, typing, selection, paste and Escape are
+Bevy's; bevy-ts reads them. The text never wraps: wider than the field, it scrolls. A focused
+field shows Bevy's blinking cursor in the text's `color`; Bevy draws no other focus cue, so a
+game that wants one styles it.
+
+```tsx
+<input
+  key="notes"
+  autoFocus
+  maxCharacters={200}
+  onSubmit={({ value, commands }) => save(commands, value)}
+  onCancel={() => close()}
+/>
+```
+
+- `initialValue`: the text at mount. Like every `initial*` prop, a reload does not reset it, and
+  what the player typed survives a reload.
+- `maxCharacters`: edits past it are dropped, as Bevy does.
+- `autoFocus`: the field takes `InputFocus` when it mounts.
+
+There is no `value` prop. The text is Bevy's editor's; writing it from TS would fight the cursor
+and IME state. To clear a field, remount it with a new `key`.
+
+Its events, each with `entity`:
+
+- `onSubmit({ value })`: Enter went down.
+- `onCancel()`: Escape went down. Bevy has already cleared `InputFocus`.
+- `onKeyboardInput({ key, code, text, state, repeat, value })`: Bevy's `KeyboardInput` as the field
+  got it. `key` is the W3C `KeyboardEvent.key` (`"Enter"`, `"a"`), `code` the W3C
+  `KeyboardEvent.code` (`"KeyA"`), `text` what the key types or `null`, `state` `"down"` or
+  `"up"`. `value` is the text with this key and every key before it applied, even when several
+  keys arrive in one frame.
+- `onTextEditChange({ value })`: Bevy's `TextEditChange`, also fired on cursor moves. Bevy applies
+  edits late in the frame, so the handler runs in the next frame's call.
+
+Bevy's `TextInput` inserts a character only with no modifier or Shift, so Option (macOS) and
+AltGr characters are not typed, as in a native Bevy window.
+
+Keys reach a field only with a primary window: in a game window or in viewport mode, not under
+`--headless` ([viewport.md](viewport.md#typing)). A key typed into a field still shows in
+`Keys` from `bevy-ts/input`; check `InputFocus` for single-key shortcuts
+([native.md](native.md#ports-and-built-in-modules)).

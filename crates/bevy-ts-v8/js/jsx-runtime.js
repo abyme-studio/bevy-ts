@@ -17,7 +17,7 @@ const ELEMENT = Symbol.for("bevy-ts.element");
 /** Intrinsics that describe components of the enclosing entity. */
 const COMPONENT_INTRINSICS = new Set(["mesh", "material"]);
 /** bevy_ui intrinsics: entities of their own, with one intrinsic component named after the tag. */
-const UI_INTRINSICS = new Set(["node", "text", "image", "button", "span", "viewport"]);
+const UI_INTRINSICS = new Set(["node", "text", "image", "button", "span", "viewport", "input"]);
 /** Rich text: `<text>` and `<span>` hold strings, bindings and `<span>`s. */
 const RICH = new Set(["text", "span"]);
 /** What a `<span>` takes from its parent unless it sets its own: Bevy gives a span no inheritance. */
@@ -26,6 +26,8 @@ const INHERITED = ["size", "color", "font", "weight", "italic", "lineHeight", "l
 const PICKING = /^on[A-Z]/;
 /** `on` plus a Bevy 0.20 picking event's name: an entity-local observer (operator ruling 2026-10-20). */
 const POINTER_EVENTS = new Set(["PointerClick", "PointerPress", "PointerRelease", "PointerOver", "PointerOut"]);
+/** `<input>`'s own events: Bevy's `TextEditChange` and `KeyboardInput`, and `Submit` (Enter) and `Cancel` (Escape). */
+const INPUT_EVENTS = new Set(["TextEditChange", "KeyboardInput", "Submit", "Cancel"]);
 
 /** Marks `Show` and `For`: control flow, described as slots rather than called as prefabs. */
 const CONTROL = Symbol.for("bevy-ts.control");
@@ -831,11 +833,11 @@ export class TsxContext {
         if (rowBytes && rowBytes.byteLength) decodeRows(this, rowBytes, rerun);
         for (const b of rerun) b.site.run(b);
         this.startPending();
-        // Picking events, in arrival order, with the call's commands and frame.
+        // Picking and input events, in arrival order, with the call's commands and frame.
         for (const [id, ev] of payload.events || []) {
           const h = this.handlers.get(id);
           if (!h) continue;
-          const event = { entity: ev.entity, target: ev.target, position: ev.position, button: ev.button, kind: ev.kind };
+          const event = { ...ev };
           const hctx = { commands: callCtx ? callCtx.commands : null, frame: callCtx ? callCtx.frame : 0, entity: ev.entity };
           try {
             h.fn(Object.assign(hctx, event), event);
@@ -1439,8 +1441,10 @@ function describeEntity(el, key, type, parentType) {
     const v = el.props[k];
     if (v === undefined || !PICKING.test(k)) continue;
     const event = k.slice(2);
-    if (!POINTER_EVENTS.has(event)) {
-      throw located(`<${typeName(el.type)} ${k}>: no such picking event; use ${[...POINTER_EVENTS].map((e) => `on${e}`).join(", ")}`, el.source);
+    const input = el.type === "input" && INPUT_EVENTS.has(event);
+    if (!POINTER_EVENTS.has(event) && !input) {
+      const known = el.type === "input" ? [...POINTER_EVENTS, ...INPUT_EVENTS] : [...POINTER_EVENTS];
+      throw located(`<${typeName(el.type)} ${k}>: no such event; use ${known.map((e) => `on${e}`).join(", ")}`, el.source);
     }
     if (typeof v !== "function") throw located(`<${typeName(el.type)} ${k}> takes a function`, el.source);
     (node.on || (node.on = {}))[event] = Describing.ctx.handler(v, el.source);

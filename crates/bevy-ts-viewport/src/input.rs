@@ -1,7 +1,7 @@
 //! Viewport input: events from the viewer become the Bevy 0.20 messages `bevy_winit` writes for
 //! a window, applied in `First` so `bevy_input`, picking, UI and game code take one path.
 
-use crate::keys;
+use bevy_ts::keys;
 use crate::shared::SharedRes;
 use crate::VirtualWindow;
 use bevy::input::ButtonState;

@@ -427,7 +427,7 @@ fn apply_node(
     match entity {
         Some(e) => {
             tree.entities.insert(n.id, e);
-            crate::picking::set(world, e, &n.on);
+            crate::events::set(world, e, &n.on);
             for r in n.comps.iter() {
                 for (prop, site) in &r.sites {
                     let id = r.bound[prop];

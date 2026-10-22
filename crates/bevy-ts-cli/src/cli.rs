@@ -236,6 +236,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(bevy_ts_tsx::TsxPlugin)
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
+        .add_plugins(crate::input::ScriptInputPlugin)
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
         .add_systems(Update, headless::screenshot_on_request)

@@ -97,6 +97,16 @@ with `entity`, `depth`, its world `point` `[x, y, z]` and the entity a click the
 `ground` `[x, y, z]`: where the ray meets the plane y = 0 in front of the camera, or null when it
 does not (pointing at the sky). A model dropped on empty floor goes at `ground`.
 
+## Typing
+
+Keys reach a focused `<input>` only in viewport mode (or a real window): Bevy sends keys to
+`InputFocus` only when there is a primary window, and `--headless` has none. A test that types
+attaches a viewer and posts `key` events to `bevy-ts/viewport_input`.
+
+The viewer sends each typed character once: as a `key` event's `text`, or as an `ime` `commit`
+for a composition, never both. Bevy's `TextInput` turns IME on and inserts both, so a viewer
+that sent both would type every character twice. The engine applies what it is sent.
+
 ## Gizmo tools
 
 - `bevy-ts/viewport_tools { mode?, space?, snap? }` sets the transform gizmo's mode (`translate`,

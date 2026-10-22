@@ -21,7 +21,6 @@ mod feedback;
 #[cfg(target_os = "macos")]
 pub mod input;
 #[cfg(target_os = "macos")]
-mod keys;
 #[cfg(target_os = "macos")]
 pub mod mach;
 #[cfg(target_os = "macos")]

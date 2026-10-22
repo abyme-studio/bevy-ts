@@ -31,6 +31,7 @@ fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
+        .add_plugins(crate::input::ScriptInputPlugin)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     app

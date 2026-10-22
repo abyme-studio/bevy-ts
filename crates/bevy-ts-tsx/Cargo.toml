@@ -9,7 +9,7 @@ license.workspace = true
 name = "bevy_ts_tsx"
 
 [dependencies]
-bevy = { workspace = true, features = ["std", "bevy_ui", "bevy_ui_widgets", "bevy_picking"] }
+bevy = { workspace = true, features = ["std", "bevy_ui", "bevy_ui_widgets", "bevy_picking", "bevy_input_focus", "bevy_clipboard"] }
 bevy-ts = { workspace = true, features = ["pbr"] }
 bevy-ts-remote.workspace = true
 bevy-ts-material.workspace = true

@@ -14,6 +14,7 @@ pub mod engine;
 pub mod fake;
 pub mod generation;
 pub mod host;
+pub mod keys;
 pub mod layout;
 pub mod layout_reflect;
 pub mod log;

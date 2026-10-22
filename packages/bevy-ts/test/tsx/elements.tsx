@@ -158,3 +158,21 @@ export const BadRoot = () => <entity><WorldAssetRoot path="models/Fox.glb#Scene0
 export const BadSpeed = () => <entity><PlayAnimation speed="fast" /></entity>;
 // @ts-expect-error  PlayAnimation has no field `loop`
 export const BadField = () => <entity><PlayAnimation loop /></entity>;
+// `<input>`: Bevy's TextInput, its events typed; its text has no controlled prop.
+export const Field = () => (
+  <input
+    initialValue=""
+    autoFocus
+    maxCharacters={40}
+    onKeyboardInput={(e) => e.value.length + e.key.length}
+    onSubmit={(e) => e.value}
+    onCancel={(e) => e.entity}
+    onTextEditChange={(e) => e.value}
+  />
+);
+// @ts-expect-error  the text is Bevy's editor's: there is no `value` prop
+export const Controlled = () => <input value="x" />;
+// @ts-expect-error  a keyboard event has no `foo`
+export const BadEvent = () => <input onKeyboardInput={(e) => e.foo} />;
+// @ts-expect-error  a cancel has no value
+export const BadCancel = () => <input onCancel={(e) => e.value} />;

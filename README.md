@@ -12,6 +12,7 @@ without recompiling Rust.
 - **TSX describes the world; Bevy runs it.** A custom JSX runtime and reconciler turn TSX into
   native entities on mount and on change, never per frame. Stable keys keep runtime state across
   hot reloads; `initial*` props are never reset by a reload. Built on BSN templates where they fit.
+  UI elements, text fields and their events are in [docs/ui.md](docs/ui.md).
 - **`bevy-ts dev src/game.ts`** launches the engine, loads the TypeScript and hot reloads it.
 - **Game UI is bevy_ui in TSX**: `<node>`, `<text>`, `<image>`, `<button>` with Bevy's layout,
   grid, gradients and shadows, each prop writing one component ([docs/ui.md](docs/ui.md)).

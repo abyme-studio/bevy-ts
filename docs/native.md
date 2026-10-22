@@ -311,6 +311,22 @@ classes declare themselves with `__bevyts.data` and are declared by every genera
 - `CollisionEvent`: Rapier's enum flattened to `{ kind, a, b, sensor }`, read with
   `MessageReader<CollisionEvent>` after `app.addMessage(CollisionEvent)`.
 
+Every engine ships `bevy-ts/input`: `Keys` (`pressed`, `justPressed`, `justReleased`) over
+Bevy's `ButtonInput<KeyCode>`, `InputFocus` (`get()`, `undefined` for none) over Bevy's
+`InputFocus`, and `KeyCode`, a TS enum generated from Bevy's variants (`KeyCode.KeyN`). They read
+Bevy's own resources, so they agree with Rust systems. As in Bevy, a key typed into a field is
+still pressed; check focus for a single-key shortcut:
+
+```ts
+import { KeyCode, type InputFocus, type Keys } from "bevy-ts/input";
+
+export function openNotes(keys: Keys, focus: InputFocus) {
+  if (keys.justPressed(KeyCode.KeyN) && focus.get() === undefined) open();
+}
+```
+
+A number that is not a `KeyCode` throws, naming the param, the method and the number.
+
 `examples/rapier` uses all of it with no Rust in the project. Plans for leafwing-input-manager,
 avian and bevy_hanabi are in [research/native-ports.md](research/native-ports.md).
 
