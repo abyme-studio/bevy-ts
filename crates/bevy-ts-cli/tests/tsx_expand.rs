@@ -82,3 +82,34 @@ fn an_unknown_component_or_a_throwing_scene_fails_with_its_location() {
     let e = bevy_ts_tsx::expand(app.world_mut(), &[ExpandItem { component: "units::Grunt".into(), props: props(json!({ "speed": 10 })), at: at(5) }]).unwrap_err();
     assert!(e[0].message.contains("too fast"), "{e:?}");
 }
+
+#[test]
+fn each_item_gets_the_error_its_own_scene_raised() {
+    // Booster's scene succeeds, but sets a signal a mounted grunt's binding throws on: that
+    // error lands in the same call, after the throwing grunt's.
+    let src = UNITS
+        .replace("return (", "if (speed > 9) throw new Error(\"too fast\");\n    return (")
+        .replace("() => [speed + boost(), 0, 0]", "() => { if (boost() > 0) throw new Error(\"boosted\"); return [speed, 0, 0]; }")
+        .replace(
+            "app.scene(",
+            "export class Booster extends SceneComponent {\n  static scene() {\n    setBoost(1);\n    return <entity name=\"booster\" />;\n  }\n}\napp.scene(",
+        );
+    let dir = project("tsx-expand-each", &[("package.json", "{}"), ("src/units.tsx", &src)]);
+    let mut app = app(&dir.join("src/units.tsx"));
+    assert!(reload(&mut app, false).errors.is_empty());
+    app.update();
+    let mut live = bevy_ts_tsx::expand(app.world_mut(), &[ExpandItem { component: "units::Grunt".into(), props: Map::new(), at: at(2) }]).expect("expanded");
+    live[0].key = "g".into();
+    bevy_ts_tsx::reconcile_external(app.world_mut(), "level:arena", None, &live).expect("reconciled");
+    updates(&mut app, 2);
+    let items = [
+        ExpandItem { component: "units::Grunt".into(), props: props(json!({ "speed": 10 })), at: at(4) },
+        ExpandItem { component: "units::Booster".into(), props: Map::new(), at: at(6) },
+    ];
+    let out = bevy_ts_tsx::expand_each(app.world_mut(), &items).expect("one call");
+    let e = out[0].as_ref().unwrap_err();
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(e[0].message.contains("too fast"), "{e:?}");
+    assert!(out[1].is_ok(), "{:?}", out[1]);
+    assert!(logs(&app).iter().any(|l| l.message.contains("boosted")), "the binding's error is logged");
+}

@@ -58,9 +58,10 @@ struct Response {
     needs: Vec<(Option<u64>, String)>,
     /// Sites whose reads were fixed by their first run: site, own components read.
     sites: Vec<(u32, Vec<String>)>,
-    /// One description per `expand` item, in order; null where it failed (its error is in
-    /// `errors`).
+    /// One description per `expand` item, in order; null where it failed.
     expanded: Option<Vec<Option<NodeDesc>>>,
+    /// One entry per `expand` item, in order: the error its expansion raised, or null.
+    failures: Option<Vec<Option<ScriptError>>>,
     errors: Vec<ScriptError>,
 }
 
@@ -472,11 +473,11 @@ fn header(payload: &Payload) -> Vec<u8> {
     bytes
 }
 
-/// Each item's description or `None`, and the call's errors.
-type Expanded = (Vec<Option<NodeDesc>>, Vec<ScriptError>);
+/// Each item's description or its error, and the call's other errors.
+type Expanded = (Vec<Result<NodeDesc, ScriptError>>, Vec<ScriptError>);
 
-/// One host call expanding every item: each item's description or `None`, and the call's errors
-/// in the order JS raised them (located in display form).
+/// One host call expanding every item: each item's description or the error it raised, and the
+/// call's other errors (all located in display form).
 fn expand_call(world: &mut World, items: &[ExpandItem]) -> Result<Expanded, Vec<ScriptError>> {
     let payload = Payload {
         expand: Some(items.iter().map(|i| (i.component.clone(), i.props.clone(), i.at.clone())).collect()),
@@ -486,20 +487,29 @@ fn expand_call(world: &mut World, items: &[ExpandItem]) -> Result<Expanded, Vec<
     let out = plugin_api::call_entry(world, ENTRY, &header(&payload)).map_err(|e| vec![e])?;
     let mut response: Response = serde_json::from_slice(&out).map_err(|e| vec![ScriptError::new(format!("tsx expand returned bad output: {e}"))])?;
     let mut expanded = response.expanded.take().unwrap_or_default();
+    let mut failures = response.failures.take().unwrap_or_default();
     let errors = std::mem::take(&mut response.errors);
     // Whatever else the call produced (patches, mounts) applies as in any call.
     apply(world, response);
     expanded.resize(items.len(), None);
-    let errors = errors
+    failures.resize(items.len(), None);
+    let display = |mut e: ScriptError| {
+        if let Some(l) = &mut e.location {
+            l.file = bevy_ts::backend::display_file(&l.file);
+        }
+        e
+    };
+    let expanded = expanded
         .into_iter()
-        .map(|mut e| {
-            if let Some(l) = &mut e.location {
-                l.file = bevy_ts::backend::display_file(&l.file);
-            }
-            e
+        .zip(failures)
+        .zip(items)
+        .map(|((x, f), item)| match (x, f) {
+            (Some(n), _) => Ok(n),
+            (None, Some(e)) => Err(display(e)),
+            (None, None) => Err(ScriptError::at(format!("{} returned no description", item.component), Some(item.at.clone()))),
         })
         .collect();
-    Ok((expanded, errors))
+    Ok((expanded, errors.into_iter().map(display).collect()))
 }
 
 /// Expands scene component instances through their TS `scene`, all in one host call: one
@@ -511,13 +521,16 @@ pub fn expand(world: &mut World, items: &[ExpandItem]) -> Result<Vec<NodeDesc>, 
         return Ok(Vec::new());
     }
     let (expanded, mut errors) = expand_call(world, items)?;
-    if !errors.is_empty() || expanded.iter().any(Option::is_none) {
-        if errors.is_empty() {
-            errors.push(ScriptError::new("scene component expansion returned no description"));
+    let mut nodes = Vec::with_capacity(expanded.len());
+    for x in expanded {
+        match x {
+            Ok(n) => nodes.push(n),
+            Err(e) => errors.push(e),
         }
+    }
+    if !errors.is_empty() {
         return Err(errors);
     }
-    let mut nodes: Vec<NodeDesc> = expanded.into_iter().flatten().collect();
     normalize_sources(&mut nodes);
     Ok(nodes)
 }
@@ -526,28 +539,21 @@ pub fn expand(world: &mut World, items: &[ExpandItem]) -> Result<Vec<NodeDesc>, 
 pub type ItemExpansion = Result<NodeDesc, Vec<ScriptError>>;
 
 /// [`expand`], each item answering for itself: a throwing `scene()` fails its item only, with
-/// the error it raised. Errors no failed item accounts for are logged.
+/// the error it raised. The call's other errors (a binding a scene set off) are logged.
 pub fn expand_each(world: &mut World, items: &[ExpandItem]) -> Result<Vec<ItemExpansion>, Vec<ScriptError>> {
     if items.is_empty() {
         return Ok(Vec::new());
     }
-    let (expanded, mut errors) = expand_call(world, items)?;
-    // JS raises one error per failed item, after any the call raised before expanding.
-    let failed = expanded.iter().filter(|x| x.is_none()).count();
-    let mut theirs = errors.split_off(errors.len().saturating_sub(failed)).into_iter();
+    let (expanded, errors) = expand_call(world, items)?;
     for e in errors {
         log_error(world, e.message, e.location);
     }
     Ok(expanded
         .into_iter()
-        .zip(items)
-        .map(|(x, item)| match x {
-            Some(n) => {
-                let mut nodes = vec![n];
-                normalize_sources(&mut nodes);
-                Ok(nodes.pop().expect("one"))
-            }
-            None => Err(vec![theirs.next().unwrap_or_else(|| ScriptError::at(format!("{} returned no description", item.component), Some(item.at.clone())))]),
+        .map(|x| {
+            let mut nodes = vec![x.map_err(|e| vec![e])?];
+            normalize_sources(&mut nodes);
+            Ok(nodes.pop().expect("one"))
         })
         .collect())
 }

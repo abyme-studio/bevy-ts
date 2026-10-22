@@ -376,6 +376,11 @@ class Computation extends Owner {
   }
 }
 
+/** An error as it crosses to Rust. */
+function errorRecord(e, location) {
+  return { message: e && e.message ? `${e.name || "Error"}: ${e.message}` : String(e), location: location || null, stack: e && e.stack ? String(e.stack) : null };
+}
+
 function reportError(e) {
   console.error(e && e.stack ? e.stack : String(e));
 }
@@ -702,19 +707,15 @@ export class TsxContext {
     return { $b: id, $s: site.id };
   }
 
-  /** One scene component instance, by name or `module#export`: its description, or null. */
+  /** One scene component instance, by name or `module#export`: its description, or the error it raised. */
   expand(name, props, at) {
     const C = hostSceneComponent ? hostSceneComponent(name) : null;
-    if (!C || typeof C.scene !== "function") {
-      this.error(new Error(`no scene component named ${name}`), at || null);
-      return null;
-    }
+    if (!C || typeof C.scene !== "function") return { failure: errorRecord(new Error(`no scene component named ${name}`), at) };
     try {
       const nodes = runScene(this, () => describe(create(C, props || {}, undefined, at, false), this));
-      return nodes[0] || null;
+      return { node: nodes[0] || null };
     } catch (e) {
-      this.error(e, (e && e.bevyTsLocation) || at || null);
-      return null;
+      return { failure: errorRecord(e, (e && e.bevyTsLocation) || at) };
     }
   }
 
@@ -757,7 +758,7 @@ export class TsxContext {
   }
 
   error(e, location) {
-    this.errors.push({ message: e && e.message ? `${e.name || "Error"}: ${e.message}` : String(e), location: location || null, stack: e && e.stack ? String(e.stack) : null });
+    this.errors.push(errorRecord(e, location));
   }
 
   /**
@@ -836,9 +837,13 @@ export class TsxContext {
       });
       // Scene component instances a Rust plugin (levels) asks for: described after this call's
       // computations started, so their bindings wait until the plugin has mounted them.
+      // Each failed item's own error goes beside it, not among the call's.
       const expanded = (payload.expand || []).map(([name, props, at]) => this.expand(name, props, at));
       const out = this.output();
-      if (payload.expand) out.expanded = expanded;
+      if (payload.expand) {
+        out.expanded = expanded.map((x) => x.node || null);
+        out.failures = expanded.map((x) => x.failure || null);
+      }
       return out;
     } finally {
       this.inCall = false;
