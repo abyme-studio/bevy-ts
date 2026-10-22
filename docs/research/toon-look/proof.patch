@@ -1,0 +1,318 @@
+diff --git a/crates/bevy-ts-material/src/render.rs b/crates/bevy-ts-material/src/render.rs
+index 05bee9c..4cb39e4 100644
+--- a/crates/bevy-ts-material/src/render.rs
++++ b/crates/bevy-ts-material/src/render.rs
+@@ -146,6 +146,8 @@ impl ErasedRenderAsset for ScriptMaterial {
+         SRes<DrawFunctions<Opaque3d>>,
+         SRes<DrawFunctions<AlphaMask3d>>,
+         SRes<DrawFunctions<Transparent3d>>,
++        SRes<DrawFunctions<bevy::core_pipeline::prepass::Opaque3dPrepass>>,
++        SRes<DrawFunctions<bevy::pbr::Shadow>>,
+         SResMut<MaterialBindGroupAllocators>,
+         SResMut<RenderMaterialBindings>,
+         SRes<RenderAssets<GpuImage>>,
+@@ -156,7 +158,7 @@ impl ErasedRenderAsset for ScriptMaterial {
+     fn prepare_asset(
+         source: ScriptMaterial,
+         asset_id: AssetId<ScriptMaterial>,
+-        (opaque, alpha_mask, transparent, allocators, bindings, images, linear, fallback): &mut SystemParamItem<Self::Param>,
++        (opaque, alpha_mask, transparent, prepass, shadow, allocators, bindings, images, linear, fallback): &mut SystemParamItem<Self::Param>,
+     ) -> Result<PreparedMaterial, PrepareAssetError<ScriptMaterial>> {
+         let kind = source.kind.clone();
+         let mut resources = Vec::new();
+@@ -200,12 +202,20 @@ impl ErasedRenderAsset for ScriptMaterial {
+             material_layout: Some(kind.layout.clone()),
+             mesh_pipeline_key_bits: ErasedMeshPipelineKey::new(MeshPipelineKey::empty()),
+             base_specialize: Some(base_specialize),
++            prepass_specialize: Some(prepass_specialize),
++            shadows_enabled: true,
++            prepass_enabled: true,
+             material_key: ErasedMaterialKey::new(kind.id),
+             ..default()
+         };
+         properties.add_draw_function(MainPassOpaqueDrawFunction, opaque.read().id::<DrawMaterial>());
+         properties.add_draw_function(MainPassAlphaMaskDrawFunction, alpha_mask.read().id::<DrawMaterial>());
+         properties.add_draw_function(MainPassTransparentDrawFunction, transparent.read().id::<DrawMaterial>());
++        // research@toon-look scratch: join the prepass and cast shadows.
++        properties.add_draw_function(bevy::pbr::PrepassOpaqueDrawFunction, prepass.read().id::<bevy::pbr::DrawPrepass>());
++        properties.add_draw_function(bevy::pbr::PrepassOpaqueDepthOnlyDrawFunction, prepass.read().id::<bevy::pbr::DrawDepthOnlyPrepass>());
++        properties.add_draw_function(bevy::pbr::ShadowsDrawFunction, shadow.read().id::<bevy::pbr::DrawPrepass>());
++        properties.add_draw_function(bevy::pbr::ShadowsDepthOnlyDrawFunction, shadow.read().id::<bevy::pbr::DrawDepthOnlyPrepass>());
+         if let Some(s) = &kind.fragment {
+             properties.add_shader(MaterialFragmentShader, s.clone());
+         }
+@@ -268,3 +278,24 @@ fn extract_specializations_removed(needs: Extract<Res<EntitiesNeedingSpecializat
+         dirty.removed_renderables.insert(MainEntity::from(*e));
+     }
+ }
++
++// research@toon-look scratch: bevy_pbr's own prepass_specialize, which is private.
++fn prepass_specialize(
++    world: &mut World,
++    key: &bevy::material::key::ErasedMaterialPipelineKey,
++    layout: &bevy::mesh::MeshVertexBufferLayoutRef,
++    properties: &Arc<MaterialProperties>,
++) -> Result<bevy::render::render_resource::CachedRenderPipelineId, bevy::render::render_resource::SpecializedMeshPipelineError> {
++    use bevy::pbr::{PrepassPipeline, PrepassPipelineSpecializer};
++    use bevy::render::render_resource::{PipelineCache, SpecializedMeshPipelines};
++    if let Some(pipelines) = world.get_resource::<SpecializedMeshPipelines<PrepassPipelineSpecializer>>()
++        && let Some(id) = pipelines.get_pipeline(key, layout)
++    {
++        return Ok(id);
++    }
++    world.resource_scope(|world, mut pipelines: Mut<SpecializedMeshPipelines<PrepassPipelineSpecializer>>| {
++        let pipeline = world.resource::<PrepassPipeline>().clone();
++        let cache = world.resource::<PipelineCache>();
++        pipelines.specialize(cache, &PrepassPipelineSpecializer { pipeline, properties: properties.clone() }, key.clone(), layout)
++    })
++}
+diff --git a/crates/bevy-ts-material/tests/toon_proof.rs b/crates/bevy-ts-material/tests/toon_proof.rs
+new file mode 100644
+index 0000000..db2f120
+--- /dev/null
++++ b/crates/bevy-ts-material/tests/toon_proof.rs
+@@ -0,0 +1,244 @@
++//! research@toon-look scratch proof: one small scene, three orthographic panels.
++//! A: StandardMaterial. B: a script-material toon ramp. C: B plus ink lines from the depth and
++//! normal prepass, read inside the same script material.
++
++use bevy::camera::{RenderTarget, ScalingMode};
++use bevy::core_pipeline::prepass::{DepthPrepass, NormalPrepass};
++use bevy::core_pipeline::tonemapping::Tonemapping;
++use bevy::light::CascadeShadowConfigBuilder;
++use bevy::prelude::*;
++use bevy::render::render_resource::TextureFormat;
++use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
++use bevy::window::ExitCondition;
++use bevy::winit::WinitPlugin;
++use bevy_ts_material::layout::{Base, Bindings, ParamType, struct_name};
++use bevy_ts_material::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
++use serde_json::json;
++use std::sync::{Arc, Mutex};
++
++const W: u32 = 960;
++const H: u32 = 720;
++
++const TOON: &str = r#"
++import bevy_pbr::render::forward_io::VertexOutput;
++import bevy_pbr::render::mesh_view_bindings::{view, lights};
++import bevy_pbr::render::shadows::fetch_directional_shadow;
++INK_IMPORT
++
++fn lit(in: VertexOutput) -> vec3<f32> {
++    let n = normalize(in.world_normal);
++    let sun = lights.directional_lights[0];
++    let ndl = dot(n, sun.direction_to_light);
++    let view_z = dot(vec4<f32>(view.view_from_world[0].z, view.view_from_world[1].z, view.view_from_world[2].z, view.view_from_world[3].z), in.world_position);
++    let shadow = fetch_directional_shadow(0u, in.world_position, n, view_z, in.position.xy);
++    let l = max(ndl, 0.0) * shadow;
++    // Two soft cel steps: shade, mid, lit.
++    let b = 0.5 * smoothstep(0.08, 0.14, l) + 0.5 * smoothstep(0.55, 0.61, l);
++    let shade = params.color.rgb * params.shade.rgb;
++    let base = mix(shade, params.color.rgb, b);
++    // A warm rim on the lit side keeps forms readable from above.
++    let rim = pow(1.0 - max(n.y, 0.0), 3.0) * 0.15 * b;
++    return base + vec3<f32>(rim, rim * 0.8, rim * 0.5);
++}
++
++@fragment
++fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
++    var c = lit(in);
++    INK_BODY
++    return vec4<f32>(c, 1.0);
++}
++"#;
++
++const INK_IMPORT: &str = "import bevy_pbr::prepass::utils::{prepass_depth, prepass_normal};";
++const INK_BODY: &str = r#"
++    let p = in.position;
++    let d0 = prepass_depth(p, 0u);
++    let n0 = prepass_normal(p, 0u);
++    var edge = 0.0;
++    let offs = array<vec2<f32>, 4>(vec2(1.5, 0.0), vec2(-1.5, 0.0), vec2(0.0, 1.5), vec2(0.0, -1.5));
++    for (var i = 0; i < 4; i++) {
++        let q = vec4<f32>(p.xy + offs[i], p.zw);
++        // Orthographic depth is linear: one threshold holds across the screen.
++        let dd = abs(prepass_depth(q, 0u) - d0) * params.depth_k;
++        let dn = 1.0 - dot(prepass_normal(q, 0u), n0);
++        edge = max(edge, max(smoothstep(0.4, 0.8, dd), smoothstep(0.25, 0.5, dn)));
++    }
++    c = mix(c, params.ink.rgb, edge * 0.9);
++"#;
++
++fn toon_kind(world: &mut World, name: &str, ink: bool) -> Arc<Kind> {
++    let mut params = vec![("color", ParamType::Base(Base::Color)), ("shade", ParamType::Base(Base::Color))];
++    if ink {
++        params.push(("ink", ParamType::Base(Base::Color)));
++        params.push(("depth_k", ParamType::Base(Base::F32)));
++    }
++    let bindings = Bindings::new(name, params.iter().map(|(n, t)| (*n, t)), &[]).unwrap();
++    let body = TOON.replace("INK_IMPORT", if ink { INK_IMPORT } else { "" }).replace("INK_BODY", if ink { INK_BODY } else { "" });
++    let src = format!("{body}\n{}", bindings.wgsl(name));
++    let path = format!("bevy_ts_material/proof/{}.wesl", struct_name(name).to_lowercase());
++    let shader = world.resource_mut::<Assets<Shader>>().add(Shader::from_wesl(src, path));
++    Arc::new(Kind::new(name, bindings, Some(shader), None, AlphaMode::Opaque))
++}
++
++fn instance(kind: &Arc<Kind>, values: serde_json::Value) -> ScriptMaterial {
++    let mut data = kind.bindings.params().defaults();
++    for (k, v) in values.as_object().unwrap() {
++        kind.bindings.params().encode(k, v, &mut data).unwrap();
++    }
++    ScriptMaterial { kind: kind.clone(), data, textures: vec![] }
++}
++
++#[derive(Clone, Copy)]
++enum Panel {
++    Pbr,
++    Toon,
++    Ink,
++}
++
++/// Warm palette: (base, shade). The shade is a cool multiply, as a painter glazes shadows.
++const PALETTE: &[(&str, &str, &str)] = &[
++    ("grass", "#9cc45a", "#5a6aa0"),
++    ("water", "#8fd0e8", "#6878b8"),
++    ("trunk", "#8a5a3a", "#584878"),
++    ("leaf", "#4f9a5a", "#40508a"),
++    ("rock", "#a8a8a0", "#606890"),
++    ("body", "#f2ede0", "#8a88b0"),
++    ("roof", "#d0603a", "#704870"),
++    ("wall", "#e8d0a0", "#807898"),
++    ("cap", "#e0a040", "#806070"),
++];
++
++fn spawn_scene(world: &mut World, panel: Panel, x0: f32, kinds: &(Arc<Kind>, Arc<Kind>)) {
++    let mut mat = |world: &mut World, name: &str| -> Box<dyn Fn(&mut EntityWorldMut)> {
++        let (_, base, shade) = *PALETTE.iter().find(|p| p.0 == name).unwrap();
++        match panel {
++            Panel::Pbr => {
++                let c = Srgba::hex(base).unwrap();
++                let h = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial { base_color: c.into(), perceptual_roughness: 0.9, ..default() });
++                Box::new(move |e: &mut EntityWorldMut| {
++                    e.insert(MeshMaterial3d(h.clone()));
++                })
++            }
++            Panel::Toon | Panel::Ink => {
++                let (kind, v) = match panel {
++                    Panel::Toon => (&kinds.0, json!({ "color": base, "shade": shade })),
++                    _ => (&kinds.1, json!({ "color": base, "shade": shade, "ink": "#2a2030", "depth_k": 400.0 })),
++                };
++                let h = world.resource_mut::<Assets<ScriptMaterial>>().add(instance(kind, v));
++                Box::new(move |e: &mut EntityWorldMut| {
++                    e.insert(ScriptMaterial3d(h.clone()));
++                })
++            }
++        }
++    };
++    let mut put = |world: &mut World, mesh: Mesh, m: &str, t: Transform| {
++        let mesh = world.resource_mut::<Assets<Mesh>>().add(mesh);
++        let apply = mat(world, m);
++        let mut e = world.spawn((Mesh3d(mesh), t.with_translation(t.translation + Vec3::X * x0)));
++        apply(&mut e);
++    };
++    put(world, Plane3d::default().mesh().size(18.0, 18.0).into(), "grass", Transform::IDENTITY);
++    put(world, Circle::new(2.6).mesh().into(), "water", Transform::from_xyz(2.5, 0.02, 2.0).with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)).with_scale(Vec3::new(1.6, 1.0, 1.0)));
++    for (x, z, s) in [(-4.0, -3.0, 1.0), (-1.0, -5.0, 1.3), (4.5, -3.5, 0.9), (-5.0, 3.0, 1.1)] {
++        put(world, Cylinder::new(0.25 * s, 1.6 * s).mesh().into(), "trunk", Transform::from_xyz(x, 0.8 * s, z));
++        put(world, Sphere::new(1.2 * s).mesh().ico(2).unwrap(), "leaf", Transform::from_xyz(x, 2.2 * s, z));
++        put(world, Sphere::new(0.8 * s).mesh().ico(2).unwrap(), "leaf", Transform::from_xyz(x + 0.7 * s, 1.7 * s, z + 0.5 * s));
++    }
++    for (x, z, s) in [(0.3, 0.8, 0.6), (5.5, 1.0, 0.8), (-2.5, 4.5, 0.5), (1.0, 4.8, 0.45)] {
++        put(world, Sphere::new(s).mesh().ico(1).unwrap(), "rock", Transform::from_xyz(x, s * 0.4, z).with_scale(Vec3::new(1.3, 0.8, 1.0)));
++    }
++    put(world, Cuboid::new(2.4, 1.6, 2.0).into(), "wall", Transform::from_xyz(-1.5, 0.8, -1.2));
++    put(world, Cone { radius: 2.0, height: 1.4 }.mesh().resolution(4).into(), "roof", Transform::from_xyz(-1.5, 2.3, -1.2).with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_4)));
++    for (x, z) in [(1.5, -1.5), (-3.0, 1.0), (0.0, 2.5), (3.2, -0.8), (-0.8, 6.0), (-4.2, -1.0)] {
++        put(world, Capsule3d::new(0.22, 0.4).mesh().into(), "body", Transform::from_xyz(x, 0.45, z));
++        put(world, Sphere::new(0.26).mesh().uv(24, 12), "body", Transform::from_xyz(x, 1.0, z));
++    }
++    for (x, z) in [(4.0, 5.0), (-6.0, -6.0)] {
++        put(world, Cylinder::new(0.12, 0.5).mesh().into(), "wall", Transform::from_xyz(x, 0.25, z));
++        put(world, Sphere::new(0.5).mesh().uv(24, 12), "cap", Transform::from_xyz(x, 0.55, z).with_scale(Vec3::new(1.0, 0.5, 1.0)));
++    }
++}
++
++#[test]
++fn toon_proof() {
++    let mut app = App::new();
++    app.add_plugins(
++        DefaultPlugins
++            .build()
++            .disable::<WinitPlugin>()
++            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }),
++    )
++    .add_plugins(ScriptMaterialRenderPlugin);
++    while app.plugins_state() == bevy::app::PluginsState::Adding {
++        bevy::tasks::tick_global_task_pools_on_main_thread();
++    }
++    app.finish();
++    app.cleanup();
++    let world = app.world_mut();
++    let kinds = (toon_kind(world, "proof::Toon", false), toon_kind(world, "proof::Ink", true));
++
++    world.spawn((
++        DirectionalLight { illuminance: 8000.0, shadow_maps_enabled: true, ..default() },
++        Transform::from_xyz(-4.0, 10.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
++        CascadeShadowConfigBuilder { num_cascades: 1, maximum_distance: 80.0, first_cascade_far_bound: 80.0, ..default() }.build(),
++    ));
++    world.insert_resource(GlobalAmbientLight { brightness: 400.0, ..default() });
++
++    let mut targets = vec![];
++    for (i, panel) in [Panel::Pbr, Panel::Toon, Panel::Ink].into_iter().enumerate() {
++        let x0 = (i as f32 - 1.0) * 60.0;
++        spawn_scene(world, panel, x0, &kinds);
++        let mut target = Image::new_target_texture(W, H, TextureFormat::Rgba8UnormSrgb, None);
++        target.asset_usage = bevy::asset::RenderAssetUsages::default();
++        let target = world.resource_mut::<Assets<Image>>().add(target);
++        let ortho = Projection::Orthographic(OrthographicProjection {
++            scaling_mode: ScalingMode::FixedVertical { viewport_height: 13.0 },
++            ..OrthographicProjection::default_3d()
++        });
++        let look = Vec3::new(x0, 0.0, 0.5);
++        let mut cam = world.spawn((
++            Camera3d::default(),
++            ortho,
++            Msaa::Off,
++            RenderTarget::Image(target.clone().into()),
++            Transform::from_translation(look + Vec3::new(0.0, 20.0, 14.0)).looking_at(look, Vec3::Y),
++        ));
++        match panel {
++            Panel::Pbr => {}
++            Panel::Toon => {
++                cam.insert(Tonemapping::None);
++            }
++            Panel::Ink => {
++                cam.insert((Tonemapping::None, DepthPrepass, NormalPrepass));
++            }
++        }
++        targets.push(target);
++    }
++
++    let shots: Arc<Mutex<Vec<Option<Image>>>> = Arc::new(Mutex::new(vec![None, None, None]));
++    for frame in 0..600 {
++        app.update();
++        if frame == 400 {
++            for (i, t) in targets.iter().enumerate() {
++                let s = shots.clone();
++                app.world_mut().spawn(Screenshot::image(t.clone())).observe(move |e: On<ScreenshotCaptured>| {
++                    s.lock().unwrap()[i] = Some(e.image.clone());
++                });
++            }
++        }
++        if frame > 400 && shots.lock().unwrap().iter().all(Option::is_some) {
++            break;
++        }
++    }
++    let out = std::env::var("TOON_PROOF_OUT").unwrap_or("/tmp/toon-proof".into());
++    std::fs::create_dir_all(&out).unwrap();
++    for (i, img) in shots.lock().unwrap().iter().enumerate() {
++        let img = img.as_ref().expect("screenshot");
++        let d = img.data.as_ref().unwrap();
++        let path = format!("{out}/{}.rgba", ["a-pbr", "b-toon", "c-ink"][i]);
++        std::fs::write(&path, d).unwrap();
++        let distinct: std::collections::HashSet<_> = d.chunks(4).map(|p| [p[0], p[1], p[2]]).collect();
++        eprintln!("{path}: {} colours", distinct.len());
++        assert!(distinct.len() > 8, "panel {i} is blank");
++    }
++}
