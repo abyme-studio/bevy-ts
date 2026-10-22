@@ -46,6 +46,10 @@ Each fails the load with the importing file and line:
   a `system(...)`: packages cannot declare ECS types yet. A package may import `bevy-ts` for
   anything else.
 
+Package code is any module under a `node_modules` folder or outside the project root, so shared
+code reached by a relative import or a linked folder outside the root cannot declare ECS types
+either.
+
 ### Dynamic `import()`
 
 A dynamic `import()` is not resolved when compiling. At run time it finds its target only among

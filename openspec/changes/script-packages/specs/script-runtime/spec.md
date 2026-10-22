@@ -64,7 +64,7 @@ The compile step SHALL refuse, each with an error naming the importing file and 
 - **THEN** the promise rejects, the `catch` runs, and the game keeps running
 
 ### Requirement: Package code is library code
-A module SHALL be game code when its real path is under the project root and not under a `node_modules` folder, and package code otherwise. Package code SHALL get no declaration pass. A package module that declares a component, resource, message, event, state or system set, or registers a system, observer or plugin through `bevy-ts`, SHALL fail the load with its file and line, naming the package and saying packages cannot declare ECS types yet. A package MAY import `bevy-ts` for anything else.
+A module SHALL be game code when its real path is under the project root and not under a `node_modules` folder, and package code otherwise. Package code SHALL get no declaration pass. A package module that imports `bevy-ts` and declares a data class (a component, resource, message or event), a `States` or `SystemSet` class, or a `system(...)`, SHALL fail the load with its file and line, naming the package and saying packages cannot declare ECS types yet. A package MAY import `bevy-ts` for anything else.
 
 #### Scenario: A package declares a component
 - **WHEN** a package module exports `class Health extends Component { hp: f32 = 1 }` imported from `bevy-ts`

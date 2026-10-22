@@ -65,16 +65,12 @@ pub fn transform(path: &Path, dev: bool) -> Result<String, Vec<ScriptError>> {
 
 /// Compiles one TS or TSX file outside a graph. System signatures are read before types are
 /// stripped and their declarations appended after the code, with identities relative to `root`.
-/// An import that resolves is rewritten as the graph would; one that does not is left as written.
+/// Every import is left as written: the bundler plugins call this through `bevy-ts transform`,
+/// and the bundler resolves with its own conditions and pre-bundling.
 pub fn compile_module(path: &Path, source: &str, dev: bool, root: &Path) -> Result<Compiled, Vec<ScriptError>> {
     let resolver = resolver(dev);
     let options = Options { dev, root, declare: true, shipped: None, package: None, resolver: &resolver };
-    compile_with(path, source, &options, &mut |spec, _| {
-        if is_builtin(spec) {
-            return Ok(None);
-        }
-        Ok(resolve_path(&resolver, path, spec).map(|target| specifier(path, &target)))
-    })
+    compile_with(path, source, &options, &mut |_, _| Ok(None))
 }
 
 /// Whether the engine's compiles append declarations. Off until `core.js` defines
@@ -505,7 +501,8 @@ impl Compiler {
                 }
             };
             if let Some(other) = shipped.insert(place.clone(), path.clone()) {
-                // Two pnpm peer variants of one `name@version` share the path when identical.
+                // Two pnpm peer variants of one `name@version` share the path when identical. The
+                // second's imports are not walked: identical bytes import the same specifiers.
                 if std::fs::read(&other).ok() == std::fs::read(&path).ok() {
                     continue;
                 }
@@ -852,6 +849,21 @@ mod tests {
         assert_eq!(a.len(), b.len());
         assert_eq!(a[1..], b[1..], "lines after the import keep their mappings");
         assert_eq!(a[0].split(',').next(), b[0].split(',').next());
+    }
+
+    #[test]
+    fn transform_keeps_imports_as_written() {
+        let dir = project(
+            "transform",
+            &[
+                ("src/game.ts", "import { a } from \"dep\";\nimport { k } from \"./util.js\";\nexport const x = [a, k];\n"),
+                ("src/util.ts", "export const k = 1;\n"),
+                ("node_modules/dep/package.json", r#"{"name": "dep", "type": "module", "exports": {"browser": "./browser.js", "default": "./index.js"}}"#),
+                ("node_modules/dep/index.js", "export const a = 1;\n"),
+            ],
+        );
+        let code = transform(&dir.join("src/game.ts"), true).unwrap();
+        assert!(code.contains("from \"dep\"") && code.contains("from \"./util.js\""), "the bundler resolves: {code}");
     }
 
     #[test]
