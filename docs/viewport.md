@@ -181,6 +181,10 @@ levels that are open.
 The selection follows by node id: a selected level or TSX entity is selected again with its new
 entity, streamed with `origin: "engine"`; one the game spawned is dropped.
 
+`tsx_tree+watch` follows the remount as it follows any restart: the message after the Stop sends
+every row again under `added`, each with its new entity, so a client keyed by node id holds the
+entities that stand now. Rows the remount did not bring back are under `removed`.
+
 A Stop costs a restart. At 1,000 level instances it takes about 0.1 s, at 10,000 about a second;
 `docs/research/stop-cost.md` has the numbers.
 

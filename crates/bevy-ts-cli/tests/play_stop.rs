@@ -218,6 +218,57 @@ fn a_save_during_play_is_what_stop_rebuilds_without_compiling() {
     assert_eq!(last.status, ReloadStatus::Applied, "the Stop re-applied the live set");
 }
 
+fn tree_watch(app: &mut App) -> Option<Value> {
+    let id = match app.world().resource::<RemoteMethods>().get("bevy-ts/tsx_tree+watch") {
+        Some(RemoteMethodSystemId::Watching(id)) => *id,
+        _ => panic!("bevy-ts/tsx_tree+watch not served"),
+    };
+    app.world_mut().run_system_with(id, None).unwrap().unwrap()
+}
+
+#[test]
+fn the_tree_watch_follows_a_stop_to_the_new_entities() {
+    let (_dir, mut app) = played("play-stop-watch");
+    // A client holds the tree by node id, with each row's entity.
+    let first = tree_watch(&mut app).unwrap();
+    let mut client: std::collections::HashMap<String, u64> = first["snapshot"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|r| r["nodes"].as_array().unwrap().iter())
+        .filter_map(|n| Some((n["node"].as_str()?.to_string(), n["entity"].as_u64()?)))
+        .collect();
+    let (old_a, _) = named(&mut app, "EnemyA")[0];
+    assert!(client.values().any(|e| *e == old_a.to_bits()));
+
+    mode(&mut app, "edit");
+    let mut seen = 0;
+    for _ in 0..5 {
+        if let Some(m) = tree_watch(&mut app) {
+            assert!(m.get("snapshot").is_none(), "the watch resubscribed: {m}");
+            for id in m["removed"].as_array().into_iter().flatten() {
+                client.remove(id.as_str().unwrap());
+            }
+            for row in m["added"].as_array().into_iter().flatten() {
+                seen += 1;
+                client.insert(row["node"].as_str().unwrap().to_string(), row["entity"].as_u64().unwrap());
+            }
+        }
+        updates(&mut app, 1);
+    }
+    assert!(seen > 0, "the remount was sent");
+    // Every entity tsx made is a row of the client's tree, so none shows as spawned at runtime.
+    let made: std::collections::BTreeSet<u64> =
+        app.world_mut().query_filtered::<Entity, With<bevy_ts_tsx::TsxNode>>().iter(app.world()).map(|e| e.to_bits()).collect();
+    let held: std::collections::BTreeSet<u64> = client.values().copied().collect();
+    assert_eq!(held, made);
+    for name in ["EnemyA", "EnemyB"] {
+        let (e, _) = named(&mut app, name)[0];
+        assert!(held.contains(&e.to_bits()), "{name} is in the tree with its new entity");
+    }
+    assert!(!held.contains(&old_a.to_bits()));
+}
+
 #[test]
 fn a_level_closed_during_play_opens_again_on_stop() {
     let (_dir, mut app) = played("play-stop-closed");

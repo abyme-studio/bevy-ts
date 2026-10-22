@@ -23,6 +23,7 @@ pub mod ui;
 use crate::desc::SceneSection;
 use crate::reconcile::{apply_root, resolve_tree, unmount_root};
 use crate::tree::{ReconcileStats, RUNTIME_ROOT};
+use std::collections::BTreeSet;
 use bevy::prelude::*;
 use bevy_ts::backend::ScriptError;
 use bevy_ts::layout::NativeLayouts;
@@ -392,14 +393,19 @@ fn apply_inner(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection)
 }
 
 /// `restart: true`: TS-spawned entities are gone; tsx's go too, with every tombstone, so each
-/// scene mounts as if first.
+/// scene mounts as if first. The journal goes on: every row is removed here, and the remount
+/// adds it again with its new entity, so `tsx_tree+watch` follows a restart (a Stop's too).
 fn restart(world: &mut World) {
     let nodes: Vec<Entity> = world.query_filtered::<Entity, With<TsxNode>>().iter(world).collect();
     for e in nodes {
         // Children may already be gone with their parent.
         let _ = world.try_despawn(e);
     }
-    world.insert_resource(TsxTree::default());
+    let mut old = std::mem::take(&mut *world.resource_mut::<TsxTree>());
+    let removed: BTreeSet<u64> = old.roots.values().flat_map(|r| r.nodes.iter().copied()).chain(old.tombstones.keys().copied()).collect();
+    old.journal.open.removed.extend(removed);
+    old.journal.close();
+    world.resource_mut::<TsxTree>().journal = old.journal;
 }
 
 impl Plugin for TsxPlugin {
