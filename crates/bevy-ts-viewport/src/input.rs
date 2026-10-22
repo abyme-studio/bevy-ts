@@ -431,7 +431,8 @@ mod stream_input {
         let (mut world, window) = world();
         let mut cursor = world.resource::<Messages<TouchInput>>().get_cursor();
         let t = |id: u64, x: f64, y: f64| json!({ "id": id, "x": x, "y": y, "force": 0.5 });
-        send(&mut world, window, json!({ "type": "touch", "kind": "start", "touches": [t(1, 10.0, 20.0)] }));
+        // abyme's stream sends `t` (1.20), ms on the viewer's clock; a touch without it is accepted too.
+        send(&mut world, window, json!({ "type": "touch", "kind": "start", "touches": [t(1, 10.0, 20.0)], "t": 1234.5 }));
         send(&mut world, window, json!({ "type": "touch", "kind": "start", "touches": [t(1, 10.0, 20.0), t(2, 50.0, 60.0)] }));
         send(&mut world, window, json!({ "type": "touch", "kind": "move", "touches": [t(1, 12.0, 21.0), t(2, 50.0, 60.0)] }));
         send(&mut world, window, json!({ "type": "touch", "kind": "end", "touches": [t(2, 50.0, 60.0)] }));

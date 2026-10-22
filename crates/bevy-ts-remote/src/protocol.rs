@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.19.0";
+pub const VERSION: &str = "1.20.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -4143,6 +4143,9 @@ pub struct TouchEvent {
     pub kind: TouchEventKind,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub mods: ::std::option::Option<Modifiers>,
+    ///(1.20) When the touch happened, in ms on the viewer device's own clock. Only compared within one stream, where it mostly rises: a move sent late keeps its own time.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub t: ::std::option::Option<f64>,
     ///Every touch still down after the event. A touch absent that was down has ended (cancelled, on cancel).
     pub touches: ::std::vec::Vec<TouchPoint>,
     #[serde(rename = "type")]
