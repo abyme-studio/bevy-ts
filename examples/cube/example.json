@@ -1,6 +1,6 @@
 {
   "id": "cube",
   "title": "Cube",
-  "description": "One cube bobbing on a sine wave: a component, a startup system and an update system.",
+  "description": "One cube bobbing on a sine wave: a scene, a component, a startup system and an update system.",
   "entry": "src/game.ts"
 }

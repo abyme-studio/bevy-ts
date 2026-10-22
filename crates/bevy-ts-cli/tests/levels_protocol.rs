@@ -388,18 +388,30 @@ impl Client {
     }
 }
 
-/// Runs frames, polling the watch each one so it stays subscribed, until the level settles;
-/// returns the messages sent.
-fn watch_until_settled(app: &mut App) -> Vec<Value> {
+/// Each level root's file hashes as of its last apply.
+fn applied(app: &App) -> Vec<std::collections::BTreeMap<String, u64>> {
+    app.world().resource::<Levels>().roots.values().map(|r| r.applied.clone()).collect()
+}
+
+/// After a write: runs frames, polling the watch each one so it stays subscribed, until the level
+/// has applied the change (its file hashes move from `last`, which for a file saved outside waits
+/// on the asset watcher), settled and gone quiet; returns the messages sent and updates `last`.
+#[track_caller]
+fn watch_until_settled(app: &mut App, last: &mut Vec<std::collections::BTreeMap<String, u64>>) -> Vec<Value> {
     let mut out = Vec::new();
+    let mut quiet = 0;
     for _ in 0..300 {
         app.update();
+        quiet += 1;
         if let Some(m) = call(app, "bevy-ts/tsx_tree+watch", None).unwrap() {
             assert!(m.get("snapshot").is_none(), "the watch resubscribed: {m}");
             out.push(m);
+            quiet = 0;
         }
-        let levels = app.world().resource::<Levels>();
-        if levels.roots.values().all(|r| !r.dirty) && !out.is_empty() {
+        // The watch can trail the apply by a frame: done once a few frames bring nothing more.
+        let settled = app.world().resource::<Levels>().roots.values().all(|r| !r.dirty);
+        if settled && applied(app) != *last && !out.is_empty() && quiet >= 5 {
+            *last = applied(app);
             return out;
         }
         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -420,6 +432,7 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
     let first = call(&mut app, "bevy-ts/tsx_tree+watch", None).unwrap().unwrap();
     validate_tsx(&first);
     let mut client = Client::from_roots(&first["snapshot"]);
+    let mut last = applied(&app);
     let t = tree(&mut app);
     assert_eq!(client, Client::from_roots(&t["roots"]));
     let (a, b, a1, a2) = (id(&t, &["A"]), id(&t, &["B"]), id(&t, &["A", "a1"]), id(&t, &["A", "a2"]));
@@ -430,7 +443,7 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
 
     // A move within the file: B before A, an order change only.
     std::fs::write(dir.join("assets/levels/arena.bsn"), ORDER.replace("#A\n", "#TMP\n").replace("--\n#B\nTransform\n", "").replacen("#TMP\n", "#B\nTransform\n--\n#A\n", 1)).unwrap();
-    let ms = watch_until_settled(&mut app);
+    let ms = watch_until_settled(&mut app, &mut last);
     ms.iter().for_each(validate_tsx);
     assert!(!has(&ms, "added") && !has(&ms, "removed"), "{ms:?}");
     assert!(lists(&ms).contains(&json!({ "root": level, "parent": null, "children": [b, a] })), "{ms:?}");
@@ -441,7 +454,7 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
     let base = ok(&mut app, "bevy-ts/level_list", None)["levels"][0]["hash"].clone();
     let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": base, "ops": [{ "op": "restore", "parent": ["A"], "index": 1, "text": "#C\nTransform" }] })));
     assert_eq!(w["status"], "written", "{w}");
-    let ms = watch_until_settled(&mut app);
+    let ms = watch_until_settled(&mut app, &mut last);
     ms.iter().for_each(validate_tsx);
     let t = tree(&mut app);
     let c = id(&t, &["A", "C"]);
@@ -454,7 +467,7 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
     // A reparent: a2 from A to B.
     let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": w["hash"], "ops": [{ "op": "reparent", "path": ["A", "a2"], "parent": ["B"] }] })));
     assert_eq!(w["status"], "written", "{w}");
-    let ms = watch_until_settled(&mut app);
+    let ms = watch_until_settled(&mut app, &mut last);
     ms.iter().for_each(validate_tsx);
     let t = tree(&mut app);
     let parents: Vec<Value> = lists(&ms).iter().map(|l| l["parent"].clone()).collect();
@@ -466,7 +479,7 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
     // A rename of a node with children: its children's list comes under its new id.
     let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": w["hash"], "ops": [{ "op": "rename", "path": ["A"], "to": "A2" }] })));
     assert_eq!(w["status"], "written", "{w}");
-    let ms = watch_until_settled(&mut app);
+    let ms = watch_until_settled(&mut app, &mut last);
     ms.iter().for_each(validate_tsx);
     let t = tree(&mut app);
     ms.iter().for_each(|m| client.apply(m));
@@ -476,7 +489,7 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
     // Removing a parent: its whole subtree is removed, and its list is not sent.
     let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/arena.bsn", "base": w["hash"], "ops": [{ "op": "delete", "path": ["A2"] }] })));
     assert_eq!(w["status"], "written", "{w}");
-    let ms = watch_until_settled(&mut app);
+    let ms = watch_until_settled(&mut app, &mut last);
     ms.iter().for_each(validate_tsx);
     let removed: Vec<Value> = ms.iter().flat_map(|m| m["removed"].as_array().cloned().unwrap_or_default()).collect();
     for n in [&a, &a1, &c] {

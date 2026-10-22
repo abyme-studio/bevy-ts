@@ -1,6 +1,6 @@
 //! The engine binary's command line, shared by the prebuilt binary and every project engine.
 //!
-//! `bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]`,
+//! `bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]]`,
 //! `bevy-ts build`, `bevy-ts play`, and a bare start that plays the `game/` beside the binary.
 
 use bevy::prelude::*;
@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const USAGE: &str = "usage:
-  bevy-ts dev <entry.ts> [--headless | --viewport] [--remote-port <port>] [--inspect[=<port>]]
+  bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]]
   bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--json]
   bevy-ts build --targets [--json]
   bevy-ts play <game folder> [--headless]
@@ -37,18 +37,21 @@ pub struct DevArgs {
     pub headless: bool,
     /// No window of its own: render for a viewer that attaches over the protocol (macOS).
     pub viewport: bool,
+    /// Start in edit mode: no TS game code runs until a client sets `play`.
+    pub edit: bool,
     pub remote_port: u16,
     pub inspect: Option<SocketAddr>,
 }
 
 fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
     let mut entry = None;
-    let mut out = DevArgs { entry: String::new(), headless: false, viewport: false, remote_port: 15702, inspect: None };
+    let mut out = DevArgs { entry: String::new(), headless: false, viewport: false, edit: false, remote_port: 15702, inspect: None };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--headless" => out.headless = true,
             "--viewport" => out.viewport = true,
+            "--edit" => out.edit = true,
             "--remote-port" => {
                 out.remote_port = it.next().and_then(|p| p.parse().ok()).ok_or("--remote-port takes a port")?;
             }
@@ -68,6 +71,9 @@ fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
     out.entry = entry.ok_or("missing <entry.ts>")?;
     if out.headless && out.viewport {
         return Err("--headless and --viewport cannot be combined".into());
+    }
+    if out.edit && out.headless {
+        return Err("--edit and --headless cannot be combined".into());
     }
     Ok(out)
 }
@@ -284,6 +290,13 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     {
         let mut info = app.world_mut().resource_mut::<RuntimeInfo>();
         info.entry = Some(compiler.entry.clone());
+    }
+    if args.edit {
+        // Edit before the first frame: the viewport's `Startup` enters edit mode, and nothing of
+        // the game runs until the first play.
+        app.insert_state(bevy_ts::EngineMode::Edit);
+        app.world_mut().resource_mut::<bevy_ts::generation::Generations>().started = false;
+        app.world_mut().resource_mut::<bevy_ts::runtime::ScriptClock>().paused = true;
     }
     app.run();
 }

@@ -38,7 +38,7 @@ pub mod prelude {
     pub use crate::backend::{ModuleSet, ScriptBackend, ScriptError};
     pub use crate::manifest::Stage;
     pub use crate::plugin_api::BevyTsAppExt;
-    pub use crate::{BevyTsPlugin, BevyTsSet, ScriptHidden};
+    pub use crate::{BevyTsPlugin, BevyTsSet, EngineMode, ScriptHidden};
 }
 
 /// Marks an entity TS never sees: every TS query skips it, TS lifecycle observers ignore it, and
@@ -46,6 +46,22 @@ pub mod prelude {
 #[derive(Component, Reflect, Default, Clone, Copy, Debug)]
 #[reflect(Component, Default)]
 pub struct ScriptHidden;
+
+/// Whether the game runs (`Play`) or the engine is an editor over a still world (`Edit`, from
+/// `bevy-ts dev --edit` or the viewport's edit mode). A shipped game is always `Play`. Native
+/// systems that must not run in edit mode gate with `run_if(in_state(EngineMode::Play))`.
+#[derive(States, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EngineMode {
+    #[default]
+    Play,
+    Edit,
+}
+
+/// `First`, in edit mode: drops queued TS triggers and lifecycle events, so an edit fires no game
+/// code, now or on play.
+fn drop_edit_triggers(mut queue: ResMut<observers::ObserverQueue>) {
+    queue.0.clear();
+}
 
 /// The system set each bevy-ts stage runs in, so Rust plugins can order around it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -130,6 +146,8 @@ impl Plugin for BevyTsPlugin {
         if !app.is_plugin_added::<bevy::state::app::StatesPlugin>() {
             app.add_plugins(bevy::state::app::StatesPlugin);
         }
+        app.init_state::<EngineMode>();
+        app.add_systems(First, drop_edit_triggers.after(generation::apply_pending).run_if(in_state(EngineMode::Edit)));
         app.add_systems(First, messages::update_messages.after(generation::apply_pending));
         app.add_systems(bevy::state::state::StateTransition, systems::run_state_transitions);
         app.configure_sets(PostUpdate, BevyTsSet::PostUpdate.before(bevy::transform::TransformSystems::Propagate));

@@ -244,6 +244,10 @@ fn log_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Va
 
 fn pause(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     let p: protocol::PauseParams = required(p)?;
+    // Resuming stages whose `Startup` never ran would run `Update` on an unstarted game.
+    if !p.paused && !generation::started(world) {
+        return Err(invalid("the game has not started; switch to play"));
+    }
     let mut clock = world.resource_mut::<ScriptClock>();
     clock.paused = p.paused;
     if !p.paused {
@@ -257,11 +261,12 @@ fn step(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
         None | Some(Value::Null) => 1,
         Some(v) => serde_json::from_value::<protocol::StepParams>(v).map_err(|e| invalid(format!("invalid params: {e}")))?.frames.get(),
     };
-    let mut clock = world.resource_mut::<ScriptClock>();
-    if !clock.paused {
+    if !world.resource::<ScriptClock>().paused {
         return Err(invalid("bevy-ts/step works while paused; call bevy-ts/pause first"));
     }
-    clock.step_frames += frames;
+    // A step before the game started starts it, as Unity's Step from edit does.
+    generation::start_game(world);
+    world.resource_mut::<ScriptClock>().step_frames += frames;
     Ok(json!({ "paused": true, "frame": frame(world) }))
 }
 

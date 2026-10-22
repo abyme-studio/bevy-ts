@@ -9,7 +9,7 @@ use bevy_ts::components::TsComponents;
 use common::*;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn contract() -> Value {
     serde_json::from_str(bevy_ts_remote::OPENRPC).unwrap()
@@ -60,14 +60,20 @@ fn ok(app: &mut App, method: &str, params: Option<Value>) -> Value {
     v
 }
 
+/// A project holding the cube example's two files.
+fn cube_project(name: &str) -> PathBuf {
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src");
+    let read = |f: &str| std::fs::read_to_string(example.join(f)).unwrap();
+    project(name, &[("game.ts", &read("game.ts")), ("cube.tsx", &read("cube.tsx"))])
+}
+
 fn cube_app() -> (App, Entity) {
     cube_app_on(None)
 }
 
 fn cube_app_on(port: Option<u16>) -> (App, Entity) {
-    let src = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src/game.ts")).unwrap();
     let name = format!("protocol-{}", std::thread::current().name().unwrap_or("x").replace("::", "-"));
-    let dir = project(&name, &[("game.ts", &src)]);
+    let dir = cube_project(&name);
     let mut app = app(&dir.join("game.ts"));
     app.add_plugins(RemotePlugin::default());
     if let Some(port) = port {
@@ -75,8 +81,11 @@ fn cube_app_on(port: Option<u16>) -> (App, Entity) {
     }
     // TransformPlugin registers this in a full app.
     app.register_type::<Transform>();
+    // The cube's scene has a `<mesh>`.
+    app.add_plugins(AssetPlugin::default()).init_asset::<Mesh>().init_asset::<StandardMaterial>();
     bevy_ts_remote::add_methods(&mut app);
-    assert_eq!(reload(&mut app, false).status, bevy_ts::generation::ReloadStatus::Applied);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, bevy_ts::generation::ReloadStatus::Applied, "{:?}", r.errors);
     app.update();
     let id = app.world().resource::<TsComponents>().live("game::Mover").unwrap().id;
     let world = app.world_mut();
@@ -295,10 +304,10 @@ fn editor(s: &Value, path: &str) -> Value {
 
 #[test]
 fn ts_components_are_the_games_and_addable_while_declared() {
-    let src = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src/game.ts")).unwrap();
-    let dir = project("protocol-editor-ts", &[("game.ts", &src)]);
+    let dir = cube_project("protocol-editor-ts");
     let mut app = app(&dir.join("game.ts"));
     app.add_plugins(RemotePlugin::default());
+    app.add_plugins(AssetPlugin::default()).init_asset::<Mesh>().init_asset::<StandardMaterial>();
     bevy_ts_remote::add_methods(&mut app);
     reload(&mut app, false);
     app.update();
@@ -316,9 +325,8 @@ fn ts_components_are_the_games_and_addable_while_declared() {
 /// The engine `bevy-ts dev --headless` runs: Bevy's default plugins, bevy-ts, tsx and levels, no
 /// ports, with the cube example loaded.
 fn bare_engine(identity: bevy_ts::engine::EngineIdentity) -> App {
-    let src = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src/game.ts")).unwrap();
     let name = format!("protocol-{}", std::thread::current().name().unwrap_or("x").replace("::", "-"));
-    let dir = project(&name, &[("game.ts", &src)]);
+    let dir = cube_project(&name);
     let engine = bevy_ts_cli::Engine { identity };
     let mut app = bevy_ts_cli::cli::base_app(&engine, bevy_ts_cli::Prebuilt, bevy_ts_cli::cli::Display::Headless, Default::default(), None, true);
     app.insert_resource(bevy_ts::generation::DevSource(std::sync::Arc::new(bevy_ts_cli::compile::Compiler::new(dir.join("game.ts"), true).unwrap())));

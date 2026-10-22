@@ -102,4 +102,11 @@ export default {
   // docs/build-cache.md: cold workspace build without sccache, then with it warm, 3 per arm.
   "sccache-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p bench/results && scripts/sccache-bench.sh 3 2>&1 | tee -a bench/results/sccache.txt'" },
   "sccache-bench-ab": { cmd: "bash -c 'set -o pipefail; echo ab8; scripts/sccache-bench.sh 8 ab 2>&1 | tee -a bench/results/sccache.txt'" },
+  // Change dev-edit: the crates it touches, then the CLI tests on the --edit boot and the examples it moved into scenes.
+  "dev-edit-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/dev-edit-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
+  "dev-edit-levels-x5": { cmd: "bash -c 'for i in 1 2 3 4 5; do cargo test -p bevy-ts-cli --test levels_protocol 2>&1 | grep -E \"^test result|panicked\"; done 2>&1 | tee target/dev-edit-levels-x5.log'" },
+  // The gate's steps after the tests, for a lint fix that changes no behaviour.
+  "dev-edit-lint": { cmd: "bash -c 'set -o pipefail; (cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/dev-edit-lint.log | tail -30'" },
+  "dev-edit-cli": { cmd: "bash -c 'set -o pipefail; cargo test -p bevy-ts-cli --no-fail-fast --test dev_edit --test play --test protocol --test viewport_edit 2>&1 | grep -v ld64 | tee target/dev-edit-cli.log | grep -E \"^test |^test result|panicked|^error|left|right|never\"'" },
+  "dev-edit-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts -p bevy-ts-remote && cargo test -p bevy-ts-viewport --test edit -- --test-threads=1 && cargo test -p bevy-ts-cli --test dev_edit --test protocol --test play --test viewport_edit) 2>&1 | grep -v ld64 | tee target/dev-edit-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
 } satisfies ProcessFile;
