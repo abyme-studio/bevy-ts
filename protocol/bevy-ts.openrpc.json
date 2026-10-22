@@ -3527,8 +3527,7 @@
             "description": "Pass gamepad input while the hole has no focus."
           },
           "camera": {
-            "$ref": "#/components/schemas/ViewportCameraChoice",
-            "description": "The camera choice, kept until a call sets another (1.25)."
+            "$ref": "#/components/schemas/ViewportCameraChoice"
           }
         }
       },
@@ -3559,14 +3558,13 @@
             "description": "Whether the game's TS `Startup` systems have run in this world: false under `bevy-ts dev --edit` until the first play or step (1.18). Absent from older engines: treat the game as started."
           },
           "camera": {
-            "$ref": "#/components/schemas/ViewportCameraChoice",
-            "description": "The camera choice in force (1.25). Absent from older engines: treat as `auto`."
+            "$ref": "#/components/schemas/ViewportCameraChoice"
           },
           "gameCameras": {
             "type": "integer",
             "format": "uint32",
             "minimum": 0,
-            "description": "The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25). Absent from older engines: unknown."
+            "description": "The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25). Absent from older engines: unknown. `camera`, the choice in force, is absent there too: treat it as `auto`."
           }
         }
       },

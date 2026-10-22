@@ -5239,7 +5239,6 @@ impl ::std::convert::TryFrom<::std::string::String> for ViewportModeCause {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportModeParams {
-    ///The camera choice, kept until a call sets another (1.25).
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub camera: ::std::option::Option<ViewportCameraChoice>,
     ///Pass gamepad input while the hole has no focus.
@@ -5258,10 +5257,9 @@ pub struct ViewportModeParams {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportModeResult {
-    ///The camera choice in force (1.25). Absent from older engines: treat as `auto`.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub camera: ::std::option::Option<ViewportCameraChoice>,
-    ///The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25). Absent from older engines: unknown.
+    ///The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25). Absent from older engines: unknown. `camera`, the choice in force, is absent there too: treat it as `auto`.
     #[serde(
         rename = "gameCameras",
         skip_serializing_if = "::std::option::Option::is_none"

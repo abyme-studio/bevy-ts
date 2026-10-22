@@ -106,14 +106,6 @@ export type ViewportMode = "play" | "edit";
  */
 export type ViewportCameraChoice = "auto" | "editor" | "game";
 /**
- * The camera choice, kept until a call sets another (1.25).
- */
-export type ViewportCameraChoice1 = "auto" | "editor" | "game";
-/**
- * The camera choice in force (1.25). Absent from older engines: treat as `auto`.
- */
-export type ViewportCameraChoice2 = "auto" | "editor" | "game";
-/**
  * What sent a mode message: `engine` on open, `client` a `viewport_mode`, `pause` or `step` call, `restart` a `restart` reload, `failed` a refused Play or camera choice (the mode unchanged) (1.24), `cameras` only `gameCameras` changed: a reload, a level edit or a game system added or removed a game camera (1.25).
  *
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
@@ -1465,7 +1457,7 @@ export interface ViewportModeParams {
    * Pass gamepad input while the hole has no focus.
    */
   gamepadUnfocused?: boolean;
-  camera?: ViewportCameraChoice1;
+  camera?: ViewportCameraChoice;
 }
 /**
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
@@ -1480,9 +1472,9 @@ export interface ViewportModeResult {
    * Whether the game's TS `Startup` systems have run in this world: false under `bevy-ts dev --edit` until the first play or step (1.18). Absent from older engines: treat the game as started.
    */
   started?: boolean;
-  camera?: ViewportCameraChoice2;
+  camera?: ViewportCameraChoice;
   /**
-   * The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25). Absent from older engines: unknown.
+   * The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25). Absent from older engines: unknown. `camera`, the choice in force, is absent there too: treat it as `auto`.
    */
   gameCameras?: number;
 }

@@ -230,6 +230,9 @@ Sends the mode as `viewport_mode` answers it (`mode`, `ui`, `gamepadUnfocused`, 
 - `cameras`: only `gameCameras` changed: a reload, a level edit or a game system added or removed a
   game camera.
 
+A `step` whose only change is the game camera count (a `Startup` that spawns the first camera, say)
+is streamed as `cameras`, not `client`.
+
 A Stop sends one message, after its rebuild. A new engine process starts a new stream: the studio
 subscribes again after it reconnects.
 
