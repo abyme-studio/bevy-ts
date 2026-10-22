@@ -291,7 +291,8 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
     let current = world.resource::<EditState>().mode;
     if mode != current {
         // `EngineMode` follows now, so `OnExit`/`OnEnter` run before the next frame's systems
-        // and before the first play's `Startup`.
+        // and before the first play's `Startup`. The out-of-band `StateTransition` also applies
+        // any other pending state (a TS one too), as the next frame's would.
         if let Some(mut next) = world.get_resource_mut::<NextState<EngineMode>>() {
             next.set(match mode {
                 Mode::Edit => EngineMode::Edit,

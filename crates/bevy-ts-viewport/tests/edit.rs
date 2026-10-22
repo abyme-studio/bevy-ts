@@ -940,6 +940,14 @@ mod boot {
         updates(&mut app, 3);
         assert_eq!(app.world().resource::<Time<Virtual>>().elapsed_secs(), t, "virtual time stands still");
 
+        // The studio's switch to edit after `hello` changes nothing.
+        let pose = call(&mut app, "bevy-ts/viewport_camera", Value::Null).unwrap();
+        let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+        assert_eq!((r["mode"].as_str(), r["started"].as_bool()), (Some("edit"), Some(false)));
+        updates(&mut app, 3);
+        assert_eq!((runs.of("setup"), runs.of("tick")), (0, 0));
+        assert_eq!(call(&mut app, "bevy-ts/viewport_camera", Value::Null).unwrap(), pose, "the editor camera keeps its pose");
+
         let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
         assert_eq!((r["mode"].as_str(), r["started"].as_bool()), (Some("play"), Some(true)));
         assert_eq!(runs.of("setup"), 1, "the first play runs Startup, at once");
