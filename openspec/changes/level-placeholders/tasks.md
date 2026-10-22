@@ -21,7 +21,7 @@
 ## 4. Protocol
 
 - [ ] 4.1 `level.missing` on `tsx_tree` nodes and `tsx_tree+watch`; `missing` on `level_node`
-- [ ] 4.2 Contract: `MissingComponent`, `TsxNodeLevel.missing`, `LevelNodeResult.missing`, refusal reasons `missing` and `unknown`; the next free minor on main at landing; regenerated Rust and TS types; CI diff check
+- [ ] 4.2 Contract: `MissingComponent`, `TsxTreeNode.level.missing`, `LevelNodeResult.missing`, refusal reasons `missing` and `unknown`; the next free minor on main at landing; regenerated Rust and TS types; CI diff check
 
 ## 5. Tests and docs
 
