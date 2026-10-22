@@ -112,8 +112,10 @@ What is still missing:
    |---|---|
    | `spawnNative("camera3d", { position, lookAt, projection })` | `commands.spawn(Camera3d, Transform.lookingAt(position, lookAt), Projection.of(projection))` |
    | `spawnNative("directionalLight", { position, lookAt, illuminance, shadows })` | `commands.spawn(DirectionalLight.of({ illuminance, shadows_enabled: shadows }), Transform.lookingAt(position, lookAt))` |
-   | `spawnNative("cuboid", { size, color, position })` | an element: `commands.spawn(Transform.of({ translation: position }), <entity><mesh shape="cuboid" size={size} /><material color={color} /></entity>)` — the mesh is a child; or a scene |
+   | `spawnNative("cuboid", { size, color, position })` | an element: `commands.spawn(Transform.of({ translation: position }), <entity><mesh shape="cuboid" size={size} /><material color={color} /></entity>)` or a scene |
 
+   Until ecs-queries lands, `spawn(..., <el/>)` mounts the element as a child of the spawned
+   entity; after it, the element's components go on the returned root.
    Callers that migrate: `examples/cube/src/game.ts`, `examples/arena/src/game.tsx`,
    `crates/bevy-ts-cli/tests/material_errors.rs`, `play_stop.rs`, `tsx.rs`, `viewport_edit.rs`,
    `viewport_walk.rs`, `viewport_level.rs`, `crates/bevy-ts-v8/js/test/jsx-runtime.test.js` where
