@@ -54,14 +54,19 @@ pub const fn supported() -> bool {
 /// The virtual window's size with no viewer: 1280×720 points at 2x.
 pub const DEFAULT_SIZE: (f32, f32, f32) = (1280.0, 720.0, 2.0);
 
-/// Spawns a primary window with no native window behind it, `w`×`h` physical pixels at `scale`:
-/// viewport mode's virtual window, and the headless pointer's (see [`offscreen`]). Bevy renders
-/// nothing for it, having no handle to render to.
-pub fn spawn_windowless_primary(world: &mut bevy::prelude::World, title: &str, (w, h, scale): (u32, u32, f32)) -> bevy::prelude::Entity {
+/// Spawns a primary window with no native window behind it, `w`×`h` physical pixels at `scale`,
+/// with `extra` in the same spawn: viewport mode's virtual window, and the headless pointer's (see
+/// [`offscreen`]). Bevy renders nothing for it, having no handle to render to.
+pub fn spawn_windowless_primary(
+    world: &mut bevy::prelude::World,
+    title: &str,
+    (w, h, scale): (u32, u32, f32),
+    extra: impl bevy::prelude::Bundle,
+) -> bevy::prelude::Entity {
     use bevy::window::{PrimaryWindow, Window, WindowResolution};
     let mut resolution = WindowResolution::new(w, h);
     resolution.set_scale_factor(scale);
-    world.spawn((Window { title: title.into(), resolution, focused: false, ..Default::default() }, PrimaryWindow)).id()
+    world.spawn((Window { title: title.into(), resolution, focused: false, ..Default::default() }, PrimaryWindow, extra)).id()
 }
 
 #[cfg(target_os = "macos")]
@@ -94,8 +99,7 @@ mod plugin {
             assets::build(app);
             if !self.windowed {
                 let (w, h, scale) = DEFAULT_SIZE;
-                let window = spawn_windowless_primary(app.world_mut(), "bevy-ts viewport", ((w * scale) as u32, (h * scale) as u32, scale));
-                app.world_mut().entity_mut(window).insert(VirtualWindow);
+                spawn_windowless_primary(app.world_mut(), "bevy-ts viewport", ((w * scale) as u32, (h * scale) as u32, scale), VirtualWindow);
                 app.init_resource::<input::PendingInput>()
                     .init_resource::<input::Remote>()
                     .init_resource::<feedback::Cursor>()

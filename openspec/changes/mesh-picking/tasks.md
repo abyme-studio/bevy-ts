@@ -15,7 +15,7 @@
 - [x] 3.2 The method: validate all events first (pointer only, `viewport` none or 0), queue them, answer `{ queued }`; errors name the refused type.
 - [x] 3.3 The system: one event per frame before `PickingSystems::Input`, mapped to `PointerInput` on the offscreen image as design decision 5; `run_dev` adds the plugin under `Display::Headless`.
 - [x] 3.4 Tests: a `key` event is refused naming `key` and nothing applies; `viewport: 1` is refused; `hello` still reports `viewport: false`; the contract check passes with `viewport_input` registered headless.
-- [ ] 3.5 Run task 1.1's test on Linux (CI) as well as macOS.
+- [x] 3.5 Run task 1.1's test on Linux (CI) as well as macOS.
 
 ## 4. The warning
 
@@ -26,4 +26,4 @@
 
 - [x] 5.1 `docs/picking.md`: what picks out of the box (sprites, UI), `meshPicking`, the warning, and clicking headless over `viewport_input` with an example request.
 - [x] 5.2 README: one line linking `docs/picking.md`; `docs/viewport.md`: note that headless serves `viewport_input` for pointers, linking `docs/picking.md`.
-- [ ] 5.3 `openspec validate mesh-picking --strict` and the repo's full check pass.
+- [x] 5.3 `openspec validate mesh-picking --strict` and the repo's full check pass.

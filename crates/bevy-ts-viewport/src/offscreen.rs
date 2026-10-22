@@ -40,7 +40,7 @@ impl Plugin for OffscreenPointerPlugin {
     fn build(&self, app: &mut App) {
         let target = NormalizedRenderTarget::Image(ImageRenderTarget::from(self.image.clone()));
         let size = app.world().resource::<Assets<Image>>().get(&self.image).map_or(UVec2::ONE, |i| i.size());
-        crate::spawn_windowless_primary(app.world_mut(), "bevy-ts headless", (size.x, size.y, 1.0));
+        crate::spawn_windowless_primary(app.world_mut(), "bevy-ts headless", (size.x, size.y, 1.0), ());
         app.insert_resource(Target(target))
             .init_resource::<Pending>()
             .add_systems(Startup, |mut commands: Commands| {

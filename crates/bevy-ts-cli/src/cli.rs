@@ -255,11 +255,14 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
     app
 }
 
+/// A mesh that has a pointer handler, one of the two just added.
+type NewMeshHandler = (With<Mesh3d>, With<TsxHandlers>, Or<(Added<Mesh3d>, Added<TsxHandlers>)>);
+
 /// Names, once per process, a mesh with a pointer handler while nothing picks meshes: its
 /// `onPointer*` would never fire. Checks the resource, not the switch, so a native crate that adds
 /// `MeshPickingPlugin` itself is not warned.
 fn warn_mesh_handlers(
-    added: Query<(Entity, Option<&Name>), (With<Mesh3d>, With<TsxHandlers>, Or<(Added<Mesh3d>, Added<TsxHandlers>)>)>,
+    added: Query<(Entity, Option<&Name>), NewMeshHandler>,
     log: Option<ResMut<bevy_ts::log::ScriptLog>>,
     generations: Option<Res<bevy_ts::generation::Generations>>,
     mut warned: Local<bool>,
