@@ -6,7 +6,7 @@ Viewport mode: the engine with no window of its own renders into a ring of IOSur
 ## Requirements
 
 ### Requirement: Viewport mode runs the engine with no window of its own
-`bevy-ts dev --viewport <entry>` SHALL start the engine with no native window and no winit event loop, load the game as `bevy-ts dev` does, and wait for a viewer to attach. Simulation SHALL run from start; nothing SHALL be rendered until a viewer is attached and visible. `bevy-ts dev` without `--viewport` SHALL keep bridge's behaviour (a window of its own). Viewport mode SHALL be available on macOS only; on other platforms `--viewport` SHALL fail with a message naming the platform.
+`bevy-ts dev --viewport <entry>` SHALL start the engine with no native window and no winit event loop, load the game as `bevy-ts dev` does, and wait for a viewer to attach. Simulation SHALL run from start, unless `--edit` is given (see edit-mode); nothing SHALL be rendered until a viewer is attached and visible. `bevy-ts dev` without `--viewport` SHALL keep bridge's behaviour (a window of its own). Viewport mode SHALL be available on macOS only; on other platforms `--viewport` SHALL fail with a message naming the platform.
 
 #### Scenario: Started by abyme
 - **WHEN** abyme starts `bevy-ts dev --viewport examples/cube/src/game.ts`
@@ -15,6 +15,10 @@ Viewport mode: the engine with no window of its own renders into a ring of IOSur
 #### Scenario: Started by hand outside abyme
 - **WHEN** a developer runs `bevy-ts dev examples/cube/src/game.ts` in a terminal
 - **THEN** a window of the engine's own opens, as in bridge
+
+#### Scenario: Started in edit mode by abyme
+- **WHEN** abyme starts `bevy-ts dev --viewport --edit examples/cube/src/game.ts`
+- **THEN** no window appears, `bevy-ts/hello` answers with `viewport: true`, and the cube's systems do not run until a client sets `play`
 
 ### Requirement: Attaching a viewer
 `bevy-ts/viewport_attach` (`w`, `h` in points, `scale`, `hz`, optional `display`, optional `view`) SHALL create a viewport for `view`, which is `"game"` (the default) or `{ preview: <id> }` from `bevy-ts/asset_preview`. It SHALL check in a Mach bootstrap service with a name unique to the process and the attach (`dev.bevy-ts.viewport.<pid>.<n>`), and answer `{ viewport, service, protocol }`. Each viewport SHALL have its own service, ring of surfaces, pacing, input queue and camera target, and viewports of different views SHALL run at the same time. A second attach of a view that already has a viewport SHALL replace that viewport: its old service is ended and its surfaces released, and other views are untouched. `bevy-ts/viewport_detach` (optional `viewport`, default the game viewport) SHALL end that service and release its ring; the game keeps running. A viewer whose reply port dies SHALL be detached as if it had called `viewport_detach` for its viewport. `viewport_resize`, `viewport_input`, `viewport_camera` and `viewport_stats` SHALL take an optional `viewport`, defaulting to the game viewport. The virtual primary window, edit mode, picking and edits SHALL belong to the game viewport alone. A viewport SHALL render only while attached and visible.
@@ -105,7 +109,7 @@ Every viewport method except `viewport_attach`, `viewport_detach`, `viewport_res
 - **THEN** the game pauses and the editor camera, gizmos and picking work in that window
 
 ### Requirement: The viewport in the protocol contract
-The viewport methods (`bevy-ts/viewport_attach`, `viewport_detach`, `viewport_resize`, `viewport_input`, `viewport_mode`, `viewport_camera`, `viewport_pick`, `viewport_select`, `viewport_selection+watch`, `viewport_edits+watch`, `viewport_edit_result`, `viewport_revert`, `viewport_stats`, `assets`, `assets+watch`, `asset_thumbnail`) and the channel's message types (`hello`, sent by both sides, `input`, carrying one `ViewportInput` event, `surface`, `frame`, `tick`, `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed`, `replaced`) SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"`, as an additions-only minor bump of the contract (1.2.0 when it landed; 1.5.0 with the `display` and level-route fields; 1.10.0 with the `hello` answer, `replaced`, `touch` and `gamepad`; 1.16.0 with `AssetInfo.thumbnail`, `PickHit.point` and `ViewportPickResult.ground`), generated into Rust and TS types by bridge's pipeline. Channel messages SHALL be JSON-RPC 2.0 notifications whose `method` is the message type, so one schema covers HTTP and the channel. `bevy-ts/hello` SHALL report `viewport: true|false`.
+The viewport methods (`bevy-ts/viewport_attach`, `viewport_detach`, `viewport_resize`, `viewport_input`, `viewport_mode`, `viewport_camera`, `viewport_pick`, `viewport_select`, `viewport_selection+watch`, `viewport_edits+watch`, `viewport_edit_result`, `viewport_revert`, `viewport_stats`, `assets`, `assets+watch`, `asset_thumbnail`) and the channel's message types (`hello`, sent by both sides, `input`, carrying one `ViewportInput` event, `surface`, `frame`, `tick`, `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed`, `replaced`) SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"`, as an additions-only minor bump of the contract (1.2.0 when it landed; 1.5.0 with the `display` and level-route fields; 1.10.0 with the `hello` answer, `replaced`, `touch` and `gamepad`; 1.16.0 with `AssetInfo.thumbnail`, `PickHit.point` and `ViewportPickResult.ground`; 1.18.0 with `ViewportModeResult.started`), generated into Rust and TS types by bridge's pipeline. Channel messages SHALL be JSON-RPC 2.0 notifications whose `method` is the message type, so one schema covers HTTP and the channel. `bevy-ts/hello` SHALL report `viewport: true|false`.
 
 #### Scenario: An old client
 - **WHEN** a 1.0 client connects to an engine serving the viewport methods
@@ -118,3 +122,7 @@ The viewport methods (`bevy-ts/viewport_attach`, `viewport_detach`, `viewport_re
 #### Scenario: A studio on an older engine
 - **WHEN** a client of this version lists assets from a 1.10 engine
 - **THEN** no asset has `thumbnail`, and the client asks for thumbnails of images and meshes only, as before
+
+#### Scenario: A studio on an engine without `started`
+- **WHEN** a client of this version reads `viewport_mode {}` from a 1.17 engine
+- **THEN** the answer has no `started`, and the client treats the game as started
