@@ -101,6 +101,7 @@ impl Plugin for ScriptMaterialRenderPlugin {
             .add_plugins(ErasedRenderAssetPlugin::<ScriptMaterial>::default())
             .init_resource::<EntitiesNeedingSpecialization<ScriptMaterial>>()
             .add_systems(PostUpdate, check_entities_needing_specialization.after(AssetEventSystems));
+        crate::scene::plugin(app);
         let watch = crate::wgsl::PipelineWatch::default();
         app.insert_resource(watch.clone());
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
@@ -245,7 +246,7 @@ fn extract_instances(
     }
 }
 
-fn check_entities_needing_specialization(
+pub(crate) fn check_entities_needing_specialization(
     needs: Query<Entity, (MeshOrMaterialChanged, With<ScriptMaterial3d>)>,
     mut out: ResMut<EntitiesNeedingSpecialization<ScriptMaterial>>,
     mut removed_mesh: RemovedComponents<Mesh3d>,

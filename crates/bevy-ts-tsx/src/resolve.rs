@@ -46,8 +46,9 @@ pub enum Target {
     Name,
     Mesh(MeshProps),
     Material(MaterialProps),
-    /// `<material kind={K} ...params />`: a script material instance of kind `kind`.
-    ScriptMaterial { kind: String, props: Map<String, Value> },
+    /// `<material kind={K} ...params />`: a script material instance of kind `kind`. On a glTF
+    /// scene root, `gltfMaterial` limits it to the scene's meshes with that material name.
+    ScriptMaterial { kind: String, props: Map<String, Value>, gltf_material: Option<String> },
     /// A reflect-tier Rust component, by type path: written field by field through reflection.
     Reflect { type_path: String },
     Ui(UiKind),
@@ -158,10 +159,17 @@ fn parse_props<T: serde::de::DeserializeOwned>(c: &ComponentDesc) -> Result<T, S
     serde_json::from_value(Value::Object(c.props.clone())).map_err(|e| err(format!("<{}>: {e}", c.ty), &c.source))
 }
 
-/// `<material kind={K} .../>`'s kind name (`K` describes as `{ name }`) and its other props.
-/// Checked against the kind's schema by the tsx section's check, which sees the generation's
-/// materials.
-pub fn script_material(c: &ComponentDesc) -> Result<(String, Map<String, Value>), ScriptError> {
+/// What `<material kind>` names: its kind, its params and textures, and its `gltfMaterial`.
+pub struct ScriptMaterialDesc {
+    pub kind: String,
+    pub props: Map<String, Value>,
+    pub gltf_material: Option<String>,
+}
+
+/// `<material kind={K} .../>`'s kind name (`K` describes as `{ name }`), its `gltfMaterial` and its
+/// other props. Checked against the kind's schema by the tsx section's check, which sees the
+/// generation's materials.
+pub fn script_material(c: &ComponentDesc) -> Result<ScriptMaterialDesc, ScriptError> {
     let mut props = c.props.clone();
     let kind = match props.remove("kind") {
         Some(Value::String(s)) => s,
@@ -171,7 +179,12 @@ pub fn script_material(c: &ComponentDesc) -> Result<(String, Map<String, Value>)
         },
         _ => return Err(err("<material kind={...}> takes a kind from material() in bevy-ts/material", &c.source)),
     };
-    Ok((kind, props))
+    let gltf_material = match props.remove("gltfMaterial") {
+        None => None,
+        Some(Value::String(s)) => Some(s),
+        Some(_) => return Err(err("<material gltfMaterial> takes a glTF material name, a string", &c.source)),
+    };
+    Ok(ScriptMaterialDesc { kind, props, gltf_material })
 }
 
 /// Resolves one component element: bound props first, then the rest by kind.
@@ -278,9 +291,9 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
             Ok(resolved(Target::Mesh(props), (controlled, BTreeMap::new(), BTreeMap::new())))
         }
         ComponentKind::Intrinsic if c.ty == MATERIAL && c.props.contains_key("kind") => {
-            let (kind, props) = script_material(c)?;
+            let ScriptMaterialDesc { kind, props, gltf_material } = script_material(c)?;
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-            Ok(resolved(Target::ScriptMaterial { kind, props }, (controlled, BTreeMap::new(), BTreeMap::new())))
+            Ok(resolved(Target::ScriptMaterial { kind, props, gltf_material }, (controlled, BTreeMap::new(), BTreeMap::new())))
         }
         ComponentKind::Intrinsic if c.ty == MATERIAL => {
             let props: MaterialProps = parse_props(c)?;

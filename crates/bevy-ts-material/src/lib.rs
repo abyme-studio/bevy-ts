@@ -5,10 +5,12 @@
 pub mod kinds;
 pub mod layout;
 pub mod render;
+pub mod scene;
 pub mod wgsl;
 
 pub use kinds::MaterialKinds;
 pub use render::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
+pub use scene::{GltfMaterialFilter, SceneMaterialSet, SceneMaterialTargets, scene_entities};
 
 use bevy::prelude::*;
 use bevy_ts::plugin_api::BevyTsAppExt;

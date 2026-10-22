@@ -3,7 +3,7 @@
 //! is a script material (bevy-ts-material), shared the same way.
 
 use bevy::prelude::*;
-use bevy_ts_material::ScriptMaterial3d;
+use bevy_ts_material::{GltfMaterialFilter, ScriptMaterial3d};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -166,23 +166,42 @@ pub fn remove_mesh(world: &mut World, e: Entity, p: &MeshProps) {
 
 pub fn insert_material(world: &mut World, e: Entity, p: &MaterialProps) {
     let m = material_handle(world, p);
-    world.entity_mut(e).remove::<ScriptMaterial3d>().insert(MeshMaterial3d(m));
+    world.entity_mut(e).remove::<(ScriptMaterial3d, GltfMaterialFilter)>().insert(MeshMaterial3d(m));
 }
 
-/// `<material kind={K} .../>`: the kind's instance for these props (equal props share one).
-pub fn insert_script_material(world: &mut World, e: Entity, kind: &str, props: &serde_json::Map<String, serde_json::Value>, at: Option<bevy_ts::backend::SourceLocation>) {
+/// `<material kind={K} .../>`: the kind's instance for these props (equal props share one). On a
+/// glTF scene root, bevy-ts-material puts it on the scene's meshes, those named `gltf_material`
+/// when given.
+pub fn insert_script_material(
+    world: &mut World,
+    e: Entity,
+    kind: &str,
+    props: &serde_json::Map<String, serde_json::Value>,
+    gltf_material: Option<&str>,
+    at: Option<bevy_ts::backend::SourceLocation>,
+) {
     if !world.contains_resource::<bevy_ts_material::MaterialKinds>() {
         crate::reconcile::log_error(world, "<material kind>: script materials need ScriptMaterialPlugin".into(), at);
         return;
     }
     match bevy_ts_material::kinds::instance(world, kind, props) {
         Some(h) => {
-            world.entity_mut(e).remove::<MeshMaterial3d<StandardMaterial>>().insert(ScriptMaterial3d(h));
+            let mut em = world.entity_mut(e);
+            em.remove::<MeshMaterial3d<StandardMaterial>>().insert(ScriptMaterial3d(h));
+            match gltf_material {
+                Some(name) if em.get::<GltfMaterialFilter>().is_none_or(|f| f.0 != name) => {
+                    em.insert(GltfMaterialFilter(name.into()));
+                }
+                Some(_) => {}
+                None => {
+                    em.remove::<GltfMaterialFilter>();
+                }
+            }
         }
         None => crate::reconcile::log_error(world, format!("<material kind>: no material {kind}"), at),
     }
 }
 
 pub fn remove_material(world: &mut World, e: Entity) {
-    world.entity_mut(e).remove::<(MeshMaterial3d<StandardMaterial>, ScriptMaterial3d)>();
+    world.entity_mut(e).remove::<(MeshMaterial3d<StandardMaterial>, ScriptMaterial3d, GltfMaterialFilter)>();
 }

@@ -195,10 +195,15 @@ export interface MaterialProps {
 /**
  * `<material kind={Glow} color="#f80" pulse={2} />`: a script material from `material()` in
  * `bevy-ts/material`, with its params by name and its textures as asset paths. Checked against
- * the kind's schema when the generation loads.
+ * the kind's schema when the generation loads. On a glTF scene root it draws the scene's meshes.
  */
 export interface ScriptMaterialProps {
   kind: { readonly name: string };
+  /**
+   * On an entity with a glTF scene (`WorldAssetRoot`), only the scene's meshes whose glTF material
+   * is named this take the material. Without it, every mesh of the scene does.
+   */
+  gltfMaterial?: string;
   [param: string]: unknown;
 }
 

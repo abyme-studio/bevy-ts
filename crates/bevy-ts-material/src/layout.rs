@@ -217,8 +217,15 @@ const PREDECLARED: &[&str] = &[
     "array", "ptr", "sampler", "sampler_comparison",
 ];
 
-/// A name the generated WGSL declares: an identifier, not reserved, not starting with `__`.
+/// Props `<material kind>` takes itself, so no param or texture may be named one.
+pub const RESERVED_PROPS: &[&str] = &["kind", "gltfMaterial"];
+
+/// A name the generated WGSL declares: an identifier, not reserved, not starting with `__`, and
+/// not a prop `<material>` takes itself.
 fn check_name(what: &str, name: &str) -> Result<(), String> {
+    if RESERVED_PROPS.contains(&name) {
+        return Err(format!("{what} {name}: <material> takes {name} itself"));
+    }
     if !is_ident(name) {
         return Err(format!("{what} {name:?} is not a WGSL identifier"));
     }
@@ -482,6 +489,8 @@ mod tests {
         let e = Bindings::new("game::Glow", p.iter().map(|(n, t)| (*n, t)), &["noise".into()]).unwrap_err();
         assert!(e.contains("noise_sampler"), "{e}");
         assert!(ParamsLayout::new([("loop", &B(F32))]).unwrap_err().contains("reserved"));
+        assert!(ParamsLayout::new([("gltfMaterial", &B(F32))]).unwrap_err().contains("<material> takes gltfMaterial itself"));
+        assert!(new(&["kind"]).unwrap_err().contains("<material> takes kind itself"));
     }
 
     #[test]

@@ -73,7 +73,7 @@ pub(crate) fn uses_assets(nodes: &[desc::NodeDesc]) -> Option<Option<bevy_ts::ba
 fn check_script_materials(plugin: bool, kinds: &std::collections::BTreeMap<String, Option<bevy_ts_material::layout::Bindings>>, nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
     for n in nodes {
         for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::MATERIAL && c.props.contains_key("kind")) {
-            let Ok((kind, mut props)) = resolve::script_material(c) else { continue };
+            let Ok(resolve::ScriptMaterialDesc { kind, mut props, .. }) = resolve::script_material(c) else { continue };
             if !plugin {
                 errors.push(ScriptError::at("<material kind>: script materials need ScriptMaterialPlugin", c.source.clone()));
                 continue;

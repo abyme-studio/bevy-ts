@@ -34,6 +34,30 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
   and watched. A WGSL string is rejected. `alphaMode` is `"opaque"` (default), `"blend"`,
   `"premultiplied"`, `"add"`, `"multiply"`, `"alphaToCoverage"` or `{ mask: 0.5 }`.
 - Equal props share one material instance. Props cannot be bindings yet.
+- `kind` and `gltfMaterial` are props of `<material>` itself, so no param or texture may take
+  either name.
+
+## On a glTF scene
+
+On an entity that spawns a glTF scene, the material draws the scene's meshes:
+
+```tsx
+import { WorldAssetRoot } from "bevy-ts/bevy";
+
+<entity>
+  <WorldAssetRoot {...{ "0": "models/ship.glb#Scene0" }} />
+  <material kind={MaskTint} gltfMaterial="Hull" base="textures/ship.png" mask="textures/mask.png" colors={[a, b, c]} />
+</entity>
+```
+
+- Once the scene is ready, each mesh it spawned swaps its `StandardMaterial` for the script
+  material. `gltfMaterial` limits that to meshes whose glTF material has exactly that name; without
+  it, every mesh takes it. Meshes on other materials, and TSX children of the entity, keep theirs.
+- New props reach every swapped mesh the same frame. A new `gltfMaterial` puts back the meshes
+  that stop matching. Removing the `<material>` puts back every mesh's own material. A scene
+  spawned again (its file saved) is swapped again.
+- From Rust: `ScriptMaterial3d` on the root, and `GltfMaterialFilter("Hull")` for the name. The
+  swapped meshes and their own materials are in `SceneMaterialTargets` on the root.
 
 ## The WGSL file
 
@@ -98,3 +122,9 @@ One Rust asset type, `ScriptMaterial`, implements `ErasedRenderAsset` by hand (B
 `manual_material.rs`). Every kind's instances sit behind its one non-bindless bind group allocator,
 which takes each allocation's layout, so kinds with different layouts coexist. Each kind gets its
 own material key, or kinds would share one specialized pipeline.
+
+On a scene root, `scene.rs` reacts to `WorldInstanceReady` and to changes on the root, as
+scene-animation does. It walks the instance's own entities (`iter_instance_entities`), not the
+root's descendants, which is how TSX children stay untouched. That walk is
+`bevy_ts_material::scene_entities(world, root)`. Every swap runs in `SceneMaterialSet`
+(`PostUpdate`), so other per-root work on a scene's meshes can run after it.
