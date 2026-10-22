@@ -67,7 +67,8 @@ Holes are fields (such as `Color`) that only reflection can touch.
 | `ClearColor` | `Color` only | reflect | reflect-enums-color (stage 3) |
 | `DirectionalLightShadowMap`, `PointLightShadowMap` | `usize` (opaque) | reflect | reflect-enums-color (stage 3) |
 | `ButtonInput<KeyCode>` | HashSets | typed param | text-input (`Keys`) |
-| `ButtonInput<MouseButton>`, `AccumulatedMouseMotion`/`Scroll`, `Touches` | HashSets, `Vec2` | typed param | script-input-devices |
+| `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollPixelsPerLine` | `Vec2`, `f32` | layout | path: us; docs and tests: script-input-devices |
+| `ButtonInput<MouseButton>`, `Touches`, `Window::cursor_position` | HashSets, no `Reflect`, methods | typed param | script-input-devices |
 | Gamepads | entities with `Gamepad` components, not a resource | query | script-input-devices |
 | `Window`, `PrimaryWindow` | components on the window entity, not resources | query; enum fields reflect | reflect-enums-color |
 | `Assets<T>` | handle store, methods | exported param | writable-native-params; per-asset teams |
@@ -86,9 +87,11 @@ All replied and agreed by message on 2026-10-23.
 - script-time: we own the generic param path; they own what is Time-specific on top (the
   `FixedUpdate` swap, `Time<Real/Virtual/Fixed>`, timers, `on_timer`, Time typings), and whether
   `RunParam::Time` folds onto the generic path.
-- script-input-devices: `ButtonInput<*>`, accumulated mouse, touches and gamepads stay theirs as
-  exported params with Bevy's methods. Our path will also make `Res<AccumulatedMouseMotion>` work;
-  we neither document nor test it.
+- script-input-devices: `ButtonInput<MouseButton>`, touches, gamepads and cursor position stay
+  theirs as exported params with Bevy's methods. The plain-data mouse resources
+  (`AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollPixelsPerLine`) get no
+  exported param: they go through our `Res<T>`, and script-input-devices documents and tests them
+  once it lands.
 - writable-native-params: they own the exported-param path (`#[export]`, `HostParams`). Line: a
   resource with a native layout reaches TS as `Res`/`ResMut` (us); one without a layout, or whose
   API is methods (`Assets<T>`, `Time<Virtual>::pause`), goes through their path.
