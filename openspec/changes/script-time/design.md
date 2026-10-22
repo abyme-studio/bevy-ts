@@ -112,14 +112,17 @@ Resolution order for `Res<R>` and `ResMut<R>`, agreed with lead@rust-resources (
 2. Otherwise a spelling an export claims with `stands_for`: that export.
 3. Otherwise rust-resources' generic `Res`/`ResMut` path.
 
-`HostParams::register` refuses two exports claiming one spelling, naming both Rust types, and an
-export claiming the spelling of a native-layout resource (rust-resources owns row views).
-rust-resources leaves a hook point in resolution for steps 1-2; the claims are not theirs.
+`HostParams::register` refuses two exports claiming one spelling, naming both Rust types. An
+export and a native-layout resource may share a spelling: the export's claim wins, and
+rust-resources' resolution skips claimed spellings (research@writable-native-params with
+rust-resources, 2026-10-23). rust-resources leaves a hook point in resolution for steps 1-2; the
+claims are not theirs.
 
-`Res<Time<Virtual>>` stays the stage-1 per-run value, not claimed by the export: a read costs no
-host call, and `ResMut<Time<Virtual>>`'s class carries the same read properties beside its methods
-(stands_for takes a list, so stage 2 may claim `Res` too if one object proves simpler; research
-recommends it, this design does not, for the host-call cost on every read).
+Open for stage 2: research@writable-native-params has `VirtualTime` claim `Res<Time<Virtual>>` as
+well as `ResMut`, so virtual time is one TS object as in Bevy. That would move stage 1's per-run read
+of `Res<Time<Virtual>>` (a few words, no host call) onto a host call per read. This design keeps
+`Res<Time<Virtual>>` on the per-run value and gives `ResMut<Time<Virtual>>`'s class the same read
+properties; lead@script-time settles it before stage 2 is specced.
 
 **Protocol and levels.** The protocol's `FieldType.kind` gains `timer` and `stopwatch`, the
 next free minor at landing, additions only. A value is an object of the layout's field names
