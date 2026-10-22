@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.24.0";
+pub const VERSION: &str = "1.25.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -4860,6 +4860,65 @@ pub struct ViewportCamera {
     pub scale: ::std::option::Option<f64>,
     pub translation: [f64; 3usize],
 }
+///Which camera the viewport shows. In edit mode `auto` and `editor` show the editor camera with its tools, `game` the game cameras with the tools off and the world paused. Play always shows the game cameras; `editor` is refused there. `auto` is the default and may grow with a later two-pane view (1.25).
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ViewportCameraChoice {
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "editor")]
+    Editor,
+    #[serde(rename = "game")]
+    Game,
+}
+impl ::std::fmt::Display for ViewportCameraChoice {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Auto => f.write_str("auto"),
+            Self::Editor => f.write_str("editor"),
+            Self::Game => f.write_str("game"),
+        }
+    }
+}
+impl ::std::str::FromStr for ViewportCameraChoice {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "auto" => Ok(Self::Auto),
+            "editor" => Ok(Self::Editor),
+            "game" => Ok(Self::Game),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ViewportCameraChoice {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ViewportCameraChoice {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`ViewportCameraParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
@@ -5109,7 +5168,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ViewportMode {
         value.parse()
     }
 }
-///What sent a mode message: `engine` on open, `client` a `viewport_mode`, `pause` or `step` call, `restart` a `restart` reload, `failed` a refused Play (the mode unchanged) (1.24).
+///What sent a mode message: `engine` on open, `client` a `viewport_mode`, `pause` or `step` call, `restart` a `restart` reload, `failed` a refused Play or camera choice (the mode unchanged) (1.24), `cameras` only `gameCameras` changed: a reload, a level edit or a game system added or removed a game camera (1.25).
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
@@ -5131,6 +5190,8 @@ pub enum ViewportModeCause {
     Restart,
     #[serde(rename = "failed")]
     Failed,
+    #[serde(rename = "cameras")]
+    Cameras,
 }
 impl ::std::fmt::Display for ViewportModeCause {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -5139,6 +5200,7 @@ impl ::std::fmt::Display for ViewportModeCause {
             Self::Client => f.write_str("client"),
             Self::Restart => f.write_str("restart"),
             Self::Failed => f.write_str("failed"),
+            Self::Cameras => f.write_str("cameras"),
         }
     }
 }
@@ -5152,6 +5214,7 @@ impl ::std::str::FromStr for ViewportModeCause {
             "client" => Ok(Self::Client),
             "restart" => Ok(Self::Restart),
             "failed" => Ok(Self::Failed),
+            "cameras" => Ok(Self::Cameras),
             _ => Err("invalid value".into()),
         }
     }
@@ -5176,6 +5239,9 @@ impl ::std::convert::TryFrom<::std::string::String> for ViewportModeCause {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportModeParams {
+    ///The camera choice, kept until a call sets another (1.25).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub camera: ::std::option::Option<ViewportCameraChoice>,
     ///Pass gamepad input while the hole has no focus.
     #[serde(
         rename = "gamepadUnfocused",
@@ -5192,6 +5258,15 @@ pub struct ViewportModeParams {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportModeResult {
+    ///The camera choice in force (1.25). Absent from older engines: treat as `auto`.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub camera: ::std::option::Option<ViewportCameraChoice>,
+    ///The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25). Absent from older engines: unknown.
+    #[serde(
+        rename = "gameCameras",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub game_cameras: ::std::option::Option<u32>,
     #[serde(rename = "gamepadUnfocused")]
     pub gamepad_unfocused: bool,
     pub mode: ViewportMode,
@@ -5205,7 +5280,11 @@ pub struct ViewportModeResult {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportModeWatch {
+    pub camera: ViewportCameraChoice,
     pub cause: ViewportModeCause,
+    ///The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25).
+    #[serde(rename = "gameCameras")]
+    pub game_cameras: u32,
     #[serde(rename = "gamepadUnfocused")]
     pub gamepad_unfocused: bool,
     pub mode: ViewportMode,

@@ -445,7 +445,7 @@ struct SwitchTo(Option<Mode>);
 
 fn switch_late(world: &mut World) {
     if let Some(mode) = world.resource_mut::<SwitchTo>().0.take() {
-        bevy_ts_viewport::edit::set_mode(world, mode, None, None).unwrap();
+        bevy_ts_viewport::edit::set_mode(world, mode, None, None, None).unwrap();
     }
 }
 
@@ -819,6 +819,159 @@ fn write_bmp(path: &str, side: u32, bgra: &[[u8; 4]]) {
         out.extend(&p[..3]);
     }
     std::fs::write(path, out).unwrap();
+}
+
+// ---- the game view (change `game-camera-edit`) ----
+
+/// `viewport_mode` with only `camera`.
+fn view(app: &mut App, camera: &str) -> Value {
+    call(app, "bevy-ts/viewport_mode", json!({ "camera": camera })).unwrap()
+}
+
+/// A call's error: its code and message.
+fn refused_call(app: &mut App, method: &str, params: Value) -> (i16, String) {
+    let id = match app.world().resource::<bevy::remote::RemoteMethods>().get(method) {
+        Some(bevy::remote::RemoteMethodSystemId::Instant(id)) => *id,
+        _ => panic!("no method {method}"),
+    };
+    let e = app.world_mut().run_system_with(id, Some(params)).unwrap().expect_err("refused");
+    (e.code, e.message)
+}
+
+fn is_on<F: bevy::ecs::query::QueryFilter>(app: &mut App) -> Vec<bool> {
+    let world = app.world_mut();
+    world.query_filtered::<&Camera, F>().iter(world).map(|c| c.is_active).collect()
+}
+
+/// A row of pixels across the free cube in the newest frame, after `n` more frames.
+fn free_row(app: &mut App, viewer: &bevy_ts_viewport::mach::Viewer, seen: &mut Seen, n: usize) -> Vec<[u8; 4]> {
+    free_pixel(app, viewer, seen, n);
+    let p = center(app, scene(app).free);
+    let world = app.world_mut();
+    let mut q = world.query_filtered::<(&Camera, &GlobalTransform), With<GameCamera>>();
+    let (c, gt) = q.single(world).unwrap();
+    let at = c.world_to_viewport(gt, p).unwrap();
+    let f = seen.frames.last().unwrap();
+    let points: Vec<(u32, u32)> = (0..40).map(|i| ((at.x as u32).saturating_sub(20) + i, at.y as u32)).collect();
+    seen.surfaces[&(f["ring"].as_u64().unwrap(), f["slot"].as_u64().unwrap())].read(&points)
+}
+
+#[test]
+fn a_client_that_never_sends_camera_sees_auto() {
+    let mut app = edit_app();
+    let r = call(&mut app, "bevy-ts/viewport_mode", json!({})).unwrap();
+    assert_eq!((r["camera"].as_str(), r["gameCameras"].as_u64()), (Some("auto"), Some(1)), "{r}");
+    let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    assert_eq!((r["mode"].as_str(), r["camera"].as_str(), r["gameCameras"].as_u64()), (Some("edit"), Some("auto"), Some(1)), "{r}");
+    updates(&mut app, 2);
+    assert_eq!(is_on::<With<EditorCamera>>(&mut app), vec![true], "auto in edit is the editor camera");
+    assert_eq!(is_on::<With<GameCamera>>(&mut app), vec![false]);
+    let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+    assert_eq!((r["camera"].as_str(), r["gameCameras"].as_u64()), (Some("auto"), Some(1)), "{r}");
+}
+
+#[test]
+fn the_game_view_shows_what_play_draws_and_the_editor_view_comes_back() {
+    let mut app = edit_app();
+    let s = scene(&app);
+    let (_, viewer) = attach(&mut app, 160.0, 120.0, 1.0);
+    let mut seen = Seen::default();
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [s.free.to_bits()] })).unwrap();
+    let editor = free_row(&mut app, &viewer, &mut seen, 6);
+    let pose = call(&mut app, "bevy-ts/viewport_camera", Value::Null).unwrap();
+    let y0 = app.world().get::<Transform>(s.root).unwrap().translation.y;
+
+    let r = view(&mut app, "game");
+    // `paused` is the TS clock's; this app has none, and the bobbing cube below says it is paused.
+    assert_eq!((r["mode"].as_str(), r["camera"].as_str(), r["gameCameras"].as_u64()), (Some("edit"), Some("game"), Some(1)), "{r}");
+    let game = free_row(&mut app, &viewer, &mut seen, 6);
+    assert_eq!(is_on::<With<GameCamera>>(&mut app), vec![true]);
+    assert!(is_on::<With<EditorOnly>>(&mut app).iter().all(|on| !on), "the editor camera and its overlays are off");
+    assert_eq!(app.world_mut().query_filtered::<(), With<bevy::gizmos::transform_gizmo::TransformGizmoFocus>>().iter(app.world()).count(), 0, "no handle");
+    assert_eq!(app.world().get::<Transform>(s.root).unwrap().translation.y, y0, "the world stays paused");
+    assert_ne!(editor, game, "the editor view draws the outline and handle over the cube");
+
+    // Back to the editor view: same pose, same selection.
+    let r = view(&mut app, "editor");
+    assert_eq!(r["camera"], "editor");
+    updates(&mut app, 2);
+    assert_eq!(call(&mut app, "bevy-ts/viewport_camera", Value::Null).unwrap(), pose, "the editor camera kept its pose");
+    assert_eq!(selection(&mut app)["items"][0]["entity"], s.free.to_bits(), "the selection is kept");
+    assert_eq!(is_on::<With<EditorCamera>>(&mut app), vec![true]);
+    assert_eq!(is_on::<With<GameCamera>>(&mut app), vec![false]);
+    assert_eq!(free_row(&mut app, &viewer, &mut seen, 6), editor, "and drawn again");
+
+    // Play draws what the game view drew.
+    view(&mut app, "game");
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+    assert_eq!(free_row(&mut app, &viewer, &mut seen, 6), game, "the game view is a Play frame");
+}
+
+#[test]
+fn the_game_view_never_picks_or_acts_on_keys() {
+    let mut app = edit_app();
+    let s = scene(&app);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [s.free.to_bits()] })).unwrap();
+    updates(&mut app, 2);
+    let p = center(&app, s.root);
+    let root = screen(&mut app, p);
+    view(&mut app, "game");
+    updates(&mut app, 2);
+    click(&mut app, root, json!({}));
+    assert_eq!(selection(&mut app)["items"][0]["entity"], s.free.to_bits(), "a click selects nothing");
+    key_press(&mut app, "KeyE");
+    assert_eq!(call(&mut app, "bevy-ts/viewport_tools", json!({})).unwrap()["mode"], "translate", "no tool key acts");
+    let (code, message) = refused_call(&mut app, "bevy-ts/viewport_pick", json!({ "x": root.x, "y": root.y }));
+    assert_eq!((code, message.as_str()), (-32602, "Picking needs the editor camera."));
+}
+
+/// A second game camera, drawing a red square in the corner over the main one.
+fn minimap(app: &mut App, on: bool) -> Entity {
+    let viewport = bevy::camera::Viewport { physical_position: UVec2::new(0, 0), physical_size: UVec2::new(40, 30), ..default() };
+    let clear = ClearColorConfig::Custom(Color::srgb(1.0, 0.0, 0.0));
+    app.world_mut()
+        .spawn((Camera3d::default(), Camera { order: 1, is_active: on, viewport: Some(viewport), clear_color: clear, ..default() }, Transform::from_xyz(0.0, 50.0, 0.0).looking_at(Vec3::ZERO, Vec3::Z)))
+        .id()
+}
+
+fn corner_red(app: &mut App, viewer: &bevy_ts_viewport::mach::Viewer, seen: &mut Seen) -> bool {
+    let n = seen.frames.len() + 6;
+    run_until(app, viewer, seen, LONG, |s| s.frames.len() >= n);
+    let f = seen.frames.last().unwrap();
+    let [b, g, r, _] = seen.surfaces[&(f["ring"].as_u64().unwrap(), f["slot"].as_u64().unwrap())].read(&[(5, 5)])[0];
+    r > 200 && g < 60 && b < 60
+}
+
+#[test]
+fn two_game_cameras_draw_in_their_order() {
+    let mut app = edit_app();
+    let (_, viewer) = attach(&mut app, 160.0, 120.0, 1.0);
+    let mut seen = Seen::default();
+    minimap(&mut app, true);
+    updates(&mut app, 1);
+    assert!(corner_red(&mut app, &viewer, &mut seen), "play draws the minimap over the main view");
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    assert!(!corner_red(&mut app, &viewer, &mut seen), "the editor view does not");
+    let r = view(&mut app, "game");
+    assert_eq!(r["gameCameras"], 2, "{r}");
+    assert!(corner_red(&mut app, &viewer, &mut seen), "the game view does, as play");
+}
+
+#[test]
+fn a_camera_that_starts_off_is_not_counted_and_stays_off() {
+    let mut app = edit_app();
+    let (_, viewer) = attach(&mut app, 160.0, 120.0, 1.0);
+    let mut seen = Seen::default();
+    let off = minimap(&mut app, false);
+    updates(&mut app, 1);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    let r = view(&mut app, "game");
+    assert_eq!(r["gameCameras"], 1, "{r}");
+    assert!(!corner_red(&mut app, &viewer, &mut seen));
+    assert!(!app.world().get::<Camera>(off).unwrap().is_active);
+    assert_eq!(is_on::<With<GameCamera>>(&mut app), vec![true]);
 }
 
 // Booting in edit mode (`bevy-ts dev --edit`, openspec change `dev-edit`), against the fake
@@ -1288,5 +1441,112 @@ mod boot {
         stop(&mut app, &fake, &runs, false);
         assert_eq!(*seen.0.lock().unwrap(), vec![0], "the counter is 0 when the rebuild runs");
         assert!(app.world().get_entity(rust).is_ok(), "bevy-ts leaves what Rust spawned");
+    }
+
+    /// The game camera of the shared scene: the one camera that is not the editor's.
+    fn game_camera(app: &mut App) -> Entity {
+        let world = app.world_mut();
+        world.query_filtered::<Entity, (With<Camera>, Without<EditorOnly>)>().single(world).unwrap()
+    }
+
+    fn on(app: &App, e: Entity) -> bool {
+        app.world().get::<Camera>(e).unwrap().is_active
+    }
+
+    fn editor_on(app: &mut App) -> bool {
+        let world = app.world_mut();
+        world.query_filtered::<&Camera, With<EditorCamera>>().single(world).unwrap().is_active
+    }
+
+    #[test]
+    fn stepping_in_the_game_view_renders_through_the_game_camera() {
+        let (mut app, _fake, runs, _) = ts_app(true);
+        let cam = game_camera(&mut app);
+        assert_eq!(super::view(&mut app, "game")["camera"], "game");
+        core(&mut app, "bevy-ts/step", json!({ "frames": 1 })).unwrap();
+        updates(&mut app, 3);
+        assert_eq!((runs.of("setup"), runs.of("tick")), (1, 1), "one frame");
+        let m = mode(&mut app);
+        assert_eq!((m["mode"].as_str(), m["camera"].as_str(), m["paused"].as_bool()), (Some("edit"), Some("game"), Some(true)));
+        assert!(on(&app, cam) && !editor_on(&mut app), "seen from the game camera");
+    }
+
+    #[test]
+    fn play_and_stop_keep_the_camera_choice() {
+        let (mut app, fake, runs, _) = ts_app(true);
+        let cam = game_camera(&mut app);
+        super::view(&mut app, "game");
+        let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        assert_eq!((r["mode"].as_str(), r["camera"].as_str()), (Some("play"), Some("game")));
+        updates(&mut app, 2);
+        assert!(on(&app, cam) && !editor_on(&mut app));
+        let r = stop(&mut app, &fake, &runs, false);
+        assert_eq!((r["mode"].as_str(), r["camera"].as_str(), r["started"].as_bool()), (Some("edit"), Some("game"), Some(false)));
+        updates(&mut app, 2);
+        assert!(on(&app, cam) && !editor_on(&mut app), "the game view again, over the rebuilt world");
+        // Play with the editor choice in force, and Stop: the editor view.
+        super::view(&mut app, "editor");
+        updates(&mut app, 2);
+        assert!(!on(&app, cam) && editor_on(&mut app));
+    }
+
+    #[test]
+    fn the_editor_camera_in_play_is_refused() {
+        let (mut app, _fake, _runs, _) = ts_app(true);
+        let s = ModeStream::open();
+        s.poll(&mut app).unwrap();
+        // Entering play with it: refused, still edit.
+        let (code, message) = super::refused_call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play", "camera": "editor" }));
+        assert_eq!((code, message.as_str()), (-32602, "The editor camera is not available in Play."));
+        let m = s.frames(&mut app, 2);
+        assert_eq!(m.iter().map(|v| (v["mode"].as_str().unwrap(), v["camera"].as_str().unwrap(), v["cause"].as_str().unwrap())).collect::<Vec<_>>(), vec![("edit", "auto", "failed")]);
+        assert_eq!(engine_mode(&app), EngineMode::Edit);
+        // In play: refused, still play, the choice unchanged.
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play", "camera": "game" })).unwrap();
+        s.frames(&mut app, 2);
+        let (code, _) = super::refused_call(&mut app, "bevy-ts/viewport_mode", json!({ "camera": "editor" }));
+        assert_eq!(code, -32602);
+        let m = s.frames(&mut app, 2);
+        assert_eq!(m.iter().map(|v| (v["mode"].as_str().unwrap(), v["camera"].as_str().unwrap(), v["cause"].as_str().unwrap())).collect::<Vec<_>>(), vec![("play", "game", "failed")]);
+        // `auto` is accepted in play.
+        assert_eq!(call(&mut app, "bevy-ts/viewport_mode", json!({ "camera": "auto" })).unwrap()["camera"], "auto");
+    }
+
+    /// Stands in for a TS `Startup` system that spawns the game's only camera: once the game has
+    /// started.
+    fn camera_at_start(world: &mut World, mut done: Local<bool>) {
+        if !*done && generation::started(world) {
+            *done = true;
+            world.spawn((Camera3d::default(), Transform::from_xyz(0.0, 0.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y)));
+        }
+    }
+
+    #[test]
+    fn a_game_with_no_camera_yet_clears_to_its_clear_colour() {
+        let (mut app, fake, runs, _) = ts_app_bare(true, |app| {
+            app.insert_resource(ClearColor(Color::srgb(1.0, 0.0, 1.0))).add_systems(Update, camera_at_start);
+        });
+        reload(&mut app, &fake, &runs, false, false);
+        let shared = game_camera(&mut app);
+        app.world_mut().despawn(shared);
+        let (_, viewer) = attach(&mut app, 160.0, 120.0, 1.0);
+        let mut seen = Seen::default();
+        // The editor view first, so a stale frame would show.
+        let n = seen.frames.len() + 6;
+        run_until(&mut app, &viewer, &mut seen, LONG, |s| s.frames.len() >= n);
+        let r = super::view(&mut app, "game");
+        assert_eq!((r["camera"].as_str(), r["gameCameras"].as_u64()), (Some("game"), Some(0)), "{r}");
+        let magenta = |[b, g, r, _]: [u8; 4]| r > 240 && g < 15 && b > 240;
+        let px = pixel_shown(&mut app, &viewer, &mut seen, Vec2::new(80.0, 60.0), magenta);
+        assert!(magenta(px), "the clear colour, no stale editor frame: bgra {px:?}");
+        let f = seen.frames.last().unwrap();
+        let all = seen.surfaces[&(f["ring"].as_u64().unwrap(), f["slot"].as_u64().unwrap())].read(&[(2, 2), (158, 2), (2, 118), (158, 118), (80, 60), (40, 90)]);
+        assert!(all.iter().all(|p| magenta(*p)), "{all:?}");
+        core(&mut app, "bevy-ts/step", json!({ "frames": 1 })).unwrap();
+        updates(&mut app, 3);
+        let m = mode(&mut app);
+        assert_eq!((m["gameCameras"].as_u64(), m["started"].as_bool()), (Some(1), Some(true)), "{m}");
+        let cam = game_camera(&mut app);
+        assert!(on(&app, cam), "the view shows that camera");
     }
 }

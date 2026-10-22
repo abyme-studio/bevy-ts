@@ -165,7 +165,8 @@ a save applied during play is what it rebuilds, and a file broken since does not
 - the JS engine, with a fresh isolate;
 - `Time<Virtual>`, `Time<Fixed>` and the script frame count, from 0 and paused.
 
-It keeps the editor camera's pose, the gizmo tools, `ui` and `gamepadUnfocused`, and what Rust
+It keeps the editor camera's pose, the gizmo tools, `ui`, `gamepadUnfocused`, the camera choice
+(see "The game view"), and what Rust
 spawned: a native crate resets its own state in `OnExit(EngineMode::Play)`, which runs first
 (`docs/native.md`).
 
@@ -189,15 +190,45 @@ as Unity refuses Play with compiler errors. The JSON-RPC error has code -32000, 
 studio shows as is (`src/game.tsx:3: Unexpected token`, the first error's file and line), and
 `data: { reason }`. A Play while a compile runs plays the live generation.
 
+### The game view
+
+`viewport_mode { camera }` picks what the viewport shows: `auto` (the default), `editor` or `game`.
+The engine keeps the choice until a call sets another, across Play and Stop.
+
+In edit mode `auto` and `editor` show the editor camera with its tools. `game` shows what Play would
+draw at that frame, as Unity's Game view does: every game camera whose own active flag is on, in its
+`order`, with the game's UI as Play draws it whatever `ui` is. The editor camera, the gizmo's
+overlay camera, the grid, outlines, icons, handles and orientation gizmo are off. The world stays
+paused and runs no game code; `bevy-ts/step` renders the stepped frame through the game cameras. No
+click selects, no handle drags, no edit key acts, and `viewport_pick` answers -32602 "Picking needs
+the editor camera.". The editor camera keeps its pose and the selection is kept, both there again
+when the editor view comes back. Switching between `editor` and `game` is not a Stop and changes
+nothing in the world; the swap applies on the next frame, so no frame shows both views or neither.
+
+`auto` and `editor` act the same today. `auto` stays a value of its own, answered as `auto`, so it
+can mean more once there are two panes (editor and game side by side).
+
+Play always shows the game cameras. `camera: "editor"` in a call that is in, or enters, Play is
+refused with -32602 "The editor camera is not available in Play." and changes nothing; the watch
+sends `cause: "failed"`. A Stop brings back the choice in force before Play.
+
+`gameCameras` in the answer counts the game cameras Play would turn on: not the editor's or a
+preview's, alive, their own active flag on. In Play it counts the ones on. Under `--edit` before the
+first Play it counts only cameras levels and scenes spawned, since no `Startup` has run. With none,
+the game view clears to the game's `ClearColor` (Bevy clears a window no camera draws), and the
+studio says "No cameras rendering".
+
 ### `viewport_mode+watch`
 
 Sends the mode as `viewport_mode` answers it (`mode`, `ui`, `gamepadUnfocused`, `paused`,
-`started`) plus `cause`, on open and on every change:
+`started`, `camera`, `gameCameras`) plus `cause`, on open and on every change:
 
 - `engine`: on open, and to a subscriber that comes back;
 - `client`: a `viewport_mode`, `pause` or `step` call changed it;
 - `restart`: a `restart` reload changed it;
-- `failed`: a Play was refused; the mode is unchanged.
+- `failed`: a Play or a camera choice was refused; the mode is unchanged;
+- `cameras`: only `gameCameras` changed: a reload, a level edit or a game system added or removed a
+  game camera.
 
 A Stop sends one message, after its rebuild. A new engine process starts a new stream: the studio
 subscribes again after it reconnects.
@@ -226,6 +257,10 @@ engine the watch is method-not-found and Stop resumes where play stopped. The st
 switch to edit (operator ruling 2026-10-20) is a Stop: a game the operator started outside abyme
 and already played is rebuilt from source when the studio finds it. abyme opens a project in
 edit, so that is intended.
+
+The game view needs protocol 1.25: `camera` and `gameCameras` on `viewport_mode` and its watch,
+and the `cameras` cause. An older engine rejects `camera` as an unknown param, so the studio checks
+`hello.protocol` before it shows the game-camera toggle.
 
 The toolbar needs protocol 1.17 (`viewport_tools`). The studio does not fall back: on an older
 engine it shows "bevy-ts too old".

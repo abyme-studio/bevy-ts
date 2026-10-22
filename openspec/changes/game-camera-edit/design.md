@@ -30,7 +30,7 @@ Today, in `crates/bevy-ts-viewport/src/edit.rs`:
 
 **Gizmos and UI follow the view.** `EditorGizmos` enabled only in the editor view. `TransformGizmoFocus` removed on entering the game view, as `enter_play` does. `apply_ui`: in the game view, `UiSink` and the editor camera drop `IsDefaultUiCamera`, so the game's own UI camera rule applies, as in Play.
 
-**No game camera clears.** A window with no active camera may not be cleared, and the shared surface would then keep the editor's last frame. In the game view with `gameCameras == 0`, a clear-only camera is turned on: an `EditorOnly` `Camera { order: -11 }` with an empty `RenderLayers` and the default `ClearColorConfig`, so it draws nothing but the game's `ClearColor`. Off whenever a game camera is on. The implementer checks first whether Bevy 0.20 already clears a camera-less window target; if it does, the clear camera is dropped. Alternative: draw "No cameras rendering" in the engine. Rejected: the text is the studio's, from `gameCameras: 0`.
+**No game camera clears.** A window with no active camera may not be cleared, and the shared surface would then keep the editor's last frame. In the game view with `gameCameras == 0`, a clear-only camera is turned on: an `EditorOnly` `Camera { order: -11 }` with an empty `RenderLayers` and the default `ClearColorConfig`, so it draws nothing but the game's `ClearColor`. Off whenever a game camera is on. The implementer checks first whether Bevy 0.20 already clears a camera-less window target; if it does, the clear camera is dropped. It does: `handle_uncovered_swap_chains` clears every window no camera covered with `ClearColor`, and the viewport window is an `ExtractedWindow` whose swap chain view is the ring slot, so no clear camera is spawned. Alternative: draw "No cameras rendering" in the engine. Rejected: the text is the studio's, from `gameCameras: 0`.
 
 **`gameCameras` from the world, not the list.** Counted fresh in `mode_json`: game cameras (`Without<EditorOnly>`, `Without<PreviewOnly>`) whose remembered flag is on in edit (`game_cameras` entry, alive), or whose `is_active` is on in Play (through `is_active`, so a pending switch counts). Under `--edit` before Play the world has only level and scene cameras, so that is what it counts.
 
@@ -40,7 +40,7 @@ Today, in `crates/bevy-ts-viewport/src/edit.rs`:
 
 **`viewport_pick` in the game view** answers -32602 "Picking needs the editor camera." rather than casting from a camera that is not on screen.
 
-**Protocol.** `ViewportCamera` enum (`auto`, `editor`, `game`); `camera` optional on `ViewportModeParams`; `camera` and `gameCameras` required on `ViewportModeWatch`, optional on `ViewportModeResult` (absent from older engines: treat as `auto` and unknown); `cameras` added to `ViewportModeCause`. Additions only: the next free minor at landing (1.25.0 today), told to lead@bevy-ts.
+**Protocol.** `ViewportCameraChoice` enum (`auto`, `editor`, `game`; `ViewportCamera` is already the editor camera's pose); `camera` optional on `ViewportModeParams`; `camera` and `gameCameras` required on `ViewportModeWatch`, optional on `ViewportModeResult` (absent from older engines: treat as `auto` and unknown); `cameras` added to `ViewportModeCause`. Additions only: the next free minor at landing (1.25.0 today), told to lead@bevy-ts.
 
 ## Risks / Trade-offs
 

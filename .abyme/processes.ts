@@ -148,4 +148,10 @@ export default {
   // play-grey-viewport: the workspace tests, the viewport's one at a time (build and clippy ran on their own).
   "play-grey-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1) 2>&1 | grep -v ld64 | tee target/play-grey-tests.log | grep -E \"^test result|FAILED|panicked|^error\"'" },
   "play-stop-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/play-stop-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
+  // Change game-camera-edit: the viewport crate built with its tests, errors and warnings only.
+  "game-camera-check": { cmd: "bash -c 'mkdir -p target; cargo build -p bevy-ts-viewport --all-targets 2>&1 | grep -v ld64 | tee target/game-camera-check.log | grep -E \"^(error|warning)\" -A8 | head -120; echo done'" },
+  // Its tests in tests/edit.rs, one at a time, filtered by $T.
+  "game-camera-tests": { cmd: "bash -c 'cargo test -p bevy-ts-viewport --test edit -- --nocapture --test-threads=1 $T 2>&1 | grep -v ld64 | tee target/game-camera-tests.log | grep -E \"^test |test result|panicked|left|right|assert|^thread|^error\" | tail -60'" },
+  // Change game-camera-edit: the last round before it lands.
+  "game-camera-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/game-camera-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
 } satisfies ProcessFile;

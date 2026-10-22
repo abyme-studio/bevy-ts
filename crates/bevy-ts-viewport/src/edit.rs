@@ -65,19 +65,49 @@ impl Mode {
     }
 }
 
+/// Which camera the viewport shows: kept across Play and Stop. In edit mode `Auto` and `Editor`
+/// show the editor camera with its tools, `Game` the game cameras with the tools off. Play always
+/// shows the game cameras.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum CameraChoice {
+    #[default]
+    Auto,
+    Editor,
+    Game,
+}
+
+impl CameraChoice {
+    pub fn name(self) -> &'static str {
+        match self {
+            CameraChoice::Auto => "auto",
+            CameraChoice::Editor => "editor",
+            CameraChoice::Game => "game",
+        }
+    }
+}
+
 /// The mode in force and what entering edit changed, to undo on play.
 #[derive(Resource, Default)]
 pub struct EditState {
     pub mode: Mode,
     pub ui: bool,
     pub gamepad_unfocused: bool,
+    pub camera_choice: CameraChoice,
     was_paused: bool,
     mouse_was_enabled: bool,
-    /// Game cameras and whether each was active on entering edit.
+    /// Game cameras and whether each was active on entering edit, or on being spawned in edit:
+    /// the flag Play gives back.
     game_cameras: Vec<(Entity, bool)>,
-    pub camera: Option<Entity>,
+    pub editor_camera: Option<Entity>,
     /// The levels open when play was entered, for its Stop to put back.
     open_levels: Option<bevy_ts_levels::engine::OpenSet>,
+}
+
+impl EditState {
+    /// Whether the editor camera and its tools are in view: edit mode, and not the game view.
+    pub fn editor_view(&self) -> bool {
+        self.mode == Mode::Edit && self.camera_choice != CameraChoice::Game
+    }
 }
 
 /// The JSON-RPC error code of a refused Play.
@@ -88,6 +118,18 @@ pub const PLAY_REFUSED: i16 = -32000;
 pub struct PlayRefused {
     pub reason: ViewportPlayRefusedReason,
     pub message: String,
+}
+
+/// Why a `viewport_mode` call changed nothing.
+#[derive(Clone, Debug)]
+pub enum ModeRefused {
+    Play(PlayRefused),
+    /// `camera: "editor"` in, or entering, Play.
+    EditorCamera,
+}
+
+impl ModeRefused {
+    pub const EDITOR_CAMERA: &str = "The editor camera is not available in Play.";
 }
 
 /// The mode as last streamed: one owner, viewport's. A call records its change at once; `pause`,
@@ -126,13 +168,31 @@ fn watch_mode(world: &mut World) {
             w.restarts = restarts;
         }
         Some(last) if *last != now => {
-            let cause = if restarts != w.restarts { ModeCause::Restart } else { ModeCause::Client };
+            let cause = if restarts != w.restarts {
+                ModeCause::Restart
+            } else if only_cameras(last, &now) {
+                ModeCause::Cameras
+            } else {
+                ModeCause::Client
+            };
             mode_changed(world, cause);
         }
         Some(_) => {
             world.resource_mut::<ModeWatch>().restarts = restarts;
         }
     }
+}
+
+/// Whether two modes differ only in `gameCameras`.
+fn only_cameras(a: &Value, b: &Value) -> bool {
+    let strip = |v: &Value| {
+        let mut v = v.clone();
+        if let Some(o) = v.as_object_mut() {
+            o.remove("gameCameras");
+        }
+        v
+    };
+    strip(a) == strip(b)
 }
 
 /// Where a selection change came from.
@@ -264,9 +324,11 @@ pub(crate) fn build(app: &mut App) {
         .add_systems(First, apply_pending)
         .add_systems(
             Update,
-            (keep_selection, edit_keys, camera_controller, click_to_select, gizmo_focus, draw_gizmos)
-                .chain()
-                .run_if(|s: Res<EditState>| s.mode == Mode::Edit),
+            (
+                keep_selection.run_if(|s: Res<EditState>| s.mode == Mode::Edit),
+                (edit_keys, camera_controller, click_to_select, gizmo_focus, draw_gizmos).chain().run_if(|s: Res<EditState>| s.editor_view()),
+            )
+                .chain(),
         )
         .add_systems(Update, apply_tools.after(edit_keys))
         .add_systems(Last, watch_mode);
@@ -281,14 +343,18 @@ fn mark_bevy_gizmo(add: On<Add<Camera>>, mut commands: Commands, layers: Query<&
     }
 }
 
-/// A game camera spawned in edit mode (a reload's, a TS system's) stays off until play.
+/// A game camera spawned in edit mode (a reload's, a TS system's) keeps its flag for play; in the
+/// editor view it stays off until then, in the game view it is left as it came.
 fn camera_added(add: On<Add<Camera>>, mut state: ResMut<EditState>, mut cameras: Query<&mut Camera, (Without<EditorOnly>, Without<PreviewOnly>)>) {
     if state.mode != Mode::Edit {
         return;
     }
     if let Ok(mut c) = cameras.get_mut(add.entity) {
+        state.game_cameras.retain(|(e, _)| *e != add.entity);
         state.game_cameras.push((add.entity, c.is_active));
-        c.is_active = false;
+        if state.editor_view() {
+            c.is_active = false;
+        }
     }
 }
 
@@ -337,6 +403,18 @@ fn boot_edit(world: &mut World) {
     }
 }
 
+/// The game cameras Play would turn on: alive, not the editor's or a preview's, and their own flag
+/// on (the one remembered in edit mode; in play, `is_active` with a pending switch).
+pub fn game_cameras_count(world: &World) -> u32 {
+    let s = world.resource::<EditState>();
+    let game = |e: Entity| world.get_entity(e).is_ok_and(|r| r.contains::<Camera>() && !r.contains::<EditorOnly>() && !r.contains::<PreviewOnly>());
+    if s.mode == Mode::Edit {
+        return s.game_cameras.iter().filter(|(e, on)| *on && game(*e)).count() as u32;
+    }
+    let Some(mut q) = world.try_query_filtered::<(Entity, &Camera), (Without<EditorOnly>, Without<PreviewOnly>)>() else { return 0 };
+    q.iter(world).filter(|(e, c)| is_active(world, *e, c)).count() as u32
+}
+
 /// Whether a Play can run: a generation is live and the newest save did not fail. A Stop's
 /// rebuild is not a save: it neither hides a failed compile nor counts as one.
 pub fn play_refused(world: &World) -> Option<PlayRefused> {
@@ -356,15 +434,24 @@ pub fn play_refused(world: &World) -> Option<PlayRefused> {
     none.then(|| PlayRefused { reason: ViewportPlayRefusedReason::NoGeneration, message: "The game has not compiled yet.".to_string() })
 }
 
-/// Switches mode; answers the mode in force. A Play that can't run changes nothing.
-pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocused: Option<bool>) -> Result<Value, PlayRefused> {
+/// Switches mode and camera; answers the mode in force. A Play that can't run, or the editor
+/// camera in Play, changes nothing.
+pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocused: Option<bool>, camera: Option<CameraChoice>) -> Result<Value, ModeRefused> {
     let current = world.resource::<EditState>().mode;
+    if mode == Mode::Play && camera == Some(CameraChoice::Editor) {
+        mode_changed(world, ModeCause::Failed);
+        return Err(ModeRefused::EditorCamera);
+    }
     if mode == Mode::Play
         && current == Mode::Edit
         && let Some(refused) = play_refused(world)
     {
         mode_changed(world, ModeCause::Failed);
-        return Err(refused);
+        return Err(ModeRefused::Play(refused));
+    }
+    let choice_was = world.resource::<EditState>().camera_choice;
+    if let Some(c) = camera {
+        world.resource_mut::<EditState>().camera_choice = c;
     }
     if let Some(g) = gamepad_unfocused {
         world.resource_mut::<EditState>().gamepad_unfocused = g;
@@ -393,6 +480,9 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
             }
             Mode::Play => enter_play(world),
         }
+    } else if mode == Mode::Edit && world.resource::<EditState>().camera_choice != choice_was {
+        // The view alone: no Stop, nothing in the world changes.
+        apply_view(world);
     }
     apply_ui(world);
     if let Some(s) = world.get_resource::<SharedRes>() {
@@ -427,7 +517,15 @@ pub fn mode_json(world: &World) -> Value {
     let s = world.resource::<EditState>();
     let paused = world.get_resource::<bevy_ts::runtime::ScriptClock>().is_some_and(|c| c.paused);
     let started = bevy_ts::generation::started(world);
-    json!({ "mode": s.mode.name(), "ui": s.ui, "gamepadUnfocused": s.gamepad_unfocused, "paused": paused, "started": started })
+    json!({
+        "mode": s.mode.name(),
+        "ui": s.ui,
+        "gamepadUnfocused": s.gamepad_unfocused,
+        "paused": paused,
+        "started": started,
+        "camera": s.camera_choice.name(),
+        "gameCameras": game_cameras_count(world),
+    })
 }
 
 fn set_paused(world: &mut World, paused: bool) {
@@ -451,8 +549,8 @@ fn is_paused(world: &World) -> bool {
 fn enter_edit(world: &mut World) {
     let was_paused = is_paused(world);
     set_paused(world, true);
-    // Game cameras off, remembered; the first active one on the primary window gives the
-    // editor camera its first pose.
+    // Game cameras remembered; the first active one on the primary window gives the editor camera
+    // its first pose.
     let mut q = world.query_filtered::<(Entity, &Camera, &GlobalTransform, Option<&Projection>, Option<&RenderTarget>), (Without<EditorOnly>, Without<PreviewOnly>)>();
     let mut cameras = vec![];
     let mut pose: Option<(GlobalTransform, Projection)> = None;
@@ -464,19 +562,13 @@ fn enter_edit(world: &mut World) {
         }
         cameras.push((e, active));
     }
-    for (e, _) in &cameras {
-        set_active(world, *e, false);
-    }
     let mouse_was_enabled = world.get_resource::<PointerInputSettings>().is_none_or(|s| s.is_mouse_enabled);
     if let Some(mut s) = world.get_resource_mut::<PointerInputSettings>() {
         s.is_mouse_enabled = false;
     }
-    let camera = world.resource::<EditState>().camera.filter(|e| world.get_entity(*e).is_ok());
+    let camera = world.resource::<EditState>().editor_camera.filter(|e| world.get_entity(*e).is_ok());
     let camera = match camera {
-        Some(e) => {
-            set_active(world, e, true);
-            e
-        }
+        Some(e) => e,
         None => {
             let (gt, projection) = pose.unwrap_or((GlobalTransform::from(Transform::from_xyz(-6.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y)), Projection::default()));
             let t = gt.compute_transform();
@@ -484,7 +576,7 @@ fn enter_edit(world: &mut World) {
             let (yaw, pitch, _) = t.rotation.to_euler(EulerRot::YXZ);
             // Every layer but the previews' and the thumbnails'.
             let layers = RenderLayers::from_layers(&(0..PREVIEW_LAYERS.start).chain([EDITOR_LAYER]).collect::<Vec<_>>());
-            let e = world
+            world
                 .spawn((
                     Name::new("bevy-ts editor camera"),
                     Camera3d::default(),
@@ -496,22 +588,42 @@ fn enter_edit(world: &mut World) {
                     EditorCamera { focus: t.translation + forward * 10.0, yaw, pitch },
                     TransformGizmoCamera,
                 ))
-                .id();
-            set_active(world, e, true);
-            e
+                .id()
         }
     };
-    let overlay: Vec<Entity> = world.query_filtered::<Entity, (With<Camera>, With<EditorOnly>, Without<EditorCamera>, Without<UiSink>)>().iter(world).collect();
-    for e in overlay {
-        set_active(world, e, true);
-    }
-    world.resource_mut::<GizmoConfigStore>().config_mut::<EditorGizmos>().0.enabled = true;
     let mut s = world.resource_mut::<EditState>();
     s.mode = Mode::Edit;
     s.was_paused = was_paused;
     s.mouse_was_enabled = mouse_was_enabled;
     s.game_cameras = cameras;
-    s.camera = Some(camera);
+    s.editor_camera = Some(camera);
+    apply_view(world);
+}
+
+/// Edit mode's cameras and tools for the view in force, at the next `First`: the editor view turns
+/// the editor and overlay cameras on and the game cameras off; the game view the other way round,
+/// each game camera to its remembered flag, with the gizmos and the gizmo's focus gone.
+fn apply_view(world: &mut World) {
+    let s = world.resource::<EditState>();
+    if s.mode != Mode::Edit {
+        return;
+    }
+    let editor = s.editor_view();
+    for (e, on) in s.game_cameras.clone() {
+        set_active(world, e, on && !editor);
+    }
+    let tools: Vec<Entity> = world.query_filtered::<Entity, (With<Camera>, With<EditorOnly>, Without<UiSink>)>().iter(world).collect();
+    for e in tools {
+        set_active(world, e, editor);
+    }
+    world.resource_mut::<GizmoConfigStore>().config_mut::<EditorGizmos>().0.enabled = editor;
+    if !editor {
+        let focused: Vec<Entity> = world.query_filtered::<Entity, With<TransformGizmoFocus>>().iter(world).collect();
+        for e in focused {
+            world.entity_mut(e).remove::<TransformGizmoFocus>();
+        }
+        world.resource_mut::<Selection>().hovered = None;
+    }
 }
 
 fn enter_play(world: &mut World) {
@@ -557,10 +669,11 @@ fn enter_play(world: &mut World) {
 struct UiSink;
 
 /// Game UI over the editor view only with `ui: true`: the editor camera is then the default UI
-/// camera; otherwise [`UiSink`] is, in edit mode, and the game's own default in play.
+/// camera; otherwise [`UiSink`] is, in the editor view, and the game's own default in the game
+/// view and in play.
 fn apply_ui(world: &mut World) {
     let s = world.resource::<EditState>();
-    let (edit, ui, camera) = (s.mode == Mode::Edit, s.ui, s.camera);
+    let (edit, ui, camera) = (s.editor_view(), s.ui, s.editor_camera);
     let sink = world.query_filtered::<Entity, With<UiSink>>().iter(world).next();
     let sink = match sink {
         Some(e) => e,
@@ -597,7 +710,7 @@ pub(crate) const CLICK_SLOP: f32 = 4.0;
 
 /// The ray under a window point, from the editor camera.
 pub(crate) fn editor_ray(world: &mut World, at: Vec2) -> Option<Ray3d> {
-    let camera = world.resource::<EditState>().camera?;
+    let camera = world.resource::<EditState>().editor_camera?;
     let (cam, gt) = world.query::<(&Camera, &GlobalTransform)>().get(world, camera).ok()?;
     cam.viewport_to_world(gt, at).ok()
 }
@@ -781,7 +894,7 @@ pub fn bounds(world: &World, e: Entity) -> Option<(Vec3, Vec3)> {
 /// direction.
 pub fn frame_selection(world: &mut World) {
     let sel: Vec<Entity> = world.resource::<Selection>().items.iter().map(|(e, _)| *e).collect();
-    let Some(camera) = world.resource::<EditState>().camera else { return };
+    let Some(camera) = world.resource::<EditState>().editor_camera else { return };
     let mut lo = Vec3::splat(f32::MAX);
     let mut hi = Vec3::splat(f32::MIN);
     for e in sel {
@@ -823,7 +936,7 @@ pub(crate) fn camera_controller(
     mut track: ResMut<PointerTrack>,
     mods: Option<Res<crate::input::Modifiers>>,
 ) {
-    let Some(camera) = state.camera else { return };
+    let Some(camera) = state.editor_camera else { return };
     let Ok((mut t, mut cam)) = cameras.get_mut(camera) else { return };
     let delta: Vec2 = motion.read().map(|m| m.delta).sum();
     let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight) || mods.is_some_and(|m| m.alt);

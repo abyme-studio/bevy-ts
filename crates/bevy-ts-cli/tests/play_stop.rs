@@ -477,3 +477,56 @@ fn game_ui_stays_hidden_in_edit_with_a_selection_and_after_stop() {
     updates(&mut app, 5);
     assert!(ui_shows(&mut app), "ui: true shows it over the editor view");
 }
+
+// Change `game-camera-edit`: the game view on a real game.
+
+/// One `viewport_mode+watch` subscriber's next message, if one is owed.
+fn mode_watch(app: &mut App, key: &Value) -> Option<Value> {
+    let id = match app.world().resource::<RemoteMethods>().get("bevy-ts/viewport_mode+watch") {
+        Some(RemoteMethodSystemId::Watching(id)) => *id,
+        _ => panic!("no mode watch"),
+    };
+    app.world_mut().run_system_with(id, Some(key.clone())).unwrap().unwrap()
+}
+
+/// The arena's level gains a camera through `level_write`: the watch says `cameras`, the game view
+/// shows it, and the HUD draws there as in Play.
+#[test]
+fn a_level_camera_reaches_the_watch_and_the_game_view_draws_the_hud() {
+    let mut app = arena_example("game-camera-hud");
+    let key = json!({ "n": 1 });
+    let first = mode_watch(&mut app, &key).expect("a message on open");
+    assert_eq!((first["gameCameras"].as_u64(), first["cause"].as_str()), (Some(0), Some("engine")), "the arena's camera is a Startup's: {first}");
+    let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "camera": "game" }));
+    assert_eq!((r["camera"].as_str(), r["started"].as_bool(), r["gameCameras"].as_u64()), (Some("game"), Some(false), Some(0)), "{r}");
+    app.update();
+    mode_watch(&mut app, &key);
+
+    let base = call(&mut app, "bevy-ts/level_list", Value::Null)["levels"][0]["hash"].clone();
+    let w = call(&mut app, "bevy-ts/level_write", json!({
+        "file": "levels/arena.bsn", "base": base,
+        "ops": [{ "op": "add_entity", "parent": [], "name": "Shot", "patches": [
+            { "component": "Camera3d" },
+            { "component": "Transform", "fields": { "translation": { "type": "Vec3", "lanes": { "x": -6.0, "y": 5.0, "z": 10.0 } } } },
+        ] }],
+    }));
+    assert_eq!(w["status"], "written", "{w:#}");
+    let mut seen = vec![];
+    for _ in 0..500 {
+        updates(&mut app, 1);
+        seen.extend(mode_watch(&mut app, &key));
+        if seen.iter().any(|m| m["gameCameras"] == 1) {
+            break;
+        }
+    }
+    let m = seen.iter().find(|m| m["gameCameras"] == 1).unwrap_or_else(|| panic!("never counted: {seen:?}"));
+    assert_eq!((m["cause"].as_str(), m["camera"].as_str()), (Some("cameras"), Some("game")), "{m}");
+    updates(&mut app, 5);
+    let world = app.world_mut();
+    let shot = world.query::<(Entity, &Name)>().iter(world).find(|(_, n)| n.as_str() == "Shot").map(|(e, _)| e).unwrap();
+    assert!(world.get::<Camera>(shot).unwrap().is_active, "the game view shows it");
+    assert!(ui_shows(&mut app), "the HUD draws in the game view, as in play");
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "camera": "editor" }));
+    updates(&mut app, 5);
+    assert!(!ui_shows(&mut app), "and not in the editor view");
+}

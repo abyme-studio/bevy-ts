@@ -264,7 +264,15 @@ fn mode(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
         Some(protocol::ViewportMode::Play) => Mode::Play,
         None => world.resource::<EditState>().mode,
     };
-    edit::set_mode(world, want, p.ui, p.gamepad_unfocused).map_err(|r| BrpError { code: edit::PLAY_REFUSED, message: r.message, data: Some(json!(protocol::ViewportPlayRefused { reason: r.reason })) })
+    let camera = p.camera.map(|c| match c {
+        protocol::ViewportCameraChoice::Auto => edit::CameraChoice::Auto,
+        protocol::ViewportCameraChoice::Editor => edit::CameraChoice::Editor,
+        protocol::ViewportCameraChoice::Game => edit::CameraChoice::Game,
+    });
+    edit::set_mode(world, want, p.ui, p.gamepad_unfocused, camera).map_err(|r| match r {
+        edit::ModeRefused::Play(r) => BrpError { code: edit::PLAY_REFUSED, message: r.message, data: Some(json!(protocol::ViewportPlayRefused { reason: r.reason })) },
+        edit::ModeRefused::EditorCamera => invalid(edit::ModeRefused::EDITOR_CAMERA),
+    })
 }
 
 fn mode_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
@@ -288,7 +296,7 @@ fn camera(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     if let Some(v) = p.viewport.filter(|v| *v != GAME) {
         return crate::preview::camera(world, v, &p);
     }
-    let Some(cam) = world.resource::<EditState>().camera else {
+    let Some(cam) = world.resource::<EditState>().editor_camera else {
         return Err(invalid("no editor camera yet: enter edit mode first"));
     };
     if p.frame == Some(true) {
@@ -343,6 +351,10 @@ fn camera(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
 
 fn pick(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     let p: protocol::ViewportPickParams = required(p)?;
+    let s = world.resource::<EditState>();
+    if s.mode == Mode::Edit && !s.editor_view() {
+        return Err(invalid("Picking needs the editor camera."));
+    }
     let Some(ray) = edit::editor_ray(world, Vec2::new(p.x as f32, p.y as f32)) else {
         return Err(invalid("no editor camera yet: enter edit mode first"));
     };

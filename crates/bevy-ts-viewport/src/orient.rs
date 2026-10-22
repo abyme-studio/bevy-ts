@@ -9,7 +9,7 @@
 //! pass), and draws the axes flat, projected here through the editor camera's rotation; the hit
 //! test uses the same projection.
 
-use crate::edit::{CLICK_SLOP, EDITOR_LAYER, EditState, EditorCamera, EditorOnly, Mode, PITCH_LIMIT};
+use crate::edit::{CLICK_SLOP, EDITOR_LAYER, EditState, EditorCamera, EditorOnly, PITCH_LIMIT};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{ClearColorConfig, ImageRenderTarget, RenderTarget, ScalingMode};
 use bevy::core_pipeline::tonemapping::Tonemapping;
@@ -86,10 +86,10 @@ pub(crate) fn build(app: &mut App) {
         config.render_layers = RenderLayers::layer(ORIENT_LAYER);
         config.line.width = 2.0;
     }
-    let edit = |s: Res<EditState>| s.mode == Mode::Edit;
+    let edit = |s: Res<EditState>| s.editor_view();
     app.add_systems(Startup, spawn)
         .add_systems(Update, (click, follow).chain().after(crate::edit::camera_controller).run_if(edit))
-        .add_systems(Update, hide.run_if(|s: Res<EditState>| s.mode != Mode::Edit))
+        .add_systems(Update, hide.run_if(|s: Res<EditState>| !s.editor_view()))
         .add_systems(PostUpdate, claim.before(TransformGizmoSystems).run_if(edit));
 }
 
@@ -183,7 +183,7 @@ fn follow(
     mut g: Gizmos<OrientGizmos>,
 ) {
     let (Ok(mut cam), Ok((q, mut qt, mut qv, parent))) = (camera.single_mut(), quad.single_mut()) else { return };
-    let editor_cam = state.camera.and_then(|e| editor.get(e).ok().map(|x| (e, x)));
+    let editor_cam = state.editor_camera.and_then(|e| editor.get(e).ok().map(|x| (e, x)));
     let at = window.as_deref().and_then(|w| square(w).map(|r| (r, w.resolution.size())));
     let (Some((e, (et, ec, proj))), Some((r, size))) = (editor_cam, at) else {
         off(&mut rect, &mut drawn, &mut cam, &mut qv, ends.iter_mut().map(|(_, _, v)| v));
@@ -241,7 +241,7 @@ fn follow(
     }
 }
 
-/// Out of edit mode: no square, no camera, no quad, no ends.
+/// Out of the editor view: no square, no camera, no quad, no ends.
 fn hide(
     mut rect: ResMut<OrientRect>,
     mut drawn: ResMut<Drawn>,
@@ -329,7 +329,7 @@ fn click(
     if a.distance(b) > CLICK_SLOP {
         return;
     }
-    let Some((mut t, mut cam)) = state.camera.and_then(|e| editor.get_mut(e).ok()) else { return };
+    let Some((mut t, mut cam)) = state.editor_camera.and_then(|e| editor.get_mut(e).ok()) else { return };
     let Some(dir) = end_at(t.rotation, r, b) else { return };
     let distance = (t.translation - cam.focus).length();
     (cam.yaw, cam.pitch) = look_down(dir, cam.yaw);

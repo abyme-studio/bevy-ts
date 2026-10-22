@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.24.0",
+    "version": "1.25.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
@@ -402,6 +402,10 @@
         {
           "code": -32000,
           "message": "A Play was refused: the message is a sentence to show as is, `data` is a ViewportPlayRefused (1.24)."
+        },
+        {
+          "code": -32602,
+          "message": "Invalid params, among them `camera: \"editor\"` in, or entering, Play: \"The editor camera is not available in Play.\" (1.25)."
         }
       ]
     },
@@ -456,7 +460,13 @@
         "schema": {
           "$ref": "#/components/schemas/ViewportPickResult"
         }
-      }
+      },
+      "errors": [
+        {
+          "code": -32602,
+          "message": "No editor camera, or the game view is in force: \"Picking needs the editor camera.\" (1.25)."
+        }
+      ]
     },
     {
       "name": "bevy-ts/viewport_select",
@@ -3450,113 +3460,14 @@
           "edit"
         ]
       },
-      "ViewportModeParams": {
-        "type": "object",
-        "required": [],
-        "additionalProperties": false,
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/ViewportMode"
-          },
-          "ui": {
-            "type": "boolean",
-            "description": "Draw the game's UI over the editor view (edit only; default false)."
-          },
-          "gamepadUnfocused": {
-            "type": "boolean",
-            "description": "Pass gamepad input while the hole has no focus."
-          }
-        }
-      },
-      "ViewportModeResult": {
-        "type": "object",
-        "required": [
-          "mode",
-          "ui",
-          "gamepadUnfocused",
-          "paused"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/ViewportMode"
-          },
-          "ui": {
-            "type": "boolean"
-          },
-          "gamepadUnfocused": {
-            "type": "boolean"
-          },
-          "paused": {
-            "type": "boolean"
-          },
-          "started": {
-            "type": "boolean",
-            "description": "Whether the game's TS `Startup` systems have run in this world: false under `bevy-ts dev --edit` until the first play or step (1.18). Absent from older engines: treat the game as started."
-          }
-        }
-      },
-      "ViewportModeWatch": {
-        "type": "object",
-        "required": [
-          "mode",
-          "ui",
-          "gamepadUnfocused",
-          "paused",
-          "started",
-          "cause"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/ViewportMode"
-          },
-          "ui": {
-            "type": "boolean"
-          },
-          "gamepadUnfocused": {
-            "type": "boolean"
-          },
-          "paused": {
-            "type": "boolean"
-          },
-          "started": {
-            "type": "boolean",
-            "description": "Whether the game's TS `Startup` systems have run in this world."
-          },
-          "cause": {
-            "$ref": "#/components/schemas/ViewportModeCause"
-          }
-        },
-        "description": "`bevy-ts/viewport_mode+watch`'s message: the mode as `viewport_mode` answers it, and its cause (1.24)."
-      },
-      "ViewportModeCause": {
+      "ViewportCameraChoice": {
         "type": "string",
         "enum": [
-          "engine",
-          "client",
-          "restart",
-          "failed"
+          "auto",
+          "editor",
+          "game"
         ],
-        "description": "What sent a mode message: `engine` on open, `client` a `viewport_mode`, `pause` or `step` call, `restart` a `restart` reload, `failed` a refused Play (the mode unchanged) (1.24)."
-      },
-      "ViewportPlayRefused": {
-        "type": "object",
-        "required": [
-          "reason"
-        ],
-        "additionalProperties": false,
-        "description": "The `data` of a refused Play's error (1.24).",
-        "properties": {
-          "reason": {
-            "type": "string",
-            "enum": [
-              "no-generation",
-              "compile-errors"
-            ],
-            "description": "`no-generation`: no generation has been applied yet; `compile-errors`: the newest compile failed."
-          }
-        }
+        "description": "Which camera the viewport shows. In edit mode `auto` and `editor` show the editor camera with its tools, `game` the game cameras with the tools off and the world paused. Play always shows the game cameras; `editor` is refused there. `auto` is the default and may grow with a later two-pane view (1.25)."
       },
       "ViewportCamera": {
         "type": "object",
@@ -3598,6 +3509,140 @@
           }
         },
         "description": "The editor camera's pose."
+      },
+      "ViewportModeParams": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ViewportMode"
+          },
+          "ui": {
+            "type": "boolean",
+            "description": "Draw the game's UI over the editor view (edit only; default false)."
+          },
+          "gamepadUnfocused": {
+            "type": "boolean",
+            "description": "Pass gamepad input while the hole has no focus."
+          },
+          "camera": {
+            "$ref": "#/components/schemas/ViewportCameraChoice",
+            "description": "The camera choice, kept until a call sets another (1.25)."
+          }
+        }
+      },
+      "ViewportModeResult": {
+        "type": "object",
+        "required": [
+          "mode",
+          "ui",
+          "gamepadUnfocused",
+          "paused"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ViewportMode"
+          },
+          "ui": {
+            "type": "boolean"
+          },
+          "gamepadUnfocused": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "started": {
+            "type": "boolean",
+            "description": "Whether the game's TS `Startup` systems have run in this world: false under `bevy-ts dev --edit` until the first play or step (1.18). Absent from older engines: treat the game as started."
+          },
+          "camera": {
+            "$ref": "#/components/schemas/ViewportCameraChoice",
+            "description": "The camera choice in force (1.25). Absent from older engines: treat as `auto`."
+          },
+          "gameCameras": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25). Absent from older engines: unknown."
+          }
+        }
+      },
+      "ViewportModeWatch": {
+        "type": "object",
+        "required": [
+          "mode",
+          "ui",
+          "gamepadUnfocused",
+          "paused",
+          "started",
+          "camera",
+          "gameCameras",
+          "cause"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ViewportMode"
+          },
+          "ui": {
+            "type": "boolean"
+          },
+          "gamepadUnfocused": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "started": {
+            "type": "boolean",
+            "description": "Whether the game's TS `Startup` systems have run in this world."
+          },
+          "camera": {
+            "$ref": "#/components/schemas/ViewportCameraChoice"
+          },
+          "gameCameras": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "description": "The game cameras Play would turn on: not the editor's or previews', alive, their own active flag on. In Play, the ones on. Under `--edit` before the first Play, only level and scene cameras (1.25)."
+          },
+          "cause": {
+            "$ref": "#/components/schemas/ViewportModeCause"
+          }
+        },
+        "description": "`bevy-ts/viewport_mode+watch`'s message: the mode as `viewport_mode` answers it, and its cause (1.24)."
+      },
+      "ViewportModeCause": {
+        "type": "string",
+        "enum": [
+          "engine",
+          "client",
+          "restart",
+          "failed",
+          "cameras"
+        ],
+        "description": "What sent a mode message: `engine` on open, `client` a `viewport_mode`, `pause` or `step` call, `restart` a `restart` reload, `failed` a refused Play or camera choice (the mode unchanged) (1.24), `cameras` only `gameCameras` changed: a reload, a level edit or a game system added or removed a game camera (1.25)."
+      },
+      "ViewportPlayRefused": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "The `data` of a refused Play's error (1.24).",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no-generation",
+              "compile-errors"
+            ],
+            "description": "`no-generation`: no generation has been applied yet; `compile-errors`: the newest compile failed."
+          }
+        }
       },
       "ViewportCameraParams": {
         "type": "object",

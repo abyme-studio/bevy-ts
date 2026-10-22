@@ -27,7 +27,7 @@ None.
 ## Impact
 
 - `crates/bevy-ts-viewport`: `edit.rs` (`EditState` keeps the choice; `enter_edit`, `enter_play`, `camera_added` and a new view swap apply on the next `First`; a clear-only camera for no game camera; UI ownership), the tool systems in `edit.rs`, `edits.rs` and `orient.rs` gated on the editor view, `methods.rs` (`viewport_mode` params, the refusal, `viewport_pick` refused in the game view), the watch's `cameras` cause.
-- `protocol/bevy-ts.openrpc.json`: `ViewportCamera`, `camera` on `ViewportModeParams`, `ViewportModeResult` and `ViewportModeWatch`, `gameCameras`, the `cameras` cause; the next free minor; regenerated Rust and TS types.
+- `protocol/bevy-ts.openrpc.json`: `ViewportCameraChoice`, `camera` on `ViewportModeParams`, `ViewportModeResult` and `ViewportModeWatch`, `gameCameras`, the `cameras` cause; the next free minor; regenerated Rust and TS types.
 - `docs/viewport.md`: the game view, for the studio.
 - abyme: the studio adds a game-camera toggle and the "No cameras rendering" message (lead@studio-play-stop). An engine older than this minor has no game view, so the studio checks `hello.protocol` before it sends `camera`.
 - Needs the operator's go: nothing. It swaps the one view's cameras, so nothing renders twice and the cost is a game's own Play cost. No new dependency, infrastructure or pattern; the two-pane split, which would need a second surface, is left out.

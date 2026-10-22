@@ -103,8 +103,11 @@ fn mode_field(mode: TransformGizmoMode) -> &'static str {
 pub(crate) fn build(app: &mut App) {
     app.init_resource::<EditLog>().add_systems(Update, level_results).add_systems(
         PostUpdate,
-        (lock_inert_fields.before(bevy::gizmos::transform_gizmo::TransformGizmoSystems), track_drags.after(bevy::gizmos::transform_gizmo::TransformGizmoSystems), expire)
-            .run_if(|s: Res<EditState>| s.mode == Mode::Edit),
+        (
+            (lock_inert_fields.before(bevy::gizmos::transform_gizmo::TransformGizmoSystems), track_drags.after(bevy::gizmos::transform_gizmo::TransformGizmoSystems))
+                .run_if(|s: Res<EditState>| s.editor_view()),
+            expire.run_if(|s: Res<EditState>| s.mode == Mode::Edit),
+        ),
     );
 }
 

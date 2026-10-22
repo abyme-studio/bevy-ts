@@ -60,8 +60,8 @@ In Play the game cameras SHALL always show. A call with `camera: "editor"` that 
 With `gameCameras: 0` in the game view, the view SHALL clear to the game's `ClearColor` and show no stale frame.
 
 #### Scenario: Looking through the arena's camera
-- **WHEN** the arena is in edit mode, not started, enemy `b` selected, and a client sets `camera: "game"`
-- **THEN** the next frame shows the arena from its level camera with no grid, outline or handle; the enemies have not moved; the answer has `mode: "edit"`, `camera: "game"`, `paused: true`, `started: false`, `gameCameras: 1`; setting `camera: "editor"` shows the editor camera at its earlier pose with enemy `b` still selected
+- **WHEN** the arena's level has a camera, the arena is in edit mode, not started, enemy `b` selected, and a client sets `camera: "game"`
+- **THEN** the next frame shows the arena from that level camera with no grid, outline or handle; the enemies have not moved; the answer has `mode: "edit"`, `camera: "game"`, `paused: true`, `started: false`, `gameCameras: 1`; setting `camera: "editor"` shows the editor camera at its earlier pose with enemy `b` still selected
 
 #### Scenario: No picking in the game view
 - **WHEN** the arena is in the game view and the operator clicks enemy `a`, or a client calls `viewport_pick`
