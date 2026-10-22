@@ -2,12 +2,14 @@
 //! (`bevy-ts/material`); the prebuilt engine draws it with one erased Rust material and no Rust
 //! per material.
 
+pub mod alpha;
 pub mod kinds;
 pub mod layout;
 pub mod render;
 pub mod scene;
 pub mod wgsl;
 
+pub use alpha::{MaterialAlpha, MaterialAlphaTargets};
 pub use kinds::MaterialKinds;
 pub use render::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
 pub use scene::{GltfMaterialFilter, SceneMaterialSet, SceneMaterialTargets, scene_entities};

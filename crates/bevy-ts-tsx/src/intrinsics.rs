@@ -3,6 +3,7 @@
 //! is a script material (bevy-ts-material), shared the same way.
 
 use bevy::prelude::*;
+use bevy_ts_material::kinds::AlphaDecl;
 use bevy_ts_material::{GltfMaterialFilter, ScriptMaterial3d};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -68,12 +69,26 @@ pub struct MaterialProps {
     pub emissive: Option<String>,
     #[serde(default)]
     pub unlit: Option<bool>,
+    /// Replaces `color`'s alpha, 0 to 1.
+    #[serde(default)]
+    pub alpha: Option<f32>,
+    /// A script material's `alphaMode` names; unset, `Blend` below alpha 1 and `Opaque` otherwise.
+    #[serde(default, rename = "alphaMode")]
+    pub alpha_mode: Option<AlphaDecl>,
 }
 
 impl MaterialProps {
     pub fn check(&self) -> Result<(), String> {
         for c in [&self.color, &self.emissive].into_iter().flatten() {
             color(c)?;
+        }
+        if let Some(a) = self.alpha
+            && !(0.0..=1.0).contains(&a)
+        {
+            return Err(format!("alpha takes 0 to 1, not {a}"));
+        }
+        if let Some(m) = &self.alpha_mode {
+            m.parse()?;
         }
         Ok(())
     }
@@ -95,6 +110,15 @@ impl MaterialProps {
         if let Some(u) = self.unlit {
             m.unlit = u;
         }
+        if let Some(a) = self.alpha {
+            m.base_color.set_alpha(a);
+        }
+        // Bevy's own rule in `StandardMaterial::from(Color)`.
+        m.alpha_mode = match &self.alpha_mode {
+            Some(d) => d.parse().expect("checked"),
+            None if m.base_color.alpha() < 1.0 => AlphaMode::Blend,
+            None => AlphaMode::Opaque,
+        };
         m
     }
 

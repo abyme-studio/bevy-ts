@@ -2,6 +2,7 @@
 // are plain descriptions: an `<entity>`, component elements on it (`<Health initialHp={100} />`),
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
 import type { Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
+import type { AlphaMode } from "bevy-ts/material";
 
 /** What a picking handler receives: the event, and the call's `commands` and `frame`. */
 export interface PointerEvent {
@@ -228,6 +229,10 @@ export interface MaterialProps {
   roughness?: number;
   emissive?: string;
   unlit?: boolean;
+  /** Replaces `color`'s alpha, 0 to 1. To fade over time, use `MaterialAlpha` instead. */
+  alpha?: number;
+  /** Unset: `"blend"` when the alpha is below 1, `"opaque"` otherwise. */
+  alphaMode?: AlphaMode;
   kind?: never;
 }
 

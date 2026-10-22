@@ -106,6 +106,45 @@ layout is separate from components, which keep C rules.
   the renderer's own message. A renderer failure from a source older than the current one is
   never reported against the current file.
 
+## Alpha and fading
+
+`<material>` without `kind` is Bevy's `StandardMaterial`: `color`, `metallic`, `roughness`,
+`emissive`, `unlit`, `alpha` and `alphaMode`.
+
+```tsx
+<material color="#ff0000" alpha={0.5} />
+```
+
+- `alpha` (0 to 1) replaces the colour's alpha. A colour written with alpha (`"#ff000080"`) keeps
+  its own when `alpha` is unset. Outside 0 to 1, the load fails at the element.
+- `alphaMode` takes a script material's names. Unset, it is `"blend"` when the alpha is below 1
+  and `"opaque"` otherwise, as Bevy's `StandardMaterial::from(Color)`.
+
+These set a shape's resting look; they cannot be bound. To fade over time, put `MaterialAlpha`
+(from `bevy-ts/bevy`) on the entity and bind its field:
+
+```tsx
+import { MaterialAlpha } from "bevy-ts/bevy";
+
+<entity>
+  <mesh shape="cuboid" />
+  <material color="#ff0000" />
+  <MaterialAlpha alpha={() => k()} />
+</entity>
+```
+
+- It fades the entity's own `MeshMaterial3d<StandardMaterial>`. TSX children are not faded; give
+  each its own. A mesh drawing a script material is left alone.
+- Each faded mesh draws with a copy of its material owned by the entity, at the original's alpha
+  times `alpha` (clamped to 0..1), in `Blend` below 1 when the original was opaque, masked or
+  alpha-to-coverage. Other entities sharing the material are not faded. A changed `alpha` edits
+  the copies in place; it makes no asset. A material changed under it (a TS save, an asset saved
+  again) is faded again.
+- Removing it gives every mesh its own material back and drops the copies. Remove it when not
+  fading: while it is on, even at 1, the entity's meshes do not batch with others sharing their
+  material, and each changed frame prepares the copies again.
+- Bevy casts no shadow from blended meshes, and sorts them per mesh.
+
 ## Known limits
 
 - The check skips files that use inline module paths (`a::b::c(...)`) or `@if` outside the

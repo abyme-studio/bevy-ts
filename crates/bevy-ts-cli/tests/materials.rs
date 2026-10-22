@@ -183,3 +183,128 @@ fn a_bad_declaration_after_a_scene_is_reported_at_its_material_call() {
     assert!(r.errors[0].message.contains("reserved"), "{:?}", r.errors);
     assert_eq!(r.errors[0].location.clone().expect("material()").line, 6);
 }
+
+// Change material-alpha: `<material alpha alphaMode>` and `MaterialAlpha`.
+
+fn named(app: &mut App, name: &str) -> Entity {
+    let world = app.world_mut();
+    world.query::<(Entity, &Name)>().iter(world).find(|(_, n)| n.as_str() == name).map(|(e, _)| e).unwrap_or_else(|| panic!("no {name}"))
+}
+
+fn standard(app: &mut App, name: &str) -> (Handle<StandardMaterial>, StandardMaterial) {
+    let e = named(app, name);
+    let h = app.world().get::<MeshMaterial3d<StandardMaterial>>(e).expect("a standard material").0.clone();
+    let m = app.world().resource::<Assets<StandardMaterial>>().get(&h).unwrap().clone();
+    (h, m)
+}
+
+fn standard_game(cube: &str) -> String {
+    format!("import {{ app }} from \"bevy-ts\";\n\napp.scene(\"s\", () => (\n  <entity name=\"cube\">\n    <mesh shape=\"cuboid\" />\n    {cube}\n  </entity>\n));\n")
+}
+
+#[test]
+fn a_material_alpha_blends_by_default_and_an_explicit_mode_wins() {
+    let dir = project("materials-alpha", &[("game.tsx", &standard_game("<material color=\"#ff0000\" alpha={0.5} />"))]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let (_, m) = standard(&mut app, "cube");
+    assert_eq!((m.base_color.alpha(), m.alpha_mode), (0.5, AlphaMode::Blend));
+
+    write(&dir, "game.tsx", &standard_game("<material color=\"#ff0000\" alpha={0.5} alphaMode={{ mask: 0.3 }} />"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    assert_eq!(standard(&mut app, "cube").1.alpha_mode, AlphaMode::Mask(0.3));
+
+    // A colour with alpha keeps it, and blends by the same rule; opaque stays opaque.
+    write(&dir, "game.tsx", &standard_game("<material color=\"#ff000080\" />"));
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    let (_, m) = standard(&mut app, "cube");
+    assert!((m.base_color.alpha() - 128.0 / 255.0).abs() < 1e-6);
+    assert_eq!(m.alpha_mode, AlphaMode::Blend);
+    write(&dir, "game.tsx", &standard_game("<material color=\"#ff0000\" />"));
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    assert_eq!(standard(&mut app, "cube").1.alpha_mode, AlphaMode::Opaque);
+}
+
+#[test]
+fn a_bad_alpha_or_mode_fails_at_the_element() {
+    for (props, says) in [("alpha={2}", "alpha takes 0 to 1"), ("alphaMode=\"glass\"", "unknown alphaMode")] {
+        let dir = project("materials-alpha-bad", &[("game.tsx", &standard_game(&format!("<material color=\"#ff0000\" {props} />")))]);
+        let mut app = material_app(&dir.join("game.tsx"));
+        let r = reload(&mut app, false);
+        assert_eq!(r.status, ReloadStatus::Failed);
+        let e = &r.errors[0];
+        assert!(e.message.contains("<material>") && e.message.contains(says), "{e:?}");
+        assert_eq!(e.location.clone().expect("the element").line, 6);
+    }
+}
+
+const FADE: &str = r##"import { app, signal, Update, type Local, type u32 } from "bevy-ts";
+import { MaterialAlpha } from "bevy-ts/bevy";
+
+export const [k, setK] = signal(1);
+export function fade(frames: Local<{ n: u32 }>) { frames.n += 1; setK(Math.max(0, 1 - frames.n / 10)); }
+app.addSystems(Update, fade);
+
+app.scene("s", () => (
+  <entity name="root">
+    <entity name="cube">
+      <mesh shape="cuboid" />
+      <material color="#ff0000" />
+      <MaterialAlpha alpha={() => k()} />
+    </entity>
+    <entity name="twin">
+      <mesh shape="cuboid" />
+      <material color="#ff0000" />
+    </entity>
+  </entity>
+));
+"##;
+
+#[test]
+fn a_bound_material_alpha_fades_a_shape_frame_by_frame() {
+    let dir = project("materials-fade", &[("game.tsx", FADE)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 2);
+    let (copy, _) = standard(&mut app, "cube");
+    let (shared, twin) = standard(&mut app, "twin");
+    assert_ne!(copy, shared, "the faded cube draws its own copy");
+    let assets = app.world().resource::<Assets<StandardMaterial>>().len();
+    let mut last = f32::MAX;
+    for _ in 0..12 {
+        app.update();
+        let (h, m) = standard(&mut app, "cube");
+        assert_eq!(h, copy, "edited in place");
+        assert!(m.base_color.alpha() <= last, "{} after {last}", m.base_color.alpha());
+        last = m.base_color.alpha();
+        assert_eq!(app.world().resource::<Assets<StandardMaterial>>().len(), assets, "no asset added");
+    }
+    assert_eq!(last, 0.0);
+    assert_eq!(standard(&mut app, "cube").1.alpha_mode, AlphaMode::Blend);
+    assert_eq!((twin.base_color.alpha(), twin.alpha_mode), (1.0, AlphaMode::Opaque));
+    assert_eq!(standard(&mut app, "twin").0, shared, "the twin keeps the shared material");
+
+    // A TS save that changes the cube's colour keeps it faded, now blue.
+    let cube = named(&mut app, "cube");
+    write(&dir, "game.tsx", &FADE.replacen("<material color=\"#ff0000\" />", "<material color=\"#0000ff\" />", 1));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 3);
+    assert_eq!(named(&mut app, "cube"), cube);
+    let (h, m) = standard(&mut app, "cube");
+    let c = m.base_color.to_srgba();
+    assert_eq!((c.red, c.blue), (0.0, 1.0));
+    assert!(m.base_color.alpha() < 1.0 && m.alpha_mode == AlphaMode::Blend);
+    assert_ne!(h, standard(&mut app, "twin").0);
+
+    // A save without MaterialAlpha: the cube is opaque blue again.
+    write(&dir, "game.tsx", &FADE.replacen("<material color=\"#ff0000\" />", "<material color=\"#0000ff\" />", 1).replace("<MaterialAlpha alpha={() => k()} />", ""));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 2);
+    let m = standard(&mut app, "cube").1;
+    assert_eq!((m.base_color.alpha(), m.alpha_mode), (1.0, AlphaMode::Opaque));
+}

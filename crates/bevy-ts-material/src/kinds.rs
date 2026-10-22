@@ -32,6 +32,24 @@ pub enum AlphaDecl {
     Mask { mask: f32 },
 }
 
+impl AlphaDecl {
+    /// The Bevy mode an `alphaMode` names: a script material's and `<material>`'s alike.
+    pub fn parse(&self) -> Result<AlphaMode, String> {
+        Ok(match self {
+            AlphaDecl::Mask { mask } => AlphaMode::Mask(*mask),
+            AlphaDecl::Named(n) => match n.as_str() {
+                "opaque" => AlphaMode::Opaque,
+                "blend" => AlphaMode::Blend,
+                "premultiplied" => AlphaMode::Premultiplied,
+                "add" => AlphaMode::Add,
+                "multiply" => AlphaMode::Multiply,
+                "alphaToCoverage" => AlphaMode::AlphaToCoverage,
+                other => return Err(format!("unknown alphaMode {other:?}")),
+            },
+        })
+    }
+}
+
 /// One `material(name, {...})`.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,18 +72,7 @@ impl MaterialDecl {
     }
 
     pub fn alpha_mode(&self) -> Result<AlphaMode, String> {
-        Ok(match &self.alpha_mode {
-            AlphaDecl::Mask { mask } => AlphaMode::Mask(*mask),
-            AlphaDecl::Named(n) => match n.as_str() {
-                "opaque" => AlphaMode::Opaque,
-                "blend" => AlphaMode::Blend,
-                "premultiplied" => AlphaMode::Premultiplied,
-                "add" => AlphaMode::Add,
-                "multiply" => AlphaMode::Multiply,
-                "alphaToCoverage" => AlphaMode::AlphaToCoverage,
-                other => return Err(format!("unknown alphaMode {other:?}")),
-            },
-        })
+        self.alpha_mode.parse()
     }
 
     /// What fails the load at the `material()` call: a schema that does not lay out, an unknown

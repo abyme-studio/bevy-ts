@@ -102,6 +102,7 @@ impl Plugin for ScriptMaterialRenderPlugin {
             .init_resource::<EntitiesNeedingSpecialization<ScriptMaterial>>()
             .add_systems(PostUpdate, check_entities_needing_specialization.after(AssetEventSystems));
         crate::scene::plugin(app);
+        crate::alpha::plugin(app);
         let watch = crate::wgsl::PipelineWatch::default();
         app.insert_resource(watch.clone());
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
