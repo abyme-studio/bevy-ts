@@ -245,17 +245,21 @@ fn the_levels_demo_walks_its_seven_steps() {
     assert!(w.app.world().get_entity(b).is_err(), "b follows the disk");
     println!("  delete #EnemyB mid-drag: {} ({}); b despawned", r.status, r.reason.unwrap());
 
-    // 6. A typo in a component name: the error names its place; the world is unchanged.
+    // 6. A typo in a component name: under `bevy-ts dev` the save applies, the typo is a
+    // placeholder on a, and the warning names its place.
     let a = w.node(&["Grunt"]).expect("a, renamed");
-    let x = w.translation(a).x;
     let good = w.file();
     let typo = good.replacen("Transform { translation: Vec3 { x: -3.0", "Transfrom { translation: Vec3 { x: -3.0", 1);
     w.save(&typo);
-    let errors = w.errors();
-    let e = errors.iter().find(|e| e.contains("Transfrom")).expect("located error").clone();
-    assert!(e.starts_with("levels/arena.bsn:"), "{e}");
-    assert_eq!(w.translation(a).x, x);
-    println!("6 a typo: {e}; the world is unchanged");
+    assert!(w.errors().iter().all(|e| !e.contains("Transfrom")), "{:?}", w.errors());
+    assert_eq!(w.node(&["Grunt"]), Some(a), "the same entity");
+    let m = w.app.world().get::<bevy_ts_levels::engine::MissingComponents>(a).expect("a placeholder entry").0[0].clone();
+    assert_eq!(m.component, "Transfrom");
+    let e = format!("{}:{} {}", m.location.file, m.location.line, m.message);
+    assert!(e.starts_with("levels/arena.bsn:") && e.contains("did you mean Transform?"), "{e}");
+    println!("6 a typo: {e}; a placeholder, the rest applies");
+    w.save(&good);
+    assert!(w.app.world().get::<bevy_ts_levels::engine::MissingComponents>(a).is_none(), "fixed, the marker goes");
 
     // 7. `bevy-ts levels check --upstream arena.bsn` lists E1 and E2.
     let (lines, ok) = bevy_ts_levels::check::check_source("arena.bsn", &good, true);
