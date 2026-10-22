@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Every ECS query, command, lifecycle and hierarchy item has a TS form and a test
-For each Bevy 0.20 item below, bevy-ts SHALL offer the TS form named, under Bevy's name, and the test named SHALL prove it. Tests are in `crates/bevy-ts-cli/tests/ecs_queries.rs` unless a path is given. An item marked "declined" SHALL have no TS form, for the reason given. The audit row each item closes is from `docs/research/bevy-coverage.md` (ECS); "research" marks one the audit missed (`docs/research/ecs-queries.md`).
+For each Bevy 0.20 item below, bevy-ts SHALL offer the TS form named, under Bevy's name, and the test named SHALL prove it. Tests are in `crates/bevy-ts-cli/tests/ecs_queries.rs` unless a path is given. An item marked "declined" SHALL have no TS form, for the reason given. An item marked "owned by" another change is that change's to land, with its test. The audit row each item closes is from `docs/research/bevy-coverage.md` (ECS); "research" marks one the audit missed (`docs/research/ecs-queries.md`).
 
 | Item (Bevy 0.20) | TS form | Test | Source |
 |---|---|---|---|
@@ -20,7 +20,7 @@ For each Bevy 0.20 item below, bevy-ts SHALL offer the TS form named, under Bevy
 | `SystemChangeTick` | `SystemChangeTick` param | `system_change_tick_last_run_is_previous_this_run` | audit: params |
 | `Children`, `iter_descendants`, `iter_ancestors` | `q.iterDescendants(e)` (with `Children` data), `q.iterAncestors(e)` (with `ChildOf`) | `iter_ancestors_and_descendants` | audit: hierarchy walk |
 | `with_children`, `add_children`, `detach_children`, `despawn_children` | `entity(e).withChildren(fn)`, `addChildren`, `detachChildren`, `despawnChildren` | `children_commands` | audit: hierarchy walk |
-| Custom relationships, `with_related`, `despawn_related` | `Relationship(Target)`, `RelationshipTarget(Rel)`, `withRelated`, `despawnRelated` | `custom_relationship_keeps_its_target_list` | audit: relationships |
+| Custom relationships, `with_related`, `despawn_related` | owned by custom-relationships, a change of its own after this one | — | audit: relationships |
 | `spawn` returning the entity for a scene root | `spawn(<el/>)` returns the root; parts go on it | `spawn_element_returns_its_root` | audit: `spawn(<el/>)` |
 | `EntityCommands::insert` of a scene | `entity(e).insert(<el/>)` lands on `e` | `insert_element_lands_on_the_entity` | audit: `spawn(<el/>)` |
 | `spawn_batch` | `commands.spawnBatch(list)` | `spawn_batch_returns_ids_in_order` | audit: commands |
