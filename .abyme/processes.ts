@@ -55,7 +55,7 @@ export default {
   "viewport-assets": { cmd: "cargo test -p bevy-ts-viewport --test assets --lib -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-assets.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -30" },
   "viewport-walk": { cmd: "cargo test -p bevy-ts-cli --test viewport_walk -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-walk.log | grep -E '^[0-9] |^stats|test |panicked|assert|^thread' | tail -30" },
   // The arena lit in play, edit, then play again (black meshes after edit mode).
-  "play-after-edit": { cmd: "cargo test -p bevy-ts-cli --test play_after_edit -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/play-after-edit.log | grep -E 'black|test |panicked|assert|^thread|^error' | tail -30" },
+  "play-after-edit": { cmd: "cargo test -p bevy-ts-cli --test play_after_edit -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/play-after-edit.log | grep -E 'black|plain|test |panicked|assert|^thread|^error' | tail -30" },
   "viewport-walk-release": { cmd: "cargo test --release -p bevy-ts-cli --test viewport_walk -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-walk-release.log | grep -E '^[0-9] |^stats|test |panicked|assert|^thread' | tail -30" },
   "viewport-spike-short": { cmd: "cargo test -p bevy-ts-viewport --test spike -- --nocapture 2>&1 | tee target/viewport-spike-short.log | tail -40" },
   "viewport-latency": { cmd: "SPIKE_PRESSES=200 cargo test --release -p bevy-ts-viewport --test spike key_to_pixels -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-latency.log | tail -8" },
@@ -139,5 +139,7 @@ export default {
   // The levels bench then the Stop bench, back to back, so both see one machine load.
   "stop-bench-ab": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do uptime; cargo test --release -p bevy-ts-cli --test levels_bench -- --ignored --nocapture 2>&1 | grep -E \"^\\| [0-9]\"; cargo test --release -p bevy-ts-cli --test stop_bench -- --ignored --nocapture 2>&1 | grep -E \"^[0-9]+:|^\\| [0-9]\"; done 2>&1 | tee -a target/stop-bench-ab.log; uptime'" },
   // Change play-stop: the last round before it lands.
+  // play-grey-viewport: the workspace tests, the viewport's one at a time (build and clippy ran on their own).
+  "play-grey-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1) 2>&1 | grep -v ld64 | tee target/play-grey-tests.log | grep -E \"^test result|FAILED|panicked|^error\"'" },
   "play-stop-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/play-stop-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
 } satisfies ProcessFile;
