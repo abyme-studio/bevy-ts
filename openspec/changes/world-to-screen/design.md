@@ -16,13 +16,14 @@ TS reaches Rust behaviour only through exported read-only params (native-functio
 ## Decisions
 
 1. One bevy-ts-owned param, `Cameras`, module `bevy-ts/camera`, over `Query<(&Camera, &GlobalTransform)>`. Alternatives: a TS-side projection from `Projection` and `GlobalTransform` (duplicates Bevy, drifts from it), or a port crate (camera is core Bevy, not third-party). The param names the camera by `Entity`, as Bevy's API takes a camera, so multiple cameras work.
-2. `null` for every `ViewportConversionError`. TS cannot act on the variants differently; each means "do not draw". A non-camera entity is a programming error, so it throws (a `Result` error), as `ReadRapierContext` throws before its context exists.
+2. `undefined` for every `ViewportConversionError`: an exported `Option` crosses as `undefined`, as `castRay`'s miss does. TS cannot act on the variants differently; each means "do not draw". A non-camera entity is a programming error, so it throws (a `Result` error), as `ReadRapierContext` throws before its context exists.
 3. No bounds check. Callers clamp or hide; a tag sliding in from the edge needs the outside coordinates.
 4. Batched form `worldsToViewport(camera, points, out) -> u32`, three floats in and two out per point, `NaN` for a miss (unlike `castRays`' `-1`, which is a valid coordinate here). One host call per batch.
 5. Location: `crates/bevy-ts-native/src/camera.rs`, with a `CamerasPlugin` that calls `ts_param`. The derive emits `::bevy_ts_native::...` paths, which do not resolve inside `bevy-ts-native` itself; `extern crate self as bevy_ts_native;` in its `lib.rs` makes them resolve. If that fails, the module goes in `crates/bevy-ts-cli` instead (it depends on `bevy-ts-native`). `base_app` and `types_app` add the plugin.
+   Built: the derive resolves, but `bevy-ts-native` builds Bevy without its camera (no 3D features, as the native API crate stays render-free), so `Camera` does not exist there. The module is `crates/bevy-ts-cli/src/camera.rs`, the engine crate, which has Bevy's 3D features.
 
 ## Risks / Trade-offs
 
 - [One-frame lag from `Update`] → documented in docs/native.md; a system after `TransformSystems::Propagate` reads the current frame.
-- [Frame 1 has no viewport size] → `null`, tested; callers skip the frame.
+- [Frame 1 has no viewport size] → `undefined`, tested; callers skip the frame.
 - [Protocol] → no schema change expected. If the build finds `Cameras` touches a protocol surface (params list in a snapshot, a version check), take the next free minor at landing.

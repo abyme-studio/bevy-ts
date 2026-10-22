@@ -5,8 +5,8 @@ A TS system cannot place a UI node over a 3D entity: nothing exported maps a wor
 ## What Changes
 
 - The engine exports a read-only system param `Cameras` from module `bevy-ts/camera`, wrapping `Query<(&Camera, &GlobalTransform)>`, on the existing `#[export]` pattern (as Rapier's `ReadRapierContext`).
-- `cameras.worldToViewport(camera, point)` returns a `Vec2` in logical pixels, top-left origin (the units of a UI node's `left`/`top`), or `null` when Bevy cannot project the point (behind the camera, past the far plane, no viewport size yet, bad data). Points in front but off screen return coordinates outside the viewport; there is no bounds check.
-- `cameras.logicalViewportSize(camera)` returns the viewport's logical size, or `null` before it is known.
+- `cameras.worldToViewport(camera, point)` returns a `Vec2` in logical pixels, top-left origin (the units of a UI node's `left`/`top`), or `undefined` when Bevy cannot project the point (behind the camera, past the far plane, no viewport size yet, bad data). Points in front but off screen return coordinates outside the viewport; there is no bounds check.
+- `cameras.logicalViewportSize(camera)` returns the viewport's logical size, or `undefined` before it is known.
 - `cameras.worldsToViewport(camera, points, out)` projects many points in one host call and returns how many projected.
 - Every engine adds it: `bevy-ts dev`, `bevy-ts play`, a shipped game and `bevy-ts types`.
 - docs/native.md names the built-in module and the one-frame lag.

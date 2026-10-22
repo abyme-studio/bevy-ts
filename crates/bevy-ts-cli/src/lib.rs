@@ -2,6 +2,7 @@
 //! runs.
 
 pub mod build;
+pub mod camera;
 pub mod cli;
 pub mod compile;
 pub mod dev;

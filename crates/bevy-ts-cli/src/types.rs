@@ -30,6 +30,7 @@ fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         .add_plugins(bevy_ts_tsx::TsxPlugin)
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
+        .add_plugins(crate::camera::CamerasPlugin)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     app
@@ -478,6 +479,16 @@ mod tests {
         assert!(out.contains("export declare class Transform extends Component {\n  static readonly path: \"bevy_transform::components::transform::Transform\";\n  declare readonly translation: Vec3;"), "{out}");
         assert!(out.contains("declare value: \"Inherited\" | \"Hidden\" | \"Visible\";"), "{out}");
         assert_eq!(out, emit(&world), "deterministic");
+    }
+
+    #[test]
+    fn the_engine_declares_cameras() {
+        let mut app = App::new();
+        app.add_plugins(crate::camera::CamerasPlugin);
+        let out = emit_modules(app.world());
+        assert!(out.contains("declare module \"bevy-ts/camera\" {"), "{out}");
+        assert!(out.contains("Cameras"), "{out}");
+        assert!(out.contains("worldToViewport(camera: Entity"), "{out}");
     }
 
     #[test]

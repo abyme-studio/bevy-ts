@@ -19,6 +19,7 @@ bevy-ts-viewport.workspace = true
 bevy-ts-levels.workspace = true
 bevy-ts-material.workspace = true
 bevy-ts-animation.workspace = true
+bevy-ts-native.workspace = true
 oxc = { version = "0.154", features = ["transformer", "codegen", "semantic", "ast_visit"] }
 oxc_resolver = "11.24"
 notify = "8"
@@ -33,6 +34,5 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 bevy = { workspace = true }
-bevy-ts-native.workspace = true
 jsonschema = { version = "0.33", default-features = false }
 tungstenite = "0.28"

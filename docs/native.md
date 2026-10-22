@@ -207,3 +207,30 @@ classes declare themselves with `__bevyts.data` and are declared by every genera
 
 `examples/rapier` uses all of it with no Rust in the project. Plans for leafwing-input-manager,
 avian and bevy_hanabi are in [research/native-ports.md](research/native-ports.md).
+
+The engine itself exports one param, from the built-in module `bevy-ts/camera`, in every
+engine (`dev`, `play`, a shipped game, `bevy-ts types`). `Cameras` is Bevy's
+`Camera::world_to_viewport`, so a UI node can sit over a world point:
+
+```ts
+import type { Cameras } from "bevy-ts/camera";
+
+export function tag(cameras: Cameras) {
+  const p = cameras.worldToViewport(camera, [0, 2, 0]);
+  if (p) console.log(`the tag goes at left ${p.x}px, top ${p.y}px`);
+}
+```
+
+- `worldToViewport(camera, point)` returns logical pixels from the viewport's top-left, the
+  units of a node's `left` and `top`. A point in front of the camera but off screen returns
+  coordinates outside the viewport; callers clamp or hide. It returns `undefined` when Bevy cannot
+  project the point: behind the camera, past the far plane, or before the viewport has a size
+  (the frame a camera spawns).
+- `logicalViewportSize(camera)` is the viewport's logical size, `undefined` before it is known.
+- `worldsToViewport(camera, points, out)` projects many in one host call: three floats per
+  point in, two out (`NaN, NaN` for one that does not project), and returns how many projected.
+- An entity that is not a camera throws.
+
+The camera's `GlobalTransform` is the one last propagated, in `PostUpdate`: from `Update` it is
+the previous frame's, so a tag on a moving camera lags a frame. A system that needs the current
+frame orders after transform propagation.
