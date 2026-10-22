@@ -60,7 +60,7 @@ Holes are fields (such as `Color`) that only reflection can touch.
 | Resource | Shape (Bevy 0.20) | Tier | Owner |
 |---|---|---|---|
 | `Time` | f32/f64 seconds, `Duration` holes | layout (special case today) | path: us; semantics: script-time |
-| `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | as `Time` plus context | layout, fields read-only | script-time, on our path |
+| `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | as `Time` plus context | `Res`: per-run value (`RunParam::Time`) | script-time |
 | `Time<Virtual>` pause, speed; `Time<Fixed>` timestep | methods | exported param | script-time via writable-native-params |
 | `GlobalAmbientLight` | `color: Color`, `brightness: f32`, `bool` | layout, `color` a hole | us (brightness); `color` via reflect stage 3 |
 | `UiScale` | `f32` | layout | us |
@@ -97,8 +97,10 @@ All replied and agreed by message on 2026-10-23.
   API is methods (`Assets<T>`, `Time<Virtual>::pause`), goes through their path. An export may
   claim a TS spelling (`stands_for = "ResMut<Time<Virtual>>"`). Proposed: a claimed spelling wins.
   Generic `Res`/`ResMut` resolution checks `HostParams` claims first and never resolves a claimed
-  spelling, so there is no registration error. `VirtualTime` claims both `Res` and
-  `ResMut<Time<Virtual>>`.
+  spelling, so there is no registration error. Resolution order: the `Time<..>` route
+  (script-time) first, which owns every `Res<Time<..>>` for all four clocks as a per-run value;
+  then export claims (`VirtualTime` claims only `ResMut<Time<Virtual>>`, `FixedTime` only
+  `ResMut<Time<Fixed>>`); then our generic layout path.
 - ambient-light-script: owns no resource or param, only `encodeWithLayout` default bytes.
   `GlobalAmbientLight` is ours. Our path does not encode through `encodeWithLayout` (it writes in
   place), so no ordering dependency.
