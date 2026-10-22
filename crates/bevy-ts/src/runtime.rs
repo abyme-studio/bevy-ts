@@ -141,6 +141,27 @@ pub fn current_generation(world: &World) -> u64 {
 #[derive(Resource, Default, Clone, Copy, Debug)]
 pub struct ScriptFrame(pub u64);
 
+/// Starts the game clocks again from 0, as a Stop does: a fresh paused `Time<Virtual>` keeping
+/// its `max_delta` and relative speed, `Time<Fixed>` with no overstep, and [`ScriptFrame`] at 0.
+pub fn reset_clock(world: &mut World) {
+    if let Some(old) = world.get_resource::<Time<Virtual>>() {
+        let mut fresh = Time::<Virtual>::from_max_delta(old.max_delta());
+        fresh.set_relative_speed_f64(old.relative_speed_f64());
+        fresh.pause();
+        world.insert_resource(fresh);
+        if let Some(mut generic) = world.get_resource_mut::<Time>() {
+            *generic = fresh.as_generic();
+        }
+    }
+    if let Some(old) = world.get_resource::<Time<Fixed>>() {
+        let fresh = Time::<Fixed>::from_duration(old.timestep());
+        world.insert_resource(fresh);
+    }
+    if let Some(mut frame) = world.get_resource_mut::<ScriptFrame>() {
+        frame.0 = 0;
+    }
+}
+
 /// Pause and single-frame stepping for the bevy-ts stages and `Time<Virtual>`.
 #[derive(Resource, Default, Clone, Copy, Debug)]
 pub struct ScriptClock {

@@ -66,7 +66,7 @@ Research (play-snapshot/research) compared a snapshot with a rebuild. The engine
 
 ## Migration Plan
 
-Additions to the protocol only, at the next free minor on main when this lands (1.20.0 if first; lead@bevy-ts names it). The studio checks the minor from `hello` before subscribing to the watch. An older studio sees the new Stop behaviour with no schema change. Rollback is reverting the change.
+Additions to the protocol only, at the next free minor on main when this lands (1.24.0: 1.20 to 1.23 were taken; lead@bevy-ts names it). The studio checks the minor from `hello` before subscribing to the watch. An older studio sees the new Stop behaviour with no schema change. Rollback is reverting the change.
 
 ## Stage 2, later: the game camera while editing
 

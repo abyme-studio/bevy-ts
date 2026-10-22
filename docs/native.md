@@ -129,6 +129,31 @@ app.add_systems(Update, spin.run_if(in_state(EngineMode::Play)));
 `OnEnter(EngineMode::Play)` and `OnExit(EngineMode::Play)` run when a client switches, before the
 first play's `Startup`.
 
+A Stop (play to edit) rebuilds the TS world from source (`docs/viewport.md`), but bevy-ts neither
+resets nor despawns what Rust made: it can't know what a crate's resource means. A crate whose
+state must not leak into the next Play resets it in `OnExit(EngineMode::Play)`, which runs before
+the rebuild:
+
+```rust
+#[derive(Resource, Default)]
+struct Waves(u32);
+
+#[derive(Component)]
+struct Spawned;
+
+fn reset(mut waves: ResMut<Waves>, spawned: Query<Entity, With<Spawned>>, mut commands: Commands) {
+    waves.0 = 0;
+    for e in &spawned {
+        commands.entity(e).despawn();
+    }
+}
+
+app.add_systems(OnExit(EngineMode::Play), reset);
+```
+
+Components a port adds to TS entities, such as Rapier's bodies and colliders, go with their
+entities: play, Stop, play runs the same.
+
 ## Calling Rust from TS: exported params
 
 Behaviour reaches TS as Bevy's own unit, a read-only `SystemParam`. One attribute exports it:

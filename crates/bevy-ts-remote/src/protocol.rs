@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.23.0";
+pub const VERSION: &str = "1.24.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,6 +38,7 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/viewport_resize", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/viewport_input", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/viewport_mode", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_mode+watch", crate_name: "bevy-ts-viewport", watch: true },
     Method { name: "bevy-ts/viewport_camera", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/viewport_pick", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/viewport_select", crate_name: "bevy-ts-viewport", watch: false },
@@ -5108,6 +5109,69 @@ impl ::std::convert::TryFrom<::std::string::String> for ViewportMode {
         value.parse()
     }
 }
+///What sent a mode message: `engine` on open, `client` a `viewport_mode`, `pause` or `step` call, `restart` a `restart` reload, `failed` a refused Play (the mode unchanged) (1.24).
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ViewportModeCause {
+    #[serde(rename = "engine")]
+    Engine,
+    #[serde(rename = "client")]
+    Client,
+    #[serde(rename = "restart")]
+    Restart,
+    #[serde(rename = "failed")]
+    Failed,
+}
+impl ::std::fmt::Display for ViewportModeCause {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Engine => f.write_str("engine"),
+            Self::Client => f.write_str("client"),
+            Self::Restart => f.write_str("restart"),
+            Self::Failed => f.write_str("failed"),
+        }
+    }
+}
+impl ::std::str::FromStr for ViewportModeCause {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "engine" => Ok(Self::Engine),
+            "client" => Ok(Self::Client),
+            "restart" => Ok(Self::Restart),
+            "failed" => Ok(Self::Failed),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ViewportModeCause {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ViewportModeCause {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`ViewportModeParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
@@ -5137,6 +5201,19 @@ pub struct ViewportModeResult {
     pub started: ::std::option::Option<bool>,
     pub ui: bool,
 }
+///`bevy-ts/viewport_mode+watch`'s message: the mode as `viewport_mode` answers it, and its cause (1.24).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportModeWatch {
+    pub cause: ViewportModeCause,
+    #[serde(rename = "gamepadUnfocused")]
+    pub gamepad_unfocused: bool,
+    pub mode: ViewportMode,
+    pub paused: bool,
+    ///Whether the game's TS `Startup` systems have run in this world.
+    pub started: bool,
+    pub ui: bool,
+}
 ///`ViewportPickParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -5152,6 +5229,68 @@ pub struct ViewportPickResult {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub ground: ::std::option::Option<[f64; 3usize]>,
     pub hits: ::std::vec::Vec<PickHit>,
+}
+///The `data` of a refused Play's error (1.24).
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportPlayRefused {
+    ///`no-generation`: no generation has been applied yet; `compile-errors`: the newest compile failed.
+    pub reason: ViewportPlayRefusedReason,
+}
+///`no-generation`: no generation has been applied yet; `compile-errors`: the newest compile failed.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum ViewportPlayRefusedReason {
+    #[serde(rename = "no-generation")]
+    NoGeneration,
+    #[serde(rename = "compile-errors")]
+    CompileErrors,
+}
+impl ::std::fmt::Display for ViewportPlayRefusedReason {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::NoGeneration => f.write_str("no-generation"),
+            Self::CompileErrors => f.write_str("compile-errors"),
+        }
+    }
+}
+impl ::std::str::FromStr for ViewportPlayRefusedReason {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "no-generation" => Ok(Self::NoGeneration),
+            "compile-errors" => Ok(Self::CompileErrors),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ViewportPlayRefusedReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ViewportPlayRefusedReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///`ViewportResizeParams`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

@@ -445,7 +445,7 @@ struct SwitchTo(Option<Mode>);
 
 fn switch_late(world: &mut World) {
     if let Some(mode) = world.resource_mut::<SwitchTo>().0.take() {
-        bevy_ts_viewport::edit::set_mode(world, mode, None, None);
+        bevy_ts_viewport::edit::set_mode(world, mode, None, None).unwrap();
     }
 }
 
@@ -881,6 +881,14 @@ mod boot {
     /// The test app with bevy-ts on the fake backend, booted as `bevy-ts dev --viewport [--edit]`
     /// boots, its first generation applied.
     fn ts_app(edit: bool) -> (App, FakeHandle, Runs, Spins) {
+        let (mut app, fake, runs, spins) = ts_app_bare(edit, |_| {});
+        reload(&mut app, &fake, &runs, false, false);
+        updates(&mut app, 3);
+        (app, fake, runs, spins)
+    }
+
+    /// The same, with `extra` added and no generation applied yet.
+    fn ts_app_bare(edit: bool, extra: impl FnOnce(&mut App)) -> (App, FakeHandle, Runs, Spins) {
         let fake = FakeHandle::default();
         let (h, spins) = (fake.clone(), Spins::default());
         let s = spins.clone();
@@ -896,12 +904,17 @@ mod boot {
                 app.world_mut().resource_mut::<generation::Generations>().started = false;
                 app.world_mut().resource_mut::<bevy_ts::runtime::ScriptClock>().paused = true;
             }
+            extra(app);
         });
         let runs = Runs::default();
         app.update();
-        reload(&mut app, &fake, &runs, false, false);
-        updates(&mut app, 3);
         (app, fake, runs, spins)
+    }
+
+    /// A Stop: its rebuild loads the live set again, so the fake needs a program for it.
+    fn stop(app: &mut App, fake: &FakeHandle, runs: &Runs, wave: bool) -> Value {
+        fake.push(program(runs, wave));
+        call(app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap()
     }
 
     fn reload(app: &mut App, fake: &FakeHandle, runs: &Runs, wave: bool, restart: bool) {
@@ -929,7 +942,7 @@ mod boot {
 
     #[test]
     fn booting_in_edit_runs_no_game_code_until_the_first_play() {
-        let (mut app, _fake, runs, spins) = ts_app(true);
+        let (mut app, fake, runs, spins) = ts_app(true);
         let m = mode(&mut app);
         assert_eq!((m["mode"].as_str(), m["started"].as_bool(), m["paused"].as_bool()), (Some("edit"), Some(false), Some(true)));
         assert_eq!(engine_mode(&app), EngineMode::Edit);
@@ -956,8 +969,9 @@ mod boot {
         assert!(runs.of("tick") >= 2, "and the game runs");
         assert!(spins.0.load(Ordering::Relaxed) >= 2);
 
-        // Back to edit and play again: no restore yet, and Startup does not run again.
-        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+        // Stop, then play again: the game starts over, and Startup runs once more.
+        let r = stop(&mut app, &fake, &runs, false);
+        assert_eq!((r["mode"].as_str(), r["started"].as_bool()), (Some("edit"), Some(false)));
         assert_eq!(engine_mode(&app), EngineMode::Edit);
         updates(&mut app, 1);
         let spun = spins.0.load(Ordering::Relaxed);
@@ -966,7 +980,7 @@ mod boot {
         let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
         assert_eq!(r["started"], true);
         updates(&mut app, 2);
-        assert_eq!(runs.of("setup"), 1);
+        assert_eq!(runs.of("setup"), 2);
     }
 
     #[test]
@@ -997,7 +1011,7 @@ mod boot {
 
     #[test]
     fn edit_time_triggers_do_not_fire_on_play() {
-        let (mut app, _fake, runs, _) = ts_app(true);
+        let (mut app, fake, runs, _) = ts_app(true);
         let e = app.world_mut().spawn(Transform::default()).id();
         updates(&mut app, 1);
         // A drag in edit mode, then play.
@@ -1013,7 +1027,7 @@ mod boot {
         assert_eq!(runs.of("moved"), 1);
 
         // Edit again: a drag just before play does not fire either.
-        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+        stop(&mut app, &fake, &runs, false);
         updates(&mut app, 1);
         app.world_mut().entity_mut(e).insert(Transform::from_xyz(4.0, 0.0, 0.0));
         call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
@@ -1031,7 +1045,7 @@ mod boot {
         assert_eq!((runs.of("setup"), runs.of("wave")), (1, 1));
 
         // A restart in edit mode leaves the game not started; the next play starts it again.
-        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+        stop(&mut app, &fake, &runs, true);
         reload(&mut app, &fake, &runs, true, true);
         assert_eq!(mode(&mut app)["started"], false);
         assert_eq!(runs.of("setup"), 1);
@@ -1047,5 +1061,232 @@ mod boot {
         assert!(runs.of("tick") >= 2 && spins.0.load(Ordering::Relaxed) >= 2);
         let m = mode(&mut app);
         assert_eq!((m["mode"].as_str(), m["started"].as_bool()), (Some("play"), Some(true)));
+    }
+
+    // Play and Stop (openspec change `play-stop`).
+
+    /// A TS-spawned entity, as a TS system's `commands.spawn` makes one.
+    fn spawn_ts(app: &mut App) -> Entity {
+        app.world_mut().spawn((bevy_ts::commands::TsSpawned, Transform::default())).id()
+    }
+
+    #[test]
+    fn stop_throws_the_play_world_away() {
+        let (mut app, fake, runs, _) = ts_app(true);
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        let bullet = spawn_ts(&mut app);
+        updates(&mut app, 3);
+        let restarts = fake.restarts();
+        let r = stop(&mut app, &fake, &runs, false);
+        assert_eq!((r["mode"].as_str(), r["started"].as_bool(), r["paused"].as_bool()), (Some("edit"), Some(false), Some(true)));
+        assert!(app.world().get_entity(bullet).is_err(), "what TS spawned is gone");
+        assert_eq!(fake.restarts(), restarts + 1, "a fresh isolate");
+        updates(&mut app, 3);
+        assert_eq!(runs.of("setup"), 1, "no Startup in edit");
+    }
+
+    #[test]
+    fn stopping_a_paused_game_rebuilds_it_too() {
+        let (mut app, fake, runs, _) = ts_app(true);
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        let bullet = spawn_ts(&mut app);
+        core(&mut app, "bevy-ts/pause", json!({ "paused": true })).unwrap();
+        updates(&mut app, 2);
+        let r = stop(&mut app, &fake, &runs, false);
+        assert_eq!(r["started"], false);
+        assert!(app.world().get_entity(bullet).is_err());
+    }
+
+    #[test]
+    fn time_starts_again_from_zero_and_the_editor_camera_stays() {
+        let (mut app, fake, runs, _) = ts_app(true);
+        let pose = json!({ "translation": [4.0, 3.0, 8.0] });
+        call(&mut app, "bevy-ts/viewport_camera", pose).unwrap();
+        updates(&mut app, 2);
+        let before = call(&mut app, "bevy-ts/viewport_camera", Value::Null).unwrap();
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        updates(&mut app, 10);
+        assert!(app.world().resource::<Time<Virtual>>().elapsed_secs() > 0.0);
+        stop(&mut app, &fake, &runs, false);
+        assert_eq!(app.world().resource::<Time<Virtual>>().elapsed_secs(), 0.0);
+        assert_eq!(app.world().resource::<Time>().elapsed_secs(), 0.0, "what a Startup system reads");
+        assert_eq!(app.world().resource::<bevy_ts::runtime::ScriptFrame>().0, 0);
+        assert!(app.world().resource::<Time<Virtual>>().is_paused());
+        updates(&mut app, 3);
+        assert_eq!(app.world().resource::<Time<Virtual>>().elapsed_secs(), 0.0, "and stays paused in edit");
+        assert_eq!(call(&mut app, "bevy-ts/viewport_camera", Value::Null).unwrap(), before, "the editor camera keeps its pose");
+    }
+
+    #[test]
+    fn a_selected_bullet_is_dropped_on_stop() {
+        let (mut app, fake, runs, _) = ts_app(true);
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        let bullet = spawn_ts(&mut app);
+        updates(&mut app, 1);
+        call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [bullet.to_bits()] })).unwrap();
+        assert_eq!(selection(&mut app)["items"].as_array().unwrap().len(), 1);
+        stop(&mut app, &fake, &runs, false);
+        let sel = app.world().resource::<bevy_ts_viewport::edit::Selection>();
+        assert!(sel.items.is_empty());
+        assert_eq!(sel.origin, bevy_ts_viewport::edit::Origin::Engine);
+    }
+
+    /// `viewport_mode` as a client sees a refusal: the error's message and `data`.
+    fn set_mode(app: &mut App, mode: &str) -> Result<Value, (String, Option<Value>, i16)> {
+        let id = match app.world().resource::<bevy::remote::RemoteMethods>().get("bevy-ts/viewport_mode") {
+            Some(bevy::remote::RemoteMethodSystemId::Instant(id)) => *id,
+            _ => panic!("no viewport_mode"),
+        };
+        app.world_mut().run_system_with(id, Some(json!({ "mode": mode }))).unwrap().map_err(|e| (e.message, e.data, e.code))
+    }
+
+    #[test]
+    fn a_compile_error_refuses_play_until_fixed() {
+        let (mut app, fake, runs, _) = ts_app(true);
+        let error = bevy_ts::backend::ScriptError::at("Unexpected token", Some(SourceLocation { file: "src/game.tsx".into(), line: 3, column: 7 }));
+        generation::compile_failed(app.world_mut(), vec![error], Duration::ZERO);
+        let (message, data, code) = set_mode(&mut app, "play").unwrap_err();
+        assert_eq!(message, "src/game.tsx:3: Unexpected token");
+        assert_eq!(data, Some(json!({ "reason": "compile-errors" })));
+        assert_eq!(code, bevy_ts_viewport::edit::PLAY_REFUSED);
+        let m = mode(&mut app);
+        assert_eq!((m["mode"].as_str(), m["started"].as_bool()), (Some("edit"), Some(false)));
+        updates(&mut app, 3);
+        assert_eq!((runs.of("setup"), runs.of("tick")), (0, 0), "no TS system ran");
+
+        // Fixed: the save applies and the game plays.
+        reload(&mut app, &fake, &runs, false, false);
+        assert_eq!(set_mode(&mut app, "play").unwrap()["mode"], "play");
+        assert_eq!(runs.of("setup"), 1);
+    }
+
+    #[test]
+    fn a_play_before_any_generation_is_refused() {
+        let (mut app, _fake, _runs, _) = ts_app_bare(true, |_| {});
+        let (message, data, _) = set_mode(&mut app, "play").unwrap_err();
+        assert!(!message.is_empty());
+        assert_eq!(data, Some(json!({ "reason": "no-generation" })));
+        assert_eq!(mode(&mut app)["mode"], "edit");
+    }
+
+    #[test]
+    fn a_compile_running_does_not_block_play() {
+        let (mut app, _fake, runs, _) = ts_app(true);
+        let live = app.world().resource::<generation::Generations>().live;
+        app.world_mut().resource_mut::<generation::ReloadLog>().push(generation::ReloadReport {
+            seq: 0,
+            generation: live + 1,
+            status: ReloadStatus::Compiling,
+            errors: vec![],
+            migrations: vec![],
+            duration_ms: 0.0,
+        });
+        assert_eq!(set_mode(&mut app, "play").unwrap()["mode"], "play");
+        assert_eq!(runs.of("setup"), 1);
+    }
+
+    /// One subscriber of `viewport_mode+watch`, polled once a frame as the server polls it.
+    struct ModeStream(Value);
+
+    impl ModeStream {
+        fn open() -> Self {
+            ModeStream(json!({ "n": rand_key() }))
+        }
+
+        fn poll(&self, app: &mut App) -> Option<Value> {
+            let id = match app.world().resource::<bevy::remote::RemoteMethods>().get("bevy-ts/viewport_mode+watch") {
+                Some(bevy::remote::RemoteMethodSystemId::Watching(id)) => *id,
+                _ => panic!("no mode watch"),
+            };
+            let v = app.world_mut().run_system_with(id, Some(self.0.clone())).unwrap().unwrap();
+            if let Some(v) = &v {
+                validate("bevy-ts/viewport_mode+watch", v);
+            }
+            v
+        }
+
+        /// The messages over `n` frames.
+        fn frames(&self, app: &mut App, n: usize) -> Vec<Value> {
+            let mut out = vec![];
+            for _ in 0..n {
+                app.update();
+                out.extend(self.poll(app));
+            }
+            out
+        }
+    }
+
+    fn summary(v: &Value) -> (String, bool, bool, String) {
+        (v["mode"].as_str().unwrap().into(), v["started"].as_bool().unwrap(), v["paused"].as_bool().unwrap(), v["cause"].as_str().unwrap().into())
+    }
+
+    #[test]
+    fn the_mode_is_streamed() {
+        let (mut app, fake, runs, _) = ts_app(true);
+        let s = ModeStream::open();
+        let first = s.poll(&mut app).expect("a message on open");
+        assert_eq!(summary(&first), ("edit".into(), false, true, "engine".into()));
+        assert!(s.frames(&mut app, 3).is_empty(), "nothing while nothing changes");
+
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        let m = s.frames(&mut app, 3);
+        assert_eq!(m.iter().map(summary).collect::<Vec<_>>(), vec![("play".into(), true, false, "client".into())]);
+
+        stop(&mut app, &fake, &runs, false);
+        let m = s.frames(&mut app, 3);
+        assert_eq!(m.iter().map(summary).collect::<Vec<_>>(), vec![("edit".into(), false, true, "client".into())], "one message per Stop");
+
+        // A refused Play: the mode as it was, with `failed`.
+        generation::compile_failed(app.world_mut(), vec![bevy_ts::backend::ScriptError::new("boom")], Duration::ZERO);
+        assert!(set_mode(&mut app, "play").is_err());
+        let m = s.frames(&mut app, 3);
+        assert_eq!(m.iter().map(summary).collect::<Vec<_>>(), vec![("edit".into(), false, true, "failed".into())]);
+
+        // A step before the game started.
+        reload(&mut app, &fake, &runs, false, false);
+        s.frames(&mut app, 1);
+        core(&mut app, "bevy-ts/step", json!({ "frames": 1 })).unwrap();
+        let m = s.frames(&mut app, 3);
+        assert_eq!(m.iter().map(summary).collect::<Vec<_>>(), vec![("edit".into(), true, true, "client".into())]);
+
+        // A restart reload in edit: not started again.
+        reload(&mut app, &fake, &runs, false, true);
+        let m = s.frames(&mut app, 3);
+        assert_eq!(m.iter().map(summary).collect::<Vec<_>>(), vec![("edit".into(), false, true, "restart".into())]);
+
+        // A new subscriber gets the mode with `engine`.
+        let again = ModeStream::open().poll(&mut app).unwrap();
+        assert_eq!(summary(&again).3, "engine");
+    }
+
+    /// A native crate's frame counter, reset in `OnExit(Play)`, and what the TS rebuild saw.
+    #[derive(Resource, Default)]
+    struct Frames(u32);
+
+    #[derive(Resource, Clone, Default)]
+    struct SeenAtRestart(Arc<Mutex<Vec<u32>>>);
+
+    #[derive(Component)]
+    struct Leftover;
+
+    #[test]
+    fn a_native_crate_resets_itself_on_leaving_play() {
+        use bevy_ts::plugin_api::BevyTsAppExt;
+        let seen = SeenAtRestart::default();
+        let s = seen.clone();
+        let (mut app, fake, runs, _) = ts_app_bare(true, move |app| {
+            app.init_resource::<Frames>()
+                .add_systems(Update, (|mut f: ResMut<Frames>| f.0 += 1).run_if(in_state(EngineMode::Play)))
+                .add_systems(OnExit(EngineMode::Play), |mut f: ResMut<Frames>| f.0 = 0)
+                .on_ts_restart(move |world| s.0.lock().unwrap().push(world.resource::<Frames>().0));
+        });
+        reload(&mut app, &fake, &runs, false, false);
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        let rust = app.world_mut().spawn(Leftover).id();
+        updates(&mut app, 5);
+        assert!(app.world().resource::<Frames>().0 >= 4);
+        stop(&mut app, &fake, &runs, false);
+        assert_eq!(*seen.0.lock().unwrap(), vec![0], "the counter is 0 when the rebuild runs");
+        assert!(app.world().get_entity(rust).is_ok(), "bevy-ts leaves what Rust spawned");
     }
 }

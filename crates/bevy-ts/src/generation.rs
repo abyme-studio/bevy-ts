@@ -73,6 +73,9 @@ pub struct ReloadReport {
 pub struct ReloadLog {
     pub reports: Vec<ReloadReport>,
     next_seq: u64,
+    /// The newest save's outcome: a compile that failed, or the apply of a compiled set. A
+    /// Stop's rebuild is not a save and leaves it.
+    pub newest_save: Option<ReloadReport>,
 }
 
 impl ReloadLog {
@@ -105,13 +108,19 @@ pub struct Generations {
     /// Whether the game has started: `Startup` systems run only once it has. False under
     /// `bevy-ts dev --edit` until the first play or step ([`start_game`]).
     pub started: bool,
+    /// Restarts applied in this world, a `restart` reload's or a Stop's.
+    pub restarts: u64,
 }
 
 impl Default for Generations {
     fn default() -> Self {
-        Generations { live: 0, startups_run: HashSet::new(), started: true }
+        Generations { live: 0, startups_run: HashSet::new(), started: true, restarts: 0 }
     }
 }
+
+/// The module set of the live generation, so a Stop rebuilds from it without compiling.
+#[derive(Resource, Clone)]
+pub struct LiveSet(pub ModuleSet);
 
 /// Whether the game's `Startup` systems have run in this world.
 pub fn started(world: &World) -> bool {
@@ -134,10 +143,19 @@ pub fn start_game(world: &mut World) {
 /// A JS heap above this triggers a fresh isolate on the next reload.
 pub const HEAP_RESTART_BYTES: usize = 1 << 30;
 
-/// Loads and applies a module set as the next generation. `restart` despawns TS-spawned
+/// Loads and applies a compiled module set as the next generation. `restart` despawns TS-spawned
 /// entities, forgets startups, notifies plugins and uses a fresh engine instance first.
 /// Never leaves a generation partly applied.
 pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
+    let report = apply_set(world, set, restart);
+    let mut log = world.resource_mut::<ReloadLog>();
+    let report = log.push(report);
+    log.newest_save = Some(report.clone());
+    report
+}
+
+/// [`apply`], without recording the report.
+fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     let started = Instant::now();
     crate::layout_reflect::fill_once(world);
     // Flush the previous generation's console output so the log reads in order.
@@ -157,6 +175,19 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         if edit {
             g.started = false;
         }
+        g.restarts += 1;
+        // TS resources go with their entities, so the generation inserts them again; Rust ones stay.
+        let resources: Vec<Entity> = {
+            let ts = world.resource::<TsComponents>();
+            world.resource_entities().iter().filter(|(id, _)| ts.by_id(*id).is_some()).map(|(_, e)| e).collect()
+        };
+        for e in resources {
+            // `IsResource` leaves first, taking the value and the cache entry: Bevy forbids
+            // despawning a resource entity.
+            world.entity_mut(e).remove::<bevy::ecs::resource::IsResource>();
+            world.flush();
+            let _ = world.try_despawn(e);
+        }
         world.insert_resource(crate::memory::SystemMemory::default());
         world.resource_mut::<crate::messages::TsPayloads>().reset();
         let handlers = world.resource::<RestartHandlers>().clone();
@@ -172,9 +203,11 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         rt.entries.clear();
     }
 
-    let result = load_and_apply(world, &mut rt, number, set);
+    let generation = Generation { number, set };
+    let result = load_and_apply(world, &mut rt, &generation);
     let report = match result {
         Ok((migrations, sections)) => {
+            world.insert_resource(LiveSet(generation.set));
             world.resource_mut::<Generations>().live = number;
             world.resource_mut::<RuntimeInfo>().generation = number;
             let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
@@ -229,7 +262,7 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         }
     };
     world.insert_non_send(rt);
-    world.resource_mut::<ReloadLog>().push(report)
+    report
 }
 
 /// Records a compile failure (nothing was loaded).
@@ -239,14 +272,17 @@ pub fn compile_failed(world: &mut World, errors: Vec<ScriptError>, took: Duratio
     for e in &errors {
         log.push(LogLevel::Error, format!("compile failed: {}", e.message), e.location.clone(), live);
     }
-    world.resource_mut::<ReloadLog>().push(ReloadReport {
+    let mut log = world.resource_mut::<ReloadLog>();
+    let report = log.push(ReloadReport {
         seq: 0,
         generation: live + 1,
         status: ReloadStatus::Failed,
         errors,
         migrations: vec![],
         duration_ms: took.as_secs_f64() * 1000.0,
-    })
+    });
+    log.newest_save = Some(report.clone());
+    report
 }
 
 type Applied = (Vec<Migration>, Vec<crate::manifest::Section>);
@@ -263,8 +299,9 @@ fn component_decls(manifest: &crate::manifest::Manifest) -> Vec<crate::manifest:
     all
 }
 
-fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, number: u64, set: ModuleSet) -> Result<Applied, Vec<ScriptError>> {
-    let LoadedGeneration { manifest, sections } = rt.backend.load(&Generation { number, set })?;
+fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Generation) -> Result<Applied, Vec<ScriptError>> {
+    let number = generation.number;
+    let LoadedGeneration { manifest, sections } = rt.backend.load(generation)?;
 
     let fail = |rt: &mut ScriptRuntime, errors: Vec<ScriptError>| {
         rt.backend.discard(number);
@@ -500,6 +537,20 @@ pub fn reload_now(world: &mut World, restart: bool) -> Result<ReloadReport, Scri
         Ok(set) => Ok(apply(world, set, restart)),
         Err(errors) => Ok(compile_failed(world, errors, started.elapsed())),
     }
+}
+
+/// Applies the live generation's module set again as a restart, without compiling: a Stop
+/// (edit-mode). Fails when no generation was applied yet. It is not a save: `reload+watch` and
+/// [`ReloadLog::newest_save`] see it only when it fails, which leaves the empty world with its
+/// error on the log, as a failed first load does.
+pub fn rebuild(world: &mut World) -> Result<ReloadReport, ScriptError> {
+    // One copy for the attempt: a failed one keeps the live set for the next Stop.
+    let set = world.get_resource::<LiveSet>().map(|l| l.0.clone()).ok_or_else(|| ScriptError::new("no generation has been applied yet"))?;
+    let report = apply_set(world, set, true);
+    Ok(match report.status {
+        ReloadStatus::Failed => world.resource_mut::<ReloadLog>().push(report),
+        _ => report,
+    })
 }
 
 /// The live generation's TS components, for code that wants them all.

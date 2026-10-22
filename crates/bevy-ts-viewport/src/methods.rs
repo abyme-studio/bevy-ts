@@ -240,6 +240,7 @@ use bevy_ts_tsx::tree::TsxNode;
 pub(crate) fn add_edit_methods(app: &mut App) {
     use bevy_ts_remote::{add_method, add_watching_method};
     add_method(app, CRATE, "bevy-ts/viewport_mode", mode);
+    add_watching_method(app, CRATE, "bevy-ts/viewport_mode+watch", mode_watch);
     add_method(app, CRATE, "bevy-ts/viewport_camera", camera);
     add_method(app, CRATE, "bevy-ts/viewport_pick", pick);
     add_method(app, CRATE, "bevy-ts/viewport_select", select);
@@ -263,7 +264,23 @@ fn mode(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
         Some(protocol::ViewportMode::Play) => Mode::Play,
         None => world.resource::<EditState>().mode,
     };
-    Ok(edit::set_mode(world, want, p.ui, p.gamepad_unfocused))
+    edit::set_mode(world, want, p.ui, p.gamepad_unfocused).map_err(|r| BrpError { code: edit::PLAY_REFUSED, message: r.message, data: Some(json!(protocol::ViewportPlayRefused { reason: r.reason })) })
+}
+
+fn mode_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
+    // A new or returning subscriber gets the mode with `cause: "engine"`.
+    let frame = world.resource::<crate::UpdateCount>().0;
+    let key = ("mode", p.as_ref().map(Value::to_string).unwrap_or_default());
+    let fresh = !world.resource::<Watchers>().0.get(&key).is_some_and(|(last, _)| last + 1 >= frame);
+    let seq = world.resource::<edit::ModeWatch>().seq;
+    if !owed(world, "mode", &p, seq) {
+        return Ok(None);
+    }
+    let w = world.resource::<edit::ModeWatch>();
+    let cause = if fresh { protocol::ViewportModeCause::Engine } else { w.cause.unwrap_or(protocol::ViewportModeCause::Engine) };
+    let mut v = w.last.clone().unwrap_or_else(|| edit::mode_json(world));
+    v["cause"] = json!(cause);
+    Ok(Some(v))
 }
 
 fn camera(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {

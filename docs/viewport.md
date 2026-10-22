@@ -148,6 +148,60 @@ with "the game has not started; switch to play". Triggers raised in edit mode ar
 fired on Play. A Rust rebuild of a project engine comes back in edit mode. `--edit` with
 `--headless` is refused.
 
+## Play and Stop
+
+Play runs the game; Stop throws the play world away and rebuilds it from source, as Unity re-reads
+the scene. A Stop is any `viewport_mode { mode: "edit" }` from play, paused or not. The engine keeps
+no copy of the world: it holds nothing unsaved (`level_write` writes before it answers; unsaved
+TSX text is the studio's).
+
+Stop re-applies the live generation's module set as a `restart` reload does, without compiling, so
+a save applied during play is what it rebuilds, and a file broken since does not stop it. It resets:
+
+- every entity TS spawned, every TSX node and tombstone: each scene mounts as if first;
+- which `Startup` systems ran: `started` is false, and the next Play runs `Startup` again;
+- `Local` storage, TS resources (back to their `insertResource` values), TS states and pending
+  messages;
+- the JS engine, with a fresh isolate;
+- `Time<Virtual>`, `Time<Fixed>` and the script frame count, from 0 and paused.
+
+It keeps the editor camera's pose, the gizmo tools, `ui` and `gamepadUnfocused`, and what Rust
+spawned: a native crate resets its own state in `OnExit(EngineMode::Play)`, which runs first
+(`docs/native.md`).
+
+The levels open when Play was entered come back, each with its opener: one a client opened during
+play closes, one it closed opens again, and `level+watch` streams both. A `ts` level the live
+generation no longer declares stays closed. Each level is reconciled from disk before Stop answers.
+A game that booted in play rather than `--edit` has no Play to go back to: its first Stop keeps the
+levels that are open.
+
+The selection follows by node id: a selected level or TSX entity is selected again with its new
+entity, streamed with `origin: "engine"`; one the game spawned is dropped.
+
+A Stop costs a restart. At 1,000 level instances it takes about 0.1 s, at 10,000 about a second;
+`docs/research/stop-cost.md` has the numbers.
+
+### A Play that can't run
+
+`viewport_mode { mode: "play" }` fails, leaving the engine in edit with nothing run, when no
+generation has been applied yet (`no-generation`) or the newest compile failed (`compile-errors`),
+as Unity refuses Play with compiler errors. The JSON-RPC error has code -32000, a message the
+studio shows as is (`src/game.tsx:3: Unexpected token`, the first error's file and line), and
+`data: { reason }`. A Play while a compile runs plays the live generation.
+
+### `viewport_mode+watch`
+
+Sends the mode as `viewport_mode` answers it (`mode`, `ui`, `gamepadUnfocused`, `paused`,
+`started`) plus `cause`, on open and on every change:
+
+- `engine`: on open, and to a subscriber that comes back;
+- `client`: a `viewport_mode`, `pause` or `step` call changed it;
+- `restart`: a `restart` reload changed it;
+- `failed`: a Play was refused; the mode is unchanged.
+
+A Stop sends one message, after its rebuild. A new engine process starts a new stream: the studio
+subscribes again after it reconnects.
+
 ## For abyme's `bevy-studio`
 
 When `hello.protocol` is 1.8 or later, the studio's glTF view can show the engine's preview
@@ -166,6 +220,12 @@ world, false until the first play or step of an `--edit` engine. An answer witho
 engine: treat the game as started. An older engine also rejects `--edit` as an unknown option, so
 the studio adds the flag only when the pinned `BEVY_TS` is 1.18 or later, and otherwise switches to
 edit once `hello` answers, as before.
+
+Play and Stop need protocol 1.24: `viewport_mode+watch` and a refused Play's error. On an older
+engine the watch is method-not-found and Stop resumes where play stopped. The studio's one-time
+switch to edit (operator ruling 2026-10-20) is a Stop: a game the operator started outside abyme
+and already played is rebuilt from source when the studio finds it. abyme opens a project in
+edit, so that is intended.
 
 The toolbar needs protocol 1.17 (`viewport_tools`). The studio does not fall back: on an older
 engine it shows "bevy-ts too old".

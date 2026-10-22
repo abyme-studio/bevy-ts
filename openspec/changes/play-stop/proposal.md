@@ -17,7 +17,7 @@ Stop does not stop today. Going back to edit after a Play leaves the world as th
 - **A `restart` reload resets TS resources too.** Today they survive a restart, which is not "as if first". States and messages already reset.
 - **Native crates reset their own state** in `OnExit(EngineMode::Play)`, the Bevy way. bevy-ts does not despawn or reset what Rust spawned. `docs/native.md` says how.
 - **A Play can fail.** `viewport_mode { mode: "play" }` answers an error and stays in edit when there is no generation yet (`no-generation`), or when the newest compile failed (`compile-errors`), as Unity refuses Play with compiler errors. The error's message is a sentence the studio shows as is.
-- **Protocol: `bevy-ts/viewport_mode+watch`.** It sends the mode (`mode`, `ui`, `gamepadUnfocused`, `paused`, `started`) on open and on every change, with a `cause`: `engine`, `client`, `restart` or `failed`. `viewport_mode`, `pause` and `step` are unchanged as calls. Additions only, the next free minor on main at landing (1.20.0 if this lands first). Agreed with build@studio-edit-and-levels, 2026-10-22.
+- **Protocol: `bevy-ts/viewport_mode+watch`.** It sends the mode (`mode`, `ui`, `gamepadUnfocused`, `paused`, `started`) on open and on every change, with a `cause`: `engine`, `client`, `restart` or `failed`. `viewport_mode`, `pause` and `step` are unchanged as calls. Additions only, the next free minor on main at landing (1.24.0: 1.20 to 1.23 were taken). Agreed with build@studio-edit-and-levels, 2026-10-22.
 - **Out of scope:** the game camera while editing (a later stage, see design). E5's per-user editor state. The studio's play mode (B4, abyme).
 
 ## Capabilities

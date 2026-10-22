@@ -1239,22 +1239,13 @@ impl Files for DiskFiles {
     }
 }
 
-/// Opens `file` now (`bevy-ts/level_open`): reads it and every file it includes from disk,
-/// composes, and creates and reconciles its root only when that succeeds. A level already open
-/// answers as it is. Runs no system: the reconcile's spawns are its only writes.
-pub fn open_now(world: &mut World, file: &str) -> Result<String, OpenFailure> {
+/// Reads a level and every file it includes from disk and composes it; a file whose loaded
+/// asset differs takes the disk's text, and the open levels that include it are marked dirty.
+fn compose_from_disk(world: &mut World, path: &str) -> Result<(Composed, BTreeMap<String, u64>), OpenFailure> {
     let fail = |reason, message: String| OpenFailure { reason, diagnostics: vec![ScriptError::new(message)] };
-    let Some(path) = asset_path(file) else { return Err(fail("invalid", format!("{file}: expected a path to a .bsn file inside the asset root"))) };
-    if world.resource::<Levels>().roots.contains_key(&path) {
-        world.resource_mut::<Levels>().closed.remove(&path);
-        return Ok(path);
-    }
     let root = world.resource::<Levels>().asset_root.clone();
-    if !root.join(&path).is_file() {
-        return Err(fail("not-found", format!("{path}: no such file")));
-    }
     let mut files = DiskFiles { root, read: BTreeMap::new(), failed: Vec::new() };
-    let composed = match prepare_with(world, &path, &mut files) {
+    let composed = match prepare_with(world, path, &mut files) {
         // A parse failure says where; compose only says the inclusion failed.
         Err(_) if !files.failed.is_empty() => Err(std::mem::take(&mut files.failed)),
         p => finish_compose(world, p),
@@ -1280,6 +1271,89 @@ pub fn open_now(world: &mut World, file: &str) -> Result<String, OpenFailure> {
             }
         }
     }
+    Ok((composed, hashes))
+}
+
+/// Which levels are open, each with its opener and the scene a sidecar layers over, and which the
+/// editor closed: what a Play records and its Stop puts back.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OpenSet {
+    pub open: Vec<(String, Opener, Option<String>)>,
+    pub closed: BTreeSet<String>,
+}
+
+/// The open levels now.
+pub fn open_set(world: &World) -> OpenSet {
+    let levels = world.resource::<Levels>();
+    OpenSet { open: levels.roots.iter().map(|(p, r)| (p.clone(), r.opener, r.overlay.clone())).collect(), closed: levels.closed.clone() }
+}
+
+/// Puts back an [`OpenSet`]: closes the levels not in it, opens the missing ones with their
+/// opener (a sidecar over its scene), and the editor's closed levels are those it had. A `ts`
+/// level the live generation no longer declares stays closed: the generation decides. Each
+/// level opened composes at the next [`settle`].
+pub fn restore_open(world: &mut World, set: &OpenSet) {
+    let extra: Vec<String> = world.resource::<Levels>().roots.keys().filter(|p| !set.open.iter().any(|(o, _, _)| o == *p)).cloned().collect();
+    for p in extra {
+        close(world, &p);
+    }
+    for (path, opener, overlay) in &set.open {
+        let declared = world.resource::<Levels>().declared.contains(path);
+        if *opener == Opener::Ts && !declared {
+            continue;
+        }
+        let exists = world.resource::<Levels>().roots.contains_key(path);
+        if !exists {
+            open_as(world, path, *opener, overlay.clone());
+        } else if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
+            r.opener = *opener;
+        }
+    }
+    world.resource_mut::<Levels>().closed = set.closed.clone();
+}
+
+/// Composes and reconciles every dirty level now, from disk, as [`open_now`] does: a Stop answers
+/// once its levels stand. One that fails keeps its error, as in `watch`.
+pub fn settle(world: &mut World) {
+    if !first_generation_tried(world) {
+        return;
+    }
+    // A level's compose can mark another dirty (an included file the disk changed): again until
+    // none is, bounded by one pass per level and one more.
+    let passes = world.resource::<Levels>().roots.len() + 1;
+    for _ in 0..passes {
+        let dirty: Vec<String> = world.resource::<Levels>().roots.iter().filter(|(_, r)| r.dirty).map(|(p, _)| p.clone()).collect();
+        if dirty.is_empty() {
+            return;
+        }
+        for path in dirty {
+            let composed = compose_from_disk(world, &path);
+            if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(&path) {
+                r.dirty = false;
+            }
+            match composed {
+                Ok((composed, hashes)) => apply_composed(world, &path, Ok(composed), hashes),
+                Err(f) => apply_composed(world, &path, Err(f.diagnostics), BTreeMap::new()),
+            }
+        }
+    }
+}
+
+/// Opens `file` now (`bevy-ts/level_open`): reads it and every file it includes from disk,
+/// composes, and creates and reconciles its root only when that succeeds. A level already open
+/// answers as it is. Runs no system: the reconcile's spawns are its only writes.
+pub fn open_now(world: &mut World, file: &str) -> Result<String, OpenFailure> {
+    let fail = |reason, message: String| OpenFailure { reason, diagnostics: vec![ScriptError::new(message)] };
+    let Some(path) = asset_path(file) else { return Err(fail("invalid", format!("{file}: expected a path to a .bsn file inside the asset root"))) };
+    if world.resource::<Levels>().roots.contains_key(&path) {
+        world.resource_mut::<Levels>().closed.remove(&path);
+        return Ok(path);
+    }
+    let root = world.resource::<Levels>().asset_root.clone();
+    if !root.join(&path).is_file() {
+        return Err(fail("not-found", format!("{path}: no such file")));
+    }
+    let (composed, hashes) = compose_from_disk(world, &path)?;
     // The editor opened it, whatever else it is; a scene's sidecar layers over its scene again,
     // but one `app.level` declares, which is a level of its own.
     let overlay = crate::edit::sidecar_of(world, &path);

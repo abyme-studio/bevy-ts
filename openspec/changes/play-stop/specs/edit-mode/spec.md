@@ -72,7 +72,7 @@ A hot reload applied during play SHALL be what Stop rebuilds. The `viewport_mode
 - **THEN** a `Startup` system reading `time.elapsed_secs` reads 0
 
 ### Requirement: Levels and the selection come back after Stop
-A Stop SHALL leave open exactly the levels that were open when play was entered, each with the opener it had then: a level a client opened during play SHALL close, and one a client closed during play SHALL open again. Each level SHALL be reconciled from disk before Stop answers. The selection SHALL be kept by node id: an item whose node id names an entity after the rebuild SHALL be selected again with that entity, and the change SHALL be streamed with `origin: "engine"`; an item with no node id, or whose node is gone, SHALL be dropped.
+A Stop SHALL leave open exactly the levels that were open when play was entered, each with the opener it had then: a level a client opened during play SHALL close, and one a client closed during play SHALL open again. A game that booted in play (no `--edit`) entered no play to go back to: its first Stop SHALL keep the levels open at that moment. Each level SHALL be reconciled from disk before Stop answers. The selection SHALL be kept by node id: an item whose node id names an entity after the rebuild SHALL be selected again with that entity, and the change SHALL be streamed with `origin: "engine"`; an item with no node id, or whose node is gone, SHALL be dropped.
 
 #### Scenario: Enemy b stays selected
 - **WHEN** enemy `b` of `levels/arena.bsn` is selected, and a client sets `play` then `edit`
@@ -81,6 +81,10 @@ A Stop SHALL leave open exactly the levels that were open when play was entered,
 #### Scenario: A bullet was selected
 - **WHEN** during play a client selects a bullet a TS system spawned, then sets `edit`
 - **THEN** the selection is empty after the Stop
+
+#### Scenario: The first Stop of a game booted in play
+- **WHEN** an engine started without `--edit` has `levels/arena.bsn` open, a client opens `levels/room.bsn`, then sets `edit`
+- **THEN** both levels are open after the Stop, each reconciled from disk
 
 #### Scenario: A level opened during play
 - **WHEN** `levels/arena.bsn` was open at Play, and during play a client opens `levels/room.bsn`, then sets `edit`

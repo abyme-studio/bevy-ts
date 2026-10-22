@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.23.0",
+    "version": "1.24.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
@@ -381,7 +381,7 @@
     },
     {
       "name": "bevy-ts/viewport_mode",
-      "summary": "Switches between play and edit; answers the mode in force.",
+      "summary": "Switches between play and edit; answers the mode in force. A switch from play to edit is a Stop: the world is rebuilt from source before it answers (1.24).",
       "x-bevy-ts-crate": "bevy-ts-viewport",
       "params": [
         {
@@ -396,6 +396,25 @@
         "name": "result",
         "schema": {
           "$ref": "#/components/schemas/ViewportModeResult"
+        }
+      },
+      "errors": [
+        {
+          "code": -32000,
+          "message": "A Play was refused: the message is a sentence to show as is, `data` is a ViewportPlayRefused (1.24)."
+        }
+      ]
+    },
+    {
+      "name": "bevy-ts/viewport_mode+watch",
+      "summary": "The mode on open and on every change, with what changed it (1.24).",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-watch": true,
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportModeWatch"
         }
       }
     },
@@ -3474,6 +3493,68 @@
           "started": {
             "type": "boolean",
             "description": "Whether the game's TS `Startup` systems have run in this world: false under `bevy-ts dev --edit` until the first play or step (1.18). Absent from older engines: treat the game as started."
+          }
+        }
+      },
+      "ViewportModeWatch": {
+        "type": "object",
+        "required": [
+          "mode",
+          "ui",
+          "gamepadUnfocused",
+          "paused",
+          "started",
+          "cause"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ViewportMode"
+          },
+          "ui": {
+            "type": "boolean"
+          },
+          "gamepadUnfocused": {
+            "type": "boolean"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "started": {
+            "type": "boolean",
+            "description": "Whether the game's TS `Startup` systems have run in this world."
+          },
+          "cause": {
+            "$ref": "#/components/schemas/ViewportModeCause"
+          }
+        },
+        "description": "`bevy-ts/viewport_mode+watch`'s message: the mode as `viewport_mode` answers it, and its cause (1.24)."
+      },
+      "ViewportModeCause": {
+        "type": "string",
+        "enum": [
+          "engine",
+          "client",
+          "restart",
+          "failed"
+        ],
+        "description": "What sent a mode message: `engine` on open, `client` a `viewport_mode`, `pause` or `step` call, `restart` a `restart` reload, `failed` a refused Play (the mode unchanged) (1.24)."
+      },
+      "ViewportPlayRefused": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "The `data` of a refused Play's error (1.24).",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no-generation",
+              "compile-errors"
+            ],
+            "description": "`no-generation`: no generation has been applied yet; `compile-errors`: the newest compile failed."
           }
         }
       },
