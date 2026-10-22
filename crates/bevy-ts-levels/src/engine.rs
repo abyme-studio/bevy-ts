@@ -449,7 +449,7 @@ fn restore_editor_state(world: &mut World) {
     for p in &state.open {
         match asset_path(p).filter(|_| exists(p)) {
             Some(path) => open(world, &path, Opener::Editor),
-            None => eprintln!("bevy-ts: {}: {p}: no such level; not reopened", file.display()),
+            None => eprintln!("bevy-ts: {}: {p}: not a level file; not reopened", file.display()),
         }
     }
 }
@@ -820,15 +820,29 @@ fn log(world: &mut World, level: LogLevel, e: &ScriptError) {
     world.resource_mut::<ScriptLog>().push(level, format!("levels: {}", e.message), e.location.clone(), generation);
 }
 
+/// Set once the first generation has applied or failed.
+#[derive(Resource, Default)]
+struct FirstGenerationTried(bool);
+
+/// Before the first generation the schema knows no TS component: a level opened at `Startup`
+/// (`add_level`, or one the editor remembered) composes once the first has applied or failed. A
+/// compile that is only under way does not end the wait; one that fails does, so native-only
+/// levels still compose. A latch, so the reload log dropping old reports cannot re-arm it.
+fn first_generation_tried(world: &mut World) -> bool {
+    use bevy_ts::generation::{Generations, ReloadLog, ReloadStatus};
+    if world.get_resource_or_init::<FirstGenerationTried>().0 {
+        return true;
+    }
+    let tried = world.get_resource::<Generations>().is_none_or(|g| g.live > 0)
+        || world.get_resource::<ReloadLog>().is_some_and(|l| l.reports.iter().any(|r| matches!(r.status, ReloadStatus::Applied | ReloadStatus::Failed)));
+    world.resource_mut::<FirstGenerationTried>().0 = tried;
+    tried
+}
+
 /// Composes and reconciles every dirty level whose files are loaded. A level that fails stays
 /// exactly as it was (rule 8).
 pub fn reconcile_dirty(world: &mut World) {
-    // Before the first generation the schema knows no TS component: a level opened at `Startup`
-    // (`add_level`, or one the editor remembered) composes once the first has been tried. A
-    // first compile that fails ends the wait too, so native-only levels still compose.
-    let tried = world.get_resource::<bevy_ts::generation::Generations>().is_none_or(|g| g.live > 0)
-        || world.get_resource::<bevy_ts::generation::ReloadLog>().is_some_and(|l| l.next_seq() > 0);
-    if !tried {
+    if !first_generation_tried(world) {
         return;
     }
     let ready: Vec<String> = {

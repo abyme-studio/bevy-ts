@@ -1117,7 +1117,7 @@ mod editor_state {
     }
 
     /// A restart: a new engine on the same project folder, with `files` carried over.
-    fn restart(f: &mut Fixture, name: &str) -> Fixture {
+    fn restart(f: &Fixture, name: &str) -> Fixture {
         let state = std::fs::read_to_string(f.dir.join(".bevy-ts/editor.json")).unwrap();
         edit(name, Some(&state))
     }
@@ -1134,7 +1134,7 @@ mod editor_state {
         open_now(f.app.world_mut(), "levels/room.bsn").unwrap();
         f.app.update();
         assert_eq!(state(&f), json!({ "version": 1, "open": ["levels/room.bsn"], "closed": [] }));
-        let mut g = restart(&mut f, "room-again");
+        let mut g = restart(&f, "room-again");
         // Startup restores it before any generation, as the editor's.
         g.app.update();
         assert_eq!(opener(&g, "levels/room.bsn"), Opener::Editor);
@@ -1154,7 +1154,34 @@ mod editor_state {
         f.settle();
         let b = f.by_name("EnemyB");
         assert_eq!(f.hp(b), (100.0, 250.0));
+        assert!(f.errors().is_empty(), "{:?}", f.errors());
         assert_eq!(state(&f)["open"], json!(["levels/arena.bsn"]));
+    }
+
+    #[test]
+    fn a_compile_under_way_does_not_end_the_wait() {
+        let mut f = edit("compiling", Some(r#"{ "version": 1, "open": ["levels/arena.bsn"], "closed": [] }"#));
+        bevy_ts::layout_reflect::fill_once(f.app.world_mut());
+        // What `dev` logs when its watcher starts the first compile.
+        f.app.world_mut().resource_mut::<bevy_ts::generation::ReloadLog>().push(bevy_ts::generation::ReloadReport {
+            seq: 0,
+            generation: 1,
+            status: bevy_ts::generation::ReloadStatus::Compiling,
+            errors: Vec::new(),
+            migrations: Vec::new(),
+            duration_ms: 0.0,
+        });
+        for _ in 0..20 {
+            f.app.update();
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!(f.errors().is_empty(), "{:?}", f.errors());
+        assert!(f.app.world().resource::<Levels>().roots["levels/arena.bsn"].dirty, "still waiting");
+        f.load(&[]);
+        f.settle();
+        let b = f.by_name("EnemyB");
+        assert_eq!(f.hp(b), (100.0, 250.0));
+        assert!(f.errors().is_empty(), "{:?}", f.errors());
     }
 
     #[test]
@@ -1176,7 +1203,7 @@ mod editor_state {
         assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
         f.app.update();
         assert_eq!(state(&f), json!({ "version": 1, "open": [], "closed": ["levels/arena.bsn"] }));
-        let mut g = restart(&mut f, "closed-again");
+        let mut g = restart(&f, "closed-again");
         g.app.update();
         g.load(&["levels/arena.bsn"]);
         g.settle();
