@@ -44,7 +44,8 @@ Transform { translation: Vec3 { x: 3.0 } }
 ";
 
 fn viewport_level_app(dir: &Path) -> App {
-    let assets = dir.join("assets");
+    // Canonical: the file watcher strips this root from the paths macOS reports (`/private/var`).
+    let assets = dir.join("assets").canonicalize().unwrap();
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -159,7 +160,11 @@ fn a_dropped_gltf_is_written_as_a_world_asset_root_and_composes() {
     }
     let errors: Vec<String> = common::logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Error).map(|e| e.message).collect();
     assert!(errors.is_empty(), "{errors:?}");
-    let krate = named(&mut app, "crate");
+    // The level's crate: the glTF's own node is named `crate` too.
+    let krate = {
+        let world = app.world_mut();
+        world.query_filtered::<(Entity, &Name), With<bevy_ts_tsx::TsxNode>>().iter(world).find(|(_, n)| n.as_str() == "crate").map(|(e, _)| e).expect("the level's crate")
+    };
     assert!(app.world().get::<bevy::world_serialization::WorldAssetRoot>(krate).is_some(), "the crate has its scene root");
     // The glTF's scene spawns under it: a mesh descends from the crate.
     let mut meshes = false;
