@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.17.0";
+pub const VERSION: &str = "1.18.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +55,8 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/asset_preview_control", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/asset_preview_close", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/level_list", crate_name: "bevy-ts-levels", watch: false },
+    Method { name: "bevy-ts/level_open", crate_name: "bevy-ts-levels", watch: false },
+    Method { name: "bevy-ts/level_close", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level_node", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level_catalog", crate_name: "bevy-ts-levels", watch: false },
     Method { name: "bevy-ts/level_write", crate_name: "bevy-ts-levels", watch: false },
@@ -2459,6 +2461,20 @@ pub struct LevelCatalogScene {
     pub name: ::std::string::String,
     pub props: ::std::vec::Vec<LevelCatalogProp>,
 }
+///`LevelCloseParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelCloseParams {
+    ///An open level's asset path.
+    pub file: ::std::string::String,
+}
+///`LevelCloseResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelCloseResult {
+    ///False when the level was not open.
+    pub closed: bool,
+}
 ///`LevelDiagnostic`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -2590,6 +2606,7 @@ pub struct LevelInfo {
     ///The root file's hash as last applied.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub hash: ::std::option::Option<LevelHash>,
+    pub opener: LevelOpener,
     ///The level's asset path.
     pub path: ::std::string::String,
 }
@@ -2821,6 +2838,146 @@ pub struct LevelOpVariant4PatchesItem {
     #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
     pub fields: ::std::collections::HashMap<::std::string::String, LevelValue>,
 }
+///`LevelOpenParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelOpenParams {
+    ///An asset path ending in .bsn.
+    pub file: ::std::string::String,
+}
+///`LevelOpenResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LevelOpenResult {
+    ///failed: each with its file, line and column where known.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub diagnostics: ::std::vec::Vec<LevelDiagnostic>,
+    ///opened: the level's level_list entry.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub level: ::std::option::Option<LevelInfo>,
+    ///failed: invalid (not a .bsn path inside the asset root), not-found, or load (a file fails to parse or resolve).
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub reason: ::std::option::Option<::std::string::String>,
+    pub status: LevelOpenResultStatus,
+}
+///`LevelOpenResultStatus`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum LevelOpenResultStatus {
+    #[serde(rename = "opened")]
+    Opened,
+    #[serde(rename = "failed")]
+    Failed,
+}
+impl ::std::fmt::Display for LevelOpenResultStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Opened => f.write_str("opened"),
+            Self::Failed => f.write_str("failed"),
+        }
+    }
+}
+impl ::std::str::FromStr for LevelOpenResultStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "opened" => Ok(Self::Opened),
+            "failed" => Ok(Self::Failed),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelOpenResultStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelOpenResultStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///Who opened a level: app.level (ts), add_level (rust), bevy-ts/level_open (editor) or a scene's sidecar.
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum LevelOpener {
+    #[serde(rename = "ts")]
+    Ts,
+    #[serde(rename = "rust")]
+    Rust,
+    #[serde(rename = "editor")]
+    Editor,
+    #[serde(rename = "sidecar")]
+    Sidecar,
+}
+impl ::std::fmt::Display for LevelOpener {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Ts => f.write_str("ts"),
+            Self::Rust => f.write_str("rust"),
+            Self::Editor => f.write_str("editor"),
+            Self::Sidecar => f.write_str("sidecar"),
+        }
+    }
+}
+impl ::std::str::FromStr for LevelOpener {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "ts" => Ok(Self::Ts),
+            "rust" => Ok(Self::Rust),
+            "editor" => Ok(Self::Editor),
+            "sidecar" => Ok(Self::Sidecar),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for LevelOpener {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for LevelOpener {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`LevelOverride`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -2918,6 +3075,9 @@ pub struct LevelWatchMessage {
     pub level: ::std::string::String,
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub lines: ::std::vec::Vec<[u32; 2usize]>,
+    ///opened: who opened the level.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub opener: ::std::option::Option<LevelOpener>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub reason: ::std::option::Option<::std::string::String>,
 }
@@ -2935,6 +3095,10 @@ pub struct LevelWatchMessage {
     PartialOrd
 )]
 pub enum LevelWatchMessageEvent {
+    #[serde(rename = "opened")]
+    Opened,
+    #[serde(rename = "closed")]
+    Closed,
     #[serde(rename = "loaded")]
     Loaded,
     #[serde(rename = "failed")]
@@ -2951,6 +3115,8 @@ pub enum LevelWatchMessageEvent {
 impl ::std::fmt::Display for LevelWatchMessageEvent {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
+            Self::Opened => f.write_str("opened"),
+            Self::Closed => f.write_str("closed"),
             Self::Loaded => f.write_str("loaded"),
             Self::Failed => f.write_str("failed"),
             Self::Written => f.write_str("written"),
@@ -2966,6 +3132,8 @@ impl ::std::str::FromStr for LevelWatchMessageEvent {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         match value {
+            "opened" => Ok(Self::Opened),
+            "closed" => Ok(Self::Closed),
             "loaded" => Ok(Self::Loaded),
             "failed" => Ok(Self::Failed),
             "written" => Ok(Self::Written),

@@ -1,4 +1,4 @@
-//! `bevy-ts/level_*` (protocol 1.6; @props and revert_prop 1.7): open levels, one level entity's owners and overrides,
+//! `bevy-ts/level_*` (protocol 1.6; @props and revert_prop 1.7; open and close 1.18): open levels, one level entity's owners and overrides,
 //! writer batches, "Apply" one owner inward, and the event stream.
 
 use crate::edit::{WriteRequest, WriteResult, hash_text, write_level};
@@ -20,6 +20,8 @@ pub const CRATE: &str = "bevy-ts-levels";
 /// Serves the `bevy-ts/level_*` methods; needs `RemotePlugin` (or `BevyTsRemotePlugin`) first.
 pub fn add_methods(app: &mut App) {
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_list", list);
+    bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_open", open);
+    bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_close", close);
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_node", node);
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_write", write);
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_apply", apply);
@@ -194,30 +196,50 @@ pub fn result_json(r: &WriteResult) -> Value {
 
 pub(crate) fn list(In(_): In<Option<Value>>, world: &World) -> BrpResult {
     let levels = world.resource::<Levels>();
-    let assets = world.resource::<Assets<BsnLevel>>();
-    let out: Vec<Value> = levels
-        .roots
-        .iter()
-        .map(|(path, r)| {
-            let mut extensions = Vec::new();
-            if let Some(a) = assets.get(&r.handle) {
-                let index = LineIndex::new(&a.parsed.source);
-                for u in &a.parsed.extensions {
-                    let (line, column) = index.line_col(&a.parsed.source, u.span.start);
-                    extensions.push(json!({ "code": u.extension.code(), "line": line, "column": column }));
-                }
-            }
-            let diagnostics: Vec<Value> = r.error.iter().chain(r.warnings.iter()).map(|e| json!({ "message": e.message, "location": e.location })).collect();
-            json!({
-                "path": path,
-                "hash": r.applied.get(path).map(|h| hash_text(*h)),
-                "files": r.files.iter().collect::<Vec<_>>(),
-                "extensions": extensions,
-                "diagnostics": diagnostics,
-            })
-        })
-        .collect();
+    let out: Vec<Value> = levels.roots.keys().filter_map(|p| level_info(world, p)).collect();
     Ok(json!({ "levels": out }))
+}
+
+/// A `level_list` entry.
+fn level_info(world: &World, path: &str) -> Option<Value> {
+    let assets = world.resource::<Assets<BsnLevel>>();
+    world.resource::<Levels>().roots.get_key_value(path).map(|(path, r)| {
+        let mut extensions = Vec::new();
+        if let Some(a) = assets.get(&r.handle) {
+            let index = LineIndex::new(&a.parsed.source);
+            for u in &a.parsed.extensions {
+                let (line, column) = index.line_col(&a.parsed.source, u.span.start);
+                extensions.push(json!({ "code": u.extension.code(), "line": line, "column": column }));
+            }
+        }
+        let diagnostics: Vec<Value> = r.error.iter().chain(r.warnings.iter()).map(|e| json!({ "message": e.message, "location": e.location })).collect();
+        json!({
+            "path": path,
+            "opener": r.opener,
+            "hash": r.applied.get(path).map(|h| hash_text(*h)),
+            "files": r.files.iter().collect::<Vec<_>>(),
+            "extensions": extensions,
+            "diagnostics": diagnostics,
+        })
+    })
+}
+
+/// Opens a level file as a level root, composed and reconciled before it replies.
+pub(crate) fn open(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
+    let file = string(&params(p)?, "file")?;
+    Ok(match crate::engine::open_now(world, &file) {
+        Ok(path) => json!({ "status": "opened", "level": level_info(world, &path) }),
+        Err(f) => json!({
+            "status": "failed", "reason": f.reason,
+            "diagnostics": f.diagnostics.iter().map(|e| json!({ "message": e.message, "location": e.location })).collect::<Vec<_>>(),
+        }),
+    })
+}
+
+/// Closes an open level: its entities despawn.
+pub(crate) fn close(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
+    let file = string(&params(p)?, "file")?;
+    Ok(json!({ "closed": crate::engine::close_now(world, &file) }))
 }
 
 fn entity_of(world: &World, o: &Map<String, Value>) -> Result<Entity, BrpError> {

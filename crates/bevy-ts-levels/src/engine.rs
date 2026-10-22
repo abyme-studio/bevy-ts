@@ -136,12 +136,25 @@ impl From<&Frame> for OwnerFrame {
     }
 }
 
+/// Who opened a level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Opener {
+    /// `app.level`: a generation without it closes it.
+    Ts,
+    /// `add_level`.
+    Rust,
+    /// `bevy-ts/level_open`.
+    Editor,
+    /// A scene's sidecar.
+    Sidecar,
+}
+
 /// One open level.
 #[derive(Debug)]
 pub struct LevelRoot {
     pub handle: Handle<BsnLevel>,
-    /// Declared by `app.level` (so a generation without it closes it), not by Rust.
-    pub from_ts: bool,
+    pub opener: Opener,
     /// The level and every file it includes, as of its last successful compose.
     pub files: BTreeSet<String>,
     /// Hashes of those files when last applied.
@@ -171,11 +184,15 @@ pub struct Levels {
     /// Recently seen versions of level files by content hash, so a write made against an older
     /// version can tell which fields the disk changed since (the latest 32).
     pub history: std::collections::VecDeque<(u64, Arc<ParsedFile>)>,
+    /// The levels the live generation's `app.level` declares.
+    pub declared: Vec<String>,
+    /// Levels `level_close` closed: a generation does not reopen them until `level_open` does.
+    pub closed: BTreeSet<String>,
 }
 
 impl Default for Levels {
     fn default() -> Self {
-        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default() }
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), declared: Vec::new(), closed: BTreeSet::new() }
     }
 }
 
@@ -241,20 +258,22 @@ struct LevelSection {
     levels: Vec<String>,
 }
 
-fn open(world: &mut World, path: &str, from_ts: bool) {
-    open_as(world, path, from_ts, None);
+fn open(world: &mut World, path: &str, opener: Opener) {
+    open_as(world, path, opener, None);
 }
 
-fn open_as(world: &mut World, path: &str, from_ts: bool, overlay: Option<String>) {
+fn open_as(world: &mut World, path: &str, opener: Opener, overlay: Option<String>) {
     if world.resource::<Levels>().roots.contains_key(path) {
         return;
     }
     let handle = world.resource::<AssetServer>().load::<BsnLevel>(path.to_string());
-    world.resource_mut::<Levels>().roots.insert(
+    let mut levels = world.resource_mut::<Levels>();
+    levels.emit(serde_json::json!({ "event": "opened", "level": path, "opener": opener }));
+    levels.roots.insert(
         path.to_string(),
         LevelRoot {
             handle,
-            from_ts,
+            opener,
             files: BTreeSet::new(),
             applied: BTreeMap::new(),
             owners: BTreeMap::new(),
@@ -269,12 +288,14 @@ fn open_as(world: &mut World, path: &str, from_ts: bool, overlay: Option<String>
 
 /// Opens `scene`'s sidecar level at `path`, layered over the scene (decision 11).
 pub fn open_sidecar(world: &mut World, scene: &str, path: &str) {
-    open_as(world, path, false, Some(scene.to_string()));
+    open_as(world, path, Opener::Sidecar, Some(scene.to_string()));
 }
 
 /// Closes a level: its entities despawn (a sidecar's overrides leave its scene).
 pub fn close(world: &mut World, path: &str) {
-    if let Some(r) = world.resource_mut::<Levels>().roots.remove(path) {
+    let removed = world.resource_mut::<Levels>().roots.remove(path);
+    if let Some(r) = removed {
+        world.resource_mut::<Levels>().emit(serde_json::json!({ "event": "closed", "level": path }));
         match r.overlay {
             Some(scene) => {
                 bevy_ts_tsx::clear_overlay(world, &scene);
@@ -324,13 +345,16 @@ fn check_section(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -
 
 fn apply_section(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection) {
     let wanted: Vec<String> = if applied.present { serde_json::from_slice::<LevelSection>(applied.bytes).map(|s| s.levels).unwrap_or_default() } else { Vec::new() };
-    let gone: Vec<String> = world.resource::<Levels>().roots.iter().filter(|(p, r)| r.from_ts && !wanted.contains(p)).map(|(p, _)| p.clone()).collect();
+    let gone: Vec<String> = world.resource::<Levels>().roots.iter().filter(|(p, r)| r.opener == Opener::Ts && !wanted.contains(p)).map(|(p, _)| p.clone()).collect();
     for p in gone {
         close(world, &p);
     }
-    for p in &wanted {
-        open(world, p, true);
+    // A level the editor closed stays closed until it opens it again.
+    let closed = world.resource::<Levels>().closed.clone();
+    for p in wanted.iter().filter(|p| !closed.contains(*p)) {
+        open(world, p, Opener::Ts);
     }
+    world.resource_mut::<Levels>().declared = wanted;
 }
 
 /// A generation re-expands every instance (rule 9). The runtime is busy while a generation
@@ -365,7 +389,7 @@ impl Plugin for LevelsPlugin {
 fn open_pending(world: &mut World) {
     let pending = std::mem::take(&mut world.get_resource_or_init::<PendingLevels>().0);
     for p in pending {
-        open(world, &p, false);
+        open(world, &p, Opener::Rust);
     }
 }
 
@@ -666,26 +690,23 @@ fn expand(world: &mut World, requests: &[ExpandRequest]) -> Result<Vec<NodeDesc>
 
 /// Composes one level from the loaded files, expanding its instances.
 pub fn compose_level(world: &mut World, path: &str) -> (Result<Composed, Vec<ScriptError>>, BTreeMap<String, u64>) {
-    let (prepared, hashes) = {
-        let mut files = LoadedFiles { server: world.resource::<AssetServer>(), assets: world.resource::<Assets<BsnLevel>>(), hashes: BTreeMap::new() };
-        let registry = world.resource::<AppTypeRegistry>().read();
-        let schema = WorldSchema::live(world, &registry);
-        let p = compose::prepare(path, &mut files, &schema);
-        (p, files.hashes)
-    };
-    let prepared = match prepared {
-        Ok(p) => p,
-        Err(e) => return (Err(e), hashes),
-    };
-    let expansions = if prepared.requests.is_empty() {
-        Vec::new()
-    } else {
-        match expand(world, &prepared.requests) {
-            Ok(e) => e,
-            Err(e) => return (Err(e), hashes),
-        }
-    };
-    (prepared.finish(expansions), hashes)
+    let mut files = LoadedFiles { server: world.resource::<AssetServer>(), assets: world.resource::<Assets<BsnLevel>>(), hashes: BTreeMap::new() };
+    let prepared = prepare_with(world, path, &mut files);
+    let hashes = files.hashes;
+    (finish_compose(world, prepared), hashes)
+}
+
+fn prepare_with(world: &World, path: &str, files: &mut dyn Files) -> Result<compose::Prepared, Vec<ScriptError>> {
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let schema = WorldSchema::live(world, &registry);
+    compose::prepare(path, files, &schema)
+}
+
+/// Expands a prepared level's instances and finishes it.
+fn finish_compose(world: &mut World, prepared: Result<compose::Prepared, Vec<ScriptError>>) -> Result<Composed, Vec<ScriptError>> {
+    let prepared = prepared?;
+    let expansions = if prepared.requests.is_empty() { Vec::new() } else { expand(world, &prepared.requests)? };
+    prepared.finish(expansions)
 }
 
 fn log(world: &mut World, level: LogLevel, e: &ScriptError) {
@@ -712,6 +733,11 @@ pub fn reconcile_level(world: &mut World, path: &str) {
         r.dirty = false;
     }
     let (result, hashes) = compose_level(world, path);
+    apply_composed(world, path, result, hashes);
+}
+
+/// Reconciles a level from its compose: a failure leaves it as it was.
+fn apply_composed(world: &mut World, path: &str, result: Result<Composed, Vec<ScriptError>>, hashes: BTreeMap<String, u64>) {
     let versions: Vec<(u64, Arc<ParsedFile>)> = {
         let server = world.resource::<AssetServer>();
         let assets = world.resource::<Assets<BsnLevel>>();
@@ -849,4 +875,114 @@ fn tree_level(world: &World, e: Entity, n: &TsxNode) -> Option<Value> {
         let inst = world.get::<LevelInstance>(tree.entity(node_id(&n.root, &n.key_path[..i]))?)?;
         inst.scene.as_ref().map(|_| serde_json::json!({ "file": inst.level, "namePath": n.key_path, "written": false }))
     })
+}
+
+/// Why `bevy-ts/level_open` opened nothing.
+#[derive(Debug)]
+pub struct OpenFailure {
+    /// `invalid`, `not-found` or `load`.
+    pub reason: &'static str,
+    pub diagnostics: Vec<ScriptError>,
+}
+
+/// `file` as an asset path inside the asset root, normalized: `None` when it does not end in
+/// `.bsn` or leaves the root.
+pub fn asset_path(file: &str) -> Option<String> {
+    if !file.ends_with(".bsn") || file.starts_with('/') || file.contains('\\') || file.contains(':') {
+        return None;
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    for seg in file.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            s => parts.push(s),
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
+/// Files read from disk for an open; parse failures are kept with their place.
+struct DiskFiles {
+    root: std::path::PathBuf,
+    read: BTreeMap<String, (String, Arc<ParsedFile>)>,
+    failed: Vec<ScriptError>,
+}
+
+impl Files for DiskFiles {
+    fn parsed(&mut self, path: &str) -> Result<Arc<ParsedFile>, String> {
+        if let Some((_, p)) = self.read.get(path) {
+            return Ok(p.clone());
+        }
+        let src = std::fs::read_to_string(self.root.join(path)).map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { "not found".to_string() } else { e.to_string() })?;
+        match syntax::parse(&src) {
+            Ok(p) => {
+                let p = Arc::new(p);
+                self.read.insert(path.to_string(), (src, p.clone()));
+                Ok(p)
+            }
+            Err(d) => {
+                self.failed.push(located(path, &d.render(path, &src)));
+                Err("does not parse".into())
+            }
+        }
+    }
+}
+
+/// Opens `file` now (`bevy-ts/level_open`): reads it and every file it includes from disk,
+/// composes, and creates and reconciles its root only when that succeeds. A level already open
+/// answers as it is. Runs no system: the reconcile's spawns are its only writes.
+pub fn open_now(world: &mut World, file: &str) -> Result<String, OpenFailure> {
+    let fail = |reason, message: String| OpenFailure { reason, diagnostics: vec![ScriptError::new(message)] };
+    let Some(path) = asset_path(file) else { return Err(fail("invalid", format!("{file}: expected a path to a .bsn file inside the asset root"))) };
+    if world.resource::<Levels>().roots.contains_key(&path) {
+        world.resource_mut::<Levels>().closed.remove(&path);
+        return Ok(path);
+    }
+    let root = world.resource::<Levels>().asset_root.clone();
+    if !root.join(&path).is_file() {
+        return Err(fail("not-found", format!("{path}: no such file")));
+    }
+    let mut files = DiskFiles { root, read: BTreeMap::new(), failed: Vec::new() };
+    let composed = match prepare_with(world, &path, &mut files) {
+        // A parse failure says where; compose only says the inclusion failed.
+        Err(_) if !files.failed.is_empty() => Err(std::mem::take(&mut files.failed)),
+        p => finish_compose(world, p),
+    };
+    let composed = composed.map_err(|diagnostics| OpenFailure { reason: "load", diagnostics })?;
+    let mut hashes = BTreeMap::new();
+    for (f, (text, _)) in &files.read {
+        let hash = content_hash(text.as_bytes());
+        hashes.insert(f.clone(), hash);
+        let same = {
+            let server = world.resource::<AssetServer>();
+            server.get_handle::<BsnLevel>(f.clone()).and_then(|h| world.resource::<Assets<BsnLevel>>().get(&h)).is_some_and(|a| a.hash == hash)
+        };
+        if !same {
+            crate::edit::load_text(world, f, text).map_err(|e| fail("load", e))?;
+        }
+    }
+    let opener = if world.resource::<Levels>().declared.contains(&path) { Opener::Ts } else { Opener::Editor };
+    open(world, &path, opener);
+    let mut levels = world.resource_mut::<Levels>();
+    levels.closed.remove(&path);
+    if let Some(r) = levels.roots.get_mut(&path) {
+        r.dirty = false;
+    }
+    apply_composed(world, &path, Ok(composed), hashes);
+    Ok(path)
+}
+
+/// Closes a level for the editor (`bevy-ts/level_close`): a generation does not reopen it until
+/// [`open_now`] names it. False when it was not open.
+pub fn close_now(world: &mut World, file: &str) -> bool {
+    let path = asset_path(file).unwrap_or_else(|| file.to_string());
+    if !world.resource::<Levels>().roots.contains_key(&path) {
+        return false;
+    }
+    close(world, &path);
+    world.resource_mut::<Levels>().closed.insert(path);
+    true
 }
