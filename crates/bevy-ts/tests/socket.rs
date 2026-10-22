@@ -21,6 +21,8 @@ struct Seen {
 
 /// Serves one connection on a thread: picks `protocol` if offered, records the request, then
 /// runs `serve`. Returns the `ws:` URL and the request it saw.
+// tungstenite's `accept_hdr` callback returns its own large `ErrorResponse`.
+#[allow(clippy::result_large_err)]
 fn server(protocol: Option<&'static str>, serve: impl FnOnce(&mut WebSocket<TcpStream>) + Send + 'static) -> (String, mpsc::Receiver<Seen>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("ws://{}/stream", listener.local_addr().unwrap());

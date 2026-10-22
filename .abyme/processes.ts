@@ -194,4 +194,6 @@ export default {
   "net-bench": { cmd: "cargo test --release -p bevy-ts-v8 --test net burst_bench -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/net-bench.log | tail -20" },
   // Change script-networking: the last round before it lands.
   "script-networking-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check) && openspec validate script-networking --strict) 2>&1 | grep -v ld64 | tee target/script-networking-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale|valid\"; echo gate exit $?'" },
+  // The gate's steps after the tests, for a lint fix that changes no behaviour.
+  "script-networking-lint": { cmd: "bash -c 'set -o pipefail; (cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check) && openspec validate script-networking --strict) 2>&1 | grep -v ld64 | tee target/script-networking-lint.log | tail -30'" },
 } satisfies ProcessFile;

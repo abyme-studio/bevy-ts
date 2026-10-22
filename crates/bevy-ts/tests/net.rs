@@ -85,7 +85,7 @@ fn refused_opens_never_reach_the_transport() {
     let (mut app, handle, fake) = app();
     load(&mut app, &handle, FakeProgram::default());
     let g = live(&app);
-    let mut req = |id, url: &str, headers: &[(&str, &str)]| {
+    let req = |id, url: &str, headers: &[(&str, &str)]| {
         let headers = headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
         handle.request(NetRequest::Open { id: ConnId(id), generation: g, request: OpenRequest { url: url.into(), protocols: vec![], headers } });
     };
