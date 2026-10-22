@@ -18,7 +18,7 @@
 
 - [ ] 3.1 `MeshProps` becomes the union of one exported interface per shape (`CuboidMesh`, `CylinderMesh`, ...) and `{ color?: string }`, with `Extrude` on the 2D shapes; JSDoc each prop with Bevy's default
 - [ ] 3.2 `packages/bevy-ts/test/tsx/elements.tsx`: replace the "unknown shape" case (`torus` is now valid) with `shape="dodecahedron"`; add `@ts-expect-error` cases for another shape's prop (`<mesh shape="sphere" sides={6} />`) and a wrong-length vector; add one valid element per shape
-- [ ] 3.3 Mirror the types into `bench/dx/bevy-ts/jsx-runtime.ts` if it copies `MeshProps`; run the package's `check` script
+- [ ] 3.3 Mirror the union into `bench/dx/bevy-ts/jsx-runtime.ts`, which copies `MeshProps`
 
 ## 4. Docs
 
