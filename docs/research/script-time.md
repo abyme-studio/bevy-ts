@@ -58,6 +58,17 @@ place, marks changed. That fits `time.pause()` exactly and keeps Bevy's immediat
 Recommend: wait for it; do not build a Time-only write path. Fallback if it slips: queue the
 call on the TS command buffer (applied after the system), and say so in the docs.
 
+Shape, from research@writable-native-params (2026-10-23): `Time<Virtual>` control is their
+worked case. A Rust `#[derive(SystemParam)] struct VirtualTime { time: ResMut<Time<Virtual>> }`
+with `#[bevy_ts_native::export(ts = "VirtualTime", module = "bevy-ts/time")]` methods `pause`,
+`unpause`, `is_paused`, `set_relative_speed`, `relative_speed`. In TS: `vt: VirtualTime`,
+`vt.pause()`. One synchronous host call per method, stamped with the TS system's tick. A negative
+or NaN ratio becomes a JS throw naming `VirtualTime.setRelativeSpeed`. The change takes effect
+in the next frame's delta, as in Bevy. They own the mechanism; we own `VirtualTime` (and a
+`FixedTime` for `set_timestep_*`), the `bevy-ts/time` module and its spec. Spec should ask them
+whether `ResMut<Time<Virtual>>` can be an alias for `VirtualTime`, so TS reads as Rust does. If
+not, ship `VirtualTime`.
+
 Reads can land before writes: yes.
 
 A blocker found on the write side, ours to fix: `runtime::advance_clock` (in `First`) unpauses
@@ -118,7 +129,7 @@ value built per run.
 | Stage | Contents | Needs |
 |---|---|---|
 | 1 | `Res<Time<Real/Virtual/Fixed>>` reads, `Time<..>` route, `elapsed_secs_wrapped`; the `FixedUpdate` test; `advance_clock` pause fix; `Timer`/`Stopwatch`/`TimerMode` field types; docs/native.md and spec wording | nothing |
-| 2 | `ResMut<Time<Virtual>>` and `ResMut<Time<Fixed>>` writes | writable-native-params' write path |
+| 2 | `VirtualTime` and `FixedTime` exported params (pause, speed, timestep) | writable-native-params' write path |
 | 3 | `onTimer`, `onRealTimer`, `onceAfterDelay`, `repeatingAfterDelay` (and real forms), `paused` as Rust-evaluated conditions wrapping Bevy's own | ecs-schedules' condition shape (`docs/research/ecs-schedules.md`) |
 | 4 | `commands.delayed().secs(s)` | ask writable-native-params, which lists `Commands` |
 
