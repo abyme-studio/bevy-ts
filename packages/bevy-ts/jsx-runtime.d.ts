@@ -213,15 +213,238 @@ export interface ImageProps extends NodeProps {
   color?: Bindable<string>;
 }
 
-export interface MeshProps {
-  shape: "cuboid" | "sphere" | "plane";
-  /** `[x, y, z]` for a cuboid, `[x, z]` for a plane. */
-  size?: Vec3 | [number, number];
-  /** A sphere's radius. */
+type Vec2 = [number, number];
+
+// `<mesh shape>`: Bevy 0.20's mesh primitives (docs/meshes.md). Props are the Bevy constructor's
+// parameters and mesh builder's settings, in camelCase; an unset prop is Bevy's default. Angles
+// are radians.
+
+export interface CuboidMesh {
+  shape: "cuboid";
+  /** Full lengths `[x, y, z]`. Default `[1, 1, 1]`. */
+  size?: Vec3;
+}
+export interface SphereMesh {
+  shape: "sphere";
+  /** Default 0.5. */
   radius?: number;
+  /** Default `"ico"`. */
+  kind?: "ico" | "uv";
+  /** An ico sphere's subdivisions, at most 79. Default 5. */
+  subdivisions?: number;
+  /** A uv sphere's sectors (around), at least 3. Default 32. */
+  sectors?: number;
+  /** A uv sphere's stacks (pole to pole), at least 2. Default 18. */
+  stacks?: number;
+}
+export interface PlaneMesh {
+  shape: "plane";
+  /** Full lengths `[x, z]`. Default `[1, 1]`. */
+  size?: Vec2;
+  /** Default `[0, 1, 0]`. */
+  normal?: Vec3;
+  /** Cuts along both axes. Default 0. */
+  subdivisions?: number;
+  /** Default 0. */
+  subdivisionsX?: number;
+  /** Default 0. */
+  subdivisionsZ?: number;
+}
+export interface CylinderMesh {
+  shape: "cylinder";
+  /** Default 0.5. */
+  radius?: number;
+  /** Default 1. */
+  height?: number;
+  /** Vertices around, at least 3. Default 32. */
+  resolution?: number;
+  /** Segments along the height. Default 1. */
+  segments?: number;
+  /** Default true. */
+  caps?: boolean;
+  /** Default `"midPoint"`. */
+  anchor?: "midPoint" | "top" | "bottom";
+}
+export interface Capsule3dMesh {
+  shape: "capsule3d";
+  /** Default 0.5. */
+  radius?: number;
+  /** The cylinder's length, between the hemispheres' centres. Default 1. */
+  length?: number;
+  /** Rings on the cylinder. Default 0. */
+  rings?: number;
+  /** At least 3. Default 32. */
+  longitudes?: number;
+  /** Even, at least 4. Default 16. */
+  latitudes?: number;
+  /** Default `"aspect"`. */
+  uvProfile?: "aspect" | "uniform" | "fixed";
+}
+export interface ConeMesh {
+  shape: "cone";
+  /** Default 0.5. */
+  radius?: number;
+  /** Default 1. */
+  height?: number;
+  /** At least 3. Default 32. */
+  resolution?: number;
+  /** Default `"midPoint"`. */
+  anchor?: "midPoint" | "tip" | "base";
+}
+export interface ConicalFrustumMesh {
+  shape: "conicalFrustum";
+  /** Default 0.25. */
+  radiusTop?: number;
+  /** Default 0.5. */
+  radiusBottom?: number;
+  /** Default 0.5. */
+  height?: number;
+  /** At least 3. Default 32. */
+  resolution?: number;
+  /** Default 1. */
+  segments?: number;
+}
+export interface TorusMesh {
+  shape: "torus";
+  /** Below `outerRadius`. Default 0.5. */
+  innerRadius?: number;
+  /** Default 1. */
+  outerRadius?: number;
+  /** Around the tube, at least 3. Default 24. */
+  minorResolution?: number;
+  /** Around the ring, at least 3. Default 32. */
+  majorResolution?: number;
+  /** `[start, end]`. Default `[0, 2π]`. */
+  angleRange?: Vec2;
+}
+export interface TetrahedronMesh {
+  shape: "tetrahedron";
+  /** Default Bevy's regular tetrahedron in the unit cube. */
+  vertices?: [Vec3, Vec3, Vec3, Vec3];
+}
+export interface Triangle3dMesh {
+  shape: "triangle3d";
+  /** Default `[[0, 0.5, 0], [-0.5, -0.5, 0], [0.5, -0.5, 0]]`. */
+  vertices?: [Vec3, Vec3, Vec3];
+}
+
+/** A 2D shape lies in the XY plane facing +Z; with `depth` it is Bevy's extrusion along Z. */
+export interface Extrude {
+  /** Full depth along Z. Unset: flat. */
+  depth?: number;
+  /** Segments along the depth; needs `depth`. Default 1. */
+  segments?: number;
+}
+export interface CircleMesh extends Extrude {
+  shape: "circle";
+  /** Default 0.5. */
+  radius?: number;
+  /** At least 3. Default 32. */
+  resolution?: number;
+}
+export interface CircularSectorMesh extends Extrude {
+  shape: "circularSector";
+  /** Default 0.5. */
+  radius?: number;
+  /** The whole angle, up to 2π. Default 4π/3. */
+  angle?: number;
+  /** At least 3. Default 32. */
+  resolution?: number;
+  /** Rotates the UV mask. Default 0. */
+  uvAngle?: number;
+}
+export interface CircularSegmentMesh extends Extrude {
+  shape: "circularSegment";
+  /** Default 0.5. */
+  radius?: number;
+  /** Half the angle, up to π. Default 2π/3. */
+  halfAngle?: number;
+  /** At least 3. Default 32. */
+  resolution?: number;
+  /** Rotates the UV mask. Default 0. */
+  uvAngle?: number;
+}
+export interface EllipseMesh extends Extrude {
+  shape: "ellipse";
+  /** Half lengths `[x, y]`. Default `[1, 0.5]`. */
+  halfSize?: Vec2;
+  /** At least 3. Default 32. */
+  resolution?: number;
+}
+export interface AnnulusMesh extends Extrude {
+  shape: "annulus";
+  /** Below `outerRadius`. Default 0.5. */
+  innerRadius?: number;
+  /** Default 1. */
+  outerRadius?: number;
+  /** At least 3. Default 32. */
+  resolution?: number;
+}
+export interface RectangleMesh extends Extrude {
+  shape: "rectangle";
+  /** Full lengths `[x, y]`. Default `[1, 1]`. */
+  size?: Vec2;
+}
+export interface RhombusMesh extends Extrude {
+  shape: "rhombus";
+  /** Default 1. */
+  horizontalDiagonal?: number;
+  /** Default 1. */
+  verticalDiagonal?: number;
+}
+export interface RegularPolygonMesh extends Extrude {
+  shape: "regularPolygon";
+  /** Default 0.5. */
+  circumradius?: number;
+  /** At least 3. Default 6. */
+  sides?: number;
+}
+export interface Triangle2dMesh extends Extrude {
+  shape: "triangle2d";
+  /** Either winding. Default `[[0, 0.5], [-0.5, -0.5], [0.5, -0.5]]`. */
+  vertices?: [Vec2, Vec2, Vec2];
+}
+export interface Capsule2dMesh extends Extrude {
+  shape: "capsule2d";
+  /** Default 0.5. */
+  radius?: number;
+  /** The straight part's length. Default 1. */
+  length?: number;
+  /** Vertices per half circle, at least 3. Default 16. */
+  resolution?: number;
+}
+export interface ConvexPolygonMesh extends Extrude {
+  shape: "convexPolygon";
+  /** At least 3 points of a convex polygon, either winding. */
+  vertices: Vec2[];
+}
+
+export type MeshProps = (
+  | CuboidMesh
+  | SphereMesh
+  | PlaneMesh
+  | CylinderMesh
+  | Capsule3dMesh
+  | ConeMesh
+  | ConicalFrustumMesh
+  | TorusMesh
+  | TetrahedronMesh
+  | Triangle3dMesh
+  | CircleMesh
+  | CircularSectorMesh
+  | CircularSegmentMesh
+  | EllipseMesh
+  | AnnulusMesh
+  | RectangleMesh
+  | RhombusMesh
+  | RegularPolygonMesh
+  | Triangle2dMesh
+  | Capsule2dMesh
+  | ConvexPolygonMesh
+) & {
   /** Shorthand for `<material color>`. */
   color?: string;
-}
+};
 
 export interface MaterialProps {
   color?: string;

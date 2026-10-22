@@ -34,6 +34,7 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
   and watched. A WGSL string is rejected. `alphaMode` is `"opaque"` (default), `"blend"`,
   `"premultiplied"`, `"add"`, `"multiply"`, `"alphaToCoverage"` or `{ mask: 0.5 }`.
 - Equal props share one material instance. Props cannot be bindings yet.
+- The shape is a `<mesh>` ([meshes.md](meshes.md)).
 - `kind` and `gltfMaterial` are props of `<material>` itself, so no param or texture may take
   either name.
 

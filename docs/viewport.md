@@ -73,7 +73,7 @@ picture holds another's subject. Whatever a glTF's scene spawns under a thumbnai
 `EditorOnly` and put on layer 30 the moment it is attached.
 
 A level is composed as loading it would: includes resolved, scene components expanded through
-their TS `scene()`. Only what draws is spawned: `Transform`, `Visibility`, `<mesh>`, `<material>`
+their TS `scene()`. Only what draws is spawned: `Transform`, `Visibility`, `<mesh>` ([meshes.md](meshes.md)), `<material>`
 (script materials too), `Mesh3d`/`MeshMaterial3d`, lights and glTF scene roots. Every entity carries
 `EditorOnly` (so `ScriptHidden`) from its first insert, so no TS query or observer, no physics and
 no reconciler sees it, and it is absent from `tsx_tree` and `entities+watch`. A level whose look

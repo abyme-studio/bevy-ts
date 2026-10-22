@@ -55,9 +55,41 @@ export const Bad = () => (
     {/* @ts-expect-error a wrongly typed field */}
     <Health max="lots" />
     {/* @ts-expect-error an unknown shape */}
-    <mesh shape="torus" />
+    <mesh shape="dodecahedron" />
+    {/* @ts-expect-error another shape's prop */}
+    <mesh shape="sphere" sides={6} />
+    {/* @ts-expect-error a wrong-length vector */}
+    <mesh shape="cuboid" size={[1, 2]} />
     {/* @ts-expect-error a prefab's required prop */}
     <Enemy />
+  </entity>
+);
+
+// One of each mesh shape, with a setting or two.
+export const Meshes = () => (
+  <entity>
+    <mesh shape="cuboid" size={[1, 2, 3]} color="#c33" />
+    <mesh shape="sphere" radius={2} />
+    <mesh shape="sphere" kind="uv" sectors={16} stacks={8} />
+    <mesh shape="plane" size={[4, 4]} subdivisions={2} />
+    <mesh shape="cylinder" radius={0.5} height={2} resolution={8} caps={false} anchor="bottom" />
+    <mesh shape="capsule3d" radius={0.25} length={1} rings={2} uvProfile="uniform" />
+    <mesh shape="cone" radius={1} height={2} anchor="base" />
+    <mesh shape="conicalFrustum" radiusTop={0.2} radiusBottom={0.6} height={1} segments={2} />
+    <mesh shape="torus" innerRadius={0.5} outerRadius={1} angleRange={[0, Math.PI]} />
+    <mesh shape="tetrahedron" vertices={[[1, 1, 1], [-1, 1, -1], [-1, -1, 1], [1, -1, -1]]} />
+    <mesh shape="triangle3d" vertices={[[0, 1, 0], [-1, 0, 0], [1, 0, 0]]} />
+    <mesh shape="circle" radius={1} resolution={64} />
+    <mesh shape="circularSector" radius={1} angle={Math.PI / 2} uvAngle={0.5} />
+    <mesh shape="circularSegment" radius={1} halfAngle={1} />
+    <mesh shape="ellipse" halfSize={[2, 1]} depth={0.5} />
+    <mesh shape="annulus" innerRadius={0.5} outerRadius={1} depth={1} segments={3} />
+    <mesh shape="rectangle" size={[2, 1]} />
+    <mesh shape="rhombus" horizontalDiagonal={2} verticalDiagonal={1} />
+    <mesh shape="regularPolygon" circumradius={1} sides={5} depth={0.2} />
+    <mesh shape="triangle2d" vertices={[[0, 1], [-1, 0], [1, 0]]} />
+    <mesh shape="capsule2d" radius={0.5} length={1} resolution={8} />
+    <mesh shape="convexPolygon" vertices={[[0, 0], [1, 0], [1, 1], [0, 1]]} depth={1} />
   </entity>
 );
 

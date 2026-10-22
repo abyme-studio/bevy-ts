@@ -22,11 +22,166 @@ interface TextProps extends EntityProps {
   size?: Bindable<number>;
   color?: Bindable<string>;
 }
-interface MeshProps {
-  shape: "cuboid" | "sphere" | "plane";
-  size?: readonly [number, number, number];
-  color?: Bindable<string>;
+// A copy of packages/bevy-ts/jsx-runtime.d.ts's MeshProps.
+type V2 = readonly [number, number];
+type V3 = readonly [number, number, number];
+interface CuboidMesh {
+  shape: "cuboid";
+  size?: V3;
 }
+interface SphereMesh {
+  shape: "sphere";
+  radius?: number;
+  kind?: "ico" | "uv";
+  subdivisions?: number;
+  sectors?: number;
+  stacks?: number;
+}
+interface PlaneMesh {
+  shape: "plane";
+  size?: V2;
+  normal?: V3;
+  subdivisions?: number;
+  subdivisionsX?: number;
+  subdivisionsZ?: number;
+}
+interface CylinderMesh {
+  shape: "cylinder";
+  radius?: number;
+  height?: number;
+  resolution?: number;
+  segments?: number;
+  caps?: boolean;
+  anchor?: "midPoint" | "top" | "bottom";
+}
+interface Capsule3dMesh {
+  shape: "capsule3d";
+  radius?: number;
+  length?: number;
+  rings?: number;
+  longitudes?: number;
+  latitudes?: number;
+  uvProfile?: "aspect" | "uniform" | "fixed";
+}
+interface ConeMesh {
+  shape: "cone";
+  radius?: number;
+  height?: number;
+  resolution?: number;
+  anchor?: "midPoint" | "tip" | "base";
+}
+interface ConicalFrustumMesh {
+  shape: "conicalFrustum";
+  radiusTop?: number;
+  radiusBottom?: number;
+  height?: number;
+  resolution?: number;
+  segments?: number;
+}
+interface TorusMesh {
+  shape: "torus";
+  innerRadius?: number;
+  outerRadius?: number;
+  minorResolution?: number;
+  majorResolution?: number;
+  angleRange?: V2;
+}
+interface TetrahedronMesh {
+  shape: "tetrahedron";
+  vertices?: [V3, V3, V3, V3];
+}
+interface Triangle3dMesh {
+  shape: "triangle3d";
+  vertices?: [V3, V3, V3];
+}
+interface Extrude {
+  depth?: number;
+  segments?: number;
+}
+interface CircleMesh extends Extrude {
+  shape: "circle";
+  radius?: number;
+  resolution?: number;
+}
+interface CircularSectorMesh extends Extrude {
+  shape: "circularSector";
+  radius?: number;
+  angle?: number;
+  resolution?: number;
+  uvAngle?: number;
+}
+interface CircularSegmentMesh extends Extrude {
+  shape: "circularSegment";
+  radius?: number;
+  halfAngle?: number;
+  resolution?: number;
+  uvAngle?: number;
+}
+interface EllipseMesh extends Extrude {
+  shape: "ellipse";
+  halfSize?: V2;
+  resolution?: number;
+}
+interface AnnulusMesh extends Extrude {
+  shape: "annulus";
+  innerRadius?: number;
+  outerRadius?: number;
+  resolution?: number;
+}
+interface RectangleMesh extends Extrude {
+  shape: "rectangle";
+  size?: V2;
+}
+interface RhombusMesh extends Extrude {
+  shape: "rhombus";
+  horizontalDiagonal?: number;
+  verticalDiagonal?: number;
+}
+interface RegularPolygonMesh extends Extrude {
+  shape: "regularPolygon";
+  circumradius?: number;
+  sides?: number;
+}
+interface Triangle2dMesh extends Extrude {
+  shape: "triangle2d";
+  vertices?: [V2, V2, V2];
+}
+interface Capsule2dMesh extends Extrude {
+  shape: "capsule2d";
+  radius?: number;
+  length?: number;
+  resolution?: number;
+}
+interface ConvexPolygonMesh extends Extrude {
+  shape: "convexPolygon";
+  vertices: V2[];
+}
+
+type MeshProps = (
+  | CuboidMesh
+  | SphereMesh
+  | PlaneMesh
+  | CylinderMesh
+  | Capsule3dMesh
+  | ConeMesh
+  | ConicalFrustumMesh
+  | TorusMesh
+  | TetrahedronMesh
+  | Triangle3dMesh
+  | CircleMesh
+  | CircularSectorMesh
+  | CircularSegmentMesh
+  | EllipseMesh
+  | AnnulusMesh
+  | RectangleMesh
+  | RhombusMesh
+  | RegularPolygonMesh
+  | Triangle2dMesh
+  | Capsule2dMesh
+  | ConvexPolygonMesh
+) & {
+  color?: Bindable<string>;
+};
 
 type PropValue<T> =
   T extends Vec3 ? readonly [number, number, number] | ReadonlyVec3
