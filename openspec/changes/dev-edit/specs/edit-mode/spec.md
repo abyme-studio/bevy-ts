@@ -7,6 +7,10 @@
 - **WHEN** abyme starts `bevy-ts dev --viewport --edit examples/arena/src/game.tsx` and attaches
 - **THEN** the arena's light and enemies are in the viewport from the editor camera, no enemy has moved from its level transform, `viewport_mode {}` answers `mode: "edit"` and `started: false`, and `bevy-ts/systems` shows no TS system with a last run time
 
+#### Scenario: The studio switches to edit after hello
+- **WHEN** the studio calls `viewport_mode { mode: "edit" }` on an `--edit` engine that has not played
+- **THEN** nothing changes: no `Startup` or TS system runs, the editor camera keeps its pose, and the answer has `mode: "edit"` and `started: false`
+
 #### Scenario: Started by hand with a window
 - **WHEN** a developer runs `bevy-ts dev --edit examples/cube/src/game.ts`
 - **THEN** the engine's own window shows the cube standing still from the editor camera

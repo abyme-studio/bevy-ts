@@ -38,5 +38,5 @@ None.
 - `protocol/bevy-ts.openrpc.json`: `ViewportModeResult.started`, the next free minor on main at landing: 1.18.0 if this lands before level-open, else 1.19.0 after a rebase. Regenerated Rust and TS types.
 - `docs/viewport.md` ("An engine that is always up", the studio note), `docs/native.md` (gating native systems), the CLI usage line.
 - Behaviour change for existing edit mode, needs the operator's go: TS triggers raised while in edit mode are dropped instead of firing on resume.
-- abyme, agreed with build@bevy-game-shell: the studio adds `--edit` to its launch line in `apps/bevy/plugins/bevy-ts/server.ts`, gated on the pinned `BEVY_TS`, and drops its switch to edit after `hello`. lead@abyme brings up a team for that half. The game shell's Play/Stop/Pause/Step need no change.
+- abyme, agreed with spec@studio-edit-and-levels: the studio adds `--edit` to its launch line in `apps/bevy/plugins/bevy-ts/server.ts`, gated on the pinned `BEVY_TS`, and keeps its one `viewport_mode { mode: "edit" }` after `hello` for every game (operator ruling 2026-10-20), a no-op on an `--edit` engine. The game shell's Play/Stop/Pause/Step need no change.
 - No performance cost: edit runs fewer systems than today's paused world.
