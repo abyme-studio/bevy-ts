@@ -102,11 +102,15 @@ While a viewer is attached and visible, the engine SHALL run one `App::update` p
 - **THEN** the median over 200 presses is at most 16.7 ms at 120 Hz
 
 ### Requirement: Edit mode and the protocol work in windowed mode
-Every viewport method except `viewport_attach`, `viewport_detach`, `viewport_resize` and `viewport_input` SHALL work the same in windowed mode, against the engine's own window.
+Every viewport method except `viewport_attach`, `viewport_detach`, `viewport_resize` and `viewport_input` SHALL work the same in windowed mode, against the engine's own window. Under `--headless`, `viewport_input` SHALL be served for `pointer` events alone, as the viewport-input spec's headless pointer says; the other viewport methods are not served headless.
 
 #### Scenario: Edit mode without abyme
 - **WHEN** a client calls `bevy-ts/viewport_mode` with `edit` against `bevy-ts dev` in its own window
 - **THEN** the game pauses and the editor camera, gizmos and picking work in that window
+
+#### Scenario: Pointer input headless
+- **WHEN** a client calls `bevy-ts/viewport_input` with a `pointer` `move` against `bevy-ts dev --headless`
+- **THEN** it answers `{ queued: 1 }`, and `bevy-ts/viewport_attach` there is still not served
 
 ### Requirement: The viewport in the protocol contract
 The viewport methods (`bevy-ts/viewport_attach`, `viewport_detach`, `viewport_resize`, `viewport_input`, `viewport_mode`, `viewport_camera`, `viewport_pick`, `viewport_select`, `viewport_selection+watch`, `viewport_edits+watch`, `viewport_edit_result`, `viewport_revert`, `viewport_stats`, `assets`, `assets+watch`, `asset_thumbnail`) and the channel's message types (`hello`, sent by both sides, `input`, carrying one `ViewportInput` event, `surface`, `frame`, `tick`, `cursor`, `cursor_grab`, `cursor_warp`, `ime_area`, `ime_allowed`, `replaced`) SHALL be added to `protocol/bevy-ts.openrpc.json` with `x-bevy-ts-crate: "bevy-ts-viewport"`, as an additions-only minor bump of the contract (1.2.0 when it landed; 1.5.0 with the `display` and level-route fields; 1.10.0 with the `hello` answer, `replaced`, `touch` and `gamepad`; 1.16.0 with `AssetInfo.thumbnail`, `PickHit.point` and `ViewportPickResult.ground`; 1.18.0 with `ViewportModeResult.started`), generated into Rust and TS types by bridge's pipeline. Channel messages SHALL be JSON-RPC 2.0 notifications whose `method` is the message type, so one schema covers HTTP and the channel. `bevy-ts/hello` SHALL report `viewport: true|false`.
