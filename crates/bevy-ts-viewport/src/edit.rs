@@ -20,6 +20,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_ts::EngineMode;
 use bevy_ts_tsx::tree::{TsxNode, TsxTree};
+use bevy_ts_remote::protocol::{ViewportModeCause as ModeCause, ViewportPlayRefusedReason};
 use serde_json::{Value, json};
 
 /// The render layer the edit tools draw on; only the editor camera sees it.
@@ -75,6 +76,63 @@ pub struct EditState {
     /// Game cameras and whether each was active on entering edit.
     game_cameras: Vec<(Entity, bool)>,
     pub camera: Option<Entity>,
+    /// The levels open when play was entered, for its Stop to put back.
+    open_levels: Option<bevy_ts_levels::engine::OpenSet>,
+}
+
+/// The JSON-RPC error code of a refused Play.
+pub const PLAY_REFUSED: i16 = -32000;
+
+/// Why a Play was refused: the JSON-RPC error's message, and its `data`.
+#[derive(Clone, Debug)]
+pub struct PlayRefused {
+    pub reason: ViewportPlayRefusedReason,
+    pub message: String,
+}
+
+/// The mode as last streamed: one owner, viewport's. A call records its change at once; `pause`,
+/// `step` and a `restart` reload are caught by the compare in `Last`.
+#[derive(Resource, Default)]
+pub struct ModeWatch {
+    /// Bumped on every change, for the watch.
+    pub seq: u64,
+    pub last: Option<Value>,
+    pub cause: Option<ModeCause>,
+    /// `Generations::restarts` when `last` was taken.
+    restarts: u64,
+}
+
+/// Records the mode now as a change with `cause`.
+fn mode_changed(world: &mut World, cause: ModeCause) {
+    let now = mode_json(world);
+    let restarts = world.get_resource::<bevy_ts::generation::Generations>().map_or(0, |g| g.restarts);
+    let mut w = world.resource_mut::<ModeWatch>();
+    w.seq += 1;
+    w.last = Some(now);
+    w.cause = Some(cause);
+    w.restarts = restarts;
+}
+
+/// `Last`: a mode that differs from the one last streamed is a change; a `restart` reload's when
+/// one ran since, else a client's (`pause`, `step`).
+fn watch_mode(world: &mut World) {
+    let now = mode_json(world);
+    let restarts = world.get_resource::<bevy_ts::generation::Generations>().map_or(0, |g| g.restarts);
+    let w = world.resource::<ModeWatch>();
+    match &w.last {
+        None => {
+            let mut w = world.resource_mut::<ModeWatch>();
+            w.last = Some(now);
+            w.restarts = restarts;
+        }
+        Some(last) if *last != now => {
+            let cause = if restarts != w.restarts { ModeCause::Restart } else { ModeCause::Client };
+            mode_changed(world, cause);
+        }
+        Some(_) => {
+            world.resource_mut::<ModeWatch>().restarts = restarts;
+        }
+    }
 }
 
 /// Where a selection change came from.
@@ -181,6 +239,7 @@ pub(crate) fn build(app: &mut App) {
         .init_resource::<Selection>()
         .init_resource::<ViewportTools>()
         .init_resource::<PointerTrack>()
+        .init_resource::<ModeWatch>()
         .init_gizmo_group::<EditorGizmos>();
     if !app.is_plugin_added::<bevy::gizmos::transform_gizmo::TransformGizmoPlugin>() {
         app.add_plugins(bevy::gizmos::transform_gizmo::TransformGizmoPlugin);
@@ -209,7 +268,8 @@ pub(crate) fn build(app: &mut App) {
                 .chain()
                 .run_if(|s: Res<EditState>| s.mode == Mode::Edit),
         )
-        .add_systems(Update, apply_tools.after(edit_keys));
+        .add_systems(Update, apply_tools.after(edit_keys))
+        .add_systems(Last, watch_mode);
 }
 
 /// Bevy's transform gizmo spawns its handles and an overlay camera at startup: they are the
@@ -277,8 +337,35 @@ fn boot_edit(world: &mut World) {
     }
 }
 
-/// Switches mode; answers the mode in force.
-pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocused: Option<bool>) -> Value {
+/// Whether a Play can run: a generation is live and the newest save did not fail. A Stop's
+/// rebuild is not a save: it neither hides a failed compile nor counts as one.
+pub fn play_refused(world: &World) -> Option<PlayRefused> {
+    let newest = world.get_resource::<bevy_ts::generation::ReloadLog>().and_then(|l| l.newest_save.as_ref());
+    if let Some(r) = newest.filter(|r| r.status == bevy_ts::generation::ReloadStatus::Failed) {
+        let message = match r.errors.first() {
+            Some(e) => match &e.location {
+                Some(at) => format!("{}:{}: {}", at.file, at.line, e.message),
+                None => e.message.clone(),
+            },
+            None => "the newest compile failed".to_string(),
+        };
+        return Some(PlayRefused { reason: ViewportPlayRefusedReason::CompileErrors, message });
+    }
+    // An app without bevy-ts plays as it is.
+    let none = world.get_resource::<bevy_ts::generation::Generations>().is_some_and(|g| g.live == 0);
+    none.then(|| PlayRefused { reason: ViewportPlayRefusedReason::NoGeneration, message: "The game has not compiled yet.".to_string() })
+}
+
+/// Switches mode; answers the mode in force. A Play that can't run changes nothing.
+pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocused: Option<bool>) -> Result<Value, PlayRefused> {
+    let current = world.resource::<EditState>().mode;
+    if mode == Mode::Play
+        && current == Mode::Edit
+        && let Some(refused) = play_refused(world)
+    {
+        mode_changed(world, ModeCause::Failed);
+        return Err(refused);
+    }
     if let Some(g) = gamepad_unfocused {
         world.resource_mut::<EditState>().gamepad_unfocused = g;
         if let Some(s) = world.get_resource::<SharedRes>() {
@@ -288,7 +375,6 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
     if let Some(ui) = ui {
         world.resource_mut::<EditState>().ui = ui;
     }
-    let current = world.resource::<EditState>().mode;
     if mode != current {
         // `EngineMode` follows now, so `OnExit`/`OnEnter` run before the next frame's systems
         // and before the first play's `Startup`. The out-of-band `StateTransition` also applies
@@ -301,7 +387,10 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
             let _ = world.try_run_schedule(bevy::state::state::StateTransition);
         }
         match mode {
-            Mode::Edit => enter_edit(world),
+            Mode::Edit => {
+                enter_edit(world);
+                stop(world);
+            }
             Mode::Play => enter_play(world),
         }
     }
@@ -309,7 +398,29 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
     if let Some(s) = world.get_resource::<SharedRes>() {
         s.0.set_edit(mode == Mode::Edit);
     }
-    mode_json(world)
+    let now = mode_json(world);
+    if world.resource::<ModeWatch>().last.as_ref() != Some(&now) {
+        mode_changed(world, ModeCause::Client);
+    }
+    Ok(now)
+}
+
+/// A Stop, after `OnExit(Play)` and `enter_edit`: the TS world is rebuilt from the live
+/// generation, the levels open at Play come back and settle, the clocks start again from 0, and
+/// the selection follows its nodes.
+fn stop(world: &mut World) {
+    // Nothing TS made to throw away before a generation was applied.
+    if world.contains_resource::<bevy_ts::generation::LiveSet>() {
+        let _ = bevy_ts::generation::rebuild(world);
+    }
+    if world.contains_resource::<bevy_ts_levels::engine::Levels>() {
+        if let Some(set) = world.resource_mut::<EditState>().open_levels.take() {
+            bevy_ts_levels::engine::restore_open(world, &set);
+        }
+        bevy_ts_levels::engine::settle(world);
+    }
+    bevy_ts::runtime::reset_clock(world);
+    follow_selection(world, Origin::Engine);
 }
 
 pub fn mode_json(world: &World) -> Value {
@@ -390,7 +501,7 @@ fn enter_edit(world: &mut World) {
             e
         }
     };
-    let overlay: Vec<Entity> = world.query_filtered::<Entity, (With<Camera>, With<EditorOnly>, Without<EditorCamera>)>().iter(world).collect();
+    let overlay: Vec<Entity> = world.query_filtered::<Entity, (With<Camera>, With<EditorOnly>, Without<EditorCamera>, Without<UiSink>)>().iter(world).collect();
     for e in overlay {
         set_active(world, e, true);
     }
@@ -428,6 +539,10 @@ fn enter_play(world: &mut World) {
     if let Some(mut q) = world.get_resource_mut::<bevy_ts::observers::ObserverQueue>() {
         q.0.clear();
     }
+    if world.contains_resource::<bevy_ts_levels::engine::Levels>() {
+        let set = bevy_ts_levels::engine::open_set(world);
+        world.resource_mut::<EditState>().open_levels = Some(set);
+    }
     // The first play starts the game: its `Startup` runs now, before the stages.
     bevy_ts::generation::start_game(world);
     if !was_paused {
@@ -435,12 +550,34 @@ fn enter_play(world: &mut World) {
     }
 }
 
+/// Holds `IsDefaultUiCamera` in edit mode without `ui`: a camera that never renders, so game UI
+/// draws nowhere. Without it Bevy gives UI to the highest-order window camera, which in edit mode
+/// is the transform gizmo's overlay, active while something is selected.
+#[derive(Component)]
+struct UiSink;
+
 /// Game UI over the editor view only with `ui: true`: the editor camera is then the default UI
-/// camera; otherwise the default stays an inactive game camera and UI draws nowhere.
+/// camera; otherwise [`UiSink`] is, in edit mode, and the game's own default in play.
 fn apply_ui(world: &mut World) {
     let s = world.resource::<EditState>();
-    let (Some(camera), on) = (s.camera, s.mode == Mode::Edit && s.ui) else { return };
-    let Ok(mut e) = world.get_entity_mut(camera) else { return };
+    let (edit, ui, camera) = (s.mode == Mode::Edit, s.ui, s.camera);
+    let sink = world.query_filtered::<Entity, With<UiSink>>().iter(world).next();
+    let sink = match sink {
+        Some(e) => e,
+        None if edit && !ui => world.spawn((Name::new("bevy-ts ui sink"), Camera { order: -12, is_active: false, ..default() }, EditorOnly, UiSink)).id(),
+        None => return apply_default_ui(world, camera, edit && ui),
+    };
+    let mut e = world.entity_mut(sink);
+    if edit && !ui {
+        e.insert(bevy::ui::IsDefaultUiCamera);
+    } else {
+        e.remove::<bevy::ui::IsDefaultUiCamera>();
+    }
+    apply_default_ui(world, camera, edit && ui);
+}
+
+fn apply_default_ui(world: &mut World, camera: Option<Entity>, on: bool) {
+    let Some(Ok(mut e)) = camera.map(|c| world.get_entity_mut(c)) else { return };
     if on {
         e.insert(bevy::ui::IsDefaultUiCamera);
     } else {
@@ -547,6 +684,30 @@ fn keep_selection(mut sel: ResMut<Selection>, tree: Option<Res<TsxTree>>, alive:
     if changed {
         sel.items = items;
         sel.seq += 1;
+    }
+}
+
+/// A Stop's [`keep_selection`]: each selected node followed to the entity that has it now, at
+/// once; an item whose entity is gone and has no node, or whose node is gone, is dropped. A
+/// change is streamed with `origin`.
+fn follow_selection(world: &mut World, origin: Origin) {
+    let tree = world.get_resource::<TsxTree>();
+    let mut changed = false;
+    let items: Vec<_> = world
+        .resource::<Selection>()
+        .items
+        .iter()
+        .filter_map(|&(e, node)| {
+            let ok = world.get_entity(e).is_ok_and(|r| node.is_none() || r.get::<TsxNode>().map(|n| n.id) == node);
+            if ok {
+                return Some((e, node));
+            }
+            changed = true;
+            node.and_then(|id| tree?.entity(id)).map(|e| (e, node))
+        })
+        .collect();
+    if changed {
+        world.resource_mut::<Selection>().set(items, origin);
     }
 }
 
