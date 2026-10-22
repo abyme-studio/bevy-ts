@@ -37,6 +37,9 @@
     "./protocol": {
       "types": "./protocol.d.ts"
     },
+    "./globals": {
+      "types": "./globals.d.ts"
+    },
     "./testing": {
       "types": "./testing.d.ts",
       "default": "./testing.js"
@@ -66,12 +69,13 @@
     "@bevy-ts/win32-x64": "0.1.0-alpha.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "json-schema-to-typescript": "^15.0.4",
     "typescript": "^5.9.0",
     "vitest": "^3.2.7"
   },
   "scripts": {
-    "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p ../../examples/ui-gallery && tsc -p test",
+    "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p ../../examples/ui-gallery && tsc -p ../../examples/arena && tsc -p test && tsc -p test/types-node",
     "prepack": "node scripts/sync-examples.mjs",
     "test": "node scripts/sync-examples.mjs && vitest run --config test/vitest/vitest.config.mjs"
   },

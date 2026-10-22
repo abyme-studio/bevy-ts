@@ -354,7 +354,9 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
 
     // 4. game.json and the executable, then the folder onto <out>.
     report.step(4);
-    let file = GameFile { name: name.clone(), entry: entry_rel, bevy_ts: engine::VERSION.to_string(), engine: engine_id, mesh_picking: project.as_ref().is_some_and(|p| p.config.mesh_picking) };
+    let (net, env) = project.as_ref().map(|p| (p.config.net.clone(), p.config.env.clone())).unwrap_or_default();
+    let mesh_picking = project.as_ref().is_some_and(|p| p.config.mesh_picking);
+    let file = GameFile { name: name.clone(), entry: entry_rel, bevy_ts: engine::VERSION.to_string(), engine: engine_id, mesh_picking, net, env };
     let text = serde_json::to_string_pretty(&file).expect("game.json serialises");
     write(&game.join(GAME_FILE), format!("{text}\n").as_bytes())?;
     let exe_name = if target.contains("windows") { format!("{name}.exe") } else { name };

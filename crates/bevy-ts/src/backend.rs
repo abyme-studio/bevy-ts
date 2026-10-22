@@ -30,6 +30,17 @@ pub struct ModuleSet {
 pub struct Generation {
     pub number: u64,
     pub set: ModuleSet,
+    /// What `process.env` shows: the same for every load of one engine run.
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
+/// What a delivery hands back to core.
+#[derive(Clone, Debug, Default)]
+pub struct Delivered {
+    /// Network requests scripts made since the last drain, in order.
+    pub requests: Vec<crate::net::NetRequest>,
+    /// The earliest timer's deadline, in the milliseconds `deliver` takes, if any.
+    pub next_timer_ms: Option<f64>,
 }
 
 /// A location in TS source.
@@ -287,7 +298,13 @@ pub trait ScriptBackend: 'static {
         ctx: &mut CallContext<'_>,
     ) -> Result<(Vec<u8>, RunOutput), ScriptError>;
 
-    /// Runs pending engine work (microtasks, timers, inspector messages) and returns
+    /// Delivers one frame's socket events, then fires the timers due at `now_ms` (real time, in
+    /// milliseconds), in one call into JS; makes no call when `events` is empty and no timer is
+    /// due. Microtasks the callbacks queue run before it returns. Returns the network requests
+    /// scripts made since the last drain, wherever they made them.
+    fn deliver(&mut self, now_ms: f64, events: &[crate::net::NetEvent]) -> Result<Delivered, ScriptError>;
+
+    /// Runs pending engine work (microtasks, inspector messages) and returns
     /// `console.*` output gathered since the last pump.
     fn pump(&mut self) -> Vec<ConsoleMessage>;
 

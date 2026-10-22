@@ -21,6 +21,9 @@ without recompiling Rust.
   time and ships it with the game ([docs/scripts.md](docs/scripts.md)).
 - **Pointer handlers** on entities and UI; 3D meshes pick with `"meshPicking": true`, and a test
   clicks one under `--headless` ([docs/picking.md](docs/picking.md)).
+- **Script networking**: `WebSocket`, timers, `URL`, `AbortController` and `process.env` for
+  scripts, deny by default through `net.allow` and `env` in `bevy-ts.json`
+  ([docs/networking.md](docs/networking.md)).
 - **`bevy-ts build`** makes a folder another person can run: the engine renamed after the game,
   its compiled scripts and assets, with progress as JSON events ([docs/build.md](docs/build.md)).
 - **Rust when it must be**: a project adopts Bevy plugins in one line of `bevy-ts.json`, or adds

@@ -389,6 +389,9 @@ pub struct Section {
 pub struct LoadedGeneration {
     pub manifest: Manifest,
     pub sections: Vec<Section>,
+    /// Network requests the modules made while they evaluated, applied only once the
+    /// generation commits.
+    pub requests: Vec<crate::net::NetRequest>,
 }
 
 /// A component as resolved for JS: its id and layout.

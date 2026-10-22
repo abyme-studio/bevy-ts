@@ -47,7 +47,7 @@ fn cube_game(name: &str, version: &str) -> PathBuf {
     std::fs::create_dir_all(game.join("assets")).unwrap();
     // Finder litters folders; a shipped game ignores what is not a script.
     std::fs::write(game.join("scripts/src/.DS_Store"), [0xff, 0xfe, 0x00, 0x01]).unwrap();
-    let file = GameFile { name: "cube".into(), entry: "src/game.ts".into(), bevy_ts: version.into(), engine: "prebuilt".into(), mesh_picking: false };
+    let file = GameFile { name: "cube".into(), entry: "src/game.ts".into(), bevy_ts: version.into(), engine: "prebuilt".into(), mesh_picking: false, net: Default::default(), env: vec![] };
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
     game
 }

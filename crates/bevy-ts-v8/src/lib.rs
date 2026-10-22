@@ -14,8 +14,10 @@ compile_error!(
 mod loader;
 
 use bevy_ts::backend::{
-    CallContext, HostCalls, ConsoleMessage, Generation, ParamFrame, RunOutput, ScriptBackend, ScriptError, ScriptKey, SourceLocation, SystemRun,
+    CallContext, ConsoleMessage, Delivered, Generation, HostCalls, ParamFrame, RunOutput, ScriptBackend, ScriptError, ScriptKey, SourceLocation,
+    SystemRun,
 };
+use bevy_ts::net::{ConnId, Frame, NetEvent, NetRequest, OpenRequest};
 use bevy_ts::log::LogLevel;
 use bevy_ts::manifest::{LoadedGeneration, Manifest, Resolution, Section};
 use deno_core::error::{CoreError, CoreErrorKind, JsError};
@@ -85,13 +87,90 @@ fn op_bevyts_host_error(state: &mut OpState) -> String {
     std::mem::take(&mut state.borrow_mut::<HostError>().0)
 }
 
+/// Network requests scripts made since core last drained them.
+#[derive(Default)]
+struct Outbox(Vec<NetRequest>);
+
+/// Real time as the last delivery gave it, and the earliest timer's deadline, in milliseconds.
+struct Clock {
+    now: f64,
+    deadline: f64,
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Clock { now: 0.0, deadline: f64::INFINITY }
+    }
+}
+
+#[op2(fast)]
+fn op_bevyts_now(state: &mut OpState) -> f64 {
+    state.borrow::<Clock>().now
+}
+
+#[op2(fast)]
+fn op_bevyts_timer_deadline(state: &mut OpState, ms: f64) {
+    state.borrow_mut::<Clock>().deadline = ms;
+}
+
+#[op2(fast)]
+fn op_bevyts_ws_open(
+    state: &mut OpState,
+    #[smi] id: u32,
+    #[smi] generation: u32,
+    #[string] url: &str,
+    #[string] protocols: &str,
+    #[string] headers: &str,
+) {
+    let protocols = serde_json::from_str(protocols).unwrap_or_default();
+    let headers = serde_json::from_str(headers).unwrap_or_default();
+    let request = OpenRequest { url: url.to_string(), protocols, headers };
+    state.borrow_mut::<Outbox>().0.push(NetRequest::Open { id: ConnId(id as u64), generation: generation as u64, request });
+}
+
+#[op2(fast)]
+fn op_bevyts_ws_send_text(state: &mut OpState, #[smi] id: u32, #[smi] generation: u32, #[string] text: &str) {
+    let frame = Frame::Text(text.to_string());
+    state.borrow_mut::<Outbox>().0.push(NetRequest::Send { id: ConnId(id as u64), generation: generation as u64, frame });
+}
+
+#[op2(fast)]
+fn op_bevyts_ws_send_binary(state: &mut OpState, #[smi] id: u32, #[smi] generation: u32, #[buffer] bytes: &[u8]) {
+    let frame = Frame::Binary(bytes.to_vec());
+    state.borrow_mut::<Outbox>().0.push(NetRequest::Send { id: ConnId(id as u64), generation: generation as u64, frame });
+}
+
+/// `code` is -1 for a close without a status.
+#[op2(fast)]
+fn op_bevyts_ws_close(state: &mut OpState, #[smi] id: u32, #[smi] generation: u32, #[smi] code: i32, #[string] reason: &str) {
+    let code = u16::try_from(code).ok();
+    state.borrow_mut::<Outbox>().0.push(NetRequest::Close {
+        id: ConnId(id as u64),
+        generation: generation as u64,
+        code,
+        reason: reason.to_string(),
+    });
+}
+
 deno_core::extension!(
     bevy_ts_v8,
-    ops = [op_bevyts_log, op_bevyts_host, op_bevyts_host_error],
+    ops = [
+        op_bevyts_log,
+        op_bevyts_host,
+        op_bevyts_host_error,
+        op_bevyts_now,
+        op_bevyts_timer_deadline,
+        op_bevyts_ws_open,
+        op_bevyts_ws_send_text,
+        op_bevyts_ws_send_binary,
+        op_bevyts_ws_close
+    ],
     state = |state| {
         state.put(ConsoleBuffer::default());
         state.put(HostSlot::default());
         state.put(HostError::default());
+        state.put(Outbox::default());
+        state.put(Clock::default());
     }
 );
 
@@ -171,6 +250,7 @@ struct Fns {
     discard: v8::Global<v8::Function>,
     run_system: v8::Global<v8::Function>,
     call_entry: v8::Global<v8::Function>,
+    deliver: v8::Global<v8::Function>,
 }
 
 /// Options for the V8 backend.
@@ -344,7 +424,7 @@ impl V8Backend {
         // The built-in modules are side modules evaluated once per isolate; user imports of
         // `bevy-ts` resolve to the same records.
         tokio.block_on(async {
-            for spec in [loader::BUILTIN_CORE, loader::BUILTIN_BEVY] {
+            for spec in [loader::BUILTIN_WEB, loader::BUILTIN_CORE, loader::BUILTIN_BEVY] {
                 let url = deno_core::ModuleSpecifier::parse(spec).unwrap();
                 let id = runtime.load_side_es_module(&url).await.expect("bevy-ts runtime loads");
                 let eval = runtime.mod_evaluate(id);
@@ -366,6 +446,7 @@ impl V8Backend {
                 discard: get_fn(scope, host, "discard"),
                 run_system: get_fn(scope, host, "runSystem"),
                 call_entry: get_fn(scope, host, "callEntry"),
+                deliver: get_fn(scope, host, "deliver"),
             }
         };
         (runtime, fns)
@@ -455,48 +536,24 @@ impl ScriptBackend for V8Backend {
         let modules: Vec<(String, _)> = generation.set.modules.iter().map(|m| (self.specifier(&m.path), m.clone())).collect();
         self.loader.set_generation(self.loads, modules);
         let number = generation.number as f64;
-        self.call(|f| &f.begin, |s, _| vec![num(s, number)], |_, _| ()).map_err(|e| vec![e])?;
-
-        let url = deno_core::ModuleSpecifier::parse(&entry).map_err(|e| vec![ScriptError::new(e.to_string())])?;
-        let runtime = &mut self.runtime;
-        let result: Result<(), ScriptError> = self.tokio.block_on(async {
-            let id = runtime.load_side_es_module(&url).await.map_err(core_error)?;
-            let eval = runtime.mod_evaluate(id);
-            runtime.run_event_loop(Default::default()).await.map_err(core_error)?;
-            eval.await.map_err(core_error)
-        });
+        let env = serde_json::to_string(&generation.env).expect("env serializes");
+        let begun = self.call(|f| &f.begin, |s, _| vec![num(s, number), v8::String::new(s, &env).unwrap().into()], |_, _| ());
+        let result = begun.and_then(|_| self.evaluate(&entry));
         if let Err(e) = result {
             let _ = self.call(|f| &f.abort, |_, _| vec![], |_, _| ());
+            self.drop_requests(generation.number);
             return Err(vec![self.relocate(e)]);
         }
-
-        let (json, sections) = self
-            .call(
-                |f| &f.end,
-                |_, _| vec![],
-                |scope, v| {
-                    let arr = v8::Local::<v8::Array>::try_from(v).unwrap();
-                    let json = arr.get_index(scope, 0).unwrap().to_rust_string_lossy(scope);
-                    let list = v8::Local::<v8::Array>::try_from(arr.get_index(scope, 1).unwrap()).unwrap();
-                    let mut sections = Vec::new();
-                    for i in 0..list.length() {
-                        let item = v8::Local::<v8::Array>::try_from(list.get_index(scope, i).unwrap()).unwrap();
-                        let name = item.get_index(scope, 0).unwrap().to_rust_string_lossy(scope);
-                        let bytes = v8::Local::<v8::Uint8Array>::try_from(item.get_index(scope, 1).unwrap()).unwrap();
-                        let mut b = vec![0u8; bytes.byte_length()];
-                        bytes.copy_contents(&mut b);
-                        let loc = item.get_index(scope, 2).unwrap();
-                        let location = deno_core::serde_v8::from_v8::<Option<JsLocation>>(scope, loc).ok().flatten().map(Into::into);
-                        sections.push(Section { name, bytes: b, location });
-                    }
-                    (json, sections)
-                },
-            )
-            .map_err(|e| vec![e])?;
-        let mut manifest: Manifest =
-            serde_json::from_str(&json).map_err(|e| vec![ScriptError::new(format!("bevy-ts manifest: {e}"))])?;
-        relocate_manifest(&mut manifest);
-        Ok(LoadedGeneration { manifest, sections })
+        match self.finish_load() {
+            Ok(mut loaded) => {
+                loaded.requests = self.take_requests(Some(generation.number));
+                Ok(loaded)
+            }
+            Err(e) => {
+                self.drop_requests(generation.number);
+                Err(vec![e])
+            }
+        }
     }
 
     fn commit(&mut self, generation: u64, resolution: &Resolution) -> Result<(), Vec<ScriptError>> {
@@ -511,6 +568,27 @@ impl ScriptBackend for V8Backend {
 
     fn discard(&mut self, generation: u64) {
         let _ = self.call(|f| &f.discard, |s, _| vec![num(s, generation as f64)], |_, _| ());
+        self.drop_requests(generation);
+    }
+
+    fn deliver(&mut self, now_ms: f64, events: &[NetEvent]) -> Result<Delivered, ScriptError> {
+        let deadline = {
+            let state = self.runtime.op_state();
+            let mut state = state.borrow_mut();
+            let clock = state.borrow_mut::<Clock>();
+            clock.now = now_ms;
+            clock.deadline
+        };
+        let mut result = Ok(());
+        if !events.is_empty() || now_ms >= deadline {
+            result = self.call(|f| &f.deliver, |s, _| vec![num(s, now_ms), event_batch(s, events)], |_, _| ());
+            let _enter = self.tokio.enter();
+            deno_core::scope!(scope, &mut self.runtime);
+            scope.perform_microtask_checkpoint();
+        }
+        let requests = self.take_requests(None);
+        let deadline = self.runtime.op_state().borrow().borrow::<Clock>().deadline;
+        result.map(|_| Delivered { requests, next_timer_ms: deadline.is_finite().then_some(deadline) })
     }
 
     fn run_system(&mut self, key: ScriptKey, run: &mut SystemRun<'_>) -> Result<RunOutput, ScriptError> {
@@ -604,6 +682,72 @@ impl ScriptBackend for V8Backend {
     }
 }
 
+
+impl V8Backend {
+    /// Evaluates the entry module of the generation being loaded.
+    fn evaluate(&mut self, entry: &str) -> Result<(), ScriptError> {
+        let url = deno_core::ModuleSpecifier::parse(entry).map_err(|e| ScriptError::new(e.to_string()))?;
+        let runtime = &mut self.runtime;
+        self.tokio.block_on(async {
+            let id = runtime.load_side_es_module(&url).await.map_err(core_error)?;
+            let eval = runtime.mod_evaluate(id);
+            runtime.run_event_loop(Default::default()).await.map_err(core_error)?;
+            eval.await.map_err(core_error)
+        })
+    }
+
+    /// Takes the outbox's requests: those of `generation` only, or all.
+    fn take_requests(&mut self, generation: Option<u64>) -> Vec<NetRequest> {
+        let state = self.runtime.op_state();
+        let mut state = state.borrow_mut();
+        let outbox = &mut state.borrow_mut::<Outbox>().0;
+        match generation {
+            None => std::mem::take(outbox),
+            Some(g) => {
+                let (mine, rest) = std::mem::take(outbox).into_iter().partition(|r| r.generation() == g);
+                *outbox = rest;
+                mine
+            }
+        }
+    }
+
+    /// Forgets a generation's requests: it will never be live.
+    fn drop_requests(&mut self, generation: u64) {
+        self.runtime.op_state().borrow_mut().borrow_mut::<Outbox>().0.retain(|r| r.generation() != generation);
+    }
+
+    /// Ends a load: the manifest and sections the generation declared.
+    fn finish_load(&mut self) -> Result<LoadedGeneration, ScriptError> {
+        let (json, sections) = self
+            .call(
+                |f| &f.end,
+                |_, _| vec![],
+                |scope, v| {
+                    let arr = v8::Local::<v8::Array>::try_from(v).unwrap();
+                    let json = arr.get_index(scope, 0).unwrap().to_rust_string_lossy(scope);
+                    let list = v8::Local::<v8::Array>::try_from(arr.get_index(scope, 1).unwrap()).unwrap();
+                    let mut sections = Vec::new();
+                    for i in 0..list.length() {
+                        let item = v8::Local::<v8::Array>::try_from(list.get_index(scope, i).unwrap()).unwrap();
+                        let name = item.get_index(scope, 0).unwrap().to_rust_string_lossy(scope);
+                        let bytes = v8::Local::<v8::Uint8Array>::try_from(item.get_index(scope, 1).unwrap()).unwrap();
+                        let mut b = vec![0u8; bytes.byte_length()];
+                        bytes.copy_contents(&mut b);
+                        let loc = item.get_index(scope, 2).unwrap();
+                        let location = deno_core::serde_v8::from_v8::<Option<JsLocation>>(scope, loc).ok().flatten().map(Into::into);
+                        sections.push(Section { name, bytes: b, location });
+                    }
+                    (json, sections)
+                },
+            )
+            ?;
+        let mut manifest: Manifest =
+            serde_json::from_str(&json).map_err(|e| ScriptError::new(format!("bevy-ts manifest: {e}")))?;
+        relocate_manifest(&mut manifest);
+        Ok(LoadedGeneration { manifest, sections, requests: Vec::new() })
+    }
+}
+
 impl V8Backend {
     /// Makes `host` callable from JS until the next `set_host`.
     fn set_host(&mut self, host: Option<&mut dyn HostCalls>) {
@@ -646,4 +790,33 @@ fn relocate_manifest(m: &mut Manifest) {
 /// A factory for `BevyTsPlugin::new`.
 pub fn factory(options: V8Options) -> impl Fn() -> Box<dyn ScriptBackend> + Send + Sync + 'static {
     move || Box::new(V8Backend::new(options.clone()))
+}
+
+/// One delivery's events as JS reads them (web.js `deliver`): `[0, id, protocol, extensions]`
+/// open, `[1, id, text]` and `[2, id, ArrayBuffer]` messages, `[3, id]` error,
+/// `[4, id, code, reason, clean]` close, `[5, id, bytes]` written.
+fn event_batch<'s>(s: &mut v8::PinScope<'s, '_>, events: &[NetEvent]) -> v8::Local<'s, v8::Value> {
+    let str = |s: &mut v8::PinScope<'s, '_>, t: &str| -> v8::Local<'s, v8::Value> {
+        v8::String::new(s, t).map_or_else(|| v8::String::empty(s).into(), Into::into)
+    };
+    let arr = v8::Array::new(s, events.len() as i32);
+    for (i, e) in events.iter().enumerate() {
+        let id = num(s, e.id().0 as f64);
+        let items: Vec<v8::Local<v8::Value>> = match e {
+            NetEvent::Open { protocol, extensions, .. } => vec![num(s, 0.0), id, str(s, protocol), str(s, extensions)],
+            NetEvent::Message { frame: Frame::Text(t), .. } => vec![num(s, 1.0), id, str(s, t)],
+            NetEvent::Message { frame: Frame::Binary(b), .. } => {
+                let store = v8::ArrayBuffer::new_backing_store_from_vec(b.clone()).make_shared();
+                vec![num(s, 2.0), id, v8::ArrayBuffer::with_backing_store(s, &store).into()]
+            }
+            NetEvent::Error { .. } => vec![num(s, 3.0), id],
+            NetEvent::Close { code, reason, clean, .. } => {
+                vec![num(s, 4.0), id, num(s, *code as f64), str(s, reason), v8::Boolean::new(s, *clean).into()]
+            }
+            NetEvent::Written { bytes, .. } => vec![num(s, 5.0), id, num(s, *bytes as f64)],
+        };
+        let item = v8::Array::new_with_elements(s, &items);
+        arr.set_index(s, i as u32, item.into());
+    }
+    arr.into()
 }

@@ -20,6 +20,7 @@ pub mod manifest;
 pub mod memory;
 pub mod messages;
 pub mod modules;
+pub mod net;
 pub mod observers;
 pub mod plugin_api;
 #[cfg(feature = "pbr")]
@@ -113,6 +114,7 @@ impl Plugin for BevyTsPlugin {
         let engine = backend.engine();
         let inspector = backend.inspector_address();
         app.insert_non_send(runtime::ScriptRuntime::new(backend, self.dev));
+        app.insert_non_send(net::NetRegistry::new(Box::new(net::SocketTransport::default())));
         app.register_type::<commands::TsSpawned>().register_type::<ScriptHidden>();
         app.init_resource::<components::TsComponents>()
             .init_resource::<systems::TsSystems>()
@@ -129,6 +131,7 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<messages::TsPayloads>()
             .init_resource::<observers::ObserverQueue>()
             .init_resource::<host::HostParams>()
+            .init_resource::<net::NetPolicy>()
             .insert_resource(runtime::RuntimeInfo { dev: self.dev, engine, inspector, ..Default::default() });
 
         // Rust components' layouts come from reflection once every plugin has registered its
@@ -141,12 +144,23 @@ impl Plugin for BevyTsPlugin {
 
         app.add_systems(
             First,
-            (runtime::advance_clock.before(bevy::time::TimeSystems), generation::apply_pending, runtime::pump).chain(),
+            (
+                runtime::advance_clock.before(bevy::time::TimeSystems),
+                generation::apply_pending,
+                net::net_deliver.after(bevy::time::TimeSystems).run_if(in_state(EngineMode::Play)),
+                runtime::pump,
+            )
+                .chain(),
         );
         if !app.is_plugin_added::<bevy::state::app::StatesPlugin>() {
             app.add_plugins(bevy::state::app::StatesPlugin);
         }
         app.init_state::<EngineMode>();
+        app.add_systems(OnEnter(EngineMode::Edit), net::close_for_edit);
+        // The state changes after `First`: deliver on entering play too, so what waited (the closes
+        // edit mode made, due timers) arrives in the first frame of play.
+        app.add_systems(OnEnter(EngineMode::Play), (net::net_deliver, runtime::pump).chain());
+        app.world_mut().resource_mut::<plugin_api::RestartHandlers>().0.push(Arc::new(net::close_all));
         app.add_systems(First, drop_edit_triggers.after(generation::apply_pending).run_if(in_state(EngineMode::Edit)));
         app.add_systems(First, messages::update_messages.after(generation::apply_pending));
         app.add_systems(bevy::state::state::StateTransition, systems::run_state_transitions);

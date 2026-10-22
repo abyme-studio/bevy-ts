@@ -25,7 +25,7 @@ bevy-ts build --targets [--json]
 dist/aarch64-apple-darwin/
   arena                 the release engine, renamed after the game (arena.exe on Windows)
   game/
-    game.json           { "name", "entry", "bevyTs", "engine" }
+    game.json           { "name", "entry", "bevyTs", "engine", "net", "env" }
     scripts/src/…       every module of the entry's graph, compiled, at its path in the project
                         (a `.wgsl` a module imports ships as the shader file itself)
     scripts/node_modules/<name>@<version>/…
@@ -67,8 +67,11 @@ shows black until the game spawns a camera.
 
 A shipped game loads its scripts once, as one generation: no compiler, no file watcher, no remote
 protocol, no inspector, none of the studio's viewport tools, bevy-ts in non-dev mode, and assets read from `game/assets/` unwatched.
-Nothing listens on a port. An engine refuses a `game.json` built by another bevy-ts version and
-names both.
+Nothing listens on a port. `game.json` carries the project's `net` and `env`
+([networking.md](networking.md)) as written, `${NAME}` entries unexpanded: the game expands them
+from its own environment when it starts, so a player's `ABYME_URL` is the one that counts. A
+`game.json` without them allows no host and shows no variable. An engine refuses a `game.json`
+built by another bevy-ts version and names both.
 
 ## Events
 

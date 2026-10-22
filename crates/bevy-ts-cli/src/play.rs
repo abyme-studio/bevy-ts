@@ -31,6 +31,12 @@ pub struct GameFile {
     /// `bevy-ts.json`'s `meshPicking`, absent when off.
     #[serde(default, rename = "meshPicking", skip_serializing_if = "is_false")]
     pub mesh_picking: bool,
+    /// `net` and `env` from `bevy-ts.json`, unexpanded: `${NAME}` reads this machine's
+    /// environment when the game starts. A `game.json` from before has neither: no network.
+    #[serde(default)]
+    pub net: crate::project::NetConfig,
+    #[serde(default)]
+    pub env: Vec<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -120,6 +126,7 @@ pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display)
     let assets = folder.join("assets");
     let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.mesh_picking);
     app.insert_resource(channel);
+    crate::cli::insert_net_policy(&mut app, &game.net.allow, &game.env);
     app.world_mut().resource_mut::<RuntimeInfo>().entry = Some(entry);
     Ok(app)
 }
@@ -136,5 +143,43 @@ pub fn run(engine: &Engine, extra: impl Plugin, folder: &Path, headless: bool) -
             eprintln!("bevy-ts play: {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn net_and_env_round_trip_unexpanded() {
+        let config = crate::project::parse(
+            r#"{ "net": { "allow": ["127.0.0.1:4477", "${ABYME_URL}"] }, "env": ["ABYME_URL", "ABYME_KEY"] }"#,
+        )
+        .unwrap();
+        let file = GameFile {
+            name: "town".into(),
+            entry: "src/game.ts".into(),
+            bevy_ts: crate::engine::VERSION.into(),
+            engine: "prebuilt".into(),
+            mesh_picking: false,
+            net: config.net,
+            env: config.env,
+        };
+        let text = serde_json::to_string_pretty(&file).unwrap();
+        assert!(text.contains("\"${ABYME_URL}\""), "{text}");
+        let back: GameFile = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, file);
+        // Started with ABYME_URL unset, the game may connect only to 127.0.0.1:4477.
+        let (policy, _) = bevy_ts::net::NetPolicy::from_config(&back.net.allow, &back.env, &|_| None);
+        assert!(policy.check("ws://127.0.0.1:4477/api/stream", &[], false).is_ok());
+        assert!(policy.check("ws://127.0.0.1:5000/", &[], false).is_err());
+        assert!(policy.env.is_empty());
+    }
+
+    #[test]
+    fn an_older_game_json_has_no_network() {
+        let old = r#"{ "name": "cube", "entry": "src/game.ts", "bevyTs": "0.1.0", "engine": "prebuilt" }"#;
+        let game: GameFile = serde_json::from_str(old).unwrap();
+        assert!(game.net.allow.is_empty() && game.env.is_empty());
     }
 }

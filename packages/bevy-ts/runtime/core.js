@@ -33,6 +33,11 @@ const S = {
 // In the engine, deno_core's `Deno.core`; elsewhere (Node, vitest through `bevy-ts/testing`), the
 // web's encoders and the host console.
 const core = globalThis.Deno && globalThis.Deno.core && globalThis.Deno.core.ops && globalThis.Deno.core.ops.op_bevyts_log ? globalThis.Deno.core : null;
+
+// The web globals' hooks (web.js, evaluated first): the ambient generation every timer and
+// socket records, `process.env`, delivery, and dropping a generation's timers and sockets.
+const web = globalThis.__bevytsWeb || null;
+delete globalThis.__bevytsWeb;
 const encoder = core ? { encode: (s) => core.encode(s) } : new TextEncoder();
 const decoder = core ? { decode: (b) => core.decode(b) } : new TextDecoder();
 
@@ -1057,8 +1062,12 @@ function scheduleDecl(s) {
   }
 }
 
-function begin(gen) {
+function begin(gen, envJson) {
   S.loading = newGeneration(gen);
+  if (web) {
+    if (envJson) web.setEnv(JSON.parse(envJson));
+    web.generation = gen;
+  }
   // The tsx host call: Rust calls it only when this generation has bindings or slots to run.
   const g = S.loading;
   g.entries.push({ name: "tsx" });
@@ -1076,6 +1085,7 @@ function end() {
     resolveRegistrations(g);
   } finally {
     S.loading = null;
+    if (web) web.generation = S.live;
   }
   const seen = new Map();
   for (const C of g.classes) {
@@ -1120,6 +1130,8 @@ function jsonValues(C, values) {
 }
 
 function abort() {
+  if (web && S.loading) web.dropOnly(S.loading.number);
+  if (web) web.generation = S.live;
   S.loading = null;
   S.declaring = null;
 }
@@ -2151,10 +2163,21 @@ function commit(gen, resolutionJson) {
   S.live = gen;
   S.resolution = res;
   if (old && old !== gen) S.gens.delete(old);
+  if (web) {
+    web.dropExcept(gen);
+    web.generation = gen;
+  }
 }
 
 function discard(gen) {
   S.gens.delete(gen);
+  if (web) web.dropOnly(gen);
+}
+
+/** One frame's socket events, then the due timers; returns the next deadline. Callbacks run
+ * outside any system, so a Rust param they call throws. */
+function deliver(now, events) {
+  return web ? web.deliver(now, events) : Infinity;
 }
 
 /** One call per run: frames are one entry per flat param (bundles flattened). */
@@ -2198,7 +2221,7 @@ function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {
   return [out.slice(), len, over, used];
 }
 
-globalThis.__bevyts = { begin, end, abort, commit, discard, runSystem, callEntry, bind: bindModule, declare: declareFn, data: dataFn };
+globalThis.__bevyts = { begin, end, abort, commit, discard, runSystem, callEntry, deliver, bind: bindModule, declare: declareFn, data: dataFn };
 
 // A binding that changed outside the tsx host call (a signal a system set) asks Rust for one
 // through the running call's commands.

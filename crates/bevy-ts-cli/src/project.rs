@@ -15,11 +15,13 @@
 //!   "features": [],                            // Bevy features the engine adds
 //!   "engineCache": "/mnt/team/engines",        // a shared directory of built engines
 //!   "levels": { "prefabEdits": "override" },   // where an edit inside a placed prefab goes
-//!   "meshPicking": true                        // Bevy's MeshPickingPlugin; baked into a build
+//!   "meshPicking": true,                       // Bevy's MeshPickingPlugin; baked into a build
+//!   "net": { "allow": ["127.0.0.1:4477", "${ABYME_URL}"] }, // hosts scripts may connect to
+//!   "env": ["ABYME_URL", "ABYME_KEY"]          // the only variables `process.env` shows
 //! }
 //! ```
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -77,6 +79,12 @@ pub struct ProjectConfig {
     /// Adds Bevy's `MeshPickingPlugin`: 3D meshes take pointer events. Off by default, as in Bevy.
     #[serde(default, rename = "meshPicking", deserialize_with = "mesh_picking")]
     pub mesh_picking: bool,
+    /// What scripts may connect to (docs/networking.md).
+    #[serde(default)]
+    pub net: NetConfig,
+    /// The environment variables `process.env` shows; read when the engine starts.
+    #[serde(default)]
+    pub env: Vec<String>,
 }
 
 /// `meshPicking` as a bool, its error naming the field (serde's names only the type).
@@ -85,6 +93,14 @@ fn mesh_picking<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error
         serde_json::Value::Bool(b) => Ok(b),
         v => Err(serde::de::Error::custom(format!("meshPicking must be true or false, not {v}"))),
     }
+}
+
+/// `net` in `bevy-ts.json` and `game.json`: deny by default.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct NetConfig {
+    /// `host`, `host:port`, a URL, or `${NAME}` read from the environment at start.
+    #[serde(default)]
+    pub allow: Vec<String>,
 }
 
 /// `levels` in `bevy-ts.json`.

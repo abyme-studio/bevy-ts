@@ -15,9 +15,15 @@ pbr = ["bevy/3d_api", "bevy/bevy_pbr", "bevy/bevy_core_pipeline"]
 track_location = ["bevy/track_location"]
 
 [dependencies]
+# The real `WebSocket` transport: async-io on `IoTaskPool`. 0.33 shares the locked tungstenite 0.28.
+async-channel = "2"
+async-io = "2"
+async-tungstenite = { version = "0.33", default-features = false, features = ["handshake"] }
+blocking = "1"
 bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log", "async_executor", "bevy_state"] }
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 bevy = { workspace = true, features = ["bevy_ui"] }
+tungstenite = "0.28"

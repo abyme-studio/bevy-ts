@@ -285,6 +285,17 @@ pub fn studio_tools(display: Display, dev: bool) -> bool {
     dev && display != Display::Headless
 }
 
+/// Sets what scripts may connect to and see of the environment, from `net.allow` and `env`,
+/// reading `${NAME}` entries and the variables now. Skipped entries are logged.
+pub fn insert_net_policy(app: &mut App, allow: &[String], env: &[String]) {
+    let (policy, warnings) = bevy_ts::net::NetPolicy::from_env(allow, env);
+    app.insert_resource(policy);
+    let mut log = app.world_mut().resource_mut::<bevy_ts::log::ScriptLog>();
+    for w in warnings {
+        log.push(bevy_ts::log::LogLevel::Warn, w, None, 0);
+    }
+}
+
 fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     let compiler = match Compiler::new(&args.entry, true) {
         Ok(c) => Arc::new(c),
@@ -320,8 +331,11 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);
     app.insert_resource(channel).insert_resource(DevSource(compiler.clone()));
-    if project.is_some_and(|p| p.config.levels.prefab_edits.as_deref() == Some("source")) {
-        app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().prefab_edits = bevy_ts_levels::PrefabEdits::Source;
+    if let Some(project) = &project {
+        if project.config.levels.prefab_edits.as_deref() == Some("source") {
+            app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().prefab_edits = bevy_ts_levels::PrefabEdits::Source;
+        }
+        insert_net_policy(&mut app, &project.config.net.allow, &project.config.env);
     }
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     if display == Display::Headless {

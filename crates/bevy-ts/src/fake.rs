@@ -117,6 +117,14 @@ struct State {
     entry_calls: HashMap<String, u64>,
     console: Vec<ConsoleMessage>,
     restarts: u64,
+    /// Requests the next delivery (or load) hands core, as scripts would have made them.
+    requests: Vec<crate::net::NetRequest>,
+    /// The fake script side's earliest timer.
+    next_timer: Option<f64>,
+    /// Deliveries that called "JS": `(now_ms, events)`.
+    deliveries: Vec<(f64, Vec<crate::net::NetEvent>)>,
+    /// The environment each load saw.
+    envs: Vec<std::collections::BTreeMap<String, String>>,
 }
 
 /// A handle tests keep to queue programs and read call counts.
@@ -144,6 +152,26 @@ impl FakeHandle {
 
     pub fn console(&self, message: ConsoleMessage) {
         self.0.lock().unwrap().console.push(message);
+    }
+
+    /// Queues requests the next delivery or load returns, as if scripts had made them.
+    pub fn request(&self, r: crate::net::NetRequest) {
+        self.0.lock().unwrap().requests.push(r);
+    }
+
+    /// Sets the fake script side's earliest timer: a delivery at or after it calls "JS".
+    pub fn set_timer(&self, at: Option<f64>) {
+        self.0.lock().unwrap().next_timer = at;
+    }
+
+    /// Deliveries that called "JS", oldest first.
+    pub fn deliveries(&self) -> Vec<(f64, Vec<crate::net::NetEvent>)> {
+        self.0.lock().unwrap().deliveries.clone()
+    }
+
+    /// The environment each load saw, oldest first.
+    pub fn envs(&self) -> Vec<std::collections::BTreeMap<String, String>> {
+        self.0.lock().unwrap().envs.clone()
     }
 
     pub fn backend(&self) -> FakeBackend {
@@ -218,11 +246,17 @@ impl ScriptBackend for FakeBackend {
     fn load(&mut self, generation: &Generation) -> Result<LoadedGeneration, Vec<ScriptError>> {
         let mut s = self.0.0.lock().unwrap();
         s.calls += 1;
+        s.envs.push(generation.env.clone());
         let mut program = s.queue.pop_front().ok_or_else(|| vec![ScriptError::new("fake: no program queued")])?;
         if let Some(errors) = program.load_error.take() {
+            s.requests.retain(|r| r.generation() != generation.number);
             return Err(errors);
         }
-        let loaded = LoadedGeneration { manifest: program.manifest.clone(), sections: program.sections.clone() };
+        let mut requests = std::mem::take(&mut s.requests);
+        for r in &mut requests {
+            set_generation(r, generation.number);
+        }
+        let loaded = LoadedGeneration { manifest: program.manifest.clone(), sections: program.sections.clone(), requests };
         s.loaded.insert(generation.number, (program, None));
         Ok(loaded)
     }
@@ -319,6 +353,19 @@ impl ScriptBackend for FakeBackend {
         )
     }
 
+    fn deliver(&mut self, now_ms: f64, events: &[crate::net::NetEvent]) -> Result<crate::backend::Delivered, ScriptError> {
+        let mut s = self.0.0.lock().unwrap();
+        let due = s.next_timer.is_some_and(|t| now_ms >= t);
+        if !events.is_empty() || due {
+            s.calls += 1;
+            if due {
+                s.next_timer = None;
+            }
+            s.deliveries.push((now_ms, events.to_vec()));
+        }
+        Ok(crate::backend::Delivered { requests: std::mem::take(&mut s.requests), next_timer_ms: s.next_timer })
+    }
+
     fn pump(&mut self) -> Vec<ConsoleMessage> {
         std::mem::take(&mut self.0.0.lock().unwrap().console)
     }
@@ -332,5 +379,13 @@ impl ScriptBackend for FakeBackend {
 
     fn calls_into_js(&self) -> u64 {
         self.0.calls()
+    }
+}
+
+/// A request made during a load belongs to the loading generation.
+fn set_generation(r: &mut crate::net::NetRequest, number: u64) {
+    use crate::net::NetRequest;
+    match r {
+        NetRequest::Open { generation, .. } | NetRequest::Send { generation, .. } | NetRequest::Close { generation, .. } => *generation = number,
     }
 }

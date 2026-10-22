@@ -198,18 +198,23 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         rt.entries.clear();
         rt.backend.restart();
     } else if rt.backend.heap_used().is_some_and(|h| h > HEAP_RESTART_BYTES) {
+        crate::net::close_all(world);
         rt.backend.restart();
         world.insert_resource(TsSystems::default());
         rt.entries.clear();
     }
 
-    let generation = Generation { number, set };
+    let env = world.get_resource::<crate::net::NetPolicy>().map(|p| p.env.clone()).unwrap_or_default();
+    let generation = Generation { number, set, env };
     let result = load_and_apply(world, &mut rt, &generation);
     let report = match result {
-        Ok((migrations, sections)) => {
+        Ok((migrations, sections, requests)) => {
             world.insert_resource(LiveSet(generation.set));
             world.resource_mut::<Generations>().live = number;
             world.resource_mut::<RuntimeInfo>().generation = number;
+            // The previous generation's connections go; the new one's opens come after.
+            crate::net::close_other_generations(world, number);
+            crate::net::apply_requests(world, requests);
             let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
             let mut names: Vec<&String> = appliers.0.keys().collect();
             names.sort();
@@ -285,7 +290,7 @@ pub fn compile_failed(world: &mut World, errors: Vec<ScriptError>, took: Duratio
     report
 }
 
-type Applied = (Vec<Migration>, Vec<crate::manifest::Section>);
+type Applied = (Vec<Migration>, Vec<crate::manifest::Section>, Vec<crate::net::NetRequest>);
 
 /// Resources are components on their own resource entity: one declaration list for both.
 fn component_decls(manifest: &crate::manifest::Manifest) -> Vec<crate::manifest::ComponentDecl> {
@@ -301,7 +306,7 @@ fn component_decls(manifest: &crate::manifest::Manifest) -> Vec<crate::manifest:
 
 fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Generation) -> Result<Applied, Vec<ScriptError>> {
     let number = generation.number;
-    let LoadedGeneration { manifest, sections } = rt.backend.load(generation)?;
+    let LoadedGeneration { manifest, sections, requests } = rt.backend.load(generation)?;
 
     let fail = |rt: &mut ScriptRuntime, errors: Vec<ScriptError>| {
         rt.backend.discard(number);
@@ -430,7 +435,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     crate::sets::ensure_slots(world);
     crate::observers::install(world, &watched);
     rt.entries = manifest.entries.iter().map(|e| e.name.clone()).collect();
-    Ok((migrations, sections))
+    Ok((migrations, sections, requests))
 }
 
 /// Inserts each declared resource that does not exist yet, and points migrated resources'

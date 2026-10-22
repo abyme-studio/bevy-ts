@@ -1,0 +1,17 @@
+{
+  // A game whose imported package references @types/node, as @abyme/client's does: bevy-ts/globals
+  // must merge with it. Needs @types/node in the package's node_modules.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "types": ["bevy-ts/globals"],
+    // Resolves bevy-ts/globals to ../../globals.d.ts, as `paths` does for modules.
+    "typeRoots": ["../../.."]
+  },
+  "include": ["."]
+}

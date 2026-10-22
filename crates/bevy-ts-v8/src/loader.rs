@@ -15,11 +15,14 @@ use std::path::Path;
 
 pub const BUILTIN_CORE: &str = "bevy-ts:core";
 pub const BUILTIN_BEVY: &str = "bevy-ts:bevy";
+/// The web globals (`WebSocket`, timers, `URL`, ...), evaluated before every other module.
+pub const BUILTIN_WEB: &str = "bevy-ts:web";
 const BUILTIN_JSX: &str = "bevy-ts:jsx-runtime";
 const BUILTIN_JSX_DEV: &str = "bevy-ts:jsx-dev-runtime";
 
 const CORE_JS: &str = include_str!("../js/core.js");
 const BEVY_JS: &str = include_str!("../js/bevy.js");
+const WEB_JS: &str = include_str!("../js/web.js");
 const JSX_JS: &str = include_str!("../js/jsx-runtime.js");
 const JSX_DEV_JS: &str = include_str!("../js/jsx-dev-runtime.js");
 
@@ -52,6 +55,7 @@ impl Loader {
         Some(match specifier {
             "bevy-ts" | BUILTIN_CORE => BUILTIN_CORE,
             "bevy-ts/bevy" | BUILTIN_BEVY => BUILTIN_BEVY,
+            BUILTIN_WEB => BUILTIN_WEB,
             "bevy-ts/jsx-runtime" | BUILTIN_JSX => BUILTIN_JSX,
             "bevy-ts/jsx-dev-runtime" | BUILTIN_JSX_DEV => BUILTIN_JSX_DEV,
             _ => return None,
@@ -108,6 +112,7 @@ impl ModuleLoader for Loader {
         let code = match specifier.as_str() {
             BUILTIN_CORE => Some(CORE_JS.to_string()),
             BUILTIN_BEVY => Some(BEVY_JS.to_string()),
+            BUILTIN_WEB => Some(WEB_JS.to_string()),
             BUILTIN_JSX => Some(JSX_JS.to_string()),
             BUILTIN_JSX_DEV => Some(JSX_DEV_JS.to_string()),
             s => match s.strip_prefix("bevy-ts:") {

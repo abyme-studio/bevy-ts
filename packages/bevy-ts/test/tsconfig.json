@@ -4,5 +4,5 @@
     "paths": { "bevy-ts": ["../index.d.ts"], "bevy-ts/*": ["../*.d.ts"] }
   },
   "include": ["."],
-  "exclude": ["vitest"]
+  "exclude": ["vitest", "types-node"]
 }

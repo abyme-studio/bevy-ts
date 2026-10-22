@@ -88,6 +88,8 @@ export function create(args) {
     const tsconfig = {
       compilerOptions: {
         target: "es2023",
+        lib: ["es2023"],
+        types: ["bevy-ts/globals"],
         module: "esnext",
         moduleResolution: "bundler",
         strict: true,
