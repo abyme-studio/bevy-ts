@@ -404,6 +404,7 @@ fn watch(
 ) {
     let mut changed = Vec::new();
     let mut external = Vec::new();
+    let mut stale = Vec::new();
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
     {
@@ -448,8 +449,16 @@ fn watch(
                 && let Some(p) = server.get_path(*id)
             {
                 let file = p.path().to_string_lossy().replace('\\', "/");
-                // The writer's own write, already reconciled: the reload brings nothing new.
                 let hash = assets.get(*id).map(|a| a.hash);
+                // A reload that read the file before a later write: the disk wins.
+                if matches!(ev, AssetEvent::Modified { .. })
+                    && let Ok(disk) = std::fs::read_to_string(levels.asset_root.join(&file))
+                    && Some(content_hash(disk.as_bytes())) != hash
+                {
+                    stale.push((file, disk));
+                    continue;
+                }
+                // The writer's own write, already reconciled: the reload brings nothing new.
                 let applied = levels.roots.values().any(|r| r.applied.get(&file).is_some_and(|h| Some(*h) == hash)) && levels.affected(&file).iter().all(|l| levels.roots[l].applied.contains_key(&file));
                 if !applied {
                     if matches!(ev, AssetEvent::Modified { .. }) {
@@ -458,6 +467,11 @@ fn watch(
                     changed.push(file);
                 }
             }
+        }
+    }
+    for (file, disk) in stale {
+        if let Err(e) = crate::edit::load_text(world, &file, &disk) {
+            log(world, LogLevel::Error, &located(&file, &e));
         }
     }
     for (file, hash) in external {
