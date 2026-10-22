@@ -102,4 +102,6 @@ export default {
   // docs/build-cache.md: cold workspace build without sccache, then with it warm, 3 per arm.
   "sccache-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p bench/results && scripts/sccache-bench.sh 3 2>&1 | tee -a bench/results/sccache.txt'" },
   "sccache-bench-ab": { cmd: "bash -c 'set -o pipefail; echo ab8; scripts/sccache-bench.sh 8 ab 2>&1 | tee -a bench/results/sccache.txt'" },
+  // Change dev-edit: the crates it touches, then the CLI tests on the --edit boot and the examples it moved into scenes.
+  "dev-edit-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts -p bevy-ts-remote && cargo test -p bevy-ts-viewport --test edit -- --test-threads=1 && cargo test -p bevy-ts-cli --test dev_edit --test protocol --test play --test viewport_edit) 2>&1 | grep -v ld64 | tee target/dev-edit-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
 } satisfies ProcessFile;

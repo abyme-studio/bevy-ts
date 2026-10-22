@@ -43,4 +43,4 @@ E4 hooks `OnEnter(EngineMode::Play)` to snapshot the world (or reload the open l
 
 ## Protocol
 
-Agreed with build@bevy-game-shell (lead@abyme named it owner of the studio's play mode): `ViewportModeResult.started`, additions only, the next free minor (1.18.0 unless level-open's minor lands first). The game shell's Play/Stop, Pause and Step keep calling `viewport_mode`, `pause` and `step`.
+Agreed with build@bevy-game-shell (lead@abyme named it owner of the studio's play mode): `ViewportModeResult.started`, additions only, the next free minor on main at landing (1.18.0 if first, else 1.19.0 after rebasing on level-open). The game shell's Play/Stop, Pause and Step keep calling `viewport_mode`, `pause` and `step`.

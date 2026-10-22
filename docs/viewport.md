@@ -134,10 +134,19 @@ good save applies as generation 1.
 
 The studio starts that engine itself; a project adds nothing for it, no abyme process entry. For a
 folder with `bevy-ts.json` and no game serving it, the studio runs
-`npx --yes bevy-ts dev --viewport <entry> --remote-port <first free port from 15702>` as a kept
-process. The entry is the first of `src/game.tsx`, `src/game.ts`, `src/main.tsx` and `src/main.ts`
-that exists. The studio switches to edit mode once `hello` answers, and ends the process when no page
-shows the project.
+`npx --yes bevy-ts dev --viewport --edit <entry> --remote-port <first free port from 15702>` as a
+kept process. The entry is the first of `src/game.tsx`, `src/game.ts`, `src/main.tsx` and
+`src/main.ts` that exists. The studio ends the process when no page shows the project.
+
+`--edit` boots the engine in edit mode, as Unity and Godot open a project: the TS loads and
+registers, the scenes and the levels `app.level()` names load and show from the editor camera, and
+no TS system, observer or `Startup` runs. `Time<Virtual>` is paused from the first frame. So what
+edit mode shows is what the scene describes; a camera or light a `Startup` spawns appears on Play.
+The first `viewport_mode { mode: "play" }` starts the game: its `Startup` runs once, then the
+stages. `bevy-ts/step` before that starts it too and stays in edit; `pause { paused: false }` fails
+with "the game has not started; switch to play". Triggers raised in edit mode are dropped, never
+fired on Play. A Rust rebuild of a project engine comes back in edit mode. `--edit` with
+`--headless` is refused.
 
 ## For abyme's `bevy-studio`
 
@@ -151,6 +160,12 @@ instead of three.js:
    when the pane closes.
 
 On a 1.7 engine `asset_preview` is method-not-found: keep three.js.
+
+`viewport_mode` answers `started` from protocol 1.18: whether the game's `Startup` has run in this
+world, false until the first play or step of an `--edit` engine. An answer without it is an older
+engine: treat the game as started. An older engine also rejects `--edit` as an unknown option, so
+the studio adds the flag only when the pinned `BEVY_TS` is 1.18 or later, and otherwise switches to
+edit once `hello` answers, as before.
 
 The toolbar needs protocol 1.17 (`viewport_tools`). The studio does not fall back: on an older
 engine it shows "bevy-ts too old".

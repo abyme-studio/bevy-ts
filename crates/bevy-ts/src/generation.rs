@@ -96,12 +96,39 @@ impl ReloadLog {
 }
 
 /// Generation bookkeeping that lives with the world.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct Generations {
     /// The live generation, 0 before the first.
     pub live: u64,
     /// Startup names that already ran in this world.
     pub startups_run: HashSet<String>,
+    /// Whether the game has started: `Startup` systems run only once it has. False under
+    /// `bevy-ts dev --edit` until the first play or step ([`start_game`]).
+    pub started: bool,
+}
+
+impl Default for Generations {
+    fn default() -> Self {
+        Generations { live: 0, startups_run: HashSet::new(), started: true }
+    }
+}
+
+/// Whether the game's `Startup` systems have run in this world.
+pub fn started(world: &World) -> bool {
+    world.get_resource::<Generations>().is_none_or(|g| g.started)
+}
+
+/// Starts a game that has not started: drops triggers queued before it, then runs the due
+/// `Startup` systems now. Does nothing once started.
+pub fn start_game(world: &mut World) {
+    if started(world) {
+        return;
+    }
+    world.resource_mut::<Generations>().started = true;
+    world.resource_mut::<crate::observers::ObserverQueue>().0.clear();
+    let Some(mut rt) = world.remove_non_send::<ScriptRuntime>() else { return };
+    run_startups(world, &mut rt);
+    world.insert_non_send(rt);
 }
 
 /// A JS heap above this triggers a fresh isolate on the next reload.
@@ -124,7 +151,12 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
             // Children may already be gone with their parent.
             let _ = world.try_despawn(e);
         }
-        world.resource_mut::<Generations>().startups_run.clear();
+        let edit = world.get_resource::<State<crate::EngineMode>>().is_some_and(|s| *s.get() == crate::EngineMode::Edit);
+        let mut g = world.resource_mut::<Generations>();
+        g.startups_run.clear();
+        if edit {
+            g.started = false;
+        }
         world.insert_resource(crate::memory::SystemMemory::default());
         world.resource_mut::<crate::messages::TsPayloads>().reset();
         let handlers = world.resource::<RestartHandlers>().clone();
@@ -401,8 +433,11 @@ fn insert_resources(world: &mut World, manifest: &crate::manifest::Manifest) {
     }
 }
 
-/// Runs `Startup` systems whose identity has not run in this world.
+/// Runs `Startup` systems whose identity has not run in this world, once the game has started.
 fn run_startups(world: &mut World, rt: &mut ScriptRuntime) {
+    if !started(world) {
+        return;
+    }
     let Some(mut systems) = world.remove_resource::<TsSystems>() else { return };
     let mut list = std::mem::take(&mut systems.startup);
     let mut due = Vec::new();

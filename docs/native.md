@@ -114,6 +114,21 @@ the parallel executor nothing. A system names at most one exposed set, in that s
 and orders against other TS systems only within its slot. Rust orders against a slot with
 `BevyTsSlot::before(name)` / `BevyTsSlot::after(name)`.
 
+## Edit mode and native systems
+
+`bevy_ts::EngineMode` is a Bevy state, `Play` or `Edit`. It is `Edit` from the first frame under
+`bevy-ts dev --edit` and follows every `viewport_mode` switch; a shipped game is always `Play`.
+bevy-ts stops its own TS stages in edit mode, and `FixedUpdate` stops with `Time<Virtual>`. It does
+not gate Rust systems it did not add: a native system that must not run in edit mode gates itself,
+as any Bevy state does.
+
+```rust
+app.add_systems(Update, spin.run_if(in_state(EngineMode::Play)));
+```
+
+`OnEnter(EngineMode::Play)` and `OnExit(EngineMode::Play)` run when a client switches, before the
+first play's `Startup`.
+
 ## Calling Rust from TS: exported params
 
 Behaviour reaches TS as Bevy's own unit, a read-only `SystemParam`. One attribute exports it:

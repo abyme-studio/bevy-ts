@@ -15,7 +15,7 @@
 
 ## 3. Protocol
 
-- [ ] 3.1 `ViewportModeResult.started` in `protocol/bevy-ts.openrpc.json`, the minor lead@bevy-ts names; regenerate Rust and TS types
+- [ ] 3.1 `ViewportModeResult.started` in `protocol/bevy-ts.openrpc.json`, the next free minor on main at landing (1.18.0 or 1.19.0); tell lead@bevy-ts which; regenerate Rust and TS types
 - [ ] 3.2 `mode_json` answers `started`
 
 ## 4. Tests

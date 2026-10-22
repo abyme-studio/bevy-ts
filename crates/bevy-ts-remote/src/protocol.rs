@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.17.0";
+pub const VERSION: &str = "1.18.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -4839,6 +4839,9 @@ pub struct ViewportModeResult {
     pub gamepad_unfocused: bool,
     pub mode: ViewportMode,
     pub paused: bool,
+    ///Whether the game's TS `Startup` systems have run in this world: false under `bevy-ts dev --edit` until the first play or step (1.18). Absent from older engines: treat the game as started.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub started: ::std::option::Option<bool>,
     pub ui: bool,
 }
 ///`ViewportPickParams`

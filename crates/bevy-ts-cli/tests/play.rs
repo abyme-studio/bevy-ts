@@ -31,8 +31,13 @@ export function report(time: Res<Time>) {
 
 /// A game folder for the cube, written file by file as `bevy-ts build` would.
 fn cube_game(name: &str, version: &str) -> PathBuf {
-    let cube = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src/game.ts")).unwrap();
-    let project = common::project(name, &[("tsconfig.json", "{}"), ("src/game.ts", &format!("{cube}{CUBE_EXTRA}")), ("src/enemy.ts", ENEMY)]);
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src");
+    let cube = std::fs::read_to_string(example.join("game.ts")).unwrap();
+    let scene = std::fs::read_to_string(example.join("cube.tsx")).unwrap();
+    let project = common::project(
+        name,
+        &[("tsconfig.json", "{}"), ("src/game.ts", &format!("{cube}{CUBE_EXTRA}")), ("src/cube.tsx", &scene), ("src/enemy.ts", ENEMY)],
+    );
     let compiler = Compiler::for_release(project.join("src/game.ts")).unwrap();
     let set = compiler.compile_graph().unwrap();
     let game = project.join("dist/game");

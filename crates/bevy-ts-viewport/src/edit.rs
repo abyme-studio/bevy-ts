@@ -18,6 +18,7 @@ use bevy::picking::input::PointerInputSettings;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings, RayCastVisibility};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use bevy_ts::EngineMode;
 use bevy_ts_tsx::tree::{TsxNode, TsxTree};
 use serde_json::{Value, json};
 
@@ -200,6 +201,7 @@ pub(crate) fn build(app: &mut App) {
             commands.entity(add.entity).insert(EditorOnly);
         })
         .add_observer(camera_added)
+        .add_systems(Startup, boot_edit)
         .add_systems(First, apply_pending)
         .add_systems(
             Update,
@@ -260,6 +262,21 @@ fn is_active(world: &World, e: Entity, c: &Camera) -> bool {
     world.resource::<Pending>().0.iter().find(|(p, _)| *p == e).map_or(c.is_active, |(_, on)| *on)
 }
 
+/// `Startup`: an engine started with `bevy-ts dev --edit` (`EngineMode::Edit` from the first
+/// frame) comes up in edit mode, as a later switch makes it; its first play resumes.
+fn boot_edit(world: &mut World) {
+    let edit = world.get_resource::<State<EngineMode>>().is_some_and(|s| *s.get() == EngineMode::Edit);
+    if !edit || world.resource::<EditState>().mode == Mode::Edit {
+        return;
+    }
+    enter_edit(world);
+    world.resource_mut::<EditState>().was_paused = false;
+    apply_ui(world);
+    if let Some(s) = world.get_resource::<SharedRes>() {
+        s.0.set_edit(true);
+    }
+}
+
 /// Switches mode; answers the mode in force.
 pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocused: Option<bool>) -> Value {
     if let Some(g) = gamepad_unfocused {
@@ -273,6 +290,15 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
     }
     let current = world.resource::<EditState>().mode;
     if mode != current {
+        // `EngineMode` follows now, so `OnExit`/`OnEnter` run before the next frame's systems
+        // and before the first play's `Startup`.
+        if let Some(mut next) = world.get_resource_mut::<NextState<EngineMode>>() {
+            next.set(match mode {
+                Mode::Edit => EngineMode::Edit,
+                Mode::Play => EngineMode::Play,
+            });
+            let _ = world.try_run_schedule(bevy::state::state::StateTransition);
+        }
         match mode {
             Mode::Edit => enter_edit(world),
             Mode::Play => enter_play(world),
@@ -288,7 +314,8 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
 pub fn mode_json(world: &World) -> Value {
     let s = world.resource::<EditState>();
     let paused = world.get_resource::<bevy_ts::runtime::ScriptClock>().is_some_and(|c| c.paused);
-    json!({ "mode": s.mode.name(), "ui": s.ui, "gamepadUnfocused": s.gamepad_unfocused, "paused": paused })
+    let started = bevy_ts::generation::started(world);
+    json!({ "mode": s.mode.name(), "ui": s.ui, "gamepadUnfocused": s.gamepad_unfocused, "paused": paused, "started": started })
 }
 
 fn set_paused(world: &mut World, paused: bool) {
@@ -396,6 +423,12 @@ fn enter_play(world: &mut World) {
         s.is_mouse_enabled = mouse;
     }
     world.resource_mut::<GizmoConfigStore>().config_mut::<EditorGizmos>().0.enabled = false;
+    // Triggers raised in edit mode never reach the game.
+    if let Some(mut q) = world.get_resource_mut::<bevy_ts::observers::ObserverQueue>() {
+        q.0.clear();
+    }
+    // The first play starts the game: its `Startup` runs now, before the stages.
+    bevy_ts::generation::start_game(world);
     if !was_paused {
         set_paused(world, false);
     }

@@ -1,15 +1,15 @@
-// The arena: a player and a HUD in TSX, the enemies placed by assets/levels/arena.bsn, a camera, and
+// The arena: a player, a HUD and the sun in TSX, the enemies placed by assets/levels/arena.bsn, a camera, and
 // three systems that play. `bevy-ts dev src/game.tsx`.
 import { app, type Commands, type Entity, type Local, type Mut, type Query, ref, type Res, Startup, Time, Transform, type u32, Update, type With, type Without } from "bevy-ts";
+import { DirectionalLight } from "bevy-ts/bevy";
 import { Foe, Health } from "./enemy.tsx";
 import { Hud } from "./hud.tsx";
 import { Player, PlayerUnit } from "./player.tsx";
 
-/** The game's camera and light. The camera sits where the editor's first view does, so edit mode
- * opens on the same view. */
+/** The game's camera. It sits where the editor's first view does, so edit mode opens on the same
+ * view. */
 export function stage(commands: Commands) {
   commands.spawnNative("camera3d", { position: [-6, 5, 10], lookAt: [0, 0, 0] });
-  commands.spawnNative("directionalLight", { position: [3, 6, 2], lookAt: [0, 0, 0] });
 }
 
 /** Every 30 frames, each enemy within 10 units hurts the player by 5. */
@@ -44,6 +44,11 @@ export function cull(commands: Commands, enemies: Query<[Entity, Health], With<F
 const player = ref();
 app.scene("arena", () => (
   <>
+    {/* The sun is scene, not a startup's, so edit mode shows the arena lit. At (3, 6, 2), looking at the origin. */}
+    <entity name="sun">
+      <DirectionalLight shadow_maps_enabled />
+      <Transform translation={[3, 6, 2]} rotation={[-0.4341, 0.4107, 0.2323, 0.7674]} />
+    </entity>
     <PlayerUnit handle={player} />
     <Hud player={player} />
   </>

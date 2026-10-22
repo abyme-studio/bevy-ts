@@ -35,7 +35,7 @@ None.
 - `crates/bevy-ts`: `EngineMode` state, `Generations.started`, `run_startups` gated, observer queue cleared in edit.
 - `crates/bevy-ts-viewport`: `edit.rs` (`set_mode` drives `EngineMode`, first Play runs `Startup`), `methods.rs`, `tests/edit.rs`; `crates/bevy-ts-cli/tests` for the boot.
 - `crates/bevy-ts-remote`: `pause`/`step` before start.
-- `protocol/bevy-ts.openrpc.json`: `ViewportModeResult.started`, the next free minor (1.18.0 unless level-open lands first; lead@bevy-ts names it). Regenerated Rust and TS types.
+- `protocol/bevy-ts.openrpc.json`: `ViewportModeResult.started`, the next free minor on main at landing: 1.18.0 if this lands before level-open, else 1.19.0 after a rebase. Regenerated Rust and TS types.
 - `docs/viewport.md` ("An engine that is always up", the studio note), `docs/native.md` (gating native systems), the CLI usage line.
 - Behaviour change for existing edit mode, needs the operator's go: TS triggers raised while in edit mode are dropped instead of firing on resume.
 - abyme, agreed with build@bevy-game-shell: the studio adds `--edit` to its launch line in `apps/bevy/plugins/bevy-ts/server.ts`, gated on the pinned `BEVY_TS`, and drops its switch to edit after `hello`. lead@abyme brings up a team for that half. The game shell's Play/Stop/Pause/Step need no change.
