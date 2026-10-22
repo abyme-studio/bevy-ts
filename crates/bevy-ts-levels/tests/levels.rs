@@ -851,8 +851,33 @@ mod sidecar {
         assert!(f.app.world().resource::<Levels>().roots.is_empty(), "a generation's sidecar check does not reopen it");
         assert_eq!(f.translation(p).x, 0.0);
         open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
-        assert_eq!(f.app.world().resource::<Levels>().roots["levels/arena.bsn"].opener, Opener::Sidecar);
+        assert_eq!(f.app.world().resource::<Levels>().roots["levels/arena.bsn"].opener, Opener::Editor);
         assert_eq!(f.translation(p).x, 2.0, "it layers over its scene again");
+    }
+
+    #[test]
+    fn a_game_level_that_is_a_sidecar_reopened_by_the_editor_is_the_editors() {
+        use bevy_ts_levels::engine::{Opener, close_now, open_now};
+        let mut f = fixture("sidecar-reopen", &[("levels/arena.bsn", "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n")]);
+        // `app.level("levels/arena.bsn")`, which is also the arena scene's sidecar.
+        let mut program = scene_program();
+        program.sections.insert(0, Section { name: "levels".into(), bytes: serde_json::to_vec(&json!({ "levels": ["levels/arena.bsn"] })).unwrap(), location: None });
+        f.fake.push(program);
+        let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+        assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+        for _ in 0..50 {
+            f.app.update();
+        }
+        let opener = |f: &Fixture| f.app.world().resource::<Levels>().roots["levels/arena.bsn"].opener;
+        assert_eq!(opener(&f), Opener::Ts);
+        assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
+        open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
+        assert_eq!(opener(&f), Opener::Editor, "the editor opened it");
+        let p = f.by_name("player");
+        assert_eq!(f.translation(p).x, 2.0, "it still layers over its scene");
+        assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
+        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+        assert_eq!(f.translation(p).x, 0.0);
     }
 
     #[test]
@@ -1040,12 +1065,12 @@ mod open {
         f.settle();
         assert!(f.app.world().resource::<Levels>().roots.is_empty(), "a generation does not reopen it");
         open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
-        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Ts);
+        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Editor);
         f.by_name("EnemyB");
-        // Open again, it is the game's: a generation without it closes it.
+        // Open again, it is the editor's: a generation without it leaves it open.
         f.load(&[]);
         f.app.update();
-        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Editor);
     }
 
     #[test]

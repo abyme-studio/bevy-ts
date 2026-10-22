@@ -34,8 +34,9 @@ game's systems act on the new entities is the mode's rule.
 
 An opened level is a level like any other: `tsx_tree`, `level_node`, `level_write`, picking and
 hot reload treat it as an `app.level` level. Each `level_list` entry says who opened it in
-`opener`: `ts` (`app.level`), `rust` (`add_level`), `editor` (`level_open`) or `sidecar`. A level
-`app.level` declares stays `ts` when the editor opens it too. A level `level_close` closed stays
+`opener`: `ts` (`app.level`), `rust` (`add_level`), `editor` (`level_open`) or `sidecar`. The
+opener is who opened it: a level open already keeps its opener when the editor opens it too, and
+one `level_open` opens is `editor`, an `app.level` level or a sidecar it reopens included. A level `level_close` closed stays
 closed for the process until `level_open` names it again, whoever opened it: neither a TS save
 nor a scene's sidecar check reopens it. `level+watch` streams `opened` (with `opener`) and
 `closed`, whoever opens or closes the level, and `tsx_tree+watch` sends an opened level's nodes

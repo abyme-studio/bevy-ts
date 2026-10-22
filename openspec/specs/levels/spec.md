@@ -114,7 +114,7 @@ Opening a level that is already open SHALL answer `opened` with it and SHALL spa
 
 A level opened this way SHALL be a level like any other: `bevy-ts/tsx_tree`, `level_node`, `level_write`, `level_apply`, picking and `viewport_select` SHALL treat it as they treat an `app.level` level, and it SHALL reload by `level-hot-reload`'s rules, a TS generation's re-expansion included.
 
-Each `bevy-ts/level_list` entry SHALL carry `opener`: `ts` for an `app.level` level, `rust` for `add_level`, `editor` for `level_open`, `sidecar` for a scene's sidecar. A level `level_open` names while it is open keeps its opener.
+Each `bevy-ts/level_list` entry SHALL carry `opener`: `ts` for an `app.level` level, `rust` for `add_level`, `editor` for `level_open`, `sidecar` for a scene's sidecar. A level `level_open` opens is `editor`, whatever else it is (an `app.level` level or a sidecar it reopens after `level_close` included); a level `level_open` names while it is open keeps its opener.
 
 #### Scenario: Opening the arena in edit mode
 - **WHEN** the engine runs in edit mode with no `app.level` call, and a client calls `bevy-ts/level_open` with `levels/arena.bsn`
@@ -138,7 +138,7 @@ Each `bevy-ts/level_list` entry SHALL carry `opener`: `ts` for an `app.level` le
 
 #### Scenario: Closing a level the game declares
 - **WHEN** `game.tsx` calls `app.level("levels/arena.bsn")`, a client closes it, and a TS save applies a new generation
-- **THEN** the arena stays closed until a client opens it again, when it answers `opener: "ts"`
+- **THEN** the arena stays closed until a client opens it again, when it answers `opener: "editor"`
 
 #### Scenario: Editing an opened level
 - **WHEN** a client opens `levels/room.bsn`, then sends `level_write` with a `set` on `Lamp`'s `PointLight.intensity`

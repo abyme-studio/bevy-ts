@@ -184,15 +184,13 @@ pub struct Levels {
     /// Recently seen versions of level files by content hash, so a write made against an older
     /// version can tell which fields the disk changed since (the latest 32).
     pub history: std::collections::VecDeque<(u64, Arc<ParsedFile>)>,
-    /// The levels the live generation's `app.level` declares.
-    pub declared: Vec<String>,
     /// Levels `level_close` closed: a generation does not reopen them until `level_open` does.
     pub closed: BTreeSet<String>,
 }
 
 impl Default for Levels {
     fn default() -> Self {
-        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), declared: Vec::new(), closed: BTreeSet::new() }
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), closed: BTreeSet::new() }
     }
 }
 
@@ -357,7 +355,6 @@ fn apply_section(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSectio
     for p in wanted.iter().filter(|p| !closed.contains(*p)) {
         open(world, p, Opener::Ts);
     }
-    world.resource_mut::<Levels>().declared = wanted;
 }
 
 /// A generation re-expands every instance (rule 9). The runtime is busy while a generation
@@ -990,14 +987,9 @@ pub fn open_now(world: &mut World, file: &str) -> Result<String, OpenFailure> {
             }
         }
     }
-    // A scene's sidecar the editor closed layers over its scene again.
-    match crate::edit::sidecar_of(world, &path) {
-        Some(scene) => open_as(world, &path, Opener::Sidecar, Some(scene)),
-        None => {
-            let opener = if world.resource::<Levels>().declared.contains(&path) { Opener::Ts } else { Opener::Editor };
-            open(world, &path, opener);
-        }
-    }
+    // The editor opened it, whatever else it is; a scene's sidecar layers over its scene again.
+    let overlay = crate::edit::sidecar_of(world, &path);
+    open_as(world, &path, Opener::Editor, overlay);
     if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(&path) {
         r.dirty = false;
     }
