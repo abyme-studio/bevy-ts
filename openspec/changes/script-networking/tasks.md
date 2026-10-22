@@ -35,7 +35,8 @@
 - [x] 5.2 Every spec scenario in `specs/script-networking/spec.md`, `specs/script-runtime/spec.md` and `specs/edit-mode/spec.md` has a test or is named here as covered by one above.
   Coverage: globals, URL, AbortSignal, `fetch` undefined, timers, constructor/close/send rules: `bevy-ts-v8/tests/web.rs`. Echo, 1000/1005/1006, protocols, no `Origin` on the wire, 20 MiB → 1009: `bevy-ts/tests/socket.rs`. Refusals (host, `wss:`, `Origin` header, headers to non-loopback), limits (burst, flood, 64 MiB, huge), generations (save, failed reload, restart), edit mode (load refused, close 1001 on play, timers wait), paused delivery, idle: `bevy-ts/tests/net.rs` and `bevy-ts-v8/tests/net.rs` (each scenario end to end in V8 too). Policy entry forms and env: `net::policy` unit tests; built game: `bevy-ts-cli` `play::tests`. Types with `@types/node`: `pnpm check` (`test/types-node`). Not tested directly: a callback's Rust param call throwing (delivery never sets the host slot, which only `run_system`/`call_entry` set) and a TS `Startup` system connecting at the first Play (its requests take the same outbox-to-delivery path as an entry's, tested).
 - [ ] 5.3 With `script-packages` landed: a fixture game imports `@abyme/client/connect` from a workspace link and runs `connect()` against a test abymed on its own port and state folder (never the live one on 4477), headless. If no test abymed can run, say what is unverified.
-- [ ] 5.4 Bench: 2,000 1 KiB messages in one frame; record the frame's main-thread cost in `bench/`.
+- [x] 5.4 Bench: 2,000 1 KiB messages in one frame; record the frame's main-thread cost in `bench/`.
+  `bench/networking/results/burst.md`: about 2.7 ms of main thread over an idle frame (median of 8, release).
 
 ## 6. Types
 
