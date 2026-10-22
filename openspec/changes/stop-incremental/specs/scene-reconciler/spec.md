@@ -23,7 +23,7 @@ After applying a root a Rust plugin describes (an external root, such as a level
 - **THEN** its kept resolved tree describes every node `tsx_tree` lists for it
 
 ### Requirement: The game-start baseline
-When the game starts (plugin-api, "Start notification"), `bevy-ts-tsx` SHALL record a baseline for each external root then applied: the world's change tick, the archetype of each of its entities, and the root's apply count. A root applied or unmounted after the baseline SHALL have none. A restart or a Stop SHALL drop every baseline. Given a root with a baseline, tsx SHALL answer the root's changed nodes: those whose entity has a component added or changed after the baseline tick, or an archetype other than the recorded one. Changes tsx made itself through a binding count as changes. The answer SHALL be read before the Stop's rebuild despawns TS-spawned entities, so a child the game spawned and the rebuild despawned marks its parent only if the game's spawn did.
+When the game starts (plugin-api, "Start notification"), `bevy-ts-tsx` SHALL record a baseline for each external root then applied: the world's change tick, the archetype of each of its entities, and the root's apply count. A root applied or unmounted after the baseline SHALL have none. A restart or a Stop SHALL drop every baseline. Given a root with a baseline, tsx SHALL answer the root's changed nodes: those whose entity has a component added or changed after the baseline tick, or an archetype other than the recorded one. Changes tsx made itself through a binding count as changes. A component Bevy derives every frame from other state, which a respawn cannot restore, SHALL NOT count: `ViewVisibility`, `VisibleEntities`, `Clusters` and `PreviousViewData`, one list tsx owns, each entry there because it was seen to change in a play that touched nothing. A component holding the game's settings counts even when Bevy writes it every frame (`Camera`). The answer SHALL be read before the Stop's rebuild despawns TS-spawned entities, so a child the game spawned and the rebuild despawned marks its parent only if the game's spawn did.
 
 #### Scenario: A system moves one enemy
 - **WHEN** the game started with 10,000 enemies applied and a system wrote one enemy's `Transform`
@@ -32,6 +32,10 @@ When the game starts (plugin-api, "Start notification"), `bevy-ts-tsx` SHALL rec
 #### Scenario: A component removed
 - **WHEN** a system removed `Health` from enemy `c`
 - **THEN** `c` is a changed node
+
+#### Scenario: Play's camera swap
+- **WHEN** the game started with enemies the editor camera sees and the game's camera does not, and the play touched none
+- **THEN** the root has no changed node
 
 #### Scenario: A root opened during play
 - **WHEN** a level is applied after the game started

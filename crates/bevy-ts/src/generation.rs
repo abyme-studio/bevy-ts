@@ -110,11 +110,13 @@ pub struct Generations {
     pub started: bool,
     /// Restarts applied in this world, a `restart` reload's or a Stop's.
     pub restarts: u64,
+    /// Whether the start handlers ran for this game: once per start, before its first `Startup`.
+    pub announced: bool,
 }
 
 impl Default for Generations {
     fn default() -> Self {
-        Generations { live: 0, startups_run: HashSet::new(), started: true, restarts: 0 }
+        Generations { live: 0, startups_run: HashSet::new(), started: true, restarts: 0, announced: false }
     }
 }
 
@@ -172,6 +174,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         g.startups_run.clear();
         if edit {
             g.started = false;
+            g.announced = false;
         }
         g.restarts += 1;
         // TS resources go with their entities, so the generation inserts them again; Rust ones stay.
@@ -495,6 +498,12 @@ fn insert_resources(world: &mut World, manifest: &crate::manifest::Manifest) {
 fn run_startups(world: &mut World) {
     if !started(world) {
         return;
+    }
+    if !std::mem::replace(&mut world.resource_mut::<Generations>().announced, true) {
+        let handlers = world.get_resource::<crate::plugin_api::StartHandlers>().cloned().unwrap_or_default();
+        for h in handlers.0.iter() {
+            h(world);
+        }
     }
     let Some(systems) = world.get_resource::<TsSystems>() else { return };
     let lists: Vec<(systems::ListKey, Vec<String>)> = [

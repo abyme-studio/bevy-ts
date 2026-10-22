@@ -237,6 +237,13 @@ app.add_systems(OnExit(EngineMode::Play), reset);
 Components a port adds to TS entities, such as Rapier's bodies and colliders, go with their
 entities: play, Stop, play runs the same.
 
+A Stop keeps the level entities the play did not change (`docs/viewport.md`): the same entity ids
+and values, with no hook, observer or `Added` for them, which is Bevy's meaning of nothing having
+changed. A system that counted `Added<T>` at the first Play does not see those entities again at
+the next one. Reset what such a system builds in `OnExit(EngineMode::Play)`, and do not rely on
+level entities being added again. An entity the play changed, a port's body that moved for one, is
+respawned and is added again.
+
 ## Calling Rust from TS: exported params
 
 Behaviour reaches TS as Bevy's own unit, a `SystemParam`. One attribute exports it:

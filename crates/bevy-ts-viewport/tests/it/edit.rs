@@ -1559,5 +1559,54 @@ mod boot {
         assert_eq!((m["gameCameras"].as_u64(), m["started"].as_bool()), (Some(1), Some(true)), "{m}");
         let cam = game_camera(&mut app);
         assert!(on(&app, cam), "the view shows that camera");
+    /// Each start notification, with whether a `Startup` had run in the world by then.
+    #[derive(Resource, Clone, Default)]
+    struct Starts(Arc<Mutex<Vec<bool>>>);
+
+    fn counting_starts() -> (Starts, impl FnOnce(&mut App)) {
+        use bevy_ts::plugin_api::BevyTsAppExt;
+        let starts = Starts::default();
+        let s = starts.clone();
+        (starts, move |app: &mut App| {
+            app.on_ts_start(move |world| s.0.lock().unwrap().push(!world.resource::<generation::Generations>().startups_run.is_empty()));
+        })
+    }
+
+    #[test]
+    fn a_step_then_play_notifies_the_start_once_before_startup() {
+        let (starts, extra) = counting_starts();
+        let (mut app, fake, runs, _) = ts_app_bare(true, extra);
+        reload(&mut app, &fake, &runs, false, false);
+        updates(&mut app, 3);
+        assert!(starts.0.lock().unwrap().is_empty(), "no start in edit");
+        core(&mut app, "bevy-ts/step", json!({ "frames": 1 })).unwrap();
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        updates(&mut app, 2);
+        assert_eq!(*starts.0.lock().unwrap(), vec![false], "once, before the step's Startup");
+    }
+
+    #[test]
+    fn play_stop_play_notifies_the_start_twice() {
+        let (starts, extra) = counting_starts();
+        let (mut app, fake, runs, _) = ts_app_bare(true, extra);
+        reload(&mut app, &fake, &runs, false, false);
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        updates(&mut app, 2);
+        stop(&mut app, &fake, &runs, false);
+        reload(&mut app, &fake, &runs, false, false);
+        updates(&mut app, 2);
+        call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        updates(&mut app, 2);
+        assert_eq!(*starts.0.lock().unwrap(), vec![false, false], "once per Play; a reload in edit starts nothing");
+    }
+
+    #[test]
+    fn a_game_booted_in_play_notifies_at_its_first_startup() {
+        let (starts, extra) = counting_starts();
+        let (mut app, fake, runs, _) = ts_app_bare(false, extra);
+        reload(&mut app, &fake, &runs, false, false);
+        reload(&mut app, &fake, &runs, false, false);
+        updates(&mut app, 2);
+        assert_eq!(*starts.0.lock().unwrap(), vec![false], "once; a hot reload is no start");
     }
 }

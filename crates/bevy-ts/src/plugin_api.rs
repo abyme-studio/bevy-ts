@@ -60,6 +60,12 @@ pub type RestartHandler = Arc<dyn Fn(&mut World) + Send + Sync>;
 #[derive(Resource, Default, Clone)]
 pub struct RestartHandlers(pub Vec<RestartHandler>);
 
+/// Called when the game starts, before any `Startup` system runs.
+pub type StartHandler = Arc<dyn Fn(&mut World) + Send + Sync>;
+
+#[derive(Resource, Default, Clone)]
+pub struct StartHandlers(pub Vec<StartHandler>);
+
 /// Called with the non-module files of the graph (`.wgsl`) that changed when nothing else did.
 pub type FileHandler = Arc<dyn Fn(&mut World, &[std::path::PathBuf]) + Send + Sync>;
 
@@ -102,6 +108,10 @@ pub trait BevyTsAppExt {
     /// Called on `bevy-ts/reload` with `restart: true`, after TS-spawned entities are despawned
     /// and before the generation is applied as if first.
     fn on_ts_restart(&mut self, f: impl Fn(&mut World) + Send + Sync + 'static) -> &mut Self;
+
+    /// Called once when the game starts (the first Play after an `--edit` start or a Stop, a step
+    /// before it, or the first `Startup` of a game booted in play), before any `Startup` system.
+    fn on_ts_start(&mut self, f: impl Fn(&mut World) + Send + Sync + 'static) -> &mut Self;
 
     /// Called when files the module graph imports but does not run (`.wgsl`) are saved and no
     /// module changed. No generation starts.
@@ -149,6 +159,11 @@ impl BevyTsAppExt for App {
 
     fn on_ts_restart(&mut self, f: impl Fn(&mut World) + Send + Sync + 'static) -> &mut Self {
         self.world_mut().get_resource_or_init::<RestartHandlers>().0.push(Arc::new(f));
+        self
+    }
+
+    fn on_ts_start(&mut self, f: impl Fn(&mut World) + Send + Sync + 'static) -> &mut Self {
+        self.world_mut().get_resource_or_init::<StartHandlers>().0.push(Arc::new(f));
         self
     }
 

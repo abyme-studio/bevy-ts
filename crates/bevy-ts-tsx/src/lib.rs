@@ -17,6 +17,7 @@ pub mod protocol;
 pub mod reconcile;
 pub mod reflected;
 pub mod resolve;
+pub mod restore;
 pub mod shapes;
 pub mod tree;
 pub mod ui;
@@ -24,7 +25,6 @@ pub mod ui;
 use crate::desc::SceneSection;
 use crate::reconcile::{apply_root, resolve_tree, unmount_root};
 use crate::tree::{ReconcileStats, RUNTIME_ROOT};
-use std::collections::BTreeSet;
 use bevy::prelude::*;
 use bevy_ts::backend::ScriptError;
 use bevy_ts::layout::NativeLayouts;
@@ -32,6 +32,7 @@ use bevy_ts::log::{LogLevel, ScriptLog};
 use bevy_ts::plugin_api::BevyTsAppExt;
 
 pub use crate::host::{ExpandItem, expand, expand_each};
+pub use crate::restore::StopPlan;
 pub use crate::tree::{Provenance, TsxNode, TsxTree};
 
 /// The manifest section `app.scene` writes.
@@ -276,10 +277,14 @@ pub fn scene_level(world: &World, scene: &str) -> Option<String> {
 /// expanded in JS, under the same rules as an `app.scene` root. A resolve error touches nothing.
 /// Call it from an exclusive system or a section apply step, at a frame boundary.
 pub fn reconcile_external(world: &mut World, name: &str, location: Option<bevy_ts::backend::SourceLocation>, nodes: &[desc::NodeDesc]) -> Result<ReconcileStats, ScriptError> {
-    let resolved = resolve_tree(world, name, nodes, (&[], &[]))?;
+    let resolved: std::sync::Arc<[reconcile::RNode]> = resolve_tree(world, name, nodes, (&[], &[]))?.into();
     world.resource_mut::<TsxTree>().external.insert(name.to_string());
     let stats = apply_root(world, name, location, &resolved, None, reconcile::Prune::Root);
-    world.resource_mut::<TsxTree>().journal.close();
+    let mut tree = world.resource_mut::<TsxTree>();
+    if let Some(state) = tree.roots.get_mut(name) {
+        state.resolved = Some(resolved);
+    }
+    tree.journal.close();
     Ok(stats)
 }
 
@@ -414,19 +419,44 @@ fn apply_inner(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection)
 }
 
 /// `restart: true`: TS-spawned entities are gone; tsx's go too, with every tombstone, so each
-/// scene mounts as if first. The journal goes on: every row is removed here, and the remount
-/// adds it again with its new entity, so `tsx_tree+watch` follows a restart (a Stop's too).
+/// scene mounts as if first. A Stop's [`StopPlan`] keeps its roots: their entities, state, kept
+/// tree and tombstones stay for the restore, which respawns what the plan lists (their
+/// tombstones added to it). The journal goes on: every row despawned here is removed, and the
+/// remount or the restore adds it again with its new entity, so `tsx_tree+watch` follows.
 fn restart(world: &mut World) {
-    let nodes: Vec<Entity> = world.query_filtered::<Entity, With<TsxNode>>().iter(world).collect();
+    let keep: std::collections::BTreeSet<String> = world.get_resource::<StopPlan>().map(|p| p.roots.keys().cloned().collect()).unwrap_or_default();
+    let nodes: Vec<Entity> = world.query::<(Entity, &TsxNode)>().iter(world).filter(|(_, n)| !keep.contains(&n.root)).map(|(e, _)| e).collect();
     for e in nodes {
         // Children may already be gone with their parent.
         let _ = world.try_despawn(e);
     }
     let mut old = std::mem::take(&mut *world.resource_mut::<TsxTree>());
-    let removed: BTreeSet<u64> = old.roots.values().flat_map(|r| r.nodes.iter().copied()).chain(old.tombstones.keys().copied()).collect();
+    let mut tree = TsxTree::default();
+    for name in &keep {
+        let Some(mut state) = old.roots.remove(name) else { continue };
+        state.baseline = None;
+        for id in &state.nodes {
+            if let Some(e) = old.entities.remove(id) {
+                tree.entities.insert(*id, e);
+            }
+        }
+        let dead: Vec<u64> = old.tombstones.iter().filter(|(_, t)| &t.root == name).map(|(id, _)| *id).collect();
+        let mut paths = Vec::new();
+        for id in dead {
+            let t = old.tombstones.remove(&id).expect("listed");
+            paths.push(t.key_path.clone());
+            tree.tombstones.insert(id, t);
+        }
+        world.resource_mut::<StopPlan>().roots.get_mut(name).expect("planned").extend(paths);
+        old.external.remove(name);
+        tree.external.insert(name.clone());
+        tree.roots.insert(name.clone(), state);
+    }
+    let removed: std::collections::BTreeSet<u64> = old.roots.values().flat_map(|r| r.nodes.iter().copied()).chain(old.tombstones.keys().copied()).collect();
     old.journal.open.removed.extend(removed);
     old.journal.close();
-    world.resource_mut::<TsxTree>().journal = old.journal;
+    tree.journal = old.journal;
+    world.insert_resource(tree);
 }
 
 impl Plugin for TsxPlugin {
@@ -437,6 +467,7 @@ impl Plugin for TsxPlugin {
         app.add_ts_section(SECTION, check);
         app.on_ts_section_applied(SECTION, apply);
         app.on_ts_restart(restart);
+        app.on_ts_start(restore::take_baselines);
         app.add_ts_command_kind(mount::MOUNT, mount::mount);
         app.add_ts_command_kind(host::FLUSH, host::flush);
         // The editor methods, when the app serves the protocol already; otherwise call
