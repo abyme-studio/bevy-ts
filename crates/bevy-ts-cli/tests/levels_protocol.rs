@@ -576,6 +576,9 @@ Children [
 #Crate
 Transform { translation: Vec3 { x: 4.0 } }
 game::Loot { coins: 3 }
+--
+#Lamp
+bevy_transform::components::transform::Transform { glow: 1.0 }
 ";
 
 #[test]
@@ -613,12 +616,17 @@ fn placeholders_over_the_wire() {
     let crate_ = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["Crate"] })));
     assert!(crate_["missing"][0].get("scene").is_none(), "{crate_}");
     assert_eq!(crate_["patches"], json!(["Transform", "game::Loot"]), "{crate_}");
+    // A patch that does not fit, written by its full path: inserted as `Transform`, listed once
+    // by the name the file writes.
+    let lamp = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["Lamp"] })));
+    assert_eq!(lamp["missing"][0]["reason"], "mismatch", "{lamp}");
+    assert_eq!(lamp["patches"], json!(["bevy_transform::components::transform::Transform"]), "{lamp}");
     // Diagnostics: a warning per entry on the list and the watch's loaded.
     let list = ok(&mut app, "bevy-ts/level_list", None);
     let warnings: Vec<&str> = list["levels"][0]["diagnostics"].as_array().unwrap().iter().filter_map(|d| d["message"].as_str()).filter(|m| m.starts_with("warning: ")).collect();
-    assert_eq!(warnings.len(), 4, "{list}");
+    assert_eq!(warnings.len(), 5, "{list}");
     let loaded = ok(&mut app, "bevy-ts/level+watch", None);
-    assert_eq!(loaded["diagnostics"].as_array().map(Vec::len), Some(4), "{loaded}");
+    assert_eq!(loaded["diagnostics"].as_array().map(Vec::len), Some(5), "{loaded}");
     // Writes to the boss's props are refused; its text stays.
     let hash = list["levels"][0]["hash"].clone();
     let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/squad.bsn", "base": hash, "ops": [{ "op": "set_prop", "path": ["Boss"], "prop": "hp", "value": 1.0 }] })));

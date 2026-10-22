@@ -2,7 +2,8 @@
 //! writer batches, "Apply" one owner inward, and the event stream.
 
 use crate::edit::{WriteRequest, WriteResult, hash_text, write_level};
-use crate::engine::{BsnLevel, LevelInstance, Levels, MissingComponents, loaded_event};
+use crate::compose::Schema;
+use crate::engine::{BsnLevel, LevelInstance, Levels, MissingComponents, WorldSchema, loaded_event};
 use crate::route::{loaded_hash, set_ops};
 use crate::syntax::LineIndex;
 use crate::writer::{Base, NewPatch, Op, WValue};
@@ -295,11 +296,16 @@ pub(crate) fn node(In(p): In<Option<Value>>, world: &World) -> BrpResult {
         .unwrap_or_default();
     // Components the file adds that its prefab does not give: set where the file writes them,
     // other than the scene component the entity instances and its `#Name`. A placeholder patch
-    // the file writes is one too, by the name the file writes.
-    let mut patches: Vec<&String> = n.components.iter().filter(|(k, c)| prefab.as_ref() != Some(*k) && k.as_str() != "Name" && c.source.as_ref().is_some_and(|s| s.file == level)).map(|(k, _)| k).collect();
+    // the file writes is one too, by the name the file writes: a mismatch is also inserted under
+    // the type it resolves to, and is listed once, as the file names it.
+    let mut patches: Vec<&str> = n.components.iter().filter(|(k, c)| prefab.as_ref() != Some(*k) && k.as_str() != "Name" && c.source.as_ref().is_some_and(|s| s.file == level)).map(|(k, _)| k.as_str()).collect();
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let schema = WorldSchema::live(world, &registry);
     for m in missing.iter().filter(|m| !m.scene && m.location.file == level) {
-        if !patches.contains(&&m.component) {
-            patches.push(&m.component);
+        let ty = schema.component(&m.component).ok().map(|s| s.name);
+        match patches.iter().position(|p| *p == m.component || ty.as_deref() == Some(*p)) {
+            Some(i) => patches[i] = &m.component,
+            None => patches.push(&m.component),
         }
     }
     let mut out = json!({ "level": level, "namePath": n.key_path, "entity": e.to_bits(), "owners": owners, "source": n.source, "overrides": overrides, "prefab": prefab, "props": props, "patches": patches });

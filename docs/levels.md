@@ -147,7 +147,7 @@ puts the text back. `tsx_tree` rows carry `level.missing` (`{ component, reason 
 `scene: true` on the entity's own scene component and none on a patch, 1.23), `level_node`
 carries `missing` (`MissingComponent`: `fields` as saved, `location`, `expected` where the code
 was expected, when this process saw it, and `scene` as on the row), its `patches` list a
-placeholder patch by the name the file writes (1.23), `bevy-ts/schema` marks `MissingComponents`
+placeholder patch by the name the file writes, once per type (1.23), `bevy-ts/schema` marks `MissingComponents`
 `internal` so an inspector draws `missing` rather than a group of its own (1.23), and each entry is a `warning:` diagnostic on
 `level_list`, `level_open`, `level+watch`'s `loaded` and the terminal.
 
