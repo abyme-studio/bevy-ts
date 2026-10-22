@@ -1095,3 +1095,153 @@ mod open {
         assert_eq!(f.translation(floor).y, 2.0);
     }
 }
+
+/// `dev --edit` remembers the editor's levels in `.bevy-ts/editor.json` (change editor-state).
+mod editor_state {
+    use super::*;
+    use bevy_ts_levels::engine::{LevelsAppExt, Opener, close_now, open_now};
+
+    /// A fixture whose engine reads and writes `.bevy-ts/editor.json`, as `dev --edit` sets it.
+    fn edit(name: &str, state: Option<&str>) -> Fixture {
+        let mut f = fixture(&format!("state-{name}"), &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        if let Some(s) = state {
+            write(&f.dir, ".bevy-ts/editor.json", s);
+        }
+        let file = f.dir.join(".bevy-ts/editor.json");
+        f.app.world_mut().resource_mut::<Levels>().state_file = Some(file);
+        f
+    }
+
+    fn state(f: &Fixture) -> serde_json::Value {
+        serde_json::from_slice(&std::fs::read(f.dir.join(".bevy-ts/editor.json")).unwrap()).unwrap()
+    }
+
+    /// A restart: a new engine on the same project folder, with `files` carried over.
+    fn restart(f: &mut Fixture, name: &str) -> Fixture {
+        let state = std::fs::read_to_string(f.dir.join(".bevy-ts/editor.json")).unwrap();
+        edit(name, Some(&state))
+    }
+
+    fn opener(f: &Fixture, path: &str) -> Opener {
+        f.app.world().resource::<Levels>().roots[path].opener
+    }
+
+    #[test]
+    fn reopening_the_room() {
+        let mut f = edit("room", None);
+        f.load(&[]);
+        f.app.update();
+        open_now(f.app.world_mut(), "levels/room.bsn").unwrap();
+        f.app.update();
+        assert_eq!(state(&f), json!({ "version": 1, "open": ["levels/room.bsn"], "closed": [] }));
+        let mut g = restart(&mut f, "room-again");
+        // Startup restores it before any generation, as the editor's.
+        g.app.update();
+        assert_eq!(opener(&g, "levels/room.bsn"), Opener::Editor);
+        g.load(&[]);
+        g.settle();
+        g.by_name("Floor");
+        assert!(g.errors().is_empty(), "{:?}", g.errors());
+    }
+
+    #[test]
+    fn a_level_with_game_components_composes_once_the_generation_lands() {
+        let mut f = edit("game", Some(r#"{ "version": 1, "open": ["levels/arena.bsn"], "closed": [] }"#));
+        // Under `dev`, the first generation lands after `Startup`.
+        f.app.update();
+        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Editor);
+        f.load(&[]);
+        f.settle();
+        let b = f.by_name("EnemyB");
+        assert_eq!(f.hp(b), (100.0, 250.0));
+        assert_eq!(state(&f)["open"], json!(["levels/arena.bsn"]));
+    }
+
+    #[test]
+    fn a_closed_game_level_stays_closed() {
+        let mut f = edit("closed", None);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
+        f.app.update();
+        assert_eq!(state(&f), json!({ "version": 1, "open": [], "closed": ["levels/arena.bsn"] }));
+        let mut g = restart(&mut f, "closed-again");
+        g.app.update();
+        g.load(&["levels/arena.bsn"]);
+        g.settle();
+        assert!(g.app.world().resource::<Levels>().roots.is_empty(), "the generation does not reopen it");
+        open_now(g.app.world_mut(), "levels/arena.bsn").unwrap();
+        assert_eq!(opener(&g, "levels/arena.bsn"), Opener::Ts);
+        g.app.update();
+        assert_eq!(state(&g), json!({ "version": 1, "open": [], "closed": [] }));
+    }
+
+    #[test]
+    fn a_closed_rust_level_stays_closed() {
+        let mut f = edit("rust", Some(r#"{ "version": 1, "open": [], "closed": ["levels/room.bsn"] }"#));
+        f.app.add_level("levels/room.bsn");
+        f.load(&[]);
+        f.settle();
+        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+    }
+
+    #[test]
+    fn a_deleted_remembered_level_is_skipped_and_pruned() {
+        let mut f = edit("gone", Some(r#"{ "version": 1, "open": ["levels/gone.bsn", "levels/room.bsn"], "closed": ["levels/also-gone.bsn"] }"#));
+        f.app.update();
+        let levels = f.app.world().resource::<Levels>();
+        assert_eq!(levels.roots.keys().collect::<Vec<_>>(), ["levels/room.bsn"]);
+        assert_eq!(state(&f), json!({ "version": 1, "open": ["levels/room.bsn"], "closed": [] }));
+    }
+
+    #[test]
+    fn a_malformed_or_unknown_version_file_starts_empty() {
+        for (name, bad) in [("malformed", "{ not json"), ("version", r#"{ "version": 2, "open": ["levels/room.bsn"], "closed": [] }"#)] {
+            let mut f = edit(name, Some(bad));
+            f.load(&[]);
+            f.settle();
+            assert!(f.app.world().resource::<Levels>().roots.is_empty(), "{name}");
+            // The file is left as it is until the editor changes something.
+            assert_eq!(std::fs::read_to_string(f.dir.join(".bevy-ts/editor.json")).unwrap(), bad);
+            open_now(f.app.world_mut(), "levels/room.bsn").unwrap();
+            f.app.update();
+            assert_eq!(state(&f)["open"], json!(["levels/room.bsn"]), "{name}");
+        }
+    }
+
+    #[test]
+    fn without_a_state_file_nothing_is_read_or_written() {
+        let mut f = fixture("state-none", &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        let remembered = r#"{ "version": 1, "open": ["levels/room.bsn"], "closed": [] }"#;
+        write(&f.dir, ".bevy-ts/editor.json", remembered);
+        f.load(&[]);
+        f.settle();
+        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+        open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
+        f.app.update();
+        assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
+        f.app.update();
+        assert_eq!(std::fs::read_to_string(f.dir.join(".bevy-ts/editor.json")).unwrap(), remembered);
+    }
+
+    #[test]
+    fn every_write_is_whole() {
+        let mut f = edit("whole", None);
+        f.load(&[]);
+        f.app.update();
+        assert!(!f.dir.join(".bevy-ts/editor.json").exists(), "nothing changed, nothing written");
+        let steps: [(&str, bool); 4] = [("levels/room.bsn", true), ("levels/arena.bsn", true), ("levels/room.bsn", false), ("levels/arena.bsn", false)];
+        for (path, opening) in steps {
+            if opening {
+                open_now(f.app.world_mut(), path).unwrap();
+            } else {
+                assert!(close_now(f.app.world_mut(), path));
+            }
+            f.app.update();
+            let s = state(&f);
+            assert_eq!(s["open"].as_array().unwrap().iter().any(|p| p == path), opening, "{s}");
+            assert_eq!(s["closed"].as_array().unwrap().iter().any(|p| p == path), !opening, "{s}");
+            assert!(!f.dir.join(".bevy-ts/editor.json.tmp").exists());
+        }
+    }
+}

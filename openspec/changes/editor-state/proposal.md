@@ -5,9 +5,9 @@
 ## What Changes
 
 - **`dev --edit` remembers the editor's levels** in `<project>/.bevy-ts/editor.json`: `{ "version": 1, "open": [...], "closed": [...] }`. `open` is every level with opener `editor`. `closed` is every level `level_close` closed.
-- **It reopens them on boot.** Before the first frame it loads `closed`, then opens each `open` path as `level_open` does. They come back with opener `editor`. The studio's first `level_list` already lists them.
+- **It reopens them on boot.** Before the first frame it loads `closed`, then opens each `open` path with opener `editor`; each composes once the first generation is live. They come back with opener `editor`. The studio's first `level_list` already lists them.
 - **It writes on every change** to the remembered set, to a temporary file then a rename. A crash leaves the old file or the new one, never half of one.
-- **Nothing fails the boot.** A missing, malformed or unknown-version file: warn, start empty. A remembered level that no longer opens: skip it, warn, and drop it from the next write.
+- **Nothing fails the boot.** A missing, malformed or unknown-version file: warn, start empty. A remembered level whose file is gone: skip it, warn, and drop it from the next write. One that no longer composes stays open with its error.
 - **Only `dev --edit`.** Plain `dev`, `play` and `build` neither read nor write the file.
 - **No protocol change.** `level_list` and `level+watch` already say what is open.
 - **Out of scope:** tab order and the focused tab (the studio's). Locking between two editors on one project: the last write wins.

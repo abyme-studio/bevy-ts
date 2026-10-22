@@ -42,6 +42,17 @@ nor a scene's sidecar check reopens it. `level+watch` streams `opened` (with `op
 `closed`, whoever opens or closes the level, and `tsx_tree+watch` sends an opened level's nodes
 as `added` and a closed one's as `removed`.
 
+Under `bevy-ts dev --edit` the engine remembers the editor's levels across restarts, in
+`<project>/.bevy-ts/editor.json` (git-ignored): `{ "version": 1, "open": [...], "closed": [...] }`,
+where `open` is every level with opener `editor` and `closed` every level `level_close` closed. It
+writes the file on every open or close that changes either set, whole each time. Before the first
+frame it reads it back: the `closed` levels stay closed as if closed in this process, and each
+`open` level opens again with opener `editor`, so the first `level_list` lists it. A restored level
+composes once its files load and the first generation has the game's components; one that no longer
+composes stays open with its error. A missing or unreadable file, or another `version`, starts
+with neither set; a remembered level whose file is gone is skipped with a warning and dropped from
+the next write. Plain `dev`, `play` and `build` neither read nor write the file.
+
 ## Operations
 
 | op | takes | inverse |

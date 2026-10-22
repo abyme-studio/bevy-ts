@@ -186,11 +186,14 @@ pub struct Levels {
     pub history: std::collections::VecDeque<(u64, Arc<ParsedFile>)>,
     /// Levels `level_close` closed: a generation does not reopen them until `level_open` does.
     pub closed: BTreeSet<String>,
+    /// Where the editor's levels are remembered (`dev --edit` only): read at `Startup`, written
+    /// on every change. `None` neither reads nor writes.
+    pub state_file: Option<std::path::PathBuf>,
 }
 
 impl Default for Levels {
     fn default() -> Self {
-        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), closed: BTreeSet::new() }
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), closed: BTreeSet::new(), state_file: None }
     }
 }
 
@@ -381,9 +384,97 @@ impl Plugin for LevelsPlugin {
         app.on_ts_section_applied(bevy_ts_tsx::SECTION, after_generation);
         app.on_ts_restart(after_restart);
         app.insert_resource(bevy_ts_tsx::protocol::TreeProvenance(tree_level));
-        app.add_systems(Startup, open_pending);
+        app.init_resource::<EditorStateWritten>();
+        app.add_systems(Startup, (restore_editor_state, open_pending).chain());
+        app.add_systems(Last, write_editor_state);
         app.add_systems(Update, watch.before(bevy_ts::BevyTsSet::Update));
     }
+}
+
+/// The editor's levels as `.bevy-ts/editor.json` holds them.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EditorState {
+    pub version: u32,
+    /// Every open level whose opener is `editor`.
+    pub open: BTreeSet<String>,
+    /// Every level `level_close` closed and nothing reopened.
+    pub closed: BTreeSet<String>,
+}
+
+impl EditorState {
+    pub const VERSION: u32 = 1;
+
+    /// What `levels` remembers now.
+    pub fn of(levels: &Levels) -> Self {
+        let open = levels.roots.iter().filter(|(_, r)| r.opener == Opener::Editor).map(|(p, _)| p.clone()).collect();
+        EditorState { version: Self::VERSION, open, closed: levels.closed.clone() }
+    }
+}
+
+/// The state last read or written, so a frame that changed nothing writes nothing.
+#[derive(Resource, Default)]
+struct EditorStateWritten(EditorState);
+
+/// Reads the state file: `closed` first, so nothing below or a generation reopens those, then
+/// each `open` path as the editor's. A level opens as `add_level`'s do, composing once its files
+/// load and the first generation has its components; one that no longer composes stays open with
+/// its error. A path that is no longer a file is skipped and so left out of the next write.
+fn restore_editor_state(world: &mut World) {
+    let Some(file) = world.resource::<Levels>().state_file.clone() else { return };
+    // Neither set, as a file that does not read starts: nothing is written until one changes.
+    let empty = EditorState { version: EditorState::VERSION, ..Default::default() };
+    world.resource_mut::<EditorStateWritten>().0 = empty.clone();
+    let state = match std::fs::read(&file) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => empty,
+        Err(e) => {
+            eprintln!("bevy-ts: {}: {e}; starting with no editor levels", file.display());
+            return;
+        }
+        Ok(bytes) => match serde_json::from_slice::<EditorState>(&bytes) {
+            Ok(s) if s.version == EditorState::VERSION => s,
+            Ok(s) => {
+                eprintln!("bevy-ts: {}: unknown version {}; starting with no editor levels", file.display(), s.version);
+                return;
+            }
+            Err(e) => {
+                eprintln!("bevy-ts: {}: {e}; starting with no editor levels", file.display());
+                return;
+            }
+        },
+    };
+    world.resource_mut::<EditorStateWritten>().0 = state.clone();
+    let root = world.resource::<Levels>().asset_root.clone();
+    let exists = |p: &String| asset_path(p).is_some_and(|a| root.join(a).is_file());
+    world.resource_mut::<Levels>().closed = state.closed.iter().filter(|p| exists(p)).filter_map(|p| asset_path(p)).collect();
+    for p in &state.open {
+        match asset_path(p).filter(|_| exists(p)) {
+            Some(path) => open(world, &path, Opener::Editor),
+            None => eprintln!("bevy-ts: {}: {p}: no such level; not reopened", file.display()),
+        }
+    }
+}
+
+/// Writes the state file when what it remembers changed: to a temporary file, renamed over it,
+/// so the file is always whole.
+fn write_editor_state(levels: Res<Levels>, mut written: ResMut<EditorStateWritten>) {
+    let Some(file) = &levels.state_file else { return };
+    let now = EditorState::of(&levels);
+    if now == written.0 {
+        return;
+    }
+    let tmp = file.with_extension("json.tmp");
+    let write = || -> std::io::Result<()> {
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(&tmp, serde_json::to_vec_pretty(&now).expect("editor state serializes"))?;
+        std::fs::rename(&tmp, file)
+    };
+    if let Err(e) = write() {
+        eprintln!("bevy-ts: {}: {e}", file.display());
+    }
+    // Once per change, not once per frame, even when the write failed.
+    written.0 = now;
 }
 
 fn open_pending(world: &mut World) {
@@ -732,6 +823,11 @@ fn log(world: &mut World, level: LogLevel, e: &ScriptError) {
 /// Composes and reconciles every dirty level whose files are loaded. A level that fails stays
 /// exactly as it was (rule 8).
 pub fn reconcile_dirty(world: &mut World) {
+    // Before the first generation the schema knows no component: a level opened at `Startup`
+    // (`add_level`, or one the editor remembered) composes once one is live.
+    if world.get_resource::<bevy_ts::generation::Generations>().is_some_and(|g| g.live == 0) {
+        return;
+    }
     let ready: Vec<String> = {
         let levels = world.resource::<Levels>();
         let server = world.resource::<AssetServer>();

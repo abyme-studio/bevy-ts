@@ -297,6 +297,8 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
         app.insert_state(bevy_ts::EngineMode::Edit);
         app.world_mut().resource_mut::<bevy_ts::generation::Generations>().started = false;
         app.world_mut().resource_mut::<bevy_ts::runtime::ScriptClock>().paused = true;
+        // The levels the editor left open and closed come back, and every change is remembered.
+        app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().state_file = Some(compiler.root.join(".bevy-ts/editor.json"));
     }
     app.run();
 }
