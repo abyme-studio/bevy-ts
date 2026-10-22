@@ -36,4 +36,4 @@
 ## 5. Docs and gate
 
 - [x] 5.1 `docs/viewport.md`: the game view (what it shows, what is off, `auto` vs `editor`, Play and Stop, `gameCameras` and "No cameras rendering"), the `cameras` cause, and for the studio the minor to check
-- [ ] 5.2 Workspace gate once, last: build, tests (viewport's render tests one at a time), clippy
+- [x] 5.2 Workspace gate once, last: build, tests (viewport's render tests one at a time), clippy
