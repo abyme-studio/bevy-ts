@@ -390,6 +390,9 @@ fn patch(world: &mut World, binding: u32, v: Value) {
         crate::ui::update(world, e, kind, &old, &new).map(|_| ())
     } else if key == resolve::MESH || key == resolve::MATERIAL || key == resolve::NAME {
         Err("this prop cannot be bound".to_string())
+    } else if let Some(path) = world.resource::<TsComponents>().live(&key).is_none().then(|| resolve::reflect_path(world.resource::<NativeLayouts>(), &key)).flatten() {
+        // A reflect-tier field: written through reflection, a string in a handle loaded.
+        crate::reflected::write(world, e, &path, &prop, &v).map(|_| ())
     } else {
         // The field's layout, without cloning the component's.
         let field = match world.resource::<TsComponents>().live(&key) {

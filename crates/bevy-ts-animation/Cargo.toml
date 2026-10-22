@@ -1,0 +1,15 @@
+[package]
+name = "bevy-ts-animation"
+description = "Scene animation for bevy-ts: PlayAnimation plays a glTF clip on a scene's animation players, wired in Rust the way Bevy's examples do"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "bevy_ts_animation"
+
+[dependencies]
+bevy = { workspace = true, features = ["3d"] }
+
+[dev-dependencies]
+bevy = { workspace = true, features = ["3d"] }

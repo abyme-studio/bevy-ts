@@ -446,7 +446,9 @@ export type Child = import("bevy-ts/jsx-runtime").Child;
  * (`f`, written on insert and whenever the declared value changes; `() => value` binds it) or
  * initial (`initialF`, written on insert only). Giving both for one field is a type error for
  * components of up to 12 fields (TS expands the alternatives per field); larger components
- * take both spellings in types and fail at load instead.
+ * take both spellings in types and fail at load instead. A Rust component that is a tuple struct
+ * of one field takes that field as `value` (`<WorldAssetRoot value="models/Fox.glb#Scene0" />`),
+ * as `Name` does; a `Handle<T>` field takes an asset path.
  */
 /** One field's initial value: vectors take a tuple or a vector. */
 type InitOf<V> = V extends Vec3 ? Vec3Like : V extends Quat ? readonly [number, number, number, number] | ReadonlyQuat : V;

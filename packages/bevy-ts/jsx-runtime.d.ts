@@ -226,6 +226,8 @@ export declare namespace JSX {
     ? P
     : C extends { readonly __nameElement: true }
       ? { value: string } & KeyAttribute
+      : C extends { readonly __element: infer E }
+      ? ElementProps<E> & KeyAttribute
       : C extends { scene(props: infer Props): unknown } & (abstract new () => infer I)
       ? ElementProps<I> & Props & KeyAttribute
       : C extends abstract new () => infer I

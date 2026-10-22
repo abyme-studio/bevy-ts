@@ -15,6 +15,9 @@ without recompiling Rust.
 - **`bevy-ts dev src/game.ts`** launches the engine, loads the TypeScript and hot reloads it.
 - **Game UI is bevy_ui in TSX**: `<node>`, `<text>`, `<image>`, `<button>` with Bevy's layout,
   grid, gradients and shadows, each prop writing one component ([docs/ui.md](docs/ui.md)).
+- **Animated glTF models without Rust**: `<PlayAnimation clip="models/Fox.glb#Animation2" />`
+  beside a `WorldAssetRoot` plays a clip, cross-fading when it changes
+  ([docs/animation.md](docs/animation.md)).
 - **Custom materials without Rust**: a params schema in TS and the shader in a `.wgsl` file,
   hot reloaded ([docs/materials.md](docs/materials.md)).
 - **npm packages**: a script imports an ES module package by name; bevy-ts resolves it at compile

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "bevy-ts",
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "paths": { "bevy-ts": ["../../packages/bevy-ts/index.d.ts"], "bevy-ts/*": ["../../packages/bevy-ts/*.d.ts"] }
+  },
+  "include": ["src"]
+}

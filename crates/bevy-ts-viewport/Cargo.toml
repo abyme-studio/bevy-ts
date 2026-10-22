@@ -14,6 +14,7 @@ bevy-ts.workspace = true
 bevy-ts-remote.workspace = true
 bevy-ts-tsx.workspace = true
 bevy-ts-levels.workspace = true
+bevy-ts-animation.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

@@ -187,8 +187,32 @@ pub fn script_material(c: &ComponentDesc) -> Result<ScriptMaterialDesc, ScriptEr
     Ok(ScriptMaterialDesc { kind, props, gltf_material })
 }
 
+/// A one-field tuple struct's element (`<WorldAssetRoot value="..." />`): `value` is field `0`,
+/// and no other prop exists. A level's patch (`WorldAssetRoot("...")`) arrives as `0` itself.
+fn newtype_props(c: &ComponentDesc) -> Result<ComponentDesc, ScriptError> {
+    let mut out = c.clone();
+    out.props = Map::new();
+    for (prop, v) in &c.props {
+        if prop != "value" && prop != "0" {
+            return Err(err(format!("{} takes `value`, not {prop}: it is a tuple struct of one field (<{} value={{...}} />)", c.ty, c.ty), &at(c, prop)));
+        }
+        out.props.insert("0".into(), v.clone());
+    }
+    if let Some(at) = out.overrides.remove("value").or_else(|| out.overrides.remove("0")) {
+        out.overrides.insert("0".into(), at);
+    }
+    Ok(out)
+}
+
 /// Resolves one component element: bound props first, then the rest by kind.
 pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> Result<Resolved, ScriptError> {
+    let newtype;
+    let c = if c.kind == ComponentKind::Rust && c.ty != NAME && native.is_newtype(&c.ty) {
+        newtype = newtype_props(c)?;
+        &newtype
+    } else {
+        c
+    };
     let mut bound = BTreeMap::new();
     let mut sites = BTreeMap::new();
     let mut rest = c.clone();
@@ -224,6 +248,8 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> 
                     .map_err(|e| err(format!("<{}> {e}", c.ty), &c.source))?;
             }
         }
+        // Checked against the type by reflection when a value arrives.
+        Target::Reflect { .. } => {}
         _ => return Err(err(format!("<{}> props cannot be bound yet; bind a component field or a UI prop", c.ty), &c.source)),
     }
     r.bound = bound;
@@ -260,13 +286,8 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
             let Some(Value::String(s)) = v else { return Err(err("<Name> needs value=\"...\" (a string)", &c.source)) };
             Ok(resolved(Target::Name, (BTreeMap::from([("value".to_string(), Value::String(s))]), BTreeMap::new(), BTreeMap::new())))
         }
-        // Reflect-tier components, and layout-tier ones whose holes may own heap data (a handle):
-        // never inserted from bytes.
-        ComponentKind::Rust if native.get(&c.ty).map_or(native.reflect_tier(&c.ty).is_some(), |n| !n.insertable) => {
-            let type_path = match native.get(&c.ty) {
-                Some(n) => n.type_path.clone(),
-                None => native.reflect_tier(&c.ty).expect("checked").type_path.clone(),
-            };
+        ComponentKind::Rust if reflect_path(native, &c.ty).is_some() => {
+            let type_path = reflect_path(native, &c.ty).expect("checked");
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(resolved(Target::Reflect { type_path }, (controlled, BTreeMap::new(), BTreeMap::new())))
         }
@@ -307,6 +328,15 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(resolved(Target::Ui(kind), (controlled, BTreeMap::new(), BTreeMap::new())))
         }
+    }
+}
+
+/// The type path a Rust component is written by reflection under: reflect-tier components, and
+/// layout-tier ones whose holes may own heap data (a handle), which are never inserted from bytes.
+pub fn reflect_path(native: &NativeLayouts, ty: &str) -> Option<String> {
+    match native.get(ty) {
+        Some(n) => (!n.insertable).then(|| n.type_path.clone()),
+        None => native.reflect_tier(ty).map(|r| r.type_path.clone()),
     }
 }
 

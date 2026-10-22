@@ -10,6 +10,7 @@ use crate::ring::ViewportWindow;
 use crate::shared::{Shared, SharedRes};
 use bevy::animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex};
 use bevy::asset::LoadState;
+use bevy_ts_animation::players;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Exposure, RenderTarget};
 use bevy::light::EnvironmentMapLight;
@@ -522,20 +523,6 @@ fn settle(world: &mut World) {
         attach_graph(world, id);
         world.resource_mut::<Previews>().open.get_mut(&id).unwrap().framed = true;
     }
-}
-
-fn players(world: &mut World, root: Entity) -> Vec<Entity> {
-    let mut out = vec![];
-    let mut stack = vec![root];
-    while let Some(e) = stack.pop() {
-        if world.get::<AnimationPlayer>(e).is_some() {
-            out.push(e);
-        }
-        if let Some(c) = world.get::<Children>(e) {
-            stack.extend(c.iter());
-        }
-    }
-    out
 }
 
 fn attach_graph(world: &mut World, id: u32) {

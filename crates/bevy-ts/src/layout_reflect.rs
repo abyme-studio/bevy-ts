@@ -290,6 +290,9 @@ fn tier(world: &mut World, reg: &TypeRegistration, native: &mut NativeLayouts) -
     let Some(rc) = reg.data::<ReflectComponent>().cloned() else { return true };
     let path = reg.type_info().type_path().to_string();
     let short = reg.type_info().type_path_table().short_path().to_string();
+    if matches!(reg.type_info(), bevy::reflect::TypeInfo::TupleStruct(t) if t.field_len() == 1) {
+        native.mark_newtype(&path);
+    }
     if native.get(&path).is_some() {
         return true;
     }

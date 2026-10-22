@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen", "crates/bevy-ts-tsx", "crates/bevy-ts-native", "crates/bevy-ts-native-derive", "crates/bevy-ts-viewport", "crates/bevy-ts-levels", "crates/bevy-ts-material"]
+members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen", "crates/bevy-ts-tsx", "crates/bevy-ts-native", "crates/bevy-ts-native-derive", "crates/bevy-ts-viewport", "crates/bevy-ts-levels", "crates/bevy-ts-material", "crates/bevy-ts-animation"]
 exclude = ["bench", "crates/bevy-ts-rapier3d"]
 
 [workspace.package]
@@ -25,6 +25,7 @@ bevy-ts-cli = { path = "crates/bevy-ts-cli" }
 bevy-ts-viewport = { path = "crates/bevy-ts-viewport" }
 bevy-ts-levels = { path = "crates/bevy-ts-levels" }
 bevy-ts-material = { path = "crates/bevy-ts-material" }
+bevy-ts-animation = { path = "crates/bevy-ts-animation" }
 
 [profile.dev]
 opt-level = 1

@@ -20,15 +20,19 @@ test("examples --json lists the shipped examples, cube first, with no engine", (
   expect(r.status).toBe(0);
   const out = JSON.parse(r.stdout);
   expect(out.version).toBe(version);
-  expect(out.examples.map((e: { id: string }) => e.id)).toEqual(["cube", "arena"]);
+  expect(out.examples.map((e: { id: string }) => e.id)).toEqual(["cube", "arena", "foxes"]);
+  // A thumbnail is listed, as an absolute path, only for an example that ships one: foxes.
   for (const e of out.examples) {
-    expect(Object.keys(e).sort()).toEqual(["description", "entry", "id", "title"]);
+    const keys = ["description", "entry", "id", "title", ...(e.id === "foxes" ? ["thumbnail"] : [])];
+    expect(Object.keys(e).sort()).toEqual(keys.sort());
   }
+  expect(out.examples[2].thumbnail).toMatch(/^\/.*\/examples\/foxes\/thumbnail\.png$/);
   expect(out.examples[0].entry).toBe("src/game.ts");
   expect(out.examples[1].entry).toBe("src/game.tsx");
+  expect(out.examples[2].entry).toBe("src/game.tsx");
 });
 
-test.each(["cube", "arena"])("new --example %s makes a project that type-checks against the package", (id) => {
+test.each(["cube", "arena", "foxes"])("new --example %s makes a project that type-checks against the package", (id) => {
   const dir = join(scratch(), "my-game");
   const r = run("new", dir, "--example", id, "--no-install", "--json");
   expect(r.status, r.stderr).toBe(0);
@@ -67,7 +71,7 @@ test("new refuses an unknown example, names the known ones and writes nothing", 
   const dir = join(scratch(), "game");
   const r = run("new", dir, "--example", "nope", "--json");
   expect(r.status).toBe(1);
-  expect(r.stderr).toMatch(/cube, arena/);
+  expect(r.stderr).toMatch(/cube, arena, foxes/);
   expect(r.stdout).toBe("");
   expect(existsSync(dir)).toBe(false);
 });
@@ -84,7 +88,7 @@ test("new reports a failed install, leaves the project and exits 1", () => {
   expect(existsSync(join(dir, "src/game.ts"))).toBe(true);
 });
 
-test("the packed package holds cube and arena and nothing else from examples/", () => {
+test("the packed package holds cube, arena and foxes and nothing else from examples/", () => {
   const out = execFileSync("npm", ["pack", "--dry-run", "--json"], { cwd: pkg, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   const files: string[] = JSON.parse(out.slice(out.indexOf("[")))[0].files.map((f: { path: string }) => f.path);
   const examples = files.filter((f) => f.startsWith("examples/"));
@@ -92,6 +96,9 @@ test("the packed package holds cube and arena and nothing else from examples/", 
   expect(examples).toContain("examples/cube/example.json");
   expect(examples).toContain("examples/arena/src/game.tsx");
   expect(examples).toContain("examples/arena/assets/levels/arena.bsn");
+  expect(examples).toContain("examples/foxes/src/game.tsx");
+  expect(examples).toContain("examples/foxes/assets/models/Fox.glb");
+  expect(examples).toContain("examples/foxes/README.md");
   for (const f of examples) {
     expect(f).not.toMatch(/rapier|thrusters|WALK\.md|walk\.mjs|tsconfig\.json/);
   }

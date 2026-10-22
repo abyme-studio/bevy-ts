@@ -264,6 +264,9 @@ pub struct NativeLayouts {
     /// Short name to type paths, for lookups by short name.
     short: HashMap<String, Vec<String>>,
     reflect_tier: HashMap<String, ReflectTier>,
+    /// Type paths of tiered components that are tuple structs of one field (`WorldAssetRoot`):
+    /// TSX gives that field as the prop `value`.
+    newtypes: std::collections::HashSet<String>,
     /// Set once the registry has been filled from the type registry.
     pub filled: bool,
 }
@@ -287,6 +290,15 @@ impl NativeLayouts {
     /// A reflect-tier component by type path or unambiguous short name, with the reason.
     pub fn reflect_tier(&self, name: &str) -> Option<&ReflectTier> {
         self.path_of(name).and_then(|p| self.reflect_tier.get(p))
+    }
+
+    /// Whether the component is a tuple struct of one field.
+    pub fn is_newtype(&self, name: &str) -> bool {
+        self.path_of(name).is_some_and(|p| self.newtypes.contains(p))
+    }
+
+    pub(crate) fn mark_newtype(&mut self, path: &str) {
+        self.newtypes.insert(path.to_string());
     }
 
     /// Short names more than one tiered type shares, with their paths.

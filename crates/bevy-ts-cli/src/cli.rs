@@ -235,6 +235,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(dev))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
+        .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
         .add_systems(Update, headless::screenshot_on_request)
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))

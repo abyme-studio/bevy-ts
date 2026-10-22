@@ -1,0 +1,6 @@
+{
+  "id": "foxes",
+  "title": "Foxes",
+  "description": "A grid of animated glTF foxes in TSX: PlayAnimation plays a clip on each, and a button cross-fades them all between survey, walk and run.",
+  "entry": "src/game.tsx"
+}

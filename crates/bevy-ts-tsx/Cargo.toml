@@ -17,4 +17,4 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-bevy = { workspace = true, features = ["bevy_scene"] }
+bevy = { workspace = true, features = ["bevy_scene", "bevy_world_serialization"] }

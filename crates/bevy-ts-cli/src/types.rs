@@ -29,6 +29,7 @@ fn types_app(engine: &Engine, extra: impl Plugin) -> App {
     app.add_plugins(BevyTsPlugin::new(move || Box::new(fake.backend())))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
+        .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     app
@@ -301,6 +302,17 @@ fn field_js(t: &FieldType) -> String {
     }
 }
 
+/// A reflect-tier component's element props as `Reflected`'s argument: its named fields, or
+/// `value` for a tuple struct of one field (`<WorldAssetRoot value="..." />`); none otherwise.
+fn element_props(registry: &TypeRegistry, reg: &TypeRegistration) -> String {
+    let fields: Vec<String> = match reg.type_info() {
+        TypeInfo::Struct(st) => st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(registry, f.type_path(), 1))).collect(),
+        TypeInfo::TupleStruct(t) if t.field_len() == 1 => vec![format!("value: {}", ts_type(registry, t.field_at(0).unwrap().type_path(), 1))],
+        _ => vec![],
+    };
+    if fields.is_empty() { String::new() } else { format!("<{{ {} }}>", fields.join("; ")) }
+}
+
 /// `bevy-ts/bevy` for the prebuilt engine (native task 3.5): a JS module of handles and its
 /// declarations, generated from the engine's registry. Layout-tier components are column
 /// classes, reflect-tier ones handles for filters and TSX. `Transform` and `Time` come from
@@ -320,7 +332,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         "{head}// `bevy-ts/bevy`: Rust components TS can name.\n\
          import {{ Component, ReflectComponent }} from \"bevy-ts\";\n\
          import type {{ bool, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
-         type Reflected = abstract new () => ReflectComponent;\n\n\
+         type Reflected<F = {{}}> = abstract new () => ReflectComponent & F;\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
     for (path, name, reg) in named(&registry, native) {
@@ -344,6 +356,19 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                     let _ = writeln!(dts, "/** {} */", notes.join(" ").replace("*/", "* /"));
                 }
                 let _ = writeln!(dts, "export declare class {name} extends Component {{\n  static readonly path: {path:?};\n  static readonly native: true;");
+                // An element's props where they are not the columns: a tuple struct of one field
+                // takes `value`; a component never inserted from bytes is written through
+                // reflection, holes included.
+                let element = match reg.type_info() {
+                    TypeInfo::TupleStruct(t) if t.field_len() == 1 => n.layout.fields.first().map(|f| format!("value: {}", field_ts(&f.ty))),
+                    TypeInfo::Struct(st) if !n.insertable && !n.holes.is_empty() => Some(
+                        st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(&registry, f.type_path(), 1))).collect::<Vec<_>>().join("; "),
+                    ),
+                    _ => None,
+                };
+                if let Some(props) = element {
+                    let _ = writeln!(dts, "  /** Its props as an element. */\n  static readonly __element: {{ {props} }};");
+                }
                 for f in &n.layout.fields {
                     let ro = if f.ty.lanes().is_some() || !n.writable { "readonly " } else { "" };
                     let _ = writeln!(dts, "  declare {ro}{}: {};", prop(&f.name), field_ts(&f.ty));
@@ -364,7 +389,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                     let _ = writeln!(dts, "/** `Name`; as an element, `<Name value=\"...\" />` (or `<entity name=\"...\">`). */");
                     let _ = writeln!(dts, "export declare const Name: Reflected & {{ readonly __nameElement: true }};");
                 } else {
-                    let _ = writeln!(dts, "export declare const {name}: Reflected;");
+                    let _ = writeln!(dts, "export declare const {name}: Reflected{};", element_props(&registry, reg));
                 }
                 let _ = writeln!(dts, "export type {name} = InstanceType<typeof {name}>;");
             }
