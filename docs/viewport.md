@@ -18,6 +18,8 @@ surfaces, pacing, input queue and counters.
   take an optional `viewport`; without one they mean the game viewport, so a 1.7 client is
   unchanged.
 - The virtual primary window, edit mode, picking and edits belong to the game viewport alone.
+- Under `--headless` there is no viewport, but `viewport_input` is served for `pointer` events,
+  onto the offscreen image ([picking.md](picking.md)).
 - A viewport renders only while attached and visible. The leading viewer's ticks pace the engine:
   the game's while it is visible, else the first visible preview's. A preview never adds updates
   to a visible game; it renders in the game's frame.

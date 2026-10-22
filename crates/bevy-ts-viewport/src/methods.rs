@@ -9,7 +9,7 @@ use bevy_ts_remote::protocol;
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 
-pub const CRATE: &str = "bevy-ts-viewport";
+pub use crate::CRATE;
 
 pub(crate) fn invalid(message: impl Into<String>) -> BrpError {
     BrpError { code: error_codes::INVALID_PARAMS, message: message.into(), data: None }

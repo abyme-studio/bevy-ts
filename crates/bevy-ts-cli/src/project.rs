@@ -1,6 +1,6 @@
 //! `bevy-ts.json`: the project file. Found by walking up from the entry (or the working
-//! directory). Only `native`, `features` and `engineCache` concern the engine; `name` and
-//! `entry` concern `bevy-ts build`.
+//! directory). Only `native`, `features` and `engineCache` concern the engine build; `name` and
+//! `entry` concern `bevy-ts build`; `levels` and `meshPicking` are read when the game runs.
 //!
 //! ```jsonc
 //! {
@@ -13,7 +13,9 @@
 //!     "crates": { "bevy_kira_audio": { "version": "0.27", "plugin": "bevy_kira_audio::AudioPlugin" } }
 //!   },
 //!   "features": [],                            // Bevy features the engine adds
-//!   "engineCache": "/mnt/team/engines"         // a shared directory of built engines
+//!   "engineCache": "/mnt/team/engines",        // a shared directory of built engines
+//!   "levels": { "prefabEdits": "override" },   // where an edit inside a placed prefab goes
+//!   "meshPicking": true                        // Bevy's MeshPickingPlugin; baked into a build
 //! }
 //! ```
 
@@ -72,6 +74,17 @@ pub struct ProjectConfig {
     pub engine_cache: Option<String>,
     #[serde(default)]
     pub levels: LevelsConfig,
+    /// Adds Bevy's `MeshPickingPlugin`: 3D meshes take pointer events. Off by default, as in Bevy.
+    #[serde(default, rename = "meshPicking", deserialize_with = "mesh_picking")]
+    pub mesh_picking: bool,
+}
+
+/// `meshPicking` as a bool, its error naming the field (serde's names only the type).
+fn mesh_picking<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    match serde_json::Value::deserialize(d)? {
+        serde_json::Value::Bool(b) => Ok(b),
+        v => Err(serde::de::Error::custom(format!("meshPicking must be true or false, not {v}"))),
+    }
 }
 
 /// `levels` in `bevy-ts.json`.
@@ -207,5 +220,14 @@ mod tests {
         assert_eq!(c.entry.as_deref(), Some("src/main.ts"));
         let c = parse("{}").unwrap();
         assert!(c.name.is_none() && c.entry.is_none());
+    }
+
+    #[test]
+    fn mesh_picking_is_a_bool_off_by_default() {
+        assert!(!parse("{}").unwrap().mesh_picking);
+        assert!(parse(r#"{ "meshPicking": true }"#).unwrap().mesh_picking);
+        assert!(!parse(r#"{ "meshPicking": false }"#).unwrap().mesh_picking);
+        let e = parse(r#"{ "meshPicking": "yes" }"#).unwrap_err();
+        assert!(e.contains("meshPicking") && e.contains("\"yes\""), "{e}");
     }
 }

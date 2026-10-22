@@ -3,7 +3,9 @@
 //! `bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]]`,
 //! `bevy-ts build`, `bevy-ts play`, and a bare start that plays the `game/` beside the binary.
 
+use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
 use bevy::prelude::*;
+use bevy_ts_tsx::picking::TsxHandlers;
 use bevy_ts::backend::{CompiledModule, ModuleSet};
 use bevy_ts::generation::{DevChannel, DevEvent, DevSource};
 use bevy_ts::runtime::RuntimeInfo;
@@ -193,8 +195,10 @@ pub enum Display {
 /// Bevy's default plugins, bevy-ts and tsx, then `extra` (the project's plugins), so they can
 /// order against `BevyTsSet` and see bevy-ts's resources. `assets` is Bevy's asset root, the
 /// project's `assets/` under `bevy-ts dev`; `None` keeps Bevy's default. `dev` runs bevy-ts in dev
-/// mode and watches the assets; a shipped game runs with neither.
-pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool) -> App {
+/// mode and watches the assets; a shipped game runs with neither. `mesh_picking` adds Bevy's
+/// `MeshPickingPlugin` (`bevy-ts.json`'s, or `game.json`'s, `meshPicking`): the one place it is
+/// added, so dev and play cannot differ.
+pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, mesh_picking: bool) -> App {
     let mut app = App::new();
     let plugins = headless::default_plugins(display != Display::Window);
     // The compute pool runs the frame's systems: its threads are raised with the main thread's
@@ -233,8 +237,13 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
         .add_systems(Update, headless::screenshot_on_request)
+        .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
+    // After `extra`: a native crate that adds it itself keeps its own settings.
+    if mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
+        app.add_plugins(MeshPickingPlugin);
+    }
     if let Some(root) = assets {
         app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
         // The asset list, thumbnails and previews read the project's assets, not the binary's.
@@ -244,6 +253,27 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         }
     }
     app
+}
+
+/// Names, once per process, a mesh with a pointer handler while nothing picks meshes: its
+/// `onPointer*` would never fire. Checks the resource, not the switch, so a native crate that adds
+/// `MeshPickingPlugin` itself is not warned.
+fn warn_mesh_handlers(
+    added: Query<(Entity, Option<&Name>), (With<Mesh3d>, With<TsxHandlers>, Or<(Added<Mesh3d>, Added<TsxHandlers>)>)>,
+    log: Option<ResMut<bevy_ts::log::ScriptLog>>,
+    generations: Option<Res<bevy_ts::generation::Generations>>,
+    mut warned: Local<bool>,
+) {
+    if *warned {
+        return;
+    }
+    let (Some((e, name)), Some(mut log)) = (added.iter().next(), log) else { return };
+    *warned = true;
+    let name = name.map(|n| format!(" \"{n}\"")).unwrap_or_default();
+    let message = format!(
+        "entity {e}{name} has a pointer handler on a mesh, but mesh picking is off: it never fires. Set \"meshPicking\": true in bevy-ts.json"
+    );
+    log.push(bevy_ts::log::LogLevel::Warn, message, None, generations.map_or(0, |g| g.live));
 }
 
 /// Whether the app carries the studio's viewport tooling (edit, assets, previews): under `bevy-ts
@@ -273,18 +303,29 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     } else {
         Display::Window
     };
+    let project = match crate::project::find(&compiler.root) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("bevy-ts dev: {e}");
+            std::process::exit(1);
+        }
+    };
+    let mesh_picking = project.as_ref().is_some_and(|p| p.config.mesh_picking);
     let assets = headless::asset_root(&compiler.root);
-    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true);
+    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, mesh_picking);
     // Compile only once the plugins have exported their params: the compile step reads them as
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);
     app.insert_resource(channel).insert_resource(DevSource(compiler.clone()));
-    if let Ok(Some(project)) = crate::project::find(&compiler.root)
-        && project.config.levels.prefab_edits.as_deref() == Some("source")
-    {
+    if project.is_some_and(|p| p.config.levels.prefab_edits.as_deref() == Some("source")) {
         app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().prefab_edits = bevy_ts_levels::PrefabEdits::Source;
     }
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
+    if display == Display::Headless {
+        // Pointer input over `bevy-ts/viewport_input`, onto the image the cameras render into.
+        let image = app.world().resource::<headless::Offscreen>().0.clone();
+        app.add_plugins(bevy_ts_viewport::offscreen::OffscreenPointerPlugin { image });
+    }
     bevy_ts_tsx::protocol::add_methods(&mut app);
     bevy_ts_levels::protocol::add_methods(&mut app);
     {
@@ -335,7 +376,7 @@ fn skeleton(engine: &Engine, extra: impl Plugin, headless_mode: bool) {
     let set = ModuleSet { entry: path.clone(), modules: vec![CompiledModule { path, code: SKELETON_JS.into(), source_map: None }] };
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).unwrap();
     let display = if headless_mode { Display::Headless } else { Display::Window };
-    let mut app = base_app(engine, extra, display, V8Options::default(), None, true);
+    let mut app = base_app(engine, extra, display, V8Options::default(), None, true, false);
     app.insert_resource(channel)
         .add_systems(Startup, scene)
         .add_systems(PostUpdate, report_changed.after(bevy_ts::BevyTsSet::PostUpdate))

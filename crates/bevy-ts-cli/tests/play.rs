@@ -47,7 +47,7 @@ fn cube_game(name: &str, version: &str) -> PathBuf {
     std::fs::create_dir_all(game.join("assets")).unwrap();
     // Finder litters folders; a shipped game ignores what is not a script.
     std::fs::write(game.join("scripts/src/.DS_Store"), [0xff, 0xfe, 0x00, 0x01]).unwrap();
-    let file = GameFile { name: "cube".into(), entry: "src/game.ts".into(), bevy_ts: version.into(), engine: "prebuilt".into() };
+    let file = GameFile { name: "cube".into(), entry: "src/game.ts".into(), bevy_ts: version.into(), engine: "prebuilt".into(), mesh_picking: false };
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
     game
 }
@@ -106,4 +106,24 @@ fn a_bare_start_with_no_game_prints_the_usage() {
     let out = Command::new(BIN).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("bevy-ts play <game folder>"));
+}
+
+#[test]
+fn game_json_switches_mesh_picking() {
+    use bevy::picking::mesh_picking::MeshPickingSettings;
+    use bevy_ts_cli::cli::{Display, Engine, Prebuilt};
+    let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
+    // A game.json written before the switch has no `meshPicking`, as one built without it.
+    let game = cube_game("play-picking", env!("CARGO_PKG_VERSION"));
+    let text = std::fs::read_to_string(game.join("game.json")).unwrap();
+    assert!(!text.contains("meshPicking"), "{text}");
+    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
+    assert!(!app.world().contains_resource::<MeshPickingSettings>());
+
+    let mut file = bevy_ts_cli::play::read_game(&game).unwrap();
+    file.mesh_picking = true;
+    std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
+    assert!(std::fs::read_to_string(game.join("game.json")).unwrap().contains(r#""meshPicking":true"#));
+    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
+    assert!(app.world().contains_resource::<MeshPickingSettings>());
 }

@@ -2,7 +2,13 @@
 //! renders into a ring of IOSurfaces another process shows, paced by that process's display,
 //! taking its input over the same Mach channel.
 //!
-//! macOS only. On other platforms the crate builds empty and [`supported`] is false.
+//! macOS only, but for [`offscreen`]: the headless pointer, built everywhere. On other platforms
+//! [`supported`] is false.
+
+/// The crate the protocol contract names as owner of every `bevy-ts/viewport_*` method.
+pub const CRATE: &str = "bevy-ts-viewport";
+
+pub mod offscreen;
 
 #[cfg(target_os = "macos")]
 pub mod assets;

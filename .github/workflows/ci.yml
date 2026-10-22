@@ -14,3 +14,13 @@ jobs:
         run: scripts/gen-protocol.sh --check
       - name: TS types
         run: cd packages/bevy-ts && pnpm check
+  # The headless click (mesh-picking) on Linux, rendering through Mesa's software Vulkan.
+  headless-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Bevy's build dependencies and a software Vulkan
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-config mesa-vulkan-drivers
+      - name: Click a mesh headless
+        run: cargo test -p bevy-ts-cli --test headless_pointer

@@ -28,6 +28,13 @@ pub struct GameFile {
     pub bevy_ts: String,
     /// `prebuilt`, or the project engine's hash.
     pub engine: String,
+    /// `bevy-ts.json`'s `meshPicking`, absent when off.
+    #[serde(default, rename = "meshPicking", skip_serializing_if = "is_false")]
+    pub mesh_picking: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 /// The game folder beside the running executable, when it holds a `game.json`.
@@ -105,12 +112,13 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
 /// queued: bevy-ts in non-dev mode, assets unwatched, no protocol, inspector or studio tools.
 pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display) -> Result<App, String> {
     let folder = std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf());
-    let set = read_game(&folder).and_then(|game| read_scripts(&folder, &game))?;
+    let game = read_game(&folder)?;
+    let set = read_scripts(&folder, &game)?;
     let entry = set.entry.clone();
     let (tx, channel) = DevChannel::new();
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).expect("the channel is open");
     let assets = folder.join("assets");
-    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false);
+    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.mesh_picking);
     app.insert_resource(channel);
     app.world_mut().resource_mut::<RuntimeInfo>().entry = Some(entry);
     Ok(app)

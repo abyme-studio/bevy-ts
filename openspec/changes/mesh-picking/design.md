@@ -25,7 +25,7 @@ Research: `openspec/research/mesh-picking.md` (f3eba13). In short:
 
 1. **A runtime plugin, not a Cargo feature.** `meshPicking` is a field of `ProjectConfig`, next to `levels`. `features` means Bevy Cargo features and forces a project engine; this needs neither. Named after Bevy's plugin. Not `"picking": ["mesh"]`: sprite and UI picking are already on, so `mesh` would be the only member.
 
-2. **`base_app` adds it, from either source.** `base_app` gains one argument, `mesh_picking: bool`, and adds `MeshPickingPlugin` when it is set. `run_dev` reads the project once (it already does for `prefabEdits`) and passes the flag; `play::app` passes `game.json`'s. `skeleton` passes `false`. One place adds the plugin, so dev and play cannot drift.
+2. **`base_app` adds it, from either source.** `base_app` gains one argument, `mesh_picking: bool`, and adds `MeshPickingPlugin` when it is set, after `extra` and only if `extra` did not add it (Bevy refuses a unique plugin twice). `run_dev` reads the project once (it already does for `prefabEdits`) and passes the flag; `play::app` passes `game.json`'s. `skeleton` passes `false`. One place adds the plugin, so dev and play cannot drift.
 
 3. **Baked into `game.json`.** `GameFile` gains `mesh_picking: bool`, serialised as `meshPicking`, `#[serde(default, skip_serializing_if = "is_false")]`: a game built without it writes nothing, and an older `game.json` parses. Not an engine hash input: it is not Rust.
 
@@ -33,7 +33,7 @@ Research: `openspec/research/mesh-picking.md` (f3eba13). In short:
    - Alternative: a method of its own (`bevy-ts/pointer`). Rejected: a second owner of pointer input and a protocol bump.
    - Alternative: reuse `ViewportPlugin` with a virtual window. Rejected: macOS-only, and a window pointer misses an image-target camera.
 
-5. **A custom pointer, as Bevy's `render_ui_to_texture` example.** At startup the plugin spawns `(PointerId::Custom(<fixed uuid>), PointerLocation::default())`. The method validates every event first (pointer only, `viewport` none or 0), then queues them in a resource. A system in `PreUpdate`, before `PickingSystems::Input`, pops one event per frame and writes a `PointerInput` with `Location { target: NormalizedRenderTarget::Image(offscreen, scale 1), position: (x, y) }`:
+5. **A custom pointer, as Bevy's `render_ui_to_texture` example.** At startup the plugin spawns `(PointerId::Custom(<fixed uuid>), PointerLocation::default())`. The method validates every event first (pointer only, `viewport` none or 0), then queues them in a resource. A system in `First`, in `PickingSystems::Input` as the example's (the set is in `First`; picking reads it in `PreUpdate`), pops one event per frame and writes a `PointerInput` with `Location { target: NormalizedRenderTarget::Image(offscreen, scale 1), position: (x, y) }`:
    - `move`, `enter` → `PointerAction::Move { delta }` from the last position;
    - `down` / `up` → `Press` / `Release` of `Primary`, `Secondary`, `Middle`; `back`, `forward` ignored;
    - `leave` → `PointerAction::Cancel`.
