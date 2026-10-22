@@ -572,6 +572,10 @@ Children [
 --
 #GruntC
 @enemies::Grunt { @hp: \"lots\" }
+--
+#Crate
+Transform { translation: Vec3 { x: 4.0 } }
+game::Loot { coins: 3 }
 ";
 
 #[test]
@@ -584,12 +588,14 @@ fn placeholders_over_the_wire() {
     let root = "level:levels/squad.bsn";
     let tree = ok_tsx(&mut app);
     // The deleted boss: its row marks it, its saved text and kept overrides are on level_node.
-    assert_eq!(row(&tree, root, &["Boss"])["level"]["missing"], json!([{ "component": "enemies::Boss", "reason": "unregistered" }]), "{tree}");
+    assert_eq!(row(&tree, root, &["Boss"])["level"]["missing"], json!([{ "component": "enemies::Boss", "reason": "unregistered", "scene": true }]), "{tree}");
     assert!(tree["roots"].as_array().unwrap().iter().find(|r| r["name"] == root).unwrap()["nodes"].as_array().unwrap().iter().all(|n| n["keyPath"] != json!(["Boss", "eye"])), "the eye is kept, not spawned");
     row(&tree, root, &["Boss", "hat"]);
     let boss = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["Boss"] })));
     assert_eq!(boss["prefab"], "enemies::Boss", "{boss}");
+    assert_eq!(boss["patches"], json!(["Transform"]), "the row's own scene component is not a patch: {boss}");
     let m = &boss["missing"][0];
+    assert_eq!(m["scene"], true, "{boss}");
     assert_eq!((&m["reason"], &m["fields"], &m["location"]["line"]), (&json!("unregistered"), &json!({ "@hp": "900.0" }), &json!(2)), "{boss}");
     assert_eq!(m["overrides"], json!([{ "path": ["eye"], "fields": { "Transform.translation": "Vec3 { y: 0.8 }" } }]), "{boss}");
     // A scene that throws fails its own instance only.
@@ -602,12 +608,17 @@ fn placeholders_over_the_wire() {
     let c = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["GruntC"] })));
     assert_eq!(c["prefab"], "enemies::Grunt", "{c}");
     assert_eq!((&c["missing"][0]["reason"], &c["missing"][0]["fields"]), (&json!("mismatch"), &json!({ "@hp": "\"lots\"" })), "{c}");
+    // A missing patch component: not the row's scene, and listed with the patches.
+    assert_eq!(row(&tree, root, &["Crate"])["level"]["missing"], json!([{ "component": "game::Loot", "reason": "unregistered" }]), "{tree}");
+    let crate_ = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["Crate"] })));
+    assert!(crate_["missing"][0].get("scene").is_none(), "{crate_}");
+    assert_eq!(crate_["patches"], json!(["Transform", "game::Loot"]), "{crate_}");
     // Diagnostics: a warning per entry on the list and the watch's loaded.
     let list = ok(&mut app, "bevy-ts/level_list", None);
     let warnings: Vec<&str> = list["levels"][0]["diagnostics"].as_array().unwrap().iter().filter_map(|d| d["message"].as_str()).filter(|m| m.starts_with("warning: ")).collect();
-    assert_eq!(warnings.len(), 3, "{list}");
+    assert_eq!(warnings.len(), 4, "{list}");
     let loaded = ok(&mut app, "bevy-ts/level+watch", None);
-    assert_eq!(loaded["diagnostics"].as_array().map(Vec::len), Some(3), "{loaded}");
+    assert_eq!(loaded["diagnostics"].as_array().map(Vec::len), Some(4), "{loaded}");
     // Writes to the boss's props are refused; its text stays.
     let hash = list["levels"][0]["hash"].clone();
     let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/squad.bsn", "base": hash, "ops": [{ "op": "set_prop", "path": ["Boss"], "prop": "hp", "value": 1.0 }] })));

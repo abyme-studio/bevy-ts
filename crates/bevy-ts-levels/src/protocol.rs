@@ -294,8 +294,14 @@ pub(crate) fn node(In(p): In<Option<Value>>, world: &World) -> BrpResult {
         })
         .unwrap_or_default();
     // Components the file adds that its prefab does not give: set where the file writes them,
-    // other than the scene component the entity instances and its `#Name`.
-    let patches: Vec<&String> = n.components.iter().filter(|(k, c)| prefab.as_ref() != Some(*k) && k.as_str() != "Name" && c.source.as_ref().is_some_and(|s| s.file == level)).map(|(k, _)| k).collect();
+    // other than the scene component the entity instances and its `#Name`. A placeholder patch
+    // the file writes is one too, by the name the file writes.
+    let mut patches: Vec<&String> = n.components.iter().filter(|(k, c)| prefab.as_ref() != Some(*k) && k.as_str() != "Name" && c.source.as_ref().is_some_and(|s| s.file == level)).map(|(k, _)| k).collect();
+    for m in missing.iter().filter(|m| !m.scene && m.location.file == level) {
+        if !patches.contains(&&m.component) {
+            patches.push(&m.component);
+        }
+    }
     let mut out = json!({ "level": level, "namePath": n.key_path, "entity": e.to_bits(), "owners": owners, "source": n.source, "overrides": overrides, "prefab": prefab, "props": props, "patches": patches });
     if !missing.is_empty() {
         out["missing"] = json!(missing);

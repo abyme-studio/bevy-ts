@@ -1164,7 +1164,17 @@ fn tree_level(world: &World, e: Entity, n: &TsxNode) -> Option<Value> {
     if let Some(inst) = world.get::<LevelInstance>(e) {
         let mut level = serde_json::json!({ "file": inst.level, "namePath": inst.name_path, "written": inst.written });
         if let Some(m) = world.get::<MissingComponents>(e) {
-            level["missing"] = m.0.iter().map(|m| serde_json::json!({ "component": m.component, "reason": m.reason })).collect();
+            level["missing"] = m
+                .0
+                .iter()
+                .map(|m| {
+                    let mut o = serde_json::json!({ "component": m.component, "reason": m.reason });
+                    if m.scene {
+                        o["scene"] = true.into();
+                    }
+                    o
+                })
+                .collect();
         }
         return Some(level);
     }

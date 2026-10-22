@@ -180,7 +180,7 @@ pub struct MissingComponent {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overrides: Vec<KeptOverride>,
     /// The entity's own scene component, which did not expand.
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub scene: bool,
 }
 

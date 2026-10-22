@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.21.0";
+pub const VERSION: &str = "1.23.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2646,7 +2646,7 @@ pub struct LevelNodeResult {
     pub overrides: ::std::vec::Vec<LevelOverride>,
     ///Every level frame that could hold an edit, outermost first.
     pub owners: ::std::vec::Vec<LevelOwner>,
-    ///(1.12) Components the file adds that the entity's prefab does not give, named as LevelOverride.component names them.
+    ///(1.12) Components the file adds that the entity's prefab does not give, named as LevelOverride.component names them. (1.23) A placeholder patch component the file writes is listed too, by the name the file writes; the entity's own scene component never is.
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub patches: ::std::vec::Vec<::std::string::String>,
     ///The scene component the entity instances, if any; still named when it is a placeholder (1.21).
@@ -3394,6 +3394,9 @@ pub struct MissingComponent {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub overrides: ::std::vec::Vec<MissingComponentOverridesItem>,
     pub reason: MissingReason,
+    ///(1.23) True when the component is the entity's own scene component, the one it instances; absent for a patch component.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub scene: ::std::option::Option<bool>,
 }
 ///`MissingComponentOverridesItem`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -4714,6 +4717,9 @@ pub struct TsxTreeNodeLevelMissingItem {
     ///The name the level writes.
     pub component: ::std::string::String,
     pub reason: MissingReason,
+    ///(1.23) True when the component is the entity's own scene component, the one its row instances; absent for a patch component.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub scene: ::std::option::Option<bool>,
 }
 ///`TsxTreeResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

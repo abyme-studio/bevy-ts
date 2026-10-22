@@ -90,11 +90,15 @@ When a TS generation, a Rust engine or a file change makes the entry resolve, th
 - **THEN** the same entity gains `enemies::Boss` and its expansion, `hp` is 900, and its `tsx_tree` node has no `level.missing`
 
 ### Requirement: Placeholders over the protocol
-Each `bevy-ts/tsx_tree` node of an entity with placeholder entries, in the tree and in `tsx_tree+watch`, SHALL carry `level.missing`: one `{ component, reason }` per entry. `bevy-ts/level_node` SHALL carry `missing`: one `MissingComponent` per entry with `component`, `reason`, `message`, `fields`, `location`, `expected` when known, `misfit` for a `mismatch`, and `overrides` for a scene component with kept overrides. `prefab` SHALL keep naming a missing scene component. `MissingComponent` SHALL have no `schema` in this version. Each entry SHALL also be a warning in the level's diagnostics with its location, on `bevy-ts/level_list`, `bevy-ts/level_open` and `level+watch`'s `loaded`, and in the terminal. These SHALL be additions in the next free protocol minor.
+Each `bevy-ts/tsx_tree` node of an entity with placeholder entries, in the tree and in `tsx_tree+watch`, SHALL carry `level.missing`: one `{ component, reason }` per entry, with `scene: true` on the entry for the entity's own scene component (protocol 1.23); a patch component's entry SHALL have no `scene`. `bevy-ts/level_node` SHALL carry `missing`: one `MissingComponent` per entry with `component`, `reason`, `message`, `fields`, `location`, `expected` when known, `misfit` for a `mismatch`, and `overrides` for a scene component with kept overrides, and `scene: true` as on the row (1.23). `prefab` SHALL keep naming a missing scene component. `patches` SHALL list a placeholder patch component the level writes, by the name the file writes, so a client can offer to remove it (1.23); the entity's own scene component SHALL NOT be listed. `MissingComponent` SHALL have no `schema` in this version. Each entry SHALL also be a warning in the level's diagnostics with its location, on `bevy-ts/level_list`, `bevy-ts/level_open` and `level+watch`'s `loaded`, and in the terminal. These SHALL be additions in the next free protocol minor.
 
 #### Scenario: The boss's row and inspector
 - **WHEN** a client calls `tsx_tree` and then `level_node` for `#Boss` while `enemies::Boss` is deleted
-- **THEN** the node has `level.missing` `[{ component: "enemies::Boss", reason: "unregistered" }]`, and `level_node` has `prefab` `enemies::Boss` and one `missing` entry with `fields` `{ "@hp": "900.0" }` and the line's location
+- **THEN** the node has `level.missing` `[{ component: "enemies::Boss", reason: "unregistered", scene: true }]`, and `level_node` has `prefab` `enemies::Boss`, `patches` `["Transform"]`, and one `missing` entry with `scene: true`, `fields` `{ "@hp": "900.0" }` and the line's location
+
+#### Scenario: A missing patch component
+- **WHEN** `#Crate` writes `Transform { … }` and `game::Loot { coins: 3 }`, and no live code registers `game::Loot`
+- **THEN** the node has `level.missing` `[{ component: "game::Loot", reason: "unregistered" }]` with no `scene`, and `level_node` has `patches` `["Transform", "game::Loot"]`
 
 ### Requirement: Where the code was expected
 `expected` SHALL be the location of the code bevy-ts expected:

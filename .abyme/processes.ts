@@ -101,6 +101,9 @@ export default {
   // The same gate for levels task groups.
   "levels-bench": { cmd: "cargo test --release -p bevy-ts-cli --test levels_bench -- --ignored --nocapture 2>&1 | tee target/levels-bench.log | grep -E '^\\||test result|panicked'" },
   "levels-walks": { cmd: "cargo test --release -p bevy-ts-cli --test levels_walk --test arena_walk -- --nocapture --test-threads 1 2>&1 | grep -vE 'ld64|INFO|WARN|^\\s+\\||^\\s+=' | tee target/levels-walks.log | tail -60" },
+  // Change missing-scene-row: the crates it touches, and the last round before it lands.
+  "missing-scene-row-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-levels && cargo test -p bevy-ts-cli --test levels_protocol --test levels_scene) 2>&1 | grep -v ld64 | tee target/missing-scene-row-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
+  "missing-scene-row-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/missing-scene-row-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
   "levels-protocol": { cmd: "cargo test -p bevy-ts-cli --test levels_protocol 2>&1 | grep -v ld64 | tee target/levels-protocol.log | grep -E 'test |panicked|left|right|assert|^error|^thread' | tail -30" },
   "levels-unit": { cmd: "cargo test -p bevy-ts-levels 2>&1 | grep -v ld64 | tee target/levels-unit.log | grep -E '^test result|FAILED|panicked|^error|left|right' | tail -30" },
   "levels-gate": { cmd: "scripts/levels-gate.sh 2>&1 | tee target/levels-gate.log" },

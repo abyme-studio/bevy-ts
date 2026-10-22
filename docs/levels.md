@@ -143,9 +143,11 @@ The file is the store: the writer splices text, so save, rename, reparent, delet
 keep a placeholder's text byte for byte. `level_write` refuses `set`, `revert`, `set_prop` and
 `revert_prop` on a placeholder (`missing`), except a `set_prop` that sets an unset required prop,
 and any write of a type no live code registers (`unknown`); `remove_component` takes a placeholder by the name the file writes, and its inverse
-puts the text back. `tsx_tree` rows carry `level.missing` (`{ component, reason }`), `level_node`
+puts the text back. `tsx_tree` rows carry `level.missing` (`{ component, reason }`, with
+`scene: true` on the entity's own scene component and none on a patch, 1.23), `level_node`
 carries `missing` (`MissingComponent`: `fields` as saved, `location`, `expected` where the code
-was expected, when this process saw it), and each entry is a `warning:` diagnostic on
+was expected, when this process saw it, and `scene` as on the row), its `patches` list a
+placeholder patch by the name the file writes (1.23), and each entry is a `warning:` diagnostic on
 `level_list`, `level_open`, `level+watch`'s `loaded` and the terminal.
 
 Tolerance stops at broken files: a parse error, a duplicate name, an inclusion cycle, a missing
