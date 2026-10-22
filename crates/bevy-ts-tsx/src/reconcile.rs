@@ -20,6 +20,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// A description node resolved against the live components, with its identity.
+#[derive(Clone, Debug)]
 pub struct RNode {
     pub id: u64,
     pub path: Vec<String>,
@@ -163,6 +164,8 @@ pub fn apply_root(
         apply_node(world, &mut tree, root, n, parent, &mut seen, &mut stats, &mut slots);
     }
     let state = tree.roots.entry(root.to_string()).or_default();
+    // Applied since the game started: a Stop cannot trust what the start recorded.
+    state.baseline = None;
     // Sibling lists whose order changed, by the key path of one of their children.
     let mut lists = Vec::new();
     record_order(&mut state.order, nodes, &mut lists);
@@ -212,6 +215,159 @@ pub fn apply_root(
     tree.reconciles += 1;
     world.insert_resource(tree);
     stats
+}
+
+/// How [`apply_at`] applies each subtree it is given.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AtMode {
+    /// The live subtree despawns and the given one spawns in its place.
+    Respawn,
+    /// The given subtree is diffed against the live one, as a whole-root reconcile diffs it.
+    Reconcile,
+}
+
+/// The node at `path` in a resolved tree.
+pub fn find_node<'a>(nodes: &'a [RNode], path: &[String]) -> Option<&'a RNode> {
+    let (first, rest) = path.split_first()?;
+    let n = nodes.iter().find(|n| n.path.last() == Some(first))?;
+    if rest.is_empty() { Some(n) } else { find_node(&n.children, rest) }
+}
+
+/// Replaces (or with `None` removes) the node at `path` in a resolved tree; a new one goes last
+/// among its siblings.
+fn replace_node(nodes: &mut Vec<RNode>, path: &[String], with: Option<RNode>) {
+    let Some((first, rest)) = path.split_first() else { return };
+    let at = nodes.iter().position(|n| n.path.last() == Some(first));
+    match (at, rest.is_empty(), with) {
+        (Some(i), true, Some(n)) => nodes[i] = n,
+        (Some(i), true, None) => {
+            nodes.remove(i);
+        }
+        (None, true, Some(n)) => nodes.push(n),
+        (Some(i), false, with) => replace_node(&mut nodes[i].children, rest, with),
+        _ => {}
+    }
+}
+
+/// Applies `root` at the given key paths only, each from its resolved subtree (`None`
+/// despawns it); nodes outside them are not written. A respawned subtree goes under its described
+/// parent in description order, its tombstones cleared. The root's state, its kept tree and the
+/// watch journal follow, as [`apply_root`] keeps them. Paths are disjoint: none under another.
+pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RNode>)], mode: AtMode) -> ReconcileStats {
+    let mut stats = ReconcileStats::default();
+    let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
+    let kept = tree.roots.get(root).and_then(|r| r.resolved.clone());
+    let mut patched: Option<Vec<RNode>> = None;
+    let mut slots = Vec::new();
+    for (path, node) in items {
+        let Some(id) = (!path.is_empty()).then(|| node_id(root, path)) else { continue };
+        let parent = match path.len() {
+            1 => None,
+            n => match tree.entities.get(&node_id(root, &path[..n - 1])).copied().filter(|e| world.get_entity(*e).is_ok()) {
+                Some(e) => Some(e),
+                // Its parent is gone or tombstoned: nowhere to put it.
+                None => continue,
+            },
+        };
+        let old = rows_at(world, &tree, kept.as_deref(), root, path, id);
+        if mode == AtMode::Respawn {
+            clear(world, &mut tree, root, path, &old, &mut stats);
+        }
+        let mut seen = BTreeSet::new();
+        let added = tree.journal.open.added.len();
+        if let Some(n) = node {
+            apply_node(world, &mut tree, root, n, parent, &mut seen, &mut stats, &mut slots);
+        }
+        let state = tree.roots.entry(root.to_string()).or_default();
+        state.nodes.extend(seen.iter().copied());
+        // The node keeps its index among its siblings; its subtree is recorded again.
+        if let Some(n) = node {
+            record_order(&mut state.order, &n.children, &mut Vec::new());
+        }
+        let gone: Vec<u64> = old.iter().filter(|i| !seen.contains(i)).copied().collect();
+        for i in gone {
+            match mode {
+                AtMode::Reconcile => forget(world, &mut tree, i, &mut stats),
+                AtMode::Respawn => {
+                    for r in tree.roots.values_mut() {
+                        r.order.remove(&i);
+                    }
+                }
+            }
+        }
+        // The kept tree: unchanged when the node given is its own.
+        if let Some(k) = &kept {
+            let own = match (find_node(k, path), node) {
+                (Some(a), Some(b)) => std::ptr::eq(a, *b),
+                (None, None) => true,
+                _ => false,
+            };
+            if !own {
+                replace_node(patched.get_or_insert_with(|| k.to_vec()), path, node.map(|n| (*n).clone()));
+            }
+        }
+        if tree.journal.open.added.len() > added || mode == AtMode::Respawn {
+            let list = (root.to_string(), tree.parent_row(root, path));
+            tree.journal.open.ordered.push(list);
+        }
+        if let Some(p) = parent {
+            let described = patched.as_deref().or(kept.as_deref()).and_then(|k| find_node(k, &path[..path.len() - 1]));
+            if let Some(d) = described {
+                order_children(world, &tree, p, d);
+            }
+        }
+    }
+    if let (Some(p), Some(state)) = (patched, tree.roots.get_mut(root)) {
+        state.resolved = Some(p.into());
+    }
+    tree.last = stats.clone();
+    tree.reconciles += 1;
+    tree.journal.close();
+    world.insert_resource(tree);
+    stats
+}
+
+/// The rows of `root` at and under `path`: the node, its live descendants, its tombstones, and
+/// the kept tree's nodes there that are still mapped (a despawned subtree's).
+fn rows_at(world: &World, tree: &TsxTree, kept: Option<&[RNode]>, root: &str, path: &[String], id: u64) -> Vec<u64> {
+    fn ids(n: &RNode, out: &mut Vec<u64>) {
+        out.push(n.id);
+        for c in &n.children {
+            ids(c, out);
+        }
+    }
+    let e = tree.entities.get(&id).copied().filter(|e| alive(world, *e, id));
+    let mut out = vec![id];
+    out.extend(subtree(world, tree, e, root, path));
+    if let Some(n) = kept.and_then(|k| find_node(k, path)) {
+        let mut described = Vec::new();
+        ids(n, &mut described);
+        out.extend(described.into_iter().filter(|i| tree.entities.contains_key(i)));
+    }
+    out.sort_unstable();
+    out.dedup();
+    out.retain(|i| tree.is_row(root, *i) || tree.entities.contains_key(i));
+    out
+}
+
+/// Despawns the live subtree at `path` and forgets its rows, so it spawns again as if first.
+fn clear(world: &mut World, tree: &mut TsxTree, root: &str, path: &[String], rows: &[u64], stats: &mut ReconcileStats) {
+    let id = node_id(root, path);
+    if let Some(e) = tree.entities.get(&id).copied().filter(|e| alive(world, *e, id)) {
+        world.despawn(e);
+        stats.despawned += 1;
+    }
+    tree.reactive.stale = true;
+    for i in rows {
+        if tree.is_row(root, *i) {
+            tree.journal.open.removed.push(*i);
+        }
+        tree.entities.remove(i);
+        tree.tombstones.remove(i);
+        if let Some(r) = tree.roots.get_mut(root) {
+            r.nodes.remove(i);
+        }
+    }
 }
 
 /// The root and key path of a row: a live node's, or a tombstone's.

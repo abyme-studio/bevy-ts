@@ -233,7 +233,10 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
         .filter_map(|n| Some((n["node"].as_str()?.to_string(), n["entity"].as_u64()?)))
         .collect();
     let (old_a, _) = named(&mut app, "EnemyA")[0];
+    let (b, _) = named(&mut app, "EnemyB")[0];
     assert!(client.values().any(|e| *e == old_a.to_bits()));
+    // The play moves A, so the Stop respawns it; B it keeps.
+    app.world_mut().get_mut::<Transform>(old_a).unwrap().translation.y = 1.0;
 
     mode(&mut app, "edit");
     let mut seen = 0;
@@ -251,7 +254,7 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
             }
         }
     }
-    assert!(seen > 0, "the remount was sent");
+    assert!(seen > 0, "the respawn was sent");
     // Every entity tsx made is a row of the client's tree, so none shows as spawned at runtime.
     let made: std::collections::BTreeSet<u64> =
         app.world_mut().query_filtered::<Entity, With<bevy_ts_tsx::TsxNode>>().iter(app.world()).map(|e| e.to_bits()).collect();
@@ -262,6 +265,7 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
         assert!(held.contains(&e.to_bits()), "{name} is in the tree with its new entity");
     }
     assert!(!held.contains(&old_a.to_bits()));
+    assert_eq!(named(&mut app, "EnemyB")[0].0, b, "B is kept, with its entity");
 }
 
 /// After a Stop the engine's own entities (the viewport's window, bevy_picking's pointers) are not
@@ -601,4 +605,190 @@ fn a_level_camera_reaches_the_watch_and_the_game_view_draws_the_hud() {
     call(&mut app, "bevy-ts/viewport_mode", json!({ "camera": "editor" }));
     updates(&mut app, 5);
     assert!(!ui_shows(&mut app), "and not in the editor view");
+// Change stop-incremental: a Stop restores the levels the play changed, keeping the rest.
+
+const ARENA3: &str = "#EnemyA
+@game::Enemy
+Transform { translation: Vec3 { x: -3.0, z: -4.0 } }
+--
+#EnemyB
+@game::Enemy
+Transform { translation: Vec3 { x: 0.0, z: -4.0 } }
+--
+#EnemyC
+@game::Enemy
+Transform { translation: Vec3 { x: 3.0, z: -4.0 } }
+--
+#EnemyD
+@game::Enemy
+Transform { translation: Vec3 { x: 6.0, z: -4.0 } }
+";
+
+#[derive(Component)]
+struct Stunned;
+
+/// `Added<LevelInstance>` seen by a native system, frame by frame.
+#[derive(Resource, Default)]
+struct AddedSeen(usize);
+
+fn count_added(q: Query<(), Added<bevy_ts_levels::engine::LevelInstance>>, mut seen: ResMut<AddedSeen>) {
+    seen.0 += q.iter().count();
+}
+
+/// The three-enemy arena loaded in edit, `game` its source, `extra` added to the app.
+fn arena3(name: &str, game: &str, extra: impl FnOnce(&mut App)) -> (std::path::PathBuf, App) {
+    let dir = project(name, &[("src/game.tsx", game), ("assets/levels/arena.bsn", ARENA3)]);
+    let mut app = stop_app(&dir);
+    extra(&mut app);
+    app.update();
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    for _ in 0..200 {
+        if named(&mut app, "EnemyC").len() == 1 {
+            break;
+        }
+        updates(&mut app, 1);
+    }
+    assert_eq!(named(&mut app, "EnemyC").len(), 1, "the level never loaded");
+    updates(&mut app, 3);
+    (dir, app)
+}
+
+fn enemy(app: &mut App, name: &str) -> Entity {
+    named(app, name)[0].0
+}
+
+fn enemies(app: &mut App) -> Vec<Entity> {
+    ["EnemyA", "EnemyB", "EnemyC"].iter().map(|n| enemy(app, n)).collect()
+}
+
+/// The level root's rows added or removed in `tsx_tree+watch` messages after `seq`.
+fn level_rows_changed(app: &App, seq: u64) -> usize {
+    let tree = app.world().resource::<bevy_ts_tsx::TsxTree>();
+    tree.journal.messages.iter().filter(|(s, _)| *s > seq).map(|(_, c)| c.added.len() + c.removed.len()).sum()
+}
+
+#[test]
+fn a_stop_after_a_play_that_changed_nothing_keeps_every_enemy() {
+    let (_dir, mut app) = arena3("stop-kept-nothing", GAME, |app| {
+        app.init_resource::<AddedSeen>().add_systems(Update, count_added);
+    });
+    let before = enemies(&mut app);
+    mode(&mut app, "play");
+    updates(&mut app, 10);
+    let seq = app.world().resource::<bevy_ts_tsx::TsxTree>().journal.seq;
+    let added = app.world().resource::<AddedSeen>().0;
+    mode(&mut app, "edit");
+    updates(&mut app, 3);
+    assert_eq!(enemies(&mut app), before, "every enemy keeps its entity");
+    assert_eq!(level_rows_changed(&app, seq), 0, "tsx_tree+watch reports nothing spawned or despawned");
+    assert_eq!(bullets(&mut app), 0, "what TS spawned is still gone");
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    assert_eq!(app.world().resource::<AddedSeen>().0, added, "a native system sees no new Added");
+}
+
+#[test]
+fn a_stop_respawns_the_enemies_the_play_changed() {
+    let (_dir, mut app) = arena3("stop-kept-some", GAME, |_| {});
+    let [a, b, c] = enemies(&mut app)[..] else { unreachable!() };
+    let d = enemy(&mut app, "EnemyD");
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    app.world_mut().get_mut::<Transform>(b).unwrap().translation.y = 5.0;
+    app.world_mut().entity_mut(c).insert(Stunned);
+    app.world_mut().entity_mut(a).despawn();
+    updates(&mut app, 3);
+    mode(&mut app, "edit");
+    let [a2, b2, c2] = enemies(&mut app)[..] else { unreachable!() };
+    assert!(a2 != a && b2 != b && c2 != c, "each changed enemy is respawned");
+    assert_eq!(enemy(&mut app, "EnemyD"), d, "the one the play did not change keeps its entity");
+    assert_eq!(named(&mut app, "EnemyB")[0].1, Vec3::new(0.0, 0.0, -4.0), "at its level transform");
+    assert!(app.world().get::<Stunned>(c2).is_none(), "without what the play added");
+    assert!(app.world().resource::<bevy_ts_tsx::TsxTree>().tombstones.is_empty(), "no tombstone");
+    assert!(app.world().get::<bevy_ts_levels::engine::LevelInstance>(a2).is_some(), "the respawned enemy is stamped");
+}
+
+#[test]
+fn a_stop_keeps_the_selected_enemy_the_play_did_not_change() {
+    let (_dir, mut app) = arena3("stop-kept-selection", GAME, |_| {});
+    let c = enemy(&mut app, "EnemyC");
+    call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [c.to_bits()] }));
+    updates(&mut app, 2);
+    mode(&mut app, "play");
+    updates(&mut app, 5);
+    mode(&mut app, "edit");
+    assert_eq!(enemy(&mut app, "EnemyC"), c);
+    let sel = app.world().resource::<bevy_ts_viewport::edit::Selection>();
+    assert_eq!(sel.items.iter().map(|(e, _)| *e).collect::<Vec<_>>(), vec![c], "selected with the same entity");
+}
+
+#[test]
+fn a_step_before_play_counts_as_the_play() {
+    let (_dir, mut app) = arena3("stop-kept-step", GAME, |_| {});
+    let a = enemy(&mut app, "EnemyA");
+    call(&mut app, "bevy-ts/step", json!({ "frames": 1 }));
+    // What the step's systems did.
+    let b = enemy(&mut app, "EnemyB");
+    app.world_mut().get_mut::<Transform>(b).unwrap().translation.y = 2.0;
+    updates(&mut app, 2);
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    mode(&mut app, "edit");
+    assert_eq!(named(&mut app, "EnemyB")[0].1, Vec3::new(0.0, 0.0, -4.0), "b is back at its level transform");
+    assert_eq!(enemy(&mut app, "EnemyA"), a, "a is kept");
+}
+
+#[test]
+fn a_level_saved_during_play_remounts_on_stop() {
+    let (dir, mut app) = arena3("stop-saved", GAME, |_| {});
+    let a = enemy(&mut app, "EnemyA");
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    write(&dir, "assets/levels/arena.bsn", &format!("{ARENA3}--\n#EnemyE\n@game::Enemy\nTransform {{ translation: Vec3 {{ x: 9.0 }} }}\n"));
+    for _ in 0..400 {
+        if named(&mut app, "EnemyE").len() == 1 {
+            break;
+        }
+        updates(&mut app, 1);
+    }
+    assert_eq!(named(&mut app, "EnemyE").len(), 1, "the save reloaded");
+    mode(&mut app, "edit");
+    assert_eq!(named(&mut app, "EnemyE").len(), 1, "e exists");
+    assert_ne!(enemy(&mut app, "EnemyA"), a, "the arena remounted as if first");
+}
+
+#[test]
+fn a_level_whose_prefab_has_a_handler_remounts_on_stop() {
+    let game = GAME.replace(r#"<entity name="enemy">"#, r#"<entity name="enemy" onPointerClick={() => {}}>"#);
+    let (_dir, mut app) = arena3("stop-handler", &game, |_| {});
+    let a = enemy(&mut app, "EnemyA");
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    mode(&mut app, "edit");
+    assert_ne!(enemy(&mut app, "EnemyA"), a, "the arena remounted as if first");
+}
+
+/// Task 6.3: a level with its own camera and light, under rendering and Play's camera swap. What
+/// Bevy derives every frame does not count; `Camera`, which Bevy writes every frame too, does.
+#[test]
+fn a_level_camera_respawns_and_its_enemies_stay() {
+    let level = format!("{ARENA3}--\n#Cam\nCamera3d\nTransform {{ translation: Vec3 {{ y: 4.0, z: 6.0 }} }}\n--\n#Lamp\nPointLight\nTransform {{ translation: Vec3 {{ y: 3.0 }} }}\n");
+    let dir = project("stop-level-camera", &[("src/game.tsx", GAME), ("assets/levels/arena.bsn", &level)]);
+    let mut app = stop_app(&dir);
+    app.update();
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    for _ in 0..200 {
+        if named(&mut app, "Lamp").len() == 1 {
+            break;
+        }
+        updates(&mut app, 1);
+    }
+    updates(&mut app, 5);
+    let (before, lamp, cam) = (enemies(&mut app), enemy(&mut app, "Lamp"), enemy(&mut app, "Cam"));
+    mode(&mut app, "play");
+    updates(&mut app, 10);
+    mode(&mut app, "edit");
+    assert_eq!(enemies(&mut app), before, "the enemies are kept");
+    assert_eq!(enemy(&mut app, "Lamp"), lamp, "and the light");
+    assert_ne!(enemy(&mut app, "Cam"), cam, "the camera respawns");
 }

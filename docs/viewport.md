@@ -174,7 +174,8 @@ TSX text is the studio's).
 Stop re-applies the live generation's module set as a `restart` reload does, without compiling, so
 a save applied during play is what it rebuilds, and a file broken since does not stop it. It resets:
 
-- every entity TS spawned, every TSX node and tombstone: each scene mounts as if first;
+- every entity TS spawned, every TSX node and tombstone: each scene mounts as if first, and each
+  level is as its files describe it (below);
 - which `Startup` systems ran: `started` is false, and the next Play runs `Startup` again;
 - `Local` storage, TS resources (back to their `insertResource` values), TS states and pending
   messages;
@@ -192,15 +193,41 @@ generation no longer declares stays closed. Each level is reconciled from disk b
 A game that booted in play rather than `--edit` has no Play to go back to: its first Stop keeps the
 levels that are open.
 
-The selection follows by node id: a selected level or TSX entity is selected again with its new
-entity, streamed with `origin: "engine"`; one the game spawned is dropped.
+A level open when the game started and still open at the Stop is restored rather than mounted
+again. Its entities the play did not change stay, with their entity ids and values. Stop respawns,
+from what the level last applied and without composing it:
 
-`tsx_tree+watch` follows the remount as it follows any restart: the message after the Stop sends
-every row again under `added`, each with its new entity, so a client keyed by node id holds the
-entities that stand now. Rows the remount did not bring back are under `removed`.
+- each subtree whose entity, or any entity in it, the play changed: a component changed or added
+  after the game started, or one removed (a game's spawn or despawn of a child changes its parent's
+  `Children`, so the parent's subtree goes whole). What Bevy derives every frame does not count
+  (`ViewVisibility`, a camera's `VisibleEntities`, `Clusters` and `PreviousViewData`: tsx's
+  `restore::derived`); `Camera` does, so a level camera respawns;
+- each entity the play despawned.
 
-A Stop costs a restart. At 1,000 level instances it takes about 0.1 s, at 10,000 about a second;
-`docs/research/stop-cost.md` has the numbers.
+The game starts at the first Play, or at a step before it; what a step did is undone too. A level
+takes the full path instead, mounting as if first, when:
+
+- it was applied again after the game started (a save of its file or a generation applied during
+  play), or it is waiting to be;
+- a file it was composed from now differs on disk;
+- it is a scene's sidecar;
+- its prefabs hold a JS callback (a binding, a handler, a ref, a `<Show>` or `<For>`): each names
+  the isolate the Stop throws away;
+- the game booted in play.
+
+A kept entity fires no hook or observer and is no `Added` to a Rust system (`docs/native.md`).
+
+The selection follows by node id: a selected level or TSX entity is selected again, with its new
+entity if it was respawned, streamed with `origin: "engine"`; one the game spawned is dropped.
+
+`tsx_tree+watch` follows a Stop as it follows any reconcile. A kept level's rows stay as they are;
+the ones the restore respawned are under `removed` and again under `added`, with their new
+entities. Every other root remounts as after a restart: the message after the Stop sends each of
+its rows again under `added`, and rows the remount did not bring back are under `removed`.
+
+A Stop that restores costs what the play changed. One that mounts again costs a restart: at 1,000
+level instances about 0.1 s, at 10,000 about a second. `docs/research/stop-cost.md` has the
+numbers.
 
 ### A Play that can't run
 

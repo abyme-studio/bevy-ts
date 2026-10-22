@@ -167,6 +167,10 @@ pub struct LevelRoot {
     /// Hashes of those files when last applied.
     pub applied: BTreeMap<String, u64>,
     pub owners: BTreeMap<Vec<String>, Vec<Frame>>,
+    /// The last compose's scene placements and placeholder entries, by key path: what a Stop's
+    /// restore stamps on the nodes it respawns.
+    pub scenes: BTreeMap<Vec<String>, ScenePlacement>,
+    pub missing: BTreeMap<Vec<String>, Vec<MissingComponent>>,
     pub error: Option<ScriptError>,
     pub warnings: Vec<ScriptError>,
     /// Waiting to be composed and reconciled.
@@ -293,6 +297,8 @@ fn open_as(world: &mut World, path: &str, opener: Opener, overlay: Option<String
             files: BTreeSet::new(),
             applied: BTreeMap::new(),
             owners: BTreeMap::new(),
+            scenes: BTreeMap::new(),
+            missing: BTreeMap::new(),
             error: None,
             warnings: Vec::new(),
             dirty: true,
@@ -390,10 +396,14 @@ fn after_generation(world: &mut World, _: &bevy_ts::plugin_api::AppliedSection) 
         let ts = world.resource::<TsComponents>();
         ts.current().filter(|c| ts.live(&c.decl.name).is_some()).filter_map(|c| Some((c.decl.name.clone(), c.decl.location.clone()?))).collect()
     };
+    let kept = kept_roots(world);
     let mut levels = world.resource_mut::<Levels>();
     levels.declared_at.extend(seen);
-    for r in levels.roots.values_mut() {
-        r.dirty = true;
+    // A Stop restores the levels it keeps: they stay clean.
+    for (p, r) in levels.roots.iter_mut() {
+        if !kept.contains(&root_name(p)) {
+            r.dirty = true;
+        }
     }
     layer_editor_sidecars(world);
     open_sidecars(world);
@@ -418,9 +428,58 @@ fn layer_editor_sidecars(world: &mut World) {
 }
 
 fn after_restart(world: &mut World) {
-    for r in world.resource_mut::<Levels>().roots.values_mut() {
-        r.dirty = true;
-        r.applied.clear();
+    let kept = kept_roots(world);
+    for (p, r) in world.resource_mut::<Levels>().roots.iter_mut() {
+        if !kept.contains(&root_name(p)) {
+            r.dirty = true;
+            r.applied.clear();
+        }
+    }
+}
+
+/// The tsx roots a Stop under way keeps.
+fn kept_roots(world: &World) -> BTreeSet<String> {
+    world.get_resource::<bevy_ts_tsx::StopPlan>().map(|p| p.roots.keys().cloned().collect()).unwrap_or_default()
+}
+
+/// Which open levels a Stop restores rather than mounts again, read before anything of the Stop
+/// runs: a level root the game started with (it has a tsx baseline, so nothing applied it since),
+/// not waiting to compose, not a sidecar, without JS callbacks, and whose files hash on disk as
+/// they did when it was composed. Each with the key paths the play changed or despawned.
+pub fn plan_stop(world: &World) -> bevy_ts_tsx::StopPlan {
+    use bevy_ts_tsx::restore;
+    let levels = world.resource::<Levels>();
+    let mut plan = bevy_ts_tsx::StopPlan::default();
+    for (path, r) in &levels.roots {
+        let root = root_name(path);
+        if r.dirty || r.overlay.is_some() || r.applied.is_empty() || !restore::has_baseline(world, &root) || restore::has_callbacks(world, &root) {
+            continue;
+        }
+        let same = r.applied.iter().all(|(f, h)| std::fs::read(levels.asset_root.join(f)).is_ok_and(|b| content_hash(&b) == *h));
+        if !same {
+            continue;
+        }
+        let Some(mut paths) = restore::changed_paths(world, &root) else { continue };
+        paths.extend(restore::tombstoned_paths(world, &root));
+        plan.roots.insert(root, restore::highest(paths));
+    }
+    plan
+}
+
+/// A Stop's restore of the levels its plan keeps: each respawns what the play changed from its
+/// kept tree, without composing, and stamps only what it respawned. `level+watch` hears each
+/// as `loaded`, as a remount says.
+pub fn restore(world: &mut World) {
+    let Some(plan) = world.get_resource::<bevy_ts_tsx::StopPlan>().cloned() else { return };
+    for (root, paths) in &plan.roots {
+        let Some(path) = root.strip_prefix("level:") else { continue };
+        let paths = bevy_ts_tsx::restore::highest(paths.clone());
+        bevy_ts_tsx::restore::restore_root(world, root, &paths);
+        let Some((owners, scenes, missing)) = world.resource::<Levels>().roots.get(path).map(|r| (r.owners.clone(), r.scenes.clone(), r.missing.clone())) else { continue };
+        stamp_instances(world, path, root, &owners, &scenes, Some(&paths));
+        stamp_missing(world, root, &missing, Some(&paths));
+        let loaded = loaded_event(world.resource::<Levels>(), path);
+        world.resource_mut::<Levels>().emit(loaded);
     }
 }
 
@@ -1090,8 +1149,8 @@ fn apply_composed(world: &mut World, path: &str, result: Result<Composed, Vec<Sc
         log(world, LogLevel::Warn, w);
     }
     let stamp_root = overlay.clone().unwrap_or(root.clone());
-    stamp_instances(world, path, &stamp_root, &composed.owners, &composed.scenes);
-    stamp_missing(world, &stamp_root, &composed.missing);
+    stamp_instances(world, path, &stamp_root, &composed.owners, &composed.scenes, None);
+    stamp_missing(world, &stamp_root, &composed.missing, None);
     let mut assets = BTreeMap::new();
     asset_paths(&composed.nodes, &mut assets);
     if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
@@ -1099,6 +1158,8 @@ fn apply_composed(world: &mut World, path: &str, result: Result<Composed, Vec<Sc
         r.files = composed.files;
         r.applied = hashes;
         r.owners = composed.owners;
+        r.scenes = composed.scenes;
+        r.missing = composed.missing;
         r.warnings = composed.warnings;
         r.assets = assets;
     }
@@ -1114,11 +1175,17 @@ pub fn loaded_event(levels: &Levels, path: &str) -> Value {
     serde_json::json!({ "event": "loaded", "level": path, "hash": hash.map(crate::edit::hash_text), "diagnostics": diagnostics })
 }
 
-/// `MissingComponents` on each entity with placeholder entries, off every other of the root.
-fn stamp_missing(world: &mut World, root: &str, missing: &BTreeMap<Vec<String>, Vec<MissingComponent>>) {
+/// Whether `key_path` is at or under one of `only`'s paths, or `only` is the whole root.
+fn within(only: Option<&[Vec<String>]>, key_path: &[String]) -> bool {
+    only.is_none_or(|o| o.iter().any(|p| key_path.starts_with(p)))
+}
+
+/// `MissingComponents` on each entity with placeholder entries, off every other of the root; with
+/// `only`, on the nodes at and under those paths, the rest left as they are.
+fn stamp_missing(world: &mut World, root: &str, missing: &BTreeMap<Vec<String>, Vec<MissingComponent>>, only: Option<&[Vec<String>]>) {
     let writes: Vec<(Entity, MissingComponents)> = {
         let tree = world.resource::<TsxTree>();
-        missing.iter().filter_map(|(k, m)| Some((tree.entity(node_id(root, k))?, MissingComponents(m.clone())))).collect()
+        missing.iter().filter(|(k, _)| within(only, k)).filter_map(|(k, m)| Some((tree.entity(node_id(root, k))?, MissingComponents(m.clone())))).collect()
     };
     let keep: std::collections::HashSet<Entity> = writes.iter().map(|(e, _)| *e).collect();
     for (e, m) in writes {
@@ -1127,7 +1194,7 @@ fn stamp_missing(world: &mut World, root: &str, missing: &BTreeMap<Vec<String>, 
             em.insert(m);
         }
     }
-    let stale: Vec<Entity> = world.query_filtered::<(Entity, &TsxNode), With<MissingComponents>>().iter(world).filter(|(e, n)| n.root == root && !keep.contains(e)).map(|(e, _)| e).collect();
+    let stale: Vec<Entity> = world.query_filtered::<(Entity, &TsxNode), With<MissingComponents>>().iter(world).filter(|(e, n)| n.root == root && within(only, &n.key_path) && !keep.contains(e)).map(|(e, _)| e).collect();
     for e in stale {
         world.entity_mut(e).remove::<MissingComponents>();
     }
@@ -1154,8 +1221,9 @@ fn strip_names(nodes: &mut [NodeDesc]) {
     }
 }
 
-/// `LevelInstance` on every entity the level placed or overrode.
-fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap<Vec<String>, Vec<Frame>>, scenes: &BTreeMap<Vec<String>, ScenePlacement>) {
+/// `LevelInstance` on every entity the level placed or overrode; with `only`, on the nodes at
+/// and under those paths, the rest left as they are.
+fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap<Vec<String>, Vec<Frame>>, scenes: &BTreeMap<Vec<String>, ScenePlacement>, only: Option<&[Vec<String>]>) {
     let mut writes = Vec::new();
     {
         let tree = world.resource::<TsxTree>();
@@ -1163,7 +1231,7 @@ fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap
         // The file's written paths, walked once on the first changed instance.
         let mut written = None;
         let sidecar = root != root_name(level);
-        for (key_path, frames) in owners {
+        for (key_path, frames) in owners.iter().filter(|(k, _)| within(only, k)) {
             let Some(e) = tree.entity(node_id(root, key_path)) else { continue };
             let mut inst = LevelInstance { level: level.to_string(), name_path: key_path.clone(), owners: frames.iter().map(OwnerFrame::from).collect(), scene: scenes.get(key_path).cloned(), written: false };
             // Looked up in the file only when the instance changed (design, Risks).
@@ -1183,7 +1251,7 @@ fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap
         }
     }
     // An entity whose override went is the prefab's again.
-    let stale: Vec<Entity> = world.query_filtered::<(Entity, &TsxNode), With<LevelInstance>>().iter(world).filter(|(e, n)| n.root == root && !keep.contains(e)).map(|(e, _)| e).collect();
+    let stale: Vec<Entity> = world.query_filtered::<(Entity, &TsxNode), With<LevelInstance>>().iter(world).filter(|(e, n)| n.root == root && within(only, &n.key_path) && !keep.contains(e)).map(|(e, _)| e).collect();
     for e in stale {
         world.entity_mut(e).remove::<LevelInstance>();
     }

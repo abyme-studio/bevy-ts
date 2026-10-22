@@ -463,6 +463,11 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
         world.resource_mut::<EditState>().ui = ui;
     }
     if mode != current {
+        // What the play changed is read before anything of the Stop runs, `OnExit(Play)` too.
+        if mode == Mode::Edit && world.contains_resource::<bevy_ts_levels::engine::Levels>() {
+            let plan = bevy_ts_levels::engine::plan_stop(world);
+            world.insert_resource(plan);
+        }
         // `EngineMode` follows now, so `OnExit`/`OnEnter` run before the next frame's systems
         // and before the first play's `Startup`. The out-of-band `StateTransition` also applies
         // any other pending state (a TS one too), as the next frame's would.
@@ -508,9 +513,10 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
     Ok(now)
 }
 
-/// A Stop, after `OnExit(Play)` and `enter_edit`: the TS world is rebuilt from the live
-/// generation, the levels open at Play come back and settle, the clocks start again from 0, and
-/// the selection follows its nodes.
+/// A Stop, after its plan, `OnExit(Play)` and `enter_edit`: the TS world is rebuilt from the
+/// live generation, keeping the levels the plan restores; the levels open at Play come back, the
+/// kept ones respawn what the play changed and the others settle; the clocks start again from 0,
+/// and the selection follows its nodes.
 fn stop(world: &mut World) {
     // Nothing TS made to throw away before a generation was applied.
     if world.contains_resource::<bevy_ts::generation::LiveSet>() {
@@ -520,8 +526,10 @@ fn stop(world: &mut World) {
         if let Some(set) = world.resource_mut::<EditState>().open_levels.take() {
             bevy_ts_levels::engine::restore_open(world, &set);
         }
+        bevy_ts_levels::engine::restore(world);
         bevy_ts_levels::engine::settle(world);
     }
+    world.remove_resource::<bevy_ts_tsx::StopPlan>();
     bevy_ts::runtime::reset_clock(world);
     follow_selection(world, Origin::Engine);
 }
