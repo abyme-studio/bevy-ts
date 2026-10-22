@@ -18,7 +18,8 @@ pub const BIN: &str = env!("CARGO_BIN_EXE_bevy-ts");
 
 /// A fresh directory of TS files under the temp dir.
 pub fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
-    let dir = std::env::temp_dir().join("bevy-ts-cli-tests").join(name);
+    // Per process: another worktree's run of the same test must not share, or delete, its files.
+    let dir = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     for (f, src) in files {

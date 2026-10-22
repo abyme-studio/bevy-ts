@@ -31,7 +31,8 @@ fn files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join("bevy-ts-cli-tests").join(name);
+    // Per process: another worktree's run of the same test must not share, or delete, its files.
+    let d = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
