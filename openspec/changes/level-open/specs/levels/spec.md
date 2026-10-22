@@ -8,7 +8,7 @@
 
 Opening a level that is already open SHALL answer `opened` with it and SHALL spawn and write nothing. Opening a level SHALL NOT close another; any number of levels MAY be open at once. `level_open` SHALL NOT run any system or `Startup` itself: whether the world's systems run is the mode's rule, so in edit mode the opened level's entities spawn, with their scene components' expansions, and no game system acts on them.
 
-`bevy-ts/level_close` (`file`) SHALL close an open level: its entities despawn with their descendants, and a sidecar's overrides leave its scene. It SHALL answer `{ closed: true }`, or `{ closed: false }` when the level was not open. A level an `app.level` call declares and `level_close` closed SHALL stay closed for the process until `level_open` names it again; a TS generation SHALL NOT reopen it.
+`bevy-ts/level_close` (`file`) SHALL close an open level: its entities despawn with their descendants, and a sidecar's overrides leave its scene. It SHALL answer `{ closed: true }`, or `{ closed: false }` when the level was not open. A level `level_close` closed, whoever opened it, SHALL stay closed for the process until `level_open` names it again: neither a TS generation (for `app.level`) nor a scene's sidecar check SHALL reopen it. `bevy-ts/tsx_tree+watch` SHALL send an opened level's nodes as `added` in the message for its first reconcile, and a closed level's as `removed`.
 
 A level opened this way SHALL be a level like any other: `bevy-ts/tsx_tree`, `level_node`, `level_write`, `level_apply`, picking and `viewport_select` SHALL treat it as they treat an `app.level` level, and it SHALL reload by `level-hot-reload`'s rules, a TS generation's re-expansion included.
 
@@ -32,7 +32,7 @@ Each `bevy-ts/level_list` entry SHALL carry `opener`: `ts` for an `app.level` le
 
 #### Scenario: Switching levels
 - **WHEN** `levels/arena.bsn` is open, and the studio calls `level_open` on `levels/room.bsn` then `level_close` on `levels/arena.bsn`
-- **THEN** the room's entities are in the world, the arena's are despawned, and the selection holds none of the arena's entities
+- **THEN** the room's entities are in the world, the arena's are despawned, the selection holds none of the arena's entities, and `tsx_tree+watch` sent the room's nodes as `added` and the arena's as `removed`
 
 #### Scenario: Closing a level the game declares
 - **WHEN** `game.tsx` calls `app.level("levels/arena.bsn")`, a client closes it, and a TS save applies a new generation
