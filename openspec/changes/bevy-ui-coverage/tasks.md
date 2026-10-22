@@ -2,8 +2,8 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 0. Gallery
 
-- [ ] 0.1 `examples/ui-gallery` (no `example.json`, so it does not ship): `src/gallery.tsx` with today's `<node>`, `<text>`, `<image>`, `<button>` (and `<input>` once text-input lands), one panel per stage
-- [ ] 0.2 `crates/bevy-ts-cli/tests/ui_gallery.rs`: load the gallery headless; fail naming any intrinsic in `jsx-runtime.d.ts` `IntrinsicElements` that it does not mount
+- [x] 0.1 `examples/ui-gallery` (no `example.json`, so it does not ship): `src/gallery.tsx` with today's `<node>`, `<text>`, `<image>`, `<button>` (and `<input>` once text-input lands), one panel per stage
+- [x] 0.2 `crates/bevy-ts-cli/tests/ui_gallery.rs`: load the gallery headless; fail naming any intrinsic in `jsx-runtime.d.ts` `IntrinsicElements` that it does not mount
 
 ## 1. Style
 

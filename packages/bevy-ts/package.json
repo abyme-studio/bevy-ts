@@ -71,7 +71,7 @@
     "vitest": "^3.2.7"
   },
   "scripts": {
-    "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p test",
+    "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p ../../examples/ui-gallery && tsc -p test",
     "prepack": "node scripts/sync-examples.mjs",
     "test": "node scripts/sync-examples.mjs && vitest run --config test/vitest/vitest.config.mjs"
   },
