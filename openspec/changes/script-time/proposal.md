@@ -27,8 +27,8 @@ Later stages (named here, built when their shapes land):
 
 - Stage 2: `ResMut<Time<Virtual>>` and `ResMut<Time<Fixed>>` writes (`pause()`, `setRelativeSpeed`,
   `setTimestepSeconds`, ...), resolved to exported `VirtualTime`/`FixedTime` params in
-  `bevy-ts/time` by a `resource =` alias we own. Waits on writable-native-params' export mechanism
-  and that alias.
+  `bevy-ts/time` by their `stands_for` claims. Waits on writable-native-params' export mechanism
+  and `stands_for`.
 - Stage 3: `onTimer`, `onRealTimer`, `onceAfterDelay`, `repeatingAfterDelay` and their real forms,
   `paused`, as run conditions wrapping Bevy's. Waits on ecs-schedules' `runIf` condition shape.
 - Stage 4: `commands.delayed().secs(s)`. Waits on writable-native-params' `Commands`.

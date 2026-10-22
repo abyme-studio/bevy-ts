@@ -95,23 +95,31 @@ writable-native-params' mechanism into the `bevy-ts/time` module: `VirtualTime {
 ResMut<Time<Virtual>> }` (`pause`, `unpause`, `toggle`, `set_relative_speed`, `set_max_delta`) and
 `FixedTime { time: ResMut<Time<Fixed>> }` (`set_timestep`, `set_timestep_seconds`,
 `set_timestep_hz`, `discard_overstep`). One synchronous host call per method, stamped with the TS
-system's tick, effective in the next frame's delta as in Bevy. The export declares the resource it
-stands for, `export(ts = "VirtualTime", module = "bevy-ts/time", resource = "Time<Virtual>")`, and
-the compile step reads it. writable-native-params owns the export mechanism; script-time owns
-`VirtualTime`, `FixedTime`, the `resource =` alias and the `bevy-ts/time` module's spec. A
-`ResMut<Time<..>>` view keeps the stage-1 read properties beside the methods.
+system's tick, effective in the next frame's delta as in Bevy. Each export declares the TS spelling
+it stands for: `#[export(ts = "VirtualTime", module = "bevy-ts/time", stands_for =
+"ResMut<Time<Virtual>>")]`, `FixedTime` claiming `ResMut<Time<Fixed>>`. On a claimed spelling the
+reader emits the same port decl a `VirtualTime` param gets, so the run path is unchanged, and
+`bevy-ts`'s `ResMut<T>` type resolves to the export's class (research@writable-native-params,
+2026-10-23). writable-native-params owns the mechanism (`stands_for`, the registry, the reader, the
+declarations); script-time owns `VirtualTime`, `FixedTime`, their claims, the `bevy-ts/time`
+module's spec and the consumer requirement in stage 2's delta.
 
 Resolution order for `Res<R>` and `ResMut<R>`, agreed with lead@rust-resources (2026-10-23):
 
 1. `R` a `Time<..>` path (any context): script-time's route. `Res` is the stage-1 read view;
-   `ResMut` is the aliased export, or a load error where none exists.
-2. Otherwise `ResMut<R>` with an export declaring `resource = R`: that export. `Res<R>` does not
-   take it.
+   `ResMut` is the export claiming that spelling, or a load error where none exists. Plain
+   `ResMut<Time>` stays refused.
+2. Otherwise a spelling an export claims with `stands_for`: that export.
 3. Otherwise rust-resources' generic `Res`/`ResMut` path.
 
-Two exports declaring one `R` is a compile error. An exported face wins over a layout for `ResMut`
-only, and only where one is declared. rust-resources leaves a hook point in resolution for steps
-1-2; the alias is not theirs.
+`HostParams::register` refuses two exports claiming one spelling, naming both Rust types, and an
+export claiming the spelling of a native-layout resource (rust-resources owns row views).
+rust-resources leaves a hook point in resolution for steps 1-2; the claims are not theirs.
+
+`Res<Time<Virtual>>` stays the stage-1 per-run value, not claimed by the export: a read costs no
+host call, and `ResMut<Time<Virtual>>`'s class carries the same read properties beside its methods
+(stands_for takes a list, so stage 2 may claim `Res` too if one object proves simpler; research
+recommends it, this design does not, for the host-call cost on every read).
 
 **Protocol and levels.** The protocol's `FieldType.kind` gains `timer` and `stopwatch`, the
 next free minor at landing, additions only. A value is an object of the layout's field names
@@ -133,9 +141,9 @@ Additions only. `Res<Time>` keeps its four fields at their offsets; the new fiel
 
 ## Open Questions
 
-- Stage 2: the `resource =` alias is a requirement in writable-native-params' design, not yet
-  settled there (lead@writable-native-params, 2026-10-23). If it does not land, stage 2 waits; it
-  does not ship `vt: VirtualTime` as the TS name.
+- Stage 2: `stands_for` is confirmed by research@writable-native-params (2026-10-23) and is a
+  requirement of their design. If it does not land, stage 2 waits; it does not ship
+  `vt: VirtualTime` as the TS name.
 - Stage 3: ecs-schedules' condition shape for Rust-evaluated conditions with state (`on_timer` keeps
   a `Timer` per condition).
 - Stage 4: whether writable-native-params' `Commands` work covers `delayed()`.

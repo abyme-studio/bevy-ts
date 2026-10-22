@@ -42,6 +42,6 @@
 
 Not tasks of this change: each is a follow-up change once its shape lands.
 
-- Stage 2, `ResMut<Time<Virtual>>` (`pause`, `unpause`, `toggle`, `setRelativeSpeed`, `setMaxDelta`) and `ResMut<Time<Fixed>>` (`setTimestep`, `setTimestepSeconds`, `setTimestepHz`, `discardOverstep`) through exported `VirtualTime`/`FixedTime` and the `resource =` alias, resolution order in design.md: waits on writable-native-params' export mechanism and alias
+- Stage 2, `ResMut<Time<Virtual>>` (`pause`, `unpause`, `toggle`, `setRelativeSpeed`, `setMaxDelta`) and `ResMut<Time<Fixed>>` (`setTimestep`, `setTimestepSeconds`, `setTimestepHz`, `discardOverstep`) through exported `VirtualTime`/`FixedTime` claiming those spellings with `stands_for`, resolution order in design.md: waits on writable-native-params' export mechanism and `stands_for`
 - Stage 3, `onTimer`, `onRealTimer`, `onceAfterDelay`, `onceAfterRealDelay`, `repeatingAfterDelay`, `repeatingAfterRealDelay`, `paused` wrapping Bevy's conditions: waits on ecs-schedules' `runIf` condition shape
 - Stage 4, `commands.delayed().secs(s)`: waits on writable-native-params' `Commands`
