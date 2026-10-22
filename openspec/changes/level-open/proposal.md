@@ -5,10 +5,10 @@ A level shows only when the game's TS calls `app.level()`. The studio is being r
 ## What Changes
 
 - **`bevy-ts/level_open`** `{ file }` opens a `.bsn` under the asset root as a level root `level:<file>`. It reads the file and every file it includes from disk, composes and reconciles before it replies. It answers `{ status: "opened", level }` with the `level_list` entry, or `{ status: "failed", reason, diagnostics }`. A failed open leaves nothing open. Opening an open level answers it again and respawns nothing.
-- **`bevy-ts/level_close`** `{ file }` closes an open level: its entities despawn. It answers `{ closed }`. A level `app.level()` declared and the editor closed stays closed until `level_open` names it again; a TS generation does not reopen it.
+- **`bevy-ts/level_close`** `{ file }` closes an open level: its entities despawn. It answers `{ closed }`. A closed level stays closed until `level_open` names it again, whoever opened it: a TS generation or a sidecar check does not reopen it.
 - **Several levels may be open.** Opening one never closes another. The studio decides what to close.
 - **`level_list` entries gain `opener`**: `ts`, `rust`, `editor` or `sidecar`.
-- **`level+watch` gains `opened` and `closed`**, so a Hierarchy follows without polling.
+- **`level+watch` gains `opened` and `closed`**, so a Hierarchy follows without polling. `tsx_tree+watch` sends an opened level's nodes as `added` and a closed one's as `removed`, as it does for any reconcile.
 - **An opened level is a level like any other.** `tsx_tree`, `level_node`, `level_write`, `level_apply`, picking and `viewport_select` work on it unchanged, and it hot-reloads by `level-hot-reload`'s rules.
 - **Opening runs nothing.** `level_open` runs no system and no `Startup` of its own. Whether the world runs is the mode's rule: in edit mode nothing of the game runs (E1, `dev --edit`).
 - **Nothing unsaved lives in the engine.** `level_write` puts every batch on disk before it replies, so closing never drops an edit. The studio's unsaved dot is its own.

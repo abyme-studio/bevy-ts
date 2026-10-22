@@ -12,5 +12,5 @@
 
 ## 3. Tests and docs
 
-- [x] 3.1 Tests in `crates/bevy-ts-levels/tests/levels.rs`, one per scenario: opening the arena (paused, no `app.level`), opening twice, a typo, a missing file, switching levels, closing a TS-declared level across a generation, writing to an opened level, and `level+watch`'s `opened`, `loaded`, `closed`
+- [x] 3.1 Tests in `crates/bevy-ts-levels/tests/levels.rs`, one per scenario: opening the arena (paused, no `app.level`), opening twice, a typo, a missing file, switching levels, closing a TS-declared level across a generation, closing an `add_level` level, the open and close in `tsx_tree+watch`, writing to an opened level, and `level+watch`'s `opened`, `loaded`, `closed`
 - [x] 3.2 `docs/levels.md`: opening and closing a level, `opener`, and that the studio needs this minor
