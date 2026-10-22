@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.16.0";
+pub const VERSION: &str = "1.17.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +42,8 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/viewport_pick", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/viewport_select", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/viewport_selection+watch", crate_name: "bevy-ts-viewport", watch: true },
+    Method { name: "bevy-ts/viewport_tools", crate_name: "bevy-ts-viewport", watch: false },
+    Method { name: "bevy-ts/viewport_tools+watch", crate_name: "bevy-ts-viewport", watch: true },
     Method { name: "bevy-ts/viewport_edits+watch", crate_name: "bevy-ts-viewport", watch: true },
     Method { name: "bevy-ts/viewport_edit_result", crate_name: "bevy-ts-viewport", watch: false },
     Method { name: "bevy-ts/viewport_revert", crate_name: "bevy-ts-viewport", watch: false },
@@ -1752,6 +1754,120 @@ pub struct GetComponentsWatchResult {
     pub components: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
     pub errors: ::std::collections::HashMap<::std::string::String, BrpError>,
     pub removed: ::std::vec::Vec<::std::string::String>,
+}
+///`GizmoMode`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum GizmoMode {
+    #[serde(rename = "translate")]
+    Translate,
+    #[serde(rename = "rotate")]
+    Rotate,
+    #[serde(rename = "scale")]
+    Scale,
+}
+impl ::std::fmt::Display for GizmoMode {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Translate => f.write_str("translate"),
+            Self::Rotate => f.write_str("rotate"),
+            Self::Scale => f.write_str("scale"),
+        }
+    }
+}
+impl ::std::str::FromStr for GizmoMode {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "translate" => Ok(Self::Translate),
+            "rotate" => Ok(Self::Rotate),
+            "scale" => Ok(Self::Scale),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for GizmoMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GizmoMode {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`GizmoSpace`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum GizmoSpace {
+    #[serde(rename = "world")]
+    World,
+    #[serde(rename = "local")]
+    Local,
+}
+impl ::std::fmt::Display for GizmoSpace {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::World => f.write_str("world"),
+            Self::Local => f.write_str("local"),
+        }
+    }
+}
+impl ::std::str::FromStr for GizmoSpace {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "world" => Ok(Self::World),
+            "local" => Ok(Self::Local),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for GizmoSpace {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for GizmoSpace {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///hello, either way.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
@@ -3668,6 +3784,16 @@ impl ::std::convert::TryFrom<::std::string::String> for SelectionOrigin {
         value.parse()
     }
 }
+///Fixed, as Bevy's editor prototype sets them.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SnapSteps {
+    ///Degrees.
+    pub rotate: f64,
+    pub scale: f64,
+    ///World units.
+    pub translate: f64,
+}
 ///`SourceLocation`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -4823,6 +4949,28 @@ pub struct ViewportStatsParams {
     ///A viewport id from viewport_attach; default the game viewport (0).
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub viewport: ::std::option::Option<u32>,
+}
+///`origin` is who made the last change: `editor` by the method, `viewport` by a key, `engine` before any.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportTools {
+    pub mode: GizmoMode,
+    pub origin: SelectionOrigin,
+    pub snap: bool,
+    pub space: GizmoSpace,
+    pub steps: SnapSteps,
+}
+///`ViewportToolsParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportToolsParams {
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub mode: ::std::option::Option<GizmoMode>,
+    ///Drags move, turn or scale in whole steps.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub snap: ::std::option::Option<bool>,
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub space: ::std::option::Option<GizmoSpace>,
 }
 ///What a viewport shows: "game", or a preview from asset_preview.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

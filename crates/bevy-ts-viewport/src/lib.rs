@@ -21,6 +21,8 @@ pub mod mach;
 #[cfg(target_os = "macos")]
 mod methods;
 #[cfg(target_os = "macos")]
+pub mod orient;
+#[cfg(target_os = "macos")]
 pub mod preview;
 #[cfg(target_os = "macos")]
 pub mod qos;
@@ -98,6 +100,7 @@ mod plugin {
                     )
                     .set_runner(runner::runner);
                 preview::build(app);
+                orient::build(app);
                 ring::build_render(app, shared);
             }
         }

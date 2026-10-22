@@ -474,3 +474,349 @@ fn meshes_stay_lit_after_edit_and_back_to_play() {
     println!("play again {again:?}");
     assert_eq!(lit, again, "the cube is lit as before after edit then play");
 }
+
+// ---- tools ----
+
+fn tools_watch(app: &mut App, key: u64) -> Option<Value> {
+    let id = match app.world().resource::<bevy::remote::RemoteMethods>().get("bevy-ts/viewport_tools+watch") {
+        Some(bevy::remote::RemoteMethodSystemId::Watching(id)) => *id,
+        _ => panic!("no tools watch"),
+    };
+    let v = app.world_mut().run_system_with(id, Some(json!({ "k": key }))).unwrap().unwrap();
+    if let Some(v) = &v {
+        validate("bevy-ts/viewport_tools+watch", v);
+    }
+    v
+}
+
+fn gizmo(app: &App) -> &bevy::gizmos::transform_gizmo::TransformGizmoSettings {
+    app.world().resource::<bevy::gizmos::transform_gizmo::TransformGizmoSettings>()
+}
+
+#[test]
+fn the_toolbar_sets_the_gizmo_and_the_stream_follows_keys() {
+    use bevy::gizmos::transform_gizmo::{TransformGizmoMode, TransformGizmoSpace};
+    let mut app = edit_app();
+    let s = scene(&app);
+    let r = call(&mut app, "bevy-ts/viewport_tools", Value::Null).unwrap();
+    assert_eq!(r, json!({ "mode": "translate", "space": "world", "snap": false, "steps": { "translate": 0.5, "rotate": 15.0, "scale": 0.1 }, "origin": "engine" }));
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    updates(&mut app, 2);
+    call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [s.root.to_bits()] })).unwrap();
+    let key = rand_key();
+    assert_eq!(tools_watch(&mut app, key).unwrap()["origin"], "engine", "sent on open");
+    updates(&mut app, 1);
+    assert_eq!(tools_watch(&mut app, key), None, "nothing new");
+
+    let r = call(&mut app, "bevy-ts/viewport_tools", json!({ "mode": "rotate" })).unwrap();
+    assert_eq!(r["mode"], "rotate");
+    assert_eq!(r["origin"], "editor");
+    updates(&mut app, 1);
+    assert_eq!(gizmo(&app).mode, TransformGizmoMode::Rotate, "rotation rings");
+    let m = tools_watch(&mut app, key).unwrap();
+    assert_eq!((m["mode"].as_str(), m["origin"].as_str()), (Some("rotate"), Some("editor")));
+    assert_eq!(call(&mut app, "bevy-ts/viewport_tools", Value::Null).unwrap()["mode"], "rotate", "no params: unchanged");
+
+    key_press(&mut app, "KeyX");
+    let m = tools_watch(&mut app, key).unwrap();
+    assert_eq!((m["space"].as_str(), m["origin"].as_str()), (Some("local"), Some("viewport")));
+    assert_eq!(gizmo(&app).space, TransformGizmoSpace::Local);
+    key_press(&mut app, "KeyW");
+    assert_eq!(tools_watch(&mut app, key).unwrap()["mode"], "translate");
+
+    call(&mut app, "bevy-ts/viewport_tools", json!({ "snap": true })).unwrap();
+    updates(&mut app, 1);
+    let g = gizmo(&app);
+    assert_eq!((g.snap_translate, g.snap_scale), (Some(0.5), Some(0.1)));
+    assert!((g.snap_rotate.unwrap() - 15f32.to_radians()).abs() < 1e-6);
+
+    // Kept across a mode switch.
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+    updates(&mut app, 2);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    updates(&mut app, 2);
+    let r = call(&mut app, "bevy-ts/viewport_tools", Value::Null).unwrap();
+    assert_eq!((r["mode"].as_str(), r["space"].as_str(), r["snap"].as_bool()), (Some("translate"), Some("local"), Some(true)));
+    assert_eq!(gizmo(&app).space, TransformGizmoSpace::Local);
+}
+
+fn key_press(app: &mut App, code: &str) {
+    key(app, code, "down");
+    updates(app, 1);
+    key(app, code, "up");
+    updates(app, 1);
+}
+
+#[test]
+fn a_snapped_move_lands_on_a_whole_step() {
+    let mut app = edit_app();
+    let s = scene(&app);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    updates(&mut app, 2);
+    call(&mut app, "bevy-ts/viewport_tools", json!({ "snap": true })).unwrap();
+    call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [s.root.to_bits()] })).unwrap();
+    updates(&mut app, 2);
+    let pos = center(&app, s.root);
+    assert_eq!(pos.x, 3.0);
+    let cam = app.world_mut().query_filtered::<&GlobalTransform, With<EditorCamera>>().single(app.world()).unwrap().translation();
+    let grab = pos + Vec3::X * 0.6 * (cam - pos).length() * 0.1;
+    let (from, to) = (screen(&mut app, grab), screen(&mut app, grab + Vec3::X * 1.4));
+    input(&mut app, json!([{ "type": "pointer", "kind": "move", "x": from.x, "y": from.y }]));
+    updates(&mut app, 2);
+    input(&mut app, json!([{ "type": "pointer", "kind": "down", "x": from.x, "y": from.y, "button": "left" }]));
+    updates(&mut app, 1);
+    for i in 1..=5 {
+        let p = from.lerp(to, i as f32 / 5.0);
+        input(&mut app, json!([{ "type": "pointer", "kind": "move", "x": p.x, "y": p.y }]));
+        updates(&mut app, 1);
+    }
+    assert_eq!(app.world().get::<Transform>(s.root).unwrap().translation.x, 4.5, "during the drag");
+    input(&mut app, json!([{ "type": "pointer", "kind": "up", "x": to.x, "y": to.y, "button": "left" }]));
+    updates(&mut app, 2);
+    let e = edits(&mut app);
+    assert_eq!(e.len(), 1);
+    assert_eq!(e[0]["after"]["translation"][0], 4.5, "in the edit");
+}
+
+#[test]
+fn a_tool_change_mid_drag_waits_for_the_release() {
+    use bevy::gizmos::transform_gizmo::TransformGizmoMode;
+    let mut app = edit_app();
+    let s = scene(&app);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    updates(&mut app, 2);
+    call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [s.free.to_bits()] })).unwrap();
+    updates(&mut app, 2);
+    let pos = center(&app, s.free);
+    let cam = app.world_mut().query_filtered::<&GlobalTransform, With<EditorCamera>>().single(app.world()).unwrap().translation();
+    let from = screen(&mut app, pos + Vec3::X * 0.6 * (cam - pos).length() * 0.1);
+    input(&mut app, json!([{ "type": "pointer", "kind": "move", "x": from.x, "y": from.y }]));
+    updates(&mut app, 2);
+    input(&mut app, json!([{ "type": "pointer", "kind": "down", "x": from.x, "y": from.y, "button": "left" }]));
+    updates(&mut app, 1);
+    for i in 1..=5 {
+        if i == 2 {
+            assert_eq!(call(&mut app, "bevy-ts/viewport_tools", json!({ "mode": "rotate" })).unwrap()["mode"], "rotate");
+        }
+        input(&mut app, json!([{ "type": "pointer", "kind": "move", "x": from.x + 16.0 * i as f32, "y": from.y }]));
+        updates(&mut app, 1);
+        assert_eq!(gizmo(&app).mode, TransformGizmoMode::Translate, "the drag keeps its mode");
+    }
+    input(&mut app, json!([{ "type": "pointer", "kind": "up", "x": from.x + 80.0, "y": from.y, "button": "left" }]));
+    updates(&mut app, 2);
+    assert!(center(&app, s.free).x > pos.x + 0.2, "it moved all the way");
+    let e = edits(&mut app);
+    assert_eq!((e.len(), e[0]["field"].as_str()), (1, Some("translation")));
+    assert_eq!(gizmo(&app).mode, TransformGizmoMode::Rotate, "the new mode after the release");
+}
+
+#[test]
+fn tool_keys_with_a_modifier_are_shortcuts() {
+    let mut app = edit_app();
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    updates(&mut app, 2);
+    input(&mut app, json!([{ "type": "key", "state": "down", "code": "KeyE", "mods": { "meta": true } }]));
+    updates(&mut app, 1);
+    input(&mut app, json!([{ "type": "key", "state": "up", "code": "KeyE", "mods": { "meta": true } }]));
+    updates(&mut app, 1);
+    assert_eq!(call(&mut app, "bevy-ts/viewport_tools", Value::Null).unwrap()["mode"], "translate");
+}
+
+// ---- orientation gizmo ----
+
+use bevy_ts_viewport::orient::{OrientCamera, end_position};
+
+fn orient_rect() -> Rect {
+    Rect::new(8.0, 8.0, 104.0, 104.0)
+}
+
+fn editor_pose(app: &mut App) -> (Transform, EditorCamera) {
+    let world = app.world_mut();
+    let (t, c) = world.query::<(&Transform, &EditorCamera)>().single(world).unwrap();
+    (*t, *c)
+}
+
+fn orient_camera(app: &mut App) -> Camera {
+    let world = app.world_mut();
+    world.query_filtered::<&Camera, With<OrientCamera>>().single(world).unwrap().clone()
+}
+
+fn orient_size(app: &mut App) -> UVec2 {
+    let h = app.world().resource::<bevy_ts_viewport::orient::OrientImage>().0.clone();
+    app.world().resource::<Assets<Image>>().get(&h).unwrap().size()
+}
+
+fn orient_quad_shown(app: &mut App) -> bool {
+    let world = app.world_mut();
+    let v = world.query_filtered::<&Visibility, With<bevy_ts_viewport::orient::OrientQuad>>().single(world).unwrap();
+    *v != Visibility::Hidden
+}
+
+#[test]
+fn clicking_plus_y_looks_down_and_keeps_the_selection() {
+    let mut app = edit_app();
+    let s = scene(&app);
+    assert!(!orient_camera(&mut app).is_active, "none in play");
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [s.root.to_bits()] })).unwrap();
+    // Drawn, then two frames to settle.
+    updates(&mut app, 4);
+    assert_eq!(orient_size(&mut app), UVec2::splat(288), "one texture, at 3x");
+    assert!(orient_quad_shown(&mut app));
+    let layers = app.world_mut().query_filtered::<&bevy::camera::visibility::RenderLayers, With<OrientCamera>>().single(app.world()).unwrap().clone();
+    assert_eq!(layers, bevy::camera::visibility::RenderLayers::layer(bevy_ts_viewport::orient::ORIENT_LAYER));
+    // On through its warm-up, then off while the view is still.
+    let t0 = std::time::Instant::now();
+    while orient_camera(&mut app).is_active {
+        assert!(t0.elapsed() < Duration::from_secs(5), "a still view does not redraw it");
+        updates(&mut app, 1);
+    }
+    updates(&mut app, 3);
+    assert!(!orient_camera(&mut app).is_active, "a still view does not redraw it");
+
+    let (before, c0) = editor_pose(&mut app);
+    let distance = before.translation.distance(c0.focus);
+    let up = end_position(before.rotation, orient_rect(), Vec3::Y);
+    click(&mut app, up, json!({}));
+    let (after, c1) = editor_pose(&mut app);
+    let limit = bevy_ts_viewport::edit::PITCH_LIMIT;
+    assert!((after.forward().as_vec3().dot(Vec3::NEG_Y) - limit.sin()).abs() < 1e-4, "down, to the orbit's pitch limit: {}", after.forward().as_vec3());
+    assert!(c1.focus.distance(c0.focus) < 1e-4, "same focus");
+    assert!((after.translation.distance(c1.focus) - distance).abs() < 1e-3, "same distance");
+    let sel = selection(&mut app);
+    assert_eq!(sel["items"][0]["entity"], s.root.to_bits(), "the selection is unchanged");
+    assert!(edits(&mut app).is_empty(), "no gizmo drag");
+
+    // Kept on resize, at the new scale.
+    call(&mut app, "bevy-ts/viewport_resize", json!({ "w": 800, "h": 600, "scale": 1 })).unwrap();
+    updates(&mut app, 2);
+    assert_eq!(orient_size(&mut app), UVec2::splat(288), "the same texture at any scale");
+
+    // Redrawn on the two frames after the view turns (gizmo lines land a frame late), and not after.
+    call(&mut app, "bevy-ts/viewport_camera", json!({ "rotation": Quat::from_rotation_y(0.3).to_array() })).unwrap();
+    for _ in 0..2 {
+        updates(&mut app, 1);
+        assert!(orient_camera(&mut app).is_active, "the view turned");
+    }
+    updates(&mut app, 1);
+    assert!(!orient_camera(&mut app).is_active, "and is still again");
+
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+    updates(&mut app, 2);
+    assert!(!orient_camera(&mut app).is_active, "none in play");
+    assert!(!orient_quad_shown(&mut app), "none in play");
+    let ends_shown = app.world_mut().query_filtered::<&Visibility, With<bevy_ts_viewport::orient::OrientEnd>>().iter(app.world()).filter(|v| **v != Visibility::Hidden).count();
+    assert_eq!(ends_shown, 0, "no end shows in play");
+    let previews = app.world_mut().query_filtered::<(), (With<OrientCamera>, With<bevy_ts_viewport::preview::PreviewOnly>)>().iter(app.world()).count();
+    assert_eq!(previews, 0, "none in a preview");
+}
+
+#[test]
+fn a_press_in_the_square_never_picks_and_in_play_reaches_the_game() {
+    let mut app = edit_app();
+    // A cube under the square's corner, where no axis end is.
+    let at = Vec2::new(14.0, 14.0);
+    let ray = {
+        let world = app.world_mut();
+        let (c, gt) = world.query_filtered::<(&Camera, &GlobalTransform), With<GameCamera>>().single(world).unwrap();
+        c.viewport_to_world(gt, at).unwrap()
+    };
+    let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(Cuboid::from_size(Vec3::ONE));
+    let cube = app.world_mut().spawn((Mesh3d(mesh), Transform::from_translation(ray.get_point(6.0)))).id();
+    let clicks = Clicks::default();
+    app.insert_resource(clicks.clone());
+    app.world_mut().entity_mut(cube).observe(|_: On<PointerClick>, c: Res<Clicks>| *c.0.lock().unwrap() += 1);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    updates(&mut app, 2);
+    let pick = call(&mut app, "bevy-ts/viewport_pick", json!({ "x": at.x, "y": at.y })).unwrap();
+    assert_eq!(pick["hits"][0]["entity"], cube.to_bits(), "the cube is under the square");
+    let (before, _) = editor_pose(&mut app);
+    click(&mut app, at, json!({}));
+    assert_eq!(selection(&mut app)["items"].as_array().unwrap().len(), 0, "no pick in the square");
+    assert_eq!(editor_pose(&mut app).0, before, "no end there: the camera stays");
+
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+    updates(&mut app, 2);
+    click(&mut app, at, json!({}));
+    assert_eq!(*clicks.0.lock().unwrap(), 1, "the game's click fires in play");
+}
+
+/// The frames show the gizmo: the `+Y` end's pixel is green. Writes the corner to
+/// `target/orient-gizmo.bmp` to look at.
+#[test]
+fn the_frames_show_the_orientation_gizmo() {
+    let mut app = edit_app();
+    let (_, viewer) = attach(&mut app, 480.0, 320.0, 2.0);
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    let view = Quat::from_euler(EulerRot::YXZ, -0.6, -0.4, 0.0);
+    call(&mut app, "bevy-ts/viewport_camera", json!({ "rotation": view.to_array() })).unwrap();
+    let mut seen = Seen::default();
+    let green = |[b, g, r, _]: [u8; 4]| g > 150 && r < 160 && b < 120;
+    let up = end_position(view, orient_rect(), Vec3::Y) * 2.0;
+    let px = pixel_shown(&mut app, &viewer, &mut seen, up, green);
+    assert!(green(px), "+Y end at {up} is green: bgra {px:?}");
+    let f = seen.frames.last().unwrap().clone();
+    let side = 224u32;
+    let points: Vec<(u32, u32)> = (0..side).flat_map(|y| (0..side).map(move |x| (x, y))).collect();
+    let corner = seen.surfaces[&(f["ring"].as_u64().unwrap(), f["slot"].as_u64().unwrap())].read(&points);
+    write_bmp(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/orient-gizmo.bmp"), side, &corner);
+
+    // After a turn, the lines too: the middle of the +X line is red. Once the warm-up is over, so
+    // a turn redraws alone.
+    let t0 = std::time::Instant::now();
+    while orient_camera(&mut app).is_active {
+        assert!(t0.elapsed() < LONG, "the warm-up never ends");
+        updates(&mut app, 1);
+    }
+    let view = Quat::from_euler(EulerRot::YXZ, 0.5, -0.3, 0.0);
+    call(&mut app, "bevy-ts/viewport_camera", json!({ "rotation": view.to_array() })).unwrap();
+    let red = |[b, g, r, _]: [u8; 4]| r > 150 && g < 120 && b < 140;
+    let mid = (orient_rect().center() + end_position(view, orient_rect(), Vec3::X)) / 2.0 * 2.0;
+    let px = pixel_shown(&mut app, &viewer, &mut seen, mid, red);
+    assert!(red(px), "after a turn, the +X line at {mid} is red: bgra {px:?}");
+
+    // Redrawn at a new scale.
+    call(&mut app, "bevy-ts/viewport_resize", json!({ "w": 480, "h": 320, "scale": 1 })).unwrap();
+    let up = end_position(view, orient_rect(), Vec3::Y);
+    let px = pixel_shown(&mut app, &viewer, &mut seen, up, green);
+    assert!(green(px), "after the resize, +Y end at {up} is green: bgra {px:?}");
+}
+
+/// A pixel of the newest frame, once `ok` holds or 5 s on: how fast the first frames come depends
+/// on the machine's load, and a gizmo that is never drawn still fails.
+fn pixel_shown(app: &mut App, viewer: &bevy_ts_viewport::mach::Viewer, seen: &mut Seen, at: Vec2, ok: impl Fn([u8; 4]) -> bool) -> [u8; 4] {
+    let start = seen.frames.len();
+    let t0 = std::time::Instant::now();
+    let mut px = [0; 4];
+    for n in start + 1.. {
+        if t0.elapsed() > Duration::from_secs(5) {
+            break;
+        }
+        run_until(app, viewer, seen, LONG, |s| s.frames.len() >= n);
+        let f = seen.frames.last().unwrap();
+        px = seen.surfaces[&(f["ring"].as_u64().unwrap(), f["slot"].as_u64().unwrap())].read(&[(at.x as u32, at.y as u32)])[0];
+        if ok(px) {
+            break;
+        }
+    }
+    px
+}
+
+fn write_bmp(path: &str, side: u32, bgra: &[[u8; 4]]) {
+    let row = side * 3;
+    let size = 54 + row * side;
+    let mut out = vec![];
+    out.extend(b"BM");
+    for v in [size, 0, 54, 40, side, side.wrapping_neg()] {
+        out.extend(v.to_le_bytes());
+    }
+    out.extend(1u16.to_le_bytes());
+    out.extend(24u16.to_le_bytes());
+    for v in [0u32, row * side, 2835, 2835, 0, 0] {
+        out.extend(v.to_le_bytes());
+    }
+    for p in bgra {
+        out.extend(&p[..3]);
+    }
+    std::fs::write(path, out).unwrap();
+}

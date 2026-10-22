@@ -123,10 +123,62 @@ impl Selection {
     }
 }
 
+/// The transform gizmo's tools: the one writer of `TransformGizmoSettings` mode, space and snap.
+/// Kept for the process, across mode switches and reloads.
+#[derive(Resource)]
+pub struct ViewportTools {
+    pub mode: TransformGizmoMode,
+    pub space: TransformGizmoSpace,
+    pub snap: bool,
+    pub origin: Origin,
+    /// Bumped on every change, for the watch.
+    pub seq: u64,
+}
+
+impl Default for ViewportTools {
+    fn default() -> Self {
+        ViewportTools { mode: TransformGizmoMode::Translate, space: TransformGizmoSpace::World, snap: false, origin: Origin::Engine, seq: 0 }
+    }
+}
+
+/// The snap steps, as Bevy's editor prototype sets them.
+pub const SNAP_TRANSLATE: f64 = 0.5;
+pub const SNAP_ROTATE_DEGREES: f64 = 15.0;
+pub const SNAP_SCALE: f64 = 0.1;
+
+impl ViewportTools {
+    /// Sets what is given; a change bumps the counter with its origin.
+    pub fn set(&mut self, mode: Option<TransformGizmoMode>, space: Option<TransformGizmoSpace>, snap: Option<bool>, origin: Origin) {
+        let next = (mode.unwrap_or(self.mode), space.unwrap_or(self.space), snap.unwrap_or(self.snap));
+        if next != (self.mode, self.space, self.snap) {
+            (self.mode, self.space, self.snap) = next;
+            self.origin = origin;
+            self.seq += 1;
+        }
+    }
+}
+
+/// Copies the tools to Bevy's gizmo settings, writing only what differs. A change during a gizmo
+/// drag waits for the release, so a drag keeps the field it started on.
+fn apply_tools(tools: Res<ViewportTools>, mut settings: ResMut<TransformGizmoSettings>, gizmo: Res<TransformGizmoState>) {
+    if gizmo.active {
+        return;
+    }
+    let snap = |step: f32| tools.snap.then_some(step);
+    let want = (tools.mode, tools.space, snap(SNAP_TRANSLATE as f32), snap(SNAP_ROTATE_DEGREES.to_radians() as f32), snap(SNAP_SCALE as f32));
+    if (settings.mode, settings.space, settings.snap_translate, settings.snap_rotate, settings.snap_scale) != want {
+        (settings.mode, settings.space, settings.snap_translate, settings.snap_rotate, settings.snap_scale) = want;
+    }
+}
+
+/// How far the editor camera pitches up or down, short of the poles, wherever it turns.
+pub const PITCH_LIMIT: f32 = 1.54;
+
 pub(crate) fn build(app: &mut App) {
     app.init_resource::<EditState>()
         .init_resource::<Pending>()
         .init_resource::<Selection>()
+        .init_resource::<ViewportTools>()
         .init_resource::<PointerTrack>()
         .init_gizmo_group::<EditorGizmos>();
     if !app.is_plugin_added::<bevy::gizmos::transform_gizmo::TransformGizmoPlugin>() {
@@ -154,7 +206,8 @@ pub(crate) fn build(app: &mut App) {
             (keep_selection, edit_keys, camera_controller, click_to_select, gizmo_focus, draw_gizmos)
                 .chain()
                 .run_if(|s: Res<EditState>| s.mode == Mode::Edit),
-        );
+        )
+        .add_systems(Update, apply_tools.after(edit_keys));
 }
 
 /// Bevy's transform gizmo spawns its handles and an overlay camera at startup: they are the
@@ -363,13 +416,13 @@ fn apply_ui(world: &mut World) {
 
 /// Per-frame pointer bookkeeping: where the left button went down, and whether it dragged.
 #[derive(Resource, Default)]
-struct PointerTrack {
+pub(crate) struct PointerTrack {
     down_at: Option<Vec2>,
     dragged: bool,
     gizmo: bool,
 }
 
-const CLICK_SLOP: f32 = 4.0;
+pub(crate) const CLICK_SLOP: f32 = 4.0;
 
 /// The ray under a window point, from the editor camera.
 pub(crate) fn editor_ray(world: &mut World, at: Vec2) -> Option<Ray3d> {
@@ -467,29 +520,30 @@ fn keep_selection(mut sel: ResMut<Selection>, tree: Option<Res<TsxTree>>, alive:
 fn edit_keys(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    mut settings: ResMut<TransformGizmoSettings>,
+    mut tools: ResMut<ViewportTools>,
     mut sel: ResMut<Selection>,
     gizmo: Res<TransformGizmoState>,
+    mods: Option<Res<crate::input::Modifiers>>,
     mut commands: Commands,
 ) {
     // Keys while the right button is held fly the camera.
     if mouse.pressed(MouseButton::Right) {
         return;
     }
-    if keys.just_pressed(KeyCode::KeyW) {
-        settings.mode = TransformGizmoMode::Translate;
+    // A shortcut with ⌃, ⌘ or ⌥ is not a tool key.
+    let chord = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight, KeyCode::AltLeft, KeyCode::AltRight])
+        || mods.is_some_and(|m| m.ctrl || m.meta || m.alt);
+    for (k, mode) in [(KeyCode::KeyW, TransformGizmoMode::Translate), (KeyCode::KeyE, TransformGizmoMode::Rotate), (KeyCode::KeyR, TransformGizmoMode::Scale)] {
+        if keys.just_pressed(k) && !chord {
+            tools.set(Some(mode), None, None, Origin::Viewport);
+        }
     }
-    if keys.just_pressed(KeyCode::KeyE) {
-        settings.mode = TransformGizmoMode::Rotate;
-    }
-    if keys.just_pressed(KeyCode::KeyR) {
-        settings.mode = TransformGizmoMode::Scale;
-    }
-    if keys.just_pressed(KeyCode::KeyX) {
-        settings.space = match settings.space {
+    if keys.just_pressed(KeyCode::KeyX) && !chord {
+        let space = match tools.space {
             TransformGizmoSpace::World => TransformGizmoSpace::Local,
             TransformGizmoSpace::Local => TransformGizmoSpace::World,
         };
+        tools.set(None, Some(space), None, Origin::Viewport);
     }
     // Escape mid-drag cancels the drag (edits), not the selection.
     if keys.just_pressed(KeyCode::Escape) && !gizmo.active && !sel.items.is_empty() {
@@ -562,7 +616,7 @@ pub fn frame_selection(world: &mut World) {
 /// Fly with the right button and `W A S D Q E`, orbit with the middle button or ⌥ and left,
 /// dolly with the wheel or a pinch.
 #[allow(clippy::too_many_arguments)]
-fn camera_controller(
+pub(crate) fn camera_controller(
     state: Res<EditState>,
     mut cameras: Query<(&mut Transform, &mut EditorCamera)>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -582,7 +636,7 @@ fn camera_controller(
     const LOOK: f32 = 0.004;
     if mouse.pressed(MouseButton::Right) {
         cam.yaw -= delta.x * LOOK;
-        cam.pitch = (cam.pitch - delta.y * LOOK).clamp(-1.54, 1.54);
+        cam.pitch = (cam.pitch - delta.y * LOOK).clamp(-PITCH_LIMIT, PITCH_LIMIT);
         t.rotation = Quat::from_euler(EulerRot::YXZ, cam.yaw, cam.pitch, 0.0);
         let mut dir = Vec3::ZERO;
         for (k, d) in [
@@ -604,7 +658,7 @@ fn camera_controller(
         cam.focus = t.translation + t.forward().as_vec3() * distance;
     } else if orbit {
         cam.yaw -= delta.x * LOOK;
-        cam.pitch = (cam.pitch - delta.y * LOOK).clamp(-1.54, 1.54);
+        cam.pitch = (cam.pitch - delta.y * LOOK).clamp(-PITCH_LIMIT, PITCH_LIMIT);
         let distance = (t.translation - cam.focus).length();
         t.rotation = Quat::from_euler(EulerRot::YXZ, cam.yaw, cam.pitch, 0.0);
         t.translation = cam.focus + t.back().as_vec3() * distance;
@@ -648,9 +702,11 @@ fn click_to_select(world: &mut World) {
         (m.just_pressed(MouseButton::Left), m.just_released(MouseButton::Left), m.pressed(MouseButton::Left))
     };
     let cursor = world.query_filtered::<&Window, With<PrimaryWindow>>().single(world).ok().and_then(Window::cursor_position);
+    // A press on the orientation gizmo is its own, as one on a gizmo handle is.
+    let orient = world.get_resource::<crate::orient::OrientRect>().is_some_and(|r| crate::orient::in_square(r, cursor));
     let gizmo = {
         let g = world.resource::<TransformGizmoState>();
-        g.active || g.hovered_axis.is_some()
+        g.active || g.hovered_axis.is_some() || orient
     };
     let mut track = world.resource_mut::<PointerTrack>();
     if pressed {
@@ -663,7 +719,7 @@ fn click_to_select(world: &mut World) {
     }
     if !released {
         // Hover outline.
-        let hovered = cursor.and_then(|c| editor_ray(world, c)).and_then(|r| hits(world, r, false).first().map(|h| h.selects));
+        let hovered = cursor.filter(|_| !orient).and_then(|c| editor_ray(world, c)).and_then(|r| hits(world, r, false).first().map(|h| h.selects));
         world.resource_mut::<Selection>().hovered = hovered;
         return;
     }

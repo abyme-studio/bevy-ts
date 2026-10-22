@@ -41,6 +41,7 @@ fn edit_mode_works_against_the_engines_own_window() {
     app.update();
     app.update();
     assert_eq!(app.world_mut().query_filtered::<(), With<EditorCamera>>().iter(app.world()).count(), 1);
+    assert_eq!(app.world_mut().query::<&bevy_ts_viewport::orient::OrientCamera>().iter(app.world()).count(), 0, "no orientation gizmo in the engine's own window");
     // The cube is at the origin, in the middle of the editor camera's first view.
     let window = app.world_mut().query::<&Window>().single(app.world()).unwrap().resolution.size() / 2.0;
     let pick = call(&mut app, "bevy-ts/viewport_pick", json!({ "x": window.x, "y": window.y })).unwrap();

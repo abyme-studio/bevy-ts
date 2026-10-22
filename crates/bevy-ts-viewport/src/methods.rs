@@ -244,6 +244,8 @@ pub(crate) fn add_edit_methods(app: &mut App) {
     add_method(app, CRATE, "bevy-ts/viewport_pick", pick);
     add_method(app, CRATE, "bevy-ts/viewport_select", select);
     add_watching_method(app, CRATE, "bevy-ts/viewport_selection+watch", selection_watch);
+    add_method(app, CRATE, "bevy-ts/viewport_tools", tools);
+    add_watching_method(app, CRATE, "bevy-ts/viewport_tools+watch", tools_watch);
     app.init_resource::<Watchers>();
 }
 
@@ -410,20 +412,64 @@ pub(crate) fn selection_json(world: &World) -> Value {
     json!({ "origin": sel.origin.name(), "items": items })
 }
 
-/// Selection watchers: params to (update last served, selection seq last sent).
+/// Watchers of the streams that send on open and on every change of a counter: (stream, params)
+/// to (update last served, counter last sent).
 #[derive(Resource, Default)]
-struct Watchers(std::collections::HashMap<String, (u64, u64)>);
+struct Watchers(std::collections::HashMap<(&'static str, String), (u64, u64)>);
+
+/// Whether a watcher of `stream` is owed a message: it is new, missed an update, or `seq` moved.
+fn owed(world: &mut World, stream: &'static str, p: &Option<Value>, seq: u64) -> bool {
+    let frame = world.resource::<crate::UpdateCount>().0;
+    let key = (stream, p.as_ref().map(Value::to_string).unwrap_or_default());
+    let known = world.resource_mut::<Watchers>().0.insert(key, (frame, seq));
+    !matches!(known, Some((last, sent)) if last + 1 >= frame && sent == seq)
+}
 
 fn selection_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let frame = world.resource::<crate::UpdateCount>().0;
-    let key = p.as_ref().map(Value::to_string).unwrap_or_default();
     let seq = world.resource::<Selection>().seq;
-    let known = world.resource::<Watchers>().0.get(&key).copied();
-    world.resource_mut::<Watchers>().0.insert(key, (frame, seq));
-    match known {
-        Some((last, sent)) if last + 1 >= frame && sent == seq => Ok(None),
-        _ => Ok(Some(selection_json(world))),
-    }
+    Ok(owed(world, "selection", &p, seq).then(|| selection_json(world)))
+}
+
+fn tools(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
+    use bevy::gizmos::transform_gizmo::{TransformGizmoMode, TransformGizmoSpace};
+    let p: protocol::ViewportToolsParams = optional(p)?;
+    let mode = p.mode.map(|m| match m {
+        protocol::GizmoMode::Translate => TransformGizmoMode::Translate,
+        protocol::GizmoMode::Rotate => TransformGizmoMode::Rotate,
+        protocol::GizmoMode::Scale => TransformGizmoMode::Scale,
+    });
+    let space = p.space.map(|s| match s {
+        protocol::GizmoSpace::World => TransformGizmoSpace::World,
+        protocol::GizmoSpace::Local => TransformGizmoSpace::Local,
+    });
+    world.resource_mut::<edit::ViewportTools>().set(mode, space, p.snap, Origin::Editor);
+    Ok(tools_json(world))
+}
+
+pub(crate) fn tools_json(world: &World) -> Value {
+    use bevy::gizmos::transform_gizmo::{TransformGizmoMode, TransformGizmoSpace};
+    let t = world.resource::<edit::ViewportTools>();
+    let mode = match t.mode {
+        TransformGizmoMode::Translate => "translate",
+        TransformGizmoMode::Rotate => "rotate",
+        TransformGizmoMode::Scale => "scale",
+    };
+    let space = match t.space {
+        TransformGizmoSpace::World => "world",
+        TransformGizmoSpace::Local => "local",
+    };
+    json!({
+        "mode": mode,
+        "space": space,
+        "snap": t.snap,
+        "steps": { "translate": edit::SNAP_TRANSLATE, "rotate": edit::SNAP_ROTATE_DEGREES, "scale": edit::SNAP_SCALE },
+        "origin": t.origin.name(),
+    })
+}
+
+fn tools_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
+    let seq = world.resource::<edit::ViewportTools>().seq;
+    Ok(owed(world, "tools", &p, seq).then(|| tools_json(world)))
 }
 
 // ---- edits ----

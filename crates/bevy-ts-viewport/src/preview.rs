@@ -466,7 +466,7 @@ fn input(world: &mut World, id: u32, e: ViewportInput) {
                                 _ => at - from,
                             };
                             o.yaw -= d.x * LOOK;
-                            o.pitch = (o.pitch - d.y * LOOK).clamp(-1.54, 1.54);
+                            o.pitch = (o.pitch - d.y * LOOK).clamp(-crate::edit::PITCH_LIMIT, crate::edit::PITCH_LIMIT);
                             p.drag = Some(at);
                         }
                     }

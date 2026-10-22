@@ -95,6 +95,36 @@ with `entity`, `depth`, its world `point` `[x, y, z]` and the entity a click the
 `ground` `[x, y, z]`: where the ray meets the plane y = 0 in front of the camera, or null when it
 does not (pointing at the sky). A model dropped on empty floor goes at `ground`.
 
+## Gizmo tools
+
+- `bevy-ts/viewport_tools { mode?, space?, snap? }` sets the transform gizmo's mode (`translate`,
+  `rotate`, `scale`), space (`world`, `local`) and snap. It answers
+  `{ mode, space, snap, steps, origin }`; with no params it changes nothing.
+- The steps are fixed, as Bevy's editor prototype sets them: translate 0.5, rotate 15 degrees,
+  scale 0.1. An axis drag snaps the move along its axis.
+- `bevy-ts/viewport_tools+watch` sends the tools on open and on every change. `origin` is
+  `editor` for a change by the method, `viewport` for one by `W`, `E`, `R` or `X` in the viewport,
+  `engine` before any. No key toggles snap; the keys with ⌃, ⌘ or ⌥ held are not tool keys.
+- A change during a gizmo drag takes effect on release: the drag keeps the field it started on.
+- The tools start as `translate`, `world`, snap off, and are kept for the process, across mode
+  switches and reloads. The method answers in play too; the tools act in edit mode.
+
+## Orientation gizmo
+
+In edit mode the game viewport shows the world's axes in its top-left corner: a 96 px square
+inset 8 px, `+X` red, `+Y` green and `+Z` blue as filled ends, the negative axes as hollow ends,
+turned as the editor camera sees them.
+
+- A click with no drag on an end turns the editor camera to look down that axis at its focus,
+  keeping its distance. `+Y` looks down to the orbit's pitch limit (1.54 rad), so the next orbit
+  does not jump.
+- A press in the square never picks, changes the selection or starts a gizmo drag.
+- Not drawn in play (a click there reaches the game), in asset previews or in `bevy-ts dev`'s own
+  window. A small camera on render layer 32 renders it into a texture, only on the two frames after
+  the editor camera turned (and every frame for its first 1.5 s, while Bevy compiles its pipelines);
+  a quad in front of the editor camera shows it at any scale up to 3x.
+  Its cost is in `docs/research/viewport-tools.md`.
+
 ## An engine that is always up
 
 The studio keeps the project's engine running in edit mode while the project is open (operator
@@ -121,3 +151,6 @@ instead of three.js:
    when the pane closes.
 
 On a 1.7 engine `asset_preview` is method-not-found: keep three.js.
+
+The toolbar needs protocol 1.17 (`viewport_tools`). The studio does not fall back: on an older
+engine it shows "bevy-ts too old".

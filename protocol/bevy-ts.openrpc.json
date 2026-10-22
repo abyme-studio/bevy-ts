@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.16.0",
+    "version": "1.17.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
@@ -469,6 +469,39 @@
         "name": "result",
         "schema": {
           "$ref": "#/components/schemas/ViewportSelection"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_tools",
+      "summary": "Gets or sets the transform gizmo's mode, space and snap (1.17).",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ViewportToolsParams"
+          },
+          "required": false
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportTools"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/viewport_tools+watch",
+      "summary": "The gizmo tools on open and on every change (1.17).",
+      "x-bevy-ts-crate": "bevy-ts-viewport",
+      "x-bevy-ts-watch": true,
+      "params": [],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ViewportTools"
         }
       }
     },
@@ -3780,6 +3813,90 @@
             }
           }
         }
+      },
+      "GizmoMode": {
+        "type": "string",
+        "enum": [
+          "translate",
+          "rotate",
+          "scale"
+        ]
+      },
+      "GizmoSpace": {
+        "type": "string",
+        "enum": [
+          "world",
+          "local"
+        ]
+      },
+      "ViewportToolsParams": {
+        "type": "object",
+        "required": [],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/GizmoMode"
+          },
+          "space": {
+            "$ref": "#/components/schemas/GizmoSpace"
+          },
+          "snap": {
+            "type": "boolean",
+            "description": "Drags move, turn or scale in whole steps."
+          }
+        }
+      },
+      "SnapSteps": {
+        "type": "object",
+        "description": "Fixed, as Bevy's editor prototype sets them.",
+        "required": [
+          "translate",
+          "rotate",
+          "scale"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "translate": {
+            "type": "number",
+            "description": "World units."
+          },
+          "rotate": {
+            "type": "number",
+            "description": "Degrees."
+          },
+          "scale": {
+            "type": "number"
+          }
+        }
+      },
+      "ViewportTools": {
+        "type": "object",
+        "required": [
+          "mode",
+          "space",
+          "snap",
+          "steps",
+          "origin"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/GizmoMode"
+          },
+          "space": {
+            "$ref": "#/components/schemas/GizmoSpace"
+          },
+          "snap": {
+            "type": "boolean"
+          },
+          "steps": {
+            "$ref": "#/components/schemas/SnapSteps"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/SelectionOrigin"
+          }
+        },
+        "description": "`origin` is who made the last change: `editor` by the method, `viewport` by a key, `engine` before any."
       },
       "EditStatus": {
         "type": "string",

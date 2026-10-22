@@ -166,10 +166,15 @@ fn a_literal_drag_is_written_by_the_editor_and_a_computed_one_rejected() {
     let new_x = edit["after"]["translation"][0].as_f64().unwrap();
     assert!(new_x > 3.2, "{edit:#}");
 
-    // The editor: the call site's `at` is a literal, so it rewrites it and answers.
+    // The editor: the call site's `at` is a literal, so it rewrites it and answers. The gizmo
+    // tools set before the reload are kept through it.
+    call(&mut app, "bevy-ts/viewport_tools", json!({ "mode": "scale", "space": "local", "snap": true }));
     let src = game(&format!("[{}, 0, -4]", fmt(new_x)));
     write(&dir, "game.tsx", &src);
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    let tools = call(&mut app, "bevy-ts/viewport_tools", Value::Null);
+    assert_eq!((tools["mode"].as_str(), tools["space"].as_str(), tools["snap"].as_bool()), (Some("scale"), Some("local"), Some(true)), "{tools}");
+    call(&mut app, "bevy-ts/viewport_tools", json!({ "mode": "translate", "space": "world", "snap": false }));
     call(&mut app, "bevy-ts/viewport_edit_result", json!({ "id": edit["id"], "status": "written" }));
     updates(&mut app, 2);
     let b2 = enemy(&mut app, "b");
