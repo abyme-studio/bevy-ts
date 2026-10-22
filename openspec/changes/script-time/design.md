@@ -118,11 +118,10 @@ rust-resources' resolution skips claimed spellings (research@writable-native-par
 rust-resources, 2026-10-23). rust-resources leaves a hook point in resolution for steps 1-2; the
 claims are not theirs.
 
-Open for stage 2: research@writable-native-params has `VirtualTime` claim `Res<Time<Virtual>>` as
-well as `ResMut`, so virtual time is one TS object as in Bevy. That would move stage 1's per-run read
-of `Res<Time<Virtual>>` (a few words, no host call) onto a host call per read. This design keeps
-`Res<Time<Virtual>>` on the per-run value and gives `ResMut<Time<Virtual>>`'s class the same read
-properties; lead@script-time settles it before stage 2 is specced.
+Every `Res<Time<..>>` stays the stage-1 per-run value, with no host call. `VirtualTime` claims only
+`ResMut<Time<Virtual>>` and `FixedTime` only `ResMut<Time<Fixed>>`; each `ResMut` class carries the
+clock's read properties beside its methods (lead@script-time, 2026-10-23, both research agents
+agreeing).
 
 **Protocol and levels.** The protocol's `FieldType.kind` gains `timer` and `stopwatch`, the
 next free minor at landing, additions only. A value is an object of the layout's field names
