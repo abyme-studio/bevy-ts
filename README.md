@@ -18,6 +18,8 @@ without recompiling Rust.
 - **Animated glTF models without Rust**: `<PlayAnimation clip="models/Fox.glb#Animation2" />`
   beside a `WorldAssetRoot` plays a clip, cross-fading when it changes
   ([docs/animation.md](docs/animation.md)).
+- **Bevy's mesh primitives in TSX**: `<mesh shape="torus" />` and every other Bevy 0.20 shape,
+  with Bevy's props and builder settings, typed per shape ([docs/meshes.md](docs/meshes.md)).
 - **Custom materials without Rust**: a params schema in TS and the shader in a `.wgsl` file,
   hot reloaded ([docs/materials.md](docs/materials.md)).
 - **Bevy's time**: `Res<Time<Real>>`, `Res<Time<Virtual>>`, `Res<Time<Fixed>>`, and `Timer` and

@@ -17,6 +17,7 @@ pub mod protocol;
 pub mod reconcile;
 pub mod reflected;
 pub mod resolve;
+pub mod shapes;
 pub mod tree;
 pub mod ui;
 

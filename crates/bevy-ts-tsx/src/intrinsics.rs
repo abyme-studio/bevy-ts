@@ -5,32 +5,38 @@
 use bevy::prelude::*;
 use bevy_ts_material::kinds::AlphaDecl;
 use bevy_ts_material::{GltfMaterialFilter, ScriptMaterial3d};
+use crate::shapes::MeshShape;
 use serde::Deserialize;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// `<mesh shape .../>`: a Bevy mesh primitive (see `shapes`) and an optional color.
+#[derive(Clone, Debug, PartialEq)]
 pub struct MeshProps {
-    /// `cuboid` (`size: [x, y, z]`), `sphere` (`radius`) or `plane` (`size: [x, z]`).
-    pub shape: String,
-    #[serde(default)]
-    pub size: Option<Vec<f32>>,
-    #[serde(default)]
-    pub radius: Option<f32>,
+    pub shape: MeshShape,
     /// Shorthand for a `<material color>` on the same entity.
-    #[serde(default)]
     pub color: Option<String>,
+}
+
+// By hand: `color` comes out first, and the rest is the shape's (`flatten` and
+// `deny_unknown_fields` do not combine).
+impl<'de> Deserialize<'de> for MeshProps {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let mut props = Map::<String, Value>::deserialize(d)?;
+        let color = match props.remove("color") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(c)) => Some(c),
+            Some(v) => return Err(D::Error::custom(format!("color: expected a string, not {v}"))),
+        };
+        let shape = MeshShape::from_props(props).map_err(D::Error::custom)?;
+        Ok(MeshProps { shape, color })
+    }
 }
 
 impl MeshProps {
     pub fn check(&self) -> Result<(), String> {
-        match (self.shape.as_str(), self.size.as_ref().map(Vec::len)) {
-            ("cuboid", None | Some(3)) | ("plane", None | Some(2)) | ("sphere", None) => {}
-            ("cuboid", Some(n)) => return Err(format!("a cuboid's size has 3 numbers, not {n}")),
-            ("plane", Some(n)) => return Err(format!("a plane's size has 2 numbers, not {n}")),
-            ("sphere", Some(_)) => return Err("a sphere takes radius, not size".into()),
-            (other, _) => return Err(format!("unknown shape {other:?}; use cuboid, sphere or plane")),
-        }
+        self.shape.check()?;
         if let Some(c) = &self.color {
             color(c)?;
         }
@@ -38,21 +44,11 @@ impl MeshProps {
     }
 
     fn mesh(&self) -> Mesh {
-        match self.shape.as_str() {
-            "cuboid" => {
-                let s = self.size.clone().unwrap_or(vec![1.0, 1.0, 1.0]);
-                Cuboid::new(s[0], s[1], s[2]).into()
-            }
-            "plane" => {
-                let s = self.size.clone().unwrap_or(vec![1.0, 1.0]);
-                Plane3d::default().mesh().size(s[0], s[1]).into()
-            }
-            _ => Sphere::new(self.radius.unwrap_or(0.5)).into(),
-        }
+        self.shape.mesh()
     }
 
     fn cache_key(&self) -> String {
-        format!("{}|{:?}|{:?}", self.shape, self.size, self.radius)
+        format!("{:?}", self.shape)
     }
 }
 

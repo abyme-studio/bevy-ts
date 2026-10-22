@@ -23,7 +23,7 @@ export class Grunt extends SceneComponent {
 }
 
 /** A plain function prefab: usable inside TSX only, like a Rust scene function. */
-export const Eye = ({ size = 0.2 }: { size?: f32 }) => <entity key="eye"><mesh shape="sphere" size={[size, size, size]} /></entity>;
+export const Eye = ({ size = 0.2 }: { size?: f32 }) => <entity key="eye"><mesh shape="sphere" radius={size} /></entity>;
 
 export function countGrunts(grunts: Query<[Grunt]>) {
   if (grunts.len > 50) console.warn("too many grunts");
