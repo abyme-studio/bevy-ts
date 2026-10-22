@@ -87,3 +87,27 @@ app.addSystems(Update, tick);
     updates(&mut app, 3);
     assert_eq!(app.world().resource::<Generations>().live, 1, "the game keeps running");
 }
+
+/// A module reached through a symlink loads: the compiler rewrites each import to the path between
+/// real files, which is what the loader looks up (build@script-networking's report).
+#[cfg(unix)]
+#[test]
+fn modules_behind_symlinks_load() {
+    let base = project("symlinks", &[
+        ("real/package.json", r#"{"name": "game", "type": "module"}"#),
+        ("real/game.ts", "import { a } from \"./linked/a.ts\";\nimport { b } from \"dep\";\nconsole.log(`symlinks ${a} ${b}`);\n"),
+        ("shared/a.ts", "export const a: string = \"a\";\n"),
+        ("pkg/package.json", r#"{"name": "dep", "type": "module", "exports": "./src/b.ts"}"#),
+        ("pkg/src/b.ts", "export const b: string = \"b\";\n"),
+    ]);
+    // A linked folder, a linked package as pnpm makes one, and the project root itself reached
+    // through a link (as /tmp is /private/tmp).
+    std::os::unix::fs::symlink(base.join("shared"), base.join("real/linked")).unwrap();
+    std::fs::create_dir_all(base.join("real/node_modules")).unwrap();
+    std::os::unix::fs::symlink(base.join("pkg"), base.join("real/node_modules/dep")).unwrap();
+    std::os::unix::fs::symlink(base.join("real"), base.join("alias")).unwrap();
+    let mut app = app(&base.join("alias/game.ts"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    until(&mut app, "the log", |app| messages(app).iter().any(|m| m == "symlinks a b"));
+}
