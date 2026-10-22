@@ -1,7 +1,7 @@
 name: release
 # Builds the engine on each platform's native runner, publishes each platform package from a job of
-# its own (in parallel, each with a fresh OIDC token), then bevy-ts once every platform that built
-# is on npm at this version. npm's 5xx and transient 404s are retried with backoff
+# its own (in parallel, each with a fresh OIDC token), then bevy-ts once every platform's engine
+# built and is on npm at this version; a failed build or publish holds bevy-ts back. npm's 5xx and transient 404s are retried with backoff
 # (scripts/npm-publish.sh).
 #
 # Release: push a tag `v<version>` (git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1).
@@ -45,13 +45,17 @@ jobs:
     steps:
       - name: Version, dist-tag and whether to publish
         id: release
+        env:
+          IN_VERSION: ${{ inputs.version }}
+          IN_TAG: ${{ inputs.tag }}
+          IN_PUBLISH: ${{ inputs.publish }}
         run: |
           if [ "${{ github.event_name }}" = push ]; then
             version="${GITHUB_REF_NAME#v}"
             case "$version" in *-*) tag=next ;; *) tag=latest ;; esac
             publish=true
           else
-            version="${{ inputs.version }}"; tag="${{ inputs.tag }}"; publish="${{ inputs.publish }}"
+            version="$IN_VERSION"; tag="$IN_TAG"; publish="$IN_PUBLISH"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -94,11 +98,12 @@ jobs:
           retention-days: 7
 
   # One job per platform: a slow or failing publish holds up no other, and each mints its own OIDC
-  # token. A platform whose engine did not build has no artifact and publishes nothing.
+  # token. A platform whose engine did not build has no artifact and publishes nothing, and bevy-ts
+  # is then held back until "Re-run failed jobs" builds it.
   platform:
     name: publish ${{ matrix.platform }}
     needs: [release, build]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -140,7 +145,7 @@ jobs:
   bevy-ts:
     name: publish bevy-ts
     needs: [release, platform]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -165,9 +170,9 @@ jobs:
           [ -n "$list" ] || { echo "no engine built" >&2; exit 1; }
           echo "platforms=$list" >> "$GITHUB_OUTPUT"
           echo "Built: $list"
-      # bevy-ts names only engines npm has: every platform that built must be on npm at this
-      # version first, or bevy-ts waits for a rerun rather than going out without them.
-      - name: Every built platform is on npm
+      # bevy-ts never goes out missing an engine: every platform must have built and be on npm at
+      # this version first, or bevy-ts waits for a rerun. A dry run takes whatever built.
+      - name: Every platform built and is on npm
         if: ${{ needs.release.outputs.publish == 'true' }}
         run: scripts/npm-await.sh "$VERSION" "${{ steps.built.outputs.platforms }}"
       - name: Publish bevy-ts

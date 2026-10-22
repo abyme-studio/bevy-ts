@@ -32,5 +32,5 @@ for attempt in 1 2 3 4 5; do
   echo "::warning::$name@$version attempt $attempt failed transiently; retrying in ${delay}s"
   sleep "$delay"; delay=$((delay * 2))
 done
-echo "::error::$name@$version did not publish after 5 attempts" >&2
+echo "::error::$name@$version did not publish after 5 attempts (a 404 every time: no trusted publisher? see docs/release.md)" >&2
 exit 1
