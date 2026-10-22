@@ -799,7 +799,7 @@ mod sidecar {
         }
     }
 
-    fn apply(f: &mut Fixture) {
+    pub(super) fn apply(f: &mut Fixture) {
         f.fake.push(scene_program());
         let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
         assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
@@ -1209,9 +1209,25 @@ mod editor_state {
         g.settle();
         assert!(g.app.world().resource::<Levels>().roots.is_empty(), "the generation does not reopen it");
         open_now(g.app.world_mut(), "levels/arena.bsn").unwrap();
-        assert_eq!(opener(&g, "levels/arena.bsn"), Opener::Ts);
+        assert_eq!(opener(&g, "levels/arena.bsn"), Opener::Editor);
         g.app.update();
-        assert_eq!(state(&g), json!({ "version": 1, "open": [], "closed": [] }));
+        assert_eq!(state(&g), json!({ "version": 1, "open": ["levels/arena.bsn"], "closed": [] }));
+    }
+
+    #[test]
+    fn a_remembered_sidecar_layers_over_its_scene() {
+        let mut f = edit("sidecar", Some(r#"{ "version": 1, "open": ["levels/arena.bsn"], "closed": [] }"#));
+        write(&f.dir, "levels/arena.bsn", "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n");
+        f.app.update();
+        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Editor);
+        // The arena scene, whose sidecar is `levels/arena.bsn`.
+        sidecar::apply(&mut f);
+        let levels = f.app.world().resource::<Levels>();
+        assert_eq!(levels.roots["levels/arena.bsn"].overlay.as_deref(), Some("arena"));
+        let p = f.by_name("player");
+        assert_eq!(f.translation(p).x, 2.0, "it layers over its scene");
+        assert!(!f.app.world().resource::<TsxTree>().external.contains("level:levels/arena.bsn"), "not mounted as its own root");
+        assert!(f.errors().is_empty(), "{:?}", f.errors());
     }
 
     #[test]

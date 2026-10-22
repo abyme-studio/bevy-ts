@@ -366,7 +366,26 @@ fn after_generation(world: &mut World, _: &bevy_ts::plugin_api::AppliedSection) 
     for r in world.resource_mut::<Levels>().roots.values_mut() {
         r.dirty = true;
     }
+    layer_editor_sidecars(world);
     open_sidecars(world);
+}
+
+/// The editor's levels that are a scene's sidecar layer over that scene, as `level_open` layers
+/// one. A level the editor remembered opens at `Startup`, before any scene is known, so it learns
+/// here that it is a sidecar; one mounted as its own root meanwhile leaves it first.
+fn layer_editor_sidecars(world: &mut World) {
+    let bare: Vec<String> = world.resource::<Levels>().roots.iter().filter(|(_, r)| r.opener == Opener::Editor && r.overlay.is_none()).map(|(p, _)| p.clone()).collect();
+    for path in bare {
+        let Some(scene) = crate::edit::sidecar_of(world, &path) else { continue };
+        if world.resource::<TsxTree>().external.contains(&root_name(&path)) {
+            bevy_ts_tsx::unmount_external(world, &root_name(&path));
+        }
+        if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(&path) {
+            r.overlay = Some(scene);
+            r.dirty = true;
+            r.applied.clear();
+        }
+    }
 }
 
 fn after_restart(world: &mut World) {

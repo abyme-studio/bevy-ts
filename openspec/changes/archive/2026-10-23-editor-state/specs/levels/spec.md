@@ -19,7 +19,7 @@ Plain `bevy-ts dev`, `bevy-ts play` and `bevy-ts build` SHALL neither read nor w
 
 #### Scenario: A closed game level stays closed
 - **WHEN** `game.tsx` calls `app.level("levels/arena.bsn")`, a client closes the arena in a `dev --edit` engine, and the engine starts again with `--edit`
-- **THEN** the arena does not open, after the TS generation too, until a client opens it, when it answers `opener: "ts"`
+- **THEN** the arena does not open, after the TS generation too, until a client opens it, when it answers `opener: "editor"`
 
 #### Scenario: A remembered level was deleted
 - **WHEN** `editor.json` has `open: ["levels/gone.bsn", "levels/room.bsn"]` and `levels/gone.bsn` no longer exists
