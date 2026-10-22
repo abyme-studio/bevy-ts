@@ -8,7 +8,7 @@ mod common;
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
 use bevy::remote::{RemoteMethodSystemId, RemoteMethods, RemotePlugin};
-use bevy::text::EditableText;
+use bevy::text::{EditableText, LineBreak, TextCursorStyle};
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
 use bevy_ts::BevyTsPlugin;
@@ -187,6 +187,9 @@ fn initial_value_max_characters_change_events_and_a_reload() {
     let (dir, mut app) = start("text-input-props", &limited("x"));
     let f = field(&mut app);
     assert_eq!(value(&mut app), "x");
+    // One line that never wraps, and a cursor Bevy draws, in the text's colour.
+    assert_eq!(app.world().get::<TextLayout>(f).unwrap().linebreak, LineBreak::NoWrap);
+    assert_eq!(app.world().get::<TextCursorStyle>(f).unwrap().color, app.world().get::<TextColor>(f).unwrap().0);
     for (code, key) in [("KeyA", "a"), ("KeyB", "b"), ("KeyC", "c")] {
         input(&mut app, vec![down(code, key)]);
         updates(&mut app, 3);

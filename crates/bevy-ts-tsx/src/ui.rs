@@ -5,7 +5,7 @@
 
 use bevy::input_focus::AutoFocus;
 use bevy::prelude::*;
-use bevy::text::{EditableText, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, Underline, UnderlineColor};
+use bevy::text::{EditableText, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, TextCursorStyle, Underline, UnderlineColor};
 use bevy::camera::RenderTarget;
 use bevy::image::{TextureAtlas, TextureAtlasLayout};
 use bevy::render::render_resource::TextureFormat;
@@ -1081,6 +1081,15 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
     }
 }
 
+/// An `<input>`'s cursor, in its text's colour: Bevy draws none without `TextCursorStyle`.
+fn cursor(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
+    if kind == UiKind::Input {
+        let c = props.get("color").map(color).transpose()?.unwrap_or(TextColor::default().0);
+        world.entity_mut(e).insert(TextCursorStyle { color: c, ..default() });
+    }
+    Ok(())
+}
+
 fn limit(props: &Map<String, Value>) -> Result<Option<usize>, String> {
     match props.get("maxCharacters") {
         None => Ok(None),
@@ -1208,9 +1217,11 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         }
         Part::Color if present => {
             world.entity_mut(e).insert(TextColor(color(&props["color"])?));
+            cursor(world, e, kind, props)?;
         }
         Part::Color => {
             world.entity_mut(e).remove::<TextColor>();
+            cursor(world, e, kind, props)?;
         }
         Part::Image => {
             let src = props.get("src").and_then(Value::as_str).unwrap_or_default().to_string();
@@ -1282,8 +1293,10 @@ pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
                 check_part(kind, props, Part::Value)?;
             }
             let text = EditableText::new(props.get("initialValue").and_then(Value::as_str).unwrap_or_default());
-            // `EditableText` first, so the one `TextInput` requires does not replace it.
-            world.entity_mut(e).insert(text).insert(TextInput);
+            // `EditableText` first, so the one `TextInput` requires does not replace it. One line:
+            // no wrapping, so text wider than the field scrolls, focused or not.
+            world.entity_mut(e).insert((text, TextLayout::no_wrap())).insert(TextInput);
+            cursor(world, e, kind, props)?;
             parts.push(Part::Font);
         }
         _ => {}
@@ -1335,7 +1348,7 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
             em.remove::<ViewportNode>();
         }
         UiKind::Input => {
-            em.remove::<(TextInput, EditableText, TextFont, TextColor, AutoFocus)>();
+            em.remove::<(TextInput, EditableText, TextFont, TextColor, TextLayout, TextCursorStyle, AutoFocus)>();
         }
         UiKind::Node => {}
     }
