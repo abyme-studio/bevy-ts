@@ -1131,6 +1131,8 @@ fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap
     {
         let tree = world.resource::<TsxTree>();
         let parsed = world.resource::<Levels>().roots.get(level).and_then(|r| world.resource::<Assets<BsnLevel>>().get(&r.handle)).map(|a| a.parsed.clone());
+        // The file's written paths, walked once on the first changed instance.
+        let mut written = None;
         let sidecar = root != root_name(level);
         for (key_path, frames) in owners {
             let Some(e) = tree.entity(node_id(root, key_path)) else { continue };
@@ -1139,7 +1141,7 @@ fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap
             inst.written = match world.get::<LevelInstance>(e) {
                 Some(old) if LevelInstance { written: old.written, ..inst.clone() } == *old => old.written,
                 // A sidecar's override of a TSX entity is not written there: the scene made it.
-                _ => parsed.as_ref().is_some_and(|p| crate::writer::written(p, key_path)) && (!sidecar || world.get::<TsxNode>(e).and_then(|n| n.source.last()).is_some_and(|s| s.file.ends_with(".bsn"))),
+                _ => written.get_or_insert_with(|| parsed.as_deref().map(crate::writer::written_paths).unwrap_or_default()).contains(key_path) && (!sidecar || world.get::<TsxNode>(e).and_then(|n| n.source.last()).is_some_and(|s| s.file.ends_with(".bsn"))),
             };
             writes.push((e, inst));
         }

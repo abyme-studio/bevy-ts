@@ -357,8 +357,23 @@ fn what_a_prefab_gives_cannot_be_changed_or_parented() {
     ] {
         assert_eq!(apply(&with_eye, std::slice::from_ref(&op)).unwrap_err().reason, "prefab-internal", "{op:?}");
     }
-    assert!(written(&syntax::parse(&with_eye).unwrap(), &p("EnemyB")));
-    assert!(!written(&syntax::parse(&with_eye).unwrap(), &p("EnemyB/eye")));
+    let written = written_paths(&syntax::parse(&with_eye).unwrap());
+    assert!(written.contains(&p("EnemyB")));
+    assert!(!written.contains(&p("EnemyB/eye")));
+}
+
+#[test]
+fn the_written_paths_are_what_find_finds() {
+    // Two `A`s: the first wins, as in `find_in`. Unnamed entities count among their unnamed siblings.
+    let src = "#A Marker\nChildren [\n    #C Marker\n    --\n    Marker\n]\n--\nMarker\n--\n#A\nChildren [\n    #D Marker\n]\n";
+    let file = syntax::parse(src).unwrap();
+    let mut got: Vec<Vec<String>> = written_paths(&file).into_iter().collect();
+    got.sort();
+    assert_eq!(got, [p("#0"), p("A"), p("A/#0"), p("A/C")]);
+    for path in &got {
+        assert!(find(&file, path).is_some(), "{path:?}");
+    }
+    assert!(find(&file, &p("A/D")).is_none());
 }
 
 #[test]
@@ -484,4 +499,26 @@ fn created_follows_unnamed_siblings_put_back() {
     let restore = || Op::Restore { parent: p(""), index: 0, text: "Marker".into() };
     let w = ok(src, &[restore(), restore()]);
     assert_eq!(w.created, [p("#1"), p("#0")], "the first restore's entity moved to #1");
+}
+
+/// The stamp's lookup at levels-bench scale: a `find` per instance against one `written_paths`.
+/// Ignored; run it in release:
+/// `cargo test --release -p bevy-ts-levels written_lookup_at_scale -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn written_lookup_at_scale() {
+    for n in [1_000, 10_000] {
+        let src: Vec<String> = (0..n).map(|i| format!("#G{i}\n@enemies::Grunt {{ @hp: 100.0 }}\nTransform {{ translation: Vec3 {{ x: {i}.0 }} }}\n")).collect();
+        let file = syntax::parse(&src.join("--\n")).unwrap();
+        let paths: Vec<Vec<String>> = (0..n).map(|i| vec![format!("G{i}")]).collect();
+        let t = std::time::Instant::now();
+        let each = paths.iter().filter(|p| !under_instance(&file, p) && find(&file, p).is_some()).count();
+        let each_ms = t.elapsed().as_secs_f64() * 1000.0;
+        let t = std::time::Instant::now();
+        let written = written_paths(&file);
+        let once = paths.iter().filter(|p| written.contains(*p)).count();
+        let once_ms = t.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!((each, once), (n, n));
+        println!("| {n} | {each_ms:.1} | {once_ms:.1} |");
+    }
 }

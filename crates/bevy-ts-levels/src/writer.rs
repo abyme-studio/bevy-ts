@@ -4,7 +4,7 @@
 //! batch said.
 
 use crate::syntax::{self, Entity, EntityList, Entry, Fields, ParsedFile, Patch, Span, ValueKind, lex::quote};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 /// A value the writer prints.
 #[derive(Clone, Debug, PartialEq)]
@@ -941,10 +941,32 @@ fn under_instance(file: &ParsedFile, path: &[String]) -> bool {
     (1..path.len()).any(|n| find(file, &path[..n]).is_some_and(|a| a.entity.inclusion().is_some()))
 }
 
-/// Whether the entity at `path` is written in the file, rather than coming from a prefab or an
-/// included level (an override entry under an instance is not).
-pub fn written(file: &ParsedFile, path: &[String]) -> bool {
-    !path.is_empty() && !under_instance(file, path) && find(file, path).is_some()
+/// The name paths of the entities written in the file, rather than coming from a prefab or an
+/// included level (an override entry under an instance is not): what `find` finds and
+/// `under_instance` lets through, in one walk, so a stamp of every instance stays linear.
+pub fn written_paths(file: &ParsedFile) -> HashSet<Vec<String>> {
+    fn walk(list: &EntityList, at: &mut Vec<String>, out: &mut HashSet<Vec<String>>) {
+        let mut unnamed = 0;
+        for e in &list.items {
+            let seg = match e.name() {
+                Some(n) => n.name.clone(),
+                None if e.entries.is_empty() => continue,
+                None => {
+                    unnamed += 1;
+                    format!("#{}", unnamed - 1)
+                }
+            };
+            at.push(seg);
+            // `find_in` takes the first of two siblings of one name.
+            if out.insert(at.clone()) && e.inclusion().is_none() {
+                walk(children(e).unwrap_or(&EMPTY), at, out);
+            }
+            at.pop();
+        }
+    }
+    let mut out = HashSet::new();
+    walk(&file.entities, &mut Vec::new(), &mut out);
+    out
 }
 
 /// The entity at `path`, refused unless it is written in the file.
