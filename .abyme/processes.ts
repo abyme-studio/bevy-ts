@@ -84,6 +84,8 @@ export default {
   // Change level-asset-root: the writer and the level a dropped glTF composes into.
   "level-asset-root-tests": { cmd: "bash -c 'set -o pipefail; (cargo test -p bevy-ts-levels && cargo test -p bevy-ts-cli --test viewport_level --test viewport_thumbnail --test levels_protocol) 2>&1 | grep -v ld64 | tee target/level-asset-root-tests.log | grep -E \"^test |^test result|FAILED|panicked|^error|left|right\"'" },
   "level-asset-root-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check) 2>&1 | grep -v ld64 | tee target/level-asset-root-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
+  // Change level-open: the last round before it lands.
+  "level-open-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/level-open-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
   "arena-assets": { cmd: "BEVY_TS_WRITE_ARENA_ASSETS=1 cargo test -p bevy-ts-viewport --test assets the_arenas_assets -- --nocapture 2>&1 | grep -v ld64 | tail -5" },
   // The same gate for levels task groups.
   "levels-bench": { cmd: "cargo test --release -p bevy-ts-cli --test levels_bench -- --ignored --nocapture 2>&1 | tee target/levels-bench.log | grep -E '^\\||test result|panicked'" },

@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.18.0",
+    "version": "1.19.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
@@ -704,6 +704,46 @@
       }
     },
     {
+      "name": "bevy-ts/level_open",
+      "summary": "Opens a .bsn under the asset root as a level root level:<file>, with no TS call: reads it and every file it includes from disk, composes and reconciles before it replies. A failed open opens nothing; an open level answers as it is. Runs no system. Since 1.19.",
+      "x-bevy-ts-crate": "bevy-ts-levels",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/LevelOpenParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/LevelOpenResult"
+        }
+      }
+    },
+    {
+      "name": "bevy-ts/level_close",
+      "summary": "Closes an open level: its entities despawn. A closed level stays closed until level_open names it again, whoever opened it. Since 1.19.",
+      "x-bevy-ts-crate": "bevy-ts-levels",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/LevelCloseParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/LevelCloseResult"
+        }
+      }
+    },
+    {
       "name": "bevy-ts/level_node",
       "summary": "One level-placed entity by entity or name path: its owner chain, its overrides with locations, the scene component it instances.",
       "x-bevy-ts-crate": "bevy-ts-levels",
@@ -777,7 +817,7 @@
     },
     {
       "name": "bevy-ts/level+watch",
-      "summary": "Level events: loaded, failed, written, external, rebased, conflict.",
+      "summary": "Level events: opened, closed, loaded, failed, written, external, rebased, conflict.",
       "x-bevy-ts-crate": "bevy-ts-levels",
       "x-bevy-ts-watch": true,
       "params": [],
@@ -4655,6 +4695,7 @@
         "type": "object",
         "required": [
           "path",
+          "opener",
           "files",
           "extensions",
           "diagnostics"
@@ -4664,6 +4705,9 @@
           "path": {
             "type": "string",
             "description": "The level's asset path."
+          },
+          "opener": {
+            "$ref": "#/components/schemas/LevelOpener"
           },
           "hash": {
             "anyOf": [
@@ -4710,6 +4754,96 @@
             "items": {
               "$ref": "#/components/schemas/LevelInfo"
             }
+          }
+        }
+      },
+      "LevelOpener": {
+        "type": "string",
+        "enum": [
+          "ts",
+          "rust",
+          "editor",
+          "sidecar"
+        ],
+        "description": "Who opened a level: app.level (ts), add_level (rust), bevy-ts/level_open (editor) or a scene's sidecar."
+      },
+      "LevelOpenParams": {
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "An asset path ending in .bsn."
+          }
+        }
+      },
+      "LevelOpenResult": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "opened",
+              "failed"
+            ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "opened: the level's level_list entry."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "failed: invalid (not a .bsn path inside the asset root), not-found, or load (a file fails to parse or resolve)."
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LevelDiagnostic"
+            },
+            "description": "failed: each with its file, line and column where known."
+          }
+        }
+      },
+      "LevelCloseParams": {
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "An open level's asset path."
+          }
+        }
+      },
+      "LevelCloseResult": {
+        "type": "object",
+        "required": [
+          "closed"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "type": "boolean",
+            "description": "False when the level was not open."
           }
         }
       },
@@ -5539,6 +5673,8 @@
           "event": {
             "type": "string",
             "enum": [
+              "opened",
+              "closed",
               "loaded",
               "failed",
               "written",
@@ -5594,6 +5730,10 @@
             "items": {
               "$ref": "#/components/schemas/LevelDiagnostic"
             }
+          },
+          "opener": {
+            "$ref": "#/components/schemas/LevelOpener",
+            "description": "opened: who opened the level."
           }
         }
       },

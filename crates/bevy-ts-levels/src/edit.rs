@@ -81,7 +81,7 @@ fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
 }
 
 /// Replaces the loaded asset with `text`, as a reload would: its levels reconcile.
-fn load_text(world: &mut World, file: &str, text: &str) -> Result<(), String> {
+pub(crate) fn load_text(world: &mut World, file: &str, text: &str) -> Result<(), String> {
     let parsed = syntax::parse(text).map_err(|d| d.render(file, text))?;
     let mut paths = Vec::new();
     crate::engine::includes_of(&parsed.entities, &mut paths);
@@ -233,7 +233,7 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
 }
 
 /// The `app.scene` root whose sidecar level is `file`, if any.
-fn sidecar_of(world: &World, file: &str) -> Option<String> {
+pub(crate) fn sidecar_of(world: &World, file: &str) -> Option<String> {
     let scenes: Vec<String> = world.resource::<TsxTree>().scenes.keys().cloned().collect();
     scenes.into_iter().find(|s| bevy_ts_tsx::scene_level(world, s).as_deref() == Some(file))
 }

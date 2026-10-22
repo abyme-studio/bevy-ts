@@ -839,6 +839,23 @@ mod sidecar {
         assert_eq!(g.translation(p), Vec3::new(2.0, 0.0, -4.0));
     }
     #[test]
+    fn a_closed_sidecar_stays_closed_until_opened() {
+        use bevy_ts_levels::engine::{Opener, close_now, open_now};
+        let mut f = fixture("sidecar-close", &[("levels/arena.bsn", "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n")]);
+        apply(&mut f);
+        let p = f.by_name("player");
+        assert_eq!(f.translation(p).x, 2.0);
+        assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
+        assert_eq!(f.translation(p).x, 0.0, "the sidecar's override leaves the scene");
+        apply(&mut f);
+        assert!(f.app.world().resource::<Levels>().roots.is_empty(), "a generation's sidecar check does not reopen it");
+        assert_eq!(f.translation(p).x, 0.0);
+        open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
+        assert_eq!(f.app.world().resource::<Levels>().roots["levels/arena.bsn"].opener, Opener::Sidecar);
+        assert_eq!(f.translation(p).x, 2.0, "it layers over its scene again");
+    }
+
+    #[test]
     fn an_add_to_a_scene_with_no_level_creates_its_sidecar() {
         use bevy_ts_levels::edit::{WriteRequest, write_level};
         use bevy_ts_levels::engine::content_hash;
@@ -865,5 +882,191 @@ mod sidecar {
         let r = write_level(f.app.world_mut(), WriteRequest { id: 3, file: file.into(), base: content_hash(text.as_bytes()), ops: r.inverse.clone() });
         assert_eq!(r.status, "written", "{r:?}");
         assert!(f.app.world().get_entity(light).is_err());
+    }
+}
+
+/// `bevy-ts/level_open` and `level_close` (change level-open), through the engine calls they serve.
+mod open {
+    use super::*;
+    use bevy_ts_levels::edit::{WriteRequest, write_level};
+    use bevy_ts_levels::engine::{LevelsAppExt, Opener, close_now, content_hash, open_now, root_name};
+    use bevy_ts_tsx::desc::node_id;
+    use bevy_ts_levels::writer::{Op, WValue};
+
+    fn arena(name: &str) -> Fixture {
+        let mut f = fixture(&format!("open-{name}"), &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        // A generation with the game's components and no `app.level`.
+        f.load(&[]);
+        f
+    }
+
+    fn names(f: &mut Fixture) -> Vec<String> {
+        let world = f.app.world_mut();
+        let mut v: Vec<String> = world.query::<&Name>().iter(world).map(|n| n.to_string()).collect();
+        v.sort();
+        v
+    }
+
+    fn opener(f: &Fixture, path: &str) -> Opener {
+        f.app.world().resource::<Levels>().roots[path].opener
+    }
+
+    /// `level+watch` messages since `seq`, as `event level`.
+    fn events(f: &Fixture, seq: u64) -> Vec<String> {
+        f.app.world().resource::<Levels>().events.iter().filter(|(s, _)| *s > seq).map(|(_, m)| format!("{} {}", m["event"].as_str().unwrap(), m["level"].as_str().unwrap())).collect()
+    }
+
+    #[test]
+    fn opening_the_arena_reconciles_it_before_it_returns() {
+        let mut f = arena("arena");
+        // No frame runs between the call and the check: the open ran no system.
+        assert_eq!(open_now(f.app.world_mut(), "levels/arena.bsn").unwrap(), "levels/arena.bsn");
+        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Editor);
+        let b = f.by_name("EnemyB");
+        assert_eq!(f.app.world().get::<TsxNode>(b).unwrap().root, "level:levels/arena.bsn");
+        assert_eq!(f.hp(b), (100.0, 250.0));
+        assert_eq!(names(&mut f).iter().filter(|n| *n == "Floor").count(), 2);
+        let levels = f.app.world().resource::<Levels>();
+        let r = &levels.roots["levels/arena.bsn"];
+        assert!(!r.dirty && r.error.is_none());
+        assert!(r.files.contains("levels/room.bsn"));
+        // The loads the asset server started bring nothing new.
+        let x = f.translation(b);
+        f.settle();
+        assert_eq!(f.by_name("EnemyB"), b);
+        assert_eq!(f.translation(b), x);
+        assert!(f.errors().is_empty(), "{:?}", f.errors());
+    }
+
+    #[test]
+    fn opening_an_open_level_changes_nothing() {
+        let mut f = arena("twice");
+        open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
+        f.settle();
+        let b = f.by_name("EnemyB");
+        let seq = f.app.world().resource::<Levels>().seq;
+        let written = f.app.world().resource::<TsxTree>().last.written;
+        assert_eq!(open_now(f.app.world_mut(), "./levels/arena.bsn").unwrap(), "levels/arena.bsn");
+        assert_eq!(f.by_name("EnemyB"), b);
+        assert_eq!(f.app.world().resource::<TsxTree>().last.written, written);
+        assert!(events(&f, seq).is_empty(), "{:?}", events(&f, seq));
+        assert_eq!(f.app.world().resource::<Levels>().roots.len(), 1);
+    }
+
+    #[test]
+    fn a_typo_opens_nothing() {
+        let mut f = arena("typo");
+        write(&f.dir, "levels/bad.bsn", &ARENA.replace("Health { max: 250.0 }", "Health { max: 250.0 }\nTransfrom { translation: Vec3 { x: 9.0 } }"));
+        let e = open_now(f.app.world_mut(), "levels/bad.bsn").unwrap_err();
+        assert_eq!(e.reason, "load");
+        let at = e.diagnostics[0].location.as_ref().unwrap();
+        assert_eq!((at.file.as_str(), at.line), ("levels/bad.bsn", 9), "{:?}", e.diagnostics);
+        assert!(e.diagnostics[0].message.contains("Transfrom"), "{:?}", e.diagnostics);
+        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+        assert!(!names(&mut f).contains(&"EnemyA".to_string()));
+        // A file that does not parse says where.
+        write(&f.dir, "levels/broken.bsn", "#A\nTransform {\n");
+        let e = open_now(f.app.world_mut(), "levels/broken.bsn").unwrap_err();
+        assert_eq!(e.reason, "load");
+        assert_eq!(e.diagnostics[0].location.as_ref().unwrap().file, "levels/broken.bsn", "{:?}", e.diagnostics);
+        // A missing inclusion says where it is included.
+        write(&f.dir, "levels/holed.bsn", "#A\n:\"./gone.bsn\"\n");
+        let e = open_now(f.app.world_mut(), "levels/holed.bsn").unwrap_err();
+        assert_eq!(e.reason, "load");
+        let at = e.diagnostics[0].location.as_ref().unwrap();
+        assert_eq!((at.file.as_str(), at.line), ("levels/holed.bsn", 2), "{:?}", e.diagnostics);
+        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+    }
+
+    #[test]
+    fn a_missing_or_outside_file_is_refused() {
+        let mut f = arena("missing");
+        assert_eq!(open_now(f.app.world_mut(), "levels/nope.bsn").unwrap_err().reason, "not-found");
+        for bad in ["../outside.bsn", "levels/../../x.bsn", "/abs/arena.bsn", "levels/arena.txt"] {
+            assert_eq!(open_now(f.app.world_mut(), bad).unwrap_err().reason, "invalid", "{bad}");
+        }
+        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+    }
+
+    #[test]
+    fn switching_levels() {
+        let mut f = arena("switch");
+        open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
+        let b = f.by_name("EnemyB");
+        let seq = f.app.world().resource::<Levels>().seq;
+        let tree_seq = f.app.world().resource::<TsxTree>().journal.seq;
+        open_now(f.app.world_mut(), "levels/room.bsn").unwrap();
+        assert!(f.app.world().get_entity(b).is_ok(), "opening one level closes no other");
+        assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
+        assert!(f.app.world().get_entity(b).is_err());
+        assert_eq!(names(&mut f), ["Floor", "Room"]);
+        assert!(!close_now(f.app.world_mut(), "levels/arena.bsn"), "not open");
+        // What a Hierarchy watching `level+watch` sees.
+        assert_eq!(events(&f, seq), ["opened levels/room.bsn", "loaded levels/room.bsn", "closed levels/arena.bsn"]);
+        let opened = f.app.world().resource::<Levels>().events.iter().find(|(s, _)| *s > seq).unwrap().1.clone();
+        assert_eq!(opened["opener"], "editor");
+        // What `tsx_tree+watch` sends: the room's nodes added, the arena's removed.
+        let journal = &f.app.world().resource::<TsxTree>().journal;
+        let since: Vec<_> = journal.messages.iter().filter(|(s, _)| *s > tree_seq).map(|(_, c)| c).collect();
+        let id = |root: &str, path: &[&str]| node_id(&root_name(root), &path.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert!(since.iter().any(|c| c.added.contains(&id("levels/room.bsn", &["Room", "Floor"]))), "{since:?}");
+        assert!(since.iter().any(|c| c.removed.contains(&id("levels/arena.bsn", &["EnemyB"]))), "{since:?}");
+    }
+
+    #[test]
+    fn a_level_rust_adds_stays_closed() {
+        let mut f = fixture("open-rust", &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        f.app.add_level("levels/room.bsn");
+        f.load(&[]);
+        f.settle();
+        assert_eq!(opener(&f, "levels/room.bsn"), Opener::Rust);
+        assert!(close_now(f.app.world_mut(), "levels/room.bsn"));
+        f.load(&[]);
+        f.settle();
+        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+        assert!(!names(&mut f).contains(&"Room".to_string()));
+    }
+
+    #[test]
+    fn a_level_the_game_declares_stays_closed_across_a_generation() {
+        let mut f = fixture("open-declared", &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Ts);
+        let b = f.by_name("EnemyB");
+        assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
+        assert!(f.app.world().get_entity(b).is_err());
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        assert!(f.app.world().resource::<Levels>().roots.is_empty(), "a generation does not reopen it");
+        open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
+        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Ts);
+        f.by_name("EnemyB");
+        // Open again, it is the game's: a generation without it closes it.
+        f.load(&[]);
+        f.app.update();
+        assert!(f.app.world().resource::<Levels>().roots.is_empty());
+    }
+
+    #[test]
+    fn an_app_level_level_opened_by_the_editor_keeps_its_opener() {
+        let mut f = fixture("open-keeps", &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
+        assert_eq!(opener(&f, "levels/arena.bsn"), Opener::Ts);
+    }
+
+    #[test]
+    fn writing_an_opened_level() {
+        let mut f = arena("write");
+        open_now(f.app.world_mut(), "levels/room.bsn").unwrap();
+        let floor = f.by_name("Floor");
+        let op = Op::Set { path: vec!["Room".into(), "Floor".into()], component: "Transform".into(), field: vec!["translation".into(), "y".into()], value: WValue::Float { v: 2.0, f32: true }, containers: vec!["Vec3".into()] };
+        let r = write_level(f.app.world_mut(), WriteRequest { id: 1, file: "levels/room.bsn".into(), base: content_hash(ROOM.as_bytes()), ops: vec![op] });
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(std::fs::read_to_string(f.dir.join("levels/room.bsn")).unwrap().contains("y: 2.0"));
+        assert_eq!(f.by_name("Floor"), floor);
+        assert_eq!(f.translation(floor).y, 2.0);
     }
 }

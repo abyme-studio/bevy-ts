@@ -14,6 +14,33 @@ file's own text, keeping its comments and layout. The whole batch applies or non
 moved on, the world follows the disk first, then the batch replays on the new text, or is refused
 as a conflict. `base: null` writes a file that does not exist yet.
 
+## Opening and closing a level
+
+An editor opens a level as Unity opens a scene, with no `app.level` call (protocol 1.19; an
+older engine answers method-not-found):
+
+```json
+{ "method": "bevy-ts/level_open", "params": { "file": "levels/room.bsn" } }
+```
+
+It reads the file and every file it includes from disk, composes and reconciles before it
+replies `{ status: "opened", level }`, with `level` as `level_list` lists it. A failure opens
+nothing: `{ status: "failed", reason, diagnostics }`, where `reason` is `invalid` (not a `.bsn`
+path inside the asset root), `not-found`, or `load` (a file fails to parse or resolve, each
+diagnostic with its file, line and column). Opening an open level answers it again and spawns
+nothing. Opening never closes another level: the editor decides what to close, with
+`bevy-ts/level_close { file }`, which answers `{ closed }`. Opening runs no system; whether the
+game's systems act on the new entities is the mode's rule.
+
+An opened level is a level like any other: `tsx_tree`, `level_node`, `level_write`, picking and
+hot reload treat it as an `app.level` level. Each `level_list` entry says who opened it in
+`opener`: `ts` (`app.level`), `rust` (`add_level`), `editor` (`level_open`) or `sidecar`. A level
+`app.level` declares stays `ts` when the editor opens it too. A level `level_close` closed stays
+closed for the process until `level_open` names it again, whoever opened it: neither a TS save
+nor a scene's sidecar check reopens it. `level+watch` streams `opened` (with `opener`) and
+`closed`, whoever opens or closes the level, and `tsx_tree+watch` sends an opened level's nodes
+as `added` and a closed one's as `removed`.
+
 ## Operations
 
 | op | takes | inverse |
