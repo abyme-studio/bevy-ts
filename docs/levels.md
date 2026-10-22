@@ -122,7 +122,9 @@ An `app.scene` root has a sidecar level, `levels/<scene>.bsn` or its `level` opt
 tree root's `sidecar` whether or not the file exists. A `level_write` to that path creates the
 file on first write and layers it over the scene by key path. Entities added there are the
 scene's own top-level entities and fully editable; the scene's TSX entities take overrides but
-stay TSX's to rename, delete and move (`prefab-internal`).
+stay TSX's to rename, delete and move (`prefab-internal`). A sidecar path `app.level` declares
+is a level of its own instead, on every mount and when `level_open` reopens it: it does not layer
+over its scene.
 
 ## Not here
 

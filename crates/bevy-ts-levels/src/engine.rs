@@ -184,6 +184,9 @@ pub struct Levels {
     /// Recently seen versions of level files by content hash, so a write made against an older
     /// version can tell which fields the disk changed since (the latest 32).
     pub history: std::collections::VecDeque<(u64, Arc<ParsedFile>)>,
+    /// The levels the live generation's `app.level` declares: each a level of its own, a scene's
+    /// sidecar path or not.
+    pub declared: BTreeSet<String>,
     /// Levels `level_close` closed: a generation does not reopen them until `level_open` does.
     pub closed: BTreeSet<String>,
     /// Where the editor's levels are remembered (`dev --edit` only): read at `Startup`, written
@@ -193,7 +196,7 @@ pub struct Levels {
 
 impl Default for Levels {
     fn default() -> Self {
-        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), closed: BTreeSet::new(), state_file: None }
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), declared: BTreeSet::new(), closed: BTreeSet::new(), state_file: None }
     }
 }
 
@@ -316,7 +319,7 @@ fn open_sidecars(world: &mut World) {
     for scene in scenes {
         let Some(path) = bevy_ts_tsx::scene_level(world, &scene) else { continue };
         let levels = world.resource::<Levels>();
-        if !levels.closed.contains(&path) && levels.asset_root.join(&path).exists() {
+        if !levels.closed.contains(&path) && !levels.declared.contains(&path) && levels.asset_root.join(&path).exists() {
             open_sidecar(world, &scene, &path);
         }
     }
@@ -350,9 +353,17 @@ fn check_section(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -
 fn apply_section(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection) {
     let wanted: Vec<String> = if applied.present { serde_json::from_slice::<LevelSection>(applied.bytes).map(|s| s.levels).unwrap_or_default() } else { Vec::new() };
     let gone: Vec<String> = world.resource::<Levels>().roots.iter().filter(|(p, r)| r.opener == Opener::Ts && !wanted.contains(p)).map(|(p, _)| p.clone()).collect();
+    // A level `app.level` declares is a level of its own, never a scene's overlay.
+    // One open over its scene reopens as a level: the game's, or still the editor's.
+    let layered: Vec<(String, Opener)> = world.resource::<Levels>().roots.iter().filter(|(p, r)| r.overlay.is_some() && wanted.contains(p)).map(|(p, r)| (p.clone(), if r.opener == Opener::Editor { Opener::Editor } else { Opener::Ts })).collect();
     for p in gone {
         close(world, &p);
     }
+    for (p, opener) in layered {
+        close(world, &p);
+        open(world, &p, opener);
+    }
+    world.resource_mut::<Levels>().declared = wanted.iter().cloned().collect();
     // A level the editor closed stays closed until it opens it again.
     let closed = world.resource::<Levels>().closed.clone();
     for p in wanted.iter().filter(|p| !closed.contains(*p)) {
@@ -1119,7 +1130,8 @@ pub fn open_now(world: &mut World, file: &str) -> Result<String, OpenFailure> {
             }
         }
     }
-    // The editor opened it, whatever else it is; a scene's sidecar layers over its scene again.
+    // The editor opened it, whatever else it is; a scene's sidecar layers over its scene again,
+    // but one `app.level` declares, which is a level of its own.
     let overlay = crate::edit::sidecar_of(world, &path);
     open_as(world, &path, Opener::Editor, overlay);
     if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(&path) {

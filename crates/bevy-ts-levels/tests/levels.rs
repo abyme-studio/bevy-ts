@@ -873,11 +873,50 @@ mod sidecar {
         assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
         open_now(f.app.world_mut(), "levels/arena.bsn").unwrap();
         assert_eq!(opener(&f), Opener::Editor, "the editor opened it");
+        assert_eq!(f.app.world().resource::<Levels>().roots["levels/arena.bsn"].overlay, None, "it is still a level of its own");
         let p = f.by_name("player");
-        assert_eq!(f.translation(p).x, 2.0, "it still layers over its scene");
+        assert_eq!(f.translation(p).x, 0.0, "it does not layer over its scene");
         assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
         assert!(f.app.world().resource::<Levels>().roots.is_empty());
         assert_eq!(f.translation(p).x, 0.0);
+    }
+
+    #[test]
+    fn a_game_level_that_is_a_sidecar_is_a_level_of_its_own_from_its_first_mount() {
+        // `app.level("levels/arena.bsn")`, which is also the arena scene's sidecar.
+        let mut f = fixture("sidecar-first", &[("levels/arena.bsn", "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n")]);
+        let mut program = scene_program();
+        program.sections.push(Section { name: "levels".into(), bytes: serde_json::to_vec(&json!({ "levels": ["levels/arena.bsn"] })).unwrap(), location: None });
+        f.fake.push(program);
+        let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+        assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+        for _ in 0..50 {
+            f.app.update();
+        }
+        let r = &f.app.world().resource::<Levels>().roots["levels/arena.bsn"];
+        assert_eq!((r.opener, r.overlay.clone()), (bevy_ts_levels::engine::Opener::Ts, None));
+        let p = f.by_name("player");
+        assert_eq!(f.translation(p).x, 0.0, "it does not layer over its scene");
+        assert!(f.app.world().resource::<TsxTree>().roots.contains_key("level:levels/arena.bsn"), "it mounts a root of its own");
+    }
+
+    #[test]
+    fn a_sidecar_a_new_generation_declares_becomes_a_level_of_its_own() {
+        let mut f = fixture("sidecar-declared-later", &[("levels/arena.bsn", "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n")]);
+        apply(&mut f);
+        let p = f.by_name("player");
+        assert_eq!(f.translation(p).x, 2.0, "undeclared, it layers over its scene");
+        let mut program = scene_program();
+        program.sections.push(Section { name: "levels".into(), bytes: serde_json::to_vec(&json!({ "levels": ["levels/arena.bsn"] })).unwrap(), location: None });
+        f.fake.push(program);
+        let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+        assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+        for _ in 0..50 {
+            f.app.update();
+        }
+        let r = &f.app.world().resource::<Levels>().roots["levels/arena.bsn"];
+        assert_eq!((r.opener, r.overlay.clone()), (bevy_ts_levels::engine::Opener::Ts, None));
+        assert_eq!(f.translation(p).x, 0.0, "its overrides leave the scene");
     }
 
     #[test]

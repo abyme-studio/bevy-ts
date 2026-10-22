@@ -232,8 +232,12 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
     WriteResult { id: req.id, file: req.file.clone(), status, reason: None, message: String::new(), hash: Some(hash_text(hash)), lines: written.lines, disk: None, inverse: written.inverse, created }
 }
 
-/// The `app.scene` root whose sidecar level is `file`, if any.
+/// The `app.scene` root whose sidecar level is `file`, if any. None for a level `app.level`
+/// declares: it is a level of its own.
 pub(crate) fn sidecar_of(world: &World, file: &str) -> Option<String> {
+    if world.resource::<Levels>().declared.contains(file) {
+        return None;
+    }
     let scenes: Vec<String> = world.resource::<TsxTree>().scenes.keys().cloned().collect();
     scenes.into_iter().find(|s| bevy_ts_tsx::scene_level(world, s).as_deref() == Some(file))
 }

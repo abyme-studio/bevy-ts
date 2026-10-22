@@ -14,6 +14,8 @@ export default {
     cmd: "cd bench/dx/rust && cargo check 2>&1 | tee ../results/rust-check.txt",
   },
   build: { cmd: "cargo build --workspace --all-targets" },
+  // Every cli test binary, past the first failure, for a change that moves what several assert.
+  "cli-test-all": { cmd: "bash -c 'cargo test -p bevy-ts-cli --no-fail-fast 2>&1 | grep -v ld64 | tee target/cli-test-all.log | grep -E \"^     Running|FAILED|panicked\"'" },
   "cli-test": { cmd: "cargo test -p bevy-ts-cli 2>&1 | tee target/cli-test.log | grep -E \"^test result|FAILED|panicked|^error\"" },
   // The npm package's vitest suite (examples, `new`), against the debug engine for the TS transform.
   "npm-test": { cmd: "bash -c 'set -o pipefail; cargo build -p bevy-ts-cli && cd packages/bevy-ts && pnpm install --frozen-lockfile && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm test 2>&1 | tee ../../target/npm-test.log | tail -40'" },

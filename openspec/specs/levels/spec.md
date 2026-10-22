@@ -114,7 +114,7 @@ Opening a level that is already open SHALL answer `opened` with it and SHALL spa
 
 A level opened this way SHALL be a level like any other: `bevy-ts/tsx_tree`, `level_node`, `level_write`, `level_apply`, picking and `viewport_select` SHALL treat it as they treat an `app.level` level, and it SHALL reload by `level-hot-reload`'s rules, a TS generation's re-expansion included.
 
-Each `bevy-ts/level_list` entry SHALL carry `opener`: `ts` for an `app.level` level, `rust` for `add_level`, `editor` for `level_open`, `sidecar` for a scene's sidecar. A level `level_open` opens is `editor`, whatever else it is (an `app.level` level or a sidecar it reopens after `level_close` included); a level `level_open` names while it is open keeps its opener.
+Each `bevy-ts/level_list` entry SHALL carry `opener`: `ts` for an `app.level` level, `rust` for `add_level`, `editor` for `level_open`, `sidecar` for a scene's sidecar. A level `level_open` opens is `editor`, whatever else it is (an `app.level` level or a sidecar it reopens after `level_close` included); a level `level_open` names while it is open keeps its opener. A scene's sidecar path that `app.level` declares SHALL mount as a level of its own, never layered over its scene, on its first mount, on a generation that newly declares it and on `level_open`'s reopen.
 
 #### Scenario: Opening the arena in edit mode
 - **WHEN** the engine runs in edit mode with no `app.level` call, and a client calls `bevy-ts/level_open` with `levels/arena.bsn`
