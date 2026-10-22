@@ -214,7 +214,9 @@ sends `cause: "failed"`. A Stop brings back the choice in force before Play.
 
 `gameCameras` in the answer counts the game cameras Play would turn on: not the editor's or a
 preview's, alive, their own active flag on. In Play it counts the ones on. Under `--edit` before the
-first Play it counts only cameras levels and scenes spawned, since no `Startup` has run. With none,
+first Play it counts only cameras levels and scenes spawned, since no `Startup` has run: a game
+whose camera a `Startup` spawns, as the arena's does, shows a blank game view until the first step
+or Play. With none,
 the game view clears to the game's `ClearColor` (Bevy clears a window no camera draws), and the
 studio says "No cameras rendering".
 
