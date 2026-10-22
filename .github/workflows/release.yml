@@ -1,8 +1,8 @@
 name: release
 # Builds the engine on each platform's native runner, publishes each platform package from a job of
 # its own (in parallel, each with a fresh OIDC token), then bevy-ts once every platform's engine
-# built and is on npm at this version; a failed build or publish holds bevy-ts back. npm's 5xx and transient 404s are retried with backoff
-# (scripts/npm-publish.sh).
+# built and is on npm at this version; a failed build or publish holds bevy-ts back. npm's 5xx and
+# transient 404s are retried with backoff (scripts/npm-publish.sh).
 #
 # Release: push a tag `v<version>` (git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1).
 # A pre-release version goes out under dist-tag `next`, a stable one under `latest`.

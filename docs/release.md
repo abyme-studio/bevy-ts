@@ -11,15 +11,15 @@ Push a tag: `git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1`. The `rel
 builds each platform's engine on its native runner, publishes each platform package from a job of
 its own, in parallel, with provenance through npm trusted publishing (OIDC, no token, no 2FA). Then
 it checks that every platform's engine built and, with `npm view`, is on npm at that version, and
-only then publishes `bevy-ts` listing them all. A version with a `-` goes out under `next`, one without
-under `latest`. Until a stable version exists, a pre-release also moves `latest`, so a plain
-`npm i bevy-ts` gets the newest alpha.
+only then publishes `bevy-ts` listing them all. A version with a `-` goes out under `next`, one
+without under `latest`. Until a stable version exists, a pre-release also moves `latest`, so a
+plain `npm i bevy-ts` gets the newest alpha.
 
 npm fails now and then: a 503, 404s after it, a run so long its OIDC token expired. So each publish
 (`scripts/npm-publish.sh`) retries a 5xx or 404 up to five times with backoff, each attempt a fresh
 OIDC exchange, and takes "already published" as success. If an engine fails to build or a platform
-still fails to publish, `bevy-ts` is held back rather than published without that engine: "Re-run failed jobs" finishes the release,
-skipping whatever is already on npm.
+still fails to publish, `bevy-ts` is held back rather than published without that engine:
+"Re-run failed jobs" finishes the release, skipping whatever is already on npm.
 
 Dry run: Actions > release > Run workflow, with a version and `publish` unticked.
 
