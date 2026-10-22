@@ -7,7 +7,7 @@ use bevy::asset::ReflectHandle;
 use bevy::ecs::reflect::ReflectComponent;
 use bevy::prelude::*;
 use bevy::reflect::serde::TypedReflectDeserializer;
-use bevy::reflect::{ParsedPath, PartialReflect, ReflectPath, TypeRegistry};
+use bevy::reflect::{ParsedPath, PartialReflect, ReflectPath, ReflectRef, TypeRegistry};
 use serde::de::DeserializeSeed;
 use serde_json::{Map, Value};
 
@@ -24,7 +24,11 @@ fn field_value(registry: &TypeRegistry, server: &AssetServer, current: &dyn Part
 }
 
 fn set(registry: &TypeRegistry, server: &AssetServer, target: &mut dyn PartialReflect, field: &str, v: &Value) -> Result<(), String> {
-    let path = ParsedPath::parse(&format!(".{field}")).map_err(|_| format!("no field {field}"))?;
+    // A newtype's one field is `value` in TS and `.0` to reflection (native-components); levels
+    // write here with reflection paths, so `0` stays valid.
+    let newtype = matches!(target.reflect_ref(), ReflectRef::TupleStruct(s) if s.field_len() == 1);
+    let reflect_field = if newtype && field == "value" { "0" } else { field };
+    let path = ParsedPath::parse(&format!(".{reflect_field}")).map_err(|_| format!("no field {field}"))?;
     let slot = path.reflect_element_mut(target).map_err(|_| format!("no field {field}"))?;
     let value = field_value(registry, server, slot, v)?;
     slot.try_apply(&*value).map_err(|e| format!("{field}: {e}"))

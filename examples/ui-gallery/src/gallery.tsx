@@ -1,7 +1,8 @@
 // Every bevy_ui element bevy-ts reaches from TSX, one panel per stage of the bevy-ui-coverage change.
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
-import { app, type Commands, px, signal, Startup } from "bevy-ts";
+import { app, type Commands, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, repeat, signal, span, Startup } from "bevy-ts";
+import { ZIndex } from "bevy-ts/bevy";
 import type { Child } from "bevy-ts/jsx-runtime";
 
 export function stage(commands: Commands) {
@@ -32,6 +33,35 @@ const Basics = () => (
   </Panel>
 );
 
+const [tilted, setTilted] = signal(false);
+
+/** Stage 1: grid, the remaining `Node` fields, corners, sides, outline, shadow, transform, gradients. */
+const Style = () => (
+  <Panel title="Style">
+    <node key="grid" style={{ display: "grid", gridTemplateColumns: [fr(1), px(60), repeat(2, fr(1))], gridAutoRows: px(18), columnGap: px(4), rowGap: px(4), width: px(240) }}>
+      <node key="wide" style={{ gridColumn: span(2) }} background="#4a6fa5" />
+      <node key="a" background="#6b8fc7" />
+      <node key="b" background="#6b8fc7" />
+      <node key="tall" style={{ gridRow: span(2) }} background="#a5784a" />
+      <node key="c" style={{ gridColumn: { start: 2, span: 3 } }} background="#4aa57a" />
+    </node>
+    <node key="row" style={{ columnGap: px(10), alignItems: "center" }}>
+      <node key="corners" style={{ width: px(40), height: px(40), border: px(3) }} radius={[px(14), 0, px(14), 0]} border={{ top: "#ff6060", bottom: "#60ff60" }} background="#333a48" />
+      <node key="outline" style={{ width: px(40), height: px(40) }} radius={percent(50)} outline={{ width: px(2), offset: px(2), color: "#ffd060" }} background="#333a48" />
+      <node key="shadow" style={{ width: px(40), height: px(40) }} radius={px(6)} shadow={{ color: "#000000c0", x: px(3), y: px(4), blur: px(6) }} background="#566078" />
+      <button key="tilt" style={{ width: px(40), height: px(40) }} transform={() => ({ rotation: tilted() ? deg(15) : 0, scale: tilted() ? 1.1 : 1 })} background="#7a4ab0" onPointerClick={() => setTilted(!tilted())}>
+        <ZIndex value={1} />
+      </button>
+    </node>
+    <node key="gradients" style={{ columnGap: px(10) }}>
+      <node key="linear" style={{ width: px(60), height: px(30) }} background={linearGradient(90, ["#ff5f6d", "#ffc371"])} />
+      <node key="radial" style={{ width: px(60), height: px(30) }} background={radialGradient(["#ffffff", "#2a5298"])} />
+      <node key="conic" style={{ width: px(30), height: px(30) }} radius={percent(50)} background={conicGradient(["#f00", "#ff0", "#0f0", "#0ff", "#00f", "#f0f", "#f00"])} />
+      <node key="frame" style={{ width: px(60), height: px(30), border: px(3) }} border={linearGradient(0, ["#00c6ff", "#0072ff"])} />
+    </node>
+  </Panel>
+);
+
 app.scene("gallery", () => (
   <>
     {/* Not UI: a cube behind the panels, so <entity>, <mesh> and <material> appear too. */}
@@ -41,6 +71,7 @@ app.scene("gallery", () => (
     </entity>
     <node key="gallery" style={{ position: "absolute", top: px(12), left: px(12), right: px(12), flexWrap: "wrap", columnGap: px(12), rowGap: px(12) }}>
       <Basics />
+      <Style />
     </node>
   </>
 ));

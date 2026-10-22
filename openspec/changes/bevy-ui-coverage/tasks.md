@@ -7,16 +7,16 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 1. Style
 
-- [ ] 1.1 `layout_reflect.rs`: a one-field tuple struct's field is `value`; tuple structs with more fields keep `"0"`, `"1"`; regenerate `bevy.d.ts`; test `<ZIndex value={2} />`, `ref.get(ZIndex).value` and a TS system reading `TabIndex.value`
-- [ ] 1.2 Check that a level holding a `ZIndex` still loads and that no protocol answer changes; if one does, the next free minor at landing and `scripts/gen-protocol.sh`
-- [ ] 1.3 `ui.rs` `style`: `boxSizing`, `justifyItems`, `justifySelf`, `alignContent`, `direction`, `scrollbarWidth`, `overflowClipMargin`, `overflow: { x, y }`
-- [ ] 1.4 `ui.rs` `style` grid keys and `index.d.ts` helpers `fr`, `minmax`, `repeat`, `span` (plain data the Rust side parses)
-- [ ] 1.5 `radius` per corner; `border` per side
-- [ ] 1.6 `outline`, `shadow` (one or many), `transform` with `deg`; each its own `Part`
-- [ ] 1.7 Gradients: `linearGradient`, `radialGradient`, `conicGradient` helpers; `Part::Background` and `Part::Border` write the colour or the gradient component and remove the other (design 3)
-- [ ] 1.8 `jsx-runtime.d.ts`: types for every new prop and style key; type tests for a misspelt key
-- [ ] 1.9 Tests: one per prop family, each checking the component written and that changing one prop writes only its component
-- [ ] 1.10 Gallery panel and `docs/ui.md` "Style" section; `docs/native.md` on the `value` field
+- [x] 1.1 `layout_reflect.rs`: a one-field tuple struct's field is `value`; tuple structs with more fields keep `"0"`, `"1"`; regenerate `bevy.d.ts`; test `<ZIndex value={2} />`, `ref.get(ZIndex).value` and a TS system reading `TabIndex.value`
+- [x] 1.2 Check that a level holding a `ZIndex` still loads and that no protocol answer changes; if one does, the next free minor at landing and `scripts/gen-protocol.sh`
+- [x] 1.3 `ui.rs` `style`: `boxSizing`, `justifyItems`, `justifySelf`, `alignContent`, `direction`, `scrollbarWidth`, `overflowClipMargin`, `overflow: { x, y }`
+- [x] 1.4 `ui.rs` `style` grid keys and `index.d.ts` helpers `fr`, `minmax`, `repeat`, `span` (plain data the Rust side parses)
+- [x] 1.5 `radius` per corner; `border` per side
+- [x] 1.6 `outline`, `shadow` (one or many), `transform` with `deg`; each its own `Part`
+- [x] 1.7 Gradients: `linearGradient`, `radialGradient`, `conicGradient` helpers; `Part::Background` and `Part::Border` write the colour or the gradient component and remove the other (design 3)
+- [x] 1.8 `jsx-runtime.d.ts`: types for every new prop and style key; type tests for a misspelt key
+- [x] 1.9 Tests: one per prop family, each checking the component written and that changing one prop writes only its component
+- [x] 1.10 Gallery panel and `docs/ui.md` "Style" section; `docs/native.md` on the `value` field
 
 ## 2. Text
 

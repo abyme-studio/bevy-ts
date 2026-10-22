@@ -1,9 +1,14 @@
 //! bevy_ui intrinsics: `<node>`, `<text>`, `<image>`, `<button>`. Each prop maps to one
-//! component, so a changed prop writes that component and no other: a bound `<text>` writes
-//! `Text` and leaves `TextFont`, `TextColor` and `Node` alone.
+//! component (`background` and `border` to a colour or a gradient), so a changed prop writes
+//! that component and no other: a bound `<text>` writes `Text` and leaves `TextFont`,
+//! `TextColor` and `Node` alone.
 
 use bevy::prelude::*;
 use bevy::text::FontSize;
+use bevy::ui::{
+    AngularColorStop, BackgroundGradient, BorderGradient, BoxShadow, ColorStop, ConicGradient, CornerRadius, Gradient, InlineDirection, LinearGradient, OverflowAxis,
+    OverflowClipMargin, RadialGradient, RadialGradientShape, ShadowStyle, UiPosition, UiTransform, Val2, VisualBox,
+};
 use serde_json::{Map, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,19 +32,23 @@ impl UiKind {
 
     fn props(self) -> &'static [&'static str] {
         match self {
-            UiKind::Node | UiKind::Button => &["style", "background", "border", "radius"],
-            UiKind::Text => &["style", "background", "border", "radius", "text", "size", "color"],
-            UiKind::Image => &["style", "background", "border", "radius", "src", "color"],
+            UiKind::Node | UiKind::Button => &["style", "background", "border", "radius", "outline", "shadow", "transform"],
+            UiKind::Text => &["style", "background", "border", "radius", "outline", "shadow", "transform", "text", "size", "color"],
+            UiKind::Image => &["style", "background", "border", "radius", "outline", "shadow", "transform", "src", "color"],
         }
     }
 }
 
 /// The component a prop writes. Props sharing one (`style`, `radius`) write it once.
+/// `background` and `border` each own two components: the colour and the gradient.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Part {
     Node,
     Background,
     Border,
+    Outline,
+    Shadow,
+    Transform,
     Text,
     Font,
     Color,
@@ -51,6 +60,9 @@ fn part(kind: UiKind, prop: &str) -> Part {
         "style" | "radius" => Part::Node,
         "background" => Part::Background,
         "border" => Part::Border,
+        "outline" => Part::Outline,
+        "shadow" => Part::Shadow,
+        "transform" => Part::Transform,
         "text" => Part::Text,
         "size" => Part::Font,
         "src" => Part::Image,
@@ -125,6 +137,159 @@ fn number(v: &Value, key: &str) -> Result<f32, String> {
 
 fn bad(key: &str, v: &str, options: &str) -> String {
     format!("style.{key}: {v:?} is not one of {options}")
+}
+
+fn overflow_axis(v: &Value, key: &str) -> Result<OverflowAxis, String> {
+    Ok(match word(v, key)? {
+        "visible" => OverflowAxis::Visible,
+        "clip" => OverflowAxis::Clip,
+        "hidden" => OverflowAxis::Hidden,
+        "scroll" => OverflowAxis::Scroll,
+        w => return Err(bad(key, w, "visible, clip, hidden, scroll")),
+    })
+}
+
+/// A number and its unit: `8` is `(8, "px")`, `"1fr"` is `(1, "fr")`.
+fn amount(v: &Value) -> Option<(f32, &str)> {
+    if let Some(n) = v.as_f64() {
+        return Some((n as f32, "px"));
+    }
+    let s = v.as_str()?.trim();
+    let split = s.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == '+'))?;
+    let (num, unit) = s.split_at(split);
+    Some((num.parse().ok()?, unit))
+}
+
+const TRACKS: &str = "a length, fr(n), \"auto\", \"min-content\", \"max-content\", minmax(min, max) or { fitContent }";
+
+fn min_sizing(v: &Value, key: &str) -> Result<MinTrackSizingFunction, String> {
+    use MinTrackSizingFunction as M;
+    match v.as_str() {
+        Some("auto") => return Ok(M::Auto),
+        Some("min-content") => return Ok(M::MinContent),
+        Some("max-content") => return Ok(M::MaxContent),
+        _ => {}
+    }
+    Ok(match amount(v) {
+        Some((n, "px" | "")) => M::Px(n),
+        Some((n, "%")) => M::Percent(n),
+        Some((n, "em")) => M::Em(n),
+        Some((n, "rem")) => M::Rem(n),
+        Some((n, "vw")) => M::Vw(n),
+        Some((n, "vh")) => M::Vh(n),
+        Some((n, "vmin")) => M::VMin(n),
+        Some((n, "vmax")) => M::VMax(n),
+        _ => return Err(format!("{key}: {v} is not a minimum track size (a length, \"auto\", \"min-content\", \"max-content\")")),
+    })
+}
+
+fn max_sizing(v: &Value, key: &str) -> Result<MaxTrackSizingFunction, String> {
+    use MaxTrackSizingFunction as M;
+    if let Some(Some((n, unit))) = v.as_object().and_then(|o| o.get("fitContent")).map(amount) {
+        return match unit {
+            "px" | "" => Ok(M::FitContentPx(n)),
+            "%" => Ok(M::FitContentPercent(n)),
+            _ => Err(format!("{key}: fitContent takes px or %")),
+        };
+    }
+    match v.as_str() {
+        Some("auto") => return Ok(M::Auto),
+        Some("min-content") => return Ok(M::MinContent),
+        Some("max-content") => return Ok(M::MaxContent),
+        _ => {}
+    }
+    Ok(match amount(v) {
+        Some((n, "fr")) => M::Fraction(n),
+        Some((n, "px" | "")) => M::Px(n),
+        Some((n, "%")) => M::Percent(n),
+        Some((n, "em")) => M::Em(n),
+        Some((n, "rem")) => M::Rem(n),
+        Some((n, "vw")) => M::Vw(n),
+        Some((n, "vh")) => M::Vh(n),
+        Some((n, "vmin")) => M::VMin(n),
+        Some((n, "vmax")) => M::VMax(n),
+        _ => return Err(format!("{key}: {v} is not a track ({TRACKS})")),
+    })
+}
+
+/// One grid track, Bevy's `GridTrack`: `fr(1)` is `"1fr"`, `minmax(a, b)` is `{ minmax: [a, b] }`.
+fn track(v: &Value, key: &str) -> Result<GridTrack, String> {
+    if let Some(o) = v.as_object() {
+        if let Some(mm) = o.get("minmax") {
+            let [min, max] = mm.as_array().map(Vec::as_slice).unwrap_or_default() else {
+                return Err(format!("{key}: minmax takes [min, max]"));
+            };
+            return Ok(GridTrack::minmax(min_sizing(min, key)?, max_sizing(max, key)?));
+        }
+        if o.contains_key("fitContent") {
+            return Ok(GridTrack::minmax(MinTrackSizingFunction::Auto, max_sizing(v, key)?));
+        }
+        return Err(format!("{key}: {v} is not a track ({TRACKS})"));
+    }
+    let max = max_sizing(v, key)?;
+    // A plain size is that size at both ends; `fr` grows from `auto`, as `GridTrack::fr` does.
+    let min = match max {
+        MaxTrackSizingFunction::Fraction(_) => MinTrackSizingFunction::Auto,
+        _ => min_sizing(v, key)?,
+    };
+    Ok(GridTrack::minmax(min, max))
+}
+
+fn list(v: &Value) -> &[Value] {
+    v.as_array().map(Vec::as_slice).unwrap_or(std::slice::from_ref(v))
+}
+
+fn tracks(v: &Value, key: &str) -> Result<Vec<GridTrack>, String> {
+    list(v).iter().map(|t| track(t, key)).collect()
+}
+
+/// Template tracks: tracks and `repeat(n | "auto-fill" | "auto-fit", tracks)`.
+fn repeated_tracks(v: &Value, key: &str) -> Result<Vec<RepeatedGridTrack>, String> {
+    list(v)
+        .iter()
+        .map(|t| {
+            let Some(r) = t.as_object().and_then(|o| o.get("repeat")) else {
+                return track(t, key).map(RepeatedGridTrack::from);
+            };
+            let count = match r {
+                Value::String(s) if s == "auto-fill" => GridTrackRepetition::AutoFill,
+                Value::String(s) if s == "auto-fit" => GridTrackRepetition::AutoFit,
+                n => GridTrackRepetition::Count(n.as_u64().filter(|n| *n > 0 && *n <= u16::MAX as u64).ok_or_else(|| format!("{key}: repeat takes a count, \"auto-fill\" or \"auto-fit\""))? as u16),
+            };
+            Ok(RepeatedGridTrack::repeat_many(count, tracks(&t["tracks"], key)?))
+        })
+        .collect()
+}
+
+/// A grid line placement: a start line, `span(n)`, `{ start, end, span }` or `"auto"`.
+fn placement(v: &Value, key: &str) -> Result<GridPlacement, String> {
+    if v.as_str() == Some("auto") {
+        return Ok(GridPlacement::auto());
+    }
+    let line = |x: &Value, what: &str| x.as_i64().filter(|n| *n != 0 && n.unsigned_abs() <= i16::MAX as u64).map(|n| n as i16).ok_or_else(|| format!("{key}.{what} takes a non-zero line number"));
+    if v.is_number() {
+        return Ok(GridPlacement::start(line(v, "start")?));
+    }
+    let o = v.as_object().ok_or_else(|| format!("{key} takes a line, span(n), {{ start, end, span }} or \"auto\""))?;
+    let (mut start, mut end, mut count) = (None, None, None);
+    for (k, x) in o {
+        match k.as_str() {
+            "start" => start = Some(line(x, k)?),
+            "end" => end = Some(line(x, k)?),
+            "span" => count = Some(x.as_u64().filter(|n| *n > 0 && *n <= u16::MAX as u64).ok_or_else(|| format!("{key}.span takes a positive count"))? as u16),
+            other => return Err(format!("{key} has no {other} (start, end, span)")),
+        }
+    }
+    Ok(match (start, end, count) {
+        (Some(s), Some(e), None) => GridPlacement::start_end(s, e),
+        (Some(s), None, Some(n)) => GridPlacement::start_span(s, n),
+        (None, Some(e), Some(n)) => GridPlacement::end_span(e, n),
+        (Some(s), None, None) => GridPlacement::start(s),
+        (None, Some(e), None) => GridPlacement::end(e),
+        (None, None, Some(n)) => GridPlacement::span(n),
+        (None, None, None) => GridPlacement::auto(),
+        (Some(_), Some(_), Some(_)) => return Err(format!("{key}: give two of start, end and span")),
+    })
 }
 
 fn style(node: &mut Node, style: &Value) -> Result<(), String> {
@@ -228,14 +393,121 @@ fn style(node: &mut Node, style: &Value) -> Result<(), String> {
                 }
             }
             "overflow" => {
-                node.overflow = match word(v, key)? {
-                    "visible" => Overflow::visible(),
-                    "clip" => Overflow::clip(),
-                    "hidden" => Overflow::hidden(),
-                    "scroll" => Overflow::scroll(),
-                    w => return Err(bad(key, w, "visible, clip, hidden, scroll")),
+                node.overflow = match v.as_object() {
+                    Some(o) => {
+                        let mut ov = Overflow::visible();
+                        for (axis, w) in o {
+                            match axis.as_str() {
+                                "x" => ov.x = overflow_axis(w, "overflow.x")?,
+                                "y" => ov.y = overflow_axis(w, "overflow.y")?,
+                                other => return Err(format!("style.overflow has no {other} (x, y)")),
+                            }
+                        }
+                        ov
+                    }
+                    None => {
+                        let a = overflow_axis(v, key)?;
+                        Overflow { x: a, y: a }
+                    }
                 }
             }
+            "boxSizing" => {
+                node.box_sizing = match word(v, key)? {
+                    "border-box" => BoxSizing::BorderBox,
+                    "content-box" => BoxSizing::ContentBox,
+                    w => return Err(bad(key, w, "border-box, content-box")),
+                }
+            }
+            "justifyItems" => {
+                node.justify_items = match word(v, key)? {
+                    "default" => JustifyItems::Default,
+                    "start" => JustifyItems::Start,
+                    "start-safe" => JustifyItems::StartSafe,
+                    "end" => JustifyItems::End,
+                    "end-safe" => JustifyItems::EndSafe,
+                    "center" => JustifyItems::Center,
+                    "center-safe" => JustifyItems::CenterSafe,
+                    "baseline" => JustifyItems::Baseline,
+                    "stretch" => JustifyItems::Stretch,
+                    w => return Err(bad(key, w, "default, start, start-safe, end, end-safe, center, center-safe, baseline, stretch")),
+                }
+            }
+            "justifySelf" => {
+                node.justify_self = match word(v, key)? {
+                    "auto" => JustifySelf::Auto,
+                    "start" => JustifySelf::Start,
+                    "start-safe" => JustifySelf::StartSafe,
+                    "end" => JustifySelf::End,
+                    "end-safe" => JustifySelf::EndSafe,
+                    "center" => JustifySelf::Center,
+                    "center-safe" => JustifySelf::CenterSafe,
+                    "baseline" => JustifySelf::Baseline,
+                    "stretch" => JustifySelf::Stretch,
+                    w => return Err(bad(key, w, "auto, start, start-safe, end, end-safe, center, center-safe, baseline, stretch")),
+                }
+            }
+            "alignContent" => {
+                node.align_content = match word(v, key)? {
+                    "default" => AlignContent::Default,
+                    "start" => AlignContent::Start,
+                    "start-safe" => AlignContent::StartSafe,
+                    "end" => AlignContent::End,
+                    "end-safe" => AlignContent::EndSafe,
+                    "flex-start" => AlignContent::FlexStart,
+                    "flex-start-safe" => AlignContent::FlexStartSafe,
+                    "flex-end" => AlignContent::FlexEnd,
+                    "flex-end-safe" => AlignContent::FlexEndSafe,
+                    "center" => AlignContent::Center,
+                    "center-safe" => AlignContent::CenterSafe,
+                    "stretch" => AlignContent::Stretch,
+                    "space-between" => AlignContent::SpaceBetween,
+                    "space-evenly" => AlignContent::SpaceEvenly,
+                    "space-around" => AlignContent::SpaceAround,
+                    w => return Err(bad(key, w, "default, start, end, flex-start, flex-end, center (each also -safe), stretch, space-between, space-evenly, space-around")),
+                }
+            }
+            "direction" => {
+                node.direction = match word(v, key)? {
+                    "ltr" => InlineDirection::Ltr,
+                    "rtl" => InlineDirection::Rtl,
+                    w => return Err(bad(key, w, "ltr, rtl")),
+                }
+            }
+            "scrollbarWidth" => node.scrollbar_width = number(v, key)?,
+            "overflowClipMargin" => {
+                let o = v.as_object().ok_or("style.overflowClipMargin takes { visualBox, margin }")?;
+                let mut m = OverflowClipMargin::default();
+                for (k, x) in o {
+                    match k.as_str() {
+                        "visualBox" => {
+                            m.visual_box = match word(x, "overflowClipMargin.visualBox")? {
+                                "content-box" => VisualBox::ContentBox,
+                                "padding-box" => VisualBox::PaddingBox,
+                                "border-box" => VisualBox::BorderBox,
+                                w => return Err(bad("overflowClipMargin.visualBox", w, "content-box, padding-box, border-box")),
+                            }
+                        }
+                        "margin" => m.margin = number(x, "overflowClipMargin.margin")?,
+                        other => return Err(format!("style.overflowClipMargin has no {other} (visualBox, margin)")),
+                    }
+                }
+                node.overflow_clip_margin = m;
+            }
+            "gridAutoFlow" => {
+                node.grid_auto_flow = match word(v, key)? {
+                    "row" => GridAutoFlow::Row,
+                    "column" => GridAutoFlow::Column,
+                    "row-dense" => GridAutoFlow::RowDense,
+                    "column-dense" => GridAutoFlow::ColumnDense,
+                    w => return Err(bad(key, w, "row, column, row-dense, column-dense")),
+                }
+            }
+            "gridTemplateRows" => node.grid_template_rows = repeated_tracks(v, key)?,
+            "gridTemplateColumns" => node.grid_template_columns = repeated_tracks(v, key)?,
+            "gridAutoRows" => node.grid_auto_rows = tracks(v, key)?,
+            "gridAutoColumns" => node.grid_auto_columns = tracks(v, key)?,
+            "gridRow" => node.grid_row = placement(v, key)?,
+            "gridColumn" => node.grid_column = placement(v, key)?,
             other => return Err(format!("style has no {other}")),
         }
     }
@@ -247,15 +519,203 @@ pub fn color(v: &Value) -> Result<Color, String> {
     Srgba::hex(s).map(Color::from).map_err(|e| format!("colour {s:?}: {e}"))
 }
 
+/// One length for every corner, `[topLeft, topRight, bottomRight, bottomLeft]` or
+/// `{ topLeft, topRight, bottomRight, bottomLeft }`.
+fn radius(v: &Value) -> Result<BorderRadius, String> {
+    if let Some(a) = v.as_array() {
+        let [tl, tr, br, bl] = a.as_slice() else {
+            return Err(format!("radius has {} corners; give 4 [topLeft, topRight, bottomRight, bottomLeft] or one length", a.len()));
+        };
+        return Ok(BorderRadius::new(val(tl)?, val(tr)?, val(br)?, val(bl)?));
+    }
+    if let Some(o) = v.as_object() {
+        let mut r = BorderRadius::ZERO;
+        for (k, x) in o {
+            let c = CornerRadius::from(val(x)?);
+            match k.as_str() {
+                "topLeft" => r.top_left = c,
+                "topRight" => r.top_right = c,
+                "bottomRight" => r.bottom_right = c,
+                "bottomLeft" => r.bottom_left = c,
+                other => return Err(format!("radius has no corner {other} (topLeft, topRight, bottomRight, bottomLeft)")),
+            }
+        }
+        return Ok(r);
+    }
+    Ok(BorderRadius::all(val(v)?))
+}
+
 fn build_node(props: &Map<String, Value>) -> Result<Node, String> {
     let mut n = Node::default();
     if let Some(s) = props.get("style") {
         style(&mut n, s)?;
     }
     if let Some(r) = props.get("radius") {
-        n.border_radius = BorderRadius::all(val(r)?);
+        n.border_radius = radius(r)?;
     }
     Ok(n)
+}
+
+/// A gradient helper's value (`linearGradient`...) or an array of them; `None` for a colour.
+fn is_gradient(v: &Value) -> bool {
+    let tagged = |x: &Value| x.as_object().is_some_and(|o| o.contains_key("gradient"));
+    tagged(v) || v.as_array().is_some_and(|a| !a.is_empty() && a.iter().all(tagged))
+}
+
+fn degrees(v: &Value, what: &str) -> Result<f32, String> {
+    v.as_f64().map(|d| (d as f32).to_radians()).ok_or_else(|| format!("{what} takes degrees"))
+}
+
+/// `[x, y]` from the top left of the node, as CSS's `at x y`; centred when absent.
+fn position(o: &Map<String, Value>) -> Result<UiPosition, String> {
+    let Some(at) = o.get("at") else { return Ok(UiPosition::CENTER) };
+    let [x, y] = at.as_array().map(Vec::as_slice).unwrap_or_default() else {
+        return Err("a gradient's at takes [x, y]".into());
+    };
+    Ok(UiPosition::new(Vec2::new(-0.5, -0.5), val(x)?, val(y)?))
+}
+
+fn color_stops(o: &Map<String, Value>) -> Result<Vec<ColorStop>, String> {
+    let stops = o.get("stops").and_then(Value::as_array).ok_or("a gradient takes stops")?;
+    stops
+        .iter()
+        .map(|s| match s.as_array().map(Vec::as_slice) {
+            Some([c, at]) => Ok(ColorStop::new(color(c)?, val(at)?)),
+            _ => Ok(ColorStop::auto(color(s)?)),
+        })
+        .collect()
+}
+
+fn gradient(v: &Value) -> Result<Gradient, String> {
+    let o = v.as_object().ok_or("not a gradient")?;
+    match o.get("gradient").and_then(Value::as_str) {
+        Some("linear") => {
+            let angle = o.get("angle").map(|a| degrees(a, "linearGradient's angle")).transpose()?.unwrap_or(LinearGradient::TO_BOTTOM);
+            Ok(LinearGradient::new(angle, color_stops(o)?).into())
+        }
+        Some("radial") => {
+            let shape = match o.get("shape") {
+                None => RadialGradientShape::default(),
+                Some(Value::String(w)) => match w.as_str() {
+                    "closest-side" => RadialGradientShape::ClosestSide,
+                    "farthest-side" => RadialGradientShape::FarthestSide,
+                    "closest-corner" => RadialGradientShape::ClosestCorner,
+                    "farthest-corner" => RadialGradientShape::FarthestCorner,
+                    w => return Err(format!("radialGradient shape {w:?} is not one of closest-side, farthest-side, closest-corner, farthest-corner, {{ circle }}, {{ ellipse }}")),
+                },
+                Some(Value::Object(s)) if s.contains_key("circle") => RadialGradientShape::Circle(val(&s["circle"])?),
+                Some(Value::Object(s)) if s.contains_key("ellipse") => {
+                    let [x, y] = s["ellipse"].as_array().map(Vec::as_slice).unwrap_or_default() else {
+                        return Err("radialGradient shape { ellipse } takes [x, y]".into());
+                    };
+                    RadialGradientShape::Ellipse(val(x)?, val(y)?)
+                }
+                Some(other) => return Err(format!("radialGradient shape {other} is not a shape")),
+            };
+            Ok(RadialGradient::new(position(o)?, shape, color_stops(o)?).into())
+        }
+        Some("conic") => {
+            let stops = o.get("stops").and_then(Value::as_array).ok_or("a gradient takes stops")?;
+            let stops = stops
+                .iter()
+                .map(|s| match s.as_array().map(Vec::as_slice) {
+                    Some([c, a]) => Ok(AngularColorStop::new(color(c)?, degrees(a, "a conic stop's angle")?)),
+                    _ => Ok(AngularColorStop::auto(color(s)?)),
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            let start = o.get("from").map(|a| degrees(a, "conicGradient's from")).transpose()?.unwrap_or(0.0);
+            Ok(ConicGradient::new(position(o)?, stops).with_start(start).into())
+        }
+        _ => Err(format!("{v} is not a gradient (linearGradient, radialGradient, conicGradient)")),
+    }
+}
+
+fn gradients(v: &Value) -> Result<Vec<Gradient>, String> {
+    list(v).iter().map(gradient).collect()
+}
+
+/// `border`'s colour: one for every side, or `{ top, right, bottom, left }`.
+fn border_color(v: &Value) -> Result<BorderColor, String> {
+    let Some(o) = v.as_object() else { return Ok(BorderColor::all(color(v)?)) };
+    let mut b = BorderColor::DEFAULT;
+    for (k, x) in o {
+        let c = color(x)?;
+        match k.as_str() {
+            "top" => b.top = c,
+            "right" => b.right = c,
+            "bottom" => b.bottom = c,
+            "left" => b.left = c,
+            other => return Err(format!("border has no side {other} (top, right, bottom, left)")),
+        }
+    }
+    Ok(b)
+}
+
+fn fields<'a>(v: &'a Value, prop: &str, keys: &[&str]) -> Result<&'a Map<String, Value>, String> {
+    let o = v.as_object().ok_or_else(|| format!("{prop} takes {{ {} }}", keys.join(", ")))?;
+    if let Some(k) = o.keys().find(|k| !keys.contains(&k.as_str())) {
+        return Err(format!("{prop} has no {k} ({})", keys.join(", ")));
+    }
+    Ok(o)
+}
+
+/// A missing field is Bevy's `Outline` default (1 px wide, no offset, white).
+fn outline(v: &Value) -> Result<Outline, String> {
+    let o = fields(v, "outline", &["width", "offset", "color"])?;
+    let mut out = Outline::default();
+    for (k, x) in o {
+        match k.as_str() {
+            "width" => out.width = val(x)?,
+            "offset" => out.offset = val(x)?,
+            _ => out.color = color(x)?,
+        }
+    }
+    Ok(out)
+}
+
+/// One shadow or several; a missing field is Bevy's `ShadowStyle` default.
+fn shadow(v: &Value) -> Result<BoxShadow, String> {
+    let styles = list(v)
+        .iter()
+        .map(|x| {
+            let o = fields(x, "shadow", &["color", "x", "y", "spread", "blur"])?;
+            let mut s = ShadowStyle::default();
+            for (k, x) in o {
+                match k.as_str() {
+                    "color" => s.color = color(x)?,
+                    "x" => s.x_offset = val(x)?,
+                    "y" => s.y_offset = val(x)?,
+                    "spread" => s.spread_radius = val(x)?,
+                    _ => s.blur_radius = val(x)?,
+                }
+            }
+            Ok(s)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(BoxShadow(styles))
+}
+
+/// `{ translation: [x, y], scale: n | [x, y], rotation: radians }` (`deg(45)` gives radians).
+fn transform(v: &Value) -> Result<UiTransform, String> {
+    let o = fields(v, "transform", &["translation", "scale", "rotation"])?;
+    let mut t = UiTransform::IDENTITY;
+    if let Some(x) = o.get("translation") {
+        let [a, b] = x.as_array().map(Vec::as_slice).unwrap_or_default() else {
+            return Err("transform.translation takes [x, y]".into());
+        };
+        t.translation = Val2::new(val(a)?, val(b)?);
+    }
+    if let Some(x) = o.get("scale") {
+        t.scale = match (x.as_f64(), x.as_array().map(Vec::as_slice)) {
+            (Some(n), _) => Vec2::splat(n as f32),
+            (_, Some([a, b])) if a.is_number() && b.is_number() => Vec2::new(a.as_f64().unwrap() as f32, b.as_f64().unwrap() as f32),
+            _ => return Err("transform.scale takes a number or [x, y]".into()),
+        };
+    }
+    if let Some(x) = o.get("rotation") {
+        t.rotation = Rot2::radians(x.as_f64().ok_or("transform.rotation takes radians (or deg(n))")? as f32);
+    }
+    Ok(t)
 }
 
 /// Checks every prop of a UI intrinsic; bound props are checked when their value arrives.
@@ -277,8 +737,13 @@ pub fn check(kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
 fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), String> {
     match p {
         Part::Node => build_node(props).map(|_| ()),
+        Part::Background if is_gradient(&props["background"]) => gradients(&props["background"]).map(|_| ()),
         Part::Background => color(&props["background"]).map(|_| ()),
-        Part::Border => color(&props["border"]).map(|_| ()),
+        Part::Border if is_gradient(&props["border"]) => gradients(&props["border"]).map(|_| ()),
+        Part::Border => border_color(&props["border"]).map(|_| ()),
+        Part::Outline => outline(&props["outline"]).map(|_| ()),
+        Part::Shadow => shadow(&props["shadow"]).map(|_| ()),
+        Part::Transform => transform(&props["transform"]).map(|_| ()),
         Part::Text => props["text"].as_str().map(|_| ()).ok_or_else(|| "text takes a string".into()),
         Part::Font => props["size"].as_f64().map(|_| ()).ok_or_else(|| "size takes a number".into()),
         Part::Color => color(&props["color"]).map(|_| ()),
@@ -305,17 +770,42 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             let n = build_node(props)?;
             world.entity_mut(e).insert(n);
         }
+        // `background` and `border` each own a colour and a gradient: writing one removes the other.
+        Part::Background if present && is_gradient(&props["background"]) => {
+            world.entity_mut(e).remove::<BackgroundColor>().insert(BackgroundGradient(gradients(&props["background"])?));
+        }
         Part::Background if present => {
-            world.entity_mut(e).insert(BackgroundColor(color(&props["background"])?));
+            world.entity_mut(e).remove::<BackgroundGradient>().insert(BackgroundColor(color(&props["background"])?));
         }
         Part::Background => {
-            world.entity_mut(e).remove::<BackgroundColor>();
+            world.entity_mut(e).remove::<(BackgroundColor, BackgroundGradient)>();
+        }
+        Part::Border if present && is_gradient(&props["border"]) => {
+            world.entity_mut(e).remove::<BorderColor>().insert(BorderGradient(gradients(&props["border"])?));
         }
         Part::Border if present => {
-            world.entity_mut(e).insert(BorderColor::all(color(&props["border"])?));
+            world.entity_mut(e).remove::<BorderGradient>().insert(border_color(&props["border"])?);
         }
         Part::Border => {
-            world.entity_mut(e).remove::<BorderColor>();
+            world.entity_mut(e).remove::<(BorderColor, BorderGradient)>();
+        }
+        Part::Outline if present => {
+            world.entity_mut(e).insert(outline(&props["outline"])?);
+        }
+        Part::Outline => {
+            world.entity_mut(e).remove::<Outline>();
+        }
+        Part::Shadow if present => {
+            world.entity_mut(e).insert(shadow(&props["shadow"])?);
+        }
+        Part::Shadow => {
+            world.entity_mut(e).remove::<BoxShadow>();
+        }
+        Part::Transform if present => {
+            world.entity_mut(e).insert(transform(&props["transform"])?);
+        }
+        Part::Transform => {
+            world.entity_mut(e).remove::<UiTransform>();
         }
         Part::Text => {
             let s = props.get("text").and_then(Value::as_str).unwrap_or_default();
@@ -384,7 +874,7 @@ pub fn update(world: &mut World, e: Entity, kind: UiKind, old: &Map<String, Valu
 
 pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
     let mut em = world.entity_mut(e);
-    em.remove::<(Node, BackgroundColor, BorderColor)>();
+    em.remove::<(Node, BackgroundColor, BackgroundGradient, BorderColor, BorderGradient, Outline, BoxShadow, UiTransform)>();
     match kind {
         UiKind::Text => {
             em.remove::<(Text, TextFont, TextColor)>();

@@ -18,7 +18,7 @@ export const AnimationTransitions = rustComponent("AnimationTransitions");
 
 export class ContrastAdaptiveSharpening extends nativeComponent("ContrastAdaptiveSharpening", { enabled: bool, sharpening_strength: f32, denoise: bool }) {}
 
-export class DenoiseCas extends nativeComponent("DenoiseCas", { "0": bool }) {}
+export class DenoiseCas extends nativeComponent("DenoiseCas", { value: bool }) {}
 
 export class Fxaa extends nativeComponent("Fxaa", { enabled: bool, edge_threshold: enumOf("Low", "Medium", "High", "Ultra", "Extreme"), edge_threshold_min: enumOf("Low", "Medium", "High", "Ultra", "Extreme") }) {}
 
@@ -38,7 +38,7 @@ export const Exposure = rustComponent("Exposure");
 
 export const MainPassResolutionOverride = rustComponent("MainPassResolutionOverride");
 
-export class ManualTextureViewHandle extends nativeComponent("ManualTextureViewHandle", { "0": u32 }) {}
+export class ManualTextureViewHandle extends nativeComponent("ManualTextureViewHandle", { value: u32 }) {}
 
 export const RenderTarget = rustComponent("RenderTarget");
 
@@ -70,11 +70,11 @@ export const CubemapVisibleEntities = rustComponent("CubemapVisibleEntities");
 
 export const DynamicSkinnedMeshBounds = rustComponent("DynamicSkinnedMeshBounds");
 
-export class InheritedVisibility extends nativeComponent("InheritedVisibility", { "0": bool }) {}
+export class InheritedVisibility extends nativeComponent("InheritedVisibility", { value: bool }) {}
 
 export const NoFrustumCulling = rustComponent("NoFrustumCulling");
 
-export class ViewVisibility extends nativeComponent("ViewVisibility", { "0": u8 }) {}
+export class ViewVisibility extends nativeComponent("ViewVisibility", { value: u8 }) {}
 
 export class Visibility extends nativeComponent("Visibility", { value: enumOf("Inherited", "Hidden", "Visible") }) {}
 
@@ -116,7 +116,7 @@ export class RenderDebugOverlay extends nativeComponent("RenderDebugOverlay", { 
 
 export const Disabled = rustComponent("Disabled");
 
-export class ChildOf extends nativeComponent("ChildOf", { "0": entity }) {}
+export class ChildOf extends nativeComponent("ChildOf", { value: entity }) {}
 
 export const Children = rustComponent("Children");
 
@@ -162,7 +162,7 @@ export const AutoFocus = rustComponent("AutoFocus");
 
 export class TabGroup extends nativeComponent("TabGroup", { order: i32, modal: bool }) {}
 
-export class TabIndex extends nativeComponent("TabIndex", { "0": i32 }) {}
+export class TabIndex extends nativeComponent("TabIndex", { value: i32 }) {}
 
 export const NotShadowCaster = rustComponent("NotShadowCaster");
 
@@ -256,15 +256,15 @@ export class WireframeLineWidth extends nativeComponent("WireframeLineWidth", { 
 
 export class WireframeTopology extends nativeComponent("WireframeTopology", { value: enumOf("Triangles", "Quads") }) {}
 
-export class WireframeXray extends nativeComponent("WireframeXray", { "0": bool }) {}
+export class WireframeXray extends nativeComponent("WireframeXray", { value: bool }) {}
 
 export class Pickable extends nativeComponent("Pickable", { should_block_lower: bool, is_hoverable: bool }) {}
 
 export const EntityCursor = rustComponent("EntityCursor");
 
-export class DirectlyHovered extends nativeComponent("DirectlyHovered", { "0": bool }) {}
+export class DirectlyHovered extends nativeComponent("DirectlyHovered", { value: bool }) {}
 
-export class Hovered extends nativeComponent("Hovered", { "0": bool }) {}
+export class Hovered extends nativeComponent("Hovered", { value: bool }) {}
 
 export class PickingInteraction extends nativeComponent("PickingInteraction", { value: enumOf("Pressed", "Hovered", "None") }) {}
 
@@ -296,7 +296,7 @@ export class MotionBlur extends nativeComponent("MotionBlur", { shutter_angle: f
 
 export const CameraRenderGraph = rustComponent("CameraRenderGraph");
 
-export class MipBias extends nativeComponent("MipBias", { "0": f32 }) {}
+export class MipBias extends nativeComponent("MipBias", { value: f32 }) {}
 
 export class TemporalJitter extends nativeComponent("TemporalJitter", { offset: vec2 }) {}
 
@@ -318,13 +318,19 @@ export const SceneComponentInfo = rustComponent("SceneComponentInfo");
 
 export const SpritePickingCamera = rustComponent("SpritePickingCamera");
 
-export class Anchor extends nativeComponent("Anchor", { "0": vec2 }) {}
+export class Anchor extends nativeComponent("Anchor", { value: vec2 }) {}
 
 export class Sprite extends nativeComponent("Sprite", { flip_x: bool, flip_y: bool }) {}
 
 export const Text2d = rustComponent("Text2d");
 
 export class Text2dShadow extends nativeComponent("Text2dShadow", { offset: vec2 }) {}
+
+export const MeshMaterial2dColorMaterial = rustComponent("MeshMaterial2d<ColorMaterial>");
+
+export const MeshMaterial2dSpriteMeshMaterial = rustComponent("MeshMaterial2d<SpriteMeshMaterial>");
+
+export const MeshMaterial2dTilemapChunkMaterial = rustComponent("MeshMaterial2d<TilemapChunkMaterial>");
 
 export const Mesh2dWireframe = rustComponent("Mesh2dWireframe");
 
@@ -344,7 +350,7 @@ export class TextLayoutInfo extends nativeComponent("TextLayoutInfo", { scale_fa
 
 export class ComputedTextBlock extends nativeComponent("ComputedTextBlock", { needs_rerender: bool, uses_viewport_sizes: bool, uses_rem_sizes: bool }) {}
 
-export class EmSize extends nativeComponent("EmSize", { "0": f32 }) {}
+export class EmSize extends nativeComponent("EmSize", { value: f32 }) {}
 
 export class FontHinting extends nativeComponent("FontHinting", { value: enumOf("Disabled", "Enabled") }) {}
 
@@ -376,6 +382,8 @@ export const ScriptHidden = rustComponent("ScriptHidden");
 
 export const TsSpawned = rustComponent("TsSpawned");
 
+export const MissingComponents = rustComponent("MissingComponents");
+
 export const AccessibleLabel = rustComponent("AccessibleLabel");
 
 export class AutoDirectionalNavigation extends nativeComponent("AutoDirectionalNavigation", { respect_tab_order: bool }) {}
@@ -402,7 +410,7 @@ export const ContentSize = rustComponent("ContentSize");
 
 export const UiPickingCamera = rustComponent("UiPickingCamera");
 
-export class ComputedStackIndex extends nativeComponent("ComputedStackIndex", { "0": u32 }) {}
+export class ComputedStackIndex extends nativeComponent("ComputedStackIndex", { value: u32 }) {}
 
 export const BackgroundColor = rustComponent("BackgroundColor");
 
@@ -420,7 +428,7 @@ export const ComputedUiTargetCamera = rustComponent("ComputedUiTargetCamera");
 
 export const FixedNode = rustComponent("FixedNode");
 
-export class GlobalZIndex extends nativeComponent("GlobalZIndex", { "0": i32 }) {}
+export class GlobalZIndex extends nativeComponent("GlobalZIndex", { value: i32 }) {}
 
 export const IgnoreScroll = rustComponent("IgnoreScroll");
 
@@ -436,11 +444,11 @@ export const Outline = rustComponent("Outline");
 
 export const OverrideClip = rustComponent("OverrideClip");
 
-export class ScrollPosition extends nativeComponent("ScrollPosition", { "0": vec2 }) {}
+export class ScrollPosition extends nativeComponent("ScrollPosition", { value: vec2 }) {}
 
 export const UiTargetCamera = rustComponent("UiTargetCamera");
 
-export class ZIndex extends nativeComponent("ZIndex", { "0": i32 }) {}
+export class ZIndex extends nativeComponent("ZIndex", { value: i32 }) {}
 
 export const UiGlobalTransform = rustComponent("UiGlobalTransform");
 
@@ -464,7 +472,7 @@ export class TextShadow extends nativeComponent("TextShadow", { offset: vec2 }) 
 
 export const ViewportNode = rustComponent("ViewportNode");
 
-export class BoxShadowSamples extends nativeComponent("BoxShadowSamples", { "0": u32 }) {}
+export class BoxShadowSamples extends nativeComponent("BoxShadowSamples", { value: u32 }) {}
 
 export class UiAntiAlias extends nativeComponent("UiAntiAlias", { value: enumOf("On", "Off") }) {}
 
@@ -518,7 +526,7 @@ export const Slider = rustComponent("Slider");
 
 export const SliderDragState = rustComponent("SliderDragState");
 
-export class SliderPrecision extends nativeComponent("SliderPrecision", { "0": i32 }) {}
+export class SliderPrecision extends nativeComponent("SliderPrecision", { value: i32 }) {}
 
 export const SliderRange = rustComponent("SliderRange");
 

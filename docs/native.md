@@ -95,6 +95,10 @@ the field's address minus the value's. No `repr(C)` and no code per type.
   protocol and `With`/`Without` filters, never as query data.
 - Components without `Reflect` can derive `bevy_ts_native::NativeLayout` (public fields, offsets
   from `offset_of!`) and register with `app.ts_layout::<T>()`.
+- A tuple struct with one field (`ZIndex(i32)`, `TabIndex(i32)`, `Hovered(bool)`) names that
+  field `value` in TS: `<ZIndex value={2} />`, `ref.get(Hovered).value`, `q.each((z) => z.value)`.
+  A tuple struct with more fields keeps `"0"`, `"1"`. Level files and the protocol keep Bevy's
+  reflection path (`.0`).
 
 `bevy-ts types` builds the engine with no window and no GPU device, walks the type registry and
 writes `.bevy-ts/types/native.d.ts`: layout-tier classes with their fields, reflect-tier classes

@@ -34,7 +34,7 @@ export declare class ContrastAdaptiveSharpening extends Component {
 export declare class DenoiseCas extends Component {
   static readonly path: "bevy_anti_alias::contrast_adaptive_sharpening::DenoiseCas";
   static readonly native: true;
-  declare "0": bool;
+  declare value: bool;
 }
 
 export declare class Fxaa extends Component {
@@ -96,7 +96,7 @@ export type MainPassResolutionOverride = InstanceType<typeof MainPassResolutionO
 export declare class ManualTextureViewHandle extends Component {
   static readonly path: "bevy_camera::camera::ManualTextureViewHandle";
   static readonly native: true;
-  declare "0": u32;
+  declare value: u32;
 }
 
 export declare const RenderTarget: Reflected;
@@ -158,7 +158,7 @@ export type DynamicSkinnedMeshBounds = InstanceType<typeof DynamicSkinnedMeshBou
 export declare class InheritedVisibility extends Component {
   static readonly path: "bevy_camera::visibility::InheritedVisibility";
   static readonly native: true;
-  declare "0": bool;
+  declare value: bool;
 }
 
 export declare const NoFrustumCulling: Reflected;
@@ -167,7 +167,7 @@ export type NoFrustumCulling = InstanceType<typeof NoFrustumCulling>;
 export declare class ViewVisibility extends Component {
   static readonly path: "bevy_camera::visibility::ViewVisibility";
   static readonly native: true;
-  declare "0": u8;
+  declare value: u8;
 }
 
 export declare class Visibility extends Component {
@@ -249,7 +249,7 @@ export type Disabled = InstanceType<typeof Disabled>;
 export declare class ChildOf extends Component {
   static readonly path: "bevy_ecs::hierarchy::ChildOf";
   static readonly native: true;
-  declare readonly "0": Entity;
+  declare readonly value: Entity;
 }
 
 export declare const Children: Reflected;
@@ -330,7 +330,7 @@ export declare class TabGroup extends Component {
 export declare class TabIndex extends Component {
   static readonly path: "bevy_input_focus::tab_navigation::TabIndex";
   static readonly native: true;
-  declare "0": i32;
+  declare value: i32;
 }
 
 export declare const NotShadowCaster: Reflected;
@@ -613,7 +613,7 @@ export declare class WireframeTopology extends Component {
 export declare class WireframeXray extends Component {
   static readonly path: "bevy_pbr::wireframe::WireframeXray";
   static readonly native: true;
-  declare "0": bool;
+  declare value: bool;
 }
 
 export declare class Pickable extends Component {
@@ -630,14 +630,14 @@ export type EntityCursor = InstanceType<typeof EntityCursor>;
 export declare class DirectlyHovered extends Component {
   static readonly path: "bevy_picking::hover::DirectlyHovered";
   static readonly native: true;
-  declare readonly "0": bool;
+  declare readonly value: bool;
 }
 
 /** Immutable: read-only in TS. */
 export declare class Hovered extends Component {
   static readonly path: "bevy_picking::hover::Hovered";
   static readonly native: true;
-  declare readonly "0": bool;
+  declare readonly value: bool;
 }
 
 export declare class PickingInteraction extends Component {
@@ -738,7 +738,7 @@ export type CameraRenderGraph = InstanceType<typeof CameraRenderGraph>;
 export declare class MipBias extends Component {
   static readonly path: "bevy_render::camera::MipBias";
   static readonly native: true;
-  declare "0": f32;
+  declare value: f32;
 }
 
 export declare class TemporalJitter extends Component {
@@ -786,7 +786,7 @@ export type SpritePickingCamera = InstanceType<typeof SpritePickingCamera>;
 export declare class Anchor extends Component {
   static readonly path: "bevy_sprite::sprite::Anchor";
   static readonly native: true;
-  declare readonly "0": Vec2;
+  declare readonly value: Vec2;
 }
 
 /** Holes, never visible: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); color: an enum with data (bevy_color::color::Color); custom_size: an enum with data (core::option::Option<glam::Vec2>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_sprite::sprite::SpriteImageMode); alpha_mode: an enum with data (bevy_sprite::sprite::SpriteAlphaMode). */
@@ -806,6 +806,15 @@ export declare class Text2dShadow extends Component {
   static readonly native: true;
   declare readonly offset: Vec2;
 }
+
+export declare const MeshMaterial2dColorMaterial: Reflected;
+export type MeshMaterial2dColorMaterial = InstanceType<typeof MeshMaterial2dColorMaterial>;
+
+export declare const MeshMaterial2dSpriteMeshMaterial: Reflected;
+export type MeshMaterial2dSpriteMeshMaterial = InstanceType<typeof MeshMaterial2dSpriteMeshMaterial>;
+
+export declare const MeshMaterial2dTilemapChunkMaterial: Reflected;
+export type MeshMaterial2dTilemapChunkMaterial = InstanceType<typeof MeshMaterial2dTilemapChunkMaterial>;
 
 export declare const Mesh2dWireframe: Reflected;
 export type Mesh2dWireframe = InstanceType<typeof Mesh2dWireframe>;
@@ -848,7 +857,7 @@ export declare class ComputedTextBlock extends Component {
 export declare class EmSize extends Component {
   static readonly path: "bevy_text::text::EmSize";
   static readonly native: true;
-  declare "0": f32;
+  declare value: f32;
 }
 
 export declare class FontHinting extends Component {
@@ -907,6 +916,9 @@ export type ScriptHidden = InstanceType<typeof ScriptHidden>;
 export declare const TsSpawned: Reflected;
 export type TsSpawned = InstanceType<typeof TsSpawned>;
 
+export declare const MissingComponents: Reflected;
+export type MissingComponents = InstanceType<typeof MissingComponents>;
+
 export declare const AccessibleLabel: Reflected;
 export type AccessibleLabel = InstanceType<typeof AccessibleLabel>;
 
@@ -962,7 +974,7 @@ export type UiPickingCamera = InstanceType<typeof UiPickingCamera>;
 export declare class ComputedStackIndex extends Component {
   static readonly path: "bevy_ui::stack::ComputedStackIndex";
   static readonly native: true;
-  declare "0": u32;
+  declare value: u32;
 }
 
 export declare const BackgroundColor: Reflected;
@@ -1007,7 +1019,7 @@ export type FixedNode = InstanceType<typeof FixedNode>;
 export declare class GlobalZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::GlobalZIndex";
   static readonly native: true;
-  declare "0": i32;
+  declare value: i32;
 }
 
 export declare const IgnoreScroll: Reflected;
@@ -1056,7 +1068,7 @@ export type OverrideClip = InstanceType<typeof OverrideClip>;
 export declare class ScrollPosition extends Component {
   static readonly path: "bevy_ui::ui_node::ScrollPosition";
   static readonly native: true;
-  declare readonly "0": Vec2;
+  declare readonly value: Vec2;
 }
 
 export declare const UiTargetCamera: Reflected;
@@ -1065,7 +1077,7 @@ export type UiTargetCamera = InstanceType<typeof UiTargetCamera>;
 export declare class ZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::ZIndex";
   static readonly native: true;
-  declare "0": i32;
+  declare value: i32;
 }
 
 export declare const UiGlobalTransform: Reflected;
@@ -1128,7 +1140,7 @@ export type ViewportNode = InstanceType<typeof ViewportNode>;
 export declare class BoxShadowSamples extends Component {
   static readonly path: "bevy_ui_render::BoxShadowSamples";
   static readonly native: true;
-  declare "0": u32;
+  declare value: u32;
 }
 
 export declare class UiAntiAlias extends Component {
@@ -1219,7 +1231,7 @@ export type SliderDragState = InstanceType<typeof SliderDragState>;
 export declare class SliderPrecision extends Component {
   static readonly path: "bevy_ui_widgets::slider::SliderPrecision";
   static readonly native: true;
-  declare "0": i32;
+  declare value: i32;
 }
 
 export declare const SliderRange: Reflected;

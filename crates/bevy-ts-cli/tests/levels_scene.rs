@@ -151,3 +151,17 @@ fn a_level_naming_an_unknown_prop_places_the_instance_without_it() {
     let warnings: Vec<String> = logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Warn).map(|e| format!("{} {}", e.location.map(|l| l.to_string()).unwrap_or_default(), e.message)).collect();
     assert!(warnings.iter().any(|m| m.starts_with("levels/arena.bsn:7:1 levels: warning: enemies::Grunt has no scene prop speed")), "{warnings:?}");
 }
+
+/// A newtype's field is `value` in TS, but a level keeps Bevy's reflection syntax (`ZIndex(2)`).
+#[test]
+fn a_level_holding_a_newtype_still_loads() {
+    let level = "#Badge\nZIndex(2)\n";
+    let dir = project("levels-newtype", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", level)]);
+    let mut app = level_app(&dir);
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    settle(&mut app);
+    assert!(errors(&app).is_empty(), "{:?}", errors(&app));
+    let badge = named(&mut app, "Badge");
+    assert_eq!(app.world().get::<ZIndex>(badge).unwrap().0, 2);
+}

@@ -1227,6 +1227,17 @@ export const vw = (n) => `${n}vw`;
 export const vh = (n) => `${n}vh`;
 export const em = (n) => `${n}em`;
 export const rem = (n) => `${n}rem`;
+/** Grid helpers, named after Bevy's grid types; each returns plain data `style` parses. */
+export const fr = (n) => `${n}fr`;
+export const minmax = (min, max) => ({ minmax: [min, max] });
+export const repeat = (count, tracks) => ({ repeat: count, tracks: Array.isArray(tracks) ? tracks : [tracks] });
+export const span = (n) => ({ span: n });
+/** Degrees to radians, for `transform.rotation`. */
+export const deg = (n) => (n * Math.PI) / 180;
+/** Gradients for `background` and `border`. Angles are degrees, 0 up and clockwise, as CSS's. */
+export const linearGradient = (angle, stops) => ({ gradient: "linear", angle, stops });
+export const radialGradient = (stops, options) => ({ gradient: "radial", stops, ...options });
+export const conicGradient = (stops, options) => ({ gradient: "conic", stops, ...options });
 
 /** The describe in progress: its context, and the owner bindings belong to. */
 let Describing = null;

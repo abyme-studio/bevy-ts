@@ -130,9 +130,12 @@ fn fields(value: &dyn PartialReflect) -> Result<Vec<Found>, String> {
                 out.push(leaf_of(s.field_at(i).unwrap(), base, name.clone(), name));
             }
         }
+        // A newtype's one field is `value` in TS (`ZIndex(2)` is `{ value: 2 }`); a wider tuple
+        // struct's fields keep their indices.
         ReflectRef::TupleStruct(s) => {
             for i in 0..s.field_len() {
-                out.push(leaf_of(s.field(i).unwrap(), base, i.to_string(), format!(".{i}")));
+                let name = if s.field_len() == 1 { "value".into() } else { i.to_string() };
+                out.push(leaf_of(s.field(i).unwrap(), base, name, format!(".{i}")));
             }
         }
         // A fieldless enum component (`RigidBody`) is one field named `value`.
@@ -425,6 +428,10 @@ mod tests {
 
     #[derive(Component, Reflect, Default)]
     #[reflect(Component, Default)]
+    struct Pair(pub f32, pub f32);
+
+    #[derive(Component, Reflect, Default)]
+    #[reflect(Component, Default)]
     #[component(immutable)]
     struct Frozen {
         v: f32,
@@ -458,6 +465,7 @@ mod tests {
             r.register::<Plain>();
             r.register::<Body>();
             r.register::<Private>();
+            r.register::<Pair>();
             r.register::<Frozen>();
             r.register::<NoDefault>();
             r.register::<Named>();
@@ -511,7 +519,11 @@ mod tests {
         let mut w = world();
         fill(&mut w);
         let n = w.resource::<NativeLayouts>();
-        assert_eq!(n.get("Private").unwrap().layout.field("0").unwrap().offset, 0);
+        // A newtype's field is `value`; a wider tuple struct keeps `0`, `1`.
+        assert_eq!(n.get("Private").unwrap().layout.field("value").unwrap().offset, 0);
+        assert!(n.get("Private").unwrap().layout.field("0").is_none());
+        let pair = &n.get("Pair").unwrap().layout;
+        assert_eq!((pair.field("0").unwrap().offset, pair.field("1").unwrap().offset), (0, 4));
         assert!(!n.get("Frozen").unwrap().writable);
     }
 

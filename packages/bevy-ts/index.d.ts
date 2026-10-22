@@ -504,3 +504,26 @@ export declare function vw(n: number): string;
 export declare function vh(n: number): string;
 export declare function em(n: number): string;
 export declare function rem(n: number): string;
+
+type Length = import("bevy-ts/jsx-runtime").Length;
+type Track = import("bevy-ts/jsx-runtime").Track;
+type ColorStop = import("bevy-ts/jsx-runtime").ColorStop;
+/** A flexible grid track, `GridTrack::fr`: `fr(1)`. */
+export declare function fr(n: number): `${number}fr`;
+/** A track between a minimum and a maximum size, `GridTrack::minmax`. */
+export declare function minmax(min: Length | "min-content" | "max-content", max: Track): Track;
+/** Tracks repeated `count` times, or as many as fit, `RepeatedGridTrack::repeat_many`. */
+export declare function repeat(count: number | "auto-fill" | "auto-fit", tracks: Track | readonly Track[]): import("bevy-ts/jsx-runtime").RepeatedTrack;
+/** A grid item spanning `n` tracks, `GridPlacement::span`. */
+export declare function span(n: number): { readonly span: number };
+/** Degrees to radians, for `transform.rotation`. */
+export declare function deg(n: number): number;
+/** `LinearGradient`: `angle` in degrees, 0 up and clockwise, as CSS's `linear-gradient`. */
+export declare function linearGradient(angle: number, stops: readonly ColorStop[]): import("bevy-ts/jsx-runtime").Gradient;
+/** `RadialGradient`, centred unless `at` (from the top left); `shape` is Bevy's `RadialGradientShape`. */
+export declare function radialGradient(
+  stops: readonly ColorStop[],
+  options?: { at?: readonly [Length, Length]; shape?: "closest-side" | "farthest-side" | "closest-corner" | "farthest-corner" | { circle: Length } | { ellipse: readonly [Length, Length] } },
+): import("bevy-ts/jsx-runtime").Gradient;
+/** `ConicGradient`: stops are colours or `[colour, degrees]`; `from` is the start angle in degrees. */
+export declare function conicGradient(stops: readonly (string | readonly [string, number])[], options?: { from?: number; at?: readonly [Length, Length] }): import("bevy-ts/jsx-runtime").Gradient;

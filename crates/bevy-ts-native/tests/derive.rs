@@ -27,7 +27,7 @@ fn offsets_come_from_offset_of_without_repr_c() {
     assert_eq!(off("target"), offset_of!(Probe, target));
     assert_eq!(off("spin"), offset_of!(Probe, spin));
     assert_eq!(l.field("lanes").unwrap().ty, FieldType::Array { of: Box::new(FieldType::U16), len: 2 });
-    assert_eq!(Meters::native_layout().field("0").unwrap().offset, 0);
+    assert_eq!(Meters::native_layout().field("value").unwrap().offset, 0);
 }
 
 #[test]

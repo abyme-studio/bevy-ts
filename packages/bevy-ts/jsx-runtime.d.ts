@@ -59,6 +59,23 @@ export type Length = number | string;
 /** Sides: one length, CSS shorthand (`[y, x]`, `[top, right, bottom, left]`) or an object. */
 export type Sides = Length | readonly Length[] | { top?: Length; right?: Length; bottom?: Length; left?: Length };
 
+/** A grid track (Bevy's `GridTrack`): a length, `fr(n)`, `"auto"`, `"min-content"`, `"max-content"`, `minmax(min, max)` or `{ fitContent }`. */
+export type Track = Length | `${number}fr` | "min-content" | "max-content" | { readonly minmax: readonly [unknown, unknown] } | { readonly fitContent: Length };
+/** `repeat(count, tracks)`, Bevy's `RepeatedGridTrack`. */
+export interface RepeatedTrack {
+  readonly repeat: number | "auto-fill" | "auto-fit";
+  readonly tracks: readonly Track[];
+}
+/** A grid line placement (Bevy's `GridPlacement`): a start line, `span(n)`, `{ start, end, span }` or `"auto"`. */
+export type Placement = number | "auto" | { readonly start?: number; readonly end?: number; readonly span?: number };
+/** A colour stop: a colour, placed evenly, or `[colour, position]`. */
+export type ColorStop = string | readonly [string, Length];
+/** What `linearGradient`, `radialGradient` and `conicGradient` return. */
+export interface Gradient {
+  readonly gradient: "linear" | "radial" | "conic";
+}
+type OverflowAxis = "visible" | "clip" | "hidden" | "scroll";
+
 /** `Node`'s fields, CSS-cased. */
 export interface Style {
   width?: Length;
@@ -88,18 +105,58 @@ export interface Style {
   justifyContent?: "start" | "end" | "flex-start" | "flex-end" | "center" | "stretch" | "space-between" | "space-around" | "space-evenly";
   alignItems?: "start" | "end" | "flex-start" | "flex-end" | "center" | "baseline" | "stretch";
   alignSelf?: "start" | "end" | "flex-start" | "flex-end" | "center" | "baseline" | "stretch";
-  overflow?: "visible" | "clip" | "hidden" | "scroll";
+  /** One word for both axes, or each axis. */
+  overflow?: OverflowAxis | { x?: OverflowAxis; y?: OverflowAxis };
+  boxSizing?: "border-box" | "content-box";
+  justifyItems?: "default" | "start" | "start-safe" | "end" | "end-safe" | "center" | "center-safe" | "baseline" | "stretch";
+  justifySelf?: "auto" | "start" | "start-safe" | "end" | "end-safe" | "center" | "center-safe" | "baseline" | "stretch";
+  alignContent?:
+    | "default" | "start" | "start-safe" | "end" | "end-safe" | "flex-start" | "flex-start-safe" | "flex-end" | "flex-end-safe"
+    | "center" | "center-safe" | "stretch" | "space-between" | "space-evenly" | "space-around";
+  direction?: "ltr" | "rtl";
+  scrollbarWidth?: number;
+  overflowClipMargin?: { visualBox?: "content-box" | "padding-box" | "border-box"; margin?: number };
+  gridAutoFlow?: "row" | "column" | "row-dense" | "column-dense";
+  gridTemplateRows?: Track | RepeatedTrack | readonly (Track | RepeatedTrack)[];
+  gridTemplateColumns?: Track | RepeatedTrack | readonly (Track | RepeatedTrack)[];
+  gridAutoRows?: Track | readonly Track[];
+  gridAutoColumns?: Track | readonly Track[];
+  gridRow?: Placement;
+  gridColumn?: Placement;
+}
+
+/** Four corners, `[topLeft, topRight, bottomRight, bottomLeft]` or by name. */
+export type Corners = Length | readonly [Length, Length, Length, Length] | { topLeft?: Length; topRight?: Length; bottomRight?: Length; bottomLeft?: Length };
+/** `BoxShadow`'s `ShadowStyle`; a missing field is Bevy's default. */
+export interface Shadow {
+  color?: string;
+  x?: Length;
+  y?: Length;
+  spread?: Length;
+  blur?: Length;
+}
+/** `UiTransform`: `rotation` in radians (`deg(45)`), clockwise. */
+export interface UiTransform {
+  translation?: readonly [Length, Length];
+  scale?: number | readonly [number, number];
+  rotation?: number;
 }
 
 /** `<node>`, `<button>`: a bevy_ui `Node`; children are UI elements and components. */
 export interface NodeProps extends EntityProps {
   style?: Bindable<Style>;
-  /** `BackgroundColor`, `"#rrggbb"` or `"#rrggbbaa"`. */
-  background?: Bindable<string>;
-  /** `BorderColor`; widths are `style.border`. */
-  border?: Bindable<string>;
-  /** `Node.border_radius`, every corner. */
-  radius?: Bindable<Length>;
+  /** `BackgroundColor` (`"#rrggbb"` or `"#rrggbbaa"`), or `BackgroundGradient` from a gradient helper. */
+  background?: Bindable<string | Gradient | readonly Gradient[]>;
+  /** `BorderColor` (one colour or per side), or `BorderGradient`; widths are `style.border`. */
+  border?: Bindable<string | { top?: string; right?: string; bottom?: string; left?: string } | Gradient | readonly Gradient[]>;
+  /** `Node.border_radius`: one length, or per corner. */
+  radius?: Bindable<Corners>;
+  /** `Outline`, drawn outside the border; a missing field is Bevy's default (1 px, no offset, white). */
+  outline?: Bindable<{ width?: Length; offset?: Length; color?: string }>;
+  /** `BoxShadow`: one shadow or several. */
+  shadow?: Bindable<Shadow | readonly Shadow[]>;
+  /** `UiTransform`: moves, scales and rotates the node after layout. */
+  transform?: Bindable<UiTransform>;
 }
 
 /** `<text>`: `Text`, with `TextFont` size and `TextColor`. Children are strings and bindings. */

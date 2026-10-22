@@ -33,13 +33,15 @@ fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 (id.to_string(), quote!(#id), f)
             })
             .collect(),
-        Fields::Unnamed(f) => f
+        // A newtype's one field is `value` in TS, as layout_reflect names it.
+        Fields::Unnamed(u) => u
             .unnamed
             .iter()
             .enumerate()
             .map(|(i, f)| {
                 let idx = syn::Index::from(i);
-                (i.to_string(), quote!(#idx), f)
+                let label = if u.unnamed.len() == 1 { "value".to_string() } else { i.to_string() };
+                (label, quote!(#idx), f)
             })
             .collect(),
         Fields::Unit => return Err(syn::Error::new(input.span(), "NativeLayout: a unit struct has no fields; use it in With/Without")),
