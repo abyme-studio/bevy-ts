@@ -1,6 +1,8 @@
 name: release
-# Builds the engine on each platform's native runner, publishes the platform packages, then bevy-ts
-# listing in optionalDependencies only the platforms that are on npm at this version.
+# Builds the engine on each platform's native runner, publishes each platform package from a job of
+# its own (in parallel, each with a fresh OIDC token), then bevy-ts once every platform that built
+# is on npm at this version. npm's 5xx and transient 404s are retried with backoff
+# (scripts/npm-publish.sh).
 #
 # Release: push a tag `v<version>` (git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1).
 # A pre-release version goes out under dist-tag `next`, a stable one under `latest`.
@@ -8,8 +10,9 @@ name: release
 #
 # Auth: npm trusted publishing (OIDC). Each package has abyme-studio/bevy-ts, release.yml as its
 # trusted publisher; there is no npm token. A package that does not exist on npm yet cannot have a
-# trusted publisher, so its publish fails here and it is left out of bevy-ts (docs/release.md).
-# Re-running is safe: a package already on npm at this version is skipped, not republished.
+# trusted publisher, so its publish fails here and bevy-ts is held back (docs/release.md).
+# Re-running is safe: a package already on npm at this version is skipped, not republished. After
+# a failure, "Re-run failed jobs" finishes the release.
 on:
   push:
     tags: ["v*"]
@@ -29,8 +32,32 @@ on:
 permissions:
   contents: read
   id-token: write
+  actions: read
 
 jobs:
+  release:
+    name: version and dist-tag
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - name: Version, dist-tag and whether to publish
+        id: release
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then
+            version="${GITHUB_REF_NAME#v}"
+            case "$version" in *-*) tag=next ;; *) tag=latest ;; esac
+            publish=true
+          else
+            version="${{ inputs.version }}"; tag="${{ inputs.tag }}"; publish="${{ inputs.publish }}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "bevy-ts $version under $tag, publish=$publish"
+
   build:
     name: engine ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
@@ -66,10 +93,60 @@ jobs:
           path: out/
           retention-days: 7
 
-  publish:
-    needs: build
+  # One job per platform: a slow or failing publish holds up no other, and each mints its own OIDC
+  # token. A platform whose engine did not build has no artifact and publishes nothing.
+  platform:
+    name: publish ${{ matrix.platform }}
+    needs: [release, build]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64]
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+      TAG: ${{ needs.release.outputs.tag }}
+      PUBLISH: ${{ needs.release.outputs.publish }}
+      P: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: npm with trusted publishing over OIDC (>= 11.21)
+        run: npm install -g npm@^11.21.0 && npm --version
+      - uses: actions/download-artifact@v4
+        id: engine
+        continue-on-error: true
+        with:
+          name: engine-${{ matrix.platform }}
+          path: engine
+      - name: Publish @bevy-ts/${{ matrix.platform }}
+        if: ${{ steps.engine.outcome == 'success' }}
+        run: |
+          node scripts/set-npm-version.mjs "$VERSION" "$P"
+          mkdir -p "packages/platforms/$P/bin"
+          install -m 755 engine/* "packages/platforms/$P/bin/"
+          flags=(--provenance --access public --tag "$TAG")
+          [ "$PUBLISH" = true ] || flags+=(--dry-run)
+          scripts/npm-publish.sh "packages/platforms/$P" "@bevy-ts/$P" "$VERSION" "${flags[@]}"
+      - name: No engine built
+        if: ${{ steps.engine.outcome != 'success' }}
+        run: echo "::warning::engine $P did not build; nothing to publish"
+
+  bevy-ts:
+    name: publish bevy-ts
+    needs: [release, platform]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+      TAG: ${{ needs.release.outputs.tag }}
+      PUBLISH: ${{ needs.release.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -78,75 +155,32 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: npm with trusted publishing and dist-tag over OIDC (>= 11.21)
         run: npm install -g npm@^11.21.0 && npm --version
-      - name: Version, dist-tag and whether to publish
-        id: release
-        run: |
-          if [ "${{ github.event_name }}" = push ]; then
-            version="${GITHUB_REF_NAME#v}"
-            case "$version" in *-*) tag=next ;; *) tag=latest ;; esac
-            publish=true
-          else
-            version="${{ inputs.version }}"; tag="${{ inputs.tag }}"; publish="${{ inputs.publish }}"
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
-          echo "bevy-ts $version under $tag, publish=$publish"
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
       - name: Which platforms built
         id: built
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          list=$(ls artifacts | sed -n 's/^engine-//p' | paste -sd, -)
+          list=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate \
+            --jq '.artifacts[].name' | sed -n 's/^engine-//p' | sort -u | paste -sd, -)
           [ -n "$list" ] || { echo "no engine built" >&2; exit 1; }
           echo "platforms=$list" >> "$GITHUB_OUTPUT"
           echo "Built: $list"
-      - name: Publish the platform packages
-        id: platforms
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-          TAG: ${{ steps.release.outputs.tag }}
-          PUBLISH: ${{ steps.release.outputs.publish }}
+      # bevy-ts names only engines npm has: every platform that built must be on npm at this
+      # version first, or bevy-ts waits for a rerun rather than going out without them.
+      - name: Every built platform is on npm
+        if: ${{ needs.release.outputs.publish == 'true' }}
+        run: scripts/npm-await.sh "$VERSION" "${{ steps.built.outputs.platforms }}"
+      - name: Publish bevy-ts
         run: |
           node scripts/set-npm-version.mjs "$VERSION" "${{ steps.built.outputs.platforms }}"
-          flags="--provenance --access public --tag $TAG"
-          [ "$PUBLISH" = true ] || flags="$flags --dry-run"
-          ok=()
-          for p in $(echo "${{ steps.built.outputs.platforms }}" | tr , ' '); do
-            if [ -n "$(npm view "@bevy-ts/$p@$VERSION" version 2>/dev/null)" ]; then
-              echo "@bevy-ts/$p@$VERSION is already on npm; skipped"; ok+=("$p"); continue
-            fi
-            mkdir -p packages/platforms/$p/bin
-            install -m 755 artifacts/engine-$p/* packages/platforms/$p/bin/
-            if (cd packages/platforms/$p && npm publish $flags); then
-              ok+=("$p")
-            else
-              echo "::warning::@bevy-ts/$p@$VERSION did not publish (no trusted publisher yet?); left out of bevy-ts"
-            fi
-          done
-          [ ${#ok[@]} -gt 0 ] || { echo "no platform package published" >&2; exit 1; }
-          echo "published=$(IFS=,; echo "${ok[*]}")" >> "$GITHUB_OUTPUT"
-      - name: Publish bevy-ts
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-          TAG: ${{ steps.release.outputs.tag }}
-          PUBLISH: ${{ steps.release.outputs.publish }}
-        run: |
-          if [ -n "$(npm view "bevy-ts@$VERSION" version 2>/dev/null)" ]; then
-            echo "bevy-ts@$VERSION is already on npm; skipped"; exit 0
-          fi
-          node scripts/set-npm-version.mjs "$VERSION" "${{ steps.platforms.outputs.published }}"
-          flags="--provenance --access public --tag $TAG"
-          [ "$PUBLISH" = true ] || flags="$flags --dry-run"
-          cd packages/bevy-ts && npm publish $flags
+          flags=(--provenance --access public --tag "$TAG")
+          [ "$PUBLISH" = true ] || flags+=(--dry-run)
+          scripts/npm-publish.sh packages/bevy-ts bevy-ts "$VERSION" "${flags[@]}"
       # Until bevy-ts has a stable version, `latest` follows the newest pre-release too, so a plain
       # `npm i bevy-ts` gets it. Needs "Allow npm dist-tag" on bevy-ts's trusted publisher. The
       # platform packages are pinned by exact version, so their `latest` does not matter.
       - name: latest follows pre-releases until a stable release
-        if: ${{ steps.release.outputs.publish == 'true' && steps.release.outputs.tag == 'next' }}
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
+        if: ${{ needs.release.outputs.publish == 'true' && needs.release.outputs.tag == 'next' }}
         run: |
           stable=$(npm view bevy-ts versions --json | node -e 'const v=[].concat(JSON.parse(require("fs").readFileSync(0,"utf8")));console.log(v.some(x=>!x.includes("-")))')
           if [ "$stable" = false ]; then
