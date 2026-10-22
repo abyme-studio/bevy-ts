@@ -15,20 +15,32 @@
 - **WHEN** a material has `alpha={2}`
 - **THEN** the load fails at that element, saying alpha takes 0 to 1
 
-### Requirement: SceneAlpha fades a glTF scene's meshes
-An entity with `WorldAssetRoot` and `SceneAlpha { alpha }` SHALL, once its scene instance is ready, draw every mesh the instance spawned that holds a `MeshMaterial3d<StandardMaterial>` with a copy of that material owned by the root: one copy per distinct original material per root. A copy SHALL have the original's `base_color` alpha times `alpha` (clamped to 0..1). Below 1, a copy of an `Opaque`, `Mask` or `AlphaToCoverage` original SHALL be `Blend`; other modes SHALL be kept; at 1 the copy SHALL equal the original. Originals SHALL never be edited, so another root sharing the model's materials is not faded. A changed `alpha` SHALL reach every copy the frame it changes by editing the copies in place, creating no asset. A field binding (`<SceneAlpha alpha={() => k()} />`) SHALL drive it each frame with no remount. Removing `SceneAlpha` SHALL give each mesh its original material back and drop the copies. A scene spawned again (ready again) SHALL be faded again, and an original that reloads SHALL be copied again. Entities the instance did not spawn, such as TSX children of the root, and meshes drawing a script material, SHALL be left alone.
+### Requirement: MaterialAlpha fades an entity's materials
+An entity with `MaterialAlpha { alpha }` SHALL fade its targets: the entity itself when it holds a `MeshMaterial3d<StandardMaterial>`, and, when it has `WorldAssetRoot`, every mesh its scene instance spawned that holds one, once the instance is ready. Each target SHALL draw with a copy of its material owned by the entity: one copy per distinct original material per entity. A copy SHALL have the original's `base_color` alpha times `alpha` (clamped to 0..1). Below 1, a copy of an `Opaque`, `Mask` or `AlphaToCoverage` original SHALL be `Blend`; other modes SHALL be kept; at 1 the copy SHALL equal the original. Originals SHALL never be edited, so another entity sharing the material is not faded. A changed `alpha` SHALL reach every copy the frame it changes by editing the copies in place, creating no asset. A field binding (`<MaterialAlpha alpha={() => k()} />`) SHALL drive it each frame with no remount. A target given another `StandardMaterial` while faded SHALL be faded again from that material. Removing `MaterialAlpha` SHALL give each target its original material back and drop the copies. A scene spawned again (ready again) SHALL be faded again, and an original that reloads SHALL be copied again. TSX children of the entity, entities its scene did not spawn, and meshes drawing a script material SHALL be left alone.
+
+#### Scenario: A shape fades out
+- **WHEN** an entity has `<mesh shape="cuboid" />`, `<material color="#ff0000" />` and `<MaterialAlpha alpha={() => k()} />`, and `k` goes from 1 to 0 over 2 s
+- **THEN** each frame the cube draws with the entity's copy at alpha `k`, in `Blend`, and no `StandardMaterial` asset is added after the first frame
+
+#### Scenario: Another shape with the same material
+- **WHEN** a second entity has the same `<mesh>` and `<material color="#ff0000" />` and no `MaterialAlpha`, while the first fades
+- **THEN** the second cube draws with the shared material, opaque red
+
+#### Scenario: A shape's material changes while faded
+- **WHEN** a TS save changes the faded cube's `<material color>` to `"#0000ff"`
+- **THEN** the cube draws blue at alpha `k`, and removing `MaterialAlpha` leaves it opaque blue
 
 #### Scenario: A cluster fades out
-- **WHEN** ten entities each have `WorldAssetRoot("models/house.glb#Scene0")` and `<SceneAlpha alpha={() => k()} />`, and `k` goes from 1 to 0 over 2 s
+- **WHEN** ten entities each have `WorldAssetRoot("models/house.glb#Scene0")` and `<MaterialAlpha alpha={() => k()} />`, and `k` goes from 1 to 0 over 2 s
 - **THEN** each frame every house mesh draws with its root's copy at alpha `k`, in `Blend`, and no `StandardMaterial` asset is added after the first frame
 
 #### Scenario: Another instance of the same model
-- **WHEN** a second root spawns the same model with no `SceneAlpha`, while the first fades
+- **WHEN** a second root spawns the same model with no `MaterialAlpha`, while the first fades
 - **THEN** the second root's meshes draw with the model's own materials, unchanged
 
 #### Scenario: Removing it
-- **WHEN** `SceneAlpha` is removed from a faded root
-- **THEN** every mesh of its scene draws with its own material again, and the root's copies are dropped
+- **WHEN** `MaterialAlpha` is removed from a faded shape or root
+- **THEN** every target draws with its own material again, and the entity's copies are dropped
 
 #### Scenario: A hull tinted by a script material
 - **WHEN** a faded root also has a script material that swapped its `hull` meshes (scene-material)
