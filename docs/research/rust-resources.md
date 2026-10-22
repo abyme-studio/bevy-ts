@@ -94,7 +94,11 @@ All replied and agreed by message on 2026-10-23.
   once it lands.
 - writable-native-params: they own the exported-param path (`#[export]`, `HostParams`). Line: a
   resource with a native layout reaches TS as `Res`/`ResMut` (us); one without a layout, or whose
-  API is methods (`Assets<T>`, `Time<Virtual>::pause`), goes through their path.
+  API is methods (`Assets<T>`, `Time<Virtual>::pause`), goes through their path. An export may
+  claim a TS spelling (`stands_for = "ResMut<Time<Virtual>>"`). Proposed: a claimed spelling wins.
+  Generic `Res`/`ResMut` resolution checks `HostParams` claims first and never resolves a claimed
+  spelling, so there is no registration error. `VirtualTime` claims both `Res` and
+  `ResMut<Time<Virtual>>`.
 - ambient-light-script: owns no resource or param, only `encodeWithLayout` default bytes.
   `GlobalAmbientLight` is ours. Our path does not encode through `encodeWithLayout` (it writes in
   place), so no ordering dependency.
