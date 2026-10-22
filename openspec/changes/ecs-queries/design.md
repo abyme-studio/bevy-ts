@@ -87,7 +87,10 @@ in and out so they can be query data.
    insert path meets it. They land one flush later than Bevy's same-bundle insert, still before
    the next system. Alternative: add them in JS at encode time. Cheap, but TSX, levels and Rust
    inserts miss them.
-12. Custom relationships (ask-first, new pattern). Bevy's relationship hooks live in the typed
+12. Custom relationships: moved out. lead@bevy-ts ruled (2026-10-22) they are a change of their
+   own, custom-relationships, built after this one lands; the notes below are its starting point,
+   with `docs/research/ecs-queries.md`. It can reuse decision 11's `on_add` hook by id. Bevy's
+   relationship hooks live in the typed
    `Relationship` impl, and a target is a `Vec<Entity>`, which a TS layout (plain bytes, no drop)
    cannot hold. bevy-ts would register relationship hooks by id on the source, keep each target's
    list in a Rust-owned component (registered with a drop and a clone), read as query data through
@@ -114,12 +117,11 @@ in and out so they can be query data.
 
 ## Migration Plan
 
-Stages 1 to 6 land without the operator's go. Stage 7 (sparse-set filters, required components,
-custom relationships) waits for it and may land later or not at all; until it lands, a sparse-set
-filter is refused at load (stage 1), and `static require` and `Relationship` fail the load naming
-the missing support. If the operator declines an item, its requirement is removed from the delta
-before archive and its `ecs-coverage` row marked declined with the reason.
+Stages 1 to 6 land without the operator's go. Stage 7 (sparse-set filters, required components)
+has it, given 2026-10-22, and lands after them; until it does, a sparse-set filter is refused at
+load (stage 1) and `static require` fails the load naming the missing support. Custom
+relationships are not in this change (decision 12).
 
 ## Open Questions
 
-None blocking. The three ask-first items wait on the operator.
+None.

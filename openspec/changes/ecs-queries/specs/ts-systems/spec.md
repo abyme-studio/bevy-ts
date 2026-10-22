@@ -222,10 +222,3 @@ A TS component class MAY declare `static require = [B, C.of({ ... })]`, as Rust'
 #### Scenario: Present values win
 - **WHEN** a system spawns `Enemy.of(), Health.of({ hp: 3 })`
 - **THEN** the entity has `Health` 3
-
-### Requirement: Custom relationships
-`class Likes extends Relationship(LikedBy) { declare target: Entity }` and `class LikedBy extends RelationshipTarget(Likes) {}` SHALL declare a relationship and its target, as Rust's `#[relationship(relationship_target = LikedBy)]` and `#[relationship_target(relationship = Likes)]`. Inserting `Likes` on `a` targeting `b` SHALL add `a` to `b`'s `LikedBy`; removing it, retargeting it or despawning `a` SHALL keep the list right. `RelationshipTarget(Likes, { linkedSpawn: true })` SHALL despawn the sources with the target. `LikedBy` SHALL be query data giving a read-only list of entities. `entity(e).withRelated(Likes, (r) => ...)` and `entity(e).despawnRelated(LikedBy)` SHALL do what Bevy's `with_related` and `despawn_related` do.
-
-#### Scenario: The target's list
-- **WHEN** a system inserts `Likes.of({ target: b })` on `a` and on `c`, and a later system has `Query<[Entity, LikedBy]>`
-- **THEN** `b`'s row lists `a` and `c`; after `a` is despawned it lists `c` only

@@ -1,5 +1,5 @@
 Stages 1 to 6 are plain fixes and rows on existing patterns, and land without stage 7. Stage 7
-holds the ask-first items and starts only on the operator's go. Tests named here are in
+holds the ask-first items; the operator gave both their go on 2026-10-22. Tests named here are in
 `crates/bevy-ts-cli/tests/ecs_queries.rs` (new, on `common::{project, app, reload, messages}`)
 unless a path is given; each `ecs-coverage` row's test is written with its feature.
 
@@ -47,11 +47,10 @@ unless a path is given; each `ecs-coverage` row's test is written with its featu
 - [ ] 6.3 Every `ecs-coverage` row's test exists; rows not landed say so
 - [ ] 6.4 Gate once: workspace build, tests and clippy; `pnpm` type tests for `index.d.ts`
 
-## 7. Ask-first (operator's go; each item lands or is dropped on its own)
+## 7. Ask-first (operator's go given 2026-10-22; each item lands on its own)
 
 - [ ] 7.1 Bench before: `bob_bench` dense numbers, plus a new sparse variant (a `With<Tag>` sparse-set filter over 1,000 and 100,000 entities) recorded with stage 1's refusal lifted behind a test flag
 - [ ] 7.2 Sparse-set filters: `is_dense` on `QueryParam`; per-table row lists from matched archetypes for non-dense queries; `Changed`/`Added` on a sparse-set component from per-entity sparse ticks; `Has` per archetype; lift 1.1's filter refusal (data stays refused); `probe_disabled_and_sparse_filters` asserts Bevy's lengths
 - [ ] 7.3 Bench after: dense unchanged within noise, sparse cost recorded in `docs/research/ecs-queries.md`
 - [ ] 7.4 Required components: `static require` in the reader and manifest; an `on_add` hook by id inserting missing parts through `DeferredWorld` commands; cycle error; `required_components_from_every_path` (commands, TSX, level, Rust insert)
-- [ ] 7.5 Custom relationships: `Relationship(Target)`/`RelationshipTarget(Rel)` in the reader and runtime; hooks by id keeping a Rust-owned target list; `linkedSpawn`; target as read-only query data; `withRelated`, `despawnRelated`; `custom_relationship_keeps_its_target_list`
-- [ ] 7.6 For each item the operator declines: remove its requirement from the delta, mark its `ecs-coverage` row declined with the reason, keep the stage-1 refusal or a load error naming it
+- [ ] 7.5 `Relationship` and `RelationshipTarget` are not exported; the `ecs-coverage` row names custom-relationships as their owner
