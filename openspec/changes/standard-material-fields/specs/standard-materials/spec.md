@@ -42,9 +42,21 @@ Every `Option<Handle<Image>>` field SHALL be a prop taking an asset path, loaded
 - **WHEN** a material has `baseColorTexture="textures/nope.png"` and no such file exists
 - **THEN** an error at that element names `textures/nope.png`
 
-### Requirement: A normal map shades a mesh shape
-Every mesh `<mesh>` builds SHALL carry vertex tangents, so `normalMapTexture` and anisotropy shade a `<mesh>` shape. A shape whose tangents cannot be generated SHALL be built without them, with no error.
+### Requirement: A mesh shape gets tangents when its material needs them
+A `<mesh>` SHALL carry vertex tangents exactly when the `<material>` on its entity sets `normalMapTexture`, `clearcoatNormalTexture`, `anisotropyTexture` or a non-zero `anisotropyStrength`; Bevy ignores those on a mesh without tangents. The tangent mesh SHALL be built once per shape (per `<mesh>` props) and shared by every entity with that shape and such a material. A `<mesh>` whose material does not need them SHALL keep the plain shared mesh, with no tangent attribute. The swap SHALL follow either element changing: a material that gains a normal map moves its entity to the tangent mesh, one that loses it moves back, and a `<mesh>` inserted after its material gets the right variant. A shape whose tangents cannot be generated SHALL keep its plain mesh, with no error.
+
+#### Scenario: A plain mesh has no tangents
+- **WHEN** an entity has `<mesh shape="cuboid" />` and `<material color="#f00" />`
+- **THEN** its mesh has no `Mesh::ATTRIBUTE_TANGENT`
 
 #### Scenario: A normal-mapped cube
 - **WHEN** an entity has `<mesh shape="cuboid" />` and `<material normalMapTexture="textures/bumps.png" />`
-- **THEN** the cube's mesh has `Mesh::ATTRIBUTE_TANGENT`, and its lit faces differ from the same cube without the normal map
+- **THEN** its mesh has `Mesh::ATTRIBUTE_TANGENT`, and its lit faces differ from the same cube without the normal map
+
+#### Scenario: Two entities share one tangent mesh
+- **WHEN** two entities have `<mesh shape="cuboid" />` and normal-mapped materials, and a third has `<mesh shape="cuboid" />` with a plain material
+- **THEN** the first two hold the same tangent `Mesh` handle, the third holds the plain one, and two cuboid meshes were built in all
+
+#### Scenario: The normal map is removed
+- **WHEN** a TS save removes `normalMapTexture` from a normal-mapped cube's material
+- **THEN** the cube holds the plain cuboid mesh again
