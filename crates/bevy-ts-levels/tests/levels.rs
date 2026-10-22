@@ -1158,6 +1158,17 @@ mod editor_state {
     }
 
     #[test]
+    fn a_failed_first_compile_still_composes_a_native_level() {
+        let mut f = edit("failed", Some(r#"{ "version": 1, "open": ["levels/room.bsn"], "closed": [] }"#));
+        // What `App::run` does before the first frame: native layouts are known from the start.
+        bevy_ts::layout_reflect::fill_once(f.app.world_mut());
+        f.app.update();
+        bevy_ts::generation::compile_failed(f.app.world_mut(), vec![bevy_ts::backend::ScriptError::new("syntax")], std::time::Duration::ZERO);
+        f.settle();
+        f.by_name("Floor");
+    }
+
+    #[test]
     fn a_closed_game_level_stays_closed() {
         let mut f = edit("closed", None);
         f.load(&["levels/arena.bsn"]);

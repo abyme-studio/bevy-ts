@@ -823,9 +823,12 @@ fn log(world: &mut World, level: LogLevel, e: &ScriptError) {
 /// Composes and reconciles every dirty level whose files are loaded. A level that fails stays
 /// exactly as it was (rule 8).
 pub fn reconcile_dirty(world: &mut World) {
-    // Before the first generation the schema knows no component: a level opened at `Startup`
-    // (`add_level`, or one the editor remembered) composes once one is live.
-    if world.get_resource::<bevy_ts::generation::Generations>().is_some_and(|g| g.live == 0) {
+    // Before the first generation the schema knows no TS component: a level opened at `Startup`
+    // (`add_level`, or one the editor remembered) composes once the first has been tried. A
+    // first compile that fails ends the wait too, so native-only levels still compose.
+    let tried = world.get_resource::<bevy_ts::generation::Generations>().is_none_or(|g| g.live > 0)
+        || world.get_resource::<bevy_ts::generation::ReloadLog>().is_some_and(|l| l.next_seq() > 0);
+    if !tried {
         return;
     }
     let ready: Vec<String> = {

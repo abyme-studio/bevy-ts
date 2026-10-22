@@ -7,7 +7,7 @@ Under `bevy-ts dev --edit`, the engine SHALL keep `<project>/.bevy-ts/editor.jso
 
 Levels opened by `ts`, `rust` or `sidecar` SHALL NOT go in `open`. The engine SHALL write the file whenever either set changes, to a temporary file renamed over it, so the file is always whole.
 
-Before the first frame, the engine SHALL read the file: it SHALL take `closed` as the levels `level_close` closed, then open each `open` path with opener `editor`. A restored level SHALL compose once its files load and the first TS generation is live, as an `add_level` level does. Restored levels SHALL list with opener `editor` in the first `bevy-ts/level_list`, and a restored `closed` level SHALL stay closed as if `level_close` had closed it in this process.
+Before the first frame, the engine SHALL read the file: it SHALL take `closed` as the levels `level_close` closed, then open each `open` path with opener `editor`. A restored level SHALL compose once its files load and the first TS generation has been tried, applied or failed, as an `add_level` level does. Restored levels SHALL list with opener `editor` in the first `bevy-ts/level_list`, and a restored `closed` level SHALL stay closed as if `level_close` had closed it in this process.
 
 A missing, malformed or unknown-version file SHALL start with both sets empty and a warning, and SHALL NOT fail the boot. A remembered level whose file is gone SHALL be skipped with a warning on stderr and left out of the next write. One that no longer composes SHALL stay open with its error, as an `app.level` level does.
 

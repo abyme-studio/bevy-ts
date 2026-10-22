@@ -1,7 +1,7 @@
 ## 1. Engine
 
 - [x] 1.1 `Levels.state_file: Option<PathBuf>` (default `None`) and a serde type for `{ version, open, closed }` in `crates/bevy-ts-levels/src/engine.rs`
-- [x] 1.2 A `Startup` restore before `open_pending`: read the file (missing, malformed or unknown version: warn, empty), load `closed`, prune `closed` paths that are not files, open each `open` path as `editor` (deferred, as `open_pending`; `open_now` cannot compose before the first generation), warn and skip paths that are not files; `reconcile_dirty` waits for the first live generation
+- [x] 1.2 A `Startup` restore before `open_pending`: read the file (missing, malformed or unknown version: warn, empty), load `closed`, prune `closed` paths that are not files, open each `open` path as `editor` (deferred, as `open_pending`; `open_now` cannot compose before the first generation), warn and skip paths that are not files; `reconcile_dirty` waits until the first generation is tried (applied or failed)
 - [x] 1.3 A `Last` writer: build the remembered set (opener `editor` roots, `closed`), and when it differs from the last written, write `editor.json.tmp` and rename it; create `.bevy-ts/` if missing; a write error warns
 - [x] 1.4 Both systems do nothing when `state_file` is `None`
 

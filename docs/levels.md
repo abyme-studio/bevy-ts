@@ -48,7 +48,7 @@ where `open` is every level with opener `editor` and `closed` every level `level
 writes the file on every open or close that changes either set, whole each time. Before the first
 frame it reads it back: the `closed` levels stay closed as if closed in this process, and each
 `open` level opens again with opener `editor`, so the first `level_list` lists it. A restored level
-composes once its files load and the first generation has the game's components; one that no longer
+composes once its files load and the first generation has been tried; one that no longer
 composes stays open with its error. A missing or unreadable file, or another `version`, starts
 with neither set; a remembered level whose file is gone is skipped with a warning and dropped from
 the next write. Plain `dev`, `play` and `build` neither read nor write the file.
