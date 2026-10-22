@@ -1,8 +1,14 @@
 # Build cache
 
-`.cargo/config.toml` runs rustc through `scripts/rustc-wrapper.sh`: sccache when it is
-installed, plain rustc when not. sccache is not required anywhere; CI does not install it and
-builds as before.
+The repo sets no rustc wrapper: a `.sh` wrapper broke the Windows release build, which cannot
+run one. sccache is turned on per machine instead, in `~/.cargo/config.toml`:
+
+```toml
+[build]
+rustc-wrapper = "sccache"
+```
+
+sccache is not required anywhere; CI does not install it and builds with plain rustc.
 
 What it shares across worktrees is the registry's crates (Bevy, deno_core and the rest). The
 workspace's own crates are incremental, which sccache passes through uncached, and so are
