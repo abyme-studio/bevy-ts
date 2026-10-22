@@ -3,7 +3,8 @@
 //! batch is replayed by name path on the new text, or refused as a conflict. Never a text merge.
 
 use crate::compose::Schema;
-use crate::engine::{BsnLevel, Levels, WorldSchema, content_hash, open_sidecar, reconcile_level, root_name};
+use crate::compose::MissingReason;
+use crate::engine::{BsnLevel, Levels, MissingComponents, WorldSchema, content_hash, open_sidecar, reconcile_level, root_name};
 use bevy_ts_tsx::desc::node_id;
 use bevy_ts_tsx::{TsxNode, TsxTree};
 use crate::syntax::{self, Fields, ParsedFile, ValueKind};
@@ -353,7 +354,38 @@ fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&s
     let places = placements(world, file, scene);
     let mut added: Vec<(&[String], String)> = Vec::new();
     let mut removed: Vec<(&[String], String)> = Vec::new();
+    // A placeholder of the entity at `path` (`level-placeholders`): `component`, or its scene.
+    let placeholder = |path: &[String], component: Option<&str>| -> bool {
+        let tree = world.resource::<TsxTree>();
+        let short = |c: &str| c.rsplit("::").next().unwrap_or(c).to_string();
+        places.as_deref().unwrap_or_default().iter().filter_map(|p| tree.entity(node_id(&p.root, &p.key_of(path)?))).filter_map(|e| world.get::<MissingComponents>(e)).flat_map(|m| &m.0).any(|m| match component {
+            Some(c) => m.reason != MissingReason::Mismatch && (m.component == c || short(&m.component) == short(c)),
+            None => m.scene,
+        })
+    };
+    let unknown = |at: usize, what: &str, component: &str| refuse(at, "unknown", format!("no live code registers {what} {component}"));
     for (at, op) in ops.iter().enumerate() {
+        // Writes to a placeholder's fields are refused: its text stays as saved.
+        match op {
+            Op::Set { path, component, .. } | Op::Revert { path, component, .. } if placeholder(path, Some(component)) => {
+                return Err(refuse(at, "missing", format!("{component} on {} is a placeholder: its code is missing, so its saved text is kept as it is", path.join("/"))));
+            }
+            Op::SetProp { path, .. } | Op::RevertProp { path, .. } if placeholder(path, None) => {
+                return Err(refuse(at, "missing", format!("{}'s scene component is a placeholder: its code is missing, so its props are kept as saved", path.join("/"))));
+            }
+            Op::Set { component, .. } | Op::AddComponent { component, text: None, .. } if schema.component(component).is_err() => return Err(unknown(at, "a component named", component)),
+            Op::Add { base, patches, .. } => {
+                if let writer::Base::Scene { component, .. } = base
+                    && schema.scene(component).is_err()
+                {
+                    return Err(unknown(at, "a scene component named", component));
+                }
+                if let Some(p) = patches.iter().find(|p| schema.component(&p.component).is_err()) {
+                    return Err(unknown(at, "a component named", &p.component));
+                }
+            }
+            _ => {}
+        }
         match op {
             Op::AddComponent { path, component, .. } | Op::RemoveComponent { path, component } => {
                 let Ok(full) = schema.component(component).map(|s| s.name) else { continue };

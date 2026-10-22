@@ -2,7 +2,7 @@
 //! `tsx` as external roots named `level:<path>`, the world's types as a [`Schema`], and the
 //! `LevelInstance` component on every level-placed entity.
 
-use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, FieldSchema, Files, Frame, ScenePlacement, SceneSchema, Schema, ValueType};
+use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, Expansion, FieldSchema, Files, Frame, MissingAt, MissingComponent, MissingReason, ScenePlacement, SceneSchema, Schema, ValueType};
 use crate::syntax::{self, EntityList, Entry, Extension, ParsedFile};
 use bevy::asset::io::Reader;
 use bevy::asset::{AssetLoadFailedEvent, AssetLoader, LoadContext, ReflectHandle, UntypedAssetLoadFailedEvent};
@@ -136,6 +136,13 @@ impl From<&Frame> for OwnerFrame {
     }
 }
 
+/// On a level entity with placeholder entries (`level-placeholders`): each component the level
+/// writes whose code is missing, failed or does not fit. Written by the reconcile; removed with
+/// its last entry. The missing types themselves are not on the entity, so no query matches them.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
+#[reflect(Component)]
+pub struct MissingComponents(pub Vec<MissingComponent>);
+
 /// Who opened a level.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -192,11 +199,14 @@ pub struct Levels {
     /// Where the editor's levels are remembered (`dev --edit` only): read at `Startup`, written
     /// on every change. `None` neither reads nor writes.
     pub state_file: Option<std::path::PathBuf>,
+    /// Where each TS component this process saw live was declared, by name: a placeholder's
+    /// `expected`. Never on disk, so empty after a restart.
+    pub declared_at: BTreeMap<String, bevy_ts::backend::SourceLocation>,
 }
 
 impl Default for Levels {
     fn default() -> Self {
-        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), declared: BTreeSet::new(), closed: BTreeSet::new(), state_file: None }
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), declared: BTreeSet::new(), closed: BTreeSet::new(), state_file: None, declared_at: BTreeMap::new() }
     }
 }
 
@@ -338,12 +348,14 @@ fn check_section(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -
     let registry = world.resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
     let schema = WorldSchema::pending(world, input.components, &registry);
+    // Under `bevy-ts dev` only a broken file fails it: missing code becomes placeholders.
+    let tolerant = tolerant(world);
     let mut files = LoadedFiles { server: world.resource::<AssetServer>(), assets: world.resource::<Assets<BsnLevel>>(), hashes: BTreeMap::new() };
     for p in &s.levels {
         if files.parsed(p).is_err() {
             continue;
         }
-        if let Err(e) = compose::prepare(p, &mut files, &schema) {
+        if let Err(e) = compose::prepare(p, &mut files, &schema, tolerant) {
             errors.extend(e.into_iter().filter(|e| !e.message.ends_with(": not loaded")));
         }
     }
@@ -374,7 +386,13 @@ fn apply_section(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSectio
 /// A generation re-expands every instance (rule 9). The runtime is busy while a generation
 /// applies, so the expansion runs at the next frame boundary, in `watch`.
 fn after_generation(world: &mut World, _: &bevy_ts::plugin_api::AppliedSection) {
-    for r in world.resource_mut::<Levels>().roots.values_mut() {
+    let seen: Vec<(String, bevy_ts::backend::SourceLocation)> = {
+        let ts = world.resource::<TsComponents>();
+        ts.current().filter(|c| ts.live(&c.decl.name).is_some()).filter_map(|c| Some((c.decl.name.clone(), c.decl.location.clone()?))).collect()
+    };
+    let mut levels = world.resource_mut::<Levels>();
+    levels.declared_at.extend(seen);
+    for r in levels.roots.values_mut() {
         r.dirty = true;
     }
     layer_editor_sidecars(world);
@@ -409,6 +427,7 @@ fn after_restart(world: &mut World) {
 impl Plugin for LevelsPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<BsnLevel>().register_asset_loader(BsnLoader).init_resource::<Levels>().init_resource::<crate::edit::WriteResults>();
+        app.register_type::<MissingComponents>();
         app.add_ts_section(SECTION, check_section);
         app.on_ts_section_applied(SECTION, apply_section);
         app.on_ts_section_applied(bevy_ts_tsx::SECTION, after_generation);
@@ -668,7 +687,31 @@ fn short(path: &str) -> &str {
     path.rsplit("::").next().unwrap_or(path)
 }
 
+/// Edits to turn `a` into `b`.
+fn distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let here = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != *cb)).min(row[j] + 1).min(here + 1);
+            prev = here;
+        }
+    }
+    row[b.len()]
+}
+
 impl WorldSchema<'_> {
+    /// The component name nearest a misspelt one, by its short name.
+    fn nearest(&self, path: &str) -> Option<String> {
+        let names = self.ts.iter().map(|d| short(&d.name).to_string()).chain(self.native.iter().map(|n| short(&n.ts_name).to_string()));
+        let wanted = short(path);
+        let (d, name) = names.map(|n| (distance(wanted, &n), n)).min()?;
+        (d > 0 && d <= 2.max(wanted.len() / 4)).then_some(name)
+    }
+
     fn ts_schema(&self, name: &str) -> Option<ComponentSchema> {
         let decl = self.ts.iter().find(|d| d.name == name)?;
         let fields = decl
@@ -764,7 +807,10 @@ impl Schema for WorldSchema<'_> {
         match candidates.as_slice() {
             [] => match self.native.reflect_tier(path) {
                 Some(t) => self.reflect_schema(&t.type_path.clone()),
-                None => Err(format!("unknown component {path}")),
+                None => Err(match self.nearest(path) {
+                    Some(near) => format!("unknown component {path} (did you mean {near}?)"),
+                    None => format!("unknown component {path}"),
+                }),
             },
             [one] => {
                 if let Some(s) = self.ts_schema(one) {
@@ -818,10 +864,61 @@ impl Schema for WorldSchema<'_> {
     }
 }
 
-/// Expands scene component instances through tsx's host entry: one call for all of them.
-fn expand(world: &mut World, requests: &[ExpandRequest]) -> Result<Vec<NodeDesc>, Vec<ScriptError>> {
+/// Expands scene component instances through tsx's host entry: one call for all of them. Under
+/// `bevy-ts dev` each answers for itself, so one throwing `scene()` fails its instance only.
+fn expand(world: &mut World, requests: &[ExpandRequest]) -> Result<Vec<Expansion>, Vec<ScriptError>> {
     let items: Vec<bevy_ts_tsx::ExpandItem> = requests.iter().map(|r| bevy_ts_tsx::ExpandItem { component: r.component.clone(), props: r.props.clone(), at: r.at.clone() }).collect();
-    bevy_ts_tsx::expand(world, &items)
+    if tolerant(world) {
+        bevy_ts_tsx::expand_each(world, &items)
+    } else {
+        bevy_ts_tsx::expand(world, &items).map(|nodes| nodes.into_iter().map(Ok).collect())
+    }
+}
+
+/// Whether missing code makes placeholders: under `bevy-ts dev` only. A shipped game is strict.
+pub fn tolerant(world: &World) -> bool {
+    world.get_resource::<bevy_ts::runtime::RuntimeInfo>().is_some_and(|i| i.dev)
+}
+
+/// The error of the failed TS build whose empty generation is live: no generation applied yet,
+/// and the last attempt failed.
+fn build_failure(world: &World) -> Option<ScriptError> {
+    if world.get_resource::<bevy_ts::generation::Generations>().is_none_or(|g| g.live > 0) {
+        return None;
+    }
+    let log = world.get_resource::<bevy_ts::generation::ReloadLog>()?;
+    let last = log.reports.iter().rev().find(|r| r.status != bevy_ts::generation::ReloadStatus::Compiling)?;
+    (last.status == bevy_ts::generation::ReloadStatus::Failed).then(|| last.errors.first().cloned()).flatten()
+}
+
+/// Fills each placeholder entry's `expected`, and makes every unresolved name `failed` while a
+/// failed TS build's empty generation is live. Then each entry is a warning.
+fn resolve_missing(world: &World, composed: &mut Composed) {
+    let failure = build_failure(world);
+    let declared = &world.resource::<Levels>().declared_at;
+    let decl = |name: &str| -> Option<MissingAt> {
+        if let Some(at) = declared.get(name) {
+            return Some(at.into());
+        }
+        let mut hits = declared.iter().filter(|(n, _)| short(n) == name);
+        match (hits.next(), hits.next()) {
+            (Some((_, at)), None) => Some(at.into()),
+            _ => None,
+        }
+    };
+    for m in composed.missing.values_mut().flatten() {
+        match (&failure, m.reason) {
+            (Some(e), MissingReason::Unregistered) => {
+                m.reason = MissingReason::Failed;
+                m.message = e.message.lines().next().unwrap_or_default().to_string();
+                m.expected = e.location.as_ref().map(MissingAt::from);
+            }
+            // A throw JS could not place: its scene component's declaration.
+            (_, MissingReason::Failed) => m.expected = m.expected.take().or_else(|| decl(&m.component)),
+            _ => m.expected = decl(&m.component),
+        }
+    }
+    composed.warn_missing();
 }
 
 /// Composes one level from the loaded files, expanding its instances.
@@ -835,14 +932,16 @@ pub fn compose_level(world: &mut World, path: &str) -> (Result<Composed, Vec<Scr
 fn prepare_with(world: &World, path: &str, files: &mut dyn Files) -> Result<compose::Prepared, Vec<ScriptError>> {
     let registry = world.resource::<AppTypeRegistry>().read();
     let schema = WorldSchema::live(world, &registry);
-    compose::prepare(path, files, &schema)
+    compose::prepare(path, files, &schema, tolerant(world))
 }
 
 /// Expands a prepared level's instances and finishes it.
 fn finish_compose(world: &mut World, prepared: Result<compose::Prepared, Vec<ScriptError>>) -> Result<Composed, Vec<ScriptError>> {
     let prepared = prepared?;
     let expansions = if prepared.requests.is_empty() { Vec::new() } else { expand(world, &prepared.requests)? };
-    prepared.finish(expansions)
+    let mut composed = prepared.finish(expansions)?;
+    resolve_missing(world, &mut composed);
+    Ok(composed)
 }
 
 fn log(world: &mut World, level: LogLevel, e: &ScriptError) {
@@ -954,6 +1053,7 @@ fn apply_composed(world: &mut World, path: &str, result: Result<Composed, Vec<Sc
     }
     let stamp_root = overlay.clone().unwrap_or(root.clone());
     stamp_instances(world, path, &stamp_root, &composed.owners, &composed.scenes);
+    stamp_missing(world, &stamp_root, &composed.missing);
     let mut assets = BTreeMap::new();
     asset_paths(&composed.nodes, &mut assets);
     if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
@@ -964,8 +1064,35 @@ fn apply_composed(world: &mut World, path: &str, result: Result<Composed, Vec<Sc
         r.warnings = composed.warnings;
         r.assets = assets;
     }
-    let hash = world.resource::<Levels>().roots.get(path).and_then(|r| r.applied.get(path)).copied();
-    world.resource_mut::<Levels>().emit(serde_json::json!({ "event": "loaded", "level": path, "hash": hash.map(crate::edit::hash_text) }));
+    let loaded = loaded_event(world.resource::<Levels>(), path);
+    world.resource_mut::<Levels>().emit(loaded);
+}
+
+/// A `level+watch` `loaded` for an open level, with its diagnostics (placeholders among them).
+pub fn loaded_event(levels: &Levels, path: &str) -> Value {
+    let r = levels.roots.get(path);
+    let hash = r.and_then(|r| r.applied.get(path)).copied();
+    let diagnostics: Vec<Value> = r.map(|r| r.error.iter().chain(r.warnings.iter()).map(|e| serde_json::json!({ "message": e.message, "location": e.location })).collect()).unwrap_or_default();
+    serde_json::json!({ "event": "loaded", "level": path, "hash": hash.map(crate::edit::hash_text), "diagnostics": diagnostics })
+}
+
+/// `MissingComponents` on each entity with placeholder entries, off every other of the root.
+fn stamp_missing(world: &mut World, root: &str, missing: &BTreeMap<Vec<String>, Vec<MissingComponent>>) {
+    let writes: Vec<(Entity, MissingComponents)> = {
+        let tree = world.resource::<TsxTree>();
+        missing.iter().filter_map(|(k, m)| Some((tree.entity(node_id(root, k))?, MissingComponents(m.clone())))).collect()
+    };
+    let keep: std::collections::HashSet<Entity> = writes.iter().map(|(e, _)| *e).collect();
+    for (e, m) in writes {
+        let Ok(mut em) = world.get_entity_mut(e) else { continue };
+        if em.get::<MissingComponents>() != Some(&m) {
+            em.insert(m);
+        }
+    }
+    let stale: Vec<Entity> = world.query_filtered::<(Entity, &TsxNode), With<MissingComponents>>().iter(world).filter(|(e, n)| n.root == root && !keep.contains(e)).map(|(e, _)| e).collect();
+    for e in stale {
+        world.entity_mut(e).remove::<MissingComponents>();
+    }
 }
 
 /// Strings in overridden component fields are asset paths: only handle fields take strings.
@@ -1026,7 +1153,11 @@ fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap
 /// a prefab's inner entity, from the scene component instance above it, never written.
 fn tree_level(world: &World, e: Entity, n: &TsxNode) -> Option<Value> {
     if let Some(inst) = world.get::<LevelInstance>(e) {
-        return Some(serde_json::json!({ "file": inst.level, "namePath": inst.name_path, "written": inst.written }));
+        let mut level = serde_json::json!({ "file": inst.level, "namePath": inst.name_path, "written": inst.written });
+        if let Some(m) = world.get::<MissingComponents>(e) {
+            level["missing"] = m.0.iter().map(|m| serde_json::json!({ "component": m.component, "reason": m.reason })).collect();
+        }
+        return Some(level);
     }
     let tree = world.resource::<TsxTree>();
     (1..n.key_path.len()).rev().find_map(|i| {

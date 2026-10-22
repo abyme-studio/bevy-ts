@@ -472,6 +472,36 @@ fn header(payload: &Payload) -> Vec<u8> {
     bytes
 }
 
+/// One host call expanding every item: each item's description or `None`, and the call's errors
+/// in the order JS raised them (located in display form).
+/// Each item's description or `None`, and the call's errors.
+type Expanded = (Vec<Option<NodeDesc>>, Vec<ScriptError>);
+
+fn expand_call(world: &mut World, items: &[ExpandItem]) -> Result<Expanded, Vec<ScriptError>> {
+    let payload = Payload {
+        expand: Some(items.iter().map(|i| (i.component.clone(), i.props.clone(), i.at.clone())).collect()),
+        ..Default::default()
+    };
+    world.resource_mut::<TsxTree>().reactive.calls += 1;
+    let out = plugin_api::call_entry(world, ENTRY, &header(&payload)).map_err(|e| vec![e])?;
+    let mut response: Response = serde_json::from_slice(&out).map_err(|e| vec![ScriptError::new(format!("tsx expand returned bad output: {e}"))])?;
+    let mut expanded = response.expanded.take().unwrap_or_default();
+    let errors = std::mem::take(&mut response.errors);
+    // Whatever else the call produced (patches, mounts) applies as in any call.
+    apply(world, response);
+    expanded.resize(items.len(), None);
+    let errors = errors
+        .into_iter()
+        .map(|mut e| {
+            if let Some(l) = &mut e.location {
+                l.file = bevy_ts::backend::display_file(&l.file);
+            }
+            e
+        })
+        .collect();
+    Ok((expanded, errors))
+}
+
 /// Expands scene component instances through their TS `scene`, all in one host call: one
 /// description per item, in order (the scene component added to its root, prefab sources
 /// included), or every item's errors with their locations. Mount the result with
@@ -480,24 +510,8 @@ pub fn expand(world: &mut World, items: &[ExpandItem]) -> Result<Vec<NodeDesc>, 
     if items.is_empty() {
         return Ok(Vec::new());
     }
-    let payload = Payload {
-        expand: Some(items.iter().map(|i| (i.component.clone(), i.props.clone(), i.at.clone())).collect()),
-        ..Default::default()
-    };
-    world.resource_mut::<TsxTree>().reactive.calls += 1;
-    let out = plugin_api::call_entry(world, ENTRY, &header(&payload)).map_err(|e| vec![e])?;
-    let mut response: Response = serde_json::from_slice(&out).map_err(|e| vec![ScriptError::new(format!("tsx expand returned bad output: {e}"))])?;
-    let expanded = response.expanded.take().unwrap_or_default();
-    let errors = std::mem::take(&mut response.errors);
-    // Whatever else the call produced (patches, mounts) applies as in any call.
-    apply(world, response);
-    if !errors.is_empty() || expanded.len() != items.len() || expanded.iter().any(Option::is_none) {
-        let mut errors: Vec<ScriptError> = errors.into_iter().map(|mut e| {
-            if let Some(l) = &mut e.location {
-                l.file = bevy_ts::backend::display_file(&l.file);
-            }
-            e
-        }).collect();
+    let (expanded, mut errors) = expand_call(world, items)?;
+    if !errors.is_empty() || expanded.iter().any(Option::is_none) {
         if errors.is_empty() {
             errors.push(ScriptError::new("scene component expansion returned no description"));
         }
@@ -506,6 +520,36 @@ pub fn expand(world: &mut World, items: &[ExpandItem]) -> Result<Vec<NodeDesc>, 
     let mut nodes: Vec<NodeDesc> = expanded.into_iter().flatten().collect();
     normalize_sources(&mut nodes);
     Ok(nodes)
+}
+
+/// One item's expansion: its description, or the error its `scene()` raised.
+pub type ItemExpansion = Result<NodeDesc, Vec<ScriptError>>;
+
+/// [`expand`], each item answering for itself: a throwing `scene()` fails its item only, with
+/// the error it raised. Errors no failed item accounts for are logged.
+pub fn expand_each(world: &mut World, items: &[ExpandItem]) -> Result<Vec<ItemExpansion>, Vec<ScriptError>> {
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+    let (expanded, mut errors) = expand_call(world, items)?;
+    // JS raises one error per failed item, after any the call raised before expanding.
+    let failed = expanded.iter().filter(|x| x.is_none()).count();
+    let mut theirs = errors.split_off(errors.len().saturating_sub(failed)).into_iter();
+    for e in errors {
+        log_error(world, e.message, e.location);
+    }
+    Ok(expanded
+        .into_iter()
+        .zip(items)
+        .map(|(x, item)| match x {
+            Some(n) => {
+                let mut nodes = vec![n];
+                normalize_sources(&mut nodes);
+                Ok(nodes.pop().expect("one"))
+            }
+            None => Err(vec![theirs.next().unwrap_or_else(|| ScriptError::at(format!("{} returned no description", item.component), Some(item.at.clone())))]),
+        })
+        .collect())
 }
 
 /// `tsx/flush`: JS changed a binding outside a host call.

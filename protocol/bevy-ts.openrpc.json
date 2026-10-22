@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.20.0",
+    "version": "1.21.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
@@ -2283,6 +2283,27 @@
               "written": {
                 "type": "boolean",
                 "description": "Written in that file, rather than coming from a prefab, an included level or the scene's TSX."
+              },
+              "missing": {
+                "description": "(1.21) One per placeholder entry on the entity: a component the level writes whose code is missing, failed or does not fit. Absent when there is none.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "component",
+                    "reason"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "component": {
+                      "type": "string",
+                      "description": "The name the level writes."
+                    },
+                    "reason": {
+                      "$ref": "#/components/schemas/MissingReason"
+                    }
+                  }
+                }
               }
             }
           },
@@ -4946,7 +4967,7 @@
               "string",
               "null"
             ],
-            "description": "The scene component the entity instances, if any."
+            "description": "The scene component the entity instances, if any; still named when it is a placeholder (1.21)."
           },
           "props": {
             "type": "array",
@@ -4961,6 +4982,96 @@
               "type": "string"
             },
             "description": "(1.12) Components the file adds that the entity's prefab does not give, named as LevelOverride.component names them."
+          },
+          "missing": {
+            "description": "(1.21) The entity's placeholder entries; absent when there is none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingComponent"
+            }
+          }
+        }
+      },
+      "MissingReason": {
+        "type": "string",
+        "enum": [
+          "unregistered",
+          "failed",
+          "mismatch"
+        ],
+        "description": "(1.21) Why a level entry is a placeholder: no live code registers the type (`unregistered`), its code threw or the TS build failed (`failed`), or saved fields or props do not fit live code (`mismatch`)."
+      },
+      "MissingComponent": {
+        "type": "object",
+        "required": [
+          "component",
+          "reason",
+          "fields",
+          "location"
+        ],
+        "additionalProperties": false,
+        "description": "(1.21) A component a level writes whose code is missing, failed or does not fit. Its saved text is kept in the file.",
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "The name the level writes (`game::Loot`)."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/MissingReason"
+          },
+          "message": {
+            "type": "string",
+            "description": "One line of why."
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Saved fields and props as written, each value its saved text; a prop keeps its `@`. A mismatch lists only the misfits."
+          },
+          "location": {
+            "$ref": "#/components/schemas/SourceLocation",
+            "description": "Where the level writes it."
+          },
+          "expected": {
+            "$ref": "#/components/schemas/SourceLocation",
+            "description": "Where its code was expected: the throw, the file that did not build, or the declaration this process last saw live. Absent when unknown, as after a restart."
+          },
+          "misfit": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "mismatch: why each listed field or prop does not fit."
+          },
+          "overrides": {
+            "type": "array",
+            "description": "A missing scene component: the entries below it with no base of their own, kept and not spawned.",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "fields"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The name path below the instance."
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Its patches' saved text, keyed `Component.field`."
+                }
+              }
+            }
           }
         }
       },
@@ -5468,7 +5579,7 @@
               "string",
               "null"
             ],
-            "description": "conflict: `target removed` or `changed on disk`; refused: `not-found`, `prefab-internal`, `exists`, `invalid`, `internal` or `io`."
+            "description": "conflict: `target removed` or `changed on disk`; refused: `not-found`, `prefab-internal`, `exists`, `invalid`, `internal` or `io`; (1.21) `missing`: a set, revert, set_prop or revert_prop on a placeholder component, `unknown`: a write of a type no live code registers."
           },
           "message": {
             "type": [
@@ -5733,7 +5844,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LevelDiagnostic"
-            }
+            },
+            "description": "failed: the errors; loaded (1.21): the level's diagnostics, a `warning:` per placeholder entry among them."
           },
           "opener": {
             "$ref": "#/components/schemas/LevelOpener",

@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.20.0";
+pub const VERSION: &str = "1.21.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2638,6 +2638,9 @@ pub struct LevelNodeResult {
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub entity: ::std::option::Option<Entity>,
     pub level: ::std::string::String,
+    ///(1.21) The entity's placeholder entries; absent when there is none.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub missing: ::std::vec::Vec<MissingComponent>,
     #[serde(rename = "namePath")]
     pub name_path: ::std::vec::Vec<::std::string::String>,
     pub overrides: ::std::vec::Vec<LevelOverride>,
@@ -2646,7 +2649,7 @@ pub struct LevelNodeResult {
     ///(1.12) Components the file adds that the entity's prefab does not give, named as LevelOverride.component names them.
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub patches: ::std::vec::Vec<::std::string::String>,
-    ///The scene component the entity instances, if any.
+    ///The scene component the entity instances, if any; still named when it is a placeholder (1.21).
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub prefab: ::std::option::Option<::std::string::String>,
     ///A scene component instance's @props, beside its fields; empty for anything else. (1.7)
@@ -3063,6 +3066,7 @@ impl ::std::convert::From<bool> for LevelValue {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct LevelWatchMessage {
+    ///failed: the errors; loaded (1.21): the level's diagnostics, a `warning:` per placeholder entry among them.
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
     pub diagnostics: ::std::vec::Vec<LevelDiagnostic>,
     pub event: LevelWatchMessageEvent,
@@ -3192,7 +3196,7 @@ pub struct LevelWriteResult {
     pub lines: ::std::vec::Vec<[u32; 2usize]>,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub message: ::std::option::Option<::std::string::String>,
-    ///conflict: `target removed` or `changed on disk`; refused: `not-found`, `prefab-internal`, `exists`, `invalid`, `internal` or `io`.
+    ///conflict: `target removed` or `changed on disk`; refused: `not-found`, `prefab-internal`, `exists`, `invalid`, `internal` or `io`; (1.21) `missing`: a set, revert, set_prop or revert_prop on a placeholder component, `unknown`: a write of a type no live code registers.
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub reason: ::std::option::Option<::std::string::String>,
     pub status: LevelWriteResultStatus,
@@ -3360,6 +3364,107 @@ pub struct Migration {
     pub kept: ::std::vec::Vec<::std::string::String>,
     pub removed: ::std::vec::Vec<::std::string::String>,
     pub reset: ::std::vec::Vec<::std::string::String>,
+}
+///(1.21) A component a level writes whose code is missing, failed or does not fit. Its saved text is kept in the file.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct MissingComponent {
+    ///The name the level writes (`game::Loot`).
+    pub component: ::std::string::String,
+    ///Where its code was expected: the throw, the file that did not build, or the declaration this process last saw live. Absent when unknown, as after a restart.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub expected: ::std::option::Option<SourceLocation>,
+    ///Saved fields and props as written, each value its saved text; a prop keeps its `@`. A mismatch lists only the misfits.
+    pub fields: ::std::collections::HashMap<
+        ::std::string::String,
+        ::std::string::String,
+    >,
+    ///Where the level writes it.
+    pub location: SourceLocation,
+    ///One line of why.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub message: ::std::option::Option<::std::string::String>,
+    ///mismatch: why each listed field or prop does not fit.
+    #[serde(default, skip_serializing_if = ":: std :: collections :: HashMap::is_empty")]
+    pub misfit: ::std::collections::HashMap<
+        ::std::string::String,
+        ::std::string::String,
+    >,
+    ///A missing scene component: the entries below it with no base of their own, kept and not spawned.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub overrides: ::std::vec::Vec<MissingComponentOverridesItem>,
+    pub reason: MissingReason,
+}
+///`MissingComponentOverridesItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct MissingComponentOverridesItem {
+    ///Its patches' saved text, keyed `Component.field`.
+    pub fields: ::std::collections::HashMap<
+        ::std::string::String,
+        ::std::string::String,
+    >,
+    ///The name path below the instance.
+    pub path: ::std::vec::Vec<::std::string::String>,
+}
+///(1.21) Why a level entry is a placeholder: no live code registers the type (`unregistered`), its code threw or the TS build failed (`failed`), or saved fields or props do not fit live code (`mismatch`).
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum MissingReason {
+    #[serde(rename = "unregistered")]
+    Unregistered,
+    #[serde(rename = "failed")]
+    Failed,
+    #[serde(rename = "mismatch")]
+    Mismatch,
+}
+impl ::std::fmt::Display for MissingReason {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Unregistered => f.write_str("unregistered"),
+            Self::Failed => f.write_str("failed"),
+            Self::Mismatch => f.write_str("mismatch"),
+        }
+    }
+}
+impl ::std::str::FromStr for MissingReason {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "unregistered" => Ok(Self::Unregistered),
+            "failed" => Ok(Self::Failed),
+            "mismatch" => Ok(Self::Mismatch),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for MissingReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for MissingReason {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///Modifier keys held; absent means up.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
@@ -4594,10 +4699,21 @@ pub struct TsxTreeNode {
 pub struct TsxTreeNodeLevel {
     ///The outermost level file (a sidecar's path for a scene overlay).
     pub file: ::std::string::String,
+    ///(1.21) One per placeholder entry on the entity: a component the level writes whose code is missing, failed or does not fit. Absent when there is none.
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub missing: ::std::vec::Vec<TsxTreeNodeLevelMissingItem>,
     #[serde(rename = "namePath")]
     pub name_path: ::std::vec::Vec<::std::string::String>,
     ///Written in that file, rather than coming from a prefab, an included level or the scene's TSX.
     pub written: bool,
+}
+///`TsxTreeNodeLevelMissingItem`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsxTreeNodeLevelMissingItem {
+    ///The name the level writes.
+    pub component: ::std::string::String,
+    pub reason: MissingReason,
 }
 ///`TsxTreeResult`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

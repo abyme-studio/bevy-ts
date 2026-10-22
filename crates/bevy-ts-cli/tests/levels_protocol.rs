@@ -526,3 +526,120 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
     ms.iter().for_each(|m| client.apply(m));
     assert_eq!(client, Client::from_roots(&tree(&mut app)["roots"]));
 }
+
+/// level-placeholders: a boss whose class is deleted, a grunt whose scene throws, and a prop
+/// that no longer fits, over the wire; then the boss's class comes back.
+const SQUAD: &str = r#"import { app, Component, SceneComponent, type f32 } from "bevy-ts";
+import { Transform } from "bevy-ts/bevy";
+export class Health extends Component { hp: f32 = 100; max: f32 = 100 }
+export class Grunt extends SceneComponent {
+  static scene({ hp = 100 }: { hp?: f32 }) {
+    if (hp > 1000) throw new Error(`no grunt has ${hp} hp`);
+    return <entity name="grunt"><Health initialHp={hp} max={hp} /></entity>;
+  }
+}
+export class Hat extends SceneComponent {
+  static scene() {
+    return <entity name="hat"><Transform translation={[0, 1, 0]} /></entity>;
+  }
+}
+//BOSS
+app.level("levels/squad.bsn");
+"#;
+
+const BOSS: &str = r#"export class Boss extends SceneComponent {
+  static scene({ hp = 500 }: { hp?: f32 }) {
+    return <entity name="boss"><Health initialHp={hp} max={hp} /><entity key="eye"><Transform translation={[0, 0.5, 0]} /></entity></entity>;
+  }
+}"#;
+
+const SQUAD_BSN: &str = "#Boss
+@enemies::Boss { @hp: 900.0 }
+Transform { translation: Vec3 { x: 2.0 } }
+Children [
+    #eye
+    Transform { translation: Vec3 { y: 0.8 } }
+    --
+    #hat
+    @enemies::Hat
+]
+--
+#GruntA
+@enemies::Grunt
+--
+#GruntB
+@enemies::Grunt { @hp: 5000.0 }
+--
+#GruntC
+@enemies::Grunt { @hp: \"lots\" }
+";
+
+#[test]
+fn placeholders_over_the_wire() {
+    let dir = project("levels-placeholders", &[("package.json", "{}"), ("src/enemies.tsx", SQUAD), ("assets/levels/squad.bsn", SQUAD_BSN)]);
+    let mut app = level_app(&dir);
+    bevy_ts_tsx::protocol::add_methods(&mut app);
+    assert!(reload(&mut app, false).errors.is_empty());
+    settle(&mut app);
+    let root = "level:levels/squad.bsn";
+    let tree = ok_tsx(&mut app);
+    // The deleted boss: its row marks it, its saved text and kept overrides are on level_node.
+    assert_eq!(row(&tree, root, &["Boss"])["level"]["missing"], json!([{ "component": "enemies::Boss", "reason": "unregistered" }]), "{tree}");
+    assert!(tree["roots"].as_array().unwrap().iter().find(|r| r["name"] == root).unwrap()["nodes"].as_array().unwrap().iter().all(|n| n["keyPath"] != json!(["Boss", "eye"])), "the eye is kept, not spawned");
+    row(&tree, root, &["Boss", "hat"]);
+    let boss = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["Boss"] })));
+    assert_eq!(boss["prefab"], "enemies::Boss", "{boss}");
+    let m = &boss["missing"][0];
+    assert_eq!((&m["reason"], &m["fields"], &m["location"]["line"]), (&json!("unregistered"), &json!({ "@hp": "900.0" }), &json!(2)), "{boss}");
+    assert_eq!(m["overrides"], json!([{ "path": ["eye"], "fields": { "Transform.translation": "Vec3 { y: 0.8 }" } }]), "{boss}");
+    // A scene that throws fails its own instance only.
+    assert!(row(&tree, root, &["GruntA"])["level"].get("missing").is_none());
+    let b = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["GruntB"] })));
+    assert_eq!(b["missing"][0]["reason"], "failed", "{b}");
+    assert!(b["missing"][0]["message"].as_str().unwrap().contains("no grunt has 5000 hp"), "{b}");
+    assert_eq!(b["missing"][0]["expected"]["file"], "src/enemies.tsx", "{b}");
+    // A misfit prop: the grunt expands without it.
+    let c = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["GruntC"] })));
+    assert_eq!(c["prefab"], "enemies::Grunt", "{c}");
+    assert_eq!((&c["missing"][0]["reason"], &c["missing"][0]["fields"]), (&json!("mismatch"), &json!({ "@hp": "\"lots\"" })), "{c}");
+    // Diagnostics: a warning per entry on the list and the watch's loaded.
+    let list = ok(&mut app, "bevy-ts/level_list", None);
+    let warnings: Vec<&str> = list["levels"][0]["diagnostics"].as_array().unwrap().iter().filter_map(|d| d["message"].as_str()).filter(|m| m.starts_with("warning: ")).collect();
+    assert_eq!(warnings.len(), 3, "{list}");
+    let loaded = ok(&mut app, "bevy-ts/level+watch", None);
+    assert_eq!(loaded["diagnostics"].as_array().map(Vec::len), Some(3), "{loaded}");
+    // Writes to the boss's props are refused; its text stays.
+    let hash = list["levels"][0]["hash"].clone();
+    let w = ok(&mut app, "bevy-ts/level_write", Some(json!({ "file": "levels/squad.bsn", "base": hash, "ops": [{ "op": "set_prop", "path": ["Boss"], "prop": "hp", "value": 1.0 }] })));
+    assert_eq!((&w["status"], &w["reason"]), (&json!("refused"), &json!("missing")), "{w}");
+
+    // Play and back keeps the marker.
+    let e = row(&tree, root, &["Boss"])["entity"].as_u64().map(Entity::from_bits).unwrap();
+    for mode in [bevy_ts::EngineMode::Edit, bevy_ts::EngineMode::Play] {
+        app.world_mut().resource_mut::<NextState<bevy_ts::EngineMode>>().set(mode);
+        app.update();
+        assert!(app.world().get::<bevy_ts_levels::engine::MissingComponents>(e).is_some(), "{mode:?}");
+    }
+
+    // The boss's class comes back: the same entity expands in place, and the marks go.
+    write(&dir, "src/enemies.tsx", &SQUAD.replace("//BOSS", BOSS));
+    assert!(reload(&mut app, false).errors.is_empty());
+    settle(&mut app);
+    let tree = ok_tsx(&mut app);
+    assert_eq!(row(&tree, root, &["Boss"])["entity"].as_u64().map(Entity::from_bits), Some(e), "no respawn");
+    assert!(row(&tree, root, &["Boss"])["level"].get("missing").is_none(), "{tree}");
+    let eye = row(&tree, root, &["Boss", "eye"])["entity"].as_u64().map(Entity::from_bits).unwrap();
+    assert_eq!(app.world().get::<Transform>(eye).unwrap().translation, Vec3::new(0.0, 0.8, 0.0), "the kept override merged by name");
+    let boss = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/squad.bsn", "namePath": ["Boss"] })));
+    assert!(boss.get("missing").is_none(), "{boss}");
+    let (health, _) = bevy_ts::plugin_api::component_by_name(app.world(), "enemies::Health").unwrap();
+    // SAFETY: Health is two f32s.
+    let hp = unsafe { *(app.world().get_by_id(e, health).unwrap().as_ptr() as *const f32) };
+    assert_eq!(hp, 900.0);
+}
+
+fn ok_tsx(app: &mut App) -> Value {
+    let tree = call(app, "bevy-ts/tsx_tree", None).unwrap().unwrap();
+    validate_in("bevy-ts-tsx", "bevy-ts/tsx_tree", &tree);
+    tree
+}

@@ -138,19 +138,16 @@ fn a_level_places_scene_components_with_props_and_overrides() {
 }
 
 #[test]
-fn a_level_naming_an_unknown_prop_fails_at_its_line() {
+fn a_level_naming_an_unknown_prop_places_the_instance_without_it() {
     let arena = ARENA.replace("@hp: 250.0", "@speed: 2.0");
     let dir = project("levels-scene-bad", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", &arena)]);
     let mut app = level_app(&dir);
-    // The generation checks levels already loaded; this one loads after it, so it logs.
     assert!(reload(&mut app, false).errors.is_empty());
-    for _ in 0..300 {
-        app.update();
-        if !errors(&app).is_empty() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
-    let e = errors(&app);
-    assert!(e.iter().any(|m| m.starts_with("levels/arena.bsn:7:20 levels: enemies::Grunt has no scene prop speed")), "{e:?}");
+    settle(&mut app);
+    assert!(errors(&app).is_empty(), "{:?}", errors(&app));
+    // Under `bevy-ts dev` the misfit prop is a placeholder entry, warned at its line.
+    let b = named(&mut app, "GruntB");
+    assert_eq!(health(&app, b), (100.0, 100.0));
+    let warnings: Vec<String> = logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Warn).map(|e| format!("{} {}", e.location.map(|l| l.to_string()).unwrap_or_default(), e.message)).collect();
+    assert!(warnings.iter().any(|m| m.starts_with("levels/arena.bsn:7:1 levels: warning: enemies::Grunt has no scene prop speed")), "{warnings:?}");
 }

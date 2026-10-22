@@ -22,6 +22,15 @@ struct Fixture {
 }
 
 fn fixture(name: &str, files: &[(&str, &str)]) -> Fixture {
+    fixture_with(name, files, false)
+}
+
+/// Under `bevy-ts dev`: missing code makes placeholders.
+fn dev_fixture(name: &str, files: &[(&str, &str)]) -> Fixture {
+    fixture_with(name, files, true)
+}
+
+fn fixture_with(name: &str, files: &[(&str, &str)], dev: bool) -> Fixture {
     let dir = std::env::temp_dir().join(format!("bevy-ts-levels-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     for (p, src) in files {
@@ -33,7 +42,7 @@ fn fixture(name: &str, files: &[(&str, &str)]) -> Fixture {
     app.add_plugins((MinimalPlugins, AssetPlugin { file_path: dir.to_string_lossy().into_owned(), ..Default::default() }))
         .init_asset::<Mesh>()
         .init_asset::<StandardMaterial>()
-        .add_plugins(BevyTsPlugin::new(move || Box::new(h.backend())))
+        .add_plugins(BevyTsPlugin::new(move || Box::new(h.backend())).dev(dev))
         .add_plugins(TsxPlugin)
         .add_plugins(LevelsPlugin);
     app.world_mut().resource_mut::<Levels>().asset_root = dir.clone();
@@ -60,8 +69,13 @@ fn health() -> ComponentDecl {
 
 impl Fixture {
     fn load(&mut self, levels: &[&str]) {
+        self.load_with(levels, vec![health()]);
+    }
+
+    /// A generation declaring `components` and opening `levels`.
+    fn load_with(&mut self, levels: &[&str], components: Vec<ComponentDecl>) {
         self.fake.push(FakeProgram {
-            manifest: Manifest { components: vec![health()], ..Default::default() },
+            manifest: Manifest { components, ..Default::default() },
             sections: vec![Section { name: "levels".into(), bytes: serde_json::to_vec(&json!({ "levels": levels })).unwrap(), location: None }],
             ..Default::default()
         });
@@ -1336,5 +1350,188 @@ mod editor_state {
             assert_eq!(s["closed"].as_array().unwrap().iter().any(|p| p == path), !opening, "{s}");
             assert!(!f.dir.join(".bevy-ts/editor.json.tmp").exists());
         }
+    }
+}
+
+/// level-placeholders: a level whose code is missing, failed or does not fit, under `bevy-ts dev`.
+mod placeholders {
+    use super::*;
+    use bevy_ts::backend::{ScriptError, SourceLocation};
+    use bevy_ts_levels::compose::MissingReason;
+    use bevy_ts_levels::edit::{WriteRequest, WriteResult, write_level};
+    use bevy_ts_levels::engine::{MissingComponents, content_hash, open_now};
+    use bevy_ts_levels::writer::{Op, WValue};
+
+    const CRATE: &str = "#Crate
+Transform { translation: Vec3 { y: 1.0 } }
+game::Loot { table: \"chest_rare\", rolls: 3 }
+--
+#Boss
+Transform { translation: Vec3 { x: 2.0 } }
+game::Health { max: 900.0 }
+";
+
+    fn missing(f: &Fixture, e: Entity) -> Vec<(String, MissingReason, String)> {
+        f.app.world().get::<MissingComponents>(e).map(|m| m.0.iter().map(|m| (m.component.clone(), m.reason, m.message.clone())).collect()).unwrap_or_default()
+    }
+
+    fn warnings(f: &Fixture) -> Vec<String> {
+        f.app.world().resource::<ScriptLog>().since(0).filter(|e| e.level == bevy_ts::log::LogLevel::Warn).map(|e| format!("{} {}", e.location.as_ref().map(|l| l.to_string()).unwrap_or_default(), e.message)).collect()
+    }
+
+    fn crate_level(name: &str) -> Fixture {
+        let mut f = dev_fixture(name, &[("levels/crate.bsn", CRATE)]);
+        f.load(&["levels/crate.bsn"]);
+        f.settle();
+        f
+    }
+
+    fn file(f: &Fixture) -> String {
+        std::fs::read_to_string(f.dir.join("levels/crate.bsn")).unwrap()
+    }
+
+    fn write(f: &mut Fixture, ops: Vec<Op>) -> WriteResult {
+        let base = content_hash(file(f).as_bytes());
+        write_level(f.app.world_mut(), WriteRequest { id: 1, file: "levels/crate.bsn".into(), base, ops })
+    }
+
+    fn p(s: &str) -> Vec<String> {
+        s.split('/').map(String::from).collect()
+    }
+
+    #[test]
+    fn a_typo_loads_the_rest_and_warns_at_its_line() {
+        let arena = ARENA.replace("Health { max: 250.0 }", "Health { max: 250.0 }\nTransfrom { translation: Vec3 { x: 9.0 } }");
+        let mut f = dev_fixture("ph-typo", &[("levels/arena.bsn", &arena), ("levels/room.bsn", ROOM)]);
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        assert!(f.errors().is_empty(), "{:?}", f.errors());
+        let b = f.by_name("EnemyB");
+        assert_eq!(f.translation(b).x, 3.0);
+        assert_eq!(f.hp(b), (100.0, 250.0));
+        assert_eq!(missing(&f, b), [("Transfrom".to_string(), MissingReason::Unregistered, "unknown component Transfrom (did you mean Transform?)".to_string())]);
+        assert!(warnings(&f).iter().any(|w| w == "levels/arena.bsn:9:1 levels: warning: unknown component Transfrom (did you mean Transform?)"), "{:?}", warnings(&f));
+        let root = &f.app.world().resource::<Levels>().roots["levels/arena.bsn"];
+        assert!(root.error.is_none());
+        assert!(root.warnings.iter().any(|w| w.message.starts_with("warning: unknown component Transfrom")));
+        // An entity with nothing missing carries no marker.
+        let a = f.by_name("EnemyA");
+        assert!(f.app.world().get::<MissingComponents>(a).is_none());
+    }
+
+    #[test]
+    fn a_shipped_game_fails_the_level_as_before() {
+        let mut f = fixture("ph-strict", &[("levels/crate.bsn", CRATE)]);
+        f.load(&[]);
+        let e = open_now(f.app.world_mut(), "levels/crate.bsn").unwrap_err();
+        assert_eq!(e.reason, "load");
+        assert!(e.diagnostics[0].message.contains("unknown component game::Loot"), "{:?}", e.diagnostics);
+        assert_eq!(e.diagnostics[0].location.as_ref().map(|l| l.line), Some(3));
+    }
+
+    #[test]
+    fn opening_a_level_with_missing_code_opens_it() {
+        let mut f = dev_fixture("ph-open", &[("levels/crate.bsn", CRATE)]);
+        f.load(&[]);
+        open_now(f.app.world_mut(), "levels/crate.bsn").unwrap();
+        let c = f.by_name("Crate");
+        assert_eq!(f.translation(c).y, 1.0);
+        let m = f.app.world().get::<MissingComponents>(c).unwrap().0[0].clone();
+        assert_eq!((m.component.as_str(), m.reason), ("game::Loot", MissingReason::Unregistered));
+        assert_eq!(m.fields.get("table").map(String::as_str), Some("\"chest_rare\""));
+        assert_eq!(m.fields.get("rolls").map(String::as_str), Some("3"));
+        assert_eq!((m.location.line, m.location.column), (3, 1));
+        assert!(m.expected.is_none(), "never seen live in this process");
+    }
+
+    #[test]
+    fn a_generation_that_drops_a_used_class_commits_and_the_class_coming_back_resolves_it() {
+        let declared = || ComponentDecl { location: Some(SourceLocation { file: "src/game.ts".into(), line: 3, column: 1 }), ..health() };
+        let mut f = dev_fixture("ph-generation", &[("levels/crate.bsn", CRATE)]);
+        f.load_with(&["levels/crate.bsn"], vec![declared()]);
+        f.settle();
+        let boss = f.by_name("Boss");
+        assert_eq!(f.hp(boss), (100.0, 900.0));
+        // Deleted from TS: the generation commits, and the boss is a placeholder.
+        f.load_with(&["levels/crate.bsn"], vec![]);
+        f.settle();
+        assert_eq!(f.by_name("Boss"), boss);
+        let m = f.app.world().get::<MissingComponents>(boss).unwrap().0.clone();
+        assert_eq!((m[0].component.as_str(), m[0].reason), ("game::Health", MissingReason::Unregistered));
+        assert_eq!(m[0].fields.get("max").map(String::as_str), Some("900.0"));
+        assert_eq!(m[0].expected.as_ref().map(|e| e.location().to_string()).as_deref(), Some("src/game.ts:3:1"));
+        assert!(warnings(&f).iter().any(|w| w.starts_with("levels/crate.bsn:7:1 levels: warning: unknown component game::Health")), "{:?}", warnings(&f));
+        // Back: the same entity gains it, and loses its marker.
+        f.load_with(&["levels/crate.bsn"], vec![declared()]);
+        f.settle();
+        assert_eq!(f.by_name("Boss"), boss);
+        assert_eq!(f.hp(boss).1, 900.0);
+        assert!(f.app.world().get::<MissingComponents>(boss).is_none());
+    }
+
+    #[test]
+    fn a_failed_build_reports_failed() {
+        let mut f = dev_fixture("ph-build", &[("levels/crate.bsn", CRATE)]);
+        f.fake.push(FakeProgram {
+            load_error: Some(vec![ScriptError::at("Unexpected token\n  at parse", Some(SourceLocation { file: "src/game.ts".into(), line: 4, column: 9 }))]),
+            ..Default::default()
+        });
+        let r = generation::apply(f.app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+        assert_eq!(r.status, ReloadStatus::Failed);
+        open_now(f.app.world_mut(), "levels/crate.bsn").unwrap();
+        let boss = f.by_name("Boss");
+        let m = f.app.world().get::<MissingComponents>(boss).unwrap().0[0].clone();
+        assert_eq!((m.reason, m.message.as_str()), (MissingReason::Failed, "Unexpected token"));
+        assert_eq!(m.expected.map(|e| e.file), Some("src/game.ts".to_string()));
+    }
+
+    #[test]
+    fn writes_refuse_missing_and_unknown_types() {
+        let mut f = crate_level("ph-refuse");
+        let set = Op::Set { path: p("Crate"), component: "game::Loot".into(), field: p("rolls"), value: WValue::Int(4), containers: vec![] };
+        let r = write(&mut f, vec![set]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("missing")), "{r:?}");
+        let add = Op::AddComponent { path: p("Crate"), component: "Lootz".into(), fields: vec![], text: None };
+        let r = write(&mut f, vec![add]);
+        assert_eq!((r.status, r.reason.as_deref()), ("refused", Some("unknown")), "{r:?}");
+        assert!(r.message.contains("Lootz"));
+        let set_new = Op::Set { path: p("Crate"), component: "Lootz".into(), field: p("table"), value: WValue::Str("x".into()), containers: vec![] };
+        assert_eq!(write(&mut f, vec![set_new]).reason.as_deref(), Some("unknown"));
+        assert_eq!(file(&f), CRATE, "nothing was written");
+        // A live component on the same entity still edits.
+        let ok = Op::Set { path: p("Crate"), component: "Transform".into(), field: p("translation/y"), value: WValue::Float { v: 2.0, f32: true }, containers: vec!["Vec3".into()] };
+        assert_eq!(write(&mut f, vec![ok]).status, "written");
+    }
+
+    #[test]
+    fn removing_a_missing_component_and_undoing_it() {
+        let mut f = crate_level("ph-remove");
+        let c = f.by_name("Crate");
+        let r = write(&mut f, vec![Op::RemoveComponent { path: p("Crate"), component: "game::Loot".into() }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(!file(&f).contains("Loot"));
+        assert!(f.app.world().get::<MissingComponents>(c).is_none());
+        let r = write(&mut f, r.inverse.clone());
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(file(&f), CRATE);
+        assert_eq!(missing(&f, c).len(), 1);
+    }
+
+    #[test]
+    fn the_saved_text_survives_rename_delete_and_restore() {
+        let mut f = crate_level("ph-keep");
+        let r = write(&mut f, vec![Op::Rename { path: p("Crate"), to: "Chest".into() }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(file(&f).contains("game::Loot { table: \"chest_rare\", rolls: 3 }"));
+        let chest = f.by_name("Chest");
+        assert_eq!(missing(&f, chest).len(), 1, "the marker under the new name");
+        let renamed = file(&f);
+        let r = write(&mut f, vec![Op::Delete { path: p("Chest") }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        let r = write(&mut f, r.inverse.clone());
+        assert_eq!(r.status, "written", "{r:?}");
+        assert_eq!(file(&f), renamed);
+        let chest = f.by_name("Chest");
+        assert_eq!(missing(&f, chest)[0].1, MissingReason::Unregistered);
     }
 }

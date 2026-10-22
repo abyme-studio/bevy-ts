@@ -1,8 +1,8 @@
-//! `bevy-ts/level_*` (protocol 1.6; @props and revert_prop 1.7; open and close 1.19): open levels, one level entity's owners and overrides,
+//! `bevy-ts/level_*` (protocol 1.6; @props and revert_prop 1.7; open and close 1.19; placeholders 1.21): open levels, one level entity's owners and overrides,
 //! writer batches, "Apply" one owner inward, and the event stream.
 
 use crate::edit::{WriteRequest, WriteResult, hash_text, write_level};
-use crate::engine::{BsnLevel, LevelInstance, Levels};
+use crate::engine::{BsnLevel, LevelInstance, Levels, MissingComponents, loaded_event};
 use crate::route::{loaded_hash, set_ops};
 use crate::syntax::LineIndex;
 use crate::writer::{Base, NewPatch, Op, WValue};
@@ -273,7 +273,9 @@ pub(crate) fn node(In(p): In<Option<Value>>, world: &World) -> BrpResult {
             overrides.push(json!({ "component": c, "field": f, "value": owned.fields.get(f).map(|s| s.applied.clone()), "location": at }));
         }
     }
-    let prefab = n.types.last().filter(|t| t.as_str() != "entity").cloned();
+    let missing = world.get::<MissingComponents>(e).map(|m| m.0.as_slice()).unwrap_or_default();
+    // A missing scene component is still the prefab the entity instances.
+    let prefab = n.types.last().filter(|t| t.as_str() != "entity").cloned().or_else(|| missing.iter().find(|m| m.scene).map(|m| m.component.clone()));
     // A scene component instance's @props, beside its fields.
     let props: Vec<Value> = world
         .get::<LevelInstance>(e)
@@ -294,7 +296,11 @@ pub(crate) fn node(In(p): In<Option<Value>>, world: &World) -> BrpResult {
     // Components the file adds that its prefab does not give: set where the file writes them,
     // other than the scene component the entity instances and its `#Name`.
     let patches: Vec<&String> = n.components.iter().filter(|(k, c)| prefab.as_ref() != Some(*k) && k.as_str() != "Name" && c.source.as_ref().is_some_and(|s| s.file == level)).map(|(k, _)| k).collect();
-    Ok(json!({ "level": level, "namePath": n.key_path, "entity": e.to_bits(), "owners": owners, "source": n.source, "overrides": overrides, "prefab": prefab, "props": props, "patches": patches }))
+    let mut out = json!({ "level": level, "namePath": n.key_path, "entity": e.to_bits(), "owners": owners, "source": n.source, "overrides": overrides, "prefab": prefab, "props": props, "patches": patches });
+    if !missing.is_empty() {
+        out["missing"] = json!(missing);
+    }
+    Ok(out)
 }
 
 /// The live generation's scene components a level can place, by name.
@@ -485,7 +491,7 @@ pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Op
         // A new subscriber: one `loaded` per open level.
         world.resource_mut::<Watchers>().0.insert(key, seq);
         let levels = world.resource::<Levels>();
-        let first = levels.roots.iter().next().map(|(p, r)| json!({ "event": "loaded", "level": p, "hash": r.applied.get(p).map(|h| hash_text(*h)) }));
+        let first = levels.roots.keys().next().map(|p| loaded_event(levels, p));
         return Ok(first);
     };
     let next = world.resource::<Levels>().events.iter().find(|(s, _)| *s > sent).cloned();

@@ -116,6 +116,45 @@ children, so a `level_write` reparent index can be counted from the tree. Every 
 re-read: `removed` lists whole subtrees, and `ordered` gives the full child order of each
 sibling list that gained, lost or reordered a child, a move within the file included.
 
+## Missing code: placeholders
+
+A level that names a component whose code is gone, renamed, broken or not built yet still loads
+under `bevy-ts dev`, as Unity loads a scene with a missing script (protocol 1.21; an older engine
+fails the load). The entity spawns under its name path with everything that did resolve, and
+carries one reflected component, `bevy_ts_levels::engine::MissingComponents`, with an entry per
+placeholder. The missing type is not on the entity, so no query matches it and no system runs for
+it. Each entry has a `reason`:
+
+- `unregistered`: no live code registers the type, or the class is no longer a scene component.
+- `failed`: its `scene()` threw (that instance only), or the TS build failed and its empty
+  generation is live.
+- `mismatch`: the code is live but saved fields or props do not fit. The component applies with
+  what fits; the entry lists only the misfits, each with why in `misfit`. An unset required prop
+  makes the whole instance a placeholder.
+
+Under a missing scene instance, a `Children [ … ]` entry with no base of its own (no include, no
+`@Comp`) may be a merge target, so it is kept on the entry as `overrides`, not spawned; one with a
+base spawns. When the code comes back, the next reconcile adds the component to the same entity,
+expands it in place, merges the kept overrides by name and drops the entry.
+
+The file is the store: the writer splices text, so save, rename, reparent, delete and its undo
+keep a placeholder's text byte for byte. `level_write` refuses `set`, `revert`, `set_prop` and
+`revert_prop` on a placeholder (`missing`), and any write of a type no live code registers
+(`unknown`); `remove_component` takes a placeholder by the name the file writes, and its inverse
+puts the text back. `tsx_tree` rows carry `level.missing` (`{ component, reason }`), `level_node`
+carries `missing` (`MissingComponent`: `fields` as saved, `location`, `expected` where the code
+was expected, when this process saw it), and each entry is a `warning:` diagnostic on
+`level_list`, `level_open`, `level+watch`'s `loaded` and the terminal.
+
+Tolerance stops at broken files: a parse error, a duplicate name, an inclusion cycle, a missing
+include and an override of a bound field still fail the level whole. A shipped game
+(`dev(false)`) keeps the strict loader, so a placeholder there is the error it was;
+`bevy-ts levels check` and `bevy-ts build` are unchanged.
+
+This is the one place bevy-ts goes past Bevy: Bevy fails a whole scene on an unregistered type,
+and no upstream work proposes otherwise. It lives only in bevy-ts's own `.bsn` loader, in dev
+mode, and goes with that loader when bevy-ts adopts Bevy's.
+
 ## Scenes without a level
 
 An `app.scene` root has a sidecar level, `levels/<scene>.bsn` or its `level` option, named in its

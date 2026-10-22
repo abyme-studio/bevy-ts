@@ -88,7 +88,7 @@ Each `bevy-ts/tsx_tree` node of an entity with placeholder entries, in the tree 
 
 ### Requirement: Where the code was expected
 `expected` SHALL be the location of the code bevy-ts expected:
-- for `failed` from a throw, the throw's location
+- for `failed` from a throw, the throw's location in TS, else the declaration of the scene component that threw
 - for `failed` from a failed TS build, the file that did not build
 - for `unregistered` and `mismatch`, the declaration this process last saw live for that name
 
