@@ -91,7 +91,8 @@ impl Transport for FakeTransport {
         }
     }
 
-    /// The server answers a script's close at once, as a well-behaved one does.
+    /// The server answers a script's close at once, as a well-behaved one does; a connection
+    /// not yet accepted is abandoned (1006), as the socket transport does.
     fn close(&mut self, id: ConnId, code: Option<u16>, reason: &str) {
         let mut s = self.0.lock().unwrap();
         let Some(c) = s.conns.get_mut(&id) else { return };
@@ -99,7 +100,12 @@ impl Transport for FakeTransport {
             return;
         }
         c.closed = Some((code, reason.into()));
-        s.events.push(NetEvent::Close { id, code: code.unwrap_or(1005), reason: reason.into(), clean: true });
+        let event = if c.accepted {
+            NetEvent::Close { id, code: code.unwrap_or(1005), reason: reason.into(), clean: true }
+        } else {
+            NetEvent::Close { id, code: super::ABNORMAL, reason: String::new(), clean: false }
+        };
+        s.events.push(event);
     }
 
     fn poll(&mut self, out: &mut Vec<NetEvent>) {

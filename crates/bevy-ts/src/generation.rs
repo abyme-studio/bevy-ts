@@ -205,7 +205,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     }
 
     let env = world.get_resource::<crate::net::NetPolicy>().map(|p| p.env.clone()).unwrap_or_default();
-    let generation = Generation { number, set, env };
+    let generation = Generation { number, set, env, now_ms: crate::net::now_ms(world) };
     let result = load_and_apply(world, &mut rt, &generation);
     let report = match result {
         Ok((migrations, sections, requests)) => {

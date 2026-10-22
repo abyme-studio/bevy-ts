@@ -71,7 +71,7 @@ A refused open never touches the network. The constructor still succeeds. At the
 | `wss:` | `WebSocket wss://…: wss: is not supported yet; use ws: to a loopback host` |
 | `headers` to a host that is not loopback | `WebSocket …: headers are sent only over loopback until wss: is supported` |
 | `headers` naming `Origin` | `WebSocket …: the engine sends no Origin header; remove it from headers` |
-| edit mode | `WebSocket …: networking runs only in play; the connection opens when the game plays` |
+| edit mode | `WebSocket …: networking runs only in play; open it from a system or once the game plays` |
 | not a `ws:` URL | `WebSocket …: not a WebSocket URL: …` |
 
 Plain bad input (a relative URL, a fragment, repeated protocols) throws `SyntaxError` from the

@@ -287,3 +287,26 @@ ws.onmessage = (e) => { const r = JSON.parse(e.data); n++; sum += r.seq; };
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("burst.md"), out).unwrap();
 }
+
+#[test]
+fn a_top_level_timer_after_a_restart_measures_from_now() {
+    let (mut app, _fake) = net_app();
+    // Ten seconds of real time pass, then a restart makes a fresh engine instance.
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(1)));
+    updates(&mut app, 10);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(16)));
+    let code = "setTimeout(() => console.log('late enough'), 5000);";
+    let report = generation::apply(app.world_mut(), set(&[("t.js", code)]), true);
+    assert_eq!(report.status, ReloadStatus::Applied);
+    updates(&mut app, 30);
+    assert!(!has(&app, "late enough"), "a 5 s timer set at load fired within half a second");
+    // And after edit mode, a reload measures from now too.
+    set_mode(&mut app, EngineMode::Edit);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(1)));
+    updates(&mut app, 10);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(16)));
+    load(&mut app, &[("t.js", "setTimeout(() => console.log('after edit'), 5000);")]);
+    set_mode(&mut app, EngineMode::Play);
+    updates(&mut app, 30);
+    assert!(!has(&app, "after edit"), "{:?}", messages(&app));
+}

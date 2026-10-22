@@ -32,6 +32,9 @@ pub struct Generation {
     pub set: ModuleSet,
     /// What `process.env` shows: the same for every load of one engine run.
     pub env: std::collections::BTreeMap<String, String>,
+    /// Real time now, in the milliseconds `deliver` takes: timers a module sets while it
+    /// evaluates measure from it, in a fresh engine instance or after edit mode too.
+    pub now_ms: f64,
 }
 
 /// What a delivery hands back to core.

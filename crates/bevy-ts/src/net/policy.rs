@@ -35,7 +35,7 @@ pub enum Refusal {
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Refusal::EditMode => f.write_str("networking runs only in play; the connection opens when the game plays"),
+            Refusal::EditMode => f.write_str("networking runs only in play; open it from a system or once the game plays"),
             Refusal::BadUrl(why) => write!(f, "not a WebSocket URL: {why}"),
             Refusal::Wss => f.write_str("wss: is not supported yet; use ws: to a loopback host"),
             Refusal::NotAllowed { origin } => write!(f, "{origin} is not in net.allow; add it to net.allow in bevy-ts.json"),

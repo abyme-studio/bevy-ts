@@ -535,6 +535,7 @@ impl ScriptBackend for V8Backend {
         let entry = self.specifier(&generation.set.entry);
         let modules: Vec<(String, _)> = generation.set.modules.iter().map(|m| (self.specifier(&m.path), m.clone())).collect();
         self.loader.set_generation(self.loads, modules);
+        self.runtime.op_state().borrow_mut().borrow_mut::<Clock>().now = generation.now_ms;
         let number = generation.number as f64;
         let env = serde_json::to_string(&generation.env).expect("env serializes");
         let begun = self.call(|f| &f.begin, |s, _| vec![num(s, number), v8::String::new(s, &env).unwrap().into()], |_, _| ());
@@ -586,9 +587,11 @@ impl ScriptBackend for V8Backend {
             deno_core::scope!(scope, &mut self.runtime);
             scope.perform_microtask_checkpoint();
         }
+        // On a throw the requests stay queued for the next delivery.
+        result?;
         let requests = self.take_requests(None);
         let deadline = self.runtime.op_state().borrow().borrow::<Clock>().deadline;
-        result.map(|_| Delivered { requests, next_timer_ms: deadline.is_finite().then_some(deadline) })
+        Ok(Delivered { requests, next_timer_ms: deadline.is_finite().then_some(deadline) })
     }
 
     fn run_system(&mut self, key: ScriptKey, run: &mut SystemRun<'_>) -> Result<RunOutput, ScriptError> {
