@@ -26,7 +26,7 @@ row 7 asks for all of Bevy 0.20's input from TS. Research is in
   rumble (after rust-events and reflect-coverage stage 1).
 - Not here: input messages (rust-events), `Res<T>` of input resources (rust-resources), condition
   combinators (ecs-schedules), writing `GamepadSettings`, rumble in viewport mode, and logical keys
-  (`ButtonInput<Key>`). Each is named with its owner in the coverage table.
+  (`ButtonInput<Key>`, text-input). Each is named with its owner in the coverage table.
 
 ## Capabilities
 

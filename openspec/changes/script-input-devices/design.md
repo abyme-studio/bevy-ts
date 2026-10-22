@@ -21,7 +21,8 @@ writable-native-params owns the `#[export]` rules.
 
 **Non-Goals:**
 - A message reader or writer (rust-events), `Res<T>` (rust-resources), combinators (ecs-schedules).
-- Writing `GamepadSettings`; rumble in viewport mode; logical keys (`ButtonInput<Key>`). Follow-ups.
+- Writing `GamepadSettings`; rumble in viewport mode. Follow-ups.
+- Logical keys (`ButtonInput<Key>`): text-input builds them beside `Keys`.
 - A resource or system of our own: every param reads Bevy's state.
 
 ## Coverage
@@ -33,7 +34,7 @@ Every public Bevy 0.20 input type, its TS path and its owner. Stage 1.11 copies 
 |---|---|---|
 | `ButtonInput<KeyCode>`, `KeyCode` | `Keys`, `KeyCode` enum | text-input |
 | `InputFocus` | `InputFocus` | text-input |
-| `ButtonInput<Key>`, `Key` (logical keys) | none yet | follow-up (unowned) |
+| `ButtonInput<Key>`, `Key` (logical keys) | `bevy-ts/input`, beside `Keys` | text-input, a follow-up stage |
 | `KeyboardInput`, `KeyboardFocusLost` | `MessageReader` | rust-events |
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` enum | this change |
 | `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollPixelsPerLine`, `MouseScrollUnit` | `Res<T>` | rust-resources (path); this change, stage 2 (docs, test) |
