@@ -49,4 +49,4 @@ The field SHALL be one line, Bevy's default (`allow_newlines: false`, one visibl
 
 #### Scenario: A change event
 - **WHEN** `a` is typed into a focused `<input onTextEditChange={h} />`
-- **THEN** `h` runs with `value` `"a"` in the frame the edit is applied
+- **THEN** `h` runs with `value` `"a"` in the next frame's call
