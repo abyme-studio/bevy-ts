@@ -12,4 +12,6 @@ name = "bevy_ts_animation"
 bevy = { workspace = true, features = ["3d"] }
 
 [dev-dependencies]
-bevy = { workspace = true, features = ["3d"] }
+# Tests link Bevy as one dylib; release and project-engine builds never see dev-dependencies
+# (docs/build-cache.md, Bevy as a dylib for tests).
+bevy = { workspace = true, features = ["dynamic_linking", "3d"] }

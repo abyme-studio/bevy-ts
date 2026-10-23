@@ -13,3 +13,8 @@ bevy = { workspace = true, features = ["bevy_remote"] }
 bevy-ts.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+# Tests link Bevy as one dylib; release and project-engine builds never see dev-dependencies
+# (docs/build-cache.md, Bevy as a dylib for tests).
+bevy = { workspace = true, features = ["dynamic_linking"] }

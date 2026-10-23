@@ -19,4 +19,6 @@ wesl = { version = "0.6", features = ["naga-ext"] }
 naga = { version = "30", features = ["wgsl-in"] }
 
 [dev-dependencies]
-bevy = { workspace = true, features = ["3d"] }
+# Tests link Bevy as one dylib; release and project-engine builds never see dev-dependencies
+# (docs/build-cache.md, Bevy as a dylib for tests).
+bevy = { workspace = true, features = ["dynamic_linking", "3d"] }

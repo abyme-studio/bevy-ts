@@ -77,3 +77,25 @@ The second Bevy was `cargo test -p bevy-ts-viewport`, run alone for `--test-thre
 selected on its own resolves Bevy's features afresh. Its render tests now take a lock
 (`common::render_app`), so it runs in the one `cargo test --workspace`. The first test run of each
 arm includes linking. The after arm (`62958e8`) is on a later main, with 14 more test files and a crate more.
+
+## Bevy as a dylib for tests
+
+Every crate's tests turn on Bevy's `dynamic_linking`, as a dev-dependency feature: a test binary
+links `libbevy_dylib` instead of a copy of Bevy, and a touched crate relinks in seconds. Only a
+build of tests sees dev-dependencies, so `cargo build -p bevy-ts-cli`, `cargo build --release`, the
+release CLI, project engines and what `bevy-ts build` writes link Bevy statically.
+`scripts/dylib-check.sh` checks each with `otool -L`. It holds on any host; it is checked on macOS
+only (CI runs no Rust tests).
+
+A test run builds the CLI with the dylib too (its tests run it), and `rpath = true` lets that binary
+find the dylib outside cargo. A plain `cargo build -p bevy-ts-cli` builds it statically, with a Bevy
+of its own: alternating the two keeps both in `target/`.
+
+MEASURED-DYLIB
+
+## Pruning old test executables
+
+Cargo keeps every executable it ever linked: each `cargo test -p …` selection with other features
+leaves its own copy of a test. `scripts/prune-tests.sh` keeps the newest copy of each executable in
+`target/*/deps` (by name and the source it was built from) and drops the rest, with their `.d` and
+`.dSYM`; `--dry-run` lists them. A dropped selection relinks once if it runs again.

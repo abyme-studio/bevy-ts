@@ -237,6 +237,8 @@ const processes = {
   // build and workspace tests on an export of HEAD.
   "target-bench-before": { cmd: "bash -c 'set -o pipefail; scripts/target-bench.sh before 1933a72 3 2>&1 | tee -a bench/results/target-bench.txt'" },
   "target-bench-after": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings 2>&1 | grep -v ld64 | tee target/lean-clippy.log | grep -E ^error -A8 | head -80; scripts/target-bench.sh after HEAD 3) 2>&1 | tee -a bench/results/target-bench.txt'" },
+  // Stage 2: the same bench with Bevy as a dylib for tests, then what links it (scripts/dylib-check.sh).
+  "target-bench-dylib": { cmd: "bash -c 'set -o pipefail; (scripts/target-bench.sh dylib HEAD 3; scripts/dylib-check.sh ${TMPDIR:-/tmp}/bevy-ts-target-bench/dylib) 2>&1 | tee -a bench/results/target-bench.txt'" },
 } satisfies ProcessFile;
 
 const GATE_SLOT = "$HOME/dev/abyme/scripts/gate-slot";

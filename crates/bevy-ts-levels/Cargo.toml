@@ -17,6 +17,9 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+# Tests link Bevy as one dylib; release and project-engine builds never see dev-dependencies
+# (docs/build-cache.md, Bevy as a dylib for tests).
+bevy = { workspace = true, features = ["dynamic_linking"] }
 # The vendored `bevy_bsn` (src/upstream) needs these, for the differential test only.
 nom = "8"
 memchr = "2"

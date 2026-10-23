@@ -12,3 +12,8 @@ name = "bevy_ts_native"
 bevy = { workspace = true }
 bevy-ts.workspace = true
 bevy-ts-native-derive.workspace = true
+
+[dev-dependencies]
+# Tests link Bevy as one dylib; release and project-engine builds never see dev-dependencies
+# (docs/build-cache.md, Bevy as a dylib for tests).
+bevy = { workspace = true, features = ["dynamic_linking"] }

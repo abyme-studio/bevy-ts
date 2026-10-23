@@ -27,5 +27,8 @@ objc2-core-foundation = { version = "0.3.2", features = ["CFDictionary", "CFNumb
 mach2 = "0.5"
 
 [dev-dependencies]
+# Tests link Bevy as one dylib; release and project-engine builds never see dev-dependencies
+# (docs/build-cache.md, Bevy as a dylib for tests).
+bevy = { workspace = true, features = ["dynamic_linking"] }
 bevy-ts.workspace = true
 jsonschema = { version = "0.33", default-features = false }

@@ -33,6 +33,8 @@ bevy-ts-animation = { path = "crates/bevy-ts-animation" }
 opt-level = 1
 debug = "line-tables-only"
 split-debuginfo = "unpacked"
+# A dev binary that links the Bevy dylib (tests build it) finds it next to itself, outside cargo too.
+rpath = true
 
 [profile.dev.package."*"]
 opt-level = 3
