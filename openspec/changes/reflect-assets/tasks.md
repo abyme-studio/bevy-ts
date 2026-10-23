@@ -14,7 +14,7 @@
 - [ ] 1.7 `crates/bevy-ts-cli/tests/reflect_assets.rs`: the stage 1 scenarios of `reflected-assets` (add, set, ref in `MeshMaterial3d`, texture inside a material, wrong type, stale ref)
 - [ ] 1.8 Delete each `UNCOVERED` entry marked `reflect-assets:` that stage 1 covers; the hole check passes
 - [ ] 1.9 Protocol: regenerate `protocol/bevy-ts.openrpc.json` if it changed; bump to the next free minor at landing
-- [ ] 1.10 `docs/assets.md` (the API, refs, lifetime until reload, `get` cost); asset rows in `docs/reflection.md`; link from `README.md`
+- [ ] 1.10 `docs/assets.md` (the API, refs, assets kept across hot reloads and removed on restart or stop, `get` cost); asset rows in `docs/reflection.md`; link from `README.md`
 
 ## 2. Stage 2: asset values; <material> on the generic path
 
