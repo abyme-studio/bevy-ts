@@ -255,7 +255,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(crate::camera::CamerasPlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
         .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
-        .add_systems(Update, headless::screenshot_on_request)
+        .add_systems(Update, headless::screenshot_on_request.run_if(|| std::env::var_os("BEVY_TS_SCREENSHOT").is_some()))
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
