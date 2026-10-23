@@ -57,4 +57,4 @@ assets live until the script reloads or stops:
 - A restart or a Stop removes every script-made asset.
 
 Adding an asset every frame grows memory until reload, and a warning is logged past 10,000 assets:
-add once and `set` after. Freeing an asset sooner is engine-core's handle lifecycle, not here.
+add once and `set` after. Freeing an asset sooner is script-assets' handle lifecycle, not here.
