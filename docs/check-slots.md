@@ -47,13 +47,18 @@ still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
   reaches nearly every crate, from the graph alone.
 - **Steps.** Each runs only when its paths changed: deno for `crates/bevy-ts-v8/js/`; npm for
   `packages/`, `examples/` or the cli; the protocol check for the generator, its outputs and the
-  package's lockfile; bevy-ts/bevy for the cli; openspec for `openspec/`; the scripts' tests
-  (3-6 minutes) for `scripts/` and `.abyme/processes.ts` only, and always under `--full`.
+  package's lockfile; bevy-ts/bevy for the cli; openspec for `openspec/`. The two deno tests take minutes,
+  so each runs only for what it tests: `slot.test.ts` for `.abyme/processes.ts`, `slot.sh` and
+  every script, `affected-gate.test.ts` for the gate and its test; both under `--full`.
   `examples/` also brings the crates whose tests run them.
+- **Scripts.** A script runs its own step and `slot.test.ts`, not everything: `gen-protocol.sh` the
+  protocol check, `gen-bevy-types.sh` bevy-ts/bevy, `affected-gate.sh` and `native-gate.sh` the gate's
+  test. Benches, other teams' gates and the release's scripts (`npm-*`, `pack-npm.sh`) run no
+  gate step, so `slot.test.ts` alone. A script no rule names runs everything.
 - **Nothing** for `docs/`, `README.md`, `.claude/`, `.github/`, `.gitignore`, `bench/` and the rest of
   `.abyme/`.
-- **Everything** for `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, `.cargo/`, `scripts/`,
-  `protocol/`, and any path no rule claims. `--full` forces it: `scripts/native-gate.sh` is that.
+- **Everything** for `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, `.cargo/`, `protocol/`, and
+  any path no rule claims. `--full` forces it: `scripts/native-gate.sh` is that.
 
 `scripts/affected-gate.sh --plan` prints the crates and steps and runs nothing; it takes no slot.
 It exits 0 when every step it ran passed, and 75 when it could not start: no cargo or jq, or a

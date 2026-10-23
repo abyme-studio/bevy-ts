@@ -64,7 +64,7 @@ Deno.test("a crate the cli depends on brings the npm and bevy-ts/bevy steps", as
 
 Deno.test("a path a step claims runs only that step", async () => {
   assertEquals(await plan(["openspec/specs/x/spec.md"]), ["crates", "steps openspec"]);
-  assertEquals(await plan([".abyme/processes.ts"]), ["crates", "steps scripts"]);
+  assertEquals(await plan([".abyme/processes.ts"]), ["crates", "steps slot"]);
   assertEquals(await plan(["docs/x.md", "README.md", ".abyme/land.ts"]), ["crates", "steps"]);
 });
 
@@ -72,12 +72,25 @@ Deno.test("a shared root or a path no step claims runs everything", async () => 
   for (const p of ["Cargo.lock", "protocol/x.json", ".cargo/config.toml", "elsewhere/x"]) {
     assertEquals(await plan([p]), [`full ${p}`, all, every], p);
   }
-  // The scripts' tests only when the change touches scripts/ or the processes.
-  assertEquals(await plan(["scripts/x.sh"]), ["full scripts/x.sh", all, `${every} scripts`]);
-  assertEquals(await plan(["Cargo.lock", ".abyme/processes.ts"]), ["full Cargo.lock", all, `${every} scripts`]);
-  // --full, native-gate's daily run on main, runs them always.
+  // A script no rule names, with slot.test.ts, which checks every script.
+  assertEquals(await plan(["scripts/x.sh"]), ["full scripts/x.sh", all, `${every} slot`]);
+  assertEquals(await plan(["Cargo.lock", ".abyme/processes.ts"]), ["full Cargo.lock", all, `${every} slot`]);
+  // --full, native-gate's daily run on main, runs both deno tests.
   const dir = await fixture();
-  assertEquals((await sh(dir, "scripts/affected-gate.sh --full --plan")).split("\n"), ["full --full", all, `${every} scripts`]);
+  assertEquals((await sh(dir, "scripts/affected-gate.sh --full --plan")).split("\n"), ["full --full", all, `${every} slot affected`]);
+});
+
+Deno.test("a script runs its own step and slot.test.ts, not everything", async () => {
+  assertEquals(await plan(["scripts/npm-await.sh"]), ["crates", "steps slot"]);
+  assertEquals(await plan(["scripts/gen-bevy-types.sh"]), ["crates", "steps bevy slot"]);
+  assertEquals(await plan(["scripts/gen-protocol.sh"]), ["crates", "steps protocol slot"]);
+  assertEquals(await plan(["scripts/affected-gate.sh", "scripts/affected-gate.test.ts"]), ["crates", "steps slot affected"]);
+});
+
+Deno.test("each deno test runs only for what it tests", async () => {
+  assertEquals(await plan(["scripts/affected-gate.test.ts"]), ["crates", "steps affected"]);
+  assertEquals(await plan(["scripts/slot.sh"]), ["crates", "steps slot"]);
+  assertEquals(await plan(["crates/d/src/lib.rs", ".abyme/teams.ts"]), ["crates d", "steps clippy test"]);
 });
 
 Deno.test("LAND_BASE sets what the change is measured from", async () => {

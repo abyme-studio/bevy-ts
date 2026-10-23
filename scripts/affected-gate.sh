@@ -29,10 +29,19 @@ want() { for s in "$@"; do [[ $steps == *" $s "* ]] || steps+="$s "; done; }
 claim() {
   local f=$1 name dir
   case $f in
-    # The scripts' tests take minutes: only a change to what they test runs them.
-    scripts/*) want scripts; full=$f; return ;;
     Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/* | protocol/*) full=$f; return ;;
-    .abyme/processes.ts) want scripts; return ;;
+    # A script runs its own step, and slot.test.ts, which checks every script takes its slot. Each
+    # deno test runs only for what it tests: they take minutes. A script no rule names runs everything.
+    scripts/affected-gate.sh | scripts/native-gate.sh) want affected slot; return ;;
+    scripts/affected-gate.test.ts) want affected; return ;;
+    scripts/slot.sh | scripts/slot.test.ts | .abyme/processes.ts) want slot; return ;;
+    scripts/gen-protocol.sh) want protocol slot; return ;;
+    scripts/gen-bevy-types.sh) want bevy slot; return ;;
+    # Benches, other teams' gates and the release's scripts: no gate step runs them.
+    scripts/animation-bench.sh | scripts/preview-bench.sh | scripts/sccache-bench.sh | scripts/levels-gate.sh \
+      | scripts/systems-gate.sh | scripts/viewport-gate.sh | scripts/npm-await.sh | scripts/npm-lib.sh \
+      | scripts/npm-publish.sh | scripts/pack-npm.sh) want slot; return ;;
+    scripts/*.sh) want slot; full=$f; return ;;
     docs/* | README.md | .claude/* | .github/* | .gitignore | bench/* | .abyme/*) return ;;
     openspec/*) want openspec; return ;;
     examples/*) seeds+=(bevy-ts-cli bevy-ts-animation bevy-ts-levels bevy-ts-viewport); want npm; return ;;
@@ -59,8 +68,8 @@ fi
 
 if [[ -n $full ]]; then
   crates=$(cut -f1 <<<"$members" | tr '\n' ' ')
-  [[ $full == --full || $steps == *" scripts "* ]] && scripts=scripts || scripts=""
-  steps=" clippy test deno npm protocol bevy openspec ${scripts:+scripts }"
+  [[ $full == --full ]] && want slot affected
+  for s in clippy test deno npm protocol bevy openspec; do want $s; done
 else
   # The seeds and every workspace crate that depends on one, to a fixed point.
   crates=$(jq -r --args '
@@ -77,7 +86,9 @@ fi
 if [[ -n $plan ]]; then
   [[ -n $full ]] && echo "full $full"
   echo "crates $crates" | sed 's/ *$//'
-  echo "steps$steps" | sed 's/ *$//'
+  ordered=""
+  for s in clippy test deno npm protocol bevy openspec slot affected; do [[ $steps == *" $s "* ]] && ordered+=" $s"; done
+  echo "steps$ordered"
   exit 0
 fi
 
@@ -111,7 +122,8 @@ fi
 if has protocol; then scripts/gen-protocol.sh --check; record protocol $?; fi
 if has bevy; then scripts/gen-bevy-types.sh --check; record bevy $?; fi
 if has openspec; then openspec validate --specs --strict; record spec $?; fi
-if has scripts; then env -u LAND_BASE deno test -A --no-check scripts/ 2>&1 | tail -3; record scripts "${PIPESTATUS[0]}"; fi
+if has slot; then env -u LAND_BASE deno test -A --no-check scripts/slot.test.ts 2>&1 | tail -3; record slot "${PIPESTATUS[0]}"; fi
+if has affected; then env -u LAND_BASE deno test -A --no-check scripts/affected-gate.test.ts 2>&1 | tail -3; record affected "${PIPESTATUS[0]}"; fi
 
 echo "gate:${result:- nothing to check}"
 [[ $ok == 1 ]]
