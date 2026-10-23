@@ -62,8 +62,9 @@ commands.spawn(Camera3d, Transform.lookingAt([10, 10, 10], [0, 0, 0]), Projectio
 commands.spawn(DirectionalLight.of({ illuminance: 8000, color: hex("#ffd7a8") }), Transform.lookingAt([3, 5, 2], [0, 0, 0]));
 ```
 
-A value that fails to write fails only its command, logged with the type and field; the
-system's other commands still apply. `Transform.lookingAt(eye, target, up = [0, 1, 0])` is
+A value that fails to write fails its whole command, logged with the type and field: a spawn
+with a bad value spawns nothing, an insert inserts nothing. The system's other commands still
+apply. `Transform.lookingAt(eye, target, up = [0, 1, 0])` is
 Bevy's `Transform::looking_at`, computed in JS.
 
 bevy-ts has no built-in spawn recipes. `spawnNative` stays for recipes a plugin registers
