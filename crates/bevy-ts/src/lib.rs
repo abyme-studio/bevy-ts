@@ -30,6 +30,7 @@ pub mod plugin_api;
 pub mod recipes;
 #[cfg(feature = "reflect")]
 pub mod reflect_value;
+pub mod reflect_asset;
 pub mod runtime;
 pub mod schedules;
 pub mod sets;
@@ -144,6 +145,7 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<systems::TsSystems>()
             .init_resource::<commands::CommandKinds>()
             .init_resource::<commands::NativeRecipes>()
+            .init_resource::<reflect_asset::ScriptAssets>()
             .init_resource::<plugin_api::SectionHandlers>()
             .init_resource::<plugin_api::RestartHandlers>()
             .init_resource::<log::ScriptLog>()
