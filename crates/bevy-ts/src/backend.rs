@@ -35,6 +35,8 @@ pub struct Generation {
     /// Real time now, in the milliseconds `deliver` takes: timers a module sets while it
     /// evaluates measure from it, in a fresh engine instance or after edit mode too.
     pub now_ms: f64,
+    /// The declarations (`file#name`) that live entity observers name, so the load rebuilds them.
+    pub observed: Vec<String>,
 }
 
 /// What a delivery hands back to core.

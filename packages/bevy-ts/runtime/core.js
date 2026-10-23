@@ -1100,6 +1100,7 @@ function bindModule(module, names) {
 
 function declareFn(fn, desc) {
   if (fn && (typeof fn === "function" || typeof fn === "object")) fn[DECL] = desc;
+  if (S.loading && desc && desc.id) S.loading.declared.set(desc.id, fn);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1491,11 +1492,57 @@ function resolveRegistrations(g) {
   }
 }
 
+/**
+ * The observer `commands.entity(e).observe(fn)` attaches: built once per declaration, after the
+ * registered systems, and on the live generation built for running at once.
+ */
+function targetedSystem(g, fn) {
+  const d = fn && fn[DECL];
+  const name = (fn && fn.name) || String(fn);
+  if (typeof fn !== "function") throw new TypeError(`observe: ${name} is not an observer function`);
+  if (!d) throw declError(`observe(${name}): compiled without bevy-ts, its param types were never read`, callerLocation());
+  if (d.error) throw declError(`observe(${name}): ${d.error}`, d.at);
+  const known = g.targeted.get(d.id);
+  if (known !== undefined) return g.systems[known];
+  const params = resolveParams(g, d.params || [], d.at);
+  const on = params[0];
+  if (!on || on.kind !== "on" || !(on.lifecycle || (on.cls && on.cls.decl && on.cls.decl.entity))) {
+    throw declError(`observe(${name}): its first param must be On<E> of an EntityEvent`, d.at);
+  }
+  const r = { schedule: { schedule: "observer" }, after: [], before: [], sets: [], conditions: [], groups: [], at: d.at };
+  const s = { r, id: d.id, params, call: "fn", fn, at: d.at, targeted: true, index: g.systems.length };
+  g.systems.push(s);
+  g.targeted.set(d.id, s.index);
+  if (g.built) g.built.push(buildSystem(g, s));
+  return s;
+}
+
+/** A system's manifest entry. */
+function systemDecl(s, groupIds = new Map()) {
+  return {
+    name: s.id,
+    schedule: scheduleDecl(s.r.schedule),
+    params: manifestParams(s.params),
+    after: orderTargets(s.r.after, s.at),
+    before: orderTargets(s.r.before, s.at),
+    sets: s.r.sets.map((x) => setName(x, s.at)),
+    condition: s.r.conditions.length ? { kind: "all", conditions: s.r.conditions } : undefined,
+    groups: s.r.groups.map((gr) => groupIds.get(gr)).filter(Boolean),
+    location: s.at,
+  };
+}
+
 function newGeneration(number) {
   return {
     number,
     classes: [...OUTSIDE],
     bindings: new Map(),
+    /** Exported functions by declaration (`file#name`), for `observe` across reloads. */
+    declared: new Map(),
+    /** Declarations entity observers name, from Rust; rebuilt at the end of the load. */
+    observed: [],
+    /** `observe`d declarations, to their index in `systems`. */
+    targeted: new Map(),
     registrations: [],
     systems: [],
     groups: [],
@@ -1530,12 +1577,13 @@ function scheduleDecl(s) {
   }
 }
 
-function begin(gen, envJson) {
+function begin(gen, envJson, observed) {
   S.loading = newGeneration(gen);
   if (web) {
     if (envJson) web.setEnv(JSON.parse(envJson));
     web.generation = gen;
   }
+  if (observed) S.loading.observed = JSON.parse(observed);
   // The tsx host call: Rust calls it only when this generation has bindings or slots to run.
   const g = S.loading;
   g.entries.push({ name: "tsx" });
@@ -1551,6 +1599,11 @@ function end() {
   if (!g) throw new Error("bevy-ts: end without begin");
   try {
     resolveRegistrations(g);
+    // A declaration that is gone is left out; Rust removes its entity observers.
+    for (const id of g.observed) {
+      const fn = g.declared.get(id);
+      if (fn) targetedSystem(g, fn);
+    }
   } finally {
     S.loading = null;
     if (web) web.generation = S.live;
@@ -1585,17 +1638,8 @@ function end() {
     messages: byKind("message").map((C) => ({ ...C.decl, added: g.addedMessages.has(C.componentName) })),
     events: byKind("event").map((C) => C.decl),
     states: byKind("state").map((C) => ({ ...C.decl, initial: g.initialStates.get(C.componentName) })),
-    systems: g.systems.map((s) => ({
-      name: s.id,
-      schedule: scheduleDecl(s.r.schedule),
-      params: manifestParams(s.params),
-      after: orderTargets(s.r.after, s.at),
-      before: orderTargets(s.r.before, s.at),
-      sets: s.r.sets.map((x) => setName(x, s.at)),
-      condition: s.r.conditions.length ? { kind: "all", conditions: s.r.conditions } : undefined,
-      groups: s.r.groups.map((gr) => groupIds.get(gr)).filter(Boolean),
-      location: s.at,
-    })),
+    systems: g.systems.filter((s) => !s.targeted).map((s) => systemDecl(s, groupIds)),
+    targeted: g.systems.filter((s) => s.targeted).map((s) => systemDecl(s)),
     groups: g.groups.filter((gr) => groupIds.has(gr)).map((gr) => ({ id: groupIds.get(gr), condition: gr.condition })),
     initSchedules: g.initSchedules,
     scheduleOrder: g.scheduleOrder,
@@ -2343,7 +2387,7 @@ function makeCtx() {
 // Commands: a binary arena in Rust memory, overflow kept in JS
 
 const OP_SPAWN = 1, OP_INSERT = 2, OP_DESPAWN = 3, OP_REMOVE = 4, OP_SET_PARENT = 5, OP_SPAWN_NATIVE = 6, OP_PLUGIN = 7;
-const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12;
+const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12, OP_OBSERVE = 13;
 
 class EntityCommands {
   constructor(commands, id) {
@@ -2374,6 +2418,19 @@ class EntityCommands {
       w.u32(0xffffffff);
       w.u32(0xffffffff);
     } else w.entity(parent);
+    this.commands.op(w.bytes());
+    return this;
+  }
+  /** Attaches an observer to this entity alone, as Bevy's `EntityCommands::observe`; it goes with the entity. */
+  observe(fn) {
+    const s = targetedSystem(S.gens.get(S.live), fn);
+    const decl = encoder.encode(JSON.stringify(systemDecl(s)));
+    const w = new Writer();
+    w.u8(OP_OBSERVE);
+    w.entity(this.id);
+    w.u32(s.index);
+    w.u32(decl.length);
+    w.raw(decl);
     this.commands.op(w.bytes());
     return this;
   }

@@ -537,8 +537,9 @@ impl ScriptBackend for V8Backend {
         self.loader.set_generation(self.loads, modules);
         self.runtime.op_state().borrow_mut().borrow_mut::<Clock>().now = generation.now_ms;
         let number = generation.number as f64;
+        let observed = serde_json::to_string(&generation.observed).expect("names serialize");
         let env = serde_json::to_string(&generation.env).expect("env serializes");
-        let begun = self.call(|f| &f.begin, |s, _| vec![num(s, number), v8::String::new(s, &env).unwrap().into()], |_, _| ());
+        let begun = self.call(|f| &f.begin, |s, _| vec![num(s, number), v8::String::new(s, &env).unwrap().into(), v8::String::new(s, &observed).unwrap().into()], |_, _| ());
         let result = begun.and_then(|_| self.evaluate(&entry));
         if let Err(e) = result {
             let _ = self.call(|f| &f.abort, |_, _| vec![], |_, _| ());
