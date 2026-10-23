@@ -32,9 +32,9 @@ What is still missing:
 - No built-in native recipes.
 
 **Non-Goals:**
-- Holes as zero-copy columns. They stay reflection-backed; `q.tables` never shows them.
-- Binary encodings for reflected values. JSON first; a faster encoding is a later change if the
-  stage 3 bench says so.
+- Holes as zero-copy columns, enums included. They stay reflection-backed; `q.tables` never
+  shows them. Rust enum layout and niches are unspecified, so a tag written from JS could be
+  undefined behaviour (research-script-perf.md, option E).
 - New TS-declared component field kinds (TS components keep their plain-data rule).
 - Reactive bindings on reflected props (stage 1's rule stands).
 
@@ -126,17 +126,31 @@ What is still missing:
 
 7. **Scripts read reflect values (stage 3, operator's go).** `NotReflect` goes: a reflect-tier
    class is query data (`Query<[Projection]>`, `Mut<Projection>`) and `Res`/`ResMut` data.
-   Its table has no columns; the row accessor holds the entity, and the first property read in a
-   run calls a host function that runs `read` on that entity's component and caches the plain
-   object for the run. A write through `Mut` (`cam.value = { Orthographic: {} }`, or a field
-   assignment on the cached object followed by the row's end) calls a host function that runs
-   `write` at once and sets the change tick; the JS cache is replaced with the written value.
-   A layout-tier hole is a getter and setter on the row accessor doing the same for one field;
-   `q.tables` and column arrays never include holes. In-place reflection writes do not move
-   archetypes, so open column views stay valid. `NodeRef.get` reads reflect-tier components and
-   holes through the same host call and subscribes like any other component.
-   *Alternative:* serialize every matched row into the system's input each run. Rejected: it
-   pays for rows the system never touches.
+   Its table has no value columns; it has the component's changed-tick column, a zero-copy view
+   as layout-tier writes already use. Reads go through two layers (research-script-perf.md):
+   - **Tick cache.** A per-type cache, entity → (changed tick, plain object), outlives the run.
+     A row whose tick matches its entry returns the cached object with no host call (about
+     10 ns). The cache is dropped on reload and an entry on despawn or removal.
+   - **Binary codec on a miss.** At load, `reflect_value` compiles each reflected type's
+     `TypeInfo` once into a list of ops (kind, size; flecs' `ecs_meta_op_t` pattern), and the JS
+     runtime generates a decoder and encoder from the same ops. A miss is one host call that
+     walks the component by reflection along the ops into a byte buffer, decoded in JS (about
+     0.1 µs, against about 1 µs for JSON). Lists, maps, sets and strings are length-prefixed,
+     `Handle` is its path string, and an opaque serde type is an embedded JSON op. The decoder's
+     output is exactly `JSON.parse` of `read`'s JSON; the hole check (decision 3) asserts this
+     for every type it covers. A type the ops cannot express falls back to `read`'s JSON.
+   A write through `Mut` (`cam.value = { Orthographic: {} }`, or a field assignment on the cached
+   object followed by the row's end) encodes with the same ops, calls a host function that writes
+   at once with `write`'s semantics and sets the change tick, then refreshes the cache entry with
+   the new tick. A layout-tier hole is a getter and setter on the row accessor doing the same for
+   one field; `q.tables` and column arrays never include holes. In-place reflection writes do not
+   move archetypes, so open column views stay valid. `NodeRef.get` reads reflect-tier components
+   and holes through the same cache and codec and subscribes like any other component.
+   Stages 1 and 2 keep JSON: TSX, the protocol and `OP_INSERT_REFLECT` are not per-row per-frame.
+   *Alternatives:* a host call and JSON per touched row per run (about 1 µs a row, every run);
+   packing every matched row before the run (pays for rows the system never touches); zero-copy
+   enum columns (see Non-Goals); batching `Mut` writes to the end of the run (saves about 35 ns a
+   write, hides writes from Rust mid-run; only if the bench shows write-heavy systems).
 
 ## Seams
 
@@ -154,10 +168,12 @@ Whichever lands second rebases and keeps both sides.
 
 ## Risks / Trade-offs
 
-- [Stage 3 is a per-frame path: a system touching reflected rows pays a host call and a JSON
-  round trip per row per run] → Lazy, per row, cached per run; a bench in
-  `crates/bevy-ts/benches` over 1,000 `DirectionalLight.color` reads and writes states the cost
-  in `docs/reflection.md`. Ask-first: stage 3 does not start without the operator's go.
+- [Stage 3 is a per-frame path: a system touching a changed reflected row pays a host call and
+  a binary decode] → Unchanged rows hit the tick cache with no call; a miss costs about 0.1 µs.
+  A bench (task 3.7) states the real numbers in `docs/reflection.md`. Ask-first: stage 3 does not
+  start without the operator's go.
+- [The codec and `read` drift apart] → The hole check compares the decoder's output with
+  `JSON.parse` of `read` for every covered type.
 - [Protocol shape change breaks a client parsing `{ secs, nanos }` or stock handle shapes] →
   Minor bump; the handshake carries the version; `docs/reflection.md` lists the changed kinds.
 - [Big integers as strings surprise a script] → Typed `number | string`; only past 2^53.
