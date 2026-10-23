@@ -33,7 +33,7 @@
 - [ ] 3.4 Hole getters and setters on layout-tier row accessors; never in `q.tables`
 - [ ] 3.5 `NodeRef.get` reads reflected components and holes through `reflect_read` and subscribes as today
 - [ ] 3.6 Tests: the camera switch, untouched rows make no host call, column views valid after a reflected write, computed components refuse writes
-- [ ] 3.7 Bench in `crates/bevy-ts/benches` over 1,000 rows of `DirectionalLight.color` and `Projection`: reads on cache hits, reads on misses through the codec, the JSON path as the baseline, and writes; against a layout-tier column read. Targets from the research: about 10 ns a hit, about 0.1 µs a miss. The numbers go into `docs/reflection.md`
+- [ ] 3.7 Bench (`crates/bevy-ts-cli/tests/reflect_bench.rs`, ignored, like the repo's other benches; it needs V8) over 1,000 rows of `DirectionalLight.color` and `Projection`: reads on cache hits, reads on misses through the codec, the JSON path as the baseline, and writes; against a layout-tier column read. Targets from the research: about 10 ns a hit, about 0.1 µs a miss. The numbers go into `docs/reflection.md`
 - [ ] 3.8 `docs/native.md`: reflected rows and holes in TS systems
 
 ## 4. Landing (each stage)

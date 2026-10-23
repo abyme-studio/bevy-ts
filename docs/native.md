@@ -110,7 +110,8 @@ the field's address minus the value's. No `repr(C)` and no code per type.
 - **Layout tier**: a type with at least one plain-data field (`f32`, `f64`, integers, `bool`,
   `Entity`, glam vectors and quaternions, fieldless enums, arrays of numbers) is a zero-copy
   column in TS systems, with change ticks. Fields bevy-ts cannot read (`Duration`, `String`,
-  nested structs) are holes: never visible to TS systems and never written by them. `Time` is not a column: each
+  nested structs) are holes: never columns and never in `q.tables`, read and written on rows
+  through reflection (below). `Time` is not a column: each
   clock is a value built per run (docs/time.md). Enum variant bytes are read from the
   build, never assumed; `bool`, enum and `Entity` fields are written only through accessors.
   Components declared immutable are read-only. A type whose holes may own heap data is never
@@ -118,7 +119,8 @@ the field's address minus the value's. No `repr(C)` and no code per type.
   and the fields it leaves out keep their default (`AmbientLight.of({ brightness: 400 })` stays
   white).
 - **Reflect tier**: a type with no plain-data field is typed in TS and reachable from TSX, the
-  protocol and `With`/`Without` filters, never as query data.
+  protocol, `With`/`Without` filters, and query and `Res` data read through reflection (below);
+  never a column.
 - A Rust component is named by its type path, or by its short name when only one registered type
   has it. Two types with one short name (`game::a::Health`, `game::b::Health`) each keep their
   layout under their path; the bare short name fails the load, naming both paths.
@@ -154,7 +156,7 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
 - A layout-tier component's holes that reflection can write (a `Color`, an enum with data, an
   `Option`, a nested struct) are TSX props: `<DirectionalLight illuminance={8000}
   color={hex("#ffd7a8")} />` writes `illuminance` from bytes and `color` through reflection, on
-  insert and whenever it changes. TS systems still never see them. The prebuilt engine has Bevy's
+  insert and whenever it changes. The prebuilt engine has Bevy's
   soft shadows (`experimental_pbr_pcss`), so a sun takes `soft_shadow_size={0.5}` (`null` for hard
   shadows), and `PointLight` and `SpotLight` have the plain `bool` column `soft_shadows_enabled`. An
   opaque hole (`usize`, `Duration`) is written by its reflected serde; a hole of a type on the
@@ -162,6 +164,39 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
 - Scripts insert the same values through commands: `Projection.of({ Orthographic: {} })`, and a
   layout-tier `.of` that sets holes (`DirectionalLight.of({ illuminance: 8000, color })`)
   ([reflection.md](reflection.md#from-scripts)).
+
+### Reflected rows in TS systems
+
+A reflect-tier component is query data (`Query<[Projection]>`, `Mut<Projection>`,
+`Option<Projection>`) and a reflect-tier resource is `Res`/`ResMut` data. Its row has `value`, the
+whole value in the shape TSX takes (`{ Perspective: { fov, ... } }`), and a struct's fields too
+(`weapon.name`). A layout-tier row has a getter and setter per hole (`light.color`). Neither is
+ever a column: `q.tables` refuses them.
+
+```ts
+export function ortho(q: Query<[Mut<Projection>], With<Camera3d>>) {
+  q.each((p) => {
+    if ("Perspective" in p.value) p.value = { Orthographic: {} };
+  });
+}
+```
+
+- A read is cached across runs, keyed by the component's changed tick: a row nothing changed
+  returns the cached value with no call into Rust. A row the system never reads costs nothing.
+  On a miss, one host call encodes the value along a binary codec compiled once per type from its
+  `TypeInfo` (`bevy_ts::reflect_codec`); JS decodes it with a function generated from the same
+  ops. A kind the ops cannot express (sets, maps with other keys, handles, opaque serde types) is
+  embedded JSON. The cache is dropped on every reload.
+- A read value is shared with the cache: treat it as read-only on a read row. On a `Mut` row,
+  `value` (or a hole) gives a copy; changing it in place (`p.value.Orthographic.scale = 2`) writes
+  it back at the end of the run.
+- An assignment (`p.value = ...`, `weapon.name = "laser"`, `light.color = "#ffd7a8"`) writes at
+  once, through the same writer as TSX: over the default, every form TSX takes. It marks the
+  component changed (`Changed<Projection>` sees the row), never moves the entity, and leaves open
+  column views valid. A component Bevy computes (`GlobalTransform`, `ComputedNode`) throws naming
+  it.
+- `ref.get(C)` in TSX reads reflect-tier components and holes too, and re-runs its binding when
+  they change.
 
 Colours have one parser (`bevy_ts::color`), used by every colour bevy-ts takes: TSX props, `<mesh
 color>`, `<material color>`, UI colours, script-material `color` params and script commands. It takes a hex
