@@ -532,16 +532,80 @@ export type MeshProps = (
   color?: ColorValue;
 };
 
+/** A texture's UV channel. */
+export type UvChannel = "uv0" | "uv1";
+/** A face to cull. */
+export type Face = "back" | "front";
+/** `ParallaxMappingMethod`: one sample, or a binary search of up to `maxSteps`. */
+export type ParallaxMappingMethod = "occlusion" | { relief: { maxSteps: number } };
+/** `OpaqueRendererMethod`. */
+export type OpaqueRendererMethod = "forward" | "deferred" | "auto";
+/** `Affine2::from_scale_angle_translation`; unset parts are identity. */
+export interface UvTransform {
+  scale?: [number, number];
+  /** Radians. */
+  rotation?: number;
+  translation?: [number, number];
+}
+
+/**
+ * `<material>`: a `StandardMaterial`, every field under its Bevy name in camelCase (`color` is
+ * `base_color`, `roughness` is `perceptual_roughness`). A texture is an asset path: base colour,
+ * emissive load as sRGB, the rest as linear data.
+ */
 export interface MaterialProps {
   color?: ColorValue;
-  metallic?: number;
-  roughness?: number;
+  baseColorChannel?: UvChannel;
+  baseColorTexture?: string;
   emissive?: ColorValue;
+  emissiveExposureWeight?: number;
+  emissiveChannel?: UvChannel;
+  emissiveTexture?: string;
+  roughness?: number;
+  metallic?: number;
+  metallicRoughnessChannel?: UvChannel;
+  metallicRoughnessTexture?: string;
+  reflectance?: number;
+  specularTint?: ColorValue;
+  diffuseTransmission?: number;
+  specularTransmission?: number;
+  thickness?: number;
+  ior?: number;
+  attenuationDistance?: number;
+  attenuationColor?: ColorValue;
+  normalMapChannel?: UvChannel;
+  /** Gives the entity's `<mesh>` vertex tangents. */
+  normalMapTexture?: string;
+  flipNormalMapY?: boolean;
+  occlusionChannel?: UvChannel;
+  occlusionTexture?: string;
+  clearcoat?: number;
+  clearcoatPerceptualRoughness?: number;
+  /** Non-zero gives the entity's `<mesh>` vertex tangents. */
+  anisotropyStrength?: number;
+  /** Radians. */
+  anisotropyRotation?: number;
+  /** Pair with `cullMode={null}` to draw back faces. */
+  doubleSided?: boolean;
+  /** `null` culls nothing. */
+  cullMode?: Face | null;
   unlit?: boolean;
   /** Replaces `color`'s alpha, 0 to 1. To fade over time, use `MaterialAlpha` instead. */
   alpha?: number;
   /** Unset: `"blend"` when the alpha is below 1, `"opaque"` otherwise. */
   alphaMode?: AlphaMode;
+  fogEnabled?: boolean;
+  depthBias?: number;
+  depthMap?: string;
+  parallaxDepthScale?: number;
+  parallaxMappingMethod?: ParallaxMappingMethod;
+  maxParallaxLayerCount?: number;
+  lightmapExposure?: number;
+  opaqueRenderMethod?: OpaqueRendererMethod;
+  /** 0 to 255. */
+  deferredLightingPassId?: number;
+  /** A scale above 1 clamps rather than tiles: textures sample clamped to the edge. */
+  uvTransform?: UvTransform;
   kind?: never;
 }
 

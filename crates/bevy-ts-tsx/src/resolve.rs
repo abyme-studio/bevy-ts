@@ -47,7 +47,7 @@ pub enum Target {
     Native { id: ComponentId, layout: ComponentLayout, defaults: Vec<u8>, type_path: Option<String> },
     Name,
     Mesh(MeshProps),
-    Material(MaterialProps),
+    Material(Box<MaterialProps>),
     /// `<material kind={K} ...params />`: a script material instance of kind `kind`. On a glTF
     /// scene root, `gltfMaterial` limits it to the scene's meshes with that material name.
     ScriptMaterial { kind: String, props: Map<String, Value>, gltf_material: Option<String> },
@@ -366,7 +366,7 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
             let props: MaterialProps = parse_props(c)?;
             props.check().map_err(|m| err(format!("<material>: {m}"), &c.source))?;
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-            Ok(resolved(Target::Material(props), (controlled, BTreeMap::new(), BTreeMap::new())))
+            Ok(resolved(Target::Material(Box::new(props)), (controlled, BTreeMap::new(), BTreeMap::new())))
         }
         ComponentKind::Intrinsic => {
             let kind = UiKind::from_tag(&c.ty).ok_or_else(|| err(format!("unknown intrinsic <{}>", c.ty), &c.source))?;

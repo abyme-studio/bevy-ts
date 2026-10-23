@@ -1,10 +1,10 @@
 ## 1. Before building
 
-- [ ] 1.1 Rebase onto main once material-alpha lands
+- [x] 1.1 Rebase onto main once material-alpha lands
 
 ## 2. `<material>` fields (`crates/bevy-ts-tsx`)
 
-- [ ] 2.1 `Cargo.toml`: the four Bevy texture features off again (design decision 8)
+- [x] 2.1 `Cargo.toml`: the four Bevy texture features off again (design decision 8)
 - [x] 2.2 `intrinsics.rs`: `MaterialProps` gains every prop in the design's coverage table; serde enums (`rename_all = "camelCase"`) for UV channel, `cullMode` (`Option`), `opaqueRenderMethod`, `parallaxMappingMethod`; a `UvTransform { scale, rotation, translation }` struct
 - [x] 2.3 `check()`: finite numbers, colours through `color()`, non-empty texture paths
 - [x] 2.4 `material()` sets each field; textures load through the `AssetServer`, sRGB for base colour, emissive and specular tint, `is_srgb: false` for the rest; no `AssetServer` with a texture set fails at the element
@@ -27,7 +27,7 @@
 
 - [x] 5.1 `bench/standard-material-features/`: the arena plus 100 distinct `<material>`s (textured, normal-mapped), built with the four features on and off, 3 runs per arm, frame time and GPU time; results and the command in its `results/`
 - [x] 5.2 Count the pipeline's textures and samplers against `wgpu::Limits::default()`: 18 and 18 with the features on, past 16 (bench results). lead@bevy-ts dropped the features
-- [ ] 5.3 `crates/bevy-ts-cli/tests/standard_material_limits.rs` asserts the opaque and prepass pipelines are created on a device held to the default limits, with every texture prop set
-- [ ] 5.4 The 18 blocked props removed from `MaterialProps`, `material()`, the tangent trigger (`clearcoatNormalTexture`, `anisotropyTexture`), the texture colour-space list, `jsx-runtime.d.ts`, `elements.tsx` and the tests; `elements.tsx` checks a blocked prop is a type error
-- [ ] 5.5 `docs/materials.md`: a note that the nine textures are blocked on Bevy, with the limit counts, the benchmark's no-cost result and the upstream issue link
+- [x] 5.3 `crates/bevy-ts-cli/tests/standard_material_limits.rs` asserts the opaque and prepass pipelines are created on a device held to the default limits, with every texture prop set
+- [x] 5.4 The 18 blocked props removed from `MaterialProps`, `material()`, the tangent trigger (`clearcoatNormalTexture`, `anisotropyTexture`), the texture colour-space list, `jsx-runtime.d.ts`, `elements.tsx` and the tests; `elements.tsx` checks a blocked prop is a type error
+- [x] 5.5 `docs/materials.md`: a note that the nine textures are blocked on Bevy, with the limit counts, the benchmark's no-cost result and the upstream issue link
 - [ ] 5.6 Fill `UPSTREAM_ISSUE_URL` in `design.md` with the Bevy issue (found or drafted)
