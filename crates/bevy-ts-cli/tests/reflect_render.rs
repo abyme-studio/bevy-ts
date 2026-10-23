@@ -155,7 +155,7 @@ fn a_warm_light_colour_warms_the_lit_pixel() {
     write(&dir, "game.tsx", &lit("srgb(1, 0.6, 0.3)"));
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
     let world = app.world_mut();
-    let l = world.query::<&DirectionalLight>().single(world).unwrap().clone();
+    let l = *world.query::<&DirectionalLight>().single(world).unwrap();
     assert_eq!(l.color, Color::srgb(1.0, 0.6, 0.3), "the reload wrote the colour");
     let warm = picture(&mut app, |i| {
         let [r, _, b] = px(i, W / 2, H / 2);
