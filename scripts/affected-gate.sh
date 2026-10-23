@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The gate a branch lands on: native-gate.sh's steps for only what
+# land's check on each batch (.abyme/land.ts): native-gate.sh's steps for only what
 # changed since LAND_BASE (default: the merge base with main), as docs/check-slots.md lists.
 # Clippy and the tests run for the changed crates and every workspace crate that depends on them.
 # --full runs every step on the whole workspace (native-gate.sh). --plan prints what would run.
