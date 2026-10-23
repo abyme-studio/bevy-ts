@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: A standard material takes every StandardMaterial field
-`<material>` without `kind` SHALL take a prop for every field of Bevy 0.20's `StandardMaterial`, named as the field in camelCase, except the fields it already names otherwise (`color` for `base_color`, `roughness` for `perceptual_roughness`) and `alpha_mode` (material-alpha's `alphaMode`). An unset prop SHALL leave the field at `StandardMaterial::default()`. Numbers SHALL be finite. Colours (`specularTint`, `attenuationColor`) SHALL take the forms `color` takes. Enum props SHALL take lowercase camelCase names, as `alphaMode` does: `cullMode` is `"back"`, `"front"` or `null` (no culling); a UV channel prop is `"uv0"` or `"uv1"`; `opaqueRenderMethod` is `"forward"`, `"deferred"` or `"auto"`; `parallaxMappingMethod` is `"occlusion"` or `{ relief: { maxSteps } }`. `uvTransform` SHALL be `{ scale?: [x, y], rotation?: radians, translation?: [x, y] }`, built as `Affine2::from_scale_angle_translation` with unset parts at identity. An unknown prop, a non-finite number, a bad colour, an unknown enum name or a malformed `uvTransform` SHALL fail the load at the element. Equal props SHALL share one material, as every `<material>` does.
+`<material>` without `kind` SHALL take a prop for every field of Bevy 0.20's `StandardMaterial` that Bevy compiles with its default features, named as the field in camelCase, except the fields it already names otherwise (`color` for `base_color`, `roughness` for `perceptual_roughness`) and `alpha_mode` (material-alpha's `alphaMode`). The textures and UV channels behind Bevy's `pbr_transmission_textures`, `pbr_specular_textures`, `pbr_multi_layer_material_textures` and `pbr_anisotropy_texture` features SHALL NOT be props, and those features SHALL stay off: with them on, Bevy's opaque pipeline binds more sampled textures and samplers than `wgpu::Limits::default()` allows. An unset prop SHALL leave the field at `StandardMaterial::default()`. Numbers SHALL be finite. Colours (`specularTint`, `attenuationColor`) SHALL take the forms `color` takes. Enum props SHALL take lowercase camelCase names, as `alphaMode` does: `cullMode` is `"back"`, `"front"` or `null` (no culling); a UV channel prop is `"uv0"` or `"uv1"`; `opaqueRenderMethod` is `"forward"`, `"deferred"` or `"auto"`; `parallaxMappingMethod` is `"occlusion"` or `{ relief: { maxSteps } }`. `uvTransform` SHALL be `{ scale?: [x, y], rotation?: radians, translation?: [x, y] }`, built as `Affine2::from_scale_angle_translation` with unset parts at identity. An unknown prop, a non-finite number, a bad colour, an unknown enum name or a malformed `uvTransform` SHALL fail the load at the element. Equal props SHALL share one material, as every `<material>` does.
 
 #### Scenario: A two-sided leaf
 - **WHEN** a material has `doubleSided` and `cullMode={null}`
@@ -27,8 +27,16 @@
 - **WHEN** two entities have `<material color="#fff" baseColorTexture="t/crate.png" doubleSided />`
 - **THEN** both hold the same `StandardMaterial` handle
 
+#### Scenario: A blocked texture
+- **WHEN** a material has `clearcoatTexture="textures/coat.png"`
+- **THEN** the load fails at that element as an unknown prop
+
+#### Scenario: The pipeline fits the default limits
+- **WHEN** a cube's material sets every texture prop, on a device held to `wgpu::Limits::default()`
+- **THEN** its opaque and prepass pipelines are created
+
 ### Requirement: A texture is an asset path
-Every `Option<Handle<Image>>` field SHALL be a prop taking an asset path, loaded by the `AssetServer`. `baseColorTexture`, `emissiveTexture` and `specularTintTexture` SHALL load as sRGB; every other texture SHALL load as linear data (`is_srgb: false`), as Bevy's glTF loader does. An empty path SHALL fail the load at the element, and so SHALL a texture with no `AssetServer`. A path that fails to load SHALL be reported as an error at the element, naming the path. A texture file saved again SHALL redraw with no TS change, by Bevy's asset reload.
+Every `Option<Handle<Image>>` field that is a prop SHALL take an asset path, loaded by the `AssetServer`. `baseColorTexture` and `emissiveTexture` SHALL load as sRGB; every other texture SHALL load as linear data (`is_srgb: false`), as Bevy's glTF loader does. An empty path SHALL fail the load at the element, and so SHALL a texture with no `AssetServer`. A path that fails to load SHALL be reported as an error at the element, naming the path. A texture file saved again SHALL redraw with no TS change, by Bevy's asset reload.
 
 #### Scenario: A textured crate
 - **WHEN** an entity has `<mesh shape="cuboid" />` and `<material baseColorTexture="textures/crate.png" />`
@@ -43,7 +51,7 @@ Every `Option<Handle<Image>>` field SHALL be a prop taking an asset path, loaded
 - **THEN** an error at that element names `textures/nope.png`
 
 ### Requirement: A mesh shape gets tangents when its material needs them
-A `<mesh>` SHALL carry vertex tangents exactly when the `<material>` on its entity sets `normalMapTexture`, `clearcoatNormalTexture`, `anisotropyTexture` or a non-zero `anisotropyStrength`; Bevy ignores those on a mesh without tangents. The tangent mesh SHALL be built once per shape (per `<mesh>` props) and shared by every entity with that shape and such a material. A `<mesh>` whose material does not need them SHALL keep the plain shared mesh, with no tangent attribute. The swap SHALL follow either element changing: a material that gains a normal map moves its entity to the tangent mesh, one that loses it moves back, and a `<mesh>` inserted after its material gets the right variant. A shape whose tangents cannot be generated SHALL keep its plain mesh, with no error.
+A `<mesh>` SHALL carry vertex tangents exactly when the `<material>` on its entity sets `normalMapTexture` or a non-zero `anisotropyStrength`; Bevy ignores those on a mesh without tangents. The tangent mesh SHALL be built once per shape (per `<mesh>` props) and shared by every entity with that shape and such a material. A `<mesh>` whose material does not need them SHALL keep the plain shared mesh, with no tangent attribute. The swap SHALL follow either element changing: a material that gains a normal map moves its entity to the tangent mesh, one that loses it moves back, and a `<mesh>` inserted after its material gets the right variant. A shape whose tangents cannot be generated SHALL keep its plain mesh, with no error.
 
 #### Scenario: A plain mesh has no tangents
 - **WHEN** an entity has `<mesh shape="cuboid" />` and `<material color="#f00" />`
