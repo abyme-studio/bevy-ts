@@ -55,9 +55,9 @@ pub fn capture(world: &mut World, path: impl Into<PathBuf>) -> Entity {
         .id()
 }
 
-/// Shots `bevy-ts/screenshot` is serving, keyed by params.
+/// Shots `bevy-ts/screenshot` is serving, keyed by params, and the updates counted so far.
 #[derive(Resource, Default)]
-pub(crate) struct Shots(HashMap<String, Served>);
+pub(crate) struct Shots(HashMap<String, Served>, u64);
 
 struct Served {
     state: Progress,
@@ -67,8 +67,10 @@ struct Served {
 
 enum Progress {
     Pending(Entity),
-    /// Answered. A request still open after its answer, or an identical one, gets it again.
-    Done(BrpResult),
+    /// Answered in update `at`, to `owed` requests. Bevy calls each once more in the next update
+    /// (its send then fails, and Bevy drops it): those calls get the answer again, as does an
+    /// identical request in update `at`. Any other call is a new request and takes a new shot.
+    Done { answer: BrpResult, at: u64, owed: u32 },
 }
 
 /// Checks a path before anything is captured.
@@ -90,10 +92,13 @@ fn check(path: &str) -> Result<PathBuf, BrpError> {
 /// `bevy-ts/screenshot`, a deferred method: `None` until the shot is written or fails.
 pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
     let key = p.as_ref().map(Value::to_string).unwrap_or_default();
+    let update = world.resource::<Shots>().1;
     let state = world.resource_mut::<Shots>().0.remove(&key).map(|s| s.state);
     let state = match state {
-        Some(s) => s,
-        None => {
+        Some(Progress::Done { answer, at, owed }) if at == update => Progress::Done { answer, at, owed: owed + 1 },
+        Some(Progress::Done { answer, at, owed }) if at + 1 == update && owed > 0 => Progress::Done { answer, at, owed: owed - 1 },
+        Some(Progress::Pending(e)) => Progress::Pending(e),
+        _ => {
             let params: protocol::ScreenshotParams = required(p)?;
             let path = check(&params.path)?;
             Progress::Pending(capture(world, path))
@@ -105,14 +110,14 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
                 if r.is_err() {
                     abandon(world, e);
                 }
-                Progress::Done(r)
+                Progress::Done { answer: r, at: update, owed: 1 }
             }
             None => Progress::Pending(e),
         },
         done => done,
     };
     let answer = match &state {
-        Progress::Done(r) => Some(r.clone()),
+        Progress::Done { answer, .. } => Some(answer.clone()),
         Progress::Pending(_) => None,
     };
     world.resource_mut::<Shots>().0.insert(key, Served { state, touched: true });
@@ -142,7 +147,9 @@ fn result(world: &World, e: Entity) -> Option<BrpResult> {
 }
 
 /// Gives up on a shot so nothing writes it. One Bevy is reading back keeps its entity, without
-/// its observers, for Bevy to finish and despawn: Bevy inserts `Captured` on it when it does.
+/// its observers, for Bevy to finish and despawn: Bevy inserts `Captured` on it when it does. A
+/// viewport shot with no viewer resolves when one attaches; a shot of a window Bevy never captures
+/// (one with no wgpu surface and no ring) keeps its entity.
 fn abandon(world: &mut World, e: Entity) {
     let Ok(mut entity) = world.get_entity_mut(e) else { return };
     if !entity.contains::<Capturing>() || entity.contains::<Captured>() {
@@ -158,6 +165,7 @@ fn abandon(world: &mut World, e: Entity) {
 
 /// Forgets the shots of requests that closed, and the shot entities still waiting for them.
 pub(crate) fn forget_closed(mut shots: ResMut<Shots>, mut commands: Commands) {
+    shots.1 += 1;
     shots.0.retain(|_, s| {
         let keep = std::mem::take(&mut s.touched);
         if !keep && let Progress::Pending(e) = s.state {

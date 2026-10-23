@@ -229,3 +229,20 @@ fn a_dev_engine_takes_its_env_shot_once_and_answers_the_method_over_http_plainly
     files.sort();
     assert_eq!(files, ["env.png", "http.png"]);
 }
+
+/// A walk reuses one path: a repeat shot, on the next update or the one after, is a new shot, not
+/// the answer Bevy's last call for the first one got again.
+#[test]
+fn a_repeat_shot_to_the_same_path_is_a_new_shot() {
+    let (_, mut app) = engine("screenshot-repeat");
+    let dir = shots_dir("screenshot-repeat");
+    let path = dir.join("again.png");
+    let params = json!({ "path": path });
+    let first = ask(&mut app, "bevy-ts/screenshot", params.clone()).unwrap();
+    let next = ask(&mut app, "bevy-ts/screenshot", params.clone()).unwrap();
+    app.update();
+    let after = ask(&mut app, "bevy-ts/screenshot", params).unwrap();
+    let frames: Vec<u64> = [&first, &next, &after].iter().map(|r| r["frame"].as_u64().unwrap()).collect();
+    assert!(frames[0] < frames[1] && frames[1] < frames[2], "each a new shot: {frames:?}");
+    assert_eq!(png(&path).width(), SIZE.0);
+}
