@@ -70,8 +70,13 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    - `{ "$of": type_path, "props": {...} }`: an asset value (decision 6).
    - `{ "$load": path, "settings": {...} }`: a path with loader settings (decision 9).
    `read` of a handle in the ref table gives its `{ "$asset": n }`; other handles keep reflect-coverage's
-   rule (path, else `null`). Without a hook (`Cx` from a check), the three shapes are checked for
-   form only. The TS type of a `Handle<T>` slot becomes `string | AssetRef<T> | AssetValue<T> |
+   rule (path, else `null`). With no hook, any of the three shapes fails naming the handle type
+   (reflect-coverage's rule): nothing could apply it. So every check pass that may meet one
+   installs the hook in check mode: TSX's load-time `check` and the dry run before `add`/`set`. In
+   check mode the hook checks each shape's form, that a ref is live and of the slot's asset type,
+   and that a value's props write over its type's default; it builds and loads nothing. No pass
+   runs without the hook and must accept them: the hole check round-trips `read` output, which
+   holds no refs, and TS type-checking runs no Rust. The TS type of a `Handle<T>` slot becomes `string | AssetRef<T> | AssetValue<T> |
    null`; reflect-coverage owns `types.rs`'s handle arm and takes that type.
    *Alternative:* an `"asset:7"` string. Rejected: a real path could look like it, and settings do
    not fit in a string.
