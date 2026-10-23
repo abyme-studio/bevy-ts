@@ -358,6 +358,9 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
         ComponentSource::Ts => ts(&r.name).ok_or_else(|| format!("no component named {}", r.name)),
         ComponentSource::Rust => {
             if let Some(n) = native.get(&r.name).or_else(|| native.iter().find(|n| n.type_path == r.name)) {
+                if n.resource {
+                    return Err(format!("{} is a resource, not a component; take Res<{}>", r.name, r.name));
+                }
                 return Ok((n.id, n.layout.size));
             }
             let Some(id) = rust_component_by_name(world, &r.name) else {

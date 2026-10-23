@@ -133,11 +133,12 @@ fn unusable_resources_fail_the_load_naming_the_system_and_resource() {
         ("ResMut<Seed>", "ResMut<Seed>: Seed is immutable"),
         ("Res<Gust>", "Gust names more than one Rust type (it::rust_resources::a::Gust, it::rust_resources::b::Gust)"),
         ("Res<Nope>", "Res<Nope>: no resource named Nope"),
+        ("Query<[AmbientData]>", "GlobalAmbientLight is a resource, not a component"),
     ];
     for (i, (ty, want)) in cases.iter().enumerate() {
         // Transform is a component class in JS too; name it through a Rust-side spelling.
         let ty = ty.replace("Res<Transform>", "Res<TransformRes>");
-        let extra = "export class TransformRes extends nativeResource(\"Transform\", { v: f32 }) {}\n";
+        let extra = "import { nativeComponent } from \"bevy-ts\";\nimport type { Query } from \"bevy-ts\";\nexport class TransformRes extends nativeResource(\"Transform\", { v: f32 }) {}\nexport class AmbientData extends nativeComponent(\"GlobalAmbientLight\", { brightness: f32 }) {}\n";
         let body = format!("{extra}export function s(r: {ty}) {{}}\napp.addSystems(Update, s);\n");
         let dir = project(&format!("rust-res-refuse-{i}"), &[("game.ts", &format!("{HEAD}{body}"))]);
         let mut app = with_types(&dir);
@@ -240,4 +241,17 @@ app.addSystems(Update, systems(guarded).runIf(resourceExists(UiScale)));
     app.insert_resource(UiScale(4.0));
     updates(&mut app, 2);
     assert!(messages(&app).iter().any(|m| m == "guarded 4"), "{:?}", messages(&app));
+}
+
+#[test]
+fn resource_exists_refuses_an_ambiguous_short_name() {
+    let body = r#"
+import { resourceExists, systems } from "bevy-ts";
+export function s() {}
+app.addSystems(Update, systems(s).runIf(resourceExists(Gust)));
+"#;
+    let dir = project("rust-res-exists-ambiguous", &[("game.ts", &format!("{HEAD}{body}"))]);
+    let mut app = with_types(&dir);
+    let r = reload(&mut app, false);
+    assert!(r.errors.iter().any(|e| e.message.contains("resourceExists(Gust): Gust names more than one Rust type")), "{:?}", r.errors);
 }

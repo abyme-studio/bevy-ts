@@ -214,7 +214,15 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             Condition::OnMessage { index, slot: slot() }
         }
         ConditionDecl::RunOnce => Condition::RunOnce { slot: slot() },
-        ConditionDecl::ResourceExists { resource } => Condition::ResourceExists { id: resource_id(world, resource, c.ts) },
+        ConditionDecl::ResourceExists { resource } => {
+            // A short name several Rust types share refuses, as `Res<R>` does.
+            if (c.ts)(resource).is_none()
+                && let Some(paths) = world.resource::<NativeLayouts>().ambiguous(resource)
+            {
+                return Err(format!("resourceExists({resource}): {resource} names more than one Rust type ({}); use its type path", paths.join(", ")));
+            }
+            Condition::ResourceExists { id: resource_id(world, resource, c.ts) }
+        }
         ConditionDecl::ResourceAdded { resource }
         | ConditionDecl::ResourceChanged { resource }
         | ConditionDecl::ResourceExistsAndChanged { resource }
