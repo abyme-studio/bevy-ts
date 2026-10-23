@@ -1,9 +1,9 @@
 # Levels at scale: load, reload, expansion and writes
 
-Task 6.3 of `openspec/changes/levels`. Measured 2026-10-20 on the shared Apple M5 Max (other agents building), release, V8 15.0, Bevy 0.20, with `crates/bevy-ts-cli/tests/levels_bench.rs`:
+Task 6.3 of `openspec/changes/levels`. Measured 2026-10-20 on the shared Apple M5 Max (other agents building), release, V8 15.0, Bevy 0.20, with `crates/bevy-ts-cli/tests/it/levels_bench.rs`:
 
 ```
-cargo test --release -p bevy-ts-cli --test levels_bench -- --ignored --nocapture
+cargo test --release -p bevy-ts-cli --test it levels_bench:: -- --ignored --nocapture
 ```
 
 The level is N `@enemies::Grunt { @hp: … }` instances, each with a `Transform` patch, one per entity separated by `--`. `Grunt` is a TS scene component whose `scene` makes a `Health` with `initialHp`/`max` and one keyed child, so each instance is two entities.

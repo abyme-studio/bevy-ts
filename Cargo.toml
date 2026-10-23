@@ -27,8 +27,13 @@ bevy-ts-levels = { path = "crates/bevy-ts-levels" }
 bevy-ts-material = { path = "crates/bevy-ts-material" }
 bevy-ts-animation = { path = "crates/bevy-ts-animation" }
 
+# Line tables only: backtraces keep file and line, without the full debug info that made most of
+# target/ (docs/build-cache.md). Dependencies carry none. The test profile inherits these.
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false

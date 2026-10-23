@@ -19,7 +19,7 @@ abyme's three.js viewer does?
   `bench/asset-preview/`, the same model in a headless Chromium (abyme's browser) on Metal through
   ANGLE. Headless Chrome throttles `requestAnimationFrame` to ~10 Hz, so it draws on a timer at
   120 Hz, at 1600×1200 (`?hz=120&dpr=2`), with the camera turning so every frame is new work.
-- **Harness:** `crates/bevy-ts-cli/tests/preview_bench.rs` via `scripts/preview-bench.sh`, one engine
+- **Harness:** `crates/bevy-ts-cli/tests/it/preview_bench.rs` via `scripts/preview-bench.sh`, one engine
   per scenario: 4 s warm-up, then 10 s measured. `viewport_stats` gained `frameTimes` (CPU: the
   engine's update time; GPU: each frame from submit to GPU completion, so queue wait is included)
   and `gpuAllocatedBytes` (Metal `currentAllocatedSize`), over the last 1000 frames. RSS and CPU

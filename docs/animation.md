@@ -81,7 +81,7 @@ as in Bevy ([docs/native.md](native.md)).
 
 ## Cost
 
-Measured by `scripts/animation-bench.sh` (`crates/bevy-ts-cli/tests/animation_bench.rs`): the
+Measured by `scripts/animation-bench.sh` (`crates/bevy-ts-cli/tests/it/animation_bench.rs`): the
 release engine, the game viewport ticked at 120 Hz, `Fox.glb`, one arm per run, 3 runs each.
 
 - **A**: a Rust plugin spawning N foxes the `many_foxes` way, no TS.

@@ -1,9 +1,9 @@
 # TSX at scale: mount, reload and HUD cost
 
-Task 8.3 of `openspec/changes/archive/2026-10-21-tsx`. Measured 2026-10-20 on the shared Apple M5 Max (other agents building), release, V8 15.0, Bevy 0.20, with `crates/bevy-ts-cli/tests/tsx_scale.rs`:
+Task 8.3 of `openspec/changes/archive/2026-10-21-tsx`. Measured 2026-10-20 on the shared Apple M5 Max (other agents building), release, V8 15.0, Bevy 0.20, with `crates/bevy-ts-cli/tests/it/tsx_scale.rs`:
 
 ```
-cargo test --release -p bevy-ts-cli --test tsx_scale -- --ignored --nocapture --test-threads 1
+cargo test --release -p bevy-ts-cli --test it tsx_scale:: -- --ignored --nocapture --test-threads 1
 ```
 
 The scene is N `Enemy` prefabs (`<entity name>`, `Transform`, a TS `Health` with `initialHp`/`max`, `<mesh shape="cuboid" color>`), a player, and a HUD whose `<text>` binds the player's `Health` with no hook. Reload times are `bevy-ts/reload`'s: compile, load (JS evaluates every scene and describes it), the generation's check and apply.
@@ -21,4 +21,4 @@ What is left, if 10,000-entity scenes become a target: the section is JSON that 
 
 The HUD row is the per-frame tsx work in `PostUpdate` when the player's `Health` changed (one host call, one `Text` written) and when nothing it reads changed (no call: the cost of checking the subscribed pair's tick). It does not grow with the number of enemies, whose `Health` the HUD does not read.
 
-Bindings on native-layout fields, per site (decision 11), are measured separately: 10,000 bound instances with 100 changed per frame cost 170 µs a frame against 125 µs for a TS system doing the same (`crates/bevy-ts-cli/tests/tsx_sites.rs`, design.md decision 11).
+Bindings on native-layout fields, per site (decision 11), are measured separately: 10,000 bound instances with 100 changed per frame cost 170 µs a frame against 125 µs for a TS system doing the same (`crates/bevy-ts-cli/tests/it/tsx_sites.rs`, design.md decision 11).

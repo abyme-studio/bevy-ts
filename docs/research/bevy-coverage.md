@@ -24,8 +24,8 @@ path, and a writable exported param, which most of them need, is refused by desi
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
-| TS components (layout columns) | idiomatic | `bevy-ts-cli/tests/systems.rs` `ts_writes_reach_rust_and_only_written_rows_are_changed` | — |
-| Rust layout-tier components as query data | idiomatic | `bevy-ts-cli/tests/native_components.rs` `a_ts_write_is_seen_by_rust_the_same_frame…` | — |
+| TS components (layout columns) | idiomatic | `bevy-ts-cli/tests/it/systems.rs` `ts_writes_reach_rust_and_only_written_rows_are_changed` | — |
+| Rust layout-tier components as query data | idiomatic | `bevy-ts-cli/tests/it/native_components.rs` `a_ts_write_is_seen_by_rust_the_same_frame…` | — |
 | Layout-tier holes (`Color`, enums with data, `Option`) | partial: TSX writes after reflect-enums-color; systems never see them | `bevy.d.ts` "Holes" comments | reflect-enums-color (TSX), reflect-coverage stage 3 (systems) |
 | Reflect-tier components in TSX, `With`/`Without` | idiomatic | `native_components.rs` `a_reflect_tier_component_is_a_tsx_element`; filters: no test | — |
 | Reflect-tier components from `Commands` (`Name`, `Camera3d`, `Disabled`) | missing: `idOf` throws, `runtime/core.js:2041` | no test | reflect-coverage stage 2 |
@@ -46,7 +46,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `spawnBatch`, `insertIfNew`, `retain`, `clear`, `cloneAndSpawn` | missing | — | new: `ecs-queries` |
 | 256 spawns per system run | partial (a limit Bevy does not have) | `bevy-ts/src/commands.rs:42` | new: `ecs-queries` (lift or document) |
 | `spawnNative` recipes `camera3d`, `directionalLight`, `cuboid` | hack | `bevy-ts/src/recipes.rs:79-109`; examples `cube`, `arena` use `camera3d` | reflect-coverage stage 2 removes them |
-| `custom(kind, payload)` | hack, kept for plugin opcodes | `bevy-ts/tests/plugin_api.rs` | — (a plugin seam, not a gameplay path) |
+| `custom(kind, payload)` | hack, kept for plugin opcodes | `bevy-ts/tests/it/plugin_api.rs` | — (a plugin seam, not a gameplay path) |
 | TS messages | idiomatic (TS queues, not Bevy `Messages<T>`) | `surface.rs` `two_readers_see_the_same_messages_once_and_they_expire` | — |
 | Reading Rust messages (`KeyboardInput`, `AssetEvent`, `WindowResized`, `CollisionEvent`) | missing; ports forward by hand (`plugin_api::write_message`) | `bevy-ts/src/systems.rs:470` | new: `rust-events` |
 | Writing Rust messages (`GamepadRumbleRequest`, `RequestRedraw`) | missing | — | new: `rust-events` |
@@ -61,7 +61,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `SubStates`, `ComputedStates`, `PreviousState`, `OnTransition`, `state_changed` | missing | — | new: `ecs-schedules` |
 | State-scoped entities (`DespawnOnExit`, `DisableOnExit`…) | missing: reflect tier, and TS states are not Bevy states | — | new: `ecs-schedules` |
 | Schedules `Startup`, `PreUpdate`, `Update`, `FixedUpdate`, `PostUpdate` | idiomatic | `surface.rs` `startup_runs_once_per_identity`; `systems.rs` `chain_after_before_sets_and_stages_order_systems` | — |
-| Schedules `First`, `Last`, `PreStartup`, `PostStartup`, `FixedFirst`/`PreUpdate`/`PostUpdate`/`Last`, custom | missing (reachable only through a slot around a Rust set) | `bevy-ts/tests/slots.rs` | new: `ecs-schedules` |
+| Schedules `First`, `Last`, `PreStartup`, `PostStartup`, `FixedFirst`/`PreUpdate`/`PostUpdate`/`Last`, custom | missing (reachable only through a slot around a Rust set) | `bevy-ts/tests/it/slots.rs` | new: `ecs-schedules` |
 | Sets and ordering, Rust anchors | idiomatic | `systems.rs` as above | — |
 | Conditions `inState`, `resourceExists`, `onMessage`, `not` | idiomatic, evaluated in Rust | `surface.rs` `resource_exists_and_not_conditions`, `a_skipped_system_costs_no_js_call` | — |
 | Conditions `or`, `and` (explicit), `runOnce`, `resourceChanged`/`Added`/`Removed`/`Equals`, `anyWithComponent`, `anyComponentRemoved`, `conditionChanged`, a TS predicate | missing (several `runIf` AND together) | `core.js:1105` | new: `ecs-schedules` |
@@ -95,12 +95,12 @@ path, and a writable exported param, which most of them need, is refused by desi
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
 | Handles as asset paths in TSX and levels | idiomatic | `bevy-ts-tsx/src/reflected.rs:19` | — |
-| Hot reload of files | idiomatic (dev only, by design) | levels: `bevy-ts-levels/tests/levels.rs` `an_included_file_reloads_every_includer_copy`; textures and glTF: no test | — |
+| Hot reload of files | idiomatic (dev only, by design) | levels: `bevy-ts-levels/tests/it/levels.rs` `an_included_file_reloads_every_includer_copy`; textures and glTF: no test | — |
 | `AssetServer.load`, load state, `isLoadedWithDependencies` in systems | missing | — | new: `script-assets` |
 | `AssetEvent`, `AssetLoadFailedEvent` | missing | — | new: `rust-events` |
 | `Assets<T>` add and mutate (meshes, images, materials, atlas layouts) from TS | missing | — | new: `script-assets` |
 | Processing, meta files, custom loaders | Rust-side by nature | — | — (stays Rust) |
-| `.bsn` levels, TSX scenes, `SceneComponent` prefabs | idiomatic (bevy-ts's own `.bsn` loader; Bevy 0.20 has none) | `bevy-ts-levels/tests/levels.rs` | — |
+| `.bsn` levels, TSX scenes, `SceneComponent` prefabs | idiomatic (bevy-ts's own `.bsn` loader; Bevy 0.20 has none) | `bevy-ts-levels/tests/it/levels.rs` | — |
 | glTF scenes (`WorldAssetRoot`) | partial: TSX cannot place a newtype component today | — | script-gltf |
 | `DynamicWorld` save and load (save games) | missing | — | new: `world-saves` |
 

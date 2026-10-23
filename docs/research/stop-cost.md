@@ -3,10 +3,10 @@
 Task 6 of `openspec/changes/play-stop`. A Stop rebuilds the edit world from source: a fresh
 isolate, the live generation applied again, and every open level remounted. Measured 2026-10-23 on
 the shared Apple M5 Max with other agents building (load average 22 to 60), release, V8 15.0,
-Bevy 0.20, with `crates/bevy-ts-cli/tests/stop_bench.rs`:
+Bevy 0.20, with `crates/bevy-ts-cli/tests/it/stop_bench.rs`:
 
 ```
-cargo test --release -p bevy-ts-cli --test stop_bench -- --ignored --nocapture
+cargo test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture
 ```
 
 The level is the levels bench's (`docs/research/levels-scale.md`): N `@enemies::Grunt` instances,

@@ -1,0 +1,4 @@
+# A machine's ~/.cargo/config.toml beats Cargo.toml's profiles; one that sets `debug = false` strips
+# the line tables backtraces need. This config is the repo's, so it wins over the machine's.
+[profile.dev]
+debug = "line-tables-only"
