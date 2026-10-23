@@ -61,10 +61,11 @@ What is still missing:
    | `Mat2`/`Mat3`/`Mat3A`/`Mat4`, `Affine2`/`Affine3A` | flat array, column-major (glam's serde) | `number[]` tuple types |
    | `Isometry*`, `Rot2`, `Dir2`/`Dir3` | their reflected structs / inner vectors | interface / tuple |
    | `Duration` | seconds as a number; `write` also takes `{ secs, nanos }` | `number` |
+   | `Range<T>` (Bevy 0.20 registers it opaque, `Clone` only, no serde) | `{ start, end }`, each in `T`'s shape; written whole (`ColorGrading.global.midtones_range`) | `{ start: T; end: T }` |
    | `i64`, `u64`, `i128`, `u128`, `isize`, `usize` | number when within ±2^53, else a decimal string; `write` takes both | `number \| string` |
    | `Handle<T>` | its asset path, or `null` for a handle with none (a generated mesh); writing `null` keeps the default handle. A `HandleSlots` hook, when installed, goes first (below) | `string \| AssetRef<T> \| AssetValue<T> \| null` |
    | `Entity` | `Entity::to_bits` as a number, as TS systems use | `Entity` |
-   | Opaque with `ReflectSerialize`/`ReflectDeserialize` (`String`, `Range`, `char`, paths) | its serde JSON | from `registry.schema` |
+   | Opaque with `ReflectSerialize`/`ReflectDeserialize` (`String`, `char`, paths) | its serde JSON | from `registry.schema` |
    | Dynamic (`DynamicStruct` and kin, `Box<dyn PartialReflect>` fields) | read by its own reflect kind; written only when it represents a registered type | as represented |
 
    The `Handle` arm has one hook for both directions: `reflect_value::Cx` carries an optional
