@@ -696,8 +696,10 @@ impl crate::backend::HostCalls for WorldHost<'_> {
         self.params.call(self.world, self.ticks, self.regions, self.allowed, id, args, ret, slices)
     }
 
+    #[cfg_attr(not(feature = "pbr"), allow(unused_variables))]
     fn call_json(&mut self, name: &str, args: &str) -> Result<String, String> {
         match name.split_once('.') {
+            #[cfg(feature = "pbr")]
             Some(("assets", _)) => crate::reflect_asset::host_call(self.world, name, args),
             _ => Err(format!("no host service {name}")),
         }
