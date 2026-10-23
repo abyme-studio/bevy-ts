@@ -960,6 +960,12 @@ export declare class PlayAnimation extends Component {
 export declare const MissingComponents: Reflected<{ value: readonly ({ component: string; reason: "Unregistered" | "Failed" | "Mismatch"; message: string; fields: Record<string, string>; location: { file: string; line: number; column: number }; expected: { file: string; line: number; column: number } | null; misfit: Record<string, string>; overrides: readonly ({ path: unknown; fields: unknown })[]; scene: boolean })[] }>;
 export type MissingComponents = InstanceType<typeof MissingComponents>;
 
+export declare class MaterialAlpha extends Component {
+  static readonly path: "bevy_ts_material::alpha::MaterialAlpha";
+  static readonly native: true;
+  declare alpha: f32;
+}
+
 export declare const AccessibleLabel: Reflected<{ value: string }>;
 export type AccessibleLabel = InstanceType<typeof AccessibleLabel>;
 

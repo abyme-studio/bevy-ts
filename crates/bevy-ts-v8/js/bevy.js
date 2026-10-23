@@ -386,6 +386,8 @@ export class PlayAnimation extends nativeComponent("PlayAnimation", { repeat: bo
 
 export const MissingComponents = rustComponent("MissingComponents");
 
+export class MaterialAlpha extends nativeComponent("MaterialAlpha", { alpha: f32 }) {}
+
 export const AccessibleLabel = rustComponent("AccessibleLabel");
 
 export class AutoDirectionalNavigation extends nativeComponent("AutoDirectionalNavigation", { respect_tab_order: bool }) {}
