@@ -149,6 +149,7 @@ pub fn highest(mut paths: Vec<Vec<String>>) -> Vec<Vec<String>> {
 pub fn restore_root(world: &mut World, root: &str, paths: &[Vec<String>]) -> crate::tree::ReconcileStats {
     let Some(kept) = world.resource::<TsxTree>().roots.get(root).and_then(|s| s.resolved.clone()) else { return Default::default() };
     let paths = highest(paths.to_vec());
-    let items: Vec<(Vec<String>, Option<&RNode>)> = paths.iter().map(|p| (p.clone(), crate::reconcile::find_node(&kept, p))).collect();
+    let by_id = crate::reconcile::index(&kept);
+    let items: Vec<(Vec<String>, Option<&RNode>)> = paths.iter().map(|p| (p.clone(), by_id.get(&crate::desc::node_id(root, p)).copied())).collect();
     crate::reconcile::apply_at(world, root, &items, crate::reconcile::AtMode::Respawn)
 }

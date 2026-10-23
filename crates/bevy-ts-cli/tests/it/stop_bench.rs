@@ -1,7 +1,10 @@
-//! What a Stop costs (play-stop task 6.1): the levels bench's level at 1,000 and 10,000 instances,
-//! in the app `bevy-ts dev --viewport` builds. Each Stop end to end through `viewport_mode`, and
-//! its parts called one by one as Stop calls them: `OnExit(Play)`, the rebuild (a fresh isolate
-//! and the generation applied), the levels' restore and settle; then the next Play's `Startup`.
+//! What a Stop costs (play-stop task 6.1, stop-incremental task 6.1): the levels bench's level at
+//! 1,000 and 10,000 instances (2,000 and 20,000 entities), in the app `bevy-ts dev --viewport`
+//! builds, rendering on. Four arms, three Stops each: the full remount (the level made dirty, so
+//! it is not kept), and the restore with nothing touched, 100 enemies moved, and every one moved.
+//! Each Stop end to end through `viewport_mode`, then its parts called one by one as Stop calls
+//! them: the plan (scan, file hashes), `OnExit(Play)`, the rebuild (a fresh isolate and the
+//! generation applied), the restore and the settle. And the kept tree's memory.
 //! Ignored by default; run it in release:
 //! `cargo static test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture`.
 #![cfg(target_os = "macos")]
@@ -93,8 +96,105 @@ fn median(mut v: Vec<f64>) -> f64 {
     v[v.len() / 2]
 }
 
-/// One size: three end-to-end Stops, then three split ones; medians.
-fn run(n: usize) -> String {
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Arm {
+    Full,
+    Touched(usize),
+}
+
+const ROOT: &str = "level:levels/arena.bsn";
+
+fn grunt(app: &App, i: usize) -> Entity {
+    app.world().resource::<bevy_ts_tsx::TsxTree>().entity(bevy_ts_tsx::desc::node_id(ROOT, &[format!("G{i}")])).unwrap()
+}
+
+/// What the play does before the Stop: moves `k` enemies, or makes the level wait to compose so
+/// the Stop mounts it again.
+fn play(app: &mut App, n: usize, arm: Arm) {
+    mode(app, "play");
+    app.update();
+    match arm {
+        Arm::Full => app.world_mut().resource_mut::<Levels>().roots.get_mut("levels/arena.bsn").unwrap().dirty = true,
+        Arm::Touched(k) => {
+            for i in (0..n).step_by((n / k.max(1)).max(1)).take(k) {
+                let e = grunt(app, i);
+                app.world_mut().get_mut::<Transform>(e).unwrap().translation.y += 1.0;
+            }
+        }
+    }
+}
+
+/// Bytes the kept tree holds beyond the components it shares with the template cache.
+fn kept_bytes(app: &App) -> usize {
+    fn walk(nodes: &[bevy_ts_tsx::reconcile::RNode]) -> usize {
+        nodes
+            .iter()
+            .map(|n| {
+                let strings = |v: &[String]| v.iter().map(|s| s.capacity() + std::mem::size_of::<String>()).sum::<usize>();
+                std::mem::size_of::<bevy_ts_tsx::reconcile::RNode>() + strings(&n.path) + strings(&n.types) + n.source.len() * std::mem::size_of::<bevy_ts::backend::SourceLocation>() + n.source.iter().map(|l| l.file.capacity()).sum::<usize>() + walk(&n.children)
+            })
+            .sum()
+    }
+    app.world().resource::<bevy_ts_tsx::TsxTree>().roots[ROOT].resolved.as_deref().map_or(0, walk)
+}
+
+/// One size and arm: three end-to-end Stops, then three split ones.
+fn arm(app: &mut App, n: usize, arm: Arm) -> String {
+    let mut total = vec![];
+    let mut respawned = vec![];
+    for _ in 0..3 {
+        play(app, n, arm);
+        let t = Instant::now();
+        assert_eq!(mode(app, "edit")["started"], false);
+        total.push(ms(t));
+        respawned.push(app.world().resource::<bevy_ts_tsx::TsxTree>().last.spawned);
+        assert!(app.world().resource::<bevy_ts_tsx::TsxTree>().entities.len() >= n * 2, "the level stands when Stop answers");
+        app.update();
+    }
+    // The parts, as `stop` calls them.
+    let (mut plan, mut exit, mut rebuild, mut restore, mut settle) = (vec![], vec![], vec![], vec![], vec![]);
+    for _ in 0..3 {
+        play(app, n, arm);
+        let open = bevy_ts_levels::engine::open_set(app.world());
+        let world = app.world_mut();
+        let t = Instant::now();
+        let p = bevy_ts_levels::engine::plan_stop(world);
+        world.insert_resource(p);
+        plan.push(ms(t));
+        let t = Instant::now();
+        world.resource_mut::<NextState<EngineMode>>().set(EngineMode::Edit);
+        world.run_schedule(bevy::state::state::StateTransition);
+        exit.push(ms(t));
+        let t = Instant::now();
+        bevy_ts::generation::rebuild(world).unwrap();
+        rebuild.push(ms(t));
+        let t = Instant::now();
+        bevy_ts_levels::engine::restore_open(world, &open);
+        bevy_ts_levels::engine::restore(world);
+        restore.push(ms(t));
+        let t = Instant::now();
+        bevy_ts_levels::engine::settle(world);
+        settle.push(ms(t));
+        world.remove_resource::<bevy_ts_tsx::StopPlan>();
+        bevy_ts::runtime::reset_clock(world);
+        // Back in step with the viewport's own mode.
+        world.resource_mut::<NextState<EngineMode>>().set(EngineMode::Play);
+        world.run_schedule(bevy::state::state::StateTransition);
+        mode(app, "edit");
+        app.update();
+    }
+    let name = match arm {
+        Arm::Full => "full remount".to_string(),
+        Arm::Touched(0) => "restore, none touched".to_string(),
+        Arm::Touched(k) if k >= n => "restore, all touched".to_string(),
+        Arm::Touched(k) => format!("restore, {k} touched"),
+    };
+    println!("{n} {name}: stop {total:.1?} ms, respawned {respawned:?}; plan {plan:.1?}, onexit {exit:.2?}, rebuild {rebuild:.1?}, restore {restore:.1?}, settle {settle:.1?}");
+    format!("| {n} | {name} | {:.0} | {:.1} | {:.2} | {:.0} | {:.1} | {:.0} |", median(total), median(plan), median(exit), median(rebuild), median(restore), median(settle))
+}
+
+/// One size: the level loaded once, then each arm.
+fn run(n: usize) -> Vec<String> {
     let dir = project(&format!("stop-bench-{n}"), &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", &level(n))]);
     let mut app = bench_app(&dir);
     app.update();
@@ -108,66 +208,19 @@ fn run(n: usize) -> String {
     }
     let entities = app.world().resource::<bevy_ts_tsx::TsxTree>().entities.len();
     assert!(entities >= n * 2, "{entities} entities");
-
-    let mut total = vec![];
-    let mut startup = vec![];
-    for _ in 0..3 {
-        let t = Instant::now();
-        assert_eq!(mode(&mut app, "play")["started"], true);
-        startup.push(ms(t));
-        app.update();
-        let t = Instant::now();
-        assert_eq!(mode(&mut app, "edit")["started"], false);
-        total.push(ms(t));
-        assert!(app.world().resource::<bevy_ts_tsx::TsxTree>().entities.len() >= n * 2, "the level stands when Stop answers");
-        app.update();
-    }
-
-    // The parts, as `stop` calls them after `enter_edit`.
-    let (mut exit, mut rebuild, mut settle) = (vec![], vec![], vec![]);
-    for _ in 0..3 {
-        mode(&mut app, "play");
-        app.update();
-        let open = bevy_ts_levels::engine::open_set(app.world());
-        let world = app.world_mut();
-        let t = Instant::now();
-        world.resource_mut::<NextState<EngineMode>>().set(EngineMode::Edit);
-        world.run_schedule(bevy::state::state::StateTransition);
-        exit.push(ms(t));
-        let t = Instant::now();
-        bevy_ts::generation::rebuild(world).unwrap();
-        rebuild.push(ms(t));
-        let t = Instant::now();
-        bevy_ts_levels::engine::restore_open(world, &open);
-        bevy_ts_levels::engine::settle(world);
-        settle.push(ms(t));
-        bevy_ts::runtime::reset_clock(world);
-        // Back in step with the viewport's own mode.
-        world.resource_mut::<NextState<EngineMode>>().set(EngineMode::Play);
-        world.run_schedule(bevy::state::state::StateTransition);
-        mode(&mut app, "edit");
-        app.update();
-    }
-    println!("{n}: stop {total:.1?} ms; onexit {exit:.2?}, rebuild {rebuild:.1?}, settle {settle:.1?}; next play {startup:.1?}");
-    format!(
-        "| {n} | {entities} | {:.0} | {:.2} | {:.0} | {:.0} | {:.1} |",
-        median(total),
-        median(exit),
-        median(rebuild),
-        median(settle),
-        median(startup)
-    )
+    println!("{n}: {entities} entities, kept tree {:.1} MB", kept_bytes(&app) as f64 / 1e6);
+    [Arm::Full, Arm::Touched(0), Arm::Touched(100), Arm::Touched(n)].into_iter().map(|a| arm(&mut app, n, a)).collect()
 }
 
 #[test]
 #[ignore]
 fn stop_at_scale() {
     let mut rows = vec![
-        "| instances | entities | Stop (ms) | OnExit (ms) | rebuild (ms) | levels settle (ms) | next Play with Startup (ms) |".to_string(),
-        "|---:|---:|---:|---:|---:|---:|---:|".to_string(),
+        "| instances | arm | Stop (ms) | plan (ms) | OnExit (ms) | rebuild (ms) | restore (ms) | settle (ms) |".to_string(),
+        "|---:|---|---:|---:|---:|---:|---:|---:|".to_string(),
     ];
     for n in [1_000, 10_000] {
-        rows.push(run(n));
+        rows.extend(run(n));
     }
     println!("{}", rows.join("\n"));
 }

@@ -475,9 +475,16 @@ pub fn restore(world: &mut World) {
         let Some(path) = root.strip_prefix("level:") else { continue };
         let paths = bevy_ts_tsx::restore::highest(paths.clone());
         bevy_ts_tsx::restore::restore_root(world, root, &paths);
-        let Some((owners, scenes, missing)) = world.resource::<Levels>().roots.get(path).map(|r| (r.owners.clone(), r.scenes.clone(), r.missing.clone())) else { continue };
-        stamp_instances(world, path, root, &owners, &scenes, Some(&paths));
-        stamp_missing(world, root, &missing, Some(&paths));
+        // Taken out while stamping, and put back: nothing else reads them meanwhile.
+        let Some((owners, scenes, missing)) = world.resource_mut::<Levels>().roots.get_mut(path).map(|r| (std::mem::take(&mut r.owners), std::mem::take(&mut r.scenes), std::mem::take(&mut r.missing))) else { continue };
+        if !paths.is_empty() {
+            let only: std::collections::HashSet<Vec<String>> = paths.into_iter().collect();
+            stamp_instances(world, path, root, &owners, &scenes, Some(&only));
+            stamp_missing(world, root, &missing, Some(&only));
+        }
+        if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
+            (r.owners, r.scenes, r.missing) = (owners, scenes, missing);
+        }
         let loaded = loaded_event(world.resource::<Levels>(), path);
         world.resource_mut::<Levels>().emit(loaded);
     }
@@ -1147,13 +1154,13 @@ pub fn loaded_event(levels: &Levels, path: &str) -> Value {
 }
 
 /// Whether `key_path` is at or under one of `only`'s paths, or `only` is the whole root.
-fn within(only: Option<&[Vec<String>]>, key_path: &[String]) -> bool {
-    only.is_none_or(|o| o.iter().any(|p| key_path.starts_with(p)))
+fn within(only: Option<&std::collections::HashSet<Vec<String>>>, key_path: &[String]) -> bool {
+    only.is_none_or(|o| (1..=key_path.len()).any(|n| o.contains(&key_path[..n])))
 }
 
 /// `MissingComponents` on each entity with placeholder entries, off every other of the root; with
 /// `only`, on the nodes at and under those paths, the rest left as they are.
-fn stamp_missing(world: &mut World, root: &str, missing: &BTreeMap<Vec<String>, Vec<MissingComponent>>, only: Option<&[Vec<String>]>) {
+fn stamp_missing(world: &mut World, root: &str, missing: &BTreeMap<Vec<String>, Vec<MissingComponent>>, only: Option<&std::collections::HashSet<Vec<String>>>) {
     let writes: Vec<(Entity, MissingComponents)> = {
         let tree = world.resource::<TsxTree>();
         missing.iter().filter(|(k, _)| within(only, k)).filter_map(|(k, m)| Some((tree.entity(node_id(root, k))?, MissingComponents(m.clone())))).collect()
@@ -1194,7 +1201,7 @@ fn strip_names(nodes: &mut [NodeDesc]) {
 
 /// `LevelInstance` on every entity the level placed or overrode; with `only`, on the nodes at
 /// and under those paths, the rest left as they are.
-fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap<Vec<String>, Vec<Frame>>, scenes: &BTreeMap<Vec<String>, ScenePlacement>, only: Option<&[Vec<String>]>) {
+fn stamp_instances(world: &mut World, level: &str, root: &str, owners: &BTreeMap<Vec<String>, Vec<Frame>>, scenes: &BTreeMap<Vec<String>, ScenePlacement>, only: Option<&std::collections::HashSet<Vec<String>>>) {
     let mut writes = Vec::new();
     {
         let tree = world.resource::<TsxTree>();

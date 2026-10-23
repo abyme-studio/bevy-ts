@@ -211,6 +211,19 @@ pub fn find_node<'a>(nodes: &'a [RNode], path: &[String]) -> Option<&'a RNode> {
     if rest.is_empty() { Some(n) } else { find_node(&n.children, rest) }
 }
 
+/// Every node of a resolved tree by id, so a partial apply finds each of its paths at once.
+pub fn index(nodes: &[RNode]) -> HashMap<u64, &RNode> {
+    fn walk<'a>(nodes: &'a [RNode], out: &mut HashMap<u64, &'a RNode>) {
+        for n in nodes {
+            out.insert(n.id, n);
+            walk(&n.children, out);
+        }
+    }
+    let mut out = HashMap::new();
+    walk(nodes, &mut out);
+    out
+}
+
 /// Replaces (or with `None` removes) the node at `path` in a resolved tree; a new one goes last
 /// among its siblings.
 fn replace_node(nodes: &mut Vec<RNode>, path: &[String], with: Option<RNode>) {
@@ -235,6 +248,7 @@ pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RN
     let mut stats = ReconcileStats::default();
     let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
     let kept = tree.roots.get(root).and_then(|r| r.resolved.clone());
+    let described = kept.as_deref().map(index).unwrap_or_default();
     let mut patched: Option<Vec<RNode>> = None;
     let mut slots = Vec::new();
     for (path, node) in items {
@@ -247,7 +261,7 @@ pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RN
                 None => continue,
             },
         };
-        let old = rows_at(world, &tree, kept.as_deref(), root, path, id);
+        let old = rows_at(world, &tree, described.get(&id).copied(), root, path, id);
         if mode == AtMode::Respawn {
             clear(world, &mut tree, root, path, &old, &mut stats);
         }
@@ -275,7 +289,7 @@ pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RN
         }
         // The kept tree: unchanged when the node given is its own.
         if let Some(k) = &kept {
-            let own = match (find_node(k, path), node) {
+            let own = match (described.get(&id).copied().filter(|_| patched.is_none()).or_else(|| patched.as_ref().map_or_else(|| find_node(k, path), |p| find_node(p, path))), node) {
                 (Some(a), Some(b)) => std::ptr::eq(a, *b),
                 (None, None) => true,
                 _ => false,
@@ -289,8 +303,12 @@ pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RN
             tree.journal.open.ordered.push(list);
         }
         if let Some(p) = parent {
-            let described = patched.as_deref().or(kept.as_deref()).and_then(|k| find_node(k, &path[..path.len() - 1]));
-            if let Some(d) = described {
+            let pid = node_id(root, &path[..path.len() - 1]);
+            let d = match &patched {
+                Some(p) => find_node(p, &path[..path.len() - 1]),
+                None => described.get(&pid).copied(),
+            };
+            if let Some(d) = d {
                 order_children(world, &tree, p, d);
             }
         }
@@ -307,7 +325,7 @@ pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RN
 
 /// The rows of `root` at and under `path`: the node, its live descendants, its tombstones, and
 /// the kept tree's nodes there that are still mapped (a despawned subtree's).
-fn rows_at(world: &World, tree: &TsxTree, kept: Option<&[RNode]>, root: &str, path: &[String], id: u64) -> Vec<u64> {
+fn rows_at(world: &World, tree: &TsxTree, kept: Option<&RNode>, root: &str, path: &[String], id: u64) -> Vec<u64> {
     fn ids(n: &RNode, out: &mut Vec<u64>) {
         out.push(n.id);
         for c in &n.children {
@@ -317,7 +335,7 @@ fn rows_at(world: &World, tree: &TsxTree, kept: Option<&[RNode]>, root: &str, pa
     let e = tree.entities.get(&id).copied().filter(|e| alive(world, *e, id));
     let mut out = vec![id];
     out.extend(subtree(world, tree, e, root, path));
-    if let Some(n) = kept.and_then(|k| find_node(k, path)) {
+    if let Some(n) = kept {
         let mut described = Vec::new();
         ids(n, &mut described);
         out.extend(described.into_iter().filter(|i| tree.entities.contains_key(i)));

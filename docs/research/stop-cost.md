@@ -55,3 +55,47 @@ names:
   again. This needs change ticks on level entities and is the larger piece.
 
 Neither is in this change: no game today has a 10,000-instance level.
+
+## The restore (stop-incremental)
+
+Task 6 of `openspec/changes/stop-incremental`. A level the game started with now keeps its
+entities at Stop; only what the play changed respawns, from the level's kept resolved tree.
+Measured 2026-10-23 with the same bench, now in four arms: the full remount (the level made to
+wait to compose, so it is not kept), and the restore with nothing touched, 100 enemies moved,
+and every enemy moved. Three Stops per arm, medians, rendering on (`DefaultPlugins` without a
+window, the editor camera swapped for the game's at Play). Load average 26 to 38.
+
+| instances | entities | arm | Stop, ms | plan, ms | rebuild, ms | restore, ms | settle, ms |
+|---:|---:|---|---:|---:|---:|---:|---:|
+| 1,000 | 2,000 | full remount | 224 | 0 | 43 | 0 | 161 |
+| 1,000 | 2,000 | none touched | 51 | 1.0 | 37 | 0.2 | 0 |
+| 1,000 | 2,000 | 100 touched | 67 | 0.9 | 42 | 2.4 | 0 |
+| 1,000 | 2,000 | all touched | 70 | 0.6 | 86 | 12 | 0 |
+| 10,000 | 20,000 | full remount | 1,652 | 0 | 226 | 0 | 1,094 |
+| 10,000 | 20,000 | none touched | 161 | 8.3 | 108 | 2.7 | 0 |
+| 10,000 | 20,000 | 100 touched | 152 | 6.0 | 84 | 9.3 | 0 |
+| 10,000 | 20,000 | all touched | 201 | 3.7 | 73 | 114 | 0 |
+
+The three runs of each 10,000 arm: none touched 109, 161, 204 ms; 100 touched 118, 152, 152;
+all touched 201, 213, 201; the full remount 1,480 to 1,852.
+
+- **Plan** is `levels::plan_stop`: the scan of the level's 20,000 entities against the game-start
+  baseline, and the level file read and hashed.
+- **Restore** is `levels::restore`: `apply_at` respawning the changed subtrees, and their stamps.
+- **Rebuild** keeps the level's entities, so it despawns nothing of it, but still loads the
+  generation in a fresh isolate and checks every level against it (`levels`' section check
+  prepares the whole level). It grows with the level (37 ms at 2,000 entities, 108 at 20,000);
+  which part grows is not split yet, and the level check is the likely one.
+
+The kept resolved tree costs 9.0 MB at 20,000 entities (0.9 MB at 2,000), its components shared
+with the template cache.
+
+With rendering on, `ViewVisibility` changed on every level entity under Play's camera swap; a
+level camera's `VisibleEntities`, `Clusters` and `PreviousViewData` change every frame. These are
+tsx's `restore::derived` list and do not count; with it, a play that touches nothing respawns 0
+entities. `Camera` changes every frame too but counts, so a level camera respawns.
+
+The restore takes a 10,000-instance Stop from 1.65 s to 0.15 to 0.2 s. The 100 ms goal is not met
+on this machine: the rebuild's 73 to 108 ms is above it alone. The next cut is in the rebuild: split it,
+and if the level check is the part that grows, skip it for a Stop, which does not need it (the same module set, the level files hashed as unchanged), and
+the content-keyed expansion cache for the full path.
