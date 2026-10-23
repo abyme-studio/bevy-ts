@@ -1,11 +1,13 @@
 //! Headless runs: no window and no winit. The loop is driven by `ScheduleRunnerPlugin`, and
-//! every camera renders into one offscreen image, which `BEVY_TS_SCREENSHOT` saves.
+//! every camera renders into one offscreen image, which `BEVY_TS_SCREENSHOT` saves. UI draws
+//! into that image too: with no window, Bevy finds no default UI camera, so headless names one.
 
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
+use bevy::ui::{IsDefaultUiCamera, UiSystems};
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
 use std::time::Duration;
@@ -61,14 +63,44 @@ impl Plugin for HeadlessPlugin {
         image.asset_usage = bevy::asset::RenderAssetUsages::default();
         let handle = app.world_mut().resource_mut::<Assets<Image>>().add(image);
         app.insert_resource(Offscreen(handle));
-        app.add_observer(|add: On<Add<Camera>>, offscreen: Res<Offscreen>, ui_cameras: Query<(), With<bevy::ui::IsDefaultUiCamera>>, mut commands: Commands| {
-            let mut camera = commands.entity(add.entity);
-            camera.insert(RenderTarget::Image(offscreen.0.clone().into()));
-            // Bevy's default UI camera is one that renders to the primary window, and headless has none.
-            if ui_cameras.is_empty() {
-                camera.insert(bevy::ui::IsDefaultUiCamera);
-            }
+        app.add_observer(|add: On<Add<Camera>>, offscreen: Res<Offscreen>, mut commands: Commands| {
+            commands.entity(add.entity).insert(RenderTarget::Image(offscreen.0.clone().into()));
         });
+        app.add_systems(PostUpdate, default_ui_camera.before(UiSystems::Prepare));
+    }
+}
+
+/// Marks the `IsDefaultUiCamera` headless placed, so a game's own is told apart from it.
+#[derive(Component)]
+struct HeadlessUiCamera;
+
+/// Bevy's default UI camera is the highest-order camera on the primary window; headless has no
+/// window, so it gives `IsDefaultUiCamera` to the highest-order camera on the offscreen image, by
+/// the same rule. A game's own `IsDefaultUiCamera` on another camera wins, as does a root's
+/// `UiTargetCamera`; one on the camera headless already chose is taken as headless's.
+fn default_ui_camera(
+    mut commands: Commands,
+    offscreen: Res<Offscreen>,
+    cameras: Query<(Entity, &Camera, &RenderTarget)>,
+    games: Query<(), (With<IsDefaultUiCamera>, Without<HeadlessUiCamera>)>,
+    ours: Query<Entity, With<HeadlessUiCamera>>,
+) {
+    let pick = if games.is_empty() {
+        cameras
+            .iter()
+            .filter(|(_, _, t)| matches!(t, RenderTarget::Image(i) if i.handle == offscreen.0))
+            .max_by_key(|(e, c, _)| (c.order, *e))
+            .map(|(e, _, _)| e)
+    } else {
+        None
+    };
+    for e in &ours {
+        if Some(e) != pick {
+            commands.entity(e).remove::<(IsDefaultUiCamera, HeadlessUiCamera)>();
+        }
+    }
+    if let Some(e) = pick.filter(|e| !ours.contains(*e)) {
+        commands.entity(e).insert((IsDefaultUiCamera, HeadlessUiCamera));
     }
 }
 
