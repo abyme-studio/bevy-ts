@@ -20,7 +20,7 @@ export default {
       title: "An area",
       instructions: `This team is one area of bevy-ts, kept for as long as the area has work. ${instructions}`,
       lead: "bevy-ts-area-lead",
-      groups: [{ title: "Research", roles: { research: "bevy-ts-research" } }],
+      idle: null,
     },
     // A change: one team per feature, named after it, its lead holding its root item. It ends when
     // the lead closes that item, the change archived: a change may land in stages.
