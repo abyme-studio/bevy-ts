@@ -60,6 +60,7 @@ mod tsx_protocol;
 mod tsx_reactive;
 mod tsx_scale;
 mod tsx_sites;
+mod two_d;
 mod typescript;
 mod ui_gallery;
 mod ui_media;

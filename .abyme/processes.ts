@@ -324,6 +324,10 @@ const processes = {
   // `bevy-ts/bevy` regenerated after a rebase that conflicts in it.
   "animation-control-types": { cmd: "bash -c 'set -o pipefail; export RUSTC_WRAPPER=; scripts/gen-bevy-types.sh 2>&1 | tail -5; git status --short'" },
   "animation-control-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; (cargo test -p bevy-ts-animation -- --test-threads 1 && cargo test -p bevy-ts-levels && cargo test -p bevy-ts-cli --lib types && cargo test -p bevy-ts-cli --test it -- --test-threads 1 animation:: levels_scene:: && cargo clippy -p bevy-ts-animation -p bevy-ts-levels -p bevy-ts-cli --all-targets -- -D warnings && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/animation-control-test.log | grep -E \"^test |test result|panicked|^error|^warning|left|right|-->\" | tail -80'" },
+  // Change script-2d: the 2D tests (sprites, Camera2d, picking), rendering headless.
+  "two-d": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test -p bevy-ts-cli --test it two_d:: -- --nocapture 2>&1 | grep -v ld64 | tee target/two-d.log | grep -E \"^test |^test result|panicked|^error|left|right|-->\" | tail -40'" },
+  // The tests script-2d's crates touch: tsx, and the cli's TSX and 2D tests.
+  "two-d-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-tsx && cargo test -p bevy-ts-cli --test it -- tsx two_d) 2>&1 | grep -v ld64 | tee target/two-d-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

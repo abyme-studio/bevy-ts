@@ -5,7 +5,8 @@
 //! lacks, read from the same `KeyboardInput` (operator ruling 2026-10-22). The observer queues the event with the handler's id; the
 //! queue goes to JS in the frame's one host call, in arrival order. Picking events bubble up
 //! `ChildOf` as Bevy's do (change scene-pick): a handler also runs for a hit on a descendant, a
-//! glTF scene's meshes included, with `entity` its own entity and `target` the one hit. JS runs
+//! glTF scene's meshes included, with `entity` its own entity and `target` the one hit. An entity
+//! with a pointer handler gets a default `Pickable`, which Bevy's sprite backend needs. JS runs
 //! after Bevy's walk, so a handler cannot stop it. An `<input>`'s keyboard events are the field's
 //! own: a key that bubbled from a descendant is not.
 
@@ -140,6 +141,11 @@ pub fn set(world: &mut World, e: Entity, ids: &BTreeMap<String, u32>) {
     let mut h = current.clone().unwrap_or_default();
     h.ids = ids.clone();
     let mut em = world.entity_mut(e);
+    // Bevy 0.20's sprite backend picks only entities with `Pickable`; its default is what the
+    // mesh and UI backends assume without one, so a pointer handler needs no other setup.
+    if ids.keys().any(|k| k.starts_with("Pointer")) && !em.contains::<Pickable>() {
+        em.insert(Pickable::default());
+    }
     for kind in ids.keys() {
         // One observer serves every key event.
         let group = if KEY_EVENTS.contains(&kind.as_str()) { "KeyboardInput" } else { kind.as_str() };
