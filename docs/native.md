@@ -86,7 +86,7 @@ the field's address minus the value's. No `repr(C)` and no code per type.
 - **Layout tier**: a type with at least one plain-data field (`f32`, `f64`, integers, `bool`,
   `Entity`, glam vectors and quaternions, fieldless enums, arrays of numbers) is a zero-copy
   column in TS systems, with change ticks. Fields bevy-ts cannot read (`Duration`, `String`,
-  nested structs) are holes: never visible and never written. `Time` is not a column: each
+  nested structs) are holes: never visible to TS systems and never written by them. `Time` is not a column: each
   clock is a value built per run (docs/time.md). Enum variant bytes are read from the
   build, never assumed; `bool`, enum and `Entity` fields are written only through accessors.
   Components declared immutable are read-only. A type whose holes may own heap data is never
@@ -102,9 +102,41 @@ the field's address minus the value's. No `repr(C)` and no code per type.
   A tuple struct with more fields keeps `"0"`, `"1"`. Level files and the protocol keep Bevy's
   reflection path (`.0`).
 
+### Reflected values in TSX
+
+TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::reflect_value`):
+
+- An enum: a unit variant as its name (`"WindowSize"`), a variant with data as a one-key object
+  (`{ Orthographic: { scale: 2 } }`); a tuple variant's data is an array, a newtype variant's its
+  inner value. Nested enums work at any depth. A component that is itself an enum takes its whole
+  value as `value`: `<Projection value={{ Orthographic: { scaling_mode: { FixedVertical: {
+  viewport_height: 12 } } } }} />`.
+- An `Option<T>`: `null` for `None`, a `T` for `Some`.
+- A `Color`: any colour form (below).
+- A written value is the JSON over the default: keys left out take the value in the component's
+  `Default`, never the previous one, so dropping `scale` from a prop restores the default scale. A
+  newly chosen variant starts from its default (a newtype variant from its inner type's `Default`
+  or `FromWorld`); a struct or tuple variant with no default is given whole. An unknown key,
+  variant or channel fails the load, naming it. A component with no `Default` merges over its
+  current value.
+- A layout-tier component's holes that reflection can write (a `Color`, an enum with data, an
+  `Option`, a nested struct) are TSX props: `<DirectionalLight illuminance={8000}
+  color={hex("#ffd7a8")} />` writes `illuminance` from bytes and `color` through reflection, on
+  insert and whenever it changes. TS systems still never see them. An opaque hole (`usize`,
+  `Duration`) fails the load; a hole prop takes a value, not a binding.
+
+Colours have one parser (`bevy_ts::color`), used by every colour bevy-ts takes: TSX props, `<mesh
+color>`, `<material color>`, UI colours, script-material `color` params and recipes. It takes a hex
+string (`"#rgb"`, `"#rgba"`, `"#rrggbb"`, `"#rrggbbaa"`), `[r, g, b, a?]` in sRGB, or Bevy's
+reflected `Color` (`{ Srgba: { red, green, blue } }`, `{ LinearRgba: ... }`, `{ Hsla: ... }`, every
+variant), with `alpha` 1 when left out. `bevy-ts` exports `srgb(r, g, b, a?)`, `linear(r, g, b,
+a?)`, `hsl(h, s, l, a?)`, `hex(s)` and the type `ColorValue`.
+
 `bevy-ts types` builds the engine with no window and no GPU device, walks the type registry and
-writes `.bevy-ts/types/native.d.ts`: layout-tier classes with their fields, reflect-tier classes
-with their JSON shapes, and `NativeSet`, the union of exposed set names. Output is deterministic;
+writes `.bevy-ts/types/native.d.ts`: layout-tier classes with their fields (and their writable
+holes as TSX-only props), reflect-tier classes with their JSON shapes (`Color` as `ColorValue`,
+nested struct fields optional, an enum component's `value`), and `NativeSet`, the union of exposed
+set names. Output is deterministic;
 `bevy-ts dev` regenerates it after each project-engine build.
 
 ## Ordering against Rust

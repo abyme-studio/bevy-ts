@@ -1,5 +1,7 @@
 //! Native spawn recipes for things TS cannot build yet: `camera3d`, `directionalLight` and
-//! `cuboid`. Params cross as JSON; this path is for rare spawns, not per-frame work.
+//! `cuboid`. Params cross as JSON; this path is for rare spawns, not per-frame work. `camera3d`'s
+//! `projection` takes what `<Projection value>` takes, through `reflect_value`; colours take every
+//! form `color` parses.
 
 use crate::plugin_api::BevyTsAppExt;
 use bevy::prelude::*;
@@ -13,6 +15,15 @@ struct Placement {
     position: Option<[f32; 3]>,
     #[serde(default)]
     look_at: Option<[f32; 3]>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CameraParams {
+    #[serde(flatten)]
+    place: PlacementFields,
+    #[serde(default)]
+    projection: Option<Value>,
 }
 
 impl Placement {
@@ -49,7 +60,7 @@ struct CuboidParams {
     #[serde(default)]
     size: Option<[f32; 3]>,
     #[serde(default)]
-    color: Option<String>,
+    color: Option<Value>,
     #[serde(flatten)]
     place: PlacementFields,
 }
@@ -71,14 +82,17 @@ impl PlacementFields {
     }
 }
 
-fn color(s: &str) -> Result<Color, String> {
-    Srgba::hex(s).map(Color::from).map_err(|e| format!("color {s:?}: {e}"))
-}
 
 pub fn register(app: &mut App) {
     app.add_ts_native_recipe("camera3d", |world, e, params| {
-        let p: Placement = parse(params)?;
-        world.entity_mut(e).insert((Camera3d::default(), p.transform()));
+        let p: CameraParams = parse(params)?;
+        let mut projection = Projection::default();
+        if let Some(json) = &p.projection {
+            let registry = world.resource::<AppTypeRegistry>().clone();
+            let server = world.get_resource::<AssetServer>().cloned();
+            crate::reflect_value::write(&registry.read(), server.as_ref(), &mut projection, None, json).map_err(|e| format!("camera3d projection: {e}"))?;
+        }
+        world.entity_mut(e).insert((Camera3d::default(), projection, p.place.transform()));
         Ok(())
     });
     app.add_ts_native_recipe("directionalLight", |world, e, params| {
@@ -95,7 +109,7 @@ pub fn register(app: &mut App) {
         // Placement first, so the entity is placed even if rendering is missing.
         world.entity_mut(e).insert(p.place.transform());
         let size = Vec3::from(p.size.unwrap_or([1.0, 1.0, 1.0]));
-        let base_color = color(p.color.as_deref().unwrap_or("#ffffff"))?;
+        let base_color = p.color.as_ref().map_or(Ok(Color::WHITE), crate::color::parse)?;
         let mesh = world
             .get_resource_mut::<Assets<Mesh>>()
             .ok_or("cuboid needs the render plugins (no Assets<Mesh>)")?

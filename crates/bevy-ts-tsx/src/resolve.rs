@@ -5,6 +5,7 @@ use crate::desc::{ComponentDesc, ComponentKind, NodeDesc, RootDesc, binding_id};
 use crate::ui::{self, UiKind};
 use crate::intrinsics::{MaterialProps, MeshProps};
 use bevy::ecs::component::ComponentId;
+use bevy::reflect::TypeRegistry;
 use bevy_ts::backend::{ScriptError, SourceLocation};
 use bevy_ts::components::{PendingComponents, TsComponents};
 use bevy_ts::layout::{ComponentLayout, FieldType, NativeLayouts};
@@ -41,8 +42,9 @@ impl TsLookup for TsComponents {
 #[derive(Clone, Debug)]
 pub enum Target {
     /// A component with a native layout: a TS component or `Transform`. `defaults` is a whole
-    /// value with every field at its declared default.
-    Native { id: ComponentId, layout: ComponentLayout, defaults: Vec<u8> },
+    /// value with every field at its declared default. `type_path` is a Rust component's, for
+    /// its holes written through reflection.
+    Native { id: ComponentId, layout: ComponentLayout, defaults: Vec<u8>, type_path: Option<String> },
     Name,
     Mesh(MeshProps),
     Material(MaterialProps),
@@ -64,6 +66,9 @@ pub struct Resolved {
     pub controlled: BTreeMap<String, Value>,
     /// Fields written only on insert.
     pub initial: BTreeMap<String, Value>,
+    /// A layout-tier Rust component's holes given as props (`color`), written through reflection
+    /// after the bytes, on insert and whenever their declared value changes.
+    pub reflected: BTreeMap<String, Value>,
     /// Fields given neither way, with the default they take on insert.
     pub defaults: BTreeMap<String, Value>,
     /// Fields written only by a binding (`f={() => ...}`), by binding id.
@@ -208,7 +213,7 @@ fn newtype_props(c: &ComponentDesc) -> Result<ComponentDesc, ScriptError> {
 }
 
 /// Resolves one component element: bound props first, then the rest by kind.
-pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> Result<Resolved, ScriptError> {
+pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts, registry: &TypeRegistry) -> Result<Resolved, ScriptError> {
     let newtype;
     let c = if c.kind == ComponentKind::Rust && c.ty != NAME && native.is_newtype(&c.ty) {
         newtype = newtype_props(c)?;
@@ -230,13 +235,16 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> 
         }
         rest.props.remove(prop);
     }
-    let mut r = resolve_unbound(&rest, ts, native)?;
+    let mut r = resolve_unbound(&rest, ts, native, registry)?;
     if bound.is_empty() {
         return Ok(r);
     }
     match &r.target {
         Target::Native { layout, .. } => {
             for f in bound.keys() {
+                if native.get(&c.ty).is_some_and(|n| n.reflect_holes.iter().any(|h| &h.name == f)) {
+                    return Err(err(format!("{}.{f} is written through reflection, so it takes a value, not a binding", c.ty), &at(c, f)));
+                }
                 if layout.field(f).is_none() {
                     let known: Vec<&str> = layout.fields.iter().map(|f| f.name.as_str()).collect();
                     return Err(err(format!("{} has no field {f} (fields: {})", c.ty, known.join(", ")), &c.source));
@@ -260,12 +268,21 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> 
     Ok(r)
 }
 
-fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> Result<Resolved, ScriptError> {
+/// Checks props written through reflection against a default of the component.
+fn check_reflected(c: &ComponentDesc, registry: &TypeRegistry, type_path: &str, props: &Map<String, Value>) -> Result<(), ScriptError> {
+    crate::reflected::check(registry, type_path, props).map_err(|m| {
+        let prop = props.keys().find(|p| m.contains(&format!(".{p}:"))).map_or("", |p| p.as_str());
+        err(m, &at(c, prop))
+    })
+}
+
+fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts, registry: &TypeRegistry) -> Result<Resolved, ScriptError> {
     let resolved = |target, (controlled, initial, defaults)| Resolved {
         key: c.ty.clone(),
         target,
         controlled,
         initial,
+        reflected: BTreeMap::new(),
         defaults,
         bound: BTreeMap::new(),
         sites: BTreeMap::new(),
@@ -278,7 +295,7 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
                 ts.ts(&c.ty).ok_or_else(|| err(format!("unknown component {}: no component() declares it", c.ty), &c.source))?;
             let fields: Vec<_> = decl.fields.iter().map(|f| (f.name.clone(), f.ty.clone(), f.default.clone())).collect();
             let defaults = value::encode_component(&decl, &layout, &Map::new()).map_err(|e| err(e.to_string(), &c.source))?;
-            Ok(resolved(Target::Native { id, layout, defaults }, split_fields(c, &fields)?))
+            Ok(resolved(Target::Native { id, layout, defaults, type_path: None }, split_fields(c, &fields)?))
         }
         ComponentKind::Rust if c.ty == NAME => {
             let mut props = c.props.clone();
@@ -302,6 +319,8 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
             if let Some(f) = initial.keys().find(|f| controlled.contains_key(*f)) {
                 return Err(err(format!("{}.{f} is given both as {f} and its initial form; pick one", c.ty), &c.source));
             }
+            let written: Map<String, Value> = initial.iter().chain(controlled.iter()).map(|(k, v)| (k.clone(), v.clone())).collect();
+            check_reflected(c, registry, &type_path, &written)?;
             Ok(resolved(Target::Reflect { type_path }, (controlled, initial, BTreeMap::new())))
         }
         ComponentKind::Rust => {
@@ -310,13 +329,27 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts)
             })?;
             let fields: Vec<_> = n.layout.fields.iter().map(|f| (f.name.clone(), f.ty.clone(), None)).collect();
             let defaults = n.defaults.clone();
-            let mut split = split_fields(c, &fields)?;
+            // Holes reflection writes are props of their own; an opaque hole is never set.
+            let mut layout_props = c.clone();
+            let mut reflected = Map::new();
+            for (prop, v) in &c.props {
+                if n.reflect_holes.iter().any(|h| &h.name == prop) {
+                    reflected.insert(prop.clone(), v.clone());
+                    layout_props.props.remove(prop);
+                } else if let Some(why) = n.holes.iter().find_map(|h| h.strip_prefix(&format!("{prop}: "))) {
+                    return Err(err(format!("{}.{prop} is {why}, so TSX cannot set it", c.ty), &at(c, prop)));
+                }
+            }
+            check_reflected(c, registry, &n.type_path, &reflected)?;
+            let mut split = split_fields(&layout_props, &fields)?;
             // Defaults read back from the default value, for provenance.
             for (f, v) in split.2.iter_mut() {
                 let fl = n.layout.field(f).expect("layout field");
                 *v = value::decode_field(&fl.ty, &defaults[fl.offset..fl.offset + fl.ty.size()]);
             }
-            Ok(resolved(Target::Native { id: n.id, layout: n.layout.clone(), defaults }, split))
+            let mut r = resolved(Target::Native { id: n.id, layout: n.layout.clone(), defaults, type_path: Some(n.type_path.clone()) }, split);
+            r.reflected = reflected.into_iter().collect();
+            Ok(r)
         }
         ComponentKind::Intrinsic if c.ty == MESH => {
             let props: MeshProps = parse_props(c)?;
@@ -354,7 +387,7 @@ pub fn reflect_path(native: &NativeLayouts, ty: &str) -> Option<String> {
 }
 
 /// An entity's component elements, resolved, with `<entity name>` as a `Name` element.
-pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts) -> Result<Vec<Resolved>, ScriptError> {
+pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts, registry: &TypeRegistry) -> Result<Vec<Resolved>, ScriptError> {
     let mut out = Vec::with_capacity(node.components.len() + 1);
     let mut seen = HashSet::new();
     if let Some(name) = &node.name {
@@ -364,6 +397,7 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts) 
             target: Target::Name,
             controlled: BTreeMap::from([("value".to_string(), Value::String(name.clone()))]),
             initial: BTreeMap::new(),
+            reflected: BTreeMap::new(),
             bound: BTreeMap::new(),
             sites: BTreeMap::new(),
             defaults: BTreeMap::new(),
@@ -375,7 +409,7 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts) 
         if !seen.insert(c.ty.clone()) {
             return Err(err(format!("{} is given twice on one entity", c.ty), &c.source));
         }
-        out.push(resolve(c, ts, native)?);
+        out.push(resolve(c, ts, native, registry)?);
     }
     // Mesh `color` and a `<material>` on one entity would both own the material.
     let mesh_color = out.iter().any(|r| matches!(&r.target, Target::Mesh(MeshProps { color: Some(_), .. })));
@@ -386,28 +420,28 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts) 
 }
 
 /// Checks a whole section: duplicate roots and sibling keys, and every component element.
-pub fn check_roots(roots: &[RootDesc], ts: &dyn TsLookup, native: &NativeLayouts) -> Vec<ScriptError> {
+pub fn check_roots(roots: &[RootDesc], ts: &dyn TsLookup, native: &NativeLayouts, registry: &TypeRegistry) -> Vec<ScriptError> {
     let mut errors = Vec::new();
     let mut names = HashSet::new();
     for r in roots {
         if !names.insert(r.name.as_str()) {
             errors.push(err(format!("scene {} is declared twice", r.name), &r.location));
         }
-        check_nodes(&r.nodes, ts, native, &mut errors);
+        check_nodes(&r.nodes, ts, native, registry, &mut errors);
     }
     errors
 }
 
-pub fn check_nodes(nodes: &[NodeDesc], ts: &dyn TsLookup, native: &NativeLayouts, errors: &mut Vec<ScriptError>) {
+pub fn check_nodes(nodes: &[NodeDesc], ts: &dyn TsLookup, native: &NativeLayouts, registry: &TypeRegistry, errors: &mut Vec<ScriptError>) {
     let mut keys = HashSet::new();
     for n in nodes {
         if !keys.insert(n.key.as_str()) {
             errors.push(err(format!("two siblings have the key {:?}", n.key), &n.location()));
         }
-        if let Err(e) = resolve_node(n, ts, native) {
+        if let Err(e) = resolve_node(n, ts, native, registry) {
             errors.push(e);
         }
-        check_nodes(&n.children, ts, native, errors);
+        check_nodes(&n.children, ts, native, registry, errors);
     }
 }
 

@@ -72,7 +72,8 @@ pub fn resolve_tree(
     prefix: (&[String], &[String]),
 ) -> Result<Vec<RNode>, ScriptError> {
     let mut cache = world.remove_resource::<TemplateCache>().unwrap_or_default();
-    let r = resolve_with(root, nodes, prefix, world.resource::<TsComponents>(), world.resource::<NativeLayouts>(), &mut cache);
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let r = resolve_with(root, nodes, prefix, world.resource::<TsComponents>(), world.resource::<NativeLayouts>(), &registry.read(), &mut cache);
     world.insert_resource(cache);
     r
 }
@@ -83,6 +84,7 @@ fn resolve_with(
     (path, types): (&[String], &[String]),
     ts: &TsComponents,
     native: &NativeLayouts,
+    registry: &bevy::reflect::TypeRegistry,
     cache: &mut TemplateCache,
 ) -> Result<Vec<RNode>, ScriptError> {
     nodes
@@ -104,12 +106,12 @@ fn resolve_with(
                 }
                 None => {
                     cache.misses += 1;
-                    let c: Arc<[Resolved]> = resolve::resolve_node(n, ts, native)?.into();
+                    let c: Arc<[Resolved]> = resolve::resolve_node(n, ts, native, registry)?.into();
                     cache.templates.insert(key, c.clone());
                     c
                 }
             };
-            let children = resolve_with(root, &n.children, (&p, &t), ts, native, cache)?;
+            let children = resolve_with(root, &n.children, (&p, &t), ts, native, registry, cache)?;
             Ok(RNode { id: node_id(root, &p), path: p, types: t, source: n.source.clone(), comps, children, ref_id: n.ref_id, on: n.on.clone(), slot: None })
         })
         .collect()
@@ -450,6 +452,9 @@ fn owned(r: &Resolved) -> OwnedComponent {
     for (f, v) in &r.controlled {
         fields.insert(f.clone(), FieldState { provenance: r.controlled_provenance(f), applied: v.clone() });
     }
+    for (f, v) in &r.reflected {
+        fields.insert(f.clone(), FieldState { provenance: r.controlled_provenance(f), applied: v.clone() });
+    }
     for (f, v) in &r.initial {
         fields.insert(f.clone(), FieldState { provenance: Provenance::Initial, applied: v.clone() });
     }
@@ -464,10 +469,18 @@ fn owned(r: &Resolved) -> OwnedComponent {
 
 pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
     match &r.target {
-        Target::Native { id, .. } => {
+        Target::Native { id, type_path, .. } => {
             let bytes = r.insert_bytes().expect("native target");
             // SAFETY: `id` was registered with the layout `bytes` was encoded with.
             unsafe { bevy_ts::commands::insert_bytes(&mut world.entity_mut(e), *id, &bytes) };
+            // Holes given as props, over the bytes.
+            if let Some(type_path) = type_path {
+                for (f, v) in &r.reflected {
+                    if let Err(m) = crate::reflected::write(world, e, type_path, f, v) {
+                        log_error(world, m, r.source.clone());
+                    }
+                }
+            }
         }
         Target::Name => {
             let Some(Value::String(s)) = r.controlled.get("value") else { unreachable!("checked") };
@@ -616,7 +629,20 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
         };
         let mut state = OwnedComponent { fields: BTreeMap::new(), source: r.source.clone(), overrides: r.overrides.clone() };
         match &r.target {
-            Target::Native { id, layout, .. } => {
+            Target::Native { id, layout, type_path, .. } => {
+                // Holes given as props: written through reflection when their value changed.
+                for (f, v) in &r.reflected {
+                    let provenance = r.controlled_provenance(f);
+                    let same = prev.fields.get(f).is_some_and(|s| s.provenance == provenance && &s.applied == v);
+                    if !same && let Some(type_path) = type_path {
+                        match crate::reflected::write(world, e, type_path, f, v) {
+                            Ok(true) => stats.written += 1,
+                            Ok(false) => {}
+                            Err(m) => log_error(world, m, r.source.clone()),
+                        }
+                    }
+                    state.fields.insert(f.clone(), FieldState { provenance, applied: v.clone() });
+                }
                 for (f, v) in &r.controlled {
                     // A field whose owner changed (an override added or removed) is written.
                     let provenance = r.controlled_provenance(f);

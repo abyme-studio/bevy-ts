@@ -228,6 +228,37 @@ export declare abstract class EntityEvent extends Data {
   entity: Entity;
   static readonly propagate?: boolean;
 }
+/**
+ * A colour, in any form bevy-ts takes: a hex string (`"#rgb"`, `"#rgba"`, `"#rrggbb"`,
+ * `"#rrggbbaa"`), `[r, g, b, a?]` in sRGB, or Bevy's reflected `Color` (any variant; `alpha` is 1
+ * when left out). `srgb()`, `linear()`, `hsl()` and `hex()` build these.
+ */
+export type ColorValue =
+  | string
+  | readonly [number, number, number]
+  | readonly [number, number, number, number]
+  | { readonly Srgba: Channels<"red" | "green" | "blue"> }
+  | { readonly LinearRgba: Channels<"red" | "green" | "blue"> }
+  | { readonly Hsla: Channels<"hue" | "saturation" | "lightness"> }
+  | { readonly Hsva: Channels<"hue" | "saturation" | "value"> }
+  | { readonly Hwba: Channels<"hue" | "whiteness" | "blackness"> }
+  | { readonly Laba: Channels<"lightness" | "a" | "b"> }
+  | { readonly Lcha: Channels<"lightness" | "chroma" | "hue"> }
+  | { readonly Oklaba: Channels<"lightness" | "a" | "b"> }
+  | { readonly Oklcha: Channels<"lightness" | "chroma" | "hue"> }
+  | { readonly Xyza: Channels<"x" | "y" | "z"> }
+  | { readonly Okhsla: Channels<"hue" | "saturation" | "lightness"> }
+  | { readonly Okhsva: Channels<"hue" | "saturation" | "value"> }
+  | { readonly Okhwba: Channels<"hue" | "whiteness" | "blackness"> };
+type Channels<K extends string> = { readonly [P in K]: number } & { readonly alpha?: number };
+/** An sRGB colour, channels 0 to 1: Bevy's `Color::srgba`. */
+export declare function srgb(r: number, g: number, b: number, a?: number): ColorValue;
+/** A linear RGB colour, channels 0 to 1: Bevy's `Color::linear_rgba`. */
+export declare function linear(r: number, g: number, b: number, a?: number): ColorValue;
+/** An HSL colour: hue in degrees, saturation and lightness 0 to 1. Bevy's `Color::hsla`. */
+export declare function hsl(h: number, s: number, l: number, a?: number): ColorValue;
+/** A hex colour (`"#f80"`, `"#ff8800cc"`). */
+export declare function hex(s: string): ColorValue;
 /** A component class: the handle in queries, its TSX tag and, through `of`, its values. */
 export type ComponentClass = abstract new () => Component | ReflectComponent;
 /** The name tsx's JSX types know a component class by. */
@@ -349,9 +380,9 @@ export interface Commands {
   trigger(event: EntityEvent | Event): void;
   write(message: Message): void;
   /** Spawns through a native Rust recipe. */
-  spawnNative(recipe: "camera3d", params?: { position?: [number, number, number]; lookAt?: [number, number, number] }): Entity;
+  spawnNative(recipe: "camera3d", params?: { position?: [number, number, number]; lookAt?: [number, number, number]; projection?: import("bevy-ts/bevy").ProjectionValue }): Entity;
   spawnNative(recipe: "directionalLight", params?: { position?: [number, number, number]; lookAt?: [number, number, number]; illuminance?: number; shadows?: boolean }): Entity;
-  spawnNative(recipe: "cuboid", params?: { size?: [number, number, number]; color?: string; position?: [number, number, number]; lookAt?: [number, number, number] }): Entity;
+  spawnNative(recipe: "cuboid", params?: { size?: [number, number, number]; color?: ColorValue; position?: [number, number, number]; lookAt?: [number, number, number] }): Entity;
   spawnNative(recipe: string, params?: unknown): Entity;
   /** Mounts an element tree under the tsx runtime root. */
   mount(element: Element, options?: { parent?: Entity | null }): void;

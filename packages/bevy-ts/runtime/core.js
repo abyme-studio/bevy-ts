@@ -159,6 +159,21 @@ Timer.new = (seconds, mode) => new TimerValue(seconds, mode);
 export const Stopwatch = new FieldType({ kind: "stopwatch" });
 Stopwatch.new = () => new StopwatchValue();
 
+// Colours: sugar for Bevy's reflected `Color` shape, which every colour prop takes.
+export function srgb(r, g, b, a = 1) {
+  return { Srgba: { red: r, green: g, blue: b, alpha: a } };
+}
+export function linear(r, g, b, a = 1) {
+  return { LinearRgba: { red: r, green: g, blue: b, alpha: a } };
+}
+export function hsl(h, s, l, a = 1) {
+  return { Hsla: { hue: h, saturation: s, lightness: l, alpha: a } };
+}
+export function hex(s) {
+  if (typeof s !== "string") throw new Error(`hex(s): s is a string like "#ff8800", not ${s}`);
+  return s;
+}
+
 export function enumOf(...variants) {
   return new FieldType({ kind: "enum", variants });
 }

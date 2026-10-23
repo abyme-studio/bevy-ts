@@ -15,7 +15,7 @@ use std::collections::HashMap;
 pub struct MeshProps {
     pub shape: MeshShape,
     /// Shorthand for a `<material color>` on the same entity.
-    pub color: Option<String>,
+    pub color: Option<Value>,
 }
 
 // By hand: `color` comes out first, and the rest is the shape's (`flatten` and
@@ -26,8 +26,8 @@ impl<'de> Deserialize<'de> for MeshProps {
         let mut props = Map::<String, Value>::deserialize(d)?;
         let color = match props.remove("color") {
             None | Some(Value::Null) => None,
-            Some(Value::String(c)) => Some(c),
-            Some(v) => return Err(D::Error::custom(format!("color: expected a string, not {v}"))),
+            // Any colour form; checked by `check`.
+            Some(v) => Some(v),
         };
         let shape = MeshShape::from_props(props).map_err(D::Error::custom)?;
         Ok(MeshProps { shape, color })
@@ -56,13 +56,13 @@ impl MeshProps {
 #[serde(deny_unknown_fields)]
 pub struct MaterialProps {
     #[serde(default)]
-    pub color: Option<String>,
+    pub color: Option<Value>,
     #[serde(default)]
     pub metallic: Option<f32>,
     #[serde(default)]
     pub roughness: Option<f32>,
     #[serde(default)]
-    pub emissive: Option<String>,
+    pub emissive: Option<Value>,
     #[serde(default)]
     pub unlit: Option<bool>,
     /// Replaces `color`'s alpha, 0 to 1.
@@ -123,8 +123,8 @@ impl MaterialProps {
     }
 }
 
-fn color(s: &str) -> Result<Color, String> {
-    Srgba::hex(s).map(Color::from).map_err(|e| format!("color {s:?}: {e}"))
+fn color(v: &Value) -> Result<Color, String> {
+    bevy_ts::color::parse(v)
 }
 
 /// Asset handles by props, shared by every element with the same props.

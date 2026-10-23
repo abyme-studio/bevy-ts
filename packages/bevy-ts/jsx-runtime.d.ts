@@ -1,7 +1,7 @@
 // `bevy-ts/jsx-runtime`: the automatic JSX runtime (`"jsxImportSource": "bevy-ts"`). Elements
 // are plain descriptions: an `<entity>`, component elements on it (`<Health initialHp={100} />`),
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
-import type { Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
+import type { ColorValue, Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
 import type { AlphaMode } from "bevy-ts/material";
 
 /** What a picking handler receives: the event, and the call's `commands` and `frame`. */
@@ -77,7 +77,7 @@ export interface RepeatedTrack {
 /** A grid line placement (Bevy's `GridPlacement`): a start line, `span(n)`, `{ start, end, span }` or `"auto"`. */
 export type Placement = number | "auto" | { readonly start?: number; readonly end?: number; readonly span?: number };
 /** A colour stop: a colour, placed evenly, or `[colour, position]`. */
-export type ColorStop = string | readonly [string, Length];
+export type ColorStop = ColorValue | readonly [ColorValue, Length];
 /** What `linearGradient`, `radialGradient` and `conicGradient` return. */
 export interface Gradient {
   readonly gradient: "linear" | "radial" | "conic";
@@ -137,7 +137,7 @@ export interface Style {
 export type Corners = Length | readonly [Length, Length, Length, Length] | { topLeft?: Length; topRight?: Length; bottomRight?: Length; bottomLeft?: Length };
 /** `BoxShadow`'s `ShadowStyle`; a missing field is Bevy's default. */
 export interface Shadow {
-  color?: string;
+  color?: ColorValue;
   x?: Length;
   y?: Length;
   spread?: Length;
@@ -154,13 +154,13 @@ export interface UiTransform {
 export interface NodeProps extends EntityProps {
   style?: Bindable<Style>;
   /** `BackgroundColor` (`"#rrggbb"` or `"#rrggbbaa"`), or `BackgroundGradient` from a gradient helper. */
-  background?: Bindable<string | Gradient | readonly Gradient[]>;
+  background?: Bindable<ColorValue | Gradient | readonly Gradient[]>;
   /** `BorderColor` (one colour or per side), or `BorderGradient`; widths are `style.border`. */
-  border?: Bindable<string | { top?: string; right?: string; bottom?: string; left?: string } | Gradient | readonly Gradient[]>;
+  border?: Bindable<ColorValue | { top?: ColorValue; right?: ColorValue; bottom?: ColorValue; left?: ColorValue } | Gradient | readonly Gradient[]>;
   /** `Node.border_radius`: one length, or per corner. */
   radius?: Bindable<Corners>;
   /** `Outline`, drawn outside the border; a missing field is Bevy's default (1 px, no offset, white). */
-  outline?: Bindable<{ width?: Length; offset?: Length; color?: string }>;
+  outline?: Bindable<{ width?: Length; offset?: Length; color?: ColorValue }>;
   /** `BoxShadow`: one shadow or several. */
   shadow?: Bindable<Shadow | readonly Shadow[]>;
   /** `UiTransform`: moves, scales and rotates the node after layout. */
@@ -174,7 +174,7 @@ export interface SpanStyle {
   /** `TextFont.font_size`, in pixels. */
   size?: Bindable<number>;
   /** `TextColor`. */
-  color?: Bindable<string>;
+  color?: Bindable<ColorValue>;
   /** `TextFont.font`: a font asset path (`"fonts/Inter.ttf"`). */
   font?: Bindable<string>;
   /** `TextFont.weight`: 1 to 1000, 400 normal, 700 bold. */
@@ -186,11 +186,11 @@ export interface SpanStyle {
   /** `LetterSpacing`: pixels, `px(n)` or `rem(n)`. */
   letterSpacing?: Bindable<number | string>;
   /** `TextBackgroundColor`. */
-  textBackground?: Bindable<string>;
+  textBackground?: Bindable<ColorValue>;
   /** `Underline`, with `UnderlineColor` when a colour. */
-  underline?: Bindable<boolean | string>;
+  underline?: Bindable<boolean | ColorValue>;
   /** `Strikethrough`, with `StrikethroughColor` when a colour. */
-  strikethrough?: Bindable<boolean | string>;
+  strikethrough?: Bindable<boolean | ColorValue>;
 }
 
 /** `<text>`'s and `<span>`'s children: strings, bindings and `<span>`s. */
@@ -207,7 +207,7 @@ export interface TextProps extends Omit<NodeProps, "children">, SpanStyle {
   /** `TextLayout.linebreak`. */
   linebreak?: Bindable<"word" | "char" | "word-or-char" | "none">;
   /** `TextShadow`; a missing field is Bevy's default. */
-  textShadow?: Bindable<{ x?: number; y?: number; color?: string }>;
+  textShadow?: Bindable<{ x?: number; y?: number; color?: ColorValue }>;
   children?: TextChild | readonly TextChild[];
 }
 
@@ -225,7 +225,7 @@ export interface ImageMode {
 export interface ImageProps extends NodeProps {
   src: Bindable<string>;
   /** `ImageNode.color`, a tint. */
-  color?: Bindable<string>;
+  color?: Bindable<ColorValue>;
   flipX?: Bindable<boolean>;
   flipY?: Bindable<boolean>;
   /** The part of the image to draw, `[x, y, width, height]` in pixels. */
@@ -477,14 +477,14 @@ export type MeshProps = (
   | ConvexPolygonMesh
 ) & {
   /** Shorthand for `<material color>`. */
-  color?: string;
+  color?: ColorValue;
 };
 
 export interface MaterialProps {
-  color?: string;
+  color?: ColorValue;
   metallic?: number;
   roughness?: number;
-  emissive?: string;
+  emissive?: ColorValue;
   unlit?: boolean;
   /** Replaces `color`'s alpha, 0 to 1. To fade over time, use `MaterialAlpha` instead. */
   alpha?: number;
@@ -510,6 +510,13 @@ export interface ScriptMaterialProps {
 
 type DescElement = Element;
 
+/**
+ * Props a component element takes beyond its columns, written through reflection: a layout-tier
+ * Rust component's writable holes (`<DirectionalLight color>`), or an enum component's `value`
+ * (`<Projection value>`). TS systems never see them.
+ */
+type TsxProps<C> = C extends { readonly tsxProps: infer X } ? X : {};
+
 export declare namespace JSX {
   type Element = DescElement;
   /** What may be a tag: an intrinsic, a component handle, or a prefab. */
@@ -532,7 +539,7 @@ export declare namespace JSX {
       : C extends { scene(props: infer Props): unknown } & (abstract new () => infer I)
       ? ElementProps<I> & Props & KeyAttribute
       : C extends abstract new () => infer I
-      ? I extends Component | ReflectComponent ? ElementProps<I> & KeyAttribute : P & KeyAttribute
+      ? I extends Component | ReflectComponent ? ElementProps<I> & TsxProps<C> & KeyAttribute : P & KeyAttribute
       : P & KeyAttribute;
   interface IntrinsicElements {
     entity: EntityProps & KeyAttribute;

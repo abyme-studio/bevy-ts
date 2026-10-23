@@ -3,7 +3,7 @@
 //! `Reflect` hands out references into the value itself, so this works whatever the `repr`, for
 //! private fields and inside glam's SIMD types.
 
-use crate::layout::{ComponentLayout, EnumRepr, FieldLayout, FieldType, NativeComponent, NativeLayouts, NativeSource};
+use crate::layout::{ComponentLayout, EnumRepr, FieldLayout, FieldType, NativeComponent, NativeLayouts, NativeSource, ReflectHole};
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld};
 use bevy::prelude::*;
@@ -81,13 +81,14 @@ enum Found {
     Leaf(Leaf),
     /// A field bevy-ts cannot read: never exposed, never written. Its span still counts for the
     /// bounds and overlap checks.
-    Hole { name: String, offset: usize, size: usize, why: String },
+    Hole { name: String, offset: usize, size: usize, why: String, writable: Option<String> },
 }
 
 fn leaf_of(v: &dyn PartialReflect, base: usize, name: String, path: String) -> Found {
     let offset = addr(v).wrapping_sub(base);
     let size = size_of_val(v);
-    let hole = |why: String| Found::Hole { name: name.clone(), offset, size, why };
+    // Every hole but an opaque one is written through reflection: its type path, for its TS type.
+    let hole = |why: String| Found::Hole { name: name.clone(), offset, size, why, writable: Some(type_name(v)) };
     if let Some(ty) = v.try_as_reflect().and_then(|r| plain(r.as_any().type_id())) {
         return Found::Leaf(Leaf { name, path, offset, size, ty: LeafType::Plain(ty) });
     }
@@ -114,7 +115,7 @@ fn leaf_of(v: &dyn PartialReflect, base: usize, name: String, path: String) -> F
             let ty = FieldType::Array { of: Box::new(of), len: a.len() as u32 };
             Found::Leaf(Leaf { name, path, offset, size, ty: LeafType::Plain(ty) })
         }
-        ReflectRef::Opaque(_) => hole(format!("opaque to reflection ({})", type_name(v))),
+        ReflectRef::Opaque(_) => Found::Hole { name, offset, size, why: format!("opaque to reflection ({})", type_name(v)), writable: None },
         _ => hole(format!("not plain data ({})", type_name(v))),
     }
 }
@@ -203,6 +204,7 @@ pub struct Tiered {
     pub layout: ComponentLayout,
     /// `name: why` per hole.
     pub holes: Vec<String>,
+    pub reflect_holes: Vec<ReflectHole>,
     pub defaults: Vec<u8>,
 }
 
@@ -213,6 +215,7 @@ pub fn layout_of(value: &mut dyn Reflect) -> Result<Tiered, String> {
     let found = fields(value.as_partial_reflect())?;
     let mut leaves = Vec::new();
     let mut holes = Vec::new();
+    let mut reflect_holes = Vec::new();
     let mut spans = Vec::new();
     for f in found {
         let (name, offset, size_f) = match &f {
@@ -227,7 +230,12 @@ pub fn layout_of(value: &mut dyn Reflect) -> Result<Tiered, String> {
         }
         match f {
             Found::Leaf(l) => leaves.push(l),
-            Found::Hole { name, why, .. } => holes.push(format!("{name}: {why}")),
+            Found::Hole { name, why, writable, .. } => {
+                if let Some(type_path) = writable {
+                    reflect_holes.push(ReflectHole { name: name.clone(), type_path });
+                }
+                holes.push(format!("{name}: {why}"));
+            }
         }
     }
     if leaves.is_empty() {
@@ -263,7 +271,7 @@ pub fn layout_of(value: &mut dyn Reflect) -> Result<Tiered, String> {
             field.ty = FieldType::Enum { variants: variants.clone(), repr: Some(repr) };
         }
     }
-    Ok(Tiered { layout: ComponentLayout { size, align, fields }, holes, defaults })
+    Ok(Tiered { layout: ComponentLayout { size, align, fields }, holes, reflect_holes, defaults })
 }
 
 /// A value of a registered type to read offsets from: `ReflectDefault`, then the first live row,
@@ -317,6 +325,7 @@ fn tier(world: &mut World, reg: &TypeRegistration, native: &mut NativeLayouts) -
                 defaults: t.defaults,
                 writable: mutable,
                 holes: t.holes,
+                reflect_holes: t.reflect_holes,
                 insertable,
                 source: NativeSource::Reflect,
             });

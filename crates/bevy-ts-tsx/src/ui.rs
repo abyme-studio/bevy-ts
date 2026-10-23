@@ -553,8 +553,7 @@ fn style(node: &mut Node, style: &Value) -> Result<(), String> {
 }
 
 pub fn color(v: &Value) -> Result<Color, String> {
-    let s = v.as_str().ok_or_else(|| format!("{v} is not a colour (\"#rrggbb\" or \"#rrggbbaa\")"))?;
-    Srgba::hex(s).map(Color::from).map_err(|e| format!("colour {s:?}: {e}"))
+    bevy_ts::color::parse(v)
 }
 
 /// One length for every corner, `[topLeft, topRight, bottomRight, bottomLeft]` or
@@ -672,9 +671,11 @@ fn gradients(v: &Value) -> Result<Vec<Gradient>, String> {
     list(v).iter().map(gradient).collect()
 }
 
-/// `border`'s colour: one for every side, or `{ top, right, bottom, left }`.
+/// `border`'s colour: one for every side, or `{ top, right, bottom, left }`. A one-key object
+/// naming a `Color` variant (`{ Srgba: ... }`) is one colour.
 fn border_color(v: &Value) -> Result<BorderColor, String> {
-    let Some(o) = v.as_object() else { return Ok(BorderColor::all(color(v)?)) };
+    let variant = |o: &Map<String, Value>| o.len() == 1 && o.keys().all(|k| k.starts_with(char::is_uppercase));
+    let Some(o) = v.as_object().filter(|o| !variant(o)) else { return Ok(BorderColor::all(color(v)?)) };
     let mut b = BorderColor::DEFAULT;
     for (k, x) in o {
         let c = color(x)?;

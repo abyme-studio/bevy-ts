@@ -23,7 +23,9 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
 ```
 
 - `params` take `f32`, `i32`, `u32`, `vec2f`, `vec3f`, `vec4f`, `mat4x4f`, `color` (linear RGBA,
-  written as `"#f80"` or sRGB `[r, g, b, a?]`) and `array(of, len)`. Unset params are zero;
+  written in any colour form: `"#f80"`, sRGB `[r, g, b, a?]`, `srgb(...)`, `linear(...)`,
+  `hsl(...)` or Bevy's reflected `Color`, as in [native.md](native.md#reflected-values-in-tsx))
+  and `array(of, len)`. Unset params are zero;
   colors, and the elements of a color array, are white.
 - `textures: { noise: texture2d }` adds a 2D texture and a filtering sampler; the prop is an asset
   path (`noise="textures/noise.png"`). Unset, it binds a white fallback. Param and texture names are
