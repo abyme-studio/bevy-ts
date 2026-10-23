@@ -1,7 +1,7 @@
 # level-placeholders Specification
 
 ## Purpose
-TBD - created by archiving change level-placeholders. Update Purpose after archive.
+A level whose code is missing, failed or no longer fits still loads under `bevy-ts dev`: each entry it cannot apply becomes a placeholder on its entity (`MissingComponents`), keeping the saved text byte for byte, shown to the editor over the protocol, and resolved in place when the code comes back.
 
 ## Requirements
 
