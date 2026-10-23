@@ -30,9 +30,12 @@ fn compile(compiler: &Compiler, tx: &Sender<DevEvent>) -> bool {
 }
 
 fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
-    if !compile(&compiler, &tx) {
-        return;
-    }
+    // The first set is sent once its files are watched: an edit made as soon as the game has
+    // loaded is never missed.
+    let started = Instant::now();
+    let _ = tx.send(DevEvent::Compiling);
+    let first = compiler.compile_graph();
+    let took = started.elapsed();
     let (events_tx, events) = channel();
     let mut watcher = match notify::recommended_watcher(move |e| {
         let _ = events_tx.send(e);
@@ -40,6 +43,7 @@ fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("bevy-ts: cannot watch files ({e}); reload with bevy-ts/reload instead");
+            let _ = tx.send(DevEvent::Compiled(first, took));
             return;
         }
     };
@@ -61,6 +65,9 @@ fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
         }
     };
     rewatch(&files, &missing, &mut dirs);
+    if tx.send(DevEvent::Compiled(first, took)).is_err() {
+        return;
+    }
     loop {
         let Ok(first) = events.recv() else { return };
         let mut touched = BTreeSet::new();
