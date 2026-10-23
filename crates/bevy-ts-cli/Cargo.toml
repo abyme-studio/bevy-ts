@@ -10,7 +10,7 @@ name = "bevy-ts"
 path = "src/main.rs"
 
 [dependencies]
-bevy = { workspace = true, features = ["3d", "bevy_ui_render", "bevy_remote", "file_watcher"] }
+bevy = { workspace = true, features = ["3d", "bevy_ui_render", "bevy_remote", "file_watcher", "system_font_discovery"] }
 bevy-ts = { workspace = true, features = ["pbr"] }
 bevy-ts-v8.workspace = true
 bevy-ts-remote.workspace = true
@@ -34,5 +34,6 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 bevy = { workspace = true }
+parley = { version = "0.11", default-features = false, features = ["std"] }
 jsonschema = { version = "0.33", default-features = false }
 tungstenite = "0.28"

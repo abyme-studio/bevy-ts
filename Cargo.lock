@@ -521,6 +521,7 @@ dependencies = [
  "notify",
  "oxc",
  "oxc_resolver",
+ "parley",
  "serde",
  "serde_json",
  "sha2",
