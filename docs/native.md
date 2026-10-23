@@ -90,7 +90,9 @@ the field's address minus the value's. No `repr(C)` and no code per type.
   clock is a value built per run (docs/time.md). Enum variant bytes are read from the
   build, never assumed; `bool`, enum and `Entity` fields are written only through accessors.
   Components declared immutable are read-only. A type whose holes may own heap data is never
-  inserted from bytes.
+  inserted from bytes. A script `spawn` or `insert` starts from the type's `Default`, so its holes
+  and the fields it leaves out keep their default (`AmbientLight.of({ brightness: 400 })` stays
+  white).
 - **Reflect tier**: a type with no plain-data field is typed in TS and reachable from TSX, the
   protocol and `With`/`Without` filters, never as query data.
 - Components without `Reflect` can derive `bevy_ts_native::NativeLayout` (public fields, offsets

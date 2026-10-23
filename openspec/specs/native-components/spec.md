@@ -16,6 +16,10 @@ A registered Rust component or resource with `ReflectComponent` SHALL be usable 
 - **WHEN** a TS system takes `time: Res<Time>`
 - **THEN** it reads `time.delta_secs` and `time.elapsed_secs` from Bevy's own `Time`, and its `Duration` fields are not visible to TS
 
+#### Scenario: A script insert keeps the holes' defaults
+- **WHEN** a TS system runs `commands.entity(camera).insert(AmbientLight.of({ brightness: 400 }))`
+- **THEN** the camera's `AmbientLight` has brightness 400 and its `Default` for every field the script did not give, so its colour hole stays white and the scene is lit by 400
+
 #### Scenario: A private reflected field
 - **WHEN** a reflected component's field is private (`LockedAxes(u8)`)
 - **THEN** it is still layout tier; reflection gives its offset where `offset_of!` cannot

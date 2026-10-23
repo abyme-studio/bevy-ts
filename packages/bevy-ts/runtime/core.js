@@ -1565,6 +1565,7 @@ function resolveClass(C, r) {
   if (C.layout && C.id === r.id && JSON.stringify(C.layout) === JSON.stringify(r.layout)) return;
   C.id = r.id;
   C.layout = r.layout;
+  C.defaults = r.defaults ? Uint8Array.from(r.defaults) : null;
   C.rawWrites = r.rawWrites !== false;
   C.views = viewsFor(r.layout);
   C.offsets = Object.fromEntries(r.layout.fields.map((f) => [f.name, f.offset]));
@@ -2400,6 +2401,8 @@ function encodeField(dv, t, off, v, path) {
 function encodeWithLayout(C, layout, values) {
   if (!layout) throw new Error(`${C.componentName} has no layout yet`);
   const out = new Uint8Array(layout.size);
+  // A Rust component starts from its Default, so its holes (AmbientLight's colour) keep it.
+  if (C.defaults && C.defaults.length === layout.size && C.layout === layout) out.set(C.defaults);
   const dv = new DataView(out.buffer);
   const defaults = (C.decl && C.decl.fields) || [];
   for (const f of layout.fields) {

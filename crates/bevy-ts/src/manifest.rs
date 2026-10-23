@@ -403,6 +403,10 @@ pub struct ResolvedComponent {
     /// holes, or `bool`, enum or `Entity` fields only accessors keep valid.
     #[serde(default = "yes", rename = "rawWrites", skip_serializing_if = "is_true")]
     pub raw_writes: bool,
+    /// A Rust component's whole default value, which a script spawn or insert starts from, so
+    /// fields it leaves out and holes keep their `Default`. Empty for TS components.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub defaults: Vec<u8>,
 }
 
 fn yes() -> bool {

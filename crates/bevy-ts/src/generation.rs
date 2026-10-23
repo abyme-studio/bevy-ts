@@ -397,17 +397,19 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
         resolution.ports = h.glue();
     }
     for (name, id, layout) in pending.iter() {
-        resolution.components.insert(name.to_string(), ResolvedComponent { id: id.index() as u32, layout: layout.clone(), raw_writes: true });
+        resolution.components.insert(name.to_string(), ResolvedComponent { id: id.index() as u32, layout: layout.clone(), raw_writes: true, defaults: Vec::new() });
     }
     for n in world.resource::<NativeLayouts>().iter() {
         let raw_writes = n.holes.is_empty() && n.layout.fields.iter().all(|f| !f.ty.accessor_only());
-        let r = ResolvedComponent { id: n.id.index() as u32, layout: n.layout.clone(), raw_writes };
+        // Only a component inserted from bytes needs them: other defaults may hold pointers.
+        let defaults = if n.insertable { n.defaults.clone() } else { Vec::new() };
+        let r = ResolvedComponent { id: n.id.index() as u32, layout: n.layout.clone(), raw_writes, defaults };
         resolution.components.insert(n.type_path.clone(), r.clone());
         resolution.components.insert(n.ts_name.clone(), r);
     }
     for clock in systems::Clock::ALL {
         let layout = systems::time_layout(clock).clone();
-        resolution.components.insert(clock.resource().into(), ResolvedComponent { id: u32::MAX, layout, raw_writes: true });
+        resolution.components.insert(clock.resource().into(), ResolvedComponent { id: u32::MAX, layout, raw_writes: true, defaults: Vec::new() });
     }
     for (name, op) in kinds.all() {
         resolution.command_kinds.insert(name.to_string(), op);
