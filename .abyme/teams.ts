@@ -15,12 +15,11 @@ export default {
   templates: {
     // An area: a standing team with a lead and no worktree work of its own. It brings up change and
     // research teams as its children and runs them as lead@bevy-ts would (operator, 2026-10-23). It
-    // ends only when lead@bevy-ts takes it down.
+    // has no end of its own: it lasts until lead@bevy-ts takes it down.
     area: {
       title: "An area",
       instructions: `This team is one area of bevy-ts, kept for as long as the area has work. ${instructions}`,
       lead: "bevy-ts-area-lead",
-      keep: true,
       groups: [],
     },
     // A change: one team per feature, named after it, its lead holding its root item. It ends when
