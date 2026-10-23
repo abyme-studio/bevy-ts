@@ -198,6 +198,13 @@ pub struct CallContext<'a> {
 pub trait HostCalls {
     /// Calls host function `id`; returns the result's slot count, or an error message JS throws.
     fn call(&mut self, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String>;
+
+    /// Calls the bridge's own JSON service `name` (`assets.add`): `args` is a JSON array of its
+    /// arguments, the result is JSON. Only the engine's world answers; a host without one refuses.
+    fn call_json(&mut self, name: &str, args: &str) -> Result<String, String> {
+        let _ = args;
+        Err(format!("{name} needs the engine's world"))
+    }
 }
 
 /// One component column of one table, as raw memory valid for the length of one run.

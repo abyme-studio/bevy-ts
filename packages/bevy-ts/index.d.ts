@@ -281,6 +281,45 @@ export declare function nativeComponent<const S extends Schema>(name: string, fi
   of<T>(this: new () => T, init?: Init<T>): T;
 };
 
+declare const assetBrand: unique symbol;
+/** A reflected asset type (`Mesh`): its fields `F` as the writer takes them. */
+export interface AssetType<F = {}> {
+  readonly typePath: string;
+  readonly [assetBrand]?: F;
+}
+/** A reflected asset type with a default (`StandardMaterial`): `assets.add` takes it, and `of` makes values. */
+export interface AssetClass<F = {}> extends AssetType<F> {
+  /** An asset value: written into a `Handle<T>` slot it becomes one asset shared by every slot given equal props. */
+  of(props?: AssetProps<F>): AssetValue<F>;
+}
+/** Props written over an asset: any fields, nested structs merged field by field. */
+export type AssetProps<F> = {
+  [K in keyof F]?: F[K] extends readonly unknown[] ? F[K] : F[K] extends { readonly $asset: number } | { readonly $of: string } ? F[K] : F[K] extends object ? AssetProps<F[K]> : F[K];
+};
+/** A script-made asset, from `assets.add`, for any `Handle<T>` slot. It lives until the script reloads or stops. */
+export interface AssetRef<F = unknown> {
+  readonly $asset: number;
+  readonly type: string;
+  readonly [assetBrand]?: F;
+}
+/** `T.of(props)`: a plain description of an asset, built when a `Handle<T>` slot is written with it. */
+export interface AssetValue<F = unknown> {
+  readonly $of: string;
+  readonly props: AssetProps<F>;
+  readonly [assetBrand]?: F;
+}
+/** A Rust asset type by type path; `bevy-ts/bevy` declares every one Bevy reflects. */
+export declare function asset<F = {}>(typePath: string): AssetClass<F>;
+/** Builds, reads and edits reflected assets, inside a system's run or a TSX render (docs/assets.md). */
+export declare const assets: {
+  /** The asset from its type's default with `props` written over it. Visible to `get` at once, in `Assets<T>` when the run ends. */
+  add<F>(type: AssetClass<F>, props?: AssetProps<F>): AssetRef<F>;
+  /** The asset as JSON, or `undefined` when it is gone. One host call and a full read: keep values in JS rather than reading per frame. */
+  get<F>(ref: AssetRef<F>): F | undefined;
+  /** Writes `patch` over the asset's current value; a patch that changes nothing marks nothing changed. */
+  set<F>(ref: AssetRef<F>, patch: AssetProps<F>): void;
+};
+
 /** The scene component a level names (`enemies::Grunt` or `src/enemies.tsx#Grunt`), for tsx's expand entry. */
 export declare function sceneComponent(nameOrId: string): (abstract new () => SceneComponent) & typeof SceneComponent | undefined;
 
