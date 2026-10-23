@@ -41,7 +41,7 @@ export function setup(c: Commands) {
   c.entity(a).observe(onHit);
   c.entity(p).observe(onHit);
 }
-export function onHit(hit: On<Hit>, q: Query<[Tag]>) { const r = q.get(hit.entity); console.log(`hit ${r ? r[0].n : "?"} ${hit.amount}`); }
+export function onHit(hit: On<Hit>, q: Query<[Tag]>) { const r = q.get(hit.entity); const o = q.get(hit.original); console.log(`hit ${r ? r[0].n : "?"} ${hit.amount} ${o ? o[0].n : "?"}`); }
 export function drive(q: Query<[Entity, Tag]>, c: Commands) {
   step++;
   if (step === 2) q.each((e, t) => c.trigger(Hit.of({ entity: e, amount: t.n })));
@@ -58,8 +58,9 @@ app.addSystems(Startup, setup).addSystems(Update, drive);
     updates(&mut app, 4);
     let mut hits = lines(&app, "hit ");
     hits.sort();
-    // `a` for its own hit; `p` for its own and, bubbling, for its child's, with `entity` itself.
-    assert_eq!(hits, ["hit 1 1", "hit 10 10", "hit 10 11"], "{:?}", messages(&app));
+    // `a` for its own hit; `p` for its own and, bubbling, for its child's, with `entity` itself
+    // and `original` the child.
+    assert_eq!(hits, ["hit 1 1 1", "hit 10 10 10", "hit 10 11 11"], "{:?}", messages(&app));
     assert_eq!(attachments(&mut app), 1, "a's observer went with a");
 }
 

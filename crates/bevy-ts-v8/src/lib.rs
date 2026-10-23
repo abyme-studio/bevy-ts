@@ -346,10 +346,11 @@ fn frame_value<'s>(s: &mut v8::PinScope<'s, '_>, buffers: &mut Vec<v8::Local<'s,
             v8::Array::new_with_elements(s, &[a.into(), na, b.into(), nb, st]).into()
         }
         ParamFrame::State { value } => num(s, if *value == u32::MAX { -1.0 } else { *value as f64 }),
-        ParamFrame::Event { data, bytes, entity } => {
+        ParamFrame::Event { data, bytes, entity, original } => {
             let d = span(s, buffers, *data as *mut u8, *bytes);
             let e = num(s, *entity as f64);
-            v8::Array::new_with_elements(s, &[d.into(), e]).into()
+            let o = num(s, *original as f64);
+            v8::Array::new_with_elements(s, &[d.into(), e, o]).into()
         }
         ParamFrame::None => v8::null(s).into(),
     }

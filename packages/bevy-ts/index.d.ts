@@ -448,12 +448,13 @@ export type Insert<C> = { readonly [lifecycleBrand]: ["insert", C] };
 export type Remove<C> = { readonly [lifecycleBrand]: ["remove", C] };
 /**
  * An observer's first parameter, as Bevy's `On<Explode>` / `On<Add<Health>>`: the event's fields
- * directly (`explode.radius`, as Rust's `On` derefs to the event), the target as `entity`, and
+ * directly (`explode.radius`, as Rust's `On` derefs to the event), the current target as `entity`,
+ * the first target of a bubbling event as `original` (Bevy's `original_event_target`), and
  * `propagate`. So an event's fields may not be named `entity` (bar an EntityEvent's target),
- * `propagate` or `toJSON`.
+ * `original`, `propagate` or `toJSON`.
  */
 export type On<E> =
-  & (E extends { readonly [lifecycleBrand]: unknown } ? { readonly entity: Entity } : ReadView<E> & { readonly entity: Entity })
+  & (E extends { readonly [lifecycleBrand]: unknown } ? { readonly entity: Entity; readonly original: Entity } : ReadView<E> & { readonly entity: Entity; readonly original: Entity })
   & { /** Stop bubbling. */ propagate(on: boolean): void };
 // ---------- Systems, schedules, ordering ----------
 

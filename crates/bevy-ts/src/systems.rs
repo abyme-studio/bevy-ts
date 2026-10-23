@@ -1022,7 +1022,7 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
         let targets: Vec<Option<Entity>> = if p.path.is_empty() { vec![None] } else { p.path.iter().copied().map(Some).collect() };
         'path: for target in targets {
             let mut stop = false;
-            let bits = target.map_or(u64::MAX, Entity::to_bits);
+            let bits = (target.map_or(u64::MAX, Entity::to_bits), p.original.map_or(u64::MAX, Entity::to_bits));
             // Bevy's order: global observers, then the target's own.
             for o in systems.observers.iter_mut() {
                 if o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger) {
@@ -1045,7 +1045,7 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
 }
 
 /// Runs one system (or one observer event). Returns whether an observer stopped propagation.
-fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event: Option<(&[u8], u64)>) -> bool {
+fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event: Option<(&[u8], (u64, u64))>) -> bool {
     let identity = sys.decl.name.clone();
     let dev = rt.dev;
     let tick = world.increment_change_tick();
@@ -1211,7 +1211,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     ParamFrame::State { value: world.resource::<TsPayloads>().states[*index].current.unwrap_or(u32::MAX) }
                 }
                 RunParam::Event => match event {
-                    Some((bytes, entity)) => ParamFrame::Event { data: bytes.as_ptr(), bytes: bytes.len(), entity },
+                    Some((bytes, (entity, original))) => ParamFrame::Event { data: bytes.as_ptr(), bytes: bytes.len(), entity, original },
                     None => ParamFrame::None,
                 },
                 RunParam::Port(_) | RunParam::None => ParamFrame::None,

@@ -380,6 +380,7 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                 world.get_resource_or_init::<crate::observers::ObserverQueue>().0.push_back(crate::observers::Pending {
                     trigger: crate::observers::Trigger::Event(index as usize),
                     bytes,
+                    original: path.first().copied(),
                     path,
                 });
             }

@@ -236,8 +236,9 @@ pub enum ParamFrame {
     /// Unread messages, oldest first, in at most two contiguous runs of `stride`-byte records.
     Messages { parts: [(*const u8, usize); 2], stride: usize },
     State { value: u32 },
-    /// An observer's trigger: the event's bytes and its current target (`u64::MAX` for none).
-    Event { data: *const u8, bytes: usize, entity: u64 },
+    /// An observer's trigger: the event's bytes, its current target and its first target
+    /// (`u64::MAX` for none).
+    Event { data: *const u8, bytes: usize, entity: u64, original: u64 },
     None,
 }
 
