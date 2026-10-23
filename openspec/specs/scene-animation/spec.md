@@ -1,7 +1,7 @@
 # scene-animation Specification
 
 ## Purpose
-TBD - created by archiving change scene-animation. Update Purpose after archive.
+A game plays a glTF clip on a spawned scene by placing one component, `PlayAnimation`, beside its `WorldAssetRoot`, from TSX, a level or the editor. Rust does Bevy's own wiring (the shared graph, `AnimationTransitions`, cross-fades), so no JS runs to play, switch or stop a clip.
 
 ## Requirements
 
