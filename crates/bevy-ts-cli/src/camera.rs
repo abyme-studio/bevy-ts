@@ -45,11 +45,14 @@ impl Cameras<'_, '_> {
     /// point (`NaN, NaN` for one that does not project). Returns how many projected.
     pub fn worlds_to_viewport(&self, camera: Entity, points: &[f32], out: &mut [f32]) -> Result<u32, String> {
         let (cam, at) = self.camera(camera)?;
+        if !points.len().is_multiple_of(3) || out.len() < points.len() / 3 * 2 {
+            return Err(format!("points holds {} floats and out {}: give 3 per point and 2 out per point", points.len(), out.len()));
+        }
         let mut n = 0;
-        for (p, o) in points.chunks_exact(3).zip(out.chunks_exact_mut(2)) {
-            let v = cam.world_to_viewport(at, Vec3::new(p[0], p[1], p[2])).ok();
+        for (p, o) in points.as_chunks::<3>().0.iter().zip(out.as_chunks_mut::<2>().0) {
+            let v = cam.world_to_viewport(at, Vec3::from_array(*p)).ok();
             let v = v.unwrap_or(Vec2::NAN);
-            o.copy_from_slice(&[v.x, v.y]);
+            *o = v.to_array();
             n += v.is_finite() as u32;
         }
         Ok(n)

@@ -222,15 +222,17 @@ export function tag(cameras: Cameras) {
 ```
 
 - `worldToViewport(camera, point)` returns logical pixels from the viewport's top-left, the
-  units of a node's `left` and `top`. A point in front of the camera but off screen returns
+  units of a node's `left` and `top` at the default `UiScale` of 1. A point in front of the camera but off screen returns
   coordinates outside the viewport; callers clamp or hide. It returns `undefined` when Bevy cannot
   project the point: behind the camera, past the far plane, or before the viewport has a size
   (the frame a camera spawns).
 - `logicalViewportSize(camera)` is the viewport's logical size, `undefined` before it is known.
 - `worldsToViewport(camera, points, out)` projects many in one host call: three floats per
   point in, two out (`NaN, NaN` for one that does not project), and returns how many projected.
+  It throws when `points` is not a whole number of points or `out` is too short. Pass two
+  separate arrays, not views of one buffer.
 - An entity that is not a camera throws.
 
 The camera's `GlobalTransform` is the one last propagated, in `PostUpdate`: from `Update` it is
-the previous frame's, so a tag on a moving camera lags a frame. A system that needs the current
-frame orders after transform propagation.
+the previous frame's, so a tag over a moving camera or entity lags a frame. A system ordered
+after `bevy:transform-propagate` reads the current frame's transforms.

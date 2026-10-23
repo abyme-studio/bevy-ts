@@ -53,6 +53,11 @@ export function project(cameras: Cameras, fresh: Query<[Entity], Added<Camera>>)
     } catch (e) {
       console.log(`${tag} threw ${(e as Error).message} light ${light}`);
     }
+    try {
+      cameras.worldsToViewport(cam, new Float32Array(6), new Float32Array(2));
+    } catch (e) {
+      console.log(`${tag} short ${(e as Error).message}`);
+    }
   }
   if (seen === 3) {
     const n = cameras.worldsToViewport(cam, new Float32Array([0, 0, 0, 0, 0, 20]), out);
@@ -117,6 +122,10 @@ fn world_points_project_to_logical_pixels() {
     let threw = line(&m, "later threw");
     let light = threw.rsplit(' ').next().unwrap();
     assert!(threw.contains("Cameras.worldToViewport") && threw.contains(&format!("entity {light} is not a camera")), "{threw}");
+
+    // A batch whose `out` cannot hold every point throws rather than drop the rest.
+    let short = line(&m, "later short");
+    assert!(short.contains("Cameras.worldsToViewport: points holds 6 floats and out 2"), "{short}");
 
     // The batch: one projected, `NaN, NaN` for the point behind.
     app.update();

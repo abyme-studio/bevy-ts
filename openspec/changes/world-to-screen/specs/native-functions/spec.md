@@ -1,17 +1,17 @@
 ## ADDED Requirements
 
 ### Requirement: The engine exports Cameras
-Every engine (`bevy-ts dev`, `bevy-ts play`, a shipped game, `bevy-ts types`) SHALL export a read-only param `Cameras` from module `bevy-ts/camera`, over Bevy's `Query<(&Camera, &GlobalTransform)>`, through the exported-param mechanism. It SHALL have these methods, all in logical pixels with the origin at the viewport's top-left, the units of a UI node's `left` and `top`:
+Every engine (`bevy-ts dev`, `bevy-ts play`, a shipped game, `bevy-ts types`) SHALL export a read-only param `Cameras` from module `bevy-ts/camera`, over Bevy's `Query<(&Camera, &GlobalTransform)>`, through the exported-param mechanism. It SHALL have these methods, all in logical pixels with the origin at the viewport's top-left, the units of a UI node's `left` and `top` at the default `UiScale`:
 
 - `worldToViewport(camera: Entity, point: Vec3): Vec2 | undefined`, Bevy's `Camera::world_to_viewport`. It SHALL return `undefined` for every viewport conversion error (no viewport size, past the near plane, past the far plane, invalid data). It SHALL NOT bounds-check: a point in front of the camera but off screen SHALL return coordinates outside `[0, size]`.
 - `logicalViewportSize(camera: Entity): Vec2 | undefined`, `undefined` while the viewport size is unknown.
-- `worldsToViewport(camera: Entity, points: Float32Array, out: Float32Array): number`, one call for many points: `points` holds three floats per point, `out` receives two per point (`NaN, NaN` for one that does not project), and it returns how many projected.
+- `worldsToViewport(camera: Entity, points: Float32Array, out: Float32Array): number`, one call for many points: `points` holds three floats per point, `out` receives two per point (`NaN, NaN` for one that does not project), and it returns how many projected. It SHALL throw when `points` is not a multiple of three floats or `out` holds fewer than two per point.
 
 An `Entity` that is not a camera SHALL throw, naming `Cameras`, the method and the entity. A method SHALL read the `GlobalTransform` as last propagated, so from `Update` it reflects the previous frame's transforms.
 
 #### Scenario: A point on screen
 - **WHEN** a headless 960x540 engine has a camera at `[0, 0, 10]` looking at the origin, and a system calls `cameras.worldToViewport(cam, [0, 0, 0])`
-- **THEN** it returns `[480, 270]`, within a pixel
+- **THEN** it returns `{ x: 480, y: 270 }`, within a pixel
 
 #### Scenario: Off screen in front
 - **WHEN** the system projects a point in front of the camera but far to its right
