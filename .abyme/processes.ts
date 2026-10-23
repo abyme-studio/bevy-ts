@@ -37,6 +37,8 @@ const processes = {
   "check-track-location": { cmd: "CARGO_TARGET_DIR=target/track-location cargo check -p bevy-ts --features track_location --all-targets" },
   clippy: { cmd: "cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee target/clippy.log | tail -40" },
   release: { cmd: "cargo build --release -p bevy-ts-cli" },
+  // The newest release.yml run on this branch (a dispatched dry run), watched to its end.
+  "release-run": { cmd: "bash -c 'id=$(gh run list --workflow release.yml --branch \"$(git branch --show-current)\" -L 1 --json databaseId --jq \".[0].databaseId\") && gh run watch \"$id\" --exit-status --interval 30 | tail -25'" },
   // Native task 4.4: what one exclusive slot costs the parallel executor.
   "bench-slot": { cmd: "cargo run --release -p bevy-ts-cli --example slot_barrier | tee bench/change-detection/results/slot-barrier.md" },
   "bench-bob": { cmd: "cargo run --release -p bevy-ts-cli --example bob_bench | tee bench/change-detection/results/bob-frame.md" },
