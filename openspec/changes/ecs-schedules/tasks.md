@@ -16,7 +16,7 @@
 - [x] 1.14 Test for the after-propagate slot (native-ordering "After propagation"): written and `#[ignore]`d, waiting on reflect-coverage stage 3's `GlobalTransform` read; un-ignore when that lands
 - [x] 1.15 Docs: `docs/scripts.md` "Schedules, conditions and states" (schedules, custom schedules, conditions, combinators, one-shot systems, collective `runIf`); `docs/native.md` (`ts_schedule`, `ts_condition`, new anchors, `RunTsSystem`)
 - [x] 1.16 Coverage matrix `docs/research/bevy-coverage.md` (rebase onto main first; it is not on this branch): schedules row, conditions row (all but the TS predicate idiomatic), one-shot row, `GlobalTransform` row's slot part marked existing with the ignored test; new rows for `RunFixedMainLoop`/`SpawnScene`, combinators and the condition seam
-- [ ] 1.17 Tell script-time and script-input-devices the seam is in (`ts_condition`, `nativeCondition`)
+- [x] 1.17 Tell script-time and script-input-devices the seam is in (`ts_condition`, `nativeCondition`)
 
 ## 2. Stage 2: TS states as Bevy states (operator's go needed)
 
