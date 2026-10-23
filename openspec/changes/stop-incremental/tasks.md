@@ -37,10 +37,10 @@
 
 ## 6. Measure
 
-- [ ] 6.1 `crates/bevy-ts-cli/tests/stop_bench.rs` (`--ignored`, release) at 1k and 10k instances (2k and 20k entities), 3 runs per arm: play-stop's full Stop; restore with nothing touched; 100 touched; every entity touched. Steps timed: plan (scan, hashes), rebuild, restore, settle
+- [x] 6.1 `crates/bevy-ts-cli/tests/stop_bench.rs` (`--ignored`, release) at 1k and 10k instances (2k and 20k entities), 3 runs per arm: play-stop's full Stop; restore with nothing touched; 100 touched; every entity touched. Steps timed: plan (scan, hashes), rebuild, restore, settle
 - [x] 6.2 The kept trees' memory at 20k entities
 - [x] 6.3 The same bench with rendering on (in a tart VM or headless render): does any derived component mark every entity?
-- [ ] 6.4 `docs/research/stop-cost.md`: the table; targets about 50 ms nothing touched and about 115 ms all touched at 20k
+- [x] 6.4 `docs/research/stop-cost.md`: the table; targets about 50 ms nothing touched and about 115 ms all touched at 20k
 
 ## 7. Docs
 
