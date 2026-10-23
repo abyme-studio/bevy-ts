@@ -46,4 +46,4 @@
 
 - [x] 7.1 `docs/viewport.md`: what Stop keeps and respawns, when a level takes the full path, entity ids kept
 - [x] 7.2 `docs/native.md`: no `Added`, hooks or observers for kept entities after a Stop; reset in `OnExit(EngineMode::Play)`
-- [ ] 7.3 Workspace gate once, last: build, tests (viewport's render tests one at a time), clippy
+- [x] 7.3 Workspace gate once, last: build, tests (viewport's render tests one at a time), clippy
