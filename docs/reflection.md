@@ -39,7 +39,7 @@ Keys left out take the base's value. Lists, sets and maps are written whole, nev
 | Dynamic values | by the kind they represent | only when they represent a registered type | as represented | `reflect_coverage.rs` |
 
 The tests named are in `crates/bevy-ts/src/reflect_value.rs` unless a file is given;
-`reflect_values.rs` is `crates/bevy-ts-cli/tests/reflect_values.rs`.
+`reflect_values.rs` is `crates/bevy-ts-cli/tests/it/reflect_values.rs`.
 
 A `HandleSlots` hook, when one is installed (reflect-assets), goes first for `Handle<T>`: it reads a
 handle it knows as its own JSON, and is given any handle JSON that is neither a string nor `null`.
@@ -49,7 +49,7 @@ other and refuse writes, naming themselves.
 
 ## No gap goes unchecked
 
-`crates/bevy-ts-cli/tests/reflect_coverage.rs` walks every component, resource and asset in the
+`crates/bevy-ts-cli/tests/it/reflect_coverage.rs` walks every component, resource and asset in the
 prebuilt engine's registry, and in a project engine with the Rapier port (`bevy-ts types
 --coverage <report.json>`, an ignored test since it builds Rapier), through every field type.
 For each type it takes a value (its `Default`, its `FromWorld`, else one shaped from its type

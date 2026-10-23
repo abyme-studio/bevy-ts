@@ -240,7 +240,7 @@ struct Kit {
 fn every_kind_is_a_tsx_prop_and_a_list_is_replaced() {
     let src = |items: &str| {
         format!(
-            "import {{ app, rustComponent }} from \"bevy-ts\";\nconst Kit = rustComponent(\"reflect_values::Kit\");\n\napp.scene(\"s\", () => (\n  <entity name=\"it\">\n    \
+            "import {{ app, rustComponent }} from \"bevy-ts\";\nconst Kit = rustComponent(\"it::reflect_values::Kit\");\n\napp.scene(\"s\", () => (\n  <entity name=\"it\">\n    \
              <Kit items={{{items}}} counts={{{{ a: 1, b: 2 }}}} by_entity={{[[4294967300, 0.5]]}} tags={{[3, 1]}} cooldown={{1.5}} owner={{null}} \
              big={{\"1152921504606846976\"}} pair={{[7, true]}} grid={{[1, 2, 3]}} at={{[-3, 8]}} spin={{[0, 0, 0, 1]}} look={{[0, 1, 0]}} mesh={{null}} />\n  </entity>\n));\n"
         )

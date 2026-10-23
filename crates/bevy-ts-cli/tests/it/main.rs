@@ -37,6 +37,7 @@ mod play_after_edit;
 mod play_stop;
 mod preview_bench;
 mod protocol;
+mod reflect_coverage;
 mod reflect_render;
 mod reflect_values;
 mod reload;

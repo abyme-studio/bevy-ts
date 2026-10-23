@@ -44,7 +44,7 @@ use std::any::{Any, TypeId};
 use std::time::Duration;
 
 /// The types `read` and `write` cannot cover, each with its reason: the only home of a gap. An
-/// entry ending in `<` names every instance of a generic type. `tests/reflect_coverage.rs` fails
+/// entry ending in `<` names every instance of a generic type. `tests/it/reflect_coverage.rs` fails
 /// on a gap not listed here and on an entry no registered type uses.
 pub const UNCOVERED: &[(&str, &str)] = &[
     ("core::any::TypeId", "a type id is not data, opaque with no reflected serde"),
@@ -1170,6 +1170,24 @@ mod tests {
         let mut back = bevy::camera::Exposure::default();
         write(&r, None, &mut back, None, &json).unwrap();
         assert_eq!(back.ev100, 12.5);
+    }
+
+    #[test]
+    fn timers_and_stopwatches_read_their_durations_as_seconds() {
+        use bevy::time::{Stopwatch, Timer, TimerMode};
+        let mut r = TypeRegistry::default();
+        r.register::<Timer>();
+        let mut timer = Timer::from_seconds(1.5, TimerMode::Repeating);
+        timer.tick(Duration::from_millis(250));
+        let json = read(&r, &timer).unwrap();
+        assert_eq!(json["duration"], json!(1.5), "{json:#}");
+        assert_eq!(json["stopwatch"]["elapsed"], json!(0.25), "{json:#}");
+        let mut back = Timer::default();
+        write(&r, None, &mut back, None, &json).unwrap();
+        assert_eq!(back, timer);
+        let mut watch = Stopwatch::new();
+        watch.tick(Duration::from_secs(3));
+        assert_eq!(read(&r, &watch).unwrap()["elapsed"], json!(3.0));
     }
 
     #[test]

@@ -40,7 +40,7 @@ Three stages, each landable on its own, in this order. Stage 3 waits on the oper
    `TypeInfo`. A write is applied at once and marks the component changed. `NodeRef.get` reads
    the same way inside TSX bindings.
 4. **Coverage matrix and a hole check.** `docs/reflection.md` lists every reflect kind: read,
-   write, TS type, and the test that proves it. `crates/bevy-ts-cli/tests/reflect_coverage.rs`
+   write, TS type, and the test that proves it. `crates/bevy-ts-cli/tests/it/reflect_coverage.rs`
    walks every registered reflected component and resource in the prebuilt engine (plus the
    Rapier port) and fails on any field it cannot read, write back, round-trip and type, unless
    the type is on the allowlist in `crates/bevy-ts/src/reflect_value.rs` with a reason. It lands
@@ -71,7 +71,7 @@ None.
   lazy reflected rows, `lookingAt`); `crates/bevy-ts-tsx/src/reflected.rs`, `host.rs`
   (`NodeRef.get`); `crates/bevy-ts-remote/src/protocol.rs`; `crates/bevy-ts-cli/src/types.rs`;
   `packages/bevy-ts/index.d.ts`, `bevy.d.ts` regenerated.
-- Tests: new `crates/bevy-ts-cli/tests/reflect_coverage.rs` (the hole check) and
+- Tests: new `crates/bevy-ts-cli/tests/it/reflect_coverage.rs` (the hole check) and
   `reflect_scripts.rs`; existing tests that call `spawnNative("camera3d")` migrate.
 - Examples: `examples/cube/src/game.ts`, `examples/arena/src/game.tsx` drop `spawnNative`.
 - Docs: new `docs/reflection.md` (the matrix and the shape of each kind); `docs/native.md`

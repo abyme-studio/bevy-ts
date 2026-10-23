@@ -85,7 +85,7 @@ What is still missing:
    that reason. Computed components (`ComputedNode`, `TextLayoutInfo`, `GlobalTransform`) read
    like any other and refuse writes from TSX and scripts with "computed by Bevy".
 
-3. **The hole check.** `crates/bevy-ts-cli/tests/reflect_coverage.rs` builds the prebuilt engine
+3. **The hole check.** `crates/bevy-ts-cli/tests/it/reflect_coverage.rs` builds the prebuilt engine
    headless (as `bevy-ts types` does) with the Rapier port added, and for every registration with
    `ReflectComponent` or `ReflectResource` walks every field type recursively. For each type it
    takes a value (`ReflectDefault`, `ReflectFromWorld`, else a type-shaped sample built from type

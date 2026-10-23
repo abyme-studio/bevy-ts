@@ -2,7 +2,7 @@
 //! type registry, walked through every field type. For each type it takes a value (its default,
 //! else one shaped from its type info), and checks that `reflect_value::read` gives JSON, that
 //! writing that JSON over a fresh value gives an equal one, and that its TS type is not `unknown`.
-//! A type on `reflect_value::UNCOVERED` is not checked and not walked into. `tests/reflect_coverage.rs`
+//! A type on `reflect_value::UNCOVERED` is not checked and not walked into. `tests/it/reflect_coverage.rs`
 //! runs it on the prebuilt engine, and `bevy-ts types --coverage <file>` on a project engine (the
 //! Rapier port's).
 
