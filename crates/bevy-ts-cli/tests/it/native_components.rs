@@ -96,7 +96,7 @@ app.addSystems(Update, throttle);
 #[test]
 fn tiers_and_guards_fail_the_load_naming_the_component() {
     let cases = [
-        ("Query<[Weapon]>", "Weapon"),
+        // A reflect-tier component (`Weapon`) is query data since reflect-coverage stage 3.
         ("Query<[Mut<Frozen>]>", "immutable"),
         // A name this engine never registered (a project engine's component under the prebuilt one).
         ("Query<[Missing]>", "no Rust component named Missing is registered in this engine"),

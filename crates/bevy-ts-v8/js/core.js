@@ -757,15 +757,23 @@ export function nativeComponent(name, fields) {
   return C;
 }
 
-/** A Rust component by type path or short name: usable in `With`/`Without` only. */
+/** Reflect-tier classes: their accessors come from each generation's resolution. */
+const REFLECT_CLASSES = new Set();
+
+/**
+ * A Rust component or resource without a native layout, by type path or short name: a filter,
+ * and query or `Res` data read through reflection.
+ */
 export function rustComponent(name) {
   const C = class {};
   Object.defineProperty(C, "name", { value: name.split("::").pop() });
   C.componentName = name;
   C.source = "rust";
+  C.reflectTier = true;
   C[KIND] = "component";
   C.id = -1;
   C.layout = null;
+  REFLECT_CLASSES.add(C);
   return C;
 }
 
@@ -1361,7 +1369,7 @@ function resolveParams(g, params, at) {
       case "res":
       case "resMut": {
         const R = refClass(g, p.resource, at);
-        if (R[KIND] !== "resource") throw declError(`${p.kind === "res" ? "Res" : "ResMut"}<${R.name}>: ${R.name} is not a Resource class`, at);
+        if (R[KIND] !== "resource" && !R.reflectTier) throw declError(`${p.kind === "res" ? "Res" : "ResMut"}<${R.name}>: ${R.name} is not a Resource class`, at);
         out.push({ kind: p.kind, resource: R.componentName, cls: R });
         break;
       }
@@ -1645,6 +1653,8 @@ const ROW = Symbol("row");
 const TICK = Symbol("tick");
 const TICKS = Symbol("ticks");
 const PRESENT = Symbol("present");
+// A query row's entities (index, generation pairs), for reflected reads that name the row's entity.
+const ENTS = Symbol("ents");
 const VIEW_KEY = Object.fromEntries(Object.keys(VIEW_CTORS).map((v) => [v, Symbol(v)]));
 const SLOT_NAMES = ["$r", "$k", "$t", ...Object.keys(VIEW_KEY).map((v) => "$" + v)];
 const SLOT_KEYS = [ROW, TICK, TICKS, ...Object.values(VIEW_KEY)];
@@ -1827,6 +1837,15 @@ function accessorPair(name, layout) {
   return { layout, views: viewsFor(layout), size: layout.size, Read: generateAccessor(name, layout, false), Write: generateAccessor(name, layout, true) };
 }
 
+/** Points a `Res`/`ResMut` accessor at its frame: a reflected one's buffer is its changed tick. */
+function bindRes(acc, C, frame, tick) {
+  if (!C.reflectInfo) return bindRow(acc, C, frame[0], frame[1], tick);
+  acc[TICKS] = new Uint32Array(frame[0]);
+  acc[ENTS] = null;
+  acc[TICK] = tick;
+  acc[ROW] = 0;
+}
+
 /** Points an accessor at one buffer, row 0. */
 function bindRow(acc, T, buffer, ticks, tick) {
   for (const v of T.views) acc[VIEW_KEY[v]] = buffer ? new VIEW_CTORS[v](buffer) : null;
@@ -1890,6 +1909,7 @@ class Table {
   arrays(T, c) {
     const buf = this.q.raw[this.i][2][c];
     const C = this.q.data[this.q.dataIndexOfColumn[c]].cls;
+    if (C.reflectInfo) throw new Error(`${C.name} is read through reflection, never a column; read it on the rows of q.each`);
     const out = { buffer: buf };
     for (const n of C.views) out[n] = buf ? new VIEW_CTORS[n](buf) : null;
     out.offsets = C.offsets;
@@ -1976,7 +1996,9 @@ class QueryParam {
       }
       a[PRESENT] = true;
       for (const v of d.cls.views) a[VIEW_KEY[v]] = new VIEW_CTORS[v](buf);
-      a[TICKS] = tb[3][d.column] ? new Uint32Array(tb[3][d.column]) : DUMMY_TICKS;
+      // A reflected term's column is its changed ticks.
+      a[TICKS] = d.cls.reflectInfo ? new Uint32Array(buf) : tb[3][d.column] ? new Uint32Array(tb[3][d.column]) : DUMMY_TICKS;
+      a[ENTS] = tb[1];
       a[TICK] = this.tick;
     }
   }
@@ -2199,6 +2221,389 @@ const HOST = {
 HOST.slotBytes = new Uint8Array(HOST.slots.buffer);
 HOST.resultBytes = new Uint8Array(HOST.result.buffer);
 
+// ---------------------------------------------------------------------------------------------
+// Reflected values in systems (reflect-coverage decision 7). A reflect-tier term's frame is its
+// changed-tick column; a row's value is cached per read target across runs, keyed by that tick,
+// so an unchanged row costs a map lookup and no host call. A miss is one host call that encodes
+// the value along its codec (`reflect_codec.rs`) into `REFLECT.buf`, decoded by a function
+// generated from the same ops; the decoder's output equals `JSON.parse` of Rust's
+// `reflect_value::read`. Writes cross as JSON and go through Rust's `reflect_value::write`.
+
+const REFLECT_READ = 0xffff0000, REFLECT_WRITE = 0xffff0001;
+/** Entries kept per target before its cache is cleared (despawned rows are never looked up again). */
+const REFLECT_CACHE_MAX = 1 << 16;
+const REFLECT = {
+  buf: new Uint8Array(1 << 12),
+  view: null,
+  /** Per target: its decoder, and its cache (entity → { t: tick, v: value }). */
+  decoders: [],
+  caches: [],
+  /** Values handed out by `Mut` getters this run, written back at its end when changed. */
+  pending: [],
+  pendingByKey: new Map(),
+  /** Host calls made, for tests and the bench. */
+  calls: 0,
+};
+REFLECT.view = new DataView(REFLECT.buf.buffer);
+
+/** Short ASCII strings without `TextDecoder`. */
+function reflectStr(u8, o, n) {
+  if (n < 48) {
+    let s = "";
+    for (let i = 0; i < n; i++) {
+      const c = u8[o + i];
+      if (c > 127) return decoder.decode(u8.subarray(o, o + n));
+      s += String.fromCharCode(c);
+    }
+    return s;
+  }
+  return decoder.decode(u8.subarray(o, o + n));
+}
+
+/** A decoder for one codec: `(dv, u8) => value`, as JS source generated from its ops. */
+function reflectDecoder(codec) {
+  let n = 0;
+  const v = () => `v${n++}`;
+  const lines = [];
+  const NUM = {
+    f32: ["getFloat32", 4],
+    f64: ["getFloat64", 8],
+    i8: ["getInt8", 1],
+    u8: ["getUint8", 1],
+    i16: ["getInt16", 2],
+    u16: ["getUint16", 2],
+    i32: ["getInt32", 4],
+    u32: ["getUint32", 4],
+  };
+  // Floats that are not finite read as Rust's "NaN", "Infinity", "-Infinity".
+  const num = (t, out) => {
+    if (t === "bool") return `const ${out} = u8[o++] !== 0;`;
+    const [get, size] = NUM[t];
+    const read = `dv.${get}(o${size > 1 ? ", true" : ""})`;
+    if (t === "f32" || t === "f64") return `let ${out} = ${read}; o += ${size}; if (${out} - ${out} !== 0) ${out} = String(${out});`;
+    return `const ${out} = ${read}; o += ${size};`;
+  };
+  const str = (out) => `const ${out}_n = dv.getUint32(o, true); o += 4; const ${out} = S(u8, o, ${out}_n); o += ${out}_n;`;
+  const gen = (node) => {
+    const out = v();
+    switch (node.k) {
+      case "num":
+        lines.push(num(node.t, out));
+        break;
+      case "wide": {
+        const s = v();
+        lines.push(`let ${out}; if (u8[o++] === 0) { ${out} = dv.getFloat64(o, true); o += 8; } else { ${str(s)} ${out} = ${s}; }`);
+        break;
+      }
+      case "str":
+        lines.push(str(out));
+        break;
+      case "json": {
+        const s = v();
+        lines.push(`${str(s)} const ${out} = JSON.parse(${s});`);
+        break;
+      }
+      case "lanes": {
+        const ls = [];
+        for (let i = 0; i < node.n; i++) ls.push(gen({ k: "num", t: node.t }));
+        lines.push(`const ${out} = [${ls.join(", ")}];`);
+        break;
+      }
+      case "duration":
+        lines.push(`const ${out} = dv.getFloat64(o, true); o += 8;`);
+        break;
+      case "entity":
+        // As an `Entity` column holds it: index then generation.
+        lines.push(`const ${out} = dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296; o += 8;`);
+        break;
+      case "struct": {
+        const fs = node.fields.map(([name, f]) => `${JSON.stringify(name)}: ${gen(f)}`);
+        lines.push(`const ${out} = { ${fs.join(", ")} };`);
+        break;
+      }
+      case "tuple": {
+        const items = node.items.map(gen);
+        lines.push(`const ${out} = [${items.join(", ")}];`);
+        break;
+      }
+      case "array":
+      case "list": {
+        const len = node.k === "array" ? String(node.n) : `${out}_n`;
+        if (node.k === "list") lines.push(`const ${out}_n = dv.getUint32(o, true); o += 4;`);
+        lines.push(`const ${out} = new Array(${len}); for (let ${out}_i = 0; ${out}_i < ${len}; ${out}_i++) {`);
+        const item = gen(node.of);
+        lines.push(`${out}[${out}_i] = ${item}; }`);
+        break;
+      }
+      case "strMap": {
+        const k = v();
+        lines.push(`const ${out}_n = dv.getUint32(o, true); o += 4; const ${out} = {}; for (let ${out}_i = 0; ${out}_i < ${out}_n; ${out}_i++) { ${str(k)}`);
+        const item = gen(node.of);
+        lines.push(`${out}[${k}] = ${item}; }`);
+        break;
+      }
+      case "option": {
+        lines.push(`let ${out} = null; if (u8[o++] !== 0) {`);
+        const item = gen(node.of);
+        lines.push(`${out} = ${item}; }`);
+        break;
+      }
+      case "enum": {
+        lines.push(`let ${out}; switch (dv.getUint32((o += 4) - 4, true)) {`);
+        node.variants.forEach((va, i) => {
+          const name = JSON.stringify(va.name);
+          lines.push(`case ${i}: {`);
+          if (va.shape === "unit") lines.push(`${out} = ${name};`);
+          else if (va.shape === "newtype") lines.push(`${out} = { ${name}: ${gen(va.items[0])} };`);
+          else if (va.shape === "tuple") {
+            const items = va.items.map(gen);
+            lines.push(`${out} = { ${name}: [${items.join(", ")}] };`);
+          } else {
+            const fs = va.items.map((f, j) => `${JSON.stringify(va.fields[j])}: ${gen(f)}`);
+            lines.push(`${out} = { ${name}: { ${fs.join(", ")} } };`);
+          }
+          lines.push(`break; }`);
+        });
+        lines.push(`default: throw new Error("bevy-ts: a reflected value has an unknown variant"); }`);
+        break;
+      }
+      default:
+        throw new Error(`bevy-ts: unknown codec op ${node.k}`);
+    }
+    return out;
+  };
+  const root = gen(codec.node);
+  const src = `let o = 0;\n${lines.join("\n")}\nreturn ${codec.wrap ? `{ value: ${root} }` : root};`;
+  return new Function("S", `return function decode(dv, u8) {\n${src}\n};`)(reflectStr);
+}
+
+/**
+ * For the hole check: each case `{ codec, bytes, json }` decoded and compared with `JSON.parse`
+ * of `read`'s JSON; the cases that differ, with both values. Not public API.
+ */
+export function __reflectCheck(cases) {
+  const bad = [];
+  for (const c of cases) {
+    const u8 = Uint8Array.from(c.bytes);
+    const got = reflectDecoder(c.codec)(new DataView(u8.buffer), u8);
+    const want = JSON.parse(c.json);
+    if (!reflectSame(got, want)) bad.push({ type: c.type, got, want });
+  }
+  return bad;
+}
+
+/** Registers a generation's targets: their decoders, and fresh caches (dropped on every reload). */
+function reflectCommit(res) {
+  REFLECT.caches = [];
+  const add = (r) => {
+    if (!REFLECT.decoders[r.target]) REFLECT.decoders[r.target] = reflectDecoder(r.codec);
+    REFLECT.caches[r.target] = new Map();
+  };
+  for (const r of Object.values(res.reflect || {})) add(r);
+  for (const hs of Object.values(res.holes || {})) for (const h of hs) add(h);
+}
+
+/** One host call: target `t` of `entity` (-1 for a resource) decoded. */
+function reflectFetch(t, entity) {
+  if (!core) throw new Error("reflected values need the engine");
+  const H = HOST;
+  for (;;) {
+    H.slots[0] = entity;
+    H.slots[1] = t;
+    REFLECT.calls++;
+    const n = core.ops.op_bevyts_host(REFLECT_READ, H.slotBytes, H.resultBytes, REFLECT.buf, H.EMPTY, H.EMPTY, H.EMPTY);
+    if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
+    const len = H.result[0];
+    if (len <= REFLECT.buf.length) return REFLECT.decoders[t](REFLECT.view, REFLECT.buf);
+    REFLECT.buf = new Uint8Array(Math.max(len, REFLECT.buf.length * 2));
+    REFLECT.view = new DataView(REFLECT.buf.buffer);
+  }
+}
+
+/** The bench's baseline: target `t` of `entity` as `read`'s JSON, parsed. Not public API. */
+export function __reflectJson(t, entity) {
+  const H = HOST;
+  for (;;) {
+    H.slots[0] = entity;
+    H.slots[1] = t;
+    const n = core.ops.op_bevyts_host(0xffff0002, H.slotBytes, H.resultBytes, REFLECT.buf, H.EMPTY, H.EMPTY, H.EMPTY);
+    if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
+    const len = H.result[0];
+    if (len <= REFLECT.buf.length) return JSON.parse(decoder.decode(REFLECT.buf.subarray(0, len)));
+    REFLECT.buf = new Uint8Array(Math.max(len, REFLECT.buf.length * 2));
+    REFLECT.view = new DataView(REFLECT.buf.buffer);
+  }
+}
+
+/** A class's read target, or its hole's: for the bench. Not public API. */
+export function __reflectTarget(C, hole) {
+  const res = S.resolution;
+  if (hole === undefined) return res.reflect[C.componentName].target;
+  return res.holes[C.componentName].find((h) => h.name === hole).target;
+}
+
+/** Target `t`'s value on `entity` whose changed tick is `tick`: cached, or fetched. */
+function reflectGet(t, entity, tick) {
+  const m = REFLECT.caches[t];
+  const c = m.get(entity);
+  if (c !== undefined && c.t === tick) return c.v;
+  const v = reflectFetch(t, entity);
+  if (c !== undefined) {
+    c.t = tick;
+    c.v = v;
+  } else {
+    if (m.size >= REFLECT_CACHE_MAX) m.clear();
+    m.set(entity, { t: tick, v });
+  }
+  return v;
+}
+
+/** Writes `value` at once over the slot's default; the next read fetches what Rust made of it. */
+function reflectSet(t, entity, value) {
+  if (!core) throw new Error("reflected values need the engine");
+  const key = `${t}:${entity}`;
+  const p = REFLECT.pendingByKey.get(key);
+  if (p) p.done = true;
+  REFLECT.pendingByKey.delete(key);
+  const text = JSON.stringify(value === undefined ? null : value);
+  let bytes = encoder.encode(text);
+  const H = HOST;
+  H.slots[0] = entity;
+  H.slots[1] = t;
+  H.slots[2] = bytes.length;
+  REFLECT.calls++;
+  const n = core.ops.op_bevyts_host(REFLECT_WRITE, H.slotBytes, H.resultBytes, bytes, H.EMPTY, H.EMPTY, H.EMPTY);
+  if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
+  REFLECT.caches[t].delete(entity);
+}
+
+function reflectClone(v) {
+  if (v === null || typeof v !== "object") return v;
+  if (Array.isArray(v)) return v.map(reflectClone);
+  const o = {};
+  for (const k in v) o[k] = reflectClone(v[k]);
+  return o;
+}
+
+function reflectSame(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) if (!reflectSame(a[k], b[k])) return false;
+  return true;
+}
+
+/**
+ * What a `Mut` getter hands out: a copy of the value, written back at the end of the run when the
+ * script changed it in place (`cam.value.Orthographic.scale = 2`). The same copy all run.
+ */
+function reflectMutGet(t, entity, tick) {
+  const key = `${t}:${entity}`;
+  const p = REFLECT.pendingByKey.get(key);
+  if (p) return p.v;
+  const orig = reflectGet(t, entity, tick);
+  if (orig === null || typeof orig !== "object") return orig;
+  const e = { t, entity, v: reflectClone(orig), orig, done: false };
+  REFLECT.pending.push(e);
+  REFLECT.pendingByKey.set(key, e);
+  return e.v;
+}
+
+/** Writes back the values `Mut` getters handed out that the run changed. */
+function reflectFlush() {
+  const list = REFLECT.pending;
+  if (!list.length) return;
+  REFLECT.pending = [];
+  REFLECT.pendingByKey.clear();
+  for (const p of list) if (!p.done && !reflectSame(p.v, p.orig)) reflectSet(p.t, p.entity, p.v);
+}
+
+/** A row's entity from an accessor's `e` view, or -1 for a resource row. */
+function rowEntity(a) {
+  const e = a[ENTS];
+  return e ? e[a[ROW] * 2] + e[a[ROW] * 2 + 1] * 4294967296 : -1;
+}
+
+/**
+ * Accessor classes for a reflect-tier class: `value` is the whole value, and a struct's fields
+ * are getters too (`weapon.name`). A `Mut` row's setters write at once.
+ */
+function reflectAccessor(name, info, write) {
+  const t = info.target;
+  class Row {
+    constructor() {
+      this[ROW] = 0;
+      this[TICKS] = null;
+      this[ENTS] = null;
+      this[TICK] = 0;
+    }
+    get value() {
+      return (write ? reflectMutGet : reflectGet)(t, rowEntity(this), this[TICKS][this[ROW]]);
+    }
+    set value(v) {
+      if (!write) throw new TypeError(`${name} is read-only here; take Mut<${name}>`);
+      reflectSet(t, rowEntity(this), v);
+    }
+    toJSON() {
+      return reflectGet(t, rowEntity(this), this[TICKS][this[ROW]]);
+    }
+  }
+  for (const f of info.fields || []) {
+    if (f === "value") continue;
+    Object.defineProperty(Row.prototype, f, {
+      get() {
+        return this.value[f];
+      },
+      set(v) {
+        if (!write) throw new TypeError(`${name}.${f} is read-only here; take Mut<${name}>`);
+        const whole = reflectClone(reflectGet(t, rowEntity(this), this[TICKS][this[ROW]]));
+        whole[f] = v;
+        reflectSet(t, rowEntity(this), whole);
+      },
+    });
+  }
+  Object.defineProperty(Row, "name", { value: write ? "Write" : "Read" });
+  return Row;
+}
+
+/** Hole getters and setters on a layout-tier class's accessors; never columns. */
+function addHoles(Acc, holes, name, write) {
+  for (const h of holes) {
+    const t = h.target;
+    Object.defineProperty(Acc.prototype, h.name, {
+      configurable: true,
+      get() {
+        const tick = this[TICKS] === DUMMY_TICKS ? -1 : this[TICKS][this[ROW]];
+        // A row without its ticks (a read-only resource) is fetched every time.
+        if (tick === -1) return reflectFetch(t, rowEntity(this));
+        return (write ? reflectMutGet : reflectGet)(t, rowEntity(this), tick);
+      },
+      set(v) {
+        if (!write) throw new TypeError(`${name}.${h.name} is read-only here; take Mut<${name}>`);
+        reflectSet(t, rowEntity(this), v);
+      },
+    });
+  }
+}
+
+/** Gives reflect-tier classes and layout-tier holes their accessors from the resolution. */
+function resolveReflect(C, res) {
+  const info = res.reflect && res.reflect[C.componentName];
+  if (info && !C.native) {
+    C.reflectInfo = info;
+    C.Read = reflectAccessor(C.name, info, false);
+    C.Write = reflectAccessor(C.name, info, true);
+    C.views = [];
+  }
+  const holes = res.holes && res.holes[C.componentName];
+  if (holes && C.Read) {
+    addHoles(C.Read, holes, C.name, false);
+    addHoles(C.Write, holes, C.name, true);
+  }
+}
+
 const PORT_CLASSES = new Map();
 
 /** The class of an exported param, built from the glue Rust sent with the resolution. */
@@ -2229,7 +2634,7 @@ function buildSystem(g, s) {
       case "resMut": {
         const C = p.cls;
         const acc = new (p.kind === "resMut" ? C.Write : C.Read)();
-        consumers.push((frame, tick) => bindRow(acc, C, frame[0], frame[1], tick));
+        consumers.push((frame, tick) => bindRes(acc, C, frame, tick));
         return acc;
       }
       case "local": {
@@ -2308,7 +2713,7 @@ function buildSystem(g, s) {
         const h = args[i];
         const C = p.kind === "local" ? accessorPair("Local", cLayout(p.fields)) : p.cls;
         const at = ci;
-        consumers[at] = (frame, tick) => bindRow(h, C, frame[0], frame[1], tick);
+        consumers[at] = p.kind === "local" ? (frame, tick) => bindRow(h, C, frame[0], frame[1], tick) : (frame, tick) => bindRes(h, C, frame, tick);
       } else if (p.kind === "query") {
         const h = args[i];
         consumers[ci] = (frame, tick, idx) => h.bind(frame, tick, idx);
@@ -2731,6 +3136,10 @@ function commit(gen, resolutionJson) {
     else if (kind === "event") resolveClass(C, res.events[C.componentName]);
   }
   for (const C of NATIVE) resolveClass(C, res.components[C.componentName]);
+  reflectCommit(res);
+  for (const C of g.classes) resolveReflect(C, res);
+  for (const C of NATIVE) resolveReflect(C, res);
+  for (const C of REFLECT_CLASSES) resolveReflect(C, res);
   g.res = res;
   g.built = g.systems.map((s) => buildSystem(g, s));
   const old = S.live;
@@ -2765,8 +3174,11 @@ function runSystem(gen, index, dt, elapsed, tick, frame, frames, arena, pool) {
   try {
     if (b.s.call === "setup") b.s.body();
     else b.s.fn(...b.args);
+    reflectFlush();
   } finally {
     S.calling = null;
+    REFLECT.pending.length = 0;
+    REFLECT.pendingByKey.clear();
   }
   for (const w of b.ctx.writers) w.flush();
   const [len, over, used] = b.ctx.commands.end();
