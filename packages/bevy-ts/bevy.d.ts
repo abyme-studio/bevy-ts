@@ -2,7 +2,7 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components TS can name.
 import { Component, ReflectComponent } from "bevy-ts";
-import type { bool, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 type Reflected<F = {}> = abstract new () => ReflectComponent & F;
 
@@ -11,7 +11,7 @@ export { Time, Transform } from "bevy-ts";
 export declare const AnimatedBy: Reflected<{ value: Entity }>;
 export type AnimatedBy = InstanceType<typeof AnimatedBy>;
 
-export declare const AnimationPlayer: Reflected<{ active_animations: Record<string, { weight: number; repeat: "Never" | { Count: number } | "Forever"; speed: number; elapsed: number; seek_time: number; last_seek_time: number | null; completions: number; just_completed: boolean; paused: boolean }> }>;
+export declare const AnimationPlayer: Reflected<{ active_animations: Record<string, { weight?: number; repeat?: "Never" | { Count: number } | "Forever"; speed?: number; elapsed?: number; seek_time?: number; last_seek_time?: number | null; completions?: number; just_completed?: boolean; paused?: boolean }> }>;
 export type AnimationPlayer = InstanceType<typeof AnimationPlayer>;
 
 export declare const AnimationTargetId: Reflected<{ value: unknown }>;
@@ -20,7 +20,7 @@ export type AnimationTargetId = InstanceType<typeof AnimationTargetId>;
 export declare const AnimationGraphHandle: Reflected<{ value: string }>;
 export type AnimationGraphHandle = InstanceType<typeof AnimationGraphHandle>;
 
-export declare const AnimationTransitions: Reflected<{ main_animation: unknown | null; transitions: readonly ({ current_weight: number; weight_decline_per_sec: number; animation: unknown })[] }>;
+export declare const AnimationTransitions: Reflected<{ main_animation: unknown | null; transitions: readonly ({ current_weight?: number; weight_decline_per_sec?: number; animation?: unknown })[] }>;
 export type AnimationTransitions = InstanceType<typeof AnimationTransitions>;
 
 export declare class ContrastAdaptiveSharpening extends Component {
@@ -61,6 +61,7 @@ export declare class TemporalAntiAliasing extends Component {
 export declare class PlaybackSettings extends Component {
   static readonly path: "bevy_audio::audio::PlaybackSettings";
   static readonly native: true;
+  static readonly tsxProps: { volume?: { Linear: number } | { Decibels: number }; spatial_scale?: readonly [number, number, number] | null; start_position?: unknown | null; duration?: unknown | null };
   declare mode: "Once" | "Loop" | "Despawn" | "Remove";
   declare speed: f32;
   declare paused: bool;
@@ -79,6 +80,7 @@ export declare class SpatialListener extends Component {
 export declare class Camera extends Component {
   static readonly path: "bevy_camera::camera::Camera";
   static readonly native: true;
+  static readonly tsxProps: { viewport?: { physical_position?: { x?: number; y?: number }; physical_size?: { x?: number; y?: number }; depth?: unknown } | null; computed?: { clip_from_view?: { x_axis?: readonly [number, number, number, number]; y_axis?: readonly [number, number, number, number]; z_axis?: readonly [number, number, number, number]; w_axis?: readonly [number, number, number, number] }; target_info?: { physical_size?: { x?: number; y?: number }; scale_factor?: number } | null; old_viewport_size?: { x?: number; y?: number } | null; old_sub_camera_view?: { full_size?: { x?: number; y?: number }; offset?: readonly [number, number]; size?: { x?: number; y?: number } } | null }; output_mode?: { Write: { blend_state?: unknown | null; clear_color?: "Default" | { Custom: ColorValue } | "None" } } | "Skip"; clear_color?: "Default" | { Custom: ColorValue } | "None"; sub_camera_view?: { full_size?: { x?: number; y?: number }; offset?: readonly [number, number]; size?: { x?: number; y?: number } } | null };
   declare is_active: bool;
   declare msaa_writeback: "Off" | "Auto" | "Always";
   declare invert_culling: bool;
@@ -90,7 +92,7 @@ export type CameraMainTextureUsages = InstanceType<typeof CameraMainTextureUsage
 export declare const Exposure: Reflected;
 export type Exposure = InstanceType<typeof Exposure>;
 
-export declare const MainPassResolutionOverride: Reflected<{ value: { x: number; y: number } }>;
+export declare const MainPassResolutionOverride: Reflected<{ value: { x?: number; y?: number } }>;
 export type MainPassResolutionOverride = InstanceType<typeof MainPassResolutionOverride>;
 
 export declare class ManualTextureViewHandle extends Component {
@@ -99,7 +101,9 @@ export declare class ManualTextureViewHandle extends Component {
   declare value: u32;
 }
 
-export declare const RenderTarget: Reflected;
+/** As an element, `<RenderTarget value={...} />`: the whole value, in Bevy's shape. */
+export declare const RenderTarget: Reflected & { readonly tsxProps: { value?: RenderTargetValue } };
+export type RenderTargetValue = { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string; scale_factor?: number } } | { TextureView: number } | { None: { size?: { x?: number; y?: number } } };
 export type RenderTarget = InstanceType<typeof RenderTarget>;
 
 export declare const ShadowLodOrigin: Reflected;
@@ -130,10 +134,10 @@ export declare class Aabb extends Component {
 export declare const CascadesFrusta: Reflected<{ frusta: Record<string, readonly unknown[]> }>;
 export type CascadesFrusta = InstanceType<typeof CascadesFrusta>;
 
-export declare const CubemapFrusta: Reflected<{ frusta: readonly ({ half_spaces: readonly unknown[] })[] }>;
+export declare const CubemapFrusta: Reflected<{ frusta: readonly ({ half_spaces?: readonly unknown[] })[] }>;
 export type CubemapFrusta = InstanceType<typeof CubemapFrusta>;
 
-export declare const Frustum: Reflected<{ value: { half_spaces: readonly ({ normal_d: readonly [number, number, number, number] })[] } }>;
+export declare const Frustum: Reflected<{ value: { half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] } }>;
 export type Frustum = InstanceType<typeof Frustum>;
 
 export declare class Sphere extends Component {
@@ -143,7 +147,9 @@ export declare class Sphere extends Component {
   declare radius: f32;
 }
 
-export declare const Projection: Reflected;
+/** As an element, `<Projection value={...} />`: the whole value, in Bevy's shape. */
+export declare const Projection: Reflected & { readonly tsxProps: { value?: ProjectionValue } };
+export type ProjectionValue = { Perspective: { fov?: number; aspect_ratio?: number; near?: number; far?: number; near_clip_plane?: readonly [number, number, number, number] } } | { Orthographic: { near?: number; far?: number; viewport_origin?: readonly [number, number]; scaling_mode?: "WindowSize" | { Fixed: { width?: number; height?: number } } | { AutoMin: { min_width?: number; min_height?: number } } | { AutoMax: { max_width?: number; max_height?: number } } | { FixedVertical: { viewport_height?: number } } | { FixedHorizontal: { viewport_width?: number } }; scale?: number; area?: { min?: readonly [number, number]; max?: readonly [number, number] } } } | { Custom: {  } };
 export type Projection = InstanceType<typeof Projection>;
 
 export declare const CascadesVisibleEntities: Reflected;
@@ -222,6 +228,7 @@ export type InfiniteGrid = InstanceType<typeof InfiniteGrid>;
 export declare class InfiniteGridSettings extends Component {
   static readonly path: "bevy_dev_tools::infinite_grid::InfiniteGridSettings";
   static readonly native: true;
+  static readonly tsxProps: { x_axis_color?: ColorValue; z_axis_color?: ColorValue; minor_line_color?: ColorValue; major_line_color?: ColorValue };
   declare fadeout_distance: f32;
   declare dot_fadeout_strength: f32;
   declare scale: f32;
@@ -238,6 +245,7 @@ export type PointerDebugOverlayOf = InstanceType<typeof PointerDebugOverlayOf>;
 export declare class RenderDebugOverlay extends Component {
   static readonly path: "bevy_dev_tools::render_debug::RenderDebugOverlay";
   static readonly native: true;
+  static readonly tsxProps: { mode?: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } };
   declare enabled: bool;
   declare opacity: f32;
 }
@@ -268,10 +276,10 @@ export type IsResource = InstanceType<typeof IsResource>;
 export declare const MainEntity: Reflected<{ value: Entity }>;
 export type MainEntity = InstanceType<typeof MainEntity>;
 
-export declare const ShowAabbGizmo: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null }>;
+export declare const ShowAabbGizmo: Reflected<{ color: ColorValue | null }>;
 export type ShowAabbGizmo = InstanceType<typeof ShowAabbGizmo>;
 
-export declare const ShowFrustumGizmo: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null }>;
+export declare const ShowFrustumGizmo: Reflected<{ color: ColorValue | null }>;
 export type ShowFrustumGizmo = InstanceType<typeof ShowFrustumGizmo>;
 
 /** Holes, never visible: handle: an enum with data (bevy_asset::handle::Handle<bevy_gizmos::GizmoAsset>); line_config: not plain data (bevy_gizmos::config::GizmoLineConfig). */
@@ -279,11 +287,11 @@ export declare class Gizmo extends Component {
   static readonly path: "bevy_gizmos::retained::Gizmo";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { handle: string; line_config: { width: number; perspective: boolean; style: "Solid" | "Dotted" | { Dashed: { gap_scale: number; line_scale: number } }; joints: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset: number }; depth_bias: number };
+  static readonly __element: { handle: string; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number }; depth_bias: number };
   declare depth_bias: f32;
 }
 
-export declare const ShowSkinnedMeshBoundsGizmo: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null }>;
+export declare const ShowSkinnedMeshBoundsGizmo: Reflected<{ color: ColorValue | null }>;
 export type ShowSkinnedMeshBoundsGizmo = InstanceType<typeof ShowSkinnedMeshBoundsGizmo>;
 
 export declare const TransformGizmoCamera: Reflected;
@@ -313,10 +321,10 @@ export type GltfSceneExtras = InstanceType<typeof GltfSceneExtras>;
 export declare const GltfSceneName: Reflected<{ value: string }>;
 export type GltfSceneName = InstanceType<typeof GltfSceneName>;
 
-export declare const Gamepad: Reflected<{ vendor_id: number | null; product_id: number | null; digital: { pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog: { axis_data: Record<string, number> } }>;
+export declare const Gamepad: Reflected<{ vendor_id: number | null; product_id: number | null; digital: { pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog: { axis_data?: Record<string, number> } }>;
 export type Gamepad = InstanceType<typeof Gamepad>;
 
-export declare const GamepadSettings: Reflected<{ default_button_settings: { press_threshold: number; release_threshold: number }; default_axis_settings: { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }; default_button_axis_settings: { high: number; low: number; threshold: number }; button_settings: Record<string, { press_threshold: number; release_threshold: number }>; axis_settings: Record<string, { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }>; button_axis_settings: Record<string, { high: number; low: number; threshold: number }> }>;
+export declare const GamepadSettings: Reflected<{ default_button_settings: { press_threshold?: number; release_threshold?: number }; default_axis_settings: { livezone_upperbound?: number; deadzone_upperbound?: number; deadzone_lowerbound?: number; livezone_lowerbound?: number; threshold?: number }; default_button_axis_settings: { high?: number; low?: number; threshold?: number }; button_settings: Record<string, { press_threshold?: number; release_threshold?: number }>; axis_settings: Record<string, { livezone_upperbound?: number; deadzone_upperbound?: number; deadzone_lowerbound?: number; livezone_lowerbound?: number; threshold?: number }>; button_axis_settings: Record<string, { high?: number; low?: number; threshold?: number }> }>;
 export type GamepadSettings = InstanceType<typeof GamepadSettings>;
 
 export declare const AutoFocus: Reflected;
@@ -354,6 +362,7 @@ export type TransmittedShadowReceiver = InstanceType<typeof TransmittedShadowRec
 export declare class AmbientLight extends Component {
   static readonly path: "bevy_light::ambient_light::AmbientLight";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
   declare brightness: f32;
   declare affects_lightmapped_meshes: bool;
 }
@@ -368,10 +377,12 @@ export declare class CascadeShadowConfig extends Component {
   declare minimum_distance: f32;
 }
 
-export declare const Cascades: Reflected<{ cascades: Record<string, readonly ({ world_from_cascade: unknown; clip_from_cascade: unknown; clip_from_world: unknown; texel_size: number })[]> }>;
+export declare const Cascades: Reflected<{ cascades: Record<string, readonly ({ world_from_cascade?: unknown; clip_from_cascade?: unknown; clip_from_world?: unknown; texel_size?: number })[]> }>;
 export type Cascades = InstanceType<typeof Cascades>;
 
-export declare const ClusterConfig: Reflected;
+/** As an element, `<ClusterConfig value={...} />`: the whole value, in Bevy's shape. */
+export declare const ClusterConfig: Reflected & { readonly tsxProps: { value?: ClusterConfigValue } };
+export type ClusterConfigValue = "None" | "Single" | { XYZ: { dimensions?: { x?: number; y?: number; z?: number }; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } } | { FixedZ: { total?: number; z_slices?: number; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } };
 export type ClusterConfig = InstanceType<typeof ClusterConfig>;
 
 /** Holes, never visible: base_color_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); normal_map_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); metallic_roughness_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); emissive_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
@@ -387,6 +398,7 @@ export declare class ClusteredDecal extends Component {
 export declare class DirectionalLight extends Component {
   static readonly path: "bevy_light::directional_light::DirectionalLight";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
   declare illuminance: f32;
   declare shadow_maps_enabled: bool;
   declare contact_shadows_enabled: bool;
@@ -398,13 +410,14 @@ export declare class DirectionalLight extends Component {
 export declare const DirectionalLightTexture: Reflected<{ image: string; tiled: boolean }>;
 export type DirectionalLightTexture = InstanceType<typeof DirectionalLightTexture>;
 
-export declare const ShowLightGizmo: Reflected<{ color: { Manual: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } } | "Varied" | "MatchLightColor" | "ByLightType" | null }>;
+export declare const ShowLightGizmo: Reflected<{ color: { Manual: ColorValue } | "Varied" | "MatchLightColor" | "ByLightType" | null }>;
 export type ShowLightGizmo = InstanceType<typeof ShowLightGizmo>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
 export declare class PointLight extends Component {
   static readonly path: "bevy_light::point_light::PointLight";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
   declare intensity: f32;
   declare range: f32;
   declare radius: f32;
@@ -457,7 +470,9 @@ export declare class LightProbe extends Component {
   declare readonly falloff: Vec3;
 }
 
-export declare const ParallaxCorrection: Reflected;
+/** As an element, `<ParallaxCorrection value={...} />`: the whole value, in Bevy's shape. */
+export declare const ParallaxCorrection: Reflected & { readonly tsxProps: { value?: ParallaxCorrectionValue } };
+export type ParallaxCorrectionValue = "None" | "Auto" | { Custom: readonly [number, number, number] };
 export type ParallaxCorrection = InstanceType<typeof ParallaxCorrection>;
 
 /** Holes, never visible: image: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
@@ -474,6 +489,7 @@ export declare class Skybox extends Component {
 export declare class RectLight extends Component {
   static readonly path: "bevy_light::rect_light::RectLight";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
   declare intensity: f32;
   declare range: f32;
   declare width: f32;
@@ -484,6 +500,7 @@ export declare class RectLight extends Component {
 export declare class SpotLight extends Component {
   static readonly path: "bevy_light::spot_light::SpotLight";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
   declare intensity: f32;
   declare range: f32;
   declare radius: f32;
@@ -505,7 +522,7 @@ export declare class FogVolume extends Component {
   static readonly path: "bevy_light::volumetric::FogVolume";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { fog_color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; density_factor: number; density_texture: string | null; density_texture_offset: readonly [number, number, number]; absorption: number; scattering: number; scattering_asymmetry: number; light_tint: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; light_intensity: number };
+  static readonly __element: { fog_color: ColorValue; density_factor: number; density_texture: string | null; density_texture_offset: readonly [number, number, number]; absorption: number; scattering: number; scattering_asymmetry: number; light_tint: ColorValue; light_intensity: number };
   declare density_factor: f32;
   declare readonly density_texture_offset: Vec3;
   declare absorption: f32;
@@ -518,6 +535,7 @@ export declare class FogVolume extends Component {
 export declare class VolumetricFog extends Component {
   static readonly path: "bevy_light::volumetric::VolumetricFog";
   static readonly native: true;
+  static readonly tsxProps: { ambient_color?: ColorValue };
   declare ambient_intensity: f32;
   declare jitter: f32;
   declare step_count: u32;
@@ -536,10 +554,13 @@ export type Mesh3d = InstanceType<typeof Mesh3d>;
 export declare class MeshTag extends Component {
   static readonly path: "bevy_mesh::components::MeshTag";
   static readonly native: true;
+  static readonly tsxProps: { type_id?: unknown | null };
   declare value: u32;
 }
 
-export declare const MeshMorphWeights: Reflected;
+/** As an element, `<MeshMorphWeights value={...} />`: the whole value, in Bevy's shape. */
+export declare const MeshMorphWeights: Reflected & { readonly tsxProps: { value?: MeshMorphWeightsValue } };
+export type MeshMorphWeightsValue = { Value: { weights?: readonly number[] } } | { Reference: Entity };
 export type MeshMorphWeights = InstanceType<typeof MeshMorphWeights>;
 
 export declare const MorphWeights: Reflected<{ weights: readonly number[]; first_mesh: string | null }>;
@@ -560,6 +581,7 @@ export declare class ContactShadows extends Component {
 export declare class DistanceFog extends Component {
   static readonly path: "bevy_pbr::fog::DistanceFog";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue; directional_light_color?: ColorValue; falloff?: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } } };
   declare directional_light_exponent: f32;
 }
 
@@ -568,7 +590,7 @@ export declare class Lightmap extends Component {
   static readonly path: "bevy_pbr::lightmap::Lightmap";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { image: string; uv_rect: { min: readonly [number, number]; max: readonly [number, number] }; bicubic_sampling: boolean };
+  static readonly __element: { image: string; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] }; bicubic_sampling: boolean };
   declare bicubic_sampling: bool;
 }
 
@@ -582,6 +604,7 @@ export type MeshMaterial3dStandardMaterial = InstanceType<typeof MeshMaterial3dS
 export declare class ScreenSpaceAmbientOcclusion extends Component {
   static readonly path: "bevy_pbr::ssao::ScreenSpaceAmbientOcclusion";
   static readonly native: true;
+  static readonly tsxProps: { quality_level?: "Low" | "Medium" | "High" | "Ultra" | { Custom: { slice_count?: number; samples_per_slice_side?: number } } };
   declare radius: f32;
   declare constant_object_thickness: f32;
 }
@@ -613,7 +636,7 @@ export type NoWireframe = InstanceType<typeof NoWireframe>;
 export declare const Wireframe: Reflected;
 export type Wireframe = InstanceType<typeof Wireframe>;
 
-export declare const WireframeColor: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const WireframeColor: Reflected<{ color: ColorValue }>;
 export type WireframeColor = InstanceType<typeof WireframeColor>;
 
 export declare class WireframeLineWidth extends Component {
@@ -641,7 +664,9 @@ export declare class Pickable extends Component {
   declare is_hoverable: bool;
 }
 
-export declare const EntityCursor: Reflected;
+/** As an element, `<EntityCursor value={...} />`: the whole value, in Bevy's shape. */
+export declare const EntityCursor: Reflected & { readonly tsxProps: { value?: EntityCursorValue } };
+export type EntityCursorValue = { Custom: { Image: { handle?: string; texture_atlas?: { layout?: string; index?: number } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: unknown; max?: unknown } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type EntityCursor = InstanceType<typeof EntityCursor>;
 
 /** Immutable: read-only in TS. */
@@ -673,10 +698,12 @@ export type RayCastBackfaces = InstanceType<typeof RayCastBackfaces>;
 export declare const SimplifiedMesh: Reflected<{ value: string }>;
 export type SimplifiedMesh = InstanceType<typeof SimplifiedMesh>;
 
-export declare const PointerId: Reflected;
+/** As an element, `<PointerId value={...} />`: the whole value, in Bevy's shape. */
+export declare const PointerId: Reflected & { readonly tsxProps: { value?: PointerIdValue } };
+export type PointerIdValue = "Mouse" | { Touch: number } | { Custom: unknown };
 export type PointerId = InstanceType<typeof PointerId>;
 
-export declare const PointerInteraction: Reflected<{ sorted_entities: readonly (readonly [Entity, { camera: Entity; depth: number; position: readonly [number, number, number] | null; normal: readonly [number, number, number] | null }])[] }>;
+export declare const PointerInteraction: Reflected<{ sorted_entities: readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[] }>;
 export type PointerInteraction = InstanceType<typeof PointerInteraction>;
 
 export declare const PointerLocation: Reflected;
@@ -705,6 +732,7 @@ export declare class AutoExposure extends Component {
 export declare class Bloom extends Component {
   static readonly path: "bevy_post_process::bloom::settings::Bloom";
   static readonly native: true;
+  static readonly tsxProps: { prefilter?: { threshold?: number; threshold_softness?: number } };
   declare intensity: f32;
   declare low_frequency_boost: f32;
   declare low_frequency_boost_curvature: f32;
@@ -739,6 +767,7 @@ export declare class ChromaticAberration extends Component {
 export declare class Vignette extends Component {
   static readonly path: "bevy_post_process::effect_stack::vignette::Vignette";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
   declare intensity: f32;
   declare radius: f32;
   declare smoothness: f32;
@@ -772,7 +801,7 @@ export declare class TemporalJitter extends Component {
 export declare const OcclusionCulling: Reflected;
 export type OcclusionCulling = InstanceType<typeof OcclusionCulling>;
 
-export declare const ColorGrading: Reflected<{ global: { exposure: number; temperature: number; tint: number; hue: number; post_saturation: number; midtones_range: unknown }; shadows: { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; midtones: { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; highlights: { saturation: number; contrast: number; gamma: number; gain: number; lift: number } }>;
+export declare const ColorGrading: Reflected<{ global: { exposure?: number; temperature?: number; tint?: number; hue?: number; post_saturation?: number; midtones_range?: unknown }; shadows: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number }; midtones: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number }; highlights: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number } }>;
 export type ColorGrading = InstanceType<typeof ColorGrading>;
 
 export declare class DebandDither extends Component {
@@ -796,7 +825,7 @@ export declare class Tonemapping extends Component {
 export declare const RenderShadowMapVisibleEntities: Reflected;
 export type RenderShadowMapVisibleEntities = InstanceType<typeof RenderShadowMapVisibleEntities>;
 
-export declare const Screenshot: Reflected<{ value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle: string; scale_factor: number } } | { TextureView: number } | { None: { size: { x: number; y: number } } } }>;
+export declare const Screenshot: Reflected<{ value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string; scale_factor?: number } } | { TextureView: number } | { None: { size?: { x?: number; y?: number } } } }>;
 export type Screenshot = InstanceType<typeof Screenshot>;
 
 export declare const SceneComponentInfo: Reflected<{ spawned_from_scene: boolean; component_name: string }>;
@@ -816,7 +845,7 @@ export declare class Sprite extends Component {
   static readonly path: "bevy_sprite::sprite::Sprite";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { image: string; texture_atlas: { layout: string; index: number } | null; color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min: readonly [number, number]; max: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border: { min_inset: readonly [number, number]; max_inset: readonly [number, number] }; center_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; sides_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; max_corner_scale: number } } | { Tiled: { tile_x: boolean; tile_y: boolean; stretch_value: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" };
+  static readonly __element: { image: string; texture_atlas: { layout?: string; index?: number } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" };
   declare flip_x: bool;
   declare flip_y: bool;
 }
@@ -828,6 +857,7 @@ export type Text2d = InstanceType<typeof Text2d>;
 export declare class Text2dShadow extends Component {
   static readonly path: "bevy_sprite::text2d::Text2dShadow";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
   declare readonly offset: Vec2;
 }
 
@@ -849,13 +879,13 @@ export type NoWireframe2d = InstanceType<typeof NoWireframe2d>;
 export declare const Wireframe2d: Reflected;
 export type Wireframe2d = InstanceType<typeof Wireframe2d>;
 
-export declare const Wireframe2dColor: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const Wireframe2dColor: Reflected<{ color: ColorValue }>;
 export type Wireframe2dColor = InstanceType<typeof Wireframe2dColor>;
 
-export declare const TilemapChunk: Reflected<{ chunk_size: { x: number; y: number }; tile_display_size: { x: number; y: number }; tileset: string; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
+export declare const TilemapChunk: Reflected<{ chunk_size: { x?: number; y?: number }; tile_display_size: { x?: number; y?: number }; tileset: string; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
 export type TilemapChunk = InstanceType<typeof TilemapChunk>;
 
-export declare const TilemapChunkTileData: Reflected<{ value: readonly ({ tileset_index: number; color: { Srgba: unknown } | { LinearRgba: unknown } | { Hsla: unknown } | { Hsva: unknown } | { Hwba: unknown } | { Laba: unknown } | { Lcha: unknown } | { Oklaba: unknown } | { Oklcha: unknown } | { Xyza: unknown } | { Okhsla: unknown } | { Okhsva: unknown } | { Okhwba: unknown }; visible: boolean; orientation: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[] }>;
+export declare const TilemapChunkTileData: Reflected<{ value: readonly ({ tileset_index?: number; color?: ColorValue; visible?: boolean; orientation?: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[] }>;
 export type TilemapChunkTileData = InstanceType<typeof TilemapChunkTileData>;
 
 export declare const TextBounds: Reflected<{ width: number | null; height: number | null }>;
@@ -866,7 +896,7 @@ export declare class TextLayoutInfo extends Component {
   static readonly path: "bevy_text::pipeline::TextLayoutInfo";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { scale_factor: number; glyphs: readonly ({ position: readonly [number, number]; atlas_info: { texture: { Index: { index: unknown } } | { Uuid: { uuid: unknown } }; rect: { min: readonly [number, number]; max: readonly [number, number] }; offset: readonly [number, number]; is_alpha_mask: boolean }; section_index: number; line_index: number })[]; run_geometry: readonly ({ section_index: number; bounds: { min: readonly [number, number]; max: readonly [number, number] }; strikethrough_y: number; strikethrough_thickness: number; underline_y: number; underline_thickness: number })[]; size: readonly [number, number]; cursor: readonly [boolean, { min: readonly [number, number]; max: readonly [number, number] }] | null; selection_rects: readonly ({ min: readonly [number, number]; max: readonly [number, number] })[]; preedit_underline_rects: readonly ({ min: readonly [number, number]; max: readonly [number, number] })[]; inline_boxes: readonly (readonly [Entity, "InFlow" | "OutOfFlow", { min: readonly [number, number]; max: readonly [number, number] }])[] };
+  static readonly __element: { scale_factor: number; glyphs: readonly ({ position?: readonly [number, number]; atlas_info?: { texture?: { Index: { index?: unknown } } | { Uuid: { uuid?: unknown } }; rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; offset?: readonly [number, number]; is_alpha_mask?: boolean }; section_index?: number; line_index?: number })[]; run_geometry: readonly ({ section_index?: number; bounds?: { min?: readonly [number, number]; max?: readonly [number, number] }; strikethrough_y?: number; strikethrough_thickness?: number; underline_y?: number; underline_thickness?: number })[]; size: readonly [number, number]; cursor: readonly [boolean, { min?: readonly [number, number]; max?: readonly [number, number] }] | null; selection_rects: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[]; preedit_underline_rects: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[]; inline_boxes: readonly (readonly [Entity, "InFlow" | "OutOfFlow", { min?: readonly [number, number]; max?: readonly [number, number] }])[] };
   declare scale_factor: f32;
   declare readonly size: Vec2;
 }
@@ -876,7 +906,7 @@ export declare class ComputedTextBlock extends Component {
   static readonly path: "bevy_text::text::ComputedTextBlock";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { entities: readonly ({ entity: Entity; depth: number; font_smoothing: "None" | "AntiAliased" })[]; needs_rerender: boolean; uses_viewport_sizes: boolean; uses_rem_sizes: boolean };
+  static readonly __element: { entities: readonly ({ entity?: Entity; depth?: number; font_smoothing?: "None" | "AntiAliased" })[]; needs_rerender: boolean; uses_viewport_sizes: boolean; uses_rem_sizes: boolean };
   declare needs_rerender: bool;
   declare uses_viewport_sizes: bool;
   declare uses_rem_sizes: bool;
@@ -894,19 +924,23 @@ export declare class FontHinting extends Component {
   declare value: "Disabled" | "Enabled";
 }
 
-export declare const LetterSpacing: Reflected;
+/** As an element, `<LetterSpacing value={...} />`: the whole value, in Bevy's shape. */
+export declare const LetterSpacing: Reflected & { readonly tsxProps: { value?: LetterSpacingValue } };
+export type LetterSpacingValue = { Px: number } | { Rem: number };
 export type LetterSpacing = InstanceType<typeof LetterSpacing>;
 
-export declare const LineHeight: Reflected;
+/** As an element, `<LineHeight value={...} />`: the whole value, in Bevy's shape. */
+export declare const LineHeight: Reflected & { readonly tsxProps: { value?: LineHeightValue } };
+export type LineHeightValue = { Px: number } | { RelativeToFont: number };
 export type LineHeight = InstanceType<typeof LineHeight>;
 
-export declare const StrikethroughColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const StrikethroughColor: Reflected<{ value: ColorValue }>;
 export type StrikethroughColor = InstanceType<typeof StrikethroughColor>;
 
-export declare const TextBackgroundColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const TextBackgroundColor: Reflected<{ value: ColorValue }>;
 export type TextBackgroundColor = InstanceType<typeof TextBackgroundColor>;
 
-export declare const TextColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const TextColor: Reflected<{ value: ColorValue }>;
 export type TextColor = InstanceType<typeof TextColor>;
 
 /** Holes, never visible: font: an enum with data (bevy_text::text::FontSource); font_size: an enum with data (bevy_text::text::FontSize); weight: not plain data (bevy_text::text::FontWeight); width: not plain data (bevy_text::text::FontWidth); style: an enum with data (bevy_text::text::FontStyle); font_features: not plain data (bevy_text::text::FontFeatures); font_variations: not plain data (bevy_text::text::FontVariations). */
@@ -914,7 +948,7 @@ export declare class TextFont extends Component {
   static readonly path: "bevy_text::text::TextFont";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { font: { Handle: string } | { Family: unknown } | { Families: unknown } | { List: readonly ({ Handle: string } | { Family: unknown } | { Families: unknown } | { List: readonly unknown[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" })[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing: "None" | "AntiAliased"; font_features: { features: readonly (readonly [unknown, number])[] }; font_variations: { variations: readonly (readonly [unknown, number])[] } };
+  static readonly __element: { font: { Handle: string } | { Family: unknown } | { Families: unknown } | { List: readonly ({ Handle: string } | { Family: unknown } | { Families: unknown } | { List: readonly unknown[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" })[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing: "None" | "AntiAliased"; font_features: { features?: readonly (readonly [unknown, number])[] }; font_variations: { variations?: readonly (readonly [unknown, number])[] } };
   declare font_smoothing: "None" | "AntiAliased";
 }
 
@@ -928,13 +962,13 @@ export declare class TextLayout extends Component {
 export declare const TextSpan: Reflected<{ value: string }>;
 export type TextSpan = InstanceType<typeof TextSpan>;
 
-export declare const UnderlineColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const UnderlineColor: Reflected<{ value: ColorValue }>;
 export type UnderlineColor = InstanceType<typeof UnderlineColor>;
 
 export declare const DelayedCommandQueue: Reflected<{ submit_at: unknown }>;
 export type DelayedCommandQueue = InstanceType<typeof DelayedCommandQueue>;
 
-export declare const GlobalTransform: Reflected<{ value: { matrix3: { x_axis: readonly [number, number, number]; y_axis: readonly [number, number, number]; z_axis: readonly [number, number, number] }; translation: readonly [number, number, number] } }>;
+export declare const GlobalTransform: Reflected<{ value: { matrix3?: { x_axis?: readonly [number, number, number]; y_axis?: readonly [number, number, number]; z_axis?: readonly [number, number, number] }; translation?: readonly [number, number, number] } }>;
 export type GlobalTransform = InstanceType<typeof GlobalTransform>;
 
 export declare const TransformTreeChanged: Reflected;
@@ -957,7 +991,7 @@ export declare class PlayAnimation extends Component {
   declare transition_secs: f32;
 }
 
-export declare const MissingComponents: Reflected<{ value: readonly ({ component: string; reason: "Unregistered" | "Failed" | "Mismatch"; message: string; fields: Record<string, string>; location: { file: string; line: number; column: number }; expected: { file: string; line: number; column: number } | null; misfit: Record<string, string>; overrides: readonly ({ path: unknown; fields: unknown })[]; scene: boolean })[] }>;
+export declare const MissingComponents: Reflected<{ value: readonly ({ component?: string; reason?: "Unregistered" | "Failed" | "Mismatch"; message?: string; fields?: Record<string, string>; location?: { file?: string; line?: number; column?: number }; expected?: { file?: string; line?: number; column?: number } | null; misfit?: Record<string, string>; overrides?: readonly ({ path?: unknown; fields?: unknown })[]; scene?: boolean })[] }>;
 export type MissingComponents = InstanceType<typeof MissingComponents>;
 
 export declare class MaterialAlpha extends Component {
@@ -991,13 +1025,14 @@ export declare class FocusPolicy extends Component {
 export declare class RelativeCursorPosition extends Component {
   static readonly path: "bevy_ui::focus::RelativeCursorPosition";
   static readonly native: true;
+  static readonly tsxProps: { normalized?: readonly [number, number] | null };
   declare cursor_over: bool;
 }
 
-export declare const BackgroundGradient: Reflected<{ value: readonly ({ Linear: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle: number; stops: readonly unknown[] } } | { Radial: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position: { anchor: readonly [number, number]; x: unknown; y: unknown }; shape: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: unknown } | { Ellipse: readonly [unknown, unknown] }; stops: readonly unknown[] } } | { Conic: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start: number; position: { anchor: readonly [number, number]; x: unknown; y: unknown }; stops: readonly unknown[] } })[] }>;
+export declare const BackgroundGradient: Reflected<{ value: readonly ({ Linear: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle?: number; stops?: readonly unknown[] } } | { Radial: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position?: { anchor?: readonly [number, number]; x?: unknown; y?: unknown }; shape?: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: unknown } | { Ellipse: readonly [unknown, unknown] }; stops?: readonly unknown[] } } | { Conic: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start?: number; position?: { anchor?: readonly [number, number]; x?: unknown; y?: unknown }; stops?: readonly unknown[] } })[] }>;
 export type BackgroundGradient = InstanceType<typeof BackgroundGradient>;
 
-export declare const BorderGradient: Reflected<{ value: readonly ({ Linear: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle: number; stops: readonly unknown[] } } | { Radial: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position: { anchor: readonly [number, number]; x: unknown; y: unknown }; shape: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: unknown } | { Ellipse: readonly [unknown, unknown] }; stops: readonly unknown[] } } | { Conic: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start: number; position: { anchor: readonly [number, number]; x: unknown; y: unknown }; stops: readonly unknown[] } })[] }>;
+export declare const BorderGradient: Reflected<{ value: readonly ({ Linear: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle?: number; stops?: readonly unknown[] } } | { Radial: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position?: { anchor?: readonly [number, number]; x?: unknown; y?: unknown }; shape?: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: unknown } | { Ellipse: readonly [unknown, unknown] }; stops?: readonly unknown[] } } | { Conic: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start?: number; position?: { anchor?: readonly [number, number]; x?: unknown; y?: unknown }; stops?: readonly unknown[] } })[] }>;
 export type BorderGradient = InstanceType<typeof BorderGradient>;
 
 export declare const Checkable: Reflected;
@@ -1024,22 +1059,25 @@ export declare class ComputedStackIndex extends Component {
   declare value: u32;
 }
 
-export declare const BackgroundColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const BackgroundColor: Reflected<{ value: ColorValue }>;
 export type BackgroundColor = InstanceType<typeof BackgroundColor>;
 
-export declare const BorderColor: Reflected<{ top: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; right: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; bottom: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; left: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const BorderColor: Reflected<{ top: ColorValue; right: ColorValue; bottom: ColorValue; left: ColorValue }>;
 export type BorderColor = InstanceType<typeof BorderColor>;
 
-export declare const BoxShadow: Reflected<{ value: readonly ({ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; x_offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y_offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; spread_radius: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; blur_radius: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } })[] }>;
+export declare const BoxShadow: Reflected<{ value: readonly ({ color?: ColorValue; x_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; spread_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; blur_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } })[] }>;
 export type BoxShadow = InstanceType<typeof BoxShadow>;
 
-export declare const CalculatedClip: Reflected;
+/** As an element, `<CalculatedClip value={...} />`: the whole value, in Bevy's shape. */
+export declare const CalculatedClip: Reflected & { readonly tsxProps: { value?: CalculatedClipValue } };
+export type CalculatedClipValue = { Rects: readonly ({ rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; world_to_clip_local?: { matrix2?: { x_axis?: readonly [number, number]; y_axis?: readonly [number, number] }; translation?: readonly [number, number] } })[] } | "FullyClipped";
 export type CalculatedClip = InstanceType<typeof CalculatedClip>;
 
 /** Holes, never visible: border: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); border_radius: not plain data (bevy_ui::ui_node::ResolvedBorderRadius); padding: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); em_size: not plain data (bevy_text::text::EmSize); rem_size: not plain data (bevy_text::text::RemSize). */
 export declare class ComputedNode extends Component {
   static readonly path: "bevy_ui::ui_node::ComputedNode";
   static readonly native: true;
+  static readonly tsxProps: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; border_radius?: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }; padding?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; em_size?: number; rem_size?: number };
   declare readonly size: Vec2;
   declare readonly content_size: Vec2;
   declare readonly scrollbar_size: Vec2;
@@ -1054,6 +1092,7 @@ export declare class ComputedNode extends Component {
 export declare class ComputedUiRenderTargetInfo extends Component {
   static readonly path: "bevy_ui::ui_node::ComputedUiRenderTargetInfo";
   static readonly native: true;
+  static readonly tsxProps: { physical_size?: { x?: number; y?: number } };
   declare scale_factor: f32;
 }
 
@@ -1069,7 +1108,7 @@ export declare class GlobalZIndex extends Component {
   declare value: i32;
 }
 
-export declare const IgnoreScroll: Reflected<{ value: { x: boolean; y: boolean } }>;
+export declare const IgnoreScroll: Reflected<{ value: { x?: boolean; y?: boolean } }>;
 export type IgnoreScroll = InstanceType<typeof IgnoreScroll>;
 
 export declare const IsDefaultUiCamera: Reflected;
@@ -1086,7 +1125,7 @@ export declare class Node extends Component {
   static readonly path: "bevy_ui::ui_node::Node";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { display: "Flex" | "Grid" | "Block" | "None"; box_sizing: "BorderBox" | "ContentBox"; position_type: "Relative" | "Absolute"; overflow: { x: "Visible" | "Clip" | "Hidden" | "Scroll"; y: "Visible" | "Clip" | "Hidden" | "Scroll" }; scrollbar_width: number; overflow_clip_margin: { visual_box: "ContentBox" | "PaddingBox" | "BorderBox"; margin: number }; left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; aspect_ratio: number | null; align_items: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; justify_items: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; align_self: "Auto" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; justify_self: "Auto" | "Start" | "StartSafe" | "End" | "EndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; align_content: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Stretch" | "SpaceBetween" | "SpaceEvenly" | "SpaceAround"; justify_content: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Stretch" | "SpaceBetween" | "SpaceEvenly" | "SpaceAround"; direction: "Ltr" | "Rtl"; margin: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; padding: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border_radius: { top_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; flex_direction: "Row" | "Column" | "RowReverse" | "ColumnReverse"; flex_wrap: "NoWrap" | "Wrap" | "WrapReverse"; flex_grow: number; flex_shrink: number; flex_basis: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; row_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; column_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; grid_auto_flow: "Row" | "Column" | "RowDense" | "ColumnDense"; grid_template_rows: readonly ({ repetition: { Count: number } | "AutoFill" | "AutoFit"; tracks: readonly ({ min_sizing_function: unknown; max_sizing_function: unknown })[] })[]; grid_template_columns: readonly ({ repetition: { Count: number } | "AutoFill" | "AutoFit"; tracks: readonly ({ min_sizing_function: unknown; max_sizing_function: unknown })[] })[]; grid_auto_rows: readonly ({ min_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_auto_columns: readonly ({ min_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_row: { start: unknown | null; span: unknown | null; end: unknown | null }; grid_column: { start: unknown | null; span: unknown | null; end: unknown | null } };
+  static readonly __element: { display: "Flex" | "Grid" | "Block" | "None"; box_sizing: "BorderBox" | "ContentBox"; position_type: "Relative" | "Absolute"; overflow: { x?: "Visible" | "Clip" | "Hidden" | "Scroll"; y?: "Visible" | "Clip" | "Hidden" | "Scroll" }; scrollbar_width: number; overflow_clip_margin: { visual_box?: "ContentBox" | "PaddingBox" | "BorderBox"; margin?: number }; left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; aspect_ratio: number | null; align_items: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; justify_items: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; align_self: "Auto" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; justify_self: "Auto" | "Start" | "StartSafe" | "End" | "EndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; align_content: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Stretch" | "SpaceBetween" | "SpaceEvenly" | "SpaceAround"; justify_content: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Stretch" | "SpaceBetween" | "SpaceEvenly" | "SpaceAround"; direction: "Ltr" | "Rtl"; margin: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; padding: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border_radius: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; flex_direction: "Row" | "Column" | "RowReverse" | "ColumnReverse"; flex_wrap: "NoWrap" | "Wrap" | "WrapReverse"; flex_grow: number; flex_shrink: number; flex_basis: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; row_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; column_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; grid_auto_flow: "Row" | "Column" | "RowDense" | "ColumnDense"; grid_template_rows: readonly ({ repetition?: { Count: number } | "AutoFill" | "AutoFit"; tracks?: readonly ({ min_sizing_function?: unknown; max_sizing_function?: unknown })[] })[]; grid_template_columns: readonly ({ repetition?: { Count: number } | "AutoFill" | "AutoFit"; tracks?: readonly ({ min_sizing_function?: unknown; max_sizing_function?: unknown })[] })[]; grid_auto_rows: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_auto_columns: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_row: { start?: unknown | null; span?: unknown | null; end?: unknown | null }; grid_column: { start?: unknown | null; span?: unknown | null; end?: unknown | null } };
   declare display: "Flex" | "Grid" | "Block" | "None";
   declare box_sizing: "BorderBox" | "ContentBox";
   declare position_type: "Relative" | "Absolute";
@@ -1105,10 +1144,10 @@ export declare class Node extends Component {
   declare grid_auto_flow: "Row" | "Column" | "RowDense" | "ColumnDense";
 }
 
-export declare const OuterColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const OuterColor: Reflected<{ value: ColorValue }>;
 export type OuterColor = InstanceType<typeof OuterColor>;
 
-export declare const Outline: Reflected<{ width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
+export declare const Outline: Reflected<{ width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; color: ColorValue }>;
 export type Outline = InstanceType<typeof Outline>;
 
 export declare const OverrideClip: Reflected;
@@ -1129,13 +1168,14 @@ export declare class ZIndex extends Component {
   declare value: i32;
 }
 
-export declare const UiGlobalTransform: Reflected<{ value: { matrix2: { x_axis: readonly [number, number]; y_axis: readonly [number, number] }; translation: readonly [number, number] } }>;
+export declare const UiGlobalTransform: Reflected<{ value: { matrix2?: { x_axis?: readonly [number, number]; y_axis?: readonly [number, number] }; translation?: readonly [number, number] } }>;
 export type UiGlobalTransform = InstanceType<typeof UiGlobalTransform>;
 
 /** Holes, never visible: translation: not plain data (bevy_ui::ui_transform::Val2); rotation: not plain data (bevy_math::rotation2d::Rot2). */
 export declare class UiTransform extends Component {
   static readonly path: "bevy_ui::ui_transform::UiTransform";
   static readonly native: true;
+  static readonly tsxProps: { translation?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; rotation?: { cos?: number; sin?: number } };
   declare readonly scale: Vec2;
 }
 
@@ -1147,13 +1187,13 @@ export declare class ImageNode extends Component {
   static readonly path: "bevy_ui::widget::image::ImageNode";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; image: string; texture_atlas: { layout: string; index: number } | null; flip_x: boolean; flip_y: boolean; rect: { min: readonly [number, number]; max: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border: { min_inset: readonly [number, number]; max_inset: readonly [number, number] }; center_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; sides_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; max_corner_scale: number } } | { Tiled: { tile_x: boolean; tile_y: boolean; stretch_value: number } }; visual_box: "ContentBox" | "PaddingBox" | "BorderBox" };
+  static readonly __element: { color: ColorValue; image: string; texture_atlas: { layout?: string; index?: number } | null; flip_x: boolean; flip_y: boolean; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; visual_box: "ContentBox" | "PaddingBox" | "BorderBox" };
   declare flip_x: bool;
   declare flip_y: bool;
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
 }
 
-export declare const ImageNodeSize: Reflected<{ size: { x: number; y: number } }>;
+export declare const ImageNodeSize: Reflected<{ size: { x?: number; y?: number } }>;
 export type ImageNodeSize = InstanceType<typeof ImageNodeSize>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>). */
@@ -1161,7 +1201,7 @@ export declare class InlineImage extends Component {
   static readonly path: "bevy_ui::widget::inline_image::InlineImage";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; image: string; width: number | null; height: number | null; flip_x: boolean; flip_y: boolean };
+  static readonly __element: { color: ColorValue; image: string; width: number | null; height: number | null; flip_x: boolean; flip_y: boolean };
   declare flip_x: bool;
   declare flip_y: bool;
 }
@@ -1176,6 +1216,7 @@ export type Text = InstanceType<typeof Text>;
 export declare class TextNodeFlags extends Component {
   static readonly path: "bevy_ui::widget::text::TextNodeFlags";
   static readonly native: true;
+  static readonly tsxProps: { no_wrap_measure?: readonly [number, number] | null };
   declare needs_measure_fn: bool;
   declare needs_recompute: bool;
 }
@@ -1184,6 +1225,7 @@ export declare class TextNodeFlags extends Component {
 export declare class TextShadow extends Component {
   static readonly path: "bevy_ui::widget::text::TextShadow";
   static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
   declare readonly offset: Vec2;
 }
 
@@ -1202,7 +1244,7 @@ export declare class UiAntiAlias extends Component {
   declare value: "On" | "Off";
 }
 
-export declare const UiDebugOptions: Reflected<{ enabled: boolean; outline_border_box: boolean; outline_padding_box: boolean; outline_content_box: boolean; outline_scrollbars: boolean; line_width: number; line_color_override: { red: number; green: number; blue: number; alpha: number } | null; show_hidden: boolean; show_clipped: boolean; ignore_border_radius: boolean }>;
+export declare const UiDebugOptions: Reflected<{ enabled: boolean; outline_border_box: boolean; outline_padding_box: boolean; outline_content_box: boolean; outline_scrollbars: boolean; line_width: number; line_color_override: { red?: number; green?: number; blue?: number; alpha?: number } | null; show_hidden: boolean; show_clipped: boolean; ignore_border_radius: boolean }>;
 export type UiDebugOptions = InstanceType<typeof UiDebugOptions>;
 
 export declare const ImageNodeTextureAtlasLayout: Reflected<{ value: string }>;
@@ -1223,7 +1265,7 @@ export type Dialog = InstanceType<typeof Dialog>;
 export declare const DialogDragHandle: Reflected;
 export type DialogDragHandle = InstanceType<typeof DialogDragHandle>;
 
-export declare const DialogDragState: Reflected<{ start_dialog_translation: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; start_pointer_location: readonly [number, number] }>;
+export declare const DialogDragState: Reflected<{ start_dialog_translation: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; start_pointer_location: readonly [number, number] }>;
 export type DialogDragState = InstanceType<typeof DialogDragState>;
 
 export declare const ActiveDescendant: Reflected<{ value: Entity | null }>;
@@ -1235,7 +1277,9 @@ export type ListItem = InstanceType<typeof ListItem>;
 export declare const MenuButton: Reflected;
 export type MenuButton = InstanceType<typeof MenuButton>;
 
-export declare const MenuFocusState: Reflected;
+/** As an element, `<MenuFocusState value={...} />`: the whole value, in Bevy's shape. */
+export declare const MenuFocusState: Reflected & { readonly tsxProps: { value?: MenuFocusStateValue } };
+export type MenuFocusStateValue = { Opening: "Next" | "Previous" | "First" | "Last" } | "Open" | "Closed";
 export type MenuFocusState = InstanceType<typeof MenuFocusState>;
 
 export declare const MenuItem: Reflected;
@@ -1250,7 +1294,7 @@ export type ModalDialog = InstanceType<typeof ModalDialog>;
 export declare const ModalDialogBarrier: Reflected;
 export type ModalDialogBarrier = InstanceType<typeof ModalDialogBarrier>;
 
-export declare const Popover: Reflected<{ positions: readonly ({ side: "Top" | "Bottom" | "Left" | "Right"; align: "Start" | "Center" | "End"; gap: number })[]; window_margin: number }>;
+export declare const Popover: Reflected<{ positions: readonly ({ side?: "Top" | "Bottom" | "Left" | "Right"; align?: "Start" | "Center" | "End"; gap?: number })[]; window_margin: number }>;
 export type Popover = InstanceType<typeof Popover>;
 
 export declare const RadioButton: Reflected;
@@ -1272,7 +1316,7 @@ export declare class ScrollbarDragState extends Component {
   declare drag_origin: f32;
 }
 
-export declare const ScrollbarThumb: Reflected<{ border_radius: { top_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; border: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }>;
+export declare const ScrollbarThumb: Reflected<{ border_radius: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; border: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }>;
 export type ScrollbarThumb = InstanceType<typeof ScrollbarThumb>;
 
 export declare const Slider: Reflected<{ track_click: "Drag" | "Step" | "Snap"; orientation: "Auto" | "Horizontal" | "Vertical" }>;
@@ -1318,10 +1362,12 @@ export type SelectAllOnFocus = InstanceType<typeof SelectAllOnFocus>;
 export declare const TextInput: Reflected;
 export type TextInput = InstanceType<typeof TextInput>;
 
-export declare const CursorIcon: Reflected;
+/** As an element, `<CursorIcon value={...} />`: the whole value, in Bevy's shape. */
+export declare const CursorIcon: Reflected & { readonly tsxProps: { value?: CursorIconValue } };
+export type CursorIconValue = { Custom: { Image: { handle?: string; texture_atlas?: { layout?: string; index?: number } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: unknown; max?: unknown } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type CursorIcon = InstanceType<typeof CursorIcon>;
 
-export declare const Monitor: Reflected<{ name: string | null; physical_height: number; physical_width: number; physical_position: { x: number; y: number }; refresh_rate_millihertz: number | null; scale_factor: number; video_modes: readonly ({ physical_size: { x: number; y: number }; bit_depth: number; refresh_rate_millihertz: number })[] }>;
+export declare const Monitor: Reflected<{ name: string | null; physical_height: number; physical_width: number; physical_position: { x?: number; y?: number }; refresh_rate_millihertz: number | null; scale_factor: number; video_modes: readonly ({ physical_size?: { x?: number; y?: number }; bit_depth?: number; refresh_rate_millihertz?: number })[] }>;
 export type Monitor = InstanceType<typeof Monitor>;
 
 export declare const PrimaryMonitor: Reflected;
@@ -1343,7 +1389,7 @@ export declare class Window extends Component {
   static readonly path: "bevy_window::window::Window";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { present_mode: "AutoVsync" | "AutoNoVsync" | "Fifo" | "FifoRelaxed" | "Immediate" | "Mailbox"; mode: "Windowed" | { BorderlessFullscreen: "Current" | "Primary" | { Index: number } | { Entity: Entity } } | { Fullscreen: readonly ["Current" | "Primary" | { Index: number } | { Entity: Entity }, "Current" | { Specific: { physical_size: { x: number; y: number }; bit_depth: number; refresh_rate_millihertz: number } }] }; position: "Automatic" | { Centered: "Current" | "Primary" | { Index: number } | { Entity: Entity } } | { At: { x: number; y: number } }; resolution: { physical_width: number; physical_height: number; scale_factor_override: number | null; scale_factor: number }; title: string; name: string | null; composite_alpha_mode: "Auto" | "Opaque" | "PreMultiplied" | "PostMultiplied" | "Inherit"; resize_constraints: { min_width: number; min_height: number; max_width: number; max_height: number }; resizable: boolean; enabled_buttons: { minimize: boolean; maximize: boolean; close: boolean }; decorations: boolean; transparent: boolean; focused: boolean; window_level: "AlwaysOnBottom" | "Normal" | "AlwaysOnTop"; canvas: string | null; fit_canvas_to_parent: boolean; prevent_default_event_handling: boolean; internal: { minimize_request: boolean | null; maximize_request: boolean | null; drag_move_request: boolean; drag_resize_request: "North" | "NorthEast" | "East" | "SouthEast" | "South" | "SouthWest" | "West" | "NorthWest" | null; physical_cursor_position: { x: number; y: number } | null }; ime_enabled: boolean; ime_position: readonly [number, number]; window_theme: "Light" | "Dark" | null; visible: boolean; skip_taskbar: boolean; clip_children: boolean; desired_maximum_frame_latency: unknown | null; recognize_pinch_gesture: boolean; recognize_rotation_gesture: boolean; recognize_doubletap_gesture: boolean; recognize_pan_gesture: readonly [number, number] | null; movable_by_window_background: boolean; fullsize_content_view: boolean; has_shadow: boolean; titlebar_shown: boolean; titlebar_transparent: boolean; titlebar_show_title: boolean; titlebar_show_buttons: boolean; borderless_game: boolean; prefers_home_indicator_hidden: boolean; prefers_status_bar_hidden: boolean; preferred_screen_edges_deferring_system_gestures: "None" | "Top" | "Left" | "Bottom" | "Right" | "All" };
+  static readonly __element: { present_mode: "AutoVsync" | "AutoNoVsync" | "Fifo" | "FifoRelaxed" | "Immediate" | "Mailbox"; mode: "Windowed" | { BorderlessFullscreen: "Current" | "Primary" | { Index: number } | { Entity: Entity } } | { Fullscreen: readonly ["Current" | "Primary" | { Index: number } | { Entity: Entity }, "Current" | { Specific: { physical_size?: { x?: number; y?: number }; bit_depth?: number; refresh_rate_millihertz?: number } }] }; position: "Automatic" | { Centered: "Current" | "Primary" | { Index: number } | { Entity: Entity } } | { At: { x?: number; y?: number } }; resolution: { physical_width?: number; physical_height?: number; scale_factor_override?: number | null; scale_factor?: number }; title: string; name: string | null; composite_alpha_mode: "Auto" | "Opaque" | "PreMultiplied" | "PostMultiplied" | "Inherit"; resize_constraints: { min_width?: number; min_height?: number; max_width?: number; max_height?: number }; resizable: boolean; enabled_buttons: { minimize?: boolean; maximize?: boolean; close?: boolean }; decorations: boolean; transparent: boolean; focused: boolean; window_level: "AlwaysOnBottom" | "Normal" | "AlwaysOnTop"; canvas: string | null; fit_canvas_to_parent: boolean; prevent_default_event_handling: boolean; internal: { minimize_request?: boolean | null; maximize_request?: boolean | null; drag_move_request?: boolean; drag_resize_request?: "North" | "NorthEast" | "East" | "SouthEast" | "South" | "SouthWest" | "West" | "NorthWest" | null; physical_cursor_position?: { x?: number; y?: number } | null }; ime_enabled: boolean; ime_position: readonly [number, number]; window_theme: "Light" | "Dark" | null; visible: boolean; skip_taskbar: boolean; clip_children: boolean; desired_maximum_frame_latency: unknown | null; recognize_pinch_gesture: boolean; recognize_rotation_gesture: boolean; recognize_doubletap_gesture: boolean; recognize_pan_gesture: readonly [number, number] | null; movable_by_window_background: boolean; fullsize_content_view: boolean; has_shadow: boolean; titlebar_shown: boolean; titlebar_transparent: boolean; titlebar_show_title: boolean; titlebar_show_buttons: boolean; borderless_game: boolean; prefers_home_indicator_hidden: boolean; prefers_status_bar_hidden: boolean; preferred_screen_edges_deferring_system_gestures: "None" | "Top" | "Left" | "Bottom" | "Right" | "All" };
   declare present_mode: "AutoVsync" | "AutoNoVsync" | "Fifo" | "FifoRelaxed" | "Immediate" | "Mailbox";
   declare composite_alpha_mode: "Auto" | "Opaque" | "PreMultiplied" | "PostMultiplied" | "Inherit";
   declare resizable: bool;
