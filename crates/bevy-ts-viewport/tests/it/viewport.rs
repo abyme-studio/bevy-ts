@@ -314,3 +314,48 @@ fn a_viewers_gamepad_reaches_the_game_with_focus() {
     app.update();
     assert_eq!(app.world_mut().query::<&Gamepad>().iter(app.world()).count(), 0);
 }
+
+/// `bevy-ts/screenshot` under the viewport: Bevy cannot capture the virtual window, which has no
+/// wgpu surface, so the ring reads its slot back (change `brp-screenshot`).
+#[test]
+fn a_screenshot_is_the_frame_the_viewport_shows() {
+    let mut app = app_with(bevy_ts_remote::add_methods);
+    app.insert_resource(ClearColor(Color::srgb(0.9, 0.3, 0.1)));
+    let (_, viewer) = attach(&mut app, 400.0, 300.0, 2.0);
+    let mut seen = Seen::default();
+    run_until(&mut app, &viewer, &mut seen, LONG, |s| s.frames.len() >= 2);
+    let dir = std::env::temp_dir().join(format!("bevy-ts-viewport-shot-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.canonicalize().unwrap().join("viewport.png");
+    let _ = std::fs::remove_file(&path);
+    let id = match app.world().resource::<bevy::remote::RemoteMethods>().get("bevy-ts/screenshot") {
+        Some(bevy::remote::RemoteMethodSystemId::Watching(id)) => *id,
+        _ => panic!("bevy-ts/screenshot is a deferred method"),
+    };
+    let params = Some(json!({ "path": path }));
+    let t0 = std::time::Instant::now();
+    let r = loop {
+        assert!(t0.elapsed() < LONG, "no answer");
+        if let Some(r) = app.world_mut().run_system_with(id, params.clone()).unwrap().transpose() {
+            break r;
+        }
+        app.update();
+        pump(&viewer, &mut seen, Duration::from_millis(2));
+    };
+    let r = r.unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(800), Some(600)), "{r}");
+    let bytes = std::fs::read(&path).unwrap();
+    let image = Image::from_buffer(
+        &bytes,
+        bevy::image::ImageType::Extension("png"),
+        bevy::image::CompressedImageFormats::NONE,
+        true,
+        bevy::image::ImageSampler::Default,
+        bevy::asset::RenderAssetUsages::default(),
+    )
+    .unwrap();
+    assert_eq!((image.width(), image.height()), (800, 600));
+    // A corner shows the clear colour, past the cube.
+    let corner = image.get_color_at(4, 4).unwrap().to_srgba();
+    assert!((corner.red - 0.9).abs() < 0.02 && (corner.blue - 0.1).abs() < 0.02, "{corner:?}");
+}

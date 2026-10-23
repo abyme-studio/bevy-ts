@@ -52,6 +52,7 @@ mod rust_events_coverage;
 mod rust_resources;
 mod scene_material;
 mod schedules;
+mod screenshot;
 mod standard_material_limits;
 mod states;
 mod stop_bench;

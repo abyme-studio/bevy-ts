@@ -1,20 +1,31 @@
 //! The render world's half: keep a ring per viewport window for its size, pick a free slot, feed it
 //! to Bevy as the window's swap chain, and announce it once the GPU has finished it.
+//!
+//! Workaround, to drop once Bevy fixes it: Bevy 0.20 captures a window's `Screenshot` only through
+//! its wgpu surface (`SurfaceData`, in `prepare_screenshots`), which a viewport window has none of,
+//! so Bevy warns "Unknown window for screenshot" and never captures it. The ring completes such a
+//! shot instead: it reads the slot of the frame back once the GPU has finished it, and the main
+//! world inserts Bevy's `Captured` and triggers its `ScreenshotCaptured`, as Bevy does for a shot it
+//! takes, so Bevy's `save_to_disk` writes it and Bevy despawns it.
 
 use crate::shared::{Shared, SharedRes, Target};
 use crate::surface::{self, FORMAT, SLOTS, Slot, Surface};
 use bevy::prelude::*;
 use bevy::render::camera::extract_cameras;
-use bevy::render::render_resource::TextureView;
+use bevy::asset::RenderAssetUsages;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureView};
 use bevy::render::renderer::{RenderDevice, RenderQueue};
 use bevy::render::sync_world::RenderEntity;
 use bevy::render::view::ExtractedWindow;
+use bevy::render::view::screenshot::{Captured, Screenshot, ScreenshotCaptured};
 use bevy::render::{ExtractSchedule, MainWorld, Render, RenderApp, RenderSystems};
-use bevy::window::PresentMode;
+use bevy::window::{PresentMode, PrimaryWindow};
+use bevy_ts::runtime::ScriptFrame;
+use bevy_ts_remote::screenshot::Shot;
 use serde_json::json;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::mpsc::{Sender, channel};
+use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
 
 /// Counts main-world updates, so a frame knows which update it shows.
 #[derive(Resource, Default, Clone, Copy)]
@@ -59,7 +70,24 @@ struct RingState {
     seq: u64,
     /// The viewport the ring belongs to.
     shared: Option<Arc<Shared>>,
+    /// Shots of this frame's slot: (shot entity, bevy-ts frame), and the slot's surface.
+    shots: Vec<(Entity, u64)>,
+    shot_surface: Option<Surface>,
 }
+
+/// A viewport shot read back: (shot entity, bevy-ts frame, image).
+type ShotImage = (Entity, u64, Image);
+
+/// The render world's end of viewport shots: where to send them, and the shots already taken.
+#[derive(Resource)]
+struct ShotSender {
+    tx: Sender<ShotImage>,
+    taken: HashSet<Entity>,
+}
+
+/// The main world's end of viewport shots.
+#[derive(Resource)]
+struct ShotReceiver(Mutex<Receiver<ShotImage>>);
 
 /// Wakes the thread that polls the device, so `on_submitted_work_done` fires as soon as the GPU
 /// finishes rather than at the next submit.
@@ -67,9 +95,12 @@ struct RingState {
 struct Poller(Sender<()>);
 
 pub(crate) fn build_render(app: &mut App, shared: Arc<Shared>) {
+    let (tx, rx) = channel();
+    app.insert_resource(ShotReceiver(Mutex::new(rx))).add_systems(Update, complete_shots);
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
     render_app
         .insert_resource(SharedRes(shared))
+        .insert_resource(ShotSender { tx, taken: HashSet::new() })
         .init_resource::<Rings>()
         .add_systems(ExtractSchedule, prepare_slot.before(extract_cameras))
         .add_systems(Render, announce.in_set(RenderSystems::Cleanup))
@@ -98,14 +129,18 @@ type ViewportWindowQuery = QueryState<(Entity, RenderEntity, &'static Window, Op
 
 fn prepare_slot(world: &mut World, mut query: Local<Option<ViewportWindowQuery>>) {
     let game = world.resource::<SharedRes>().0.clone();
-    let (found, update) = world.resource_scope(|_, mut main: Mut<MainWorld>| {
+    let (found, update, shots, frame) = world.resource_scope(|_, mut main: Mut<MainWorld>| {
         let q = query.get_or_insert_with(|| main.query_filtered());
         let found: Vec<_> = q
             .iter(&main)
             .map(|(e, re, w, v)| (e, re, w.resolution.physical_width().max(1), w.resolution.physical_height().max(1), v.map_or_else(|| game.clone(), |v| v.0.clone())))
             .collect();
-        (found, main.get_resource::<UpdateCount>().map_or(0, |u| u.0))
+        (found, main.get_resource::<UpdateCount>().map_or(0, |u| u.0), shots_of_windows(&mut main), main.get_resource::<ScriptFrame>().map_or(0, |f| f.0))
     });
+    // A shot is taken once; one gone from the main world is forgotten.
+    let mut sender = world.resource_mut::<ShotSender>();
+    sender.taken.retain(|e| shots.iter().any(|(s, _)| s == e));
+    let shots: Vec<_> = shots.into_iter().filter(|(s, _)| !sender.taken.contains(s)).collect();
     // A viewport window that is gone takes its ring with it.
     world.resource_mut::<Rings>().0.retain(|e, _| found.iter().any(|f| f.0 == *e));
     for (main, entity, w, h, shared) in found {
@@ -114,6 +149,15 @@ fn prepare_slot(world: &mut World, mut query: Local<Option<ViewportWindowQuery>>
         let device = world.resource::<RenderDevice>().clone();
         let slot_view = prepare_one(&mut ring, &shared, &device, w, h, update);
         ring.shared = Some(shared.clone());
+        // Shots of this window wait for a frame that renders a slot.
+        ring.shots.clear();
+        ring.shot_surface = None;
+        if let (Some((_, slot, ..)), Some(current)) = (ring.this_frame, ring.current.as_ref()) {
+            ring.shots = shots.iter().filter(|(_, win)| *win == main).map(|(s, _)| (*s, frame)).collect();
+            ring.shot_surface = (!ring.shots.is_empty()).then(|| current.surfaces[slot].clone());
+            let mut sender = world.resource_mut::<ShotSender>();
+            sender.taken.extend(ring.shots.iter().map(|(s, _)| *s));
+        }
         world.resource_mut::<Rings>().0.insert(main, ring);
         extract_window(world, entity, w, h, slot_view, &shared);
     }
@@ -211,6 +255,31 @@ fn extract_window(world: &mut World, entity: Entity, w: u32, h: u32, slot_view: 
     shared.set_target(if has_view { Target::Rendering } else { Target::Idle });
 }
 
+/// Screenshots of a window: (shot entity, window entity).
+fn shots_of_windows(main: &mut World) -> Vec<(Entity, Entity)> {
+    let primary = main.query_filtered::<Entity, With<PrimaryWindow>>().iter(main).next();
+    main.query::<(Entity, &Screenshot)>()
+        .iter(main)
+        .filter_map(|(e, s)| match s.0.normalize(primary)? {
+            bevy::camera::NormalizedRenderTarget::Window(w) => Some((e, w.entity())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The main world's half of a viewport shot: as Bevy's `trigger_screenshots` does for its own.
+fn complete_shots(mut commands: Commands, rx: Res<ShotReceiver>, mut shots: Query<&mut Shot>) {
+    let rx = rx.0.lock().unwrap();
+    while let Ok((e, frame, image)) = rx.try_recv() {
+        let Ok(mut entity) = commands.get_entity(e) else { continue };
+        entity.insert(Captured);
+        if let Ok(mut shot) = shots.get_mut(e) {
+            shot.frame = frame;
+        }
+        commands.trigger(ScreenshotCaptured { entity: e, image });
+    }
+}
+
 /// Exclusive, so it runs on the render thread: adds that thread to the frame's threads.
 fn register_render_thread(_: &mut World, mut done: Local<bool>) {
     if !std::mem::replace(&mut *done, true) {
@@ -219,7 +288,15 @@ fn register_render_thread(_: &mut World, mut done: Local<bool>) {
 }
 
 /// After the frame's submit: announce each slot rendered once the GPU has completed it.
-fn announce(rings: Res<Rings>, queue: Res<RenderQueue>, poller: Res<Poller>, device: Res<RenderDevice>, game: Res<SharedRes>, mut n: Local<u32>) {
+fn announce(
+    rings: Res<Rings>,
+    queue: Res<RenderQueue>,
+    poller: Res<Poller>,
+    device: Res<RenderDevice>,
+    game: Res<SharedRes>,
+    sender: Res<ShotSender>,
+    mut n: Local<u32>,
+) {
     // The device's allocation, every 30 frames, for viewport_stats.
     *n += 1;
     if *n % 30 == 1
@@ -234,7 +311,19 @@ fn announce(rings: Res<Rings>, queue: Res<RenderQueue>, poller: Res<Poller>, dev
         shared.mark_pending(slot);
         crate::trace::mark("submit", seq, update);
         let submitted = std::time::Instant::now();
+        let shots = ring.shots.clone();
+        let surface = ring.shot_surface.clone();
+        let tx = sender.tx.clone();
         queue.on_submitted_work_done(move || {
+            // Read before the slot is announced: until then no viewer shows it.
+            if let Some(surface) = surface {
+                let data = surface.read_rect(w, h);
+                for (e, frame) in shots {
+                    let size = Extent3d { width: w, height: h, depth_or_array_layers: 1 };
+                    let image = Image::new(size, TextureDimension::D2, data.clone(), FORMAT, RenderAssetUsages::MAIN_WORLD);
+                    let _ = tx.send((e, frame, image));
+                }
+            }
             shared.announce(number, slot, submitted, update, json!({ "ring": number, "slot": slot, "seq": seq, "w": w, "h": h }));
         });
         any = true;

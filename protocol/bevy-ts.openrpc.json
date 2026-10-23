@@ -187,6 +187,26 @@
       }
     },
     {
+      "name": "bevy-ts/screenshot",
+      "summary": "Saves what the run shows on its next rendered frame as a PNG at path, and answers once the file is written. Works while paused: pause and step to choose the frame.",
+      "x-bevy-ts-crate": "bevy-ts-remote",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/ScreenshotParams"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/ScreenshotResult"
+        }
+      }
+    },
+    {
       "name": "bevy-ts/entities",
       "summary": "A snapshot of every entity: id, Name, parent and component names.",
       "x-bevy-ts-crate": "bevy-ts-remote",
@@ -6356,6 +6376,50 @@
           },
           "required": {
             "type": "boolean"
+          }
+        }
+      },
+      "ScreenshotParams": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "An absolute path ending in .png, in a folder that exists."
+          }
+        }
+      },
+      "ScreenshotResult": {
+        "type": "object",
+        "required": [
+          "path",
+          "width",
+          "height",
+          "frame"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "height": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "frame": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0,
+            "description": "The bevy-ts frame the shot shows."
           }
         }
       }

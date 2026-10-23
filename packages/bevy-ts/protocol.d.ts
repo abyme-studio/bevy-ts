@@ -2488,6 +2488,29 @@ export interface LevelCatalogProp {
   };
   required: boolean;
 }
+/**
+ * This interface was referenced by `ProtocolTypes`'s JSON-Schema
+ * via the `definition` "ScreenshotParams".
+ */
+export interface ScreenshotParams {
+  /**
+   * An absolute path ending in .png, in a folder that exists.
+   */
+  path: string;
+}
+/**
+ * This interface was referenced by `ProtocolTypes`'s JSON-Schema
+ * via the `definition` "ScreenshotResult".
+ */
+export interface ScreenshotResult {
+  path: string;
+  width: number;
+  height: number;
+  /**
+   * The bevy-ts frame the shot shows.
+   */
+  frame: number;
+}
 
 /** Every method: params, result, owning crate, and whether it streams. */
 export interface Methods {
@@ -2501,6 +2524,7 @@ export interface Methods {
   "bevy-ts/mutate_components": { params: MutateComponentsParams; result: null; crate: "bevy-ts-remote"; watch: false };
   "bevy-ts/pause": { params: PauseParams; result: PauseResult; crate: "bevy-ts-remote"; watch: false };
   "bevy-ts/step": { params: StepParams | undefined; result: PauseResult; crate: "bevy-ts-remote"; watch: false };
+  "bevy-ts/screenshot": { params: ScreenshotParams; result: ScreenshotResult; crate: "bevy-ts-remote"; watch: false };
   "bevy-ts/entities": { params: undefined; result: EntitiesResult; crate: "bevy-ts-remote"; watch: false };
   "bevy-ts/entities+watch": { params: undefined; result: EntitiesWatchMessage; crate: "bevy-ts-remote"; watch: true };
   "bevy-ts/systems": { params: undefined; result: SystemsResult; crate: "bevy-ts-remote"; watch: false };

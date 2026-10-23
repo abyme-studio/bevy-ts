@@ -61,7 +61,10 @@ the other commands are not reachable from a shipped game. `bevy-ts play <folder>
 the arguments after `--` as the game's.
 
 Headless (`play --headless`, `dev --headless`) has no window: every camera renders into one 960x540
-offscreen image, and `BEVY_TS_SCREENSHOT=<path>` saves it at frames 60 and 75. Game UI draws into
+offscreen image. `bevy-ts/screenshot { path }` saves it as a PNG and answers once the file is
+written, with its size and the frame it shows; for a chosen frame, `bevy-ts/pause` and
+`bevy-ts/step` there first (rendering runs while paused). A run with no protocol (`play
+--headless`) takes one shot with `BEVY_TS_SCREENSHOT=<path>`, at frame 60. Game UI draws into
 that image at its size: headless gives `IsDefaultUiCamera` to the highest-order camera, as Bevy
 does for a window. A game's own `IsDefaultUiCamera` on another camera, or a root's
 `UiTargetCamera`, wins.
