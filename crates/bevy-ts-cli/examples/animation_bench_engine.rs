@@ -1,4 +1,4 @@
-//! The engine `tests/animation_bench.rs` runs (change `scene-animation`, task 6.1): the prebuilt
+//! The engine `tests/it/animation_bench.rs` runs (change `scene-animation`, task 6.1): the prebuilt
 //! engine plus a probe, so every arm runs the same binary. `ANIMATION_BENCH_ARM` and
 //! `ANIMATION_BENCH_N` select the run; the probe writes its numbers to `ANIMATION_BENCH_OUT`.
 //!

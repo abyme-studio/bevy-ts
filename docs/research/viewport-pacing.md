@@ -8,7 +8,7 @@ two refreshes (16.7 ms).
 
 ## How it was measured
 
-`crates/bevy-ts-cli/tests/viewport_pacing.rs` (process `viewport-pacing`) stands in for abyme
+`crates/bevy-ts-cli/tests/it/viewport_pacing.rs` (process `viewport-pacing`) stands in for abyme
 without abyme: it copies `examples/arena`, runs `bevy-ts dev --viewport` (release), attaches a
 480×320 hole at 2x and 120 Hz, ticks it from a thread every 8.33 ms, and runs five phases: play at
 rest (2 s), edit settling (1 s), edit at rest (3 s), keys (~6 a second, 3 s) and pointer moves

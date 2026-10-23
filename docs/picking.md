@@ -78,7 +78,7 @@ It answers `{ "queued": 3 }`. The engine applies one event a frame, so the move'
 before the press: a click takes three frames. Any other event type refuses the whole request with
 an error naming the type, and nothing of it applies; so does a `viewport` other than 0. The other
 viewport methods are not served headless, and `bevy-ts/hello` still reports `viewport: false`.
-`crates/bevy-ts-cli/tests/headless_pointer.rs` clicks a cube this way.
+`crates/bevy-ts-cli/tests/it/headless_pointer.rs` clicks a cube this way.
 
 Headless has a primary window with no native window behind it, the image's size: Bevy 0.20's
 picking casts no ray without a `PrimaryWindow`, even for a pointer on an image. Nothing renders

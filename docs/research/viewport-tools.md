@@ -10,7 +10,7 @@ lines. Nothing in play.
 
 ## How it was measured
 
-The process `viewport-tools-ab` runs `crates/bevy-ts-cli/tests/viewport_pacing.rs` (see
+The process `viewport-tools-ab` runs `crates/bevy-ts-cli/tests/it/viewport_pacing.rs` (see
 `viewport-pacing.md`) on the release engine: the arena in edit mode, a 480×320 hole at 2x ticked at
 120 Hz. It alternates `BEVY_TS_VIEWPORT_ORIENT=0` (the gizmo left out) and the default, so both arms
 see one machine load. Two batches, 20 runs; 16 completed, 8 an arm. The other 4 failed before edit
