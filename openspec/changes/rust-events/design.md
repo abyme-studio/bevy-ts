@@ -30,8 +30,11 @@ hooks (ecs-queries); message update under fixed timestep (ecs-schedules); asset 
 2. Our own type data, `ReflectTsMessage` and `ReflectTsEvent`. Bevy has no reflected read of
    `Messages<M>`, so a monomorphic function per type is needed. `app.ts_message::<M>()` builds
    `read(world, cursor) -> (Vec<Value>, next)` over `Messages<M>` with a `MessageCursor`-style
-   `usize` and `write(world, &Value)`; `app.ts_event::<E>()` builds `observe(target:
-   Option<Entity>, decl) -> Observer` and `trigger(world, &Value)`. The observer pushes
+   `usize` and `write(world, &Value)`; `app.ts_event::<E>()` (global) and
+   `app.ts_entity_event::<E>()` (entity, as Bevy splits them) build `observe(target:
+   Option<Entity>, decl) -> Observer` and `trigger(world, &Value)`. The type data hands over
+   reflected values (`&dyn PartialReflect`); the caller turns them into JSON with
+   `reflect_value`, so the type data stays one function per type and knows no JSON. The observer pushes
    `Pending { trigger: Trigger::Rust(type_id), json, path: [current], original }` into
    `ObserverQueue`. Alternative, reflect `Messages<M>`'s fields: private, fragile, still per type.
 3. Fallback for unlisted types: Bevy's `ReflectMessage::write_message` and
@@ -59,11 +62,13 @@ hooks (ecs-queries); message update under fixed timestep (ecs-schedules); asset 
 9. `plugin_api::write_message` stays. `CollisionEvent` has no `Reflect`, and a port may map any
    non-reflected type onto a TS message. It is not superseded; docs list `ts_message` first.
 10. Registration list. The prebuilt engine's list sits in one function,
-    `bevy_ts::rust_events::register_bevy(app)`. `rust_events_coverage.rs` walks the registry:
+    `bevy_ts_cli::rust_events::register_bevy(app)`, in the crate whose Bevy has the input,
+    window, picking and focus features (`bevy-ts` itself builds with a minimal Bevy). `rust_events_coverage.rs` walks the registry:
     any `ReflectMessage`/`ReflectEvent` without ours fails, plus a named list of input, window,
     picking, focus and asset types that must be present. Allowlist with reasons:
-    `StateTransitionEvent<S>` (no `Reflect` in 0.20), and any type whose trigger is not
-    `Default`.
+    `StateTransitionEvent<S>`, `AssetLoadFailedEvent<A>` and `bevy_scene::Ready` (no `Reflect`
+    in 0.20), and any type whose trigger is not `Default`. The check also requires
+    `AssetEvent<A>` for every type with `ReflectAsset`.
 
 ## Risks / Trade-offs
 

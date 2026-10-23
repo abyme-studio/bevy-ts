@@ -18,7 +18,9 @@ pub use bevy_ts;
 pub use bevy_ts::layout;
 pub use bevy_ts_native_derive::{HostRecord, NativeLayout, export};
 
+use bevy::ecs::event::GlobalTrigger;
 use bevy::ecs::schedule::{ScheduleLabel, SystemSet};
+use bevy::reflect::GetTypeRegistration;
 use bevy::prelude::*;
 use bevy_ts::layout::{ComponentLayout, FieldType, NativeLayouts};
 
@@ -187,6 +189,24 @@ pub trait BevyTsNativeExt {
     /// `dts` declares it in `native.d.ts`. Classes it defines with `__bevyts.data` are declared
     /// by every generation.
     fn ts_module(&mut self, specifier: &str, js: &str, dts: &str) -> &mut Self;
+
+    /// Lets TS read (`MessageReader<M>`) and write (`MessageWriter<M>`) the Rust message `M`, by
+    /// its reflect type path, payloads as JSON. Adds the message if it is not yet.
+    fn ts_message<M>(&mut self) -> &mut Self
+    where
+        M: Message + FromReflect + TypePath + GetTypeRegistration;
+
+    /// Lets TS observe (`On<E>`) and trigger the Rust global event `E`.
+    fn ts_event<E>(&mut self) -> &mut Self
+    where
+        E: for<'a> Event<Trigger<'a> = GlobalTrigger> + Reflect + FromReflect + TypePath + GetTypeRegistration;
+
+    /// Lets TS observe (`On<E>`, `entity(e).observe`) and trigger the Rust entity event `E`,
+    /// bubbling as Bevy does.
+    fn ts_entity_event<E>(&mut self) -> &mut Self
+    where
+        E: EntityEvent + Reflect + FromReflect + TypePath + GetTypeRegistration,
+        for<'a> E::Trigger<'a>: bevy_ts::rust_events::OriginalTarget + Default;
 }
 
 impl BevyTsNativeExt for App {
@@ -234,6 +254,31 @@ impl BevyTsNativeExt for App {
         if let Err(e) = bevy_ts::modules::register(specifier, js, dts) {
             panic!("{e}");
         }
+        self
+    }
+
+    fn ts_message<M>(&mut self) -> &mut Self
+    where
+        M: Message + FromReflect + TypePath + GetTypeRegistration,
+    {
+        bevy_ts::rust_events::register_message::<M>(self);
+        self
+    }
+
+    fn ts_event<E>(&mut self) -> &mut Self
+    where
+        E: for<'a> Event<Trigger<'a> = GlobalTrigger> + Reflect + FromReflect + TypePath + GetTypeRegistration,
+    {
+        bevy_ts::rust_events::register_event::<E>(self);
+        self
+    }
+
+    fn ts_entity_event<E>(&mut self) -> &mut Self
+    where
+        E: EntityEvent + Reflect + FromReflect + TypePath + GetTypeRegistration,
+        for<'a> E::Trigger<'a>: bevy_ts::rust_events::OriginalTarget + Default,
+    {
+        bevy_ts::rust_events::register_entity_event::<E>(self);
         self
     }
 
