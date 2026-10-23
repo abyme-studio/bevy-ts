@@ -163,8 +163,11 @@ fn component_id(world: &World, r: &ComponentRef, ts: &TsLookup) -> Result<Compon
     }
 }
 
+/// Byte ranges `[start, end)` of a layout's fields.
+type FieldRanges = Vec<(usize, usize)>;
+
 /// A resource value as native bytes, and the byte ranges of its fields (padding left out).
-fn encode_resource(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>, c: &Compile) -> Result<(Vec<u8>, Vec<(usize, usize)>), String> {
+fn encode_resource(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>, c: &Compile) -> Result<(Vec<u8>, FieldRanges), String> {
     let ranges = |l: &ComponentLayout| l.fields.iter().map(|f| (f.offset, f.offset + f.ty.size())).collect::<Vec<_>>();
     if let Some(r) = (c.encode)(name, values) {
         let (bytes, layout) = r.map_err(|e| format!("resourceEquals({name}): {e}"))?;
@@ -358,7 +361,13 @@ pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
             before != now && to.is_none_or(|t| t == now)
         }
         Condition::Not(c) => !evaluate(world, c),
-        Condition::All(cs) => cs.iter_mut().fold(true, |ok, c| evaluate(world, c) && ok),
+        Condition::All(cs) => {
+            let mut ok = true;
+            for c in cs.iter_mut() {
+                ok &= evaluate(world, c);
+            }
+            ok
+        }
         Condition::Combine { op, a, b, eager } => {
             let x = evaluate(world, a);
             let decided = match op {

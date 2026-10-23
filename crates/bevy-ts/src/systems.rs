@@ -792,8 +792,7 @@ fn drive(world: &mut World, key: &ListKey, only: Option<&HashSet<String>>) {
         with_systems(world, |world, rt, systems| {
             drain_observers(world, rt, systems);
             let mut list = systems.take(key);
-            for i in from..list.len() {
-                let sys = &mut list[i];
+            for (i, sys) in list.iter_mut().enumerate().skip(from) {
                 if only.is_some_and(|o| !o.contains(&sys.decl.name)) {
                     continue;
                 }
