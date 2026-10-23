@@ -124,11 +124,19 @@ The `Commands` param SHALL offer `spawn(...parts)` (component values such as `He
 - **THEN** the overflow is kept on the JS side and applied after the run, with no command lost and no allocation in Rust during the run
 
 ### Requirement: Native spawn recipes
-Rust SHALL register named recipes callable from `spawnNative` for things TS cannot yet build: in this change `camera3d`, `directionalLight` and `cuboid` (a mesh plus a `StandardMaterial` with a colour). Their params cross as JSON; this path is for rare spawns, not per-frame work.
+Rust SHALL register named recipes callable from `spawnNative` for things TS cannot yet build: in this change `camera3d`, `directionalLight` and `cuboid` (a mesh plus a `StandardMaterial` with a colour). Their params cross as JSON; this path is for rare spawns, not per-frame work. `camera3d` SHALL take an optional `projection` in the shape `<Projection value>` takes, written by the same reflected-value writer. A recipe's colour SHALL take every form the colour parser takes.
 
 #### Scenario: A cube from TS
 - **WHEN** a `Startup` system calls `commands.spawnNative("cuboid", { size: [1, 1, 1], color: "#f80" })` and then inserts `Mover` on the returned entity
 - **THEN** an orange cube is visible and carries `game::Mover`
+
+#### Scenario: An orthographic camera from TS
+- **WHEN** a `Startup` system calls `commands.spawnNative("camera3d", { position: [10, 10, 10], lookAt: [0, 0, 0], projection: { Orthographic: { scaling_mode: { FixedVertical: { viewport_height: 12 } } } } })`
+- **THEN** the camera's `Projection` is `Orthographic` with `FixedVertical { viewport_height: 12 }` and every other field at its default
+
+#### Scenario: A bad projection
+- **WHEN** `projection` is `{ Isometric: {} }`
+- **THEN** the spawn fails with an error naming `Projection` and its variants `Perspective`, `Orthographic` and `Custom`
 
 ### Requirement: Resources
 `class R extends Resource { ...fields }` SHALL declare a resource with the same field rules, naming and layout as a component (ts-components). A resource SHALL be a component on its own resource entity, as in Bevy 0.20 (`trait Resource: Component`), so `Res<R>` and `ResMut<R>` are one-row column views through the same zero-copy path as a query. `app.insertResource(R.of({...}))` SHALL insert it at the generation's apply if absent; a reload SHALL keep its value, and a `restart` reload or a Stop (hot-reload, edit-mode) SHALL insert it again with its `insertResource` value. A Rust resource with a native layout SHALL be reachable the same way (`Res<Time>`).
