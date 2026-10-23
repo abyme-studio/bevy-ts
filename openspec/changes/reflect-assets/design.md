@@ -1,0 +1,201 @@
+## Context
+
+Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
+
+- `bevy_ts::reflect_value::write(registry, server, slot, base, json)` (reflect-enums-color) writes
+  JSON into any reflected slot: `Color`, `Handle<T>` from a path, `Option`, enums, struct merges. It
+  takes no `World`, so an asset slot writes as a component slot does. reflect-coverage stage 1 adds
+  `read`, its inverse, the `UNCOVERED` allowlist and the hole check. reflect-enums-color owns all of
+  `reflect_value`, `color` and the walker.
+- `ReflectAsset` gives `get`, `get_mut`, `add`, `insert`, `ids`, `handle_type_id`. `add` and
+  `insert` panic when `FromReflect` fails. Every `get_mut` marks the asset changed and sends
+  `AssetEvent::Modified`, even when nothing changes.
+- Reflect-registered assets: `StandardMaterial`, `Image` (opaque), `Mesh` (data ignored, no
+  `ReflectDefault`), `TextureAtlasLayout`, `ColorMaterial`, `SpriteMeshMaterial`, `AnimationClip`,
+  `AnimationGraph`, `ShaderBuffer`, `AutoExposureCompensationCurve`.
+- `ImageLoaderSettings` is serde, not `Reflect`; `with_settings::<S>` downcasts and only logs on a
+  wrong type, so erased settings need a typed table.
+- `<material>` (`intrinsics.rs`) caches `Assets<StandardMaterial>::add` by props in
+  `IntrinsicAssets`. standard-material-fields grows it to 42 props with texture paths, a colour
+  space per field and lazy tangents; material-alpha adds `alpha`, `alphaMode` and `MaterialAlpha`.
+- TS systems reach the world through free functions (`res`, `commands`, `query`). No asset API.
+
+## Goals / Non-Goals
+
+**Goals:**
+- One TS path to build, read and edit every `ReflectAsset` type, on the one writer and reader.
+- One way to put an asset in a `Handle<T>` slot, wherever that slot is.
+- `<material>` on that path with no change for authors.
+- Tiling textures: the image sampler and loader settings.
+
+**Non-Goals:**
+- Mesh attributes and indices (script-assets). `assets.add(Mesh, ...)` is refused: no default.
+- Load state, handle lifecycle and load events (engine-core). Handles here live until reload.
+- Assets Bevy does not reflect; `ScriptMaterial` (`<material kind>`).
+- Bindable asset props. Asset values are written on insert and on a changed prop.
+- A second writer, reader or walker.
+
+## Decisions
+
+1. **One module, `bevy_ts::reflect_asset`, beside `reflect_value`.** It owns: the asset lookup by
+   type path (`ReflectAsset` from the registration), `add`, `get`, `set`, the ref table, the value
+   cache, the `Handle` hook (decision 4), the `Image` hand-map and the loader-settings table. It
+   calls `reflect_value::write`, `read` and `default_of`; it never walks a value itself. TSX
+   (`bevy-ts-tsx`) and scripts (`host.rs`) both call it.
+   *Alternative:* an asset layer inside `bevy-ts-tsx`'s `reflected.rs`. Rejected: scripts need it,
+   and `bevy-ts-tsx` depends on `bevy-ts`, not the other way.
+
+2. **`add` builds whole, checks, then adds.** `add(world, type_path, json)`: `default_of(type)`
+   (refused, naming the type, when there is none: `Mesh`), `write` with the `AssetServer`, then
+   `ReflectFromReflect::from_reflect` on the result; a `None` fails with the type path. Only a
+   value that converted is passed to `ReflectAsset::add`, so `add`'s panic cannot fire. A partial
+   value is never added.
+
+3. **`set` borrows only to write.** `set(world, ref, json)`: clone the current value through
+   `ReflectAsset::get`, `write` the patch over the clone (the patch merges over the asset's current
+   value, not over a default), compare with `reflect_partial_eq`. Equal: return, no borrow, no
+   event. Different: `get_mut` and `apply` the clone. A failing patch changes nothing.
+   `get(world, ref)` is `read` of `ReflectAsset::get`; a missing asset is `undefined` in TS.
+   *Alternative:* write straight into `get_mut`. Rejected: every call would send `Modified` and
+   re-prepare the asset.
+
+4. **Refs, values and paths share one `Handle` hook.** The writer's `Handle` arm takes a path
+   string today. reflect-enums-color adds one hook to `reflect_value::Cx`: an optional
+   `&dyn HandleSlots` with `write(handle_type, json) -> Result<UntypedHandle>` for any non-string
+   JSON, and `read(untyped) -> Option<Value>` tried before the path in `read`. This change
+   implements it. It resolves three shapes, each tagged by one key so none can be mistaken for a
+   struct:
+   - `{ "$asset": n }`: a ref from `assets.add`. Its typed handle comes from `ReflectHandle::typed`.
+     A ref of the wrong asset type fails naming both types.
+   - `{ "$of": type_path, "props": {...} }`: an asset value (decision 6).
+   - `{ "$load": path, "settings": {...} }`: a path with loader settings (decision 9).
+   `read` of a handle in the ref table gives its `{ "$asset": n }`; other handles keep reflect-coverage's
+   rule (path, else `null`). Without a hook (`Cx` from a check), the three shapes are checked for
+   form only. The TS type of a `Handle<T>` slot becomes `string | AssetRef<T> | AssetValue<T> |
+   null`; reflect-coverage owns `types.rs`'s handle arm and takes that type.
+   *Alternative:* an `"asset:7"` string. Rejected: a real path could look like it, and settings do
+   not fit in a string.
+
+5. **The ref table.** `ScriptAssets`, a resource: `n -> UntypedHandle` (strong) and the reverse map
+   by `UntypedAssetId`. `assets.add` and the value cache (decision 6) put handles in it. A ref is
+   `{ $asset: n, type }` in TS, an `AssetRef<T>` frozen object; `n` counts up from 1 and is never
+   reused in a session. The table clears on script reload and on stop, dropping its strong
+   handles; a ref used after that fails with "stale asset ref". Freeing an asset before reload is
+   engine-core's handle lifecycle.
+   *Alternatives:* raw `AssetId` bits (no strong handle, so the asset drops at once); a UUID per
+   asset (more text, no gain).
+
+6. **Asset values: `.of`, cached by canonical props.** Every generated asset class has
+   `.of(props): AssetValue<T>`, which returns `{ $of: type_path, props }` and does nothing else.
+   Written into a `Handle<T>` slot, the hook keys a cache by the type path and the props'
+   canonical JSON (keys sorted). A hit returns the cached handle; a miss calls `add` and caches.
+   So every slot given equal props shares one asset, as `<material>` does today. Cached handles
+   live in `ScriptAssets` and clear with it. A value is built only when its slot is written: TSX
+   insert and changed prop, `assets.add`/`set` with it in a field, a reflected insert. Never per
+   frame. `assets.set` on the ref of a cached value changes every slot sharing it; docs say so,
+   and `assets.add` makes an unshared one.
+   *Alternative:* a TSX element as a value (`material={<StandardMaterial ... />}`). Rejected here:
+   every tag spawns or edits an entity today, so it needs a new element kind in the reconciler,
+   and `.of` is the spelling reflect-coverage gives reflect-tier components. It is ask-first item 1
+   if wanted.
+
+7. **The TS surface.** `import { assets } from "bevy-ts"` and asset classes from `bevy-ts/bevy`:
+   ```ts
+   const img = Image.load("textures/atlas.png", { sampler: { Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat" } } });
+   const mat = assets.add(StandardMaterial, { base_color: "#ffd7a8", base_color_texture: img });
+   assets.set(mat, { perceptual_roughness: 0.3 });
+   assets.get(mat)?.base_color;
+   <entity><Mesh3d value={meshRef} /><MeshMaterial3d value={StandardMaterial.of({ unlit: true })} /></entity>
+   ```
+   `assets` works wherever scripts reach the world: inside a system's run and during a TSX render.
+   Each call is one host call carrying JSON, applied at once. Outside those it throws, naming where
+   it may be called.
+   `types.rs`'s `named()` also takes registrations with `ReflectAsset`, emitted as
+   `asset("<type path>")` classes typed `AssetClass<{ fields }>`, with the same short-name and
+   crate-prefix rule. `Image` is typed by its hand-mapped fields (`{ sampler: ImageSampler }`)
+   plus `load`. An asset with no default (`Mesh`) is typed with no `of` and `add` refuses it at
+   the type level.
+
+8. **`<material>` becomes a prop table over the generic path.** `MaterialProps`' serde fields go.
+   `intrinsics.rs` keeps one table: prop name → `StandardMaterial` field and a value mapping
+   (`color` → `base_color`; `roughness` → `perceptual_roughness`; camelCase → snake_case; enum
+   spellings `"back"`/`null`, `"uv0"`, `{ relief: { maxSteps } }` → Bevy's variant JSON;
+   `uvTransform` → `Affine2`; `alpha` → `base_color`'s alpha; `alphaMode` → `alpha_mode`, unset
+   following material-alpha's rule). The element's props become one `StandardMaterial.of` value
+   and the handle goes on `MeshMaterial3d`, through the same cache. Kept from
+   standard-material-fields unchanged: texture-path loading and the colour-space rule (in stage 2
+   still through its own code; in stage 3 each texture prop maps to an `Image.load` value with
+   `is_srgb` per field), the tangent swap, the 16-sampler limits test, the blocked-texture list and
+   the coverage tests. Unknown props, bad enums and bad colours fail at the element as today, with
+   the same messages. `jsx-runtime.d.ts`' `MaterialProps` stays hand-written, and a test checks it
+   against the table. `<mesh color>` calls the same path. `MaterialAlpha` is untouched.
+   *Alternative:* `<material>` takes Bevy's snake_case names. Rejected: breaks every script.
+
+9. **Image: a hand-map and one typed loader entry (stage 3).** `Image` is `reflect(opaque)`, so
+   `reflect_asset` keeps a short list of hand-mapped asset fields: `Image.sampler` only. `get`
+   reads it with `read` of the `ImageSampler`; `set` builds an `ImageSampler` with `write` over
+   the current one, compares, and assigns through a typed `Assets<Image>::get_mut` only when it
+   differs. `ImageSampler` and its descriptor types are `Reflect` + `Default`, so their JSON is
+   the writer's: `"Default"`, `{ Descriptor: { address_mode_u: "Repeat", mag_filter: "Nearest", ... } }`.
+   Loader settings: one table, asset type path → a typed apply over a `LoadBuilder`. Its one entry
+   is `Image`: `settings.sampler` (an `ImageSampler`, by the writer) and `settings.is_srgb` (bool),
+   applied with `with_settings::<ImageLoaderSettings>` then `load_erased`. Unknown settings keys
+   fail. A type with no entry has no `load` and its `$load` fails naming the type.
+   `ImageLoaderSettings` is not `Reflect`, so the entry's two keys are read by hand; adding a key
+   is one line.
+
+10. **Allowlist entries, not the walker.** reflect-enums-color adds `ReflectAsset` types to the
+    hole check's filter and puts every asset field the check cannot cover on
+    `reflect_value::UNCOVERED`, each reason starting `reflect-assets:`. Each stage of this change
+    deletes the entries it covers and the hole check proves the field now round-trips. Stage 1 is
+    expected to clear handle-to-asset fields; stage 3 clears `Image`'s `sampler`. Entries owned
+    elsewhere (`Mesh` data, script-assets) keep their owner's mark. This change never edits the
+    walker or its filter.
+
+## Seams
+
+| Seam | Owner | This change |
+|---|---|---|
+| `reflect_value` (`write`, `read`, `default_of`, `UNCOVERED`), `color`, the hole check's walker | reflect-enums-color | calls them; asks for the `HandleSlots` hook (decision 4) through lead@reflect-assets; removes its own `UNCOVERED` entries |
+| `types.rs` handle arm | reflect-coverage | asks for `string \| AssetRef<T> \| AssetValue<T> \| null`; adds asset classes in `named()` |
+| `<material>` props, colour space, tangents, limits | standard-material-fields, then this change in stage 2 | rebases after it lands; replaces `MaterialProps` with the table |
+| `alpha`, `alphaMode`, `MaterialAlpha` | material-alpha | folds the props in; leaves the component |
+| `<mesh>`, `MeshProps` | mesh-primitives | `<mesh color>` calls the shared material path; no `MeshProps` edit |
+| Handle lifecycle, load state | engine-core | ref table clears on reload only |
+
+## Ask-first items
+
+1. **Asset values in TSX (new pattern).** Removed by decision 6: `.of` returns a plain value, so no
+   element is a value and the reconciler does not change. If the operator wants
+   `<StandardMaterial ... />` as a prop value, that adds an element kind that spawns nothing; it
+   costs a reconciler arm and a JSX type. Alternative: keep `.of`.
+2. **Asset caching by props (performance).** Kept, not removed: decision 6 caches by canonical
+   JSON. Cost: one sort and hash of the props on each insert and changed prop, never per frame;
+   memory, one asset per distinct prop set until reload. This is `IntrinsicAssets` today made
+   generic. Alternative: no cache, one asset per slot (more GPU memory, no batching).
+
+## Risks / Trade-offs
+
+- [`assets.add` in a per-frame system grows memory until reload] → Docs say to add once and `set`
+  after; a log warning when one script session passes 10,000 refs. Freeing is engine-core's.
+- [`assets.set` on a cached value's ref changes every sharer] → Docs; `assets.add` for an unshared
+  asset.
+- [`assets.get` per frame costs a host call and a JSON read] → Docs say to keep the value in JS;
+  not a framework per-frame path.
+- [One image path loaded with two settings: Bevy keys the handle by path, so the first wins] →
+  The ref table records settings per path; a second load with other settings logs a warning naming
+  the path, as standard-material-fields' docs already advise separate files.
+- [The prop table and `MaterialProps` d.ts drift] → A test checks both lists match.
+- [The hook widens the writer's `Handle` arm] → It is one trait object owned by reflect-enums-color;
+  without it, behaviour is unchanged.
+- [A stale ref after reload] → Fails with "stale asset ref", naming the ref.
+
+## Migration Plan
+
+Stage 1: additive for scripts; protocol minor bump for the handle read. Stage 2: `<material>` keeps
+every prop, value and error; its tests run unchanged. Stage 3: additive. Rollback is a revert per
+stage.
+
+## Open Questions
+
+None. The two ask-first items above wait on the operator's word on spelling (1) and caching (2).
