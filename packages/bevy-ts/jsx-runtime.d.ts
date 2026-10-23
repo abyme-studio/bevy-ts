@@ -159,13 +159,52 @@ export interface NodeProps extends EntityProps {
   transform?: Bindable<UiTransform>;
 }
 
-/** `<text>`: `Text`, with `TextFont` size and `TextColor`. Children are strings and bindings. */
-export interface TextProps extends Omit<NodeProps, "children"> {
+/** The text props Bevy applies per span (`TextFont`, `TextColor`, decorations). */
+export interface SpanStyle {
+  /** `TextFont.font_size`, in pixels. */
   size?: Bindable<number>;
+  /** `TextColor`. */
   color?: Bindable<string>;
+  /** `TextFont.font`: a font asset path (`"fonts/Inter.ttf"`). */
+  font?: Bindable<string>;
+  /** `TextFont.weight`: 1 to 1000, 400 normal, 700 bold. */
+  weight?: Bindable<number>;
+  /** `TextFont.style` italic. */
+  italic?: Bindable<boolean>;
+  /** `LineHeight`: a multiple of the font size, or `px(n)`. */
+  lineHeight?: Bindable<number | string>;
+  /** `LetterSpacing`: pixels, `px(n)` or `rem(n)`. */
+  letterSpacing?: Bindable<number | string>;
+  /** `TextBackgroundColor`. */
+  textBackground?: Bindable<string>;
+  /** `Underline`, with `UnderlineColor` when a colour. */
+  underline?: Bindable<boolean | string>;
+  /** `Strikethrough`, with `StrikethroughColor` when a colour. */
+  strikethrough?: Bindable<boolean | string>;
+}
+
+/** `<text>`'s and `<span>`'s children: strings, bindings and `<span>`s. */
+export type TextChild = string | number | (() => string | number) | Element | null | undefined | false;
+
+/**
+ * `<text>`: `Text` with `TextFont`, `TextColor` and `TextLayout`. Text before the first `<span>`
+ * is its own; each `<span>` (and text after one) is a child span that takes the font and colour
+ * props it does not set.
+ */
+export interface TextProps extends Omit<NodeProps, "children">, SpanStyle {
+  /** `TextLayout.justify`. */
+  justify?: Bindable<"left" | "center" | "right" | "justified" | "start" | "end">;
+  /** `TextLayout.linebreak`. */
+  linebreak?: Bindable<"word" | "char" | "word-or-char" | "none">;
+  /** `TextShadow`; a missing field is Bevy's default. */
+  textShadow?: Bindable<{ x?: number; y?: number; color?: string }>;
   children?: TextChild | readonly TextChild[];
 }
-export type TextChild = string | number | (() => string | number) | null | undefined | false;
+
+/** `<span>`: a `TextSpan` inside a `<text>` or `<span>`, with its own text props. */
+export interface SpanProps extends SpanStyle {
+  children?: TextChild | readonly TextChild[];
+}
 
 /** `<image>`: an `ImageNode` from an asset path. */
 export interface ImageProps extends NodeProps {
@@ -240,6 +279,7 @@ export declare namespace JSX {
     node: NodeProps & KeyAttribute;
     button: NodeProps & KeyAttribute;
     text: TextProps & KeyAttribute;
+    span: SpanProps & KeyAttribute;
     image: ImageProps & KeyAttribute;
   }
 }

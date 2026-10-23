@@ -17,7 +17,11 @@ const ELEMENT = Symbol.for("bevy-ts.element");
 /** Intrinsics that describe components of the enclosing entity. */
 const COMPONENT_INTRINSICS = new Set(["mesh", "material"]);
 /** bevy_ui intrinsics: entities of their own, with one intrinsic component named after the tag. */
-const UI_INTRINSICS = new Set(["node", "text", "image", "button"]);
+const UI_INTRINSICS = new Set(["node", "text", "image", "button", "span"]);
+/** Rich text: `<text>` and `<span>` hold strings, bindings and `<span>`s. */
+const RICH = new Set(["text", "span"]);
+/** What a `<span>` takes from its parent unless it sets its own: Bevy gives a span no inheritance. */
+const INHERITED = ["size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing"];
 /** Props every entity-making element takes besides its components. */
 const PICKING = /^on[A-Z]/;
 /** `on` plus a Bevy 0.20 picking event's name: an entity-local observer (operator ruling 2026-10-20). */
@@ -1340,20 +1344,46 @@ function describeComponent(el) {
 
 const ENTITY_PROPS = new Set(["name", "ref"]);
 
-/** `<text>`'s children: strings, numbers and functions, joined into its `text` prop. */
-function textContent(el) {
-  const parts = [];
-  const walk = (c) => {
-    if (c === null || c === undefined || c === false || c === true) return;
-    if (Array.isArray(c)) return c.forEach(walk);
-    if (isElement(c)) throw located("<text> takes strings and bindings, not elements", el.source);
-    parts.push(c);
-  };
-  walk(el.children);
+/** Strings, numbers and functions, joined into one `text` prop (a binding when any is one). */
+function joined(parts) {
   if (parts.every((p) => typeof p !== "function")) return parts.join("");
   return () => parts.map((p) => (typeof p === "function" ? p() : p)).join("");
 }
 
+/**
+ * `<text>`'s and `<span>`'s children: the text before the first `<span>` is the element's own;
+ * each `<span>`, and each run of text after one, is a child span, as Bevy builds rich text. A
+ * child span takes its parent's font and colour props it does not set.
+ */
+function richText(el) {
+  const lead = [];
+  const spans = [];
+  let run = null;
+  const walk = (c) => {
+    if (c === null || c === undefined || c === false || c === true) return;
+    if (Array.isArray(c)) return c.forEach(walk);
+    if (isElement(c)) {
+      if (c.type !== "span") throw located(`<${el.type}> takes strings, bindings and <span>, not <${typeName(c.type)}>`, c.source || el.source);
+      spans.push(c);
+      run = null;
+      return;
+    }
+    if (!spans.length) return void lead.push(c);
+    if (!run) {
+      run = [];
+      spans.push(run);
+    }
+    run.push(c);
+  };
+  walk(el.children);
+  const items = spans.map((s) => {
+    const span = Array.isArray(s) ? create("span", { children: s }, undefined, el.source, true) : s;
+    const props = { ...span.props };
+    for (const k of INHERITED) if (props[k] === undefined && el.props[k] !== undefined) props[k] = el.props[k];
+    return { el: { ...span, props }, inArray: false };
+  });
+  return { text: joined(lead), items };
+}
 function describeEntity(el, key, type) {
   const ui = UI_INTRINSICS.has(el.type);
   const node = { key, type, components: [], children: [] };
@@ -1382,16 +1412,18 @@ function describeEntity(el, key, type) {
   node.source = [el.source, ...el.chain].filter(Boolean);
   const byType = new Map();
   const childItems = [];
+  const rich = RICH.has(el.type) ? richText(el) : null;
   if (ui) {
     const props = plainProps(el, skip);
-    if (el.type === "text") {
-      const t = textContent(el);
+    if (rich) {
+      const t = rich.text;
       props.text = typeof t === "function" ? Describing.ctx.bind(t, Describing.owner, el.source) : t;
     }
     node.components.push({ type: el.type, kind: "intrinsic", props, source: el.source });
     byType.set(el.type, el);
   }
-  for (const item of el.type === "text" ? [] : siblings(el)) {
+  if (rich) childItems.push(...rich.items);
+  for (const item of rich ? [] : siblings(el)) {
     const c = item.el;
     if (!isElement(c)) {
       throw located(`<${typeName(el.type)}> children are components and entities, not ${JSON.stringify(c)}`, el.source);
@@ -1404,13 +1436,14 @@ function describeEntity(el, key, type) {
       node.components.push(describeComponent(c));
     } else childItems.push(item);
   }
-  node.children = describeEntities(childItems);
+  node.children = describeEntities(childItems, el.type);
   return node;
 }
 
-function describeEntities(items) {
+function describeEntities(items, parentType) {
   const out = [];
   for (const { el, key, type } of keyed(items, "")) {
+    if (el.type === "span" && !RICH.has(parentType)) throw located("<span> goes inside a <text> or a <span>", el.source);
     if (el.type === "entity" || UI_INTRINSICS.has(el.type)) out.push(describeEntity(el, key, type));
     else if (typeof el.type === "function" && el.type[CONTROL]) {
       const id = Describing.ctx.nextSlot++;

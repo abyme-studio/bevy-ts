@@ -20,10 +20,10 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 2. Text
 
-- [ ] 2.1 `<text>` props `font`, `weight`, `italic`, `justify`, `linebreak`, `lineHeight`, `letterSpacing`, `textShadow`, `textBackground`, `underline`, `strikethrough`
-- [ ] 2.2 `<span>`: a `UiKind` valid only under `<text>` or `<span>` (load error otherwise); `TextSpan` plus span props; a bound span writes only its `TextSpan`
-- [ ] 2.3 Tests: each prop's component; a bound span changes and its siblings' ticks do not move; `<span>` under `<node>` fails naming its location
-- [ ] 2.4 Gallery panel and `docs/ui.md` "Text" section
+- [x] 2.1 `<text>` props `font`, `weight`, `italic`, `justify`, `linebreak`, `lineHeight`, `letterSpacing`, `textShadow`, `textBackground`, `underline`, `strikethrough`
+- [x] 2.2 `<span>`: a `UiKind` valid only under `<text>` or `<span>` (load error otherwise); `TextSpan` plus span props; a bound span writes only its `TextSpan`
+- [x] 2.3 Tests: each prop's component; a bound span changes and its siblings' ticks do not move; `<span>` under `<node>` fails naming its location
+- [x] 2.4 Gallery panel and `docs/ui.md` "Text" section
 
 ## 3. Events and state reads (after text-input; operator go for 3.4)
 

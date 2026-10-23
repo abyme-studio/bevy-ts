@@ -17,7 +17,8 @@ app.scene("hud", () => (
 | Intrinsic | Bevy |
 |---|---|
 | `<node>` | `Node` |
-| `<text>` | `Text`, `TextFont`, `TextColor` |
+| `<text>` | `Text`, `TextFont`, `TextColor`, `TextLayout` |
+| `<span>` | `TextSpan`, inside `<text>` or `<span>` |
 | `<image src>` | `ImageNode` |
 | `<button>` | `Node`, `Button`, picking |
 
@@ -76,3 +77,36 @@ gradient, a gradient removes the colour, and removing the prop removes both. `bo
 
 A Rust tuple struct with one field names it `value` in TS, so a UI component reads as
 `<ZIndex value={2} />` and `ref.get(Hovered).value` (see [native](native.md)).
+
+## Text
+
+`<text>` holds strings, bindings and `<span>`s. Text before the first `<span>` is the `Text`
+entity's own; each `<span>`, and each run of text after one, is a child entity with `TextSpan`, as
+Bevy builds rich text. A bound span writes its own `TextSpan` and nothing else.
+
+```tsx
+<text size={20} color="#fff">
+  HP <span color="#f00" weight={700}>{() => `${hp()}`}</span> / 100
+</text>
+```
+
+Bevy gives a span no inheritance; bevy-ts gives a `<span>` its parent's `size`, `color`, `font`,
+`weight`, `italic`, `lineHeight` and `letterSpacing` unless it sets its own. A `<span>` outside a
+`<text>` or `<span>` fails the load and names its location. `<Show>` and `<For>` do not go inside `<text>`: for a conditional
+span, bind its text (`<span>{() => (low() ? "!" : "")}</span>`).
+
+| Prop | On | Bevy | Takes |
+|---|---|---|---|
+| `size` | both | `TextFont.font_size` | pixels |
+| `font` | both | `TextFont.font` | a font asset path |
+| `weight` | both | `TextFont.weight` | 1 to 1000 (400 normal, 700 bold); needs a `font` with that weight |
+| `italic` | both | `TextFont.style` | `true`; needs a `font` with an italic face |
+| `color` | both | `TextColor` | a colour |
+| `lineHeight` | both | `LineHeight` | a multiple of the font size, or `px(n)` |
+| `letterSpacing` | both | `LetterSpacing` | pixels, `px(n)` or `rem(n)` |
+| `textBackground` | both | `TextBackgroundColor` | a colour |
+| `underline` | both | `Underline`, `UnderlineColor` | `true` or a colour |
+| `strikethrough` | both | `Strikethrough`, `StrikethroughColor` | `true` or a colour; drawn at the font's own thickness, which at 14 px and below can fall between pixels and not show |
+| `justify` | `<text>` | `TextLayout.justify` | `left`, `center`, `right`, `justified`, `start`, `end` |
+| `linebreak` | `<text>` | `TextLayout.linebreak` | `word`, `char`, `word-or-char`, `none` |
+| `textShadow` | `<text>` | `TextShadow` | `{ x, y, color }`; a missing field is Bevy's default |

@@ -48,11 +48,15 @@ Every UI intrinsic SHALL take `outline` (`{ width, offset, color }` to `Outline`
 - **THEN** it has a `BoxShadow` of one `ShadowStyle` with those values and an `Outline` 2 px wide
 
 ### Requirement: Rich text
-`<text>` SHALL take `font` (an asset path), `weight` (a number), `italic`, `justify` (`"left"`, `"center"`, `"right"`, `"justified"`), `linebreak` (`"word"`, `"char"`, `"word-or-char"`, `"none"`), `lineHeight`, `letterSpacing`, `textShadow` (`{ x, y, color }`), `textBackground` (a colour), `underline` and `strikethrough` (`true` or a colour), mapping to `TextFont`, `TextLayout`, `LineHeight`, `LetterSpacing`, `TextShadow`, `TextBackgroundColor`, `Underline` (and `UnderlineColor`) and `Strikethrough` (and `StrikethroughColor`). `<span>` SHALL be valid only inside `<text>` or `<span>`, SHALL spawn a child entity with `TextSpan`, and SHALL take `size`, `color` and the text props above that Bevy applies per span. A bound span SHALL write only its own `TextSpan`.
+`<text>` SHALL take `font` (an asset path), `weight` (a number), `italic`, `justify` (`"left"`, `"center"`, `"right"`, `"justified"`), `linebreak` (`"word"`, `"char"`, `"word-or-char"`, `"none"`), `lineHeight`, `letterSpacing`, `textShadow` (`{ x, y, color }`), `textBackground` (a colour), `underline` and `strikethrough` (`true` or a colour), mapping to `TextFont`, `TextLayout`, `LineHeight`, `LetterSpacing`, `TextShadow`, `TextBackgroundColor`, `Underline` (and `UnderlineColor`) and `Strikethrough` (and `StrikethroughColor`). `<span>` SHALL be valid only inside `<text>` or `<span>`, SHALL spawn a child entity with `TextSpan`, and SHALL take `size`, `color` and the text props above that Bevy applies per span. A bound span SHALL write only its own `TextSpan`. Bevy gives a span no inheritance, so a `<span>` SHALL take its parent's `size`, `color`, `font`, `weight`, `italic`, `lineHeight` and `letterSpacing` where it does not set them, a span's own prop winning; `textBackground`, `underline`, `strikethrough`, `justify`, `linebreak` and `textShadow` SHALL NOT be inherited.
 
 #### Scenario: A coloured number
 - **WHEN** `<text>HP <span color="#f00">{() => hp()}</span></text>` mounts and `hp` changes
 - **THEN** the text entity has a child with `TextSpan` and `TextColor` red, and only that child's `TextSpan` is written
+
+#### Scenario: A span takes its parent's size
+- **WHEN** `<text size={20}>HP <span color="#f00">5</span></text>` mounts
+- **THEN** the span's `TextFont` is 20 px and its `TextColor` red
 
 #### Scenario: A span outside text
 - **WHEN** `<node><span>x</span></node>` is loaded

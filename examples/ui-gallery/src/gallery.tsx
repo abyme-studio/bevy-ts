@@ -62,6 +62,21 @@ const Style = () => (
   </Panel>
 );
 
+/** Stage 2: rich text with `<span>`, font, layout and decorations. */
+const Text = () => (
+  <Panel title="Text">
+    <text key="rich" size={16}>
+      HP <span key="hp" color="#ff6060" weight={700}>{() => `${100 - clicks()}`}</span> / 100 <span key="note" italic color="#9fb3d1">(click Basics to hurt)</span>
+    </text>
+    <text key="layout" size={13} justify="center" lineHeight={1.4} letterSpacing={px(1)} style={{ width: px(300) }}>
+      Centred text that wraps over two lines, with wider letters.
+    </text>
+    <text key="decorated" size={16} underline="#ffd060" textShadow={{ x: 1, y: 1, color: "#000000" }}>
+      Underlined, with a shadow, and <span key="struck" strikethrough textBackground="#553333">struck through</span>
+    </text>
+  </Panel>
+);
+
 app.scene("gallery", () => (
   <>
     {/* Not UI: a cube behind the panels, so <entity>, <mesh> and <material> appear too. */}
@@ -72,6 +87,7 @@ app.scene("gallery", () => (
     <node key="gallery" style={{ position: "absolute", top: px(12), left: px(12), right: px(12), flexWrap: "wrap", columnGap: px(12), rowGap: px(12) }}>
       <Basics />
       <Style />
+      <Text />
     </node>
   </>
 ));

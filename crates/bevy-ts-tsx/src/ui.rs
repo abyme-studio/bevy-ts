@@ -4,7 +4,8 @@
 //! `TextColor` and `Node` alone.
 
 use bevy::prelude::*;
-use bevy::text::FontSize;
+use bevy::text::{FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, Underline, UnderlineColor};
+use bevy::ui::widget::TextShadow;
 use bevy::ui::{
     AngularColorStop, BackgroundGradient, BorderGradient, BoxShadow, ColorStop, ConicGradient, CornerRadius, Gradient, InlineDirection, LinearGradient, OverflowAxis,
     OverflowClipMargin, RadialGradient, RadialGradientShape, ShadowStyle, UiPosition, UiTransform, Val2, VisualBox,
@@ -17,7 +18,12 @@ pub enum UiKind {
     Text,
     Image,
     Button,
+    /// A run of rich text under `<text>` or `<span>`: `TextSpan`, no `Node`.
+    Span,
 }
+
+/// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak` and `textShadow`.
+const SPAN_PROPS: &[&str] = &["text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough"];
 
 impl UiKind {
     pub fn from_tag(tag: &str) -> Option<UiKind> {
@@ -26,6 +32,7 @@ impl UiKind {
             "text" => UiKind::Text,
             "image" => UiKind::Image,
             "button" => UiKind::Button,
+            "span" => UiKind::Span,
             _ => return None,
         })
     }
@@ -33,7 +40,11 @@ impl UiKind {
     fn props(self) -> &'static [&'static str] {
         match self {
             UiKind::Node | UiKind::Button => &["style", "background", "border", "radius", "outline", "shadow", "transform"],
-            UiKind::Text => &["style", "background", "border", "radius", "outline", "shadow", "transform", "text", "size", "color"],
+            UiKind::Text => &[
+                "style", "background", "border", "radius", "outline", "shadow", "transform", "text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing",
+                "textBackground", "underline", "strikethrough", "justify", "linebreak", "textShadow",
+            ],
+            UiKind::Span => SPAN_PROPS,
             UiKind::Image => &["style", "background", "border", "radius", "outline", "shadow", "transform", "src", "color"],
         }
     }
@@ -52,6 +63,13 @@ enum Part {
     Text,
     Font,
     Color,
+    Layout,
+    LineHeight,
+    LetterSpacing,
+    TextShadow,
+    TextBackground,
+    Underline,
+    Strikethrough,
     Image,
 }
 
@@ -64,7 +82,14 @@ fn part(kind: UiKind, prop: &str) -> Part {
         "shadow" => Part::Shadow,
         "transform" => Part::Transform,
         "text" => Part::Text,
-        "size" => Part::Font,
+        "size" | "font" | "weight" | "italic" => Part::Font,
+        "justify" | "linebreak" => Part::Layout,
+        "lineHeight" => Part::LineHeight,
+        "letterSpacing" => Part::LetterSpacing,
+        "textShadow" => Part::TextShadow,
+        "textBackground" => Part::TextBackground,
+        "underline" => Part::Underline,
+        "strikethrough" => Part::Strikethrough,
         "src" => Part::Image,
         "color" if kind == UiKind::Image => Part::Image,
         _ => Part::Color,
@@ -718,6 +743,96 @@ fn transform(v: &Value) -> Result<UiTransform, String> {
     Ok(t)
 }
 
+/// `TextFont`'s props: `size`, `font` (an asset path), `weight` (100 to 900) and `italic`.
+struct FontFields<'a> {
+    size: Option<f32>,
+    font: Option<&'a str>,
+    weight: Option<u16>,
+    italic: bool,
+}
+
+fn font_fields(props: &Map<String, Value>) -> Result<FontFields<'_>, String> {
+    let size = props.get("size").map(|v| v.as_f64().map(|n| n as f32).ok_or("size takes a number")).transpose()?;
+    let font = props.get("font").map(|v| v.as_str().ok_or("font takes an asset path")).transpose()?;
+    let weight = props
+        .get("weight")
+        .map(|v| v.as_u64().filter(|n| (1..=1000).contains(n)).map(|n| n as u16).ok_or("weight takes a number from 1 to 1000 (400 normal, 700 bold)"))
+        .transpose()?;
+    let italic = props.get("italic").map(|v| v.as_bool().ok_or("italic takes true or false")).transpose()?.unwrap_or(false);
+    Ok(FontFields { size, font, weight, italic })
+}
+
+fn layout(props: &Map<String, Value>) -> Result<TextLayout, String> {
+    let mut l = TextLayout::default();
+    if let Some(v) = props.get("justify") {
+        l.justify = match v.as_str() {
+            Some("left") => Justify::Left,
+            Some("center") => Justify::Center,
+            Some("right") => Justify::Right,
+            Some("justified") => Justify::Justified,
+            Some("start") => Justify::Start,
+            Some("end") => Justify::End,
+            _ => return Err(format!("justify: {v} is not one of left, center, right, justified, start, end")),
+        };
+    }
+    if let Some(v) = props.get("linebreak") {
+        l.linebreak = match v.as_str() {
+            Some("word") => LineBreak::WordBoundary,
+            Some("char") => LineBreak::AnyCharacter,
+            Some("word-or-char") => LineBreak::WordOrCharacter,
+            Some("none") => LineBreak::NoWrap,
+            _ => return Err(format!("linebreak: {v} is not one of word, char, word-or-char, none")),
+        };
+    }
+    Ok(l)
+}
+
+/// A number is relative to the font size, as CSS's unitless `line-height`; `px(n)` is pixels.
+fn line_height(v: &Value) -> Result<LineHeight, String> {
+    if let Some(n) = v.as_f64() {
+        return Ok(LineHeight::RelativeToFont(n as f32));
+    }
+    match amount(v) {
+        Some((n, "px")) => Ok(LineHeight::Px(n)),
+        _ => Err(format!("lineHeight: {v} is not a multiple of the font size or px(n)")),
+    }
+}
+
+/// A number or `px(n)` is pixels; `rem(n)` is relative to the root font size.
+fn letter_spacing(v: &Value) -> Result<LetterSpacing, String> {
+    match amount(v) {
+        Some((n, "px")) => Ok(LetterSpacing::Px(n)),
+        Some((n, "rem")) => Ok(LetterSpacing::Rem(n)),
+        _ => Err(format!("letterSpacing: {v} is not px(n) or rem(n)")),
+    }
+}
+
+/// `{ x, y, color }`; a missing field is Bevy's `TextShadow` default.
+fn text_shadow(v: &Value) -> Result<TextShadow, String> {
+    let o = fields(v, "textShadow", &["x", "y", "color"])?;
+    let mut s = TextShadow::default();
+    for (k, x) in o {
+        match k.as_str() {
+            "x" | "y" => {
+                let n = x.as_f64().ok_or_else(|| format!("textShadow.{k} takes a number of pixels"))? as f32;
+                if k == "x" { s.offset.x = n } else { s.offset.y = n }
+            }
+            _ => s.color = color(x)?,
+        }
+    }
+    Ok(s)
+}
+
+/// `underline` and `strikethrough`: `true` (Bevy's colour), a colour, or `false` (none).
+fn decoration(v: &Value, prop: &str) -> Result<Option<Option<Color>>, String> {
+    match v {
+        Value::Bool(true) => Ok(Some(None)),
+        Value::Bool(false) => Ok(None),
+        Value::String(_) => Ok(Some(Some(color(v)?))),
+        _ => Err(format!("{prop} takes true, false or a colour")),
+    }
+}
+
 /// Checks every prop of a UI intrinsic; bound props are checked when their value arrives.
 pub fn check(kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
     for k in props.keys() {
@@ -745,8 +860,15 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::Shadow => shadow(&props["shadow"]).map(|_| ()),
         Part::Transform => transform(&props["transform"]).map(|_| ()),
         Part::Text => props["text"].as_str().map(|_| ()).ok_or_else(|| "text takes a string".into()),
-        Part::Font => props["size"].as_f64().map(|_| ()).ok_or_else(|| "size takes a number".into()),
+        Part::Font => font_fields(props).map(|_| ()),
         Part::Color => color(&props["color"]).map(|_| ()),
+        Part::Layout => layout(props).map(|_| ()),
+        Part::LineHeight => line_height(&props["lineHeight"]).map(|_| ()),
+        Part::LetterSpacing => letter_spacing(&props["letterSpacing"]).map(|_| ()),
+        Part::TextShadow => text_shadow(&props["textShadow"]).map(|_| ()),
+        Part::TextBackground => color(&props["textBackground"]).map(|_| ()),
+        Part::Underline => decoration(&props["underline"], "underline").map(|_| ()),
+        Part::Strikethrough => decoration(&props["strikethrough"], "strikethrough").map(|_| ()),
         Part::Image => {
             if kind == UiKind::Image {
                 props.get("src").and_then(Value::as_str).ok_or("<image> needs src=\"path\"")?;
@@ -809,11 +931,73 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         }
         Part::Text => {
             let s = props.get("text").and_then(Value::as_str).unwrap_or_default();
-            world.entity_mut(e).insert(Text::new(s));
+            if kind == UiKind::Span {
+                world.entity_mut(e).insert(TextSpan::new(s));
+            } else {
+                world.entity_mut(e).insert(Text::new(s));
+            }
         }
         Part::Font => {
-            let size = props.get("size").and_then(Value::as_f64).map(|n| n as f32);
-            world.entity_mut(e).insert(TextFont { font_size: FontSize::Px(size.unwrap_or(20.0)), ..default() });
+            let f = font_fields(props)?;
+            let mut font = TextFont { font_size: FontSize::Px(f.size.unwrap_or(20.0)), weight: FontWeight(f.weight.unwrap_or(400)), ..default() };
+            if f.italic {
+                font.style = FontStyle::Italic;
+            }
+            if let Some(path) = f.font {
+                let server = world.get_resource::<AssetServer>().ok_or("font needs the asset plugin (no AssetServer)")?;
+                font.font = FontSource::Handle(server.load(path.to_string()));
+            }
+            world.entity_mut(e).insert(font);
+        }
+        Part::Layout => {
+            let l = layout(props)?;
+            world.entity_mut(e).insert(l);
+        }
+        // `TextSpan` requires these two, so an absent prop writes Bevy's default rather than removing.
+        Part::LineHeight => {
+            let h = props.get("lineHeight").map(line_height).transpose()?.unwrap_or_default();
+            world.entity_mut(e).insert(h);
+        }
+        Part::LetterSpacing => {
+            let l = props.get("letterSpacing").map(letter_spacing).transpose()?.unwrap_or_default();
+            world.entity_mut(e).insert(l);
+        }
+        Part::TextShadow if present => {
+            world.entity_mut(e).insert(text_shadow(&props["textShadow"])?);
+        }
+        Part::TextShadow => {
+            world.entity_mut(e).remove::<TextShadow>();
+        }
+        Part::TextBackground if present => {
+            world.entity_mut(e).insert(TextBackgroundColor(color(&props["textBackground"])?));
+        }
+        Part::TextBackground => {
+            world.entity_mut(e).remove::<TextBackgroundColor>();
+        }
+        // `underline` owns `Underline` and its colour; `true` is Bevy's default colour.
+        Part::Underline => {
+            world.entity_mut(e).remove::<(Underline, UnderlineColor)>();
+            match props.get("underline").map(|v| decoration(v, "underline")).transpose()?.flatten() {
+                Some(Some(c)) => {
+                    world.entity_mut(e).insert((Underline, UnderlineColor(c)));
+                }
+                Some(None) => {
+                    world.entity_mut(e).insert(Underline);
+                }
+                None => {}
+            }
+        }
+        Part::Strikethrough => {
+            world.entity_mut(e).remove::<(Strikethrough, StrikethroughColor)>();
+            match props.get("strikethrough").map(|v| decoration(v, "strikethrough")).transpose()?.flatten() {
+                Some(Some(c)) => {
+                    world.entity_mut(e).insert((Strikethrough, StrikethroughColor(c)));
+                }
+                Some(None) => {
+                    world.entity_mut(e).insert(Strikethrough);
+                }
+                None => {}
+            }
         }
         Part::Color if present => {
             world.entity_mut(e).insert(TextColor(color(&props["color"])?));
@@ -840,9 +1024,11 @@ fn props_of(kind: UiKind, props: &Map<String, Value>, p: Part) -> bool {
 
 /// Inserts everything a UI intrinsic owns, from its current props.
 pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
-    write_part(world, e, kind, props, Part::Node)?;
+    if kind != UiKind::Span {
+        write_part(world, e, kind, props, Part::Node)?;
+    }
     let mut parts: Vec<Part> = props.keys().map(|k| part(kind, k)).filter(|p| *p != Part::Node).collect();
-    if kind == UiKind::Text {
+    if matches!(kind, UiKind::Text | UiKind::Span) {
         parts.extend([Part::Text, Part::Font]);
     }
     parts.sort();
@@ -876,8 +1062,9 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
     let mut em = world.entity_mut(e);
     em.remove::<(Node, BackgroundColor, BackgroundGradient, BorderColor, BorderGradient, Outline, BoxShadow, UiTransform)>();
     match kind {
-        UiKind::Text => {
-            em.remove::<(Text, TextFont, TextColor)>();
+        UiKind::Text | UiKind::Span => {
+            em.remove::<(Text, TextSpan, TextFont, TextColor, TextLayout, LineHeight, LetterSpacing, TextShadow, TextBackgroundColor)>();
+            em.remove::<(Underline, UnderlineColor, Strikethrough, StrikethroughColor)>();
         }
         UiKind::Image => {
             em.remove::<ImageNode>();

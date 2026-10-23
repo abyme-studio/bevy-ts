@@ -32,3 +32,13 @@ export function readZ(z: ZIndex): number {
   z["0"];
   return z.value;
 }
+
+export const RichText = () => (
+  <text size={20} weight={700} italic justify="center" linebreak="none" lineHeight={1.2} letterSpacing={px(1)} textShadow={{ x: 1 }} underline strikethrough="#f00">
+    HP <span color="#f00" textBackground="#000">{() => 3}</span>
+    {/* @ts-expect-error  justify is <text>'s, not a span's */}
+    <span justify="center">x</span>
+  </text>
+);
+// @ts-expect-error  not a justify word
+export const BadJustify = () => <text justify="middle">x</text>;
