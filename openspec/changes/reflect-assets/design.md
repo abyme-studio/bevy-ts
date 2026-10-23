@@ -89,8 +89,11 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    *Alternative:* an `"asset:7"` string. Rejected: a real path could look like it, and settings do
    not fit in a string.
 
-5. **The ref table.** `ScriptAssets`, a resource: ref number `n` -> `Handle::Uuid`, and the
-   reverse map by `UntypedAssetId`. The UUID is built from the asset type, a per-session tag and
+5. **The ref table.** `ScriptAssets`, a resource: ref number `n` (a `u64`) -> an entry, and the
+   reverse map by `UntypedAssetId`. An entry is one of two kinds. `Uuid` entries are this
+   change's: a `Handle::Uuid`, kept until restart or stop (below). `Strong` entries are
+   script-assets': a strong handle it adds with `insert_strong` and frees with its `drop` and
+   `remove`, dropped on hot reload. The rules below are for `Uuid` entries. The UUID is built from the asset type, a per-session tag and
    `n`, so a ref has its id before the asset exists, and the flush after the run (decision 2)
    inserts the asset at that id with `ReflectAsset::insert`. `assets.add` and the value cache
    (decision 6) put entries in it. A ref is `{ $asset: n, type }` in TS, an `AssetRef<T>` frozen
