@@ -1,0 +1,1 @@
+{ "imports": { "bevy-ts/jsx-runtime": "../jsx-runtime.js" } }

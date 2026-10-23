@@ -128,23 +128,69 @@ fn present(world: &World, e: Option<Entity>, id: Option<ComponentId>) -> bool {
     }
 }
 
+/// A component a ref may read: a layout's, or a reflect-tier Rust one read through reflection.
+fn pair_component(world: &World, name: &str) -> Option<ComponentId> {
+    component(world, name).map(|(id, _)| id).or_else(|| world.resource::<NativeLayouts>().reflect_tier(name).map(|t| t.id))
+}
+
 fn read_pair(world: &World, e: Option<Entity>, name: &str) -> Value {
     if let Some(c) = name.strip_prefix('?') {
         return Value::Bool(present(world, e, presence_component(world, c)));
     }
-    let Some((id, _)) = component(world, name) else { return Value::Null };
+    let Some(id) = pair_component(world, name) else { return Value::Null };
     match target(world, e, id) {
         Some(t) => read(world, t, name),
         None => Value::Null,
     }
 }
 
+/// A component's value as `ref.get` sees it: a layout's fields with its holes read through
+/// reflection, or a reflect-tier component's whole value in `reflect_value::read_component`'s shape.
 fn read(world: &World, e: Entity, name: &str) -> Value {
-    let Some((id, layout)) = component(world, name) else { return Value::Null };
-    let Some(ptr) = world.get_entity(e).ok().and_then(|em| em.get_by_id(id).ok()) else { return Value::Null };
+    let Some(em) = world.get_entity(e).ok() else { return Value::Null };
+    let Some((id, layout)) = component(world, name) else {
+        let Some(id) = pair_component(world, name) else { return Value::Null };
+        return reflected(world, em, id, |registry, v| bevy_ts::reflect_value::read_component(registry, v)).unwrap_or(Value::Null);
+    };
+    let Ok(ptr) = em.get_by_id(id) else { return Value::Null };
     // SAFETY: the component was registered with `layout`, so it holds `layout.size` bytes.
     let bytes = unsafe { std::slice::from_raw_parts(ptr.as_ptr(), layout.size) };
-    value::decode_component(&layout, bytes)
+    let mut out = value::decode_component(&layout, bytes);
+    if let Value::Object(o) = &mut out
+        && world.resource::<NativeLayouts>().by_id(id).is_some_and(|n| !n.holes.is_empty())
+    {
+        let holes = reflected(world, em, id, |registry, v| {
+            let bevy::reflect::ReflectRef::Struct(st) = v.reflect_ref() else { return Ok(Value::Null) };
+            let mut m = Map::new();
+            for i in 0..st.field_len() {
+                let f = st.name_at(i).unwrap_or_default();
+                if !layout.fields.iter().any(|l| l.name == f)
+                    && let Ok(j) = bevy_ts::reflect_value::read(registry, st.field_at(i).expect("field"))
+                {
+                    m.insert(f.to_string(), j);
+                }
+            }
+            Ok(Value::Object(m))
+        });
+        if let Some(Value::Object(h)) = holes {
+            o.extend(h);
+        }
+    }
+    out
+}
+
+/// `f` over component `id` of `em` by reflection.
+fn reflected(
+    world: &World,
+    em: bevy::ecs::world::EntityRef,
+    id: ComponentId,
+    f: impl FnOnce(&bevy::reflect::TypeRegistry, &dyn PartialReflect) -> Result<Value, String>,
+) -> Option<Value> {
+    let type_id = world.components().get_info(id)?.type_id()?;
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let rc = registry.get_type_data::<ReflectComponent>(type_id)?;
+    let v = rc.reflect(em)?;
+    f(&registry, v.as_partial_reflect()).ok()
 }
 
 fn entity_of(world: &World, tree: &TsxTree, node: u64) -> Option<Entity> {
@@ -390,11 +436,11 @@ fn apply(world: &mut World, r: Response) -> Vec<(Option<Entity>, String)> {
             }
             continue;
         }
-        match component(world, name) {
-            Some((id, _)) => {
+        match pair_component(world, name) {
+            Some(id) => {
                 world.resource_mut::<TsxTree>().reactive.subs.insert((e, name.clone()), Subscription { id, last: now, present: None });
             }
-            None => log_error(world, format!("ref.get({name}): tsx reads components with a native layout (TS components, Transform)"), None),
+            None => log_error(world, format!("ref.get({name}): no component named {name}"), None),
         }
     }
     for (site, names) in r.sites {

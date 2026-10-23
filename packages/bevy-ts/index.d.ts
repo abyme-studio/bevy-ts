@@ -412,16 +412,19 @@ export interface RefTicks {
   lastChanged(): number;
 }
 
-type NotReflect<T> = T extends ReflectComponent ? never : T;
+// A reflect-tier class's row reads through reflection: `value` is the whole value, and a
+// struct's fields are on the row too (`weapon.name`). Unchanged rows are cached across runs.
+type ReflectRow<T> = T & { value: T extends { value: infer V } ? V : Omit<T, typeof tierBrand> };
 type Item<D> =
   D extends Entity ? Entity
   : D extends OptionData<infer X> ? Item<X> | undefined
   : D extends Has<unknown> ? boolean
-  : D extends Ref<infer T> ? ReadView<NotReflect<T>> & RefTicks
+  : D extends Ref<infer T> ? (T extends ReflectComponent ? ReadView<ReflectRow<T>> : ReadView<T>) & RefTicks
   : D extends AnyOf<infer Ts> ? { -readonly [I in keyof Ts]: Item<Ts[I]> | undefined }
-  : D extends Mut<infer T> ? NotReflect<T>
-  : D extends abstract new (...a: never) => infer I ? ReadView<NotReflect<I>> // value form: Mut(C) / C
-  : ReadView<NotReflect<D>>;
+  : D extends Mut<infer T> ? (T extends ReflectComponent ? ReflectRow<T> : T)
+  : D extends abstract new (...a: never) => infer I ? (I extends ReflectComponent ? ReadView<ReflectRow<I>> : ReadView<I>) // value form: Mut(C) / C
+  : D extends ReflectComponent ? ReadView<ReflectRow<D>>
+  : ReadView<D>;
 export type Row<Ds extends readonly unknown[]> = { -readonly [I in keyof Ds]: Item<Ds[I]> };
 
 /** A component's typed arrays over one table's column; only the views its fields need exist. */

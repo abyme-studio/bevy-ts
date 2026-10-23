@@ -822,6 +822,10 @@ impl crate::backend::HostCalls for WorldHost<'_> {
             }
             return Ok(n);
         }
+        #[cfg(feature = "reflect")]
+        if id >= crate::reflect_codec::READ {
+            return crate::reflect_codec::call(self.world, self.ticks.this_run, id, args, ret, slices);
+        }
         self.params.call(self.world, self.ticks, self.regions, self.allowed, id, args, ret, slices)
     }
 

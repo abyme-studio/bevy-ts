@@ -27,6 +27,8 @@ pub mod net;
 pub mod observers;
 pub mod plugin_api;
 #[cfg(feature = "reflect")]
+pub mod reflect_codec;
+#[cfg(feature = "reflect")]
 pub mod reflect_value;
 #[cfg(feature = "reflect")]
 pub mod reflect_asset;
