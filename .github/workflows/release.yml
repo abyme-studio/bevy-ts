@@ -1,5 +1,5 @@
 name: release
-# Builds the engine on each platform's native runner, publishes each platform package from a job of
+# Builds the engine on each platform's native runner (PLATFORMS below), publishes each platform package from a job of
 # its own (in parallel, each with a fresh OIDC token), then bevy-ts once every platform's engine
 # built and is on npm at this version; a failed build or publish holds bevy-ts back. npm's 5xx and
 # transient 404s are retried with backoff (scripts/npm-publish.sh).
@@ -36,13 +36,31 @@ permissions:
 
 jobs:
   release:
-    name: version and dist-tag
+    name: version, dist-tag and platforms
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
       publish: ${{ steps.release.outputs.publish }}
+      matrix: ${{ steps.platforms.outputs.matrix }}
+      platforms: ${{ steps.platforms.outputs.platforms }}
     steps:
+      # The platforms released, one line each: `<platform> <runner>`. Only darwin-arm64 ships for
+      # now; uncomment a line to release that platform again (docs/release.md).
+      - name: Platforms
+        id: platforms
+        env:
+          PLATFORMS: |
+            darwin-arm64 macos-15
+            # darwin-x64 macos-15-intel
+            # linux-x64 ubuntu-24.04
+            # linux-arm64 ubuntu-24.04-arm
+            # win32-x64 windows-2025
+        run: |
+          rows=$(printf '%s\n' "$PLATFORMS" | sed -e 's/#.*//' | awk 'NF')
+          echo "matrix=$(printf '%s\n' "$rows" | jq -Rnc '[inputs | split(" ") | {platform: .[0], runner: .[1]}]')" >> "$GITHUB_OUTPUT"
+          echo "platforms=$(printf '%s\n' "$rows" | awk '{print $1}' | paste -sd, -)" >> "$GITHUB_OUTPUT"
+          echo "Platforms: $(printf '%s\n' "$rows" | awk '{print $1}' | paste -sd' ' -)"
       - name: Version, dist-tag and whether to publish
         id: release
         env:
@@ -64,6 +82,7 @@ jobs:
 
   build:
     name: engine ${{ matrix.platform }}
+    needs: release
     runs-on: ${{ matrix.runner }}
     env:
       # Oldest macOS Apple still patches (14 Sonoma, beside 15 and 26). Without it the C deps build
@@ -72,12 +91,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { platform: darwin-arm64, runner: macos-15 }
-          - { platform: darwin-x64, runner: macos-15-intel }
-          - { platform: linux-x64, runner: ubuntu-24.04 }
-          - { platform: linux-arm64, runner: ubuntu-24.04-arm }
-          - { platform: win32-x64, runner: windows-2025 }
+        include: ${{ fromJSON(needs.release.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -109,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64]
+        include: ${{ fromJSON(needs.release.outputs.matrix) }}
     env:
       VERSION: ${{ needs.release.outputs.version }}
       TAG: ${{ needs.release.outputs.tag }}
@@ -174,7 +188,7 @@ jobs:
       # this version first, or bevy-ts waits for a rerun. A dry run takes whatever built.
       - name: Every platform built and is on npm
         if: ${{ needs.release.outputs.publish == 'true' }}
-        run: scripts/npm-await.sh "$VERSION" "${{ steps.built.outputs.platforms }}"
+        run: scripts/npm-await.sh "$VERSION" "${{ needs.release.outputs.platforms }}" "${{ steps.built.outputs.platforms }}"
       - name: Publish bevy-ts
         run: |
           node scripts/set-npm-version.mjs "$VERSION" "${{ steps.built.outputs.platforms }}"

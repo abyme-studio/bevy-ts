@@ -62,11 +62,7 @@
     "examples"
   ],
   "optionalDependencies": {
-    "@bevy-ts/darwin-arm64": "0.1.0-alpha.0",
-    "@bevy-ts/darwin-x64": "0.1.0-alpha.0",
-    "@bevy-ts/linux-arm64": "0.1.0-alpha.0",
-    "@bevy-ts/linux-x64": "0.1.0-alpha.0",
-    "@bevy-ts/win32-x64": "0.1.0-alpha.0"
+    "@bevy-ts/darwin-arm64": "0.1.0-alpha.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

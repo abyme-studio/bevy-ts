@@ -5,12 +5,25 @@ Seven packages: `bevy-ts` (the TS API, types and launcher) and one engine packag
 installed as `bevy-ts`'s optional dependencies the way esbuild and Biome ship. Pre-releases go out
 under the `next` dist-tag and, until a stable release exists, under `latest` too.
 
+Only `@bevy-ts/darwin-arm64` ships for now. The other platforms keep their package folders, but
+the release workflow neither builds nor publishes them, and `bevy-ts` lists only the engines it
+was released with as optional dependencies. A platform is re-added by uncommenting its line in
+`PLATFORMS`, in `.github/workflows/release.yml`'s first job:
+
+```diff
+-            # linux-x64 ubuntu-24.04
++            linux-x64 ubuntu-24.04
+```
+
+That one list drives the build and publish matrices and the platforms `bevy-ts` waits for and
+lists. A platform never published needs its first version by hand first (below).
+
 ## Releasing, from CI
 
 Push a tag: `git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1`. The `release` workflow
-builds each platform's engine on its native runner, publishes each platform package from a job of
+builds each released platform's engine on its native runner, publishes each platform package from a job of
 its own, in parallel, with provenance through npm trusted publishing (OIDC, no token, no 2FA). Then
-it checks that every platform's engine built and, with `npm view`, is on npm at that version, and
+it checks that every released platform's engine built and, with `npm view`, is on npm at that version, and
 only then publishes `bevy-ts` listing them all. A version with a `-` goes out under `next`, one
 without under `latest`. Until a stable version exists, a pre-release also moves `latest`, so a
 plain `npm i bevy-ts` gets the newest alpha.

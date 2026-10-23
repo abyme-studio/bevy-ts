@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Fails unless every platform (packages/platforms/*) built, then waits until each is on npm at the
-# version, so bevy-ts never goes out missing an engine. A package just published can take a few
-# minutes to show in `npm view`.
-#   scripts/npm-await.sh <version> <built: darwin-arm64,linux-x64,...>
+# Fails unless every platform released (release.yml's PLATFORMS) built, then waits until each is on
+# npm at the version, so bevy-ts never goes out missing an engine. A package just published can take
+# a few minutes to show in `npm view`.
+#   scripts/npm-await.sh <version> <released: darwin-arm64,...> <built: darwin-arm64,...>
 set -uo pipefail
-version=$1 list=$2
+version=$1 released=$2 list=$3
 source "$(dirname "$0")/npm-lib.sh"
 
 unbuilt=()
-for dir in "$(dirname "$0")"/../packages/platforms/*/; do
-  p=$(basename "$dir")
+for p in ${released//,/ }; do
   [[ ",$list," == *",$p,"* ]] || unbuilt+=("$p")
 done
 if [ ${#unbuilt[@]} -gt 0 ]; then
