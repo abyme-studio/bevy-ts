@@ -83,10 +83,21 @@ fn looking_at_matches_bevy() {
 
 #[test]
 fn a_bad_value_fails_its_command_naming_type_and_field() {
-    let app = run("scripts-bad", "commands.spawn(DirectionalLight.of({ colour: \"#fff\" } as any));\n  commands.spawn(Projection.of({ Isometric: {} } as any));\n  commands.spawn(Transform.of({}));");
+    let mut app = run(
+        "scripts-bad",
+        "commands.spawn(DirectionalLight.of({ illuminance: 5, colour: \"#fff\" } as any));\n  commands.spawn(Camera3d, Projection.of({ Isometric: {} } as any));\n  commands.spawn(Transform.of({ translation: [1, 2, 3] }));",
+    );
     let m = messages(&app);
-    assert!(m.iter().any(|m| m.contains("DirectionalLight") && m.contains("colour")), "{m:?}");
-    assert!(m.iter().any(|m| m.contains("Projection") && m.contains("Perspective, Orthographic, Custom")), "{m:?}");
+    assert!(m.iter().any(|m| m.contains("DirectionalLight") && m.contains("colour") && m.contains("skipped")), "{m:?}");
+    assert!(m.iter().any(|m| m.contains("Projection") && m.contains("Perspective, Orthographic, Custom") && m.contains("skipped")), "{m:?}");
+    let world = app.world_mut();
+    // The failing spawns left nothing: no light, no camera.
+    assert_eq!(world.query::<&DirectionalLight>().iter(world).count(), 0);
+    assert_eq!(world.query::<&Camera3d>().iter(world).count(), 0);
+    // The system's other command applied.
+    let spawned: Vec<Transform> = world.query_filtered::<&Transform, With<bevy_ts::commands::TsSpawned>>().iter(world).copied().collect();
+    assert_eq!(spawned.len(), 1, "{spawned:?}");
+    assert_eq!(spawned[0].translation, Vec3::new(1.0, 2.0, 3.0));
 }
 
 #[test]
