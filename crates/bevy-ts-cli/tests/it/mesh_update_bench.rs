@@ -8,9 +8,9 @@
 //! - (0) TS: the same system with nothing to do, the frame's own cost, subtracted from each arm.
 //!
 //! Each arm runs 3 times, 200 frames after 20 to warm up, in a fresh app. Ignored by default; run
-//! with `cargo test --release -p bevy-ts-cli --test mesh_update_bench -- --ignored --nocapture`.
+//! with `cargo test --release -p bevy-ts-cli --test it mesh_update_bench -- --ignored --nocapture`.
 
-mod common;
+use crate::common;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, MeshPlugin, PrimitiveTopology, VertexAttributeValues};

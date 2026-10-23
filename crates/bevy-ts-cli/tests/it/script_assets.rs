@@ -1,7 +1,7 @@
 //! script-assets: meshes built and updated from TS through `ResMut<Assets<Mesh>>` and Bevy's
 //! `Mesh` API, compared with the same calls in Rust. Headless, no GPU.
 
-mod common;
+use crate::common;
 
 use bevy::asset::{AssetEvent, RenderAssetUsages};
 use bevy::ecs::message::Messages;
