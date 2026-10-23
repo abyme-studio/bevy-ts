@@ -111,7 +111,7 @@ Present in 0.20 (button, checkbox, radio, slider, toggle switch, number input, c
 2. Newtype fields: name them `value` in the generator (`<ZIndex value={2} />`) or add props (`zIndex`)? Recommendation: `value`, since `FocusPolicy` and `Name` already read that way; props only where the component is UI-only and common.
 3. Gradients inside `background`, or a separate `backgroundGradient` prop? Bevy has two components; one prop that writes either keeps one owner of "the background". Recommendation: inside `background`.
 4. `has(C)` needs removal detection (`RemovedComponents`) in the subscription check, which today watches change ticks only.
-5. Bubbling: Bevy widgets stop propagation of what they consume and expect it elsewhere. bevy-ts handlers do not bubble. `onValueChange` on `<radioGroup>` works because Bevy triggers it on the group; others may need a bubbling rule.
+5. Bubbling: Bevy widgets stop propagation of what they consume and expect it elsewhere. bevy-ts handlers do not bubble. `onValueChange` on `<radioGroup>` works because Bevy triggers it on the group; others may need a bubbling rule. (2026-10-23, change scene-pick: bevy-ts picking handlers now bubble up `ChildOf` as Bevy's do, with `target` naming the entity hit; see docs/picking.md.)
 6. `TabNavigationPlugin` attaches its Tab observer to the `PrimaryWindow` at `Startup`. Does viewport mode's virtual window exist by then?
 7. `ValueChange<Entity>` for radio, tabs and list box: give TS the child's `key` as well as its entity?
 

@@ -25,6 +25,16 @@ A handler cannot stop the bubbling: handlers run in the frame's one call into JS
 walked the ancestors. A handler that wants only its own hits compares `target` with `entity`.
 Nested handlers both run, the inner one first.
 
+Hover bubbles too. `PointerOver` and `PointerOut` reach every ancestor, and Bevy sends Out before
+Over. So when the pointer moves from a panel onto a child inside it, the panel's handlers get
+`onPointerOut` (`target` the panel) and then `onPointerOver` (`target` the child), in the same
+call; moving between two children gives the panel the same pair again. A handler that sets hover
+state (`hovered = true` on Over, `false` on Out) ends right. One that counts, plays a sound or
+starts a tween fires on every crossing: filter with `target === entity`, or keep the handlers on
+the leaves. Bevy's events for "the pointer entered this subtree" are `PointerEnter` and
+`PointerLeave`, which skip ancestors the previous hover shared; bevy-ts has no `onPointerEnter` or
+`onPointerLeave` yet.
+
 ## What picks
 
 - **UI and sprites** pick out of the box: Bevy's default plugins add both backends.

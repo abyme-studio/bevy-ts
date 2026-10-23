@@ -123,7 +123,7 @@ import { WorldAssetRoot } from "bevy-ts/bevy";
 const [hit, setHit] = signal("");
 app.entry("hit", () => hit());
 app.scene("foxes", () => (
-  <entity key="fox" onPointerClick={({ entity, target }) => setHit(`${entity}>${target}`)}>
+  <entity key="fox" onPointerClick={({ entity, target }) => setHit((h) => `${h}${entity}>${target};`)}>
     <WorldAssetRoot value="models/Fox.glb#Scene0" />
   </entity>
 ));
@@ -163,5 +163,6 @@ fn a_click_on_a_scene_mesh_runs_the_roots_handler() {
     app.world_mut().trigger(PointerClick { entity: mesh, pointer, button: PointerButton::Primary, hit, duration: std::time::Duration::ZERO, count: 1 });
     app.update();
     let out = bevy_ts::plugin_api::call_entry(app.world_mut(), "hit", b"").unwrap();
-    assert_eq!(String::from_utf8(out).unwrap(), format!("{}>{}", fox.to_bits(), mesh.to_bits()));
+    // Once: one call, naming the root and the mesh.
+    assert_eq!(String::from_utf8(out).unwrap(), format!("{}>{};", fox.to_bits(), mesh.to_bits()));
 }
