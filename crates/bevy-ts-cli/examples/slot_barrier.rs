@@ -1,7 +1,12 @@
 //! What one slot costs the parallel executor (native task 4.4): Update with Rust systems on both
 //! sides of an exposed set, run with no slot, with an empty exclusive slot after the set, and
 //! with a slot whose run condition skips it. Release build:
-//! `cargo run --release -p bevy-ts-cli --example slot_barrier`.
+//! `cargo static run --release -p bevy-ts-cli --example slot_barrier`.
+
+// A release build of this bench links Bevy statically, as what ships does: `cargo static`
+// (docs/build-cache.md, Bevy as a dylib for tests).
+#[cfg(all(not(debug_assertions), not(bevy_ts_static)))]
+compile_error!("a release build of this bench links the Bevy dylib: build it with `cargo static`");
 
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;

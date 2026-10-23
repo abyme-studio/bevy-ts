@@ -2,3 +2,10 @@
 # the line tables backtraces need. This config is the repo's, so it wins over the machine's.
 [profile.dev]
 debug = "line-tables-only"
+
+# `cargo static <command>`: the command with Bevy linked statically. Tests and examples link Bevy as
+# a dylib; a release bench must time what ships, so it runs as `cargo static test --release`
+# (docs/build-cache.md, Bevy as a dylib for tests). A target.<cfg> rustflags entry adds to the
+# machine's, where build.rustflags would be overridden.
+[alias]
+static = ["--config", "target.'cfg(all())'.rustflags=['--cfg','bevy_ts_static']"]

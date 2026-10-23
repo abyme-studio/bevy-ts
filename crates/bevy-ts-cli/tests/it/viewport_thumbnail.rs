@@ -1,6 +1,6 @@
 //! Change `asset-catalog`: a `.bsn` level's thumbnail is drawn from a picture of the level that
 //! the game, its TS and the protocol never see. The measurement (task 3.4) is ignored:
-//! `cargo test --release -p bevy-ts-cli --test it viewport_thumbnail:: -- --ignored --nocapture`.
+//! `cargo static test --release -p bevy-ts-cli --test it viewport_thumbnail:: -- --ignored --nocapture`.
 #![cfg(target_os = "macos")]
 
 use crate::common;

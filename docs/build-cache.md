@@ -78,3 +78,66 @@ The second Bevy was `cargo test -p bevy-ts-viewport`, run alone for `--test-thre
 selected on its own resolves Bevy's features afresh. Its render tests now take a lock
 (`common::render_app`), so it runs in the one `cargo test --workspace`. The first test run of each
 arm includes linking. The after arm (`62958e8`) is on a later main, with 14 more test files and a crate more.
+
+## Bevy as a dylib for tests
+
+Every crate's tests and examples turn on Bevy's `dynamic_linking`, as a dev-dependency feature: a
+test binary links `libbevy_dylib` instead of a copy of Bevy, and a touched crate relinks in seconds.
+Only a build of tests or examples sees dev-dependencies, so `cargo build -p bevy-ts-cli`,
+`cargo build --release`, the release CLI, project engines and what `bevy-ts build` writes link Bevy
+statically. `scripts/dylib-check.sh` checks each with `otool -L`, and `release.yml` fails a release
+whose engine links the dylib. It holds on any host; it is checked on macOS only (CI runs no Rust
+tests).
+
+A release bench is a release build, so it links Bevy statically too and times what ships. It runs
+as `cargo static test --release …` (or `cargo static run --release --example …`): the `static` alias
+in `.cargo/config.toml` sets `--cfg bevy_ts_static`, and the dylib dev-dependency is
+`cfg(not(bevy_ts_static))`. A release build of `tests/it` or of a bench example without it does not
+compile: each says so with a `compile_error!`.
+
+A test run builds the CLI with the dylib too (its tests run it), and `rpath = true` lets that binary
+find the dylib outside cargo. A doctest that runs does not find the dylib (cargo gives rustdoc's
+binary no path to it), and an edition 2024 crate runs its merged doctests in one binary even when
+none of them runs. So a doctest here is `compile_fail`, or `no_run,standalone_crate`.
+
+A plain `cargo build -p bevy-ts-cli` builds the CLI statically, with a Bevy of its own: alternating
+the two keeps both in `target/`.
+
+Measured by process `target-bench-dylib` (`scripts/target-bench.sh` on `8dfaf30`, then
+`scripts/dylib-check.sh`), 2026-10-24, load averages 20-55:
+
+| | before stage 1 (`1933a72`) | after stage 1 (`62958e8`) | after stage 2 (`8dfaf30`) |
+| --- | --- | --- | --- |
+| `target/` | 31 GB | 12 GB | 7.2 GB |
+| `debug/deps` | 27 GB | 8.1 GB | 4.3 GB |
+| integration-test binaries | 59 | 9 | 9, 298 MB in all |
+| cold build | 331 s | 92 s | 289 s |
+| test runs | 1114, 268, 302 s | 284, 217, 163 s | 315, 153, 255 s |
+
+The cold build is slower, as measured before (sccache does not cache the dylib crate); every relink
+after it is not. `dylib-check.sh` found a test binary dynamic, and the dev CLI, the release CLI, a
+game built on the prebuilt engine (`examples/cube`) and a project engine's game
+(`examples/thrusters`) static.
+
+### Why release benches stay static
+
+`scripts/dylib-ab.sh` (process `dylib-ab`) timed `levels_bench` in release, a static test binary
+(`893f47d`) against a dylib one (`1435774`), 8 runs each, alternating, 2026-10-24, load 8-25.
+Medians, ms:
+
+| instances | arm | load | unchanged reconcile | expand call | write per edit |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1,000 | static | 71.5 | 47.7 | 11.9 | 50.0 |
+| 1,000 | dylib | 89.0 | 51.6 | 13.2 | 57.9 |
+| 10,000 | static | 527 | 419 | 70.2 | 515 |
+| 10,000 | dylib | 627 | 539 | 87.3 | 512 |
+
+The dylib arm is 10-30% slower on load, reconcile and expansion, and the same on writes: calls
+into Bevy cross the dylib and are not inlined. A bench on the dylib would not time what ships.
+
+## Pruning old test executables
+
+Cargo keeps every executable it ever linked: each `cargo test -p …` selection with other features
+leaves its own copy of a test. `scripts/prune-tests.sh` keeps the newest copy of each executable in
+`target/*/deps` (by name and the source it was built from) and drops the rest, with their `.d` and
+`.dSYM`; `--dry-run` lists them. A dropped selection relinks once if it runs again.

@@ -1,5 +1,5 @@
 //! Frame cost of the cube demo's `bob` over 1, 1,000 and 100,000 entities, with and without the
-//! per-row tick store. Headless, release: `cargo run --release -p bevy-ts-cli --example bob_bench`.
+//! per-row tick store. Headless, release: `cargo static run --release -p bevy-ts-cli --example bob_bench`.
 //!
 //! Variants, all writing `translation.y` of every row:
 //! - `accessor+tick`: `q.each` with the generated setter (stores the row's tick), the default;
@@ -8,6 +8,11 @@
 //!
 //! Reported per variant: the TS system's run (view building, the one call into JS, post-run
 //! ticks), and the whole `app.update()`.
+
+// A release build of this bench links Bevy statically, as what ships does: `cargo static`
+// (docs/build-cache.md, Bevy as a dylib for tests).
+#[cfg(all(not(debug_assertions), not(bevy_ts_static)))]
+compile_error!("a release build of this bench links the Bevy dylib: build it with `cargo static`");
 
 use bevy::prelude::*;
 use bevy_ts::BevyTsPlugin;

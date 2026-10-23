@@ -3,7 +3,7 @@
 //! call: the JS glue, the V8 fast op and the Rust half. Three arms: a read (`Res` + `Query<&T>`),
 //! a write (`ResMut` + `Query<&mut T>`), and a write that also queues one `Commands` insert.
 //! Ignored by default; run it in release:
-//! `cargo test --release -p bevy-ts-cli --test it native_params_bench -- --ignored --nocapture`.
+//! `cargo static test --release -p bevy-ts-cli --test it native_params_bench -- --ignored --nocapture`.
 
 use crate::common;
 

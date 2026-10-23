@@ -38,3 +38,7 @@ How a new test is written here. Where tests live and what they cost to build is
 8. A new bench or spike lives outside the gate's build: in `bench/`, which the workspace excludes.
    The `#[ignore]` benches already in `tests/it` (`levels_bench`, `stop_bench`, ...) build with
    every test run until they move.
+
+A release bench runs as `cargo static test --release …`, so it links Bevy statically and times what
+ships; a plain `cargo test --release` of `tests/it` does not compile (docs/build-cache.md, Bevy as a
+dylib for tests).

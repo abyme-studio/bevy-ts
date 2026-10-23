@@ -37,9 +37,9 @@ const processes = {
   // The npm package's vitest suite (examples, `new`), against the debug engine for the TS transform.
   "npm-test": { cmd: "bash -c 'set -o pipefail; cargo build -p bevy-ts-cli && cd packages/bevy-ts && pnpm install --frozen-lockfile && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm test 2>&1 | tee ../../target/npm-test.log | tail -40'" },
   "tsx-test": { cmd: "cargo test -p bevy-ts-tsx -- --nocapture 2>&1 | tee target/tsx-test.log | tail -80" },
-  "tsx-sites-bench": { cmd: "cargo test --release -p bevy-ts-cli --test it tsx_sites:: -- --ignored --nocapture 2>&1 | tee target/tsx-sites.log | tail -20" },
-  "tsx-scale-bench": { cmd: "cargo test --release -p bevy-ts-cli --test it tsx_scale:: -- --ignored --nocapture --test-threads 1 2>&1 | tee target/tsx-scale.log | tail -20" },
-  "arena-walk": { cmd: "cargo test --release -p bevy-ts-cli --test it arena_walk:: -- --nocapture 2>&1 | grep -v ld64 | tee target/arena-walk.log | grep -E '^[0-9] |test |panicked'" },
+  "tsx-sites-bench": { cmd: "cargo static test --release -p bevy-ts-cli --test it tsx_sites:: -- --ignored --nocapture 2>&1 | tee target/tsx-sites.log | tail -20" },
+  "tsx-scale-bench": { cmd: "cargo static test --release -p bevy-ts-cli --test it tsx_scale:: -- --ignored --nocapture --test-threads 1 2>&1 | tee target/tsx-scale.log | tail -20" },
+  "arena-walk": { cmd: "cargo static test --release -p bevy-ts-cli --test it arena_walk:: -- --nocapture 2>&1 | grep -v ld64 | tee target/arena-walk.log | grep -E '^[0-9] |test |panicked'" },
   test: { cmd: "set -o pipefail; mkdir -p target && cargo test --workspace 2>&1 | tee target/test.log | grep -E \"^test result|FAILED|panicked\"" },
   "check-track-location": { cmd: "CARGO_TARGET_DIR=target/track-location cargo check -p bevy-ts --features track_location --all-targets" },
   clippy: { cmd: "set -o pipefail; mkdir -p target && cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee target/clippy.log | tail -40" },
@@ -47,8 +47,8 @@ const processes = {
   // The newest release.yml run on this branch (a dispatched dry run), watched to its end.
   "release-run": { cmd: "bash -c 'id=$(gh run list --workflow release.yml --branch \"$(git branch --show-current)\" -L 1 --json databaseId --jq \".[0].databaseId\") && gh run watch \"$id\" --exit-status --interval 30 | tail -25'" },
   // Native task 4.4: what one exclusive slot costs the parallel executor.
-  "bench-slot": { cmd: "cargo run --release -p bevy-ts-cli --example slot_barrier | tee bench/change-detection/results/slot-barrier.md" },
-  "bench-bob": { cmd: "cargo run --release -p bevy-ts-cli --example bob_bench | tee bench/change-detection/results/bob-frame.md" },
+  "bench-slot": { cmd: "cargo static run --release -p bevy-ts-cli --example slot_barrier | tee bench/change-detection/results/slot-barrier.md" },
+  "bench-bob": { cmd: "cargo static run --release -p bevy-ts-cli --example bob_bench | tee bench/change-detection/results/bob-frame.md" },
   skeleton: { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:skeleton -- cargo build -p bevy-ts-cli && ./target/debug/bevy-ts skeleton --headless" },
   cube: { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:cube -- cargo build -p bevy-ts-cli && ./target/debug/bevy-ts dev examples/cube/src/game.ts --headless" },
   // A project engine (native crate + Rapier) built and run under the dev supervisor, headless.
@@ -75,17 +75,17 @@ const processes = {
   "viewport-walk": { cmd: "cargo test -p bevy-ts-cli --test it viewport_walk:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-walk.log | grep -E '^[0-9] |^stats|test |panicked|assert|^thread' | tail -30" },
   // The arena lit in play, edit, then play again (black meshes after edit mode).
   "play-after-edit": { cmd: "cargo test -p bevy-ts-cli --test it play_after_edit:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/play-after-edit.log | grep -E 'black|plain|test |panicked|assert|^thread|^error' | tail -30" },
-  "viewport-walk-release": { cmd: "cargo test --release -p bevy-ts-cli --test it viewport_walk:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-walk-release.log | grep -E '^[0-9] |^stats|test |panicked|assert|^thread' | tail -30" },
+  "viewport-walk-release": { cmd: "cargo static test --release -p bevy-ts-cli --test it viewport_walk:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-walk-release.log | grep -E '^[0-9] |^stats|test |panicked|assert|^thread' | tail -30" },
   "viewport-spike-short": { cmd: "cargo test -p bevy-ts-viewport --test it spike:: -- --nocapture 2>&1 | tee target/viewport-spike-short.log | tail -40" },
-  "viewport-latency": { cmd: "SPIKE_PRESSES=200 cargo test --release -p bevy-ts-viewport --test it spike::key_to_pixels -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-latency.log | tail -8" },
-  "viewport-spike": { cmd: "SPIKE_SECS=60 cargo test --release -p bevy-ts-viewport --test it spike:: -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },
+  "viewport-latency": { cmd: "SPIKE_PRESSES=200 cargo static test --release -p bevy-ts-viewport --test it spike::key_to_pixels -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-latency.log | tail -8" },
+  "viewport-spike": { cmd: "SPIKE_SECS=60 cargo static test --release -p bevy-ts-viewport --test it spike:: -- --nocapture 2>&1 | tee target/viewport-spike.log | tail -30" },
   "viewport-gate": { cmd: "scripts/viewport-gate.sh" },
   // docs/research/viewport-pacing.md: the arena in edit mode at 120 Hz ticks, with the per-frame trace.
   // The same, alternating the earlier pacing (BEVY_TS_VIEWPORT_PACING=0) and the current (1), so both see one machine load.
-  "viewport-pacing-ab": { cmd: "bash -c 'cargo test --release -p bevy-ts-cli --test it viewport_pacing:: --no-run 2>/dev/null; for q in 0 1 0 1 0 1; do echo pacing=$q; BEVY_TS_VIEWPORT_PACING=$q cargo test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture 2>&1 | grep -E fps; uptime; done 2>&1 | tee target/viewport-pacing-ab.log'" },
+  "viewport-pacing-ab": { cmd: "bash -c 'cargo static test --release -p bevy-ts-cli --test it viewport_pacing:: --no-run 2>/dev/null; for q in 0 1 0 1 0 1; do echo pacing=$q; BEVY_TS_VIEWPORT_PACING=$q cargo static test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture 2>&1 | grep -E fps; uptime; done 2>&1 | tee target/viewport-pacing-ab.log'" },
   // docs/research/viewport-tools.md: the same, alternating without the orientation gizmo (BEVY_TS_VIEWPORT_ORIENT=0) and with it.
-  "viewport-tools-ab": { cmd: "bash -c 'cargo build --release -p bevy-ts-cli && cargo test --release -p bevy-ts-cli --test it viewport_pacing:: --no-run 2>/dev/null; for o in 0 1 0 1 0 1; do echo orient=$o; BEVY_TS_VIEWPORT_ORIENT=$o BEVY_TS_BINARY=$PWD/target/release/bevy-ts cargo test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture 2>&1 | grep -E \"^edit (at rest|pointer)|panicked|never answered\"; uptime; done 2>&1 | tee target/viewport-tools-ab.log'" },
-  "viewport-pacing": { cmd: "PACING_ENGINE_LOG=$PWD/target/viewport-pacing-engine.log BEVY_TS_VIEWPORT_TRACE=$PWD/target/viewport-pacing.trace PACING_SAMPLE=$PWD/target/viewport-pacing.sample cargo test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-pacing.log | grep -E '^engine|fps|^stats|test |panicked|assert|^thread' | tail -20" },
+  "viewport-tools-ab": { cmd: "bash -c 'cargo build --release -p bevy-ts-cli && cargo static test --release -p bevy-ts-cli --test it viewport_pacing:: --no-run 2>/dev/null; for o in 0 1 0 1 0 1; do echo orient=$o; BEVY_TS_VIEWPORT_ORIENT=$o BEVY_TS_BINARY=$PWD/target/release/bevy-ts cargo static test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture 2>&1 | grep -E \"^edit (at rest|pointer)|panicked|never answered\"; uptime; done 2>&1 | tee target/viewport-tools-ab.log'" },
+  "viewport-pacing": { cmd: "PACING_ENGINE_LOG=$PWD/target/viewport-pacing-engine.log BEVY_TS_VIEWPORT_TRACE=$PWD/target/viewport-pacing.trace PACING_SAMPLE=$PWD/target/viewport-pacing.sample cargo static test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/viewport-pacing.log | grep -E '^engine|fps|^stats|test |panicked|assert|^thread' | tail -20" },
   // Change asset-preview: several viewports and preview scenes.
   // Change asset-preview, task 4.2; `preview-bench-threejs` runs while a three.js viewer shows the model.
   "preview-bench": { cmd: "PREVIEW_MODEL=$HOME/dev/spikes/mesh-conform/inputs/alicia.glb scripts/preview-bench.sh 2>&1 | tee -a target/preview-bench.log" },
@@ -96,7 +96,7 @@ const processes = {
   "viewport-preview": { cmd: "cargo test -p bevy-ts-viewport --test it preview:: -- --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/viewport-preview.log | grep -E 'test |panicked|left|right|assert|^thread' | tail -40" },
   // Change asset-catalog: level thumbnails that the game never sees, and what they cost (task 3.4).
   "viewport-thumbnail": { cmd: "cargo test -p bevy-ts-cli --test it viewport_thumbnail:: -- --nocapture 2>&1 | grep -v ld64 | tee target/viewport-thumbnail.log | grep -E 'test |panicked|left|right|assert|^thread|error' | tail -30" },
-  "thumbnail-bench": { cmd: "uptime && cargo test --release -p bevy-ts-cli --test it viewport_thumbnail:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/thumbnail-bench.log | grep -E '^\\||test |panicked' | tail -20 && uptime" },
+  "thumbnail-bench": { cmd: "uptime && cargo static test --release -p bevy-ts-cli --test it viewport_thumbnail:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/thumbnail-bench.log | grep -E '^\\||test |panicked' | tail -20 && uptime" },
   "gen-protocol": { cmd: "scripts/gen-protocol.sh 2>&1 | tail -5" },
   // Every test the change touches, in one run: viewport, levels, tsx unit, and the cli tests on thumbnails and levels.
   "asset-catalog-tests": { cmd: "bash -c 'set -o pipefail; (cargo test -p bevy-ts-viewport --lib -- --test-threads=1 && cargo test -p bevy-ts-viewport --test it -- assets:: edit:: --test-threads=1 && cargo test -p bevy-ts-levels && cargo test -p bevy-ts-tsx --lib && cargo test -p bevy-ts-cli --test it -- viewport_thumbnail:: viewport_level:: viewport_edit:: viewport_preview:: levels_protocol:: ) 2>&1 | grep -v ld64 | tee target/asset-catalog-tests.log | grep -E \"^test result|FAILED|panicked|^error\"'" },
@@ -124,12 +124,12 @@ const processes = {
   "stamp-linear-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings) 2>&1 | grep -v ld64 | tee target/stamp-linear-gate.log | grep -E \"^test result|FAILED|panicked|^error\"'" },
   "arena-assets": { cmd: "BEVY_TS_WRITE_ARENA_ASSETS=1 cargo test -p bevy-ts-viewport --test it assets::the_arenas_assets -- --nocapture 2>&1 | grep -v ld64 | tail -5" },
   // The same gate for levels task groups.
-  "levels-bench": { cmd: "cargo test --release -p bevy-ts-cli --test it levels_bench:: -- --ignored --nocapture 2>&1 | tee target/levels-bench.log | grep -E '^\\||test result|panicked'" },
+  "levels-bench": { cmd: "cargo static test --release -p bevy-ts-cli --test it levels_bench:: -- --ignored --nocapture 2>&1 | tee target/levels-bench.log | grep -E '^\\||test result|panicked'" },
   // The levels bench A/B: target/levels-bench-before (a saved binary) against this tree's, alternated 3 times.
-  "levels-bench-ab": { cmd: "bash -c 'set -o pipefail; exe=$(cargo test --release -p bevy-ts-cli --test it --no-run 2>&1 | tee /dev/stderr | grep -o \"target/release/deps/it-[0-9a-f]*\" | head -1); cp $exe target/levels-bench-after; cd crates/bevy-ts-cli; for i in 1 2 3; do for arm in before after; do uptime; f=; [ $arm = after ] && f=levels_bench::; ../../target/levels-bench-$arm $f --ignored --nocapture 2>&1 | grep -E \"^\\| [0-9]|panicked\" | sed \"s/^/$arm /\"; done; done 2>&1 | tee -a ../../target/levels-bench-ab.log; uptime'" },
+  "levels-bench-ab": { cmd: "bash -c 'set -o pipefail; exe=$(cargo static test --release -p bevy-ts-cli --test it --no-run 2>&1 | tee /dev/stderr | grep -o \"target/release/deps/it-[0-9a-f]*\" | head -1); cp $exe target/levels-bench-after; cd crates/bevy-ts-cli; for i in 1 2 3; do for arm in before after; do uptime; f=; [ $arm = after ] && f=levels_bench::; ../../target/levels-bench-$arm $f --ignored --nocapture 2>&1 | grep -E \"^\\| [0-9]|panicked\" | sed \"s/^/$arm /\"; done; done 2>&1 | tee -a ../../target/levels-bench-ab.log; uptime'" },
   // The stamp's written lookup, a find per instance against one walk, 3 times (in-process A/B).
-  "written-lookup-bench": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do uptime; cargo test --release -p bevy-ts-levels --lib written_lookup_at_scale -- --ignored --nocapture 2>&1 | grep -E \"^\\| [0-9]|panicked|^error\"; done 2>&1 | tee target/written-lookup-bench.log'" },
-  "levels-walks": { cmd: "cargo test --release -p bevy-ts-cli --test it -- levels_walk:: arena_walk:: --nocapture --test-threads 1 2>&1 | grep -vE 'ld64|INFO|WARN|^\\s+\\||^\\s+=' | tee target/levels-walks.log | tail -60" },
+  "written-lookup-bench": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do uptime; cargo static test --release -p bevy-ts-levels --lib written_lookup_at_scale -- --ignored --nocapture 2>&1 | grep -E \"^\\| [0-9]|panicked|^error\"; done 2>&1 | tee target/written-lookup-bench.log'" },
+  "levels-walks": { cmd: "cargo static test --release -p bevy-ts-cli --test it -- levels_walk:: arena_walk:: --nocapture --test-threads 1 2>&1 | grep -vE 'ld64|INFO|WARN|^\\s+\\||^\\s+=' | tee target/levels-walks.log | tail -60" },
   // Change missing-scene-row: the crates it touches, and the last round before it lands.
   "missing-scene-row-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-levels && cargo test -p bevy-ts-cli --test it -- levels_protocol:: levels_scene:: protocol:: --skip levels_protocol:: --skip tsx_protocol:: ) 2>&1 | grep -v ld64 | tee target/missing-scene-row-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
   "missing-scene-row-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/missing-scene-row-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
@@ -187,9 +187,9 @@ const processes = {
   "play-stop-cli": { cmd: "bash -c 'set -o pipefail; cargo test -p bevy-ts-cli --test it play_stop:: -- --nocapture --test-threads 1 2>&1 | grep -v ld64 | tee target/play-stop-cli.log | grep -E \"^test |^test result|panicked|^error|left|right|-->\"'" },
   "play-stop-rapier": { cmd: "bash -c 'set -o pipefail; cargo test -p bevy-ts-cli --test it play_stop::rapier -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/play-stop-rapier.log | grep -E \"^test |^test result|panicked|^error|left|right|-->|assert\"'" },
   // play-stop task 6.1: what a Stop costs at 1k and 10k level instances, in release.
-  "stop-bench": { cmd: "bash -c 'set -o pipefail; uptime; cargo test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee -a target/stop-bench.log | grep -E \"^[0-9]+:|^\\||test result|panicked|^error|-->\"; uptime'" },
+  "stop-bench": { cmd: "bash -c 'set -o pipefail; uptime; cargo static test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture 2>&1 | grep -v ld64 | tee -a target/stop-bench.log | grep -E \"^[0-9]+:|^\\||test result|panicked|^error|-->\"; uptime'" },
   // The levels bench then the Stop bench, back to back, so both see one machine load.
-  "stop-bench-ab": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do uptime; cargo test --release -p bevy-ts-cli --test it levels_bench:: -- --ignored --nocapture 2>&1 | grep -E \"^\\| [0-9]\"; cargo test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture 2>&1 | grep -E \"^[0-9]+:|^\\| [0-9]\"; done 2>&1 | tee -a target/stop-bench-ab.log; uptime'" },
+  "stop-bench-ab": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do uptime; cargo static test --release -p bevy-ts-cli --test it levels_bench:: -- --ignored --nocapture 2>&1 | grep -E \"^\\| [0-9]\"; cargo static test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture 2>&1 | grep -E \"^[0-9]+:|^\\| [0-9]\"; done 2>&1 | tee -a target/stop-bench-ab.log; uptime'" },
   // Change play-stop: the last round before it lands.
   // play-grey-viewport: the workspace tests, the viewport's one at a time (build and clippy ran on their own).
   "play-grey-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test --workspace) 2>&1 | grep -v ld64 | tee target/play-grey-tests.log | grep -E \"^test result|FAILED|panicked|^error\"'" },
@@ -220,7 +220,7 @@ const processes = {
   "headless-ui-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings) 2>&1 | grep -v ld64 | tee target/headless-ui-gate.log | grep -E \"^test result|FAILED|panicked|^error\"; echo gate exit $?'" },
   // Change script-networking: the crates it touches, while it is built.
   "net-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib && cargo test -p bevy-ts --test it net:: && cargo test -p bevy-ts-v8 --test it -- net:: web:: && cargo test -p bevy-ts-cli --lib play::) 2>&1 | grep -v ld64 | tee target/net-tests.log | grep -E \"^test |^test result|FAILED|panicked|^error|left|right\"'" },
-  "net-bench": { cmd: "cargo test --release -p bevy-ts-v8 --test it net::burst_bench -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/net-bench.log | tail -20" },
+  "net-bench": { cmd: "cargo static test --release -p bevy-ts-v8 --test it net::burst_bench -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/net-bench.log | tail -20" },
   // Change script-networking: the last round before it lands.
   "script-networking-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check) && openspec validate script-networking --type spec --strict) 2>&1 | grep -v ld64 | tee target/script-networking-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale|valid\"; echo gate exit ${PIPESTATUS[0]}'" },
   // The gate's steps after the tests, for a lint fix that changes no behaviour.
@@ -274,6 +274,16 @@ const processes = {
   // The gate's steps after the workspace tests, for a lint fix, with the tests over the code it touched.
   "ecs-schedules-lint": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo clippy --workspace --all-targets -- -D warnings && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo test -p bevy-ts && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo test -p bevy-ts-cli --test it -- schedules:: conditions:: && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/ecs-schedules-lint.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo lint exit $?'" },
   "ecs-schedules-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo build --workspace --all-targets && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo test --workspace --exclude bevy-ts-viewport && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo test -p bevy-ts-viewport -- --test-threads=1 && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo clippy --workspace --all-targets -- -D warnings && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/ecs-schedules-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo gate exit $?'" },
+  // Stage 2: the same bench with Bevy as a dylib for tests, then what links it (scripts/dylib-check.sh).
+  "target-bench-dylib": { cmd: "bash -c 'set -o pipefail; (scripts/target-bench.sh dylib lean-test-binaries-stage2 3; scripts/dylib-check.sh ${TMPDIR:-/tmp}/bevy-ts-target-bench/dylib) 2>&1 | tee -a bench/results/target-bench.txt'" },
+  // Stage 2's doctests on the bench's warm export, with this checkout's crates copied in.
+  "dylib-doctests": { cmd: "bash -c 'set -o pipefail; d=${TMPDIR:-/tmp}/bevy-ts-target-bench/dylib; rsync -a --delete crates/ $d/crates/ && cd $d && cargo test --workspace --doc 2>&1 | grep -v ld64 | tee $OLDPWD/target/dylib-doctests.log | grep -E \"^test result|FAILED|dyld|^error\"'" },
+  // Stage 2's review: levels_bench in release, the static stage-1 test binary against the dylib one.
+  "dylib-ab": { cmd: "bash -c 'set -o pipefail; scripts/dylib-ab.sh 893f47d 1435774 8 2>&1 | tee -a bench/results/dylib-ab.txt'" },
+  // Stage 2's gate in this checkout: clippy, the workspace tests on the dylib, then what links it.
+  "stage2-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --no-fail-fast; scripts/dylib-check.sh) 2>&1 | grep -v ld64 | tee target/stage2-gate.log | grep -E \"^test result|FAILED|panicked|^error|should be|NOT|refused|dylib-check\"'" },
+  // The workspace doctests in this checkout (a doctest that runs cannot find the Bevy dylib).
+  "doctests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --workspace --doc 2>&1 | grep -v ld64 | tee target/doctests.log | grep -E \"^test result|FAILED|dyld|^error\"'" },
 } satisfies ProcessFile;
 
 const GATE_SLOT = "$HOME/dev/abyme/scripts/gate-slot";

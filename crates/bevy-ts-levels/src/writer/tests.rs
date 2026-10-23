@@ -503,7 +503,7 @@ fn created_follows_unnamed_siblings_put_back() {
 
 /// The stamp's lookup at levels-bench scale: a `find` per instance against one `written_paths`.
 /// Ignored; run it in release:
-/// `cargo test --release -p bevy-ts-levels written_lookup_at_scale -- --ignored --nocapture`.
+/// `cargo static test --release -p bevy-ts-levels written_lookup_at_scale -- --ignored --nocapture`.
 #[test]
 #[ignore]
 fn written_lookup_at_scale() {

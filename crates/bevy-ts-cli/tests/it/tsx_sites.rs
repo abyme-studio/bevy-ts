@@ -3,7 +3,7 @@
 //! those rows; a derived value equal to the row's writes nothing.
 //!
 //! The timing test is ignored by default: run it in release,
-//! `cargo test --release -p bevy-ts-cli --test it tsx_sites:: -- --ignored --nocapture`.
+//! `cargo static test --release -p bevy-ts-cli --test it tsx_sites:: -- --ignored --nocapture`.
 
 use crate::common;
 

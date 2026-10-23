@@ -11,15 +11,15 @@ shift || true
 ns=("$@")
 [[ ${#ns[@]} -eq 0 ]] && ns=(50 100 200)
 build() { "$@" > target/animation-bench-build.log 2>&1 || { grep -E "^error" -A 8 target/animation-bench-build.log; exit 1; }; }
-build cargo build --release -p bevy-ts-cli --example animation_bench_engine
-build cargo test --release -p bevy-ts-cli --test it animation_bench:: --no-run
+build cargo static build --release -p bevy-ts-cli --example animation_bench_engine
+build cargo static test --release -p bevy-ts-cli --test it animation_bench:: --no-run
 export ANIMATION_BENCH_ENGINE=$PWD/target/release/examples/animation_bench_engine
 echo "| arm | N | players | update mean ms | update p95 ms | ready frames | ready ms | game GPU p50 | CPU | RSS MB |" >> target/animation-bench.md
 for n in "${ns[@]}"; do
   for ((r = 1; r <= runs; r++)); do
     # Arms interleaved, so drift in the machine's load spreads across them.
     for arm in ${ARMS:-A B C}; do
-      ARM=$arm N=$n timeout 300 cargo test --release -p bevy-ts-cli --test it animation_bench:: -- --ignored --nocapture 2>&1 | grep -E '^\| [ABCD] |panicked|assert'
+      ARM=$arm N=$n timeout 300 cargo static test --release -p bevy-ts-cli --test it animation_bench:: -- --ignored --nocapture 2>&1 | grep -E '^\| [ABCD] |panicked|assert'
     done
   done
 done

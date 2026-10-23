@@ -1,6 +1,6 @@
 //! Levels at scale (levels task 6.3): load, reload and expansion of 1,000 and 10,000 scene
 //! component instances, and the writer's latency per edit. Ignored by default; run it in release:
-//! `cargo test --release -p bevy-ts-cli --test it levels_bench:: -- --ignored --nocapture`.
+//! `cargo static test --release -p bevy-ts-cli --test it levels_bench:: -- --ignored --nocapture`.
 
 use crate::common;
 

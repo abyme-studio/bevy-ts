@@ -100,6 +100,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev pkg-config
       - name: Build the release engine
         run: cargo build --release -p bevy-ts-cli
+      # Only test builds link Bevy as a dylib (docs/build-cache.md); a shipped engine never does.
+      - name: The engine links Bevy statically
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == macOS ]]; then libs=$(otool -L target/release/bevy-ts); else libs=$(ldd target/release/bevy-ts); fi
+          if grep -q bevy_dylib <<<"$libs"; then echo "$libs"; echo "the release engine links libbevy_dylib"; exit 1; fi
       - name: Stage the binary
         shell: bash
         run: |

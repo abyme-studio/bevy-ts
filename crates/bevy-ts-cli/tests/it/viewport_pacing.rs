@@ -4,7 +4,7 @@
 //! to frame for each phase. `BEVY_TS_BINARY` picks the engine (the release build, to measure);
 //! `BEVY_TS_VIEWPORT_TRACE` is passed through for the per-frame timeline.
 //!
-//! `cargo test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture`
+//! `cargo static test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture`
 #![cfg(target_os = "macos")]
 
 use crate::common;

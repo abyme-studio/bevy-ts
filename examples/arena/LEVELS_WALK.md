@@ -3,7 +3,7 @@
 The seven demo steps of `openspec/changes/levels/design.md` ("First demo") against `examples/arena` (`src/` and `assets/levels/`), in V8, headless and in-process, under both `levels.prefabEdits` policies, by `crates/bevy-ts-cli/tests/levels_walk.rs`:
 
 ```
-cargo test --release -p bevy-ts-cli --test levels_walk -- --nocapture
+cargo static test --release -p bevy-ts-cli --test it levels_walk:: -- --nocapture
 ```
 
 A gizmo drag is the viewport's release: the entity is moved, then `bevy_ts_levels::write_from` is called with the start value. The editor is played by the test: it rewrites `enemy.tsx` when Apply hands it the edit. File reloads are triggered by hand, with no file watcher. Each write's diff is printed under its step. Release build, 2026-10-20, Apple M5 Max (shared with other agents' builds):

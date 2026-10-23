@@ -1,6 +1,6 @@
 //! Task 8.3: mount and reload of 1,000 and 10,000 enemies, and the HUD update cost. Ignored by
 //! default; run in release and record the output in `docs/research/tsx-scale.md`:
-//! `cargo test --release -p bevy-ts-cli --test it tsx_scale:: -- --ignored --nocapture --test-threads 1`.
+//! `cargo static test --release -p bevy-ts-cli --test it tsx_scale:: -- --ignored --nocapture --test-threads 1`.
 
 use crate::common;
 

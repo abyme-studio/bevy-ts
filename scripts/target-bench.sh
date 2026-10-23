@@ -57,5 +57,6 @@ cargo test --workspace --no-run --message-format=json 2>/dev/null |
   sort -u >"$results/target-$arm-bins.txt"
 echo "$arm: $(grep -c '^test ' "$results/target-$arm-bins.txt") integration-test binaries, $(wc -l <"$results/target-$arm-bins.txt" | tr -d ' ') test binaries in all"
 echo "$arm: $(ls target/debug/deps/libbevy_internal-*.rlib 2>/dev/null | wc -l | tr -d ' ') bevy_internal builds, $(ls target/debug/deps/libdeno_core-*.rlib 2>/dev/null | wc -l | tr -d ' ') deno_core builds"
+echo "$arm: $(ls target/debug/deps/libbevy_dylib-*.dylib 2>/dev/null | wc -l | tr -d ' ') bevy_dylib builds, $(du -ch target/debug/deps/it-* 2>/dev/null | tail -1 | cut -f1) in integration-test binaries"
 echo "$arm: target $(du -sh target | cut -f1), deps $(du -sh target/debug/deps | cut -f1), incremental $(du -sh target/debug/incremental 2>/dev/null | cut -f1)"
 grep -E "^test result" "$log" | awk '{p += $4; f += $6} END {print "'"$arm"': " p " tests passed, " f " failed"}'

@@ -3,7 +3,7 @@
 Task 8.3 of `openspec/changes/archive/2026-10-21-tsx`. Measured 2026-10-20 on the shared Apple M5 Max (other agents building), release, V8 15.0, Bevy 0.20, with `crates/bevy-ts-cli/tests/it/tsx_scale.rs`:
 
 ```
-cargo test --release -p bevy-ts-cli --test it tsx_scale:: -- --ignored --nocapture --test-threads 1
+cargo static test --release -p bevy-ts-cli --test it tsx_scale:: -- --ignored --nocapture --test-threads 1
 ```
 
 The scene is N `Enemy` prefabs (`<entity name>`, `Transform`, a TS `Health` with `initialHp`/`max`, `<mesh shape="cuboid" color>`), a player, and a HUD whose `<text>` binds the player's `Health` with no hook. Reload times are `bevy-ts/reload`'s: compile, load (JS evaluates every scene and describes it), the generation's check and apply.

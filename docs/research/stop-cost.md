@@ -6,7 +6,7 @@ the shared Apple M5 Max with other agents building (load average 22 to 60), rele
 Bevy 0.20, with `crates/bevy-ts-cli/tests/it/stop_bench.rs`:
 
 ```
-cargo test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture
+cargo static test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture
 ```
 
 The level is the levels bench's (`docs/research/levels-scale.md`): N `@enemies::Grunt` instances,

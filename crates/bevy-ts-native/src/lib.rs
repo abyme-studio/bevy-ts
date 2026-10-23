@@ -75,7 +75,7 @@ impl<T: NativeField, const N: usize> NativeField for [T; N] {
 
 /// A component with a layout from `offset_of!`, for types without `Reflect`. Derive it:
 ///
-/// ```
+/// ```no_run,standalone_crate
 /// use bevy_ts_native::prelude::*;
 ///
 /// #[derive(Component, NativeLayout)]
@@ -107,7 +107,7 @@ pub trait NativeLayout: Component {
 /// defer (`Commands`, `Gizmos`); see `bevy_ts::host` for when writes land.
 ///
 /// A param that writes exports:
-/// ```
+/// ```no_run,standalone_crate
 /// use bevy::ecs::system::SystemParam;
 /// use bevy_ts_native::prelude::*;
 /// #[derive(Resource)]
