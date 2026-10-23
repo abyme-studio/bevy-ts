@@ -260,8 +260,10 @@ A TS system takes it as a parameter and calls it: `rapier.castRay(origin, [0, -1
 { excludeRigidBody: e })`. Each call is one host call (a V8 fast op), synchronous inside the
 system's run; slices are read and written in place, so `castRays` over 1,000 rays is one call.
 Arguments and results are numbers, `bool`, `Entity`, `Vec2`, `Vec3`, `Quat`, `#[derive(HostRecord)]`
-records, `Option`s of these, and `&[T]` / `&mut [T]` of numbers; anything else is a compile error
-naming the type. A `Result` error, a param that fails validation, or a panic throws in JS, naming
+records and fieldless enums (an enum crosses as its variant names, `"Any" | "Visible"`; a record
+that leaves one out gets its first variant), `Option`s of these, and `&[T]` / `&mut [T]` of
+numbers; anything else is a compile error naming the type. A `Result` error, a param that fails
+validation, or a panic throws in JS, naming
 the param and method.
 
 ### Params that write
@@ -456,9 +458,10 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 `examples/rapier` uses all of it with no Rust in the project. Plans for leafwing-input-manager,
 avian and bevy_hanabi are in [research/native-ports.md](research/native-ports.md).
 
-The engine itself exports one param, from the built-in module `bevy-ts/camera`, in every
-engine (`dev`, `play`, a shipped game, `bevy-ts types`). `Cameras` is Bevy's
-`Camera::world_to_viewport`, so a UI node can sit over a world point:
+The engine itself exports two params, from the built-in module `bevy-ts/camera`, in every
+engine (`dev`, `play`, a shipped game, `bevy-ts types`). `Cameras` is Bevy's `Camera`
+conversions, so a UI node can sit over a world point and a click becomes a ray; `MeshRayCast` is
+Bevy's `MeshRayCast`, which casts that ray at meshes. The code is `crates/bevy-ts-cli/src/camera.rs`.
 
 ```ts
 import type { Cameras } from "bevy-ts/camera";
@@ -479,7 +482,55 @@ export function tag(cameras: Cameras) {
   point in, two out (`NaN, NaN` for one that does not project), and returns how many projected.
   It throws when `points` is not a whole number of points or `out` is too short. Pass two
   separate arrays, not views of one buffer.
-- An entity that is not a camera throws.
+- `worldToViewportWithDepth(camera, point)` is `worldToViewport` with the view-space depth as
+  `z`.
+- `viewportToWorld(camera, point)` is the `Ray3d` `{ origin, direction }` from the near plane
+  through a viewport point, `direction` a unit vector; `undefined` before the viewport has a
+  size. `viewportToWorld2d(camera, point)` is the world point under it for a 2D camera.
+- `worldToNdc(camera, point)` and `ndcToWorld(camera, ndc)` convert to and from normalized device
+  coordinates (`Vec3`); `viewportToNdc(camera, point)` takes a viewport point to NDC.
+- `viewportsToWorld(camera, points, out)` converts many in one host call: two floats per point
+  in, six out (origin, direction; six `NaN` for a miss), returning how many converted. It throws
+  as `worldsToViewport` does.
+- Every Bevy conversion error is `undefined`. An entity that is not a camera throws.
+
+`MeshRayCast` casts a ray at meshes, nearest first, with Bevy's own ray cast. The cursor's mesh is
+two calls:
+
+```ts
+import type { Cameras, MeshRayCast } from "bevy-ts/camera";
+
+const none = new Float64Array(0);
+
+export function aim(cameras: Cameras, rays: MeshRayCast) {
+  const ray = cameras.viewportToWorld(camera, cursor);
+  const hit = ray && rays.castRay(ray, undefined, none);
+  if (hit) console.log(`${hit.entity} at ${hit.point.x}, ${hit.point.y}, ${hit.point.z}`);
+}
+```
+
+- `castRay(ray, settings, exclude)` returns the nearest `RayMeshHit` `{ entity, point, normal,
+  distance, uv?, triangleIndex? }` or `undefined`. `distance` is from the ray's origin. `normal` is
+  the triangle's as Bevy gives it, not normalized under non-uniform scale.
+- `castRayAll(ray, settings, exclude, hits, entity)` writes every hit, nearest first: seven floats
+  per hit in `hits` (point, normal, distance), the entity's bits in `entity`. It returns how many it
+  wrote and drops hits past the room, keeping the nearest. It throws when `hits` is not seven floats
+  per hit. Pass `earlyExit: false`, or it stops at the nearest.
+- `settings` is `{ visibility, earlyExit }`: `visibility` is `"VisibleInView"` (drawn by a camera
+  or light last frame), `"Visible"` (visible in the hierarchy) or `"Any"` (hidden meshes too);
+  `earlyExit: true` stops at the nearest hit. `undefined` is Bevy's default, `VisibleInView` with
+  early exit, so a cast hits what the camera drew. A settings object that leaves `visibility` out
+  gets `VisibleInView`, one that leaves `earlyExit` out gets `false`.
+- `exclude` holds entity bits the cast skips, empty for none. Bevy's `filter` and
+  `early_exit_test` closures have no TS form: a cast never calls back into JS. Cast with
+  `earlyExit: false` and filter the hits in TS.
+- A ray whose `direction` is zero or not finite throws.
+
+A mesh is hit from the frame after it gets its `Aabb`, which Bevy computes in `PostUpdate`: a cube
+spawned this frame is missed until the next. A mesh with `NoFrustumCulling` gets no `Aabb` and is
+never hit. `VisibleInView` needs the mesh drawn last frame, so a cast in a camera's first frame
+misses with the default; `"Any"` hits at once. A cast walks Bevy's AABB candidates in one host
+call. Bevy's `RayCastBackfaces` and `SimplifiedMesh` components apply as in Rust.
 
 The camera's `GlobalTransform` is the one last propagated, in `PostUpdate`: from `Update` it is
 the previous frame's, so a tag over a moving camera or entity lags a frame. A system ordered

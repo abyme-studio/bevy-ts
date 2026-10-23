@@ -7,7 +7,8 @@ A TS system cannot turn a screen point into a world ray, or ask which mesh a ray
 - `Cameras` (module `bevy-ts/camera`, `crates/bevy-ts-cli/src/camera.rs`) gains Bevy's other camera conversions: `worldToViewportWithDepth`, `viewportToWorld`, `viewportToWorld2d`, `worldToNdc`, `ndcToWorld`, `viewportToNdc`, and the batched `viewportsToWorld`. World-to-screen's rules hold: a non-camera entity throws, a Bevy miss is `undefined`, a batch is flat `Float32Array`s with `NaN` for a miss and returns the hit count.
 - A new record `Ray3d { origin, direction }`, Bevy's `Ray3d`. A zero or non-finite direction passed in throws.
 - A new exported param `MeshRayCast` (Bevy's name), same module and plugin, over Bevy's `MeshRayCast`: `castRay(ray, settings, exclude)` returns the nearest `RayMeshHit` or `undefined`; `castRayAll(ray, settings, exclude, hits, entity)` writes every hit, nearest first, and returns the count. Settings are `{ visibility, earlyExit }`; `exclude` is a list of entities. No TS callback.
-- The `#[export]` derive accepts `&mut self` on a param whose item is owned (`SystemState::get` returns it by value), so `MeshRayCast::cast_ray`'s local scratch vectors work. The param still must be `ReadOnlySystemParam`; `ResMut` still fails to compile.
+- Exported methods take fieldless enums: `#[derive(HostRecord)]` on one, crossing as its variant names (`RayCastVisibility`).
+- `MeshRayCast::cast_ray` fills `Local` scratch, so its export takes `&mut self`, which main's exported-param mechanism (writable params) already allows.
 - docs/native.md (where `Cameras` is documented) describes the new methods and `MeshRayCast`; docs/picking.md points to them.
 
 ## Capabilities
@@ -18,7 +19,7 @@ None.
 
 ### Modified Capabilities
 
-- `native-functions`: `Cameras` gains Bevy's camera conversions; the engine exports `MeshRayCast`; an exported method may take `&mut self`.
+- `native-functions`: `Cameras` gains Bevy's camera conversions; the engine exports `MeshRayCast`; an exported method may take a fieldless enum.
 
 ## Impact
 
@@ -28,4 +29,4 @@ None.
 - Protocol: no schema change expected; take the next free minor only if the build finds a protocol surface touched.
 - Docs: docs/native.md, docs/picking.md.
 - Cost: one host call per conversion, per batch, or per cast. A cast walks Bevy's AABB candidates as Bevy does. No new dependency: the engine's `3d` feature already pulls in `mesh_picking`.
-- Ask-first: none that needs the operator's go. The `&mut self` derive change extends the existing export pattern (no world write, no new borrow, no new mechanism); the lead confirms. A TS callback in the ray loop (filter or early-exit) would be ask-first (a new re-entrant mechanism and a per-candidate cost) and is left out.
+- Ask-first: none that needs the operator's go. `&mut self` needs no derive change: main already allows it. A TS callback in the ray loop (filter or early-exit) would be ask-first (a new re-entrant mechanism and a per-candidate cost) and is left out.

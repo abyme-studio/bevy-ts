@@ -752,6 +752,13 @@ mod tests {
         assert!(out.contains("declare module \"bevy-ts/camera\" {"), "{out}");
         assert!(out.contains("Cameras"), "{out}");
         assert!(out.contains("worldToViewport(camera: Entity"), "{out}");
+        assert!(out.contains("viewportToWorld(camera: Entity, point: "), "{out}");
+        assert!(out.contains("export interface MeshRayCast {"), "{out}");
+        assert!(out.contains("export interface Ray3d {"), "{out}");
+        assert!(out.contains("export interface RayCastSettings {"), "{out}");
+        assert!(out.contains("export interface RayMeshHit {"), "{out}");
+        assert!(out.contains("export type RayCastVisibility = \"VisibleInView\" | \"Visible\" | \"Any\";"), "{out}");
+        assert_eq!(out.matches("export interface Ray3d {").count(), 1, "declared once in the module: {out}");
     }
 
     #[test]

@@ -51,6 +51,10 @@ the leaves. Bevy's events for "the pointer entered this subtree" are `PointerEnt
   `game.json` without it plays with mesh picking off. A native crate may add `MeshPickingPlugin`
   itself, with settings of its own; then the switch adds nothing.
 
+A script that casts its own ray (aim, place under the cursor) needs none of this: `Cameras` and
+`MeshRayCast` in `bevy-ts/camera` work with mesh picking off. See
+[native.md](native.md#ports-and-built-in-modules).
+
 ## When a click cannot fire
 
 With mesh picking off, the first entity that has both a `Mesh3d` and a pointer handler logs one

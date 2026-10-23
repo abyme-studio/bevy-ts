@@ -76,13 +76,16 @@ fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 }
 
 /// `#[derive(HostRecord)]`: a struct of host values (numbers, bool, Entity, vectors, records)
-/// that crosses as an argument or result of an exported method, field by field.
+/// that crosses as an argument or result of an exported method, field by field; or a fieldless
+/// enum, which crosses as its variant names (`"Any" | "Visible"`).
 #[proc_macro_derive(HostRecord)]
 pub fn derive_host_record(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
-    let Data::Struct(data) = &input.data else {
-        return syn::Error::new(input.span(), "HostRecord: only structs").to_compile_error().into();
+    let data = match &input.data {
+        Data::Struct(data) => data,
+        Data::Enum(e) => return host_enum(name, e).unwrap_or_else(|e| e.to_compile_error()).into(),
+        Data::Union(_) => return syn::Error::new(input.span(), "HostRecord: only structs and fieldless enums").to_compile_error().into(),
     };
     let Fields::Named(fields) = &data.fields else {
         return syn::Error::new(input.span(), "HostRecord: fields must be named").to_compile_error().into();
@@ -114,6 +117,40 @@ pub fn derive_host_record(input: TokenStream) -> TokenStream {
         }
     }
     .into()
+}
+
+fn host_enum(name: &syn::Ident, e: &syn::DataEnum) -> syn::Result<proc_macro2::TokenStream> {
+    let h = quote!(::bevy_ts_native::bevy_ts::host);
+    let mut names = Vec::new();
+    let mut idents = Vec::new();
+    for v in &e.variants {
+        if !matches!(v.fields, Fields::Unit) {
+            return Err(syn::Error::new(v.span(), format!("HostRecord: variant {} has fields; an enum crosses only when fieldless", v.ident)));
+        }
+        names.push(v.ident.to_string());
+        idents.push(&v.ident);
+    }
+    if idents.is_empty() {
+        return Err(syn::Error::new(name.span(), "HostRecord: an enum needs a variant"));
+    }
+    let index = (0..idents.len()).map(|i| i as f64);
+    let index2 = index.clone();
+    let ts_name = name.to_string();
+    Ok(quote! {
+        impl #h::HostValue for #name {
+            fn kind() -> #h::Kind {
+                #h::Kind::Enum(#ts_name, ::std::vec![#(#names),*])
+            }
+            fn read(r: &mut #h::SlotReader) -> ::core::result::Result<Self, ::std::string::String> {
+                let k = r.slot()?;
+                #(if k == #index { return ::core::result::Result::Ok(#name::#idents); })*
+                ::core::result::Result::Err(::std::format!("{k} is not a {}", #ts_name))
+            }
+            fn write(&self, w: &mut #h::SlotWriter) {
+                w.push(match self { #(#name::#idents => #index2),* });
+            }
+        }
+    })
 }
 
 fn camel(s: &str) -> String {

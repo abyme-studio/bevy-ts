@@ -4,8 +4,8 @@
 
 ## 1. Derive
 
-- [ ] 1.1 `crates/bevy-ts-native-derive/src/lib.rs`: accept `&self` or `&mut self` (line 203's check and its message), bind `let mut __p` (line 270)
-- [ ] 1.2 A compile-fail test: a `ResMut` param with a `&mut self` method still fails, saying the param must be read-only
+- [x] 1.1 `&mut self` on exported methods: already on main (writable exported params); nothing to do
+- [x] 1.2 `#[derive(HostRecord)]` on a fieldless enum, `Kind::Enum` in the host codec, crossing as variant names (replaces the `ResMut` compile-fail test: main now allows `ResMut`)
 
 ## 2. Conversions on Cameras
 
