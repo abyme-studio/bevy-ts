@@ -2200,11 +2200,13 @@ const BIND = Symbol("bind");
 
 /**
  * An observer's `On<E>`: the event's fields directly (`explode.radius`, as Rust's `On` derefs to
- * the event), the target as `entity`, and `propagate(on)`.
+ * the event), the current target as `entity`, the first target of a bubbling event as `original`,
+ * and `propagate(on)`.
  */
 function makeOn(cls) {
   const o = cls ? new cls.Read() : {};
   Object.defineProperty(o, "entity", { value: undefined, writable: true, enumerable: true });
+  Object.defineProperty(o, "original", { value: undefined, writable: true, enumerable: true });
   o[STOPPED] = false;
   Object.defineProperty(o, "propagate", {
     value(on) {
@@ -2212,9 +2214,10 @@ function makeOn(cls) {
     },
   });
   o[BIND] = (frame) => {
-    // [ArrayBuffer, entity]
+    // [ArrayBuffer, entity, original]
     if (cls) bindRow(o, cls, frame[0], null, 0);
     o.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
+    o.original = frame[2] === 18446744073709552000 ? undefined : frame[2];
     o[STOPPED] = false;
   };
   return o;

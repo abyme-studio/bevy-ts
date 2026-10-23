@@ -25,6 +25,8 @@ pub struct Pending {
     /// The target and, for a bubbling entity event, its `ChildOf` ancestors. Empty for a global
     /// event.
     pub path: Vec<Entity>,
+    /// The first target of a bubbling trigger, `On<E>.original`; `None` for a global event.
+    pub original: Option<Entity>,
 }
 
 #[derive(Resource, Default, Debug)]
@@ -117,7 +119,7 @@ pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
                 return;
             }
             for id in components.iter().filter(|c| watch.contains(c)) {
-                queue.0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes: vec![], path: vec![entity] });
+                queue.0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes: vec![], path: vec![entity], original: Some(entity) });
             }
         };
         let observer = match kind {

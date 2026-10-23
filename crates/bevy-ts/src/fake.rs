@@ -310,7 +310,7 @@ impl ScriptBackend for FakeBackend {
                 ),
                 // SAFETY: as above.
                 ParamFrame::Row { data, bytes, .. } => rows.push(unsafe { std::slice::from_raw_parts_mut(*data, *bytes) }),
-                ParamFrame::Event { data, bytes, entity } => event = Some((unsafe { std::slice::from_raw_parts(*data, *bytes) }, *entity)),
+                ParamFrame::Event { data, bytes, entity, .. } => event = Some((unsafe { std::slice::from_raw_parts(*data, *bytes) }, *entity)),
                 _ => {}
             }
         }
