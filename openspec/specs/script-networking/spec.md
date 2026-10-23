@@ -1,7 +1,7 @@
 # script-networking Specification
 
 ## Purpose
-TBD - created by archiving change script-networking. Update Purpose after archive.
+Game scripts talk to services over the network: the web globals a client such as `@abyme/client`'s `connect()` needs (`WebSocket` over `ws:`, timers on real time, `URL`, `AbortController`, `process.env`), deny by default through `net.allow` and `env`, with connections owned by the engine, scoped to a generation and to play, bounded, and testable without a network.
 
 ## Requirements
 
