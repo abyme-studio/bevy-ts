@@ -51,3 +51,11 @@ steps for only what changed since `LAND_BASE`, by default the merge base with ma
 It exits 0 when every step it ran passed, and 75 when it could not start: no cargo or jq, or a
 `LAND_BASE` that is not a commit.
 `deno test -A --no-check scripts/affected-gate.test.ts` checks the rules on a fixture workspace.
+
+`.abyme/land.ts` names it as the land plugin's batch check (`check: "affected-gate"`, the process of
+`.abyme/processes.ts`): land runs it on each batch stacked on main, with `LAND_BASE` set to main
+before the batch. Exit 0 lands the batch, 75 sends it back unsplit, and any other exit is red.
+Its `full: { check: "native-gate" }` runs the whole gate on main's tip when `.abyme/triggers.ts`
+calls `land verify` at 04:30 each day; a red tip's first red landing is found and reverted. The
+`native-gate` process, like every gate in `.abyme/processes.ts`, sets `pipefail`, so its `tee` never
+turns a red gate green.
