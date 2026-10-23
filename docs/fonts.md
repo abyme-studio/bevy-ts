@@ -29,9 +29,27 @@ not the scan. A game whose text is all ASCII never scans.
 
 ## Linux
 
-The Linux engine links `libfontconfig.so.1`. Every desktop distro has it.
+The Linux engine links `libfontconfig.so.1`. Every desktop distro has it. On a machine without it
+the engine does not start: fontique reaches fontconfig through `yeslogic-fontconfig-sys`, built
+without its `dlopen` feature, whose build script links `fontconfig` found by pkg-config. So the
+loader refuses the binary before any of it runs, with `error while loading shared libraries:
+libfontconfig.so.1: cannot open shared object file`, exit 127. It fails clearly at launch, never
+mid-game. Installing `libfontconfig1` fixes it.
 
-<!-- condition 2: filled from target/linux-fonts/ -->
+That much is read from the build, not run: the container check is not done yet. To run it, with
+docker up:
+
+```sh
+scripts/linux-fonts.sh    # logs in target/linux-fonts/
+```
+
+It builds the engine and the test in `rust:1-bookworm`, prints the binary's `NEEDED` entries, then
+runs the engine in `debian:bookworm-slim` without `libfontconfig1`, and the test with fontconfig and
+without and with the Noto fonts (lavapipe as the GPU).
+
+Not done: setting `RUST_FONTCONFIG_DLOPEN=1` in the Linux release build makes that crate load
+fontconfig at run time instead of linking it, so the engine would start without it. What fontique
+does then without fontconfig, no fallback or a panic, is unchecked.
 
 A minimal Linux install may have no CJK or emoji font, and draws those as boxes. Debian and Ubuntu
 packages: `fonts-noto-cjk` and `fonts-noto-color-emoji`. The test below needs both on Linux, and its
