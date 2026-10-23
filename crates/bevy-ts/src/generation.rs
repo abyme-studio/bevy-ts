@@ -157,6 +157,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     let started = Instant::now();
     crate::layout_reflect::fill_once(world);
     // Script-made assets' refs go stale with the generation; a restart removes the assets too.
+    #[cfg(feature = "pbr")]
     crate::reflect_asset::clear(world, restart);
     // Flush the previous generation's console output so the log reads in order.
     crate::runtime::pump(world);
