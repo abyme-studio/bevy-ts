@@ -53,4 +53,4 @@
 
 ## 8. Gate
 
-- [ ] 8.1 `cargo test` for `bevy-ts`, `bevy-ts-v8` and `bevy-ts-cli`, the package tests, and `openspec validate script-networking --strict` all pass.
+- [x] 8.1 `cargo test` for `bevy-ts`, `bevy-ts-v8` and `bevy-ts-cli`, the package tests, and `openspec validate script-networking --strict` all pass.
