@@ -318,6 +318,9 @@ const processes = {
   // Change animation-control: the crates it touches (animation, levels, the cli's types and animation tests), then `bevy-ts/bevy` regenerated.
   // Its fox bench at 400: playing, no graph, paused, off screen, off screen culled; 3 runs per arm, interleaved, niced.
   "animation-control-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; ARMS=\"B G P H K\" nice -n 10 scripts/animation-bench.sh 3 400 2>&1 | grep -v ld64 | tee target/animation-control-bench.log'" },
+  // Agent town's 100 villagers: the pinned npm engine (before), then this branch's release engine (after).
+  "animation-control-villagers-before": { cmd: "bash -c 'set -o pipefail; mkdir -p target; node bench/animation-control/villagers.mjs npm none play speed0 hidden 2>&1 | tee target/animation-control-villagers-before.log'" },
+  "animation-control-villagers": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; cargo build --release -p bevy-ts-cli 2>&1 | tail -3 && node bench/animation-control/villagers.mjs target/release/bevy-ts 2>&1 | tee target/animation-control-villagers.log'" },
   "animation-control-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; (cargo test -p bevy-ts-animation -- --test-threads 1 && cargo test -p bevy-ts-levels && cargo test -p bevy-ts-cli --lib types && cargo test -p bevy-ts-cli --test animation --test levels_scene -- --test-threads 1 && scripts/gen-bevy-types.sh && git diff --stat -- packages/bevy-ts/bevy.d.ts) 2>&1 | grep -v ld64 | tee target/animation-control-test.log | grep -E \"^test |test result|panicked|^error|^warning|left|right|-->\" | tail -80'" },
 } satisfies ProcessFile;
 
