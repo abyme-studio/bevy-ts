@@ -118,7 +118,9 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
   newly chosen variant starts from its default (a newtype variant from its inner type's `Default`
   or `FromWorld`); a struct or tuple variant with no default is given whole. An unknown key,
   variant or channel fails the load, naming it. A component with no `Default` merges over its
-  current value.
+  current value. Removing a prop altogether (a hole prop, or `value`) keeps its last value, as
+  for any controlled field. Types mark every struct field optional, so a struct variant given in
+  part type-checks and fails the load when it needs to be given whole.
 - A layout-tier component's holes that reflection can write (a `Color`, an enum with data, an
   `Option`, a nested struct) are TSX props: `<DirectionalLight illuminance={8000}
   color={hex("#ffd7a8")} />` writes `illuminance` from bytes and `color` through reflection, on
