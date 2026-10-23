@@ -204,7 +204,10 @@ from what the level last applied and without composing it:
   `restore::derived`); `Camera` does, so a level camera respawns;
 - each entity the play despawned.
 
-The game starts at the first Play, or at a step before it; what a step did is undone too. A level
+The game starts at the first Play, or at a step before it; what a step did is undone too, and so
+is what `OnEnter(EngineMode::Play)` and `OnExit(EngineMode::Play)` did to a level entity. The
+entities below a level entity that are not level entities, a glTF model's hierarchy, count with
+it. A level
 takes the full path instead, mounting as if first, when:
 
 - it was applied again after the game started (a save of its file or a generation applied during

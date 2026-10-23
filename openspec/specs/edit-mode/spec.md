@@ -300,7 +300,7 @@ With `gameCameras: 0` in the game view, the view SHALL clear to the game's `Clea
 
 ### Requirement: Stop restores the levels the play changed
 A level open when the game started (see scene-reconciler, "The game-start baseline") and still open at the Stop SHALL be kept: its entities the play did not change SHALL stay, with their entity ids and component values, and the Stop SHALL respawn from the level's last resolved tree, without composing or expanding it:
-- each subtree whose root entity, or any entity in it, the play changed (a component changed after the baseline, or a component added or removed);
+- each subtree whose root entity, or any entity in it, the play changed (a component changed after the baseline, or a component added or removed), an entity below a node that is not one (a glTF model's hierarchy) included, and `OnEnter(EngineMode::Play)` and `OnExit(EngineMode::Play)` counting as the play;
 - each node tombstoned while the level was applied, with its subtree.
 
 A level SHALL instead take the full path, remounting as if first, when any of these holds:

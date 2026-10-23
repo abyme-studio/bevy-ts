@@ -396,7 +396,7 @@ fn after_generation(world: &mut World, _: &bevy_ts::plugin_api::AppliedSection) 
         let ts = world.resource::<TsComponents>();
         ts.current().filter(|c| ts.live(&c.decl.name).is_some()).filter_map(|c| Some((c.decl.name.clone(), c.decl.location.clone()?))).collect()
     };
-    let kept = kept_roots(world);
+    let kept = bevy_ts_tsx::StopPlan::kept(world);
     let mut levels = world.resource_mut::<Levels>();
     levels.declared_at.extend(seen);
     // A Stop restores the levels it keeps: they stay clean.
@@ -428,18 +428,13 @@ fn layer_editor_sidecars(world: &mut World) {
 }
 
 fn after_restart(world: &mut World) {
-    let kept = kept_roots(world);
+    let kept = bevy_ts_tsx::StopPlan::kept(world);
     for (p, r) in world.resource_mut::<Levels>().roots.iter_mut() {
         if !kept.contains(&root_name(p)) {
             r.dirty = true;
             r.applied.clear();
         }
     }
-}
-
-/// The tsx roots a Stop under way keeps.
-fn kept_roots(world: &World) -> BTreeSet<String> {
-    world.get_resource::<bevy_ts_tsx::StopPlan>().map(|p| p.roots.keys().cloned().collect()).unwrap_or_default()
 }
 
 /// Which open levels a Stop restores rather than mounts again, read before anything of the Stop
@@ -470,17 +465,22 @@ pub fn plan_stop(world: &World) -> bevy_ts_tsx::StopPlan {
 /// kept tree, without composing, and stamps only what it respawned. `level+watch` hears each
 /// as `loaded`, as a remount says.
 pub fn restore(world: &mut World) {
-    let Some(plan) = world.get_resource::<bevy_ts_tsx::StopPlan>().cloned() else { return };
-    for (root, paths) in &plan.roots {
+    let Some(plan) = world.remove_resource::<bevy_ts_tsx::StopPlan>() else { return };
+    for (root, paths) in plan.roots {
         let Some(path) = root.strip_prefix("level:") else { continue };
-        let paths = bevy_ts_tsx::restore::highest(paths.clone());
-        bevy_ts_tsx::restore::restore_root(world, root, &paths);
+        // Still the level the plan kept: open, mounted as its own root, not waiting to compose.
+        let kept = world.resource::<Levels>().roots.get(path).is_some_and(|r| !r.dirty && r.overlay.is_none()) && world.resource::<TsxTree>().external.contains(&root);
+        if !kept {
+            continue;
+        }
+        let paths = bevy_ts_tsx::restore::highest(paths);
+        bevy_ts_tsx::restore::restore_root(world, &root, &paths);
         // Taken out while stamping, and put back: nothing else reads them meanwhile.
         let Some((owners, scenes, missing)) = world.resource_mut::<Levels>().roots.get_mut(path).map(|r| (std::mem::take(&mut r.owners), std::mem::take(&mut r.scenes), std::mem::take(&mut r.missing))) else { continue };
         if !paths.is_empty() {
             let only: std::collections::HashSet<Vec<String>> = paths.into_iter().collect();
-            stamp_instances(world, path, root, &owners, &scenes, Some(&only));
-            stamp_missing(world, root, &missing, Some(&only));
+            stamp_instances(world, path, &root, &owners, &scenes, Some(&only));
+            stamp_missing(world, &root, &missing, Some(&only));
         }
         if let Some(r) = world.resource_mut::<Levels>().roots.get_mut(path) {
             (r.owners, r.scenes, r.missing) = (owners, scenes, missing);

@@ -39,15 +39,15 @@ What already holds:
 4. **The rebuild keeps the plan's roots.** tsx's restart handler despawns every `TsxNode` except those of kept roots, and keeps those roots' `RootState`, entity map entries and kept resolved trees; it drops their tombstones into the plan (they will respawn) and drops every baseline. levels' `after_restart` and `after_generation` leave kept roots clean (not dirty, `applied` kept). The rebuild's generation apply gets the same `ComponentId`s for an unchanged layout (`Planned::Reuse`), so the kept entities' TS columns stay valid. A kept root whose component layout changed cannot happen: the generation set is the same one (a reload during play makes the root dirty, so not kept).
 
 5. **The restore.** After `restore_open`, for each kept root, `apply_at(root, changed ∪ tombstoned paths, Respawn)` from the kept resolved tree, then levels stamps the respawned nodes only. `settle` then runs the full path for the rest, as play-stop does. Order of `stop()`:
-   1. `plan_stop` (scan, file hashes)
-   2. `StateTransition`, `enter_edit`
-   3. `generation::rebuild` (honours the plan)
+   1. `StateTransition` (native `OnExit(Play)`)
+   2. `plan_stop` (scan, file hashes)
+   3. `enter_edit`, `generation::rebuild` (honours the plan)
    4. `restore_open`
    5. restore kept roots (`apply_at`, stamp)
    6. `settle`
    7. `reset_clock`, `follow_selection`, the answer
 
-   Scanning before `OnExit(Play)` means a native crate's reset in `OnExit` counts as a change if it writes a level entity. That is correct: the entity is respawned from the description.
+   Scanning after `OnExit(Play)` means a native crate's reset in `OnExit` counts as a change if it writes a level entity. That is correct: the entity is respawned from the description. (Review, 2026-10-23: the first cut scanned before `OnExit` and missed those writes.) At a Play the baseline is taken before `OnEnter(Play)` and after the editor's own switches (cameras, gizmo focus), so what `OnEnter` does is the play's and what the editor did is not. The scan also reads each node's entities that are not nodes (a glTF model's hierarchy), down to the next node.
 
 6. **`apply_at` is one primitive with two modes.** `apply_at(world, root, items: &[(Vec<String>, Option<&RNode>)], mode)`. `Respawn` despawns the live subtree (if any), spawns the given one under its described parent at its described index, clears tombstones, updates `TsxTree` and the kept tree. `Reconcile` runs today's per-node diff on the subtree. `None` despawns. `apply_root` stays the whole-root path; both share the per-node code. levels-scale's write path will call `Reconcile`; this change only uses `Respawn`. Alternative: a Stop-only respawn helper. Rejected: two partial-apply paths would drift (one owner).
 

@@ -463,10 +463,11 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
         world.resource_mut::<EditState>().ui = ui;
     }
     if mode != current {
-        // What the play changed is read before anything of the Stop runs, `OnExit(Play)` too.
-        if mode == Mode::Edit && world.contains_resource::<bevy_ts_levels::engine::Levels>() {
-            let plan = bevy_ts_levels::engine::plan_stop(world);
-            world.insert_resource(plan);
+        // A Play first leaves the editor's view, then the game starts counting: what the game
+        // changes from `OnEnter(Play)` on is the play's, what the editor switched off is not.
+        if mode == Mode::Play {
+            leave_editor_view(world);
+            bevy_ts::generation::announce_start(world);
         }
         // `EngineMode` follows now, so `OnExit`/`OnEnter` run before the next frame's systems
         // and before the first play's `Startup`. The out-of-band `StateTransition` also applies
@@ -493,6 +494,12 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
         }
         match mode {
             Mode::Edit => {
+                // What the play changed, `OnExit(Play)` included, is read before the editor's
+                // view comes back.
+                if world.contains_resource::<bevy_ts_levels::engine::Levels>() {
+                    let plan = bevy_ts_levels::engine::plan_stop(world);
+                    world.insert_resource(plan);
+                }
                 enter_edit(world);
                 stop(world);
             }
@@ -647,11 +654,13 @@ fn apply_view(world: &mut World) {
     }
 }
 
-fn enter_play(world: &mut World) {
-    let (cameras, was_paused, mouse) = {
+/// The editor's own switches at a Play, before `OnEnter(Play)` and the game's start: the game's
+/// cameras back, the editor's off, the gizmo and its focus gone, the pointer as the game had it.
+fn leave_editor_view(world: &mut World) {
+    let (cameras, mouse) = {
         let mut s = world.resource_mut::<EditState>();
         s.mode = Mode::Play;
-        (std::mem::take(&mut s.game_cameras), s.was_paused, s.mouse_was_enabled)
+        (std::mem::take(&mut s.game_cameras), s.mouse_was_enabled)
     };
     for (e, active) in cameras {
         set_active(world, e, active);
@@ -668,6 +677,12 @@ fn enter_play(world: &mut World) {
         s.is_mouse_enabled = mouse;
     }
     world.resource_mut::<GizmoConfigStore>().config_mut::<EditorGizmos>().0.enabled = false;
+}
+
+/// A Play after `OnEnter(Play)`: edit-time triggers dropped, the open levels recorded, the game
+/// started.
+fn enter_play(world: &mut World) {
+    let was_paused = world.resource::<EditState>().was_paused;
     // Triggers raised in edit mode never reach the game.
     if let Some(mut q) = world.get_resource_mut::<bevy_ts::observers::ObserverQueue>() {
         q.0.clear();

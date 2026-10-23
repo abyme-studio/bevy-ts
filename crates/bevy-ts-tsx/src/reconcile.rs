@@ -377,6 +377,10 @@ fn clear(world: &mut World, tree: &mut TsxTree, root: &str, path: &[String], row
     }
     tree.reactive.stale = true;
     for i in rows {
+        // A row the play moved out of the subtree is still alive elsewhere: it goes too.
+        if let Some(e) = tree.entities.get(i).copied().filter(|e| alive(world, *e, *i)) {
+            let _ = world.try_despawn(e);
+        }
         if tree.is_row(root, *i) {
             tree.journal.open.removed.push(*i);
         }

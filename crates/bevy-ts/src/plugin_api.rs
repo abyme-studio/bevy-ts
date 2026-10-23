@@ -110,7 +110,9 @@ pub trait BevyTsAppExt {
     fn on_ts_restart(&mut self, f: impl Fn(&mut World) + Send + Sync + 'static) -> &mut Self;
 
     /// Called once when the game starts (the first Play after an `--edit` start or a Stop, a step
-    /// before it, or the first `Startup` of a game booted in play), before any `Startup` system.
+    /// before it, or the first `Startup` of a game booted in play), before any `Startup` system
+    /// and, for a Play, before its `OnEnter(EngineMode::Play)`. Once per game start: a `restart`
+    /// reload during play does not call it again.
     fn on_ts_start(&mut self, f: impl Fn(&mut World) + Send + Sync + 'static) -> &mut Self;
 
     /// Called when files the module graph imports but does not run (`.wgsl`) are saved and no
