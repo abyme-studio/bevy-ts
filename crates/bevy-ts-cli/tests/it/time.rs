@@ -351,3 +351,20 @@ fn timer_initialisers_are_constants() {
     assert!(errors[0].message.contains("Timer.fromSeconds takes constant seconds"), "{:?}", errors[0]);
     assert_eq!(errors[0].location.as_ref().map(|l| l.line), Some(4), "{:?}", errors[0]);
 }
+
+#[test]
+fn a_timer_named_like_the_accessors_state_ticks() {
+    // `t` and `r` are names a generated accessor once kept its own state under.
+    let src = r#"
+export function slots(l: Local<{ r: u32; t: Timer }>) {
+  if (l.r === 0) l.t.setDuration(1);
+  if (l.r < 2) { l.t.tick(0.25); l.r++; console.log("slots " + JSON.stringify({ r: l.r, t: l.t })); }
+}
+app.addSystems(Update, slots);
+"#;
+    let (_, mut app) = load("time-slots", &format!("{HEAD}{src}"));
+    updates(&mut app, 3);
+    let t = logged(&mut app, "slots ");
+    assert_eq!(t.len(), 2, "{:?}", messages(&app));
+    assert_eq!((t[1]["r"].as_u64(), t[1]["t"]["elapsed"].as_f64()), (Some(2), Some(0.5)));
+}

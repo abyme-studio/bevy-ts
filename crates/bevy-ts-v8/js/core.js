@@ -1638,8 +1638,19 @@ function viewsFor(layout) {
 
 const READONLY = "this value is read-only here: query it as Mut<C> (or take ResMut) to change it";
 
+// An accessor's own state, keyed by symbols so no field can name it: its row, the run's tick, the
+// row's tick column, one typed view per kind, and (on query rows) whether the datum is present.
+// Generated code names them `$r`, `$k`, `$t` and `$f32`, `$u8`, ...
+const ROW = Symbol("row");
+const TICK = Symbol("tick");
+const TICKS = Symbol("ticks");
+const PRESENT = Symbol("present");
+const VIEW_KEY = Object.fromEntries(Object.keys(VIEW_CTORS).map((v) => [v, Symbol(v)]));
+const SLOT_NAMES = ["$r", "$k", "$t", ...Object.keys(VIEW_KEY).map((v) => "$" + v)];
+const SLOT_KEYS = [ROW, TICK, TICKS, ...Object.values(VIEW_KEY)];
+
 function setterTail(write) {
-  return write ? "p.t[p.r] = p.k;" : "throw new TypeError(READONLY);";
+  return write ? "p[$t][p[$r]] = p[$k];" : "throw new TypeError(READONLY);";
 }
 
 /** Source for reading/writing one scalar at byte offset `off` of a `size`-byte row. */
@@ -1649,23 +1660,23 @@ function scalarCode(kind, off, size, enumType) {
   const enumVariants = enumType && enumType.variants;
   const w = WIDTH[kind] || (kind === "u16" ? 2 : 4);
   const view = kind === "bool" ? "u8" : kind === "entity" ? "u32" : kind;
-  const idx = size % w === 0 ? `p.r * ${size / w} + ${off / w}` : `(p.r * ${size} + ${off}) / ${w}`;
-  if (kind === "bool") return { get: `p.u8[${idx}] !== 0`, set: `p.u8[${idx}] = v ? 1 : 0;` };
+  const idx = size % w === 0 ? `p[$r] * ${size / w} + ${off / w}` : `(p[$r] * ${size} + ${off}) / ${w}`;
+  if (kind === "bool") return { get: `p[$u8][${idx}] !== 0`, set: `p[$u8][${idx}] = v ? 1 : 0;` };
   if (kind === "entity") {
     return {
-      get: `p.u32[${idx}] + p.u32[${idx} + 1] * 4294967296`,
-      set: `{ const i = ${idx}; p.u32[i] = v % 4294967296; p.u32[i + 1] = Math.floor(v / 4294967296); }`,
+      get: `p[$u32][${idx}] + p[$u32][${idx} + 1] * 4294967296`,
+      set: `{ const i = ${idx}; p[$u32][i] = v % 4294967296; p[$u32][i + 1] = Math.floor(v / 4294967296); }`,
     };
   }
   if (enumVariants) {
     const names = JSON.stringify(enumVariants);
     const vals = enumType.repr ? JSON.stringify(enumType.repr.values) : null;
     return {
-      get: vals ? `${names}[${vals}.indexOf(p.${view}[${idx}])]` : `${names}[p.${view}[${idx}]]`,
-      set: `{ const i = typeof v === "string" ? ${names}.indexOf(v) : v; if (i < 0 || i >= ${enumVariants.length}) throw new RangeError("unknown variant " + v); p.${view}[${idx}] = ${vals ? `${vals}[i]` : "i"}; }`,
+      get: vals ? `${names}[${vals}.indexOf(p[$${view}][${idx}])]` : `${names}[p[$${view}][${idx}]]`,
+      set: `{ const i = typeof v === "string" ? ${names}.indexOf(v) : v; if (i < 0 || i >= ${enumVariants.length}) throw new RangeError("unknown variant " + v); p[$${view}][${idx}] = ${vals ? `${vals}[i]` : "i"}; }`,
     };
   }
-  return { get: `p.${view}[${idx}]`, set: `p.${view}[${idx}] = v;` };
+  return { get: `p[$${view}][${idx}]`, set: `p[$${view}][${idx}] = v;` };
 }
 
 /** Writes a whole timer or stopwatch into a view: raw fields, the row tick stored once. */
@@ -1686,7 +1697,8 @@ function generateAccessor(name, layout, write) {
   for (const f of layout.fields) {
     const t = f.type;
     const key = JSON.stringify(f.name);
-    const slot = JSON.stringify("_" + f.name);
+    // A vector's or array's nested view: under a symbol of its own, made with the class.
+    const slot = `$s${subclasses.length}`;
     if (LANES[t.kind]) {
       const lanes = LANES[t.kind];
       const names = ["x", "y", "z", "w"].slice(0, lanes);
@@ -1701,10 +1713,10 @@ function generateAccessor(name, layout, write) {
         // Every vector method routes through set(): lanes written raw, the row tick stored once.
         const args = names.join(", ");
         const raw = names.map((n, i) => scalarCode("f32", f.offset + i * 4, size).set.replace(/\bv\b/g, n)).join(" ");
-        cls.push(`set(${args}) { const p = this.p; ${raw} p.t[p.r] = p.k; return this; }`);
+        cls.push(`set(${args}) { const p = this.p; ${raw} p[$t][p[$r]] = p[$k]; return this; }`);
       }
       cls.push(`}`, `return V;`);
-      subclasses.push({ src: `(function () { ${cls.join("\n")} })()`, quat: t.kind === "quat" || t.kind === "vec4" });
+      subclasses.push({ src: `(function () { ${cls.join("\n")} })()`, quat: t.kind === "quat" || t.kind === "vec4", field: f.name });
       init.push(`this[${slot}] = new V_${subclasses.length - 1}(this);`);
       parts.push(`get ${key}() { return this[${slot}]; }`);
       parts.push(
@@ -1721,9 +1733,9 @@ function generateAccessor(name, layout, write) {
         // Raw setters write without a tick: only a written view, whose methods store it once.
         if (write) cls.push(`set ${sf.raw}(v) { const p = this.p; ${c.set} }`);
       }
-      cls.push(`_touch() { const p = this.p; p.t[p.r] = p.k; }`);
+      cls.push(`_touch() { const p = this.p; p[$t][p[$r]] = p[$k]; }`);
       cls.push(`}`, `return S;`);
-      subclasses.push({ src: `(function () { ${cls.join("\n")} })()`, struct: t.kind });
+      subclasses.push({ src: `(function () { ${cls.join("\n")} })()`, struct: t.kind, field: f.name });
       init.push(`this[${slot}] = new V_${subclasses.length - 1}(this);`);
       parts.push(`get ${key}() { return this[${slot}]; }`);
       parts.push(write ? `set ${key}(v) { copyStruct(this[${slot}], ${JSON.stringify(t.kind)}, v); }` : `set ${key}(v) { throw new TypeError(READONLY); }`);
@@ -1749,7 +1761,7 @@ function generateAccessor(name, layout, write) {
       cls.push(`toArray() { return Array.from({ length: ${t.len} }, (_, i) => this[i]); } toJSON() { return this.toArray(); }`);
       cls.push(`*[Symbol.iterator]() { for (let i = 0; i < ${t.len}; i++) yield this[i]; }`);
       cls.push(`}`, `return A;`);
-      subclasses.push({ src: `(function () { ${cls.join("\n")} })()` });
+      subclasses.push({ src: `(function () { ${cls.join("\n")} })()`, field: f.name });
       init.push(`this[${slot}] = new V_${subclasses.length - 1}(this);`);
       parts.push(`get ${key}() { return this[${slot}]; }`);
       parts.push(
@@ -1765,11 +1777,12 @@ function generateAccessor(name, layout, write) {
   }
   const views = viewsFor(layout);
   const src = `
-    ${subclasses.map((s, i) => `const V_${i} = ${s.src}; mix(V_${i}.prototype, ${s.struct ? JSON.stringify(s.struct) : s.quat ? "true" : "false"});`).join("\n")}
+    const [${SLOT_NAMES.join(", ")}] = SLOTS;
+    ${subclasses.map((s, i) => `const V_${i} = ${s.src}; mix(V_${i}.prototype, ${s.struct ? JSON.stringify(s.struct) : s.quat ? "true" : "false"}); const $s${i} = Symbol(${JSON.stringify(s.field)});`).join("\n")}
     return class ${write ? "Write" : "Read"} {
       constructor() {
-        this.r = 0; this.k = 0; this.t = null;
-        ${views.map((v) => `this.${v} = null;`).join(" ")}
+        this[$r] = 0; this[$k] = 0; this[$t] = null;
+        ${views.map((v) => `this[$${v}] = null;`).join(" ")}
         ${init.join("\n")}
       }
       toJSON() { const o = {}; ${layout.fields.map((f) => `o[${JSON.stringify(f.name)}] = this[${JSON.stringify(f.name)}];`).join(" ")} return o; }
@@ -1788,7 +1801,7 @@ function generateAccessor(name, layout, write) {
     if (write) for (const [k, fn] of Object.entries(isQuat ? QUAT_WRITE : VEC_WRITE)) add(k, fn);
   };
   try {
-    return new Function("READONLY", "mix", "copyStruct", src)(READONLY, mix, copyStruct);
+    return new Function("READONLY", "mix", "copyStruct", "SLOTS", src)(READONLY, mix, copyStruct, SLOT_KEYS);
   } catch (e) {
     throw new Error(`bevy-ts: generating accessors for ${name}: ${e.message}`);
   }
@@ -1816,10 +1829,10 @@ function accessorPair(name, layout) {
 
 /** Points an accessor at one buffer, row 0. */
 function bindRow(acc, T, buffer, ticks, tick) {
-  for (const v of T.views) acc[v] = buffer ? new VIEW_CTORS[v](buffer) : null;
-  acc.t = ticks ? new Uint32Array(ticks) : DUMMY_TICKS;
-  acc.k = tick;
-  acc.r = 0;
+  for (const v of T.views) acc[VIEW_KEY[v]] = buffer ? new VIEW_CTORS[v](buffer) : null;
+  acc[TICKS] = ticks ? new Uint32Array(ticks) : DUMMY_TICKS;
+  acc[TICK] = tick;
+  acc[ROW] = 0;
 }
 
 const DUMMY_TICKS = new Uint32Array(1);
@@ -1958,13 +1971,13 @@ class QueryParam {
       const buf = tb[2][d.column];
       const a = accs[i];
       if (!buf) {
-        a.present = false;
+        a[PRESENT] = false;
         continue;
       }
-      a.present = true;
-      for (const v of d.cls.views) a[v] = new VIEW_CTORS[v](buf);
-      a.t = tb[3][d.column] ? new Uint32Array(tb[3][d.column]) : DUMMY_TICKS;
-      a.k = this.tick;
+      a[PRESENT] = true;
+      for (const v of d.cls.views) a[VIEW_KEY[v]] = new VIEW_CTORS[v](buf);
+      a[TICKS] = tb[3][d.column] ? new Uint32Array(tb[3][d.column]) : DUMMY_TICKS;
+      a[TICK] = this.tick;
     }
   }
   fill(row, accs, ents, r) {
@@ -1973,8 +1986,8 @@ class QueryParam {
       if (d.entity) row[i] = ents[r * 2] + ents[r * 2 + 1] * 4294967296;
       else {
         const a = accs[i];
-        a.r = r;
-        row[i] = a.present === false ? undefined : a;
+        a[ROW] = r;
+        row[i] = a[PRESENT] === false ? undefined : a;
       }
     }
     return row;
@@ -1994,10 +2007,10 @@ class QueryParam {
         const len = tb[0];
         if (this.data.length === 2 && !this.data[0].entity && !this.data[1].entity) {
           const a0 = accs[0], a1 = accs[1];
-          const p0 = a0.present !== false, p1 = a1.present !== false;
+          const p0 = a0[PRESENT] !== false, p1 = a1[PRESENT] !== false;
           for (let r = 0; r < len; r++) {
-            a0.r = r;
-            a1.r = r;
+            a0[ROW] = r;
+            a1[ROW] = r;
             fn(p0 ? a0 : undefined, p1 ? a1 : undefined);
           }
         } else {
@@ -2078,7 +2091,7 @@ class MessageReaderParam {
       if (!n) continue;
       bindRow(this.acc, this.cls, buf, null, 0);
       for (let r = 0; r < n; r++) {
-        this.acc.r = r;
+        this.acc[ROW] = r;
         fn(this.acc);
       }
     }
@@ -2089,7 +2102,7 @@ class MessageReaderParam {
       for (let r = 0; r < n; r++) {
         const a = new this.cls.Read();
         bindRow(a, this.cls, buf, null, 0);
-        a.r = r;
+        a[ROW] = r;
         yield a;
       }
     }
@@ -2124,6 +2137,10 @@ class MessageWriterParam {
   }
 }
 
+/** `On`'s own state: whether `propagate(false)` stopped it, and how a run binds it. */
+const STOPPED = Symbol("stopped");
+const BIND = Symbol("bind");
+
 /**
  * An observer's `On<E>`: the event's fields directly (`explode.radius`, as Rust's `On` derefs to
  * the event), the target as `entity`, and `propagate(on)`.
@@ -2131,20 +2148,18 @@ class MessageWriterParam {
 function makeOn(cls) {
   const o = cls ? new cls.Read() : {};
   Object.defineProperty(o, "entity", { value: undefined, writable: true, enumerable: true });
-  Object.defineProperty(o, "stopped", { value: false, writable: true });
+  o[STOPPED] = false;
   Object.defineProperty(o, "propagate", {
     value(on) {
-      o.stopped = !on;
+      o[STOPPED] = !on;
     },
   });
-  Object.defineProperty(o, "bind", {
-    value(frame) {
-      // [ArrayBuffer, entity]
-      if (cls) bindRow(o, cls, frame[0], null, 0);
-      o.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
-      o.stopped = false;
-    },
-  });
+  o[BIND] = (frame) => {
+    // [ArrayBuffer, entity]
+    if (cls) bindRow(o, cls, frame[0], null, 0);
+    o.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
+    o[STOPPED] = false;
+  };
   return o;
 }
 
@@ -2262,7 +2277,7 @@ function buildSystem(g, s) {
       case "on": {
         const o = makeOn(p.cls);
         ctx.on = o;
-        consumers.push((frame) => o.bind(frame));
+        consumers.push((frame) => o[BIND](frame));
         return o;
       }
       case "bundle": {
@@ -2755,7 +2770,7 @@ function runSystem(gen, index, dt, elapsed, tick, frame, frames, arena, pool) {
   }
   for (const w of b.ctx.writers) w.flush();
   const [len, over, used] = b.ctx.commands.end();
-  return [len, over, used, b.marks, !!(b.ctx.on && b.ctx.on.stopped)];
+  return [len, over, used, b.marks, !!(b.ctx.on && b.ctx.on[STOPPED])];
 }
 
 function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {

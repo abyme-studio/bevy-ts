@@ -394,13 +394,13 @@ fn a_vector_method_stores_the_tick_once() {
         r#"export function push(q: Query<[Mut<Transform>]>) {
   q.each((t) => {
     const view = t.translation as any;
-    const p = view.p, real = p.t;
+    const p = view.p, T = Object.getOwnPropertySymbols(p).find((s) => s.description === "ticks")!, real = p[T];
     let stores = 0;
-    p.t = new Proxy(real, { set(o: any, k: any, v: any) { stores++; o[k] = v; return true; } });
+    p[T] = new Proxy(real, { set(o: any, k: any, v: any) { stores++; o[k] = v; return true; } });
     view.addScaled(vec3(1, 2, 3), 2);
     const after = stores;
     view.x = 1;
-    p.t = real;
+    p[T] = real;
     console.log(`stores ${after} ${stores}`);
   });
 }
@@ -414,4 +414,66 @@ app.addSystems(Update, push);
     let id = app.world_mut().register_component::<Transform>();
     let ticks = app.world().entity(es[0]).get_change_ticks_by_id(id).unwrap();
     assert!(ticks.is_changed(bevy::ecs::change_detection::Tick::new(since), app.world().read_change_tick()));
+}
+
+#[test]
+fn fields_named_like_the_accessors_state_read_and_write() {
+    // Every name the runtime keeps state under, or once did: the row, the run's tick, the tick
+    // column, the typed views, a nested view's slot, a query row's presence and `On`'s own.
+    let names = ["r", "k", "f32", "f64", "i8", "u8", "i16", "u16", "i32", "u32", "_t", "present"];
+    let decl = |ty: &str| names.map(|n| format!("{n}: {}", if n == "f64" { "f64" } else { ty })).join("; ");
+    let fill = names.iter().enumerate().map(|(i, n)| format!("o.{n} = {}", i + 1)).collect::<Vec<_>>().join("; ");
+    let dump = names.map(|n| format!("${{o.{n}}}")).join(",");
+    let body = format!(
+        r#"import {{ app, Component, EntityEvent, Message, Resource, chain, f32, f64, u32, vec3, PostUpdate, Startup }} from "bevy-ts";
+import type {{ Commands, Entity, Local, MessageReader, MessageWriter, Mut, On, Query, ResMut }} from "bevy-ts";
+export class Slots extends Component {{ static path = "game::Slots"; t: vec3 = vec3(0, 0, 0); {c} }}
+export class SlotsRes extends Resource {{ static path = "game::SlotsRes"; declare t: vec3; {r} }}
+export class SlotsMsg extends Message {{ static path = "game::SlotsMsg"; declare t: f32; {r} }}
+export class SlotsHit extends EntityEvent {{ static path = "game::SlotsHit"; static propagate = true; declare t: f32; declare stopped: f32; declare bind: f32 }}
+const dump = (tag: string, o: any) => console.log(`${{tag}} ${{o.t.x ?? o.t}},${{o.t.y ?? ""}},${{o.t.z ?? ""}} {dump}`);
+let frame = 0;
+export function spawn(c: Commands) {{ c.spawn(Slots.of()); }}
+export function writeAll(q: Query<[Mut<Slots>]>, res: ResMut<SlotsRes>, l: Local<{{ t: vec3; {lt} }}>, w: MessageWriter<SlotsMsg>) {{
+  const f = frame++;
+  if (f === 2) dump("local", l);
+  if (f !== 1) return;
+  q.each((o) => {{ o.t.set(7, 8, 9); {fill}; }});
+  for (const o of [res, l] as any[]) {{ o.t = [7, 8, 9]; {fill}; }}
+  const m = w.next() as any; m.t = 7; {fill_m};
+}}
+export function readAll(q: Query<[Entity, Slots]>, res: ResMut<SlotsRes>, r: MessageReader<SlotsMsg>, c: Commands) {{
+  if (frame !== 2) return;
+  q.each((e, o) => {{ dump("component", o); c.trigger(SlotsHit.of({{ entity: e, t: 1, stopped: 2, bind: 3 }})); }});
+  dump("resource", res);
+  r.each((m) => dump("message", m));
+}}
+export function onHit(h: On<SlotsHit>) {{ console.log(`event ${{h.t}},${{h.stopped}},${{h.bind}}`); h.propagate(false); }}
+app.insertResource(SlotsRes.of()).addMessage(SlotsMsg).addSystems(Startup, spawn).addSystems(PostUpdate, chain(writeAll, readAll)).addObserver(onHit);
+"#,
+        c = decl("f32").split("; ").map(|f| format!("{f} = 0")).collect::<Vec<_>>().join("; "),
+        r = decl("f32").split("; ").map(|f| format!("declare {f}")).collect::<Vec<_>>().join("; "),
+        lt = decl("f32"),
+        fill = fill,
+        fill_m = fill.replace("o.", "m."),
+        dump = dump,
+    );
+    let (_, mut app) = load("slot-names", &body);
+    let since = tick(&mut app);
+    updates(&mut app, 4);
+    let m = messages(&app);
+    let want = format!("7,8,9 {}", (1..=names.len()).map(|i| i.to_string()).collect::<Vec<_>>().join(","));
+    for tag in ["component", "resource", "local"] {
+        assert!(m.contains(&format!("{tag} {want}")), "{tag}: {m:?}");
+    }
+    let want_msg = format!("7,, {}", (1..=names.len()).map(|i| i.to_string()).collect::<Vec<_>>().join(","));
+    assert!(m.contains(&format!("message {want_msg}")), "message: {m:?}");
+    assert!(m.contains(&"event 1,2,3".to_string()), "event: {m:?}");
+    let e = changed_since(&mut app, "game::Slots", since);
+    assert_eq!(e.len(), 1, "the written row is changed");
+    let v = read_ts(&app, e[0], "game::Slots").unwrap();
+    assert_eq!(v["t"], json!([7.0, 8.0, 9.0]));
+    for (i, n) in names.iter().enumerate() {
+        assert_eq!(v[*n], json!((i + 1) as f64), "{n} in Rust");
+    }
 }
