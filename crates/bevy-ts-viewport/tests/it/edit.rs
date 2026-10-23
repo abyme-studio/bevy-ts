@@ -1010,7 +1010,7 @@ mod boot {
     }
 
     fn decl(name: &str, schedule: ScheduleDecl, params: Vec<ParamDecl>) -> SystemDecl {
-        SystemDecl { name: name.into(), schedule, params, after: vec![], before: vec![], sets: vec![], condition: None, location: None }
+        SystemDecl { name: name.into(), schedule, params, after: vec![], before: vec![], sets: vec![], condition: None, groups: vec![], location: None }
     }
 
     /// `setup` in `Startup`, `tick` in `Update`, `moved` on `Insert<Transform>`, and `wave` in
