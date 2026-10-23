@@ -128,3 +128,39 @@ fn a_reserved_param_name_fails_at_material() {
     assert!(e.message.contains("<material> takes gltfMaterial itself"), "{e:?}");
     assert_eq!(e.location.clone().expect("a location").line, 5);
 }
+
+// Change material-alpha: `<MaterialAlpha>` bound on a scene root.
+
+#[test]
+fn a_bound_material_alpha_fades_a_scene_frame_by_frame() {
+    let fade = "<MaterialAlpha alpha={() => k()} />";
+    let src = game(fade)
+        .replace("import { WorldAssetRoot } from \"bevy-ts/bevy\";", "import { MaterialAlpha, WorldAssetRoot } from \"bevy-ts/bevy\";\nimport { signal, Update, type Local, type u32 } from \"bevy-ts\";")
+        .replace("\napp.scene(", "\nexport const [k, setK] = signal(1);\nexport function fade(frames: Local<{ n: u32 }>) { frames.n += 1; setK(Math.max(0, 1 - frames.n / 20)); }\napp.addSystems(Update, fade);\n\napp.scene(");
+    let ship = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../bevy-ts-material/tests/assets/models/ship.gltf")).unwrap();
+    let dir = project("scene-material-alpha", &[("src/game.tsx", &src), ("src/glow.wgsl", WGSL), ("assets/models/ship.gltf", &ship)]);
+    let mut app = scene_app(&dir);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let alphas = |app: &mut App| {
+        let world = app.world_mut();
+        let hs: Vec<Handle<StandardMaterial>> = world.query_filtered::<&MeshMaterial3d<StandardMaterial>, With<GltfMaterialName>>().iter(world).map(|m| m.0.clone()).collect();
+        let assets = world.resource::<Assets<StandardMaterial>>();
+        hs.iter().map(|h| assets.get(h).map(|m| (m.base_color.alpha(), m.alpha_mode))).collect::<Option<Vec<_>>>().unwrap_or_default()
+    };
+    until(&mut app, "the ship faded", |app| {
+        let a = alphas(app);
+        a.len() == 3 && a.iter().all(|(x, m)| *x < 1.0 && *m == AlphaMode::Blend)
+    });
+    let assets = app.world().resource::<Assets<StandardMaterial>>().len();
+    let mut last = f32::MAX;
+    for _ in 0..40 {
+        app.update();
+        let a = alphas(&mut app);
+        assert_eq!(app.world().resource::<Assets<StandardMaterial>>().len(), assets, "no asset added");
+        assert!(a.iter().all(|(x, _)| *x == a[0].0), "every mesh at the root's alpha: {a:?}");
+        assert!(a[0].0 <= last);
+        last = a[0].0;
+    }
+    assert_eq!(last, 0.0);
+}

@@ -1,12 +1,16 @@
 //! `MaterialAlpha` (openspec change `material-alpha`): fades what an entity draws. Its targets
-//! are the entity's own `MeshMaterial3d<StandardMaterial>`. Originals are shared (every red cube
-//! holds one), so each target draws with a copy owned by the entity, one per distinct original,
-//! edited in place as `alpha` changes. Removing it puts the originals back and drops the copies.
+//! are the entity's own `MeshMaterial3d<StandardMaterial>` and, on a glTF scene root, the meshes
+//! its scene spawned. Originals are shared (every red cube, every instance of a model), so each
+//! target draws with a copy owned by the entity, one per distinct original, edited in place as
+//! `alpha` changes. Removing it puts the originals back and drops the copies.
 
 use bevy::asset::AssetEventSystems;
 use bevy::ecs::entity::EntityHashSet;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+use bevy::world_serialization::WorldInstanceReady;
+
+use crate::scene::{SceneMaterialSet, SceneMaterialTargets, scene_entities};
 
 /// Fades the entity's materials: each target draws with a copy whose `base_color` alpha is the
 /// original's times `alpha` (clamped to 0..1), in `Blend` below 1 when the original was `Opaque`,
@@ -49,11 +53,23 @@ impl MaterialAlphaTargets {
     }
 }
 
+/// Faded roots whose scene became ready since the last `PostUpdate`.
+#[derive(Resource, Default)]
+struct ReadyRoots(EntityHashSet);
+
 pub(crate) fn plugin(app: &mut App) {
-    app.register_type::<MaterialAlpha>().add_systems(
+    app.register_type::<MaterialAlpha>().init_resource::<ReadyRoots>().add_observer(on_ready).add_systems(
         PostUpdate,
-        changed.after(AssetEventSystems).run_if(|q: Query<(), Faded>| !q.is_empty()),
+        // After scene-material, so its swaps and restores are applied before this reads the meshes.
+        changed.after(AssetEventSystems).after(SceneMaterialSet).run_if(|q: Query<(), Faded>| !q.is_empty()),
     );
+}
+
+/// A faded root's scene is ready (spawned, or spawned again after a reload): fade its meshes.
+fn on_ready(ready: On<WorldInstanceReady>, faded: Query<(), With<MaterialAlpha>>, mut roots: ResMut<ReadyRoots>) {
+    if faded.contains(ready.entity) {
+        roots.0.insert(ready.entity);
+    }
 }
 
 /// Faded, or faded until `MaterialAlpha` was removed: the system has work only with one.
@@ -62,10 +78,12 @@ type Faded = Or<(With<MaterialAlpha>, With<MaterialAlphaTargets>)>;
 /// `MaterialAlpha` added or changed, or removed from an entity that still holds copies.
 type Asks = Or<(Changed<MaterialAlpha>, (With<MaterialAlphaTargets>, Without<MaterialAlpha>))>;
 
-/// The entities `entity` fades: itself. TSX children are not in it; a child takes its own
-/// `MaterialAlpha`.
+/// The entities `entity` fades: itself, and the meshes of its scene instance (none before it is
+/// ready), those that hold a `StandardMaterial`. TSX children are not in it; a child takes its own
+/// `MaterialAlpha`. A mesh scene-material gave a script material holds none.
 fn targets(world: &World, entity: Entity) -> Vec<Entity> {
     let mut out = vec![entity];
+    out.extend(scene_entities(world, entity));
     out.retain(|e| world.get::<MeshMaterial3d<StandardMaterial>>(*e).is_some());
     out
 }
@@ -85,21 +103,21 @@ fn copy_of(original: &StandardMaterial, alpha: f32) -> StandardMaterial {
     StandardMaterial { base_color, alpha_mode, ..original.clone() }
 }
 
-/// What asks for a sync: `MaterialAlpha` added, changed or removed, a mesh given a material that
-/// is not a copy (its owner is the nearest ancestor with `MaterialAlpha`), an original reloaded.
+/// What asks for a sync: `MaterialAlpha` added, changed or removed, a scene ready, a mesh given a
+/// material (its owner is the nearest ancestor with `MaterialAlpha`), an original reloaded.
 fn changed(
     asks: Query<Entity, Asks>,
+    mut ready: ResMut<ReadyRoots>,
     given: Query<Entity, Changed<MeshMaterial3d<StandardMaterial>>>,
-    owners: Query<(), With<MaterialAlpha>>,
+    owners: Query<(Entity, Option<&MaterialAlphaTargets>), With<MaterialAlpha>>,
     parents: Query<&ChildOf>,
-    holders: Query<(Entity, &MaterialAlphaTargets)>,
     mut events: MessageReader<AssetEvent<StandardMaterial>>,
     mut commands: Commands,
 ) {
     let mut reloaded: Vec<(Entity, Id)> = Vec::new();
     for ev in events.read() {
         if let AssetEvent::Modified { id } = ev {
-            reloaded.extend(holders.iter().filter(|(_, t)| t.copies.contains_key(id)).map(|(e, _)| (e, *id)));
+            reloaded.extend(owners.iter().filter(|(_, t)| t.is_some_and(|t| t.copies.contains_key(id))).map(|(e, _)| (e, *id)));
         }
     }
     for (e, id) in reloaded {
@@ -107,7 +125,7 @@ fn changed(
     }
     let given = given.iter().filter_map(|e| std::iter::once(e).chain(parents.iter_ancestors(e)).find(|a| owners.contains(*a)));
     let mut seen = EntityHashSet::default();
-    for e in asks.iter().chain(given) {
+    for e in asks.iter().chain(ready.0.drain()).chain(given) {
         if seen.insert(e) {
             commands.queue(move |world: &mut World| sync(world, e));
         }
@@ -179,9 +197,17 @@ pub fn sync(world: &mut World, entity: Entity) {
 }
 
 /// `MaterialAlpha` removed: every mesh still drawing one of the entity's copies draws its original
-/// again, and dropping `MaterialAlphaTargets` frees the copies.
+/// again, and dropping `MaterialAlphaTargets` frees the copies. A copy scene-material kept as a
+/// mesh's own material, to put back when its script material goes, becomes the original.
 fn restore(world: &mut World, entity: Entity) {
     let Some(state) = world.entity_mut(entity).take::<MaterialAlphaTargets>() else { return };
+    if let Some(mut kept) = world.get_mut::<SceneMaterialTargets>(entity) {
+        for (_, h) in kept.0.iter_mut() {
+            if let Some(o) = state.original(h.id()) {
+                *h = o.clone();
+            }
+        }
+    }
     let mut candidates = targets(world, entity);
     candidates.extend(state.targets.iter().copied());
     for t in candidates {

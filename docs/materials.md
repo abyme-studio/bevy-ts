@@ -133,17 +133,19 @@ import { MaterialAlpha } from "bevy-ts/bevy";
 </entity>
 ```
 
-- It fades the entity's own `MeshMaterial3d<StandardMaterial>`. TSX children are not faded; give
-  each its own. A mesh drawing a script material is left alone.
+- It fades the entity's own `MeshMaterial3d<StandardMaterial>` and, on a glTF scene root
+  (`WorldAssetRoot`), every mesh its scene spawned, again whenever the scene is ready. TSX children
+  are not faded; give each its own. A mesh drawing a script material (above) is left alone.
 - Each faded mesh draws with a copy of its material owned by the entity, at the original's alpha
   times `alpha` (clamped to 0..1), in `Blend` below 1 when the original was opaque, masked or
   alpha-to-coverage. Other entities sharing the material are not faded. A changed `alpha` edits
-  the copies in place; it makes no asset. A material changed under it (a TS save, an asset saved
+  the copies in place; it makes no asset. A material changed under it (a TS save, a glTF saved
   again) is faded again.
 - Removing it gives every mesh its own material back and drops the copies. Remove it when not
   fading: while it is on, even at 1, the entity's meshes do not batch with others sharing their
   material, and each changed frame prepares the copies again.
-- Bevy casts no shadow from blended meshes, and sorts them per mesh.
+- Bevy casts no shadow from blended meshes, and sorts them per mesh, so parts of one model may
+  overlap in the wrong order mid-fade.
 
 ## Known limits
 
@@ -167,3 +169,9 @@ scene-animation does. It walks the instance's own entities (`iter_instance_entit
 root's descendants, which is how TSX children stay untouched. That walk is
 `bevy_ts_material::scene_entities(world, root)`. Every swap runs in `SceneMaterialSet`
 (`PostUpdate`), so other per-root work on a scene's meshes can run after it.
+
+`MaterialAlpha` is `alpha.rs`. It runs after `SceneMaterialSet` on the same walk, so a mesh
+scene-material swapped has no `StandardMaterial` and is skipped. When scene-material swaps a mesh
+that holds a fade copy, it keeps the copy as the mesh's own material; removing `MaterialAlpha`
+rewrites those back to the originals in `SceneMaterialTargets`, so each removal, in either order,
+leaves what the other still asks.
