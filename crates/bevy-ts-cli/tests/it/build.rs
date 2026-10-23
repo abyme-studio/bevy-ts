@@ -71,7 +71,7 @@ fn the_arena_builds_and_plays() {
     }
 
     let (engine, rx) = play(&game);
-    let lines = wait_for(&rx, &["generation 1 applied: 4 systems"], LAUNCH);
+    let lines = wait_for(&rx, &["generation 1 applied: 3 systems"], LAUNCH);
     std::thread::sleep(Duration::from_secs(2));
     let ports = listening(engine.id());
     drop(engine);

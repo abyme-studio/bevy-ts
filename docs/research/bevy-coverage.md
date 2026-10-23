@@ -45,7 +45,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `spawn(<element/>)` returns no entity; `entity(e).insert(<X/>)` mounts a child, not on `e` | partial | `core.js:1893`, `core.js:1801` | new: `ecs-queries` |
 | `spawnBatch`, `insertIfNew`, `retain`, `clear`, `cloneAndSpawn` | missing | — | new: `ecs-queries` |
 | 256 spawns per system run | partial (a limit Bevy does not have) | `bevy-ts/src/commands.rs:42` | new: `ecs-queries` (lift or document) |
-| `spawnNative` recipes `camera3d`, `directionalLight`, `cuboid` | hack | `bevy-ts/src/recipes.rs:79-109`; examples `cube`, `arena` use `camera3d` | reflect-coverage stage 2 removes them |
+| `spawnNative` recipes `camera3d`, `directionalLight`, `cuboid` | hack | `bevy-ts/src/recipes.rs:79-109`; no example uses `camera3d` | reflect-coverage stage 2 removes them |
 | `custom(kind, payload)` | hack, kept for plugin opcodes | `bevy-ts/tests/it/plugin_api.rs` | — (a plugin seam, not a gameplay path) |
 | TS messages | idiomatic (TS queues, not Bevy `Messages<T>`) | `surface.rs` `two_readers_see_the_same_messages_once_and_they_expire` | — |
 | Reading Rust messages (`KeyboardInput`, `AssetEvent`, `WindowResized`, `CollisionEvent`) | missing; ports forward by hand (`plugin_api::write_message`) | `bevy-ts/src/systems.rs:470` | new: `rust-events` |
@@ -108,7 +108,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
-| Cameras: `Camera`, `Camera3d`, `Hdr`, `RenderTarget` | partial: `camera3d` recipe (hack) or TSX `<Camera3d/>` (untested); no look-at | `examples/cube/src/game.ts:12` | reflect-coverage (recipes go, `.of`), game-camera-edit (editor side) |
+| Cameras: `Camera`, `Camera3d`, `Hdr`, `RenderTarget` | partial: `camera3d` recipe (hack) or TSX `<Camera3d/>`; no look-at | `examples/cube/src/cube.tsx`, `play_stop.rs` | reflect-coverage (recipes go, `.of`), game-camera-edit (editor side) |
 | `Projection`, `ScalingMode`, `Viewport` | missing → TSX after reflect-enums-color | — | reflect-enums-color |
 | World to viewport | missing on main | — | world-to-screen |
 | Viewport to world (cursor ray), `MeshRayCast` | missing | — | new: `camera-rays` |

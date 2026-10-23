@@ -61,9 +61,9 @@ does for a window. A game's own `IsDefaultUiCamera` on another camera, or a root
 `UiTargetCamera`, wins.
 
 Walked 2026-10-22 on the operator's M5 Max (macOS 26.4): `bevy-ts build examples/cube`, then a
-Finder double-click on `dist/aarch64-apple-darwin/cube` opened a window with the cube bobbing. The
-arena has no camera of its own (the studio supplies one under `bevy-ts dev`), so a built arena
-shows black until the game spawns a camera.
+Finder double-click on `dist/aarch64-apple-darwin/cube` opened a window with the cube bobbing. A
+game needs a camera of its own: the studio's editor camera is not shipped. The examples place
+theirs in their TSX scene.
 
 A shipped game loads its scripts once, as one generation: no compiler, no file watcher, no remote
 protocol, no inspector, none of the studio's viewport tools, bevy-ts in non-dev mode, and assets read from `game/assets/` unwatched.

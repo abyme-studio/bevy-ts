@@ -1,6 +1,7 @@
 //! The arena under `bevy-ts dev --viewport` in a process of its own: its meshes are lit in play,
 //! and lit again after edit mode and back. A mesh with no light renders black. Booted in edit, as
-//! the studio boots it, Play draws the game camera's picture into the viewport.
+//! the studio boots it, Play draws the game camera's picture into the viewport. Booted in edit, the
+//! game view draws each example from the camera its scene places, before any Play.
 //!
 //! `cargo test -p bevy-ts-cli --test it play_after_edit:: -- --ignored --nocapture`
 #![cfg(target_os = "macos")]
@@ -73,7 +74,10 @@ fn black(px: &[[u8; 4]]) -> usize {
     px.iter().filter(|p| p[..3].iter().all(|c| *c < 6)).count()
 }
 
-/// The engine on the arena, attached at W×H, ticking at 120 Hz from a thread as the hole's display
+/// The arena's entry.
+const ARENA: &str = "arena/src/game.tsx";
+
+/// The engine on an example's entry (`ARENA`), attached at W×H, ticking at 120 Hz from a thread as the hole's display
 /// link does; `edit` boots it as the studio does (`--edit`).
 struct Run {
     port: u16,
@@ -85,8 +89,8 @@ struct Run {
 }
 
 impl Run {
-    fn start(edit: bool, name: &str) -> Run {
-        let arena = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena/src/game.tsx");
+    fn start(entry: &str, edit: bool, name: &str) -> Run {
+        let arena = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples").join(entry);
         let log = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}-engine.log"));
         let port = crate::common::free_port();
         let mut args = vec!["dev".to_string(), arena.to_str().unwrap().to_string(), "--viewport".into()];
@@ -149,7 +153,7 @@ fn plain(px: &[[u8; 4]]) -> f32 {
 #[test]
 #[ignore = "spawns the engine binary on the arena; the play-after-edit process runs it"]
 fn the_arena_is_lit_after_edit_and_back_to_play() {
-    let mut run = Run::start(false, "play-after-edit");
+    let mut run = Run::start(ARENA, false, "play-after-edit");
     let mut seen = Seen::default();
     let play = black(&frames(&run.viewer, &mut seen, 60));
     post(run.port, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
@@ -169,7 +173,7 @@ fn the_arena_is_lit_after_edit_and_back_to_play() {
 #[test]
 #[ignore = "spawns the engine binary on the arena; the play-after-edit process runs it"]
 fn play_from_an_edit_boot_draws_the_arena_into_the_viewport() {
-    let mut run = Run::start(true, "play-from-edit");
+    let mut run = Run::start(ARENA, true, "play-from-edit");
     let mut seen = Seen::default();
     let edit = frames(&run.viewer, &mut seen, 30);
     let r = post(run.port, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
@@ -196,5 +200,28 @@ fn play_from_an_edit_boot_draws_the_arena_into_the_viewport() {
         // The arena's own play frame is about 0.88 sky; a frame only cleared is 1.
         assert!(plain(px) < 0.95,"{name}: the viewport is one plain colour ({:.3} of it)", plain(px));
         assert!(black(px) < n / 2, "{name}: the viewport is unlit ({} of {n} pixels black)", black(px));
+    }
+}
+
+/// Booted in edit, as the studio boots it, the game view draws each example from the camera its
+/// scene places, lit, before any Play: no `Startup` has run.
+#[test]
+#[ignore = "spawns the engine binary on the examples; the play-after-edit process runs it"]
+fn the_game_view_draws_each_example_in_edit() {
+    for entry in [ARENA, "cube/src/game.ts", "foxes/src/game.tsx"] {
+        let name = format!("game-view-{}", entry.split('/').next().unwrap());
+        let mut run = Run::start(entry, true, &name);
+        let mut seen = Seen::default();
+        frames(&run.viewer, &mut seen, 30);
+        let r = post(run.port, "bevy-ts/viewport_mode", json!({ "camera": "game" })).unwrap();
+        assert_eq!((r["mode"].as_str(), r["camera"].as_str(), r["started"].as_bool()), (Some("edit"), Some("game"), Some(false)), "{entry}: {r}");
+        assert_eq!(r["gameCameras"], 1, "{entry}: its scene's camera counts in edit: {r}");
+        let game = frames(&run.viewer, &mut seen, 90);
+        run.finish();
+        dump(&game, &name);
+        let n = game.len();
+        println!("{entry}: game view in edit, plain share {:.3}, black {} of {n}", plain(&game), black(&game));
+        assert!(plain(&game) < 0.95, "{entry}: the game view is one plain colour ({:.3} of it)", plain(&game));
+        assert!(black(&game) < n / 2, "{entry}: the game view is unlit ({} of {n} pixels black)", black(&game));
     }
 }

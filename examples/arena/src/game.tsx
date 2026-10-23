@@ -1,16 +1,10 @@
-// The arena: a player, a HUD and the sun in TSX, the enemies placed by assets/levels/arena.bsn, a camera, and
-// three systems that play. `bevy-ts dev src/game.tsx`.
-import { app, type Commands, type Entity, hex, type Local, type Mut, type Query, ref, type Res, Startup, Time, Transform, type u32, Update, type With, type Without } from "bevy-ts";
-import { DirectionalLight } from "bevy-ts/bevy";
+// The arena: a player, a HUD, the sun and the camera in TSX, the enemies placed by assets/levels/arena.bsn,
+// and three systems that play. `bevy-ts dev src/game.tsx`.
+import { app, type Commands, type Entity, hex, type Local, type Mut, type Query, ref, type Res, Time, Transform, type u32, Update, type With, type Without } from "bevy-ts";
+import { Camera3d, DirectionalLight } from "bevy-ts/bevy";
 import { Foe, Health } from "./enemy.tsx";
 import { Hud } from "./hud.tsx";
 import { Player, PlayerUnit } from "./player.tsx";
-
-/** The game's camera. It sits where the editor's first view does, so edit mode opens on the same
- * view. */
-export function stage(commands: Commands) {
-  commands.spawnNative("camera3d", { position: [-6, 5, 10], lookAt: [0, 0, 0] });
-}
 
 /** Every 30 frames, each enemy within 10 units hurts the player by 5. */
 export function damage(
@@ -49,9 +43,15 @@ app.scene("arena", () => (
       <DirectionalLight shadow_maps_enabled color={hex("#fff1dc")} />
       <Transform translation={[3, 6, 2]} rotation={[-0.4341, 0.4107, 0.2323, 0.7674]} />
     </entity>
+    {/* The camera is scene too, so edit mode's game view shows the arena. At (-6, 5, 10), looking at the
+        origin: where the editor's first view sits, so edit mode opens on the same view. */}
+    <entity name="camera">
+      <Camera3d />
+      <Transform translation={[-6, 5, 10]} rotation={[-0.1938, -0.2615, -0.0537, 0.944]} />
+    </entity>
     <PlayerUnit handle={player} />
     <Hud player={player} />
   </>
 ));
 app.level("levels/arena.bsn");
-app.addSystems(Startup, stage).addSystems(Update, damage, bob, cull);
+app.addSystems(Update, damage, bob, cull);

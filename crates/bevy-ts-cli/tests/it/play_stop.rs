@@ -520,18 +520,23 @@ fn mode_watch(app: &mut App, key: &Value) -> Option<Value> {
     app.world_mut().run_system_with(id, Some(key.clone())).unwrap().unwrap()
 }
 
-/// The arena's level gains a camera through `level_write`: the watch says `cameras`, the game view
-/// shows it, and the HUD draws there as in Play.
+/// The arena's scene camera counts in edit before any Play, and the game view draws it. Its level
+/// gains a second camera through `level_write`: the watch says `cameras`, the game view shows it, and
+/// the HUD draws there as in Play.
 #[test]
 fn a_level_camera_reaches_the_watch_and_the_game_view_draws_the_hud() {
     let mut app = arena_example("game-camera-hud");
     let key = json!({ "n": 1 });
     let first = mode_watch(&mut app, &key).expect("a message on open");
-    assert_eq!((first["gameCameras"].as_u64(), first["cause"].as_str()), (Some(0), Some("engine")), "the arena's camera is a Startup's: {first}");
+    assert_eq!((first["gameCameras"].as_u64(), first["cause"].as_str()), (Some(1), Some("engine")), "the arena's camera is its scene's: {first}");
     let r = call(&mut app, "bevy-ts/viewport_mode", json!({ "camera": "game" }));
-    assert_eq!((r["camera"].as_str(), r["started"].as_bool(), r["gameCameras"].as_u64()), (Some("game"), Some(false), Some(0)), "{r}");
-    app.update();
+    assert_eq!((r["camera"].as_str(), r["started"].as_bool(), r["gameCameras"].as_u64()), (Some("game"), Some(false), Some(1)), "{r}");
+    updates(&mut app, 5);
     mode_watch(&mut app, &key);
+    let world = app.world_mut();
+    let own = world.query::<(Entity, &Name)>().iter(world).find(|(_, n)| n.as_str() == "camera").map(|(e, _)| e).expect("the scene's camera");
+    assert!(world.get::<Camera>(own).unwrap().is_active, "the game view shows the scene's camera in edit");
+    assert!(ui_shows(&mut app), "and the HUD over it");
 
     let base = call(&mut app, "bevy-ts/level_list", Value::Null)["levels"][0]["hash"].clone();
     let w = call(&mut app, "bevy-ts/level_write", json!({
@@ -545,9 +550,9 @@ fn a_level_camera_reaches_the_watch_and_the_game_view_draws_the_hud() {
     let mut seen = vec![];
     until(&mut app, "the written camera was never counted", |app| {
         seen.extend(mode_watch(app, &key));
-        seen.iter().any(|m| m["gameCameras"] == 1)
+        seen.iter().any(|m| m["gameCameras"] == 2)
     });
-    let m = seen.iter().find(|m| m["gameCameras"] == 1).unwrap();
+    let m = seen.iter().find(|m| m["gameCameras"] == 2).unwrap();
     assert_eq!((m["cause"].as_str(), m["camera"].as_str()), (Some("cameras"), Some("game")), "{m}");
     updates(&mut app, 5);
     let world = app.world_mut();
