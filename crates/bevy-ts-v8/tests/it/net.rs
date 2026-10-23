@@ -237,7 +237,7 @@ fn a_dropped_connection_reports_1006() {
 
 /// Task 5.4: a burst of 2,000 1 KiB messages in one frame, each parsed by the script. Writes the
 /// frame's main-thread cost to bench/networking/results/burst.md. Run in release:
-/// `cargo test --release -p bevy-ts-v8 --test it net::burst_bench -- --ignored --nocapture`.
+/// `cargo static test --release -p bevy-ts-v8 --test it net::burst_bench -- --ignored --nocapture`.
 #[test]
 #[ignore]
 fn burst_bench() {
@@ -279,7 +279,7 @@ ws.onmessage = (e) => { const r = JSON.parse(e.data); n++; sum += r.seq; };
     };
     let (mi, mb) = (med(&mut idle.clone()), med(&mut burst.clone()));
     let out = format!(
-        "# Burst of 2,000 1 KiB messages in one frame\n\nHeadless app (MinimalPlugins), V8 backend, fake transport; the script JSON-parses every message.\n`cargo test --release -p bevy-ts-v8 --test it net::burst_bench -- --ignored --nocapture`, 8 rounds.\n\n| frame | median ms | all ms |\n| --- | --- | --- |\n| idle | {mi:.3} | {idle:.3?} |\n| 2,000 × 1 KiB | {mb:.3} | {burst:.3?} |\n\nThe burst's main-thread cost over an idle frame: {:.3} ms.\n",
+        "# Burst of 2,000 1 KiB messages in one frame\n\nHeadless app (MinimalPlugins), V8 backend, fake transport; the script JSON-parses every message.\n`cargo static test --release -p bevy-ts-v8 --test it net::burst_bench -- --ignored --nocapture`, 8 rounds.\n\n| frame | median ms | all ms |\n| --- | --- | --- |\n| idle | {mi:.3} | {idle:.3?} |\n| 2,000 × 1 KiB | {mb:.3} | {burst:.3?} |\n\nThe burst's main-thread cost over an idle frame: {:.3} ms.\n",
         mb - mi
     );
     println!("{out}");

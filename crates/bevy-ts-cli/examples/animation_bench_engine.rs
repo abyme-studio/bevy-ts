@@ -9,7 +9,12 @@
 //!
 //! The probe: each update's main-world time (`First` to `Last`), and the frames and time from the
 //! frame N foxes exist to the frame all N players have an active animation.
-//! `cargo build --release -p bevy-ts-cli --example animation_bench_engine`
+//! `cargo static build --release -p bevy-ts-cli --example animation_bench_engine`
+
+// A release build of this bench links Bevy statically, as what ships does: `cargo static`
+// (docs/build-cache.md, Bevy as a dylib for tests).
+#[cfg(all(not(debug_assertions), not(bevy_ts_static)))]
+compile_error!("a release build of this bench links the Bevy dylib: build it with `cargo static`");
 
 use bevy::animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex};
 use bevy::animation::AnimationPlayer;

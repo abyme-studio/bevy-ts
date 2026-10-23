@@ -3,7 +3,7 @@
 //! watcher) and tsx host calls per frame. The enemies are placed by `assets/levels/arena.bsn`
 //! (levels task 6.1), so their edits are level edits. Prints one line per step; `examples/arena/WALK.md`
 //! records a release run:
-//! `cargo test --release -p bevy-ts-cli --test it arena_walk:: -- --nocapture`.
+//! `cargo static test --release -p bevy-ts-cli --test it arena_walk:: -- --nocapture`.
 
 use crate::common;
 

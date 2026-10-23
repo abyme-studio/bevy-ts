@@ -2,7 +2,7 @@
 //! against `examples/arena`, in V8, headless and in-process, under both `levels.prefabEdits`
 //! policies. Prints each step and the file diff every write made; `examples/arena/LEVELS_WALK.md`
 //! records a release run:
-//! `cargo test --release -p bevy-ts-cli --test it levels_walk:: -- --nocapture`.
+//! `cargo static test --release -p bevy-ts-cli --test it levels_walk:: -- --nocapture`.
 
 use crate::common;
 

@@ -10,7 +10,7 @@
 //! - `idle`: no viewport visible, the engine's idle cost in play;
 //! - `idle-edit`: the same in edit mode, as the studio keeps an open project's engine.
 //!
-//! `PREVIEW_MODEL=/path/model.glb SCENARIO=visible cargo test --release -p bevy-ts-cli --test it preview_bench:: -- --ignored --nocapture`
+//! `PREVIEW_MODEL=/path/model.glb SCENARIO=visible cargo static test --release -p bevy-ts-cli --test it preview_bench:: -- --ignored --nocapture`
 //! Each run appends a row to `target/preview-bench.md`.
 #![cfg(target_os = "macos")]
 

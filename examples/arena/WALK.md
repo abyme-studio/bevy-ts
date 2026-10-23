@@ -3,7 +3,7 @@
 The eight demo steps of `openspec/changes/archive/2026-10-21-tsx/design.md` ("First demo") against `examples/arena/src`, in V8, headless and in-process, by `crates/bevy-ts-cli/tests/arena_walk.rs`:
 
 ```
-cargo test --release -p bevy-ts-cli --test arena_walk -- --nocapture
+cargo static test --release -p bevy-ts-cli --test it arena_walk:: -- --nocapture
 ```
 
 It runs in-process rather than against the binary so it can click the Spawn button (a triggered `PointerClick` on its entity) and read host calls per frame. Reload times are compile plus apply, with no file watcher. Release build, 2026-10-20, re-run after levels moved the enemies into `assets/levels/arena.bsn` (levels task 6.1), Apple M5 Max (shared with other agents' builds):

@@ -9,7 +9,7 @@
 //! - `D`, a diagnostic: the foxes spawned by Rust as in A, played by `PlayAnimation`.
 //!
 //! `scripts/animation-bench.sh` builds the engine and runs the arms; one run is
-//! `ANIMATION_BENCH_ENGINE=target/release/examples/animation_bench_engine ARM=B N=100 cargo test --release -p bevy-ts-cli --test it animation_bench:: -- --ignored --nocapture`.
+//! `ANIMATION_BENCH_ENGINE=target/release/examples/animation_bench_engine ARM=B N=100 cargo static test --release -p bevy-ts-cli --test it animation_bench:: -- --ignored --nocapture`.
 //! Each run appends a row to `target/animation-bench.md`: the probe's main-world update time
 //! (mean, p95), spawn-to-ready (frames, ms), the game's GPU p50, CPU and RSS.
 #![cfg(target_os = "macos")]

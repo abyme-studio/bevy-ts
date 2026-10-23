@@ -3,7 +3,7 @@
 //! its parts called one by one as Stop calls them: `OnExit(Play)`, the rebuild (a fresh isolate
 //! and the generation applied), the levels' restore and settle; then the next Play's `Startup`.
 //! Ignored by default; run it in release:
-//! `cargo test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture`.
+//! `cargo static test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture`.
 #![cfg(target_os = "macos")]
 
 use crate::common;
