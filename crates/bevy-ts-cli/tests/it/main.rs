@@ -43,6 +43,7 @@ mod reflect_values;
 mod reload;
 mod scene_material;
 mod schedules;
+mod screenshot;
 mod stop_bench;
 mod surface;
 mod systems;

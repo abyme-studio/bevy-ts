@@ -1,17 +1,20 @@
 //! The bevy-ts Remote Protocol: `bevy-ts/*` methods served next to stock `bevy_remote`.
 //!
 //! The contract is `protocol/bevy-ts.openrpc.json`; [`protocol`] is generated from it. Feature
-//! crates add their own methods from the same file with [`add_method`] /
-//! [`add_watching_method`], so a method is served only when its crate's plugin is added.
+//! crates add their own methods from the same file, so a method is served only when its crate's
+//! plugin is added. A method is one of three kinds: [`add_method`] answers in the frame it is
+//! called; [`add_watching_method`] (`+watch`) streams an answer whenever there is one;
+//! [`add_deferred_method`] answers once, on a later frame.
 
 pub mod protocol;
 pub mod editor;
 mod entities;
+pub mod screenshot;
 mod values;
 
 use bevy::prelude::*;
 use bevy::remote::http::RemoteHttpPlugin;
-use bevy::remote::{BrpError, BrpResult, RemoteMethodSystemId, RemoteMethods, RemotePlugin, error_codes};
+use bevy::remote::{BrpError, BrpResult, RemoteLast, RemoteMethodSystemId, RemoteMethods, RemotePlugin, RemoteSystems, error_codes};
 use bevy_ts::generation::{self, ReloadLog};
 use bevy_ts::log::ScriptLog;
 use bevy_ts::runtime::{RuntimeInfo, ScriptClock, ScriptFrame};
@@ -65,8 +68,10 @@ pub fn add_methods(app: &mut App) {
     add_watching_method(app, CRATE, "bevy-ts/entities+watch", entities::watch);
     add_method(app, CRATE, "bevy-ts/systems", systems);
     add_watching_method(app, CRATE, "bevy-ts/log+watch", log_watch);
-    app.init_resource::<Subscribers>();
+    add_deferred_method(app, CRATE, "bevy-ts/screenshot", screenshot::screenshot);
+    app.init_resource::<Subscribers>().init_resource::<screenshot::Shots>();
     app.add_systems(Last, entities::teardown_when_unwatched);
+    app.add_systems(RemoteLast, screenshot::forget_closed.in_set(RemoteSystems::Cleanup));
 }
 
 fn check_contract(crate_name: &str, name: &str, watch: bool) {
@@ -93,6 +98,23 @@ pub fn add_watching_method<M>(
     handler: impl IntoSystem<In<Option<Value>>, BrpResult<Option<Value>>, M> + 'static,
 ) {
     check_contract(crate_name, name, true);
+    let id = app.world_mut().register_system(handler);
+    app.world_mut().resource_mut::<RemoteMethods>().insert(name, RemoteMethodSystemId::Watching(id));
+}
+
+/// Serves a method of the contract whose one answer comes on a later frame: the handler returns
+/// `None` until it has it, then the answer. It is registered as a watching method under a plain
+/// name, and Bevy's HTTP transport streams only names with `+watch` (`bevy_remote` `http.rs`:
+/// `request.method.contains("+watch")`), so the client gets one plain response. Bevy keeps calling
+/// the handler until the client has read it, so it answers the same again.
+pub fn add_deferred_method<M>(
+    app: &mut App,
+    crate_name: &str,
+    name: &str,
+    handler: impl IntoSystem<In<Option<Value>>, BrpResult<Option<Value>>, M> + 'static,
+) {
+    assert!(!name.contains("+watch"), "{name}: a deferred method's name has no +watch, or Bevy streams it");
+    check_contract(crate_name, name, false);
     let id = app.world_mut().register_system(handler);
     app.world_mut().resource_mut::<RemoteMethods>().insert(name, RemoteMethodSystemId::Watching(id));
 }

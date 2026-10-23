@@ -58,6 +58,23 @@ impl Surface {
         IOSurfaceRef::lookup_from_mach_port(port).map(Surface)
     }
 
+    /// Copies the top-left `w` by `h` pixels, `BGRA` rows with no padding.
+    pub fn read_rect(&self, w: u32, h: u32) -> Vec<u8> {
+        use objc2_io_surface::IOSurfaceLockOptions;
+        let s = &self.0;
+        let (w, h) = (w.min(self.width()) as usize, h.min(self.height()) as usize);
+        let mut seed = 0;
+        unsafe { s.lock(IOSurfaceLockOptions::ReadOnly, &mut seed) };
+        let base = s.base_address().as_ptr() as *const u8;
+        let row = s.bytes_per_row();
+        let mut out = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            out.extend_from_slice(unsafe { std::slice::from_raw_parts(base.add(y * row), w * 4) });
+        }
+        unsafe { s.unlock(IOSurfaceLockOptions::ReadOnly, &mut seed) };
+        out
+    }
+
     /// Reads pixel (`x`, `y`) as `[b, g, r, a]`, for tests and the throwaway viewer.
     pub fn read(&self, points: &[(u32, u32)]) -> Vec<[u8; 4]> {
         use objc2_io_surface::IOSurfaceLockOptions;

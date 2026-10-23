@@ -1,14 +1,15 @@
 //! Headless runs: no window and no winit. The loop is driven by `ScheduleRunnerPlugin`, and
-//! every camera renders into one offscreen image, which `BEVY_TS_SCREENSHOT` saves. UI draws
-//! into that image too: with no window, Bevy finds no default UI camera, so headless names one.
+//! every camera renders into one offscreen image, the target of every screenshot
+//! (`bevy-ts/screenshot`, `BEVY_TS_SCREENSHOT`). UI draws into that image too: with no window,
+//! Bevy finds no default UI camera, so headless names one.
 
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
-use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::ui::{IsDefaultUiCamera, UiSystems};
 use bevy::window::ExitCondition;
+use bevy_ts_remote::screenshot::ScreenshotTarget;
 use bevy::winit::WinitPlugin;
 use std::time::Duration;
 
@@ -63,7 +64,8 @@ impl Plugin for HeadlessPlugin {
         image.asset_usage = bevy::asset::RenderAssetUsages::default();
         let handle = app.world_mut().resource_mut::<Assets<Image>>().add(image);
         app.insert_resource(bevy_ts::WindowImage(handle.clone()));
-        app.insert_resource(Offscreen(handle));
+        app.insert_resource(Offscreen(handle.clone()));
+        app.insert_resource(ScreenshotTarget(RenderTarget::Image(handle.into())));
         app.add_observer(|add: On<Add<Camera>>, offscreen: Res<Offscreen>, mut commands: Commands| {
             commands.entity(add.entity).insert(RenderTarget::Image(offscreen.0.clone().into()));
         });
@@ -105,21 +107,16 @@ fn default_ui_camera(
     }
 }
 
-/// `BEVY_TS_SCREENSHOT=<path>` saves the view at frames 60 and 75 (`<path>` and
-/// `<path>.2.png`), so a run can be checked without a window.
-pub fn screenshot_on_request(mut commands: Commands, offscreen: Option<Res<Offscreen>>, mut frame: Local<u32>) {
+/// `BEVY_TS_SCREENSHOT=<path>` saves the view once, at frame 60, for runs that serve no protocol
+/// (`bevy-ts play --headless`). A shot at any other time is `bevy-ts/screenshot`'s.
+pub fn screenshot_on_request(world: &mut World, mut frame: Local<u32>) {
     *frame += 1;
-    let Ok(path) = std::env::var("BEVY_TS_SCREENSHOT") else { return };
-    let path = match *frame {
-        60 => path,
-        75 => format!("{path}.2.png"),
-        _ => return,
-    };
-    let shot = match offscreen {
-        Some(o) => Screenshot::image(o.0.clone()),
-        None => Screenshot::primary_window(),
-    };
-    commands.spawn(shot).observe(save_to_disk(path));
+    if *frame != 60 {
+        return;
+    }
+    if let Ok(path) = std::env::var("BEVY_TS_SCREENSHOT") {
+        bevy_ts_remote::screenshot::capture(world, path);
+    }
 }
 
 #[cfg(test)]
