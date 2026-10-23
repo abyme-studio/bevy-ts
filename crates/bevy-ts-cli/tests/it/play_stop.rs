@@ -753,3 +753,41 @@ fn a_level_camera_respawns_and_its_enemies_stay() {
     assert_eq!(enemy(&mut app, "Lamp"), lamp, "and the light");
     assert_ne!(enemy(&mut app, "Cam"), cam, "the camera respawns");
 }
+
+/// Moves one named entity, as a native crate's `OnEnter` or `OnExit(Play)` reset might.
+fn lift(name: &'static str) -> impl FnMut(Query<(&Name, &mut Transform)>) {
+    move |mut q| {
+        for (n, mut t) in &mut q {
+            if n.as_str() == name {
+                t.translation.y = 7.0;
+            }
+        }
+    }
+}
+
+#[test]
+fn what_on_exit_does_to_a_level_entity_is_undone() {
+    let (_dir, mut app) = arena3("stop-on-exit", GAME, |app| {
+        app.add_systems(OnExit(bevy_ts::EngineMode::Play), lift("EnemyD"));
+    });
+    let a = enemy(&mut app, "EnemyA");
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    mode(&mut app, "edit");
+    assert_eq!(named(&mut app, "EnemyD")[0].1, Vec3::new(6.0, 0.0, -4.0), "D is back at its level transform");
+    assert_eq!(enemy(&mut app, "EnemyA"), a, "A is kept");
+}
+
+#[test]
+fn what_on_enter_does_on_the_first_play_is_undone() {
+    let (_dir, mut app) = arena3("stop-on-enter", GAME, |app| {
+        app.add_systems(OnEnter(bevy_ts::EngineMode::Play), lift("EnemyC"));
+    });
+    let a = enemy(&mut app, "EnemyA");
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    assert_eq!(named(&mut app, "EnemyC")[0].1.y, 7.0, "OnEnter moved it");
+    mode(&mut app, "edit");
+    assert_eq!(named(&mut app, "EnemyC")[0].1, Vec3::new(3.0, 0.0, -4.0), "C is back at its level transform");
+    assert_eq!(enemy(&mut app, "EnemyA"), a, "A is kept");
+}

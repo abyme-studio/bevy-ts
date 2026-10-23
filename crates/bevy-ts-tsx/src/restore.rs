@@ -8,12 +8,38 @@ use bevy::ecs::change_detection::Tick;
 use bevy::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 
-/// An external root as the game started: the world's change tick then, and each node's entity
-/// and archetype.
+/// An external root as the game started: the world's change tick then, and each node.
 #[derive(Clone, Debug)]
 pub struct Baseline {
     pub tick: Tick,
-    pub nodes: HashMap<u64, (Entity, ArchetypeId)>,
+    pub nodes: HashMap<u64, NodeBase>,
+}
+
+/// A node as the game started: its entity and archetype, and those of the entities below it that
+/// are not nodes (a glTF model's hierarchy, a child a plugin spawned), down to the next node.
+#[derive(Clone, Debug)]
+pub struct NodeBase {
+    pub entity: Entity,
+    pub archetype: ArchetypeId,
+    pub below: Vec<(Entity, ArchetypeId)>,
+}
+
+/// The entities below `e` that are not tsx nodes, with their archetypes, stopping at each node.
+fn below(world: &World, e: Entity) -> Vec<(Entity, ArchetypeId)> {
+    let mut out = Vec::new();
+    let mut stack = vec![e];
+    while let Some(x) = stack.pop() {
+        let Some(children) = world.get::<Children>(x) else { continue };
+        for c in children.iter() {
+            let Ok(er) = world.get_entity(c) else { continue };
+            if er.contains::<TsxNode>() {
+                continue;
+            }
+            out.push((c, er.archetype().id()));
+            stack.push(c);
+        }
+    }
+    out
 }
 
 /// The roots a Stop keeps, each with the key paths it respawns: the subtrees the play changed and
@@ -22,6 +48,13 @@ pub struct Baseline {
 #[derive(Resource, Default, Debug, Clone)]
 pub struct StopPlan {
     pub roots: BTreeMap<String, Vec<Vec<String>>>,
+}
+
+impl StopPlan {
+    /// The roots a Stop under way keeps; none without one.
+    pub fn kept(world: &World) -> std::collections::BTreeSet<String> {
+        world.get_resource::<StopPlan>().map(|p| p.roots.keys().cloned().collect()).unwrap_or_default()
+    }
 }
 
 /// The start handler: records a baseline for every external root applied now. Ticks after it
@@ -40,7 +73,7 @@ pub fn take_baselines(world: &mut World) {
                     .filter_map(|id| {
                         let e = tree.entity(*id)?;
                         let er = world.get_entity(e).ok().filter(|er| er.get::<TsxNode>().is_some_and(|n| n.id == *id))?;
-                        Some((*id, (e, er.archetype().id())))
+                        Some((*id, NodeBase { entity: e, archetype: er.archetype().id(), below: below(world, e) }))
                     })
                     .collect();
                 Some((name.clone(), Baseline { tick, nodes }))
@@ -60,9 +93,9 @@ pub fn has_baseline(world: &World, root: &str) -> bool {
     world.resource::<TsxTree>().roots.get(root).is_some_and(|s| s.baseline.is_some() && s.resolved.is_some())
 }
 
-/// The key paths of the root's highest changed nodes since its baseline: a node whose entity is
-/// gone, has another archetype (a component added or removed), or has a component added or
-/// changed after the baseline's tick. Below a changed node nothing is listed: its subtree goes
+/// The key paths of the root's highest changed nodes since its baseline: a node whose entity, or
+/// an entity below it that is not a node, is gone, has another archetype (a component added or
+/// removed), or has a component added or changed after the baseline's tick. Below a changed node nothing is listed: its subtree goes
 /// whole. None without a baseline.
 /// The [`derived`] components do not count.
 pub fn changed_paths(world: &World, root: &str) -> Option<Vec<Vec<String>>> {
@@ -71,13 +104,16 @@ pub fn changed_paths(world: &World, root: &str) -> Option<Vec<Vec<String>>> {
     let (b, kept) = (state.baseline.as_ref()?, state.resolved.as_ref()?);
     let now = world.read_change_tick();
     let derived = derived(world);
+    let entity_changed = |e: Entity, arch: ArchetypeId| {
+        let Ok(er) = world.get_entity(e) else { return true };
+        er.archetype().id() != arch || er.archetype().iter_components().filter(|c| !derived.contains(c)).any(|c| er.get_change_ticks_by_id(c).is_some_and(|t| t.is_changed(b.tick, now)))
+    };
     let changed = |id: u64| {
-        let Some((e, arch)) = b.nodes.get(&id) else { return true };
-        let Ok(er) = world.get_entity(*e) else { return true };
-        if er.get::<TsxNode>().is_none_or(|n| n.id != id) || er.archetype().id() != *arch {
+        let Some(n) = b.nodes.get(&id) else { return true };
+        if world.get::<TsxNode>(n.entity).is_none_or(|t| t.id != id) {
             return true;
         }
-        er.archetype().iter_components().filter(|c| !derived.contains(c)).any(|c| er.get_change_ticks_by_id(c).is_some_and(|t| t.is_changed(b.tick, now)))
+        entity_changed(n.entity, n.archetype) || n.below.iter().any(|(e, a)| entity_changed(*e, *a))
     };
     fn walk(nodes: &[RNode], changed: &dyn Fn(u64) -> bool, out: &mut Vec<Vec<String>>) {
         for n in nodes.iter().filter(|n| n.slot.is_none()) {

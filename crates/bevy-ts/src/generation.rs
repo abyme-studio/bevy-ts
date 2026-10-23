@@ -140,6 +140,20 @@ pub fn start_game(world: &mut World) {
     run_startups(world);
 }
 
+/// Notifies the start handlers, once per game start: before the first `Startup`, or earlier when
+/// a caller starts the game in steps (a Play notifies before its `OnEnter(Play)`). Does nothing
+/// once this game was announced.
+pub fn announce_start(world: &mut World) {
+    let Some(mut g) = world.get_resource_mut::<Generations>() else { return };
+    if std::mem::replace(&mut g.announced, true) {
+        return;
+    }
+    let handlers = world.get_resource::<crate::plugin_api::StartHandlers>().cloned().unwrap_or_default();
+    for h in handlers.0.iter() {
+        h(world);
+    }
+}
+
 /// A JS heap above this triggers a fresh isolate on the next reload.
 pub const HEAP_RESTART_BYTES: usize = 1 << 30;
 
@@ -499,12 +513,7 @@ fn run_startups(world: &mut World) {
     if !started(world) {
         return;
     }
-    if !std::mem::replace(&mut world.resource_mut::<Generations>().announced, true) {
-        let handlers = world.get_resource::<crate::plugin_api::StartHandlers>().cloned().unwrap_or_default();
-        for h in handlers.0.iter() {
-            h(world);
-        }
-    }
+    announce_start(world);
     let Some(systems) = world.get_resource::<TsSystems>() else { return };
     let lists: Vec<(systems::ListKey, Vec<String>)> = [
         (systems::ListKey::PreStartup, &systems.pre_startup),

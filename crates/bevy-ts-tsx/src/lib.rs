@@ -424,7 +424,7 @@ fn apply_inner(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection)
 /// tombstones added to it). The journal goes on: every row despawned here is removed, and the
 /// remount or the restore adds it again with its new entity, so `tsx_tree+watch` follows.
 fn restart(world: &mut World) {
-    let keep: std::collections::BTreeSet<String> = world.get_resource::<StopPlan>().map(|p| p.roots.keys().cloned().collect()).unwrap_or_default();
+    let keep = StopPlan::kept(world);
     let nodes: Vec<Entity> = world.query::<(Entity, &TsxNode)>().iter(world).filter(|(_, n)| !keep.contains(&n.root)).map(|(e, _)| e).collect();
     for e in nodes {
         // Children may already be gone with their parent.

@@ -223,3 +223,22 @@ fn what_bevy_derives_each_frame_is_not_a_change() {
     *app.world_mut().get_mut::<Visibility>(b).unwrap() = Visibility::Hidden;
     assert_eq!(restore::changed_paths(app.world(), ROOT), Some(vec![p("arena/b")]));
 }
+
+#[test]
+fn an_entity_below_a_node_that_is_not_one_counts_with_it() {
+    let mut app = mounted();
+    let b = entity(&app, "arena/b").unwrap();
+    // As a glTF model's hierarchy hangs below its node.
+    let part = app.world_mut().spawn((Transform::default(), ChildOf(b))).id();
+    let c = entity(&app, "arena/c").unwrap();
+    let gone = app.world_mut().spawn((Transform::default(), ChildOf(c))).id();
+    restore::take_baselines(app.world_mut());
+    assert_eq!(restore::changed_paths(app.world(), ROOT), Some(vec![]));
+    app.world_mut().get_mut::<Transform>(part).unwrap().translation.x = 2.0;
+    assert_eq!(restore::changed_paths(app.world(), ROOT), Some(vec![p("arena/b")]), "a moved part marks its node");
+    // A despawned part writes its parent's `Children`, and is gone from the baseline's list too.
+    app.world_mut().despawn(gone);
+    let mut got = restore::changed_paths(app.world(), ROOT).unwrap();
+    got.sort();
+    assert_eq!(got, [p("arena/b"), p("arena/c")]);
+}
