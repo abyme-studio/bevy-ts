@@ -53,6 +53,7 @@ cargo test -p bevy-ts-cli --test it -- tsx:: tsx_sites::   # several
 A filter is a substring: `protocol::` also runs `levels_protocol::` and `tsx_protocol::`; add
 `--skip levels_protocol::` to leave them out. The modules share one process, so a test takes its
 engine's port from `common::free_port()`, never from the process id.
+How to write one: `docs/testing.md`.
 
 The dev and test profiles keep line tables only (`debug = "line-tables-only"`), so backtraces keep
 file and line, and dependencies carry no debug info. The repo's `.cargo/config.toml` repeats the
