@@ -30,7 +30,7 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
 
 **Non-Goals:**
 - Mesh attributes and indices (script-assets). `assets.add(Mesh, ...)` is refused: no default.
-- Load state, handle lifecycle and load events (engine-core). Script-made assets live until restart or stop.
+- Load state, handle lifecycle and load events (script-assets). Script-made assets live until restart or stop.
 - Assets Bevy does not reflect; `ScriptMaterial` (`<material kind>`).
 - Bindable asset props. Asset values are written on insert and on a changed prop.
 - A second writer, reader or walker.
@@ -98,7 +98,7 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    A UUID handle holds no strong count, so the asset stays until it is removed. A hot reload
    starts a new tag: old refs fail with "stale asset ref", but their assets stay, so entities
    that hold the handles keep drawing. A restart or stop removes every asset the table made, with
-   `ReflectAsset::remove`. Freeing an asset sooner is engine-core's handle lifecycle.
+   `ReflectAsset::remove`. Freeing an asset sooner is script-assets' handle lifecycle.
    *Alternatives:* strong index handles (need `&mut World` to reserve, which a run lacks); raw
    `AssetId` bits (no id before the flush).
 
@@ -189,7 +189,7 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
 | `<material>` props, colour space, tangents, limits | standard-material-fields, then this change in stage 2 | rebases after it lands; replaces `MaterialProps` with the table |
 | `alpha`, `alphaMode`, `MaterialAlpha` | material-alpha | folds the props in; leaves the component |
 | `<mesh>`, `MeshProps` | mesh-primitives | `<mesh color>` calls the shared material path; no `MeshProps` edit |
-| Handle lifecycle, load state | engine-core | assets removed on restart or stop only; refs stale on hot reload |
+| Handle lifecycle, load state, `AssetEvent`, `Mesh` building | script-assets (`openspec/changes/script-assets`, engine-core's area) | assets removed on restart or stop only; refs stale on hot reload |
 
 ## Ask-first items
 
@@ -206,7 +206,7 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
 
 - [Assets kept across hot reloads: a script that adds at startup adds again on each reload, and the old assets stay until stop] → A known dev-only limit: each dev hot reload keeps one more copy of the script's assets, freed on restart or Stop. Freeing unreferenced ones would need an erased walk of every component for handles; not worth it for dev. Test `reflect_asset::hot_reloads_keep_assets_until_a_restart`; `docs/assets.md` says it.
 - [`assets.add` in a per-frame system grows memory until stop] → Docs say to add once and `set`
-  after; a log warning when one script session passes 10,000 refs. Freeing is engine-core's.
+  after; a log warning when one script session passes 10,000 refs. Freeing is script-assets'.
 - [`assets.set` on a cached value's ref changes every sharer] → Docs; `assets.add` for an unshared
   asset.
 - [`assets.get` per frame costs a host call and a JSON read] → Docs say to keep the value in JS;
