@@ -8,11 +8,12 @@ The crate and the `scene-animation` spec were script-gltf's; lead@script-gltf se
 
 **Goals:**
 - A paused root costs nothing per frame; an off-screen root can opt into the same.
-- TS and TSX reach every animation control Bevy has, by clip path, never by node index.
+- TS and TSX reach every animation control Bevy has, by clip path, never by an index into the shared graph.
+- Stage 2: TS builds an `AnimationGraph` (clips, blends, additive blends, weights, masks) with Bevy's builder, and a root plays it. The reflected-coverage hole for `AnimationGraph.graph` closes.
 - Measured: fox bench arms and agent town's 100 villagers, before and after.
 
 **Non-Goals:**
-- Several clips at once, blend trees, masks, per-clip weights from TS. Rust, as today.
+- Cross-fading from one `graph` to another, or a graph per player under one root.
 - Culling by default, distance LOD, or advancing a parked clip's time.
 - Exposing raw `AnimationPlayer` to TS systems. That is reflect-coverage stage 3, and its node-keyed map would still not be path-keyed.
 
@@ -28,12 +29,25 @@ The crate and the `scene-animation` spec were script-gltf's; lead@script-gltf se
 8. **`Animations` is an exported param, keyed by root.** A path-keyed read needs logic (root to players, clip to node to `ActiveAnimation`), which the generic reflected path cannot give without node indices. Exported-param args take no strings, so the key is the root, which names its clip by path. `status` is read-only and works today; `seek`, `rewind`, `replay` need `Query<&mut AnimationPlayer>`, which writable-native-params allows. Module `bevy-ts/animation`, registered by every engine as `Cameras` is. The param holds `Query<(&PlayAnimation, &AnimationTargets)>`, `Query<(&AnimationPlayer, Has<AnimationGraphHandle>)>` (mut for the writers), `Res<SharedGraph>` and `Res<Assets<AnimationClip>>`.
 9. **`seek` is `seek_to`.** Events between the old and new time fire, Bevy's documented seek. `set_seek_time` stays Rust.
 
+## Stage 2: AnimationGraph from TS
+
+Bevy's `AnimationGraph` is a reflected asset whose `graph` (a petgraph `DiGraph`, no `Default`, no reflected serde) reflection cannot reach; the hole check marks it. Bevy already has a path-keyed form of it: `SerializedAnimationGraph`, the `.animgraph.ron` loader's shape, with each clip an `AssetPath`.
+
+10. **The builder is a TS value, not host calls.** `AnimationGraph` in `bevy-ts/bevy` is a hand-written class with Bevy's builder methods, camelCased as exported methods are (`addClip`, `addBlend`, `addAdditiveBlend`, the `*WithMask` forms, `addClips`, `fromClip`, `fromClips`, `addEdge`, `removeEdge`, `get`, `nodes`, `addTargetToMaskGroup`), holding the serialized shape as JSON. It is an asset value (reflect-assets' `AssetValue<AnimationGraph>`), so it goes where any asset goes: a TSX prop, `assets.add`, `assets.set`. The generator emits it in place of a generated class for this one type. *Alternative:* an exported param `AnimationGraphs` with host methods. Rejected: exported-param args take no strings, so no clip path, and building would cost a host call per node.
+11. **Node numbers are returned, as Bevy returns them.** Bevy's `add_*` return the new `AnimationNodeIndex`, and the next `add_*` takes it as `parent`; the builder has no other way to say where a node goes. So TS gets a number, local to the graph value it is building, and never one of `SharedGraph`'s. Status, seek and parking stay keyed by root. *Alternative:* a nested tree literal with no numbers. Rejected: it is not Bevy's shape, and cannot say `add_edge` (a node under two parents).
+12. **A hand-map in the reflected-asset writer and reader.** One entry in reflect-assets' hand-map list (as `Image.sampler`): write deserializes `SerializedAnimationGraph` from the JSON and loads each clip path with the `AssetServer`; read is Bevy's `TryFrom<AnimationGraph>`, which fails on a clip with no path, named by node. `mask_groups` is keyed by `AnimationTargetId`, a blake3 of the bone path TS cannot compute, so the JSON carries `[target, mask]` pairs and a target is a UUID string or `{ names: [...] }` (`AnimationTargetId.fromNames`), turned into Bevy's id by `from_names`. Reads give UUIDs. The list stays reflect-assets'; the entry and its test are ours. That clears the `UNCOVERED` entry for `AnimationGraph`.
+13. **`PlayAnimation.graph`, one owner of a root's graph handle.** `graph: Handle<AnimationGraph>` (default none) beside `clip`. One function, `graph_of(play, shared)`, gives a root's handle (its `graph`, else `SharedGraph`'s), and `start`, `park` and `stop_removed` all call it; today they each read `shared.handle`. The player walk stays `players`/`players_in`. A graph root plays every clip node (`graph.nodes()` filtered to `Clip`), as Bevy's `animation_masks` example does; `AnimationTransitions` stays on the players but goes unused. `SharedGraph` is untouched: roots without `graph` behave exactly as in stage 1.
+14. **Edits apply from the asset.** Bevy's evaluator reads the graph asset each frame, so a changed weight or mask needs nothing from us. On `AssetEvent::Modified` for a graph a root uses, Rust starts clip nodes not yet playing and stops ones gone. A changed `graph` field restarts (`stop_all`, play all), no fade.
+15. **No writable-native-params.** Building is pure TS and the graph reaches Rust through reflection (`PlayAnimation.graph`, `assets.add`/`set`). Stage 2 depends instead on reflect-assets stage 1 (`assets`, asset values in handle slots, the hand-map list) and on the hole check landing. The `.animgraph.ron` path works without either and is built first.
+
 ## Risks / Trade-offs
 
 - [A parked root still runs `advance_transitions`, so a cross-fade under way finishes while parked] → Accept: the fade is short and the wake shows the new clip. Documented.
 - [A culled clip's time stands still, so villagers that wake are out of step with where they would be] → Fine for loops; a game that cares seeks on wake. Documented.
 - [The archetype move on park/wake churns if a root flickers in and out of view] → Moves happen once per change; the bench's culled arm pans a camera to measure it.
 - [Breaking `repeat` for agent town] → One line in `world.tsx` when it takes the release; the proposal names it.
+- [Reweighting every frame with `assets.set` costs a reflected write and Bevy's graph rebuild per frame] → Opt-in; only graph roots pay. The test measures nothing; a bench arm comes if a game reweights per frame.
+- [Stage 2 waits on reflect-assets and the hole check] → The `.animgraph.ron` path and the Rust side land first; the TS builder lands after them on this branch.
 - [`seek`/`rewind`/`replay` wait on writable-native-params] → They land behind it in this change (task 4); if it slips, this change lands them later in a second commit on the same branch, never a hand-written host function.
 
 ## Migration Plan

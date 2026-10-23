@@ -1,11 +1,11 @@
 ## MODIFIED Requirements
 
 ### Requirement: PlayAnimation names a clip for a scene
-The engine SHALL register a reflected Rust component `PlayAnimation` with `ReflectComponent` and `ReflectDefault`, and these fields: `clip: Handle<AnimationClip>` (default: none), `repeat: RepeatAnimation` (Bevy's enum, default `Forever`), `speed: f32` (default `1.0`), `transition_secs: f32` (default `0.25`), `paused: bool` (default `false`) and `cull: bool` (default `false`). It SHALL be tiered by the native-components rules: its plain fields (`speed`, `transition_secs`, `paused`, `cull`) are columns TS systems read and write, and `clip` and `repeat` are holes TS columns never see. It SHALL be named `PlayAnimation` in `bevy-ts/bevy`, never inserted from bytes, and written through reflection, `clip` and `repeat` included, wherever it is placed: a TSX component element (its type listing every field as a prop), a level patch and the editor. `clip` SHALL be written as an asset path with a label (`"models/Fox.glb#Animation2"`) and loaded as a `Handle<AnimationClip>`. `repeat` SHALL be written as Bevy names its variants: `"Never"`, `"Forever"` or `{ Count: n }` in TSX, `Never`, `Forever` or `Count(n)` in a level. It SHALL go on the entity that carries `WorldAssetRoot`.
+The engine SHALL register a reflected Rust component `PlayAnimation` with `ReflectComponent` and `ReflectDefault`, and these fields: `clip: Handle<AnimationClip>` (default: none), `repeat: RepeatAnimation` (Bevy's enum, default `Forever`), `speed: f32` (default `1.0`), `transition_secs: f32` (default `0.25`), `paused: bool` (default `false`), `cull: bool` (default `false`) and `graph: Handle<AnimationGraph>` (default: none; see the graph requirement). It SHALL be tiered by the native-components rules: its plain fields (`speed`, `transition_secs`, `paused`, `cull`) are columns TS systems read and write, and `clip`, `repeat` and `graph` are holes TS columns never see. It SHALL be named `PlayAnimation` in `bevy-ts/bevy`, never inserted from bytes, and written through reflection, `clip`, `repeat` and `graph` included, wherever it is placed: a TSX component element (its type listing every field as a prop), a level patch and the editor. `clip` SHALL be written as an asset path with a label (`"models/Fox.glb#Animation2"`) and loaded as a `Handle<AnimationClip>`. `repeat` SHALL be written as Bevy names its variants: `"Never"`, `"Forever"` or `{ Count: n }` in TSX, `Never`, `Forever` or `Count(n)` in a level. It SHALL go on the entity that carries `WorldAssetRoot`.
 
 #### Scenario: Placed in TSX
 - **WHEN** a scene describes `<entity><WorldAssetRoot value="models/Fox.glb#Scene0" /><PlayAnimation clip="models/Fox.glb#Animation2" /></entity>`
-- **THEN** the entity carries `PlayAnimation` with that clip handle, `repeat` `Forever`, `speed` 1, `transition_secs` 0.25, `paused` false and `cull` false
+- **THEN** the entity carries `PlayAnimation` with that clip handle, `repeat` `Forever`, `speed` 1, `transition_secs` 0.25, `paused` false, `cull` false and no `graph`
 
 #### Scenario: Placed from a level
 - **WHEN** a level file patches an entity with `PlayAnimation { clip: "models/Fox.glb#Animation1", repeat: Count(3) }` beside `WorldAssetRoot("models/Fox.glb#Scene0")`
@@ -35,7 +35,7 @@ When a `WorldAssetRoot`'s instance is ready (`WorldInstanceReady` on the root) a
 - **THEN** its player holds the run clip at seek time 0, paused, with no `AnimationGraphHandle`
 
 ### Requirement: Changing PlayAnimation changes what plays
-A change to `clip` SHALL cross-fade every player under the root from the current clip to the new one over `transition_secs` seconds, through `AnimationTransitions`. A change to `speed` or `repeat` SHALL apply to the clip already playing, without restarting it. `speed` SHALL be written as Bevy's `set_speed` and nothing else: speed 0 holds the pose and does not park. A change to `paused` or `cull` SHALL park or wake the root (see the parking requirement), without restarting the clip. Removing `PlayAnimation` SHALL stop every animation on those players and give back any graph handle parking removed. Each distinct clip SHALL get one node in the shared graph, added the first time any root names it.
+A change to `clip` SHALL cross-fade every player under the root from the current clip to the new one over `transition_secs` seconds, through `AnimationTransitions`. A change to `speed` or `repeat` SHALL apply to the clip already playing, without restarting it. `speed` SHALL be written as Bevy's `set_speed` and nothing else: speed 0 holds the pose and does not park. A change to `paused` or `cull` SHALL park or wake the root (see the parking requirement), without restarting the clip. Removing `PlayAnimation` SHALL stop every animation on those players and give back any graph handle parking removed (the root's graph handle). Each distinct clip SHALL get one node in the shared graph, added the first time any root names it.
 
 #### Scenario: Run to walk
 - **WHEN** a TSX binding changes a running fox's `clip` from `#Animation2` to `#Animation1` with `transition_secs` 0.25
@@ -56,7 +56,7 @@ A change to `clip` SHALL cross-fade every player under the root from the current
 ## ADDED Requirements
 
 ### Requirement: A paused or culled root is parked
-A root SHALL be parked while its `PlayAnimation` has `paused` true, or has `cull` true and none of its recorded meshes has `ViewVisibility` true. Parking SHALL remove `AnimationGraphHandle` from each player under the root and keep its `AnimationPlayer` and `AnimationTransitions`, so Bevy's `animate_targets` writes no bone of it and transform propagation skips its skeleton. Waking SHALL insert the shared graph's handle again; the clip SHALL go on from the seek time, weights and transitions it had. `paused` SHALL also `pause_all` the players, and its clearing `resume_all`, so Bevy's own pause state matches. A parked clip's time SHALL stand still. The meshes SHALL be recorded when the root's players are found: every entity under the root carrying `Mesh3d`. A root with `cull` true and no meshes SHALL never be parked by `cull`. The park decision SHALL run in `PostUpdate` before `AnimationSystems`, reading the `ViewVisibility` of the previous frame, so a root waking shows one frame of its parked pose. Parking SHALL add nothing per frame for a root with `paused` and `cull` both false.
+A root SHALL be parked while its `PlayAnimation` has `paused` true, or has `cull` true and none of its recorded meshes has `ViewVisibility` true. Parking SHALL remove `AnimationGraphHandle` from each player under the root and keep its `AnimationPlayer` and `AnimationTransitions`, so Bevy's `animate_targets` writes no bone of it and transform propagation skips its skeleton. Waking SHALL insert the root's graph handle again (its `graph`, else the shared graph's); the clip SHALL go on from the seek time, weights and transitions it had. `paused` SHALL also `pause_all` the players, and its clearing `resume_all`, so Bevy's own pause state matches. A parked clip's time SHALL stand still. The meshes SHALL be recorded when the root's players are found: every entity under the root carrying `Mesh3d`. A root with `cull` true and no meshes SHALL never be parked by `cull`. The park decision SHALL run in `PostUpdate` before `AnimationSystems`, reading the `ViewVisibility` of the previous frame, so a root waking shows one frame of its parked pose. Parking SHALL add nothing per frame for a root with `paused` and `cull` both false.
 
 #### Scenario: Paused costs nothing
 - **WHEN** a playing fox's `paused` is set to true
@@ -97,8 +97,47 @@ Every engine SHALL export a param `Animations` from module `bevy-ts/animation`, 
 - **WHEN** a system calls `anims.seek(e, 1)` on an entity with no `PlayAnimation`
 - **THEN** it returns false and nothing changes
 
+### Requirement: A root plays an AnimationGraph built in TS
+`bevy-ts/bevy` SHALL export `AnimationGraph` as a builder with Bevy's names and shape: `new AnimationGraph()`, the static `fromClip(clip)` and `fromClips(clips)`, the field `root`, and the methods `addClip(clip, weight, parent)`, `addClipWithMask(clip, mask, weight, parent)`, `addClips(clips, weight, parent)`, `addBlend(weight, parent)`, `addBlendWithMask(mask, weight, parent)`, `addAdditiveBlend(weight, parent)`, `addAdditiveBlendWithMask(mask, weight, parent)`, `addEdge(from, to)`, `removeEdge(from, to)`, `get(node)`, `nodes()` and `addTargetToMaskGroup(target, group)`. A clip SHALL be an asset path with a label (`"models/Fox.glb#Animation0"`). Each `add*` SHALL return the new node's number in this graph, as Bevy's returns its `AnimationNodeIndex`; it SHALL mean nothing outside the graph value. `get(node)` SHALL return a view whose `weight` and `mask` are writable and which has `addMask`, `removeMask`, `addMaskGroup` and `removeMaskGroup`. A target SHALL be `AnimationTargetId.fromNames(names)`, `fromName(name)` or a UUID string; Rust SHALL compute the id with Bevy's `from_names`. Building SHALL make no host call. A built graph SHALL be an asset value: it goes in any `Handle<AnimationGraph>` slot, and into `assets.add`, `assets.get` and `assets.set`, by the reflected-assets rules.
+
+Rust SHALL hand-map `AnimationGraph` in the reflected-asset writer and reader, whose reflection leaves `graph` opaque: write takes Bevy's `SerializedAnimationGraph` shape, with `mask_groups` as `[target, mask]` pairs, and loads each clip by path; read gives the same shape, with targets as UUID strings, and fails naming the node for a clip with no path. A write then a read SHALL give the value written, targets as UUIDs.
+
+A root whose `PlayAnimation` has a `graph` SHALL give its players that graph's handle in place of the shared graph's, and play every clip node in it, with `repeat` and `speed`; node weights and masks blend them as Bevy does. `graph` SHALL also take a `.animgraph.ron` asset path. `clip` and `transition_secs` SHALL be unused on such a root, and a root with both `clip` and `graph` SHALL log one warning and play the graph. A changed `graph` SHALL stop the old clips and play the new graph's, with no cross-fade. A change to the graph asset (`assets.set`) SHALL apply from the next frame: weights and masks as Bevy reads them, a new clip node started, a removed one stopped. Clearing `graph` SHALL return the root to its `clip` in the shared graph. `Animations.status` SHALL read a graph root's first clip node, in node order; `seek`, `rewind` and `replay` SHALL act on every clip the root's players play. Parking SHALL hold for a graph root as for any root.
+
+#### Scenario: Two clips blend
+- **WHEN** a script builds `g = new AnimationGraph()`, `b = g.addBlend(1, g.root)`, `g.addClip("models/Fox.glb#Animation0", 0.5, b)`, `g.addClip("models/Fox.glb#Animation1", 0.5, b)`, and a fox has `<PlayAnimation graph={g} />`
+- **THEN** its player has a graph handle that is not the shared graph's, plays both clips, and each bone's pose lies between the two clips' poses
+
+#### Scenario: An additive layer
+- **WHEN** a graph has `addClip(run, 1, g.root)` and `a = g.addAdditiveBlend(1, g.root)` holding `addClip(wave, 1, a)`
+- **THEN** the root plays both, and the bones the wave clip animates differ from the run alone
+
+#### Scenario: A masked bone stays still
+- **WHEN** a graph calls `g.addTargetToMaskGroup(AnimationTargetId.fromNames(path), 0)`, `path` being the names from the fox's animation root down to one bone, and adds its only clip with `addClipWithMask(clip, 1, 1, g.root)`
+- **THEN** that bone's `Transform` does not change while the others animate
+
+#### Scenario: Weights change live
+- **WHEN** a TS system calls `assets.set(ref, ...)` with the blend's first clip's weight 1 and the second's 0, on a fox playing that graph
+- **THEN** from the next frame the fox's pose is the first clip's alone, and no clip restarts
+
+#### Scenario: A graph file
+- **WHEN** a level patches a fox with `PlayAnimation { graph: "anims/fox_blend.animgraph.ron" }`
+- **THEN** the fox plays every clip node in that file, with no TS involved
+
+#### Scenario: Clip and graph both set
+- **WHEN** a root has `clip` `#Animation2` and a `graph`
+- **THEN** it plays the graph, and one warning names the root and both fields
+
+#### Scenario: A built graph round-trips
+- **WHEN** a script calls `assets.add(g)` and then `assets.get(ref)`
+- **THEN** it reads the same nodes, edges, weights, masks and root, with each target as a UUID string
+
+#### Scenario: The hole check passes
+- **WHEN** the reflected-coverage hole check walks `AnimationGraph`
+- **THEN** `graph` round-trips, and `reflect_value::UNCOVERED` has no entry for `AnimationGraph`
+
 ### Requirement: Every animation control has a stated TS path
-Every public field and method of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation` and `AnimationTransitions` SHALL be listed below with its TS name, or the reason it stays in Rust, and the test that proves it. Raw `AnimationPlayer` and `AnimationTransitions` stay reflect-tier components as they are today; no TS name SHALL take a node index. A new public item in a Bevy upgrade SHALL be added to this table in the change that takes the upgrade.
+Every public field and method of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation`, `AnimationTransitions`, `AnimationGraph`, `AnimationGraphNode` and `AnimationTargetId`, and the graph's loader and serialized types, SHALL be listed below with its TS name, or the reason it stays in Rust, and the test that proves it. Raw `AnimationPlayer` and `AnimationTransitions` stay reflect-tier components as they are today; no TS name SHALL take an index into the shared graph; a TS-built graph's own node numbers are the only node indices TS sees (see the graph requirement). A new public item in a Bevy upgrade SHALL be added to this table in the change that takes the upgrade.
 
 | Bevy item | TS name | Test |
 | --- | --- | --- |
@@ -117,8 +156,24 @@ Every public field and method of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation
 | `ActiveAnimation::set_weight` | Rust only: `AnimationTransitions` owns weights during a fade | – |
 | `AnimationPlayer::is_playing_animation`, `animation`, `animation_mut`, `playing_animations`, `playing_animations_mut` | Rust only: node-keyed; `status()` reads the root's clip | – |
 | `AnimationTransitions::new`, `get_main_animation`, its `transitions` | Rust only: node-keyed; `status().weight` shows a fade | – |
-| `AnimationGraphHandle` on a player | Rust only: parking | `park.rs::culled_roots_park_off_screen` |
+| `AnimationGraphHandle` on a player | `PlayAnimation.graph` chooses it; parking removes it | `park.rs::culled_roots_park_off_screen`, `graph.rs::a_parked_graph_root_wakes_with_its_graph` |
 | `AnimationClip::duration` | `status().duration`, `loaded` | `animation.rs::animations_status` |
+| `AnimationGraph::new`, `Default` | `new AnimationGraph()` | `animation-graph.test.ts` |
+| `AnimationGraph::from_clip`, `from_clips` | `AnimationGraph.fromClip`, `fromClips` (return the graph and its node or nodes) | `animation-graph.test.ts` |
+| `AnimationGraph::add_clip`, `add_clip_with_mask`, `add_clips` | `addClip`, `addClipWithMask`, `addClips` | `graph.rs::a_graph_blends_two_clips`, `graph.rs::a_mask_keeps_a_bone_still` |
+| `AnimationGraph::add_blend`, `add_blend_with_mask` | `addBlend`, `addBlendWithMask` | `graph.rs::a_graph_blends_two_clips` |
+| `AnimationGraph::add_additive_blend`, `add_additive_blend_with_mask` | `addAdditiveBlend`, `addAdditiveBlendWithMask` | `graph.rs::an_additive_blend_adds` |
+| `AnimationGraph::add_edge`, `remove_edge` | `addEdge`, `removeEdge` | `animation-graph.test.ts`, `graph.rs::an_edited_graph_plays_new_clips` |
+| `AnimationGraph::get`, `get_mut`, `Index`, `IndexMut`, `nodes` | `get(node)` (a live node view), `nodes()` | `animation-graph.test.ts` |
+| `AnimationGraph.root`, `.graph` | `root`; `graph` is the hand-mapped JSON the builder holds | `reflect_asset.rs::animation_graph_round_trips` |
+| `AnimationGraph.mask_groups`, `add_target_to_mask_group` | `mask_groups`, `addTargetToMaskGroup(target, group)` | `graph.rs::a_mask_keeps_a_bone_still` |
+| `AnimationGraphNode.node_type`, `weight`, `mask`, `add_mask`, `remove_mask`, `add_mask_group`, `remove_mask_group` | the node view's `node_type`, `weight`, `mask`, `addMask`, `removeMask`, `addMaskGroup`, `removeMaskGroup` | `animation-graph.test.ts`, `animation.rs::a_ts_graph_reweights_live` |
+| `AnimationNodeType::Clip`, `Blend`, `Add` | `{ Clip: path }`, `"Blend"`, `"Add"` | `reflect_asset.rs::animation_graph_round_trips` |
+| `AnimationTargetId::from_names`, `from_name`, its UUID | `AnimationTargetId.fromNames(names)`, `fromName(name)`, or a UUID string | `graph.rs::a_mask_keeps_a_bone_still` |
+| `AnimationGraphAssetLoader` (`.animgraph.ron`, `.animgraph`) | `PlayAnimation.graph` as an asset path | `graph.rs::a_ron_graph_plays` |
+| `SerializedAnimationGraph`, `SerializedAnimationGraphNode`, `SerializedAnimationNodeType` | Rust only: the shape the hand-map reads and writes | `reflect_asset.rs::animation_graph_round_trips` |
+| `AnimationGraph::save` | Rust only: writes a file; `assets.get` reads the value | – |
+| `ThreadedAnimationGraph`, `ThreadedAnimationGraphs`, `ThreadedAnimationSubgraph` | Rust only: Bevy's evaluation cache | – |
 
 #### Scenario: The table is the coverage
 - **WHEN** a reviewer reads `crates/bevy-ts-animation`, `docs/animation.md` and the table

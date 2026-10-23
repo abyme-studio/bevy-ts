@@ -9,7 +9,8 @@ A hundred villagers cost the same CPU whether they play, sit at speed 0 or stand
 - **BREAKING: `PlayAnimation.repeat` becomes Bevy's `RepeatAnimation`** (`Never`, `Count(n)`, `Forever`; default `Forever`, today's default). TSX `repeat={true}` becomes `repeat="Forever"` (or is dropped), `repeat={false}` becomes `"Never"`; a level writes `repeat: Count(3)`. `repeat` stops being a TS column (an enum with data is a hole) until reflect-coverage stage 3.
 - **`speed` 0 stays a plain write**, Bevy's meaning: it holds the pose and still costs a playing clip. Docs say to use `paused`.
 - **`Animations`, an exported param in `bevy-ts/animation`.** Keyed by the root, which names its clip by asset path. `status(root)` reads the root's clip: loaded, duration, seek time, elapsed, completions, just completed, finished, paused, parked, weight. `seek(root, secs)` (Bevy's `seek_to`), `rewind(root)` and `replay(root)` write; they need writable-native-params. No node index ever reaches TS: `SharedGraph`'s clip-to-node map stays in Rust.
-- **Coverage table** in the spec: every public item of `AnimationPlayer`, `ActiveAnimation` and `AnimationTransitions`, its TS name or why it stays Rust, and the test.
+- **Stage 2: `AnimationGraph` built from TS.** `bevy-ts/bevy`'s `AnimationGraph` is Bevy's builder in TS (`addClip`, `addBlend`, `addAdditiveBlend`, the `*WithMask` forms, `addEdge`, node weights and masks, `addTargetToMaskGroup`), clips by asset path, a pure value that goes in `assets.add` or a handle slot. `PlayAnimation.graph` plays it (or a `.animgraph.ron` path): every clip node, blended by Bevy. A hand-map in the reflected-asset writer and reader closes the `AnimationGraph.graph` hole. `add*` return the node's number in that graph, as Bevy's do; no index into the shared graph reaches TS. No writable-native-params needed.
+- **Coverage table** in the spec: every public item of `AnimationPlayer`, `ActiveAnimation`, `AnimationTransitions`, `AnimationGraph`, `AnimationGraphNode` and `AnimationTargetId`, its TS name or why it stays Rust, and the test.
 - **One walk**: `players`/`players_in` stay the one player walk; parking and `Animations` use them.
 - `docs/animation.md` and the fox bench gain the paused and culled arms; agent town's 100 villagers are measured playing, paused and hidden, before and after.
 
@@ -21,14 +22,16 @@ None.
 
 ### Modified Capabilities
 
-- `scene-animation`: `PlayAnimation` gains `paused` and `cull` and an enum `repeat`; parking; the `Animations` param; the coverage table.
+- `scene-animation`: `PlayAnimation` gains `paused`, `cull`, `graph` and an enum `repeat`; parking; the `Animations` param; graphs built in TS; the coverage table.
 
 ## Impact
 
-- `crates/bevy-ts-animation`: `PlayAnimation` fields, a park system, mesh records on `AnimationTargets`, the `Animations` export.
+- `crates/bevy-ts-animation`: `PlayAnimation` fields, a park system, mesh records on `AnimationTargets`, the `Animations` export; stage 2: `graph`, `graph_of`, graph-asset edits, `tests/graph.rs`.
+- `crates/bevy-ts` (stage 2): an `AnimationGraph` entry in reflect-assets' hand-map list in `reflect_asset`, and deleting the `UNCOVERED` entry for `AnimationGraph`. Coordinated with lead@reflect-assets, who owns the list.
 - `crates/bevy-ts-cli`: registers the export in every engine (as `Cameras`); `tests/animation.rs`; `examples/animation_bench_engine.rs` arms.
-- `packages/bevy-ts`: `bevy-ts/bevy` regenerated (`PlayAnimation`, `RepeatAnimation`), `bevy-ts/animation` declared; `test/tsx/elements.tsx`.
+- `packages/bevy-ts`: `bevy-ts/bevy` regenerated (`PlayAnimation`, `RepeatAnimation`), `bevy-ts/animation` declared; `test/tsx/elements.tsx`; stage 2: the hand-written `AnimationGraph` builder and `AnimationTargetId`, emitted by `scripts/gen-bevy-types.sh`.
 - `examples/foxes`, `docs/animation.md`, `docs/levels.md` (the `repeat` spelling), README.
 - Agent town: `src/world.tsx` passes `repeat={true}`, which the new type refuses; it migrates when it takes the engine release.
+- Stage 2 depends on reflect-assets stage 1 (`assets`, asset values in handle slots, the hand-map list) and the reflected-coverage hole check, for the TS builder; the `.animgraph.ron` path does not.
 - Depends on writable-native-params (still landing) for `seek`, `rewind`, `replay`. `status` and every `PlayAnimation` field work without it.
-- Performance: defaults unchanged. `paused: true` now costs nothing per frame instead of a playing clip's cost.
+- Performance: defaults unchanged. `paused: true` now costs nothing per frame instead of a playing clip's cost. A graph root costs what Bevy's blend costs; reweighting through `assets.set` every frame adds a reflected write and a graph rebuild per frame, only for roots that do it.

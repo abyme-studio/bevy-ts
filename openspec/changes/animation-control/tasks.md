@@ -39,3 +39,17 @@
 ## 7. Gate
 
 - [ ] 7.1 Build, the crates' tests, clippy, `scripts/gen-bevy-types.sh --check`, through gate-slot; `openspec validate animation-control --strict`
+
+## 8. Stage 2: AnimationGraph from TS
+
+- [ ] 8.1 `PlayAnimation.graph: Handle<AnimationGraph>` (default none); `graph_of(play, shared)` gives a root's graph handle, and `start`, `park` and `stop_removed` call it in place of `shared.handle`
+- [ ] 8.2 A graph root plays every clip node with `repeat` and `speed`; `clip` beside `graph` warns once (`AnimationReports`) and is unused; a changed `graph` restarts; on `AssetEvent::Modified` of a used graph, start new clip nodes and stop gone ones; clearing `graph` returns to `clip`
+- [ ] 8.3 `Animations` on a graph root: `status` reads the first clip node in node order; `seek`, `rewind`, `replay` act on every playing clip (with task 4)
+- [ ] 8.4 `tests/graph.rs`: `a_ron_graph_plays` (a `.animgraph.ron` fixture under `assets/`), `a_graph_blends_two_clips`, `an_additive_blend_adds`, `a_mask_keeps_a_bone_still`, `a_changed_graph_restarts`, `an_edited_graph_plays_new_clips`, `graph_and_clip_warns`, `a_parked_graph_root_wakes_with_its_graph`
+- [ ] 8.5 Rebase onto main once reflect-assets stage 1 and the reflected-coverage hole check land
+- [ ] 8.6 The `AnimationGraph` hand-map in `bevy_ts::reflect_asset`'s list (design 12), agreed with lead@reflect-assets: write from `SerializedAnimationGraph` JSON with clips loaded by path and `mask_groups` as `[target, mask]` pairs (UUID or `{ names }`, through `from_names`); read through `TryFrom<AnimationGraph>`, naming the node of a pathless clip; `reflect_asset.rs::animation_graph_round_trips`
+- [ ] 8.7 Delete the `reflect_value::UNCOVERED` entry for `AnimationGraph`'s `graph`; the hole check passes with no entry for it
+- [ ] 8.8 `packages/bevy-ts`: the `AnimationGraph` builder (design 10) and `AnimationTargetId.fromNames`/`fromName`, emitted into `bevy-ts/bevy` by `scripts/gen-bevy-types.sh` in place of the generated class; `test/animation-graph.test.ts` (each `add*`'s node number and JSON, `fromClip`, `fromClips`, `addEdge`, `removeEdge`, `get(node)` writes, mask methods); `test/tsx/elements.tsx` covers `graph`
+- [ ] 8.9 `crates/bevy-ts-cli/tests/animation.rs`: `a_ts_built_graph_blends` (a TSX fox with `graph={g}`) and `a_ts_graph_reweights_live` (`assets.set` of a weight from a TS system)
+- [ ] 8.10 `docs/animation.md`: building a graph, masks and target paths, a graph file, the graph rows of the coverage table; "When to write Rust instead" drops blends and masks; `examples/foxes` gains a blended fox
+- [ ] 8.11 Gate as 7.1, plus `pnpm -C packages/bevy-ts test`; `openspec validate animation-control --strict`
