@@ -79,6 +79,23 @@ window, the editor camera swapped for the game's at Play). Load average 26 to 38
 The three runs of each 10,000 arm: none touched 109, 161, 204 ms; 100 touched 118, 152, 152;
 all touched 201, 213, 201; the full remount 1,480 to 1,852.
 
+A second round on the rebased branch, at load 39 to 65 (every team landing at once), medians:
+
+| instances | arm | Stop, ms | plan, ms | rebuild, ms | restore, ms |
+|---:|---|---:|---:|---:|---:|
+| 1,000 | full remount | 167 | 0 | 48 | 0 |
+| 1,000 | none touched | 50 | 0.7 | 35 | 0.3 |
+| 1,000 | 100 touched | 38 | 0.6 | 35 | 2.5 |
+| 1,000 | all touched | 46 | 0.5 | 34 | 13 |
+| 10,000 | full remount | 1,395 | 0 | 155 | 0 |
+| 10,000 | none touched | 107 | 12 | 144 | 3.3 |
+| 10,000 | 100 touched | 279 | 8.1 | 147 | 14 |
+| 10,000 | all touched | 231 | 5.2 | 87 | 159 |
+
+The 10,000 runs: none touched 106, 106, 110 ms; 100 touched 243, 279, 285; all touched 231,
+232, 298; the full remount 1,158 to 1,457. Neither round had a quiet machine: the rebuild alone
+moved between 73 and 150 ms with the load.
+
 - **Plan** is `levels::plan_stop`: the scan of the level's 20,000 entities against the game-start
   baseline, and the level file read and hashed.
 - **Restore** is `levels::restore`: `apply_at` respawning the changed subtrees, and their stamps.
@@ -95,7 +112,7 @@ level camera's `VisibleEntities`, `Clusters` and `PreviousViewData` change every
 tsx's `restore::derived` list and do not count; with it, a play that touches nothing respawns 0
 entities. `Camera` changes every frame too but counts, so a level camera respawns.
 
-The restore takes a 10,000-instance Stop from 1.65 s to 0.15 to 0.2 s. The 100 ms goal is not met
+The restore takes a 10,000-instance Stop from 1.2 to 1.9 s to 0.1 to 0.3 s. The 100 ms goal is not met
 on this machine: the rebuild's 73 to 108 ms is above it alone. The next cut is in the rebuild: split it,
 and if the level check is the part that grows, skip it for a Stop, which does not need it (the same module set, the level files hashed as unchanged), and
 the content-keyed expansion cache for the full path.
