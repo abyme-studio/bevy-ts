@@ -171,3 +171,44 @@ app.addSystems(Update, raw);
     app.update();
     assert!(messages(&app).iter().any(|m| m.contains("never a column")), "{:?}", messages(&app));
 }
+
+/// Agent town's civ kit: `ResMut` of Bevy's reflect-tier shadow-map resources (`size: usize` has
+/// no native layout) writes back, and Bevy sees the change.
+#[test]
+fn res_mut_of_a_reflect_tier_resource_writes_back_with_change_detection() {
+    use bevy::light::{DirectionalLightShadowMap, PointLightShadowMap};
+    let body = r#"
+export const DirectionalLightShadowMap = rustComponent("DirectionalLightShadowMap");
+export const PointLightShadowMap = rustComponent("PointLightShadowMap");
+export function shadows(d: ResMut<DirectionalLightShadowMap>, p: ResMut<PointLightShadowMap>) {
+  if ((d as any).size !== 4096) (d as any).size = 4096;
+  if ((p as any).size !== 4096) (p as any).size = 4096;
+}
+app.addSystems(Update, shadows);
+"#;
+    let dir = project("reflect-res", &[("game.ts", &format!("{}{body}", HEAD.replace("import type { Changed, Mut, Query }", "import type { Changed, Mut, Query, ResMut }")))]);
+    let mut app = app(&dir.join("game.ts"));
+    app.register_type::<DirectionalLightShadowMap>().register_type::<PointLightShadowMap>();
+    app.insert_resource(DirectionalLightShadowMap::default()).insert_resource(PointLightShadowMap::default());
+    #[derive(Resource, Default)]
+    struct Seen(Vec<(usize, bool, usize, bool)>);
+    app.init_resource::<Seen>();
+    app.add_systems(
+        Update,
+        (|d: Res<DirectionalLightShadowMap>, p: Res<PointLightShadowMap>, mut seen: ResMut<Seen>| {
+            seen.0.push((d.size, d.is_changed(), p.size, p.is_changed()));
+        })
+        .after(bevy_ts::BevyTsSet::Update),
+    );
+    app.update();
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    app.update();
+    let seen = &app.world().resource::<Seen>().0;
+    let n = seen.len();
+    // The frame after load writes both; the next sees them unchanged (the cached size is 4096).
+    assert_eq!(seen[n - 2], (4096, true, 4096, true), "{seen:?}");
+    assert_eq!(seen[n - 1], (4096, false, 4096, false), "{seen:?}");
+    assert!(messages(&app).iter().all(|m| !m.contains("threw")), "{:?}", messages(&app));
+}
