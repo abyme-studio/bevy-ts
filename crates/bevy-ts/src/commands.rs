@@ -19,8 +19,12 @@
 //! | stateScoped | 14 | entity u64, kind u8 (bit 7: remove), machine index u32, value index u32 |
 //! | saveWorld | 15 | name len u16, name, len u32, options JSON (`saves::SaveOptions`) |
 //! | loadWorld | 16 | name len u16, name, parent u64 (`u64::MAX` for none) |
+//! | insertReflect | 17 | entity u64, mode u8, type name len u16, name, JSON len u32, JSON (empty: the default) |
 //!
-//! Entities are `Entity::to_bits`. Component values are native layout bytes.
+//! Entities are `Entity::to_bits`. Component values are native layout bytes, except
+//! `insertReflect`'s: a reflected value's JSON, written by `reflect_value` (mode 0 inserts the
+//! component from its default, mode 1 writes fields over the one just inserted, a layout value's
+//! holes).
 
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::ptr::OwningPtr;
@@ -47,6 +51,18 @@ pub const OP_OBSERVE: u8 = 13;
 pub const OP_STATE_SCOPED: u8 = 14;
 pub const OP_SAVE_WORLD: u8 = 15;
 pub const OP_LOAD_WORLD: u8 = 16;
+pub const OP_INSERT_REFLECT: u8 = 17;
+
+/// `OP_INSERT_REFLECT`'s modes.
+pub const REFLECT_INSERT: u8 = 0;
+pub const REFLECT_PATCH: u8 = 1;
+
+/// The built-in recipes reflect-coverage removed, each with what replaces it.
+const REMOVED_RECIPES: [(&str, &str); 3] = [
+    ("camera3d", "commands.spawn(Camera3d, Transform.lookingAt(position, lookAt), Projection.of(projection))"),
+    ("directionalLight", "commands.spawn(DirectionalLight.of({ illuminance, shadow_maps_enabled }), Transform.lookingAt(position, lookAt))"),
+    ("cuboid", "commands.spawn(Transform.of({ translation }), <entity><mesh shape=\"cuboid\" size={size} /><material color={color} /></entity>)"),
+];
 
 /// Size of the Rust-owned arena handed to each call. Larger buffers overflow into JS.
 pub const ARENA_BYTES: usize = 64 * 1024;
@@ -84,6 +100,7 @@ pub enum Op {
     SaveWorld { name: String, options: crate::saves::SaveOptions },
     /// `commands.loadWorld(name, { parent })`.
     LoadWorld { name: String, parent: Option<Entity> },
+    InsertReflect { entity: Entity, mode: u8, type_name: String, json: Option<serde_json::Value> },
 }
 
 /// A plugin's command decoder: gets the op's bytes and `&mut World`.
@@ -289,6 +306,16 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 };
                 Op::LoadWorld { name, parent }
             }
+            OP_INSERT_REFLECT => {
+                let entity = r.entity()?;
+                let mode = r.u8()?;
+                let n = r.u16()? as usize;
+                let type_name = String::from_utf8(r.take(n)?.to_vec()).map_err(|e| e.to_string())?;
+                let n = r.u32()? as usize;
+                let body = r.take(n)?;
+                let json = if body.is_empty() { None } else { Some(serde_json::from_slice(body).map_err(|e| format!("{type_name}: {e}"))?) };
+                Op::InsertReflect { entity, mode, type_name, json }
+            }
             other => return Err(format!("unknown command op {other} at byte {}", r.at - 1)),
         };
         ops.push(op);
@@ -382,7 +409,10 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
             },
             Op::SpawnNative { entity, recipe, params } => {
                 let Some(f) = recipes.get(&recipe) else {
-                    warnings.push(format!("spawnNative: no recipe named {recipe}"));
+                    match REMOVED_RECIPES.iter().find(|(name, _)| *name == recipe) {
+                        Some((_, now)) => warnings.push(format!("spawnNative(\"{recipe}\"): the built-in recipe was removed; spawn its components instead: {now}")),
+                        None => warnings.push(format!("spawnNative: no recipe named {recipe}")),
+                    }
                     continue;
                 };
                 match world.spawn_empty_at(entity) {
@@ -466,12 +496,17 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
             Op::Observe { entity, index, decl } => {
                 if world.get_entity(entity).is_err() {
                     warnings.push(format!("observe {}: entity {entity} does not exist", decl.name));
-                    continue;
+                    return;
                 }
                 crate::observers::observe(world, entity, index, *decl);
             }
             Op::SaveWorld { name, options } => crate::saves::save(world, &name, options),
             Op::LoadWorld { name, parent } => crate::saves::load(world, &name, parent),
+            Op::InsertReflect { entity, mode, type_name, json } => {
+                if let Err(err) = insert_reflect(world, entity, mode, &type_name, json.as_ref()) {
+                    warnings.push(format!("insert {type_name}: {err}"));
+                }
+            }
             Op::Plugin { opcode, bytes } => {
                 let (name, decoder) = kinds.get(opcode).expect("decode checked the opcode").clone();
                 if let Err(err) = decoder(world, &bytes) {
@@ -481,6 +516,64 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
         }
     }
     warnings
+}
+
+/// `OP_INSERT_REFLECT`: inserts a reflected component from its `ReflectDefault` (or
+/// `ReflectFromWorld`) with `json` written over it, or writes `json`'s fields over the entity's
+/// component (`REFLECT_PATCH`, a layout value's holes). A failure leaves the entity as it was.
+#[cfg(feature = "reflect")]
+fn insert_reflect(world: &mut World, entity: Entity, mode: u8, type_name: &str, json: Option<&serde_json::Value>) -> Result<(), String> {
+    use crate::reflect_value;
+    use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld};
+    use bevy::reflect::{ParsedPath, ReflectPath};
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let server = world.get_resource::<AssetServer>().cloned();
+    let registry = registry.read();
+    let reg = registry
+        .get_with_type_path(type_name)
+        .or_else(|| registry.get_with_short_type_path(type_name))
+        .ok_or_else(|| format!("{type_name} is not a registered type"))?;
+    let path = reg.type_info().type_path();
+    reflect_value::refuse_computed(path)?;
+    let rc = reg.data::<ReflectComponent>().ok_or_else(|| format!("{path} does not reflect Component"))?.clone();
+    if world.get_entity(entity).is_err() {
+        return Err(format!("entity {entity} does not exist"));
+    }
+    let default = match reg.data::<ReflectDefault>() {
+        Some(d) => Some(d.default()),
+        None => reg.data::<ReflectFromWorld>().map(|f| f.from_world(world)),
+    };
+    match mode {
+        REFLECT_INSERT => {
+            let mut value = default.ok_or_else(|| format!("{path} has no reflected Default or FromWorld, so a script cannot insert it"))?;
+            if let Some(json) = json {
+                reflect_value::write_component(&registry, server.as_ref(), value.as_partial_reflect_mut(), None, json)?;
+            }
+            rc.insert(&mut world.entity_mut(entity), value.as_partial_reflect(), &registry);
+            Ok(())
+        }
+        REFLECT_PATCH => {
+            let Some(serde_json::Value::Object(fields)) = json else { return Err(format!("{path}: a patch is an object of fields")) };
+            let mut e = world.entity_mut(entity);
+            let mut current = rc.reflect_mut(&mut e).ok_or_else(|| format!("entity {entity} has no {path} to patch"))?;
+            // Written into a copy first, so a bad field changes nothing.
+            let mut copy = current.reflect_clone().map_err(|e| format!("{path}: {e}"))?;
+            for (field, v) in fields {
+                let at = ParsedPath::parse(&format!(".{field}")).map_err(|_| format!("{path} has no field {field}"))?;
+                let slot = at.reflect_element_mut(copy.as_partial_reflect_mut()).map_err(|_| format!("{path} has no field {field}"))?;
+                let base = default.as_deref().and_then(|d| at.reflect_element(d.as_partial_reflect()).ok());
+                reflect_value::write(&registry, server.as_ref(), slot, base, v).map_err(|e| format!("{path}.{field}: {e}"))?;
+            }
+            current.apply(copy.as_partial_reflect());
+            Ok(())
+        }
+        other => Err(format!("unknown reflect insert mode {other}")),
+    }
+}
+
+#[cfg(not(feature = "reflect"))]
+fn insert_reflect(_: &mut World, _: Entity, _: u8, type_name: &str, _: Option<&serde_json::Value>) -> Result<(), String> {
+    Err(format!("{type_name}: bevy-ts is built without the reflect feature"))
 }
 
 /// Encodes ops the way the JS runtime does; used by the fake backend and tests.
@@ -556,6 +649,18 @@ impl Encoder {
         self.bytes.extend(name.as_bytes());
         self.bytes.extend(parent.map_or(u64::MAX, Entity::to_bits).to_le_bytes());
     }
+
+    pub fn insert_reflect(&mut self, entity: Entity, mode: u8, type_name: &str, json: Option<&serde_json::Value>) {
+        self.bytes.push(OP_INSERT_REFLECT);
+        self.bytes.extend(entity.to_bits().to_le_bytes());
+        self.bytes.push(mode);
+        self.bytes.extend((type_name.len() as u16).to_le_bytes());
+        self.bytes.extend(type_name.as_bytes());
+        let j = json.map(|j| j.to_string()).unwrap_or_default();
+        self.bytes.extend((j.len() as u32).to_le_bytes());
+        self.bytes.extend(j.as_bytes());
+    }
+
     pub fn plugin(&mut self, opcode: u16, bytes: &[u8]) {
         self.bytes.push(OP_PLUGIN);
         self.bytes.extend(opcode.to_le_bytes());
@@ -582,6 +687,46 @@ mod tests {
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(world.get::<ChildOf>(b).unwrap().parent(), a);
         assert!(world.get::<TsSpawned>(a).is_some());
+    }
+
+    #[cfg(feature = "pbr")]
+    #[test]
+    fn reflect_values_insert_over_their_default_and_patch_holes() {
+        use bevy::camera::{Projection, ScalingMode};
+        use bevy::light::DirectionalLight;
+        use serde_json::json;
+        let mut world = World::new();
+        let registry = AppTypeRegistry::default();
+        registry.write().register::<Projection>();
+        registry.write().register::<DirectionalLight>();
+        world.insert_resource(registry);
+        let a = world.entity_allocator().alloc();
+        let mut enc = Encoder::default();
+        enc.spawn(a, &[]);
+        enc.insert_reflect(a, REFLECT_INSERT, "Projection", Some(&json!({ "Orthographic": { "scaling_mode": { "FixedVertical": { "viewport_height": 12 } } } })));
+        enc.insert_reflect(a, REFLECT_INSERT, "bevy_light::directional_light::DirectionalLight", None);
+        enc.insert_reflect(a, REFLECT_PATCH, "DirectionalLight", Some(&json!({ "color": "#ff0000" })));
+        enc.insert_reflect(a, REFLECT_PATCH, "DirectionalLight", Some(&json!({ "colour": "#ff0000" })));
+        let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
+        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default());
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings[0].contains("DirectionalLight") && warnings[0].contains("colour"), "{warnings:?}");
+        match world.get::<Projection>(a).unwrap() {
+            Projection::Orthographic(o) => assert!(matches!(o.scaling_mode, ScalingMode::FixedVertical { viewport_height: 12.0 })),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(world.get::<DirectionalLight>(a).unwrap().color, Color::srgb(1.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn a_removed_recipe_names_its_replacement() {
+        let mut world = World::new();
+        let a = world.entity_allocator().alloc();
+        let mut enc = Encoder::default();
+        enc.spawn_native(a, "camera3d", &serde_json::json!({}));
+        let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
+        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default());
+        assert!(warnings[0].contains("removed") && warnings[0].contains("Transform.lookingAt"), "{warnings:?}");
     }
 
     #[test]

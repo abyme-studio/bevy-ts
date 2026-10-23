@@ -26,8 +26,6 @@ pub mod modules;
 pub mod net;
 pub mod observers;
 pub mod plugin_api;
-#[cfg(feature = "pbr")]
-pub mod recipes;
 #[cfg(feature = "reflect")]
 pub mod reflect_value;
 #[cfg(feature = "reflect")]
@@ -184,8 +182,6 @@ impl Plugin for BevyTsPlugin {
         sets::expose_anchors(app);
         time_conditions::expose_all(app);
 
-        #[cfg(feature = "pbr")]
-        recipes::register(app);
         // Bevy's docs say `OcclusionCulling` needs a `DepthPrepass`; its code quits the app without
         // one (bevyengine/bevy#22747). Registered in `build`, before any spawn, or Bevy refuses it.
         #[cfg(feature = "pbr")]

@@ -19,13 +19,13 @@ use std::sync::{Arc, Mutex};
 /// A white cube and no lights but the ambient one; `insert` goes on the camera.
 fn game(insert: &str) -> String {
     format!(
-        r##"import {{ app, Startup }} from "bevy-ts";
+        r##"import {{ app, Startup, Transform }} from "bevy-ts";
 import type {{ Commands }} from "bevy-ts";
-import {{ AmbientLight }} from "bevy-ts/bevy";
+import {{ AmbientLight, Camera3d }} from "bevy-ts/bevy";
 export function setup(commands: Commands) {{
-  const cam = commands.spawnNative("camera3d", {{ position: [3, 3, 3], lookAt: [0, 0, 0] }});
+  const cam = commands.spawn(Camera3d, Transform.lookingAt([3, 3, 3], [0, 0, 0]));
   {insert}
-  commands.spawnNative("cuboid", {{ size: [2, 2, 2], color: "#ffffff" }});
+  commands.spawn(Transform.of({{}}), <entity><mesh shape="cuboid" size={{[2, 2, 2]}} /><material color="#ffffff" /></entity>);
 }}
 app.addSystems(Startup, setup);
 "##
@@ -34,7 +34,7 @@ app.addSystems(Startup, setup);
 
 /// The camera's `AmbientLight`, if any, and the frame's mean brightness (0..255).
 fn render(name: &str, insert: &str) -> (Option<AmbientLight>, f64) {
-    let dir = project(name, &[("src/game.ts", &game(insert)), ("package.json", "{}")]);
+    let dir = project(name, &[("src/game.tsx", &game(insert)), ("package.json", "{}")]);
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -46,7 +46,7 @@ fn render(name: &str, insert: &str) -> (Option<AmbientLight>, f64) {
     .add_plugins(HeadlessPlugin)
     .add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true))
     .add_plugins(bevy_ts_tsx::TsxPlugin)
-    .insert_resource(DevSource(Arc::new(Compiler::new(dir.join("src/game.ts"), true).unwrap())));
+    .insert_resource(DevSource(Arc::new(Compiler::new(dir.join("src/game.tsx"), true).unwrap())));
     app.finish();
     app.cleanup();
     let r = reload(&mut app, false);
