@@ -611,7 +611,7 @@ mod tests {
         assert!(ambient.layout.field("brightness").is_some());
         assert!(ambient.holes.iter().any(|h| h.starts_with("color:")), "{:?}", ambient.holes);
         let scale = n.get("UiScale").expect("UiScale is layout tier");
-        assert!(scale.resource && scale.layout.field("0").is_some());
+        assert!(scale.resource && scale.layout.field("value").is_some());
         assert!(!n.get("Transform").unwrap().resource);
         let clear = n.reflect_tier("ClearColor").expect("ClearColor is reflect tier");
         assert!(clear.resource, "{clear:?}");
