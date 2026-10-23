@@ -104,7 +104,8 @@ the field's address minus the value's. No `repr(C)` and no code per type.
 
 ### Reflected values in TSX
 
-TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::reflect_value`):
+TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::reflect_value`;
+[reflection.md](reflection.md) has every kind's shape, its TS type and what is uncovered):
 
 - An enum: a unit variant as its name (`"WindowSize"`), a variant with data as a one-key object
   (`{ Orthographic: { scale: 2 } }`); a tuple variant's data is an array, a newtype variant's its
@@ -125,7 +126,8 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
   `Option`, a nested struct) are TSX props: `<DirectionalLight illuminance={8000}
   color={hex("#ffd7a8")} />` writes `illuminance` from bytes and `color` through reflection, on
   insert and whenever it changes. TS systems still never see them. An opaque hole (`usize`,
-  `Duration`) fails the load; a hole prop takes a value, not a binding.
+  `Duration`) is written by its reflected serde; a hole of a type on the uncovered list fails the
+  load with the list's reason; a hole prop takes a value, not a binding.
 
 Colours have one parser (`bevy_ts::color`), used by every colour bevy-ts takes: TSX props, `<mesh
 color>`, `<material color>`, UI colours, script-material `color` params and recipes. It takes a hex

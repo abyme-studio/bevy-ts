@@ -59,6 +59,7 @@ fn default(reg: &bevy::reflect::TypeRegistration) -> Option<Box<dyn Reflect>> {
 /// load fails with (unknown fields, variants and keys, bad colours). A component with no default
 /// is checked when it is written.
 pub fn check(registry: &TypeRegistry, type_path: &str, props: &Map<String, Value>) -> Result<(), String> {
+    reflect_value::refuse_computed(type_path)?;
     let (_, reg) = component(registry, type_path)?;
     let Some(mut value) = default(reg) else { return Ok(()) };
     for (f, v) in props {
@@ -69,6 +70,7 @@ pub fn check(registry: &TypeRegistry, type_path: &str, props: &Map<String, Value
 
 /// Inserts the component from its default with `props` set.
 pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String, Value>) -> Result<(), String> {
+    reflect_value::refuse_computed(type_path)?;
     let registry = world.resource::<AppTypeRegistry>().clone();
     let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();
@@ -84,6 +86,7 @@ pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String,
 /// Writes one field of the entity's component over the default's value of it; false when the
 /// entity no longer has the component.
 pub fn write(world: &mut World, e: Entity, type_path: &str, field: &str, v: &Value) -> Result<bool, String> {
+    reflect_value::refuse_computed(type_path)?;
     let registry = world.resource::<AppTypeRegistry>().clone();
     let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();

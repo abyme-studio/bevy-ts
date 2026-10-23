@@ -28,7 +28,7 @@ pub mod observers;
 pub mod plugin_api;
 #[cfg(feature = "pbr")]
 pub mod recipes;
-#[cfg(feature = "pbr")]
+#[cfg(feature = "reflect")]
 pub mod reflect_value;
 pub mod runtime;
 pub mod schedules;

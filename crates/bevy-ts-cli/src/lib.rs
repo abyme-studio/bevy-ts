@@ -5,6 +5,7 @@ pub mod build;
 pub mod camera;
 pub mod cli;
 pub mod compile;
+pub mod coverage;
 pub mod dev;
 pub mod engine;
 pub mod headless;

@@ -1,12 +1,12 @@
 //! Component schemas, reads and edits: TS components from their native layout, reflected Rust
-//! components through the stock `bevy_remote` handlers, in the stock shapes.
+//! components through `bevy_ts::reflect_value`, in the shape TSX takes (docs/reflection.md).
 
 use crate::{Subscribers, frame, invalid, params, protocol, required};
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
-use bevy::remote::builtin_methods::{
-    export_registry_types, process_remote_get_components_request, process_remote_mutate_components_request,
-};
+use bevy::ecs::reflect::ReflectComponent;
+use bevy::reflect::{ParsedPath, ReflectPath};
+use bevy::remote::builtin_methods::export_registry_types;
 use bevy::remote::{BrpError, BrpResult, error_codes};
 use bevy_ts::components::{ComponentState, TsComponent, TsComponents};
 use bevy_ts::layout::FieldType;
@@ -175,19 +175,58 @@ pub(crate) fn get_components(In(p): In<Option<Value>>, world: &World) -> BrpResu
             }
         }
     }
-    if !rust.is_empty() {
-        let stock = process_remote_get_components_request(
-            In(Some(json!({ "entity": entity, "components": rust, "strict": p.strict }))),
-            world,
-        )?;
-        if let Some(Value::Object(c)) = stock.get("components") {
-            components.extend(c.clone());
-        }
-        if let Some(Value::Object(e)) = stock.get("errors") {
-            errors.extend(e.clone());
+    for name in rust {
+        match read_reflected(world, entity, &name) {
+            Ok(v) => {
+                components.insert(name, v);
+            }
+            Err(e) if p.strict => return Err(invalid(e)),
+            Err(e) => {
+                errors.insert(name, component_error(error_codes::COMPONENT_ERROR, e));
+            }
         }
     }
     Ok(json!({ "components": components, "errors": errors }))
+}
+
+/// A reflected component's registration and `ReflectComponent`, by type path.
+fn reflected<'r>(registry: &'r bevy::reflect::TypeRegistry, name: &str) -> Result<(&'r bevy::reflect::TypeRegistration, &'r ReflectComponent), String> {
+    let reg = registry.get_with_type_path(name).ok_or_else(|| format!("unknown component {name}"))?;
+    let rc = reg.data::<ReflectComponent>().ok_or_else(|| format!("{name} does not reflect Component"))?;
+    Ok((reg, rc))
+}
+
+/// A reflected component of the entity through `reflect_value::read_component`.
+fn read_reflected(world: &World, entity: Entity, name: &str) -> Result<Value, String> {
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let (_, rc) = reflected(&registry, name)?;
+    let e = world.get_entity(entity).map_err(|_| format!("{entity} is not an entity"))?;
+    let value = rc.reflect(e).ok_or_else(|| format!("entity {entity} has no {name}"))?;
+    bevy_ts::reflect_value::read_component(&registry, value.as_partial_reflect())
+}
+
+/// Writes `v` at the reflection path `path` of the entity's component, over the default's value
+/// there (`write_component` for the whole component).
+fn write_reflected(world: &mut World, entity: Entity, name: &str, path: &str, v: &Value) -> Result<(), BrpError> {
+    bevy_ts::reflect_value::refuse_computed(name).map_err(invalid)?;
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let server = world.get_resource::<AssetServer>().cloned();
+    let registry = registry.read();
+    let (reg, rc) = reflected(&registry, name).map_err(invalid)?;
+    let base = bevy_ts::reflect_value::default_of(&registry, reg.type_id());
+    let parsed = (!path.is_empty()).then(|| ParsedPath::parse(path).map_err(|e| invalid(format!("{name}: path {path}: {e}")))).transpose()?;
+    let mut e = world.get_entity_mut(entity).map_err(|_| BrpError::entity_not_found(entity))?;
+    let mut m = rc.reflect_mut(&mut e).ok_or_else(|| invalid(format!("entity {entity} has no {name}")))?;
+    let target = m.as_partial_reflect_mut();
+    let wrote = match &parsed {
+        None => bevy_ts::reflect_value::write_component(&registry, server.as_ref(), target, base.as_deref(), v),
+        Some(at) => {
+            let slot = at.reflect_element_mut(target).map_err(|e| invalid(format!("{name}: path {path}: {e}")))?;
+            let b = base.as_deref().and_then(|b| at.reflect_element(b).ok());
+            bevy_ts::reflect_value::write(&registry, server.as_ref(), slot, b, v)
+        }
+    };
+    wrote.map_err(|e| BrpError { code: error_codes::INVALID_PARAMS, message: format!("{name}{path}: {e}"), data: Some(json!({ "path": path })) })
 }
 
 /// What a `get_components+watch` subscriber was last sent.
@@ -288,7 +327,6 @@ fn write_ts(world: &mut World, entity: Entity, c: &TsComponent, path: &str, v: &
 }
 
 pub(crate) fn mutate_components(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
-    let raw = p.clone();
     let p: protocol::MutateComponentsParams = required(p)?;
     let entity = Entity::try_from_bits(p.entity.0).ok_or_else(|| invalid(format!("{} is not an entity", p.entity.0)))?;
     match ts_component(world, &p.component) {
@@ -296,6 +334,9 @@ pub(crate) fn mutate_components(In(p): In<Option<Value>>, world: &mut World) -> 
             write_ts(world, entity, &c, &p.path, &p.value)?;
             Ok(Value::Null)
         }
-        None => process_remote_mutate_components_request(In(raw), world),
+        None => {
+            write_reflected(world, entity, &p.component, &p.path, &p.value)?;
+            Ok(Value::Null)
+        }
     }
 }

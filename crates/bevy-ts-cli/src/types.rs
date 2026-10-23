@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 /// The app `bevy-ts types` walks: the engine's plugins and the project's, no window, no device,
 /// no JS engine.
-fn types_app(engine: &Engine, extra: impl Plugin) -> App {
+pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
     let mut app = App::new();
     let render = RenderPlugin {
         render_creation: RenderCreation::Automatic(Box::new(WgpuSettings { backends: None, ..default() })),
@@ -37,10 +37,12 @@ fn types_app(engine: &Engine, extra: impl Plugin) -> App {
     app
 }
 
-/// `bevy-ts types [--out <file>]`. Returns the exit code.
+/// `bevy-ts types [--out <file>] [--coverage <report.json>]`. `--coverage` writes the hole
+/// check's report (`crate::coverage`) instead of the types. Returns the exit code.
 pub fn run(engine: &Engine, extra: impl Plugin, args: &[String]) -> i32 {
     let mut out = PathBuf::from(".bevy-ts/types/native.d.ts");
     let mut bevy: Option<(PathBuf, PathBuf)> = None;
+    let mut coverage: Option<PathBuf> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -48,6 +50,13 @@ pub fn run(engine: &Engine, extra: impl Plugin, args: &[String]) -> i32 {
                 (Some(js), Some(dts)) => bevy = Some((PathBuf::from(js), PathBuf::from(dts))),
                 _ => {
                     eprintln!("bevy-ts types: --bevy takes the bevy.js and bevy.d.ts to write");
+                    return 2;
+                }
+            },
+            "--coverage" => match it.next() {
+                Some(p) => coverage = Some(PathBuf::from(p)),
+                None => {
+                    eprintln!("bevy-ts types: --coverage takes the report file to write");
                     return 2;
                 }
             },
@@ -74,6 +83,16 @@ pub fn run(engine: &Engine, extra: impl Plugin, args: &[String]) -> i32 {
         }
     };
     bevy_ts::layout_reflect::fill(app.world_mut());
+    if let Some(report) = coverage {
+        let json = serde_json::to_string_pretty(&crate::coverage::walk(app.world())).expect("a report");
+        return match write(&report, &json) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("bevy-ts types: {e}");
+                1
+            }
+        };
+    }
     if let Some((js_out, dts_out)) = bevy {
         let (js, dts) = emit_bevy(app.world());
         return match write(&js_out, &js).and_then(|_| write(&dts_out, &dts)) {
@@ -145,33 +164,121 @@ fn ident(short: &str) -> String {
     out
 }
 
-/// A TS type for a reflected type, following `registry.schema`'s JSON shapes: numbers, strings,
-/// `Handle<T>` as an asset path, `Entity` as an entity, `Color` as `ColorValue`, options as
-/// `| null`, lists as arrays, enums in Bevy's shape. A nested struct's fields are optional: a
-/// written value is merged over the default.
+/// The TS type of a reflected type's JSON shape in `bevy_ts::reflect_value` (docs/reflection.md):
+/// numbers, strings, wide integers as `number | string`, `Duration` as seconds, `Handle<T>` as an
+/// asset path or `null`, `Entity` as an entity, `Color` as `ColorValue`, glam types as lane tuples,
+/// options as `| null`, lists and sets as arrays, maps as records or `[key, value]` pairs, enums
+/// in Bevy's shape. A nested struct's fields are optional: a written value is merged over the
+/// default. `unknown` only for a type with no shape (on `reflect_value::UNCOVERED`).
+pub fn reflect_ts(registry: &TypeRegistry, path: &str) -> String {
+    ts_type(registry, path, 0)
+}
+
+/// glam's serde shapes: vectors and quaternions as lanes, matrices and affines flat.
+fn glam_ts(path: &str) -> Option<String> {
+    let name = path.strip_prefix("glam::")?;
+    let lanes = |n: usize, t: &str| Some(format!("readonly [{}]", vec![t; n].join(", ")));
+    let (kind, n) = match name {
+        "Quat" | "DQuat" => ("number", 4),
+        "Mat2" | "DMat2" => ("number", 4),
+        "Mat3" | "Mat3A" | "DMat3" => ("number", 9),
+        "Mat4" | "DMat4" => ("number", 16),
+        "Affine2" | "DAffine2" => ("number", 6),
+        "Affine3" | "Affine3A" | "DAffine3" => ("number", 12),
+        _ => {
+            let n = match name.chars().rev().find(char::is_ascii_digit).filter(|_| name.contains("Vec")) {
+                Some(d) => d.to_digit(10)? as usize,
+                None => return None,
+            };
+            (if name.starts_with("BVec") { "boolean" } else { "number" }, n)
+        }
+    };
+    lanes(n, kind)
+}
+
+/// A `Handle<T>`'s TS type: an asset path, or `null` for a handle with none. reflect-assets widens
+/// it to `string | AssetRef<T> | AssetValue<T> | null` for a `T` with `ReflectAsset`, named by
+/// [`asset_name`].
+fn handle_ts(_registry: &TypeRegistry, _path: &str) -> String {
+    "string | null".into()
+}
+
+/// An asset type's TS name, by `named()`'s rule over components and assets: its short name, with
+/// its crate's prefixed when two share it.
+#[allow(dead_code)]
+fn asset_name(registry: &TypeRegistry, id: std::any::TypeId) -> Option<String> {
+    let reg = registry.get(id)?;
+    let short = ident(reg.type_info().type_path_table().short_path());
+    let shared = registry
+        .iter()
+        .filter(|r| r.data::<bevy::ecs::reflect::ReflectComponent>().is_some() || r.data::<bevy::asset::ReflectAsset>().is_some())
+        .filter(|r| ident(r.type_info().type_path_table().short_path()) == short)
+        .count();
+    Some(match shared > 1 {
+        true => format!("{}{short}", ident(reg.type_info().type_path_table().crate_name().unwrap_or(""))),
+        false => short,
+    })
+}
+
+thread_local! {
+    /// The types `ts_type` is inside: a type met again inside itself is `any`.
+    static INSIDE: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
-    const NUMBERS: [&str; 14] = ["f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize"];
-    if NUMBERS.contains(&path) {
+    if INSIDE.with(|s| s.borrow().iter().any(|p| p == path)) {
+        // A recursive type (`FontSource::List(Vec<FontSource>)`) refers to itself.
+        return "any".into();
+    }
+    INSIDE.with(|s| s.borrow_mut().push(path.to_string()));
+    let t = ts_type_inner(registry, path, depth);
+    INSIDE.with(|s| s.borrow_mut().pop());
+    t
+}
+
+fn ts_type_inner(registry: &TypeRegistry, path: &str, depth: usize) -> String {
+    if bevy_ts::reflect_value::uncovered(path).is_some() {
+        // reflect_value reads it as absent and writes none.
+        return "never".into();
+    }
+    const NUMBERS: [&str; 8] = ["f32", "f64", "i8", "i16", "i32", "u8", "u16", "u32"];
+    if path.starts_with("core::num::NonZero") || path == "petgraph::graph::NodeIndex" {
         return "number".into();
+    }
+    for range in ["core::ops::Range<", "core::ops::RangeInclusive<"] {
+        if let Some(inner) = path.strip_prefix(range).and_then(|r| r.strip_suffix('>')) {
+            let t = ts_type(registry, inner, depth + 1);
+            return format!("{{ start: {t}; end: {t} }}");
+        }
+    }
+    const WIDE: [&str; 6] = ["i64", "i128", "isize", "u64", "u128", "usize"];
+    if NUMBERS.contains(&path) || path == "core::time::Duration" {
+        return "number".into();
+    }
+    if WIDE.contains(&path) {
+        return "number | string".into();
     }
     match path {
         "bool" => return "boolean".into(),
-        "alloc::string::String" | "&str" | "alloc::borrow::Cow<str>" | "char" => return "string".into(),
+        "alloc::string::String" | "&str" | "alloc::borrow::Cow<str>" | "char" | "smol_str::SmolStr" | "std::path::PathBuf" | "uuid::Uuid" => {
+            return "string".into();
+        }
         "bevy_ecs::entity::Entity" => return "Entity".into(),
         "bevy_ecs::name::Name" => return "string".into(),
         "bevy_color::color::Color" => return "ColorValue".into(),
-        "glam::Vec2" => return "readonly [number, number]".into(),
-        "glam::Vec3" | "glam::Vec3A" => return "readonly [number, number, number]".into(),
-        "glam::Vec4" | "glam::Quat" => return "readonly [number, number, number, number]".into(),
         _ => {}
     }
-    if path.starts_with("bevy_asset::handle::Handle<") {
-        return "string".into();
+    if let Some(t) = glam_ts(path) {
+        return t;
     }
-    if depth > 4 {
+    if path.starts_with("bevy_asset::handle::Handle<") {
+        return handle_ts(registry, path);
+    }
+    if depth > 12 {
         return "unknown".into();
     }
     let Some(reg) = registry.get_with_type_path(path) else { return "unknown".into() };
+    let items = |fields: &mut dyn Iterator<Item = &str>| fields.map(|f| ts_type(registry, f, depth + 1)).collect::<Vec<_>>().join(", ");
     match reg.type_info() {
         TypeInfo::Struct(s) => {
             let fields: Vec<String> =
@@ -179,16 +286,18 @@ fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
             format!("{{ {} }}", fields.join("; "))
         }
         TypeInfo::TupleStruct(s) if s.field_len() == 1 => ts_type(registry, s.field_at(0).unwrap().type_path(), depth + 1),
-        TypeInfo::TupleStruct(s) => {
-            format!("readonly [{}]", s.iter().map(|f| ts_type(registry, f.type_path(), depth + 1)).collect::<Vec<_>>().join(", "))
-        }
-        TypeInfo::Tuple(t) => {
-            format!("readonly [{}]", t.iter().map(|f| ts_type(registry, f.type_path(), depth + 1)).collect::<Vec<_>>().join(", "))
-        }
+        TypeInfo::TupleStruct(s) => format!("readonly [{}]", items(&mut s.iter().map(|f| f.type_path()))),
+        TypeInfo::Tuple(t) => format!("readonly [{}]", items(&mut t.iter().map(|f| f.type_path()))),
         TypeInfo::List(l) => format!("readonly {}[]", paren(ts_type(registry, l.item_ty().path(), depth + 1))),
+        TypeInfo::Array(a) if a.capacity() <= 4 => format!("readonly [{}]", vec![ts_type(registry, a.item_ty().path(), depth + 1); a.capacity()].join(", ")),
         TypeInfo::Array(a) => format!("readonly {}[]", paren(ts_type(registry, a.item_ty().path(), depth + 1))),
         TypeInfo::Set(s) => format!("readonly {}[]", paren(ts_type(registry, s.value_ty().path(), depth + 1))),
-        TypeInfo::Map(m) => format!("Record<string, {}>", ts_type(registry, m.value_ty().path(), depth + 1)),
+        TypeInfo::Map(m) if bevy_ts::reflect_value::string_key(m.key_ty().path()) => {
+            format!("Record<string, {}>", ts_type(registry, m.value_ty().path(), depth + 1))
+        }
+        TypeInfo::Map(m) => {
+            format!("readonly (readonly [{}, {}])[]", ts_type(registry, m.key_ty().path(), depth + 1), ts_type(registry, m.value_ty().path(), depth + 1))
+        }
         TypeInfo::Enum(e) => {
             if path.starts_with("core::option::Option<") {
                 let inner = e.variant("Some").and_then(|v| match v {
@@ -208,8 +317,7 @@ fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
                         format!("{{ {}: {} }}", prop(t.name()), ts_type(registry, t.field_at(0).unwrap().type_path(), depth + 1))
                     }
                     bevy::reflect::enums::VariantInfo::Tuple(t) => {
-                        let items: Vec<String> = t.iter().map(|f| ts_type(registry, f.type_path(), depth + 1)).collect();
-                        format!("{{ {}: readonly [{}] }}", prop(t.name()), items.join(", "))
+                        format!("{{ {}: readonly [{}] }}", prop(t.name()), items(&mut t.iter().map(|f| f.type_path())))
                     }
                     bevy::reflect::enums::VariantInfo::Struct(s) => {
                         let fields: Vec<String> =
@@ -589,6 +697,48 @@ mod tests {
         assert!(out.contains("export declare class Transform extends Component {\n  static readonly path: \"bevy_transform::components::transform::Transform\";\n  declare readonly translation: Vec3;"), "{out}");
         assert!(out.contains("declare value: \"Inherited\" | \"Hidden\" | \"Visible\";"), "{out}");
         assert_eq!(out, emit(&world), "deterministic");
+    }
+
+    /// The spec's inventory: collections, a `Duration`, an `Option<Entity>` and wide integers.
+    #[derive(Component, Reflect, Default)]
+    #[reflect(Component, Default)]
+    struct Inventory {
+        items: Vec<String>,
+        counts: bevy::platform::collections::HashMap<String, u32>,
+        by_entity: bevy::platform::collections::HashMap<Entity, f32>,
+        cooldown: std::time::Duration,
+        owner: Option<Entity>,
+        serial: u64,
+        slots: [u8; 3],
+        span: std::ops::Range<f32>,
+        icon: Handle<Image>,
+    }
+
+    #[test]
+    fn every_kind_has_a_ts_type() {
+        let mut registry = TypeRegistry::default();
+        registry.register::<Inventory>();
+        let t = |p: &str| reflect_ts(&registry, p);
+        assert_eq!(t("alloc::vec::Vec<alloc::string::String>"), "readonly string[]");
+        assert_eq!(t("core::time::Duration"), "number");
+        assert_eq!(t("u64"), "number | string");
+        assert_eq!(t("glam::Mat4"), format!("readonly [{}]", vec!["number"; 16].join(", ")));
+        let inv = registry.get(std::any::TypeId::of::<Inventory>()).unwrap().type_info().type_path().to_string();
+        let ts = t(&inv);
+        for want in [
+            "items?: readonly string[]",
+            "counts?: Record<string, number>",
+            "by_entity?: readonly (readonly [Entity, number])[]",
+            "cooldown?: number",
+            "owner?: Entity | null",
+            "serial?: number | string",
+            "slots?: readonly [number, number, number]",
+            "span?: { start: number; end: number }",
+            "icon?: string | null",
+        ] {
+            assert!(ts.contains(want), "{want} not in {ts}");
+        }
+        assert!(!ts.contains("unknown"), "{ts}");
     }
 
     #[test]

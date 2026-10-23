@@ -76,6 +76,17 @@ fn unit_variants(v: &dyn PartialReflect) -> Option<Vec<String>> {
     info.iter().all(|x| matches!(x, VariantInfo::Unit(_))).then(|| info.iter().map(|x| x.name().to_string()).collect())
 }
 
+/// Why an opaque type cannot be written through `reflect_value`, if it cannot.
+fn opaque_gap(type_path: &str) -> Option<&'static str> {
+    #[cfg(feature = "reflect")]
+    return crate::reflect_value::uncovered(type_path);
+    #[cfg(not(feature = "reflect"))]
+    return {
+        let _ = type_path;
+        Some("reflect_value is built with the reflect feature")
+    };
+}
+
 /// What one top-level field turned out to be.
 enum Found {
     Leaf(Leaf),
@@ -115,7 +126,11 @@ fn leaf_of(v: &dyn PartialReflect, base: usize, name: String, path: String) -> F
             let ty = FieldType::Array { of: Box::new(of), len: a.len() as u32 };
             Found::Leaf(Leaf { name, path, offset, size, ty: LeafType::Plain(ty) })
         }
-        ReflectRef::Opaque(_) => Found::Hole { name, offset, size, why: format!("opaque to reflection ({})", type_name(v)), writable: None },
+        // An opaque hole is written by its reflected serde, unless reflect_value cannot cover it.
+        ReflectRef::Opaque(_) => match opaque_gap(&type_name(v)) {
+            Some(why) => Found::Hole { name, offset, size, why: format!("{} is not covered: {why}", type_name(v)), writable: None },
+            None => hole(format!("opaque to reflection ({})", type_name(v))),
+        },
         _ => hole(format!("not plain data ({})", type_name(v))),
     }
 }

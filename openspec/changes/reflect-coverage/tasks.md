@@ -4,15 +4,15 @@
 
 ## 1. Stage 1: one shape for every kind (TSX and protocol)
 
-- [ ] 1.1 `reflect_value::read` for every kind in design decision 1; deterministic order for sets and non-string-keyed maps; newtype components as `{ value }` per bevy-ui-coverage
-- [ ] 1.2 Extend `reflect_value::write` to the same kinds: lists, sets and maps written whole; tuples and arrays from arrays; math types; `Duration` from seconds or `{ secs, nanos }`; wide integers from numbers or strings; `Entity`; opaque via `ReflectDeserialize`; `Handle` `null` keeps the default
-- [ ] 1.3 `reflect_value::UNCOVERED` with a reason per entry; computed components refuse writes naming themselves
-- [ ] 1.4 Unit tests: a fixture component with one field per kind round-trips; `u64` past 2^53; a list replaced; a map with `Entity` keys
+- [x] 1.1 `reflect_value::read` for every kind in design decision 1; deterministic order for sets and non-string-keyed maps; newtype components as `{ value }` per bevy-ui-coverage
+- [x] 1.2 Extend `reflect_value::write` to the same kinds: lists, sets and maps written whole; tuples and arrays from arrays; math types; `Duration` from seconds or `{ secs, nanos }`; wide integers from numbers or strings; `Entity`; opaque via `ReflectDeserialize`; `Handle` `null` keeps the default
+- [x] 1.3 `reflect_value::UNCOVERED` with a reason per entry; computed components refuse writes naming themselves
+- [x] 1.4 Unit tests: a fixture component with one field per kind round-trips; `u64` past 2^53; a list replaced; a map with `Entity` keys
 - [ ] 1.5 `crates/bevy-ts-cli/tests/reflect_coverage.rs`: the hole check (design decision 3), including the stale-entry check; green on the prebuilt engine plus Rapier
-- [ ] 1.6 `types.rs`: every kind's TS type; no covered type as `unknown`; regenerate `bevy.d.ts`; `tests/typescript.rs` cases for collections, `Duration`, wide integers, maps
-- [ ] 1.7 TSX: a reflect-tier or hole prop of every kind loads through `write` (extend stage 1's `reflect_values.rs`)
-- [ ] 1.8 Protocol: `get_components`, `+watch` and `mutate_components` use `read`/`write` for reflected components; regenerate `protocol/bevy-ts.openrpc.json`; bump to the next free minor
-- [ ] 1.9 `docs/reflection.md`: the coverage matrix (kind, read, write, TS type, test) and the uncovered list; link from `docs/native.md` and `README.md`
+- [x] 1.6 `types.rs`: every kind's TS type; no covered type as `unknown`; regenerate `bevy.d.ts`; `tests/typescript.rs` cases for collections, `Duration`, wide integers, maps
+- [x] 1.7 TSX: a reflect-tier or hole prop of every kind loads through `write` (extend stage 1's `reflect_values.rs`)
+- [x] 1.8 Protocol: `get_components`, `+watch` and `mutate_components` use `read`/`write` for reflected components; regenerate `protocol/bevy-ts.openrpc.json`; bump to the next free minor
+- [x] 1.9 `docs/reflection.md`: the coverage matrix (kind, read, write, TS type, test) and the uncovered list; link from `docs/native.md` and `README.md`
 
 ## 2. Stage 2: scripts write; recipes go
 

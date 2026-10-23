@@ -36,7 +36,8 @@ without recompiling Rust.
   its compiled scripts and assets, with progress as JSON events ([docs/build.md](docs/build.md)).
 - **Rust when it must be**: a project adopts Bevy plugins in one line of `bevy-ts.json`, or adds
   its own Rust as one Bevy plugin; bevy-ts then builds a project engine, only when Rust changes,
-  cached by hash ([docs/native.md](docs/native.md)).
+  cached by hash ([docs/native.md](docs/native.md)). Every reflected kind has one JSON shape for
+  TSX, scripts and the protocol ([docs/reflection.md](docs/reflection.md)).
 
 ## Start
 

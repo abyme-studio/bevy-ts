@@ -86,6 +86,7 @@
     {
       "name": "bevy-ts/get_components",
       "summary": "world.get_components for TS and reflected components.",
+      "description": "TS components come from their native layout; reflected ones through bevy_ts::reflect_value::read, in the shape TSX takes (docs/reflection.md): Duration as seconds, Handle<T> as its asset path or null, 64- and 128-bit integers past 2^53 as decimal strings, a newtype component as { value }. Since 1.26.0.",
       "x-bevy-ts-crate": "bevy-ts-remote",
       "params": [
         {
@@ -127,6 +128,7 @@
     {
       "name": "bevy-ts/mutate_components",
       "summary": "Writes one field of a TS or reflected component and marks it changed.",
+      "description": "For a reflected component, path is a reflection path (empty for the whole component) and the value is written by bevy_ts::reflect_value::write over the default's value at that path, in every form TSX takes; what get_components reads can be sent back as is. A component Bevy computes (GlobalTransform, ComputedNode, TextLayoutInfo) refuses writes. Since 1.26.0.",
       "x-bevy-ts-crate": "bevy-ts-remote",
       "params": [
         {

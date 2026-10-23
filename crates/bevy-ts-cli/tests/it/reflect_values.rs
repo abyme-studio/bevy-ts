@@ -119,9 +119,10 @@ fn a_light_colour_is_a_prop_written_through_reflection() {
 }
 
 #[test]
-fn an_opaque_or_bound_hole_fails_the_load_naming_it() {
-    let e = errors("reflect-opaque", &scene("ScreenSpaceTransmission", "<ScreenSpaceTransmission steps={4} />"));
-    assert!(e.contains("steps") && e.contains("opaque to reflection"), "{e}");
+fn an_opaque_hole_loads_and_a_bound_one_fails_naming_it() {
+    // An opaque hole with reflected serde loads (reflect-coverage): `steps` is a `usize`.
+    let (_, mut app) = setup("reflect-opaque", &scene("ScreenSpaceTransmission", "<ScreenSpaceTransmission steps={4} />"));
+    assert_eq!(the::<ScreenSpaceTransmission>(&mut app).steps, 4);
     let e = errors("reflect-bound", &scene("DirectionalLight", "<DirectionalLight color={() => \"#fff\"} />"));
     assert!(e.contains("color") && e.contains("not a binding"), "{e}");
     let e = errors("reflect-colour", &scene("DirectionalLight", "<DirectionalLight color={{ Srgba: { red: 1 } } as any} />"));
@@ -214,4 +215,50 @@ fn camera3d_takes_a_projection_and_names_bad_variants() {
     updates(&mut app, 2);
     let m = messages(&app);
     assert!(m.iter().any(|m| m.contains("Projection") && m.contains("Perspective, Orthographic, Custom")), "{m:?}");
+}
+
+/// A component of one field per collection and scalar kind (reflect-coverage task 1.7).
+#[derive(Component, Reflect, Default, Clone, Debug, PartialEq)]
+#[reflect(Component, Default)]
+struct Kit {
+    items: Vec<String>,
+    counts: bevy::platform::collections::HashMap<String, u32>,
+    by_entity: bevy::platform::collections::HashMap<Entity, f32>,
+    tags: bevy::platform::collections::HashSet<u8>,
+    cooldown: std::time::Duration,
+    owner: Option<Entity>,
+    big: u64,
+    pair: (u8, bool),
+    grid: [i32; 3],
+    at: IVec2,
+    spin: Quat,
+    look: Option<Dir3>,
+    mesh: Handle<Mesh>,
+}
+
+#[test]
+fn every_kind_is_a_tsx_prop_and_a_list_is_replaced() {
+    let src = |items: &str| {
+        format!(
+            "import {{ app, rustComponent }} from \"bevy-ts\";\nconst Kit = rustComponent(\"reflect_values::Kit\");\n\napp.scene(\"s\", () => (\n  <entity name=\"it\">\n    \
+             <Kit items={{{items}}} counts={{{{ a: 1, b: 2 }}}} by_entity={{[[4294967300, 0.5]]}} tags={{[3, 1]}} cooldown={{1.5}} owner={{null}} \
+             big={{\"1152921504606846976\"}} pair={{[7, true]}} grid={{[1, 2, 3]}} at={{[-3, 8]}} spin={{[0, 0, 0, 1]}} look={{[0, 1, 0]}} mesh={{null}} />\n  </entity>\n));\n"
+        )
+    };
+    let dir = project("reflect-kit", &[("game.tsx", &src("[\"a\", \"b\"]"))]);
+    let mut app = reflect_app(&dir.join("game.tsx"));
+    app.register_type::<Kit>();
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    let kit = the::<Kit>(&mut app);
+    assert_eq!(kit.items, vec!["a".to_string(), "b".to_string()]);
+    assert_eq!((kit.counts["a"], kit.counts["b"]), (1, 2));
+    assert_eq!(kit.by_entity.get(&Entity::from_bits(4294967300)), Some(&0.5));
+    assert_eq!(kit.tags, [1, 3].into_iter().collect());
+    assert_eq!(kit.cooldown, std::time::Duration::from_millis(1500));
+    assert_eq!((kit.owner, kit.big, kit.pair, kit.grid, kit.at), (None, 1 << 60, (7, true), [1, 2, 3], IVec2::new(-3, 8)));
+    assert_eq!((kit.spin, kit.look), (Quat::IDENTITY, Some(Dir3::Y)));
+    save(&mut app, &dir, &src("[\"c\"]"));
+    assert_eq!(the::<Kit>(&mut app).items, vec!["c".to_string()], "a list is replaced, not merged");
 }
