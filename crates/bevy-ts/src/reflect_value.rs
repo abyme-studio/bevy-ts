@@ -56,10 +56,10 @@ pub const UNCOVERED: &[(&str, &str)] = &[
     ("bevy_picking::events::PointerState", "press and click times are Instants, opaque with no reflected serde"),
     ("bevy_time::time::Time<bevy_time::real::Real>", "its clock readings are Instants, opaque with no reflected serde"),
     ("bevy_scene::scene_component::SceneComponentInfo", "computed by bevy_scene; holds a &'static str"),
-    ("bevy_animation::graph::AnimationGraph", "reflect-assets"),
+    ("bevy_animation::graph::AnimationGraph", "its graph is a petgraph DiGraph, opaque with no default or reflected serde (building graphs is animation-control's)"),
     ("bevy_image::image::Image", "reflect-assets"),
-    ("bevy_render::storage::ShaderBuffer", "reflect-assets"),
-    ("bevy_mesh::mesh::Mesh", "reflect-assets"),
+    ("bevy_render::storage::ShaderBuffer", "opaque with no reflected serde"),
+    ("bevy_mesh::mesh::Mesh", "script-assets: no default; attributes and indices are reflect(ignore); engine-core builds meshes"),
 ];
 
 /// Components Bevy computes: read like any other, never written from TSX or scripts.
@@ -397,10 +397,15 @@ fn replace(cx: Cx, slot: &mut dyn PartialReflect, value: Box<dyn PartialReflect>
             }
         }
     };
-    match slot.try_as_reflect_mut() {
-        Some(s) => s.set(value).map_err(|v| format!("{path}: cannot be set from {}", v.reflect_type_path())),
-        None => slot.try_apply(value.as_partial_reflect()).map_err(|e| format!("{path}: {e}")),
-    }
+    let value = match slot.try_as_reflect_mut() {
+        Some(s) => match s.set(value) {
+            Ok(()) => return Ok(()),
+            // A `reflect_remote` wrapper and its remote type share a type path but not a type id.
+            Err(v) => v,
+        },
+        None => value,
+    };
+    slot.try_apply(value.as_partial_reflect()).map_err(|e| format!("{path}: {e}"))
 }
 
 /// A value of a type to start from: its `ReflectDefault`, else its `ReflectFromWorld` run on an
