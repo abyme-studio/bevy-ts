@@ -44,6 +44,12 @@ pub struct MaterialDecl {
     #[serde(default)]
     pub vertex: Option<PathBuf>,
     pub alpha_mode: AlphaDecl,
+    /// Bevy's `Material::enable_shadows`; unset takes `Kind`'s default.
+    #[serde(default)]
+    pub shadows: Option<bool>,
+    /// Bevy's `Material::enable_prepass`; unset takes `Kind`'s default.
+    #[serde(default)]
+    pub prepass: Option<bool>,
     #[serde(default)]
     pub location: Option<SourceLocation>,
 }
@@ -271,7 +277,10 @@ fn build(
             install(world, &decl.name, stage, source);
         }
     }
-    let kind = Arc::new(Kind::new(&decl.name, bindings, Some(fragment.handle.clone()), vertex.as_ref().map(|v| v.handle.clone()), alpha));
+    let mut kind = Kind::new(&decl.name, bindings, Some(fragment.handle.clone()), vertex.as_ref().map(|v| v.handle.clone()), alpha);
+    kind.shadows = decl.shadows.unwrap_or(kind.shadows);
+    kind.prepass = decl.prepass.unwrap_or(kind.prepass);
+    let kind = Arc::new(kind);
     let mut state = KindState { decl, wanted: None, kind, fragment, vertex, instances };
     let keys: Vec<String> = state.instances.keys().cloned().collect();
     for key in keys {

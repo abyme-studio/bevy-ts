@@ -33,6 +33,11 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
 - `fragment` (required) and `vertex` are `.wgsl` imports, resolved relative to the importing file
   and watched. A WGSL string is rejected. `alphaMode` is `"opaque"` (default), `"blend"`,
   `"premultiplied"`, `"add"`, `"multiply"`, `"alphaToCoverage"` or `{ mask: 0.5 }`.
+- `shadows` and `prepass` say whether the kind casts shadows and draws in a camera's depth and
+  normal prepass, as Bevy's `Material::enable_shadows` and `enable_prepass`. Both default to true
+  for an opaque kind with no `vertex`, and to false otherwise: both passes draw with Bevy's default
+  prepass shader, which would cast the shadow of the unmoved mesh and fill in cut-outs. Set either
+  to `true` to take that anyway. Per entity, Bevy's `NotShadowCaster` and `NotShadowReceiver` apply.
 - Equal props share one material instance. Props cannot be bindings yet.
 - `kind` and `gltfMaterial` are props of `<material>` itself, so no param or texture may take
   either name.
@@ -106,6 +111,74 @@ layout is separate from components, which keep C rules.
   the renderer's own message. A renderer failure from a source older than the current one is
   never reported against the current file.
 
+## Toon and ink
+
+A painted, cel-shaded, outlined look is a script material and a camera; no engine feature.
+docs/research/toon-look.md has the reasoning and a three-panel render.
+
+The camera, in TSX:
+
+```tsx
+import { Camera3d, DepthPrepass, NormalPrepass, Projection, Tonemapping, Transform } from "bevy-ts/bevy";
+
+<entity name="camera">
+  <Camera3d />
+  <Projection value={{ Orthographic: { scaling_mode: { FixedVertical: { viewport_height: 13 } } } }} />
+  <DepthPrepass />
+  <NormalPrepass />
+  <Tonemapping value="None" />
+  <Transform translation={[0, 20, 14]} rotation={[-0.4617, 0, 0, 0.887]} />
+</entity>
+```
+
+`Tonemapping value="None"` lands the palette exactly. The prepass markers are only for ink.
+
+The material: cel bands from the sun's shadowed N·L, and ink where the prepass jumps. Under an
+orthographic camera depth is linear, so one `depth_k` holds across the screen.
+
+```wgsl
+import bevy_pbr::render::forward_io::VertexOutput;
+import bevy_pbr::render::mesh_view_bindings::{view, lights};
+import bevy_pbr::render::shadows::fetch_directional_shadow;
+import bevy_pbr::prepass::utils::{prepass_depth, prepass_normal};
+
+@fragment
+fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+    let n = normalize(in.world_normal);
+    let sun = lights.directional_lights[0];
+    let view_z = dot(vec4<f32>(view.view_from_world[0].z, view.view_from_world[1].z, view.view_from_world[2].z, view.view_from_world[3].z), in.world_position);
+    let shadow = fetch_directional_shadow(0u, in.world_position, n, view_z, in.position.xy);
+    let l = max(dot(n, sun.direction_to_light), 0.0) * shadow;
+    // Two soft cel steps: shade, mid, lit. A ramp texture sampled by `l` works too.
+    let b = 0.5 * smoothstep(0.08, 0.14, l) + 0.5 * smoothstep(0.55, 0.61, l);
+    var c = mix(params.color.rgb * params.shade.rgb, params.color.rgb, b);
+
+    // Ink: compare depth and normal with four neighbours, clamped to the viewport.
+    let p = in.position;
+    let d0 = prepass_depth(p, 0u);
+    let n0 = prepass_normal(p, 0u);
+    var edge = 0.0;
+    let offs = array<vec2<f32>, 4>(vec2(1.5, 0.0), vec2(-1.5, 0.0), vec2(0.0, 1.5), vec2(0.0, -1.5));
+    for (var i = 0; i < 4; i++) {
+        let q = vec4<f32>(clamp(p.xy + offs[i], view.viewport.xy + 0.5, view.viewport.xy + view.viewport.zw - 0.5), p.zw);
+        let dd = abs(prepass_depth(q, 0u) - d0) * params.depth_k;
+        let dn = 1.0 - dot(prepass_normal(q, 0u), n0);
+        edge = max(edge, max(smoothstep(0.4, 0.8, dd), smoothstep(0.25, 0.5, dn)));
+    }
+    c = mix(c, params.ink.rgb, edge * 0.9);
+    return vec4<f32>(c, 1.0);
+}
+```
+
+with `params: { color: color, shade: color, ink: color, depth_k: f32 }`, a cool `shade` (as a
+painter glazes shadows) and `depth_k` near 400 for a scene some tens of units deep.
+
+- Only toon-material meshes get ink: a `StandardMaterial` mesh writes the prepass but does not
+  read it. Every outlined thing uses the toon kind.
+- Stair-stepped shadow edges: raise `DirectionalLightShadowMap` size, use one cascade sized to the
+  view, or widen the `smoothstep`.
+- Cost: BENCH_PLACEHOLDER
+
 ## Known limits
 
 - The check skips files that use inline module paths (`a::b::c(...)`) or `@if` outside the
@@ -113,6 +186,10 @@ layout is separate from components, which keep C rules.
 - The check validates each stage alone, with every capability. A vertex output that does not
   match the fragment's input fails at pipeline creation, which Bevy does not catch: wgpu treats it
   as a device error.
+- Prepass and shadows use Bevy's default prepass shader; a kind cannot bring its own yet (Bevy's
+  `prepass_vertex_shader`/`prepass_fragment_shader`). Follow-up.
+- A glTF scene spawns with `StandardMaterial`; putting a script material on its primitives (and
+  carrying their base colour textures over) has no TS path yet. Follow-up.
 - A renderer failure is reported a frame after it happens: Bevy may apply a saved shader a frame
   late, so failures wait one frame to be sure they belong to the current source.
 
@@ -128,3 +205,7 @@ scene-animation does. It walks the instance's own entities (`iter_instance_entit
 root's descendants, which is how TSX children stay untouched. That walk is
 `bevy_ts_material::scene_entities(world, root)`. Every swap runs in `SceneMaterialSet`
 (`PostUpdate`), so other per-root work on a scene's meshes can run after it.
+
+Each kind registers the prepass and shadow draws a typed material gets and sets its own
+`shadows_enabled`/`prepass_enabled`; Bevy's `prepass_specialize` is private in 0.20, so the crate
+keeps a copy.

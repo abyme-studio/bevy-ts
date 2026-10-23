@@ -9,12 +9,16 @@ use bevy::asset::{AsAssetId, AssetEventSystems};
 use bevy::core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
 use bevy::ecs::system::SystemParamItem;
 use bevy::ecs::system::lifetimeless::{SRes, SResMut};
-use bevy::material::key::{ErasedMaterialKey, ErasedMeshPipelineKey};
+use bevy::material::key::{ErasedMaterialKey, ErasedMaterialPipelineKey, ErasedMeshPipelineKey};
 use bevy::material::{MaterialProperties, RenderPhaseType};
+use bevy::core_pipeline::prepass::{AlphaMask3dPrepass, Opaque3dPrepass};
+use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{
-    DrawMaterial, EntitiesNeedingSpecialization, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
-    MainPassTransparentDrawFunction, MaterialFragmentShader, MaterialVertexShader, MeshPipelineKey, PreparedMaterial,
-    RenderMaterialInstance, RenderMaterialInstances, base_specialize,
+    DrawDepthOnlyPrepass, DrawMaterial, DrawPrepass, EntitiesNeedingSpecialization, MainPassAlphaMaskDrawFunction,
+    MainPassOpaqueDrawFunction, MainPassTransparentDrawFunction, MaterialFragmentShader, MaterialVertexShader,
+    MeshPipelineKey, PrepassAlphaMaskDrawFunction, PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction,
+    PrepassPipeline, PrepassPipelineSpecializer, PreparedMaterial, RenderMaterialInstance, RenderMaterialInstances,
+    Shadow, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, base_specialize,
 };
 use bevy::platform::collections::hash_map::Entry;
 use bevy::prelude::*;
@@ -25,7 +29,7 @@ use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_phase::DrawFunctions;
 use bevy::render::render_resource::binding_types::{sampler, texture_2d, uniform_buffer_sized};
 use bevy::render::render_resource::{
-    BindGroupBuilder, BindGroupLayoutDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
+    BindGroupBuilder, CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelineError, SpecializedMeshPipelines, BindGroupLayoutDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
     TextureSampleType, TextureViewDimension, UnpreparedBindingResource, UnpreparedBindingResources,
 };
 use bevy::render::renderer::RenderDevice;
@@ -50,6 +54,10 @@ pub struct Kind {
     pub fragment: Option<Handle<Shader>>,
     pub vertex: Option<Handle<Shader>>,
     pub alpha_mode: AlphaMode,
+    /// Cast shadows, as Bevy's `Material::enable_shadows`.
+    pub shadows: bool,
+    /// Draw in a camera's prepass, as Bevy's `Material::enable_prepass`.
+    pub prepass: bool,
 }
 
 impl Kind {
@@ -66,7 +74,20 @@ impl Kind {
         }
         let layout = BindGroupLayoutDescriptor::new(format!("script_material {name}"), &entries);
         static NEXT: AtomicU64 = AtomicU64::new(1);
-        Kind { id: NEXT.fetch_add(1, Ordering::Relaxed), name: name.into(), bindings, layout, fragment, vertex, alpha_mode }
+        // Both passes draw with Bevy's default prepass shader, which knows neither a kind's
+        // `vertex` nor its alpha test: only a plain opaque kind is right there by default.
+        let passes = alpha_mode == AlphaMode::Opaque && vertex.is_none();
+        Kind {
+            id: NEXT.fetch_add(1, Ordering::Relaxed),
+            name: name.into(),
+            bindings,
+            layout,
+            fragment,
+            vertex,
+            alpha_mode,
+            shadows: passes,
+            prepass: passes,
+        }
     }
 }
 
@@ -147,6 +168,9 @@ impl ErasedRenderAsset for ScriptMaterial {
         SRes<DrawFunctions<Opaque3d>>,
         SRes<DrawFunctions<AlphaMask3d>>,
         SRes<DrawFunctions<Transparent3d>>,
+        SRes<DrawFunctions<Opaque3dPrepass>>,
+        SRes<DrawFunctions<AlphaMask3dPrepass>>,
+        SRes<DrawFunctions<Shadow>>,
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
         SRes<RenderAssets<GpuImage>>,
@@ -157,7 +181,7 @@ impl ErasedRenderAsset for ScriptMaterial {
     fn prepare_asset(
         source: ScriptMaterial,
         asset_id: AssetId<ScriptMaterial>,
-        (opaque, alpha_mask, transparent, allocators, bindings, images, linear, fallback): &mut SystemParamItem<Self::Param>,
+        (opaque, alpha_mask, transparent, opaque_prepass, alpha_mask_prepass, shadow, allocators, bindings, images, linear, fallback): &mut SystemParamItem<Self::Param>,
     ) -> Result<PreparedMaterial, PrepareAssetError<ScriptMaterial>> {
         let kind = source.kind.clone();
         let mut resources = Vec::new();
@@ -201,12 +225,22 @@ impl ErasedRenderAsset for ScriptMaterial {
             material_layout: Some(kind.layout.clone()),
             mesh_pipeline_key_bits: ErasedMeshPipelineKey::new(MeshPipelineKey::empty()),
             base_specialize: Some(base_specialize),
+            prepass_specialize: Some(prepass_specialize),
+            shadows_enabled: kind.shadows,
+            prepass_enabled: kind.prepass,
             material_key: ErasedMaterialKey::new(kind.id),
             ..default()
         };
         properties.add_draw_function(MainPassOpaqueDrawFunction, opaque.read().id::<DrawMaterial>());
         properties.add_draw_function(MainPassAlphaMaskDrawFunction, alpha_mask.read().id::<DrawMaterial>());
         properties.add_draw_function(MainPassTransparentDrawFunction, transparent.read().id::<DrawMaterial>());
+        // The forward prepass and shadow draws `MaterialPlugin` registers; the queues skip them
+        // when the kind's flag is off.
+        properties.add_draw_function(PrepassOpaqueDrawFunction, opaque_prepass.read().id::<DrawPrepass>());
+        properties.add_draw_function(PrepassAlphaMaskDrawFunction, alpha_mask_prepass.read().id::<DrawPrepass>());
+        properties.add_draw_function(PrepassOpaqueDepthOnlyDrawFunction, opaque_prepass.read().id::<DrawDepthOnlyPrepass>());
+        properties.add_draw_function(ShadowsDrawFunction, shadow.read().id::<DrawPrepass>());
+        properties.add_draw_function(ShadowsDepthOnlyDrawFunction, shadow.read().id::<DrawDepthOnlyPrepass>());
         if let Some(s) = &kind.fragment {
             properties.add_shader(MaterialFragmentShader, s.clone());
         }
@@ -268,4 +302,24 @@ fn extract_specializations_removed(needs: Extract<Res<EntitiesNeedingSpecializat
     for e in needs.removed.iter() {
         dirty.removed_renderables.insert(MainEntity::from(*e));
     }
+}
+
+/// `bevy_pbr::material::prepass_specialize`, which is private in Bevy 0.20 though every type it
+/// uses is public. Drop this copy when Bevy exports it.
+fn prepass_specialize(
+    world: &mut World,
+    key: &ErasedMaterialPipelineKey,
+    layout: &MeshVertexBufferLayoutRef,
+    properties: &Arc<MaterialProperties>,
+) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
+    if let Some(pipelines) = world.get_resource::<SpecializedMeshPipelines<PrepassPipelineSpecializer>>()
+        && let Some(id) = pipelines.get_pipeline(key, layout)
+    {
+        return Ok(id);
+    }
+    world.resource_scope(|world, mut pipelines: Mut<SpecializedMeshPipelines<PrepassPipelineSpecializer>>| {
+        let pipeline = world.resource::<PrepassPipeline>().clone();
+        let cache = world.resource::<PipelineCache>();
+        pipelines.specialize(cache, &PrepassPipelineSpecializer { pipeline, properties: properties.clone() }, key.clone(), layout)
+    })
 }

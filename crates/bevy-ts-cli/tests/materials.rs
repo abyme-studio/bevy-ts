@@ -183,3 +183,59 @@ fn a_bad_declaration_after_a_scene_is_reported_at_its_material_call() {
     assert!(r.errors[0].message.contains("reserved"), "{:?}", r.errors);
     assert_eq!(r.errors[0].location.clone().expect("material()").line, 6);
 }
+
+/// A one-kind game whose `material()` call takes `extra` after `fragment: glow`, and whose
+/// `vert.wgsl` (the fragment file again) is importable as `vert`.
+fn passes_game(extra: &str) -> String {
+    format!(
+        "import {{ app }} from \"bevy-ts\";\nimport {{ f32, material }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\nimport vert from \"./vert.wgsl\";\n\nexport const Glow = material(\"game::Glow\", {{ params: {{ pulse: f32 }}, fragment: glow{extra} }});\n\napp.scene(\"s\", () => (\n  <entity name=\"cube\">\n    <mesh shape=\"cuboid\" />\n    <material kind={{Glow}} pulse={{2}} />\n  </entity>\n));\n"
+    )
+}
+
+fn passes(app: &mut App) -> (bool, bool) {
+    let (_, h) = cube(app);
+    let m = app.world().resource::<Assets<ScriptMaterial>>().get(&h).unwrap();
+    (m.kind.shadows, m.kind.prepass)
+}
+
+#[test]
+fn shadows_and_prepass_default_by_alpha_mode_and_vertex() {
+    for (extra, want) in [
+        ("", (true, true)),
+        (", shadows: false", (false, true)),
+        (", prepass: false", (true, false)),
+        (", alphaMode: { mask: 0.5 }", (false, false)),
+        (", alphaMode: \"blend\"", (false, false)),
+        (", vertex: vert", (false, false)),
+        (", vertex: vert, shadows: true", (true, false)),
+    ] {
+        let dir = project("materials-passes", &[("game.tsx", &passes_game(extra)), ("glow.wgsl", WGSL), ("vert.wgsl", WGSL)]);
+        let mut app = material_app(&dir.join("game.tsx"));
+        let r = reload(&mut app, false);
+        assert_eq!(r.status, ReloadStatus::Applied, "{extra}: {:?}", r.errors);
+        assert_eq!(passes(&mut app), want, "{extra}");
+    }
+}
+
+#[test]
+fn a_changed_flag_rebuilds_the_kind_with_no_respawn() {
+    let dir = project("materials-passes-reload", &[("game.tsx", &passes_game("")), ("glow.wgsl", WGSL), ("vert.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    let before = cube(&mut app);
+    write(&dir, "game.tsx", &passes_game(", shadows: false"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    assert_eq!(cube(&mut app), before, "same entity, same instance");
+    assert_eq!(passes(&mut app), (false, true));
+}
+
+#[test]
+fn a_flag_that_is_not_a_boolean_fails_at_the_material_call() {
+    let dir = project("materials-passes-bad", &[("game.tsx", &passes_game(", shadows: \"no\"")), ("glow.wgsl", WGSL), ("vert.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    assert!(r.errors[0].message.contains("game::Glow: shadows is true or false"), "{:?}", r.errors);
+    assert_eq!(r.errors[0].location.clone().expect("material()").line, 6);
+}

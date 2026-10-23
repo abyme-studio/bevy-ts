@@ -68,7 +68,7 @@ export function material(name, decl) {
   if (typeof name !== "string" || !name) throw located("material(name, ...): the name is a string (\"game::Glow\")", at);
   if (!decl || typeof decl !== "object") fail("takes { params, fragment }");
   for (const k of Object.keys(decl)) {
-    if (!["params", "textures", "fragment", "vertex", "alphaMode"].includes(k)) fail(`unknown option ${k}`);
+    if (!["params", "textures", "fragment", "vertex", "alphaMode", "shadows", "prepass"].includes(k)) fail(`unknown option ${k}`);
   }
   const shader = (k) => {
     const v = decl[k];
@@ -94,8 +94,11 @@ export function material(name, decl) {
   let alphaMode = decl.alphaMode === undefined ? "opaque" : decl.alphaMode;
   if (typeof alphaMode === "object" && alphaMode !== null && typeof alphaMode.mask === "number") alphaMode = { mask: alphaMode.mask };
   else if (!ALPHA.has(alphaMode)) fail(`alphaMode ${JSON.stringify(alphaMode)}; use ${[...ALPHA].join(", ")} or { mask: 0.5 }`);
+  for (const k of ["shadows", "prepass"]) {
+    if (decl[k] !== undefined && typeof decl[k] !== "boolean") fail(`${k} is true or false`);
+  }
   const items = sectionItems("materials");
   if (items.some((m) => m.name === name)) fail("is declared twice");
-  items.push({ name, params, textures, fragment, vertex: shader("vertex"), alphaMode, location: at || null });
+  items.push({ name, params, textures, fragment, vertex: shader("vertex"), alphaMode, shadows: decl.shadows ?? null, prepass: decl.prepass ?? null, location: at || null });
   return new MaterialKind(name);
 }

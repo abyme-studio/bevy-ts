@@ -24,11 +24,11 @@ measured on skinned characters).
 
 ## The proof
 
-`proof.patch` holds a headless test, `crates/bevy-ts-material/tests/toon_proof.rs`, plus the engine
-fix in `crates/bevy-ts-material/src/render.rs`. Run it with
-`git apply docs/research/toon-look/proof.patch && cargo test -p bevy-ts-material --test toon_proof`.
-It renders one small scene to three offscreen images through the real `ScriptMaterial` path: a
-ground, a pond, trees, rocks, a house and six figures, with an orthographic camera at 55° pitch.
+The proof was a headless test plus the engine fix; both landed with the change
+`script-material-passes`. The test is now `crates/bevy-ts-material/tests/toon.rs`, which asserts
+the shadow and the ink; `docs/materials.md` ("Toon and ink") has the shader and the TSX camera.
+The panels below are the original proof's renders: a ground, a pond, trees, rocks, a house and six
+figures, with an orthographic camera at 55° pitch.
 
 | panel | material | camera |
 |---|---|---|

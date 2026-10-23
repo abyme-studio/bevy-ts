@@ -56,5 +56,15 @@ export interface MaterialKind<P extends Record<string, ParamType> = Record<strin
  */
 export declare function material<P extends Record<string, ParamType>, T extends Record<string, "texture2d"> = {}>(
   name: string,
-  decl: { params: P; textures?: T; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode },
+  decl: {
+    params: P;
+    textures?: T;
+    fragment: ShaderFile;
+    vertex?: ShaderFile;
+    alphaMode?: AlphaMode;
+    /** Cast shadows. Default: true for an opaque kind with no `vertex`, else false. */
+    shadows?: boolean;
+    /** Write depth and normals to a camera's prepass. Same default as `shadows`. */
+    prepass?: boolean;
+  },
 ): MaterialKind<P, T>;
