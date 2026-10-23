@@ -4,23 +4,23 @@
 import { Component, ReflectComponent } from "bevy-ts";
 import type { bool, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
-type Reflected = abstract new () => ReflectComponent;
+type Reflected<F = {}> = abstract new () => ReflectComponent & F;
 
 export { Time, Transform } from "bevy-ts";
 
-export declare const AnimatedBy: Reflected;
+export declare const AnimatedBy: Reflected<{ value: Entity }>;
 export type AnimatedBy = InstanceType<typeof AnimatedBy>;
 
-export declare const AnimationPlayer: Reflected;
+export declare const AnimationPlayer: Reflected<{ active_animations: Record<string, { weight: number; repeat: "Never" | { Count: number } | "Forever"; speed: number; elapsed: number; seek_time: number; last_seek_time: number | null; completions: number; just_completed: boolean; paused: boolean }> }>;
 export type AnimationPlayer = InstanceType<typeof AnimationPlayer>;
 
-export declare const AnimationTargetId: Reflected;
+export declare const AnimationTargetId: Reflected<{ value: unknown }>;
 export type AnimationTargetId = InstanceType<typeof AnimationTargetId>;
 
-export declare const AnimationGraphHandle: Reflected;
+export declare const AnimationGraphHandle: Reflected<{ value: string }>;
 export type AnimationGraphHandle = InstanceType<typeof AnimationGraphHandle>;
 
-export declare const AnimationTransitions: Reflected;
+export declare const AnimationTransitions: Reflected<{ main_animation: unknown | null; transitions: readonly ({ current_weight: number; weight_decline_per_sec: number; animation: unknown })[] }>;
 export type AnimationTransitions = InstanceType<typeof AnimationTransitions>;
 
 export declare class ContrastAdaptiveSharpening extends Component {
@@ -34,6 +34,8 @@ export declare class ContrastAdaptiveSharpening extends Component {
 export declare class DenoiseCas extends Component {
   static readonly path: "bevy_anti_alias::contrast_adaptive_sharpening::DenoiseCas";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: bool };
   declare value: bool;
 }
 
@@ -90,12 +92,14 @@ export type CameraMainTextureUsages = InstanceType<typeof CameraMainTextureUsage
 export declare const Exposure: Reflected;
 export type Exposure = InstanceType<typeof Exposure>;
 
-export declare const MainPassResolutionOverride: Reflected;
+export declare const MainPassResolutionOverride: Reflected<{ value: { x: number; y: number } }>;
 export type MainPassResolutionOverride = InstanceType<typeof MainPassResolutionOverride>;
 
 export declare class ManualTextureViewHandle extends Component {
   static readonly path: "bevy_camera::camera::ManualTextureViewHandle";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: u32 };
   declare value: u32;
 }
 
@@ -108,7 +112,7 @@ export type ShadowLodOrigin = InstanceType<typeof ShadowLodOrigin>;
 export declare const Camera2d: Reflected;
 export type Camera2d = InstanceType<typeof Camera2d>;
 
-export declare const Camera3d: Reflected;
+export declare const Camera3d: Reflected<{ depth_load_op: { Clear: number } | "Load"; depth_texture_usages: number }>;
 export type Camera3d = InstanceType<typeof Camera3d>;
 
 export declare class CompositingSpace extends Component {
@@ -127,13 +131,13 @@ export declare class Aabb extends Component {
   declare readonly half_extents: Vec3;
 }
 
-export declare const CascadesFrusta: Reflected;
+export declare const CascadesFrusta: Reflected<{ frusta: Record<string, readonly unknown[]> }>;
 export type CascadesFrusta = InstanceType<typeof CascadesFrusta>;
 
-export declare const CubemapFrusta: Reflected;
+export declare const CubemapFrusta: Reflected<{ frusta: readonly ({ half_spaces: readonly unknown[] })[] }>;
 export type CubemapFrusta = InstanceType<typeof CubemapFrusta>;
 
-export declare const Frustum: Reflected;
+export declare const Frustum: Reflected<{ value: { half_spaces: readonly ({ normal_d: readonly [number, number, number, number] })[] } }>;
 export type Frustum = InstanceType<typeof Frustum>;
 
 export declare class Sphere extends Component {
@@ -158,6 +162,8 @@ export type DynamicSkinnedMeshBounds = InstanceType<typeof DynamicSkinnedMeshBou
 export declare class InheritedVisibility extends Component {
   static readonly path: "bevy_camera::visibility::InheritedVisibility";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: bool };
   declare value: bool;
 }
 
@@ -167,6 +173,8 @@ export type NoFrustumCulling = InstanceType<typeof NoFrustumCulling>;
 export declare class ViewVisibility extends Component {
   static readonly path: "bevy_camera::visibility::ViewVisibility";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: u8 };
   declare value: u8;
 }
 
@@ -176,7 +184,7 @@ export declare class Visibility extends Component {
   declare value: "Inherited" | "Hidden" | "Visible";
 }
 
-export declare const VisibilityClass: Reflected;
+export declare const VisibilityClass: Reflected<{ value: readonly unknown[] }>;
 export type VisibilityClass = InstanceType<typeof VisibilityClass>;
 
 export declare const VisibleEntities: Reflected;
@@ -185,10 +193,10 @@ export type VisibleEntities = InstanceType<typeof VisibleEntities>;
 export declare const VisibleMeshEntities: Reflected;
 export type VisibleMeshEntities = InstanceType<typeof VisibleMeshEntities>;
 
-export declare const VisibilityRange: Reflected;
+export declare const VisibilityRange: Reflected<{ start_margin: unknown; end_margin: unknown; use_aabb: boolean }>;
 export type VisibilityRange = InstanceType<typeof VisibilityRange>;
 
-export declare const RenderLayers: Reflected;
+export declare const RenderLayers: Reflected<{ value: readonly number[] }>;
 export type RenderLayers = InstanceType<typeof RenderLayers>;
 
 export declare const DeferredPrepass: Reflected;
@@ -228,10 +236,10 @@ export declare class InfiniteGridSettings extends Component {
   declare major_line_interval: u32;
 }
 
-export declare const PointerDebugOverlay: Reflected;
+export declare const PointerDebugOverlay: Reflected<{ overlay: Entity }>;
 export type PointerDebugOverlay = InstanceType<typeof PointerDebugOverlay>;
 
-export declare const PointerDebugOverlayOf: Reflected;
+export declare const PointerDebugOverlayOf: Reflected<{ pointer: Entity }>;
 export type PointerDebugOverlayOf = InstanceType<typeof PointerDebugOverlayOf>;
 
 /** Holes, never visible: mode: an enum with data (bevy_dev_tools::render_debug::RenderDebugMode). */
@@ -249,39 +257,43 @@ export type Disabled = InstanceType<typeof Disabled>;
 export declare class ChildOf extends Component {
   static readonly path: "bevy_ecs::hierarchy::ChildOf";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: Entity };
   declare readonly value: Entity;
 }
 
-export declare const Children: Reflected;
+export declare const Children: Reflected<{ value: readonly Entity[] }>;
 export type Children = InstanceType<typeof Children>;
 
 /** `Name`; as an element, `<Name value="..." />` (or `<entity name="...">`). */
 export declare const Name: Reflected & { readonly __nameElement: true };
 export type Name = InstanceType<typeof Name>;
 
-export declare const ObservedBy: Reflected;
+export declare const ObservedBy: Reflected<{ value: readonly Entity[] }>;
 export type ObservedBy = InstanceType<typeof ObservedBy>;
 
-export declare const IsResource: Reflected;
+export declare const IsResource: Reflected<{ value: number }>;
 export type IsResource = InstanceType<typeof IsResource>;
 
-export declare const MainEntity: Reflected;
+export declare const MainEntity: Reflected<{ value: Entity }>;
 export type MainEntity = InstanceType<typeof MainEntity>;
 
-export declare const ShowAabbGizmo: Reflected;
+export declare const ShowAabbGizmo: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null }>;
 export type ShowAabbGizmo = InstanceType<typeof ShowAabbGizmo>;
 
-export declare const ShowFrustumGizmo: Reflected;
+export declare const ShowFrustumGizmo: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null }>;
 export type ShowFrustumGizmo = InstanceType<typeof ShowFrustumGizmo>;
 
 /** Holes, never visible: handle: an enum with data (bevy_asset::handle::Handle<bevy_gizmos::GizmoAsset>); line_config: not plain data (bevy_gizmos::config::GizmoLineConfig). */
 export declare class Gizmo extends Component {
   static readonly path: "bevy_gizmos::retained::Gizmo";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { handle: string; line_config: { width: number; perspective: boolean; style: "Solid" | "Dotted" | { Dashed: { gap_scale: number; line_scale: number } }; joints: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset: number }; depth_bias: number };
   declare depth_bias: f32;
 }
 
-export declare const ShowSkinnedMeshBoundsGizmo: Reflected;
+export declare const ShowSkinnedMeshBoundsGizmo: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null }>;
 export type ShowSkinnedMeshBoundsGizmo = InstanceType<typeof ShowSkinnedMeshBoundsGizmo>;
 
 export declare const TransformGizmoCamera: Reflected;
@@ -290,31 +302,31 @@ export type TransformGizmoCamera = InstanceType<typeof TransformGizmoCamera>;
 export declare const TransformGizmoFocus: Reflected;
 export type TransformGizmoFocus = InstanceType<typeof TransformGizmoFocus>;
 
-export declare const GltfExtras: Reflected;
+export declare const GltfExtras: Reflected<{ value: string }>;
 export type GltfExtras = InstanceType<typeof GltfExtras>;
 
-export declare const GltfMaterialExtras: Reflected;
+export declare const GltfMaterialExtras: Reflected<{ value: string }>;
 export type GltfMaterialExtras = InstanceType<typeof GltfMaterialExtras>;
 
-export declare const GltfMaterialName: Reflected;
+export declare const GltfMaterialName: Reflected<{ value: string }>;
 export type GltfMaterialName = InstanceType<typeof GltfMaterialName>;
 
-export declare const GltfMeshExtras: Reflected;
+export declare const GltfMeshExtras: Reflected<{ value: string }>;
 export type GltfMeshExtras = InstanceType<typeof GltfMeshExtras>;
 
-export declare const GltfMeshName: Reflected;
+export declare const GltfMeshName: Reflected<{ value: string }>;
 export type GltfMeshName = InstanceType<typeof GltfMeshName>;
 
-export declare const GltfSceneExtras: Reflected;
+export declare const GltfSceneExtras: Reflected<{ value: string }>;
 export type GltfSceneExtras = InstanceType<typeof GltfSceneExtras>;
 
-export declare const GltfSceneName: Reflected;
+export declare const GltfSceneName: Reflected<{ value: string }>;
 export type GltfSceneName = InstanceType<typeof GltfSceneName>;
 
-export declare const Gamepad: Reflected;
+export declare const Gamepad: Reflected<{ vendor_id: number | null; product_id: number | null; digital: { pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog: { axis_data: Record<string, number> } }>;
 export type Gamepad = InstanceType<typeof Gamepad>;
 
-export declare const GamepadSettings: Reflected;
+export declare const GamepadSettings: Reflected<{ default_button_settings: { press_threshold: number; release_threshold: number }; default_axis_settings: { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }; default_button_axis_settings: { high: number; low: number; threshold: number }; button_settings: Record<string, { press_threshold: number; release_threshold: number }>; axis_settings: Record<string, { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }>; button_axis_settings: Record<string, { high: number; low: number; threshold: number }> }>;
 export type GamepadSettings = InstanceType<typeof GamepadSettings>;
 
 export declare const AutoFocus: Reflected;
@@ -330,6 +342,8 @@ export declare class TabGroup extends Component {
 export declare class TabIndex extends Component {
   static readonly path: "bevy_input_focus::tab_navigation::TabIndex";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: i32 };
   declare value: i32;
 }
 
@@ -360,11 +374,13 @@ export declare class AmbientLight extends Component {
 export declare class CascadeShadowConfig extends Component {
   static readonly path: "bevy_light::cascade::CascadeShadowConfig";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { bounds: readonly number[]; overlap_proportion: number; minimum_distance: number };
   declare overlap_proportion: f32;
   declare minimum_distance: f32;
 }
 
-export declare const Cascades: Reflected;
+export declare const Cascades: Reflected<{ cascades: Record<string, readonly ({ world_from_cascade: unknown; clip_from_cascade: unknown; clip_from_world: unknown; texel_size: number })[]> }>;
 export type Cascades = InstanceType<typeof Cascades>;
 
 export declare const ClusterConfig: Reflected;
@@ -374,6 +390,8 @@ export type ClusterConfig = InstanceType<typeof ClusterConfig>;
 export declare class ClusteredDecal extends Component {
   static readonly path: "bevy_light::cluster::ClusteredDecal";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { base_color_texture: string | null; normal_map_texture: string | null; metallic_roughness_texture: string | null; emissive_texture: string | null; tag: number };
   declare tag: u32;
 }
 
@@ -389,10 +407,10 @@ export declare class DirectionalLight extends Component {
   declare shadow_normal_bias: f32;
 }
 
-export declare const DirectionalLightTexture: Reflected;
+export declare const DirectionalLightTexture: Reflected<{ image: string; tiled: boolean }>;
 export type DirectionalLightTexture = InstanceType<typeof DirectionalLightTexture>;
 
-export declare const ShowLightGizmo: Reflected;
+export declare const ShowLightGizmo: Reflected<{ color: { Manual: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } } | "Varied" | "MatchLightColor" | "ByLightType" | null }>;
 export type ShowLightGizmo = InstanceType<typeof ShowLightGizmo>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
@@ -410,13 +428,15 @@ export declare class PointLight extends Component {
   declare shadow_map_near_z: f32;
 }
 
-export declare const PointLightTexture: Reflected;
+export declare const PointLightTexture: Reflected<{ image: string; cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }>;
 export type PointLightTexture = InstanceType<typeof PointLightTexture>;
 
 /** Holes, never visible: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class EnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::EnvironmentMapLight";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { diffuse_map: string; specular_map: string; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
@@ -426,6 +446,8 @@ export declare class EnvironmentMapLight extends Component {
 export declare class GeneratedEnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::GeneratedEnvironmentMapLight";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { environment_map: string; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
@@ -435,6 +457,8 @@ export declare class GeneratedEnvironmentMapLight extends Component {
 export declare class IrradianceVolume extends Component {
   static readonly path: "bevy_light::probe::IrradianceVolume";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { voxels: string; intensity: number; affects_lightmapped_meshes: boolean };
   declare intensity: f32;
   declare affects_lightmapped_meshes: bool;
 }
@@ -452,6 +476,8 @@ export type ParallaxCorrection = InstanceType<typeof ParallaxCorrection>;
 export declare class Skybox extends Component {
   static readonly path: "bevy_light::probe::Skybox";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { image: string | null; brightness: number; rotation: readonly [number, number, number, number] };
   declare brightness: f32;
   declare readonly rotation: Quat;
 }
@@ -483,13 +509,15 @@ export declare class SpotLight extends Component {
   declare inner_angle: f32;
 }
 
-export declare const SpotLightTexture: Reflected;
+export declare const SpotLightTexture: Reflected<{ image: string }>;
 export type SpotLightTexture = InstanceType<typeof SpotLightTexture>;
 
 /** Holes, never visible: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
 export declare class FogVolume extends Component {
   static readonly path: "bevy_light::volumetric::FogVolume";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { fog_color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; density_factor: number; density_texture: string | null; density_texture_offset: readonly [number, number, number]; absorption: number; scattering: number; scattering_asymmetry: number; light_tint: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; light_intensity: number };
   declare density_factor: f32;
   declare readonly density_texture_offset: Vec3;
   declare absorption: f32;
@@ -510,10 +538,10 @@ export declare class VolumetricFog extends Component {
 export declare const VolumetricLight: Reflected;
 export type VolumetricLight = InstanceType<typeof VolumetricLight>;
 
-export declare const Mesh2d: Reflected;
+export declare const Mesh2d: Reflected<{ value: string }>;
 export type Mesh2d = InstanceType<typeof Mesh2d>;
 
-export declare const Mesh3d: Reflected;
+export declare const Mesh3d: Reflected<{ value: string }>;
 export type Mesh3d = InstanceType<typeof Mesh3d>;
 
 /** Holes, never visible: type_id: an enum with data (core::option::Option<core::any::TypeId>). */
@@ -526,10 +554,10 @@ export declare class MeshTag extends Component {
 export declare const MeshMorphWeights: Reflected;
 export type MeshMorphWeights = InstanceType<typeof MeshMorphWeights>;
 
-export declare const MorphWeights: Reflected;
+export declare const MorphWeights: Reflected<{ weights: readonly number[]; first_mesh: string | null }>;
 export type MorphWeights = InstanceType<typeof MorphWeights>;
 
-export declare const SkinnedMesh: Reflected;
+export declare const SkinnedMesh: Reflected<{ inverse_bindposes: string; joints: readonly Entity[] }>;
 export type SkinnedMesh = InstanceType<typeof SkinnedMesh>;
 
 export declare class ContactShadows extends Component {
@@ -551,13 +579,15 @@ export declare class DistanceFog extends Component {
 export declare class Lightmap extends Component {
   static readonly path: "bevy_pbr::lightmap::Lightmap";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { image: string; uv_rect: { min: readonly [number, number]; max: readonly [number, number] }; bicubic_sampling: boolean };
   declare bicubic_sampling: bool;
 }
 
-export declare const MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt: Reflected;
+export declare const MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt: Reflected<{ value: string }>;
 export type MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt = InstanceType<typeof MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt>;
 
-export declare const MeshMaterial3dStandardMaterial: Reflected;
+export declare const MeshMaterial3dStandardMaterial: Reflected<{ value: string }>;
 export type MeshMaterial3dStandardMaterial = InstanceType<typeof MeshMaterial3dStandardMaterial>;
 
 /** Holes, never visible: quality_level: an enum with data (bevy_pbr::ssao::ScreenSpaceAmbientOcclusionQualityLevel). */
@@ -586,7 +616,7 @@ export declare class ScreenSpaceTransmission extends Component {
   declare quality: "Low" | "Medium" | "High" | "Ultra";
 }
 
-export declare const Mesh3dWireframe: Reflected;
+export declare const Mesh3dWireframe: Reflected<{ value: string }>;
 export type Mesh3dWireframe = InstanceType<typeof Mesh3dWireframe>;
 
 export declare const NoWireframe: Reflected;
@@ -595,7 +625,7 @@ export type NoWireframe = InstanceType<typeof NoWireframe>;
 export declare const Wireframe: Reflected;
 export type Wireframe = InstanceType<typeof Wireframe>;
 
-export declare const WireframeColor: Reflected;
+export declare const WireframeColor: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type WireframeColor = InstanceType<typeof WireframeColor>;
 
 export declare class WireframeLineWidth extends Component {
@@ -613,6 +643,8 @@ export declare class WireframeTopology extends Component {
 export declare class WireframeXray extends Component {
   static readonly path: "bevy_pbr::wireframe::WireframeXray";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: bool };
   declare value: bool;
 }
 
@@ -630,6 +662,8 @@ export type EntityCursor = InstanceType<typeof EntityCursor>;
 export declare class DirectlyHovered extends Component {
   static readonly path: "bevy_picking::hover::DirectlyHovered";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: bool };
   declare readonly value: bool;
 }
 
@@ -637,6 +671,8 @@ export declare class DirectlyHovered extends Component {
 export declare class Hovered extends Component {
   static readonly path: "bevy_picking::hover::Hovered";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: bool };
   declare readonly value: bool;
 }
 
@@ -652,13 +688,13 @@ export type MeshPickingCamera = InstanceType<typeof MeshPickingCamera>;
 export declare const RayCastBackfaces: Reflected;
 export type RayCastBackfaces = InstanceType<typeof RayCastBackfaces>;
 
-export declare const SimplifiedMesh: Reflected;
+export declare const SimplifiedMesh: Reflected<{ value: string }>;
 export type SimplifiedMesh = InstanceType<typeof SimplifiedMesh>;
 
 export declare const PointerId: Reflected;
 export type PointerId = InstanceType<typeof PointerId>;
 
-export declare const PointerInteraction: Reflected;
+export declare const PointerInteraction: Reflected<{ sorted_entities: readonly (readonly [Entity, { camera: Entity; depth: number; position: readonly [number, number, number] | null; normal: readonly [number, number, number] | null }])[] }>;
 export type PointerInteraction = InstanceType<typeof PointerInteraction>;
 
 export declare const PointerLocation: Reflected;
@@ -676,6 +712,8 @@ export declare class PointerPressState extends Component {
 export declare class AutoExposure extends Component {
   static readonly path: "bevy_post_process::auto_exposure::settings::AutoExposure";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { range: unknown; filter: unknown; speed_brighten: number; speed_darken: number; exponential_transition_distance: number; metering_mask: string; compensation_curve: string };
   declare speed_brighten: f32;
   declare speed_darken: f32;
   declare exponential_transition_distance: f32;
@@ -709,6 +747,8 @@ export declare class DepthOfField extends Component {
 export declare class ChromaticAberration extends Component {
   static readonly path: "bevy_post_process::effect_stack::chromatic_aberration::ChromaticAberration";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { color_lut: string | null; intensity: number; max_samples: number };
   declare intensity: f32;
   declare max_samples: u32;
 }
@@ -738,6 +778,8 @@ export type CameraRenderGraph = InstanceType<typeof CameraRenderGraph>;
 export declare class MipBias extends Component {
   static readonly path: "bevy_render::camera::MipBias";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: f32 };
   declare value: f32;
 }
 
@@ -750,7 +792,7 @@ export declare class TemporalJitter extends Component {
 export declare const OcclusionCulling: Reflected;
 export type OcclusionCulling = InstanceType<typeof OcclusionCulling>;
 
-export declare const ColorGrading: Reflected;
+export declare const ColorGrading: Reflected<{ global: { exposure: number; temperature: number; tint: number; hue: number; post_saturation: number; midtones_range: unknown }; shadows: { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; midtones: { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; highlights: { saturation: number; contrast: number; gamma: number; gain: number; lift: number } }>;
 export type ColorGrading = InstanceType<typeof ColorGrading>;
 
 export declare class DebandDither extends Component {
@@ -774,10 +816,10 @@ export declare class Tonemapping extends Component {
 export declare const RenderShadowMapVisibleEntities: Reflected;
 export type RenderShadowMapVisibleEntities = InstanceType<typeof RenderShadowMapVisibleEntities>;
 
-export declare const Screenshot: Reflected;
+export declare const Screenshot: Reflected<{ value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle: string; scale_factor: number } } | { TextureView: number } | { None: { size: { x: number; y: number } } } }>;
 export type Screenshot = InstanceType<typeof Screenshot>;
 
-export declare const SceneComponentInfo: Reflected;
+export declare const SceneComponentInfo: Reflected<{ spawned_from_scene: boolean; component_name: string }>;
 export type SceneComponentInfo = InstanceType<typeof SceneComponentInfo>;
 
 export declare const SpritePickingCamera: Reflected;
@@ -786,6 +828,8 @@ export type SpritePickingCamera = InstanceType<typeof SpritePickingCamera>;
 export declare class Anchor extends Component {
   static readonly path: "bevy_sprite::sprite::Anchor";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: Vec2 };
   declare readonly value: Vec2;
 }
 
@@ -793,11 +837,13 @@ export declare class Anchor extends Component {
 export declare class Sprite extends Component {
   static readonly path: "bevy_sprite::sprite::Sprite";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { image: string; texture_atlas: { layout: string; index: number } | null; color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min: readonly [number, number]; max: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border: { min_inset: readonly [number, number]; max_inset: readonly [number, number] }; center_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; sides_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; max_corner_scale: number } } | { Tiled: { tile_x: boolean; tile_y: boolean; stretch_value: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" };
   declare flip_x: bool;
   declare flip_y: bool;
 }
 
-export declare const Text2d: Reflected;
+export declare const Text2d: Reflected<{ value: string }>;
 export type Text2d = InstanceType<typeof Text2d>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
@@ -807,16 +853,16 @@ export declare class Text2dShadow extends Component {
   declare readonly offset: Vec2;
 }
 
-export declare const MeshMaterial2dColorMaterial: Reflected;
+export declare const MeshMaterial2dColorMaterial: Reflected<{ value: string }>;
 export type MeshMaterial2dColorMaterial = InstanceType<typeof MeshMaterial2dColorMaterial>;
 
-export declare const MeshMaterial2dSpriteMeshMaterial: Reflected;
+export declare const MeshMaterial2dSpriteMeshMaterial: Reflected<{ value: string }>;
 export type MeshMaterial2dSpriteMeshMaterial = InstanceType<typeof MeshMaterial2dSpriteMeshMaterial>;
 
-export declare const MeshMaterial2dTilemapChunkMaterial: Reflected;
+export declare const MeshMaterial2dTilemapChunkMaterial: Reflected<{ value: string }>;
 export type MeshMaterial2dTilemapChunkMaterial = InstanceType<typeof MeshMaterial2dTilemapChunkMaterial>;
 
-export declare const Mesh2dWireframe: Reflected;
+export declare const Mesh2dWireframe: Reflected<{ value: string }>;
 export type Mesh2dWireframe = InstanceType<typeof Mesh2dWireframe>;
 
 export declare const NoWireframe2d: Reflected;
@@ -825,22 +871,24 @@ export type NoWireframe2d = InstanceType<typeof NoWireframe2d>;
 export declare const Wireframe2d: Reflected;
 export type Wireframe2d = InstanceType<typeof Wireframe2d>;
 
-export declare const Wireframe2dColor: Reflected;
+export declare const Wireframe2dColor: Reflected<{ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type Wireframe2dColor = InstanceType<typeof Wireframe2dColor>;
 
-export declare const TilemapChunk: Reflected;
+export declare const TilemapChunk: Reflected<{ chunk_size: { x: number; y: number }; tile_display_size: { x: number; y: number }; tileset: string; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
 export type TilemapChunk = InstanceType<typeof TilemapChunk>;
 
-export declare const TilemapChunkTileData: Reflected;
+export declare const TilemapChunkTileData: Reflected<{ value: readonly ({ tileset_index: number; color: { Srgba: unknown } | { LinearRgba: unknown } | { Hsla: unknown } | { Hsva: unknown } | { Hwba: unknown } | { Laba: unknown } | { Lcha: unknown } | { Oklaba: unknown } | { Oklcha: unknown } | { Xyza: unknown } | { Okhsla: unknown } | { Okhsva: unknown } | { Okhwba: unknown }; visible: boolean; orientation: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[] }>;
 export type TilemapChunkTileData = InstanceType<typeof TilemapChunkTileData>;
 
-export declare const TextBounds: Reflected;
+export declare const TextBounds: Reflected<{ width: number | null; height: number | null }>;
 export type TextBounds = InstanceType<typeof TextBounds>;
 
 /** Holes, never visible: glyphs: not plain data (alloc::vec::Vec<bevy_text::glyph::PositionedGlyph>); run_geometry: not plain data (alloc::vec::Vec<bevy_text::pipeline::RunGeometry>); cursor: an enum with data (core::option::Option<(bool, bevy_math::rects::rect::Rect)>); selection_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); preedit_underline_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); inline_boxes: not plain data (alloc::vec::Vec<(bevy_ecs::entity::Entity, bevy_text::inline_box::InlineBoxKind, bevy_math::rects::rect::Rect)>). */
 export declare class TextLayoutInfo extends Component {
   static readonly path: "bevy_text::pipeline::TextLayoutInfo";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { scale_factor: number; glyphs: readonly ({ position: readonly [number, number]; atlas_info: { texture: { Index: { index: unknown } } | { Uuid: { uuid: unknown } }; rect: { min: readonly [number, number]; max: readonly [number, number] }; offset: readonly [number, number]; is_alpha_mask: boolean }; section_index: number; line_index: number })[]; run_geometry: readonly ({ section_index: number; bounds: { min: readonly [number, number]; max: readonly [number, number] }; strikethrough_y: number; strikethrough_thickness: number; underline_y: number; underline_thickness: number })[]; size: readonly [number, number]; cursor: readonly [boolean, { min: readonly [number, number]; max: readonly [number, number] }] | null; selection_rects: readonly ({ min: readonly [number, number]; max: readonly [number, number] })[]; preedit_underline_rects: readonly ({ min: readonly [number, number]; max: readonly [number, number] })[]; inline_boxes: readonly (readonly [Entity, "InFlow" | "OutOfFlow", { min: readonly [number, number]; max: readonly [number, number] }])[] };
   declare scale_factor: f32;
   declare readonly size: Vec2;
 }
@@ -849,6 +897,8 @@ export declare class TextLayoutInfo extends Component {
 export declare class ComputedTextBlock extends Component {
   static readonly path: "bevy_text::text::ComputedTextBlock";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { entities: readonly ({ entity: Entity; depth: number; font_smoothing: "None" | "AntiAliased" })[]; needs_rerender: boolean; uses_viewport_sizes: boolean; uses_rem_sizes: boolean };
   declare needs_rerender: bool;
   declare uses_viewport_sizes: bool;
   declare uses_rem_sizes: bool;
@@ -857,6 +907,8 @@ export declare class ComputedTextBlock extends Component {
 export declare class EmSize extends Component {
   static readonly path: "bevy_text::text::EmSize";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: f32 };
   declare value: f32;
 }
 
@@ -872,19 +924,21 @@ export type LetterSpacing = InstanceType<typeof LetterSpacing>;
 export declare const LineHeight: Reflected;
 export type LineHeight = InstanceType<typeof LineHeight>;
 
-export declare const StrikethroughColor: Reflected;
+export declare const StrikethroughColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type StrikethroughColor = InstanceType<typeof StrikethroughColor>;
 
-export declare const TextBackgroundColor: Reflected;
+export declare const TextBackgroundColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type TextBackgroundColor = InstanceType<typeof TextBackgroundColor>;
 
-export declare const TextColor: Reflected;
+export declare const TextColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type TextColor = InstanceType<typeof TextColor>;
 
 /** Holes, never visible: font: an enum with data (bevy_text::text::FontSource); font_size: an enum with data (bevy_text::text::FontSize); weight: not plain data (bevy_text::text::FontWeight); width: not plain data (bevy_text::text::FontWidth); style: an enum with data (bevy_text::text::FontStyle); font_features: not plain data (bevy_text::text::FontFeatures); font_variations: not plain data (bevy_text::text::FontVariations). */
 export declare class TextFont extends Component {
   static readonly path: "bevy_text::text::TextFont";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { font: { Handle: string } | { Family: unknown } | { Families: unknown } | { List: readonly ({ Handle: string } | { Family: unknown } | { Families: unknown } | { List: readonly unknown[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" })[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing: "None" | "AntiAliased"; font_features: { features: readonly (readonly [unknown, number])[] }; font_variations: { variations: readonly (readonly [unknown, number])[] } };
   declare font_smoothing: "None" | "AntiAliased";
 }
 
@@ -895,16 +949,16 @@ export declare class TextLayout extends Component {
   declare linebreak: "WordBoundary" | "AnyCharacter" | "WordOrCharacter" | "NoWrap";
 }
 
-export declare const TextSpan: Reflected;
+export declare const TextSpan: Reflected<{ value: string }>;
 export type TextSpan = InstanceType<typeof TextSpan>;
 
-export declare const UnderlineColor: Reflected;
+export declare const UnderlineColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type UnderlineColor = InstanceType<typeof UnderlineColor>;
 
-export declare const DelayedCommandQueue: Reflected;
+export declare const DelayedCommandQueue: Reflected<{ submit_at: unknown }>;
 export type DelayedCommandQueue = InstanceType<typeof DelayedCommandQueue>;
 
-export declare const GlobalTransform: Reflected;
+export declare const GlobalTransform: Reflected<{ value: { matrix3: { x_axis: readonly [number, number, number]; y_axis: readonly [number, number, number]; z_axis: readonly [number, number, number] }; translation: readonly [number, number, number] } }>;
 export type GlobalTransform = InstanceType<typeof GlobalTransform>;
 
 export declare const TransformTreeChanged: Reflected;
@@ -916,10 +970,21 @@ export type ScriptHidden = InstanceType<typeof ScriptHidden>;
 export declare const TsSpawned: Reflected;
 export type TsSpawned = InstanceType<typeof TsSpawned>;
 
-export declare const MissingComponents: Reflected;
+/** Holes, never visible: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>). */
+export declare class PlayAnimation extends Component {
+  static readonly path: "bevy_ts_animation::PlayAnimation";
+  static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { clip: string; repeat: boolean; speed: number; transition_secs: number };
+  declare repeat: bool;
+  declare speed: f32;
+  declare transition_secs: f32;
+}
+
+export declare const MissingComponents: Reflected<{ value: readonly ({ component: string; reason: "Unregistered" | "Failed" | "Mismatch"; message: string; fields: Record<string, string>; location: { file: string; line: number; column: number }; expected: { file: string; line: number; column: number } | null; misfit: Record<string, string>; overrides: readonly ({ path: unknown; fields: unknown })[]; scene: boolean })[] }>;
 export type MissingComponents = InstanceType<typeof MissingComponents>;
 
-export declare const AccessibleLabel: Reflected;
+export declare const AccessibleLabel: Reflected<{ value: string }>;
 export type AccessibleLabel = InstanceType<typeof AccessibleLabel>;
 
 export declare class AutoDirectionalNavigation extends Component {
@@ -947,10 +1012,10 @@ export declare class RelativeCursorPosition extends Component {
   declare cursor_over: bool;
 }
 
-export declare const BackgroundGradient: Reflected;
+export declare const BackgroundGradient: Reflected<{ value: readonly ({ Linear: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle: number; stops: readonly unknown[] } } | { Radial: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position: { anchor: readonly [number, number]; x: unknown; y: unknown }; shape: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: unknown } | { Ellipse: readonly [unknown, unknown] }; stops: readonly unknown[] } } | { Conic: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start: number; position: { anchor: readonly [number, number]; x: unknown; y: unknown }; stops: readonly unknown[] } })[] }>;
 export type BackgroundGradient = InstanceType<typeof BackgroundGradient>;
 
-export declare const BorderGradient: Reflected;
+export declare const BorderGradient: Reflected<{ value: readonly ({ Linear: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle: number; stops: readonly unknown[] } } | { Radial: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position: { anchor: readonly [number, number]; x: unknown; y: unknown }; shape: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: unknown } | { Ellipse: readonly [unknown, unknown] }; stops: readonly unknown[] } } | { Conic: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start: number; position: { anchor: readonly [number, number]; x: unknown; y: unknown }; stops: readonly unknown[] } })[] }>;
 export type BorderGradient = InstanceType<typeof BorderGradient>;
 
 export declare const Checkable: Reflected;
@@ -974,16 +1039,18 @@ export type UiPickingCamera = InstanceType<typeof UiPickingCamera>;
 export declare class ComputedStackIndex extends Component {
   static readonly path: "bevy_ui::stack::ComputedStackIndex";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: u32 };
   declare value: u32;
 }
 
-export declare const BackgroundColor: Reflected;
+export declare const BackgroundColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type BackgroundColor = InstanceType<typeof BackgroundColor>;
 
-export declare const BorderColor: Reflected;
+export declare const BorderColor: Reflected<{ top: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; right: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; bottom: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; left: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type BorderColor = InstanceType<typeof BorderColor>;
 
-export declare const BoxShadow: Reflected;
+export declare const BoxShadow: Reflected<{ value: readonly ({ color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; x_offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y_offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; spread_radius: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; blur_radius: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } })[] }>;
 export type BoxShadow = InstanceType<typeof BoxShadow>;
 
 export declare const CalculatedClip: Reflected;
@@ -1010,7 +1077,7 @@ export declare class ComputedUiRenderTargetInfo extends Component {
   declare scale_factor: f32;
 }
 
-export declare const ComputedUiTargetCamera: Reflected;
+export declare const ComputedUiTargetCamera: Reflected<{ camera: Entity | null }>;
 export type ComputedUiTargetCamera = InstanceType<typeof ComputedUiTargetCamera>;
 
 export declare const FixedNode: Reflected;
@@ -1019,10 +1086,12 @@ export type FixedNode = InstanceType<typeof FixedNode>;
 export declare class GlobalZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::GlobalZIndex";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: i32 };
   declare value: i32;
 }
 
-export declare const IgnoreScroll: Reflected;
+export declare const IgnoreScroll: Reflected<{ value: { x: boolean; y: boolean } }>;
 export type IgnoreScroll = InstanceType<typeof IgnoreScroll>;
 
 export declare const IsDefaultUiCamera: Reflected;
@@ -1038,6 +1107,8 @@ export declare class LayoutConfig extends Component {
 export declare class Node extends Component {
   static readonly path: "bevy_ui::ui_node::Node";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { display: "Flex" | "Grid" | "Block" | "None"; box_sizing: "BorderBox" | "ContentBox"; position_type: "Relative" | "Absolute"; overflow: { x: "Visible" | "Clip" | "Hidden" | "Scroll"; y: "Visible" | "Clip" | "Hidden" | "Scroll" }; scrollbar_width: number; overflow_clip_margin: { visual_box: "ContentBox" | "PaddingBox" | "BorderBox"; margin: number }; left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; aspect_ratio: number | null; align_items: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; justify_items: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; align_self: "Auto" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; justify_self: "Auto" | "Start" | "StartSafe" | "End" | "EndSafe" | "Center" | "CenterSafe" | "Baseline" | "Stretch"; align_content: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Stretch" | "SpaceBetween" | "SpaceEvenly" | "SpaceAround"; justify_content: "Default" | "Start" | "StartSafe" | "End" | "EndSafe" | "FlexStart" | "FlexStartSafe" | "FlexEnd" | "FlexEndSafe" | "Center" | "CenterSafe" | "Stretch" | "SpaceBetween" | "SpaceEvenly" | "SpaceAround"; direction: "Ltr" | "Rtl"; margin: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; padding: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border_radius: { top_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; flex_direction: "Row" | "Column" | "RowReverse" | "ColumnReverse"; flex_wrap: "NoWrap" | "Wrap" | "WrapReverse"; flex_grow: number; flex_shrink: number; flex_basis: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; row_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; column_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; grid_auto_flow: "Row" | "Column" | "RowDense" | "ColumnDense"; grid_template_rows: readonly ({ repetition: { Count: number } | "AutoFill" | "AutoFit"; tracks: readonly ({ min_sizing_function: unknown; max_sizing_function: unknown })[] })[]; grid_template_columns: readonly ({ repetition: { Count: number } | "AutoFill" | "AutoFit"; tracks: readonly ({ min_sizing_function: unknown; max_sizing_function: unknown })[] })[]; grid_auto_rows: readonly ({ min_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_auto_columns: readonly ({ min_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_row: { start: unknown | null; span: unknown | null; end: unknown | null }; grid_column: { start: unknown | null; span: unknown | null; end: unknown | null } };
   declare display: "Flex" | "Grid" | "Block" | "None";
   declare box_sizing: "BorderBox" | "ContentBox";
   declare position_type: "Relative" | "Absolute";
@@ -1056,10 +1127,10 @@ export declare class Node extends Component {
   declare grid_auto_flow: "Row" | "Column" | "RowDense" | "ColumnDense";
 }
 
-export declare const OuterColor: Reflected;
+export declare const OuterColor: Reflected<{ value: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type OuterColor = InstanceType<typeof OuterColor>;
 
-export declare const Outline: Reflected;
+export declare const Outline: Reflected<{ width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } }>;
 export type Outline = InstanceType<typeof Outline>;
 
 export declare const OverrideClip: Reflected;
@@ -1068,19 +1139,23 @@ export type OverrideClip = InstanceType<typeof OverrideClip>;
 export declare class ScrollPosition extends Component {
   static readonly path: "bevy_ui::ui_node::ScrollPosition";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: Vec2 };
   declare readonly value: Vec2;
 }
 
-export declare const UiTargetCamera: Reflected;
+export declare const UiTargetCamera: Reflected<{ value: Entity }>;
 export type UiTargetCamera = InstanceType<typeof UiTargetCamera>;
 
 export declare class ZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::ZIndex";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: i32 };
   declare value: i32;
 }
 
-export declare const UiGlobalTransform: Reflected;
+export declare const UiGlobalTransform: Reflected<{ value: { matrix2: { x_axis: readonly [number, number]; y_axis: readonly [number, number] }; translation: readonly [number, number] } }>;
 export type UiGlobalTransform = InstanceType<typeof UiGlobalTransform>;
 
 /** Holes, never visible: translation: not plain data (bevy_ui::ui_transform::Val2); rotation: not plain data (bevy_math::rotation2d::Rot2). */
@@ -1097,18 +1172,22 @@ export type DeprecatedButton = InstanceType<typeof DeprecatedButton>;
 export declare class ImageNode extends Component {
   static readonly path: "bevy_ui::widget::image::ImageNode";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; image: string; texture_atlas: { layout: string; index: number } | null; flip_x: boolean; flip_y: boolean; rect: { min: readonly [number, number]; max: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border: { min_inset: readonly [number, number]; max_inset: readonly [number, number] }; center_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; sides_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; max_corner_scale: number } } | { Tiled: { tile_x: boolean; tile_y: boolean; stretch_value: number } }; visual_box: "ContentBox" | "PaddingBox" | "BorderBox" };
   declare flip_x: bool;
   declare flip_y: bool;
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
 }
 
-export declare const ImageNodeSize: Reflected;
+export declare const ImageNodeSize: Reflected<{ size: { x: number; y: number } }>;
 export type ImageNodeSize = InstanceType<typeof ImageNodeSize>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>). */
 export declare class InlineImage extends Component {
   static readonly path: "bevy_ui::widget::inline_image::InlineImage";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } }; image: string; width: number | null; height: number | null; flip_x: boolean; flip_y: boolean };
   declare flip_x: bool;
   declare flip_y: bool;
 }
@@ -1116,7 +1195,7 @@ export declare class InlineImage extends Component {
 export declare const Label: Reflected;
 export type Label = InstanceType<typeof Label>;
 
-export declare const Text: Reflected;
+export declare const Text: Reflected<{ value: string }>;
 export type Text = InstanceType<typeof Text>;
 
 /** Holes, never visible: no_wrap_measure: an enum with data (core::option::Option<glam::Vec2>). */
@@ -1134,12 +1213,14 @@ export declare class TextShadow extends Component {
   declare readonly offset: Vec2;
 }
 
-export declare const ViewportNode: Reflected;
+export declare const ViewportNode: Reflected<{ camera: Entity | null }>;
 export type ViewportNode = InstanceType<typeof ViewportNode>;
 
 export declare class BoxShadowSamples extends Component {
   static readonly path: "bevy_ui_render::BoxShadowSamples";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: u32 };
   declare value: u32;
 }
 
@@ -1149,10 +1230,10 @@ export declare class UiAntiAlias extends Component {
   declare value: "On" | "Off";
 }
 
-export declare const UiDebugOptions: Reflected;
+export declare const UiDebugOptions: Reflected<{ enabled: boolean; outline_border_box: boolean; outline_padding_box: boolean; outline_content_box: boolean; outline_scrollbars: boolean; line_width: number; line_color_override: { red: number; green: number; blue: number; alpha: number } | null; show_hidden: boolean; show_clipped: boolean; ignore_border_radius: boolean }>;
 export type UiDebugOptions = InstanceType<typeof UiDebugOptions>;
 
-export declare const ImageNodeTextureAtlasLayout: Reflected;
+export declare const ImageNodeTextureAtlasLayout: Reflected<{ value: string }>;
 export type ImageNodeTextureAtlasLayout = InstanceType<typeof ImageNodeTextureAtlasLayout>;
 
 export declare const ActivateOnPress: Reflected;
@@ -1170,10 +1251,10 @@ export type Dialog = InstanceType<typeof Dialog>;
 export declare const DialogDragHandle: Reflected;
 export type DialogDragHandle = InstanceType<typeof DialogDragHandle>;
 
-export declare const DialogDragState: Reflected;
+export declare const DialogDragState: Reflected<{ start_dialog_translation: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; start_pointer_location: readonly [number, number] }>;
 export type DialogDragState = InstanceType<typeof DialogDragState>;
 
-export declare const ActiveDescendant: Reflected;
+export declare const ActiveDescendant: Reflected<{ value: Entity | null }>;
 export type ActiveDescendant = InstanceType<typeof ActiveDescendant>;
 
 export declare const ListItem: Reflected;
@@ -1188,7 +1269,7 @@ export type MenuFocusState = InstanceType<typeof MenuFocusState>;
 export declare const MenuItem: Reflected;
 export type MenuItem = InstanceType<typeof MenuItem>;
 
-export declare const MenuPopup: Reflected;
+export declare const MenuPopup: Reflected<{ layout: "Column" | "Row" | "Grid" }>;
 export type MenuPopup = InstanceType<typeof MenuPopup>;
 
 export declare const ModalDialog: Reflected;
@@ -1197,7 +1278,7 @@ export type ModalDialog = InstanceType<typeof ModalDialog>;
 export declare const ModalDialogBarrier: Reflected;
 export type ModalDialogBarrier = InstanceType<typeof ModalDialogBarrier>;
 
-export declare const Popover: Reflected;
+export declare const Popover: Reflected<{ positions: readonly ({ side: "Top" | "Bottom" | "Left" | "Right"; align: "Start" | "Center" | "End"; gap: number })[]; window_margin: number }>;
 export type Popover = InstanceType<typeof Popover>;
 
 export declare const RadioButton: Reflected;
@@ -1209,7 +1290,7 @@ export type RadioGroup = InstanceType<typeof RadioGroup>;
 export declare const ScrollArea: Reflected;
 export type ScrollArea = InstanceType<typeof ScrollArea>;
 
-export declare const Scrollbar: Reflected;
+export declare const Scrollbar: Reflected<{ target: Entity; orientation: "Horizontal" | "Vertical"; min_thumb_length: number }>;
 export type Scrollbar = InstanceType<typeof Scrollbar>;
 
 export declare class ScrollbarDragState extends Component {
@@ -1219,34 +1300,36 @@ export declare class ScrollbarDragState extends Component {
   declare drag_origin: f32;
 }
 
-export declare const ScrollbarThumb: Reflected;
+export declare const ScrollbarThumb: Reflected<{ border_radius: { top_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; border: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }>;
 export type ScrollbarThumb = InstanceType<typeof ScrollbarThumb>;
 
-export declare const Slider: Reflected;
+export declare const Slider: Reflected<{ track_click: "Drag" | "Step" | "Snap"; orientation: "Auto" | "Horizontal" | "Vertical" }>;
 export type Slider = InstanceType<typeof Slider>;
 
-export declare const SliderDragState: Reflected;
+export declare const SliderDragState: Reflected<{ dragging: boolean; offset: number }>;
 export type SliderDragState = InstanceType<typeof SliderDragState>;
 
 export declare class SliderPrecision extends Component {
   static readonly path: "bevy_ui_widgets::slider::SliderPrecision";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: i32 };
   declare value: i32;
 }
 
-export declare const SliderRange: Reflected;
+export declare const SliderRange: Reflected<{ start: number; end: number }>;
 export type SliderRange = InstanceType<typeof SliderRange>;
 
-export declare const SliderStep: Reflected;
+export declare const SliderStep: Reflected<{ value: number }>;
 export type SliderStep = InstanceType<typeof SliderStep>;
 
 export declare const SliderThumb: Reflected;
 export type SliderThumb = InstanceType<typeof SliderThumb>;
 
-export declare const SliderValue: Reflected;
+export declare const SliderValue: Reflected<{ value: number }>;
 export type SliderValue = InstanceType<typeof SliderValue>;
 
-export declare const SelectedTab: Reflected;
+export declare const SelectedTab: Reflected<{ value: Entity | null }>;
 export type SelectedTab = InstanceType<typeof SelectedTab>;
 
 export declare const Tab: Reflected;
@@ -1268,7 +1351,7 @@ export type TextInput = InstanceType<typeof TextInput>;
 export declare const CursorIcon: Reflected;
 export type CursorIcon = InstanceType<typeof CursorIcon>;
 
-export declare const Monitor: Reflected;
+export declare const Monitor: Reflected<{ name: string | null; physical_height: number; physical_width: number; physical_position: { x: number; y: number }; refresh_rate_millihertz: number | null; scale_factor: number; video_modes: readonly ({ physical_size: { x: number; y: number }; bit_depth: number; refresh_rate_millihertz: number })[] }>;
 export type Monitor = InstanceType<typeof Monitor>;
 
 export declare const PrimaryMonitor: Reflected;
@@ -1289,6 +1372,8 @@ export type PrimaryWindow = InstanceType<typeof PrimaryWindow>;
 export declare class Window extends Component {
   static readonly path: "bevy_window::window::Window";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { present_mode: "AutoVsync" | "AutoNoVsync" | "Fifo" | "FifoRelaxed" | "Immediate" | "Mailbox"; mode: "Windowed" | { BorderlessFullscreen: "Current" | "Primary" | { Index: number } | { Entity: Entity } } | { Fullscreen: readonly ["Current" | "Primary" | { Index: number } | { Entity: Entity }, "Current" | { Specific: { physical_size: { x: number; y: number }; bit_depth: number; refresh_rate_millihertz: number } }] }; position: "Automatic" | { Centered: "Current" | "Primary" | { Index: number } | { Entity: Entity } } | { At: { x: number; y: number } }; resolution: { physical_width: number; physical_height: number; scale_factor_override: number | null; scale_factor: number }; title: string; name: string | null; composite_alpha_mode: "Auto" | "Opaque" | "PreMultiplied" | "PostMultiplied" | "Inherit"; resize_constraints: { min_width: number; min_height: number; max_width: number; max_height: number }; resizable: boolean; enabled_buttons: { minimize: boolean; maximize: boolean; close: boolean }; decorations: boolean; transparent: boolean; focused: boolean; window_level: "AlwaysOnBottom" | "Normal" | "AlwaysOnTop"; canvas: string | null; fit_canvas_to_parent: boolean; prevent_default_event_handling: boolean; internal: { minimize_request: boolean | null; maximize_request: boolean | null; drag_move_request: boolean; drag_resize_request: "North" | "NorthEast" | "East" | "SouthEast" | "South" | "SouthWest" | "West" | "NorthWest" | null; physical_cursor_position: { x: number; y: number } | null }; ime_enabled: boolean; ime_position: readonly [number, number]; window_theme: "Light" | "Dark" | null; visible: boolean; skip_taskbar: boolean; clip_children: boolean; desired_maximum_frame_latency: unknown | null; recognize_pinch_gesture: boolean; recognize_rotation_gesture: boolean; recognize_doubletap_gesture: boolean; recognize_pan_gesture: readonly [number, number] | null; movable_by_window_background: boolean; fullsize_content_view: boolean; has_shadow: boolean; titlebar_shown: boolean; titlebar_transparent: boolean; titlebar_show_title: boolean; titlebar_show_buttons: boolean; borderless_game: boolean; prefers_home_indicator_hidden: boolean; prefers_status_bar_hidden: boolean; preferred_screen_edges_deferring_system_gestures: "None" | "Top" | "Left" | "Bottom" | "Right" | "All" };
   declare present_mode: "AutoVsync" | "AutoNoVsync" | "Fifo" | "FifoRelaxed" | "Immediate" | "Mailbox";
   declare composite_alpha_mode: "Auto" | "Opaque" | "PreMultiplied" | "PostMultiplied" | "Inherit";
   declare resizable: bool;
@@ -1319,8 +1404,8 @@ export declare class Window extends Component {
   declare preferred_screen_edges_deferring_system_gestures: "None" | "Top" | "Left" | "Bottom" | "Right" | "All";
 }
 
-export declare const DynamicWorldRoot: Reflected;
+export declare const DynamicWorldRoot: Reflected<{ value: string }>;
 export type DynamicWorldRoot = InstanceType<typeof DynamicWorldRoot>;
 
-export declare const WorldAssetRoot: Reflected;
+export declare const WorldAssetRoot: Reflected<{ value: string }>;
 export type WorldAssetRoot = InstanceType<typeof WorldAssetRoot>;
