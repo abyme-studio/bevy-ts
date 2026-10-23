@@ -1,0 +1,9 @@
+worker spawn to ready (5000 compiled fns), median of 10: 71.55 ms
+16 live workers add 213.1 MB RSS, 13.3 MB each
+postMessage round trip with 64 B: 269.5 us
+postMessage round trip with 65536 B: 308.8 us
+pos += vel * dt over 4194304 rows, 1 worker(s): 4.40 ms per frame
+pos += vel * dt over 4194304 rows, 2 worker(s): 4.74 ms per frame
+pos += vel * dt over 4194304 rows, 4 worker(s): 3.68 ms per frame
+pos += vel * dt over 4194304 rows, 8 worker(s): 2.56 ms per frame
+empty worker spawn to first message, median of 15: 7.42 ms
