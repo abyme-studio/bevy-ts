@@ -448,3 +448,42 @@ app.insertScheduleAfter(Update, Waves).addSystems(Waves, spawnWave).addSystems(L
     let tally = rows.iter().find(|s| s["name"] == "tally").unwrap();
     assert_eq!(tally["stage"], "last");
 }
+
+/// A reflected component holding a `Duration` (reflect-coverage: seconds on the wire).
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+struct Cooldown {
+    wait: std::time::Duration,
+}
+
+/// reflect-coverage's remote-protocol scenarios: a reflected value read is handed back unchanged,
+/// a hole takes a colour form, and a `Duration` reads as seconds.
+#[test]
+fn reflected_components_read_and_write_in_the_shape_tsx_takes() {
+    use bevy::camera::{OrthographicProjection, Projection, ScalingMode};
+    use bevy::light::DirectionalLight;
+    let (mut app, _) = cube_app();
+    app.register_type::<Projection>().register_type::<DirectionalLight>().register_type::<Cooldown>();
+    let projection = Projection::Orthographic(OrthographicProjection { scale: 2.0, scaling_mode: ScalingMode::FixedVertical { viewport_height: 12.0 }, ..OrthographicProjection::default_3d() });
+    let world = app.world_mut();
+    let camera = world.spawn(projection.clone()).id();
+    let light = world.spawn(DirectionalLight::default()).id();
+    let timer = world.spawn(Cooldown { wait: std::time::Duration::from_millis(1500) }).id();
+    let path = "bevy_camera::projection::Projection";
+    let got = ok(&mut app, "bevy-ts/get_components", Some(json!({ "entity": camera.to_bits(), "components": [path] })));
+    let read = got["components"][path].clone();
+    assert_eq!(read["Orthographic"]["scaling_mode"], json!({ "FixedVertical": { "viewport_height": 12.0 } }), "{got:#}");
+    // (a) The same JSON sent back with an empty path changes nothing.
+    ok(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": camera.to_bits(), "component": path, "path": "", "value": read })));
+    let after = app.world().get::<Projection>(camera).unwrap();
+    assert!(after.reflect_partial_eq(&projection).unwrap_or(false), "{after:?}");
+    // (b) A hole written in any colour form TSX takes.
+    let light_path = "bevy_light::directional_light::DirectionalLight";
+    ok(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": light.to_bits(), "component": light_path, "path": ".color", "value": "#ffd7a8" })));
+    let colour = app.world().get::<DirectionalLight>(light).unwrap().color;
+    assert_eq!(colour, Color::Srgba(Srgba::hex("#ffd7a8").unwrap()));
+    // (c) A Duration on the wire is seconds.
+    let cooldown = "it::protocol::Cooldown";
+    let got = ok(&mut app, "bevy-ts/get_components", Some(json!({ "entity": timer.to_bits(), "components": [cooldown] })));
+    assert_eq!(got["components"][cooldown], json!({ "wait": 1.5 }), "{got:#}");
+}

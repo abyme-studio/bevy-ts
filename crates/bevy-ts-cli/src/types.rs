@@ -242,6 +242,9 @@ fn ts_type_inner(registry: &TypeRegistry, path: &str, depth: usize) -> String {
         return "never".into();
     }
     const NUMBERS: [&str; 8] = ["f32", "f64", "i8", "i16", "i32", "u8", "u16", "u32"];
+    if path == "bevy_camera::camera::Exposure" {
+        return "{ ev100?: number }".into();
+    }
     if path.starts_with("core::num::NonZero") || path == "petgraph::graph::NodeIndex" {
         return "number".into();
     }

@@ -10,16 +10,9 @@ use crate::types::reflect_ts;
 use bevy::asset::ReflectAsset;
 use bevy::ecs::reflect::{ReflectComponent, ReflectResource};
 use bevy::prelude::*;
-use bevy::reflect::array::DynamicArray;
-use bevy::reflect::enums::{DynamicEnum, DynamicVariant, VariantInfo};
-use bevy::reflect::list::DynamicList;
-use bevy::reflect::map::DynamicMap;
-use bevy::reflect::set::DynamicSet;
-use bevy::reflect::structs::DynamicStruct;
-use bevy::reflect::tuple::DynamicTuple;
-use bevy::reflect::tuple_struct::DynamicTupleStruct;
-use bevy::reflect::{PartialReflect, ReflectFromReflect, TypeInfo, TypeRegistry};
-use bevy_ts::reflect_value::{self, default_of, uncovered};
+use bevy::reflect::enums::VariantInfo;
+use bevy::reflect::{PartialReflect, TypeInfo, TypeRegistry};
+use bevy_ts::reflect_value::{self, uncovered};
 use serde::Serialize;
 use serde_json::json;
 use std::any::TypeId;
@@ -75,7 +68,7 @@ fn leaf(path: &str) -> bool {
     path.starts_with("glam::")
         || path.starts_with("bevy_asset::handle::Handle<")
         || path.starts_with("core::ops::Range")
-        || matches!(path, "bevy_color::color::Color" | "core::time::Duration" | "bevy_ecs::entity::Entity" | "bevy_ecs::name::Name")
+        || matches!(path, "bevy_color::color::Color" | "bevy_camera::camera::Exposure" | "core::time::Duration" | "bevy_ecs::entity::Entity" | "bevy_ecs::name::Name")
 }
 
 /// The type ids of what a type holds.
@@ -106,115 +99,34 @@ fn children(info: &TypeInfo) -> Vec<(String, TypeId, String)> {
     out
 }
 
-/// A value of the type: its default, else one built from its type info (structs of their fields'
-/// values, an enum's first variant, empty collections), made concrete when the type can be.
-fn sample(registry: &TypeRegistry, id: TypeId, depth: usize) -> Option<Box<dyn PartialReflect>> {
-    if let Some(v) = default_of(registry, id) {
+/// A value of the type: `reflect_value::blank`, else, for an opaque type with no default, the first
+/// small JSON value it takes.
+fn sample(registry: &TypeRegistry, id: TypeId) -> Option<Box<dyn PartialReflect>> {
+    if let Some(v) = reflect_value::blank(registry, id) {
         return Some(v);
     }
-    if depth > 16 {
-        return None;
-    }
-    let reg = registry.get(id)?;
-    let info = reg.type_info();
-    let field = |id: TypeId| sample(registry, id, depth + 1);
-    let dynamic: Box<dyn PartialReflect> = match info {
-        TypeInfo::Struct(s) => {
-            let mut d = DynamicStruct::default();
-            for f in s.iter() {
-                d.insert_boxed(f.name(), field(f.type_id())?);
-            }
-            d.set_represented_type(Some(info));
-            Box::new(d)
-        }
-        TypeInfo::TupleStruct(s) => {
-            let mut d = DynamicTupleStruct::default();
-            for f in s.iter() {
-                d.insert_boxed(field(f.type_id())?);
-            }
-            d.set_represented_type(Some(info));
-            Box::new(d)
-        }
-        TypeInfo::Tuple(t) => {
-            let mut d = DynamicTuple::default();
-            for f in t.iter() {
-                d.insert_boxed(field(f.type_id())?);
-            }
-            d.set_represented_type(Some(info));
-            Box::new(d)
-        }
-        TypeInfo::Enum(e) => {
-            let v = e.variant_at(0)?;
-            let variant = match v {
-                VariantInfo::Unit(_) => DynamicVariant::Unit,
-                VariantInfo::Tuple(t) => {
-                    let mut d = DynamicTuple::default();
-                    for f in t.iter() {
-                        d.insert_boxed(field(f.type_id())?);
-                    }
-                    DynamicVariant::Tuple(d)
-                }
-                VariantInfo::Struct(s) => {
-                    let mut d = DynamicStruct::default();
-                    for f in s.iter() {
-                        d.insert_boxed(f.name(), field(f.type_id())?);
-                    }
-                    DynamicVariant::Struct(d)
-                }
-            };
-            let mut d = DynamicEnum::new(v.name(), variant);
-            d.set_represented_type(Some(info));
-            Box::new(d)
-        }
-        TypeInfo::Array(a) => {
-            let items: Vec<Box<dyn PartialReflect>> = (0..a.capacity()).map(|_| field(a.item_ty().id())).collect::<Option<_>>()?;
-            let mut d = DynamicArray::from_iter(items);
-            d.set_represented_type(Some(info));
-            Box::new(d)
-        }
-        TypeInfo::List(_) => {
-            let mut d = DynamicList::default();
-            d.set_represented_type(Some(info));
-            Box::new(d)
-        }
-        TypeInfo::Set(_) => {
-            let mut d = DynamicSet::default();
-            d.set_represented_type(Some(info));
-            Box::new(d)
-        }
-        TypeInfo::Map(_) => {
-            let mut d = DynamicMap::default();
-            d.set_represented_type(Some(info));
-            Box::new(d)
-        }
-        // An opaque type with no default: the first small JSON value its serde takes.
-        _ => {
-            let candidates = [json!(1), json!(0), json!(""), json!(false), json!({ "start": 0, "end": 1 }), json!([]), json!({})];
-            return candidates.iter().find_map(|c| reflect_value::value_of(registry, id, c).ok()).map(|v| {
-                match reg.data::<ReflectFromReflect>().and_then(|f| f.from_reflect(v.as_ref())) {
-                    Some(c) => c.into_partial_reflect(),
-                    None => v,
-                }
-            });
-        }
-    };
-    match reg.data::<ReflectFromReflect>().and_then(|f| f.from_reflect(dynamic.as_ref())) {
-        Some(c) => Some(c.into_partial_reflect()),
-        None => Some(dynamic),
-    }
+    let candidates = [json!(1), json!(0), json!(""), json!(false), json!({ "start": 0, "end": 1 }), json!([]), json!({})];
+    candidates.iter().find_map(|c| reflect_value::value_of(registry, id, c).ok())
 }
 
 /// `read`, then `write` over a second value, then the two compared.
 fn round_trip(registry: &TypeRegistry, id: TypeId) -> Result<(), (&'static str, String)> {
-    let value = sample(registry, id, 0).ok_or(("no value", "no default and no value can be built from its type info".to_string()))?;
+    let value = sample(registry, id).ok_or(("no value", "no default and no value can be built from its type info".to_string()))?;
     let json = reflect_value::read(registry, value.as_ref()).map_err(|e| ("read", e))?;
-    let mut back = sample(registry, id, 0).expect("a second value");
+    let mut back = sample(registry, id).expect("a second value");
     reflect_value::write(registry, None, back.as_mut(), None, &json).map_err(|e| ("round trip", format!("writing {json}: {e}")))?;
-    match back.reflect_partial_eq(value.as_ref()) {
+    same(registry, back.as_ref(), value.as_ref(), &json)?;
+    // A new value from the JSON alone, as a list item, map entry or new variant's field is made.
+    let made = reflect_value::value_of(registry, id, &json).map_err(|e| ("new value", format!("making one from {json}: {e}")))?;
+    same(registry, made.as_ref(), value.as_ref(), &json).map_err(|(_, e)| ("new value", e))
+}
+
+/// `got` equals `want`; a type that cannot compare is taken as equal when it reads the same.
+fn same(registry: &TypeRegistry, got: &dyn PartialReflect, want: &dyn PartialReflect, json: &serde_json::Value) -> Result<(), (&'static str, String)> {
+    match got.reflect_partial_eq(want) {
         Some(true) => Ok(()),
-        // A type that cannot compare is taken as equal when it reads the same.
-        None if reflect_value::read(registry, back.as_ref()).ok().as_ref() == Some(&json) => Ok(()),
-        _ => Err(("round trip", format!("{json} wrote back as {}", reflect_value::read(registry, back.as_ref()).unwrap_or_default()))),
+        None if reflect_value::read(registry, got).ok().as_ref() == Some(json) => Ok(()),
+        _ => Err(("round trip", format!("{json} wrote back as {}", reflect_value::read(registry, got).unwrap_or_default()))),
     }
 }
 

@@ -32,6 +32,7 @@ Keys left out take the base's value. Lists, sets and maps are written whole, nev
 | `i64`, `u64`, `i128`, `u128`, `isize`, `usize` | number within ±(2^53 − 1), else a decimal string | either | `number \| string` | `big_integers_from_strings_and_numbers` |
 | `Handle<T>` | its asset path, or `null` for a handle with none | `null` keeps the default handle | `string \| null` | `reflect_values.rs` |
 | `Range<T>`, `RangeInclusive<T>` of a number type | `{ start, end }` | | `{ start: number; end: number }` | `colour_grading_round_trips_with_its_midtones_range` |
+| `Exposure` (opaque in Bevy 0.20) | `{ ev100 }` | | `{ ev100?: number }` | `exposure_is_ev100` |
 | `Entity` | `Entity::to_bits` as a number | | `Entity` | `a_map_with_entity_keys` |
 | `Name` | its string | | `string` | `reflect_coverage.rs` |
 | Opaque with reflected serde (`String`, `char`, paths, `NonZero*`) | its serde JSON | | `string`, or `unknown` with no shape | `every_kind_round_trips` |
@@ -67,14 +68,13 @@ fails to write with the reason; a hole of one fails the load.
 | `core::any::TypeId` | a type id is not data, opaque with no reflected serde |
 | `wgpu_types::BlendState` | opaque with no reflected serde |
 | `bevy_camera::camera::CameraMainTextureUsages` | wgpu texture usages, opaque with no reflected serde |
-| `bevy_camera::camera::Exposure` | opaque with no reflected serde |
 | `bevy_render::camera::CameraRenderGraph` | an interned render graph label, opaque with no reflected serde |
 | `bevy_a11y::AccessibilityRequested` | shared state behind an Arc<AtomicBool>, opaque with no reflected serde |
 | `bevy_picking::events::PointerState` | press and click times are Instants, opaque with no reflected serde |
 | `bevy_time::time::Time<bevy_time::real::Real>` | its clock readings are Instants, opaque with no reflected serde |
 | `bevy_scene::scene_component::SceneComponentInfo` | computed by bevy_scene; holds a &'static str |
 | `bevy_animation::graph::AnimationGraph` | its graph is a petgraph DiGraph, opaque with no default or reflected serde (building graphs is animation-control's) |
-| `bevy_image::image::Image` | reflect-assets |
+| `bevy_image::image::Image` | reflect-assets: its wgpu texture and view descriptors are opaque with no reflected serde |
 | `bevy_render::storage::ShaderBuffer` | opaque with no reflected serde |
 | `bevy_mesh::mesh::Mesh` | script-assets: no default; attributes and indices are reflect(ignore); engine-core builds meshes |
 

@@ -50,14 +50,13 @@ pub const UNCOVERED: &[(&str, &str)] = &[
     ("core::any::TypeId", "a type id is not data, opaque with no reflected serde"),
     ("wgpu_types::BlendState", "opaque with no reflected serde"),
     ("bevy_camera::camera::CameraMainTextureUsages", "wgpu texture usages, opaque with no reflected serde"),
-    ("bevy_camera::camera::Exposure", "opaque with no reflected serde"),
     ("bevy_render::camera::CameraRenderGraph", "an interned render graph label, opaque with no reflected serde"),
     ("bevy_a11y::AccessibilityRequested", "shared state behind an Arc<AtomicBool>, opaque with no reflected serde"),
     ("bevy_picking::events::PointerState", "press and click times are Instants, opaque with no reflected serde"),
     ("bevy_time::time::Time<bevy_time::real::Real>", "its clock readings are Instants, opaque with no reflected serde"),
     ("bevy_scene::scene_component::SceneComponentInfo", "computed by bevy_scene; holds a &'static str"),
     ("bevy_animation::graph::AnimationGraph", "its graph is a petgraph DiGraph, opaque with no default or reflected serde (building graphs is animation-control's)"),
-    ("bevy_image::image::Image", "reflect-assets"),
+    ("bevy_image::image::Image", "reflect-assets: its wgpu texture and view descriptors are opaque with no reflected serde"),
     ("bevy_render::storage::ShaderBuffer", "opaque with no reflected serde"),
     ("bevy_mesh::mesh::Mesh", "script-assets: no default; attributes and indices are reflect(ignore); engine-core builds meshes"),
 ];
@@ -306,6 +305,11 @@ fn read_scalar(any: &dyn Any) -> Option<Value> {
         )* };
     }
     ranges!(f32, f64, i8, i16, i32, i64, u8, u16, u32, u64, usize, isize);
+    // A camera's exposure is opaque with no serde in Bevy 0.20: `{ ev100 }`.
+    #[cfg(feature = "pbr")]
+    if let Some(x) = any.downcast_ref::<bevy::camera::Exposure>() {
+        return Some(json!({ "ev100": float(f64::from(x.ev100)) }));
+    }
     None
 }
 
@@ -368,6 +372,17 @@ fn write_scalar(id: TypeId, json: &Value, path: &str) -> Result<Option<Box<dyn P
         )* };
     }
     ranges!(f32, f64, i8, i16, i32, i64, u8, u16, u32, u64, usize, isize);
+    #[cfg(feature = "pbr")]
+    if id == TypeId::of::<bevy::camera::Exposure>() {
+        let ev100 = match json {
+            Value::Object(o) if o.keys().all(|k| k == "ev100") => match o.get("ev100") {
+                Some(v) => *write_scalar(TypeId::of::<f32>(), v, path)?.expect("f32").try_downcast::<f32>().map_err(|_| format!("{path}: not a number"))?,
+                None => bevy::camera::Exposure::default().ev100,
+            },
+            _ => return Err(format!("{path} is {{ ev100 }}, not {json}")),
+        };
+        return Ok(Some(Box::new(bevy::camera::Exposure { ev100 })));
+    }
     Ok(None)
 }
 
@@ -414,6 +429,18 @@ pub fn default_of(registry: &TypeRegistry, id: TypeId) -> Option<Box<dyn Partial
     if id == TypeId::of::<Entity>() {
         return Some(Box::new(Entity::PLACEHOLDER));
     }
+    // Numeric ranges reflect with no `Default`: `0..0`.
+    macro_rules! ranges {
+        ($($t:ty),*) => { $(
+            if id == TypeId::of::<std::ops::Range<$t>>() {
+                return Some(Box::new(<std::ops::Range<$t>>::default()));
+            }
+            if id == TypeId::of::<std::ops::RangeInclusive<$t>>() {
+                return Some(Box::new(<$t>::default()..=<$t>::default()));
+            }
+        )* };
+    }
+    ranges!(f32, f64, i8, i16, i32, i64, u8, u16, u32, u64, usize, isize);
     let reg = registry.get(id)?;
     if let Some(h) = reg.data::<ReflectHandle>() {
         // `Handle::default()`: the asset type's default UUID handle.
@@ -665,14 +692,122 @@ fn set_variant(cx: Cx, node: &mut dyn PartialReflect, info: &TypeInfo, name: &st
     node.try_apply(&value).map_err(|e| format!("{path}::{name}: {e}"))
 }
 
-/// A value read whole: a scalar's own form, else reflection's deserializer.
+/// A value read whole, for a type with no default: built from its type info and merged, so it
+/// takes this module's shapes at every depth; a scalar's own form; else (an opaque type with no
+/// default) reflection's deserializer.
 fn whole(cx: Cx, id: TypeId, json: &Value) -> Result<Box<dyn PartialReflect>, String> {
     let reg = cx.registry.get(id).ok_or("a field type that is not registered")?;
     let path = reg.type_info().type_path();
     if let Some(v) = write_scalar(id, json, path)? {
         return Ok(v);
     }
+    if let Some(mut v) = blank(cx.registry, id) {
+        merge(cx, v.as_mut(), json)?;
+        return Ok(match reg.data::<ReflectFromReflect>().and_then(|f| f.from_reflect(v.as_ref())) {
+            Some(c) => c.into_partial_reflect(),
+            None => v,
+        });
+    }
     TypedReflectDeserializer::new(reg, cx.registry).deserialize(json.clone()).map_err(|e| format!("{path}: {e}"))
+}
+
+/// A value of a type to merge into: its default, else one built from its type info (structs of
+/// their fields' values, an enum's first variant, empty collections), made concrete when the type
+/// can be. `None` for an opaque type with no default.
+pub fn blank(registry: &TypeRegistry, id: TypeId) -> Option<Box<dyn PartialReflect>> {
+    blank_at(registry, id, 0)
+}
+
+fn blank_at(registry: &TypeRegistry, id: TypeId, depth: usize) -> Option<Box<dyn PartialReflect>> {
+    use bevy::reflect::array::DynamicArray;
+    use bevy::reflect::list::DynamicList;
+    use bevy::reflect::map::DynamicMap;
+    use bevy::reflect::set::DynamicSet;
+    use bevy::reflect::tuple_struct::DynamicTupleStruct;
+    if let Some(v) = default_of(registry, id) {
+        return Some(v);
+    }
+    if depth > 16 {
+        return None;
+    }
+    let reg = registry.get(id)?;
+    let info = reg.type_info();
+    let field = |id: TypeId| blank_at(registry, id, depth + 1);
+    let dynamic: Box<dyn PartialReflect> = match info {
+        TypeInfo::Struct(s) => {
+            let mut d = DynamicStruct::default();
+            for f in s.iter() {
+                d.insert_boxed(f.name(), field(f.type_id())?);
+            }
+            d.set_represented_type(Some(info));
+            Box::new(d)
+        }
+        TypeInfo::TupleStruct(s) => {
+            let mut d = DynamicTupleStruct::default();
+            for f in s.iter() {
+                d.insert_boxed(field(f.type_id())?);
+            }
+            d.set_represented_type(Some(info));
+            Box::new(d)
+        }
+        TypeInfo::Tuple(t) => {
+            let mut d = DynamicTuple::default();
+            for f in t.iter() {
+                d.insert_boxed(field(f.type_id())?);
+            }
+            d.set_represented_type(Some(info));
+            Box::new(d)
+        }
+        TypeInfo::Enum(e) => {
+            let v = e.variant_at(0)?;
+            let variant = match v {
+                VariantInfo::Unit(_) => DynamicVariant::Unit,
+                VariantInfo::Tuple(t) => {
+                    let mut d = DynamicTuple::default();
+                    for f in t.iter() {
+                        d.insert_boxed(field(f.type_id())?);
+                    }
+                    DynamicVariant::Tuple(d)
+                }
+                VariantInfo::Struct(s) => {
+                    let mut d = DynamicStruct::default();
+                    for f in s.iter() {
+                        d.insert_boxed(f.name(), field(f.type_id())?);
+                    }
+                    DynamicVariant::Struct(d)
+                }
+            };
+            let mut d = DynamicEnum::new(v.name(), variant);
+            d.set_represented_type(Some(info));
+            Box::new(d)
+        }
+        TypeInfo::Array(a) => {
+            let items: Vec<Box<dyn PartialReflect>> = (0..a.capacity()).map(|_| field(a.item_ty().id())).collect::<Option<_>>()?;
+            let mut d = DynamicArray::from_iter(items);
+            d.set_represented_type(Some(info));
+            Box::new(d)
+        }
+        TypeInfo::List(_) => {
+            let mut d = DynamicList::default();
+            d.set_represented_type(Some(info));
+            Box::new(d)
+        }
+        TypeInfo::Set(_) => {
+            let mut d = DynamicSet::default();
+            d.set_represented_type(Some(info));
+            Box::new(d)
+        }
+        TypeInfo::Map(_) => {
+            let mut d = DynamicMap::default();
+            d.set_represented_type(Some(info));
+            Box::new(d)
+        }
+        _ => return None,
+    };
+    match reg.data::<ReflectFromReflect>().and_then(|f| f.from_reflect(dynamic.as_ref())) {
+        Some(c) => Some(c.into_partial_reflect()),
+        None => Some(dynamic),
+    }
 }
 
 // The tests use Bevy's camera and render types.
@@ -997,6 +1132,44 @@ mod tests {
         let mut back = ColorGrading::default();
         write(&r, None, &mut back, None, &json).unwrap();
         assert!(back.reflect_partial_eq(&grading).unwrap_or(false), "{json:#}");
+    }
+
+    /// A struct with no `Default`: list items of it are built from type info, not stock serde.
+    #[derive(Reflect, Debug, Clone, PartialEq)]
+    struct Cooldown {
+        wait: Duration,
+        serial: u64,
+        span: std::ops::Range<f32>,
+    }
+
+    #[derive(Reflect, Default, Debug, Clone, PartialEq)]
+    #[reflect(Default)]
+    struct Timers {
+        all: Vec<Cooldown>,
+        pick: Option<Cooldown>,
+    }
+
+    #[test]
+    fn items_of_a_type_with_no_default_take_this_modules_shapes() {
+        let mut r = TypeRegistry::default();
+        r.register::<Timers>();
+        let one = Cooldown { wait: Duration::from_millis(250), serial: 1 << 60, span: 0.5..2.0 };
+        let original = Timers { all: vec![one.clone(), one.clone()], pick: Some(one) };
+        let json = read(&r, &original).unwrap();
+        assert_eq!(json["all"][0], json!({ "wait": 0.25, "serial": "1152921504606846976", "span": { "start": 0.5, "end": 2.0 } }));
+        let mut back = Timers::default();
+        write(&r, None, &mut back, None, &json).unwrap();
+        assert_eq!(back, original);
+    }
+
+    #[test]
+    fn exposure_is_ev100() {
+        let r = every_registry();
+        let json = read(&r, &bevy::camera::Exposure { ev100: 12.5 }).unwrap();
+        assert_eq!(json, json!({ "ev100": 12.5 }));
+        let mut back = bevy::camera::Exposure::default();
+        write(&r, None, &mut back, None, &json).unwrap();
+        assert_eq!(back.ev100, 12.5);
     }
 
     #[test]
