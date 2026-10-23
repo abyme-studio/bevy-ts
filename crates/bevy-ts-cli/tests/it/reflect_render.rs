@@ -3,7 +3,7 @@
 //! to an offscreen image, no window shown.
 #![cfg(target_os = "macos")]
 
-mod common;
+use crate::common;
 
 use bevy::camera::RenderTarget;
 use bevy::light::DirectionalLight;
