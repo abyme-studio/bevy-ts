@@ -160,6 +160,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()));
         app.init_asset::<Image>().register_asset_reflect::<Image>();
+        app.register_type::<Name>();
         app
     }
 
@@ -169,7 +170,7 @@ mod tests {
         let registry = app.world().resource::<AppTypeRegistry>().read();
         let t = asset_type(&registry, "bevy_image::image::Image").expect("Image is an asset");
         assert_eq!(t.id, TypeId::of::<Image>());
-        assert!(asset_type(&registry, "bevy_ts::Nope").unwrap_err().contains("not a registered type"));
+        assert!(asset_type(&registry, "bevy_ts::Nope").map(|_| ()).unwrap_err().contains("not a registered type"));
         let not_asset = asset_type(&registry, "bevy_ecs::name::Name").map(|_| ()).unwrap_err();
         assert!(not_asset.contains("not a reflected asset"), "{not_asset}");
     }
