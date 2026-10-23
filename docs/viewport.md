@@ -23,6 +23,9 @@ surfaces, pacing, input queue and counters.
 - A viewport renders only while attached and visible. The leading viewer's ticks pace the engine:
   the game's while it is visible, else the first visible preview's. A preview never adds updates
   to a visible game; it renders in the game's frame.
+- `bevy-ts/screenshot` captures the game viewport's frame at its pixel size, read back from the
+  ring (Bevy 0.20 cannot capture a window with no wgpu surface). It waits for a frame that renders,
+  so it needs a viewer attached and visible; with none it fails after 60 s.
 
 ## Asset previews
 

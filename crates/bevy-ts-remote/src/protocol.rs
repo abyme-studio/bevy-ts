@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.30.0";
+pub const VERSION: &str = "1.31.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,6 +25,7 @@ pub const METHODS: &[Method] = &[
     Method { name: "bevy-ts/mutate_components", crate_name: "bevy-ts-remote", watch: false },
     Method { name: "bevy-ts/pause", crate_name: "bevy-ts-remote", watch: false },
     Method { name: "bevy-ts/step", crate_name: "bevy-ts-remote", watch: false },
+    Method { name: "bevy-ts/screenshot", crate_name: "bevy-ts-remote", watch: false },
     Method { name: "bevy-ts/entities", crate_name: "bevy-ts-remote", watch: false },
     Method { name: "bevy-ts/entities+watch", crate_name: "bevy-ts-remote", watch: true },
     Method { name: "bevy-ts/systems", crate_name: "bevy-ts-remote", watch: false },
@@ -3985,6 +3986,23 @@ impl ::std::convert::From<
     ) -> Self {
         Self(value)
     }
+}
+///`ScreenshotParams`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenshotParams {
+    ///An absolute path ending in .png, in a folder that exists.
+    pub path: ::std::string::String,
+}
+///`ScreenshotResult`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenshotResult {
+    ///The bevy-ts frame the shot shows.
+    pub frame: u64,
+    pub height: u32,
+    pub path: ::std::string::String,
+    pub width: u32,
 }
 ///`ScriptError`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

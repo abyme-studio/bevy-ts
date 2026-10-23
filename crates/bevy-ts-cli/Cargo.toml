@@ -47,6 +47,7 @@ jsonschema = { version = "0.33", default-features = false }
 # Test textures, written as PNG; already in the tree through Bevy's image loader.
 png = "0.18"
 tungstenite = "0.28"
+async-channel = "2"
 
 # sha2 0.10 hashes with the CPU's SHA instructions on aarch64 only with `asm`: an engine's checksum
 # takes seconds, not tens of seconds (docs/research/engine-cache-link.md).

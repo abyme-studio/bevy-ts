@@ -9,7 +9,7 @@ license.workspace = true
 name = "bevy_ts_remote"
 
 [dependencies]
-bevy = { workspace = true, features = ["bevy_remote"] }
+bevy = { workspace = true, features = ["bevy_remote", "bevy_render", "bevy_camera", "png"] }
 bevy-ts = { workspace = true, features = ["reflect"] }
 serde.workspace = true
 serde_json.workspace = true

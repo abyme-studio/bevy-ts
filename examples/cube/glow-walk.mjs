@@ -4,7 +4,7 @@
 //
 //   node examples/cube/glow-walk.mjs [path/to/bevy-ts]    (default target/release/bevy-ts)
 //
-// The first frames are saved to target/glow-walk.png (and .2.png), to look at.
+// After step 2, `bevy-ts/screenshot` saves the edited glow to target/glow-walk.png, to look at.
 import { spawn } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +26,7 @@ const note = (step, ok, detail) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const engine = spawn(bin, ["dev", game, "--headless", "--remote-port", String(PORT)], {
-  env: { ...process.env, NO_COLOR: "1", BEVY_TS_SCREENSHOT: join(root, "target/glow-walk.png") },
+  env: { ...process.env, NO_COLOR: "1" },
 });
 let terminal = "";
 engine.stdout.on("data", (d) => (terminal += d));
@@ -104,6 +104,9 @@ try {
     gen2 === gen && e2 === e && reloads.messages.length === r0 && !/material game::Glow/.test(terminal),
     `generation ${gen} -> ${gen2}; same entity ${e2 === e}; reload reports ${reloads.messages.length - r0}`,
   );
+  const shotPath = join(root, "target/glow-walk.png");
+  const shot = await rpc("bevy-ts/screenshot", { path: shotPath }).catch((e) => ({ error: e.message }));
+  note("2 screenshot after the edit", shot.path === shotPath && shot.width > 0, JSON.stringify(shot));
 
   // 3. Save a type error on line 12: reported at glow.wgsl:12, the old shader kept.
   writeFileSync(wgsl, original.replace("params.color.rgb * glow, params.color.a", "params.color.rgb * glow, 1u"));

@@ -1,4 +1,4 @@
-//! Headless UI: with no window, game UI draws into the offscreen image `BEVY_TS_SCREENSHOT` saves,
+//! Headless UI: with no window, game UI draws into the offscreen image every screenshot captures,
 //! laid out at the image's size. The arena's Hud, on the GPU. macOS (Metal).
 #![cfg(target_os = "macos")]
 
