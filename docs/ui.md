@@ -148,10 +148,9 @@ const mini = ref();
 ## Events
 
 An event prop is `on` plus a Bevy event's name and an entity-local observer of it. Every UI
-element and `<entity>` takes the picking events `onPointerClick`, `onPointerPress`,
-`onPointerRelease`, `onPointerOver` and `onPointerOut`. Events do not bubble. A handler runs in
-the frame's one host call, in arrival order, and gets the event with the call's `commands` and
-`frame`.
+element and `<entity>` takes the picking events, which bubble as Bevy's do
+([picking.md](picking.md)). A handler runs in the frame's one host call, in arrival order, and gets
+the event with the call's `commands` and `frame`.
 
 ## `<input>`
 

@@ -2,7 +2,7 @@
 
 `onPointerClick`, `onPointerPress`, `onPointerRelease`, `onPointerOver` and `onPointerOut` on an
 `<entity>` or a UI element fire when Bevy's picking hits that entity. The code is
-`crates/bevy-ts-tsx/src/picking.rs`; the switch and the warning are in `crates/bevy-ts-cli`, the
+`crates/bevy-ts-tsx/src/events.rs`; the switch and the warning are in `crates/bevy-ts-cli`, the
 headless pointer in `crates/bevy-ts-viewport/src/offscreen.rs`.
 
 ## Bubbling
