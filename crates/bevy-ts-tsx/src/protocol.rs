@@ -7,7 +7,6 @@ use crate::desc::node_id;
 use crate::tree::{Change, RootState, TsxNode, TsxTree};
 use bevy::prelude::*;
 use bevy::remote::{BrpError, BrpResult, error_codes};
-use bevy_ts::runtime::ScriptFrame;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeSet, HashMap};
@@ -21,7 +20,6 @@ pub fn add_methods(app: &mut App) {
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/tsx_node", node);
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/tsx_find", find);
     bevy_ts_remote::add_watching_method(app, CRATE, "bevy-ts/tsx_tree+watch", watch);
-    app.init_resource::<Watchers>();
 }
 
 fn invalid(message: impl Into<String>) -> BrpError {
@@ -204,10 +202,6 @@ pub(crate) fn find(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
     Ok(json!({ "matches": matches }))
 }
 
-/// Subscribers of the watch: params to (frame last served, seq last sent).
-#[derive(Resource, Default)]
-struct Watchers(HashMap<String, (u64, u64)>);
-
 fn message(world: &World, seq: u64, changes: &[(u64, Change)]) -> Value {
     let tree = world.resource::<TsxTree>();
     let mut merged = Change::default();
@@ -277,14 +271,14 @@ fn ordered(world: &World, tree: &TsxTree, lists: &[(String, Option<u64>)]) -> Ve
 }
 
 pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let frame = world.get_resource::<ScriptFrame>().map_or(0, |f| f.0);
-    let key = p.as_ref().map(Value::to_string).unwrap_or_default();
+    const METHOD: &str = "bevy-ts/tsx_tree+watch";
     let seq = world.resource::<TsxTree>().journal.seq;
-    let known = world.resource::<Watchers>().0.get(&key).copied();
-    match known {
-        // Served last frame (or this one): send what reconciled since.
-        Some((last_frame, sent)) if last_frame + 1 >= frame => {
-            world.resource_mut::<Watchers>().0.insert(key, (frame, seq));
+    let mut subs = world.resource_mut::<bevy_ts_remote::Subscribers>();
+    let sent = subs.cursor(METHOD, &p);
+    subs.set(METHOD, &p, seq);
+    match sent {
+        // Served last frame: send what reconciled since.
+        Some(sent) => {
             if sent == seq {
                 return Ok(None);
             }
@@ -293,9 +287,6 @@ pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Op
             Ok(Some(message(world, seq, &changes)))
         }
         // A new subscriber: the snapshot.
-        _ => {
-            world.resource_mut::<Watchers>().0.insert(key, (frame, seq));
-            Ok(Some(json!({ "seq": seq, "snapshot": roots(world) })))
-        }
+        None => Ok(Some(json!({ "seq": seq, "snapshot": roots(world) }))),
     }
 }

@@ -193,7 +193,8 @@ struct Listing {
     last_poll: Option<Instant>,
     seq: u64,
     changes: Vec<(u64, String, &'static str)>,
-    watchers: HashMap<String, (u64, u64)>,
+    /// Whether the watch was ever opened: until then nothing polls.
+    watched: bool,
 }
 
 const POLL: Duration = Duration::from_millis(250);
@@ -202,7 +203,15 @@ const POLL: Duration = Duration::from_millis(250);
 /// changed, coalesced into one change per path per poll.
 fn poll(world: &mut World) {
     let due = world.resource::<Listing>().last_poll.is_none_or(|t| t.elapsed() >= POLL);
-    if !due || world.resource::<Listing>().watchers.is_empty() {
+    if due {
+        poll_now(world);
+    }
+}
+
+/// Polls the root now. The first poll only fills the listing; later ones number their changes for
+/// the watch's open subscribers.
+fn poll_now(world: &mut World) {
+    if !world.resource::<Listing>().watched {
         return;
     }
     let root = world.resource::<AssetRoot>().0.clone();
@@ -248,15 +257,12 @@ fn poll(world: &mut World) {
 }
 
 fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let frame = world.resource::<crate::UpdateCount>().0;
-    let key = p.as_ref().map(Value::to_string).unwrap_or_default();
-    let (seq, known) = {
-        let l = world.resource::<Listing>();
-        (l.seq, l.watchers.get(&key).copied())
-    };
-    world.resource_mut::<Listing>().watchers.insert(key.clone(), (frame, seq));
-    match known {
-        Some((last, sent)) if last + 1 >= frame => {
+    const METHOD: &str = "bevy-ts/assets+watch";
+    world.resource_mut::<Listing>().watched = true;
+    let seq = world.resource::<Listing>().seq;
+    match world.resource_mut::<bevy_ts_remote::Subscribers>().cursor(METHOD, &p) {
+        Some(sent) => {
+            world.resource_mut::<bevy_ts_remote::Subscribers>().set(METHOD, &p, seq);
             if sent == seq {
                 return Ok(None);
             }
@@ -280,10 +286,12 @@ fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>
                 .collect();
             Ok(Some(json!({ "changes": out })))
         }
-        _ => {
-            // A new subscriber: the whole list; polling starts from it.
-            world.resource_mut::<Listing>().last_poll = None;
-            poll(world);
+        None => {
+            // A new subscriber: the whole list as polled now, and changes after it. The poll's
+            // changes are numbered for the subscribers already open.
+            poll_now(world);
+            let seq = world.resource::<Listing>().seq;
+            world.resource_mut::<bevy_ts_remote::Subscribers>().set(METHOD, &p, seq);
             Ok(Some(json!({ "assets": assets(world, None, None) })))
         }
     }

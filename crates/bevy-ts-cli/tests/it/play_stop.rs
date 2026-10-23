@@ -237,7 +237,9 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
 
     mode(&mut app, "edit");
     let mut seen = 0;
+    // One call per update, as Bevy serves an open request.
     for _ in 0..5 {
+        updates(&mut app, 1);
         if let Some(m) = tree_watch(&mut app) {
             assert!(m.get("snapshot").is_none(), "the watch resubscribed: {m}");
             for id in m["removed"].as_array().into_iter().flatten() {
@@ -248,7 +250,6 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
                 client.insert(row["node"].as_str().unwrap().to_string(), row["entity"].as_u64().unwrap());
             }
         }
-        updates(&mut app, 1);
     }
     assert!(seen > 0, "the remount was sent");
     // Every entity tsx made is a row of the client's tree, so none shows as spawned at runtime.
@@ -261,6 +262,44 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
         assert!(held.contains(&e.to_bits()), "{name} is in the tree with its new entity");
     }
     assert!(!held.contains(&old_a.to_bits()));
+}
+
+/// After a Stop the engine's own entities (the viewport's window, bevy_picking's pointers) are not
+/// listed, so the studio does not show them as spawned at runtime.
+#[test]
+fn engine_entities_stay_out_of_the_entity_list_after_stop() {
+    let (_dir, mut app) = played("play-stop-engine");
+    mode(&mut app, "edit");
+    updates(&mut app, 5);
+    let world = app.world_mut();
+    let engine: std::collections::BTreeSet<u64> = world
+        .query_filtered::<Entity, Or<(With<Window>, With<bevy::picking::pointer::PointerId>)>>()
+        .iter(world)
+        .map(|e| e.to_bits())
+        .collect();
+    assert!(engine.len() >= 2, "a window and a pointer: {engine:?}");
+    let listed: std::collections::BTreeSet<u64> =
+        call(&mut app, "bevy-ts/entities", Value::Null)["entities"].as_array().unwrap().iter().map(|e| e["entity"].as_u64().unwrap()).collect();
+    assert!(!listed.is_empty());
+    assert!(listed.is_disjoint(&engine), "listed: {:?}", listed.intersection(&engine).collect::<Vec<_>>());
+    let id = match app.world().resource::<RemoteMethods>().get("bevy-ts/entities+watch") {
+        Some(RemoteMethodSystemId::Watching(id)) => *id,
+        _ => panic!("bevy-ts/entities+watch not served"),
+    };
+    let opening = app.world_mut().run_system_with(id, None).unwrap().unwrap().unwrap();
+    let watched: std::collections::BTreeSet<u64> = opening["snapshot"].as_array().unwrap().iter().map(|e| e["entity"].as_u64().unwrap()).collect();
+    assert_eq!(watched, listed, "the stream opens with the same list");
+    // A pointer the engine spawns while the stream is open is not sent; a scene entity is.
+    let pointer = app.world_mut().spawn(bevy::picking::pointer::PointerId::Touch(99)).id();
+    let prop = app.world_mut().spawn(Name::new("Prop")).id();
+    let mut spawned = std::collections::BTreeSet::new();
+    for _ in 0..3 {
+        updates(&mut app, 1);
+        let m = app.world_mut().run_system_with(id, None).unwrap().unwrap();
+        spawned.extend(m.iter().flat_map(|m| m["spawned"].as_array().cloned().unwrap_or_default()).map(|e| e["entity"].as_u64().unwrap()));
+    }
+    assert!(spawned.contains(&prop.to_bits()), "the stream sends spawns: {spawned:?}");
+    assert!(!spawned.contains(&pointer.to_bits()), "the pointer is the engine's");
 }
 
 #[test]

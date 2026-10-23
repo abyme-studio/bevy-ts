@@ -2,7 +2,7 @@
 //! The stream is fed by lifecycle observers that exist only while someone watches, and sends at
 //! most one message per frame.
 
-use crate::{Subscribers, frame};
+use crate::Subscribers;
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
 use bevy::remote::BrpResult;
@@ -36,14 +36,27 @@ fn info(world: &World, entity: Entity) -> Value {
     })
 }
 
+/// Components whose entities the engine keeps for itself: windows, monitors, gamepads and picking
+/// pointers. Not `ScriptHidden`, which would hide them from TS queries too; matched by type path,
+/// so this crate needs none of those Bevy features.
+const ENGINE: [&str; 4] = ["bevy_window::window::Window", "bevy_window::monitor::Monitor", "bevy_input::gamepad::Gamepad", "bevy_picking::pointer::PointerId"];
+
+fn engine_components(world: &World) -> Vec<ComponentId> {
+    world.components().iter_registered().filter(|(_, c)| ENGINE.contains(&c.name().to_string().as_str())).map(|(id, _)| id).collect()
+}
+
 /// Observers and resource entities are bookkeeping, not scene content; `ScriptHidden` entities
-/// are the editor's.
-fn internal(e: &EntityRef) -> bool {
-    e.contains::<Observer>() || e.contains::<bevy::ecs::resource::IsResource>() || e.contains::<bevy_ts::ScriptHidden>()
+/// are the editor's, and windows, monitors, gamepads and pointers the engine's.
+fn internal(e: &EntityRef, engine: &[ComponentId]) -> bool {
+    e.contains::<Observer>()
+        || e.contains::<bevy::ecs::resource::IsResource>()
+        || e.contains::<bevy_ts::ScriptHidden>()
+        || engine.iter().any(|id| e.contains_id(*id))
 }
 
 fn all_entities(world: &World) -> Vec<Entity> {
-    let mut es: Vec<Entity> = world.iter_entities().filter(|e| !internal(e)).map(|e| e.id()).collect();
+    let engine = engine_components(world);
+    let mut es: Vec<Entity> = world.iter_entities().filter(|e| !internal(e, &engine)).map(|e| e.id()).collect();
     es.sort();
     es
 }
@@ -148,10 +161,11 @@ fn delta(world: &mut World) -> Option<Value> {
         Some(c) => Some(c.decl.name.clone()),
         None => world.components().get_name(*id).map(|n| n.to_string()),
     };
+    let engine = engine_components(world);
     let (mut spawned, mut despawned, mut reparented, mut renamed, mut add, mut rem) = (vec![], vec![], vec![], vec![], vec![], vec![]);
     for e in touched {
         // Observers are bookkeeping, not scene content.
-        if world.get_entity(e).is_ok_and(|r| internal(&r)) || w.observers.contains(&e) {
+        if world.get_entity(e).is_ok_and(|r| internal(&r, &engine)) || w.observers.contains(&e) {
             continue;
         }
         let exists = world.get_entity(e).is_ok();
@@ -205,13 +219,13 @@ fn delta(world: &mut World) -> Option<Value> {
 }
 
 pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let now = frame(world);
+    let now = world.resource::<Subscribers>().update();
     let components = world.components().len();
     match world.get_resource::<EntityWatch>() {
         Some(w) if !w.observers.is_empty() && w.observed == components => {}
         _ => install(world),
     }
-    let new = world.resource_mut::<Subscribers>().cursor("entities", &p, now).is_none();
+    let new = world.resource_mut::<Subscribers>().cursor("entities", &p).is_none();
     // One delta per frame, shared by every subscriber.
     if world.resource::<EntityWatch>().last_frame != now {
         let m = delta(world);
@@ -230,7 +244,7 @@ pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Op
 
 /// `Last`: removes the observers once no subscriber has been served for a frame.
 pub(crate) fn teardown_when_unwatched(world: &mut World) {
-    let now = frame(world);
+    let now = world.resource::<Subscribers>().update();
     let stale = world.get_resource::<EntityWatch>().is_some_and(|w| !w.observers.is_empty() && w.last_frame + 1 < now);
     if stale {
         let mut w = world.remove_resource::<EntityWatch>().unwrap();

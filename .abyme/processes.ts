@@ -284,6 +284,8 @@ const processes = {
   "stage2-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --no-fail-fast; scripts/dylib-check.sh) 2>&1 | grep -v ld64 | tee target/stage2-gate.log | grep -E \"^test result|FAILED|panicked|^error|should be|NOT|refused|dylib-check\"'" },
   // The workspace doctests in this checkout (a doctest that runs cannot find the Bevy dylib).
   "doctests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --workspace --doc 2>&1 | grep -v ld64 | tee target/doctests.log | grep -E \"^test result|FAILED|dyld|^error\"'" },
+  // Change viewport-watch: the crates it touches and the tests that open a watch.
+  "viewport-watch-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test --no-fail-fast -p bevy-ts-remote -p bevy-ts-tsx -p bevy-ts-levels && cargo test --no-fail-fast -p bevy-ts-viewport -- --test-threads=1 && cargo test --no-fail-fast -p bevy-ts-cli --test it -- levels_protocol:: play_stop:: protocol:: tsx_protocol:: viewport_edit:: viewport_level:: viewport_preview:: viewport_thumbnail:: viewport_walk::) 2>&1 | grep -v ld64 | tee target/viewport-watch-tests.log | grep -E \"^test result|FAILED|panicked|^error|-->\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
