@@ -31,7 +31,7 @@ export default {
       ends: { "work.closed": { item: "{team}" } },
       groups: [
         { title: "Spec, design and research", roles: { spec: "bevy-ts-spec", design: "bevy-ts-design", research: "bevy-ts-research" } },
-        { title: "Build", roles: { build: "bevy-ts-build" } },
+        { title: "Build", roles: { build: "bevy-ts-build", fix: "bevy-ts-fix" } },
         { title: "Review and walk", roles: { review: "bevy-ts-review", walk: "bevy-ts-walk" } },
       ],
     },
