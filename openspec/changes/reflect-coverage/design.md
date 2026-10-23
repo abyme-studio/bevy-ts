@@ -62,10 +62,17 @@ What is still missing:
    | `Isometry*`, `Rot2`, `Dir2`/`Dir3` | their reflected structs / inner vectors | interface / tuple |
    | `Duration` | seconds as a number; `write` also takes `{ secs, nanos }` | `number` |
    | `i64`, `u64`, `i128`, `u128`, `isize`, `usize` | number when within ±2^53, else a decimal string; `write` takes both | `number \| string` |
-   | `Handle<T>` | its asset path, or `null` for a handle with none (a generated mesh); writing `null` keeps the default handle | `string \| null` |
+   | `Handle<T>` | its asset path, or `null` for a handle with none (a generated mesh); writing `null` keeps the default handle. A `HandleSlots` hook, when installed, goes first (below) | `string \| AssetRef<T> \| AssetValue<T> \| null` |
    | `Entity` | `Entity::to_bits` as a number, as TS systems use | `Entity` |
    | Opaque with `ReflectSerialize`/`ReflectDeserialize` (`String`, `Range`, `char`, paths) | its serde JSON | from `registry.schema` |
    | Dynamic (`DynamicStruct` and kin, `Box<dyn PartialReflect>` fields) | read by its own reflect kind; written only when it represents a registered type | as represented |
+
+   The `Handle` arm has one hook for both directions: `reflect_value::Cx` carries an optional
+   `&dyn HandleSlots` with `read(untyped) -> Option<Value>`, tried before the path, and
+   `write(handle_type, json) -> Result<UntypedHandle>`, called for any JSON that is not a string
+   or `null`. reflect-assets installs it and owns what it accepts (`AssetRef<T>`, `AssetValue<T>`,
+   `$load`). With no hook, a handle reads as its path or `null`, and a write takes a path or
+   `null`; any other JSON fails naming the slot's handle type.
 
    *Alternative:* keep stock `bevy_remote` serialization for reads. Rejected: two shapes for one
    value, and a protocol client could not hand a read value back to TSX.
@@ -161,7 +168,8 @@ What is still missing:
 | `NodeRef.get` | this change for reflected reads (stage 3) | lead@bevy-ui-coverage owns `NodeRef.has` |
 | `ui.rs` colour call sites | `reflect-enums-color` (parser) | lead@bevy-ui-coverage adds call sites |
 | `<mesh>` props, `MeshProps` in `intrinsics.rs`, `resolve.rs`/`reconcile.rs` matches on it | lead@mesh-primitives | this change's `cuboid` migration uses `<mesh shape="cuboid">` and touches no `MeshProps` code |
-| `types.rs` | this change for reflect kinds | lead@bevy-ui-coverage for UI prop types |
+| `reflect_value::HandleSlots` hook | this change (the hook and its no-hook behaviour) | lead@reflect-assets implements and installs it |
+| `types.rs` | this change for reflect kinds, the `Handle<T>` arm included | lead@bevy-ui-coverage for UI prop types |
 | `core.js` `encodeWithLayout` (layout values start from each layout's default bytes sent in the resolution) | lead@ambient-light-script | stage 2's layout-tier `.of` with holes and `OP_INSERT_REFLECT` build on it and start after it lands |
 
 Whichever lands second rebases and keeps both sides.
