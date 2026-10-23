@@ -16,7 +16,7 @@
 
 ## 2. Stage 2: scripts write; recipes go
 
-- [ ] 2.1 Wait for ambient-light-script's `encodeWithLayout` change (default bytes from the resolution) to land; rebase on it
+- [ ] 2.1 Rebase on main at or after 0dc7cc1, ambient-light-script's default-bytes encode (`ResolvedComponent.defaults` in `manifest.rs` and `generation.rs`; `encodeWithLayout` in `core.js` starts from `C.defaults`)
 - [ ] 2.2 Generated reflect-tier classes become `reflectClass(name)` with `.of(json)` and default use; filters keep working
 - [ ] 2.3 `OP_INSERT_REFLECT` in `core.js` and `commands.rs`; `spawn`/`insert` emit it; Rust writes over `ReflectDefault`/`ReflectFromWorld` and inserts; a failing value fails only its command, naming type and field
 - [ ] 2.4 Layout-tier `.of` with hole fields: bytes from `encodeWithLayout`, holes as a reflect patch in the same command
