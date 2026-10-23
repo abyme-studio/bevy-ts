@@ -37,11 +37,11 @@ An override value SHALL be written when it differs from the last value applied f
 - **THEN** `Health.max` becomes 400 and `Health.hp` keeps its damaged value
 
 ### Requirement: Identity across reloads
-Entities SHALL keep their identity, and so their state, when their name path is unchanged, whatever else moved in the file. A new name path SHALL spawn. A removed name path SHALL despawn with its descendants. Renaming a name by hand SHALL be a despawn and a spawn. An entity despawned by a system SHALL be tombstoned and SHALL NOT respawn on a level reload. `restart: true` SHALL clear tombstones and spawn the level as if first.
+Entities SHALL keep their identity, and so their state, when their name path is unchanged, whatever else moved in the file. A new name path SHALL spawn. A removed name path SHALL despawn with its descendants. Renaming a name by hand SHALL be a despawn and a spawn. An entity despawned by a system SHALL be tombstoned and SHALL NOT respawn on a level reload. `restart: true` SHALL clear tombstones and spawn the level as if first. A Stop SHALL clear tombstones and respawn them, and SHALL keep the entities the play did not change (edit-mode, "Stop restores the levels the play changed").
 
 #### Scenario: A killed enemy stays dead
 - **WHEN** a system despawns enemy `a` and the level file is then saved with an unrelated change
-- **THEN** enemy `a` does not come back, until a `restart`
+- **THEN** enemy `a` does not come back, until a `restart` or a Stop
 
 ### Requirement: A bad file changes nothing
 A level file that is broken SHALL be rejected whole. A broken file is one with a parse error, a duplicate name, an override of a bound field, an inclusion cycle or a missing include. Its level, and every level including it, SHALL stay exactly as it was. Each error SHALL carry file, line and column, and SHALL stream on `bevy-ts/level+watch` and the terminal. The next good save SHALL apply against the last good one.
