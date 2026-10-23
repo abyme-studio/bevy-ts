@@ -56,11 +56,20 @@ fn path_of(registry: &TypeRegistry, id: TypeId) -> String {
     registry.get(id).map_or_else(|| format!("{id:?}"), |r| r.type_info().type_path().to_string())
 }
 
-/// One script-made asset.
+/// One ref's entry.
 struct Made {
     handle: UntypedHandle,
-    /// Its asset type, to remove it on [`clear`].
-    reflect: ReflectAsset,
+    hold: Hold,
+}
+
+/// How an entry holds its asset.
+enum Hold {
+    /// A script-made asset at a UUID handle, kept until restart or stop; its asset type, to
+    /// remove it on [`clear`].
+    Uuid(ReflectAsset),
+    /// A strong handle (`server.load`, `meshes.add`): dropping the entry drops the handle, and Bevy
+    /// frees the asset once nothing else holds it. Never queued.
+    Strong,
 }
 
 /// A value waiting for [`flush`]: a new asset, or a changed one.
@@ -80,9 +89,11 @@ struct Table {
     /// The JSON each hand-mapped asset a script made was last written from, for entries whose
     /// read gives it back (`AnimationClip`).
     sources: HashMap<UntypedAssetId, Value>,
-    /// Assets of refs a reload made stale, kept for the entities that still use them until the
-    /// next restart or stop.
+    /// UUID assets of refs a reload or `drop` made stale, kept for the entities that still use
+    /// them until the next restart or stop.
     retired: Vec<Made>,
+    /// Handles `assets.remove` took, removed from their `Assets<T>` at [`flush`].
+    removing: Vec<UntypedHandle>,
     warned: bool,
 }
 
@@ -104,7 +115,7 @@ impl ScriptAssets {
         let n = t.last;
         let handle = UntypedHandle::Uuid { type_id: ty.id, uuid: Uuid::from_u64_pair(UUID_TAG, n) };
         t.by_id.insert(handle.id(), n);
-        t.refs.insert(n, Made { handle: handle.clone(), reflect: ty.reflect.clone() });
+        t.refs.insert(n, Made { handle: handle.clone(), hold: Hold::Uuid(ty.reflect.clone()) });
         t.queued.insert(n, Queued { added: true, value });
         if t.refs.len() > REFS_WARN && !t.warned {
             t.warned = true;
@@ -113,13 +124,63 @@ impl ScriptAssets {
         (n, handle)
     }
 
+    /// A new ref holding the strong `handle`. The same handle twice gives the same ref.
+    pub fn insert_strong(&self, handle: UntypedHandle) -> u64 {
+        let mut t = self.table();
+        if let Some(&n) = t.by_id.get(&handle.id()) {
+            return n;
+        }
+        t.last += 1;
+        let n = t.last;
+        t.by_id.insert(handle.id(), n);
+        t.refs.insert(n, Made { handle, hold: Hold::Strong });
+        if t.refs.len() > REFS_WARN && !t.warned {
+            t.warned = true;
+            warn!("bevy-ts: scripts hold {} asset refs this session; assets.drop the ones you replace", t.refs.len());
+        }
+        n
+    }
+
+    /// `assets.drop(ref)`: forgets ref `n`. A strong handle drops with it, so Bevy frees the asset
+    /// once nothing else holds it; a UUID asset stays, as Bevy's UUID handles keep theirs, until
+    /// restart or stop.
+    pub fn drop(&self, n: u64) -> Result<(), String> {
+        let mut t = self.table();
+        let m = t.refs.remove(&n).ok_or_else(|| Self::missing(&t, n))?;
+        t.by_id.remove(&m.handle.id());
+        // A queued add or set of a UUID asset still goes in: a slot may hold its handle.
+        if matches!(m.hold, Hold::Uuid(_)) {
+            t.retired.push(m);
+        }
+        Ok(())
+    }
+
+    /// `assets.remove(ref)`: forgets ref `n` and removes its asset (Bevy's `Assets::remove`) when
+    /// the run ends, at [`flush`]. The asset goes even while a component holds it.
+    pub fn remove(&self, n: u64) -> Result<(), String> {
+        let mut t = self.table();
+        let m = t.refs.remove(&n).ok_or_else(|| Self::missing(&t, n))?;
+        t.by_id.remove(&m.handle.id());
+        t.queued.remove(&n);
+        t.sources.remove(&m.handle.id());
+        t.removing.push(m.handle);
+        Ok(())
+    }
+
     /// The handle of ref `n`.
     pub fn handle(&self, n: u64) -> Result<UntypedHandle, String> {
         let t = self.table();
         match t.refs.get(&n) {
             Some(m) => Ok(m.handle.clone()),
-            None if n >= 1 && n <= t.last => Err(format!("stale asset ref {n}: assets live until the script reloads or stops")),
-            None => Err(format!("unknown asset ref {n}")),
+            None => Err(Self::missing(&t, n)),
+        }
+    }
+
+    fn missing(t: &Table, n: u64) -> String {
+        if n >= 1 && n <= t.last {
+            format!("stale asset ref {n}: dropped, removed, or made before the script reloaded")
+        } else {
+            format!("unknown asset ref {n}")
         }
     }
 
@@ -183,11 +244,33 @@ impl ScriptAssets {
 /// Runs after each system run and entry call, before its commands apply.
 pub fn flush(world: &mut World) {
     let Some(assets) = world.get_resource::<ScriptAssets>() else { return };
-    let queued: Vec<(Queued, UntypedHandle, ReflectAsset)> = {
+    let (queued, removing): (Vec<(Queued, UntypedHandle, ReflectAsset)>, Vec<UntypedHandle>) = {
         let mut t = assets.table();
         let queued = std::mem::take(&mut t.queued);
-        queued.into_iter().filter_map(|(n, q)| t.refs.get(&n).map(|m| (q, m.handle.clone(), m.reflect.clone()))).collect()
+        let queued = queued
+            .into_iter()
+            .filter_map(|(n, q)| {
+                let made = t.refs.get(&n).or_else(|| {
+                    let uuid = Uuid::from_u64_pair(UUID_TAG, n);
+                    t.retired.iter().find(|m| matches!(m.handle, UntypedHandle::Uuid { uuid: u, .. } if u == uuid))
+                });
+                match made {
+                    Some(Made { handle, hold: Hold::Uuid(r) }) => Some((q, handle.clone(), r.clone())),
+                    _ => None,
+                }
+            })
+            .collect();
+        (queued, std::mem::take(&mut t.removing))
     };
+    for handle in removing {
+        let reflect = world.resource::<AppTypeRegistry>().read().get_type_data::<ReflectAsset>(handle.type_id()).cloned();
+        match reflect {
+            Some(r) => {
+                r.remove(world, handle.id());
+            }
+            None => warn!("bevy-ts: assets.remove: {:?} is not a reflected asset type; the asset stays", handle.type_id()),
+        }
+    }
     for (q, handle, reflect) in queued {
         if q.added {
             if let Err(e) = reflect.insert(world, handle.id(), q.value.as_partial_reflect()) {
@@ -204,23 +287,27 @@ pub fn flush(world: &mut World) {
 /// the entities it keeps, until the next restart.
 pub fn clear(world: &mut World, remove: bool) {
     let Some(assets) = world.get_resource::<ScriptAssets>() else { return };
-    let gone: Vec<Made> = {
+    let (gone, _strong): (Vec<Made>, Vec<Made>) = {
         let mut t = assets.table();
         t.by_id.clear();
         t.values.clear();
         t.queued.clear();
         t.sources.clear();
+        t.removing.clear();
         t.warned = false;
-        let made: Vec<Made> = t.refs.drain().map(|(_, m)| m).collect();
-        t.retired.extend(made);
-        if remove { std::mem::take(&mut t.retired) } else { Vec::new() }
+        // Strong entries drop here, outside the lock; Bevy frees what nothing else holds.
+        let (uuid, strong): (Vec<Made>, Vec<Made>) = t.refs.drain().map(|(_, m)| m).partition(|m| matches!(m.hold, Hold::Uuid(_)));
+        t.retired.extend(uuid);
+        (if remove { std::mem::take(&mut t.retired) } else { Vec::new() }, strong)
     };
     for m in gone {
-        m.reflect.remove(world, m.handle.id());
+        if let Hold::Uuid(r) = m.hold {
+            r.remove(world, m.handle.id());
+        }
     }
 }
 
-/// A JSON host call from a script: `assets.add`, `assets.get` or `assets.set`, `args` a JSON array.
+/// A JSON host call from a script: `assets.add`, `get`, `set`, `drop` or `remove`, `args` a JSON array.
 pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String> {
     let args: Vec<Value> = serde_json::from_str(args).map_err(|e| format!("{name}: {e}"))?;
     let arg = |i: usize| args.get(i).unwrap_or(&Value::Null);
@@ -235,6 +322,12 @@ pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String
         "assets.get" => get(world, &slots, arg(0))?,
         "assets.set" => {
             set(world, &slots, arg(0), arg(1))?;
+            Value::Null
+        }
+        "assets.drop" | "assets.remove" => {
+            let n = parse_ref(arg(0)).unwrap_or_else(|| Err(format!("{name} takes an asset ref, not {}", arg(0))))?;
+            let assets = script_assets(world)?;
+            if name == "assets.drop" { assets.drop(n)? } else { assets.remove(n)? }
             Value::Null
         }
         _ => return Err(format!("no host service {name}")),

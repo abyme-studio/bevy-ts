@@ -290,6 +290,9 @@ const processes = {
   // Change reflect-assets: the crates it touches, while it is built.
   "reflect-assets-cli": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (scripts/gen-bevy-types.sh && cargo test -p bevy-ts-cli --test it reflect_assets:: && cargo test -p bevy-ts-cli --test it typescript::) 2>&1 | grep -v ld64 | tee target/reflect-assets-cli.log | grep -E \"^test |^test result|FAILED|panicked|^error|left|right\" -A3'" },
   "reflect-assets-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib reflect_asset && cargo test -p bevy-ts-tsx --lib) 2>&1 | grep -v ld64 | tee target/reflect-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning\" -A3'" },
+  // Change script-assets: the crates it touches, while it is built; and the remesh bench (release).
+  "script-assets-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --test script_assets --test exported) 2>&1 | grep -v ld64 | tee target/script-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning|left|right\" -A3'" },
+  "mesh-update-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --release -p bevy-ts-cli --test mesh_update_bench -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/mesh-update-bench.log | tail -20'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

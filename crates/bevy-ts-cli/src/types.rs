@@ -32,6 +32,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
         .add_plugins(crate::input::ScriptInputPlugin)
+        .add_plugins(crate::assets::ScriptAssetsPlugin)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     app
@@ -388,7 +389,7 @@ fn is_resource(reg: &TypeRegistration) -> bool {
 }
 
 /// Inner types bevy-ts's own declarations name, so a claim of them is typed.
-const CLOCKS: &[&str] = &["Time<Real>", "Time<Virtual>", "Time<Fixed>"];
+const CLOCKS: &[&str] = &["Time<Real>", "Time<Virtual>", "Time<Fixed>", "Assets<Mesh>"];
 
 /// One `stands_for` claim: the spelling, and the module and TS name of the export.
 pub struct Claim<'a> {

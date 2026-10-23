@@ -43,6 +43,8 @@ pub enum Kind {
     /// A `NativeLayout` record: its TS name and fields.
     Record(&'static str, Vec<(String, Kind)>),
     Option(Box<Kind>),
+    /// An asset ref (`ScriptRef<A>`), by the asset's type path. One slot, the ref number.
+    AssetRef(&'static str),
     Unit,
 }
 
@@ -50,7 +52,7 @@ impl Kind {
     /// Slots the value takes.
     pub fn slots(&self) -> usize {
         match self {
-            Kind::Num(_) | Kind::Bool | Kind::Entity => 1,
+            Kind::Num(_) | Kind::Bool | Kind::Entity | Kind::AssetRef(_) => 1,
             Kind::Vec2 => 2,
             Kind::Vec3 => 3,
             Kind::Quat => 4,
@@ -70,6 +72,7 @@ impl Kind {
             Kind::Quat => "{ readonly x: number; readonly y: number; readonly z: number; readonly w: number } | readonly [number, number, number, number]".into(),
             Kind::Record(name, _) => format!("Partial<{name}>"),
             Kind::Option(k) => format!("{} | null | undefined", k.ts_in()),
+            Kind::AssetRef(path) => format!("import(\"bevy-ts\").AssetRefOf<{path:?}>"),
             Kind::Unit => "void".into(),
         }
     }
@@ -84,6 +87,7 @@ impl Kind {
             Kind::Quat => "{ readonly x: number; readonly y: number; readonly z: number; readonly w: number }".into(),
             Kind::Record(name, _) => name.to_string(),
             Kind::Option(k) => format!("{} | undefined", k.ts_out()),
+            Kind::AssetRef(path) => format!("import(\"bevy-ts\").AssetRefOf<{path:?}>"),
             Kind::Unit => "void".into(),
         }
     }
@@ -256,6 +260,49 @@ impl<T: HostValue> HostValue for Option<T> {
                 }
             }
         }
+    }
+}
+
+/// An asset ref crossing an exported method: the ref number of an entry in [`ScriptAssets`]. JS
+/// passes and receives the frozen `{ $asset, type }` object `assets` uses; the glue checks the type.
+///
+/// [`ScriptAssets`]: crate::reflect_asset::ScriptAssets
+pub struct ScriptRef<A: Asset>(pub u64, std::marker::PhantomData<fn() -> A>);
+
+impl<A: Asset> ScriptRef<A> {
+    pub fn new(n: u64) -> Self {
+        ScriptRef(n, std::marker::PhantomData)
+    }
+
+    /// The handle the ref holds; a stale ref or one of another asset type fails naming it.
+    pub fn handle(&self, assets: &crate::reflect_asset::ScriptAssets) -> Result<Handle<A>, String> {
+        assets.handle(self.0)?.try_typed::<A>().map_err(|_| format!("asset ref {} is not a {}", self.0, A::type_path()))
+    }
+}
+
+impl<A: Asset> Clone for ScriptRef<A> {
+    fn clone(&self) -> Self {
+        ScriptRef::new(self.0)
+    }
+}
+
+impl<A: Asset> Copy for ScriptRef<A> {}
+
+impl<A: Asset> std::fmt::Debug for ScriptRef<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ScriptRef<{}>({})", A::short_type_path(), self.0)
+    }
+}
+
+impl<A: Asset> HostValue for ScriptRef<A> {
+    fn kind() -> Kind {
+        Kind::AssetRef(A::type_path())
+    }
+    fn read(r: &mut SlotReader) -> Result<Self, String> {
+        Ok(ScriptRef::new(r.slot()? as u64))
+    }
+    fn write(&self, w: &mut SlotWriter) {
+        w.push(self.0 as f64);
     }
 }
 
@@ -747,6 +794,9 @@ fn write_js(kind: &Kind, expr: &str, out: &mut String) {
             write_js(k, "o", out);
             out.push_str(" } }");
         }
+        Kind::AssetRef(path) => {
+            let _ = write!(out, "a[i++] = H.ref({expr}, {path:?}, NAME, M);");
+        }
         Kind::Unit => {}
     }
 }
@@ -765,6 +815,7 @@ fn read_js(kind: &Kind) -> String {
             format!("({{ {} }})", parts.join(", "))
         }
         Kind::Option(k) => format!("(a[i++] !== 0 ? {} : (i += {}, undefined))", read_js(k), k.slots()),
+        Kind::AssetRef(path) => format!("H.asRef(a[i++], {path:?})"),
         Kind::Unit => "undefined".into(),
     }
 }
@@ -783,7 +834,7 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
             })
             .collect();
         let _ = writeln!(s, "  {}({}) {{", method.name, names.join(", "));
-        s.push_str("    const a = H.slots; let i = 0;\n    ");
+        let _ = write!(s, "    const M = {:?}; const a = H.slots; let i = 0;\n    ", method.name);
         let mut slices = Vec::new();
         for arg in &method.args {
             match arg {

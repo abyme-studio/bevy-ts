@@ -239,6 +239,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(crate::input::ScriptInputPlugin)
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
+        .add_plugins(crate::assets::ScriptAssetsPlugin)
         .add_systems(Update, headless::screenshot_on_request)
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
         .insert_resource(engine.identity.clone())
