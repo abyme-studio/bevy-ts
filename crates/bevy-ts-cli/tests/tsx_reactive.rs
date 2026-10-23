@@ -459,3 +459,60 @@ fn bound_text_in_show_and_for_renders_on_first_mount_and_on_toggle() {
     assert!(node(&mut app, &["root", "later", "then", "bound"]).is_none());
     assert!(errors(&app).is_empty(), "{:?}", errors(&app));
 }
+
+const SLOT_LIFETIMES: &str = r##"import { app, Component, u8, signal, Show, Update, type Query } from "bevy-ts";
+export class Alarm extends Component { static path = "game::Alarm"; declare on: u8 }
+const [open, setOpen] = signal(true);
+const [outer, setOuter] = signal(true);
+const [name, setName] = signal("x");
+// Alarms pile up: the highest one says how far the test has got.
+export function step(q: Query<[Alarm]>) {
+  let top = 0;
+  q.each((a) => {
+    if (a.on > top) top = a.on;
+  });
+  if (top === 1) {
+    setOpen(false);
+    setOpen(true);
+  }
+  if (top >= 2) setOuter(false);
+  if (top >= 3) setName("y");
+}
+app.addSystems(Update, step);
+app.scene("lifetimes", () => (
+  <node key="root">
+    <Show key="flip" when={open} fallback={<text key="closed">closed</text>}>
+      <text key="open">{() => `open ${name()}`}</text>
+    </Show>
+    <Show key="outer" when={outer}>
+      <Show key="inner" when={() => true}>
+        <text key="bound">{() => `inner ${name()}`}</text>
+      </Show>
+    </Show>
+  </node>
+));
+"##;
+
+#[test]
+fn a_show_toggled_twice_in_a_batch_and_a_nested_show_unmounted_leave_nothing_behind() {
+    let (_dir, mut app) = setup("rx-slot-lifetimes", SLOT_LIFETIMES);
+    assert_eq!(text(&mut app, &["root", "outer", "then", "inner", "then", "bound"]), "inner x", "{:?}", errors(&app));
+
+    // then -> else -> then inside one system: no stale fallback, the content still bound.
+    set_alarm(&mut app, 1);
+    updates(&mut app, 3);
+    assert!(node(&mut app, &["root", "flip", "else", "closed"]).is_none(), "the fallback was withdrawn");
+    assert_eq!(text(&mut app, &["root", "flip", "then", "open"]), "open x", "{:?}", errors(&app));
+
+    // The outer Show unmounts: the inner Show's content goes, and its binding with it.
+    set_alarm(&mut app, 2);
+    updates(&mut app, 2);
+    assert!(node(&mut app, &["root", "outer", "then", "inner", "then", "bound"]).is_none());
+    set_alarm(&mut app, 3);
+    updates(&mut app, 2);
+    assert_eq!(text(&mut app, &["root", "flip", "then", "open"]), "open y");
+    let before = calls(&app);
+    updates(&mut app, 5);
+    assert_eq!(calls(&app), before, "no binding left running");
+    assert!(errors(&app).is_empty(), "{:?}", errors(&app));
+}

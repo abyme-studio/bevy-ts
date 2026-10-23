@@ -860,7 +860,11 @@ export class TsxContext {
 
   startPending() {
     for (const w of this.mounted.splice(0)) {
-      if (w.owner.disposed) continue;
+      if (w.owner.disposed) {
+        // Unmounted (or withdrawn) before it started: its bindings never run.
+        for (const b of w.bindings) this.bindings.delete(b.id);
+        continue;
+      }
       this.pendingBindings.push(...w.bindings);
       this.pendingSlots.push(...w.slots);
       this.deferred.push(...w.deferred);
@@ -900,7 +904,7 @@ export class TsxContext {
     };
     // Slot content leaves now: its bindings start in the call after Rust mounted it.
     this.mounted.push(...this.waiting.splice(0));
-    if (this.mounted.length) out.more = true;
+    if (this.mounted.some((w) => !w.owner.disposed)) out.more = true;
     this.needs.clear();
     return out;
   }
@@ -1184,29 +1188,43 @@ class Slot {
     }
     this.computation.run();
   }
-  /** Mounts `content` (elements, or a function making them) as group `key` under its own owner. */
+  /**
+   * Mounts `content` (elements, or a function making them) as group `key` under its own owner,
+   * a child of the group the slot sits in, so unmounting that group disposes this one too.
+   */
   mount(key, content) {
     const ctx = this.ctx;
-    const owner = new Owner(ctx.root);
+    const owner = new Owner(this.owner && !this.owner.disposed ? this.owner : ctx.root);
     const at = [ctx.pendingBindings.length, ctx.pendingSlots.length, ctx.deferred.length];
-    const nodes = untrack(() => runScene(ctx, () => describeIn(ctx, evaluateContent(content), owner), owner));
+    let nodes;
+    try {
+      nodes = untrack(() => runScene(ctx, () => describeIn(ctx, evaluateContent(content), owner), owner));
+    } catch (e) {
+      // Content that failed to describe mounts nothing: what it registered goes with it.
+      for (const b of ctx.pendingBindings.splice(at[0])) ctx.bindings.delete(b.id);
+      ctx.pendingSlots.splice(at[1]);
+      ctx.deferred.splice(at[2]);
+      owner.dispose();
+      throw e;
+    }
     // What the content registered waits for its mount, not for whichever call comes next.
-    ctx.waiting.push({
-      owner,
-      bindings: ctx.pendingBindings.splice(at[0]),
-      slots: ctx.pendingSlots.splice(at[1]),
-      deferred: ctx.deferred.splice(at[2]),
-    });
+    const w = { owner, bindings: ctx.pendingBindings.splice(at[0]), slots: ctx.pendingSlots.splice(at[1]), deferred: ctx.deferred.splice(at[2]) };
+    if (w.bindings.length || w.slots.length || w.deferred.length) ctx.waiting.push(w);
+    owner.mount = [this.id, key, nodes];
     this.groups.set(key, owner);
-    this.ctx.mounts.push([this.id, key, nodes]);
-    requestFlush(this.ctx);
+    ctx.mounts.push(owner.mount);
+    requestFlush(ctx);
   }
   unmount(key) {
     const owner = this.groups.get(key);
     if (!owner) return;
     owner.dispose();
     this.groups.delete(key);
-    this.ctx.unmounts.push([this.id, key]);
+    // A mount not sent yet is withdrawn rather than undone: Rust applies a call's unmounts
+    // before its mounts, so then -> else -> then in one batch would leave else mounted.
+    const i = this.ctx.mounts.indexOf(owner.mount);
+    if (i >= 0) this.ctx.mounts.splice(i, 1);
+    else this.ctx.unmounts.push([this.id, key]);
     requestFlush(this.ctx);
   }
   show() {

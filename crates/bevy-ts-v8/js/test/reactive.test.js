@@ -194,6 +194,77 @@ Deno.test("bound children of Show and For start in the call after their mount, o
   eq(out.patches.map(([, v]) => v).sort(), ["a y", "b y", "later y", "nested y", "show y"]);
 });
 
+Deno.test("unmounting an outer Show disposes an inner Show's content", () => {
+  const ctx = new TsxContext();
+  const [outer, setOuter] = signal(true);
+  const [name, setName] = signal("x");
+  const player = ref(9);
+  describe(
+    jsx(Show, {
+      when: () => outer(),
+      children: jsx(Show, {
+        when: () => true,
+        children: jsx("text", { children: () => `${name()} ${player.get(Health).hp}` }),
+      }),
+    }),
+    ctx,
+  );
+  ctx.call({});
+  ctx.call({});
+  let out = ctx.call({});
+  eq(out.subscribe, [[9, "game::Health"]]);
+  out = ctx.call({ values: [[9, "game::Health", { hp: 3 }]] });
+  eq(out.patches.map(([, v]) => v), ["x 3"]);
+  setOuter(false);
+  out = ctx.call({});
+  eq(out.unmounts, [[1, "then"]]);
+  eq(out.unsubscribe, [[9, "game::Health"]], "the inner content's binding stops watching");
+  setName("y");
+  eq(ctx.call({}).patches, [], "and does not run again");
+});
+
+Deno.test("a Show toggled then, else, then between two calls sends no else", () => {
+  const ctx = new TsxContext();
+  const [open, setOpen] = signal(true);
+  describe(jsx(Show, { when: () => open(), fallback: jsx("text", { children: "closed" }), children: jsx("text", { children: "open" }) }), ctx);
+  let out = ctx.call({});
+  eq(out.mounts.map(([s, g]) => [s, g]), [[1, "then"]]);
+  setOpen(false);
+  setOpen(true);
+  out = ctx.call({});
+  eq(out.unmounts, [[1, "then"]]);
+  eq(out.mounts.map(([s, g]) => [s, g]), [[1, "then"]], "the else mount is withdrawn, not undone after it");
+  eq(out.more, undefined);
+  // A mount withdrawn before it was ever sent sends nothing at all.
+  setOpen(false);
+  setOpen(true);
+  setOpen(false);
+  out = ctx.call({});
+  eq([out.unmounts, out.mounts.map(([s, g]) => [s, g])], [[[1, "then"]], [[1, "else"]]]);
+});
+
+Deno.test("Show content that throws while describing leaves no bindings behind", () => {
+  const ctx = new TsxContext();
+  const [open, setOpen] = signal(false);
+  const [name] = signal("x");
+  describe(
+    jsx(Show, {
+      when: () => open(),
+      children: () => [jsx("text", { children: () => name() }), jsx("text", { children: jsx("entity", {}) })],
+    }),
+    ctx,
+  );
+  ctx.call({});
+  const before = ctx.bindings.size;
+  setOpen(true);
+  let out = ctx.call({});
+  eq(out.errors.length, 1);
+  eq(out.mounts, []);
+  eq(ctx.bindings.size, before, "the first text's binding went with its content");
+  out = ctx.call({});
+  eq([out.patches, out.more], [[], undefined]);
+});
+
 Deno.test("For keeps items by key and unmounts only the removed one", () => {
   const ctx = new TsxContext();
   const [items, setItems] = signal([{ id: "a" }, { id: "b" }, { id: "c" }]);
