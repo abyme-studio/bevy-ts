@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 const SRC: &str = r#"import { app, Startup, Update } from "bevy-ts";
 import type { Added, Commands, Entity, Query } from "bevy-ts";
-import { Camera } from "bevy-ts/bevy";
+import { Camera, DirectionalLight } from "bevy-ts/bevy";
 import type { Cameras } from "bevy-ts/camera";
 
 let cam: Entity | undefined;
@@ -29,7 +29,7 @@ const out = new Float32Array(4);
 const at = (v: { x: number; y: number } | undefined) => (v ? `${v.x.toFixed(1)},${v.y.toFixed(1)}` : "none");
 
 export function spawn(commands: Commands) {
-  light = commands.spawnNative("directionalLight", {});
+  light = commands.spawn(DirectionalLight);
 }
 
 export function project(cameras: Cameras, fresh: Query<[Entity], Added<Camera>>) {

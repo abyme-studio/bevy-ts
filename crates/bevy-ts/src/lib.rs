@@ -26,8 +26,6 @@ pub mod modules;
 pub mod net;
 pub mod observers;
 pub mod plugin_api;
-#[cfg(feature = "pbr")]
-pub mod recipes;
 #[cfg(feature = "reflect")]
 pub mod reflect_value;
 pub mod runtime;
@@ -166,9 +164,6 @@ impl Plugin for BevyTsPlugin {
         // types: in `finish`, or when the first generation applies if the app never finishes.
         app.register_type::<Transform>().init_resource::<layout::NativeLayouts>();
         sets::expose_anchors(app);
-
-        #[cfg(feature = "pbr")]
-        recipes::register(app);
 
         app.add_systems(
             First,

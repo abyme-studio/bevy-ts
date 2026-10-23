@@ -1,8 +1,8 @@
 // Type tests for reflected values in TSX (reflect-enums-color): colours, enum components and
 // writable holes. `tsc -p test` must pass, and every `@ts-expect-error` must be an error.
-import { app, hex, hsl, linear, srgb, Startup } from "bevy-ts";
+import { app, hex, hsl, linear, srgb, Startup, Transform } from "bevy-ts";
 import type { ColorValue, Commands, Query } from "bevy-ts";
-import { DirectionalLight, PointLight, Projection } from "bevy-ts/bevy";
+import { Camera3d, DirectionalLight, PointLight, Projection } from "bevy-ts/bevy";
 
 const warm: ColorValue = srgb(1, 0.9, 0.8);
 export const Lights = () => (
@@ -44,7 +44,13 @@ export function look(q: Query<[DirectionalLight]>) {
 app.addSystems(Startup, look);
 
 export function cam(commands: Commands) {
-  commands.spawnNative("camera3d", { position: [10, 10, 10], lookAt: [0, 0, 0], projection: { Orthographic: { scaling_mode: { FixedVertical: { viewport_height: 12 } } } } });
-  commands.spawnNative("cuboid", { color: hsl(30, 1, 0.5) });
+  // reflect-coverage stage 2: reflect-tier values and holes through commands, no recipes.
+  commands.spawn(Camera3d, Transform.lookingAt([10, 10, 10], [0, 0, 0]), Projection.of({ Orthographic: { scaling_mode: { FixedVertical: { viewport_height: 12 } } } }));
+  commands.spawn(DirectionalLight.of({ illuminance: 8000, color: hsl(30, 1, 0.5) }), Transform.lookingAt([3, 5, 2], [0, 0, 0]));
+  commands.spawn(Transform.of({ translation: [0, 0.5, 0] }), <entity><mesh shape="cuboid" size={[1, 1, 1]} /><material color="#ff8000" /></entity>);
+  // @ts-expect-error: Projection has no variant Isometric.
+  commands.spawn(Projection.of({ Isometric: {} }));
+  // @ts-expect-error: DirectionalLight's colour is a ColorValue.
+  commands.spawn(DirectionalLight.of({ color: 3 }));
 }
 app.addSystems(Startup, cam);

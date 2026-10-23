@@ -1,4 +1,4 @@
-//! Reflected values from TSX and recipes (reflect-enums-color): enums in Bevy's shape at any depth,
+//! Reflected values from TSX and script commands (reflect-enums-color): enums in Bevy's shape at any depth,
 //! a written value merged over the default, writable layout-tier holes as TSX props, and every
 //! colour form through every caller. Headless; the rendered checks are in `reflect_render.rs`.
 
@@ -151,7 +151,7 @@ fn colours(app: &mut App) -> Vec<(String, [f32; 4])> {
 
 #[test]
 fn every_colour_form_through_every_caller_gives_one_colour() {
-    let src = r##"import { app, hsl, linear, Startup } from "bevy-ts";
+    let src = r##"import { app, hsl, linear, Startup, Transform } from "bevy-ts";
 import type { Commands } from "bevy-ts";
 import { color, material } from "bevy-ts/material";
 import glow from "./glow.wgsl";
@@ -159,7 +159,7 @@ import glow from "./glow.wgsl";
 export const Glow = material("game::Glow", { params: { color: color }, fragment: glow });
 
 export function cube(commands: Commands) {
-  commands.spawnNative("cuboid", { color: hsl(30, 1, 0.5) });
+  commands.spawn(Transform.of({}), <entity name="command"><mesh shape="cuboid" /><material color={hsl(30, 1, 0.5)} /></entity>);
 }
 app.addSystems(Startup, cube);
 
@@ -178,43 +178,13 @@ app.scene("s", () => (
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     updates(&mut app, 2);
-    // The recipe's cube has no name: give it one to compare.
-    let world = app.world_mut();
-    let unnamed: Vec<Entity> = world.query_filtered::<Entity, (With<MeshMaterial3d<StandardMaterial>>, Without<Name>)>().iter(world).collect();
-    assert_eq!(unnamed.len(), 1, "the cuboid recipe's cube");
-    world.entity_mut(unnamed[0]).insert(Name::new("recipe"));
     let all = colours(&mut app);
     let names: Vec<&str> = all.iter().map(|(n, _)| n.as_str()).collect();
-    assert_eq!(names, ["hex", "material", "mesh", "recipe", "script"]);
+    assert_eq!(names, ["command", "hex", "material", "mesh", "script"]);
     let want = all[0].1;
     for (n, c) in &all {
         assert!(c.iter().zip(want).all(|(a, b)| (a - b).abs() < 5e-3), "{n}: {c:?} != hex {want:?}");
     }
-}
-
-#[test]
-fn camera3d_takes_a_projection_and_names_bad_variants() {
-    let body = |projection: &str| {
-        format!(
-            "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nexport function cam(commands: Commands) {{\n  commands.spawnNative(\"camera3d\", {{ position: [10, 10, 10], lookAt: [0, 0, 0], projection: {projection} }});\n}}\napp.addSystems(Startup, cam);\n"
-        )
-    };
-    let dir = project("reflect-camera", &[("game.ts", &body("{ Orthographic: { scaling_mode: { FixedVertical: { viewport_height: 12 } } } }"))]);
-    let mut app = reflect_app(&dir.join("game.ts"));
-    let r = reload(&mut app, false);
-    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
-    updates(&mut app, 2);
-    let o = ortho(&the::<Projection>(&mut app));
-    assert!(matches!(o.scaling_mode, ScalingMode::FixedVertical { viewport_height: 12.0 }));
-    let d = OrthographicProjection::default_3d();
-    assert_eq!((o.scale, o.near, o.far), (d.scale, d.near, d.far), "every other field at its default");
-
-    let dir = project("reflect-camera-bad", &[("game.ts", &body("{ Isometric: {} } as any"))]);
-    let mut app = reflect_app(&dir.join("game.ts"));
-    reload(&mut app, false);
-    updates(&mut app, 2);
-    let m = messages(&app);
-    assert!(m.iter().any(|m| m.contains("Projection") && m.contains("Perspective, Orthographic, Custom")), "{m:?}");
 }
 
 /// A component of one field per collection and scalar kind (reflect-coverage task 1.7).

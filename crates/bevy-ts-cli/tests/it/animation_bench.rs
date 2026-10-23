@@ -99,13 +99,13 @@ fn game(arm: &str, n: usize) -> String {
     let foxes = if arm == "A" || arm == "D" { "0" } else { "N" };
     format!(
         r##"import {{ app, type Commands, Startup, Transform }} from "bevy-ts";
-import {{ DirectionalLight, PlayAnimation, WorldAssetRoot }} from "bevy-ts/bevy";
+import {{ Camera3d, DirectionalLight, PlayAnimation, WorldAssetRoot }} from "bevy-ts/bevy";
 const N = {n};
 const side = Math.ceil(Math.sqrt(N));
 const offset = ((side - 1) * 2.5) / 2;
 const at = (i: number): [number, number, number] => [(i % side) * 2.5 - offset, 0, Math.floor(i / side) * 2.5 - offset];
 export function stage(commands: Commands) {{
-  commands.spawnNative("camera3d", {{ position: [0, side * 2, side * 3], lookAt: [0, 0, 0] }});
+  commands.spawn(Camera3d, Transform.lookingAt([0, side * 2, side * 3], [0, 0, 0]));
 }}
 const Fox = ({{ i }}: {{ i: number }}) => (
   <entity name="fox">
