@@ -233,3 +233,7 @@ export const BadCull = () => <material cullMode="both" />;
 export const BlockedTexture = () => <material clearcoatTexture="textures/cc.png" />;
 // @ts-expect-error a texture is an asset path
 export const BadTexture = () => <material baseColorTexture={1} />;
+export const Counted = () => <entity><PlayAnimation clip="models/Fox.glb#Animation2" repeat={{ Count: 3 }} paused={false} cull /></entity>;
+export const Once = () => <entity><PlayAnimation clip="models/Fox.glb#Animation2" repeat="Never" paused /></entity>;
+// @ts-expect-error  `repeat` is Bevy's RepeatAnimation, not a bool
+export const BoolRepeat = () => <entity><PlayAnimation repeat={true} /></entity>;

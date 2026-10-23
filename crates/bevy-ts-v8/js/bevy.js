@@ -384,7 +384,7 @@ export const ScriptHidden = rustComponent("ScriptHidden");
 
 export const TsSpawned = rustComponent("TsSpawned");
 
-export class PlayAnimation extends nativeComponent("PlayAnimation", { repeat: bool, speed: f32, transition_secs: f32 }) {}
+export class PlayAnimation extends nativeComponent("PlayAnimation", { speed: f32, transition_secs: f32, paused: bool, cull: bool }) {}
 
 export const MissingComponents = rustComponent("MissingComponents");
 

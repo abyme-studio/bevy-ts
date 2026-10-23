@@ -92,12 +92,15 @@ fn wvalue(ty: &ValueType, v: &Value) -> Result<WValue, String> {
                     if values.len() != tys.len() {
                         return Err(format!("{name}: expected {} values", tys.len()));
                     }
-                    let fields = tys.iter().zip(values).map(|(t, x)| Ok((String::new(), wvalue(t, x)?))).collect::<Result<_, String>>()?;
-                    WValue::Variant { name: name.to_string(), fields, named: false }
+                    let fields = tys.iter().zip(values).map(|(t, x)| Ok(wvalue(t, x)?.print())).collect::<Result<Vec<_>, String>>()?;
+                    WValue::Path(format!("{name}({})", fields.join(", ")))
                 }
                 (VariantFields::Named(tys), Some(Value::Object(o))) => {
-                    let fields = tys.iter().map(|(n, t)| Ok((n.clone(), wvalue(t, o.get(n).ok_or_else(|| format!("{name}: no field {n}"))?)?))).collect::<Result<_, String>>()?;
-                    WValue::Variant { name: name.to_string(), fields, named: true }
+                    let fields = tys
+                        .iter()
+                        .map(|(n, t)| Ok(format!("{n}: {}", wvalue(t, o.get(n).ok_or_else(|| format!("{name}: no field {n}"))?)?.print())))
+                        .collect::<Result<Vec<_>, String>>()?;
+                    WValue::Path(format!("{name} {{ {} }}", fields.join(", ")))
                 }
                 _ => return Err(format!("{name}: expected {v} to match its fields")),
             }

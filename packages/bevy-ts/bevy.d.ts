@@ -985,15 +985,18 @@ export type ScriptHidden = InstanceType<typeof ScriptHidden>;
 export declare const TsSpawned: Reflected;
 export type TsSpawned = InstanceType<typeof TsSpawned>;
 
-/** Holes, never visible: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>). */
+/** Holes, never visible: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
   static readonly native: true;
   /** Its props as an element. */
   static readonly __element: { clip: string | null; repeat: boolean; speed: number; transition_secs: number };
   declare repeat: bool;
+  static readonly __element: { clip: string; repeat: "Never" | { Count: number } | "Forever"; speed: number; transition_secs: number; paused: boolean; cull: boolean };
   declare speed: f32;
   declare transition_secs: f32;
+  declare paused: bool;
+  declare cull: bool;
 }
 
 export declare const MissingComponents: Reflected<{ value: readonly ({ component?: string; reason?: "Unregistered" | "Failed" | "Mismatch"; message?: string; fields?: Record<string, string>; location?: { file?: string; line?: number; column?: number }; expected?: { file?: string; line?: number; column?: number } | null; misfit?: Record<string, string>; overrides?: readonly ({ path?: readonly string[]; fields?: Record<string, string> })[]; scene?: boolean })[] }>;

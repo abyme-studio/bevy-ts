@@ -16,10 +16,9 @@ pub enum WValue {
     Str(String),
     /// `Vec3 { x: 1.0, z: 2.0 }`: a typed value with the named lanes given.
     Vector { ty: String, lanes: Vec<(String, f64)> },
-    /// An enum variant or a constant, written as a path (`Visibility::Hidden`).
+    /// An enum variant or a constant, written as a path (`Visibility::Hidden`), or a variant with
+    /// its data as the level writes it (`Count(3)`, `At { x: 1.0 }`).
     Path(String),
-    /// A variant with data: `Count(3)`, or `V { a: 1 }` when `named`.
-    Variant { name: String, fields: Vec<(String, WValue)>, named: bool },
 }
 
 impl WValue {
@@ -34,10 +33,6 @@ impl WValue {
                 format!("{ty} {{ {} }}", inner.join(", "))
             }
             WValue::Path(p) => p.clone(),
-            WValue::Variant { name, fields, named: false } => format!("{name}({})", fields.iter().map(|(_, v)| v.print()).collect::<Vec<_>>().join(", ")),
-            WValue::Variant { name, fields, named: true } => {
-                format!("{name} {{ {} }}", fields.iter().map(|(n, v)| format!("{n}: {}", v.print())).collect::<Vec<_>>().join(", "))
-            }
         }
     }
 }
