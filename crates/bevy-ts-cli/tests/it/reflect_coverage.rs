@@ -5,7 +5,11 @@
 //! `reflect_value::NO_DEFAULT` lists it; `type_data` entries Bevy already reflects fail. An entry
 //! no walked type uses fails too.
 
-use bevy_ts::reflect_value::{NO_DEFAULT, UNCOVERED};
+mod common;
+
+use bevy::prelude::*;
+use bevy_ts::reflect_codec::{compile_component, encode};
+use bevy_ts::reflect_value::{NO_DEFAULT, UNCOVERED, default_of, read_component};
 use bevy_ts_cli::cli::Engine;
 use bevy_ts_cli::coverage::{Report, walk};
 use std::collections::BTreeSet;
@@ -75,4 +79,36 @@ fn rapier_port_has_no_unlisted_gap() {
     let listed: BTreeSet<String> = report["listed"].as_array().unwrap().iter().map(|t| t.as_str().unwrap().to_string()).collect();
     let stale = stale(&listed, rapier_entry);
     assert!(stale.is_empty(), "reflect_value::UNCOVERED or NO_DEFAULT names Rapier types no registered type uses: {stale:?}");
+}
+
+/// The codec check (reflect-coverage decision 7): for every reflected component and resource of
+/// the prebuilt engine with a default, the bytes its codec encodes, decoded by the JS decoder
+/// generated from the same ops, equal `JSON.parse` of `read_component`'s JSON.
+#[test]
+fn codec_output_equals_read_for_every_covered_type() {
+    let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
+    let app = bevy_ts_cli::types::types_app(&engine, |_: &mut App| {});
+    let registry = app.world().resource::<AppTypeRegistry>().read();
+    let mut cases = Vec::new();
+    let mut paths: Vec<_> = registry.iter().filter(|r| r.data::<bevy::ecs::reflect::ReflectComponent>().is_some()).map(|r| (r.type_info().type_path(), r.type_id())).collect();
+    paths.sort();
+    for (path, id) in paths {
+        let Some(value) = default_of(&registry, id) else { continue };
+        // A type `read` cannot cover is the walk's business, not the codec's.
+        let Ok(json) = read_component(&registry, value.as_ref()) else { continue };
+        let codec = compile_component(&registry, registry.get(id).unwrap().type_info());
+        let mut bytes = Vec::new();
+        if let Err(e) = encode(&registry, &codec, value.as_ref(), &mut bytes) {
+            panic!("{path}: read covers it but the codec fails: {e}");
+        }
+        cases.push(serde_json::json!({ "type": path, "codec": codec, "bytes": bytes, "json": json.to_string() }));
+    }
+    assert!(cases.len() > 100, "only {} cases", cases.len());
+    let n = cases.len();
+    let src = "import { __reflectCheck, app, text } from \"bevy-ts\";\napp.entry(\"check\", (payload) => JSON.stringify(__reflectCheck(JSON.parse(text(payload)))));\n";
+    let (_, mut js) = common::load("reflect-codec-check", src);
+    let out = bevy_ts::plugin_api::call_entry(js.world_mut(), "check", serde_json::to_string(&cases).unwrap().as_bytes()).expect("the check entry runs");
+    let bad: Vec<serde_json::Value> = serde_json::from_slice(&out).unwrap();
+    let lines: Vec<String> = bad.iter().map(|b| format!("{}:\n  codec: {}\n  read:  {}", b["type"], b["got"], b["want"])).collect();
+    assert!(bad.is_empty(), "{} of {n} types decode differently from read:\n{}", bad.len(), lines.join("\n"));
 }
