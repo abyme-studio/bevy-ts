@@ -2239,11 +2239,13 @@ class QueryParam {
   *iterAncestors(entity) {
     const di = this.data.findIndex((d) => d.cls && d.cls.componentName === "ChildOf");
     if (di < 0) throw new Error("iterAncestors needs ChildOf in the query's data (Query<[ChildOf]>)");
+    // ChildOf's one field, by whatever name its layout gives it.
+    const field = this.data[di].cls.layout.fields[0].name;
     const seen = new Set([entity]);
     let e = entity;
     for (;;) {
       const row = this.get(e);
-      const parent = row && row[di] ? row[di]["0"] : undefined;
+      const parent = row && row[di] ? row[di][field] : undefined;
       if (parent === undefined || seen.has(parent)) return;
       seen.add(parent);
       yield parent;
