@@ -29,11 +29,15 @@
 - **THEN** its rotation equals Bevy's `Transform::from_xyz(-3., 3., 6.).looking_at(Vec3::ZERO, Vec3::Y)` within 1e-6 per lane
 
 ### Requirement: Reflected rows in TS systems
-A reflect-tier component SHALL be accepted as query data (`C`, `Mut<C>`, `Option<C>`) and a reflect-tier resource as `Res<R>`/`ResMut<R>`, and a layout-tier row SHALL offer each hole as a getter and setter. A reflected row's value SHALL be read through `bevy_ts::reflect_value::read` on first access in a run, through one host call, and cached for the rest of the run; rows the system does not touch SHALL cost no host call. A write through `Mut` SHALL be applied at once through `write`, mark the component changed, and replace the cached value. Reflected writes SHALL NOT invalidate column views open in the same run. Writing a component Bevy computes (`GlobalTransform`, `ComputedNode`) SHALL throw naming it.
+A reflect-tier component SHALL be accepted as query data (`C`, `Mut<C>`, `Option<C>`) and a reflect-tier resource as `Res<R>`/`ResMut<R>`, and a layout-tier row SHALL offer each hole as a getter and setter. A reflected row's value SHALL be cached across runs, keyed by the component's changed tick: a row whose tick has not moved SHALL return the cached value with no host call. A miss SHALL cost one host call, filled through a binary codec compiled once per type from its `TypeInfo`, whose decoded value equals `JSON.parse` of `bevy_ts::reflect_value::read`'s JSON. Rows the system does not touch SHALL cost no host call. A write through `Mut` SHALL be applied at once with `write`'s semantics, mark the component changed, and refresh the cache entry. Reflected writes SHALL NOT invalidate column views open in the same run. Writing a component Bevy computes (`GlobalTransform`, `ComputedNode`) SHALL throw naming it.
 
 #### Scenario: Switching a camera to orthographic
 - **WHEN** a system with `Query<[Mut<Projection>], With<Camera3d>>` sets `p.value = { Orthographic: {} }`
 - **THEN** the camera renders orthographic that frame, and a later system with `Changed<Projection>` sees the row
+
+#### Scenario: An unchanged row across runs
+- **WHEN** a system reads `p.value` of a camera's `Projection` on two frames and nothing changes it in between
+- **THEN** the second read makes no host call and returns an equal value
 
 #### Scenario: Untouched rows
 - **WHEN** a system queries 1,000 entities with `Query<[Transform, DirectionalLight]>` and reads only `translation`

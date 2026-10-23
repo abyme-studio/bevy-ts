@@ -35,9 +35,10 @@ Three stages, each landable on its own, in this order. Stage 3 waits on the oper
 3. **Scripts read every reflect kind (needs the operator's go).** A reflect-tier component is
    query data and `Res` data: `Query<[Projection]>`, `Query<[Mut<Camera3d>]>`. A layout-tier
    hole is a field accessor on the row (`light.color`), outside `q.tables`. A row's reflected
-   value is read on first access in a run, through a host call that runs `read`; a write is
-   applied at once through `write` and marks the component changed. `NodeRef.get` reads the same
-   way inside TSX bindings.
+   value is cached across runs by its changed tick, so an unchanged row costs no host call; a
+   changed row is read through one host call and a binary codec compiled once per type from its
+   `TypeInfo`. A write is applied at once and marks the component changed. `NodeRef.get` reads
+   the same way inside TSX bindings.
 4. **Coverage matrix and a hole check.** `docs/reflection.md` lists every reflect kind: read,
    write, TS type, and the test that proves it. `crates/bevy-ts-cli/tests/reflect_coverage.rs`
    walks every registered reflected component and resource in the prebuilt engine (plus the
@@ -83,6 +84,7 @@ None.
   (this change after `reflect-enums-color` lands), `core.js` `encodeWithLayout`
   (ambient-light-script; stage 2 sequences after it).
 - Operator's go needed: stage 3 only. It adds a per-frame path: a TS system that touches a
-  reflected row pays a host call and a JSON serialization per row per run. No new dependency,
+  changed reflected row pays a host call and a binary decode (about 0.1 µs); an unchanged row
+  hits a tick cache (about 10 ns). No new dependency,
   service or infrastructure. Removing the recipes is under the operator's delegation for bevy
   work.

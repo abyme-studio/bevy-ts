@@ -29,11 +29,11 @@
 
 - [ ] 3.1 Operator's go recorded for the per-frame reflected read path; do not start without it
 - [ ] 3.2 Drop `NotReflect`; reflect-tier classes as query data and `Res`/`ResMut`; tables without columns for them
-- [ ] 3.3 Host calls `reflect_read(entity, type)` and `reflect_write(entity, type, path, json)`; lazy per-row read cached per run; write applied at once with the change tick
+- [ ] 3.3 Reads and writes per design decision 7: the changed-tick column for reflect-tier terms in `systems.rs`; the per-type tick cache (dropped on reload, entries on despawn and removal); the op compiler in `reflect_value` from `TypeInfo`, with JSON fallback for types it cannot express; the JS decoder and encoder generated from the ops; host calls `reflect_read(entity, type)` and `reflect_write(entity, type, path, bytes)`; a write applied at once with the change tick and the cache entry refreshed; the hole check asserts decoder output equals `JSON.parse` of `read` per covered type
 - [ ] 3.4 Hole getters and setters on layout-tier row accessors; never in `q.tables`
 - [ ] 3.5 `NodeRef.get` reads reflected components and holes through `reflect_read` and subscribes as today
 - [ ] 3.6 Tests: the camera switch, untouched rows make no host call, column views valid after a reflected write, computed components refuse writes
-- [ ] 3.7 Bench in `crates/bevy-ts/benches`: 1,000 `DirectionalLight.color` reads and writes per run; the number goes into `docs/reflection.md`
+- [ ] 3.7 Bench in `crates/bevy-ts/benches` over 1,000 rows of `DirectionalLight.color` and `Projection`: reads on cache hits, reads on misses through the codec, the JSON path as the baseline, and writes; against a layout-tier column read. Targets from the research: about 10 ns a hit, about 0.1 µs a miss. The numbers go into `docs/reflection.md`
 - [ ] 3.8 `docs/native.md`: reflected rows and holes in TS systems
 
 ## 4. Landing (each stage)
