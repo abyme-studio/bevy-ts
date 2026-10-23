@@ -478,8 +478,10 @@ fn cargo() -> Result<Command, String> {
 
 /// SHA-256 of a file, hex.
 pub fn sha256_file(path: &Path) -> Result<String, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect())
+    let mut file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut h = Sha256::new();
+    std::io::copy(&mut file, &mut h).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// Copies `src` into `dir` as the engine binary with its checksum beside it.
@@ -487,6 +489,9 @@ fn install(src: &Path, dir: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let dst = dir.join(exe_name());
     let tmp = dir.join(format!("{}.tmp", exe_name()));
+    // A link left at `tmp` by an interrupted fetch would have the copy write through it, into
+    // the shared cache.
+    let _ = std::fs::remove_file(&tmp);
     std::fs::copy(src, &tmp).map_err(|e| format!("{} -> {}: {e}", src.display(), tmp.display()))?;
     let sum = sha256_file(&tmp)?;
     std::fs::write(dir.join(format!("{}.sha256", exe_name())), format!("{sum}\n")).map_err(|e| e.to_string())?;
@@ -622,8 +627,12 @@ fn link(target: &Path, dir: &Path, stamp: &Stamp, symlink: fn(&Path, &Path) -> s
     let tmp = dir.join(format!("{}.tmp", exe_name()));
     let _ = std::fs::remove_file(&tmp);
     symlink(target, &tmp).map_err(|e| format!("{} -> {}: {e}", tmp.display(), target.display()))?;
-    stamp.write(dir)?;
-    std::fs::rename(&tmp, &dst).map_err(|e| e.to_string())?;
+    let placed = stamp.write(dir).and_then(|()| std::fs::rename(&tmp, &dst).map_err(|e| e.to_string()));
+    if let Err(e) = placed {
+        let _ = std::fs::remove_file(&tmp);
+        let _ = std::fs::remove_file(dir.join(LINK_STAMP));
+        return Err(e);
+    }
     let _ = std::fs::remove_file(dir.join(format!("{}.sha256", exe_name())));
     Ok(dst)
 }
@@ -1127,6 +1136,31 @@ mod tests {
         let (exe, _, origin) = obtain(&plan, false, &mut Sink::Stderr).unwrap();
         assert_eq!(origin, Origin::SharedCache);
         assert!(is_link(&exe));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Review of 752db08: a link left at `bevy-ts.tmp` must not let the copy write through it.
+    #[cfg(unix)]
+    #[test]
+    fn a_stale_tmp_link_never_writes_the_shared_file() {
+        let d = tmp("stale-tmp");
+        let cache = d.join("cache");
+        let shared = publish(&cache, "h", b"engine bytes");
+        let mtime = FileId::of(&shared).unwrap().mtime;
+        let dir = d.join("local/h");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::os::unix::fs::symlink(&shared, dir.join(format!("{}.tmp", exe_name()))).unwrap();
+        let fail: fn(&Path, &Path) -> std::io::Result<()> = |_, _| Err(std::io::Error::other("no links here"));
+        let got = fetch_shared_via(&cache, "h", &dir, &mut Sink::Stderr, Some(fail)).unwrap().unwrap();
+        assert!(!is_link(&got) && got.is_file());
+        assert_eq!(std::fs::read(&shared).unwrap(), b"engine bytes");
+        assert_eq!(FileId::of(&shared).unwrap().mtime, mtime);
+        // A link that fails after it is made leaves nothing behind.
+        let dir = d.join("local/h2");
+        std::fs::create_dir_all(dir.join(LINK_STAMP)).unwrap(); // the stamp cannot be written
+        let stamp = Stamp { sha256: String::new(), target: shared.clone(), id: FileId::of(&shared).unwrap() };
+        assert!(link(&shared, &dir, &stamp, |t, l| std::os::unix::fs::symlink(t, l)).is_err());
+        assert!(std::fs::symlink_metadata(dir.join(format!("{}.tmp", exe_name()))).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 
