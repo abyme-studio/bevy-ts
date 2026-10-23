@@ -44,7 +44,7 @@ filter is added by reflect-enums-color. Asset fields not yet covered sit on
 change does not edit the walker.
 
 **Out of scope:** building `Mesh` attributes and indices (script-assets); `AssetServer` load state,
-handle lifecycle and load events (engine-core); assets Bevy does not reflect (`Font`, `Gltf`,
+handle lifecycle and load events (script-assets); assets Bevy does not reflect (`Font`, `Gltf`,
 `AudioSource`, `Shader`, scenes); `ScriptMaterial` assets (`<material kind>` stays as it is);
 binding asset props to signals.
 
