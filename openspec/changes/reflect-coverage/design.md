@@ -119,7 +119,7 @@ What is still missing:
    | Was | Now |
    |---|---|
    | `spawnNative("camera3d", { position, lookAt, projection })` | `commands.spawn(Camera3d, Transform.lookingAt(position, lookAt), Projection.of(projection))` |
-   | `spawnNative("directionalLight", { position, lookAt, illuminance, shadows })` | `commands.spawn(DirectionalLight.of({ illuminance, shadows_enabled: shadows }), Transform.lookingAt(position, lookAt))` |
+   | `spawnNative("directionalLight", { position, lookAt, illuminance, shadows })` | `commands.spawn(DirectionalLight.of({ illuminance, shadow_maps_enabled: shadows }), Transform.lookingAt(position, lookAt))` |
    | `spawnNative("cuboid", { size, color, position })` | an element: `commands.spawn(Transform.of({ translation: position }), <entity><mesh shape="cuboid" size={size} /><material color={color} /></entity>)` or a scene |
 
    Until ecs-queries lands, `spawn(..., <el/>)` mounts the element as a child of the spawned

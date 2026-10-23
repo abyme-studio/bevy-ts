@@ -849,17 +849,36 @@ export function rustState(path, values) {
   return C;
 }
 
-/** A Rust component by type path or short name: usable in `With`/`Without` only. */
-export function rustComponent(name) {
-  const C = class {};
+/** A reflect-tier value's JSON, as `bevy_ts::reflect_value` takes it. */
+const REFLECT_JSON = Symbol("reflect json");
+
+/**
+ * A reflect-tier Rust component by type path or short name (`Projection`): good in
+ * `With`/`Without` and TSX, and spawned or inserted as `Projection.of({ Orthographic: {} })` (its
+ * JSON written over its default) or as the bare class (its default).
+ */
+export function reflectClass(name) {
+  const C = class {
+    constructor(json) {
+      this[REFLECT_JSON] = json;
+    }
+    /** `Projection.of({ Orthographic: {} })`: the value written over the component's default. */
+    static of(json) {
+      return new this(json);
+    }
+  };
   Object.defineProperty(C, "name", { value: name.split("::").pop() });
   C.componentName = name;
   C.source = "rust";
+  C.reflect = true;
   C[KIND] = "component";
   C.id = -1;
   C.layout = null;
   return C;
 }
+
+/** A Rust component by type path or short name: `reflectClass` under its first name. */
+export const rustComponent = reflectClass;
 
 export const Transform = nativeClass("Transform", "bevy_transform::components::transform::Transform", {
   translation: vec3.default([0, 0, 0]),
@@ -869,6 +888,63 @@ export const Transform = nativeClass("Transform", "bevy_transform::components::t
 
 /** Marks an entity `commands.saveWorld` saves by default (docs/saves.md). */
 export const Save = nativeType("bevy_ts::saves::Save", {}, "component", undefined);
+
+/**
+ * A `Transform` at `eye` looking at `target`, `up` as near up as it can be: Bevy's
+ * `Transform::from_translation(eye).looking_at(target, up)`, computed here with no host call.
+ */
+Transform.lookingAt = function lookingAt(eye, target, up = [0, 1, 0]) {
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = (a) => {
+    const l = Math.hypot(a[0], a[1], a[2]);
+    return l > 0 && Number.isFinite(l) ? [a[0] / l, a[1] / l, a[2] / l] : null;
+  };
+  // Bevy's `looking_to`: back is away from the target; a degenerate direction or up keeps -Z and Y.
+  const back = norm(sub(eye, target)) || [0, 0, 1];
+  const upDir = norm(up) || [0, 1, 0];
+  const right = norm(cross(upDir, back)) || orthonormal(upDir);
+  const realUp = cross(back, right);
+  return Transform.of({ translation: [eye[0], eye[1], eye[2]], rotation: quatFromAxes(right, realUp, back) });
+};
+
+/** glam's `Vec3::any_orthonormal_vector`. */
+function orthonormal(v) {
+  // `signum`: -0 is negative.
+  const sign = v[2] < 0 || Object.is(v[2], -0) ? -1 : 1;
+  const a = -1 / (sign + v[2]);
+  const b = v[0] * v[1] * a;
+  return [b, sign + v[1] * v[1] * a, -v[1]];
+}
+
+/** glam's `Quat::from_rotation_axes` (columns x, y, z), to match Bevy lane for lane. */
+function quatFromAxes(x, y, z) {
+  const [m00, m01, m02] = x;
+  const [m10, m11, m12] = y;
+  const [m20, m21, m22] = z;
+  if (m22 <= 0) {
+    const d = m11 - m00;
+    const o = 1 - m22;
+    if (d <= 0) {
+      const f = o - d;
+      const inv = 0.5 / Math.sqrt(f);
+      return [f * inv, (m01 + m10) * inv, (m02 + m20) * inv, (m12 - m21) * inv];
+    }
+    const f = o + d;
+    const inv = 0.5 / Math.sqrt(f);
+    return [(m01 + m10) * inv, f * inv, (m12 + m21) * inv, (m20 - m02) * inv];
+  }
+  const s = m11 + m00;
+  const o = 1 + m22;
+  if (s <= 0) {
+    const f = o - s;
+    const inv = 0.5 / Math.sqrt(f);
+    return [(m20 + m02) * inv, (m12 + m21) * inv, f * inv, (m01 - m10) * inv];
+  }
+  const f = o + s;
+  const inv = 0.5 / Math.sqrt(f);
+  return [(m12 - m21) * inv, (m20 - m02) * inv, (m01 - m10) * inv, f * inv];
+}
 
 // Bevy's clocks, read-only views built per run (docs/time.md). Every clock's fields first, then
 // its own; Rust lays them out and fills them.
@@ -2627,7 +2703,7 @@ function makeCtx() {
 
 const OP_SPAWN = 1, OP_INSERT = 2, OP_DESPAWN = 3, OP_REMOVE = 4, OP_SET_PARENT = 5, OP_SPAWN_NATIVE = 6, OP_PLUGIN = 7;
 const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12, OP_OBSERVE = 13, OP_STATE_SCOPED = 14;
-const OP_SAVE_WORLD = 15, OP_LOAD_WORLD = 16;
+const OP_SAVE_WORLD = 15, OP_LOAD_WORLD = 16, OP_INSERT_REFLECT = 17;
 
 // A save's name never leaves the save folder: no separator, no dot, no drive (docs/saves.md).
 const SAVE_NAME = /^[A-Za-z0-9_-]{1,64}$/;
@@ -2661,6 +2737,8 @@ function saveEntities(x) {
   if (!Array.isArray(x) || x.some((e) => typeof e !== "number")) throw new TypeError("saveWorld: entities is a query or an array of entities");
   return x;
 }
+/** `OP_INSERT_REFLECT`'s modes: a whole component over its default, or fields over a just-inserted one. */
+const REFLECT_INSERT = 0, REFLECT_PATCH = 1;
 
 class EntityCommands {
   constructor(commands, id) {
@@ -2671,7 +2749,7 @@ class EntityCommands {
     const els = parts.filter(isElement);
     if (els.length) for (const el of els) this.commands.mount(el, { parent: this.id });
     const comps = parts.filter((p) => !isElement(p) && !isScoped(p));
-    if (comps.length) this.commands.op(encodeComponentsOp(OP_INSERT, this.id, comps));
+    if (comps.length) for (const op of encodeComponentsOps(OP_INSERT, this.id, comps)) this.commands.op(op);
     for (const p of parts.filter(isScoped)) this.commands.scoped(this.id, p);
     return this;
   }
@@ -2780,7 +2858,7 @@ class Commands {
       return undefined;
     }
     const e = this.alloc();
-    this.op(encodeComponentsOp(OP_SPAWN, e, parts.filter((p) => !isElement(p) && !isScoped(p))));
+    for (const op of encodeComponentsOps(OP_SPAWN, e, parts.filter((p) => !isElement(p) && !isScoped(p)))) this.op(op);
     for (const p of parts.filter(isScoped)) this.scoped(e, p);
     for (const el of parts.filter(isElement)) this.mount(el, { parent: e });
     return e;
@@ -2932,7 +3010,7 @@ class Commands {
     } else w.entity(parent);
     this.op(w.bytes());
   }
-  /** Spawns through a native Rust recipe (`camera3d`, `directionalLight`, `cuboid`). */
+  /** Spawns through a native Rust recipe a plugin registers (`plugin_api::add_ts_native_recipe`). */
   spawnNative(recipe, params) {
     const e = this.alloc();
     const w = new Writer();
@@ -3025,21 +3103,63 @@ function idOf(C) {
   return C.id;
 }
 
-function encodeComponentsOp(op, e, parts) {
-  const w = new Writer();
-  w.u8(op);
-  w.entity(e);
-  w.u16(parts.length);
+/**
+ * A spawn or insert as ops: one `op` with every layout value's bytes, then an
+ * `OP_INSERT_REFLECT` per reflect-tier value and per layout value that sets holes
+ * (`DirectionalLight.of({ illuminance: 8000, color })`: `illuminance` in the bytes, `color` a
+ * patch written through reflection right after).
+ */
+function encodeComponentsOps(op, e, parts) {
+  const layout = [];
+  const reflected = [];
   for (const part of parts) {
     // A class alone means its defaults.
     const C = typeof part === "function" ? part : part && part.constructor;
     const values = typeof part === "function" ? {} : part;
     if (!C || !C.componentName || (C[KIND] && C[KIND] !== "component")) throw new TypeError(`spawn/insert: ${String(part)} is not a component (Health.of({ hp: 3 }))`);
-    const bytes = encodeWithLayout(C, C.layout, values);
-    w.u32(idOf(C));
-    w.u32(bytes.length);
-    w.raw(bytes);
+    if (C.reflect) {
+      reflected.push(encodeReflectOp(e, C, REFLECT_INSERT, typeof part === "function" ? undefined : part[REFLECT_JSON]));
+      continue;
+    }
+    let own = values;
+    if (C.source === "rust" && C.layout && values) {
+      // Keys the layout has no field for are holes, written through reflection.
+      const holes = Object.keys(values).filter((k) => !C.layout.fields.some((f) => f.name === k));
+      if (holes.length) {
+        own = Object.fromEntries(Object.entries(values).filter(([k]) => !holes.includes(k)));
+        reflected.push(encodeReflectOp(e, C, REFLECT_PATCH, Object.fromEntries(holes.map((k) => [k, values[k]]))));
+      }
+    }
+    layout.push([C, encodeWithLayout(C, C.layout, own)]);
   }
+  const ops = [];
+  if (layout.length || op === OP_SPAWN) {
+    const w = new Writer();
+    w.u8(op);
+    w.entity(e);
+    w.u16(layout.length);
+    for (const [C, bytes] of layout) {
+      w.u32(idOf(C));
+      w.u32(bytes.length);
+      w.raw(bytes);
+    }
+    ops.push(w.bytes());
+  }
+  return ops.concat(reflected);
+}
+
+/** `OP_INSERT_REFLECT`: the entity, the mode, the type's name and its JSON (empty for its default). */
+function encodeReflectOp(e, C, mode, json) {
+  const w = new Writer();
+  w.u8(OP_INSERT_REFLECT);
+  w.entity(e);
+  w.u8(mode);
+  const name = encoder.encode(C.componentName);
+  w.u16(name.length);
+  w.raw(name);
+  const body = json === undefined ? new Uint8Array(0) : encoder.encode(JSON.stringify(json));
+  w.u32(body.length);
+  w.raw(body);
   return w.bytes();
 }
 

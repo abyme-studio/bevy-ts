@@ -20,7 +20,7 @@ export function spawn(commands: Commands) {
   );
   for (let i = 0; i < C.n; i++) {
     const at: [number, number, number] = [(i % 100) - 50, 0, Math.floor(i / 100) % 100 - 50];
-    if (i < DRAWN) commands.spawnNative("cuboid", { size: [0.5, 0.5, 0.5], color: "#9aa4b0", position: at });
+    if (i < DRAWN) commands.spawn(<entity><Transform translation={at} /><mesh shape="cuboid" size={[0.5, 0.5, 0.5]} /><material color="#9aa4b0" /></entity>);
     else commands.spawn(<entity><Transform translation={at} /><Thing /></entity>);
   }
 }

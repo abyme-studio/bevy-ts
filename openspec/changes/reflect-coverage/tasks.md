@@ -16,14 +16,14 @@
 
 ## 2. Stage 2: scripts write; recipes go
 
-- [ ] 2.1 Rebase on main at or after 0dc7cc1, ambient-light-script's default-bytes encode (`ResolvedComponent.defaults` in `manifest.rs` and `generation.rs`; `encodeWithLayout` in `core.js` starts from `C.defaults`)
-- [ ] 2.2 Generated reflect-tier classes become `reflectClass(name)` with `.of(json)` and default use; filters keep working
-- [ ] 2.3 `OP_INSERT_REFLECT` in `core.js` and `commands.rs`; `spawn`/`insert` emit it; Rust writes over `ReflectDefault`/`ReflectFromWorld` and inserts; a failing value fails only its command, naming type and field
-- [ ] 2.4 Layout-tier `.of` with hole fields: bytes from `encodeWithLayout`, holes as a reflect patch in the same command
-- [ ] 2.5 `Transform.lookingAt(eye, target, up?)` in the JS runtime and `index.d.ts`; test against Bevy's `looking_at`
-- [ ] 2.6 Delete `crates/bevy-ts/src/recipes.rs` and its registration; `spawnNative` of a removed name fails naming the replacement; drop the three `spawnNative` overloads from `index.d.ts`
-- [ ] 2.7 Migrate `examples/cube/src/game.ts`, `examples/arena/src/game.tsx`, the CLI tests calling `camera3d` (`material_errors.rs`, `play_stop.rs`, `tsx.rs`, `viewport_edit.rs`, `viewport_walk.rs`, `viewport_level.rs`) and `docs/materials.md`; grep for `spawnNative("` finds no built-in recipe
-- [ ] 2.8 `crates/bevy-ts-cli/tests/reflect_scripts.rs`: the orthographic camera, warm sun and removed-recipe scenarios
+- [x] 2.1 Rebase on main at or after 0dc7cc1, ambient-light-script's default-bytes encode (`ResolvedComponent.defaults` in `manifest.rs` and `generation.rs`; `encodeWithLayout` in `core.js` starts from `C.defaults`)
+- [x] 2.2 Generated reflect-tier classes become `reflectClass(name)` with `.of(json)` and default use; filters keep working
+- [x] 2.3 `OP_INSERT_REFLECT` in `core.js` and `commands.rs`; `spawn`/`insert` emit it; Rust writes over `ReflectDefault`/`ReflectFromWorld` and inserts; a failing value fails only its command, naming type and field
+- [x] 2.4 Layout-tier `.of` with hole fields: bytes from `encodeWithLayout`, holes as a reflect patch in the same command
+- [x] 2.5 `Transform.lookingAt(eye, target, up?)` in the JS runtime and `index.d.ts`; test against Bevy's `looking_at`
+- [x] 2.6 Delete `crates/bevy-ts/src/recipes.rs` and its registration; `spawnNative` of a removed name fails naming the replacement; drop the three `spawnNative` overloads from `index.d.ts`
+- [x] 2.7 Migrate `examples/cube/src/game.ts`, `examples/arena/src/game.tsx`, the CLI tests calling `camera3d` (`material_errors.rs`, `play_stop.rs`, `tsx.rs`, `viewport_edit.rs`, `viewport_walk.rs`, `viewport_level.rs`) and `docs/materials.md`; grep for `spawnNative("` finds no built-in recipe
+- [x] 2.8 `crates/bevy-ts-cli/tests/reflect_scripts.rs`: the orthographic camera, warm sun and removed-recipe scenarios
 
 ## 3. Stage 3: scripts read (operator's go first)
 
