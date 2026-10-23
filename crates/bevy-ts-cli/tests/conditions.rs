@@ -11,12 +11,13 @@ use common::*;
 use serde_json::json;
 use std::time::Duration;
 
-const HEAD: &str = r#"import { PostUpdate, anyComponentRemoved, anyMatchFilter, anyWithComponent, app, Changed, Component, conditionChanged, conditionChangedTo, inState, nativeCondition, not, resourceAdded, resourceChanged, resourceChangedOrRemoved, resourceEquals, resourceExists, resourceExistsAndChanged, resourceExistsAndEquals, resourceRemoved, runOnce, Resource, States, systems, u32, Update, With, Without } from "bevy-ts";
-import type { Commands, NextState, ResMut } from "bevy-ts";
+const HEAD: &str = r#"import { Message, onMessage, PostUpdate, anyComponentRemoved, anyMatchFilter, anyWithComponent, app, Changed, Component, conditionChanged, conditionChangedTo, inState, nativeCondition, not, resourceAdded, resourceChanged, resourceChangedOrRemoved, resourceEquals, resourceExists, resourceExistsAndChanged, resourceExistsAndEquals, resourceRemoved, runOnce, Resource, States, systems, u32, Update, With, Without } from "bevy-ts";
+import type { Commands, MessageReader, MessageWriter, NextState, ResMut } from "bevy-ts";
 export class Score extends Resource { static path = "game::Score"; declare value: u32 }
 export class Boss extends Resource { static path = "game::Boss"; declare hp: u32 }
 export class Enemy extends Component { static path = "game::Enemy" }
 export class Game extends States("Menu", "Playing") { static path = "game::Game" }
+export class Ping extends Message { static path = "game::Ping"; declare n: u32 }
 "#;
 
 fn src(body: &str) -> String {
@@ -208,7 +209,7 @@ fn a_factory_error_fails_the_load_with_the_call() {
     let e = r.errors.iter().find(|e| e.message.contains("time:on-timer")).unwrap_or_else(|| panic!("{:?}", r.errors));
     assert!(e.message.contains("on-timer takes"), "{e:?}");
     let at = e.location.as_ref().unwrap();
-    assert!(at.file.ends_with("game.ts") && at.line == 8, "{at:?}");
+    assert!(at.file.ends_with("game.ts") && at.line as usize == HEAD.lines().count() + 2, "{at:?}");
 }
 
 #[test]
@@ -230,4 +231,17 @@ app.insertResource(Boss.of({ hp: 1 })).addSystems(Update, systems(added).runIf(r
     remove_res(&mut app, "game::Boss");
     updates(&mut app, 2);
     assert_eq!(said(&mut app), ["added", "either", "removed", "either"]);
+}
+
+#[test]
+fn a_groups_on_message_has_its_own_cursor() {
+    let body = r#"export function send(w: MessageWriter<Ping>, s: ResMut<Score>) { if (s.value++ === 0) w.write(Ping.of({ n: 1 })); }
+export function a(r: MessageReader<Ping>) { console.log(`a${r.len}`); }
+export function b() { console.log("b"); }
+app.addMessage(Ping).insertResource(Score.of({ value: 0 })).addSystems(Update, send, systems(a, b).runIf(onMessage(Ping)));
+"#;
+    let (_, mut app) = load("grouponmessage", &src(body));
+    updates(&mut app, 4);
+    // One message: the group runs in the one stage run after it was written, not while it stays buffered.
+    assert_eq!(said(&mut app), ["a1", "b"]);
 }

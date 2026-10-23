@@ -155,6 +155,7 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<schedules::MadeStages>()
             .init_resource::<schedules::DeferredEdits>()
             .init_resource::<schedules::PendingRuns>()
+            .init_resource::<schedules::OrderState>()
             .init_resource::<messages::TsPayloads>()
             .init_resource::<observers::ObserverQueue>()
             .init_resource::<host::HostParams>()
@@ -195,6 +196,8 @@ impl Plugin for BevyTsPlugin {
         // when that schedule ends.
         app.add_systems(First, schedules::apply_deferred_edits.before(runtime::advance_clock));
         app.add_systems(Last, schedules::apply_deferred_edits);
+        // `Main` holds the schedule orders while it runs: a generation's order edits wait for it.
+        app.add_systems(Main, schedules::apply_pending_order.after(Main::run_main));
         app.configure_sets(PostUpdate, BevyTsSet::PostUpdate.before(bevy::transform::TransformSystems::Propagate));
         app.add_systems(PreUpdate, stage_pre_update.in_set(BevyTsSet::PreUpdate))
             .add_systems(Update, stage_update.in_set(BevyTsSet::Update))

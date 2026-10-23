@@ -161,8 +161,6 @@ pub struct MadeStages {
     pub schedules: BTreeSet<String>,
     /// Custom schedules bevy-ts created in `Schedules`.
     pub created: HashSet<InternedScheduleLabel>,
-    /// Labels bevy-ts placed in a schedule order, and where.
-    pub ordered: BTreeMap<String, ScheduleOrderDecl>,
 }
 
 /// A schedule edit that waits because its schedule is running (a generation applied in `First`
@@ -269,93 +267,173 @@ pub(crate) fn ensure_stages(world: &mut World, init: &[String]) {
     }
 }
 
-/// Checks a generation's schedule order before it commits: every label is inserted relative to
-/// a schedule that is in that order.
-pub(crate) fn check_order(world: &World, decls: &[ScheduleOrderDecl]) -> Vec<ScriptError> {
-    let mut errors = Vec::new();
-    let mut seen = HashSet::new();
-    for d in decls {
-        let anchor = d.after.as_deref().or(d.before.as_deref()).unwrap_or("");
-        if !seen.insert(&d.label) {
-            errors.push(ScriptError::at(format!("schedule {} is inserted into a schedule order twice", d.label), d.location.clone()));
-            continue;
-        }
-        let labels = order_labels(world, d.order);
-        let pending: Vec<&String> = decls.iter().filter(|o| o.order == d.order && o.label != d.label).map(|o| &o.label).collect();
-        let known = resolve(world, anchor).is_some_and(|l| labels.contains(&l)) || pending.iter().any(|p| p.as_str() == anchor);
-        if !known {
-            let which = match d.order {
-                ScheduleOrder::Main => "MainScheduleOrder",
-                ScheduleOrder::Fixed => "FixedMainScheduleOrder",
-                ScheduleOrder::Startup => "the startup schedules",
-            };
-            errors.push(ScriptError::at(format!("schedule {} is inserted relative to {anchor}, which is not in {which}", d.label), d.location.clone()));
+/// Bevy's three schedule orders, as label lists.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Orders {
+    pub main: Vec<InternedScheduleLabel>,
+    pub startup: Vec<InternedScheduleLabel>,
+    pub fixed: Vec<InternedScheduleLabel>,
+}
+
+impl Orders {
+    fn list(&mut self, order: ScheduleOrder) -> &mut Vec<InternedScheduleLabel> {
+        match order {
+            ScheduleOrder::Main => &mut self.main,
+            ScheduleOrder::Startup => &mut self.startup,
+            ScheduleOrder::Fixed => &mut self.fixed,
         }
     }
-    errors
+
+    fn without(mut self, labels: &[InternedScheduleLabel]) -> Self {
+        for l in [&mut self.main, &mut self.startup, &mut self.fixed] {
+            l.retain(|x| !labels.contains(x));
+        }
+        self
+    }
+}
+
+/// The schedule orders bevy-ts places TS labels in. `Main` holds `MainScheduleOrder` out of the
+/// world for the whole frame, so a generation applied inside a frame (the watcher's, in `First`;
+/// BRP's, in `RemoteLast`) cannot edit it: its orders wait in `pending` for
+/// [`apply_pending_order`], which runs in `Main` after `run_main`.
+#[derive(Resource, Default, Debug)]
+pub struct OrderState {
+    /// The orders without bevy-ts's labels, as last seen.
+    base: Option<Orders>,
+    /// The labels bevy-ts placed.
+    placed: Vec<InternedScheduleLabel>,
+    /// A committed generation's orders and labels, waiting for `MainScheduleOrder`.
+    pending: Option<(Orders, Vec<InternedScheduleLabel>)>,
+}
+
+/// The orders, when `Main` is not holding them.
+fn read_orders(world: &World) -> Option<Orders> {
+    let main = world.get_resource::<MainScheduleOrder>()?;
+    let fixed = world.get_resource::<FixedMainScheduleOrder>().map(|f| f.labels.clone()).unwrap_or_default();
+    Some(Orders { main: main.labels.clone(), startup: main.startup_labels.clone(), fixed })
+}
+
+/// The orders without bevy-ts's labels: read now when it can, else as last seen.
+fn base(world: &World) -> Orders {
+    let state = world.get_resource::<OrderState>();
+    let placed = state.map(|s| s.placed.clone()).unwrap_or_default();
+    match read_orders(world) {
+        Some(o) => o.without(&placed),
+        None => state.and_then(|s| s.base.clone()).unwrap_or_default(),
+    }
 }
 
 /// A schedule order's name in TS (`Update`, `game::Waves`, `net:tick`) as a label.
-fn resolve(world: &World, name: &str) -> Option<InternedScheduleLabel> {
-    builtin(name).or_else(|| Some(label_of(world, name)))
+fn resolve(world: &World, name: &str) -> InternedScheduleLabel {
+    builtin(name).unwrap_or_else(|| label_of(world, name))
 }
 
-fn order_labels(world: &World, order: ScheduleOrder) -> Vec<InternedScheduleLabel> {
-    match order {
-        ScheduleOrder::Main => world.get_resource::<MainScheduleOrder>().map(|o| o.labels.clone()).unwrap_or_default(),
-        ScheduleOrder::Startup => world.get_resource::<MainScheduleOrder>().map(|o| o.startup_labels.clone()).unwrap_or_default(),
-        ScheduleOrder::Fixed => world.get_resource::<FixedMainScheduleOrder>().map(|o| o.labels.clone()).unwrap_or_default(),
-    }
-}
-
-fn order_mut(world: &mut World, order: ScheduleOrder, f: impl FnOnce(&mut Vec<InternedScheduleLabel>)) {
-    match order {
-        ScheduleOrder::Main => f(&mut world.get_resource_or_init::<MainScheduleOrder>().labels),
-        ScheduleOrder::Startup => f(&mut world.get_resource_or_init::<MainScheduleOrder>().startup_labels),
-        ScheduleOrder::Fixed => f(&mut world.get_resource_or_init::<FixedMainScheduleOrder>().labels),
-    }
-}
-
-/// Reconciles schedule orders with a committed generation: each declared label is removed and
-/// inserted at its declared place; a label a later generation no longer inserts leaves its order.
-pub(crate) fn reconcile_order(world: &mut World, decls: &[ScheduleOrderDecl]) {
-    let previous = std::mem::take(&mut world.get_resource_or_init::<MadeStages>().ordered);
-    for (name, d) in &previous {
-        if decls.iter().all(|x| &x.label != name) {
-            let label = label_of(world, name);
-            order_mut(world, d.order, |l| l.retain(|x| *x != label));
+/// The orders a generation's declarations make: bevy-ts's labels from the last generation
+/// removed, then each declared label inserted at its anchor, an anchor that is itself declared
+/// placed first. Fails naming every label it cannot place.
+fn plan(world: &World, decls: &[ScheduleOrderDecl]) -> Result<Orders, Vec<ScriptError>> {
+    let mut orders = base(world);
+    let mut errors = Vec::new();
+    let mut seen = HashSet::new();
+    let mut todo = Vec::new();
+    for d in decls {
+        if seen.insert(&d.label) {
+            todo.push(d);
+        } else {
+            errors.push(ScriptError::at(format!("schedule {} is inserted into a schedule order twice", d.label), d.location.clone()));
         }
     }
-    // Declared order: an anchor that is itself declared is placed first.
-    let mut todo: Vec<&ScheduleOrderDecl> = decls.iter().collect();
-    for _ in 0..=decls.len() {
-        let mut rest = Vec::new();
-        for d in todo {
-            if previous.get(&d.label) == Some(d) && order_labels(world, d.order).contains(&label_of(world, &d.label)) {
-                continue;
-            }
-            let label = label_of(world, &d.label);
-            init_schedule(world, &d.label);
-            let anchor = d.after.as_deref().or(d.before.as_deref()).and_then(|a| resolve(world, a));
-            let Some(anchor) = anchor else { continue };
-            order_mut(world, d.order, |l| l.retain(|x| *x != label));
-            let mut placed = false;
-            order_mut(world, d.order, |l| {
-                if let Some(i) = l.iter().position(|x| *x == anchor) {
-                    l.insert(if d.after.is_some() { i + 1 } else { i }, label);
-                    placed = true;
-                }
-            });
-            if !placed {
-                rest.push(d);
-            }
-        }
-        if rest.is_empty() {
+    loop {
+        let before = todo.len();
+        todo.retain(|d| {
+            let label = resolve(world, &d.label);
+            let anchor = resolve(world, d.after.as_deref().or(d.before.as_deref()).unwrap_or(""));
+            let list = orders.list(d.order);
+            let Some(i) = list.iter().position(|x| *x == anchor) else { return true };
+            list.insert(if d.after.is_some() { i + 1 } else { i }, label);
+            false
+        });
+        if todo.is_empty() || todo.len() == before {
             break;
         }
-        todo = rest;
     }
-    world.resource_mut::<MadeStages>().ordered = decls.iter().map(|d| (d.label.clone(), d.clone())).collect();
+    for d in todo {
+        let which = match d.order {
+            ScheduleOrder::Main => "MainScheduleOrder",
+            ScheduleOrder::Fixed => "FixedMainScheduleOrder",
+            ScheduleOrder::Startup => "the startup schedules",
+        };
+        let anchor = d.after.as_deref().or(d.before.as_deref()).unwrap_or("");
+        errors.push(ScriptError::at(format!("schedule {} is inserted relative to {anchor}, which is not in {which}", d.label), d.location.clone()));
+    }
+    if errors.is_empty() { Ok(orders) } else { Err(errors) }
+}
+
+/// Checks a generation's schedule order before it commits.
+pub(crate) fn check_order(world: &World, decls: &[ScheduleOrderDecl]) -> Vec<ScriptError> {
+    if decls.is_empty() {
+        return Vec::new();
+    }
+    plan(world, decls).err().unwrap_or_default()
+}
+
+fn write_orders(main: &mut MainScheduleOrder, fixed: Option<&mut FixedMainScheduleOrder>, orders: Orders) {
+    if main.labels != orders.main {
+        main.labels = orders.main;
+    }
+    if main.startup_labels != orders.startup {
+        main.startup_labels = orders.startup;
+    }
+    if let Some(f) = fixed
+        && f.labels != orders.fixed
+    {
+        f.labels = orders.fixed;
+    }
+}
+
+/// Places a committed generation's labels in the schedule orders, now or, while `Main` holds
+/// them, once it returns. A label the generation no longer inserts leaves its order.
+pub(crate) fn reconcile_order(world: &mut World, decls: &[ScheduleOrderDecl]) {
+    let previous = world.get_resource_or_init::<OrderState>().placed.clone();
+    if decls.is_empty() && previous.is_empty() {
+        return;
+    }
+    // Checked before the commit: it places every label.
+    let Ok(orders) = plan(world, decls) else { return };
+    for d in decls {
+        init_schedule(world, &d.label);
+    }
+    let placed: Vec<InternedScheduleLabel> = decls.iter().map(|d| resolve(world, &d.label)).collect();
+    let base = orders.clone().without(&placed);
+    world.resource_mut::<OrderState>().base = Some(base);
+    if world.contains_resource::<MainScheduleOrder>() {
+        world.resource_mut::<OrderState>().placed = placed;
+        world.resource_scope(|world, mut main: Mut<MainScheduleOrder>| {
+            write_orders(&mut main, world.get_resource_mut::<FixedMainScheduleOrder>().as_deref_mut(), orders);
+        });
+    } else {
+        world.resource_mut::<OrderState>().pending = Some((orders, placed));
+    }
+}
+
+/// `Main`, after `run_main`: applies the orders a generation committed during the frame, and
+/// keeps the last-seen orders current.
+pub(crate) fn apply_pending_order(mut state: ResMut<OrderState>, main: Option<ResMut<MainScheduleOrder>>, fixed: Option<ResMut<FixedMainScheduleOrder>>) {
+    let Some(mut main) = main else { return };
+    let mut fixed = fixed;
+    if let Some((orders, placed)) = state.pending.take() {
+        state.placed = placed;
+        write_orders(&mut main, fixed.as_deref_mut(), orders);
+    }
+    if main.is_changed() || fixed.as_ref().is_some_and(|f| f.is_changed()) {
+        let orders = Orders {
+            main: main.labels.clone(),
+            startup: main.startup_labels.clone(),
+            fixed: fixed.as_ref().map(|f| f.labels.clone()).unwrap_or_default(),
+        };
+        let placed = state.placed.clone();
+        state.base = Some(orders.without(&placed));
+    }
 }
 
 /// What a `runSchedule` or `runSystem` names.
@@ -412,7 +490,7 @@ fn run_pending_at(world: &mut World, depth: u32) {
                 RunTarget::Schedule(name) => {
                     let label = label_of(world, &name);
                     if let Err(e) = world.try_run_schedule(label) {
-                        log_error(world, format!("runSchedule({name}) from {caller}: {e}; a schedule cannot run inside itself"));
+                        log_error(world, format!("runSchedule({name}) from {caller}: {e}; it is running already (a schedule cannot run inside itself) or was never created (app.initSchedule)"));
                     }
                 }
                 RunTarget::System { identity, input } => crate::systems::run_one_shot(world, &identity, input.as_deref(), &caller),
@@ -433,7 +511,7 @@ fn describe(t: &RunTarget) -> String {
     }
 }
 
-fn log_error(world: &mut World, message: String) {
+pub(crate) fn log_error(world: &mut World, message: String) {
     let generation = crate::runtime::current_generation(world);
     world.resource_mut::<crate::log::ScriptLog>().push(crate::log::LogLevel::Error, message, None, generation);
 }

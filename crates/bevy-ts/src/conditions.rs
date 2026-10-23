@@ -7,7 +7,6 @@
 use crate::backend::SourceLocation;
 use crate::layout::{ComponentLayout, NativeLayouts};
 use crate::manifest::{CombineOp, ComponentRef, ComponentSource, ConditionDecl, FilterDecl};
-use crate::memory::SystemMemory;
 use crate::messages::TsPayloads;
 use crate::systems::{TsEncode, TsLookup, rust_component_by_name};
 use bevy::ecs::change_detection::Tick;
@@ -23,8 +22,8 @@ use std::sync::{Arc, Mutex};
 /// A run condition, compiled for Rust. `slot` keys a stateful node's memory.
 pub enum Condition {
     InState { index: usize, value: u32 },
-    /// Unread messages for the gated system (its own cursor).
-    OnMessage { index: usize, message: String, identity: String },
+    /// Messages written since this condition last ran: its own cursor, as Bevy's `on_message`.
+    OnMessage { index: usize, slot: String },
     RunOnce { slot: String },
     ResourceExists { id: Option<ComponentId> },
     Resource { kind: ResourceKind, id: Option<ComponentId>, slot: String },
@@ -58,6 +57,8 @@ pub struct ConditionState {
     /// `conditionChanged`: the inner condition's previous value.
     pub previous: bool,
     pub removals: MessageCursor<RemovedComponentEntity>,
+    /// `onMessage`: the next message sequence number it has not seen.
+    pub messages: u64,
 }
 
 /// Every stateful condition's memory, by `<config>@<path>`. Survives reloads; a restart clears it.
@@ -141,8 +142,6 @@ pub struct Compile<'a> {
     pub encode: &'a TsEncode<'a>,
     /// The gated config: a system's identity or a group's id.
     pub config: &'a str,
-    /// The gated system, for `onMessage`'s cursor.
-    pub identity: &'a str,
     /// Native condition instances this generation uses, by key.
     pub natives: &'a mut HashSet<String>,
 }
@@ -212,7 +211,7 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
         }
         ConditionDecl::OnMessage { message } => {
             let index = world.resource::<TsPayloads>().message(message).ok_or_else(|| format!("no message {message}"))?;
-            Condition::OnMessage { index, message: message.clone(), identity: c.identity.to_string() }
+            Condition::OnMessage { index, slot: slot() }
         }
         ConditionDecl::RunOnce => Condition::RunOnce { slot: slot() },
         ConditionDecl::ResourceExists { resource } => Condition::ResourceExists { id: resource_id(world, resource, c.ts) },
@@ -295,9 +294,10 @@ fn state<'w>(world: &'w mut World, slot: &str) -> &'w mut ConditionState {
 pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
     match c {
         Condition::InState { index, value } => world.resource::<TsPayloads>().states.get(*index).is_some_and(|s| s.current == Some(*value)),
-        Condition::OnMessage { index, message, identity } => {
-            let cursor = world.resource::<SystemMemory>().0.get(identity.as_str()).and_then(|m| m.cursors.get(message.as_str())).copied().unwrap_or(0);
-            world.resource::<TsPayloads>().messages.get(*index).is_some_and(|q| q.has_unread(cursor))
+        Condition::OnMessage { index, slot } => {
+            let Some(next) = world.resource::<TsPayloads>().messages.get(*index).map(|q| q.next_seq) else { return false };
+            let cursor = std::mem::replace(&mut state(world, slot).messages, next);
+            world.resource::<TsPayloads>().messages[*index].has_unread(cursor)
         }
         Condition::RunOnce { slot } => !std::mem::replace(&mut state(world, slot).flag, true),
         Condition::ResourceExists { id } => id.is_some_and(|id| world.resource_entities().get(id).is_some()),
@@ -344,14 +344,11 @@ pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
             if changed.is_empty() && added.is_empty() {
                 return query.iter_manual(world).next().is_some();
             }
-            let tables = &world.storages().tables;
-            query.matched_tables().any(|table_id| {
-                let Some(table) = tables.get(table_id) else { return false };
-                let ch: Vec<_> = changed.iter().filter_map(|id| table.get_changed_ticks_slice_for(*id)).collect();
-                let ad: Vec<_> = added.iter().filter_map(|id| table.get_added_ticks_slice_for(*id)).collect();
-                (0..table.entity_count() as usize)
-                    // SAFETY: an exclusive caller; ticks are plain u32 cells.
-                    .any(|row| ch.iter().chain(ad.iter()).all(|t| unsafe { *t[row].get() }.is_newer_than(last_run, this_run)))
+            // Per entity, so sparse-set components and the query's `Without` are honoured.
+            query.iter_manual(world).any(|e| {
+                let Ok(row) = world.get_entity(e) else { return false };
+                changed.iter().all(|id| row.get_change_ticks_by_id(*id).is_some_and(|t| t.is_changed(last_run, this_run)))
+                    && added.iter().all(|id| row.get_change_ticks_by_id(*id).is_some_and(|t| t.is_added(last_run, this_run)))
             })
         }
         Condition::Changed { condition, to, slot } => {

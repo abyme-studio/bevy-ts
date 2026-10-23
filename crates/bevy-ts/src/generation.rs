@@ -188,6 +188,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         }
         world.insert_resource(crate::memory::SystemMemory::default());
         world.insert_resource(crate::conditions::ConditionMemory::default());
+        world.insert_resource(crate::conditions::NativeConditions::default());
         world.resource_mut::<crate::messages::TsPayloads>().reset();
         let handlers = world.resource::<RestartHandlers>().clone();
         for h in handlers.0.iter() {

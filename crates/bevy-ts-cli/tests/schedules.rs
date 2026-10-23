@@ -125,6 +125,57 @@ fn a_custom_schedule_after_update_moves_on_reload() {
     assert_eq!(order.iter().filter(|l| **l == waves).count(), 1);
 }
 
+/// Saves `src` and applies it as the watcher does: compiled, sent, applied in `First` inside a frame.
+fn save_and_apply_in_frame(app: &mut App, dir: &std::path::Path, src: &str) {
+    use bevy_ts::generation::{DevChannel, DevEvent, ModuleSource};
+    write(dir, "game.ts", src);
+    let (tx, channel) = DevChannel::new();
+    app.insert_resource(channel);
+    let set = bevy_ts_cli::compile::Compiler::new(dir.join("game.ts"), true).unwrap().compile();
+    tx.send(DevEvent::Compiled(set, std::time::Duration::ZERO)).unwrap();
+    app.update();
+    let errors: Vec<String> = messages(app).into_iter().filter(|m| m.contains("failed")).collect();
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
+fn a_schedule_moved_by_a_saved_file_moves_from_the_next_frame() {
+    let body = |place: &str| format!("export function spawnWave() {{ console.log('wave'); }}\nexport function tick() {{ console.log('update'); }}\napp.{place}(Update, Waves).addSystems(Waves, spawnWave).addSystems(Update, tick);\n");
+    let (dir, mut app) = load("wavessaved", &src(&body("insertScheduleAfter")));
+    updates(&mut app, 2);
+    // The save is applied inside a frame, while `Main` holds `MainScheduleOrder`.
+    save_and_apply_in_frame(&mut app, &dir, &src(&body("insertScheduleBefore")));
+    let n = said(&mut app).len();
+    updates(&mut app, 1);
+    assert_eq!(said(&mut app)[n..], ["wave", "update"]);
+    let waves = TsSchedule::new("game::Waves").intern();
+    let order = app.world().resource::<bevy::app::MainScheduleOrder>().labels.clone();
+    assert_eq!(order.iter().filter(|l| **l == waves).count(), 1);
+    assert_eq!(order[order.iter().position(|l| *l == waves).unwrap() + 1], Update.intern());
+}
+
+#[test]
+fn a_schedule_moved_to_the_fixed_order_leaves_the_main_one() {
+    let (dir, mut app) = load("wavesfixed", &src("export function w() {}\napp.insertScheduleAfter(Update, Waves).addSystems(Waves, w);\n"));
+    app.update();
+    save_and_apply_in_frame(&mut app, &dir, &src("export function w() {}\napp.insertFixedScheduleAfter(FixedUpdate, Waves).addSystems(Waves, w);\n"));
+    app.update();
+    let waves = TsSchedule::new("game::Waves").intern();
+    assert!(!app.world().resource::<bevy::app::MainScheduleOrder>().labels.contains(&waves));
+    let fixed = app.world().resource::<bevy::app::FixedMainScheduleOrder>().labels.clone();
+    assert_eq!(fixed[fixed.iter().position(|l| *l == FixedUpdate.intern()).unwrap() + 1], waves);
+}
+
+#[test]
+fn an_anchor_the_new_generation_drops_fails_the_load() {
+    let two = "export class Boss extends ScheduleLabel { static path = \"game::Boss\" }\napp.insertScheduleAfter(Update, Waves).insertScheduleAfter(Waves, Boss);\n";
+    let (dir, mut app) = load("dropanchor", &src(two));
+    app.update();
+    write(&dir, "game.ts", &src("export class Boss extends ScheduleLabel { static path = \"game::Boss\" }\napp.insertScheduleAfter(Waves, Boss);\n"));
+    let r = reload(&mut app, false);
+    assert!(r.errors.iter().any(|e| e.message.contains("game::Boss") && e.message.contains("Waves")), "{:?}", r.errors);
+}
+
 #[test]
 fn inserting_relative_to_a_schedule_not_in_the_order_fails() {
     let errors = load_errors("badorder", &src("export class Other extends ScheduleLabel { static path = \"game::Other\" }\napp.insertScheduleAfter(Other, Waves);\n"));

@@ -102,7 +102,7 @@ A label is named like a component (`game::Waves`, or `static path`). In Rust it 
 `bevy_ts::TsSchedule::new("game::Waves")`. `insertScheduleAfter/Before` place it in
 `MainScheduleOrder`, `insertFixedScheduleAfter/Before` in `FixedMainScheduleOrder`,
 `insertStartupScheduleAfter/Before` among the startup schedules. A reload that moves the call moves
-the schedule; one that drops it takes it out of the order. `app.initSchedule(Waves)` only creates
+the schedule from the next frame; one that drops it takes it out of the order. `app.initSchedule(Waves)` only creates
 it. A crate's own schedule is `schedule("net:tick")`.
 
 `commands.runSchedule(Waves)` runs a schedule once when the caller's commands apply, before the

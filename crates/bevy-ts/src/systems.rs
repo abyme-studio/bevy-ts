@@ -449,7 +449,7 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], groups: &
     }
     let mut out = TsSystems { generation, ..Default::default() };
     for g in groups {
-        let mut c = conditions::Compile { ts, encode, config: &g.id, identity: &g.id, natives: &mut out.natives };
+        let mut c = conditions::Compile { ts, encode, config: &g.id, natives: &mut out.natives };
         match conditions::compile(world, &g.condition, "", &mut c) {
             Ok(cond) => drop(out.groups.insert(g.id.clone(), cond)),
             Err(e) => {
@@ -675,7 +675,7 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
     }
     let condition = match &d.condition {
         Some(c) => {
-            let mut cx = conditions::Compile { ts, encode, config: &d.name, identity: &d.name, natives };
+            let mut cx = conditions::Compile { ts, encode, config: &d.name, natives };
             Some(conditions::compile(world, c, "", &mut cx).map_err(|e| match e.location {
                 Some(at) => ScriptError::at(format!("system {}: {}", d.name, e.message), Some(at)),
                 None => err(e.message),
@@ -852,14 +852,35 @@ pub(crate) fn run_one_shot(world: &mut World, identity: &str, input: Option<&[u8
     let mut sys = match taken {
         Some(Some(Some(sys))) => sys,
         Some(Some(None)) => {
-            log_run_error(world, format!("runSystem({identity}) from {caller}: it is already running"));
+            crate::schedules::log_error(world, format!("runSystem({identity}) from {caller}: it is already running"));
             return;
         }
         _ => {
-            log_run_error(world, format!("runSystem({identity}) from {caller}: no one-shot system {identity}; register it with app.registerSystem"));
+            crate::schedules::log_error(world, format!("runSystem({identity}) from {caller}: no one-shot system {identity}; register it with app.registerSystem"));
             return;
         }
     };
+    // The input must be the In<E> the system takes, in E's layout.
+    let wants = match sys.decl.params.first() {
+        Some(ParamDecl::In { event }) => {
+            let p = world.resource::<TsPayloads>();
+            Some((event.clone(), p.event(event).map_or(0, |i| p.events[i].layout.size)))
+        }
+        _ => None,
+    };
+    let bad = match (&wants, input) {
+        (Some((e, _)), None) => Some(format!("it takes In<{e}>; run it with runSystemWith")),
+        (None, Some(_)) => Some("it takes no In<E>; run it with runSystem".to_string()),
+        (Some((e, size)), Some(b)) if b.len() != *size => Some(format!("its input is {} bytes, In<{e}> takes {size}", b.len())),
+        _ => None,
+    };
+    if let Some(why) = bad {
+        crate::schedules::log_error(world, format!("runSystem({identity}) from {caller}: {why}"));
+        if let Some(slot) = world.resource_mut::<TsSystems>().one_shot.get_mut(identity) {
+            *slot = Some(sys);
+        }
+        return;
+    }
     with_systems(world, |world, rt, systems| {
         run_one(world, rt, &mut sys, input.map(|b| (b, u64::MAX)));
         drain_observers(world, rt, systems);
@@ -872,10 +893,6 @@ pub(crate) fn run_one_shot(world: &mut World, identity: &str, input: Option<&[u8
     crate::schedules::claim(world, &format!("system {identity}"));
 }
 
-fn log_run_error(world: &mut World, message: String) {
-    let generation = runtime::current_generation(world);
-    world.resource_mut::<crate::log::ScriptLog>().push(crate::log::LogLevel::Error, message, None, generation);
-}
 
 /// Takes the runtime and the systems out of the world for `f`.
 pub(crate) fn with_systems(world: &mut World, f: impl FnOnce(&mut World, &mut ScriptRuntime, &mut TsSystems)) {
