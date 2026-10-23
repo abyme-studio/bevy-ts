@@ -119,8 +119,9 @@ yet`, and `--target` naming one fails with that message before anything is writt
 
 - The same platform as the build: an Apple silicon build does not run on an Intel Mac.
 - Linux: the libraries Bevy links, which the game does not carry: ALSA (`libasound2`), udev
-  (`libudev1`), a Vulkan driver (`mesa-vulkan-drivers` or the GPU vendor's), and X11 or Wayland
-  client libraries (`libx11-6`, `libxkbcommon0`, `libwayland-client0`).
+  (`libudev1`), fontconfig (`libfontconfig1`, for text fallback fonts; without it the game does not
+  start, `docs/fonts.md`), a Vulkan driver (`mesa-vulkan-drivers` or the GPU vendor's), and X11 or
+  Wayland client libraries (`libx11-6`, `libxkbcommon0`, `libwayland-client0`).
 - macOS: the engine is not signed or notarised. A downloaded folder is quarantined, and Gatekeeper
   refuses to open it; the player right-clicks the executable and picks Open once, or runs
   `xattr -dr com.apple.quarantine <folder>`. A folder built on the same Mac is not quarantined.
