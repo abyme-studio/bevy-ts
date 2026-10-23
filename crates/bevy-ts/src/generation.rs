@@ -190,6 +190,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         world.insert_resource(crate::conditions::ConditionMemory::default());
         world.insert_resource(crate::conditions::NativeConditions::default());
         world.resource_mut::<crate::messages::TsPayloads>().reset();
+        crate::observers::detach(world, |_| true);
         let handlers = world.resource::<RestartHandlers>().clone();
         for h in handlers.0.iter() {
             h(world);
@@ -204,8 +205,11 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         rt.entries.clear();
     }
 
+    // Attachments made under the old generation are rebuilt from their names.
+    world.remove_resource::<crate::observers::NewTargeted>();
+    let observed = crate::observers::observed(world);
     let env = world.get_resource::<crate::net::NetPolicy>().map(|p| p.env.clone()).unwrap_or_default();
-    let generation = Generation { number, set, env, now_ms: crate::net::now_ms(world) };
+    let generation = Generation { number, set, env, now_ms: crate::net::now_ms(world), observed };
     let result = load_and_apply(world, &mut rt, &generation);
     let report = match result {
         Ok((migrations, sections, requests)) => {
@@ -377,7 +381,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
             let (_, layout) = pending.lookup(name)?;
             Some(pending.encode(name, values).map(|b| (b, layout.clone())).map_err(|e| e.to_string()))
         };
-        systems::build(world, number, &manifest.systems, &manifest.groups, &lookup, &encode)
+        systems::build(world, number, &manifest.systems, &manifest.targeted, &manifest.groups, &lookup, &encode)
     };
     let systems = match built {
         Ok(s) => s,
@@ -444,7 +448,14 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     insert_resources(world, &manifest);
     let watched = systems.watched_lifecycles();
     crate::conditions::prune_natives(world, &systems.natives);
+    let stale: Vec<String> = generation.observed.iter().filter(|n| !systems.targeted.contains_key(*n)).cloned().collect();
     world.insert_resource(systems);
+    if !stale.is_empty() {
+        crate::observers::detach(world, |n| stale.iter().any(|s| s == n));
+        for n in &stale {
+            world.resource_mut::<ScriptLog>().push(LogLevel::Warn, format!("observe: {n} no longer exists; its entity observers are removed"), None, number);
+        }
+    }
     crate::sets::ensure_slots(world);
     crate::schedules::reconcile_order(world, &manifest.schedule_order);
     crate::schedules::ensure_stages(world, &manifest.init_schedules);

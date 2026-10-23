@@ -156,3 +156,28 @@ resets it.
 `systems(a, b).runIf(c)` is Bevy's collective `run_if`: `c` is evaluated once per run of the
 stage, before the group's first member, and holds for every member in that run.
 `distributiveRunIf(c)` gives each member its own `c`.
+
+## Observers on one entity
+
+`commands.entity(e).observe(fn)` attaches an observer to `e` alone, as Bevy's
+`EntityCommands::observe`. `fn` is an exported function whose first param is `On<E>` of an
+`EntityEvent`; it need not be passed to `app.addObserver`.
+
+```ts
+export function onHit(hit: On<Hit>, q: Query<[Health]>) {
+  const row = q.get(hit.entity);
+  if (row) row[0].hp -= hit.amount;
+}
+
+export function spawnDoor(commands: Commands) {
+  commands.entity(commands.spawn(Health.of({ hp: 3 }))).observe(onHit);
+}
+```
+
+- It runs only when the trigger's current target is `e`, bubbling hops included: an observer on a
+  parent runs, with `entity` the parent, when a `static propagate = true` event bubbles up from a
+  child. As in Bevy, global observers (`addObserver`) run first for each hop.
+- It goes when `e` is despawned. A restart removes every one.
+- It follows its function across a reload: edit `onHit` and the next hit runs the new body. If
+  `onHit` is removed or renamed, its observers are removed with a warning.
+- A function whose first param is not an entity event fails the run that observes it.

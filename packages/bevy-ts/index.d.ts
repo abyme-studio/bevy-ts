@@ -430,6 +430,12 @@ export interface EntityCommands {
   insert(...parts: readonly (Component | ReflectComponent | ComponentClass | Element)[]): EntityCommands;
   remove(...cs: readonly ComponentClass[]): EntityCommands;
   setParent(parent: Entity | null): EntityCommands;
+  /**
+   * Attaches an observer to this entity alone, as Bevy's `EntityCommands::observe`: an exported
+   * function whose first param is `On<E>` of an `EntityEvent`. It runs only for triggers whose
+   * current target is this entity, bubbling hops included, and goes when the entity is despawned.
+   */
+  observe(observer: (on: On<never>, ...params: never[]) => void): EntityCommands;
   despawn(): void;
   readonly id: Entity;
 }

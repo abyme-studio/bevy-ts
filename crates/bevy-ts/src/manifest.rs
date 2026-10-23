@@ -501,6 +501,10 @@ pub struct Manifest {
     pub components: Vec<ComponentDecl>,
     #[serde(default)]
     pub systems: Vec<SystemDecl>,
+    /// Observers attached to one entity by `commands.entity(e).observe(fn)` in an earlier
+    /// generation, rebuilt from this generation's functions. They follow `systems` in key order.
+    #[serde(default)]
+    pub targeted: Vec<SystemDecl>,
     #[serde(default)]
     pub resources: Vec<ResourceDecl>,
     #[serde(default)]

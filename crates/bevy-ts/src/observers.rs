@@ -1,8 +1,12 @@
 //! The observer queue. TS triggers (`commands.trigger`) and Bevy lifecycle events on watched
 //! components push here; the queue drains after each TS system's commands and at each stage
 //! start, one JS call per event and target.
+//!
+//! `commands.entity(e).observe(fn)` attaches a TS observer to `e` alone. Each attachment is a Bevy
+//! observer entity watching `e` and naming the function's declaration, so Bevy despawns it with
+//! `e`; the drain runs the declaration's observer for a hop whose target `e` is watched by it.
 
-use crate::manifest::Lifecycle;
+use crate::manifest::{Lifecycle, SystemDecl};
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
 use std::collections::VecDeque;
@@ -29,6 +33,54 @@ pub struct ObserverQueue(pub VecDeque<Pending>);
 /// The Bevy observers feeding lifecycle triggers for the live generation.
 #[derive(Resource, Default, Debug)]
 pub struct LifecycleObservers(pub Vec<Entity>);
+
+/// A Bevy observer entity standing for a TS observer attached to the entity it watches.
+#[derive(Component, Clone, Debug)]
+pub struct TsEntityObserver {
+    /// The observer function's declaration, `file#name`.
+    pub name: String,
+}
+
+/// Never triggered: the event a [`TsEntityObserver`]'s Bevy observer watches its entity for, so
+/// the attachment lives and dies with the entity as Bevy's entity observers do.
+#[derive(EntityEvent)]
+struct Watched {
+    entity: Entity,
+}
+
+/// Observers attached by `observe` since the last drain, by key index and declaration, for the
+/// drain to build into `TsSystems::targeted`.
+#[derive(Resource, Default, Debug)]
+pub struct NewTargeted(pub Vec<(u32, SystemDecl)>);
+
+/// Attaches the observer `decl` (key index `index` in the live generation) to `entity`.
+pub fn observe(world: &mut World, entity: Entity, index: u32, decl: SystemDecl) {
+    let name = decl.name.clone();
+    world.spawn((Observer::new(|_: On<Watched>| {}).with_entity(entity), TsEntityObserver { name }));
+    world.get_resource_or_init::<NewTargeted>().0.push((index, decl));
+}
+
+/// The declarations of the TS observers attached to `entity`, in attachment order.
+pub fn attached(world: &World, entity: Entity) -> Vec<String> {
+    let Some(by) = world.get::<bevy::ecs::observer::ObservedBy>(entity) else { return vec![] };
+    by.get().iter().filter_map(|o| world.get::<TsEntityObserver>(*o)).map(|o| o.name.clone()).collect()
+}
+
+/// Every declaration a live attachment names, sorted, for the next generation to rebuild.
+pub fn observed(world: &mut World) -> Vec<String> {
+    let mut names: Vec<String> = world.query::<&TsEntityObserver>().iter(world).map(|o| o.name.clone()).collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Despawns the attachments naming any of `names` (a restart passes every name).
+pub fn detach(world: &mut World, names: impl Fn(&str) -> bool) {
+    let gone: Vec<Entity> = world.query::<(Entity, &TsEntityObserver)>().iter(world).filter(|(_, o)| names(&o.name)).map(|(e, _)| e).collect();
+    for e in gone {
+        let _ = world.try_despawn(e);
+    }
+}
 
 /// The target and its ancestors, for a bubbling event.
 pub fn propagation_path(world: &World, target: Entity, bubble: bool) -> Vec<Entity> {

@@ -247,6 +247,8 @@ pub struct TsSystems {
     pub groups: HashMap<String, Condition>,
     /// Native condition instances the generation uses.
     pub natives: HashSet<String>,
+    /// Observers attached to entities by `commands.entity(e).observe(fn)`, by declaration.
+    pub targeted: BTreeMap<String, TsSystem>,
     pub generation: u64,
 }
 
@@ -284,6 +286,7 @@ impl TsSystems {
             .chain(self.on_enter.values().flatten())
             .chain(self.on_exit.values().flatten())
             .chain(self.observers.iter())
+            .chain(self.targeted.values())
     }
 
     fn take(&mut self, k: &ListKey) -> Vec<TsSystem> {
@@ -320,6 +323,7 @@ impl TsSystems {
     pub fn watched_lifecycles(&self) -> Vec<(Lifecycle, ComponentId)> {
         self.observers
             .iter()
+            .chain(self.targeted.values())
             .filter_map(|o| match &o.observes {
                 Some(ObserverOf(Trigger::Lifecycle(k, id))) => Some((*k, *id)),
                 _ => None,
@@ -476,7 +480,10 @@ enum Placement {
 
 /// Builds the systems of a generation. Fails on unusable params, duplicate identities and bad
 /// ordering. `TsPayloads` must already hold the generation's messages, events and states.
-pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], groups: &[GroupDecl], ts: &TsLookup, encode: &TsEncode) -> Result<TsSystems, Vec<ScriptError>> {
+///
+/// `targeted` are observers attached to entities in an earlier generation; their keys follow
+/// `decls`'.
+pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted: &[SystemDecl], groups: &[GroupDecl], ts: &TsLookup, encode: &TsEncode) -> Result<TsSystems, Vec<ScriptError>> {
     let mut errors = Vec::new();
     let mut seen = HashSet::new();
     for d in decls {
@@ -557,7 +564,66 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], groups: &
             ScheduleDecl::Observer | ScheduleDecl::OneShot => unreachable!(),
         }
     }
+    for (i, d) in targeted.iter().enumerate() {
+        match build_targeted(world, generation, decls.len() + i, d, ts, encode, &mut out.natives) {
+            Ok(s) => {
+                out.targeted.insert(d.name.clone(), s);
+            }
+            Err(e) => errors.push(e),
+        }
+    }
     if errors.is_empty() { Ok(out) } else { Err(errors) }
+}
+
+/// An observer for `commands.entity(e).observe(fn)`: its first param must be an entity event.
+fn build_targeted(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup, encode: &TsEncode, natives: &mut HashSet<String>) -> Result<TsSystem, ScriptError> {
+    let s = build_one(world, generation, index, d, ts, encode, natives)?;
+    let entity_event = match &s.observes {
+        Some(ObserverOf(Trigger::Event(i))) => world.resource::<TsPayloads>().events[*i].entity,
+        Some(ObserverOf(Trigger::Lifecycle(..))) => true,
+        None => false,
+    };
+    if !entity_event {
+        return Err(ScriptError::at(format!("observe({}): its first param must be On<E> of an EntityEvent", d.name), d.location.clone()));
+    }
+    Ok(s)
+}
+
+/// Builds the observers `observe` attached since the last drain, once per declaration, and
+/// watches any lifecycle they name.
+fn adopt_targeted(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSystems) {
+    let Some(new) = world.get_resource_mut::<crate::observers::NewTargeted>().map(|mut n| std::mem::take(&mut n.0)) else { return };
+    if new.is_empty() {
+        return;
+    }
+    let before = systems.watched_lifecycles();
+    for (index, decl) in new {
+        if systems.targeted.contains_key(&decl.name) {
+            continue;
+        }
+        let generation = systems.generation;
+        let built = world.resource_scope(|world, ts: Mut<crate::components::TsComponents>| {
+            let lookup = |name: &str| ts.live(name).map(|c| (c.id, c.layout.size));
+            let encode = |name: &str, values: &serde_json::Map<String, serde_json::Value>| {
+                let c = ts.live(name)?;
+                Some(ts.encode(name, values).map(|b| (b, c.layout.clone())).map_err(|e| e.to_string()))
+            };
+            build_targeted(world, generation, index as usize, &decl, &lookup, &encode, &mut systems.natives)
+        });
+        match built {
+            Ok(s) => {
+                systems.targeted.insert(decl.name.clone(), s);
+            }
+            Err(e) => {
+                rt.log_error(world, &format!("observe {}", decl.name), &e);
+                crate::observers::detach(world, |n| n == decl.name);
+            }
+        }
+    }
+    let watched = systems.watched_lifecycles();
+    if watched != before {
+        crate::observers::install(world, &watched);
+    }
 }
 
 fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], ts: &TsLookup) -> Result<QueryParam, String> {
@@ -950,13 +1016,23 @@ pub(crate) fn with_systems(world: &mut World, f: impl FnOnce(&mut World, &mut Sc
 /// Runs queued observers until the queue is empty (bounded, so a trigger loop cannot hang).
 pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSystems) {
     for _ in 0..10_000 {
+        // An observer's own `observe` commands are adopted before the next event.
+        adopt_targeted(world, rt, systems);
         let Some(p) = world.get_resource_mut::<ObserverQueue>().and_then(|mut q| q.0.pop_front()) else { return };
         let targets: Vec<Option<Entity>> = if p.path.is_empty() { vec![None] } else { p.path.iter().copied().map(Some).collect() };
         'path: for target in targets {
             let mut stop = false;
+            let bits = target.map_or(u64::MAX, Entity::to_bits);
+            // Bevy's order: global observers, then the target's own.
             for o in systems.observers.iter_mut() {
                 if o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger) {
-                    let bits = target.map_or(u64::MAX, Entity::to_bits);
+                    stop |= run_one(world, rt, o, Some((&p.bytes, bits)));
+                }
+            }
+            for name in target.map(|t| crate::observers::attached(world, t)).unwrap_or_default() {
+                if let Some(o) = systems.targeted.get_mut(&name)
+                    && o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger)
+                {
                     stop |= run_one(world, rt, o, Some((&p.bytes, bits)));
                 }
             }

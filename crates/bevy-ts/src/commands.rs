@@ -15,6 +15,7 @@
 //! | writeMessage | 8 | message index u32, len u32, bytes |
 //! | trigger | 9 | event index u32, target u64 (`u64::MAX` for a global event), len u32, bytes |
 //! | setState | 10 | state index u32, value u32 |
+//! | observe | 13 | entity u64, observer key index u32, len u32, its system declaration JSON |
 //!
 //! Entities are `Entity::to_bits`. Component values are native layout bytes.
 
@@ -37,6 +38,7 @@ pub const OP_TRIGGER: u8 = 9;
 pub const OP_SET_STATE: u8 = 10;
 pub const OP_RUN_SYSTEM: u8 = 11;
 pub const OP_RUN_SCHEDULE: u8 = 12;
+pub const OP_OBSERVE: u8 = 13;
 
 /// Size of the Rust-owned arena handed to each call. Larger buffers overflow into JS.
 pub const ARENA_BYTES: usize = 64 * 1024;
@@ -65,6 +67,9 @@ pub enum Op {
     RunSystem { identity: String, input: Option<Vec<u8>> },
     /// `commands.runSchedule(label)`.
     RunSchedule { label: String },
+    /// `commands.entity(e).observe(fn)`: the observer's key index in the live generation and its
+    /// declaration.
+    Observe { entity: Entity, index: u32, decl: Box<crate::manifest::SystemDecl> },
 }
 
 /// A plugin's command decoder: gets the op's bytes and `&mut World`.
@@ -238,6 +243,13 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 Op::RunSystem { identity, input }
             }
             OP_RUN_SCHEDULE => Op::RunSchedule { label: r.text()? },
+            OP_OBSERVE => {
+                let entity = r.entity()?;
+                let index = r.u32()?;
+                let n = r.u32()? as usize;
+                let decl = serde_json::from_slice(r.take(n)?).map_err(|e| format!("observe: {e}"))?;
+                Op::Observe { entity, index, decl: Box::new(decl) }
+            }
             other => return Err(format!("unknown command op {other} at byte {}", r.at - 1)),
         };
         ops.push(op);
@@ -387,6 +399,13 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                 use crate::schedules::{PendingRun, PendingRuns, RunTarget};
                 world.get_resource_or_init::<PendingRuns>().0.push_back(PendingRun { target: RunTarget::Schedule(label), caller: None });
             }
+            Op::Observe { entity, index, decl } => {
+                if world.get_entity(entity).is_err() {
+                    warnings.push(format!("observe {}: entity {entity} does not exist", decl.name));
+                    continue;
+                }
+                crate::observers::observe(world, entity, index, *decl);
+            }
             Op::Plugin { opcode, bytes } => {
                 let (name, decoder) = kinds.get(opcode).expect("decode checked the opcode").clone();
                 if let Err(err) = decoder(world, &bytes) {
@@ -448,6 +467,14 @@ impl Encoder {
         let p = params.to_string();
         self.bytes.extend((p.len() as u32).to_le_bytes());
         self.bytes.extend(p.as_bytes());
+    }
+    pub fn observe(&mut self, entity: Entity, index: u32, decl: &crate::manifest::SystemDecl) {
+        self.bytes.push(OP_OBSERVE);
+        self.bytes.extend(entity.to_bits().to_le_bytes());
+        self.bytes.extend(index.to_le_bytes());
+        let d = serde_json::to_vec(decl).expect("a declaration serializes");
+        self.bytes.extend((d.len() as u32).to_le_bytes());
+        self.bytes.extend(d);
     }
     pub fn plugin(&mut self, opcode: u16, bytes: &[u8]) {
         self.bytes.push(OP_PLUGIN);
