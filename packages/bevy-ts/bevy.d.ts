@@ -34,8 +34,6 @@ export declare class ContrastAdaptiveSharpening extends Component {
 export declare class DenoiseCas extends Component {
   static readonly path: "bevy_anti_alias::contrast_adaptive_sharpening::DenoiseCas";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: bool };
   declare value: bool;
 }
 
@@ -98,8 +96,6 @@ export type MainPassResolutionOverride = InstanceType<typeof MainPassResolutionO
 export declare class ManualTextureViewHandle extends Component {
   static readonly path: "bevy_camera::camera::ManualTextureViewHandle";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: u32 };
   declare value: u32;
 }
 
@@ -162,8 +158,6 @@ export type DynamicSkinnedMeshBounds = InstanceType<typeof DynamicSkinnedMeshBou
 export declare class InheritedVisibility extends Component {
   static readonly path: "bevy_camera::visibility::InheritedVisibility";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: bool };
   declare value: bool;
 }
 
@@ -173,8 +167,6 @@ export type NoFrustumCulling = InstanceType<typeof NoFrustumCulling>;
 export declare class ViewVisibility extends Component {
   static readonly path: "bevy_camera::visibility::ViewVisibility";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: u8 };
   declare value: u8;
 }
 
@@ -257,8 +249,6 @@ export type Disabled = InstanceType<typeof Disabled>;
 export declare class ChildOf extends Component {
   static readonly path: "bevy_ecs::hierarchy::ChildOf";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: Entity };
   declare readonly value: Entity;
 }
 
@@ -342,8 +332,6 @@ export declare class TabGroup extends Component {
 export declare class TabIndex extends Component {
   static readonly path: "bevy_input_focus::tab_navigation::TabIndex";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: i32 };
   declare value: i32;
 }
 
@@ -643,8 +631,6 @@ export declare class WireframeTopology extends Component {
 export declare class WireframeXray extends Component {
   static readonly path: "bevy_pbr::wireframe::WireframeXray";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: bool };
   declare value: bool;
 }
 
@@ -662,8 +648,6 @@ export type EntityCursor = InstanceType<typeof EntityCursor>;
 export declare class DirectlyHovered extends Component {
   static readonly path: "bevy_picking::hover::DirectlyHovered";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: bool };
   declare readonly value: bool;
 }
 
@@ -671,8 +655,6 @@ export declare class DirectlyHovered extends Component {
 export declare class Hovered extends Component {
   static readonly path: "bevy_picking::hover::Hovered";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: bool };
   declare readonly value: bool;
 }
 
@@ -778,8 +760,6 @@ export type CameraRenderGraph = InstanceType<typeof CameraRenderGraph>;
 export declare class MipBias extends Component {
   static readonly path: "bevy_render::camera::MipBias";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: f32 };
   declare value: f32;
 }
 
@@ -828,8 +808,6 @@ export type SpritePickingCamera = InstanceType<typeof SpritePickingCamera>;
 export declare class Anchor extends Component {
   static readonly path: "bevy_sprite::sprite::Anchor";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: Vec2 };
   declare readonly value: Vec2;
 }
 
@@ -907,8 +885,6 @@ export declare class ComputedTextBlock extends Component {
 export declare class EmSize extends Component {
   static readonly path: "bevy_text::text::EmSize";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: f32 };
   declare value: f32;
 }
 
@@ -1039,8 +1015,6 @@ export type UiPickingCamera = InstanceType<typeof UiPickingCamera>;
 export declare class ComputedStackIndex extends Component {
   static readonly path: "bevy_ui::stack::ComputedStackIndex";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: u32 };
   declare value: u32;
 }
 
@@ -1086,8 +1060,6 @@ export type FixedNode = InstanceType<typeof FixedNode>;
 export declare class GlobalZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::GlobalZIndex";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: i32 };
   declare value: i32;
 }
 
@@ -1139,8 +1111,6 @@ export type OverrideClip = InstanceType<typeof OverrideClip>;
 export declare class ScrollPosition extends Component {
   static readonly path: "bevy_ui::ui_node::ScrollPosition";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: Vec2 };
   declare readonly value: Vec2;
 }
 
@@ -1150,8 +1120,6 @@ export type UiTargetCamera = InstanceType<typeof UiTargetCamera>;
 export declare class ZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::ZIndex";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: i32 };
   declare value: i32;
 }
 
@@ -1219,8 +1187,6 @@ export type ViewportNode = InstanceType<typeof ViewportNode>;
 export declare class BoxShadowSamples extends Component {
   static readonly path: "bevy_ui_render::BoxShadowSamples";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: u32 };
   declare value: u32;
 }
 
@@ -1312,8 +1278,6 @@ export type SliderDragState = InstanceType<typeof SliderDragState>;
 export declare class SliderPrecision extends Component {
   static readonly path: "bevy_ui_widgets::slider::SliderPrecision";
   static readonly native: true;
-  /** Its props as an element. */
-  static readonly __element: { value: i32 };
   declare value: i32;
 }
 
