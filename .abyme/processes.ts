@@ -378,6 +378,9 @@ const processes = {
   "levels-watch-test": { cmd: "set -o pipefail; mkdir -p target; cargo test -p bevy-ts-levels 2>&1 | grep -v ld64 | tee target/levels-watch-test.log | grep -E \"^error|^warning|-->|^test |test result|panicked\"" },
   // levels-watch-flake: the watch-order test, 16 copies at once for 10 rounds.
   "levels-watch-soak": { cmd: "scripts/levels-watch-soak.sh 16 10 2>&1 | tee target/levels-watch-soak.log" },
+  // reflect-coverage stage 3 (build-reads): its crates' build and tests, one step at a time, in
+  // the shared slot. The step is target/reads-step.sh, written before each start; its log is target/reads.log.
+  "reads-step": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:reflect-enums-color -- bash -c 'set -o pipefail; mkdir -p target; bash target/reads-step.sh 2>&1 | grep --line-buffered -v ld64 > target/reads.log; echo step exit $? >> target/reads.log; tail -3 target/reads.log'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
