@@ -106,7 +106,7 @@ fi
 if has protocol; then scripts/gen-protocol.sh --check; record protocol $?; fi
 if has bevy; then scripts/gen-bevy-types.sh --check; record bevy $?; fi
 if has openspec; then openspec validate --specs --strict; record spec $?; fi
-if has scripts; then deno test -A --no-check scripts/ 2>&1 | tail -3; record scripts "${PIPESTATUS[0]}"; fi
+if has scripts; then env -u LAND_BASE deno test -A --no-check scripts/ 2>&1 | tail -3; record scripts "${PIPESTATUS[0]}"; fi
 
 echo "gate:${result:- nothing to check}"
 [[ $ok == 1 ]]
