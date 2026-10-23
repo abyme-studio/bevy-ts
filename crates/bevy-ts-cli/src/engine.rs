@@ -502,34 +502,217 @@ pub enum Origin {
     Built,
 }
 
-/// Copies an engine from the shared directory cache (`<dir>/<hash>/<target>/`) into the local
-/// one, verified against the SHA-256 beside it. `Ok(None)` on a miss. The checksum proves the
-/// copy is intact, not who wrote it: whoever can write the cache can replace both.
-pub fn fetch_shared(cache: &Path, hash: &str, into: &Path) -> Result<Option<PathBuf>, String> {
+/// Beside a local engine that links to the shared cache: what the target was verified as.
+const LINK_STAMP: &str = "bevy-ts.link";
+
+/// A file's size, modification time (ns since the epoch) and inode: what tells a rewrite.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FileId {
+    size: u64,
+    mtime: u128,
+    inode: u64,
+}
+
+impl FileId {
+    /// Through links: the target's.
+    fn of(path: &Path) -> std::io::Result<FileId> {
+        let m = std::fs::metadata(path)?;
+        let mtime = m.modified()?.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        #[cfg(unix)]
+        let inode = std::os::unix::fs::MetadataExt::ino(&m);
+        #[cfg(not(unix))]
+        let inode = 0;
+        Ok(FileId { size: m.len(), mtime, inode })
+    }
+}
+
+/// The `bevy-ts.link` stamp: the SHA-256 a linked target matched, the target and its [`FileId`].
+#[derive(Debug, PartialEq, Eq)]
+struct Stamp {
+    sha256: String,
+    target: PathBuf,
+    id: FileId,
+}
+
+impl Stamp {
+    fn write(&self, dir: &Path) -> Result<(), String> {
+        let text = format!(
+            "sha256 {}\ntarget {}\nsize {}\nmtime {}\ninode {}\n",
+            self.sha256,
+            self.target.display(),
+            self.id.size,
+            self.id.mtime,
+            self.id.inode
+        );
+        let path = dir.join(LINK_STAMP);
+        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    fn read(dir: &Path) -> Option<Stamp> {
+        let text = std::fs::read_to_string(dir.join(LINK_STAMP)).ok()?;
+        let field = |k: &str| text.lines().find_map(|l| l.strip_prefix(k)?.strip_prefix(' '));
+        Some(Stamp {
+            sha256: field("sha256")?.to_string(),
+            target: PathBuf::from(field("target")?),
+            id: FileId { size: field("size")?.parse().ok()?, mtime: field("mtime")?.parse().ok()?, inode: field("inode")?.parse().ok()? },
+        })
+    }
+}
+
+/// What the local cache holds for a hash.
+enum Local {
+    /// A real file, or a link whose target still matches its stamp.
+    Hit,
+    Miss,
+    /// A link whose target is gone; link and stamp removed.
+    Broken(PathBuf),
+    /// A link whose target no longer matches its recorded SHA-256; link and stamp removed.
+    Changed(String),
+}
+
+/// Checks the local engine in `dir`. A real file is a hit as it always was; a link is a hit only
+/// while its target matches the stamp, or hashes to the stamp's SHA-256.
+fn check_local(dir: &Path) -> Local {
+    let exe = dir.join(exe_name());
+    let Ok(m) = std::fs::symlink_metadata(&exe) else { return Local::Miss };
+    if !m.file_type().is_symlink() {
+        return if m.is_file() { Local::Hit } else { Local::Miss };
+    }
+    let target = std::fs::read_link(&exe).unwrap_or_default();
+    let unlink = || {
+        let _ = std::fs::remove_file(&exe);
+        let _ = std::fs::remove_file(dir.join(LINK_STAMP));
+    };
+    let Ok(now) = FileId::of(&exe) else {
+        unlink();
+        return Local::Broken(target);
+    };
+    let Some(stamp) = Stamp::read(dir) else {
+        unlink();
+        return Local::Changed(format!("the link to {} has no readable {LINK_STAMP}; not run", target.display()));
+    };
+    if stamp.id == now {
+        return Local::Hit;
+    }
+    match sha256_file(&exe) {
+        Ok(have) if have == stamp.sha256 => {
+            // Touched, not changed: remember the new metadata so the next start skips the hash.
+            let _ = Stamp { id: now, ..stamp }.write(dir);
+            Local::Hit
+        }
+        Ok(have) => {
+            unlink();
+            Local::Changed(format!(
+                "{} changed since it was linked: SHA-256 mismatch (recorded {}, got {have}); not run",
+                target.display(),
+                stamp.sha256
+            ))
+        }
+        Err(e) => {
+            unlink();
+            Local::Changed(format!("{e}; not run"))
+        }
+    }
+}
+
+/// Makes `dir/<exe>` a symbolic link to `target` with its stamp, through `<exe>.tmp` and a rename.
+fn link(target: &Path, dir: &Path, stamp: &Stamp, symlink: fn(&Path, &Path) -> std::io::Result<()>) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let dst = dir.join(exe_name());
+    let tmp = dir.join(format!("{}.tmp", exe_name()));
+    let _ = std::fs::remove_file(&tmp);
+    symlink(target, &tmp).map_err(|e| format!("{} -> {}: {e}", tmp.display(), target.display()))?;
+    stamp.write(dir)?;
+    std::fs::rename(&tmp, &dst).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_file(dir.join(format!("{}.sha256", exe_name())));
+    Ok(dst)
+}
+
+#[cfg(unix)]
+const SYMLINK: Option<fn(&Path, &Path) -> std::io::Result<()>> = Some(|t, l| std::os::unix::fs::symlink(t, l));
+/// Windows has no first-launch scan to save, and symbolic links need a privilege: it copies.
+#[cfg(not(unix))]
+const SYMLINK: Option<fn(&Path, &Path) -> std::io::Result<()>> = None;
+
+/// Installs an engine from the shared directory cache (`<dir>/<hash>/<target>/`) in the local one,
+/// verified against the SHA-256 beside it: as a link to the shared file where the platform allows
+/// (one path per engine on a machine, so macOS scans it once), else as a copy. `Ok(None)` on a
+/// miss. Never writes under `cache`. The checksum proves the engine is intact, not who wrote it:
+/// whoever can write the cache can replace both.
+pub fn fetch_shared(cache: &Path, hash: &str, into: &Path, sink: &mut Sink) -> Result<Option<PathBuf>, String> {
+    fetch_shared_via(cache, hash, into, sink, SYMLINK)
+}
+
+fn fetch_shared_via(
+    cache: &Path,
+    hash: &str,
+    into: &Path,
+    sink: &mut Sink,
+    symlink: Option<fn(&Path, &Path) -> std::io::Result<()>>,
+) -> Result<Option<PathBuf>, String> {
     let dir = cache.join(hash).join(TARGET);
     let src = dir.join(exe_name());
     if !src.is_file() {
         return Ok(None);
+    }
+    let want = std::fs::read_to_string(dir.join(format!("{}.sha256", exe_name()))).unwrap_or_default();
+    let want = want.split_whitespace().next().unwrap_or("").to_lowercase();
+    let mismatch = |have: &str| {
+        format!(
+            "shared cache engine {hash}: SHA-256 mismatch (recorded {}, got {have}); not run",
+            if want.is_empty() { "nothing" } else { &want }
+        )
+    };
+    if let Some(symlink) = symlink {
+        // Verified in place: the bytes a link runs are the shared file's. The metadata is taken
+        // first, so a write during the hash shows on the next start.
+        let target = src.canonicalize().map_err(|e| format!("{}: {e}", src.display()))?;
+        let id = FileId::of(&target).map_err(|e| format!("{}: {e}", target.display()))?;
+        let have = sha256_file(&target)?;
+        if want != have {
+            return Err(mismatch(&have));
+        }
+        let why = if is_executable(&target) {
+            let stamp = Stamp { sha256: have, target: target.clone(), id };
+            match link(&target, into, &stamp, symlink) {
+                Ok(dst) => return Ok(Some(dst)),
+                Err(e) => e,
+            }
+        } else {
+            // Making it executable would write under the cache.
+            format!("{} is not executable", target.display())
+        };
+        sink.log(&format!("bevy-ts: linking shared cache engine {hash} failed ({why}); copying it"));
     }
     let tmp_dir = into.with_extension("fetch");
     let _ = std::fs::remove_dir_all(&tmp_dir);
     std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
     let bin = tmp_dir.join(exe_name());
     std::fs::copy(&src, &bin).map_err(|e| format!("{}: {e}", src.display()))?;
-    let want = std::fs::read_to_string(dir.join(format!("{}.sha256", exe_name()))).unwrap_or_default();
-    let want = want.split_whitespace().next().unwrap_or("").to_lowercase();
     let have = sha256_file(&bin)?;
     if want != have {
         let _ = std::fs::remove_dir_all(&tmp_dir);
-        return Err(format!(
-            "shared cache engine {hash}: SHA-256 mismatch (recorded {}, got {have}); not run",
-            if want.is_empty() { "nothing" } else { &want }
-        ));
+        return Err(mismatch(&have));
     }
+    // A link left by an earlier fetch goes with its stamp: the copy replaces it.
+    let _ = std::fs::remove_file(into.join(LINK_STAMP));
     let dst = install(&bin, into)?;
     let _ = std::fs::remove_dir_all(&tmp_dir);
     make_executable(&dst)?;
     Ok(Some(dst))
+}
+
+fn is_executable(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        true
+    }
 }
 
 pub fn make_executable(path: &Path) -> Result<(), String> {
@@ -721,14 +904,19 @@ pub fn describe(plan: &Plan, hash: &str, why: &str) -> String {
 /// then a build when `may_build`, which reports what it compiles and why first.
 pub fn obtain(plan: &Plan, may_build: bool, sink: &mut Sink) -> Result<(PathBuf, String, Origin), String> {
     let hash = plan.hash()?;
-    let local = plan.cache_dir(&hash).join(exe_name());
-    if local.is_file() {
-        return Ok((local, hash, Origin::LocalCache));
-    }
-    let mut why = format!("not in {}", plan.cache_dir(&hash).display());
+    let local_dir = plan.cache_dir(&hash);
+    let mut why = match check_local(&local_dir) {
+        Local::Hit => return Ok((local_dir.join(exe_name()), hash, Origin::LocalCache)),
+        Local::Miss => format!("not in {}", local_dir.display()),
+        Local::Broken(target) => format!("not in {} (the link to {} was broken)", local_dir.display(), target.display()),
+        Local::Changed(e) => {
+            sink.log(&format!("bevy-ts: project engine {hash}: {e}"));
+            format!("the linked shared engine failed verification ({e})")
+        }
+    };
     if let Some(cache) = &plan.cache {
         let dir = plan.root.join(cache);
-        match fetch_shared(&dir, &hash, &plan.cache_dir(&hash)) {
+        match fetch_shared(&dir, &hash, &local_dir, sink) {
             Ok(Some(p)) => return Ok((p, hash, Origin::SharedCache)),
             Ok(None) => why.push_str(&format!(" nor the shared cache {}", dir.join(&hash).join(TARGET).display())),
             Err(e) => {
@@ -835,25 +1023,132 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// A shared cache entry for `hash` holding `bytes`, executable, with their SHA-256.
+    fn publish(cache: &Path, hash: &str, bytes: &[u8]) -> PathBuf {
+        let entry = cache.join(hash).join(TARGET);
+        std::fs::create_dir_all(&entry).unwrap();
+        std::fs::write(entry.join(exe_name()), bytes).unwrap();
+        make_executable(&entry.join(exe_name())).unwrap();
+        let sum = Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect::<String>();
+        std::fs::write(entry.join(format!("{}.sha256", exe_name())), format!("{sum}\n")).unwrap();
+        entry.join(exe_name())
+    }
+
+    fn is_link(p: &Path) -> bool {
+        std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink())
+    }
+
     #[test]
     fn a_tampered_shared_engine_is_not_installed() {
         let d = tmp("shared");
         let cache = d.join("cache");
-        let entry = cache.join("h1").join(TARGET);
-        std::fs::create_dir_all(&entry).unwrap();
-        std::fs::write(entry.join(exe_name()), b"engine bytes").unwrap();
-        let good = Sha256::digest(b"engine bytes").iter().map(|b| format!("{b:02x}")).collect::<String>();
-        std::fs::write(entry.join(format!("{}.sha256", exe_name())), format!("{good}\n")).unwrap();
-        let got = fetch_shared(&cache, "h1", &d.join("local/h1")).unwrap().unwrap();
+        publish(&cache, "h1", b"engine bytes");
+        let got = fetch_shared(&cache, "h1", &d.join("local/h1"), &mut Sink::Stderr).unwrap().unwrap();
         assert_eq!(std::fs::read(&got).unwrap(), b"engine bytes");
-        let bad = cache.join("h2").join(TARGET);
-        std::fs::create_dir_all(&bad).unwrap();
-        std::fs::write(bad.join(exe_name()), b"evil bytes").unwrap();
-        std::fs::write(bad.join(format!("{}.sha256", exe_name())), format!("{good}\n")).unwrap();
-        let e = fetch_shared(&cache, "h2", &d.join("local/h2")).unwrap_err();
+        let bad = publish(&cache, "h2", b"engine bytes");
+        std::fs::write(&bad, b"evil bytes").unwrap();
+        let e = fetch_shared(&cache, "h2", &d.join("local/h2"), &mut Sink::Stderr).unwrap_err();
         assert!(e.contains("mismatch"), "{e}");
-        assert!(!d.join("local/h2").join(exe_name()).exists());
-        assert!(fetch_shared(&cache, "missing", &d.join("local/m")).unwrap().is_none());
+        // Neither a link nor a copy.
+        assert!(std::fs::symlink_metadata(d.join("local/h2").join(exe_name())).is_err());
+        assert!(fetch_shared(&cache, "missing", &d.join("local/m"), &mut Sink::Stderr).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn two_projects_link_one_shared_file() {
+        let d = tmp("link");
+        let cache = d.join("cache");
+        let shared = publish(&cache, "h", b"engine bytes").canonicalize().unwrap();
+        let before = std::fs::read_dir(shared.parent().unwrap()).unwrap().count();
+        for project in ["a", "b"] {
+            let dir = d.join(project).join("h");
+            let got = fetch_shared(&cache, "h", &dir, &mut Sink::Stderr).unwrap().unwrap();
+            assert_eq!(got, dir.join(exe_name()));
+            assert!(is_link(&got));
+            assert_eq!(std::fs::read_link(&got).unwrap(), shared);
+            let stamp = Stamp::read(&dir).unwrap();
+            assert_eq!(stamp.target, shared);
+            assert_eq!(stamp.id, FileId::of(&shared).unwrap());
+            assert_eq!(stamp.sha256, sha256_file(&shared).unwrap());
+            assert!(matches!(check_local(&dir), Local::Hit));
+        }
+        // Nothing written under the cache.
+        assert_eq!(std::fs::read_dir(shared.parent().unwrap()).unwrap().count(), before);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_rewritten_shared_file_is_refused_and_a_touched_one_restamped() {
+        let d = tmp("rewrite");
+        let cache = d.join("cache");
+        let shared = publish(&cache, "h", b"engine bytes");
+        let dir = d.join("local/h");
+        fetch_shared(&cache, "h", &dir, &mut Sink::Stderr).unwrap().unwrap();
+        // Touched: new mtime, same bytes. Runs, and the stamp follows.
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        std::fs::File::options().write(true).open(&shared).unwrap().set_modified(later).unwrap();
+        assert_ne!(Stamp::read(&dir).unwrap().id, FileId::of(&shared).unwrap());
+        assert!(matches!(check_local(&dir), Local::Hit));
+        assert_eq!(Stamp::read(&dir).unwrap().id, FileId::of(&shared).unwrap());
+        // Rewritten in place: refused, link and stamp gone.
+        std::fs::write(&shared, b"other bytes!").unwrap();
+        match check_local(&dir) {
+            Local::Changed(e) => assert!(e.contains("mismatch") && e.contains("not run"), "{e}"),
+            _ => panic!("a rewritten shared engine was not refused"),
+        }
+        assert!(std::fs::symlink_metadata(dir.join(exe_name())).is_err());
+        assert!(!dir.join(LINK_STAMP).exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_link_is_a_miss_and_relinks_when_the_entry_is_back() {
+        let d = tmp("dangling");
+        let p = project_with_native(&d);
+        let cache = d.join("cache");
+        let plan = Plan { cache: Some(cache.to_string_lossy().into()), ..Plan::new(&p, Profile::Dev).unwrap().unwrap() };
+        let hash = plan.hash().unwrap();
+        publish(&cache, &hash, b"engine bytes");
+        let (exe, _, origin) = obtain(&plan, false, &mut Sink::Stderr).unwrap();
+        assert_eq!(origin, Origin::SharedCache);
+        assert!(is_link(&exe));
+        assert_eq!(obtain(&plan, false, &mut Sink::Stderr).unwrap().2, Origin::LocalCache);
+        // The share goes away: a miss that says the link was broken.
+        std::fs::rename(cache.join(&hash), d.join("away")).unwrap();
+        let e = obtain(&plan, false, &mut Sink::Stderr).unwrap_err();
+        assert!(e.contains("was broken") && e.contains("nor the shared cache"), "{e}");
+        assert!(std::fs::symlink_metadata(&exe).is_err() && !plan.cache_dir(&hash).join(LINK_STAMP).exists());
+        // It comes back: linked again.
+        std::fs::rename(d.join("away"), cache.join(&hash)).unwrap();
+        let (exe, _, origin) = obtain(&plan, false, &mut Sink::Stderr).unwrap();
+        assert_eq!(origin, Origin::SharedCache);
+        assert!(is_link(&exe));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_failed_link_copies() {
+        let d = tmp("copy");
+        let cache = d.join("cache");
+        publish(&cache, "h", b"engine bytes");
+        let dir = d.join("local/h");
+        let mut logged = Vec::new();
+        let mut events = |e: Event| {
+            if let Event::Log(l) = e {
+                logged.push(l)
+            }
+        };
+        let fail: fn(&Path, &Path) -> std::io::Result<()> = |_, _| Err(std::io::Error::other("no links here"));
+        let got = fetch_shared_via(&cache, "h", &dir, &mut Sink::Events(&mut events), Some(fail)).unwrap().unwrap();
+        assert!(!is_link(&got) && got.is_file());
+        assert_eq!(std::fs::read(&got).unwrap(), b"engine bytes");
+        assert!(!dir.join(LINK_STAMP).exists());
+        assert!(logged.iter().any(|l| l.contains("no links here") && l.contains("copying")), "{logged:?}");
+        assert!(matches!(check_local(&dir), Local::Hit));
         let _ = std::fs::remove_dir_all(&d);
     }
 }

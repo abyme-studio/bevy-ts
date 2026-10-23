@@ -72,10 +72,24 @@ not inputs, so a TS edit never rebuilds anything.
 ### Sharing engines in a team
 
 `engineCache` names a directory laid out as `<hash>/<target>/bevy-ts` with `bevy-ts.sha256`
-beside it: a network share, or a CI artefact the team unpacks. On a local miss bevy-ts copies the
-engine from there, verifies the SHA-256 and only then runs it, so gameplay authors need no Rust
-toolchain. The checksum proves the copy is intact, not who made it: whoever can write the cache
-can replace both files, so point it only at a location the team controls.
+beside it: a network share, or a CI artefact the team unpacks. On a local miss bevy-ts verifies the
+shared engine's SHA-256 and only then runs it, so gameplay authors need no Rust toolchain. The
+checksum proves the engine is intact, not who made it: whoever can write the cache can replace
+both files, so point it only at a location the team controls.
+
+The local engine (`.bevy-ts/engines/<hash>/bevy-ts`) is a symbolic link to the shared file, not a
+copy. macOS scans every new executable path before its first launch, which takes a minute or
+more; through a link every project on a machine runs one path per engine, so the scan is paid
+once. `bevy-ts.link` beside the link records the SHA-256 and the target's size, modification time
+and inode. When the target no longer matches, bevy-ts hashes it again and refuses it on a
+mismatch. On Windows, or where a link cannot be made, the engine is copied as before. Engines
+built with `cargo` and the engine `bevy-ts build` ships are always real files.
+
+bevy-ts never writes under `engineCache`. Publish an entry by writing it to `<hash>.tmp/` and
+renaming that to `<hash>/`, and never change an entry after: a rewrite is scanned again and can
+change the binary under a running project. A link whose target is gone (the share unmounted, the
+entry deleted) is a local miss: bevy-ts tries the shared cache again, then builds, which needs a
+Rust toolchain.
 
 ## Rust components in TS
 

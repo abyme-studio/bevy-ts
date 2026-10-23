@@ -257,3 +257,36 @@ fn thrusters_plays_on_its_own_engine() {
     let seen = wait_for(&rx, &["generation 1 applied", "thrusters: rocket"], LAUNCH);
     assert!(!seen.iter().any(|l| l.contains("failed")), "a failed generation:\n{}", seen.join("\n"));
 }
+
+/// engine-cache-link: a project whose local release engine is a link to the shared cache ships a
+/// real file. This binary stands in for the project engine: the build only copies it.
+#[cfg(unix)]
+#[test]
+fn a_linked_engine_ships_as_a_real_file() {
+    use bevy_ts_cli::engine::{TARGET, sha256_file};
+    let project = common::project("build-linked", &[("tsconfig.json", "{}"), ("src/game.ts", "export const x = 1;\n")]);
+    let cache = project.join("shared");
+    common::write(&project, "bevy-ts.json", &format!(r#"{{ "native": {{ "ports": ["rapier3d"] }}, "engineCache": {:?} }}"#, cache.to_str().unwrap()));
+    let out = project.join("dist");
+    let run = || {
+        let out = Command::new(BIN).arg("build").arg(&project).args(["--json", "--out"]).arg(&out).env("CARGO", "false").output().unwrap();
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    // No toolchain and an empty cache: the build fails, naming the engine hash.
+    let first = run();
+    let at = first.find("project engine ").expect(&first) + "project engine ".len();
+    let hash = &first[at..at + 32];
+    assert!(hash.chars().all(|c| c.is_ascii_hexdigit()), "{first}");
+    let entry = cache.join(hash).join(TARGET);
+    std::fs::create_dir_all(&entry).unwrap();
+    std::fs::copy(BIN, entry.join("bevy-ts")).unwrap();
+    std::fs::write(entry.join("bevy-ts.sha256"), sha256_file(Path::new(BIN)).unwrap()).unwrap();
+    let second = run();
+    let done: Value = second.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).find(|e| e["event"] == "done").expect(&second);
+    let local = project.join(".bevy-ts/engines").join(hash).join("bevy-ts");
+    assert!(std::fs::symlink_metadata(&local).unwrap().file_type().is_symlink());
+    let shipped = PathBuf::from(done["run"].as_str().unwrap());
+    let meta = std::fs::symlink_metadata(&shipped).unwrap();
+    assert!(meta.file_type().is_file(), "{}", shipped.display());
+    assert_eq!(meta.len(), std::fs::metadata(BIN).unwrap().len());
+}

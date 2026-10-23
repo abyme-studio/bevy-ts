@@ -287,6 +287,14 @@ const processes = {
   // Change reflect-coverage stages 1 and 2 (build-shapes): one cargo step at a time in the shared check
   // slot. The step is target/shapes-step.sh, written before each start; its log is target/shapes.log.
   "shapes-step": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:reflect-enums-color -- bash -c 'set -o pipefail; mkdir -p target; bash target/shapes-step.sh 2>&1 | grep -v ld64 > target/shapes.log; echo step exit $? >> target/shapes.log; tail -3 target/shapes.log'" },
+  // Change engine-cache-link: the cli before the change, kept to measure against.
+  "ecl-before-cli": { cmd: "bash -c 'set -o pipefail; mkdir -p target/ecl; cargo build -p bevy-ts-cli 2>&1 | grep -v ld64 | tail -5 && cp target/debug/bevy-ts target/ecl/bevy-ts-before && echo copied'" },
+  // Change engine-cache-link, tasks 1.1 and 5.1: first launch of a shared-cache engine in projects A and B, 3 runs.
+  "ecl-tests": { cmd: "bash -c 'set -o pipefail; (cargo test -p bevy-ts-cli --lib engine:: && cargo test -p bevy-ts-cli --test build a_linked_engine) 2>&1 | grep -v ld64 | tee target/ecl/tests.log | grep -E \"^test |^test result|panicked|^error|^warning|-->\"'" },
+  // Change engine-cache-link: the last round before it lands.
+  "ecl-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target/ecl; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings) 2>&1 | grep -v ld64 | tee target/ecl/gate.log | grep -E \"^test result|FAILED|panicked|^error\"; echo gate exit $?'" },
+  "ecl-bench-before": { cmd: "bash -c 'set -o pipefail; ECL_ARM=before scripts/engine-cache-link-bench.sh 2>&1 | grep -v ld64 | tee -a target/ecl/bench.log'" },
+  "ecl-bench-after": { cmd: "bash -c 'set -o pipefail; cargo build -p bevy-ts-cli 2>&1 | grep -v ld64 | tail -3 && cp target/debug/bevy-ts target/ecl/bevy-ts-after && ECL_ARM=after scripts/engine-cache-link-bench.sh 2>&1 | grep -v ld64 | tee -a target/ecl/bench.log'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
