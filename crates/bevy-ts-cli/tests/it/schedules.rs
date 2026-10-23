@@ -37,7 +37,7 @@ fn systems_in(app: &mut App, label: impl ScheduleLabel) -> usize {
 
 #[test]
 fn a_system_in_last_runs_after_post_update_and_its_stage_is_made_on_load() {
-    let (dir, mut app) = load("last", &src(""));
+    let (dir, mut app) = load("sched-last", &src(""));
     app.update();
     let before = systems_in(&mut app, Last);
     write(
@@ -54,7 +54,7 @@ fn a_system_in_last_runs_after_post_update_and_its_stage_is_made_on_load() {
 
 #[test]
 fn an_unused_schedule_has_no_bevy_ts_system() {
-    let (_, mut app) = load("unused", &src("export function a() {}\napp.addSystems(Update, a);\n"));
+    let (_, mut app) = load("sched-unused", &src("export function a() {}\napp.addSystems(Update, a);\n"));
     let before = systems_in(&mut app, SpawnScene);
     app.update();
     assert_eq!(systems_in(&mut app, SpawnScene), before);
@@ -70,7 +70,7 @@ export function d() { console.log("post"); }
 export function e() { console.log("last"); }
 app.addSystems(FixedFirst, a).addSystems(FixedPreUpdate, b).addSystems(FixedUpdate, c).addSystems(FixedPostUpdate, d).addSystems(FixedLast, e);
 "#;
-    let (_, mut app) = load("fixed", &src(body));
+    let (_, mut app) = load("sched-fixed", &src(body));
     let step = app.world().resource::<Time<Fixed>>().timestep();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(step * 2));
     // The first frame starts the clock; the next two run two fixed steps each.
@@ -90,7 +90,7 @@ export function b(s: Res<Score>) { console.log(s.value === 7 ? "b7" : "b?"); }
 export function c(s: ResMut<Score>) { console.log("c"); s.value = 7; }
 app.insertResource(Score.of({ value: 1 })).addSystems(PostStartup, a).addSystems(Startup, b).addSystems(PreStartup, c);
 "#;
-    let (dir, mut app) = load("startups", &src(body));
+    let (dir, mut app) = load("sched-startups", &src(body));
     app.update();
     assert_eq!(said(&mut app), ["c", "b7", "a"]);
     write(&dir, "game.ts", &src(&format!("{body}\n// edited\n")));
@@ -106,7 +106,7 @@ fn a_custom_schedule_after_update_moves_on_reload() {
             "export function spawnWave() {{ console.log('wave'); }}\nexport function tick() {{ console.log('update'); }}\napp.{place}(Update, Waves).addSystems(Waves, spawnWave).addSystems(Update, tick);\n"
         )
     };
-    let (dir, mut app) = load("waves", &src(&body("insertScheduleAfter")));
+    let (dir, mut app) = load("sched-waves", &src(&body("insertScheduleAfter")));
     updates(&mut app, 2);
     assert_eq!(said(&mut app), ["update", "wave", "update", "wave"]);
     let order = app.world().resource::<bevy::app::MainScheduleOrder>().labels.clone();
@@ -141,7 +141,7 @@ fn save_and_apply_in_frame(app: &mut App, dir: &std::path::Path, src: &str) {
 #[test]
 fn a_schedule_moved_by_a_saved_file_moves_from_the_next_frame() {
     let body = |place: &str| format!("export function spawnWave() {{ console.log('wave'); }}\nexport function tick() {{ console.log('update'); }}\napp.{place}(Update, Waves).addSystems(Waves, spawnWave).addSystems(Update, tick);\n");
-    let (dir, mut app) = load("wavessaved", &src(&body("insertScheduleAfter")));
+    let (dir, mut app) = load("sched-wavessaved", &src(&body("insertScheduleAfter")));
     updates(&mut app, 2);
     // The save is applied inside a frame, while `Main` holds `MainScheduleOrder`.
     save_and_apply_in_frame(&mut app, &dir, &src(&body("insertScheduleBefore")));
@@ -156,7 +156,7 @@ fn a_schedule_moved_by_a_saved_file_moves_from_the_next_frame() {
 
 #[test]
 fn a_schedule_moved_to_the_fixed_order_leaves_the_main_one() {
-    let (dir, mut app) = load("wavesfixed", &src("export function w() {}\napp.insertScheduleAfter(Update, Waves).addSystems(Waves, w);\n"));
+    let (dir, mut app) = load("sched-wavesfixed", &src("export function w() {}\napp.insertScheduleAfter(Update, Waves).addSystems(Waves, w);\n"));
     app.update();
     save_and_apply_in_frame(&mut app, &dir, &src("export function w() {}\napp.insertFixedScheduleAfter(FixedUpdate, Waves).addSystems(Waves, w);\n"));
     app.update();
@@ -169,7 +169,7 @@ fn a_schedule_moved_to_the_fixed_order_leaves_the_main_one() {
 #[test]
 fn an_anchor_the_new_generation_drops_fails_the_load() {
     let two = "export class Boss extends ScheduleLabel { static path = \"game::Boss\" }\napp.insertScheduleAfter(Update, Waves).insertScheduleAfter(Waves, Boss);\n";
-    let (dir, mut app) = load("dropanchor", &src(two));
+    let (dir, mut app) = load("sched-dropanchor", &src(two));
     app.update();
     write(&dir, "game.ts", &src("export class Boss extends ScheduleLabel { static path = \"game::Boss\" }\napp.insertScheduleAfter(Waves, Boss);\n"));
     let r = reload(&mut app, false);
@@ -178,7 +178,7 @@ fn an_anchor_the_new_generation_drops_fails_the_load() {
 
 #[test]
 fn inserting_relative_to_a_schedule_not_in_the_order_fails() {
-    let errors = load_errors("badorder", &src("export class Other extends ScheduleLabel { static path = \"game::Other\" }\napp.insertScheduleAfter(Other, Waves);\n"));
+    let errors = load_errors("sched-badorder", &src("export class Other extends ScheduleLabel { static path = \"game::Other\" }\napp.insertScheduleAfter(Other, Waves);\n"));
     assert!(errors.iter().any(|e| e.message.contains("game::Waves") && e.message.contains("game::Other")), "{errors:?}");
 }
 
@@ -189,7 +189,7 @@ export function caller(c: Commands, s: ResMut<Score>) { if (s.value++ === 0) { c
 export function next() { console.log("next"); }
 app.insertResource(Score.of({ value: 0 })).initSchedule(Waves).addSystems(Waves, spawnWave).addSystems(Update, caller, next);
 "#;
-    let (_, mut app) = load("runschedule", &src(body));
+    let (_, mut app) = load("sched-runschedule", &src(body));
     updates(&mut app, 3);
     assert_eq!(said(&mut app), ["call", "wave", "next", "next", "next"]);
 }
@@ -200,7 +200,7 @@ fn a_schedule_run_inside_itself_is_skipped_with_an_error() {
 export function caller(c: Commands, s: ResMut<Score>) { if (s.value++ === 0) c.runSchedule(Waves); }
 app.insertResource(Score.of({ value: 0 })).addSystems(Waves, again).addSystems(Update, caller);
 "#;
-    let (_, mut app) = load("reentry", &src(body));
+    let (_, mut app) = load("sched-reentry", &src(body));
     updates(&mut app, 2);
     assert_eq!(said(&mut app), ["wave"]);
     let m = messages(&app);
@@ -212,7 +212,7 @@ struct NetTick;
 
 #[test]
 fn a_ports_schedule_runs_its_ts_systems_when_the_port_runs_it() {
-    let dir = project("netschedule", &[("game.ts", &src("export function sync() { console.log('sync'); }\napp.addSystems(schedule(\"net:tick\"), sync);\n"))]);
+    let dir = project("sched-netschedule", &[("game.ts", &src("export function sync() { console.log('sync'); }\napp.addSystems(schedule(\"net:tick\"), sync);\n"))]);
     let mut app = app(&dir.join("game.ts"));
     app.ts_schedule("net:tick", NetTick);
     app.init_schedule(NetTick);
@@ -232,7 +232,7 @@ export function next() { console.log("next"); }
 const id = app.registerSystem(spawnWave);
 app.insertResource(Score.of({ value: 0 })).addSystems(Update, caller, next);
 "#;
-    let (_, mut app) = load("oneshot", &src(body));
+    let (_, mut app) = load("sched-oneshot", &src(body));
     updates(&mut app, 2);
     assert_eq!(said(&mut app), ["wave", "wave", "next", "next"]);
 }
@@ -244,7 +244,7 @@ export function caller(c: Commands, s: ResMut<Score>) { if (s.value++ === 0) c.r
 app.registerSystem(spawnAt);
 app.insertResource(Score.of({ value: 0 })).addSystems(Update, caller);
 "#;
-    let (_, mut app) = load("oneshotin", &src(body));
+    let (_, mut app) = load("sched-oneshotin", &src(body));
     updates(&mut app, 2);
     assert_eq!(said(&mut app), ["x3"]);
 }
@@ -255,7 +255,7 @@ fn running_an_unregistered_system_throws() {
 export function caller(c: Commands) { c.runSystem(other); }
 app.addSystems(Update, caller);
 "#;
-    let (_, mut app) = load("unregistered", &src(body));
+    let (_, mut app) = load("sched-unregistered", &src(body));
     app.update();
     let m = messages(&app);
     assert!(m.iter().any(|l| l.contains("register it with app.registerSystem") && l.contains("other")), "{m:?}");
@@ -263,7 +263,7 @@ app.addSystems(Update, caller);
 
 #[test]
 fn in_anywhere_but_first_fails_the_load() {
-    let errors = load_errors("insecond", &src("export function spawnAt(c: Commands, at: In<SpawnAt>) {}\napp.registerSystem(spawnAt);\n"));
+    let errors = load_errors("sched-insecond", &src("export function spawnAt(c: Commands, at: In<SpawnAt>) {}\napp.registerSystem(spawnAt);\n"));
     assert!(errors.iter().any(|e| e.message.contains("In<SpawnAt> must be the first param") && e.location.as_ref().is_some_and(|l| l.line == 6)), "{errors:?}");
 }
 
@@ -274,7 +274,7 @@ export function plain() { console.log("plain"); }
 app.registerSystem(spawnAt);
 app.registerSystem(plain);
 "#;
-    let (_, mut app) = load("runtssystem", &src(body));
+    let (_, mut app) = load("sched-runtssystem", &src(body));
     app.world_mut().commands().queue(RunTsSystem::new("game.ts#plain"));
     app.world_mut().flush();
     app.world_mut().commands().queue(RunTsSystem::with("game.ts#spawnAt", 5.0f32.to_le_bytes().to_vec()));
@@ -288,7 +288,7 @@ fn a_one_shot_keeps_its_local_across_runs() {
 export function count(n: Local<{ runs: u32 }>) { n.runs += 1; console.log(`run${n.runs}`); }
 app.registerSystem(count);
 "#;
-    let (_, mut app) = load("oneshotlocal", &src(body));
+    let (_, mut app) = load("sched-oneshotlocal", &src(body));
     for _ in 0..2 {
         app.world_mut().commands().queue(RunTsSystem::new("game.ts#count"));
         app.world_mut().flush();
@@ -307,7 +307,7 @@ export function move(q: Query<[Mut<Transform>]>) { q.each((t) => { t.translation
 export function follow(q: Query<[GlobalTransform]>) { q.each((g) => console.log(`at${g.translation.x}`)); }
 app.addSystems(Update, move).addSystems(PostUpdate, systems(follow).after(systemSet("bevy:transform-propagate")));
 "#;
-    let (_, mut app) = load("afterpropagate", &src(body));
+    let (_, mut app) = load("sched-afterpropagate", &src(body));
     app.add_plugins(bevy::transform::TransformPlugin);
     app.world_mut().spawn(Transform::default());
     updates(&mut app, 2);

@@ -46,7 +46,7 @@ fn remove_res(app: &mut App, name: &str) {
 
 #[test]
 fn resource_changed_runs_on_the_frame_rust_writes_it_and_costs_no_call_otherwise() {
-    let (_, mut app) = load("changed", &src("export function redraw() { console.log('redraw'); }\napp.insertResource(Score.of({ value: 0 })).addSystems(Update, systems(redraw).runIf(resourceChanged(Score)));\n"));
+    let (_, mut app) = load("cond-changed", &src("export function redraw() { console.log('redraw'); }\napp.insertResource(Score.of({ value: 0 })).addSystems(Update, systems(redraw).runIf(resourceChanged(Score)));\n"));
     updates(&mut app, 2);
     let n = said(&mut app).len();
     write_res(&mut app, "game::Score", json!({ "value": 1 }));
@@ -61,7 +61,7 @@ fn resource_changed_runs_on_the_frame_rust_writes_it_and_costs_no_call_otherwise
 #[test]
 fn resource_equals_runs_from_the_frame_the_value_matches() {
     let body = "export function win() { console.log('win'); }\nexport function bump(s: ResMut<Score>) { s.value += 1; }\napp.insertResource(Score.of({ value: 8 })).addSystems(Update, bump, systems(win).runIf(resourceEquals(Score.of({ value: 10 }))));\n";
-    let (_, mut app) = load("equals", &src(body));
+    let (_, mut app) = load("cond-equals", &src(body));
     updates(&mut app, 4);
     // 9, 10, 11, 12: equal on the second frame only.
     assert_eq!(said(&mut app), ["win"]);
@@ -69,7 +69,7 @@ fn resource_equals_runs_from_the_frame_the_value_matches() {
 
 #[test]
 fn any_component_removed_runs_once_per_removal() {
-    let (dir, mut app) = load("removed", &src(""));
+    let (dir, mut app) = load("cond-removed", &src(""));
     let es: Vec<Entity> = (0..3).map(|_| spawn_ts(&mut app, "game::Enemy", json!({}), ())).collect();
     write(&dir, "game.ts", &src("export function recount() { console.log('recount'); }\napp.addSystems(Update, systems(recount).runIf(anyComponentRemoved(Enemy)));\n"));
     reload(&mut app, false);
@@ -90,7 +90,7 @@ app.initState(Game.Menu).insertResource(Score.of({ value: 0 })).addSystems(Updat
   systems(a).runIf(inState(Game.Playing).andThen(runOnce())),
   systems(b).runIf(inState(Game.Playing).andEager(runOnce())));
 "#;
-    let (_, mut app) = load("combinators", &src(body));
+    let (_, mut app) = load("cond-combinators", &src(body));
     updates(&mut app, 6);
     assert_eq!(said(&mut app), ["a"]);
 }
@@ -98,7 +98,7 @@ app.initState(Game.Menu).insertResource(Score.of({ value: 0 })).addSystems(Updat
 #[test]
 fn run_once_survives_a_reload_and_resets_on_restart() {
     let body = "export function once() { console.log('once'); }\napp.addSystems(Update, systems(once).runIf(runOnce()));\n";
-    let (dir, mut app) = load("runonce", &src(body));
+    let (dir, mut app) = load("cond-runonce", &src(body));
     updates(&mut app, 2);
     write(&dir, "game.ts", &src(&format!("{body}// edited\n")));
     reload(&mut app, false);
@@ -117,7 +117,7 @@ export function c() { console.log("c"); }
 export function d() { console.log("d"); }
 app.addSystems(Update, systems(a, b).runIf(runOnce()), systems(c, d).distributiveRunIf(runOnce()));
 "#;
-    let (_, mut app) = load("collective", &src(body));
+    let (_, mut app) = load("cond-collective", &src(body));
     updates(&mut app, 3);
     assert_eq!(said(&mut app), ["a", "b", "c", "d"]);
 }
@@ -132,7 +132,7 @@ app.insertResource(Score.of({ value: 0 })).insertResource(Boss.of({ hp: 0 }))
   .addSystems(Update, systems(a, b).runIf(resourceEquals(Score.of({ value: 0 }))))
   .addSystems(PostUpdate, systems(c, d).distributiveRunIf(resourceEquals(Score.of({ value: 1 }))));
 "#;
-    let (_, mut app) = load("grouponce", &src(body));
+    let (_, mut app) = load("cond-grouponce", &src(body));
     updates(&mut app, 2);
     // a flips the group's condition; b still runs in that stage run. c flips d's own instance.
     assert_eq!(said(&mut app), ["a", "b", "c"]);
@@ -166,7 +166,7 @@ fn every_rust_condition_skips_with_no_call_into_js() {
     ];
     for (i, c) in conditions.iter().enumerate() {
         let body = format!("export function gated() {{ console.log('ran'); }}\napp.initState(Game.Menu).insertResource(Score.of({{ value: 0 }})).addSystems(Update, systems(gated).runIf({c}));\n");
-        let (_, mut app) = load(&format!("skip{i}"), &src(&body));
+        let (_, mut app) = load(&format!("cond-skip{i}"), &src(&body));
         // The first frame spends any runOnce.
         updates(&mut app, 2);
         let before = calls(&app);
@@ -192,7 +192,7 @@ fn timer_app(name: &str, body: &str) -> (App, bevy_ts::generation::ReloadReport)
 
 #[test]
 fn a_ports_condition_runs_in_rust() {
-    let (mut app, r) = timer_app("ontimer", "export function spawn() { console.log('spawn'); }\napp.addSystems(Update, systems(spawn).runIf(nativeCondition(\"time:on-timer\", { secs: 1 })));\n");
+    let (mut app, r) = timer_app("cond-ontimer", "export function spawn() { console.log('spawn'); }\napp.addSystems(Update, systems(spawn).runIf(nativeCondition(\"time:on-timer\", { secs: 1 })));\n");
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     // Virtual time clamps a frame to 250 ms: nine frames are 2.25 s or so, two firings.
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(250)));
@@ -205,7 +205,7 @@ fn a_ports_condition_runs_in_rust() {
 
 #[test]
 fn a_factory_error_fails_the_load_with_the_call() {
-    let (_, r) = timer_app("ontimerbad", "export function spawn() {}\napp.addSystems(Update, systems(spawn).runIf(nativeCondition(\"time:on-timer\", { secs: \"two\" })));\n");
+    let (_, r) = timer_app("cond-ontimerbad", "export function spawn() {}\napp.addSystems(Update, systems(spawn).runIf(nativeCondition(\"time:on-timer\", { secs: \"two\" })));\n");
     let e = r.errors.iter().find(|e| e.message.contains("time:on-timer")).unwrap_or_else(|| panic!("{:?}", r.errors));
     assert!(e.message.contains("on-timer takes"), "{e:?}");
     let at = e.location.as_ref().unwrap();
@@ -214,7 +214,7 @@ fn a_factory_error_fails_the_load_with_the_call() {
 
 #[test]
 fn an_unknown_native_condition_fails_the_load() {
-    let errors = load_errors("nocondition", &src("export function spawn() {}\napp.addSystems(Update, systems(spawn).runIf(nativeCondition(\"time:nope\")));\n"));
+    let errors = load_errors("cond-nocondition", &src("export function spawn() {}\napp.addSystems(Update, systems(spawn).runIf(nativeCondition(\"time:nope\")));\n"));
     assert!(errors.iter().any(|e| e.message.contains("time:nope")), "{errors:?}");
 }
 
@@ -225,7 +225,7 @@ export function removed() { console.log("removed"); }
 export function either() { console.log("either"); }
 app.insertResource(Boss.of({ hp: 1 })).addSystems(Update, systems(added).runIf(resourceAdded(Boss)), systems(removed).runIf(resourceRemoved(Boss)), systems(either).runIf(resourceChangedOrRemoved(Boss)));
 "#;
-    let (_, mut app) = load("removedforms", &src(body));
+    let (_, mut app) = load("cond-removedforms", &src(body));
     updates(&mut app, 2);
     assert_eq!(said(&mut app), ["added", "either"]);
     remove_res(&mut app, "game::Boss");
@@ -240,7 +240,7 @@ export function a(r: MessageReader<Ping>) { console.log(`a${r.len}`); }
 export function b() { console.log("b"); }
 app.addMessage(Ping).insertResource(Score.of({ value: 0 })).addSystems(Update, send, systems(a, b).runIf(onMessage(Ping)));
 "#;
-    let (_, mut app) = load("grouponmessage", &src(body));
+    let (_, mut app) = load("cond-grouponmessage", &src(body));
     updates(&mut app, 4);
     // One message: the group runs in the one stage run after it was written, not while it stays buffered.
     assert_eq!(said(&mut app), ["a1", "b"]);
