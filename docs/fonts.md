@@ -21,11 +21,10 @@ font, and draws a box if that font lacks it. On macOS the test below holds → a
 words and every one draws a real glyph. A character no installed font has draws a box (`.notdef`);
 the rest of the text lays out as usual.
 
-The first text that needs a fallback makes fontique read the OS's font list, once. On macOS the cost
-is lost in the noise. Headless on an M5 Max at load 25 to 40, 8 runs of each build, alternated: the
-first layout of the sample took a median 293 ms (222 to 785) without the feature and 280 ms (213 to
-354) with it, and a later layout 10 ms either way. Most of that first layout is the frames it spans,
-not the scan. A game whose text is all ASCII never scans.
+The first text that needs a fallback makes fontique read the OS's font list, once. On macOS it
+costs nothing measurable: the first layout needing a fallback took a median 293 ms without the
+feature and 280 ms with it (8 runs each, headless), most of it the frames the layout spans. A game
+whose text is all ASCII never scans.
 
 ## Linux
 
@@ -53,8 +52,7 @@ does then without fontconfig, no fallback or a panic, is unchecked.
 
 A minimal Linux install may have no CJK or emoji font, and draws those as boxes. Debian and Ubuntu
 packages: `fonts-noto-cjk` and `fonts-noto-color-emoji`. The test below needs both on Linux, and its
-failure names them. `scripts/linux-fonts.sh` builds the Linux engine and test in Debian and runs
-them in containers with and without fontconfig and these fonts.
+failure names them.
 
 ## What a shipped game gets
 
@@ -63,7 +61,7 @@ the box. Text looks native, so it differs between machines.
 
 A game that wants its text to look the same everywhere ships its own font: put the `.ttf` or
 `.otf` under the project's `assets/` (it lands in `game/assets/` when built) and name it on its
-text with the `font` prop (`docs/ui.md`, from bevy-ui-coverage). Fallback still covers what that
+text with the `font` prop (`docs/ui.md`). Fallback still covers what that
 font lacks, so the font should hold every character the game shows.
 
 Not built: bundling OFL Noto in the engine itself, so every game draws the same fallback
