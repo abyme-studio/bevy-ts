@@ -33,9 +33,9 @@ const processes = {
   "tsx-sites-bench": { cmd: "cargo test --release -p bevy-ts-cli --test tsx_sites -- --ignored --nocapture 2>&1 | tee target/tsx-sites.log | tail -20" },
   "tsx-scale-bench": { cmd: "cargo test --release -p bevy-ts-cli --test tsx_scale -- --ignored --nocapture --test-threads 1 2>&1 | tee target/tsx-scale.log | tail -20" },
   "arena-walk": { cmd: "cargo test --release -p bevy-ts-cli --test arena_walk -- --nocapture 2>&1 | grep -v ld64 | tee target/arena-walk.log | grep -E '^[0-9] |test |panicked'" },
-  test: { cmd: "cargo test --workspace 2>&1 | tee target/test.log | grep -E \"^test result|FAILED|panicked\"" },
+  test: { cmd: "set -o pipefail; mkdir -p target && cargo test --workspace 2>&1 | tee target/test.log | grep -E \"^test result|FAILED|panicked\"" },
   "check-track-location": { cmd: "CARGO_TARGET_DIR=target/track-location cargo check -p bevy-ts --features track_location --all-targets" },
-  clippy: { cmd: "cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee target/clippy.log | tail -40" },
+  clippy: { cmd: "set -o pipefail; mkdir -p target && cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee target/clippy.log | tail -40" },
   release: { cmd: "cargo build --release -p bevy-ts-cli" },
   // The newest release.yml run on this branch (a dispatched dry run), watched to its end.
   "release-run": { cmd: "bash -c 'id=$(gh run list --workflow release.yml --branch \"$(git branch --show-current)\" -L 1 --json databaseId --jq \".[0].databaseId\") && gh run watch \"$id\" --exit-status --interval 30 | tail -25'" },
@@ -128,9 +128,9 @@ const processes = {
   "missing-scene-row-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/missing-scene-row-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"'" },
   "levels-protocol": { cmd: "cargo test -p bevy-ts-cli --test levels_protocol 2>&1 | grep -v ld64 | tee target/levels-protocol.log | grep -E 'test |panicked|left|right|assert|^error|^thread' | tail -30" },
   "levels-unit": { cmd: "cargo test -p bevy-ts-levels 2>&1 | grep -v ld64 | tee target/levels-unit.log | grep -E '^test result|FAILED|panicked|^error|left|right' | tail -30" },
-  "levels-gate": { cmd: "scripts/levels-gate.sh 2>&1 | tee target/levels-gate.log" },
+  "levels-gate": { cmd: "set -o pipefail; mkdir -p target && scripts/levels-gate.sh 2>&1 | tee target/levels-gate.log" },
   // The gate a native task group lands on.
-  "native-gate": { cmd: "mkdir -p target && scripts/native-gate.sh 2>&1 | tee target/native-gate.log" },
+  "native-gate": { cmd: "set -o pipefail; mkdir -p target && scripts/native-gate.sh 2>&1 | tee target/native-gate.log" },
   // What a branch lands on: the gate for what changed (docs/check-slots.md).
   "affected-gate": { cmd: "set -o pipefail; mkdir -p target && scripts/affected-gate.sh 2>&1 | tee target/affected-gate.log" },
   // The gate a systems-api task group lands on.

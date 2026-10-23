@@ -61,3 +61,15 @@ Deno.test("a script under a held slot, or with no gate-slot, takes none", async 
   assertEquals(await run(probe, { HOME: home, ABYME_GATE_HELD: "1" }), "ran a");
   assertEquals(await run(probe, { HOME: dir, ABYME_GATE_HELD: "" }), "ran a");
 });
+
+Deno.test("a gate that pipes its output exits with the gate's status, not tee's", async () => {
+  // land reads a check's exit code: a pipe without pipefail turns a red gate green.
+  for (const name of ["native-gate", "affected-gate", "levels-gate", "systems-gate", "test", "clippy"]) {
+    const { cmd } = (processes as Record<string, { cmd: string }>)[name];
+    // In bash, as gated() runs it: the operator's fish has no pipefail.
+    assert(/ -- bash -c '.*set -o pipefail/.test(cmd), `${name}: ${cmd}`);
+  }
+  const red = await new Deno.Command("bash", { args: ["-c", "set -o pipefail; false | tee /dev/null"] }).output();
+  assertEquals(red.code, 1);
+});
+
