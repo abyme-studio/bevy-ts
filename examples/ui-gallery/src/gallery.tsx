@@ -94,6 +94,26 @@ const Media = () => (
   </Panel>
 );
 
+const [submitted, setSubmitted] = signal("");
+
+/** `<input>`: Bevy's one-line `TextInput`; Enter submits, Escape drops focus. */
+const TextInput = () => (
+  <Panel title="Text input">
+    <input
+      key="input"
+      style={{ width: px(240), padding: px(4) }}
+      background="#0d1017"
+      border="#3a4150"
+      size={14}
+      color="#e6edf3"
+      initialValue="Type, then Enter"
+      maxCharacters={40}
+      onSubmit={({ value }) => setSubmitted(value)}
+    />
+    <text key="submitted" size={12} color="#9fb3d1">{() => `Submitted: ${submitted()}`}</text>
+  </Panel>
+);
+
 app.scene("gallery", () => (
   <>
     {/* Not UI: a cube behind the panels, so <entity>, <mesh> and <material> appear too. */}
@@ -111,6 +131,7 @@ app.scene("gallery", () => (
       <Style />
       <Text />
       <Media />
+      <TextInput />
     </node>
   </>
 ));
