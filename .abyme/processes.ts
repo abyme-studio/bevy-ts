@@ -131,7 +131,7 @@ const processes = {
   "levels-gate": { cmd: "scripts/levels-gate.sh 2>&1 | tee target/levels-gate.log" },
   // The gate a native task group lands on.
   "native-gate": { cmd: "mkdir -p target && scripts/native-gate.sh 2>&1 | tee target/native-gate.log" },
-  // What a branch lands on, and the land queue's batch check: the gate for what changed (docs/check-slots.md).
+  // What a branch lands on: the gate for what changed (docs/check-slots.md).
   "affected-gate": { cmd: "set -o pipefail; mkdir -p target && scripts/affected-gate.sh 2>&1 | tee target/affected-gate.log" },
   // The gate a systems-api task group lands on.
   "systems-gate": { cmd: "bash -c 'mkdir -p target && set -o pipefail && scripts/systems-gate.sh 2>&1 | tee target/systems-gate.log'" },

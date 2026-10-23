@@ -33,9 +33,8 @@ asks for its own, and `ABYME_GATE_HELD` or a missing gate-slot skips it.
 
 ## The gate
 
-`scripts/affected-gate.sh` is what a branch runs before it lands, and what land's queue runs on a
-batch (`batch_check`). It runs `scripts/native-gate.sh`'s steps for only what changed since
-`LAND_BASE`: the merge base with main by default; the queue sets it to main before the batch.
+`scripts/affected-gate.sh` is what a branch runs before it lands. It runs `scripts/native-gate.sh`'s
+steps for only what changed since `LAND_BASE`, by default the merge base with main.
 
 - **Crates.** A changed crate brings every workspace crate that depends on it, through any kind of
   dependency (`cargo metadata`). Clippy and `cargo test -p` run on that set. A change to `bevy-ts`
@@ -46,8 +45,7 @@ batch (`batch_check`). It runs `scripts/native-gate.sh`'s steps for only what ch
   `.abyme/`. `examples/` also brings the crates whose tests run them.
 - **Nothing** for `docs/`, `README.md`, `.claude/`, `.github/`, `.gitignore` and `bench/`.
 - **Everything** for `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, `.cargo/`, `scripts/`,
-  `protocol/`, and any path no rule claims. `--full` forces it: `scripts/native-gate.sh` is that,
-  land's daily run on main.
+  `protocol/`, and any path no rule claims. `--full` forces it: `scripts/native-gate.sh` is that.
 
 `scripts/affected-gate.sh --plan` prints the crates and steps and runs nothing; it takes no slot.
 `deno test -A --no-check scripts/affected-gate.test.ts` checks the rules on a fixture workspace.
