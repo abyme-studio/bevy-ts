@@ -62,6 +62,7 @@ impl Plugin for HeadlessPlugin {
         let mut image = Image::new_target_texture(SIZE.0, SIZE.1, TextureFormat::Rgba8UnormSrgb, None);
         image.asset_usage = bevy::asset::RenderAssetUsages::default();
         let handle = app.world_mut().resource_mut::<Assets<Image>>().add(image);
+        app.insert_resource(bevy_ts::WindowImage(handle.clone()));
         app.insert_resource(Offscreen(handle));
         app.add_observer(|add: On<Add<Camera>>, offscreen: Res<Offscreen>, mut commands: Commands| {
             commands.entity(add.entity).insert(RenderTarget::Image(offscreen.0.clone().into()));

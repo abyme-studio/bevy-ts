@@ -18,7 +18,7 @@ const ELEMENT = Symbol.for("bevy-ts.element");
 /** Intrinsics that describe components of the enclosing entity. */
 const COMPONENT_INTRINSICS = new Set(["mesh", "material"]);
 /** bevy_ui intrinsics: entities of their own, with one intrinsic component named after the tag. */
-const UI_INTRINSICS = new Set(["node", "text", "image", "button", "span"]);
+const UI_INTRINSICS = new Set(["node", "text", "image", "button", "span", "viewport"]);
 /** Rich text: `<text>` and `<span>` hold strings, bindings and `<span>`s. */
 const RICH = new Set(["text", "span"]);
 /** What a `<span>` takes from its parent unless it sets its own: Bevy gives a span no inheritance. */
@@ -1191,11 +1191,13 @@ function evaluate(v) {
 }
 
 class Slot {
-  constructor(ctx, id, el, owner) {
+  /** `parentType`: the element the slot sits in, so its content is checked as that element's children. */
+  constructor(ctx, id, el, owner, parentType) {
     this.ctx = ctx;
     this.id = id;
     this.el = el;
     this.owner = owner;
+    this.parentType = parentType;
     this.groups = new Map();
     this.current = undefined;
     this.computation = null;
@@ -1223,7 +1225,7 @@ class Slot {
     const at = [ctx.pendingBindings.length, ctx.pendingSlots.length, ctx.deferred.length];
     let nodes;
     try {
-      nodes = untrack(() => runScene(ctx, () => describeIn(ctx, evaluateContent(content), owner), owner));
+      nodes = untrack(() => runScene(ctx, () => describeIn(ctx, evaluateContent(content), owner, this.parentType), owner));
     } catch (e) {
       // Content that failed to describe mounts nothing: what it registered goes with it.
       for (const b of ctx.pendingBindings.splice(at[0])) ctx.bindings.delete(b.id);
@@ -1305,6 +1307,9 @@ export const deg = (n) => (n * Math.PI) / 180;
 export const linearGradient = (angle, stops) => ({ gradient: "linear", angle, stops });
 export const radialGradient = (stops, options) => ({ gradient: "radial", stops, ...options });
 export const conicGradient = (stops, options) => ({ gradient: "conic", stops, ...options });
+/** `<image mode>`: Bevy's `NodeImageMode::Sliced` and `Tiled`. */
+export const sliced = (options) => ({ mode: "sliced", ...options });
+export const tiled = (options) => ({ mode: "tiled", ...options });
 
 /** The describe in progress: its context, and the owner bindings belong to. */
 let Describing = null;
@@ -1406,7 +1411,23 @@ function richText(el) {
   });
   return { text: joined(lead), items };
 }
-function describeEntity(el, key, type) {
+/**
+ * `camera={ref}`: the ref's entity, bound, so Rust writes it once the ref mounts. On `<viewport>`
+ * it is the camera shown; on any other UI element it is `UiTargetCamera`, which Bevy reads only on
+ * a root UI node.
+ */
+function cameraProp(el, parentType) {
+  const v = el.props.camera;
+  if (v === undefined) return undefined;
+  if (el.type !== "viewport" && UI_INTRINSICS.has(parentType)) {
+    throw located(`<${el.type} camera>: camera goes on a root UI element, not one inside <${parentType}>`, el.source);
+  }
+  if (v instanceof NodeRef) return Describing.ctx.bind(() => v.entity, Describing.owner, el.source);
+  if (typeof v === "number" || v === null) return v;
+  throw located(`<${el.type} camera>: takes a ref (or an entity)`, el.source);
+}
+
+function describeEntity(el, key, type, parentType) {
   const ui = UI_INTRINSICS.has(el.type);
   const node = { key, type, components: [], children: [] };
   if (el.props.name !== undefined) {
@@ -1436,7 +1457,10 @@ function describeEntity(el, key, type) {
   const childItems = [];
   const rich = RICH.has(el.type) ? richText(el) : null;
   if (ui) {
+    if (el.props.camera !== undefined) skip.add("camera");
     const props = plainProps(el, skip);
+    const cam = cameraProp(el, parentType);
+    if (cam !== undefined) props.camera = cam;
     if (rich) {
       const t = rich.text;
       props.text = typeof t === "function" ? Describing.ctx.bind(t, Describing.owner, el.source) : t;
@@ -1466,10 +1490,10 @@ function describeEntities(items, parentType) {
   const out = [];
   for (const { el, key, type } of keyed(items, "")) {
     if (el.type === "span" && !RICH.has(parentType)) throw located("<span> goes inside a <text> or a <span>", el.source);
-    if (el.type === "entity" || UI_INTRINSICS.has(el.type)) out.push(describeEntity(el, key, type));
+    if (el.type === "entity" || UI_INTRINSICS.has(el.type)) out.push(describeEntity(el, key, type, parentType));
     else if (typeof el.type === "function" && el.type[CONTROL]) {
       const id = Describing.ctx.nextSlot++;
-      const slot = new Slot(Describing.ctx, id, el, Describing.owner);
+      const slot = new Slot(Describing.ctx, id, el, Describing.owner, parentType);
       Describing.ctx.slots.set(id, slot);
       Describing.ctx.pendingSlots.push(slot);
       out.push({ key, type, slot: id, source: [el.source, ...el.chain].filter(Boolean) });
@@ -1482,7 +1506,7 @@ function describeEntities(items, parentType) {
   return out;
 }
 
-function describeIn(ctx, root, owner) {
+function describeIn(ctx, root, owner, parentType) {
   const prev = Describing;
   const prevCtx = Ctx;
   Describing = { ctx, owner: owner || ctx.root };
@@ -1493,7 +1517,7 @@ function describeIn(ctx, root, owner) {
     for (const item of items) {
       if (!isElement(item.el)) throw new Error(`a scene must return elements, not ${JSON.stringify(item.el)}`);
     }
-    return describeEntities(items);
+    return describeEntities(items, parentType);
   } finally {
     describing--;
     Describing = prev;

@@ -165,6 +165,8 @@ export interface NodeProps extends EntityProps {
   shadow?: Bindable<Shadow | readonly Shadow[]>;
   /** `UiTransform`: moves, scales and rotates the node after layout. */
   transform?: Bindable<UiTransform>;
+  /** `UiTargetCamera`: the camera a root UI element draws on, written once the ref mounts. Root elements only. */
+  camera?: NodeRef | Entity;
 }
 
 /** The text props Bevy applies per span (`TextFont`, `TextColor`, decorations). */
@@ -214,10 +216,35 @@ export interface SpanProps extends SpanStyle {
   children?: TextChild | readonly TextChild[];
 }
 
+/** What `sliced(...)` and `tiled(...)` return. */
+export interface ImageMode {
+  readonly mode: "sliced" | "tiled";
+}
+
 /** `<image>`: an `ImageNode` from an asset path. */
 export interface ImageProps extends NodeProps {
   src: Bindable<string>;
+  /** `ImageNode.color`, a tint. */
   color?: Bindable<string>;
+  flipX?: Bindable<boolean>;
+  flipY?: Bindable<boolean>;
+  /** The part of the image to draw, `[x, y, width, height]` in pixels. */
+  rect?: Bindable<readonly [number, number, number, number]>;
+  /** A tile of a grid atlas (`TextureAtlasLayout::from_grid`). */
+  atlas?: Bindable<{
+    layout: { tile: readonly [number, number]; columns: number; rows: number; padding?: readonly [number, number]; offset?: readonly [number, number] };
+    index: number;
+  }>;
+  /** `NodeImageMode`: `"auto"`, `"stretch"`, `sliced(...)` or `tiled(...)`. */
+  mode?: Bindable<"auto" | "stretch" | ImageMode>;
+}
+
+/**
+ * `<viewport camera={ref}>`: a `<node>` with `ViewportNode`, showing the camera's output. A camera
+ * on the window gets an image of its own to render into, so it leaves the window.
+ */
+export interface ViewportProps extends Omit<NodeProps, "camera"> {
+  camera: NodeRef | Entity;
 }
 
 type Vec2 = [number, number];
@@ -516,5 +543,6 @@ export declare namespace JSX {
     text: TextProps & KeyAttribute;
     span: SpanProps & KeyAttribute;
     image: ImageProps & KeyAttribute;
+    viewport: ViewportProps & KeyAttribute;
   }
 }

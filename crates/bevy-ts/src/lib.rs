@@ -48,6 +48,12 @@ pub mod prelude {
 #[reflect(Component, Default)]
 pub struct ScriptHidden;
 
+/// The image a windowless run (`--headless`) uses as its window: its cameras render there. A
+/// camera rendering to it counts as on the window, so `<viewport camera>` gives such a camera an
+/// image of its own, as it does a camera on a real window.
+#[derive(Resource, Clone, Debug)]
+pub struct WindowImage(pub Handle<Image>);
+
 /// Whether the game runs (`Play`) or the engine is an editor over a still world (`Edit`, from
 /// `bevy-ts dev --edit` or the viewport's edit mode). A shipped game is always `Play`. Native
 /// systems that must not run in edit mode gate with `run_if(in_state(EngineMode::Play))`.

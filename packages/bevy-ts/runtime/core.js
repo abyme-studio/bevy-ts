@@ -13,7 +13,7 @@
 import { NOT_TSX, STRUCT_FIELDS, TsxContext, describe, readResource, runScene, setHost } from "bevy-ts/jsx-runtime";
 
 // TSX's reactive surface, from the JSX runtime: no hooks, bindings read `ref.get(C)` directly.
-export { signal, computed, effect, untrack, onCleanup, batch, ref, Show, For, px, percent, vw, vh, em, rem, fr, minmax, repeat, span, deg, linearGradient, radialGradient, conicGradient } from "bevy-ts/jsx-runtime";
+export { signal, computed, effect, untrack, onCleanup, batch, ref, Show, For, px, percent, vw, vh, em, rem, fr, minmax, repeat, span, deg, linearGradient, radialGradient, conicGradient, sliced, tiled } from "bevy-ts/jsx-runtime";
 
 const S = {
   /** The generation being loaded, or null. */

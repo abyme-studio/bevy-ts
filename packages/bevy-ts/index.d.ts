@@ -611,5 +611,14 @@ export declare function radialGradient(
   stops: readonly ColorStop[],
   options?: { at?: readonly [Length, Length]; shape?: "closest-side" | "farthest-side" | "closest-corner" | "farthest-corner" | { circle: Length } | { ellipse: readonly [Length, Length] } },
 ): import("bevy-ts/jsx-runtime").Gradient;
+/** `NodeImageMode::Sliced`: nine-slice, `border` in pixels (one or per side); centre and sides stretch or tile. */
+export declare function sliced(options: {
+  border: number | { left?: number; right?: number; top?: number; bottom?: number };
+  center?: "stretch" | { tile: number };
+  sides?: "stretch" | { tile: number };
+  maxCornerScale?: number;
+}): import("bevy-ts/jsx-runtime").ImageMode;
+/** `NodeImageMode::Tiled`: repeats along `x` and `y` (both by default) once stretched past `stretch` (1). */
+export declare function tiled(options?: { x?: boolean; y?: boolean; stretch?: number }): import("bevy-ts/jsx-runtime").ImageMode;
 /** `ConicGradient`: stops are colours or `[colour, degrees]`; `from` is the start angle in degrees. */
 export declare function conicGradient(stops: readonly (string | readonly [string, number])[], options?: { from?: number; at?: readonly [Length, Length] }): import("bevy-ts/jsx-runtime").Gradient;

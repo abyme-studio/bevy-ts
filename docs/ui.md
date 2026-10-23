@@ -20,6 +20,7 @@ app.scene("hud", () => (
 | `<text>` | `Text`, `TextFont`, `TextColor`, `TextLayout` |
 | `<span>` | `TextSpan`, inside `<text>` or `<span>` |
 | `<image src>` | `ImageNode` |
+| `<viewport camera>` | `Node`, `ViewportNode` |
 | `<button>` | `Node`, `Button`, picking |
 
 An unknown prop, style key or word fails the load and names it with the accepted ones.
@@ -110,3 +111,35 @@ span, bind its text (`<span>{() => (low() ? "!" : "")}</span>`).
 | `justify` | `<text>` | `TextLayout.justify` | `left`, `center`, `right`, `justified`, `start`, `end` |
 | `linebreak` | `<text>` | `TextLayout.linebreak` | `word`, `char`, `word-or-char`, `none` |
 | `textShadow` | `<text>` | `TextShadow` | `{ x, y, color }`; a missing field is Bevy's default |
+
+## Cameras and images
+
+`camera={ref}` on a root UI element draws it on that camera (`UiTargetCamera`), once the ref
+mounts. On an element inside another it fails the load: Bevy reads it only on a root.
+
+`<viewport camera={ref}>` is a `<node>` showing that camera's output (`ViewportNode`), sized to
+the node. Bevy shows only a camera that renders to an image, so the viewport gives its camera an
+image of its own, unless it already renders to one. That takes the camera off the window: give a
+viewport a camera of its own, not the game's. The camera keeps that image when the viewport goes
+or shows another camera. Under `--headless` the screenshot image counts as the window.
+
+```tsx
+const mini = ref();
+<entity ref={mini}><Camera3d /><Transform translation={[0, 20, 0]} rotation={[-0.7071, 0, 0, 0.7071]} /></entity>
+<viewport camera={mini} style={{ width: px(200), height: px(150) }} />
+```
+
+`<image>` writes `ImageNode`:
+
+| Prop | Bevy | Takes |
+|---|---|---|
+| `src` | `ImageNode.image` | an asset path |
+| `color` | `ImageNode.color` | a tint colour |
+| `flipX`, `flipY` | `flip_x`, `flip_y` | `true` |
+| `rect` | `rect` | `[x, y, width, height]` in pixels |
+| `atlas` | `texture_atlas` | `{ layout: { tile: [w, h], columns, rows, padding, offset }, index }`, a grid layout (`TextureAtlasLayout::from_grid`); equal grids share one layout |
+| `mode` | `image_mode` | `"auto"`, `"stretch"`, `sliced({ border, center, sides, maxCornerScale })` or `tiled({ x, y, stretch })` |
+
+`sliced` is a nine-slice: `border` in pixels, one number or `{ left, right, top, bottom }`;
+`center` and `sides` are `"stretch"` (the default) or `{ tile: n }`. `tiled` repeats along `x` and
+`y` (both by default) once the image is stretched past `stretch` (1).

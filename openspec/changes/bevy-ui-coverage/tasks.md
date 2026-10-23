@@ -3,7 +3,7 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 ## 0. Gallery
 
 - [x] 0.1 `examples/ui-gallery` (no `example.json`, so it does not ship): `src/gallery.tsx` with today's `<node>`, `<text>`, `<image>`, `<button>` (and `<input>` once text-input lands), one panel per stage
-- [x] 0.2 `crates/bevy-ts-cli/tests/ui_gallery.rs`: load the gallery headless; fail naming any intrinsic in `jsx-runtime.d.ts` `IntrinsicElements` that it does not mount
+- [x] 0.2 `crates/bevy-ts-cli/tests/it/ui_gallery.rs`: load the gallery headless; fail naming any intrinsic in `jsx-runtime.d.ts` `IntrinsicElements` that it does not mount
 
 ## 1. Style
 
@@ -66,10 +66,10 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 7. Cameras and images
 
-- [ ] 7.1 `camera` on a root UI intrinsic (`UiTargetCamera` once the ref mounts); `<viewport camera>` (`ViewportNode`)
-- [ ] 7.2 `<image>` `flipX`, `flipY`, `rect`, `atlas`, `mode` with `sliced` and `tiled` helpers
-- [ ] 7.3 Tests: UI on a second camera; a viewport node's camera; each image option's `ImageNode` field
-- [ ] 7.4 Gallery panel and `docs/ui.md` "Cameras and images" section
+- [x] 7.1 `camera` on a root UI intrinsic (`UiTargetCamera` once the ref mounts); `<viewport camera>` (`ViewportNode`)
+- [x] 7.2 `<image>` `flipX`, `flipY`, `rect`, `atlas`, `mode` with `sliced` and `tiled` helpers
+- [x] 7.3 Tests: UI on a second camera; a viewport node's camera; each image option's `ImageNode` field
+- [x] 7.4 Gallery panel and `docs/ui.md` "Cameras and images" section
 
 ## 8. Close
 

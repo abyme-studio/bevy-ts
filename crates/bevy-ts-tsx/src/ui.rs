@@ -5,7 +5,11 @@
 
 use bevy::prelude::*;
 use bevy::text::{FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, Underline, UnderlineColor};
-use bevy::ui::widget::TextShadow;
+use bevy::camera::RenderTarget;
+use bevy::image::{TextureAtlas, TextureAtlasLayout};
+use bevy::render::render_resource::TextureFormat;
+use bevy::sprite::{BorderRect, SliceScaleMode, TextureSlicer};
+use bevy::ui::widget::{NodeImageMode, TextShadow, ViewportNode};
 use bevy::ui::{
     AngularColorStop, BackgroundGradient, BorderGradient, BoxShadow, ColorStop, ConicGradient, CornerRadius, Gradient, InlineDirection, LinearGradient, OverflowAxis,
     OverflowClipMargin, RadialGradient, RadialGradientShape, ShadowStyle, UiPosition, UiTransform, Val2, VisualBox,
@@ -20,6 +24,8 @@ pub enum UiKind {
     Button,
     /// A run of rich text under `<text>` or `<span>`: `TextSpan`, no `Node`.
     Span,
+    /// A `<node>` showing a camera's output: `ViewportNode`.
+    Viewport,
 }
 
 /// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak` and `textShadow`.
@@ -33,19 +39,20 @@ impl UiKind {
             "image" => UiKind::Image,
             "button" => UiKind::Button,
             "span" => UiKind::Span,
+            "viewport" => UiKind::Viewport,
             _ => return None,
         })
     }
 
     fn props(self) -> &'static [&'static str] {
         match self {
-            UiKind::Node | UiKind::Button => &["style", "background", "border", "radius", "outline", "shadow", "transform"],
+            UiKind::Node | UiKind::Button | UiKind::Viewport => &["style", "background", "border", "radius", "outline", "shadow", "transform", "camera"],
             UiKind::Text => &[
-                "style", "background", "border", "radius", "outline", "shadow", "transform", "text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing",
-                "textBackground", "underline", "strikethrough", "justify", "linebreak", "textShadow",
+                "style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "text", "size", "color", "font", "weight", "italic", "lineHeight",
+                "letterSpacing", "textBackground", "underline", "strikethrough", "justify", "linebreak", "textShadow",
             ],
             UiKind::Span => SPAN_PROPS,
-            UiKind::Image => &["style", "background", "border", "radius", "outline", "shadow", "transform", "src", "color"],
+            UiKind::Image => &["style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "src", "color", "flipX", "flipY", "rect", "atlas", "mode"],
         }
     }
 }
@@ -71,6 +78,10 @@ enum Part {
     Underline,
     Strikethrough,
     Image,
+    /// `camera` on a root UI node: `UiTargetCamera`.
+    Camera,
+    /// `camera` on `<viewport>`: `ViewportNode`, the camera it shows.
+    Viewport,
 }
 
 fn part(kind: UiKind, prop: &str) -> Part {
@@ -90,8 +101,10 @@ fn part(kind: UiKind, prop: &str) -> Part {
         "textBackground" => Part::TextBackground,
         "underline" => Part::Underline,
         "strikethrough" => Part::Strikethrough,
-        "src" => Part::Image,
+        "src" | "flipX" | "flipY" | "rect" | "atlas" | "mode" => Part::Image,
         "color" if kind == UiKind::Image => Part::Image,
+        "camera" if kind == UiKind::Viewport => Part::Viewport,
+        "camera" => Part::Camera,
         _ => Part::Color,
     }
 }
@@ -833,6 +846,174 @@ fn decoration(v: &Value, prop: &str) -> Result<Option<Option<Color>>, String> {
     }
 }
 
+/// `camera`: an entity (a ref's, as bits), or `null` while the ref is not mounted.
+fn camera(v: &Value) -> Result<Option<Entity>, String> {
+    if v.is_null() {
+        return Ok(None);
+    }
+    let bits = v.as_u64().ok_or("camera takes a ref (or an entity)")?;
+    Entity::try_from_bits(bits).map(Some).ok_or_else(|| format!("camera: {bits} is not an entity"))
+}
+
+/// Gives a viewport's camera an image of its own to render into, as Bevy's viewport example
+/// does by hand, unless it already renders to an image other than the window's. Bevy's
+/// `update_viewport_render_target_size` then sizes it to the node. This takes the camera off the
+/// window: a viewport's camera is a camera of its own.
+fn own_image_target(world: &mut World, camera: Entity) -> Result<(), String> {
+    let window = world.get_resource::<bevy_ts::WindowImage>().map(|w| w.0.id());
+    let Ok(em) = world.get_entity(camera) else { return Ok(()) };
+    let own = em.get::<RenderTarget>().and_then(RenderTarget::as_image).is_some_and(|h| Some(h.id()) != window);
+    if own {
+        return Ok(());
+    }
+    let image = Image::new_target_texture(1, 1, TextureFormat::Bgra8UnormSrgb, None);
+    let handle = world.get_resource_mut::<Assets<Image>>().ok_or("<viewport> needs the image plugin (no Assets<Image>)")?.add(image);
+    world.entity_mut(camera).insert(RenderTarget::Image(handle.into()));
+    Ok(())
+}
+
+/// A grid atlas layout, Bevy's `TextureAtlasLayout::from_grid`.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct AtlasGrid {
+    tile: UVec2,
+    columns: u32,
+    rows: u32,
+    padding: UVec2,
+    offset: UVec2,
+}
+
+/// `<image>`'s `ImageNode` fields beside `src`.
+struct ImageFields {
+    color: Option<Color>,
+    flip_x: bool,
+    flip_y: bool,
+    rect: Option<Rect>,
+    atlas: Option<(AtlasGrid, usize)>,
+    mode: NodeImageMode,
+}
+
+fn uvec2(v: &Value, what: &str) -> Result<UVec2, String> {
+    let [x, y] = v.as_array().map(Vec::as_slice).unwrap_or_default() else {
+        return Err(format!("{what} takes [x, y]"));
+    };
+    let n = |c: &Value| c.as_u64().filter(|n| *n <= u32::MAX as u64).map(|n| n as u32).ok_or_else(|| format!("{what} takes whole pixels"));
+    Ok(UVec2::new(n(x)?, n(y)?))
+}
+
+fn flag(v: &Value, what: &str) -> Result<bool, String> {
+    v.as_bool().ok_or_else(|| format!("{what} takes true or false"))
+}
+
+fn image_fields(props: &Map<String, Value>) -> Result<ImageFields, String> {
+    let mut f = ImageFields { color: None, flip_x: false, flip_y: false, rect: None, atlas: None, mode: NodeImageMode::Auto };
+    if let Some(c) = props.get("color") {
+        f.color = Some(color(c)?);
+    }
+    if let Some(v) = props.get("flipX") {
+        f.flip_x = flag(v, "flipX")?;
+    }
+    if let Some(v) = props.get("flipY") {
+        f.flip_y = flag(v, "flipY")?;
+    }
+    if let Some(v) = props.get("rect") {
+        let n: Option<Vec<f32>> = v.as_array().and_then(|a| a.iter().map(|x| x.as_f64().map(|n| n as f32)).collect());
+        let Some([x, y, w, h]) = n.as_deref() else { return Err("rect takes [x, y, width, height] in pixels".into()) };
+        f.rect = Some(Rect::new(*x, *y, x + w, y + h));
+    }
+    if let Some(v) = props.get("atlas") {
+        let o = fields(v, "atlas", &["layout", "index"])?;
+        let l = fields(o.get("layout").ok_or("atlas takes a layout")?, "atlas.layout", &["tile", "columns", "rows", "padding", "offset"])?;
+        let count = |k: &str| l.get(k).and_then(Value::as_u64).filter(|n| *n > 0 && *n <= u32::MAX as u64).map(|n| n as u32).ok_or_else(|| format!("atlas.layout.{k} takes a positive count"));
+        let grid = AtlasGrid {
+            tile: uvec2(l.get("tile").ok_or("atlas.layout takes tile: [width, height]")?, "atlas.layout.tile")?,
+            columns: count("columns")?,
+            rows: count("rows")?,
+            padding: l.get("padding").map(|p| uvec2(p, "atlas.layout.padding")).transpose()?.unwrap_or(UVec2::ZERO),
+            offset: l.get("offset").map(|p| uvec2(p, "atlas.layout.offset")).transpose()?.unwrap_or(UVec2::ZERO),
+        };
+        let index = o.get("index").and_then(Value::as_u64).ok_or("atlas.index takes a tile number")? as usize;
+        if index >= (grid.columns * grid.rows) as usize {
+            return Err(format!("atlas.index {index} is past the layout's {} tiles", grid.columns * grid.rows));
+        }
+        f.atlas = Some((grid, index));
+    }
+    if let Some(v) = props.get("mode") {
+        f.mode = image_mode(v)?;
+    }
+    Ok(f)
+}
+
+/// `"auto"`, `"stretch"`, `sliced({ border, center, sides, maxCornerScale })` or
+/// `tiled({ x, y, stretch })`, Bevy's `NodeImageMode`.
+fn image_mode(v: &Value) -> Result<NodeImageMode, String> {
+    match v.as_str() {
+        Some("auto") => return Ok(NodeImageMode::Auto),
+        Some("stretch") => return Ok(NodeImageMode::Stretch),
+        _ => {}
+    }
+    let o = v.as_object().ok_or_else(|| format!("mode: {v} is not one of \"auto\", \"stretch\", sliced(...), tiled(...)"))?;
+    match o.get("mode").and_then(Value::as_str) {
+        Some("sliced") => {
+            let o = fields(v, "sliced", &["mode", "border", "center", "sides", "maxCornerScale"])?;
+            let mut s = TextureSlicer { border: slice_border(o.get("border").ok_or("sliced takes a border")?)?, ..default() };
+            if let Some(c) = o.get("center") {
+                s.center_scale_mode = scale_mode(c, "sliced center")?;
+            }
+            if let Some(c) = o.get("sides") {
+                s.sides_scale_mode = scale_mode(c, "sliced sides")?;
+            }
+            if let Some(m) = o.get("maxCornerScale") {
+                s.max_corner_scale = m.as_f64().ok_or("sliced maxCornerScale takes a number")? as f32;
+            }
+            Ok(NodeImageMode::Sliced(s))
+        }
+        Some("tiled") => {
+            let o = fields(v, "tiled", &["mode", "x", "y", "stretch"])?;
+            Ok(NodeImageMode::Tiled {
+                tile_x: o.get("x").map(|x| flag(x, "tiled x")).transpose()?.unwrap_or(true),
+                tile_y: o.get("y").map(|x| flag(x, "tiled y")).transpose()?.unwrap_or(true),
+                stretch_value: o.get("stretch").map(|x| x.as_f64().ok_or("tiled stretch takes a number")).transpose()?.unwrap_or(1.0) as f32,
+            })
+        }
+        _ => Err(format!("mode: {v} is not one of \"auto\", \"stretch\", sliced(...), tiled(...)")),
+    }
+}
+
+/// A slice border in pixels: one for every side, or `{ left, right, top, bottom }`.
+fn slice_border(v: &Value) -> Result<BorderRect, String> {
+    if let Some(n) = v.as_f64() {
+        return Ok(BorderRect::all(n as f32));
+    }
+    let o = fields(v, "sliced border", &["left", "right", "top", "bottom"])?;
+    let side = |k: &str| o.get(k).map(|x| x.as_f64().ok_or_else(|| format!("sliced border.{k} takes pixels"))).transpose().map(|x| x.unwrap_or(0.0) as f32);
+    Ok(BorderRect::from([side("left")?, side("right")?, side("top")?, side("bottom")?]))
+}
+
+/// `"stretch"` or `{ tile: stretchValue }`, Bevy's `SliceScaleMode`.
+fn scale_mode(v: &Value, what: &str) -> Result<SliceScaleMode, String> {
+    if v.as_str() == Some("stretch") {
+        return Ok(SliceScaleMode::Stretch);
+    }
+    match v.as_object().and_then(|o| o.get("tile")).and_then(Value::as_f64) {
+        Some(n) => Ok(SliceScaleMode::Tile { stretch_value: n as f32 }),
+        None => Err(format!("{what} takes \"stretch\" or {{ tile: n }}")),
+    }
+}
+
+/// Equal grids share one `TextureAtlasLayout`, as equal meshes share one mesh.
+#[derive(Resource, Default)]
+struct AtlasLayouts(std::collections::HashMap<AtlasGrid, Handle<TextureAtlasLayout>>);
+
+fn atlas_layout(world: &mut World, grid: AtlasGrid) -> Result<Handle<TextureAtlasLayout>, String> {
+    if let Some(h) = world.get_resource::<AtlasLayouts>().and_then(|l| l.0.get(&grid)) {
+        return Ok(h.clone());
+    }
+    let layout = TextureAtlasLayout::from_grid(grid.tile, grid.columns, grid.rows, Some(grid.padding), Some(grid.offset));
+    let h = world.get_resource_mut::<Assets<TextureAtlasLayout>>().ok_or("atlas needs the image plugin (no Assets<TextureAtlasLayout>)")?.add(layout);
+    world.get_resource_or_insert_with(AtlasLayouts::default).0.insert(grid, h.clone());
+    Ok(h)
+}
+
 /// Checks every prop of a UI intrinsic; bound props are checked when their value arrives.
 pub fn check(kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
     for k in props.keys() {
@@ -872,12 +1053,11 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::Image => {
             if kind == UiKind::Image {
                 props.get("src").and_then(Value::as_str).ok_or("<image> needs src=\"path\"")?;
-                if let Some(c) = props.get("color") {
-                    color(c)?;
-                }
+                image_fields(props)?;
             }
             Ok(())
         }
+        Part::Camera | Part::Viewport => camera(&props["camera"]).map(|_| ()),
     }
 }
 
@@ -1008,11 +1188,37 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         Part::Image => {
             let src = props.get("src").and_then(Value::as_str).unwrap_or_default().to_string();
             let image = world.get_resource::<AssetServer>().ok_or("<image> needs the asset plugin (no AssetServer)")?.load(src);
+            let f = image_fields(props)?;
             let mut node = ImageNode::new(image);
-            if let Some(c) = props.get("color") {
-                node.color = color(c)?;
+            node.color = f.color.unwrap_or(Color::WHITE);
+            node.flip_x = f.flip_x;
+            node.flip_y = f.flip_y;
+            node.rect = f.rect;
+            node.image_mode = f.mode;
+            if let Some((grid, index)) = f.atlas {
+                node.texture_atlas = Some(TextureAtlas { layout: atlas_layout(world, grid)?, index });
             }
             world.entity_mut(e).insert(node);
+        }
+        // An entity not mounted yet is `null`: no target until its ref resolves.
+        Part::Camera => match props.get("camera").map(camera).transpose()?.flatten() {
+            Some(c) => {
+                world.entity_mut(e).insert(UiTargetCamera(c));
+            }
+            None => {
+                world.entity_mut(e).remove::<UiTargetCamera>();
+            }
+        },
+        Part::Viewport => {
+            // `ViewportNode` brings a picking `PointerId`, whose hook needs picking's map.
+            if !world.contains_resource::<bevy::picking::pointer::PointerMap>() {
+                return Err("<viewport> needs the picking plugin (no PointerMap)".into());
+            }
+            let c = props.get("camera").map(camera).transpose()?.flatten();
+            if let Some(c) = c {
+                own_image_target(world, c)?;
+            }
+            world.entity_mut(e).insert(ViewportNode { camera: c });
         }
     }
     Ok(())
@@ -1072,8 +1278,12 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
         UiKind::Button => {
             em.remove::<bevy::ui_widgets::Button>();
         }
+        UiKind::Viewport => {
+            em.remove::<ViewportNode>();
+        }
         UiKind::Node => {}
     }
+    em.remove::<UiTargetCamera>();
 }
 
 #[cfg(test)]

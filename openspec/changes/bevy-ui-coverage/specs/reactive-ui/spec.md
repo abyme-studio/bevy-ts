@@ -70,11 +70,19 @@ Every UI intrinsic SHALL take `outline` (`{ width, offset, color }` to `Outline`
 - **THEN** its `ImageNode.image_mode` is `Sliced` with an 8 px border
 
 ### Requirement: UI on a camera
-A root UI intrinsic SHALL take `camera`, a node ref, written as `UiTargetCamera` with the ref's entity once it is mounted. `<viewport camera>` SHALL be a `<node>` with `ViewportNode` showing that camera's output.
+A root UI intrinsic SHALL take `camera`, a node ref, written as `UiTargetCamera` with the ref's entity once it is mounted; `camera` on a UI element inside another SHALL fail the load naming its location. `<viewport camera>` SHALL be a `<node>` with `ViewportNode` showing that camera's output. Bevy shows only a camera that renders to an image, so a viewport SHALL give its camera an image of its own (a render target, sized to the node by Bevy) unless the camera already renders to an image other than the window's; this takes the camera off the window. A windowless run's image that stands for the window (`--headless`) SHALL count as the window.
 
 #### Scenario: A minimap
-- **WHEN** a scene mounts `<entity ref={mini}>` with a camera rendering to an image, and `<viewport camera={mini} style={{ width: px(200), height: px(200) }} />`
-- **THEN** the viewport node has `ViewportNode` whose camera is that entity
+- **WHEN** a scene mounts `<entity ref={mini}><Camera3d /></entity>` and `<viewport camera={mini} style={{ width: px(200), height: px(200) }} />`
+- **THEN** the viewport node has `ViewportNode` whose camera is that entity, and the camera renders to an image of its own while the game's camera stays on the window
+
+#### Scenario: A camera with its own image
+- **WHEN** the viewport's camera already renders to an image the game made
+- **THEN** it keeps that image
+
+#### Scenario: Headless
+- **WHEN** a `--headless` run mounts a `<viewport>` while every camera renders to its screenshot image
+- **THEN** the viewport's camera gets an image of its own, and the game camera and the screenshot image's size are unchanged
 
 ### Requirement: Marker reads with has
 `NodeRef` SHALL have `has(C): boolean`, true while the entity carries component `C`, for any registered component, markers included (`Pressed`, `Checked`, `InteractionDisabled`, `Hovered`). Inside a binding it SHALL subscribe to presence: after the bevy-ts stages each frame Rust SHALL compare the component's presence with the delivered value without calling JS, and deliver a change in the frame's one host call. A `has` subscription SHALL NOT be dropped while the component is absent. A frame in which no binding reads `has` SHALL cost what it costs today.

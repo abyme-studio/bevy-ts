@@ -1,8 +1,8 @@
 // Every bevy_ui element bevy-ts reaches from TSX, one panel per stage of the bevy-ui-coverage change.
-// Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/ui_gallery.rs)
+// Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
-import { app, type Commands, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, repeat, signal, span, Startup } from "bevy-ts";
-import { ZIndex } from "bevy-ts/bevy";
+import { app, type Commands, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, Startup, tiled } from "bevy-ts";
+import { Camera3d, Transform, ZIndex } from "bevy-ts/bevy";
 import type { Child } from "bevy-ts/jsx-runtime";
 
 export function stage(commands: Commands) {
@@ -77,6 +77,23 @@ const Text = () => (
   </Panel>
 );
 
+const mini = ref();
+
+/** Stage 7: a viewport on a second camera, and `<image>`'s flip, rect, atlas and modes. */
+const Media = () => (
+  <Panel title="Cameras and images">
+    <node key="row" style={{ columnGap: px(10), alignItems: "center" }}>
+      <viewport key="minimap" camera={mini} style={{ width: px(96), height: px(72), border: px(2) }} border="#9fb3d1" radius={px(4)} />
+      <image key="flip" src="ui/checker.png" flipX rect={[0, 0, 32, 64]} style={{ width: px(24), height: px(48) }} color="#ffd060" />
+      <image key="atlas" src="ui/checker.png" atlas={{ layout: { tile: [16, 16], columns: 4, rows: 4 }, index: 5 }} style={{ width: px(32), height: px(32) }} />
+    </node>
+    <node key="modes" style={{ columnGap: px(10) }}>
+      <image key="sliced" src="ui/checker.png" mode={sliced({ border: 16 })} style={{ width: px(120), height: px(40) }} />
+      <image key="tiled" src="ui/checker.png" mode={tiled({ stretch: 1 })} style={{ width: px(120), height: px(40) }} />
+    </node>
+  </Panel>
+);
+
 app.scene("gallery", () => (
   <>
     {/* Not UI: a cube behind the panels, so <entity>, <mesh> and <material> appear too. */}
@@ -84,10 +101,16 @@ app.scene("gallery", () => (
       <mesh shape="cuboid" size={[1, 1, 1]} />
       <material color="#c33" roughness={0.6} />
     </entity>
+    {/* The minimap's camera, above the cube looking down; its viewport gives it an image of its own. */}
+    <entity key="mini" ref={mini}>
+      <Camera3d />
+      <Transform translation={[0, 4, 0]} rotation={[-0.7071, 0, 0, 0.7071]} />
+    </entity>
     <node key="gallery" style={{ position: "absolute", top: px(12), left: px(12), right: px(12), flexWrap: "wrap", columnGap: px(12), rowGap: px(12) }}>
       <Basics />
       <Style />
       <Text />
+      <Media />
     </node>
   </>
 ));
