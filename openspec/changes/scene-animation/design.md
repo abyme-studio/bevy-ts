@@ -37,13 +37,16 @@ bevy-ts today:
 
 7. **The player walk has one owner.** `bevy_ts_animation::players(world, root)` (and a `Query<&Children>` form for systems) replaces `preview.rs`'s private `players`; the preview depends on the crate.
 
-8. **Protocol: no change.** `PlayAnimation` is reached through the existing reflected-component methods and appears in `bevy-ts/bevy` by regeneration. No method, param or result changes, so the protocol version stays.
+8. **A clip's glTF file stays loaded.** The first time any root names a clip, the plugin loads that clip's file as a `Handle<Gltf>` and keeps it in `SharedGraph` for the life of the app; the `Gltf` asset holds every clip of the file, so a clip named later is already alive. Why: Bevy 0.20 loads a whole file again for a label asked for before it is alive ([bevy#10549](https://github.com/bevyengine/bevy/issues/10549)), and that second load modifies the file's scene asset, which spawns every scene from it again: in `examples/foxes`, the first "Next clip" respawned all 25 foxes and lost the cross-fade. The file is never released. Releasing it once no `PlayAnimation` names it would bring the respawn back for scenes still alive from it, which is the bug this avoids; a game that must free a file does so by despawning its scenes and holding no clip from it, and the plugin then still holds the file (see Risks). Alternative: preload every clip's file in the game, as `many_foxes` does; that leaves the respawn to every game to know about.
+
+9. **Protocol: no change.** `PlayAnimation` is reached through the existing reflected-component methods and appears in `bevy-ts/bevy` by regeneration. No method, param or result changes, so the protocol version stays.
 
 ## Risks / Trade-offs
 
 - [A clip whose bone names do not match the scene's] → nothing moves and Bevy says nothing. Mitigation: docs say a clip must come from the same file or one with identical bone names; slice-2's asset test checks villager files.
 - [`transition_secs` on the first play] → `AnimationTransitions::play` with nothing playing just starts the clip; no fade-in from T-pose. Accepted, as Bevy does.
 - [The shared graph grows by one node per distinct clip, never shrinks] → a few bytes per clip for the life of the app. Accepted.
+- [Each clip's glTF file stays loaded for the life of the app (decision 8)] → memory is the whole file (meshes, materials, images, scenes, clips) per distinct file a clip came from, never freed. A game that streams many animated models keeps every one it ever animated. Accepted for now: a clip usually comes from the scene's own file, which the scene already holds while it lives, and agent town loads a handful of files. When bevy#10549 is fixed upstream, the hold goes and the file is freed with its last handle.
 - [Many characters in one frame of readiness] → the observer walks each root once; at 200 roots this is one-off work. The bench measures spawn-to-ready.
 - [`bevy-ts/bevy` gains a type] → regenerated, CI checks it with `scripts/gen-bevy-types.sh --check`.
 

@@ -46,7 +46,8 @@ pub struct SharedGraph {
     pub handle: Handle<AnimationGraph>,
     nodes: HashMap<AssetId<AnimationClip>, AnimationNodeIndex>,
     /// Without its file held, a clip named later (`#Animation1` after `#Animation2`) loads the
-    /// file again, and every scene from it spawns again.
+    /// file again, and every scene from it spawns again
+    /// (<https://github.com/bevyengine/bevy/issues/10549>).
     files: HashMap<AssetPath<'static>, Handle<Gltf>>,
 }
 
@@ -232,9 +233,17 @@ fn apply_changed(
     }
 }
 
-/// A root that lost `PlayAnimation` stops its players.
-fn stop_removed(mut removed: RemovedComponents<PlayAnimation>, targets: Query<&AnimationTargets>, mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>, mut commands: Commands) {
+/// A root that lost `PlayAnimation` (or was despawned) stops its players and is forgotten by the
+/// once-per-root warning, so a new root reusing its entity is warned about in turn.
+fn stop_removed(
+    mut removed: RemovedComponents<PlayAnimation>,
+    targets: Query<&AnimationTargets>,
+    mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
+    mut reports: ResMut<AnimationReports>,
+    mut commands: Commands,
+) {
     for root in removed.read() {
+        reports.roots.remove(&root);
         let Ok(t) = targets.get(root) else { continue };
         for &p in &t.0 {
             if let Ok((mut player, mut transitions)) = players.get_mut(p) {

@@ -38,9 +38,11 @@ descendants, insert an `AnimationGraphHandle` and `AnimationTransitions`, then
 - Every player shares one `AnimationGraph`, with one node per distinct clip, added the first time
   a root names it, as `many_foxes` does. A hundred foxes cost one graph.
 - The glTF file a clip comes from stays loaded from the first time a root names it. Bevy 0.20
-  loads a file again for a label asked for before it is alive (bevy#10549), and a second load
+  loads a file again for a label asked for before it is alive
+  ([bevy#10549](https://github.com/bevyengine/bevy/issues/10549)), and a second load
   spawns every scene from that file again; with the file held, a clip named later (the button
-  in `examples/foxes`) is already there.
+  in `examples/foxes`) is already there. The file is never freed: memory is the whole file per
+  distinct file a clip came from.
 
 ## Placing it
 
@@ -91,17 +93,22 @@ Medians over every run (12 to 17 per arm at N = 50 and 100, 3 at 200), Apple M5 
 other builds shared; frame time is the main world's update, `First` to `Last`. Arms ran
 interleaved, so each B run is compared with the A run just before it.
 
-| N | Arm | Update mean | Update p95 | Ready (frames after spawn) |
-| --- | --- | --- | --- | --- |
-| 50 | A, Rust | 3.70 ms | 7.09 ms | 0 |
-| 50 | B, TSX + `PlayAnimation` | 3.50 ms | 6.27 ms | 0–1 |
-| 50 | C, static | 3.45 ms | 6.19 ms | – |
-| 100 | A, Rust | 3.75 ms | 6.27 ms | 0 |
-| 100 | B, TSX + `PlayAnimation` | 3.85 ms | 7.12 ms | 0–1 |
-| 100 | C, static | 3.28 ms | 4.56 ms | – |
-| 200 | A, Rust | 3.87 ms | 7.18 ms | 0 |
-| 200 | B, TSX + `PlayAnimation` | 3.91 ms | 7.47 ms | 0–1 |
-| 200 | C, static | 3.22 ms | 4.98 ms | – |
+| N | Arm | Update mean | Update p95 | B ÷ A p95, paired | Ready (frames after spawn) |
+| --- | --- | --- | --- | --- | --- |
+| 50 | A, Rust | 3.70 ms | 7.09 ms | | 0 |
+| 50 | B, TSX + `PlayAnimation` | 3.50 ms | 6.27 ms | 1.00 (12 rounds) | 0–1 |
+| 50 | C, static | 3.45 ms | 6.19 ms | | – |
+| 100 | A, Rust | 3.75 ms | 6.27 ms | | 0 |
+| 100 | B, TSX + `PlayAnimation` | 3.85 ms | 7.12 ms | 1.01 (16 rounds) | 0–1 |
+| 100 | C, static | 3.28 ms | 4.56 ms | | – |
+| 100 | D, Rust + `PlayAnimation` | 3.80 ms | 7.16 ms | | 0 |
+| 200 | A, Rust | 3.87 ms | 7.18 ms | | 0 |
+| 200 | B, TSX + `PlayAnimation` | 3.91 ms | 7.47 ms | 0.99 (3 rounds) | 0–1 |
+| 200 | C, static | 3.22 ms | 4.98 ms | | – |
+
+The medians of B and A come from runs at different times; the paired column compares each B run
+with the A run just before it, which is what the target is checked on. D ran in one set of 4
+rounds beside A (A's p95 median in that set 7.02 ms).
 
 B against the A run beside it, median ratio: p95 1.00 at 50, 1.01 at 100, 0.99 at 200; mean
 1.00, 1.04, 1.00. The target (B's p95 within 10% of A's at 50 and 100, ready within one frame of

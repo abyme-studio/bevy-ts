@@ -2,7 +2,7 @@
 // `@ts-expect-error` must be an error.
 import { app, Component, SceneComponent, Startup } from "bevy-ts";
 import type { Commands, f32, u8, Vec3 } from "bevy-ts";
-import { Transform, Name } from "bevy-ts/bevy";
+import { Transform, Name, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
 
 class Health extends Component { hp: f32 = 100; max: f32 = 100 }
 class Mover extends Component { declare velocity: Vec3; declare maxSpeed: f32 }
@@ -110,3 +110,19 @@ export const BadClick = () => <entity onClick={() => {}} />;
 import { Resource, res, type u32 } from "bevy-ts";
 class Score extends Resource { value: u32 = 0 }
 export const ScoreLine = () => <text color={() => (res(Score).value > 10 ? "#fd0" : "#fff")}>{() => `Score ${res(Score).value}`}</text>;
+
+// Rust components written through reflection: every field is a prop, controlled or `initial*`,
+// and a one-field tuple struct takes `value`.
+export const Fox = ({ clip }: { clip: () => string }) => (
+  <entity>
+    <WorldAssetRoot value="models/Fox.glb#Scene0" />
+    <PlayAnimation clip={clip} initialSpeed={2} transition_secs={0.4} />
+  </entity>
+);
+export const StillFox = () => <entity><WorldAssetRoot initialValue="models/Fox.glb#Scene0" /></entity>;
+// @ts-expect-error  a one-field tuple struct takes `value`, not its field's name
+export const BadRoot = () => <entity><WorldAssetRoot path="models/Fox.glb#Scene0" /></entity>;
+// @ts-expect-error  `speed` is a number
+export const BadSpeed = () => <entity><PlayAnimation speed="fast" /></entity>;
+// @ts-expect-error  PlayAnimation has no field `loop`
+export const BadField = () => <entity><PlayAnimation loop /></entity>;

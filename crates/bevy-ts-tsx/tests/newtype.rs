@@ -76,3 +76,23 @@ fn a_field_name_fails_naming_value() {
     let at = r.errors[0].location.as_ref().unwrap();
     assert_eq!((at.file.as_str(), at.line), ("fox.tsx", 7));
 }
+
+#[test]
+fn initial_value_is_written_on_insert_only() {
+    let (mut app, fake) = app();
+    let r = load(&mut app, &fake, &fox(json!({ "initialValue": "models/Fox.glb#Scene0" })));
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let e = the_fox(&mut app);
+    assert_eq!(path(&app, e), "models/Fox.glb#Scene0");
+    let r = load(&mut app, &fake, &fox(json!({ "initialValue": "models/Other.glb#Scene0" })));
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    assert_eq!(path(&app, e), "models/Fox.glb#Scene0", "an initial value is not written again");
+}
+
+#[test]
+fn value_and_initial_value_together_fail() {
+    let (mut app, fake) = app();
+    let r = load(&mut app, &fake, &fox(json!({ "value": "a.glb#Scene0", "initialValue": "b.glb#Scene0" })));
+    assert_eq!(r.status, ReloadStatus::Failed);
+    assert!(r.errors[0].message.contains("pick one"), "{}", r.errors[0].message);
+}

@@ -24,7 +24,7 @@
 
 - [x] 4.1 `examples/foxes`: `assets/models/Fox.glb` from Bevy's repo, `src/game.tsx` with a camera, a light, a ground and a grid of foxes (`<WorldAssetRoot value>` + `<PlayAnimation clip={() => …}>`), and a `<button>` that cycles survey, walk and run
 - [x] 4.2 `example.json`, `README.md` crediting Fox.glb (CC0 model by PixelMannen; CC-BY 4.0 rigging and animation by @tomkranis), `thumbnail.png`
-- [ ] 4.3 Packing test: the package holds `examples/foxes` with its README and asset; `bevy-ts examples --json` lists it
+- [x] 4.3 Packing test: the package holds `examples/foxes` with its README and asset; `bevy-ts examples --json` lists it
 
 ## 5. Docs
 

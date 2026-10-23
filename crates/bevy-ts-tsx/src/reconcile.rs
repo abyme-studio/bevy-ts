@@ -474,7 +474,7 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
             world.entity_mut(e).insert(Name::new(s.clone()));
         }
         Target::Reflect { type_path } => {
-            let props: Map<String, Value> = r.controlled.clone().into_iter().collect();
+            let props: Map<String, Value> = r.initial.clone().into_iter().chain(r.controlled.clone()).collect();
             if let Err(m) = crate::reflected::insert(world, e, type_path, &props) {
                 log_error(world, m, r.source.clone());
             }
@@ -661,6 +661,12 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
                     }
                     state.fields.insert(f.clone(), FieldState { provenance, applied: v.clone() });
                 }
+                // Initial fields are written on insert only; they keep that value.
+                for (f, v) in &r.initial {
+                    let applied = prev.fields.get(f).map_or_else(|| v.clone(), |s| s.applied.clone());
+                    state.fields.insert(f.clone(), FieldState { provenance: Provenance::Initial, applied });
+                }
+                bound_fields(r, prev, &mut state);
             }
             Target::Ui(kind) => {
                 // Prop by prop: only the components behind changed props are written.
