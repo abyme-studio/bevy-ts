@@ -28,5 +28,5 @@
 ## 5. Gate
 
 - [x] 5.1 Confirm `protocol/bevy-ts.openrpc.json` is unchanged (no protocol bump)
-- [ ] 5.2 `cargo build`, `cargo test` and `cargo clippy` on the workspace, and `pnpm -C packages/bevy-ts check`, once, last
+- [x] 5.2 `cargo build`, `cargo test` and `cargo clippy` on the workspace, and `pnpm -C packages/bevy-ts check`, once, last
 - [x] 5.3 `openspec validate mesh-primitives --strict`
