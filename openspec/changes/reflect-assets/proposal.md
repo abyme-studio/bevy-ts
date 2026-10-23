@@ -88,4 +88,4 @@ binding asset props to signals.
      `<StandardMaterial ... />` is wanted, that is the new pattern and needs the go.
   2. Asset values cached by their props' canonical JSON, built on insert and on a changed prop, never
      per frame. This is `<material>`'s cache today, made generic. Memory: one asset per distinct
-     prop set, held until the script reloads or stops.
+     prop set, kept across hot reloads and removed on restart or stop.
