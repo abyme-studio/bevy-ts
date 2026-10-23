@@ -15,6 +15,7 @@
 - [ ] 1.8 Delete each `UNCOVERED` entry marked `reflect-assets:` that stage 1 covers; the hole check passes
 - [ ] 1.9 Protocol: regenerate `protocol/bevy-ts.openrpc.json` if it changed; bump to the next free minor at landing
 - [ ] 1.10 `docs/assets.md` (the API, refs, assets kept across hot reloads and removed on restart or stop, `get` cost); asset rows in `docs/reflection.md`; link from `README.md`
+- [ ] 1.11 The hand-mapped types list (design decision 9): whole-type entries `{ asset TypeId, read, write }`; `add`/`get`/`set` use an entry in place of the reflected path; `set` merges the patch over `read(current)` at the top level and queues nothing when the reads match; a test with a fixture entry; animation-control's `AnimationGraph` entry uses it
 
 ## 2. Stage 2: asset values; <material> on the generic path
 
@@ -28,7 +29,7 @@
 
 ## 3. Stage 3: Image sampler and loader settings
 
-- [ ] 3.1 Hand-mapped `Image.sampler` in `get` and `set` through typed `Assets<Image>`, assigned only on a difference
+- [ ] 3.1 `Image`'s hand-mapped entry (`sampler` only, design decision 9): `read` gives `{ sampler }`, `write` returns the base `Image` with a written `ImageSampler`; set and read back
 - [ ] 3.2 Loader-settings table with one entry, `Image` → `ImageLoaderSettings` (`sampler`, `is_srgb`); `{ $load }` in `HandleSlots`; `Image.load` in the runtime and types; unknown keys and types without an entry fail; warning for one path with two settings
 - [ ] 3.3 `<material>` texture props take refs and `Image.load` values; paths map to `Image.load` with the field's `is_srgb`
 - [ ] 3.4 Tests: repeating sampler set and read back; linear data; a headless render of agent town's atlas case (scale 4, repeat) in `crates/bevy-ts-cli/tests/materials.rs`

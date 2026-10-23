@@ -39,7 +39,7 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
 
 1. **One module, `bevy_ts::reflect_asset`, beside `reflect_value`.** It owns: the asset lookup by
    type path (`ReflectAsset` from the registration), `add`, `get`, `set`, the ref table, the value
-   cache, the `Handle` hook (decision 4), the `Image` hand-map and the loader-settings table. It
+   cache, the `Handle` hook (decision 4), the hand-mapped types list and the loader-settings table (decision 9). It
    calls `reflect_value::write`, `read` and `default_of`; it never walks a value itself. TSX
    (`bevy-ts-tsx`) and scripts (`host.rs`) both call it.
    *Alternative:* an asset layer inside `bevy-ts-tsx`'s `reflected.rs`. Rejected: scripts need it,
@@ -149,18 +149,28 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    against the table. `<mesh color>` calls the same path. `MaterialAlpha` is untouched.
    *Alternative:* `<material>` takes Bevy's snake_case names. Rejected: breaks every script.
 
-9. **Image: a hand-map and one typed loader entry (stage 3).** `Image` is `reflect(opaque)`, so
-   `reflect_asset` keeps a short list of hand-mapped asset fields: `Image.sampler` only. `get`
-   reads it with `read` of the `ImageSampler`; `set` builds an `ImageSampler` with `write` over
-   the current one, compares, and assigns through a typed `Assets<Image>::get_mut` only when it
-   differs. `ImageSampler` and its descriptor types are `Reflect` + `Default`, so their JSON is
-   the writer's: `"Default"`, `{ Descriptor: { address_mode_u: "Repeat", mag_filter: "Nearest", ... } }`.
+9. **Hand-mapped types (stage 1), Image's entry and one typed loader entry (stage 3).** An asset
+   type opaque to reflection gets one whole-type entry in a list in `reflect_asset`:
+   `{ asset: TypeId, read(&World, &dyn Reflect) -> Value, write(&World, base, json) -> Box<dyn Reflect> }`.
+   `add`, `get` and `set` use a type's entry in place of the reflected path. `add` writes over the
+   type's default; `set` merges the patch over `read(current)` at the top level (no deep merge),
+   writes the result, and detects a no-op by comparing that read with the current read: equal
+   queues nothing. The list and its use land in stage 1, empty of entries this change ships.
+   Entries:
+   - `Image` (stage 3): `sampler` only. `read` gives `{ sampler }` by `reflect_value::read` of the
+     `ImageSampler`; `write` builds an `ImageSampler` with `reflect_value::write` and returns a
+     copy of the base `Image` with it. `ImageSampler` and its descriptor types are `Reflect` +
+     `Default`, so their JSON is the writer's: `"Default"`,
+     `{ Descriptor: { address_mode_u: "Repeat", mag_filter: "Nearest", ... } }`.
+   - `AnimationGraph`: added by animation-control (its task 8.6), on the same list.
    Loader settings: one table, asset type path → a typed apply over a `LoadBuilder`. Its one entry
    is `Image`: `settings.sampler` (an `ImageSampler`, by the writer) and `settings.is_srgb` (bool),
    applied with `with_settings::<ImageLoaderSettings>` then `load_erased`. Unknown settings keys
    fail. A type with no entry has no `load` and its `$load` fails naming the type.
    `ImageLoaderSettings` is not `Reflect`, so the entry's two keys are read by hand; adding a key
    is one line.
+   *Alternative:* per-field hand-maps (`Image.sampler`). Rejected: a whole-type entry also serves
+   `AnimationGraph`, whose data is one opaque graph.
 
 10. **Allowlist entries, not the walker.** reflect-enums-color adds `ReflectAsset` types to the
     hole check's filter and puts every asset field the check cannot cover on
