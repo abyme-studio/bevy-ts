@@ -793,8 +793,8 @@ fn positive(prop: &'static str, v: Option<f32>) -> Result<(), Bad> {
     }
 }
 
-fn positive_all<'a>(prop: &'static str, vs: impl Iterator<Item = &'a f32>) -> Result<(), Bad> {
-    vs.map(|&x| positive(prop, Some(x))).collect()
+fn positive_all<'a>(prop: &'static str, mut vs: impl Iterator<Item = &'a f32>) -> Result<(), Bad> {
+    vs.try_for_each(|&x| positive(prop, Some(x)))
 }
 
 fn finite<'a>(prop: &'static str, mut vs: impl Iterator<Item = &'a f32>) -> Result<(), Bad> {
