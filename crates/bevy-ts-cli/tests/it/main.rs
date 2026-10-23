@@ -38,6 +38,7 @@ mod scene_material;
 mod stop_bench;
 mod surface;
 mod systems;
+mod text_input;
 mod time;
 mod tsx;
 mod tsx_expand;

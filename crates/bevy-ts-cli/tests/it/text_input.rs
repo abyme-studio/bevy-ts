@@ -3,7 +3,7 @@
 //! to `InputFocus` only with a primary window, and `--headless` has none.
 #![cfg(target_os = "macos")]
 
-mod common;
+use crate::common;
 
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
