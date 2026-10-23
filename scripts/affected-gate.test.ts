@@ -14,6 +14,8 @@ const crates: Record<string, string> = {
 };
 
 async function sh(dir: string, cmd: string, env: Record<string, string> = {}) {
+  // The fixture's own base, never the LAND_BASE land runs the gate under.
+  env = { LAND_BASE: "", ...env };
   const out = await new Deno.Command("bash", { args: ["-c", cmd], cwd: dir, env, stdout: "piped", stderr: "piped" }).output();
   const text = new TextDecoder().decode(out.stdout).trim();
   if (!out.success) throw new Error(`${cmd}: ${new TextDecoder().decode(out.stderr)}`);
