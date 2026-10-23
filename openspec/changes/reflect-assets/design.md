@@ -50,11 +50,19 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    `ReflectFromReflect::from_reflect` on the result; a `None` fails with the type path. Only a
    value that converted is passed to `ReflectAsset::add`, so `add`'s panic cannot fire. A partial
    value is never added.
+   A TS run holds only `&World`, and Bevy 0.20 has no erased add or id reserve without `&mut World`.
+   So `add` from a script checks and builds the value at the call (errors throw there), returns
+   its ref at once, and queues the value in `ScriptAssets`. The queue flushes with `&mut World`
+   right after the run, before the run's commands apply, so a ref inserted in the same run
+   resolves. The asset is visible to the script at once (`get` reads queued values) and is in
+   `Assets<T>` when the run ends.
 
 3. **`set` borrows only to write.** `set(world, ref, json)`: clone the current value through
    `ReflectAsset::get`, `write` the patch over the clone (the patch merges over the asset's current
    value, not over a default), compare with `reflect_partial_eq`. Equal: return, no borrow, no
-   event. Different: `get_mut` and `apply` the clone. A failing patch changes nothing.
+   event, nothing queued. Different: queue the clone; the flush after the run does `get_mut` and
+   `apply`, so `AssetEvent::Modified` fires at run end, the same frame. A later `set` or `get` in
+   the run sees the queued value. A failing patch changes nothing.
    `get(world, ref)` is `read` of `ReflectAsset::get`; a missing asset is `undefined` in TS.
    *Alternative:* write straight into `get_mut`. Rejected: every call would send `Modified` and
    re-prepare the asset.
@@ -113,8 +121,9 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    <entity><Mesh3d value={meshRef} /><MeshMaterial3d value={StandardMaterial.of({ unlit: true })} /></entity>
    ```
    `assets` works wherever scripts reach the world: inside a system's run and during a TSX render.
-   Each call is one host call carrying JSON, applied at once. Outside those it throws, naming where
-   it may be called.
+   Each call is one host call carrying JSON through one new `HostCalls` method; its result is
+   visible to the script at once and lands in `Assets<T>` when the run ends (decisions 2, 3).
+   Outside those it throws, naming where it may be called.
    `types.rs`'s `named()` also takes registrations with `ReflectAsset`, emitted as
    `asset("<type path>")` classes typed `AssetClass<{ fields }>`, with the same short-name and
    crate-prefix rule. `Image` is typed by its hand-mapped fields (`{ sampler: ImageSampler }`)
