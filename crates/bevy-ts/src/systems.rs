@@ -206,6 +206,8 @@ pub enum RunParam {
     State { index: usize },
     /// An observer's trigger.
     Event,
+    /// An exported Rust param: its index in `HostParams`.
+    Port(usize),
     None,
 }
 
@@ -606,12 +608,10 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 RunParam::Local(locals.len() - 1)
             }
             ParamDecl::Commands | ParamDecl::MessageWriter { .. } | ParamDecl::NextState { .. } => RunParam::None,
-            ParamDecl::Port { name } => {
-                if world.get_resource::<crate::host::HostParams>().is_none_or(|h| h.get(name).is_none()) {
-                    return Err(err(format!("{name} is not a system param any loaded crate exports")));
-                }
-                RunParam::None
-            }
+            ParamDecl::Port { name } => match world.get_resource::<crate::host::HostParams>().and_then(|h| h.index(name)) {
+                Some(index) => RunParam::Port(index),
+                None => return Err(err(format!("{name} is not a system param any loaded crate exports"))),
+            },
             ParamDecl::MessageReader { message } => {
                 let index = world.resource::<TsPayloads>().message(message).ok_or_else(|| err(format!("no message type {message}; call app.addMessage")))?;
                 RunParam::MessageReader { index }
@@ -813,7 +813,18 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     let mut failure: Option<ScriptError> = None;
     let mut memory = world.remove_resource::<SystemMemory>().unwrap_or_default();
     let mem = memory.0.entry(identity.clone()).or_default();
+    // Columns and resource rows the run exposes, for the slice-overlap check of host calls.
+    let ports = sys.params.iter().any(|p| matches!(p, RunParam::Port(_)));
+    let mut regions: Vec<crate::host::Region> = Vec::new();
     {
+        if let Some(host) = world.get_resource::<crate::host::HostParams>() {
+            for p in &sys.params {
+                if let RunParam::Port(i) = p {
+                    // A native write to a column a TS query only reads is not TS's mistake.
+                    written_ids.extend(host.writes(*i).iter().copied());
+                }
+            }
+        }
         for p in &sys.params {
             if let RunParam::Query(q) = p {
                 written_ids.extend(q.columns.iter().filter(|c| c.write).map(|c| c.id));
@@ -884,6 +895,9 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                             } else if dev && !written_ids.contains(&c.id) {
                                 read_cols.push((frames.len(), out.len(), ci, c.id));
                             }
+                            if ports {
+                                regions.push(crate::host::Region { start: data as usize, end: data as usize + len * c.size, id: c.id });
+                            }
                             columns.push(ColumnFrame { data, bytes: len * c.size, ticks });
                         }
                         out.push(TableFrame { len, entities: ents.as_ptr(), columns, rows });
@@ -902,6 +916,9 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                         let ticks = write.then(|| unsafe { (table.get_changed_ticks_slice_for(*id).unwrap().as_ptr() as *mut u32).add(row) });
                         if *write {
                             written.push((loc.table_id, *id));
+                        }
+                        if ports {
+                            regions.push(crate::host::Region { start: data as usize, end: data as usize + *size, id: *id });
                         }
                         ParamFrame::Row { data, bytes: *size, ticks }
                     }
@@ -935,7 +952,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     Some((bytes, entity)) => ParamFrame::Event { data: bytes.as_ptr(), bytes: bytes.len(), entity },
                     None => ParamFrame::None,
                 },
-                RunParam::None => ParamFrame::None,
+                RunParam::Port(_) | RunParam::None => ParamFrame::None,
             };
             frames.push(frame);
         }
@@ -973,7 +990,11 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
             let pool = std::mem::take(&mut rt.pool);
             let mut params = world.remove_resource::<crate::host::HostParams>().unwrap_or_default();
             let r = {
-                let mut host = crate::host::WorldHost { world: &*world, params: &mut params };
+                // The world is held exclusively for the run and not touched until it ends; host
+                // calls fetch their params from this cell at the run's ticks.
+                let ticks = crate::host::RunTicks { last_run, this_run: tick };
+                let ports: Vec<usize> = sys.params.iter().filter_map(|p| if let RunParam::Port(i) = p { Some(*i) } else { None }).collect();
+                let mut host = crate::host::WorldHost { world: world.as_unsafe_world_cell(), ticks, regions: &regions, allowed: Some(&ports), params: &mut params };
                 let mut run = SystemRun { ctx: CallContext { frame, arena: &mut scratch.arena, pool: &pool, host: Some(&mut host) }, params: &frames };
                 rt.backend.run_system(sys.key, &mut run)
             };
@@ -1047,14 +1068,31 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
             stop = out.stop_propagation;
             let label = format!("system {}", sys.decl.name);
             rt.apply_output(world, &scratch.arena, out, &label);
+            settle_ports(world, &sys.params, true);
         }
         Err(e) => {
+            settle_ports(world, &sys.params, false);
             rt.log_error(world, &format!("system {} threw", sys.decl.name), &e);
             sys.last_error = Some(e);
         }
     }
     rt.scratch = scratch;
     stop
+}
+
+/// After TS's own output: applies (or, for a failed run, drops) the deferred state of the
+/// system's exported params, in its parameter order.
+fn settle_ports(world: &mut World, params: &[RunParam], ok: bool) {
+    if !params.iter().any(|p| matches!(p, RunParam::Port(_))) {
+        return;
+    }
+    let Some(mut host) = world.remove_resource::<crate::host::HostParams>() else { return };
+    for p in params {
+        if let RunParam::Port(i) = p {
+            if ok { host.apply(*i, world) } else { host.discard(*i, world) }
+        }
+    }
+    world.insert_resource(host);
 }
 
 /// A row of `bevy-ts/systems`.

@@ -162,7 +162,7 @@ entities: play, Stop, play runs the same.
 
 ## Calling Rust from TS: exported params
 
-Behaviour reaches TS as Bevy's own unit, a read-only `SystemParam`. One attribute exports it:
+Behaviour reaches TS as Bevy's own unit, a `SystemParam`. One attribute exports it:
 
 ```rust
 #[derive(SystemParam)]
@@ -184,10 +184,80 @@ A TS system takes it as a parameter and calls it: `rapier.castRay(origin, [0, -1
 system's run; slices are read and written in place, so `castRays` over 1,000 rays is one call.
 Arguments and results are numbers, `bool`, `Entity`, `Vec2`, `Vec3`, `Quat`, `#[derive(HostRecord)]`
 records, `Option`s of these, and `&[T]` / `&mut [T]` of numbers; anything else is a compile error
-naming the type. A param that writes (`ResMut`, `Query<&mut T>`) does not compile. The param is
-fetched read-only against the world, so a method sees the system's writes so far and cannot move
-column memory. A `Result` error, a param that fails validation, or a panic throws in JS, naming
+naming the type. A `Result` error, a param that fails validation, or a panic throws in JS, naming
 the param and method.
+
+### Params that write
+
+A param may write, and its methods may take `&mut self`:
+
+```rust
+#[derive(SystemParam)]
+pub struct NavEdit<'w, 's> { mesh: ResMut<'w, NavMesh>, commands: Commands<'w, 's> }
+
+#[bevy_ts_native::export(ts = "NavEdit", module = "bevy-ts/game")]
+impl NavEdit<'_, '_> {
+    pub fn block(&mut self, cell: u32) { self.mesh.block(cell) }
+    pub fn mark(&mut self, at: Vec3) { self.commands.spawn((Marker, Transform::from_translation(at))); }
+}
+```
+
+- In place: `ResMut`, `Option<ResMut>`, `ResMut<Assets<T>>`, `Query<&mut T>`, `Single`, `Populated`,
+  `ParamSet`, `MessageWriter`, `MessageMutator`, `NonSendMut`. The write lands when the call
+  returns; the system's next read of that column sees it.
+- Deferred: `Commands`, `Gizmos`, `ParallelCommands`, any `Deferred<T>`. Nothing spawns, inserts or
+  despawns during the run; columns never move under TS. The queue applies after the run, after
+  the TS system's own commands, one param after another in the system's parameter order. A run
+  that throws drops it, as it drops TS's commands.
+
+```ts
+export function build(nav: NavEdit, commands: Commands) {
+  commands.spawn(new Tower());   // applies first
+  nav.mark([0, 0, 0]);           // applies second, and sees the Tower
+}
+```
+
+Every call is fetched at the calling system's own ticks and spends none. A native write carries
+the run's tick, as a TS `Mut` write does: a Rust `Changed<T>` later in the frame sees it, and the
+same system does not see its own write as a change next frame. `is_changed` on a read means
+"since this system last ran". The dev warning "wrote to X, which no query of it declares Mut"
+ignores columns an exported param of the system may write.
+
+- One state per exported param, shared by every TS system that takes it: a `Local<T>` in it is
+  shared, not one per system.
+- A slice argument that views a column or resource row of the run (`q.tables[0].read(Health).f32`)
+  throws when the slice is `&mut` or the param may write that column. Copy it (`.slice()`) first.
+- Refused when `app.ts_param` runs, naming the param: anything that may write every component or
+  resource (`Query<EntityMut>`, `EntityMutExcept`, `DeferredWorld`). Name the components and
+  resources instead. `FilteredEntityMut` and `FilteredResourcesMut` take their access from a
+  builder an export never has, so they reach nothing. `&mut World` and exclusive params are not
+  `SystemParam`s and do not compile.
+- A value TS already copied out of a column is stale after a native write, as a copied Rust value
+  is.
+
+### Standing for a Bevy spelling
+
+An export may claim the `Res<..>` or `ResMut<..>` spelling it stands for, so TS writes Bevy's name
+and never the export's:
+
+```rust
+#[bevy_ts_native::export(ts = "WindEdit", module = "bevy-ts/weather", stands_for = "ResMut<Wind>")]
+impl WindEdit<'_> {
+    pub fn gust(&mut self, strength: f32) { self.wind.gust(strength) }
+}
+```
+
+```ts
+export function storm(wind: ResMut<Wind>) { wind.gust(2); }
+```
+
+One export per spelling; a second claim fails `app.ts_param` naming both Rust types. Unclaimed
+spellings read as before. `bevy-ts types` adds each claim to `ResClaims`/`ResMutClaims` in
+`native.d.ts`, so `ResMut<Wind>` is typed as `WindEdit`, when TS declares the inner type (a class in
+`native.d.ts`, or a clock: `ResMut<Time<Virtual>>` can be claimed by a `VirtualTime` export). A
+claim whose inner type TS does not declare is listed in a comment there and not typed. Every
+`Res<Time<..>>` stays the clock read docs/time.md describes, never a claim. The handshake lists the
+claim as the param's `standsFor`.
 
 ## Ports and built-in modules
 

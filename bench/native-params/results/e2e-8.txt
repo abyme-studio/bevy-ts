@@ -1,0 +1,32 @@
+22:18  up 4 days, 19:03, 1 user, load averages: 11.61 11.99 11.69
+read: frame without calls 320 us, with 10000 calls 727 us: 40.7 ns per call
+write: frame without calls 320 us, with 10000 calls 553 us: 23.3 ns per call
+write+commands: frame without calls 320 us, with 10000 calls 707 us: 38.7 ns per call
+22:18  up 4 days, 19:03, 1 user, load averages: 12.28 12.12 11.74
+read: frame without calls 140 us, with 10000 calls 505 us: 36.5 ns per call
+write: frame without calls 140 us, with 10000 calls 498 us: 35.8 ns per call
+write+commands: frame without calls 140 us, with 10000 calls 701 us: 56.1 ns per call
+22:18  up 4 days, 19:03, 1 user, load averages: 12.28 12.12 11.74
+read: frame without calls 138 us, with 10000 calls 561 us: 42.2 ns per call
+write: frame without calls 138 us, with 10000 calls 622 us: 48.4 ns per call
+write+commands: frame without calls 138 us, with 10000 calls 735 us: 59.7 ns per call
+22:18  up 4 days, 19:03, 1 user, load averages: 12.28 12.12 11.74
+read: frame without calls 113 us, with 10000 calls 476 us: 36.3 ns per call
+write: frame without calls 113 us, with 10000 calls 500 us: 38.7 ns per call
+write+commands: frame without calls 113 us, with 10000 calls 703 us: 59.0 ns per call
+22:18  up 4 days, 19:03, 1 user, load averages: 12.28 12.12 11.74
+read: frame without calls 135 us, with 10000 calls 477 us: 34.1 ns per call
+write: frame without calls 135 us, with 10000 calls 523 us: 38.8 ns per call
+write+commands: frame without calls 135 us, with 10000 calls 757 us: 62.2 ns per call
+22:18  up 4 days, 19:03, 1 user, load averages: 12.28 12.12 11.74
+read: frame without calls 118 us, with 10000 calls 531 us: 41.3 ns per call
+write: frame without calls 118 us, with 10000 calls 533 us: 41.5 ns per call
+write+commands: frame without calls 118 us, with 10000 calls 737 us: 61.8 ns per call
+22:18  up 4 days, 19:03, 1 user, load averages: 12.18 12.11 11.73
+read: frame without calls 136 us, with 10000 calls 488 us: 35.2 ns per call
+write: frame without calls 136 us, with 10000 calls 599 us: 46.4 ns per call
+write+commands: frame without calls 136 us, with 10000 calls 797 us: 66.1 ns per call
+22:18  up 4 days, 19:03, 1 user, load averages: 12.18 12.11 11.73
+read: frame without calls 166 us, with 10000 calls 599 us: 43.3 ns per call
+write: frame without calls 166 us, with 10000 calls 691 us: 52.5 ns per call
+write+commands: frame without calls 166 us, with 10000 calls 925 us: 75.9 ns per call

@@ -1,0 +1,20 @@
+20:29  up 4 days, 17:14, 1 user, load averages: 21.15 25.85 31.77
+read: frame without calls 289 us, with 10000 calls 928 us: 63.9 ns per call
+write: frame without calls 289 us, with 10000 calls 940 us: 65.1 ns per call
+write+commands: frame without calls 289 us, with 10000 calls 1314 us: 102.5 ns per call
+20:29  up 4 days, 17:14, 1 user, load averages: 19.62 25.27 31.46
+read: frame without calls 298 us, with 10000 calls 932 us: 63.3 ns per call
+write: frame without calls 298 us, with 10000 calls 936 us: 63.7 ns per call
+write+commands: frame without calls 298 us, with 10000 calls 1206 us: 90.8 ns per call
+20:29  up 4 days, 17:14, 1 user, load averages: 19.62 25.27 31.46
+read: frame without calls 228 us, with 10000 calls 700 us: 47.2 ns per call
+write: frame without calls 228 us, with 10000 calls 582 us: 35.4 ns per call
+write+commands: frame without calls 228 us, with 10000 calls 829 us: 60.1 ns per call
+
+# writable-native-params build, 2026-10-23: ns per call end to end through V8, 10,000 calls per frame.
+# 3 runs (load ~20): read 63.9 63.3 47.2 (median 63.3); write 65.1 63.7 35.4 (63.7); write+commands 102.5 90.8 60.1 (90.8).
+# Read and write within noise, so 8 runs per arm (load ~12, raw in e2e-8.txt):
+# read     40.7 36.5 42.2 36.3 34.1 41.3 35.2 43.3  median 38.6
+# write    23.3 35.8 48.4 38.7 38.8 41.5 46.4 52.5  median 40.2
+# write+commands 38.7 56.1 59.7 59.0 62.2 61.8 66.1 75.9  median 60.8
+# A write costs what a read does (+1.6 ns, inside run-to-run spread); one queued Commands insert adds ~21 ns.

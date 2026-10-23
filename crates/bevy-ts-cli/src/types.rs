@@ -234,6 +234,56 @@ fn is_resource(reg: &TypeRegistration) -> bool {
     reg.data::<bevy::ecs::reflect::ReflectResource>().is_some()
 }
 
+/// Inner types bevy-ts's own declarations name, so a claim of them is typed.
+const CLOCKS: &[&str] = &["Time<Real>", "Time<Virtual>", "Time<Fixed>"];
+
+/// One `stands_for` claim: the spelling, and the module and TS name of the export.
+pub struct Claim<'a> {
+    pub spelling: &'a str,
+    pub module: &'a str,
+    pub ts: &'a str,
+}
+
+/// `ResClaims` and `ResMutClaims` entries for exports with `stands_for`, so `ResMut<T>` types a
+/// claimed spelling as its export. An entry needs its inner type declared in TS (`declared`): a
+/// class this file declares, or a clock bevy-ts declares (`Time<Virtual>`). Any other claim is
+/// listed in a comment only, so `native.d.ts` always type-checks. Empty without claims.
+pub fn claims_ts(claims: &[Claim], declared: &dyn Fn(&str) -> bool) -> String {
+    let mut res = String::new();
+    let mut res_mut = String::new();
+    let mut untyped = Vec::new();
+    for c in claims {
+        let (out, inner) = match c.spelling.strip_prefix("ResMut<") {
+            Some(rest) => (&mut res_mut, rest),
+            None => (&mut res, c.spelling.strip_prefix("Res<").unwrap_or(c.spelling)),
+        };
+        let inner = inner.strip_suffix('>').unwrap_or(inner);
+        if declared(inner) {
+            let _ = writeln!(out, "    {:?}: [{inner}, import({:?}).{}];", c.spelling, c.module, c.ts);
+        } else {
+            untyped.push(format!("{} ({})", c.spelling, c.ts));
+        }
+    }
+    if res.is_empty() && res_mut.is_empty() && untyped.is_empty() {
+        return String::new();
+    }
+    let mut s = String::from("\n/** Exports standing for a Bevy spelling (`stands_for`): `ResMut<T>` types them as the export. */\n");
+    if !untyped.is_empty() {
+        let _ = writeln!(s, "// Claimed, but TS declares no such type yet, so not typed here: {}.", untyped.join(", "));
+    }
+    if res.is_empty() && res_mut.is_empty() {
+        return s;
+    }
+    s.push_str("declare module \"bevy-ts\" {\n");
+    for (name, body) in [("ResClaims", res), ("ResMutClaims", res_mut)] {
+        if !body.is_empty() {
+            let _ = write!(s, "  interface {name} {{\n{body}  }}\n");
+        }
+    }
+    s.push_str("}\n");
+    s
+}
+
 /// Ambient declarations of the built-in modules ports ship (`bevy-ts/rapier`) and the params
 /// they export: a script file with no top-level imports, so `declare module` declares rather
 /// than augments. Empty when no module is registered.
@@ -414,7 +464,13 @@ pub fn emit(world: &World) -> String {
     let _ = writeln!(s, "/** System sets exposed with `app.ts_set`, for `.before`/`.after(systemSet(name))`. */");
     let _ = writeln!(s, "export type NativeSet = {};", if sets.is_empty() { "never".to_string() } else { sets.join(" | ") });
 
-    for (path, name, reg) in named(&registry, native) {
+    let classes = named(&registry, native);
+    if let Some(host) = world.get_resource::<bevy_ts::host::HostParams>() {
+        let claims: Vec<Claim> = host.specs().filter_map(|p| Some(Claim { spelling: p.stands_for?, module: p.module, ts: p.ts })).collect();
+        s.push_str(&claims_ts(&claims, &|t| CLOCKS.contains(&t) || classes.iter().any(|(_, name, _)| name == t)));
+    }
+
+    for (path, name, reg) in classes {
         let path = &path;
         let resource = is_resource(reg);
         let layout = native.get(path).filter(|n| &n.type_path == path);
@@ -462,6 +518,22 @@ pub fn emit(world: &World) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_claim_is_typed_only_when_ts_declares_its_inner_type() {
+        let claims = [
+            Claim { spelling: "ResMut<Wind>", module: "bevy-ts/claims-test", ts: "WindEdit" },
+            Claim { spelling: "ResMut<Time<Virtual>>", module: "bevy-ts/claims-test", ts: "VirtualTime" },
+            Claim { spelling: "ResMut<NavMesh>", module: "bevy-ts/claims-test", ts: "NavEdit" },
+        ];
+        let out = claims_ts(&claims, &|t| t == "Wind" || CLOCKS.contains(&t));
+        assert!(out.contains("not typed here: ResMut<NavMesh> (NavEdit)"), "{out}");
+        assert!(!out.contains("[NavMesh"), "{out}");
+        // packages/bevy-ts/test/claims.ts holds this block verbatim, and `tsc -p test` checks it.
+        let block = out.split_once("declare module").map(|(_, b)| format!("declare module{b}")).unwrap();
+        let fixture = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/bevy-ts/test/claims.ts")).unwrap();
+        assert!(fixture.contains(&block), "packages/bevy-ts/test/claims.ts no longer holds what claims_ts emits:\n{block}");
+    }
 
     #[test]
     fn classes_with_paths_fields_and_sets() {

@@ -23,6 +23,8 @@ mod material_errors;
 mod materials;
 mod mesh_picking;
 mod native_components;
+mod native_params_bench;
+mod native_writes;
 mod packages;
 mod play;
 mod play_after_edit;

@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.26.0";
+pub const VERSION: &str = "1.27.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1146,6 +1146,12 @@ pub struct ExportedParam {
     pub module: ::std::string::String,
     ///The TS type, such as ReadRapierContext.
     pub name: ::std::string::String,
+    ///The Bevy spelling the export stands for, such as ResMut<Time<Virtual>>: a TS param written that way is this export (1.27).
+    #[serde(
+        rename = "standsFor",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub stands_for: ::std::option::Option<::std::string::String>,
 }
 ///`ExposedSet`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

@@ -103,21 +103,32 @@ pub trait NativeLayout: Component {
     fn native_layout() -> ComponentLayout;
 }
 
-/// A param `#[export]` made callable from TS.
+/// A param `#[export]` made callable from TS. It may write (`ResMut`, `Query<&mut T>`) and
+/// defer (`Commands`, `Gizmos`); see `bevy_ts::host` for when writes land.
 ///
-/// A param that writes cannot be exported:
-/// ```compile_fail
+/// A param that writes exports:
+/// ```
 /// use bevy::ecs::system::SystemParam;
 /// use bevy_ts_native::prelude::*;
 /// #[derive(Resource)]
-/// pub struct NavMesh(f32);
+/// pub struct NavMesh(Vec<bool>);
 /// #[derive(SystemParam)]
-/// pub struct Nav<'w> { mesh: ResMut<'w, NavMesh> }
-/// #[export(ts = "Nav", module = "bevy-ts/game")]
-/// impl Nav<'_> {
-///     pub fn cost(&self) -> f32 { self.mesh.0 }
+/// pub struct NavEdit<'w> { mesh: ResMut<'w, NavMesh> }
+/// #[export(ts = "NavEdit", module = "bevy-ts/game")]
+/// impl NavEdit<'_> {
+///     pub fn block(&mut self, cell: u32) { self.mesh.0[cell as usize] = true }
 /// }
-/// fn main() { App::new().ts_param::<Nav<'static>>(); }
+/// fn main() { App::new().insert_resource(NavMesh(vec![false; 8])).ts_param::<NavEdit<'static>>(); }
+/// ```
+/// Something that is not a `SystemParam`, such as `&mut World`, does not:
+/// ```compile_fail
+/// use bevy_ts_native::prelude::*;
+/// pub struct Everything;
+/// #[export(ts = "Everything", module = "bevy-ts/game")]
+/// impl Everything {
+///     pub fn count(&self) -> u32 { 0 }
+/// }
+/// fn main() { App::new().ts_param::<&'static mut World>(); }
 /// ```
 /// A method argument that cannot cross fails naming its type:
 /// ```compile_fail
@@ -129,20 +140,14 @@ pub trait NativeLayout: Component {
 /// impl Names<'_> {
 ///     pub fn find(&self, name: String) -> bool { name.is_empty() }
 /// }
-/// ``` The param must be read-only: TS calls it in the
-/// middle of a system run, with live column views.
-pub trait ExportParam: ReadOnlyParam {
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` must be a system param to be exported to TS",
+    note = "export a SystemParam (Res, ResMut, Query, Commands, a #[derive(SystemParam)] struct); &mut World and exclusive params cannot be called during a TS run"
+)]
+pub trait ExportParam: bevy::ecs::system::SystemParam + 'static {
     fn spec() -> bevy_ts::host::ParamSpec;
 }
-
-/// A read-only `SystemParam`, the only kind TS may call.
-#[diagnostic::on_unimplemented(
-    message = "`{Self}` must be a read-only system param to be exported to TS",
-    note = "exported params run in the middle of a TS system, which holds live column views; use Res, Query<&T> and read-only params, never ResMut or Query<&mut T>"
-)]
-pub trait ReadOnlyParam: bevy::ecs::system::ReadOnlySystemParam + 'static {}
-
-impl<P: bevy::ecs::system::ReadOnlySystemParam + 'static> ReadOnlyParam for P {}
 
 /// What a native crate or port registers for TS, on `App`, as Bevy's `register_type` is.
 pub trait BevyTsNativeExt {

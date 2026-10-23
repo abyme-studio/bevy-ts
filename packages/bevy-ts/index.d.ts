@@ -325,8 +325,21 @@ export interface QueryOf<R extends unknown[]> extends Iterable<R> {
 }
 /** `Query<[Enemy, Mut<Transform>], [With<Alive>, Without<Player>]>`, as Bevy's `Query<(&Enemy, &mut Transform), (With<Alive>, Without<Player>)>`. */
 export type Query<Ds extends readonly unknown[], _Filter = never> = QueryOf<Row<Ds>>;
-export type Res<T> = ReadView<T>;
-export type ResMut<T> = T;
+/**
+ * Exports that stand for a `Res<..>` or `ResMut<..>` spelling (`stands_for` on `#[export]`), keyed by
+ * the spelling, each `[T, Export]`. `bevy-ts types` fills them in `native.d.ts`, so
+ * `ResMut<Time<Virtual>>` is typed as the export that claims it.
+ */
+export interface ResClaims {}
+export interface ResMutClaims {}
+/** The export claiming `T` in `C`, or `Else`. */
+type Claimed<C, T, Else> = {
+  [K in keyof C]: C[K] extends readonly [infer S, infer E] ? ([T] extends [S] ? ([S] extends [T] ? E : never) : never) : never;
+}[keyof C] extends infer R
+  ? [R] extends [never] ? Else : R
+  : Else;
+export type Res<T> = Claimed<ResClaims, T, ReadView<T>>;
+export type ResMut<T> = Claimed<ResMutClaims, T, T>;
 /** Per-system state with a layout, `Local<{ timer: f32; wave: u32 }>`. Kept in Rust under the system's id; survives reloads. */
 export type Local<T> = T;
 export interface MessageReader<M> extends Iterable<ReadView<M>> {

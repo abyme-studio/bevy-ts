@@ -33,6 +33,11 @@ pub fn port_param_kinds() -> Vec<String> {
     bevy_ts::host::param_kinds()
 }
 
+/// Bevy spellings exports claim (`ResMut<Time<Virtual>>`) and the export each reads as.
+pub fn port_claims() -> Vec<(String, String)> {
+    bevy_ts::host::claims()
+}
+
 /// Param kinds bevy-ts itself declares, recognised by name.
 const KINDS: &[&str] = &[
     "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "State", "NextState", "On", "App", "Mut", "Option",
@@ -100,6 +105,18 @@ enum Ty {
     Keyword(&'static str, Span),
     /// Anything else, unreadable; `what` says what it is.
     Other { what: &'static str, span: Span },
+}
+
+/// A type as a Bevy spelling, normalised as `bevy_ts::host::normalise_spelling` does: names by
+/// their last segment, no whitespace (`Time<Virtual>`).
+fn spell(t: &Ty) -> String {
+    match t {
+        Ty::Ref { name, args, .. } => {
+            let last = name.rsplit('.').next().unwrap_or(name);
+            if args.is_empty() { last.to_string() } else { format!("{last}<{}>", args.iter().map(spell).collect::<Vec<_>>().join(",")) }
+        }
+        _ => "?".into(),
+    }
 }
 
 fn ty(t: &TSType) -> Ty {
@@ -657,6 +674,8 @@ struct Reader<'r> {
     root: PathBuf,
     resolver: &'r oxc_resolver::Resolver,
     ports: Vec<String>,
+    /// Claimed spellings, normalised, and the port each reads as.
+    claims: Vec<(String, String)>,
     files: HashMap<PathBuf, Option<Rc<FileInfo>>>,
     /// Modules (by path) a declaration referenced.
     referenced: BTreeSet<PathBuf>,
@@ -665,12 +684,12 @@ struct Reader<'r> {
 /// Reads one module's declarations. `Err` holds compile errors: names a param needs that are
 /// imported with `import type`. Every other failure is carried lazily as an `error` declaration.
 pub(crate) fn read(file: FileInfo, root: &Path, resolver: &oxc_resolver::Resolver) -> Result<Declarations, Vec<ScriptError>> {
-    read_with(file, root, resolver, port_param_kinds())
+    read_with(file, root, resolver, port_param_kinds(), port_claims())
 }
 
-fn read_with(file: FileInfo, root: &Path, resolver: &oxc_resolver::Resolver, ports: Vec<String>) -> Result<Declarations, Vec<ScriptError>> {
+fn read_with(file: FileInfo, root: &Path, resolver: &oxc_resolver::Resolver, ports: Vec<String>, claims: Vec<(String, String)>) -> Result<Declarations, Vec<ScriptError>> {
     let file = Rc::new(file);
-    let mut r = Reader { root: root.to_path_buf(), resolver, ports, files: HashMap::new(), referenced: BTreeSet::new() };
+    let mut r = Reader { root: root.to_path_buf(), resolver, ports, claims, files: HashMap::new(), referenced: BTreeSet::new() };
     r.files.insert(file.path.clone(), Some(file.clone()));
     let scope = Scope { file: file.clone(), subst: Rc::default() };
     let mut declares = Vec::new();
@@ -1133,6 +1152,15 @@ impl Reader<'_> {
                 Ok(json!({ "kind": "query", "data": data, "filter": filter }))
             }
             "Res" | "ResMut" => {
+                // An export that claims this spelling reads as that export. Every `Res<Time<..>>`
+                // is script-time's clock route (in `reference`), never a claim.
+                let clock_read = name == "Res" && matches!(args.first(), Some(Ty::Ref { name: t, args: a, .. }) if !a.is_empty() && bevy_ts_name(&s.file, t) == Some("Time"));
+                if !self.claims.is_empty() && !clock_read {
+                    let spelling = format!("{name}<{}>", args.iter().map(spell).collect::<Vec<_>>().join(","));
+                    if let Some((_, port)) = self.claims.iter().find(|(c, _)| *c == spelling) {
+                        return Ok(json!({ "kind": "port", "name": port, "args": [] }));
+                    }
+                }
                 let r = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a resource")?;
                 Ok(json!({ "kind": if name == "Res" { "res" } else { "resMut" }, "resource": r }))
             }
@@ -1483,9 +1511,38 @@ export const arrow = (q: Query<[Pos]>) => {};
         let path = Path::new("/p/src/game.ts");
         let allocator = Allocator::default();
         let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
-        let read = |ports: &[&str]| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), ports.iter().map(|s| s.to_string()).collect()).ok().unwrap().code);
+        let read = |ports: &[&str]| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), ports.iter().map(|s| s.to_string()).collect(), Vec::new()).ok().unwrap().code);
         assert_eq!(read(&["ReadRapierContext"])["cast"]["params"], json!([{ "kind": "port", "name": "ReadRapierContext", "args": [["src/game.ts", "Collider"]] }]));
         assert!(read(&[])["cast"]["error"].as_str().unwrap().contains("ReadRapierContext is not a system param kind"));
+    }
+
+    #[test]
+    fn a_claimed_spelling_reads_as_its_export() {
+        let src = "import type { ResMut, Res } from \"bevy-ts\";\nexport function pause(time: ResMut<Time<Virtual>>) {}\nexport function fixed(time: ResMut<Time<Fixed>>) {}\nexport function read(time: Res<Time<Virtual>>) {}\n";
+        let path = Path::new("/p/src/game.ts");
+        let allocator = Allocator::default();
+        let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
+        let read = |claims: Vec<(String, String)>| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), vec!["VirtualTime".into()], claims).ok().unwrap().code);
+        let d = read(vec![("ResMut<Time<Virtual>>".to_string(), "VirtualTime".to_string())]);
+        assert_eq!(d["pause"]["params"], json!([{ "kind": "port", "name": "VirtualTime", "args": [] }]));
+        // Unclaimed spellings read as they do with no claims at all.
+        let none = read(Vec::new());
+        assert!(none["pause"]["error"].is_string());
+        assert_eq!(d["fixed"], none["fixed"]);
+        assert_eq!(d["read"], none["read"]);
+    }
+
+    #[test]
+    fn a_clock_read_is_never_a_claim() {
+        let src = "import { Time, Virtual } from \"bevy-ts\";\nimport type { Res } from \"bevy-ts\";\nexport function read(time: Res<Time<Virtual>>) {}\n";
+        let path = Path::new("/p/src/game.ts");
+        let allocator = Allocator::default();
+        let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
+        let read = |claims: Vec<(String, String)>| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), vec!["Clock".into()], claims).ok().unwrap().code);
+        // Even a claim of the very spelling leaves `Res<Time<..>>` to script-time's clock route.
+        let claimed = read(vec![("Res<Time<Virtual>>".to_string(), "Clock".to_string())]);
+        assert_eq!(claimed["read"], read(Vec::new())["read"]);
+        assert_ne!(claimed["read"]["params"][0]["kind"], "port");
     }
 
     /// The `__bevyts.data(this, ...)` declarations in compiled code, by class name.

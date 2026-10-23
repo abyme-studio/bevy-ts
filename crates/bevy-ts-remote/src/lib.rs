@@ -187,6 +187,7 @@ fn hello(In(_): In<Option<Value>>, world: &World) -> BrpResult {
                         name: p.ts.to_string(),
                         module: p.module.to_string(),
                         methods: p.methods.iter().map(|m| m.name.clone()).collect(),
+                        stands_for: p.stands_for.map(str::to_string),
                     })
                     .collect()
             })

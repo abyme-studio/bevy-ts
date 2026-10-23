@@ -395,3 +395,31 @@ fn list_components() {
         println!("{path} {}", e["x-bevy-ts-editor"]);
     }
 }
+
+#[derive(Resource)]
+pub struct Paused(pub bool);
+
+// A spelling no other test claims: claims are process-wide (native_writes.rs).
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct Pause<'w> {
+    paused: ResMut<'w, Paused>,
+}
+
+#[bevy_ts_native::export(ts = "Pause", module = "bevy-ts/test", stands_for = "ResMut<Paused>")]
+impl Pause<'_> {
+    pub fn pause(&mut self) {
+        self.paused.0 = true;
+    }
+}
+
+#[test]
+fn the_handshake_lists_an_exports_claim() {
+    use bevy_ts_native::BevyTsNativeExt;
+    let (mut app, _) = cube_app();
+    app.ts_param::<Pause<'static>>();
+    let hello = ok(&mut app, "bevy-ts/hello", None);
+    let pause = hello["params"].as_array().unwrap().iter().find(|p| p["name"] == "Pause").cloned().unwrap();
+    // Protocol 1.27: `standsFor`, the Bevy spelling a TS param writes to get this export.
+    assert_eq!(pause["standsFor"], "ResMut<Paused>", "{pause}");
+    assert_eq!(pause["methods"], json!(["pause"]));
+}

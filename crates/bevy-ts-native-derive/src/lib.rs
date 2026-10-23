@@ -154,27 +154,55 @@ impl VisitMut for StaticLifetimes {
     }
 }
 
-/// `#[export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` of a read-only
-/// `SystemParam`: every `pub fn(&self, ...)` becomes a method of the TS type `Name`, called
-/// synchronously from TS systems as one host call. Register it with `app.ts_param::<P>()`.
+/// A Bevy param spelling, normalised: no whitespace, every path by its last segment. Mirrors
+/// `bevy_ts::host::normalise_spelling` (a proc-macro cannot call it); the registry's
+/// `claimed` lookup in native_writes.rs exercises both.
+fn normalise_spelling(s: &str) -> String {
+    let mut out = String::new();
+    let mut word = String::new();
+    for c in s.chars().filter(|c| !c.is_whitespace()) {
+        if c.is_alphanumeric() || c == '_' || c == ':' {
+            word.push(c);
+        } else {
+            out.push_str(word.rsplit("::").next().unwrap_or(""));
+            word.clear();
+            out.push(c);
+        }
+    }
+    out.push_str(word.rsplit("::").next().unwrap_or(""));
+    out
+}
+
+/// `#[export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` of a `SystemParam`: every
+/// `pub fn(&self, ...)` or `pub fn(&mut self, ...)` becomes a method of the TS type `Name`,
+/// called synchronously from TS systems as one host call. Register it with
+/// `app.ts_param::<P>()`. `stands_for = "ResMut<Time<Virtual>>"` makes a TS param written with
+/// that Bevy spelling this export.
 #[proc_macro_attribute]
 pub fn export(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut ts = None;
     let mut module = None;
+    let mut stands_for = None;
     let parser = syn::meta::parser(|meta| {
         let v: syn::LitStr = meta.value()?.parse()?;
         if meta.path.is_ident("ts") {
             ts = Some(v);
         } else if meta.path.is_ident("module") {
             module = Some(v);
+        } else if meta.path.is_ident("stands_for") {
+            let n = normalise_spelling(&v.value());
+            if !(n.starts_with("Res<") || n.starts_with("ResMut<")) || !n.ends_with('>') {
+                return Err(syn::Error::new(v.span(), "stands_for names one Res<..> or ResMut<..> spelling"));
+            }
+            stands_for = Some(syn::LitStr::new(&n, v.span()));
         } else {
-            return Err(meta.error("export takes ts = \"Name\" and module = \"bevy-ts/<module>\""));
+            return Err(meta.error("export takes ts = \"Name\", module = \"bevy-ts/<module>\" and stands_for = \"ResMut<..>\""));
         }
         Ok(())
     });
     parse_macro_input!(attr with parser);
     let item = parse_macro_input!(item as ItemImpl);
-    match expand_export(&item, ts, module) {
+    match expand_export(&item, ts, module, stands_for) {
         Ok(t) => quote!(#item #t).into(),
         Err(e) => {
             let e = e.to_compile_error();
@@ -183,12 +211,16 @@ pub fn export(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::LitStr>) -> syn::Result<proc_macro2::TokenStream> {
+fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::LitStr>, stands_for: Option<syn::LitStr>) -> syn::Result<proc_macro2::TokenStream> {
     let ts = ts.ok_or_else(|| syn::Error::new(item.span(), "export needs ts = \"Name\", the TS type"))?;
     let module = module.ok_or_else(|| syn::Error::new(item.span(), "export needs module = \"bevy-ts/<module>\""))?;
     if item.trait_.is_some() {
         return Err(syn::Error::new(item.span(), "export goes on an inherent impl of the param"));
     }
+    let stands_for = match stands_for {
+        Some(s) => quote!(::core::option::Option::Some(#s)),
+        None => quote!(::core::option::Option::None),
+    };
     let mut st = (*item.self_ty).clone();
     StaticLifetimes.visit_type_mut(&mut st);
     let h = quote!(::bevy_ts_native::bevy_ts::host);
@@ -202,8 +234,8 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
         let sig = &f.sig;
         let method = &sig.ident;
         match sig.inputs.first() {
-            Some(FnArg::Receiver(r)) if r.reference.is_some() && r.mutability.is_none() => {}
-            _ => return Err(syn::Error::new(sig.span(), format!("exported method {method} must take &self"))),
+            Some(FnArg::Receiver(r)) if r.reference.is_some() => {}
+            _ => return Err(syn::Error::new(sig.span(), format!("exported method {method} must take &self or &mut self"))),
         }
         let mut decls = Vec::new();
         let mut specs = Vec::new();
@@ -261,15 +293,19 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
         methods.push(quote! {{
             fn __call(
                 __state: &mut #h::ParamState,
-                __world: &#bevy::prelude::World,
+                __world: #bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell<'_>,
+                __ticks: #h::RunTicks,
                 __r: &mut #h::SlotReader,
                 __w: &mut #h::SlotWriter,
                 __slices: &mut [&mut [u8]],
             ) -> ::core::result::Result<(), ::std::string::String> {
-                let __st = __state
-                    .downcast_mut::<#bevy::ecs::system::SystemState<#st>>()
-                    .ok_or("exported param state has the wrong type")?;
-                let __p = __st.get(__world).map_err(|e| e.to_string())?;
+                // SAFETY: the host calls this only from a TS run that holds the world
+                // exclusively; JS is suspended, so no other param or view is read or written
+                // during the call; the state came from `host::init`, which ran `init_access`,
+                // and registration refused unbounded writes; slices overlapping a column the
+                // call could alias were refused before this call.
+                #[allow(unused_mut)]
+                let mut __p = unsafe { #h::fetch::<#st>(__state, __world, __ticks) }?;
                 #[allow(unused_mut, unused_variables)]
                 let mut __sl = __slices.iter_mut();
                 #(#decls)*
@@ -288,14 +324,12 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
     Ok(quote! {
         impl ::bevy_ts_native::ExportParam for #st {
             fn spec() -> #h::ParamSpec {
-                fn __init(world: &mut #bevy::prelude::World) -> #h::ParamState {
-                    ::std::boxed::Box::new(#bevy::ecs::system::SystemState::<#st>::new(world))
-                }
                 #h::ParamSpec {
                     ts: #ts,
                     module: #module,
                     rust: ::core::any::type_name::<#st>(),
-                    init: __init,
+                    stands_for: #stands_for,
+                    init: #h::init::<#st>,
                     methods: ::std::vec![#(#methods),*],
                 }
             }

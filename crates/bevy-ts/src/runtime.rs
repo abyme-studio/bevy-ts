@@ -97,7 +97,10 @@ impl ScriptRuntime {
             let pool = std::mem::take(&mut rt.pool);
             let mut params = world.remove_resource::<crate::host::HostParams>().unwrap_or_default();
             let r = {
-                let mut host = crate::host::WorldHost { world: &*world, params: &mut params };
+                // As `run_one`: the world is held exclusively for the call; host calls fetch at
+                // the entry's tick, with the world's last change tick as their last run.
+                let ticks = crate::host::RunTicks { last_run: world.last_change_tick(), this_run: tick };
+                let mut host = crate::host::WorldHost { world: world.as_unsafe_world_cell(), ticks, regions: &[], allowed: None, params: &mut params };
                 let mut ctx = CallContext { frame, arena: scratch.arena_mut(), pool: &pool, host: Some(&mut host) };
                 rt.backend.call_entry(name, payload, &mut ctx)
             };
@@ -108,9 +111,11 @@ impl ScriptRuntime {
         let out = match result {
             Ok((bytes, out)) => {
                 rt.apply_output(world, scratch.arena_mut(), out, &format!("entry {name}"));
+                settle_params(world, true);
                 Ok(bytes)
             }
             Err(e) => {
+                settle_params(world, false);
                 rt.log_error(world, &format!("entry {name} threw"), &e);
                 Err(e)
             }
@@ -119,6 +124,14 @@ impl ScriptRuntime {
         rt.free_pool(world);
         world.insert_non_send(rt);
         out
+    }
+}
+
+/// Applies, or drops, the deferred state of exported params an entry called.
+fn settle_params(world: &mut World, ok: bool) {
+    if let Some(mut host) = world.remove_resource::<crate::host::HostParams>() {
+        host.settle_all(world, ok);
+        world.insert_resource(host);
     }
 }
 
