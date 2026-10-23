@@ -551,6 +551,35 @@ fn the_toolbar_sets_the_gizmo_and_the_stream_follows_keys() {
     assert_eq!(gizmo(&app).space, TransformGizmoSpace::Local);
 }
 
+/// Two studio windows open the tools stream with the same params, one later: each is sent the
+/// tools on open, and both are sent every change after.
+#[test]
+fn a_second_subscriber_with_the_same_params_gets_its_own_stream() {
+    let mut app = edit_app();
+    call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    updates(&mut app, 2);
+    let key = rand_key();
+    assert!(tools_watch(&mut app, key).is_some(), "a: sent on open");
+    for _ in 0..3 {
+        updates(&mut app, 1);
+        assert_eq!(tools_watch(&mut app, key), None, "a: nothing new");
+    }
+    // As Bevy runs open requests each update: a first, then b, which opens now.
+    updates(&mut app, 1);
+    assert_eq!(tools_watch(&mut app, key), None, "a: nothing new");
+    assert_eq!(tools_watch(&mut app, key).expect("b: sent on open")["mode"], "translate");
+    updates(&mut app, 1);
+    assert_eq!((tools_watch(&mut app, key), tools_watch(&mut app, key)), (None, None), "neither owed");
+
+    call(&mut app, "bevy-ts/viewport_tools", json!({ "mode": "scale" })).unwrap();
+    updates(&mut app, 1);
+    let (a, b) = (tools_watch(&mut app, key), tools_watch(&mut app, key));
+    assert_eq!(a.map(|m| m["mode"].clone()), Some(json!("scale")), "a is sent the change");
+    assert_eq!(b.map(|m| m["mode"].clone()), Some(json!("scale")), "b is sent it too");
+    updates(&mut app, 1);
+    assert_eq!((tools_watch(&mut app, key), tools_watch(&mut app, key)), (None, None));
+}
+
 fn key_press(app: &mut App, code: &str) {
     key(app, code, "down");
     updates(app, 1);

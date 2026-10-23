@@ -61,6 +61,17 @@ fn call(app: &mut App, method: &str, params: Option<Value>) -> Result<Option<Val
     }
 }
 
+/// The level watch's messages as Bevy serves an open request, one call per update, until an
+/// update brings none.
+fn level_events(app: &mut App) -> Vec<Value> {
+    std::iter::from_fn(|| {
+        app.update();
+        call(app, "bevy-ts/level+watch", None).unwrap()
+    })
+    .inspect(|m| validate("bevy-ts/level+watch", m))
+    .collect()
+}
+
 fn ok(app: &mut App, method: &str, params: Option<Value>) -> Value {
     let v = call(app, method, params).unwrap_or_else(|e| panic!("{method}: {e:?}")).unwrap_or_else(|| panic!("{method}: no message"));
     validate(method, &v);
@@ -148,10 +159,7 @@ fn a_level_opens_and_closes_over_the_wire() {
     let c = ok(&mut app, "bevy-ts/level_close", Some(json!({ "file": "levels/room.bsn" })));
     assert_eq!(c, json!({ "closed": true }));
     assert_eq!(ok(&mut app, "bevy-ts/level_close", Some(json!({ "file": "levels/room.bsn" }))), json!({ "closed": false }));
-    let events: Vec<String> = std::iter::from_fn(|| call(&mut app, "bevy-ts/level+watch", None).unwrap())
-        .inspect(|m| validate("bevy-ts/level+watch", m))
-        .map(|m| format!("{} {}", m["event"].as_str().unwrap(), m["level"].as_str().unwrap()))
-        .collect();
+    let events: Vec<String> = level_events(&mut app).iter().map(|m| format!("{} {}", m["event"].as_str().unwrap(), m["level"].as_str().unwrap())).collect();
     assert_eq!(events, ["opened levels/room.bsn", "loaded levels/room.bsn", "closed levels/room.bsn"]);
 }
 
@@ -196,7 +204,7 @@ fn every_level_method_answers_on_contract() {
     assert_eq!((w["status"].as_str(), w["lines"].clone()), (Some("written"), json!([[4, 4]])));
     assert_eq!(arena(), ARENA.replace("x: 3.0", "x: 5.0"));
     // The write's reconcile reports `loaded`, then the write itself.
-    let written = std::iter::from_fn(|| call(&mut app, "bevy-ts/level+watch", None).unwrap()).inspect(|m| validate("bevy-ts/level+watch", m)).find(|m| m["event"] == "written").expect("written");
+    let written = level_events(&mut app).into_iter().find(|m| m["event"] == "written").expect("written");
     assert_eq!((written["event"].as_str(), written["id"].as_u64()), (Some("written"), Some(3)));
     let undo = ok(&mut app, "bevy-ts/level_write", Some(json!({ "id": 4, "file": "levels/arena.bsn", "base": w["hash"], "ops": w["inverse"] })));
     assert_eq!(undo["status"], "written", "{undo}");
@@ -243,8 +251,11 @@ fn every_level_method_answers_on_contract() {
     assert_eq!(w["status"], "written", "{w}");
     assert!(arena().contains("#GruntB\n@enemies::Grunt\nTransform"), "{}", arena());
     assert_eq!(w["inverse"][0]["op"], "set_prop", "{w}");
+    // Until the write is applied: settling alone can return before the level is marked dirty.
+    let node = |app: &mut App| ok(app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["GruntB"] })));
+    until(&mut app, "the write never applied", |app| node(app)["props"][0]["overridden"] == json!(false));
     settle_levels(&mut app);
-    let after = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["GruntB"] })));
+    let after = node(&mut app);
     assert_eq!((&after["props"][0]["value"], &after["props"][0]["overridden"]), (&json!(100), &json!(false)), "{after}");
     // A prop nothing overrides: nothing to apply.
     let none = ok(&mut app, "bevy-ts/level_apply", Some(json!({ "entity": grunt["entity"], "component": "enemies::Grunt", "field": "@speed" })));

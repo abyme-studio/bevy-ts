@@ -1,7 +1,7 @@
 //! Component schemas, reads and edits: TS components from their native layout, reflected Rust
 //! components through `bevy_ts::reflect_value`, in the shape TSX takes (docs/reflection.md).
 
-use crate::{Subscribers, frame, invalid, params, protocol, required};
+use crate::{Subscribers, invalid, params, protocol, required};
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
 use bevy::ecs::reflect::ReflectComponent;
@@ -229,7 +229,7 @@ fn write_reflected(world: &mut World, entity: Entity, name: &str, path: &str, v:
     wrote.map_err(|e| BrpError { code: error_codes::INVALID_PARAMS, message: format!("{name}{path}: {e}"), data: Some(json!({ "path": path })) })
 }
 
-/// What a `get_components+watch` subscriber was last sent.
+/// What a `get_components+watch` subscriber was last sent, by params and [`crate::Turn::slot`].
 #[derive(Default)]
 struct WatchState {
     tick: u32,
@@ -237,7 +237,7 @@ struct WatchState {
 }
 
 #[derive(Resource, Default)]
-struct ComponentWatches(HashMap<String, WatchState>);
+struct ComponentWatches(HashMap<(String, usize), WatchState>);
 
 fn component_id(world: &World, name: &str) -> Option<ComponentId> {
     if let Some(c) = world.resource::<TsComponents>().get(name) {
@@ -249,9 +249,9 @@ fn component_id(world: &World, name: &str) -> Option<ComponentId> {
 }
 
 pub(crate) fn get_components_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let key = p.as_ref().map(Value::to_string).unwrap_or_default();
-    let now = frame(world);
-    let fresh = world.resource_mut::<Subscribers>().cursor("get_components", &p, now).is_none();
+    let turn = world.resource_mut::<Subscribers>().turn("get_components", &p);
+    let fresh = turn.cursor.is_none();
+    let key = (p.as_ref().map(Value::to_string).unwrap_or_default(), turn.slot);
     let params: protocol::GetComponentsParams = required(p)?;
     let entity = Entity::try_from_bits(params.entity.0).ok_or_else(|| invalid(format!("{} is not an entity", params.entity.0)))?;
     world.init_resource::<ComponentWatches>();

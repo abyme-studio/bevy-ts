@@ -13,7 +13,6 @@ use bevy_ts::backend::SourceLocation;
 use bevy_ts::components::TsComponents;
 use bevy_ts_tsx::TsxNode;
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
 
 /// The crate the contract lists these methods under.
 pub const CRATE: &str = "bevy-ts-levels";
@@ -28,7 +27,6 @@ pub fn add_methods(app: &mut App) {
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_apply", apply);
     bevy_ts_remote::add_method(app, CRATE, "bevy-ts/level_catalog", catalog);
     bevy_ts_remote::add_watching_method(app, CRATE, "bevy-ts/level+watch", watch);
-    app.init_resource::<Watchers>();
 }
 
 fn invalid(message: impl Into<String>) -> BrpError {
@@ -491,17 +489,13 @@ fn apply_prop(world: &mut World, e: Entity, component: &str, prop: &str, id: u64
     }
 }
 
-/// Subscribers of the watch: params to the last sequence number sent.
-#[derive(Resource, Default)]
-struct Watchers(HashMap<String, u64>);
-
 pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let key = p.as_ref().map(Value::to_string).unwrap_or_default();
+    const METHOD: &str = "bevy-ts/level+watch";
     let seq = world.resource::<Levels>().seq;
-    let sent = world.resource::<Watchers>().0.get(&key).copied();
-    let Some(sent) = sent else {
+    let mut subs = world.resource_mut::<bevy_ts_remote::Subscribers>();
+    let Some(sent) = subs.cursor(METHOD, &p) else {
         // A new subscriber: one `loaded` per open level.
-        world.resource_mut::<Watchers>().0.insert(key, seq);
+        subs.set(METHOD, &p, seq);
         let levels = world.resource::<Levels>();
         let first = levels.roots.keys().next().map(|p| loaded_event(levels, p));
         return Ok(first);
@@ -509,7 +503,7 @@ pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Op
     let next = world.resource::<Levels>().events.iter().find(|(s, _)| *s > sent).cloned();
     match next {
         Some((s, m)) => {
-            world.resource_mut::<Watchers>().0.insert(key, s);
+            world.resource_mut::<bevy_ts_remote::Subscribers>().set(METHOD, &p, s);
             Ok(Some(m))
         }
         None => Ok(None),

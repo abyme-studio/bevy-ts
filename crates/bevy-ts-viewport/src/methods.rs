@@ -235,6 +235,7 @@ pub(crate) fn drain(world: &mut World) {
 // ---- edit mode ----
 
 use crate::edit::{self, EditState, Mode, Origin, Selection};
+use bevy_ts_remote::Subscribers;
 use bevy_ts_tsx::tree::TsxNode;
 
 pub(crate) fn add_edit_methods(app: &mut App) {
@@ -247,7 +248,6 @@ pub(crate) fn add_edit_methods(app: &mut App) {
     add_watching_method(app, CRATE, "bevy-ts/viewport_selection+watch", selection_watch);
     add_method(app, CRATE, "bevy-ts/viewport_tools", tools);
     add_watching_method(app, CRATE, "bevy-ts/viewport_tools+watch", tools_watch);
-    app.init_resource::<Watchers>();
 }
 
 fn optional<T: serde::de::DeserializeOwned + Default>(p: Option<Value>) -> Result<T, BrpError> {
@@ -277,13 +277,14 @@ fn mode(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
 
 fn mode_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
     // A new or returning subscriber gets the mode with `cause: "engine"`.
-    let frame = world.resource::<crate::UpdateCount>().0;
-    let key = ("mode", p.as_ref().map(Value::to_string).unwrap_or_default());
-    let fresh = !world.resource::<Watchers>().0.get(&key).is_some_and(|(last, _)| last + 1 >= frame);
     let seq = world.resource::<edit::ModeWatch>().seq;
-    if !owed(world, "mode", &p, seq) {
+    let mut subs = world.resource_mut::<Subscribers>();
+    let sent = subs.cursor(MODE_WATCH, &p);
+    subs.set(MODE_WATCH, &p, seq);
+    if sent == Some(seq) {
         return Ok(None);
     }
+    let fresh = sent.is_none();
     let w = world.resource::<edit::ModeWatch>();
     let cause = if fresh { protocol::ViewportModeCause::Engine } else { w.cause.unwrap_or(protocol::ViewportModeCause::Engine) };
     let mut v = w.last.clone().unwrap_or_else(|| edit::mode_json(world));
@@ -441,22 +442,11 @@ pub(crate) fn selection_json(world: &World) -> Value {
     json!({ "origin": sel.origin.name(), "items": items })
 }
 
-/// Watchers of the streams that send on open and on every change of a counter: (stream, params)
-/// to (update last served, counter last sent).
-#[derive(Resource, Default)]
-struct Watchers(std::collections::HashMap<(&'static str, String), (u64, u64)>);
-
-/// Whether a watcher of `stream` is owed a message: it is new, missed an update, or `seq` moved.
-fn owed(world: &mut World, stream: &'static str, p: &Option<Value>, seq: u64) -> bool {
-    let frame = world.resource::<crate::UpdateCount>().0;
-    let key = (stream, p.as_ref().map(Value::to_string).unwrap_or_default());
-    let known = world.resource_mut::<Watchers>().0.insert(key, (frame, seq));
-    !matches!(known, Some((last, sent)) if last + 1 >= frame && sent == seq)
-}
+const MODE_WATCH: &str = "bevy-ts/viewport_mode+watch";
 
 fn selection_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
     let seq = world.resource::<Selection>().seq;
-    Ok(owed(world, "selection", &p, seq).then(|| selection_json(world)))
+    Ok(world.resource_mut::<Subscribers>().owed("bevy-ts/viewport_selection+watch", &p, seq).then(|| selection_json(world)))
 }
 
 fn tools(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
@@ -498,7 +488,7 @@ pub(crate) fn tools_json(world: &World) -> Value {
 
 fn tools_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
     let seq = world.resource::<edit::ViewportTools>().seq;
-    Ok(owed(world, "tools", &p, seq).then(|| tools_json(world)))
+    Ok(world.resource_mut::<Subscribers>().owed("bevy-ts/viewport_tools+watch", &p, seq).then(|| tools_json(world)))
 }
 
 // ---- edits ----
@@ -508,27 +498,19 @@ pub(crate) fn add_edit_result_methods(app: &mut App) {
     add_watching_method(app, CRATE, "bevy-ts/viewport_edits+watch", edits_watch);
     add_method(app, CRATE, "bevy-ts/viewport_edit_result", edit_result);
     add_method(app, CRATE, "bevy-ts/viewport_revert", revert);
-    app.init_resource::<EditWatchers>();
 }
 
-#[derive(Resource, Default)]
-struct EditWatchers(std::collections::HashMap<String, (u64, u64)>);
-
 fn edits_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let frame = world.resource::<crate::UpdateCount>().0;
-    let key = p.as_ref().map(Value::to_string).unwrap_or_default();
+    const METHOD: &str = "bevy-ts/viewport_edits+watch";
     let seq = world.resource::<crate::edits::EditLog>().seq;
-    let known = world.resource::<EditWatchers>().0.get(&key).copied();
-    world.resource_mut::<EditWatchers>().0.insert(key, (frame, seq));
-    let since = match known {
-        Some((last, sent)) if last + 1 >= frame => {
-            if sent == seq {
-                return Ok(None);
-            }
-            sent
-        }
+    let mut subs = world.resource_mut::<Subscribers>();
+    let sent = subs.cursor(METHOD, &p);
+    subs.set(METHOD, &p, seq);
+    let since = match sent {
+        Some(sent) if sent == seq => return Ok(None),
+        Some(sent) => sent,
         // A new subscriber gets every edit of the session.
-        _ => 0,
+        None => 0,
     };
     let edits: Vec<Value> = world.resource::<crate::edits::EditLog>().edits.iter().filter(|e| e.rev > since).map(crate::edits::edit_json).collect();
     if edits.is_empty() && since > 0 {
