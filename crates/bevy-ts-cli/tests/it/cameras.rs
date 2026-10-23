@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 const SRC: &str = r#"import { app, Startup, Update } from "bevy-ts";
 import type { Added, Commands, Entity, Query } from "bevy-ts";
-import { Camera } from "bevy-ts/bevy";
+import { Camera, DirectionalLight } from "bevy-ts/bevy";
 import type { Cameras } from "bevy-ts/camera";
 
 let cam: Entity | undefined;
@@ -30,7 +30,7 @@ const out = new Float32Array(4);
 const at = (v: { x: number; y: number } | undefined) => (v ? `${v.x.toFixed(1)},${v.y.toFixed(1)}` : "none");
 
 export function spawn(commands: Commands) {
-  light = commands.spawnNative("directionalLight", {});
+  light = commands.spawn(DirectionalLight);
 }
 
 export function project(cameras: Cameras, fresh: Query<[Entity], Added<Camera>>) {
@@ -88,7 +88,7 @@ fn gpu_app(entry: &Path) -> App {
 
 const CONVERT: &str = r#"import { app, Startup, Update } from "bevy-ts";
 import type { Added, Commands, Entity, Query } from "bevy-ts";
-import { Camera } from "bevy-ts/bevy";
+import { Camera, DirectionalLight } from "bevy-ts/bevy";
 import type { Cameras, Ray3d } from "bevy-ts/camera";
 
 let cam: Entity | undefined;
@@ -101,7 +101,7 @@ const v = (p: V) => (p ? [p.x, p.y, p.z].filter((n) => n !== undefined).map((n) 
 const ray = (r: Ray3d | undefined) => (r ? `${v(r.origin)} ${v(r.direction)}` : "none");
 
 export function spawn(commands: Commands) {
-  light = commands.spawnNative("directionalLight", {});
+  light = commands.spawn(DirectionalLight.of({}));
 }
 
 export function convert(cameras: Cameras, fresh: Query<[Entity], Added<Camera>>) {

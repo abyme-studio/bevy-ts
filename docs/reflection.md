@@ -47,6 +47,34 @@ handle it knows as its own JSON, and is given any handle JSON that is neither a 
 Components Bevy computes (`GlobalTransform`, `ComputedNode`, `TextLayoutInfo`) read like any
 other and refuse writes, naming themselves.
 
+## From scripts
+
+`commands.spawn` and `entity(e).insert` take reflected values too. A reflect-tier class
+(`Projection`, `Camera3d`) is spawned bare for its default, or as `C.of(value)` with its JSON
+written over the default. A layout-tier `.of` may also set the type's holes: the fields its
+layout has go as bytes, the rest are written through reflection right after, in the same
+command.
+
+```ts
+commands.spawn(Camera3d, Transform.lookingAt([10, 10, 10], [0, 0, 0]), Projection.of({ Orthographic: { scaling_mode: { FixedVertical: { viewport_height: 12 } } } }));
+commands.spawn(DirectionalLight.of({ illuminance: 8000, color: hex("#ffd7a8") }), Transform.lookingAt([3, 5, 2], [0, 0, 0]));
+```
+
+A value that fails to write fails only its command, logged with the type and field; the
+system's other commands still apply. `Transform.lookingAt(eye, target, up = [0, 1, 0])` is
+Bevy's `Transform::looking_at`, computed in JS.
+
+bevy-ts has no built-in spawn recipes. `spawnNative` stays for recipes a plugin registers
+(`plugin_api::add_ts_native_recipe`); the three it once had are components now:
+
+| Was | Now |
+|---|---|
+| `spawnNative("camera3d", { position, lookAt, projection })` | `commands.spawn(Camera3d, Transform.lookingAt(position, lookAt), Projection.of(projection))` |
+| `spawnNative("directionalLight", { position, lookAt, illuminance, shadows })` | `commands.spawn(DirectionalLight.of({ illuminance, shadow_maps_enabled: shadows }), Transform.lookingAt(position, lookAt))` |
+| `spawnNative("cuboid", { size, color, position })` | `commands.spawn(Transform.of({ translation: position }), <entity><mesh shape="cuboid" size={size} /><material color={color} /></entity>)` |
+
+Calling a removed recipe logs its replacement.
+
 ## No gap goes unchecked
 
 `crates/bevy-ts-cli/tests/it/reflect_coverage.rs` walks every component, resource and asset in the

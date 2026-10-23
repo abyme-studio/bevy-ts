@@ -201,8 +201,11 @@ declare abstract class Data {
   static readonly offsets: Readonly<Record<string, number>>;
   /** Bytes per row, once the generation applies. */
   static readonly size: number;
-  /** `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. */
-  static of<T>(this: new () => T, init?: Init<T>): T;
+  /**
+   * `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. A Rust class's writable
+   * holes (its `tsxProps`, `DirectionalLight.of({ color })`) are written through reflection.
+   */
+  static of<T, H = {}>(this: (new () => T) & { readonly tsxProps?: H }, init?: Init<T> & NoInfer<H>): T;
 }
 export declare abstract class Component extends Data { readonly [tierBrand]?: "layout" }
 /**
@@ -267,8 +270,20 @@ export declare function hex(s: string): ColorValue;
 export type ComponentClass = abstract new () => Component | ReflectComponent;
 /** The name tsx's JSX types know a component class by. */
 export type ComponentType<_ = any> = ComponentClass & { readonly componentName: string; readonly source: "ts" | "rust" };
-/** A Rust component by type path or short name, for `With`/`Without` filters only. */
-export declare function rustComponent(name: string): abstract new () => ReflectComponent;
+/**
+ * A reflect-tier Rust component by type path or short name: good in `With`/`Without` and TSX, and
+ * spawned or inserted as `C.of(value)` (its JSON written over the component's default) or as the
+ * bare class (its default).
+ */
+export type ReflectClass<V = unknown, F = {}> = (abstract new () => ReflectComponent & F) & {
+  readonly componentName: string;
+  readonly source: "rust";
+  /** `Projection.of({ Orthographic: {} })`: the value written over the component's default. */
+  of(value?: V): ReflectComponent;
+};
+export declare function reflectClass<V = unknown>(name: string): ReflectClass<V>;
+/** `reflectClass` under its first name. */
+export declare function rustComponent<V = unknown>(name: string): ReflectClass<V>;
 /**
  * A Rust component with a native layout registered in Rust (a port's `Velocity`):
  * `class Thrust extends nativeComponent("Thrust", { power: f32 }) {}`.
@@ -408,10 +423,7 @@ export interface Commands {
   /** As Rust's `commands.trigger(Explode { entity, radius })`: an entity event carries its target. */
   trigger(event: EntityEvent | Event): void;
   write(message: Message): void;
-  /** Spawns through a native Rust recipe. */
-  spawnNative(recipe: "camera3d", params?: { position?: [number, number, number]; lookAt?: [number, number, number]; projection?: import("bevy-ts/bevy").ProjectionValue }): Entity;
-  spawnNative(recipe: "directionalLight", params?: { position?: [number, number, number]; lookAt?: [number, number, number]; illuminance?: number; shadows?: boolean }): Entity;
-  spawnNative(recipe: "cuboid", params?: { size?: [number, number, number]; color?: ColorValue; position?: [number, number, number]; lookAt?: [number, number, number] }): Entity;
+  /** Spawns through a native Rust recipe a plugin registers (`add_ts_native_recipe`). */
   spawnNative(recipe: string, params?: unknown): Entity;
   /** Mounts an element tree under the tsx runtime root. */
   mount(element: Element, options?: { parent?: Entity | null }): void;
@@ -606,6 +618,11 @@ export declare function local<const S extends Schema>(fields: S): { -readonly [K
 export declare class Transform extends Component {
   static readonly path: "bevy_transform::components::transform::Transform";
   static readonly native: true;
+  /**
+   * A `Transform` at `eye` looking at `target`, `up` defaulting to `[0, 1, 0]`: Bevy's
+   * `Transform::from_translation(eye).looking_at(target, up)`, computed in JS.
+   */
+  static lookingAt(eye: readonly [number, number, number], target: readonly [number, number, number], up?: readonly [number, number, number]): Transform;
   declare readonly translation: Vec3;
   declare readonly rotation: Quat;
   declare readonly scale: Vec3;

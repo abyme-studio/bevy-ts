@@ -14,10 +14,10 @@ use std::time::{Duration, Instant};
 
 const GAME: &str = r##"import { app, Startup } from "bevy-ts";
 import type { Commands } from "bevy-ts";
-import { Transform } from "bevy-ts/bevy";
+import { Camera3d, Transform } from "bevy-ts/bevy";
 
 export function camera(commands: Commands) {
-  commands.spawnNative("camera3d", { position: [0, 0, 4], lookAt: [0, 0, 0] });
+  commands.spawn(Camera3d, Transform.lookingAt([0, 0, 4], [0, 0, 0]));
 }
 app.addSystems(Startup, camera);
 

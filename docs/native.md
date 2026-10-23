@@ -154,9 +154,12 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
   shadows). An opaque hole (`usize`, `Duration`) is written by its reflected serde; a hole of a type
   on the uncovered list fails the load with the list's reason; a hole prop takes a value, not a
   binding.
+- Scripts insert the same values through commands: `Projection.of({ Orthographic: {} })`, and a
+  layout-tier `.of` that sets holes (`DirectionalLight.of({ illuminance: 8000, color })`)
+  ([reflection.md](reflection.md#from-scripts)).
 
 Colours have one parser (`bevy_ts::color`), used by every colour bevy-ts takes: TSX props, `<mesh
-color>`, `<material color>`, UI colours, script-material `color` params and recipes. It takes a hex
+color>`, `<material color>`, UI colours, script-material `color` params and script commands. It takes a hex
 string (`"#rgb"`, `"#rgba"`, `"#rrggbb"`, `"#rrggbbaa"`), `[r, g, b, a?]` in sRGB, or Bevy's
 reflected `Color` (`{ Srgba: { red, green, blue } }`, `{ LinearRgba: ... }`, `{ Hsla: ... }`, every
 variant), with `alpha` 1 when left out. `bevy-ts` exports `srgb(r, g, b, a?)`, `linear(r, g, b,

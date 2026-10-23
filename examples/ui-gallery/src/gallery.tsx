@@ -6,7 +6,7 @@ import { Camera3d, Transform, ZIndex } from "bevy-ts/bevy";
 import type { Child } from "bevy-ts/jsx-runtime";
 
 export function stage(commands: Commands) {
-  commands.spawnNative("camera3d", { position: [-3, 3, 6], lookAt: [0, 0, 0] });
+  commands.spawn(Camera3d, Transform.lookingAt([-3, 3, 6], [0, 0, 0]));
 }
 
 /** A titled panel in the gallery's grid of panels. */

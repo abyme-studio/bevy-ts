@@ -41,7 +41,7 @@ fn game(params: &str) -> String {
 fn game_with(params: &str, extra: &str) -> String {
     let vert = if extra.contains("vertex") { "import vert from \"./vert.wgsl\";\n" } else { "" };
     format!(
-        "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ color, f32, material, texture2d }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n{vert}\nexport const Glow = material(\"game::Glow\", {{ params: {{ {params} }}, fragment: glow{extra} }});\n\nexport function camera(commands: Commands) {{\n  commands.spawnNative(\"camera3d\", {{ position: [0, 0, 4], lookAt: [0, 0, 0] }});\n}}\napp.addSystems(Startup, camera);\n\napp.scene(\"s\", () => (\n  <entity name=\"cube\">\n    <mesh shape=\"cuboid\" />\n    <material kind={{Glow}} color=\"#ff8800\" pulse={{2}} />\n  </entity>\n));\n"
+        "import {{ app, Startup, Transform }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ Camera3d }} from \"bevy-ts/bevy\";\nimport {{ color, f32, material, texture2d }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n{vert}\nexport const Glow = material(\"game::Glow\", {{ params: {{ {params} }}, fragment: glow{extra} }});\n\nexport function camera(commands: Commands) {{\n  commands.spawn(Camera3d, Transform.lookingAt([0, 0, 4], [0, 0, 0]));\n}}\napp.addSystems(Startup, camera);\n\napp.scene(\"s\", () => (\n  <entity name=\"cube\">\n    <mesh shape=\"cuboid\" />\n    <material kind={{Glow}} color=\"#ff8800\" pulse={{2}} />\n  </entity>\n));\n"
     )
 }
 

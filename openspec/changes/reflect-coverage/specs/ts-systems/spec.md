@@ -2,7 +2,7 @@
 
 ### Requirement: Native spawn recipes
 **Reason**: Scripts spawn the same entities from components: reflect-tier and hole values insert through commands, and `Transform.lookingAt` replaces `position`/`lookAt`. `spawnNative` and `plugin_api::add_ts_native_recipe` stay for recipes a plugin registers; bevy-ts registers none.
-**Migration**: `spawnNative("camera3d", { position, lookAt, projection })` → `commands.spawn(Camera3d, Transform.lookingAt(position, lookAt), Projection.of(projection))`; `spawnNative("directionalLight", { position, lookAt, illuminance, shadows })` → `commands.spawn(DirectionalLight.of({ illuminance, shadows_enabled: shadows }), Transform.lookingAt(position, lookAt))`; `spawnNative("cuboid", { size, color, position })` → `commands.spawn(Transform.of({ translation: position }), <entity><mesh shape="cuboid" size={size} /><material color={color} /></entity>)`, or the same in a scene.
+**Migration**: `spawnNative("camera3d", { position, lookAt, projection })` → `commands.spawn(Camera3d, Transform.lookingAt(position, lookAt), Projection.of(projection))`; `spawnNative("directionalLight", { position, lookAt, illuminance, shadows })` → `commands.spawn(DirectionalLight.of({ illuminance, shadow_maps_enabled: shadows }), Transform.lookingAt(position, lookAt))`; `spawnNative("cuboid", { size, color, position })` → `commands.spawn(Transform.of({ translation: position }), <entity><mesh shape="cuboid" size={size} /><material color={color} /></entity>)`, or the same in a scene.
 
 ## ADDED Requirements
 

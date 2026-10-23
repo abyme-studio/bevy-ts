@@ -333,8 +333,8 @@ fn ts_type_inner(registry: &TypeRegistry, path: &str, depth: usize) -> String {
     }
 }
 
-/// `static readonly tsxProps` for a layout-tier class's writable holes: TSX props TS system rows
-/// do not carry. `None` when it has none.
+/// `static readonly tsxProps` for a layout-tier class's writable holes: TSX props, and keys `.of`
+/// takes for commands, that TS system rows do not carry. `None` when it has none.
 fn hole_props(registry: &TypeRegistry, n: &bevy_ts::layout::NativeComponent) -> Option<String> {
     if n.reflect_holes.is_empty() {
         return None;
@@ -476,7 +476,7 @@ fn field_js(t: &FieldType) -> String {
     }
 }
 
-/// A reflect-tier component's element props as `Reflected`'s argument: its named fields, or
+/// A reflect-tier component's element props as `ReflectClass`'s second argument: its named fields, or
 /// `value` for a tuple struct of one field (`<WorldAssetRoot value="..." />`); none otherwise.
 fn element_props(registry: &TypeRegistry, reg: &TypeRegistration) -> String {
     let fields: Vec<String> = match reg.type_info() {
@@ -484,7 +484,7 @@ fn element_props(registry: &TypeRegistry, reg: &TypeRegistration) -> String {
         TypeInfo::TupleStruct(t) if t.field_len() == 1 => vec![format!("value: {}", ts_type(registry, t.field_at(0).unwrap().type_path(), 1))],
         _ => vec![],
     };
-    if fields.is_empty() { String::new() } else { format!("<{{ {} }}>", fields.join("; ")) }
+    if fields.is_empty() { "{}".into() } else { format!("{{ {} }}", fields.join("; ")) }
 }
 
 /// `bevy-ts/bevy` for the prebuilt engine (native task 3.5): a JS module of handles and its
@@ -499,14 +499,13 @@ pub fn emit_bevy(world: &World) -> (String, String) {
     let mut js = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name. Column classes have a native\n\
          // layout read from reflection; the rest are handles for With/Without filters and TSX.\n\
-         import {{ array, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, rustComponent, u16, u32, u8, vec2, vec3, vec4 }} from \"bevy-ts\";\n\n\
+         import {{ array, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, reflectClass, u16, u32, u8, vec2, vec3, vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name.\n\
-         import {{ Component, ReflectComponent, Resource }} from \"bevy-ts\";\n\
-         import type {{ bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
-         type Reflected<F = {{}}> = abstract new () => ReflectComponent & F;\n\n\
+         import {{ Component, Resource }} from \"bevy-ts\";\n\
+         import type {{ bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, ReflectClass, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
     for (path, name, reg) in named(&registry, native) {
@@ -566,17 +565,18 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                     Some(short) if native.ambiguous(&short).is_none() && name == ident(&short) => short,
                     _ => path.clone(),
                 };
-                let _ = writeln!(js, "export const {name} = rustComponent({handle:?});");
+                let _ = writeln!(js, "export const {name} = reflectClass({handle:?});");
                 if name == "Name" {
-                    let _ = writeln!(dts, "/** `Name`; as an element, `<Name value=\"...\" />` (or `<entity name=\"...\">`). */");
-                    let _ = writeln!(dts, "export declare const Name: Reflected & {{ readonly __nameElement: true }};");
+                    let _ = writeln!(dts, "/** `Name`; as an element, `<Name value=\"...\" />` (or `<entity name=\"...\">`); `Name.of(\"...\")` in commands. */");
+                    let _ = writeln!(dts, "export declare const Name: ReflectClass<string> & {{ readonly __nameElement: true }};");
                 } else if let TypeInfo::Enum(_) = reg.type_info() {
                     // An enum component takes its whole value as `value`.
-                    let _ = writeln!(dts, "/** As an element, `<{name} value={{...}} />`: the whole value, in Bevy's shape. */");
-                    let _ = writeln!(dts, "export declare const {name}: Reflected & {{ readonly tsxProps: {{ value?: {name}Value }} }};");
+                    let _ = writeln!(dts, "/** As an element, `<{name} value={{...}} />`: the whole value, in Bevy's shape; `{name}.of(...)` in commands. */");
+                    let _ = writeln!(dts, "export declare const {name}: ReflectClass<{name}Value> & {{ readonly tsxProps: {{ value?: {name}Value }} }};");
                     let _ = writeln!(dts, "export type {name}Value = {};", ts_type(&registry, &path, 0));
                 } else {
-                    let _ = writeln!(dts, "export declare const {name}: Reflected{};", element_props(&registry, reg));
+                    let _ = writeln!(dts, "/** `{name}.of(...)` in commands: the value written over its default. */");
+                    let _ = writeln!(dts, "export declare const {name}: ReflectClass<{}, {}>;", ts_type(&registry, &path, 0), element_props(&registry, reg));
                 }
                 let _ = writeln!(dts, "export type {name} = InstanceType<typeof {name}>;");
             }
