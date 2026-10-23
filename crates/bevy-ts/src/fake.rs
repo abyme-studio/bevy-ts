@@ -92,6 +92,15 @@ impl FakeCall<'_> {
         let n = host.call(id, &bytes, &mut ret, slices).map_err(ScriptError::new)?;
         Ok(ret[..n * 8].chunks(8).map(|c| f64::from_le_bytes(c.try_into().unwrap())).collect())
     }
+
+    /// Calls JSON host service `name` (`assets.add`) with `args`, as the runtime's `assets` does.
+    pub fn host_json(&mut self, name: &str, args: serde_json::Value) -> Result<serde_json::Value, ScriptError> {
+        let host = self.host.ok_or_else(|| ScriptError::new("fake: no host functions in this call"))?;
+        // SAFETY: as in `host_call`.
+        let host = unsafe { &mut *host };
+        let out = host.call_json(name, &args.to_string()).map_err(ScriptError::new)?;
+        serde_json::from_str(&out).map_err(|e| ScriptError::new(format!("{name}: {e}")))
+    }
 }
 
 pub type FakeFn = Box<dyn FnMut(&mut FakeCall) -> Result<(), ScriptError> + Send>;

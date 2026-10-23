@@ -81,6 +81,25 @@ fn op_bevyts_host(
     }
 }
 
+/// Calls the bridge's JSON service `name` with `args` (a JSON array). Returns the result's JSON,
+/// or `""` with the message in [`HostError`].
+#[op2]
+#[string]
+fn op_bevyts_host_json(state: &mut OpState, #[string] name: &str, #[string] args: &str) -> String {
+    let Some(host) = state.borrow::<HostSlot>().0 else {
+        state.borrow_mut::<HostError>().0 = format!("{name} can only be called while a system runs or TSX renders");
+        return String::new();
+    };
+    // SAFETY: as in `op_bevyts_host`.
+    match unsafe { &mut *host }.call_json(name, args) {
+        Ok(json) => json,
+        Err(e) => {
+            state.borrow_mut::<HostError>().0 = e;
+            String::new()
+        }
+    }
+}
+
 #[op2]
 #[string]
 fn op_bevyts_host_error(state: &mut OpState) -> String {
@@ -179,6 +198,7 @@ deno_core::extension!(
     ops = [
         op_bevyts_log,
         op_bevyts_host,
+        op_bevyts_host_json,
         op_bevyts_host_error,
         op_bevyts_now,
         op_bevyts_performance_now,

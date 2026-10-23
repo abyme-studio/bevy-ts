@@ -1102,6 +1102,56 @@ export function local(fields) {
   return setupParam("local()", { kind: "local", fields: fieldDecls("Local", fields), live: true });
 }
 
+// ---------------------------------------------------------------------------------------------
+// Reflected assets (docs/assets.md)
+
+/**
+ * A Rust asset type Bevy reflects (`StandardMaterial`), by type path: `bevy-ts/bevy` declares one
+ * per registered asset. `T.of(props)` is an asset value: a plain description that touches nothing
+ * until a `Handle<T>` slot is written with it. A type with no default has no `of`.
+ */
+export function asset(typePath, opts = {}) {
+  const C = class {};
+  Object.defineProperty(C, "name", { value: typePath.split("::").pop().replace(/<.*/, "") });
+  C.typePath = typePath;
+  C.source = "rust";
+  C[KIND] = "asset";
+  if (opts.of !== false) C.of = (props = {}) => Object.freeze({ $of: typePath, props });
+  return C;
+}
+
+function assetCall(name, args) {
+  if (!core) throw new Error(`assets.${name} needs the engine`);
+  const out = core.ops.op_bevyts_host_json(`assets.${name}`, JSON.stringify(args));
+  if (out === "") throw new Error(core.ops.op_bevyts_host_error() || `assets.${name} failed`);
+  return JSON.parse(out);
+}
+
+function assetPath(T) {
+  if (!T || typeof T.typePath !== "string" || T[KIND] !== "asset") throw new TypeError("assets.add(Type, props): Type is an asset class from bevy-ts/bevy (StandardMaterial)");
+  return T.typePath;
+}
+
+/**
+ * Builds, reads and edits reflected assets, inside a system's run or a TSX render. `add` returns
+ * a ref for any `Handle<T>` slot; assets live until the script reloads or stops.
+ */
+export const assets = {
+  /** `assets.add(StandardMaterial, { base_color: "#f80" })`: the asset from its default, with `props` written over it. */
+  add(T, props = {}) {
+    return Object.freeze(assetCall("add", [assetPath(T), props]));
+  },
+  /** The asset as JSON, or `undefined` when it is gone. One host call and a full read: keep the value in JS rather than reading per frame. */
+  get(ref) {
+    const v = assetCall("get", [ref]);
+    return v === null ? undefined : v;
+  },
+  /** Writes `patch` over the asset's current value; a patch that changes nothing marks nothing changed. */
+  set(ref, patch) {
+    assetCall("set", [ref, patch]);
+  },
+};
+
 const FIELD_BY_TYPE = { f32, f64, i8, u8, i16, u16, i32, u32, bool, vec2, vec3, vec4, quat, entity, timer: Timer, stopwatch: Stopwatch };
 
 // The compile step's hooks, installed on the host object below.
