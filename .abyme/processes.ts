@@ -306,6 +306,10 @@ const processes = {
   // The gate's steps after the tests, for a lint fix that changes no behaviour.
   "smf-lint": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/smf-lint.log | grep -E \"^error|^warning|stale|-->\" -A6 | head -80; echo lint exit $?'" },
   "smf-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/smf-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo gate exit $?'" },
+  // Change script-2d: the 2D tests (sprites, Camera2d, picking), rendering headless.
+  "two-d": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test -p bevy-ts-cli --test it two_d:: -- --nocapture 2>&1 | grep -v ld64 | tee target/two-d.log | grep -E \"^test |^test result|panicked|^error|left|right|-->\" | tail -40'" },
+  // The tests script-2d's crates touch: tsx, and the cli's TSX and 2D tests.
+  "two-d-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-tsx && cargo test -p bevy-ts-cli --test it -- tsx two_d) 2>&1 | grep -v ld64 | tee target/two-d-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

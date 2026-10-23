@@ -4,7 +4,7 @@
 - [ ] 1.2 `Material2dProps` (`color`, `alpha`, `alphaMode`, `texture`, `uvTransform`) with `deny_unknown_fields`; `ColorMaterial` built through `bevy_ts::color` (or today's hex parser until reflect-enums-color lands); `materials2d` cache in `IntrinsicAssets`; `<mesh2d color>` shorthand
 - [ ] 1.3 `resolve.rs`, `reconcile.rs`: the `mesh2d` and `material2d` kinds; `<mesh2d>` with `<mesh>`, or `<material2d>` with `<material>`, on one entity fails naming the source location
 - [ ] 1.4 `packages/bevy-ts/jsx-runtime.d.ts`: `Mesh2dProps`, `Material2dProps`, both in `IntrinsicElements`; `packages/bevy-ts/test/tsx/elements.tsx`: one valid element per 2D shape, `@ts-expect-error` for `shape="cuboid"`, `depth`, and `<material2d metallic>`; mirror into `bench/dx/bevy-ts/jsx-runtime.ts` if it copies `MeshProps`
-- [ ] 1.5 New `crates/bevy-ts-tsx/tests/two_d.rs`: every 2D shape builds a `Mesh2d` (no `Mesh3d`) with +Z normals; a `<material2d>` with colour, alpha, texture builds the expected `ColorMaterial` and `AlphaMode2d`; equal props share handles; refusals name shape, prop and line
+- [ ] 1.5 `crates/bevy-ts-cli/tests/two_d.rs` (TSX needs V8, so the cli tests own it): every 2D shape builds a `Mesh2d` (no `Mesh3d`) with +Z normals; a `<material2d>` with colour, alpha, texture builds the expected `ColorMaterial` and `AlphaMode2d`; equal props share handles; refusals name shape, prop and line
 - [ ] 1.6 `Camera2d` test: `<Camera2d />` plus a red full-view rectangle rendered to an image target gives a red centre pixel; `<Projection value={{ Orthographic: { scale: 2 } }} />` sets scale 2 (needs reflect-enums-color for the enum; skip that case until it lands)
 - [ ] 1.7 New `examples/shapes-2d` (`example.json`, `src/game.tsx`): a `Camera2d` and every 2D shape in a grid, each its own colour
 - [ ] 1.8 New `docs/2d.md`: the coverage table (every row of design's surface, TS form, test or owner); link from `README.md`; a test reads the table and fails when a row marked working names a test that does not exist (the CI hole check)
@@ -12,11 +12,11 @@
 
 ## 2. Stage 2: sprites (after reflect-enums-color lands)
 
-- [ ] 2.1 `two_d.rs`: `<Sprite image="hero.png" flip_x />` mounts with an image handle (works today; prove it before the rest)
+- [x] 2.1 `two_d.rs`: `<Sprite image="hero.png" flip_x />` mounts with an image handle (works today; prove it before the rest)
 - [ ] 2.2 `two_d.rs`: `color`, `custom_size`, `rect`, `image_mode` (`"Auto"`, `{ Scale: ... }`, `{ Sliced: ... }`, `{ Tiled: ... }`), `alpha_mode` reach `Sprite` in Bevy's values; `<Anchor value={[-0.5, 0.5]} />` sets the anchor
 - [ ] 2.3 Check `sliced()`/`tiled()` from bevy-ui-coverage return Bevy's reflected shape and work as `image_mode`; if not, ask bevy-ui-coverage to change them (design 5)
 - [ ] 2.4 Check the generated `bevy.d.ts` types every `Sprite` prop; `elements.tsx` gains a wrong-shape `@ts-expect-error` (`custom_size={32}`)
-- [ ] 2.5 Picking test (design 6): a `Camera2d` with an image target, a sprite with `custom_size` and `SpritePickingMode::BoundingBox`, `PointerInput` press and release over it: `onPointerClick` runs once with its entity; same for a `<mesh2d>`
+- [ ] 2.5 Picking test (design 6): a `Camera2d` with an image target, a sprite with `custom_size` and `SpritePickingMode::BoundingBox`, `PointerInput` press and release over it: `onPointerClick` runs once with its entity (sprite done: `picking.rs` inserts Bevy 0.20's required `Pickable`, and the test spawns a primary `Window`, which Bevy's ray needs); same for a `<mesh2d>` (after stage 1)
 - [ ] 2.6 `examples/shapes-2d`: a sprite row (plain, tinted, flipped, sliced); click a sprite to tint it; `docs/2d.md` rows
 
 ## 3. Stage 3: atlases and 2D text (after reflect-coverage stage 1 and bevy-ui-coverage stages 2 and 7)
