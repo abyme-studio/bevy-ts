@@ -262,11 +262,11 @@ const processes = {
   "scene-camera-proof": { cmd: "bash -c 'set -o pipefail; cargo test -p bevy-ts-cli --test it play_after_edit::the_game_view_draws_each_example_in_edit -- --ignored --nocapture --test-threads=1 2>&1 | grep -v ld64 | tee target/scene-camera-proof.log | grep -E \"^test |^test result|game view|panicked|^error\"; echo proof exit ${PIPESTATUS[0]}'" },
   "scene-camera-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/scene-camera-gate.log | grep -E \"^test result|FAILED|panicked|^error\"; echo gate exit ${PIPESTATUS[0]}'" },
   // Change text-font-coverage: the glyph test, with its first-layout timings.
-  "text-fonts": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:text-font-coverage -- cargo test -p bevy-ts-cli --test text_fonts -- --nocapture --test-threads 1 2>&1 | grep -v ld64 | tee -a target/text-fonts.log | grep -E \"layout with|^test |test result|panicked|notdef|^error\" -A3'" },
+  "text-fonts": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:text-font-coverage -- cargo test -p bevy-ts-cli --test it text_fonts:: -- --nocapture --test-threads 1 2>&1 | grep -v ld64 | tee -a target/text-fonts.log | grep -E \"layout with|^test |test result|panicked|notdef|^error\" -A3'" },
   // Change text-font-coverage: the last round before it lands, in the machine's shared slot.
   "text-font-coverage-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:text-font-coverage -- bash -c \"cargo build --workspace --all-targets && cargo test --workspace --no-fail-fast --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)\" 2>&1 | grep -v ld64 | tee target/text-font-coverage-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale|^gate\"; echo gate exit ${PIPESTATUS[0]}'" },
   // docs/fonts.md: the Linux engine with and without fontconfig and the Noto fonts, in docker.
-  "linux-fonts": { cmd: "~/dev/abyme/scripts/gate-slot run bevy-ts:text-font-coverage -- scripts/linux-fonts.sh" },
+  "linux-fonts": { cmd: "scripts/linux-fonts.sh" },
 } satisfies ProcessFile;
 
 const GATE_SLOT = "$HOME/dev/abyme/scripts/gate-slot";

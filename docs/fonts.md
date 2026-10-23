@@ -71,7 +71,7 @@ uses those glyphs or not.
 
 ## The test
 
-`crates/bevy-ts-cli/tests/text_fonts.rs` mounts `<text>ASCII — → “quoted” · 中文 😀 ✓ done → next</text>`
+`crates/bevy-ts-cli/tests/it/text_fonts.rs` mounts `<text>ASCII — → “quoted” · 中文 😀 ✓ done → next</text>`
 under the engine's headless plugins and reads parley's layout from `ComputedTextBlock`: every
 cluster must lay out with a glyph id other than 0. A failure names each character drawn as a box.
 It reads glyph ids, not pixels, and needs no camera.

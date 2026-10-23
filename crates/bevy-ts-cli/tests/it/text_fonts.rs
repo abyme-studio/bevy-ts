@@ -1,7 +1,7 @@
 //! `<text>` falls back to the OS's fonts (change text-font-coverage): every cluster of a mixed
 //! string lays out with a real glyph, read from parley's layout, not from pixels.
 
-mod common;
+use crate::common;
 
 use bevy::prelude::*;
 use bevy::text::ComputedTextBlock;

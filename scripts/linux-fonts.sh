@@ -2,6 +2,7 @@
 # docs/fonts.md: the Linux engine and text_fonts test, built in Debian and run in containers with and
 # without fontconfig and the Noto CJK and emoji fonts. Needs docker; the build caches in two volumes.
 # Usage: scripts/linux-fonts.sh   (logs to target/linux-fonts/)
+source "$(dirname "$0")/slot.sh"
 set -uo pipefail
 cd "$(dirname "$0")/.."
 out=target/linux-fonts
@@ -16,9 +17,9 @@ docker run --rm "${vols[@]}" rust:1-bookworm bash -c "
   apt-get update -qq && apt-get install -y -qq $deps >/dev/null
   cd /src
   cargo build --locked -p bevy-ts-cli --bin bevy-ts 2>&1 | grep -E '^(error|warning: unused)' || true
-  cargo test --locked -p bevy-ts-cli --test text_fonts --no-run 2>&1 | grep -E '^error|Executable' || true
+  cargo test --locked -p bevy-ts-cli --test it --no-run 2>&1 | grep -E '^error|Executable' || true
   mkdir -p /target/out && cp /target/debug/bevy-ts /target/out/
-  cp \$(ls -t /target/debug/deps/text_fonts-* | grep -v '\.d$' | head -1) /target/out/text_fonts
+  cp \$(ls -t /target/debug/deps/it-* | grep -v '\.d$' | head -1) /target/out/text_fonts
   echo NEEDED; readelf -d /target/out/bevy-ts | grep NEEDED
 " 2>&1 | tee "$out/build.log" || exit 1
 
@@ -34,6 +35,6 @@ run() { # $1 label, $2 packages, $3 command
 # No libfontconfig1: what a player on a bare Linux sees.
 run no-fontconfig "libasound2 libudev1" "/target/out/bevy-ts --help >/dev/null"
 # fontconfig, and lavapipe for a headless GPU, but no CJK or emoji fonts.
-run no-noto "libasound2 libudev1 libfontconfig1 fonts-dejavu-core mesa-vulkan-drivers" "/target/out/text_fonts --test-threads 1 2>&1 | grep -E 'notdef|test result|panicked'"
+run no-noto "libasound2 libudev1 libfontconfig1 fonts-dejavu-core mesa-vulkan-drivers" "/target/out/text_fonts text_fonts:: --test-threads 1 2>&1 | grep -E 'notdef|test result|panicked'"
 # Everything docs/fonts.md asks of a Linux test host.
-run noto "libasound2 libudev1 libfontconfig1 fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji mesa-vulkan-drivers" "/target/out/text_fonts --test-threads 1 --nocapture 2>&1 | grep -E 'notdef|layout with|test result|panicked'"
+run noto "libasound2 libudev1 libfontconfig1 fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji mesa-vulkan-drivers" "/target/out/text_fonts text_fonts:: --test-threads 1 --nocapture 2>&1 | grep -E 'notdef|layout with|test result|panicked'"
