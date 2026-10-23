@@ -63,6 +63,9 @@ descendants, insert an `AnimationGraphHandle` and `AnimationTransitions`, then
   (`Query<[Mut<PlayAnimation>]>`); `clip` holds a handle, so only TSX, a level or the editor
   set it.
 
+A click on an animated model reaches a handler on its root: `onPointerClick` on the entity with
+`WorldAssetRoot` fires for any of the scene's meshes ([docs/picking.md](picking.md), "Bubbling").
+
 ## Clips and skeletons
 
 A clip moves the bones it names. It must come from the same glTF file as the scene, or from a

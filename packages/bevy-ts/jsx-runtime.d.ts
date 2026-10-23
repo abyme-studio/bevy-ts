@@ -7,7 +7,14 @@ import type { AlphaMode } from "bevy-ts/material";
 /** What a picking handler receives: the event, and the call's `commands` and `frame`. */
 export interface PointerEvent {
   readonly kind: "PointerClick" | "PointerPress" | "PointerRelease" | "PointerOver" | "PointerOut";
+  /** The entity whose handler runs. */
   readonly entity: Entity;
+  /**
+   * The entity the pointer hit: `entity` itself, or a descendant the event bubbled up from (a
+   * mesh of a glTF scene spawned under a `WorldAssetRoot`, a button inside a `<node>`). Compare
+   * the two to take only your own hits; a handler cannot stop the bubbling.
+   */
+  readonly target: Entity;
   /** The pointer's position in its render target. */
   readonly position: readonly [number, number];
   /** For click, press and release. */
@@ -47,7 +54,7 @@ export interface EntityProps {
   ref?: NodeRef;
   /** Components and child entities. */
   children?: Child;
-  /** Entity-local observers of Bevy 0.20's picking events; they do not bubble. */
+  /** Entity-local observers of Bevy 0.20's picking events; they bubble up `ChildOf`, as Bevy's do. */
   onPointerClick?: PointerHandler;
   onPointerPress?: PointerHandler;
   onPointerRelease?: PointerHandler;

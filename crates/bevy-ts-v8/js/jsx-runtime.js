@@ -835,7 +835,7 @@ export class TsxContext {
         for (const [id, ev] of payload.events || []) {
           const h = this.handlers.get(id);
           if (!h) continue;
-          const event = { entity: ev.entity, position: ev.position, button: ev.button, kind: ev.kind };
+          const event = { entity: ev.entity, target: ev.target, position: ev.position, button: ev.button, kind: ev.kind };
           const hctx = { commands: callCtx ? callCtx.commands : null, frame: callCtx ? callCtx.frame : 0, entity: ev.entity };
           try {
             h.fn(Object.assign(hctx, event), event);

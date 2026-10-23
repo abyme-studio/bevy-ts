@@ -298,7 +298,7 @@ app.scene("ui", () => (
       <text>Spawn</text>
     </button>
     <text key="log">{() => log()}</text>
-    <entity key="inner-parent" onPointerClick={() => setLog((l) => `${l}parent `)}>
+    <entity key="inner-parent" onPointerClick={({ entity, target }) => setLog((l) => `${l}parent:${entity === target ? "self" : target} `)}>
       <entity key="child" />
     </entity>
   </node>
@@ -318,11 +318,13 @@ fn three_clicks_in_one_frame_run_their_handlers_in_order_in_one_call() {
     assert_eq!(calls(&app), before + 1, "one host call for three clicks");
     assert_eq!(text(&mut app, &["bar", "log"]), "B:primary@2 A:primary@1 C:primary@3 ", "{:?}", errors(&app));
 
-    // Events do not bubble: a click on the child does not run its parent's handler.
+    // Events bubble as Bevy's do: a click on the child runs its parent's handler, whose event
+    // names the child as `target`.
     let child = node(&mut app, &["bar", "inner-parent", "child"]).unwrap();
     click(&mut app, child, 9.0);
     app.update();
-    assert!(!text(&mut app, &["bar", "log"]).contains("parent"));
+    let log = text(&mut app, &["bar", "log"]);
+    assert!(log.contains(&format!("parent:{} ", child.to_bits())), "{log}");
 
     // A handler mounts an enemy through the tsx op stream.
     let spawn = node(&mut app, &["bar", "spawn"]).unwrap();

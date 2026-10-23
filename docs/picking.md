@@ -5,6 +5,26 @@
 `crates/bevy-ts-tsx/src/picking.rs`; the switch and the warning are in `crates/bevy-ts-cli`, the
 headless pointer in `crates/bevy-ts-viewport/src/offscreen.rs`.
 
+## Bubbling
+
+A picking event bubbles up `ChildOf`, as Bevy's do: a handler runs for a hit on its own entity and
+on any descendant. So `onPointerClick` on the entity carrying `WorldAssetRoot` fires for a click on
+any mesh of the glTF scene spawned under it, and one on a `<node>` fires for a click on a button
+inside it. The event says which:
+
+- `entity`: the entity whose handler runs;
+- `target`: the entity the pointer hit, `entity` itself or a descendant.
+
+```tsx
+<entity onPointerClick={({ entity, target }) => select(entity)}>
+  <WorldAssetRoot value="models/Fox.glb#Scene0" />
+</entity>
+```
+
+A handler cannot stop the bubbling: handlers run in the frame's one call into JS, after Bevy has
+walked the ancestors. A handler that wants only its own hits compares `target` with `entity`.
+Nested handlers both run, the inner one first.
+
 ## What picks
 
 - **UI and sprites** pick out of the box: Bevy's default plugins add both backends.

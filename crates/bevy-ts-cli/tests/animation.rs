@@ -117,3 +117,51 @@ fn a_level_fox_plays_with_no_ts() {
     let fox = the_fox(app.world_mut()).unwrap();
     assert!(playing(&mut app, fox, "models/Fox.glb#Animation1"), "the walk plays: {:?}", messages(&app));
 }
+
+const PICK: &str = r#"import { app, signal } from "bevy-ts";
+import { WorldAssetRoot } from "bevy-ts/bevy";
+const [hit, setHit] = signal("");
+app.entry("hit", () => hit());
+app.scene("foxes", () => (
+  <entity key="fox" onPointerClick={({ entity, target }) => setHit(`${entity}>${target}`)}>
+    <WorldAssetRoot value="models/Fox.glb#Scene0" />
+  </entity>
+));
+"#;
+
+/// Change scene-pick: a click on a mesh of a glTF scene bubbles to the handler on the entity
+/// carrying `WorldAssetRoot`, and the event names the mesh.
+#[test]
+fn a_click_on_a_scene_mesh_runs_the_roots_handler() {
+    use bevy::camera::NormalizedRenderTarget;
+    use bevy::picking::backend::HitData;
+    use bevy::picking::events::{Pointer, PointerClick};
+    use bevy::picking::pointer::{Location, PointerButton, PointerId};
+    let dir = fox_project("scene-pick", &[("package.json", "{}"), ("src/game.tsx", PICK)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let mesh_under = |w: &mut World, root: Entity| {
+        let meshes: Vec<Entity> = w.query_filtered::<Entity, With<Mesh3d>>().iter(w).collect();
+        meshes.into_iter().find(|m| {
+            let mut e = *m;
+            while let Some(p) = w.get::<ChildOf>(e).map(ChildOf::parent) {
+                if p == root {
+                    return true;
+                }
+                e = p;
+            }
+            false
+        })
+    };
+    until(&mut app, "the fox's meshes", |w| the_fox(w).is_some_and(|f| mesh_under(w, f).is_some()));
+    let fox = the_fox(app.world_mut()).unwrap();
+    let mesh = mesh_under(app.world_mut(), fox).unwrap();
+    assert_ne!(mesh, fox, "the mesh is a descendant, not the root");
+    let pointer = Pointer::new(PointerId::Mouse, Location { target: NormalizedRenderTarget::None { width: 1, height: 1 }, position: Vec2::ZERO });
+    let hit = HitData::new(Entity::PLACEHOLDER, 0.0, None, None);
+    app.world_mut().trigger(PointerClick { entity: mesh, pointer, button: PointerButton::Primary, hit, duration: std::time::Duration::ZERO, count: 1 });
+    app.update();
+    let out = bevy_ts::plugin_api::call_entry(app.world_mut(), "hit", b"").unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), format!("{}>{}", fox.to_bits(), mesh.to_bits()));
+}
