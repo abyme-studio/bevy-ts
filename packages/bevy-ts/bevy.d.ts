@@ -807,6 +807,15 @@ export declare class Text2dShadow extends Component {
   declare readonly offset: Vec2;
 }
 
+export declare const MeshMaterial2dColorMaterial: Reflected;
+export type MeshMaterial2dColorMaterial = InstanceType<typeof MeshMaterial2dColorMaterial>;
+
+export declare const MeshMaterial2dSpriteMeshMaterial: Reflected;
+export type MeshMaterial2dSpriteMeshMaterial = InstanceType<typeof MeshMaterial2dSpriteMeshMaterial>;
+
+export declare const MeshMaterial2dTilemapChunkMaterial: Reflected;
+export type MeshMaterial2dTilemapChunkMaterial = InstanceType<typeof MeshMaterial2dTilemapChunkMaterial>;
+
 export declare const Mesh2dWireframe: Reflected;
 export type Mesh2dWireframe = InstanceType<typeof Mesh2dWireframe>;
 
