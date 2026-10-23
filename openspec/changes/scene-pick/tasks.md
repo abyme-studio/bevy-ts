@@ -14,4 +14,4 @@
 
 ## 4. Gate
 
-- [ ] 4.1 The touched crates' tests, clippy, `pnpm check`, `openspec validate scene-pick --strict`
+- [x] 4.1 The touched crates' tests, clippy, `pnpm check`, `openspec validate scene-pick --strict`
