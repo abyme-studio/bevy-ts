@@ -30,7 +30,7 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
 
 **Non-Goals:**
 - Mesh attributes and indices (script-assets). `assets.add(Mesh, ...)` is refused: no default.
-- Load state, handle lifecycle and load events (engine-core). Handles here live until reload.
+- Load state, handle lifecycle and load events (engine-core). Script-made assets live until restart or stop.
 - Assets Bevy does not reflect; `ScriptMaterial` (`<material kind>`).
 - Bindable asset props. Asset values are written on insert and on a changed prop.
 - A second writer, reader or walker.
@@ -89,21 +89,25 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    *Alternative:* an `"asset:7"` string. Rejected: a real path could look like it, and settings do
    not fit in a string.
 
-5. **The ref table.** `ScriptAssets`, a resource: `n -> UntypedHandle` (strong) and the reverse map
-   by `UntypedAssetId`. `assets.add` and the value cache (decision 6) put handles in it. A ref is
-   `{ $asset: n, type }` in TS, an `AssetRef<T>` frozen object; `n` counts up from 1 and is never
-   reused in a session. The table clears on script reload and on stop, dropping its strong
-   handles; a ref used after that fails with "stale asset ref". Freeing an asset before reload is
-   engine-core's handle lifecycle.
-   *Alternatives:* raw `AssetId` bits (no strong handle, so the asset drops at once); a UUID per
-   asset (more text, no gain).
+5. **The ref table.** `ScriptAssets`, a resource: ref number `n` -> `Handle::Uuid`, and the
+   reverse map by `UntypedAssetId`. The UUID is built from the asset type, a per-session tag and
+   `n`, so a ref has its id before the asset exists, and the flush after the run (decision 2)
+   inserts the asset at that id with `ReflectAsset::insert`. `assets.add` and the value cache
+   (decision 6) put entries in it. A ref is `{ $asset: n, type }` in TS, an `AssetRef<T>` frozen
+   object; `n` counts up from 1 and is never reused in a session.
+   A UUID handle holds no strong count, so the asset stays until it is removed. A hot reload
+   starts a new tag: old refs fail with "stale asset ref", but their assets stay, so entities
+   that hold the handles keep drawing. A restart or stop removes every asset the table made, with
+   `ReflectAsset::remove`. Freeing an asset sooner is engine-core's handle lifecycle.
+   *Alternatives:* strong index handles (need `&mut World` to reserve, which a run lacks); raw
+   `AssetId` bits (no id before the flush).
 
 6. **Asset values: `.of`, cached by canonical props.** Every generated asset class has
    `.of(props): AssetValue<T>`, which returns `{ $of: type_path, props }` and does nothing else.
    Written into a `Handle<T>` slot, the hook keys a cache by the type path and the props'
    canonical JSON (keys sorted). A hit returns the cached handle; a miss calls `add` and caches.
    So every slot given equal props shares one asset, as `<material>` does today. Cached handles
-   live in `ScriptAssets` and clear with it. A value is built only when its slot is written: TSX
+   live in `ScriptAssets` with the same lifetime. A value is built only when its slot is written: TSX
    insert and changed prop, `assets.add`/`set` with it in a field, a reflected insert. Never per
    frame. `assets.set` on the ref of a cached value changes every slot sharing it; docs say so,
    and `assets.add` makes an unshared one.
@@ -175,7 +179,7 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
 | `<material>` props, colour space, tangents, limits | standard-material-fields, then this change in stage 2 | rebases after it lands; replaces `MaterialProps` with the table |
 | `alpha`, `alphaMode`, `MaterialAlpha` | material-alpha | folds the props in; leaves the component |
 | `<mesh>`, `MeshProps` | mesh-primitives | `<mesh color>` calls the shared material path; no `MeshProps` edit |
-| Handle lifecycle, load state | engine-core | ref table clears on reload only |
+| Handle lifecycle, load state | engine-core | assets removed on restart or stop only; refs stale on hot reload |
 
 ## Ask-first items
 
@@ -185,12 +189,13 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    costs a reconciler arm and a JSX type. Alternative: keep `.of`.
 2. **Asset caching by props (performance).** Kept, not removed: decision 6 caches by canonical
    JSON. Cost: one sort and hash of the props on each insert and changed prop, never per frame;
-   memory, one asset per distinct prop set until reload. This is `IntrinsicAssets` today made
+   memory, one asset per distinct prop set until restart or stop. This is `IntrinsicAssets` today made
    generic. Alternative: no cache, one asset per slot (more GPU memory, no batching).
 
 ## Risks / Trade-offs
 
-- [`assets.add` in a per-frame system grows memory until reload] → Docs say to add once and `set`
+- [Assets kept across hot reloads: a script that adds at startup adds again on each reload, and the old assets stay until stop] → A known dev-only limit: each dev hot reload keeps one more copy of the script's assets, freed on restart or Stop. Freeing unreferenced ones would need an erased walk of every component for handles; not worth it for dev. Test `reflect_asset::hot_reloads_keep_assets_until_a_restart`; `docs/assets.md` says it.
+- [`assets.add` in a per-frame system grows memory until stop] → Docs say to add once and `set`
   after; a log warning when one script session passes 10,000 refs. Freeing is engine-core's.
 - [`assets.set` on a cached value's ref changes every sharer] → Docs; `assets.add` for an unshared
   asset.

@@ -28,7 +28,7 @@
 - **THEN** the call throws naming `Mesh` and that it has no default
 
 ### Requirement: An asset goes in any Handle slot
-A `Handle<T>` slot written through `reflect_value` SHALL take, besides an asset path: an `AssetRef<T>` from `assets.add`; an asset value `T.of(props)`; and, for a type with a loader-settings entry, `T.load(path, settings)`. This SHALL hold in every slot the writer reaches: a TSX prop of a reflect-tier component or a writable hole, a field of an asset given to `assets.add` or `assets.set`, and a script's reflected insert. A ref or value of another asset type SHALL fail naming both types. A ref after the script reloaded or stopped SHALL fail with "stale asset ref". A handle read by `reflect_value::read` SHALL read as its `AssetRef` when a script made the asset, and by reflect-coverage's rule otherwise.
+A `Handle<T>` slot written through `reflect_value` SHALL take, besides an asset path: an `AssetRef<T>` from `assets.add`; an asset value `T.of(props)`; and, for a type with a loader-settings entry, `T.load(path, settings)`. This SHALL hold in every slot the writer reaches: a TSX prop of a reflect-tier component or a writable hole, a field of an asset given to `assets.add` or `assets.set`, and a script's reflected insert. A ref or value of another asset type SHALL fail naming both types. A ref after a hot reload, restart or stop SHALL fail with "stale asset ref". A handle read by `reflect_value::read` SHALL read as its `AssetRef` when a script made the asset, and by reflect-coverage's rule otherwise.
 
 #### Scenario: A ref on a mesh entity
 - **WHEN** a TSX element has `<MeshMaterial3d value={mat} />` with `mat` from `assets.add`
@@ -44,10 +44,10 @@ A `Handle<T>` slot written through `reflect_value` SHALL take, besides an asset 
 
 #### Scenario: A stale ref
 - **WHEN** a ref made before a script reload is used after it
-- **THEN** the call fails with "stale asset ref"
+- **THEN** the call fails with "stale asset ref", and the asset it named is still in `Assets<T>`, so entities holding it keep drawing
 
 ### Requirement: Asset values are shared by equal props
-`T.of(props)` SHALL return a plain value and SHALL NOT touch the world. When it is written into a `Handle<T>` slot, slots given the same type and props (compared by canonical JSON, keys sorted) SHALL share one asset, built on the first write. A value SHALL be built only when its slot is written (an insert or a changed prop), never per frame. Assets made by `add` and by values SHALL live until the script reloads or stops.
+`T.of(props)` SHALL return a plain value and SHALL NOT touch the world. When it is written into a `Handle<T>` slot, slots given the same type and props (compared by canonical JSON, keys sorted) SHALL share one asset, built on the first write. A value SHALL be built only when its slot is written (an insert or a changed prop), never per frame. Assets made by `add` and by values SHALL survive a hot reload and SHALL be removed on a restart or stop.
 
 #### Scenario: Two equal values share
 - **WHEN** two entities have `<MeshMaterial3d value={StandardMaterial.of({ unlit: true, base_color: "#fff" })} />` and `<MeshMaterial3d value={StandardMaterial.of({ base_color: "#fff", unlit: true })} />`
