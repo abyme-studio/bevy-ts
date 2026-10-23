@@ -1057,7 +1057,6 @@ fn pipeline_error_context(cached_pipeline: &CachedPipeline) -> String {
 
 #[cfg(all(
     not(target_arch = "wasm32"),
-    not(target_os = "macos"),
     feature = "multi_threaded"
 ))]
 fn create_pipeline_task(
@@ -1076,7 +1075,6 @@ fn create_pipeline_task(
 
 #[cfg(any(
     target_arch = "wasm32",
-    target_os = "macos",
     not(feature = "multi_threaded")
 ))]
 fn create_pipeline_task(
