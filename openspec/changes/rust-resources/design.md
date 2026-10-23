@@ -18,6 +18,10 @@ Native layouts already cover resources: `layout_reflect::fill` tiers every `Refl
 
 3. **Refusals at load**, in this order: reflect-tier resource (its `reason`); layout-tier but `!resource` ("a component, not a resource"); `ResMut` and `!writable` ("immutable"); `native.ambiguous(name)` (lists paths); else "no resource named R". Holes do not refuse `ResMut`: accessors never touch holes, as for `Mut<C>`. A resource row frame has no raw table view, so the holes' raw-write rule does not arise.
 
+1a. **Precedence (agreed with script-time and writable-native-params, 2026-10-23):** the `Time<..>` route, then exported params claiming a TS spelling (`HostParams` claims), then this generic path. The reader resolves claims (a claimed spelling reads as the export's port param), so `build_one`'s generic path never sees a claimed spelling.
+
+1b. **A Rust resource's row is in a sparse set.** `#[derive(Resource)]` stores the component as `SparseSet`, unlike a TS resource's table column. `RunParam::Res` reads the row and its changed-tick cell from `ComponentSparseSet::get_with_ticks` when the id has a sparse set, and from the table otherwise. Same zero-copy frame either way.
+
 4. **`Time` keeps its route.** script-time owns it and chose a per-run value for all four clocks (`docs/research/script-time.md` §1). The route runs before decision 1, so the generic path never sees a `Time`. When script-time widens the route to every `bevy_time::time::Time<..>` path, nothing here changes.
 
 5. **Missing resource: as Bevy.** Bevy 0.20's `Res<T>` fails param validation when absent and the default error handler panics; `Option<Res<T>>` gets `None`. Here `Res`/`ResMut` keep today's run failure (`systems.rs:762`), which is our panic: the error is logged with the system's location and the generation keeps running. `Option<Res<R>>`/`Option<ResMut<R>>`:

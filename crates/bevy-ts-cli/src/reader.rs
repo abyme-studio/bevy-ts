@@ -1184,6 +1184,13 @@ impl Reader<'_> {
                 let r = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a resource")?;
                 Ok(json!({ "kind": if name == "Res" { "res" } else { "resMut" }, "resource": r }))
             }
+            "Option" => match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
+                Head::Kind { name: inner, args: iargs, span: ispan, scope: is } if matches!(inner.as_str(), "Res" | "ResMut") => {
+                    let r = self.reference(self.arg(&inner, &iargs, 0, ispan, &is)?, &is, "a resource")?;
+                    Ok(json!({ "kind": if inner == "Res" { "res" } else { "resMut" }, "resource": r, "optional": true }))
+                }
+                _ => Err(self.fail(s, span, "Option<...> as a system param takes Res<R> or ResMut<R>; Option<C> of a component belongs inside a Query")),
+            },
             "Local" => {
                 let fields = match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
                     Head::Bundle(members, ls) => members
@@ -1520,6 +1527,25 @@ export const arrow = (q: Query<[Pos]>) => {};
         assert!(err("untyped").contains("param x has no type"), "{}", err("untyped"));
         assert!(err("wrong").starts_with("src/game.ts:12:26: \"Pos\" is a value, not a system param"), "{}", err("wrong"));
         assert!(err("local").contains("Local field n: number is not a field type"), "{}", err("local"));
+    }
+
+    #[test]
+    fn optional_resources_are_params() {
+        let src = r#"import { type Query, type Res, type ResMut, type Option, Component, Resource, type f32 } from "bevy-ts";
+export class Pos extends Component { x: f32 = 0 }
+export class Score extends Resource { declare n: f32 }
+export function read(s: Option<Res<Score>>, w: Option<ResMut<Score>>) {}
+export function wrong(p: Option<Query<[Pos]>>) {}
+"#;
+        let dir = tmp("optional-res", &[("src/game.ts", src)]);
+        let d = declared(&compile(&dir.join("src/game.ts"), &dir));
+        let score = json!(["src/game.ts", "Score"]);
+        assert_eq!(
+            d["read"]["params"],
+            json!([{ "kind": "res", "resource": score, "optional": true }, { "kind": "resMut", "resource": score, "optional": true }])
+        );
+        let err = d["wrong"]["error"].as_str().unwrap();
+        assert!(err.starts_with("src/game.ts:5:26: Option<...> as a system param takes Res<R> or ResMut<R>"), "{err}");
     }
 
     #[test]

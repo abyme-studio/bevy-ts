@@ -5,7 +5,7 @@
 
 use crate::layout::{ComponentLayout, EnumRepr, FieldLayout, FieldType, NativeComponent, NativeLayouts, NativeSource, ReflectHole};
 use bevy::ecs::component::ComponentId;
-use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld};
+use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld, ReflectResource};
 use bevy::prelude::*;
 use bevy::reflect::enums::{DynamicEnum, DynamicVariant, VariantInfo};
 use bevy::reflect::{GetPath, PartialReflect, ReflectRef, TypeInfo, TypeRegistration};
@@ -313,6 +313,7 @@ fn tier(world: &mut World, reg: &TypeRegistration, native: &mut NativeLayouts) -
     let Some(rc) = reg.data::<ReflectComponent>().cloned() else { return true };
     let path = reg.type_info().type_path().to_string();
     let short = reg.type_info().type_path_table().short_path().to_string();
+    let resource = reg.data::<ReflectResource>().is_some();
     if matches!(reg.type_info(), bevy::reflect::TypeInfo::TupleStruct(t) if t.field_len() == 1) {
         native.mark_newtype(&path);
     }
@@ -321,7 +322,7 @@ fn tier(world: &mut World, reg: &TypeRegistration, native: &mut NativeLayouts) -
     }
     let id = rc.register_component(world);
     let Some(mut value) = sample(world, reg, &rc, id) else {
-        native.set_reflect_tier(&path, &short, id, "no value to read offsets from (no Default, FromWorld or live row)".into(), false);
+        native.set_reflect_tier(&path, &short, id, "no value to read offsets from (no Default, FromWorld or live row)".into(), false, resource);
         return false;
     };
     let info = world.components().get_info(id).expect("registered");
@@ -343,10 +344,11 @@ fn tier(world: &mut World, reg: &TypeRegistration, native: &mut NativeLayouts) -
                 reflect_holes: t.reflect_holes,
                 insertable,
                 source: NativeSource::Reflect,
+                resource,
             });
         }
-        Ok(_) => native.set_reflect_tier(&path, &short, id, "the sampled value's size differs from the component's".into(), true),
-        Err(reason) => native.set_reflect_tier(&path, &short, id, reason, true),
+        Ok(_) => native.set_reflect_tier(&path, &short, id, "the sampled value's size differs from the component's".into(), true, resource),
+        Err(reason) => native.set_reflect_tier(&path, &short, id, reason, true, resource),
     }
     true
 }
@@ -590,6 +592,29 @@ mod tests {
         assert_eq!(f("elapsed_secs"), 0.25);
         assert!(t.layout.field("delta").is_none(), "Duration is a hole");
         assert!(t.holes.iter().any(|h| h.starts_with("delta:")));
+    }
+
+    #[test]
+    fn resources_are_tiered_and_flagged() {
+        let mut w = world();
+        {
+            let mut r = w.resource::<AppTypeRegistry>().write();
+            r.register::<Transform>();
+            r.register::<bevy::ui::UiScale>();
+            r.register::<bevy::light::GlobalAmbientLight>();
+            r.register::<bevy::camera::ClearColor>();
+        }
+        fill(&mut w);
+        let n = w.resource::<NativeLayouts>();
+        let ambient = n.get("GlobalAmbientLight").expect("GlobalAmbientLight is layout tier");
+        assert!(ambient.resource);
+        assert!(ambient.layout.field("brightness").is_some());
+        assert!(ambient.holes.iter().any(|h| h.starts_with("color:")), "{:?}", ambient.holes);
+        let scale = n.get("UiScale").expect("UiScale is layout tier");
+        assert!(scale.resource && scale.layout.field("0").is_some());
+        assert!(!n.get("Transform").unwrap().resource);
+        let clear = n.reflect_tier("ClearColor").expect("ClearColor is reflect tier");
+        assert!(clear.resource, "{clear:?}");
     }
 
     #[test]

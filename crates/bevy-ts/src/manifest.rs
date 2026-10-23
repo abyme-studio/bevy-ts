@@ -230,9 +230,14 @@ pub enum ParamDecl {
     },
     Res {
         resource: String,
+        /// `Option<Res<R>>`: absent gives `undefined` instead of failing the run.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        optional: bool,
     },
     ResMut {
         resource: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        optional: bool,
     },
     Local {
         fields: Vec<FieldDecl>,

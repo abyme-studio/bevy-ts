@@ -157,6 +157,62 @@ nested struct fields optional, an enum component's `value`), and `NativeSet`, `N
 `NativeCondition`, the unions of exposed set, schedule and condition names. Output is deterministic;
 `bevy-ts dev` regenerates it after each project-engine build.
 
+## Rust resources
+
+A Bevy resource is a component on its own entity, so a reflected resource is tiered like a
+component. A layout-tier one is a `Resource` class: `bevy-ts/bevy` ships the prebuilt engine's
+(`GlobalAmbientLight`, `UiScale`) and `native.d.ts` a project's, named as components are. A system
+takes it as Bevy does:
+
+```ts
+import { GlobalAmbientLight, UiScale } from "bevy-ts/bevy";
+
+export function dim(ambient: ResMut<GlobalAmbientLight>, scale: Res<UiScale>) {
+  ambient.brightness = 400 * scale[0];
+}
+```
+
+`Res<R>` reads the resource's own row in place; `ResMut<R>` writes it in place and marks its
+change tick, so a Rust system's `Res<R>::is_changed()` sees the write that frame. Holes (such as
+`GlobalAmbientLight.color`) are never visible. A name resolves to a TS resource first, then to a
+Rust resource by type path or unambiguous short name. The load fails, naming the system, the
+param and the resource, for a reflect-tier resource (with its reason), a component that is not a
+resource, `ResMut` of an immutable type, a short name several types share (with their paths), or
+an unknown name.
+
+An absent resource fails the run with its name, as Bevy's `Res<T>` fails validation. Take
+`Option<Res<R>>` or `Option<ResMut<R>>` to get `undefined` instead and keep running, or skip the
+system with `runIf(resourceExists(R))`. Both work for TS and Rust resources alike.
+
+A derive-only resource registers with `app.ts_resource_layout::<T>()`
+(`#[derive(Resource, NativeLayout)]`), the resource sibling of `ts_layout`, and ships its class
+with `nativeResource`:
+
+```ts
+export class Wind extends nativeResource("game_native::Wind", { speed: f32 }) {}
+```
+
+`Time` is not on this path: it is `bevy-ts`'s own per-run value.
+
+What reaches TS, by resource (tiers from `bevy-ts types` on the prebuilt engine):
+
+| Resource | Tier | How | Owner |
+|---|---|---|---|
+| `GlobalAmbientLight` | layout, `color` a hole | `Res`/`ResMut` | here; `color` reflect-coverage stage 3 |
+| `UiScale` | layout | `Res`/`ResMut` | here |
+| `AccumulatedMouseMotion`, `AccumulatedMouseScroll` | layout | `Res` | path here; docs and tests script-input-devices |
+| `MouseScrollPixelsPerLine` | none: Bevy reflects it without `Resource` | not reachable | script-input-devices |
+| `PickingSettings`, `PointerInputSettings`, `MeshPickingSettings`, `SpritePickingSettings`, `UiPickingSettings` | layout | `Res`/`ResMut` | here |
+| `WireframeConfig`, `Wireframe2dConfig`, `GlobalUiDebugOptions`, `GlobalRenderDebugOverlay`, `TransformGizmoState` | layout | `Res`/`ResMut` | here |
+| `DefaultOpaqueRendererMethod`, `ManageAccessibilityUpdates`, `InputFocusVisible`, `GlobalsUniform` | layout | `Res`/`ResMut` | here |
+| `ClearColor` | reflect (`Color` only) | not yet; see "Rust components in TS" | reflect-enums-color (reflect-coverage stage 3) |
+| `DirectionalLightShadowMap`, `PointLightShadowMap` | reflect (`usize` is opaque) | not yet | reflect-enums-color (reflect-coverage stage 3) |
+| `Time` | per-run value | `Res<Time>` | script-time |
+| `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | `Duration`s | not on this path | script-time |
+| `ButtonInput<*>`, `Touches`, gamepads | not plain data | exported params | script-input-devices |
+| `Assets<T>`, method APIs (`Time<Virtual>::pause`) | not plain data | exported params | writable-native-params |
+| Project and port resources | any | `Res`/`ResMut` once layout tier | here |
+
 ## Ordering against Rust
 
 A crate exposes a Bevy set under a stable name, `app.ts_set("rapier:step", FixedUpdate,
