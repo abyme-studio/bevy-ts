@@ -592,6 +592,8 @@ export class Event extends Data {}
 export class EntityEvent extends Data {}
 /** `class EnemySet extends SystemSet {}`, Rust's `#[derive(SystemSet)] struct EnemySet;`. */
 export class SystemSet {}
+/** `class Waves extends ScheduleLabel {}`, Rust's `#[derive(ScheduleLabel)] struct Waves;`. */
+export class ScheduleLabel {}
 
 /** `class Game extends States("Menu", "Playing") {}`; `Game.Playing` is a value. */
 export function States(...values) {
@@ -612,6 +614,7 @@ const DATA_KIND = {
   entityEvent: "event",
   state: "state",
   set: "set",
+  schedule: "schedule",
 };
 
 /** Scene components defined outside a generation (built-in modules), by name and by `module#export`. */
@@ -647,6 +650,9 @@ function dataFn(C, d) {
   own("source", d.kind === "reflectComponent" ? "rust" : "ts");
   if (kind === "set") {
     own("set", d.name);
+  } else if (kind === "schedule") {
+    own("schedule", "schedule");
+    own("label", d.name);
   } else if (kind === "state") {
     const values = d.values;
     own("values", values);
@@ -790,33 +796,152 @@ export class Fixed {}
 // Schedules, sets, conditions, system configs
 
 const sched = (kind, extra) => Object.freeze({ schedule: kind, ...extra });
-export const Startup = sched("startup");
-export const PreUpdate = sched("stage", { stage: "preUpdate" });
-export const Update = sched("stage", { stage: "update" });
-export const PostUpdate = sched("stage", { stage: "postUpdate" });
-export const FixedUpdate = sched("stage", { stage: "fixedUpdate" });
+const stage = (name, stage) => sched("stage", { stage, name });
+export const PreStartup = sched("preStartup", { name: "PreStartup" });
+export const Startup = sched("startup", { name: "Startup" });
+export const PostStartup = sched("postStartup", { name: "PostStartup" });
+export const First = stage("First", "first");
+export const PreUpdate = stage("PreUpdate", "preUpdate");
+export const RunFixedMainLoop = stage("RunFixedMainLoop", "runFixedMainLoop");
+export const Update = stage("Update", "update");
+export const SpawnScene = stage("SpawnScene", "spawnScene");
+export const PostUpdate = stage("PostUpdate", "postUpdate");
+export const Last = stage("Last", "last");
+export const FixedFirst = stage("FixedFirst", "fixedFirst");
+export const FixedPreUpdate = stage("FixedPreUpdate", "fixedPreUpdate");
+export const FixedUpdate = stage("FixedUpdate", "fixedUpdate");
+export const FixedPostUpdate = stage("FixedPostUpdate", "fixedPostUpdate");
+export const FixedLast = stage("FixedLast", "fixedLast");
 export function OnEnter(v) {
   return sched("onEnter", { state: v.state, value: v.value });
 }
 export function OnExit(v) {
   return sched("onExit", { state: v.state, value: v.value });
 }
+/** A schedule a Rust crate exposed by name (`schedule("net:tick")`). */
+export function schedule(name) {
+  return sched("schedule", { label: name });
+}
 
 export function systemSet(name) {
   return Object.freeze({ set: name });
 }
 
-export function inState(v) {
-  return { condition: true, kind: "inState", state: v.state, value: v.value };
+/** A run condition: Bevy's under its name, evaluated in Rust. Combine with its methods. */
+export class Condition {
+  constructor(decl) {
+    this.decl = decl;
+  }
+  get condition() {
+    return true;
+  }
+  andThen(b) {
+    return combine("and", this, b, false);
+  }
+  orElse(b) {
+    return combine("or", this, b, false);
+  }
+  nandThen(b) {
+    return combine("nand", this, b, false);
+  }
+  norElse(b) {
+    return combine("nor", this, b, false);
+  }
+  xor(b) {
+    return combine("xor", this, b, true);
+  }
+  xnor(b) {
+    return combine("xnor", this, b, true);
+  }
+  andEager(b) {
+    return combine("and", this, b, true);
+  }
+  orEager(b) {
+    return combine("or", this, b, true);
+  }
+  nandEager(b) {
+    return combine("nand", this, b, true);
+  }
+  norEager(b) {
+    return combine("nor", this, b, true);
+  }
 }
-export function resourceExists(R) {
-  return { condition: true, kind: "resourceExists", resource: R.componentName };
+
+function cond(c, what) {
+  if (!(c instanceof Condition)) throw declError(`${what}: pass a condition (inState(...), runOnce(), ...)`, callerLocation());
+  return c.decl;
+}
+function combine(op, a, b, eager) {
+  return new Condition({ kind: "combine", op, a: a.decl, b: cond(b, op), eager });
+}
+function resourceName(R, what) {
+  if (!R || R[KIND] !== "resource") throw declError(`${what}: ${String(R && R.name)} is not a Resource class`, callerLocation());
+  return R.componentName;
+}
+function componentOf(C, what) {
+  if (!C || !C.componentName || (C[KIND] && C[KIND] !== "component")) throw declError(`${what}: ${String(C && C.name)} is not a component class`, callerLocation());
+  return { name: C.componentName, source: C.source };
+}
+const resCond = (kind) => (R) => new Condition({ kind, resource: resourceName(R, kind) });
+function resValue(kind, value) {
+  const R = value && value.constructor;
+  return new Condition({ kind, resource: resourceName(R, kind), value: jsonValues(R, value) });
+}
+
+export function inState(v) {
+  return new Condition({ kind: "inState", state: v.state, value: v.value });
 }
 export function onMessage(M) {
-  return { condition: true, kind: "onMessage", message: M.componentName };
+  return new Condition({ kind: "onMessage", message: M.componentName });
 }
 export function not(c) {
-  return { condition: true, kind: "not", condition_: c };
+  return new Condition({ kind: "not", condition: cond(c, "not") });
+}
+export function runOnce() {
+  return new Condition({ kind: "runOnce" });
+}
+export const resourceExists = resCond("resourceExists");
+export const resourceAdded = resCond("resourceAdded");
+export const resourceChanged = resCond("resourceChanged");
+export const resourceExistsAndChanged = resCond("resourceExistsAndChanged");
+export const resourceRemoved = resCond("resourceRemoved");
+export const resourceChangedOrRemoved = resCond("resourceChangedOrRemoved");
+/** `resourceEquals(Score.of({ value: 10 }))`: the resource's bytes equal the value's. */
+export function resourceEquals(value) {
+  return resValue("resourceEquals", value);
+}
+export function resourceExistsAndEquals(value) {
+  return resValue("resourceExistsAndEquals", value);
+}
+export function anyWithComponent(C) {
+  return new Condition({ kind: "anyWithComponent", component: componentOf(C, "anyWithComponent") });
+}
+export function anyComponentRemoved(C) {
+  return new Condition({ kind: "anyComponentRemoved", component: componentOf(C, "anyComponentRemoved") });
+}
+const FILTER = Symbol("bevy-ts.filter");
+const filterValue = (k) => (C) => ({ [FILTER]: { [k]: componentOf(C, k) } });
+/** Filter values for `anyMatchFilter`, named as the filter types. */
+export const With = filterValue("with");
+export const Without = filterValue("without");
+export const Added = filterValue("added");
+export const Changed = filterValue("changed");
+export function anyMatchFilter(...filters) {
+  const filter = filters.map((f) => {
+    if (!f || !f[FILTER]) throw declError("anyMatchFilter: pass filter values, With(C), Without(C), Added(C) or Changed(C)", callerLocation());
+    return f[FILTER];
+  });
+  return new Condition({ kind: "anyMatchFilter", filter });
+}
+export function conditionChanged(c) {
+  return new Condition({ kind: "conditionChanged", condition: cond(c, "conditionChanged") });
+}
+export function conditionChangedTo(c, to) {
+  return new Condition({ kind: "conditionChangedTo", condition: cond(c, "conditionChangedTo"), to: !!to });
+}
+/** A condition a Rust crate exposed with `app.ts_condition(name, factory)`; ports wrap it typed. */
+export function nativeCondition(name, args) {
+  return new Condition({ kind: "native", name, args: args === undefined ? null : args, location: callerLocation() });
 }
 
 class SystemConfig {
@@ -827,6 +952,7 @@ class SystemConfig {
     this.befores = [];
     this.sets = [];
     this.conditions = [];
+    this.distributive = [];
   }
   after(...x) {
     this.afters.push(...x);
@@ -840,8 +966,14 @@ class SystemConfig {
     this.sets.push(s);
     return this;
   }
+  /** Bevy's collective `run_if`: once per stage run for the whole group. */
   runIf(c) {
-    this.conditions.push(c);
+    this.conditions.push(cond(c, "runIf"));
+    return this;
+  }
+  /** Bevy's `distributive_run_if`: each member gets its own instance. */
+  distributiveRunIf(c) {
+    this.distributive.push(cond(c, "distributiveRunIf"));
     return this;
   }
 }
@@ -960,7 +1092,7 @@ function declareFn(fn, desc) {
 // ---------------------------------------------------------------------------------------------
 // The app
 
-function flatten(schedule, items, inherited, out) {
+function flatten(g, schedule, items, inherited, out) {
   let prev = null;
   for (const item of items) {
     const cfg = {
@@ -968,12 +1100,26 @@ function flatten(schedule, items, inherited, out) {
       before: [...inherited.before],
       sets: [...inherited.sets],
       conditions: [...inherited.conditions],
+      groups: [...inherited.groups],
     };
     if (item instanceof SystemConfig && !item[SETUP]) {
-      const inner = { after: [...cfg.after, ...item.afters], before: [...cfg.before, ...item.befores], sets: [...cfg.sets, ...item.sets], conditions: [...cfg.conditions, ...item.conditions] };
+      const inner = {
+        after: [...cfg.after, ...item.afters],
+        before: [...cfg.before, ...item.befores],
+        sets: [...cfg.sets, ...item.sets],
+        conditions: [...cfg.conditions, ...item.distributive],
+        groups: cfg.groups,
+      };
+      // A group's runIf is collective: its members share one evaluation, named after the first.
+      let group = null;
+      if (item.conditions.length) {
+        group = { condition: item.conditions.length === 1 ? item.conditions[0] : { kind: "all", conditions: item.conditions }, members: [] };
+        g.groups.push(group);
+        inner.groups = [...cfg.groups, group];
+      }
       if (prev && inherited.chained) inner.after.push(prev);
       const first = out.length;
-      flatten(schedule, item.items, { ...inner, chained: item.chained }, out);
+      flatten(g, schedule, item.items, { ...inner, chained: item.chained }, out);
       // A nested group's members are its own "last" for the outer chain.
       prev = out.slice(first).map((r) => r.target);
       continue;
@@ -984,11 +1130,39 @@ function flatten(schedule, items, inherited, out) {
       cfg.after.push(...item.afters);
       cfg.before.push(...item.befores);
       cfg.sets.push(...item.sets);
-      cfg.conditions.push(...item.conditions);
+      cfg.conditions.push(...item.conditions, ...item.distributive);
     }
-    out.push({ schedule, target, ...cfg, at: callerLocation() });
+    const r = { schedule, target, ...cfg, at: callerLocation() };
+    for (const gr of cfg.groups) gr.members.push(r);
+    out.push(r);
     prev = [target];
   }
+}
+
+const SYSTEM_ID = Symbol("bevy-ts.systemId");
+
+const SCHEDULE_ORDER = { main: "insertSchedule", fixed: "insertFixedSchedule", startup: "insertStartupSchedule" };
+
+function scheduleName(x, what) {
+  if (x && x.schedule === "schedule" && typeof x.label === "string") return x.label;
+  if (x && typeof x.name === "string" && x.schedule && x.schedule !== "onEnter" && x.schedule !== "onExit") return x.name;
+  throw declError(`${what}: ${String(x && x.name)} is not a schedule (Update, a ScheduleLabel class or schedule(name))`, callerLocation());
+}
+
+function customLabel(L, what) {
+  if (L && L.schedule === "schedule" && typeof L.label === "string") return L.label;
+  throw declError(`${what}: ${String(L && L.name)} is not a ScheduleLabel class or schedule(name)`, callerLocation());
+}
+
+function insertSchedule(order, where) {
+  return function (anchor, L) {
+    const g = loadingOrThrow(`${SCHEDULE_ORDER[order]}${where}`);
+    const label = customLabel(L, `${SCHEDULE_ORDER[order]}${where}`);
+    const d = { label, order, location: callerLocation() };
+    d[where === "After" ? "after" : "before"] = scheduleName(anchor, `${SCHEDULE_ORDER[order]}${where}`);
+    g.scheduleOrder.push(d);
+    return app;
+  };
 }
 
 function loadingOrThrow(what) {
@@ -1001,13 +1175,38 @@ export const app = {
   addSystems(schedule, ...items) {
     const g = loadingOrThrow("addSystems");
     if (!schedule || !schedule.schedule) throw declError("addSystems(schedule, ...systems): the first argument must be a schedule (Update, Startup, OnEnter(...))", callerLocation());
-    flatten(schedule, items, { after: [], before: [], sets: [], conditions: [], chained: false }, g.registrations);
+    flatten(g, schedule, items, { after: [], before: [], sets: [], conditions: [], groups: [], chained: false }, g.registrations);
+    if (schedule.schedule === "schedule" && !g.initSchedules.includes(schedule.label)) g.initSchedules.push(schedule.label);
     return app;
   },
+  /** Registers a one-shot system and returns its id, for `commands.runSystem`. */
+  registerSystem(fn) {
+    const g = loadingOrThrow("registerSystem");
+    if (typeof fn !== "function") throw declError(`registerSystem: ${String(fn)} is not a system function`, callerLocation());
+    // The compile step's declarations attach after the module body, so the id is read at run time.
+    if (!g.oneShotFns.has(fn)) {
+      g.oneShotFns.add(fn);
+      g.registrations.push({ schedule: { schedule: "oneShot" }, target: fn, after: [], before: [], sets: [], conditions: [], groups: [], at: callerLocation() });
+    }
+    return Object.freeze({ [SYSTEM_ID]: fn });
+  },
+  /** Creates a schedule if absent, as Bevy's `App::init_schedule`. */
+  initSchedule(L) {
+    const g = loadingOrThrow("initSchedule");
+    const label = customLabel(L, "initSchedule");
+    if (!g.initSchedules.includes(label)) g.initSchedules.push(label);
+    return app;
+  },
+  insertScheduleAfter: insertSchedule("main", "After"),
+  insertScheduleBefore: insertSchedule("main", "Before"),
+  insertFixedScheduleAfter: insertSchedule("fixed", "After"),
+  insertFixedScheduleBefore: insertSchedule("fixed", "Before"),
+  insertStartupScheduleAfter: insertSchedule("startup", "After"),
+  insertStartupScheduleBefore: insertSchedule("startup", "Before"),
   /** Registers an observer: a function whose first param is `On<E>`. */
   addObserver(fn) {
     const g = loadingOrThrow("addObserver");
-    g.registrations.push({ schedule: { schedule: "observer" }, target: fn, after: [], before: [], sets: [], conditions: [], at: callerLocation() });
+    g.registrations.push({ schedule: { schedule: "observer" }, target: fn, after: [], before: [], sets: [], conditions: [], groups: [], at: callerLocation() });
     return app;
   },
   /** Runs plugins (functions of the app) now; every generation re-runs them. */
@@ -1195,6 +1394,12 @@ function resolveParams(g, params, at) {
           out.push({ kind: "on", event: E.componentName, cls: E });
         }
         break;
+      case "in": {
+        const E = refClass(g, p.event, at);
+        if (E[KIND] !== "event") throw declError(`In<${E.name}>: ${E.name} is not an Event class`, at);
+        out.push({ kind: "in", event: E.componentName, cls: E });
+        break;
+      }
       case "bundle":
         out.push({ kind: "bundle", fields: p.fields.map((f) => ({ name: f.name, param: resolveParams(g, [f.param], at)[0] })) });
         break;
@@ -1225,11 +1430,6 @@ function identityOf(target) {
   return d && d.id ? d.id : null;
 }
 
-function resolveCondition(c) {
-  if (c.kind === "not") return { kind: "not", condition: resolveCondition(c.condition_) };
-  const { condition, ...rest } = c;
-  return rest;
-}
 
 function setName(x, at) {
   if (x && typeof x.set === "string") return x.set;
@@ -1285,6 +1485,10 @@ function newGeneration(number) {
     bindings: new Map(),
     registrations: [],
     systems: [],
+    groups: [],
+    oneShotFns: new Set(),
+    initSchedules: [],
+    scheduleOrder: [],
     resourceInserts: new Map(),
     addedMessages: new Set(),
     initialStates: new Map(),
@@ -1303,6 +1507,8 @@ function scheduleDecl(s) {
   switch (s.schedule) {
     case "stage":
       return { kind: "stage", stage: s.stage };
+    case "schedule":
+      return { kind: "schedule", label: s.label };
     case "onEnter":
     case "onExit":
       return { kind: s.schedule, state: s.state, value: s.value };
@@ -1339,7 +1545,7 @@ function end() {
   const seen = new Map();
   for (const C of g.classes) {
     if (C.source !== "ts") continue;
-    const key = `${C[KIND] === "state" || C[KIND] === "set" ? C[KIND] : "data"}\u0000${C.componentName}`;
+    const key = `${C[KIND] === "state" || C[KIND] === "set" || C[KIND] === "schedule" ? C[KIND] : "data"}\u0000${C.componentName}`;
     const other = seen.get(key);
     if (other && other !== C) {
       const where = (X) => (X.decl && X.decl.location ? `${X.decl.location.file}:${X.decl.location.line}` : X.name);
@@ -1349,6 +1555,17 @@ function end() {
   }
   S.gens.set(g.number, g);
   const byKind = (k) => g.classes.filter((C) => C[KIND] === k);
+  // A group is named after its first member and an index, so its condition's state survives a reload.
+  const idOf = new Map(g.systems.map((s) => [s.r, s.id]));
+  const groupIds = new Map();
+  const perFirst = new Map();
+  for (const gr of g.groups) {
+    const first = gr.members.map((r) => idOf.get(r)).find(Boolean);
+    if (!first) continue;
+    const n = perFirst.get(first) || 0;
+    perFirst.set(first, n + 1);
+    groupIds.set(gr, `${first}@${n}`);
+  }
   const manifest = {
     components: byKind("component").filter((C) => C.source === "ts").map((C) => C.decl),
     resources: byKind("resource").map((C) => ({ ...C.decl, insert: g.resourceInserts.has(C.componentName) ? jsonValues(C, g.resourceInserts.get(C.componentName)) : undefined })),
@@ -1362,9 +1579,13 @@ function end() {
       after: orderTargets(s.r.after, s.at),
       before: orderTargets(s.r.before, s.at),
       sets: s.r.sets.map((x) => setName(x, s.at)),
-      condition: s.r.conditions.length ? { kind: "all", conditions: s.r.conditions.map(resolveCondition) } : undefined,
+      condition: s.r.conditions.length ? { kind: "all", conditions: s.r.conditions } : undefined,
+      groups: s.r.groups.map((gr) => groupIds.get(gr)).filter(Boolean),
       location: s.at,
     })),
+    groups: g.groups.filter((gr) => groupIds.has(gr)).map((gr) => ({ id: groupIds.get(gr), condition: gr.condition })),
+    initSchedules: g.initSchedules,
+    scheduleOrder: g.scheduleOrder,
     entries: g.entries,
   };
   const sections = [...g.sections].map(([name, s]) => [name, s.items ? encoder.encode(JSON.stringify({ items: s.items })) : s.bytes, s.location || null]);
@@ -2032,6 +2253,12 @@ function buildSystem(g, s) {
           },
         };
       }
+      case "in": {
+        const E = p.cls;
+        const o = new E.Read();
+        consumers.push((frame) => bindRow(o, E, frame[0], null, 0));
+        return o;
+      }
       case "on": {
         const o = makeOn(p.cls);
         ctx.on = o;
@@ -2085,7 +2312,7 @@ function makeCtx() {
 // Commands: a binary arena in Rust memory, overflow kept in JS
 
 const OP_SPAWN = 1, OP_INSERT = 2, OP_DESPAWN = 3, OP_REMOVE = 4, OP_SET_PARENT = 5, OP_SPAWN_NATIVE = 6, OP_PLUGIN = 7;
-const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10;
+const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12;
 
 class EntityCommands {
   constructor(commands, id) {
@@ -2239,6 +2466,43 @@ class Commands {
     w.raw(bytes);
     this.op(w.bytes());
   }
+  /** Runs a schedule once when these commands apply, as Bevy's `Commands::run_schedule`. */
+  runSchedule(L) {
+    const label = customLabel(L, "runSchedule");
+    const w = new Writer();
+    w.u8(OP_RUN_SCHEDULE);
+    w.str16(label);
+    this.op(w.bytes());
+  }
+  /** Runs a registered one-shot system (its id or the function) when these commands apply. */
+  runSystem(target) {
+    this.runSystemOp(target, null);
+  }
+  /** As `runSystem`, with the system's `In<E>` input: an `E` value. */
+  runSystemWith(target, input) {
+    const E = input && input.constructor;
+    if (!E || E[KIND] !== "event") throw new TypeError("runSystemWith: the input is an Event value (SpawnAt.of({ x: 3 }))");
+    const r = this.res && this.res.events[E.componentName];
+    if (!r) throw new Error(`${E.componentName} is not a declared event`);
+    this.runSystemOp(target, encodeWithLayout(E, r.layout, input));
+  }
+  runSystemOp(target, bytes) {
+    const fn = target && target[SYSTEM_ID] ? target[SYSTEM_ID] : target;
+    const id = fn && fn[DECL] && fn[DECL].id;
+    const live = S.gens.get(S.live);
+    if (!id || !live || !live.oneShotFns.has(fn)) {
+      throw new Error(`runSystem(${(target && target.name) || String(target)}): register it with app.registerSystem`);
+    }
+    const w = new Writer();
+    w.u8(OP_RUN_SYSTEM);
+    w.str16(id);
+    if (bytes) {
+      w.u8(1);
+      w.u32(bytes.length);
+      w.raw(bytes);
+    } else w.u8(0);
+    this.op(w.bytes());
+  }
   setState(St, value) {
     const index = this.res && this.res.states[St.componentName];
     if (index === undefined) throw new Error(`${St.componentName} is not a declared state`);
@@ -2319,6 +2583,11 @@ class Writer {
     if (typeof e !== "number" || !(e >= 0)) throw new TypeError(`not an entity: ${e}`);
     this.u32(e % 4294967296);
     this.u32(Math.floor(e / 4294967296));
+  }
+  str16(text) {
+    const b = encoder.encode(text);
+    this.u16(b.length);
+    this.raw(b);
   }
   raw(bytes) {
     this.room(bytes.length);

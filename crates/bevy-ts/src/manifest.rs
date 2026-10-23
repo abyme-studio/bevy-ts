@@ -96,25 +96,77 @@ impl ComponentDecl {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// A bevy-ts stage: one exclusive system in a Bevy main or fixed schedule, running that
+/// schedule's TS systems.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Stage {
+    First,
     PreUpdate,
+    RunFixedMainLoop,
     Update,
+    SpawnScene,
     PostUpdate,
+    Last,
+    FixedFirst,
+    FixedPreUpdate,
     FixedUpdate,
+    FixedPostUpdate,
+    FixedLast,
 }
 
 impl Stage {
-    pub const ALL: [Stage; 4] = [Stage::PreUpdate, Stage::Update, Stage::PostUpdate, Stage::FixedUpdate];
+    pub const ALL: [Stage; 12] = [
+        Stage::First,
+        Stage::PreUpdate,
+        Stage::RunFixedMainLoop,
+        Stage::Update,
+        Stage::SpawnScene,
+        Stage::PostUpdate,
+        Stage::Last,
+        Stage::FixedFirst,
+        Stage::FixedPreUpdate,
+        Stage::FixedUpdate,
+        Stage::FixedPostUpdate,
+        Stage::FixedLast,
+    ];
+
+    /// The stages that exist from startup; the others are made on first use.
+    pub const EAGER: [Stage; 4] = [Stage::PreUpdate, Stage::Update, Stage::PostUpdate, Stage::FixedUpdate];
 
     pub fn as_str(self) -> &'static str {
         match self {
+            Stage::First => "first",
             Stage::PreUpdate => "preUpdate",
+            Stage::RunFixedMainLoop => "runFixedMainLoop",
             Stage::Update => "update",
+            Stage::SpawnScene => "spawnScene",
             Stage::PostUpdate => "postUpdate",
+            Stage::Last => "last",
+            Stage::FixedFirst => "fixedFirst",
+            Stage::FixedPreUpdate => "fixedPreUpdate",
             Stage::FixedUpdate => "fixedUpdate",
+            Stage::FixedPostUpdate => "fixedPostUpdate",
+            Stage::FixedLast => "fixedLast",
         }
+    }
+
+    /// The stage's anchor name, `bevy-ts:<stage>` in kebab case.
+    pub fn anchor(self) -> String {
+        let mut out = String::from("bevy-ts:");
+        for c in self.as_str().chars() {
+            if c.is_ascii_uppercase() {
+                out.push('-');
+                out.push(c.to_ascii_lowercase());
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    pub fn eager(self) -> bool {
+        Stage::EAGER.contains(&self)
     }
 }
 
@@ -198,6 +250,10 @@ pub enum ParamDecl {
     NextState {
         state: String,
     },
+    /// A one-shot system's input, `In<E>`: an event by name, first param only.
+    In {
+        event: String,
+    },
     /// An observer's trigger: an event by name, or a lifecycle event of a component.
     On {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -227,22 +283,98 @@ pub struct BundleField {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ScheduleDecl {
+    PreStartup,
     Startup,
+    PostStartup,
     Stage { stage: Stage },
+    /// A custom schedule: a TS `ScheduleLabel` by path (`game::Waves`) or one a crate exposed
+    /// with `ts_schedule` (`net:tick`).
+    Schedule { label: String },
     OnEnter { state: String, value: String },
     OnExit { state: String, value: String },
     Observer,
+    /// A one-shot system, run by `commands.runSystem` or `RunTsSystem`.
+    OneShot,
 }
+
+/// A component filter in `anyMatchFilter`, as a query filter.
+pub type MatchFilter = FilterDecl;
 
 /// A run condition, evaluated in Rust.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ConditionDecl {
     InState { state: String, value: String },
-    ResourceExists { resource: String },
     OnMessage { message: String },
+    RunOnce,
+    ResourceExists { resource: String },
+    ResourceAdded { resource: String },
+    ResourceChanged { resource: String },
+    ResourceExistsAndChanged { resource: String },
+    ResourceRemoved { resource: String },
+    ResourceChangedOrRemoved { resource: String },
+    /// Field values, encoded with the resource's layout and compared byte for byte.
+    ResourceEquals { resource: String, value: serde_json::Map<String, serde_json::Value> },
+    ResourceExistsAndEquals { resource: String, value: serde_json::Map<String, serde_json::Value> },
+    AnyWithComponent { component: ComponentRef },
+    AnyComponentRemoved { component: ComponentRef },
+    AnyMatchFilter { filter: Vec<MatchFilter> },
+    ConditionChanged { condition: Box<ConditionDecl> },
+    ConditionChangedTo { condition: Box<ConditionDecl>, to: bool },
     Not { condition: Box<ConditionDecl> },
     All { conditions: Vec<ConditionDecl> },
+    /// A combinator: `a.andThen(b)` and the others; `eager` evaluates `b` even when `a` decides.
+    Combine { op: CombineOp, a: Box<ConditionDecl>, b: Box<ConditionDecl>, #[serde(default)] eager: bool },
+    /// A condition a crate exposed with `ts_condition`, with its JSON arguments.
+    Native {
+        name: String,
+        #[serde(default)]
+        args: serde_json::Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        location: Option<SourceLocation>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CombineOp {
+    And,
+    Or,
+    Nand,
+    Nor,
+    Xor,
+    Xnor,
+}
+
+/// A group's collective `runIf`: evaluated once per run of a stage, before its first member.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupDecl {
+    /// Stable across reloads: the first member's identity and an index.
+    pub id: String,
+    pub condition: ConditionDecl,
+}
+
+/// Where a custom schedule goes in Bevy's schedule orders.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScheduleOrderDecl {
+    pub label: String,
+    /// `main` (`MainScheduleOrder`), `fixed` (`FixedMainScheduleOrder`) or `startup`.
+    pub order: ScheduleOrder,
+    /// The schedule it goes after, or before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<SourceLocation>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ScheduleOrder {
+    Main,
+    Fixed,
+    Startup,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -261,6 +393,9 @@ pub struct SystemDecl {
     pub sets: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition: Option<ConditionDecl>,
+    /// The groups whose collective `runIf` gates it, outermost first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SourceLocation>,
 }
@@ -371,6 +506,15 @@ pub struct Manifest {
     pub states: Vec<StateDecl>,
     #[serde(default)]
     pub entries: Vec<EntryDecl>,
+    /// Groups with a collective `runIf`.
+    #[serde(default)]
+    pub groups: Vec<GroupDecl>,
+    /// Custom schedules `app.initSchedule` (or `addSystems`) creates.
+    #[serde(default, rename = "initSchedules")]
+    pub init_schedules: Vec<String>,
+    /// `app.insertScheduleAfter` and its kin.
+    #[serde(default, rename = "scheduleOrder")]
+    pub schedule_order: Vec<ScheduleOrderDecl>,
     /// Command kinds the generation's code appends, by name, so Rust can check them up front.
     #[serde(default, rename = "commandKinds")]
     pub command_kinds: Vec<String>,

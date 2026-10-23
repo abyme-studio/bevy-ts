@@ -61,11 +61,16 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `SubStates`, `ComputedStates`, `PreviousState`, `OnTransition`, `state_changed` | missing | — | new: `ecs-schedules` |
 | State-scoped entities (`DespawnOnExit`, `DisableOnExit`…) | missing: reflect tier, and TS states are not Bevy states | — | new: `ecs-schedules` |
 | Schedules `Startup`, `PreUpdate`, `Update`, `FixedUpdate`, `PostUpdate` | idiomatic | `surface.rs` `startup_runs_once_per_identity`; `systems.rs` `chain_after_before_sets_and_stages_order_systems` | — |
-| Schedules `First`, `Last`, `PreStartup`, `PostStartup`, `FixedFirst`/`PreUpdate`/`PostUpdate`/`Last`, custom | missing (reachable only through a slot around a Rust set) | `bevy-ts/tests/it/slots.rs` | new: `ecs-schedules` |
+| Schedules `First`, `Last`, `PreStartup`, `PostStartup`, `FixedFirst`/`PreUpdate`/`PostUpdate`/`Last` | idiomatic; a stage made on first use | `schedules.rs` `a_system_in_last_runs_after_post_update_and_its_stage_is_made_on_load`, `fixed_schedules_run_in_order_once_per_step`, `startup_lists_run_in_order_once_with_commands_between`, `an_unused_schedule_has_no_bevy_ts_system` | — |
+| Schedules `RunFixedMainLoop`, `SpawnScene` | idiomatic; anchor `bevy:fixed-main-loop` | `schedules.rs` `an_unused_schedule_has_no_bevy_ts_system` | — |
+| Custom schedules (`ScheduleLabel`, `insertSchedule*`, `initSchedule`, `runSchedule`), Rust's with `ts_schedule` | idiomatic | `schedules.rs` `a_custom_schedule_after_update_moves_on_reload`, `run_schedule_runs_it_once_before_the_next_system`, `a_ports_schedule_runs_its_ts_systems_when_the_port_runs_it` | — |
 | Sets and ordering, Rust anchors | idiomatic | `systems.rs` as above | — |
 | Conditions `inState`, `resourceExists`, `onMessage`, `not` | idiomatic, evaluated in Rust | `surface.rs` `resource_exists_and_not_conditions`, `a_skipped_system_costs_no_js_call` | — |
-| Conditions `or`, `and` (explicit), `runOnce`, `resourceChanged`/`Added`/`Removed`/`Equals`, `anyWithComponent`, `anyComponentRemoved`, `conditionChanged`, a TS predicate | missing (several `runIf` AND together) | `core.js:1105` | new: `ecs-schedules` |
-| One-shot systems (`registerSystem`, `runSystem`) | missing | — | new: `ecs-schedules` |
+| Conditions `runOnce`, `resourceChanged`/`Added`/`Removed`/`Equals` and their `Exists` forms, `anyWithComponent`, `anyComponentRemoved`, `anyMatchFilter`, `conditionChanged`/`To` | idiomatic, evaluated in Rust, state per use | `conditions.rs` `every_rust_condition_skips_with_no_call_into_js`, `resource_changed_runs_on_the_frame_rust_writes_it_and_costs_no_call_otherwise`, `run_once_survives_a_reload_and_resets_on_restart` | — |
+| A TS predicate condition, `resource_exists_and` | missing | — | `ecs-schedules` stage 3 (after its bench) |
+| Combinators `andThen`/`orElse`/`nandThen`/`norElse`/`xor`/`xnor` and the eager forms; collective and distributive `runIf` | idiomatic | `conditions.rs` `short_circuit_skips_b_and_eager_spends_it`, `collective_run_if_is_one_evaluation_and_distributive_is_one_each`, `a_groups_condition_holds_for_the_whole_stage_run` | — |
+| Rust conditions in TS (`ts_condition`, `nativeCondition`) | idiomatic; the seam `script-time` and `script-input-devices` plug into | `conditions.rs` `a_ports_condition_runs_in_rust`, `a_factory_error_fails_the_load_with_the_call` | — |
+| One-shot systems (`registerSystem`, `runSystem`, `runSystemWith`, `In<E>`), Rust's `RunTsSystem` | idiomatic | `schedules.rs` `run_system_runs_a_one_shot_after_the_callers_commands`, `run_system_with_passes_its_input`, `rust_runs_a_ts_one_shot_with_run_ts_system` | — |
 | Exclusive world access | missing; not wanted (JS stays batched) | `index.d.ts:426` | — (decline) |
 | `Disabled` entities | partial: filter only; whether TS queries honour `DefaultQueryFilters` is untested | — | reflect-coverage stage 2 (insert); new: `ecs-queries` (test) |
 
@@ -75,7 +80,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 |---|---|---|---|
 | `Transform` columns, `Vec3`/`Quat` helpers | idiomatic | `systems.rs` `a_vector_method_stores_the_tick_once` | — |
 | `Transform.lookingAt` | missing | — | reflect-coverage stage 2 |
-| `GlobalTransform` read; `TransformHelper` | missing; TS `PostUpdate` also runs before propagation | `bevy-ts/src/lib.rs:153` | reflect-coverage stage 3 (read); new: `ecs-schedules` (a slot after propagate) |
+| `GlobalTransform` read; `TransformHelper` | missing (read); the slot after propagation exists (`bevy:transform-propagate`) | `schedules.rs` `after_propagation_reads_this_frames_global_transform` (ignored until the read lands) | reflect-coverage stage 3 (read) |
 | `Res<Time>` | idiomatic, read-only, a built value (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`, `time.rs` `fixed_update_reads_timestep` | script-time stage 1 (done) |
 | `Time<Real>`, `Time<Virtual>` pause and speed, `Time<Fixed>` timestep | partial: every clock read (`Res<Time<C>>`); a game's own pause holds; writes (`ResMut<Time<Virtual>>`, `ResMut<Time<Fixed>>`) missing | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame` | script-time stage 2 (writes) |
 | `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: `Timer`, `Stopwatch`, `TimerMode` are field types with Bevy's methods; `onTimer` and the other conditions, `commands.delayed()` missing | `time.rs` `timer_matches_bevy`, `stopwatch_pauses` | script-time stages 3 (conditions), 4 (delayed commands) |

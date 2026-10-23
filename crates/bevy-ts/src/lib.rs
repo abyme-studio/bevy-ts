@@ -10,6 +10,7 @@ pub mod backend;
 pub mod color;
 pub mod commands;
 pub mod components;
+pub mod conditions;
 pub mod engine;
 pub mod fake;
 pub mod generation;
@@ -30,6 +31,7 @@ pub mod recipes;
 #[cfg(feature = "pbr")]
 pub mod reflect_value;
 pub mod runtime;
+pub mod schedules;
 pub mod sets;
 pub mod systems;
 pub mod value;
@@ -43,6 +45,7 @@ pub mod prelude {
     pub use crate::backend::{ModuleSet, ScriptBackend, ScriptError};
     pub use crate::manifest::Stage;
     pub use crate::plugin_api::BevyTsAppExt;
+    pub use crate::schedules::{RunTsSystem, TsSchedule};
     pub use crate::{BevyTsPlugin, BevyTsSet, EngineMode, ScriptHidden};
 }
 
@@ -74,13 +77,23 @@ fn drop_edit_triggers(mut queue: ResMut<observers::ObserverQueue>) {
     queue.0.clear();
 }
 
-/// The system set each bevy-ts stage runs in, so Rust plugins can order around it.
+/// The system set each bevy-ts stage runs in, so Rust plugins can order around it. A custom
+/// schedule's stage runs in `Schedule(path)`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BevyTsSet {
+    First,
     PreUpdate,
+    RunFixedMainLoop,
     Update,
+    SpawnScene,
     PostUpdate,
+    Last,
+    FixedFirst,
+    FixedPreUpdate,
     FixedUpdate,
+    FixedPostUpdate,
+    FixedLast,
+    Schedule(&'static str),
 }
 
 /// Builds the backend on the main thread when the plugin is added.
@@ -138,6 +151,10 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<runtime::ScriptClock>()
             .init_resource::<runtime::ScriptFrame>()
             .init_resource::<memory::SystemMemory>()
+            .init_resource::<conditions::ConditionMemory>()
+            .init_resource::<schedules::MadeStages>()
+            .init_resource::<schedules::DeferredEdits>()
+            .init_resource::<schedules::PendingRuns>()
             .init_resource::<messages::TsPayloads>()
             .init_resource::<observers::ObserverQueue>()
             .init_resource::<host::HostParams>()
@@ -174,6 +191,10 @@ impl Plugin for BevyTsPlugin {
         app.add_systems(First, drop_edit_triggers.after(generation::apply_pending).run_if(in_state(EngineMode::Edit)));
         app.add_systems(First, messages::update_messages.after(generation::apply_pending));
         app.add_systems(bevy::state::state::StateTransition, systems::run_state_transitions);
+        // A stage made while its schedule runs (`First`, by the generation applied in it) is added
+        // when that schedule ends.
+        app.add_systems(First, schedules::apply_deferred_edits.before(runtime::advance_clock));
+        app.add_systems(Last, schedules::apply_deferred_edits);
         app.configure_sets(PostUpdate, BevyTsSet::PostUpdate.before(bevy::transform::TransformSystems::Propagate));
         app.add_systems(PreUpdate, stage_pre_update.in_set(BevyTsSet::PreUpdate))
             .add_systems(Update, stage_update.in_set(BevyTsSet::Update))
@@ -183,6 +204,12 @@ impl Plugin for BevyTsPlugin {
 
     fn finish(&self, app: &mut App) {
         if let Err(e) = app.world().resource::<sets::TsSets>().check() {
+            panic!("{e}");
+        }
+        if let Some(Err(e)) = app.world().get_resource::<schedules::TsSchedules>().map(|s| s.check()) {
+            panic!("{e}");
+        }
+        if let Some(Err(e)) = app.world().get_resource::<conditions::TsConditions>().map(|s| s.check()) {
             panic!("{e}");
         }
         layout_reflect::fill_once(app.world_mut());

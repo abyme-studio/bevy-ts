@@ -21,13 +21,32 @@ export type ReloadStatus = "compiling" | "applied" | "failed";
  */
 export type ComponentSource = "ts" | "rust";
 /**
- * The bevy-ts stage a system runs in, or startup, onEnter, onExit or observer for systems outside the four stages.
+ * The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.25) every main and fixed schedule, the startup lists, oneShot and schedule.
  *
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
  * via the `definition` "Stage".
  */
 export type Stage =
-  "preUpdate" | "update" | "postUpdate" | "fixedUpdate" | "startup" | "onEnter" | "onExit" | "observer";
+  | "preStartup"
+  | "startup"
+  | "postStartup"
+  | "first"
+  | "preUpdate"
+  | "runFixedMainLoop"
+  | "update"
+  | "spawnScene"
+  | "postUpdate"
+  | "last"
+  | "fixedFirst"
+  | "fixedPreUpdate"
+  | "fixedUpdate"
+  | "fixedPostUpdate"
+  | "fixedLast"
+  | "onEnter"
+  | "onExit"
+  | "observer"
+  | "oneShot"
+  | "schedule";
 /**
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
  * via the `definition` "SystemsResult".
@@ -787,7 +806,7 @@ export interface SystemInfo {
    */
   id: string;
   /**
-   * Where it runs: {kind: startup|stage|onEnter|onExit|observer, ...}.
+   * Where it runs: {kind: preStartup|startup|postStartup|stage|schedule|onEnter|onExit|observer|oneShot, ...}; a custom schedule's is {kind: schedule, label} with its label (game::Waves, net:tick).
    */
   schedule: {
     kind: string;

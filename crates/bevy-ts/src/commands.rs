@@ -35,6 +35,8 @@ pub const OP_PLUGIN: u8 = 7;
 pub const OP_WRITE_MESSAGE: u8 = 8;
 pub const OP_TRIGGER: u8 = 9;
 pub const OP_SET_STATE: u8 = 10;
+pub const OP_RUN_SYSTEM: u8 = 11;
+pub const OP_RUN_SCHEDULE: u8 = 12;
 
 /// Size of the Rust-owned arena handed to each call. Larger buffers overflow into JS.
 pub const ARENA_BYTES: usize = 64 * 1024;
@@ -59,6 +61,10 @@ pub enum Op {
     WriteMessage { index: u32, bytes: Vec<u8> },
     Trigger { index: u32, target: Option<Entity>, bytes: Vec<u8> },
     SetState { index: u32, value: u32 },
+    /// `commands.runSystem(id)` / `runSystemWith(id, input)`.
+    RunSystem { identity: String, input: Option<Vec<u8>> },
+    /// `commands.runSchedule(label)`.
+    RunSchedule { label: String },
 }
 
 /// A plugin's command decoder: gets the op's bytes and `&mut World`.
@@ -136,6 +142,10 @@ impl<'a> Reader<'a> {
     }
     fn u64(&mut self) -> Result<u64, String> {
         Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+    }
+    fn text(&mut self) -> Result<String, String> {
+        let n = self.u16()? as usize;
+        String::from_utf8(self.take(n)?.to_vec()).map_err(|e| e.to_string())
     }
     fn entity(&mut self) -> Result<Entity, String> {
         let bits = self.u64()?;
@@ -216,6 +226,18 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 Op::Trigger { index, target, bytes: r.take(n)?.to_vec() }
             }
             OP_SET_STATE => Op::SetState { index: r.u32()?, value: r.u32()? },
+            OP_RUN_SYSTEM => {
+                let identity = r.text()?;
+                let input = match r.u8()? {
+                    0 => None,
+                    _ => {
+                        let n = r.u32()? as usize;
+                        Some(r.take(n)?.to_vec())
+                    }
+                };
+                Op::RunSystem { identity, input }
+            }
+            OP_RUN_SCHEDULE => Op::RunSchedule { label: r.text()? },
             other => return Err(format!("unknown command op {other} at byte {}", r.at - 1)),
         };
         ops.push(op);
@@ -336,6 +358,14 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                     Some(()) => {}
                     None => warnings.push(format!("setState: no state {index} value {value}")),
                 }
+            }
+            Op::RunSystem { identity, input } => {
+                use crate::schedules::{PendingRun, PendingRuns, RunTarget};
+                world.get_resource_or_init::<PendingRuns>().0.push_back(PendingRun { target: RunTarget::System { identity, input }, caller: None });
+            }
+            Op::RunSchedule { label } => {
+                use crate::schedules::{PendingRun, PendingRuns, RunTarget};
+                world.get_resource_or_init::<PendingRuns>().0.push_back(PendingRun { target: RunTarget::Schedule(label), caller: None });
             }
             Op::Plugin { opcode, bytes } => {
                 let (name, decoder) = kinds.get(opcode).expect("decode checked the opcode").clone();

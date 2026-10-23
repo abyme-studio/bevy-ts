@@ -21,8 +21,8 @@ The stages of `PreUpdate`, `Update`, `PostUpdate` and `FixedUpdate` SHALL exist 
 `PreStartup` and `PostStartup` systems SHALL run with `Startup` systems, at the generation apply where TS startup runs today, once per system identity per world (hot-reload): every due `PreStartup` system, then every due `Startup` system, then every due `PostStartup` system, each list's commands applied before the next list runs. They SHALL add no per-frame stage.
 
 #### Scenario: Startup order
-- **WHEN** `a` is in `PostStartup`, `b` in `Startup` and `c` in `PreStartup`, and `c` inserts a resource that `b` reads
-- **THEN** on the first play they run `c`, `b`, `a`, each once; `b` sees the resource; a reload runs none of them again
+- **WHEN** `a` is in `PostStartup`, `b` in `Startup` and `c` in `PreStartup`, and `c` writes a resource that `b` reads
+- **THEN** on the first play they run `c`, `b`, `a`, each once; `b` sees `c`'s write; a reload runs none of them again
 
 ### Requirement: Custom schedules
 `class Waves extends ScheduleLabel {}` SHALL declare a schedule label, named like a component (a Rust-style path from its module, such as `game::Waves`, or `static path`). `app.initSchedule(Waves)` SHALL create the schedule if absent. `app.insertScheduleAfter(after, Waves)` and `app.insertScheduleBefore(before, Waves)` SHALL insert it into `MainScheduleOrder`, `app.insertFixedScheduleAfter/Before` into `FixedMainScheduleOrder`, and `app.insertStartupScheduleAfter/Before` into the startup labels, as Bevy's methods of those names. `app.addSystems(Waves, ...)` SHALL create the schedule if absent and run the systems in a bevy-ts stage made in it on first use. In Rust the label SHALL be `bevy_ts::TsSchedule` with the declared path, so a Rust plugin can add systems to it or run it.
@@ -71,8 +71,8 @@ A crate SHALL be able to expose a Bevy schedule label to TS with `app.ts_schedul
 - **THEN** the call throws "register it with app.registerSystem" naming `other`
 
 ### Requirement: Schedules in the protocol
-`bevy-ts/systems` SHALL report each system's `stage` as one of `preStartup`, `startup`, `postStartup`, `first`, `preUpdate`, `runFixedMainLoop`, `update`, `spawnScene`, `postUpdate`, `last`, `fixedFirst`, `fixedPreUpdate`, `fixedUpdate`, `fixedPostUpdate`, `fixedLast`, `onEnter`, `onExit`, `observer`, `oneShot` or `schedule`; for `schedule`, a new optional `schedule` field SHALL name the label (`game::Waves`, `net:tick`). These SHALL be additions in the next free protocol minor at landing.
+`bevy-ts/systems` SHALL report each system's `stage` as one of `preStartup`, `startup`, `postStartup`, `first`, `preUpdate`, `runFixedMainLoop`, `update`, `spawnScene`, `postUpdate`, `last`, `fixedFirst`, `fixedPreUpdate`, `fixedUpdate`, `fixedPostUpdate`, `fixedLast`, `onEnter`, `onExit`, `observer`, `oneShot` or `schedule`; for `schedule`, the entry's `schedule` object, `{ kind: "schedule", label }`, SHALL name the label (`game::Waves`, `net:tick`). These SHALL be additions in the next free protocol minor at landing.
 
 #### Scenario: Listing a custom-schedule system
 - **WHEN** a client calls `bevy-ts/systems` while `spawnWave` runs in `Waves`
-- **THEN** its entry has `stage: "schedule"` and `schedule: "game::Waves"`
+- **THEN** its entry has `stage: "schedule"` and `schedule: { kind: "schedule", label: "game::Waves" }`

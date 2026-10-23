@@ -490,6 +490,14 @@ pub fn emit(world: &World) -> String {
     let sets: Vec<String> = world.get_resource::<TsSets>().map(|t| t.iter().map(|x| format!("{:?}", x.name)).collect()).unwrap_or_default();
     let _ = writeln!(s, "/** System sets exposed with `app.ts_set`, for `.before`/`.after(systemSet(name))`. */");
     let _ = writeln!(s, "export type NativeSet = {};", if sets.is_empty() { "never".to_string() } else { sets.join(" | ") });
+    let schedules: Vec<String> =
+        world.get_resource::<bevy_ts::schedules::TsSchedules>().map(|t| t.iter().map(|x| format!("{:?}", x.name)).collect()).unwrap_or_default();
+    let _ = writeln!(s, "/** Schedules exposed with `app.ts_schedule`, for `schedule(name)`. */");
+    let _ = writeln!(s, "export type NativeSchedule = {};", if schedules.is_empty() { "never".to_string() } else { schedules.join(" | ") });
+    let conditions: Vec<String> =
+        world.get_resource::<bevy_ts::conditions::TsConditions>().map(|t| t.names().map(|x| format!("{x:?}")).collect()).unwrap_or_default();
+    let _ = writeln!(s, "/** Conditions exposed with `app.ts_condition`, for `nativeCondition(name, args)`. */");
+    let _ = writeln!(s, "export type NativeCondition = {};", if conditions.is_empty() { "never".to_string() } else { conditions.join(" | ") });
 
     let classes = named(&registry, native);
     if let Some(host) = world.get_resource::<bevy_ts::host::HostParams>() {

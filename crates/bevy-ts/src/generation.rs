@@ -135,9 +135,7 @@ pub fn start_game(world: &mut World) {
     }
     world.resource_mut::<Generations>().started = true;
     world.resource_mut::<crate::observers::ObserverQueue>().0.clear();
-    let Some(mut rt) = world.remove_non_send::<ScriptRuntime>() else { return };
-    run_startups(world, &mut rt);
-    world.insert_non_send(rt);
+    run_startups(world);
 }
 
 /// A JS heap above this triggers a fresh isolate on the next reload.
@@ -189,6 +187,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
             let _ = world.try_despawn(e);
         }
         world.insert_resource(crate::memory::SystemMemory::default());
+        world.insert_resource(crate::conditions::ConditionMemory::default());
         world.resource_mut::<crate::messages::TsPayloads>().reset();
         let handlers = world.resource::<RestartHandlers>().clone();
         for h in handlers.0.iter() {
@@ -240,7 +239,6 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
                 None,
                 number,
             );
-            run_startups(world, &mut rt);
             ReloadReport {
                 seq: 0,
                 generation: number,
@@ -267,6 +265,9 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         }
     };
     world.insert_non_send(rt);
+    if report.status == ReloadStatus::Applied {
+        run_startups(world);
+    }
     report
 }
 
@@ -353,6 +354,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
             errors.push(ScriptError::at(format!("{} has no value {v}", st.name), st.location.clone()));
         }
     }
+    errors.extend(crate::schedules::check_order(world, &manifest.schedule_order));
     if !errors.is_empty() {
         return fail(rt, errors);
     }
@@ -370,7 +372,11 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     let pending = components::prepare(world, &decls);
     let built = {
         let lookup = |name: &str| pending.lookup(name).map(|(id, l)| (id, l.size));
-        systems::build(world, number, &manifest.systems, &lookup)
+        let encode = |name: &str, values: &serde_json::Map<String, serde_json::Value>| {
+            let (_, layout) = pending.lookup(name)?;
+            Some(pending.encode(name, values).map(|b| (b, layout.clone())).map_err(|e| e.to_string()))
+        };
+        systems::build(world, number, &manifest.systems, &manifest.groups, &lookup, &encode)
     };
     let systems = match built {
         Ok(s) => s,
@@ -436,8 +442,11 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     let migrations = components::commit(world, pending);
     insert_resources(world, &manifest);
     let watched = systems.watched_lifecycles();
+    crate::conditions::prune_natives(world, &systems.natives);
     world.insert_resource(systems);
     crate::sets::ensure_slots(world);
+    crate::schedules::reconcile_order(world, &manifest.schedule_order);
+    crate::schedules::ensure_stages(world, &manifest.init_schedules);
     crate::observers::install(world, &watched);
     rt.entries = manifest.entries.iter().map(|e| e.name.clone()).collect();
     Ok((migrations, sections, requests))
@@ -480,27 +489,27 @@ fn insert_resources(world: &mut World, manifest: &crate::manifest::Manifest) {
     }
 }
 
-/// Runs `Startup` systems whose identity has not run in this world, once the game has started.
-fn run_startups(world: &mut World, rt: &mut ScriptRuntime) {
+/// Runs `PreStartup`, `Startup` and `PostStartup` systems whose identity has not run in this
+/// world, in that order, once the game has started. Each system's commands apply before the next.
+fn run_startups(world: &mut World) {
     if !started(world) {
         return;
     }
-    let Some(mut systems) = world.remove_resource::<TsSystems>() else { return };
-    let mut list = std::mem::take(&mut systems.startup);
-    let mut due = Vec::new();
-    let mut rest = Vec::new();
-    for s in list.drain(..) {
-        if world.resource_mut::<Generations>().startups_run.insert(s.decl.name.clone()) {
-            due.push(s);
-        } else {
-            rest.push(s);
+    let Some(systems) = world.get_resource::<TsSystems>() else { return };
+    let lists: Vec<(systems::ListKey, Vec<String>)> = [
+        (systems::ListKey::PreStartup, &systems.pre_startup),
+        (systems::ListKey::Startup, &systems.startup),
+        (systems::ListKey::PostStartup, &systems.post_startup),
+    ]
+    .into_iter()
+    .map(|(k, l)| (k, l.iter().map(|s| s.decl.name.clone()).collect()))
+    .collect();
+    for (key, names) in lists {
+        let due: HashSet<String> = names.into_iter().filter(|n| world.resource_mut::<Generations>().startups_run.insert(n.clone())).collect();
+        if !due.is_empty() {
+            systems::run_startup_list(world, key, &due);
         }
     }
-    systems::run_list(world, rt, &mut systems, &mut due);
-    rest.extend(due);
-    systems.startup = rest;
-    world.insert_resource(systems);
-    rt.free_pool(world);
 }
 
 /// `First`: applies the newest compiled set from the watcher, if any.

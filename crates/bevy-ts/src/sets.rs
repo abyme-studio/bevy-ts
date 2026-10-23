@@ -2,9 +2,8 @@
 //! with `app.ts_set("rapier:step", FixedUpdate, PhysicsSet::StepSimulation)`; TS systems order
 //! against the name and run in a slot made around the set the first time a generation names it.
 
-use crate::BevyTsSet;
 use crate::backend::ScriptError;
-use crate::manifest::{ScheduleDecl, Stage, SystemDecl};
+use crate::manifest::{ScheduleDecl, SystemDecl};
 use crate::systems::{SlotKey, TsSystems};
 use bevy::ecs::intern::Interned;
 use bevy::ecs::schedule::{ScheduleLabel, SystemSet};
@@ -76,8 +75,14 @@ pub fn valid_name(name: &str) -> bool {
 /// naming both registrations.
 #[track_caller]
 pub fn expose(app: &mut App, name: &str, schedule: impl ScheduleLabel, set: impl SystemSet) {
+    expose_interned(app, name, schedule.intern(), set.intern());
+}
+
+/// [`expose`], with the label and set already interned.
+#[track_caller]
+pub fn expose_interned(app: &mut App, name: &str, schedule: Interned<dyn ScheduleLabel>, set: Interned<dyn SystemSet>) {
     assert!(valid_name(name), "bevy-ts: exposed set name {name:?} must be <crate>:<name>, such as \"rapier:step\"");
-    let entry = ExposedSet { name: name.to_string(), schedule: schedule.intern(), set: set.intern(), location: Location::caller() };
+    let entry = ExposedSet { name: name.to_string(), schedule, set, location: Location::caller() };
     let mut sets = app.world_mut().get_resource_or_init::<TsSets>();
     if let Some(prev) = sets.by_name.get(name).cloned() {
         sets.duplicates.push((prev, entry));
@@ -104,15 +109,6 @@ impl BevyTsSlot {
     }
 }
 
-fn stage_label(stage: Stage) -> Interned<dyn ScheduleLabel> {
-    match stage {
-        Stage::PreUpdate => PreUpdate.intern(),
-        Stage::Update => Update.intern(),
-        Stage::PostUpdate => PostUpdate.intern(),
-        Stage::FixedUpdate => FixedUpdate.intern(),
-    }
-}
-
 /// Where a system runs when it orders itself against an exposed set: its slot, or `None` for its
 /// declared schedule. A system names at most one exposed set, in the set's own schedule.
 pub(crate) fn placement(world: &World, d: &SystemDecl) -> Result<Option<SlotKey>, ScriptError> {
@@ -136,16 +132,13 @@ pub(crate) fn placement(world: &World, d: &SystemDecl) -> Result<Option<SlotKey>
         };
     };
     let set = sets.get(name).expect("filtered on exposed sets");
-    let ScheduleDecl::Stage { stage } = &d.schedule else {
-        return err(format!("only systems in PreUpdate, Update, PostUpdate or FixedUpdate can order against {name}"));
+    let schedule = match &d.schedule {
+        ScheduleDecl::Stage { stage } => crate::schedules::stage_label(*stage),
+        ScheduleDecl::Schedule { label } => crate::schedules::label_of(world, label),
+        _ => return err(format!("only a system in a schedule with a bevy-ts stage can order against {name}")),
     };
-    if stage_label(*stage) != set.schedule {
-        return err(format!(
-            "it is registered in {:?} but orders against {name}, which runs in {:?}; register it in {:?}",
-            stage_label(*stage),
-            set.schedule,
-            set.schedule
-        ));
+    if schedule != set.schedule {
+        return err(format!("it is registered in {schedule:?} but orders against {name}, which runs in {:?}; register it in {:?}", set.schedule, set.schedule));
     }
     Ok(Some(SlotKey { set: name.to_string(), after: *after }))
 }
@@ -177,13 +170,10 @@ pub(crate) fn ensure_slots(world: &mut World) {
     }
 }
 
-/// bevy-ts's own anchors: transform propagation and the four bridge stages.
+/// bevy-ts's own anchors: transform propagation, the fixed main loop and every bridge stage.
 pub(crate) fn expose_anchors(app: &mut App) {
     expose(app, "bevy:transform-propagate", PostUpdate, bevy::transform::TransformSystems::Propagate);
-    expose(app, "bevy-ts:pre-update", PreUpdate, BevyTsSet::PreUpdate);
-    expose(app, "bevy-ts:update", Update, BevyTsSet::Update);
-    expose(app, "bevy-ts:post-update", PostUpdate, BevyTsSet::PostUpdate);
-    expose(app, "bevy-ts:fixed-update", FixedUpdate, BevyTsSet::FixedUpdate);
+    crate::schedules::expose_anchors(app);
 }
 
 #[cfg(test)]

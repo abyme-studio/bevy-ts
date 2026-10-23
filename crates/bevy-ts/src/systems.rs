@@ -3,9 +3,8 @@
 
 use crate::backend::{CallContext, ColumnFrame, ParamFrame, ScriptError, ScriptKey, SystemRun, TableFrame};
 use crate::layout::{ComponentLayout, FieldType, NativeLayouts};
-use crate::manifest::{
-    ComponentRef, ComponentSource, ConditionDecl, DataDecl, FilterDecl, Lifecycle, ParamDecl, ScheduleDecl, Stage, SystemDecl,
-};
+use crate::conditions::{self, Condition};
+use crate::manifest::{ComponentRef, ComponentSource, DataDecl, FilterDecl, GroupDecl, Lifecycle, ParamDecl, ScheduleDecl, Stage, SystemDecl};
 use crate::memory::SystemMemory;
 use crate::messages::TsPayloads;
 use crate::observers::{ObserverQueue, Trigger};
@@ -211,16 +210,6 @@ pub enum RunParam {
     None,
 }
 
-/// A run condition, compiled for Rust.
-#[derive(Clone, Debug)]
-pub enum Condition {
-    InState { index: usize, value: u32 },
-    ResourceExists { id: Option<ComponentId> },
-    OnMessage { index: usize, message: String },
-    Not(Box<Condition>),
-    All(Vec<Condition>),
-}
-
 /// What an observer listens to.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ObserverOf(pub Trigger);
@@ -240,24 +229,37 @@ pub struct TsSystem {
 /// The live generation's systems, by schedule, in run order.
 #[derive(Resource, Default)]
 pub struct TsSystems {
-    pub stages: BTreeMap<StageKey, Vec<TsSystem>>,
+    pub stages: BTreeMap<Stage, Vec<TsSystem>>,
+    /// Custom schedules' systems, by manifest name (`game::Waves`, `net:tick`).
+    pub schedules: BTreeMap<String, Vec<TsSystem>>,
     /// Systems placed before or after an exposed Rust set, by slot.
     pub slots: BTreeMap<SlotKey, Vec<TsSystem>>,
+    pub pre_startup: Vec<TsSystem>,
     pub startup: Vec<TsSystem>,
+    pub post_startup: Vec<TsSystem>,
     pub on_enter: HashMap<(usize, u32), Vec<TsSystem>>,
     pub on_exit: HashMap<(usize, u32), Vec<TsSystem>>,
     pub observers: Vec<TsSystem>,
+    /// One-shot systems by identity; `None` while one runs.
+    pub one_shot: BTreeMap<String, Option<TsSystem>>,
+    /// Collective `runIf` conditions, by group id.
+    pub groups: HashMap<String, Condition>,
+    /// Native condition instances the generation uses.
+    pub natives: HashSet<String>,
     pub generation: u64,
 }
 
-/// `Stage` as an ordered map key.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct StageKey(pub u8);
-
-impl From<Stage> for StageKey {
-    fn from(s: Stage) -> Self {
-        StageKey(s as u8)
-    }
+/// Where a list of systems lives in [`TsSystems`].
+#[derive(Clone, Debug)]
+pub(crate) enum ListKey {
+    Stage(Stage),
+    Schedule(String),
+    Slot(SlotKey),
+    PreStartup,
+    Startup,
+    PostStartup,
+    OnEnter(usize, u32),
+    OnExit(usize, u32),
 }
 
 /// A slot: the TS systems running just before or just after an exposed Rust set.
@@ -270,13 +272,47 @@ pub struct SlotKey {
 
 impl TsSystems {
     pub fn iter(&self) -> impl Iterator<Item = &TsSystem> {
-        self.startup
+        self.pre_startup
             .iter()
+            .chain(self.startup.iter())
+            .chain(self.post_startup.iter())
             .chain(self.stages.values().flatten())
+            .chain(self.schedules.values().flatten())
+            .chain(self.one_shot.values().flatten())
             .chain(self.slots.values().flatten())
             .chain(self.on_enter.values().flatten())
             .chain(self.on_exit.values().flatten())
             .chain(self.observers.iter())
+    }
+
+    fn take(&mut self, k: &ListKey) -> Vec<TsSystem> {
+        match k {
+            ListKey::Stage(s) => self.stages.remove(s),
+            ListKey::Schedule(n) => self.schedules.remove(n),
+            ListKey::Slot(s) => self.slots.remove(s),
+            ListKey::PreStartup => Some(std::mem::take(&mut self.pre_startup)),
+            ListKey::Startup => Some(std::mem::take(&mut self.startup)),
+            ListKey::PostStartup => Some(std::mem::take(&mut self.post_startup)),
+            ListKey::OnEnter(i, v) => self.on_enter.remove(&(*i, *v)),
+            ListKey::OnExit(i, v) => self.on_exit.remove(&(*i, *v)),
+        }
+        .unwrap_or_default()
+    }
+
+    fn put(&mut self, k: &ListKey, list: Vec<TsSystem>) {
+        if list.is_empty() && !matches!(k, ListKey::PreStartup | ListKey::Startup | ListKey::PostStartup) {
+            return;
+        }
+        match k {
+            ListKey::Stage(s) => drop(self.stages.insert(*s, list)),
+            ListKey::Schedule(n) => drop(self.schedules.insert(n.clone(), list)),
+            ListKey::Slot(s) => drop(self.slots.insert(s.clone(), list)),
+            ListKey::PreStartup => self.pre_startup = list,
+            ListKey::Startup => self.startup = list,
+            ListKey::PostStartup => self.post_startup = list,
+            ListKey::OnEnter(i, v) => drop(self.on_enter.insert((*i, *v), list)),
+            ListKey::OnExit(i, v) => drop(self.on_exit.insert((*i, *v), list)),
+        }
     }
 
     /// The observers a lifecycle trigger needs Bevy to watch.
@@ -293,6 +329,10 @@ impl TsSystems {
 
 /// Resolves a TS component name to its id and size in the generation being applied.
 pub type TsLookup<'a> = dyn Fn(&str) -> Option<(ComponentId, usize)> + 'a;
+
+/// Encodes field values as a TS component or resource of the generation being applied: its
+/// bytes and layout, or `None` when the name is no TS type.
+pub type TsEncode<'a> = dyn Fn(&str, &serde_json::Map<String, serde_json::Value>) -> Option<Result<(Vec<u8>, ComponentLayout), String>> + 'a;
 
 /// Finds a registered Rust component by type path or by its short name.
 pub fn rust_component_by_name(world: &World, name: &str) -> Option<ComponentId> {
@@ -387,36 +427,6 @@ fn order(decls: &[(usize, &SystemDecl)], exposed: &HashSet<String>) -> Result<Ve
     Ok(out.into_iter().map(|i| decls[i].0).collect())
 }
 
-fn compile_condition(world: &World, c: &ConditionDecl, ts: &TsLookup) -> Result<Condition, String> {
-    let payloads = world.resource::<TsPayloads>();
-    Ok(match c {
-        ConditionDecl::InState { state, value } => {
-            let index = payloads.state(state).ok_or_else(|| format!("no state {state}"))?;
-            let value = payloads.states[index].index(value).ok_or_else(|| format!("{state} has no value {value}"))?;
-            Condition::InState { index, value }
-        }
-        ConditionDecl::ResourceExists { resource } => Condition::ResourceExists { id: ts(resource).map(|(id, _)| id) },
-        ConditionDecl::OnMessage { message } => {
-            Condition::OnMessage { index: payloads.message(message).ok_or_else(|| format!("no message {message}"))?, message: message.clone() }
-        }
-        ConditionDecl::Not { condition } => Condition::Not(Box::new(compile_condition(world, condition, ts)?)),
-        ConditionDecl::All { conditions } => Condition::All(conditions.iter().map(|c| compile_condition(world, c, ts)).collect::<Result<_, _>>()?),
-    })
-}
-
-fn evaluate(world: &World, c: &Condition, identity: &str) -> bool {
-    match c {
-        Condition::InState { index, value } => world.resource::<TsPayloads>().states.get(*index).is_some_and(|s| s.current == Some(*value)),
-        Condition::ResourceExists { id } => id.is_some_and(|id| world.resource_entities().get(id).is_some()),
-        Condition::OnMessage { index, message } => {
-            let cursor = world.resource::<SystemMemory>().0.get(identity).and_then(|m| m.cursors.get(message)).copied().unwrap_or(0);
-            world.resource::<TsPayloads>().messages.get(*index).is_some_and(|q| q.has_unread(cursor))
-        }
-        Condition::Not(c) => !evaluate(world, c, identity),
-        Condition::All(cs) => cs.iter().all(|c| evaluate(world, c, identity)),
-    }
-}
-
 /// A schedule's systems, with their indices in the manifest.
 type ScheduleGroup<'a> = (Placement, Vec<(usize, &'a SystemDecl)>);
 
@@ -429,7 +439,7 @@ enum Placement {
 
 /// Builds the systems of a generation. Fails on unusable params, duplicate identities and bad
 /// ordering. `TsPayloads` must already hold the generation's messages, events and states.
-pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLookup) -> Result<TsSystems, Vec<ScriptError>> {
+pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], groups: &[GroupDecl], ts: &TsLookup, encode: &TsEncode) -> Result<TsSystems, Vec<ScriptError>> {
     let mut errors = Vec::new();
     let mut seen = HashSet::new();
     for d in decls {
@@ -438,25 +448,36 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLo
         }
     }
     let mut out = TsSystems { generation, ..Default::default() };
-    let mut groups: BTreeMap<String, ScheduleGroup> = BTreeMap::new();
+    for g in groups {
+        let mut c = conditions::Compile { ts, encode, config: &g.id, identity: &g.id, natives: &mut out.natives };
+        match conditions::compile(world, &g.condition, "", &mut c) {
+            Ok(cond) => drop(out.groups.insert(g.id.clone(), cond)),
+            Err(e) => {
+                let at = e.location.or_else(|| decls.iter().find(|d| d.groups.contains(&g.id)).and_then(|d| d.location.clone()));
+                errors.push(ScriptError::at(format!("runIf of the group starting at {}: {}", g.id.split('@').next().unwrap_or(&g.id), e.message), at));
+            }
+        }
+    }
+    let mut lists: BTreeMap<String, ScheduleGroup> = BTreeMap::new();
     let exposed: HashSet<String> = world.get_resource::<crate::sets::TsSets>().map(|s| s.iter().map(|x| x.name.clone()).collect()).unwrap_or_default();
     for (i, d) in decls.iter().enumerate() {
-        if d.schedule == ScheduleDecl::Observer {
-            match build_one(world, generation, i, d, ts) {
-                Ok(s) => out.observers.push(s),
+        if matches!(d.schedule, ScheduleDecl::Observer | ScheduleDecl::OneShot) {
+            match build_one(world, generation, i, d, ts, encode, &mut out.natives) {
+                Ok(s) if d.schedule == ScheduleDecl::Observer => out.observers.push(s),
+                Ok(s) => drop(out.one_shot.insert(d.name.clone(), Some(s))),
                 Err(e) => errors.push(e),
             }
             continue;
         }
         match crate::sets::placement(world, d) {
             Ok(Some(key)) => {
-                groups.entry(format!("{key:?}")).or_insert_with(|| (Placement::Slot(key), Vec::new())).1.push((i, d));
+                lists.entry(format!("{key:?}")).or_insert_with(|| (Placement::Slot(key), Vec::new())).1.push((i, d));
             }
-            Ok(None) => groups.entry(format!("{:?}", d.schedule)).or_insert_with(|| (Placement::Schedule(d.schedule.clone()), Vec::new())).1.push((i, d)),
+            Ok(None) => lists.entry(format!("{:?}", d.schedule)).or_insert_with(|| (Placement::Schedule(d.schedule.clone()), Vec::new())).1.push((i, d)),
             Err(e) => errors.push(e),
         }
     }
-    for (_, (placement, list)) in groups {
+    for (_, (placement, list)) in lists {
         let ordered = match order(&list, &exposed) {
             Ok(o) => o,
             Err(e) => {
@@ -466,7 +487,7 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLo
         };
         let mut built = Vec::new();
         for index in ordered {
-            match build_one(world, generation, index, &decls[index], ts) {
+            match build_one(world, generation, index, &decls[index], ts, encode, &mut out.natives) {
                 Ok(s) => built.push(s),
                 Err(e) => errors.push(e),
             }
@@ -484,10 +505,11 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLo
             Placement::Schedule(s) => s,
         };
         match &schedule {
+            ScheduleDecl::PreStartup => out.pre_startup = built,
             ScheduleDecl::Startup => out.startup = built,
-            ScheduleDecl::Stage { stage } => {
-                out.stages.insert((*stage).into(), built);
-            }
+            ScheduleDecl::PostStartup => out.post_startup = built,
+            ScheduleDecl::Stage { stage } => drop(out.stages.insert(*stage, built)),
+            ScheduleDecl::Schedule { label } => drop(out.schedules.insert(label.clone(), built)),
             ScheduleDecl::OnEnter { state, value } | ScheduleDecl::OnExit { state, value } => match state_key(state, value) {
                 Ok(k) => {
                     let map = if matches!(schedule, ScheduleDecl::OnEnter { .. }) { &mut out.on_enter } else { &mut out.on_exit };
@@ -495,7 +517,7 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], ts: &TsLo
                 }
                 Err(e) => errors.push(ScriptError::new(e)),
             },
-            ScheduleDecl::Observer => unreachable!(),
+            ScheduleDecl::Observer | ScheduleDecl::OneShot => unreachable!(),
         }
     }
     if errors.is_empty() { Ok(out) } else { Err(errors) }
@@ -580,7 +602,7 @@ fn flatten_params<'a>(params: &'a [ParamDecl], out: &mut Vec<&'a ParamDecl>) {
     }
 }
 
-fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup) -> Result<TsSystem, ScriptError> {
+fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup, encode: &TsEncode, natives: &mut HashSet<String>) -> Result<TsSystem, ScriptError> {
     let err = |m: String| ScriptError::at(format!("system {}: {m}", d.name), d.location.clone());
     let mut flat = Vec::new();
     flatten_params(&d.params, &mut flat);
@@ -619,6 +641,16 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
             ParamDecl::State { state } => {
                 RunParam::State { index: world.resource::<TsPayloads>().state(state).ok_or_else(|| err(format!("no state {state}")))? }
             }
+            ParamDecl::In { event } => {
+                if i != 0 {
+                    return Err(err(format!("In<{}> must be the first param", event.rsplit("::").next().unwrap_or(event))));
+                }
+                if d.schedule != ScheduleDecl::OneShot {
+                    return Err(err(format!("In<{event}> is a one-shot system's input; register the system with app.registerSystem")));
+                }
+                world.resource::<TsPayloads>().event(event).ok_or_else(|| err(format!("no event type {event}")))?;
+                RunParam::Event
+            }
             ParamDecl::On { event, lifecycle, component } => {
                 if i != 0 || d.schedule != ScheduleDecl::Observer {
                     return Err(err("On<...> must be the first param of an observer".into()));
@@ -641,7 +673,16 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
     if d.schedule == ScheduleDecl::Observer && observes.is_none() {
         return Err(err("an observer's first param must be On<...>".into()));
     }
-    let condition = d.condition.as_ref().map(|c| compile_condition(world, c, ts)).transpose().map_err(err)?;
+    let condition = match &d.condition {
+        Some(c) => {
+            let mut cx = conditions::Compile { ts, encode, config: &d.name, identity: &d.name, natives };
+            Some(conditions::compile(world, c, "", &mut cx).map_err(|e| match e.location {
+                Some(at) => ScriptError::at(format!("system {}: {}", d.name, e.message), Some(at)),
+                None => err(e.message),
+            })?)
+        }
+        None => None,
+    };
     let local_refs: Vec<&[crate::manifest::FieldDecl]> = locals.iter().map(|l| l.as_slice()).collect();
     world.get_resource_or_init::<SystemMemory>().declare(&d.name, &local_refs);
     Ok(TsSystem {
@@ -683,15 +724,21 @@ pub fn run_stage(world: &mut World, stage: Stage) {
     if !runtime::stage_should_run(world) {
         return;
     }
-    with_systems(world, |world, rt, systems| {
-        drain_observers(world, rt, systems);
-        let mut list = systems.stages.remove(&stage.into()).unwrap_or_default();
-        for sys in list.iter_mut() {
-            run_one(world, rt, sys, None);
-            drain_observers(world, rt, systems);
-        }
-        systems.stages.insert(stage.into(), list);
-    });
+    if !stage.eager() && world.get_resource::<TsSystems>().is_none_or(|s| s.stages.get(&stage).is_none_or(|l| l.is_empty())) {
+        return;
+    }
+    drive(world, &ListKey::Stage(stage), None);
+}
+
+/// Runs a custom schedule's TS systems. Called from its stage's exclusive system.
+pub fn run_custom_stage(world: &mut World, name: &str) {
+    if !runtime::stage_should_run(world) {
+        return;
+    }
+    if world.get_resource::<TsSystems>().is_none_or(|s| s.schedules.get(name).is_none_or(|l| l.is_empty())) {
+        return;
+    }
+    drive(world, &ListKey::Schedule(name.to_string()), None);
 }
 
 /// `StateTransition`: applies each pending TS state value, running `OnExit(old)` then
@@ -708,21 +755,12 @@ pub fn run_state_transitions(world: &mut World) {
             .filter_map(|(i, s)| s.next.take().filter(|n| Some(*n) != s.current).map(|n| (i, s.current.replace(n), n)))
             .collect()
     };
-    if pending.is_empty() {
-        return;
-    }
-    with_systems(world, |world, rt, systems| {
-        for (i, old, new) in pending {
-            if let Some(old) = old {
-                let mut list = systems.on_exit.remove(&(i, old)).unwrap_or_default();
-                run_list(world, rt, systems, &mut list);
-                systems.on_exit.insert((i, old), list);
-            }
-            let mut list = systems.on_enter.remove(&(i, new)).unwrap_or_default();
-            run_list(world, rt, systems, &mut list);
-            systems.on_enter.insert((i, new), list);
+    for (i, old, new) in pending {
+        if let Some(old) = old {
+            drive(world, &ListKey::OnExit(i, old), None);
         }
-    });
+        drive(world, &ListKey::OnEnter(i, new), None);
+    }
 }
 
 /// Runs the systems of one slot. Called from the slot's exclusive system, which
@@ -734,23 +772,110 @@ pub fn run_slot(world: &mut World, key: &SlotKey) {
     if world.get_resource::<TsSystems>().is_none_or(|s| s.slots.get(key).is_none_or(|l| l.is_empty())) {
         return;
     }
-    with_systems(world, |world, rt, systems| {
-        drain_observers(world, rt, systems);
-        let mut list = systems.slots.remove(key).unwrap_or_default();
-        for sys in list.iter_mut() {
-            run_one(world, rt, sys, None);
-            drain_observers(world, rt, systems);
-        }
-        systems.slots.insert(key.clone(), list);
-    });
+    drive(world, &ListKey::Slot(key.clone()), None);
 }
 
-/// Runs a list of systems held outside `TsSystems` (startup, state transitions).
-pub(crate) fn run_list(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSystems, list: &mut [TsSystem]) {
-    for sys in list.iter_mut() {
-        run_one(world, rt, sys, None);
-        drain_observers(world, rt, systems);
+/// Runs a startup list's systems whose identity is in `due`.
+pub(crate) fn run_startup_list(world: &mut World, key: ListKey, due: &HashSet<String>) {
+    drive(world, &key, Some(due));
+}
+
+/// Runs a list of systems in order: a group's collective `runIf` once per call, each system's
+/// own conditions, observers after each, and the schedules and one-shot systems a system's
+/// commands queue before the next system runs. Takes the runtime and `TsSystems` out of the world
+/// while JS runs and puts them back for nested runs.
+fn drive(world: &mut World, key: &ListKey, only: Option<&HashSet<String>>) {
+    let mut groups: HashMap<String, bool> = HashMap::new();
+    let mut from = 0;
+    loop {
+        let mut caller = None;
+        with_systems(world, |world, rt, systems| {
+            drain_observers(world, rt, systems);
+            let mut list = systems.take(key);
+            for i in from..list.len() {
+                let sys = &mut list[i];
+                if only.is_some_and(|o| !o.contains(&sys.decl.name)) {
+                    continue;
+                }
+                if gate(world, systems, sys, &mut groups) {
+                    run_one(world, rt, sys, None);
+                }
+                drain_observers(world, rt, systems);
+                if crate::schedules::has_pending(world) {
+                    caller = Some((i + 1, format!("system {}", sys.decl.name)));
+                    break;
+                }
+            }
+            systems.put(key, list);
+        });
+        match caller {
+            Some((next, name)) => {
+                crate::schedules::claim(world, &name);
+                crate::schedules::run_pending(world);
+                from = next;
+            }
+            None => {
+                if crate::schedules::has_pending(world) {
+                    crate::schedules::run_pending(world);
+                }
+                return;
+            }
+        }
     }
+}
+
+/// Whether a system runs now: its groups' collective conditions (each evaluated once per
+/// `drive`, the first time a member comes), then its own, every one evaluated as Bevy does so
+/// stateful conditions advance.
+fn gate(world: &mut World, systems: &mut TsSystems, sys: &mut TsSystem, groups: &mut HashMap<String, bool>) -> bool {
+    let mut ok = true;
+    for g in &sys.decl.groups {
+        let pass = match groups.get(g) {
+            Some(b) => *b,
+            None => {
+                let b = systems.groups.get_mut(g).is_none_or(|c| conditions::evaluate(world, c));
+                groups.insert(g.clone(), b);
+                b
+            }
+        };
+        ok &= pass;
+    }
+    if let Some(c) = &mut sys.condition {
+        ok &= conditions::evaluate(world, c);
+    }
+    ok
+}
+
+/// Runs a one-shot system by identity, with its `In<E>` bytes. The runs its commands queue run
+/// once it is back, so it may run itself, as in Bevy.
+pub(crate) fn run_one_shot(world: &mut World, identity: &str, input: Option<&[u8]>, caller: &str) {
+    let taken = world.get_resource_mut::<TsSystems>().map(|mut s| s.one_shot.get_mut(identity).map(Option::take));
+    let mut sys = match taken {
+        Some(Some(Some(sys))) => sys,
+        Some(Some(None)) => {
+            log_run_error(world, format!("runSystem({identity}) from {caller}: it is already running"));
+            return;
+        }
+        _ => {
+            log_run_error(world, format!("runSystem({identity}) from {caller}: no one-shot system {identity}; register it with app.registerSystem"));
+            return;
+        }
+    };
+    with_systems(world, |world, rt, systems| {
+        run_one(world, rt, &mut sys, input.map(|b| (b, u64::MAX)));
+        drain_observers(world, rt, systems);
+    });
+    if let Some(mut s) = world.get_resource_mut::<TsSystems>()
+        && let Some(slot) = s.one_shot.get_mut(identity)
+    {
+        *slot = Some(sys);
+    }
+    crate::schedules::claim(world, &format!("system {identity}"));
+}
+
+fn log_run_error(world: &mut World, message: String) {
+    let generation = runtime::current_generation(world);
+    world.resource_mut::<crate::log::ScriptLog>().push(crate::log::LogLevel::Error, message, None, generation);
 }
 
 /// Takes the runtime and the systems out of the world for `f`.
@@ -790,11 +915,6 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
 /// Runs one system (or one observer event). Returns whether an observer stopped propagation.
 fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event: Option<(&[u8], u64)>) -> bool {
     let identity = sys.decl.name.clone();
-    if let Some(c) = &sys.condition
-        && !evaluate(world, c, &identity)
-    {
-        return false;
-    }
     let dev = rt.dev;
     let tick = world.increment_change_tick();
     let last_run = world.resource::<SystemMemory>().0.get(&identity).map_or(Tick::new(0), |m| m.last_run);
@@ -1118,12 +1238,17 @@ impl TsSystem {
     pub fn info(&self) -> SystemInfo {
         let (read, write) = self.decl.access();
         let stage = match &self.decl.schedule {
-            ScheduleDecl::Stage { stage } => stage.as_str().to_string(),
-            ScheduleDecl::Startup => "startup".into(),
-            ScheduleDecl::OnEnter { .. } => "onEnter".into(),
-            ScheduleDecl::OnExit { .. } => "onExit".into(),
-            ScheduleDecl::Observer => "observer".into(),
-        };
+            ScheduleDecl::Stage { stage } => stage.as_str(),
+            ScheduleDecl::PreStartup => "preStartup",
+            ScheduleDecl::Startup => "startup",
+            ScheduleDecl::PostStartup => "postStartup",
+            ScheduleDecl::Schedule { .. } => "schedule",
+            ScheduleDecl::OnEnter { .. } => "onEnter",
+            ScheduleDecl::OnExit { .. } => "onExit",
+            ScheduleDecl::Observer => "observer",
+            ScheduleDecl::OneShot => "oneShot",
+        }
+        .to_string();
         SystemInfo {
             id: self.decl.name.clone(),
             name: self.decl.name.rsplit('#').next().unwrap_or(&self.decl.name).to_string(),
@@ -1152,6 +1277,7 @@ mod tests {
             before: before.iter().map(|s| s.to_string()).collect(),
             sets: sets.iter().map(|s| s.to_string()).collect(),
             condition: None,
+            groups: vec![],
             location: None,
         }
     }

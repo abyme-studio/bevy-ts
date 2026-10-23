@@ -159,6 +159,22 @@ pub trait BevyTsNativeExt {
     #[track_caller]
     fn ts_set(&mut self, name: &str, schedule: impl ScheduleLabel, set: impl SystemSet) -> &mut Self;
 
+    /// Exposes a schedule label to TS as `name` (`"net:tick"`): TS adds systems to it with
+    /// `addSystems(schedule(name), ...)` and runs it with `commands.runSchedule`. Names are
+    /// `<crate>:<name>` and unique per engine.
+    #[track_caller]
+    fn ts_schedule(&mut self, name: &str, label: impl ScheduleLabel) -> &mut Self;
+
+    /// Exposes a run condition to TS as `name` (`"time:on-timer"`): `factory` builds the
+    /// condition from the JSON arguments of `nativeCondition(name, args)`, once per use per
+    /// generation; an error fails the load. Names are `<crate>:<name>` and unique per engine.
+    #[track_caller]
+    fn ts_condition(
+        &mut self,
+        name: &str,
+        factory: impl Fn(&bevy_ts::conditions::ConditionArgs) -> Result<bevy::ecs::schedule::BoxedCondition, String> + Send + Sync + 'static,
+    ) -> &mut Self;
+
     /// Exports a param TS systems can take (`rapier: ReadRapierContext`) and call. Its methods
     /// come from `#[export]` on its `impl`.
     fn ts_param<P: ExportParam>(&mut self) -> &mut Self;
@@ -182,6 +198,22 @@ impl BevyTsNativeExt for App {
     #[track_caller]
     fn ts_set(&mut self, name: &str, schedule: impl ScheduleLabel, set: impl SystemSet) -> &mut Self {
         bevy_ts::sets::expose(self, name, schedule, set);
+        self
+    }
+
+    #[track_caller]
+    fn ts_schedule(&mut self, name: &str, label: impl ScheduleLabel) -> &mut Self {
+        bevy_ts::schedules::expose(self, name, label);
+        self
+    }
+
+    #[track_caller]
+    fn ts_condition(
+        &mut self,
+        name: &str,
+        factory: impl Fn(&bevy_ts::conditions::ConditionArgs) -> Result<bevy::ecs::schedule::BoxedCondition, String> + Send + Sync + 'static,
+    ) -> &mut Self {
+        bevy_ts::conditions::expose(self, name, factory);
         self
     }
 

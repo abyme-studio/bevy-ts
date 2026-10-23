@@ -424,3 +424,27 @@ fn the_handshake_lists_an_exports_claim() {
     assert_eq!(pause["standsFor"], "ResMut<Paused>", "{pause}");
     assert_eq!(pause["methods"], json!(["pause"]));
 }
+
+#[test]
+fn a_custom_schedules_system_lists_as_stage_schedule_with_its_label() {
+    let src = r#"import { app, ScheduleLabel, Update, Last } from "bevy-ts";
+export class Waves extends ScheduleLabel { static path = "game::Waves" }
+export function spawnWave() {}
+export function tally() {}
+app.insertScheduleAfter(Update, Waves).addSystems(Waves, spawnWave).addSystems(Last, tally);
+"#;
+    let dir = project("protocol-schedule", &[("game.ts", src)]);
+    let mut app = app(&dir.join("game.ts"));
+    app.add_plugins(RemotePlugin::default());
+    bevy_ts_remote::add_methods(&mut app);
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    let systems = ok(&mut app, "bevy-ts/systems", None);
+    let rows = systems.as_array().unwrap();
+    let wave = rows.iter().find(|s| s["name"] == "spawnWave").unwrap();
+    assert_eq!(wave["stage"], "schedule");
+    assert_eq!(wave["schedule"], json!({ "kind": "schedule", "label": "game::Waves" }));
+    let tally = rows.iter().find(|s| s["name"] == "tally").unwrap();
+    assert_eq!(tally["stage"], "last");
+}

@@ -317,6 +317,7 @@ fn a_section_applies_after_commit_and_before_startups() {
                 before: vec![],
                 sets: vec![],
                 condition: None,
+                groups: vec![],
                 location: None,
             }],
             ..Default::default()

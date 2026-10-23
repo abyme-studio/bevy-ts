@@ -40,7 +40,7 @@ pub fn port_claims() -> Vec<(String, String)> {
 
 /// Param kinds bevy-ts itself declares, recognised by name.
 const KINDS: &[&str] = &[
-    "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "State", "NextState", "On", "App", "Mut", "Option",
+    "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "State", "NextState", "On", "In", "App", "Mut", "Option",
     "Entity", "With", "Without", "Changed", "Added", "Add", "Insert", "Remove",
 ];
 
@@ -237,7 +237,8 @@ struct Param {
     span: Span,
 }
 
-/// Bases a data class extends, from `bevy-ts`. `States(...)` and `SystemSet` are read too.
+/// Bases a data class extends, from `bevy-ts`. `States(...)`, `SystemSet` and `ScheduleLabel` are
+/// read too.
 const DATA: &[&str] = &["Component", "SceneComponent", "ReflectComponent", "Resource", "Message", "Event", "EntityEvent"];
 
 /// A class declaring a component, resource, message, event, state machine or system set.
@@ -353,7 +354,7 @@ fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
     let (base, states) = match &c.heritage.as_ref()?.expression {
         Expression::Identifier(b) => {
             let name = bevy_ts_name(f, b.name.as_str())?;
-            if !DATA.contains(&name) && name != "SystemSet" {
+            if !DATA.contains(&name) && name != "SystemSet" && name != "ScheduleLabel" {
                 return None;
             }
             (name.to_string(), Vec::new())
@@ -849,6 +850,7 @@ impl Reader<'_> {
             "Event" => "event",
             "EntityEvent" => "entityEvent",
             "States" => "state",
+            "ScheduleLabel" => "schedule",
             _ => "set",
         };
         let shown = export.as_deref().filter(|e| *e != "default").unwrap_or(&c.name);
@@ -863,7 +865,7 @@ impl Reader<'_> {
                 errors.push((c.span, "States(...) takes the values as string literals: States(\"Menu\", \"Playing\")".into()));
             }
             d["values"] = json!(c.states);
-        } else if kind != "set" {
+        } else if kind != "set" && kind != "schedule" {
             let mut fields = Vec::new();
             for f in &c.fields {
                 if kind == "entityEvent" && f.name == "entity" {
@@ -1096,8 +1098,16 @@ impl Reader<'_> {
 
     fn params(&mut self, ps: &[Param], scope: &Scope) -> Result<Vec<Value>, Fail> {
         ps.iter()
-            .map(|p| match &p.ty {
-                Some(t) => self.param(t, scope),
+            .enumerate()
+            .map(|(i, p)| match &p.ty {
+                Some(t) => {
+                    let v = self.param(t, scope)?;
+                    if i > 0 && v["kind"] == "in" {
+                        let text = &scope.file.source[span_of(t).start as usize..span_of(t).end as usize];
+                        return Err(self.fail(scope, span_of(t), format!("{text} must be the first param")));
+                    }
+                    Ok(v)
+                }
                 None => Err(self.fail(scope, p.span, format!("param {} has no type; annotate it with a param kind such as Query<[...]>", p.name))),
             })
             .collect()
@@ -1187,6 +1197,10 @@ impl Reader<'_> {
             "State" | "NextState" => {
                 let st = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a state")?;
                 Ok(json!({ "kind": if name == "State" { "state" } else { "nextState" }, "state": st }))
+            }
+            "In" => {
+                let e = self.reference(self.arg(&name, &args, 0, span, s)?, s, "an event")?;
+                Ok(json!({ "kind": "in", "event": e }))
             }
             "On" => match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
                 Head::Kind { name: l, args: largs, span: lspan, scope: ls } if matches!(l.as_str(), "Add" | "Insert" | "Remove") => {

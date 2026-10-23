@@ -382,6 +382,8 @@ export interface MessageWriter<M> {
   /** Allocation-free: a writable view on a fresh slot. */
   next(): M;
 }
+/** A one-shot system's input, first param only: an `Event` value `commands.runSystemWith` passed. */
+export type In<E> = ReadView<E>;
 export interface NextState<G> { set(v: StateValueOf<G>): void }
 export interface State<G> { readonly current: StateValueOf<G> }
 
@@ -403,6 +405,12 @@ export interface Commands {
   unmount(target: string | Entity): void;
   /** Appends an op of a Rust plugin's command kind. */
   custom(kind: string, payload: Uint8Array | string | object): void;
+  /** Runs a schedule once when these commands apply, as Bevy's `Commands::run_schedule`. */
+  runSchedule(label: ScheduleRef): void;
+  /** Runs a one-shot system (its id, or the registered function) when these commands apply. */
+  runSystem(target: SystemId | SystemFn): void;
+  /** As `runSystem`, with its `In<E>` input. */
+  runSystemWith<E extends Event>(target: SystemId | ((input: In<E>, ...params: never[]) => void), input: E): void;
 }
 export interface EntityCommands {
   insert(...parts: readonly (Component | ReflectComponent | ComponentClass | Element)[]): EntityCommands;
@@ -430,12 +438,61 @@ export type On<E> =
 
 /** A system: an exported function whose parameter types the compile step read. */
 export type SystemFn = (...params: never[]) => void;
-/** A condition evaluated in Rust where it can be (state, resource compare), so a skipped system costs no JS call. */
-export interface Condition { readonly condition: true }
+type ResourceClass = abstract new (...a: never) => Resource;
+type AnyComponentClass = abstract new (...a: never) => unknown;
+/**
+ * A run condition, Bevy's under its name, evaluated in Rust: a skipped system costs no JS call.
+ * The short-circuit combinators skip `b` when `a` decides; the eager ones and `xor`/`xnor`
+ * always evaluate both, so a stateful `b` advances.
+ */
+export interface Condition {
+  readonly condition: true;
+  andThen(b: Condition): Condition;
+  orElse(b: Condition): Condition;
+  nandThen(b: Condition): Condition;
+  norElse(b: Condition): Condition;
+  xor(b: Condition): Condition;
+  xnor(b: Condition): Condition;
+  andEager(b: Condition): Condition;
+  orEager(b: Condition): Condition;
+  nandEager(b: Condition): Condition;
+  norEager(b: Condition): Condition;
+}
 export declare function inState<N extends string, V extends string>(v: StateValue<N, V>): Condition;
-export declare function resourceExists(r: abstract new (...a: never) => unknown): Condition;
 export declare function onMessage(m: abstract new (...a: never) => unknown): Condition;
 export declare function not(c: Condition): Condition;
+/** True the first time it is evaluated. */
+export declare function runOnce(): Condition;
+export declare function resourceExists(r: abstract new (...a: never) => unknown): Condition;
+export declare function resourceAdded(r: ResourceClass): Condition;
+/** The resource changed since this condition last ran; false while it does not exist. */
+export declare function resourceChanged(r: ResourceClass): Condition;
+export declare function resourceExistsAndChanged(r: ResourceClass): Condition;
+/** True once, the first evaluation after the resource stopped existing. */
+export declare function resourceRemoved(r: ResourceClass): Condition;
+export declare function resourceChangedOrRemoved(r: ResourceClass): Condition;
+/** The resource's bytes equal the value's (`Score.of({ value: 10 })`), defaults filled in. */
+export declare function resourceEquals(value: Resource): Condition;
+export declare function resourceExistsAndEquals(value: Resource): Condition;
+/** Some entity has the component. */
+export declare function anyWithComponent(c: AnyComponentClass): Condition;
+/** The component was removed from some entity since this condition last ran. */
+export declare function anyComponentRemoved(c: AnyComponentClass): Condition;
+declare const filterValueBrand: unique symbol;
+/** A filter value for `anyMatchFilter`, named as the filter types. */
+export interface FilterValue { readonly [filterValueBrand]: true }
+export declare function With(c: AnyComponentClass): FilterValue;
+export declare function Without(c: AnyComponentClass): FilterValue;
+export declare function Added(c: AnyComponentClass): FilterValue;
+export declare function Changed(c: AnyComponentClass): FilterValue;
+/** Some entity matches every filter (`Changed`/`Added` against this condition's last run). */
+export declare function anyMatchFilter(...filters: readonly FilterValue[]): Condition;
+/** True when `c`'s value differs from its last evaluation (false before the first). */
+export declare function conditionChanged(c: Condition): Condition;
+/** True when `c`'s value changed to `to`. */
+export declare function conditionChangedTo(c: Condition, to: boolean): Condition;
+/** A condition a Rust crate exposed with `app.ts_condition(name, factory)`; ports export typed wrappers. */
+export declare function nativeCondition(name: string, args?: unknown): Condition;
 
 /** `class EnemySet extends SystemSet {}`, as Rust's `#[derive(SystemSet)] struct EnemySet;`. Named like a component. */
 export declare abstract class SystemSet { static readonly path?: string; protected readonly __set?: true }
@@ -448,7 +505,10 @@ type Systemish = SystemFn | System | SystemConfig;
 export interface SystemConfig {
   after(...x: readonly (Systemish | SetRef)[]): SystemConfig;
   before(...x: readonly (Systemish | SetRef)[]): SystemConfig;
+  /** Bevy's collective `run_if`: evaluated once per stage run, before the group's first member. */
   runIf(c: Condition): SystemConfig;
+  /** Bevy's `distributive_run_if`: each member gets its own instance. */
+  distributiveRunIf(c: Condition): SystemConfig;
   inSet(s: SetRef): SystemConfig;
 }
 export declare function systems(...s: readonly Systemish[]): SystemConfig;
@@ -456,13 +516,32 @@ export declare function systems(...s: readonly Systemish[]): SystemConfig;
 export declare function chain(...s: readonly Systemish[]): SystemConfig;
 
 export interface Schedule { readonly schedule: string }
+export declare const PreStartup: Schedule;
 export declare const Startup: Schedule;
+export declare const PostStartup: Schedule;
+export declare const First: Schedule;
 export declare const PreUpdate: Schedule;
+export declare const RunFixedMainLoop: Schedule;
 export declare const Update: Schedule;
-export declare const FixedUpdate: Schedule;
+export declare const SpawnScene: Schedule;
 export declare const PostUpdate: Schedule;
+export declare const Last: Schedule;
+export declare const FixedFirst: Schedule;
+export declare const FixedPreUpdate: Schedule;
+export declare const FixedUpdate: Schedule;
+export declare const FixedPostUpdate: Schedule;
+export declare const FixedLast: Schedule;
 export declare function OnEnter<N extends string, V extends string>(v: StateValue<N, V>): Schedule;
 export declare function OnExit<N extends string, V extends string>(v: StateValue<N, V>): Schedule;
+/** `class Waves extends ScheduleLabel {}`, as Rust's `#[derive(ScheduleLabel)] struct Waves;`. Named like a component; `bevy_ts::TsSchedule` in Rust. */
+export declare abstract class ScheduleLabel { static readonly path?: string; protected readonly __schedule?: true }
+/** A custom schedule: a `ScheduleLabel` class, or one a Rust crate exposed. */
+export type ScheduleRef = (abstract new () => ScheduleLabel) | Schedule;
+/** A schedule a Rust crate exposed by name (`schedule("net:tick")`). */
+export declare function schedule(name: string): Schedule;
+declare const systemIdBrand: unique symbol;
+/** A one-shot system's handle, from `app.registerSystem`, as Bevy's `SystemId`. */
+export interface SystemId { readonly [systemIdBrand]: true }
 
 // ---------- Fallback: the setup closure, for computed param types ----------
 // `system(() => { const q = query(Enemy, Mut(Transform)).with(Alive); return () => { ... } })`.
@@ -536,7 +615,20 @@ export declare const Time: (abstract new () => Time) & { readonly path: "bevy_ti
 // ---------- App and plugins ----------
 
 export interface App {
-  addSystems(schedule: Schedule, ...systems: readonly Systemish[]): App;
+  addSystems(schedule: Schedule | ScheduleRef, ...systems: readonly Systemish[]): App;
+  /** Registers a one-shot system, run with `commands.runSystem`, as Bevy's `register_system`. */
+  registerSystem(fn: SystemFn): SystemId;
+  /** Creates a custom schedule if absent. */
+  initSchedule(label: ScheduleRef): App;
+  /** Inserts a custom schedule into `MainScheduleOrder` after (or before) another. */
+  insertScheduleAfter(after: Schedule | ScheduleRef, label: ScheduleRef): App;
+  insertScheduleBefore(before: Schedule | ScheduleRef, label: ScheduleRef): App;
+  /** As above, into `FixedMainScheduleOrder`. */
+  insertFixedScheduleAfter(after: Schedule | ScheduleRef, label: ScheduleRef): App;
+  insertFixedScheduleBefore(before: Schedule | ScheduleRef, label: ScheduleRef): App;
+  /** As above, into the startup schedules. */
+  insertStartupScheduleAfter(after: Schedule | ScheduleRef, label: ScheduleRef): App;
+  insertStartupScheduleBefore(before: Schedule | ScheduleRef, label: ScheduleRef): App;
   addObserver(o: (on: never, ...params: never[]) => void): App;
   addPlugins(...p: readonly Plugin[]): App;
   initState(initial: StateValue): App;

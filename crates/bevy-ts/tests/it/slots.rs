@@ -41,6 +41,7 @@ fn sys(name: &str, stage: Stage, after: &[&str]) -> SystemDecl {
         before: vec![],
         sets: vec![],
         condition: None,
+        groups: vec![],
         location: None,
     }
 }

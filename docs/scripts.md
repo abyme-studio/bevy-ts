@@ -72,3 +72,83 @@ path it looked for and did not find, inside the project or a package. Running `p
 
 `bevy-ts build` ships each package module at
 `game/scripts/node_modules/<name>@<version>/<path in its package>` ([build.md](build.md)).
+
+## Schedules, conditions and states
+
+### Schedules
+
+`app.addSystems(schedule, ...systems)` takes Bevy's schedules under their names: `PreStartup`,
+`Startup`, `PostStartup`, `First`, `PreUpdate`, `RunFixedMainLoop`, `Update`, `SpawnScene`,
+`PostUpdate`, `Last`, `FixedFirst`, `FixedPreUpdate`, `FixedUpdate`, `FixedPostUpdate` and
+`FixedLast`, plus `OnEnter(...)` and `OnExit(...)`. Each schedule's TS systems run in one
+exclusive bevy-ts stage, in set `BevyTsSet::<Stage>`. `PreUpdate`, `Update`, `PostUpdate` and
+`FixedUpdate` have theirs from startup; any other schedule gets its stage the first time a
+generation puts a system in it, so a schedule you never use costs nothing. A stage made by the
+generation applied in `First` itself starts in the next frame. A system in a fixed schedule runs
+once per fixed step and reads the fixed step as `Res<Time>`.
+
+The three startup lists run when TS startup runs, at the generation apply, once per system per
+world: every due `PreStartup` system, then `Startup`, then `PostStartup`. A reload runs only
+systems it has not run before.
+
+### Custom schedules
+
+```ts
+export class Waves extends ScheduleLabel {}
+app.insertScheduleAfter(Update, Waves).addSystems(Waves, spawnWave);
+```
+
+A label is named like a component (`game::Waves`, or `static path`). In Rust it is
+`bevy_ts::TsSchedule::new("game::Waves")`. `insertScheduleAfter/Before` place it in
+`MainScheduleOrder`, `insertFixedScheduleAfter/Before` in `FixedMainScheduleOrder`,
+`insertStartupScheduleAfter/Before` among the startup schedules. A reload that moves the call moves
+the schedule; one that drops it takes it out of the order. `app.initSchedule(Waves)` only creates
+it. A crate's own schedule is `schedule("net:tick")`.
+
+`commands.runSchedule(Waves)` runs a schedule once when the caller's commands apply, before the
+next system of the stage. Running a schedule from inside itself logs an error and is skipped.
+
+### One-shot systems
+
+```ts
+export function spawnAt(at: In<SpawnAt>, commands: Commands) { ... }
+const id = app.registerSystem(spawnAt);
+// in a system:
+commands.runSystem(id);
+commands.runSystemWith(spawnAt, SpawnAt.of({ x: 3 }));
+```
+
+A one-shot system runs when the caller's commands apply, before the next system. `In<E>`, its
+input, is an `Event` class and the first param. It keeps its `Local`s and cursors as any system.
+Rust runs one with `commands.queue(RunTsSystem::new("src/waves.ts#spawnAt"))`.
+
+### Run conditions
+
+Conditions are Bevy's, under their names, and are evaluated in Rust: a skipped system costs no JS
+call.
+
+| Condition | True when |
+|---|---|
+| `inState(Game.Playing)` | the state is that value |
+| `onMessage(Damage)` | the system has unread messages |
+| `runOnce()` | the first evaluation |
+| `resourceExists(R)` | `R` exists |
+| `resourceAdded(R)`, `resourceChanged(R)`, `resourceExistsAndChanged(R)` | `R` was added or changed since this condition last ran |
+| `resourceRemoved(R)`, `resourceChangedOrRemoved(R)` | `R` stopped existing (or changed) since the last evaluation |
+| `resourceEquals(R.of({...}))`, `resourceExistsAndEquals(...)` | `R`'s fields equal the value's |
+| `anyWithComponent(C)` | some entity has `C` |
+| `anyComponentRemoved(C)` | `C` was removed from some entity since the last evaluation |
+| `anyMatchFilter(With(C), Without(D), Added(E), Changed(F))` | some entity matches every filter |
+| `conditionChanged(c)`, `conditionChangedTo(c, true)` | `c`'s value changed (to `true`) |
+| `not(c)` | `c` is false |
+| `nativeCondition("crate:name", args)` | a condition a crate exposed (`docs/native.md`) |
+
+Combine them with `a.andThen(b)`, `a.orElse(b)`, `a.nandThen(b)`, `a.norElse(b)`, `a.xor(b)`,
+`a.xnor(b)`. Those that short-circuit skip `b` when `a` decides; `andEager`, `orEager`,
+`nandEager`, `norEager`, `xor` and `xnor` always evaluate both, so a stateful `b` advances.
+Each use of a stateful condition keeps its own tick or cursor. It survives a reload and a Stop
+resets it.
+
+`systems(a, b).runIf(c)` is Bevy's collective `run_if`: `c` is evaluated once per run of the
+stage, before the group's first member, and holds for every member in that run.
+`distributiveRunIf(c)` gives each member its own `c`.

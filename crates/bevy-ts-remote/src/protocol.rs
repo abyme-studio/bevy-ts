@@ -4093,7 +4093,7 @@ pub struct SourceLocation {
     pub file: ::std::string::String,
     pub line: u32,
 }
-///The bevy-ts stage a system runs in, or startup, onEnter, onExit or observer for systems outside the four stages.
+///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.25) every main and fixed schedule, the startup lists, oneShot and schedule.
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
@@ -4107,34 +4107,70 @@ pub struct SourceLocation {
     PartialOrd
 )]
 pub enum Stage {
-    #[serde(rename = "preUpdate")]
-    PreUpdate,
-    #[serde(rename = "update")]
-    Update,
-    #[serde(rename = "postUpdate")]
-    PostUpdate,
-    #[serde(rename = "fixedUpdate")]
-    FixedUpdate,
+    #[serde(rename = "preStartup")]
+    PreStartup,
     #[serde(rename = "startup")]
     Startup,
+    #[serde(rename = "postStartup")]
+    PostStartup,
+    #[serde(rename = "first")]
+    First,
+    #[serde(rename = "preUpdate")]
+    PreUpdate,
+    #[serde(rename = "runFixedMainLoop")]
+    RunFixedMainLoop,
+    #[serde(rename = "update")]
+    Update,
+    #[serde(rename = "spawnScene")]
+    SpawnScene,
+    #[serde(rename = "postUpdate")]
+    PostUpdate,
+    #[serde(rename = "last")]
+    Last,
+    #[serde(rename = "fixedFirst")]
+    FixedFirst,
+    #[serde(rename = "fixedPreUpdate")]
+    FixedPreUpdate,
+    #[serde(rename = "fixedUpdate")]
+    FixedUpdate,
+    #[serde(rename = "fixedPostUpdate")]
+    FixedPostUpdate,
+    #[serde(rename = "fixedLast")]
+    FixedLast,
     #[serde(rename = "onEnter")]
     OnEnter,
     #[serde(rename = "onExit")]
     OnExit,
     #[serde(rename = "observer")]
     Observer,
+    #[serde(rename = "oneShot")]
+    OneShot,
+    #[serde(rename = "schedule")]
+    Schedule,
 }
 impl ::std::fmt::Display for Stage {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
-            Self::PreUpdate => f.write_str("preUpdate"),
-            Self::Update => f.write_str("update"),
-            Self::PostUpdate => f.write_str("postUpdate"),
-            Self::FixedUpdate => f.write_str("fixedUpdate"),
+            Self::PreStartup => f.write_str("preStartup"),
             Self::Startup => f.write_str("startup"),
+            Self::PostStartup => f.write_str("postStartup"),
+            Self::First => f.write_str("first"),
+            Self::PreUpdate => f.write_str("preUpdate"),
+            Self::RunFixedMainLoop => f.write_str("runFixedMainLoop"),
+            Self::Update => f.write_str("update"),
+            Self::SpawnScene => f.write_str("spawnScene"),
+            Self::PostUpdate => f.write_str("postUpdate"),
+            Self::Last => f.write_str("last"),
+            Self::FixedFirst => f.write_str("fixedFirst"),
+            Self::FixedPreUpdate => f.write_str("fixedPreUpdate"),
+            Self::FixedUpdate => f.write_str("fixedUpdate"),
+            Self::FixedPostUpdate => f.write_str("fixedPostUpdate"),
+            Self::FixedLast => f.write_str("fixedLast"),
             Self::OnEnter => f.write_str("onEnter"),
             Self::OnExit => f.write_str("onExit"),
             Self::Observer => f.write_str("observer"),
+            Self::OneShot => f.write_str("oneShot"),
+            Self::Schedule => f.write_str("schedule"),
         }
     }
 }
@@ -4144,14 +4180,26 @@ impl ::std::str::FromStr for Stage {
         value: &str,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         match value {
-            "preUpdate" => Ok(Self::PreUpdate),
-            "update" => Ok(Self::Update),
-            "postUpdate" => Ok(Self::PostUpdate),
-            "fixedUpdate" => Ok(Self::FixedUpdate),
+            "preStartup" => Ok(Self::PreStartup),
             "startup" => Ok(Self::Startup),
+            "postStartup" => Ok(Self::PostStartup),
+            "first" => Ok(Self::First),
+            "preUpdate" => Ok(Self::PreUpdate),
+            "runFixedMainLoop" => Ok(Self::RunFixedMainLoop),
+            "update" => Ok(Self::Update),
+            "spawnScene" => Ok(Self::SpawnScene),
+            "postUpdate" => Ok(Self::PostUpdate),
+            "last" => Ok(Self::Last),
+            "fixedFirst" => Ok(Self::FixedFirst),
+            "fixedPreUpdate" => Ok(Self::FixedPreUpdate),
+            "fixedUpdate" => Ok(Self::FixedUpdate),
+            "fixedPostUpdate" => Ok(Self::FixedPostUpdate),
+            "fixedLast" => Ok(Self::FixedLast),
             "onEnter" => Ok(Self::OnEnter),
             "onExit" => Ok(Self::OnExit),
             "observer" => Ok(Self::Observer),
+            "oneShot" => Ok(Self::OneShot),
+            "schedule" => Ok(Self::Schedule),
             _ => Err("invalid value".into()),
         }
     }
@@ -4226,7 +4274,7 @@ pub struct SystemInfo {
 pub struct SystemInfoParamsItem {
     pub kind: ::std::string::String,
 }
-///Where it runs: {kind: startup|stage|onEnter|onExit|observer, ...}.
+///Where it runs: {kind: preStartup|startup|postStartup|stage|schedule|onEnter|onExit|observer|oneShot, ...}; a custom schedule's is {kind: schedule, label} with its label (game::Waves, net:tick).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct SystemInfoSchedule {
     pub kind: ::std::string::String,

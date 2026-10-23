@@ -40,8 +40,8 @@ A param type that is none of these, an alias of one, or an object type whose pro
 - **THEN** on the first frame `a`, `b`, `c` and `d` all run; on later frames none of them runs
 
 #### Scenario: A group's condition is evaluated once
-- **WHEN** `systems(a, b).runIf(resourceExists(Boss))` is registered and `a` removes `Boss` with commands
-- **THEN** `b` still runs in that stage run, as in Bevy, and neither runs on the next frame
+- **WHEN** `systems(a, b).runIf(resourceEquals(Score.of({ value: 0 })))` is registered and `a` sets `Score.value` to 1
+- **THEN** `b` still runs in that stage run, as in Bevy, and neither runs on the next frame; with `distributiveRunIf` instead, `b` would not run
 
 ## REMOVED Requirements
 

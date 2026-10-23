@@ -137,15 +137,17 @@ a?)`, `hsl(h, s, l, a?)`, `hex(s)` and the type `ColorValue`.
 `bevy-ts types` builds the engine with no window and no GPU device, walks the type registry and
 writes `.bevy-ts/types/native.d.ts`: layout-tier classes with their fields (and their writable
 holes as TSX-only props), reflect-tier classes with their JSON shapes (`Color` as `ColorValue`,
-nested struct fields optional, an enum component's `value`), and `NativeSet`, the union of exposed
-set names. Output is deterministic;
+nested struct fields optional, an enum component's `value`), and `NativeSet`, `NativeSchedule` and
+`NativeCondition`, the unions of exposed set, schedule and condition names. Output is deterministic;
 `bevy-ts dev` regenerates it after each project-engine build.
 
 ## Ordering against Rust
 
 A crate exposes a Bevy set under a stable name, `app.ts_set("rapier:step", FixedUpdate,
 PhysicsSet::StepSimulation)`; names are `<crate>:<name>` and unique. bevy-ts exposes its own
-anchors: `bevy:transform-propagate` and `bevy-ts:<stage>`. A TS system orders against one with
+anchors: `bevy:transform-propagate` in `PostUpdate`, `bevy:fixed-main-loop` in
+`RunFixedMainLoop` (the fixed steps), and one per stage, `bevy-ts:<stage>` in kebab case
+(`bevy-ts:update`, `bevy-ts:fixed-last`), which names its set even before the stage exists. A TS system orders against one with
 `systems(s).after(systemSet("rapier:step"))` (or `.before`) and runs in a slot around the set, in
 the set's schedule. The first generation that names a set makes its slot: one exclusive system,
 one schedule edit at that reload. Later reloads move systems between existing slots without
@@ -153,6 +155,29 @@ touching a schedule; an emptied slot stays and is skipped. An unused set has no 
 the parallel executor nothing. A system names at most one exposed set, in that set's schedule,
 and orders against other TS systems only within its slot. Rust orders against a slot with
 `BevyTsSlot::before(name)` / `BevyTsSlot::after(name)`.
+
+## Schedules, conditions and one-shot systems from Rust
+
+A crate exposes a schedule label with `app.ts_schedule("net:tick", NetTick)`: TS adds systems
+to it with `addSystems(schedule("net:tick"), sync)` and runs it with
+`commands.runSchedule(schedule("net:tick"))`. A TS label is `bevy_ts::TsSchedule::new(path)` in
+Rust, so a plugin can add systems to it or run it.
+
+A crate exposes a run condition with `app.ts_condition("time:on-timer", factory)`. The factory
+takes the JSON arguments of `nativeCondition("time:on-timer", { secs: 2 })` and returns a Bevy
+`BoxedCondition`, or an error that fails the load with the call's location. It runs once per use
+per generation; the instance is kept across reloads while the arguments stay the same, so its own
+`Local`s and last-run tick survive. A port wraps it in a typed function (`onTimer(2)`).
+
+```rust
+app.ts_condition("time:on-timer", |args| {
+    let secs = args["secs"].as_f64().ok_or_else(|| "on-timer takes { secs: number }".to_string())?;
+    Ok(Box::new(IntoSystem::into_system(on_timer(Duration::from_secs_f64(secs)))))
+});
+```
+
+Rust runs a TS one-shot system with `commands.queue(RunTsSystem::new("src/waves.ts#spawnWave"))`,
+or with an `In<E>` input as `RunTsSystem::with(identity, bytes)`, the event's bytes in its layout.
 
 ## Edit mode and native systems
 
