@@ -103,7 +103,7 @@ if has deno; then
 fi
 if has npm; then
   cargo build -q -p bevy-ts-cli \
-    && (cd packages/bevy-ts && pnpm -s check && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm -s test 2>&1 | tail -6)
+    && (cd packages/bevy-ts && pnpm install --frozen-lockfile --silent && pnpm -s check && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm -s test 2>&1 | tail -6)
   record npm $?
 fi
 if has protocol; then scripts/gen-protocol.sh --check; record protocol $?; fi
