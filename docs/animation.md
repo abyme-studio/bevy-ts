@@ -26,15 +26,20 @@ descendants, insert an `AnimationGraphHandle` and `AnimationTransitions`, then
 | `PlayAnimation` | Default | What Rust does |
 | --- | --- | --- |
 | `clip: Handle<AnimationClip>` | none | an asset path with a label, `"models/Fox.glb#Animation2"`; a node in the shared graph |
-| `repeat: bool` | `true` | `.repeat()`, or `RepeatAnimation::Never` to play once |
-| `speed: f32` | `1.0` | `ActiveAnimation::set_speed` |
+| `repeat: RepeatAnimation` | `Forever` | `ActiveAnimation::set_repeat`: `Never`, `Count(n)` or `Forever` |
+| `speed: f32` | `1.0` | `ActiveAnimation::set_speed`; negative plays backwards |
 | `transition_secs: f32` | `0.25` | the cross-fade when `clip` changes, through `AnimationTransitions::play` |
+| `paused: bool` | `false` | `pause_all`, and parks the root (below) |
+| `cull: bool` | `false` | parks the root while none of its meshes is in any view |
 
 - When the scene is ready (`WorldInstanceReady`), every `AnimationPlayer` under the root gets the
   shared graph and fresh transitions, and plays the clip. A root that gets `PlayAnimation` after
   its scene is ready plays in that frame. A reloaded scene plays again on its new players.
 - A changed `clip` cross-fades over `transition_secs`. A changed `speed` or `repeat` applies to the
   playing clip without restarting it. Removing `PlayAnimation` stops the players.
+- `repeat` is Bevy's enum. TSX writes `repeat="Never"`, `"Forever"` or `{ Count: 3 }`; a level
+  writes `repeat: Count(3)`. The old `repeat={true}` is refused: drop it (`Forever` is the
+  default), and write `repeat={false}` as `repeat="Never"`.
 - Every player shares one `AnimationGraph`, with one node per distinct clip, added the first time
   a root names it, as `many_foxes` does. A hundred foxes cost one graph.
 - The glTF file a clip comes from stays loaded from the first time a root names it. Bevy 0.20
@@ -43,6 +48,55 @@ descendants, insert an `AnimationGraphHandle` and `AnimationTransitions`, then
   spawns every scene from that file again; with the file held, a clip named later (the button
   in `examples/foxes`) is already there. The file is never freed: memory is the whole file per
   distinct file a clip came from.
+
+## Pausing and culling: parking
+
+Bevy's own pause (`pause_all`) and `speed` 0 still sample every curve and write every bone each
+frame, so a paused or held fox costs what a playing one does. A **parked** root costs nothing:
+Rust removes `AnimationGraphHandle` from each of its players and keeps the `AnimationPlayer`, so
+Bevy's `animate_targets` writes no bone and transform propagation skips the skeleton. Waking puts
+the handle back, and the clip goes on from the seek time, weights and transitions it had.
+
+- `paused: true` parks the root and calls `pause_all`, so Bevy's own state says paused too;
+  `paused: false` resumes where it stood. A root spawned paused holds the clip at 0.
+- `cull: true` parks the root while none of its meshes (every `Mesh3d` under it, recorded when
+  its players are found; a TSX child mesh counts) is in any camera's view, and wakes it once one
+  is. A root with no mesh is never culled. Off by default.
+- A parked clip's time stands still: a culled villager that walks back into view goes on from
+  where it left, not where it would be. A game that cares seeks on wake.
+- The decision runs in `PostUpdate` before Bevy's animation, and reads the visibility Bevy
+  computed the frame before, so a root coming into view shows one frame of its parked pose
+  (Unity's `CullUpdateTransforms` does the same).
+- A cross-fade under way when a root parks still finishes, since Bevy advances transitions
+  without the graph; the root wakes on the new clip.
+- `speed` 0 stays Bevy's: it holds the pose and still costs a playing clip. Use `paused`.
+- Parking adds nothing for a root with `paused` and `cull` both false. Parking and waking each
+  move every player once between archetypes, so a root flickering at a screen edge pays that on
+  each change.
+
+## Reading a clip from TS: `Animations`
+
+Every engine exports `Animations` from `bevy-ts/animation`, keyed by the root that carries
+`PlayAnimation`:
+
+```ts
+import type { Animations } from "bevy-ts/animation";
+
+export function progress(anims: Animations, foxes: Query<[Entity, PlayAnimation]>) {
+  foxes.each((fox) => {
+    const s = anims.status(fox);
+    if (s?.finished) console.log(`${fox} is done after ${s.completions} plays`);
+  });
+}
+```
+
+`status(root)` reads the root's clip as its first player has it: `loaded`, `duration` (0 until
+loaded), `seekTime`, `elapsed`, `completions`, `justCompleted`, `finished`, `paused`, `parked`
+and `weight`. It returns `undefined` for an entity that is not a `PlayAnimation` root, or whose
+scene has no player yet. The root names its clip by path; no node index reaches TS.
+
+`seek`, `rewind` and `replay` come with writable exported params (change
+writable-native-params).
 
 ## Placing it
 
@@ -59,9 +113,9 @@ descendants, insert an `AnimationGraphHandle` and `AnimationTransitions`, then
   ```
 
 - **The editor** lists it among the components it can add, and edits its fields in the inspector.
-- **A TS system** reads and writes `repeat`, `speed` and `transition_secs` as columns
-  (`Query<[Mut<PlayAnimation>]>`); `clip` holds a handle, so only TSX, a level or the editor
-  set it.
+- **A TS system** reads and writes `speed`, `transition_secs`, `paused` and `cull` as columns
+  (`Query<[Mut<PlayAnimation>]>`); `clip` holds a handle and `repeat` an enum with data, so only
+  TSX, a level or the editor set them.
 
 A click on an animated model reaches a handler on its root: `onPointerClick` on the entity with
 `WorldAssetRoot` fires for any of the scene's meshes ([docs/picking.md](picking.md), "Bubbling").
@@ -75,6 +129,31 @@ nothing.
 Bevy's glTF loader adds an `AnimationPlayer` only where the file's own clips reach. A mesh-only
 file has none, so `PlayAnimation` on it plays nothing; Rust warns once per root, naming the
 entity, the scene and the clip. A clip path that fails to load (a wrong label) is logged once.
+
+## Every control, and its TS path
+
+Every public item of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation` and `AnimationTransitions`.
+No TS name takes a node index.
+
+| Bevy item | TS name | Test |
+| --- | --- | --- |
+| `AnimationPlayer::play`, `AnimationTransitions::play` | `PlayAnimation.clip`, `transition_secs` | `play.rs::a_new_clip_cross_fades`, `animation.rs::a_tsx_fox_plays_and_its_bound_clip_cross_fades` |
+| `AnimationPlayer::stop`, `stop_all` | removing `PlayAnimation` | `play.rs::removing_it_stops_the_players` |
+| `AnimationPlayer::start`, `ActiveAnimation::replay` | `Animations.replay` (with writable-native-params) | `animation.rs::animations_seek_rewind_replay` |
+| `ActiveAnimation::pause`, `resume`, `is_paused`, `AnimationPlayer::pause_all`, `resume_all`, `all_paused` | `PlayAnimation.paused`; `status().paused` | `park.rs::paused_parks_and_resumes_where_it_stood`, `animation.rs::animations_status` |
+| `ActiveAnimation::speed`, `set_speed`, `is_playback_reversed` | `PlayAnimation.speed` (negative reverses) | `play.rs::speed_applies_in_place`, `park.rs::speed_zero_does_not_park` |
+| `AnimationPlayer::adjust_speeds` | Rust only: `speed` sets the one clip a root plays | – |
+| `ActiveAnimation::repeat`, `set_repeat`, `repeat_mode` | `PlayAnimation.repeat` | `play.rs::repeat_count_finishes`, `animation.rs::a_level_fox_plays_with_no_ts` |
+| `ActiveAnimation::seek_to`, `rewind`, `AnimationPlayer::rewind_all` | `Animations.seek`, `rewind` (with writable-native-params) | `animation.rs::animations_seek_rewind_replay` |
+| `ActiveAnimation::set_seek_time`, `AnimationPlayer::seek_all_by` | Rust only: `seek` is the one seek, Bevy's event-firing `seek_to` | – |
+| `ActiveAnimation::seek_time`, `elapsed`, `completions`, `just_completed`, `is_finished`, `AnimationPlayer::all_finished` | `status()` fields | `animation.rs::animations_status` |
+| `ActiveAnimation::last_seek_time` | Rust only: an internal of event firing | – |
+| `ActiveAnimation::weight` | `status().weight` | `animation.rs::animations_status` |
+| `ActiveAnimation::set_weight` | Rust only: `AnimationTransitions` owns weights during a fade | – |
+| `AnimationPlayer::is_playing_animation`, `animation`, `animation_mut`, `playing_animations`, `playing_animations_mut` | Rust only: node-keyed; `status()` reads the root's clip | – |
+| `AnimationTransitions::new`, `get_main_animation`, its `transitions` | Rust only: node-keyed; `status().weight` shows a fade | – |
+| `AnimationGraphHandle` on a player | Rust only: parking | `park.rs::culled_roots_park_off_screen` |
+| `AnimationClip::duration` | `status().duration`, `loaded` | `animation.rs::animations_status` |
 
 ## When to write Rust instead
 

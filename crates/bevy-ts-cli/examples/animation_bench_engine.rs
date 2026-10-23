@@ -5,7 +5,10 @@
 //! - Arm `A` also spawns N foxes the way Bevy's `many_foxes` does: its own observer, graph and
 //!   transitions, no TS and no `PlayAnimation`.
 //! - Arm `D` (a diagnostic) spawns them as A does and plays them with `PlayAnimation`.
-//! - Arms `B` and `C` spawn their foxes from TSX; this engine only measures.
+//! - Arms `B` and `C` (and change `animation-control`'s `P`, `H`, `K`) spawn their foxes from
+//!   TSX; this engine only measures.
+//! - Arm `G`, the floor: B's foxes, and once all play this engine removes every player's
+//!   `AnimationGraphHandle`, so Bevy samples and writes nothing.
 //!
 //! The probe: each update's main-world time (`First` to `Last`), and the frames and time from the
 //! frame N foxes exist to the frame all N players have an active animation.
@@ -127,8 +130,11 @@ fn start_update(mut bench: ResMut<Bench>) {
     bench.started = Some(Instant::now());
 }
 
+#[allow(clippy::too_many_arguments)]
 fn end_update(
     mut bench: ResMut<Bench>,
+    graphs: Query<Entity, (With<AnimationPlayer>, With<AnimationGraphHandle>)>,
+    mut commands: Commands,
     roots: Query<(), With<WorldAssetRoot>>,
     players: Query<&AnimationPlayer>,
     changed: Query<(), Changed<bevy_ts_animation::PlayAnimation>>,
@@ -146,6 +152,11 @@ fn end_update(
         let ready = if bench.arm == "C" { players.iter().count() >= bench.n } else { playing >= bench.n };
         if ready {
             bench.ready = Some((frame, now));
+            if bench.arm == "G" {
+                for p in &graphs {
+                    commands.entity(p).remove::<AnimationGraphHandle>();
+                }
+            }
         }
     }
     let Some((ready, _)) = bench.ready else { return };

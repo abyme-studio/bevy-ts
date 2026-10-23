@@ -2,7 +2,7 @@
 //! of a level-placed entity goes to, and the write that sends it there. Viewport calls these and
 //! drains [`crate::edit::WriteResults`].
 
-use crate::compose::{Schema, ValueType};
+use crate::compose::{Schema, ValueType, VariantFields};
 use crate::edit::{WriteRequest, write_level};
 use crate::engine::{BsnLevel, LevelInstance, Levels, WorldSchema};
 use crate::writer::{Op, WValue};
@@ -78,6 +78,30 @@ fn wvalue(ty: &ValueType, v: &Value) -> Result<WValue, String> {
     Ok(match ty {
         ValueType::String | ValueType::Handle => WValue::Str(v.as_str().ok_or_else(|| format!("expected a string, got {v}"))?.to_string()),
         ValueType::Unsupported(t) => return Err(format!("{t} fields cannot be written to a level")),
+        ValueType::Variants(variants) => {
+            let (name, inner) = match v {
+                Value::String(s) => (s.as_str(), None),
+                Value::Object(o) if o.len() == 1 => o.iter().next().map(|(k, x)| (k.as_str(), Some(x))).expect("one entry"),
+                _ => return Err(format!("expected a variant, got {v}")),
+            };
+            let schema = variants.iter().find(|x| x.name == name).ok_or_else(|| format!("unknown variant {name}"))?;
+            match (&schema.fields, inner) {
+                (VariantFields::Unit, None) => WValue::Path(name.to_string()),
+                (VariantFields::Tuple(tys), Some(x)) => {
+                    let values: Vec<&Value> = if tys.len() == 1 { vec![x] } else { x.as_array().ok_or_else(|| format!("{name}: expected {} values", tys.len()))?.iter().collect() };
+                    if values.len() != tys.len() {
+                        return Err(format!("{name}: expected {} values", tys.len()));
+                    }
+                    let fields = tys.iter().zip(values).map(|(t, x)| Ok((String::new(), wvalue(t, x)?))).collect::<Result<_, String>>()?;
+                    WValue::Variant { name: name.to_string(), fields, named: false }
+                }
+                (VariantFields::Named(tys), Some(Value::Object(o))) => {
+                    let fields = tys.iter().map(|(n, t)| Ok((n.clone(), wvalue(t, o.get(n).ok_or_else(|| format!("{name}: no field {n}"))?)?))).collect::<Result<_, String>>()?;
+                    WValue::Variant { name: name.to_string(), fields, named: true }
+                }
+                _ => return Err(format!("{name}: expected {v} to match its fields")),
+            }
+        }
         ValueType::Field(FieldType::F32) => WValue::Float { v: v.as_f64().ok_or("expected a number")?, f32: true },
         ValueType::Field(FieldType::F64) => WValue::Float { v: v.as_f64().ok_or("expected a number")?, f32: false },
         ValueType::Field(FieldType::Bool) => WValue::Bool(v.as_bool().ok_or("expected a bool")?),
@@ -224,4 +248,25 @@ pub fn write_sidecar(world: &mut World, edit_id: u64, entity: Entity, component:
     };
     write_level(world, WriteRequest { id: edit_id, file, base, ops });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compose::VariantSchema;
+
+    #[test]
+    fn variants_with_data_print_as_a_level_writes_them() {
+        let unit = |n: &str| VariantSchema { name: n.into(), fields: VariantFields::Unit };
+        let ty = ValueType::Variants(vec![
+            unit("Never"),
+            VariantSchema { name: "Count".into(), fields: VariantFields::Tuple(vec![ValueType::Field(FieldType::U32)]) },
+            VariantSchema { name: "At".into(), fields: VariantFields::Named(vec![("x".into(), ValueType::Field(FieldType::F32))]) },
+        ]);
+        let print = |v: Value| wvalue(&ty, &v).map(|w| w.print());
+        assert_eq!(print(json!({ "Count": 3 })).unwrap(), "Count(3)");
+        assert_eq!(print(json!("Never")).unwrap(), "Never");
+        assert_eq!(print(json!({ "At": { "x": 1.5 } })).unwrap(), "At { x: 1.5 }");
+        assert!(print(json!({ "Twice": 2 })).unwrap_err().contains("unknown variant Twice"));
+    }
 }

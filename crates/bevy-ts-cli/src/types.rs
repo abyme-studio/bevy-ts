@@ -762,6 +762,17 @@ mod tests {
     }
 
     #[test]
+    fn the_engine_declares_animations() {
+        use bevy_ts_native::BevyTsNativeExt;
+        let mut app = App::new();
+        app.ts_param::<bevy_ts_animation::Animations<'static, 'static>>();
+        let out = emit_modules(app.world());
+        assert!(out.contains("declare module \"bevy-ts/animation\" {"), "{out}");
+        assert!(out.contains("status(root: Entity)"), "{out}");
+        assert!(out.contains("seekTime: number"), "{out}");
+    }
+
+    #[test]
     fn idents_from_short_paths() {
         assert_eq!(ident("Time<()>"), "Time");
         assert_eq!(ident("Time<Virtual>"), "TimeVirtual");

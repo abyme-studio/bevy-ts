@@ -8,6 +8,13 @@
 //! - `C`: the same TSX foxes with no `PlayAnimation` (static);
 //! - `D`, a diagnostic: the foxes spawned by Rust as in A, played by `PlayAnimation`.
 //!
+//! Change `animation-control`'s arms, all B's TSX foxes:
+//!
+//! - `P`: `paused`, so parked;
+//! - `H`: the camera turned away, so none in view, still playing;
+//! - `K`: the camera turned away with `cull`, so parked;
+//! - `G`: the floor, B with every player's `AnimationGraphHandle` removed by the engine once all play.
+//!
 //! `scripts/animation-bench.sh` builds the engine and runs the arms; one run is
 //! `ANIMATION_BENCH_ENGINE=target/release/examples/animation_bench_engine ARM=B N=100 cargo static test --release -p bevy-ts-cli --test it animation_bench:: -- --ignored --nocapture`.
 //! Each run appends a row to `target/animation-bench.md`: the probe's main-world update time
@@ -95,8 +102,15 @@ fn ps(pid: u32) -> (u64, f64) {
 
 /// The TSX scene: the camera, a light, a ground, and for arms B and C the foxes.
 fn game(arm: &str, n: usize) -> String {
-    let play = if arm == "B" { "\n    <PlayAnimation clip=\"models/Fox.glb#Animation2\" />" } else { "" };
+    let play = match arm {
+        "B" | "H" | "G" => "\n    <PlayAnimation clip=\"models/Fox.glb#Animation2\" />",
+        "P" => "\n    <PlayAnimation clip=\"models/Fox.glb#Animation2\" paused />",
+        "K" => "\n    <PlayAnimation clip=\"models/Fox.glb#Animation2\" cull />",
+        _ => "",
+    };
     let foxes = if arm == "A" || arm == "D" { "0" } else { "N" };
+    // H and K look away from the grid, so no fox is in view.
+    let look = if arm == "H" || arm == "K" { "[0, side * 2, side * 6]" } else { "[0, 0, 0]" };
     format!(
         r##"import {{ app, type Commands, Startup, Transform }} from "bevy-ts";
 import {{ DirectionalLight, PlayAnimation, WorldAssetRoot }} from "bevy-ts/bevy";
@@ -105,7 +119,7 @@ const side = Math.ceil(Math.sqrt(N));
 const offset = ((side - 1) * 2.5) / 2;
 const at = (i: number): [number, number, number] => [(i % side) * 2.5 - offset, 0, Math.floor(i / side) * 2.5 - offset];
 export function stage(commands: Commands) {{
-  commands.spawnNative("camera3d", {{ position: [0, side * 2, side * 3], lookAt: [0, 0, 0] }});
+  commands.spawnNative("camera3d", {{ position: [0, side * 2, side * 3], lookAt: {look} }});
 }}
 const Fox = ({{ i }}: {{ i: number }}) => (
   <entity name="fox">

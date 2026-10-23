@@ -17,8 +17,9 @@ without recompiling Rust.
 - **Game UI is bevy_ui in TSX**: `<node>`, `<text>`, `<image>`, `<button>` with Bevy's layout,
   grid, gradients and shadows, each prop writing one component ([docs/ui.md](docs/ui.md)).
 - **Animated glTF models without Rust**: `<PlayAnimation clip="models/Fox.glb#Animation2" />`
-  beside a `WorldAssetRoot` plays a clip, cross-fading when it changes
-  ([docs/animation.md](docs/animation.md)).
+  beside a `WorldAssetRoot` plays a clip, cross-fading when it changes; `paused` and `cull`
+  park it at no cost per frame, `repeat="Never"` or `{ Count: 3 }` bounds it, and `Animations`
+  reads its progress from a system ([docs/animation.md](docs/animation.md)).
 - **Bevy's mesh primitives in TSX**: `<mesh shape="torus" />` and every other Bevy 0.20 shape,
   with Bevy's props and builder settings, typed per shape ([docs/meshes.md](docs/meshes.md)).
 - **Custom materials without Rust**: a params schema in TS and the shader in a `.wgsl` file,

@@ -2,7 +2,7 @@
 //! `tsx` as external roots named `level:<path>`, the world's types as a [`Schema`], and the
 //! `LevelInstance` component on every level-placed entity.
 
-use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, Expansion, FieldSchema, Files, Frame, MissingAt, MissingComponent, MissingReason, ScenePlacement, SceneSchema, Schema, ValueType};
+use crate::compose::{self, ComponentSchema, Composed, ExpandRequest, Expansion, FieldSchema, Files, Frame, MissingAt, MissingComponent, MissingReason, ScenePlacement, SceneSchema, Schema, ValueType, VariantFields, VariantSchema};
 use crate::syntax::{self, EntityList, Entry, Extension, ParsedFile};
 use bevy::asset::io::Reader;
 use bevy::asset::{AssetLoadFailedEvent, AssetLoader, LoadContext, ReflectHandle, UntypedAssetLoadFailedEvent};
@@ -754,6 +754,29 @@ impl WorldSchema<'_> {
             && e.iter().all(|v| matches!(v, VariantInfo::Unit(_)))
         {
             return field(F::Enum { variants: e.variant_names().iter().map(|s| s.to_string()).collect(), repr: None });
+        }
+        // An enum with data: each variant's fields as their own types, so long as a level can
+        // write every one of them.
+        if let Some(TypeInfo::Enum(e)) = self.registry.get(type_id).map(|r| r.type_info()) {
+            let variants: Vec<VariantSchema> = e
+                .iter()
+                .map(|v| VariantSchema {
+                    name: v.name().to_string(),
+                    fields: match v {
+                        VariantInfo::Unit(_) => VariantFields::Unit,
+                        VariantInfo::Tuple(t) => VariantFields::Tuple(t.iter().map(|f| self.value_type(f.type_id(), f.type_path())).collect()),
+                        VariantInfo::Struct(s) => VariantFields::Named(s.iter().map(|f| (f.name().to_string(), self.value_type(f.type_id(), f.type_path()))).collect()),
+                    },
+                })
+                .collect();
+            let writable = |t: &ValueType| !matches!(t, ValueType::Unsupported(_));
+            if variants.iter().all(|v| match &v.fields {
+                VariantFields::Unit => true,
+                VariantFields::Tuple(ts) => ts.iter().all(writable),
+                VariantFields::Named(ts) => ts.iter().all(|(_, t)| writable(t)),
+            }) {
+                return ValueType::Variants(variants);
+            }
         }
         ValueType::Unsupported(type_path.to_string())
     }

@@ -10,6 +10,7 @@ name = "bevy_ts_animation"
 
 [dependencies]
 bevy = { workspace = true, features = ["3d"] }
+bevy-ts-native.workspace = true
 
 [dev-dependencies]
 bevy = { workspace = true, features = ["3d"] }

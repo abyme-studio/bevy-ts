@@ -23,8 +23,26 @@ pub enum ValueType {
     String,
     /// A `Handle<T>`: a string asset path (decision 12).
     Handle,
+    /// An enum with a variant that holds data (`RepeatAnimation::Count(3)`), each variant's
+    /// fields of types a level can write. Its JSON is Bevy's reflect form: `"Forever"`,
+    /// `{ "Count": 3 }`, `{ "V": [a, b] }`, `{ "V": { "a": 1 } }`.
+    Variants(Vec<VariantSchema>),
     /// A reflected field of a type levels cannot write, by type path.
     Unsupported(String),
+}
+
+/// One variant of a [`ValueType::Variants`] enum.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VariantSchema {
+    pub name: String,
+    pub fields: VariantFields,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum VariantFields {
+    Unit,
+    Tuple(Vec<ValueType>),
+    Named(Vec<(String, ValueType)>),
 }
 
 #[derive(Clone, Debug)]
@@ -842,6 +860,42 @@ fn apply_patch(node: &mut NodeDesc, p: &LPatch, tolerant: bool) -> Result<Option
 
 const LANES: [&str; 4] = ["x", "y", "z", "w"];
 
+/// `Count(3)`, `Forever` or `V { a: 1 }` as Bevy's reflect JSON for an enum with data.
+fn variant(ctx: &FileCtx, field: &str, v: &syntax::Value, variants: &[VariantSchema]) -> Result<Value, ScriptError> {
+    let names = || variants.iter().map(|x| x.name.as_str()).collect::<Vec<_>>().join(", ");
+    let ValueKind::Type(p) = &v.kind else { return Err(ctx.err(format!("expected a variant ({})", names()), v.span)) };
+    let name = p.path.last();
+    let Some(schema) = variants.iter().find(|x| x.name == name) else {
+        return Err(ctx.err(format!("unknown variant {} (variants: {})", p.path.joined(), names()), v.span));
+    };
+    let at = format!("{field}.{name}");
+    let inner = match (&schema.fields, &p.fields) {
+        (VariantFields::Unit, Fields::Unit) => return Ok(json!(name)),
+        (VariantFields::Tuple(tys), Fields::Tuple { values, .. }) if tys.len() == values.len() => {
+            let mut out = Vec::with_capacity(values.len());
+            for (ty, x) in tys.iter().zip(values) {
+                out.push(convert(ctx, &at, x, ty, &Value::Null)?);
+            }
+            if out.len() == 1 { out.pop().expect("one value") } else { Value::Array(out) }
+        }
+        (VariantFields::Named(tys), Fields::Named { fields, .. }) => {
+            let mut out = Map::new();
+            for f in fields {
+                let (_, ty) = tys.iter().find(|(n, _)| *n == f.name).ok_or_else(|| ctx.err(format!("{name} has no field {}", f.name), f.name_span))?;
+                out.insert(f.name.clone(), convert(ctx, &format!("{at}.{}", f.name), &f.value, ty, &Value::Null)?);
+            }
+            if out.len() != tys.len() {
+                return Err(ctx.err(format!("{name} takes every field: {}", tys.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")), p.span));
+            }
+            Value::Object(out)
+        }
+        (VariantFields::Unit, _) => return Err(ctx.err(format!("{name} takes no values"), p.span)),
+        (VariantFields::Tuple(tys), _) => return Err(ctx.err(format!("{name} takes {} value{}: {name}(..)", tys.len(), if tys.len() == 1 { "" } else { "s" }), p.span)),
+        (VariantFields::Named(_), _) => return Err(ctx.err(format!("{name} takes named fields: {name} {{ .. }}"), p.span)),
+    };
+    Ok(json!({ name: inner }))
+}
+
 fn lanes(base: &Value, n: usize) -> Vec<f64> {
     match base {
         Value::Array(a) => (0..n).map(|i| a.get(i).and_then(Value::as_f64).unwrap_or(0.0)).collect(),
@@ -894,6 +948,7 @@ fn convert(ctx: &FileCtx, field: &str, v: &syntax::Value, ty: &ValueType, base: 
             };
         }
         ValueType::Unsupported(t) => return Err(ctx.err(format!("{field}: {t} fields cannot be set from a level"), v.span)),
+        ValueType::Variants(variants) => return variant(ctx, field, v, variants),
         ValueType::Field(t) => t,
     };
     let out = match ty {

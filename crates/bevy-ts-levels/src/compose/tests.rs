@@ -28,6 +28,12 @@ impl Schema for TestSchema {
             }),
             "Light" => Ok(ComponentSchema { name: "Light".into(), kind: ComponentKind::Ts, fields: vec![f("intensity", FieldType::F32, json!(1.0))], is_name: false }),
             "Visibility" => rust("Visibility", vec![f("0", FieldType::Enum { variants: vec!["Inherited".into(), "Hidden".into(), "Visible".into()], repr: None }, json!("Inherited"))]),
+            "Play" => {
+                let unit = |n: &str| VariantSchema { name: n.into(), fields: VariantFields::Unit };
+                let repeat = vec![unit("Never"), VariantSchema { name: "Count".into(), fields: VariantFields::Tuple(vec![ValueType::Field(FieldType::U32)]) }, unit("Forever")];
+                let at = vec![unit("None"), VariantSchema { name: "At".into(), fields: VariantFields::Named(vec![("x".into(), ValueType::Field(FieldType::F32)), ("y".into(), ValueType::Field(FieldType::F32))]) }];
+                rust("Play", vec![FieldSchema { name: "repeat".into(), ty: ValueType::Variants(repeat), default: json!("Forever") }, FieldSchema { name: "at".into(), ty: ValueType::Variants(at), default: json!("None") }])
+            }
             "Marker" => Err("Marker is ambiguous: a::Marker, b::Marker".into()),
             _ => Err(format!("unknown component {path}")),
         }
@@ -265,6 +271,18 @@ fn constants_tuples_and_names() {
     assert_eq!(t["rotation"], json!([0.0, 0.0, 0.0, 1.0]));
     assert_eq!(props(&c.nodes[0], "Visibility")["0"], json!("Hidden"));
     assert_eq!(c.nodes[0].name.as_deref(), Some("Alpha"));
+}
+
+#[test]
+fn variants_with_data() {
+    let c = ok(&[("a.bsn", "#A Play { repeat: Count(3), at: At { x: 1.0, y: 2 } }\n--\n#B Play { repeat: Never }")]);
+    assert_eq!(props(&c.nodes[0], "Play")["repeat"], json!({ "Count": 3 }));
+    assert_eq!(props(&c.nodes[0], "Play")["at"], json!({ "At": { "x": 1.0, "y": 2.0 } }));
+    assert_eq!(props(&c.nodes[1], "Play")["repeat"], json!("Never"));
+    assert!(err(&[("a.bsn", "#A Play { repeat: Count }")]).contains("Count takes 1 value: Count(..)"));
+    assert!(err(&[("a.bsn", "#A Play { repeat: Count(1.5) }")]).contains("expected an integer"));
+    assert!(err(&[("a.bsn", "#A Play { repeat: Twice }")]).contains("unknown variant Twice (variants: Never, Count, Forever)"));
+    assert!(err(&[("a.bsn", "#A Play { at: At { x: 1.0 } }")]).contains("At takes every field: x, y"));
 }
 
 #[test]

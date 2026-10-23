@@ -5,7 +5,7 @@
 use crate::common;
 
 use bevy::animation::graph::{AnimationGraph, AnimationNodeIndex};
-use bevy::animation::{AnimationClip, AnimationPlayer};
+use bevy::animation::{AnimationClip, AnimationPlayer, RepeatAnimation};
 use bevy::prelude::*;
 use bevy::render::RenderPlugin;
 use bevy::render::settings::{RenderCreation, WgpuSettings};
@@ -51,7 +51,7 @@ fn node(app: &mut App, clip: &str) -> AnimationNodeIndex {
 fn playing(app: &mut App, root: Entity, clip: &str) -> bool {
     let n = node(app, clip);
     let world = app.world();
-    world.get::<AnimationTargets>(root).is_some_and(|t| t.0.iter().any(|p| world.get::<AnimationPlayer>(*p).is_some_and(|p| p.is_playing_animation(n))))
+    world.get::<AnimationTargets>(root).is_some_and(|t| t.players.iter().any(|p| world.get::<AnimationPlayer>(*p).is_some_and(|p| p.is_playing_animation(n))))
 }
 
 const GAME: &str = r#"import { app, signal } from "bevy-ts";
@@ -62,7 +62,7 @@ app.entry("walk", () => { setClip(1); });
 app.scene("foxes", () => (
   <entity key="fox">
     <WorldAssetRoot value="models/Fox.glb#Scene0" />
-    <PlayAnimation clip={() => clips[clip()]} transition_secs={0.25} />
+    <PlayAnimation clip={() => clips[clip()]} repeat="Forever" transition_secs={0.25} />
   </entity>
 ));
 "#;
@@ -75,13 +75,13 @@ fn a_tsx_fox_plays_and_its_bound_clip_cross_fades() {
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     until(&mut app, "the fox", |app| {
         let w = app.world_mut();
-        the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.0.is_empty()))
+        the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.players.is_empty()))
     });
     app.update();
     let fox = the_fox(app.world_mut()).unwrap();
     let play = app.world().get::<PlayAnimation>(fox).unwrap().clone();
     assert_eq!(play.clip.path().unwrap().to_string(), "models/Fox.glb#Animation2");
-    assert_eq!((play.repeat, play.speed, play.transition_secs), (true, 1.0, 0.25));
+    assert_eq!((play.repeat, play.speed, play.transition_secs, play.paused, play.cull), (RepeatAnimation::Forever, 1.0, 0.25, false, false));
     assert!(playing(&mut app, fox, "models/Fox.glb#Animation2"), "the run plays");
 
     bevy_ts::plugin_api::call_entry(app.world_mut(), "walk", b"").unwrap();
@@ -99,7 +99,7 @@ app.level("levels/foxes.bsn");
 
 const LEVEL: &str = r#"#Fox
 WorldAssetRoot("models/Fox.glb#Scene0")
-PlayAnimation { clip: "models/Fox.glb#Animation1" }
+PlayAnimation { clip: "models/Fox.glb#Animation1", repeat: Count(3) }
 "#;
 
 #[test]
@@ -110,11 +110,15 @@ fn a_level_fox_plays_with_no_ts() {
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     until(&mut app, "the level fox", |app| {
         let w = app.world_mut();
-        the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.0.is_empty()))
+        the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.players.is_empty()))
     });
     app.update();
     let fox = the_fox(app.world_mut()).unwrap();
     assert!(playing(&mut app, fox, "models/Fox.glb#Animation1"), "the walk plays: {:?}", messages(&app));
+    assert_eq!(app.world().get::<PlayAnimation>(fox).unwrap().repeat, RepeatAnimation::Count(3));
+    let walk = node(&mut app, "models/Fox.glb#Animation1");
+    let p = app.world().get::<AnimationTargets>(fox).unwrap().players[0];
+    assert_eq!(app.world().get::<AnimationPlayer>(p).unwrap().animation(walk).unwrap().repeat_mode(), RepeatAnimation::Count(3));
 }
 
 const PICK: &str = r#"import { app, signal } from "bevy-ts";
@@ -167,4 +171,62 @@ fn a_click_on_a_scene_mesh_runs_the_roots_handler() {
     let out = bevy_ts::plugin_api::call_entry(app.world_mut(), "hit", b"").unwrap();
     // Once: one call, naming the root and the mesh.
     assert_eq!(String::from_utf8(out).unwrap(), format!("{}>{};", fox.to_bits(), mesh.to_bits()));
+}
+
+const STATUS_GAME: &str = r#"import { app, Update } from "bevy-ts";
+import type { Entity, Query } from "bevy-ts";
+import { PlayAnimation, Transform, WorldAssetRoot } from "bevy-ts/bevy";
+import type { Animations } from "bevy-ts/animation";
+let frames = 0;
+export function read(anims: Animations, roots: Query<[Entity, PlayAnimation]>, others: Query<[Entity, Transform]>) {
+  if (++frames % 30 !== 0) return;
+  roots.each((e, p) => {
+    const s = anims.status(e);
+    const tag = p.paused ? "held" : "run";
+    console.log(s ? `${tag} loaded ${s.loaded} duration ${s.duration.toFixed(2)} seek ${s.seekTime.toFixed(2)} elapsed ${s.elapsed.toFixed(2)} completions ${s.completions} finished ${s.finished} paused ${s.paused} parked ${s.parked} weight ${s.weight}` : `${tag} none`);
+  });
+  let other: Entity | undefined;
+  others.each((e) => { if (other === undefined && anims.status(e) === undefined) other = e; });
+  console.log(`other ${other === undefined ? "missing" : "none"}`);
+}
+app.addSystems(Update, read);
+app.scene("foxes", () => (
+  <>
+    <entity key="run">
+      <WorldAssetRoot value="models/Fox.glb#Scene0" />
+      <PlayAnimation clip="models/Fox.glb#Animation2" />
+    </entity>
+    <entity key="held">
+      <WorldAssetRoot value="models/Fox.glb#Scene0" />
+      <PlayAnimation clip="models/Fox.glb#Animation2" paused={true} />
+    </entity>
+  </>
+));
+"#;
+
+#[test]
+fn animations_status() {
+    let dir = fox_project("animation-status", &[("package.json", "{}"), ("src/game.tsx", STATUS_GAME)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let ready = |app: &mut App| {
+        let w = app.world_mut();
+        let roots: Vec<Entity> = w.query_filtered::<Entity, With<WorldAssetRoot>>().iter(w).collect();
+        roots.len() == 2 && roots.iter().all(|f| w.get::<AnimationTargets>(*f).is_some_and(|t| !t.players.is_empty()))
+    };
+    until(&mut app, "both foxes", ready);
+    // Half a second on, for two status lines from each.
+    until(&mut app, "two status lines", |app| messages(app).iter().filter(|l| l.starts_with("run loaded")).count() >= 2);
+    let m = messages(&app);
+    let last = |tag: &str| m.iter().rev().find(|l| l.starts_with(tag)).cloned().unwrap_or_else(|| panic!("no {tag} in {m:?}"));
+    let run = last("run loaded");
+    let field = |line: &str, name: &str| line.split(' ').skip_while(|w| *w != name).nth(1).unwrap().to_string();
+    assert_eq!(field(&run, "loaded"), "true", "{run}");
+    assert!(field(&run, "duration").parse::<f32>().unwrap() > 0.5, "{run}");
+    assert!(field(&run, "seek").parse::<f32>().unwrap() > 0.0, "{run}");
+    assert_eq!((field(&run, "paused"), field(&run, "parked"), field(&run, "weight")), ("false".into(), "false".into(), "1".into()), "{run}");
+    let held = last("held");
+    assert_eq!((field(&held, "seek"), field(&held, "paused"), field(&held, "parked")), ("0.00".into(), "true".into(), "true".into()), "{held}");
+    assert_eq!(last("other"), "other none", "{m:?}");
 }

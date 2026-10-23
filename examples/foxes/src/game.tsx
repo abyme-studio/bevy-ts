@@ -1,6 +1,7 @@
 // Foxes: a grid of Bevy's animated fox in TSX. Each fox is a glTF scene (`WorldAssetRoot`) with
 // `PlayAnimation` beside it; Rust plays the clip once the scene is ready. The button switches
-// every fox's clip, and Rust cross-fades to it. `bevy-ts dev src/game.tsx`.
+// every fox's clip, and Rust cross-fades to it; another pauses them all, which parks their players
+// so they cost nothing. A fox out of view is parked too (`cull`). `bevy-ts dev src/game.tsx`.
 import { app, px, signal, Transform } from "bevy-ts";
 import { Camera3d, DirectionalLight, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
 
@@ -14,13 +15,14 @@ const SIDE = 5;
 const SPACING = 2.5;
 
 const [clip, setClip] = signal(0);
+const [paused, setPaused] = signal(false);
 
 /** One fox: its scene and the clip it plays, bound so a new clip reaches every fox. */
 const Fox = ({ at }: { at: [number, number, number] }) => (
   <entity name="fox">
     <Transform translation={at} scale={[0.02, 0.02, 0.02]} />
     <WorldAssetRoot value="models/Fox.glb#Scene0" />
-    <PlayAnimation clip={() => CLIPS[clip()].path} transition_secs={0.4} />
+    <PlayAnimation clip={() => CLIPS[clip()].path} transition_secs={0.4} paused={paused} cull />
   </entity>
 );
 
@@ -49,6 +51,9 @@ app.scene("foxes", () => (
       <text key="clip" size={20}>{() => `Clip: ${CLIPS[clip()].name}`}</text>
       <button key="next" style={{ padding: px(4) }} background="#3366cc" onPointerClick={() => setClip((c) => (c + 1) % CLIPS.length)}>
         <text>Next clip</text>
+      </button>
+      <button key="pause" style={{ padding: px(4) }} background="#3366cc" onPointerClick={() => setPaused((p) => !p)}>
+        <text>{() => (paused() ? "Play" : "Pause")}</text>
       </button>
     </node>
   </>

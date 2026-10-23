@@ -315,6 +315,10 @@ const processes = {
   "input-devices-tests": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:script-input-devices -- bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib keys && cargo test -p bevy-ts-cli --lib input && cargo test -p bevy-ts-cli --test it -- input_devices:: exported:: conditions:: && cargo test -p bevy-ts --lib host::) 2>&1 | grep --line-buffered -v ld64 | tee target/input-devices-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
   // Fix fix-alpha-add: the material crate's tests, then the drawn material tests (alphaMode "add").
   "alpha-add-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-material && cargo test -p bevy-ts-cli --test it -- materials::drawn:: --nocapture --test-threads 1 && cargo clippy -p bevy-ts-material -p bevy-ts-cli --all-targets -- -D warnings) 2>&1 | grep -v ld64 | tee target/alpha-add-tests.log | grep -E \"^(error|warning)|^test |test result|panicked|left|right|adds\" -A4 | head -120'" },
+  // Change animation-control: the crates it touches (animation, levels, the cli's types and animation tests), then `bevy-ts/bevy` regenerated.
+  // Its fox bench at 400: playing, no graph, paused, off screen, off screen culled; 3 runs per arm, interleaved, niced.
+  "animation-control-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; ARMS=\"B G P H K\" nice -n 10 scripts/animation-bench.sh 3 400 2>&1 | grep -v ld64 | tee target/animation-control-bench.log'" },
+  "animation-control-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; (cargo test -p bevy-ts-animation -- --test-threads 1 && cargo test -p bevy-ts-levels && cargo test -p bevy-ts-cli --lib types && cargo test -p bevy-ts-cli --test animation --test levels_scene -- --test-threads 1 && scripts/gen-bevy-types.sh && git diff --stat -- packages/bevy-ts/bevy.d.ts) 2>&1 | grep -v ld64 | tee target/animation-control-test.log | grep -E \"^test |test result|panicked|^error|^warning|left|right|-->\" | tail -80'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

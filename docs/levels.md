@@ -79,7 +79,7 @@ with `viewport_select`.
 - **Assets.** `asset: "models/crate.glb"` writes `WorldAssetRoot("models/crate.glb#Scene0")` (a
   label in the path is kept); a `.bsn` asset is included like `add_instance`'s `include`; any
   other type is `invalid`. A model plays a clip with a `PlayAnimation { clip: "models/crate.glb#Animation0" }` patch
-  beside it ([docs/animation.md](animation.md)).
+  beside it (`repeat: Count(3)`, `Never` or `Forever` sets how often) ([docs/animation.md](animation.md)).
 - **Components.** A component is named as `LevelOverride.component` names it, or by any path a
   patch resolves; a new patch is written in the shortest form that resolves. `add_component` is
   `exists` when the entity has the component, from the file or its prefab. `remove_component`
