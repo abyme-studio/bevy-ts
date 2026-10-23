@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 fn root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join("bevy-ts-viewport-assets").join(name);
+    let dir = std::env::temp_dir().join("bevy-ts-viewport-assets").join(format!("{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("textures")).unwrap();
     std::fs::create_dir_all(dir.join("models")).unwrap();
