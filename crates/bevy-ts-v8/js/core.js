@@ -2820,20 +2820,18 @@ function encodeComponentsOps(op, e, parts) {
     }
     layout.push([C, encodeWithLayout(C, C.layout, own)]);
   }
-  const ops = [];
-  if (layout.length || op === OP_SPAWN) {
-    const w = new Writer();
-    w.u8(op);
-    w.entity(e);
-    w.u16(layout.length);
-    for (const [C, bytes] of layout) {
-      w.u32(idOf(C));
-      w.u32(bytes.length);
-      w.raw(bytes);
-    }
-    ops.push(w.bytes());
+  // Always the spawn or insert op, even with no layout values: Rust ties the reflected ops after
+  // it into one command, checked whole before any of it applies.
+  const w = new Writer();
+  w.u8(op);
+  w.entity(e);
+  w.u16(layout.length);
+  for (const [C, bytes] of layout) {
+    w.u32(idOf(C));
+    w.u32(bytes.length);
+    w.raw(bytes);
   }
-  return ops.concat(reflected);
+  return [w.bytes()].concat(reflected);
 }
 
 /** `OP_INSERT_REFLECT`: the entity, the mode, the type's name and its JSON (empty for its default). */

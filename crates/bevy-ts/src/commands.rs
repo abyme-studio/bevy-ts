@@ -21,7 +21,8 @@
 //! Entities are `Entity::to_bits`. Component values are native layout bytes, except
 //! `insertReflect`'s: a reflected value's JSON, written by `reflect_value` (mode 0 inserts the
 //! component from its default, mode 1 writes fields over the one just inserted, a layout value's
-//! holes).
+//! holes). A spawn or insert and the `insertReflect` ops right after it for the same entity are one
+//! command: every reflected value is checked before any of it applies, and a bad one skips it all.
 
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::ptr::OwningPtr;
@@ -324,7 +325,42 @@ pub unsafe fn insert_bytes_many<'a>(entity: &mut EntityWorldMut, typed: Vec<(Com
 /// warnings and the rest still apply.
 pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &NativeRecipes) -> Vec<String> {
     let mut warnings = Vec::new();
-    for op in ops {
+    let mut ops = ops.into_iter().peekable();
+    while let Some(op) = ops.next() {
+        // A spawn or insert and the reflected values right after it for the same entity are one
+        // command: every reflected value is checked first, and one that fails skips them all.
+        if let Op::Spawn { entity, .. } | Op::Insert { entity, .. } = &op {
+            let entity = *entity;
+            let mut reflected = Vec::new();
+            while let Some(Op::InsertReflect { entity: e, .. }) = ops.peek() {
+                if *e != entity {
+                    break;
+                }
+                reflected.push(ops.next().expect("peeked"));
+            }
+            let checked = reflected.iter().try_for_each(|r| match r {
+                Op::InsertReflect { mode, type_name, json, .. } => check_reflect(world, *mode, type_name, json.as_ref()).map_err(|e| format!("{type_name}: {e}")),
+                _ => unreachable!("reflected ops"),
+            });
+            if let Err(err) = checked {
+                let what = if matches!(op, Op::Spawn { .. }) { "spawn" } else { "insert" };
+                warnings.push(format!("{what} {entity}: {err}; the command was skipped"));
+                continue;
+            }
+            apply_one(world, op, kinds, recipes, &mut warnings);
+            for r in reflected {
+                apply_one(world, r, kinds, recipes, &mut warnings);
+            }
+            continue;
+        }
+        apply_one(world, op, kinds, recipes, &mut warnings);
+    }
+    warnings
+}
+
+/// Applies one op, pushing what fails to `warnings`.
+fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRecipes, warnings: &mut Vec<String>) {
+    {
         match op {
             Op::Spawn { entity, components } => match world.spawn_empty_at(entity) {
                 Ok(mut e) => {
@@ -374,7 +410,7 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                         Some((_, now)) => warnings.push(format!("spawnNative(\"{recipe}\"): the built-in recipe was removed; spawn its components instead: {now}")),
                         None => warnings.push(format!("spawnNative: no recipe named {recipe}")),
                     }
-                    continue;
+                    return;
                 };
                 match world.spawn_empty_at(entity) {
                     Ok(mut e) => {
@@ -397,13 +433,13 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
             Op::Trigger { index, target, bytes } => {
                 let Some(t) = world.get_resource::<crate::messages::TsPayloads>().and_then(|p| p.events.get(index as usize)).cloned() else {
                     warnings.push(format!("trigger: no event type {index}"));
-                    continue;
+                    return;
                 };
                 let path = match target {
                     Some(e) if world.get_entity(e).is_ok() => crate::observers::propagation_path(world, e, t.propagate),
                     Some(e) => {
                         warnings.push(format!("trigger {}: entity {e} does not exist", t.name));
-                        continue;
+                        return;
                     }
                     None => vec![],
                 };
@@ -452,7 +488,6 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
             }
         }
     }
-    warnings
 }
 
 /// `OP_INSERT_REFLECT`: inserts a reflected component from its `ReflectDefault` (or
@@ -478,7 +513,11 @@ fn insert_reflect(world: &mut World, entity: Entity, mode: u8, type_name: &str, 
     }
     let default = match reg.data::<ReflectDefault>() {
         Some(d) => Some(d.default()),
-        None => reg.data::<ReflectFromWorld>().map(|f| f.from_world(world)),
+        None => match reg.data::<ReflectFromWorld>() {
+            // A `FromWorld` that panics fails this command, not the frame.
+            Some(f) => Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f.from_world(world))).map_err(|_| format!("{path}'s FromWorld panicked"))?),
+            None => None,
+        },
     };
     match mode {
         REFLECT_INSERT => {
@@ -506,6 +545,41 @@ fn insert_reflect(world: &mut World, entity: Entity, mode: u8, type_name: &str, 
         }
         other => Err(format!("unknown reflect insert mode {other}")),
     }
+}
+
+/// Checks an `OP_INSERT_REFLECT` without touching the world: the type is a writable reflected
+/// component and `json` writes over a fresh default of it (a patch's fields too). A type whose only
+/// default needs the world is checked when it is inserted.
+#[cfg(feature = "reflect")]
+fn check_reflect(world: &World, mode: u8, type_name: &str, json: Option<&serde_json::Value>) -> Result<(), String> {
+    use crate::reflect_value;
+    use bevy::ecs::reflect::ReflectComponent;
+    use bevy::reflect::{ParsedPath, ReflectPath};
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let reg = registry
+        .get_with_type_path(type_name)
+        .or_else(|| registry.get_with_short_type_path(type_name))
+        .ok_or_else(|| format!("{type_name} is not a registered type"))?;
+    let path = reg.type_info().type_path();
+    reflect_value::refuse_computed(path)?;
+    reg.data::<ReflectComponent>().ok_or_else(|| format!("{path} does not reflect Component"))?;
+    let Some(mut value) = reflect_value::default_of(&registry, reg.type_id()) else { return Ok(()) };
+    match (mode, json) {
+        (REFLECT_INSERT, None) => Ok(()),
+        (REFLECT_INSERT, Some(json)) => reflect_value::write_component(&registry, None, value.as_mut(), None, json),
+        (REFLECT_PATCH, Some(serde_json::Value::Object(fields))) => fields.iter().try_for_each(|(field, v)| {
+            let at = ParsedPath::parse(&format!(".{field}")).map_err(|_| format!("{path} has no field {field}"))?;
+            let slot = at.reflect_element_mut(value.as_mut()).map_err(|_| format!("{path} has no field {field}"))?;
+            reflect_value::write(&registry, None, slot, None, v).map_err(|e| format!("{path}.{field}: {e}"))
+        }),
+        (REFLECT_PATCH, _) => Err(format!("{path}: a patch is an object of fields")),
+        (other, _) => Err(format!("unknown reflect insert mode {other}")),
+    }
+}
+
+#[cfg(not(feature = "reflect"))]
+fn check_reflect(_: &World, _: u8, type_name: &str, _: Option<&serde_json::Value>) -> Result<(), String> {
+    Err(format!("{type_name}: bevy-ts is built without the reflect feature"))
 }
 
 #[cfg(not(feature = "reflect"))]
@@ -629,11 +703,19 @@ mod tests {
         enc.insert_reflect(a, REFLECT_INSERT, "Projection", Some(&json!({ "Orthographic": { "scaling_mode": { "FixedVertical": { "viewport_height": 12 } } } })));
         enc.insert_reflect(a, REFLECT_INSERT, "bevy_light::directional_light::DirectionalLight", None);
         enc.insert_reflect(a, REFLECT_PATCH, "DirectionalLight", Some(&json!({ "color": "#ff0000" })));
-        enc.insert_reflect(a, REFLECT_PATCH, "DirectionalLight", Some(&json!({ "colour": "#ff0000" })));
+        // A bad value skips its whole command; the next command still applies.
+        let b = world.entity_allocator().alloc();
+        enc.spawn(b, &[]);
+        enc.insert_reflect(b, REFLECT_INSERT, "DirectionalLight", None);
+        enc.insert_reflect(b, REFLECT_PATCH, "DirectionalLight", Some(&json!({ "colour": "#ff0000" })));
+        let c = world.entity_allocator().alloc();
+        enc.spawn(c, &[]);
         let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
         let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default());
         assert_eq!(warnings.len(), 1, "{warnings:?}");
-        assert!(warnings[0].contains("DirectionalLight") && warnings[0].contains("colour"), "{warnings:?}");
+        assert!(warnings[0].contains("DirectionalLight") && warnings[0].contains("colour") && warnings[0].contains("skipped"), "{warnings:?}");
+        assert!(world.get_entity(b).is_err(), "the failing spawn left nothing");
+        assert!(world.get::<TsSpawned>(c).is_some(), "the next command applied");
         match world.get::<Projection>(a).unwrap() {
             Projection::Orthographic(o) => assert!(matches!(o.scaling_mode, ScalingMode::FixedVertical { viewport_height: 12.0 })),
             other => panic!("{other:?}"),
