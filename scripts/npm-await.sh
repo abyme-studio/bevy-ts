@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fails unless every platform released (release.yml's PLATFORMS) built, then waits until each is on
 # npm at the version, so bevy-ts never goes out missing an engine. A package just published can take
-# a few minutes to show in `npm view`.
+# a few minutes to show in `npm view`, so each engine is waited on for up to about 17 minutes.
 #   scripts/npm-await.sh <version> <released: darwin-arm64,...> <built: darwin-arm64,...>
 set -uo pipefail
 version=$1 released=$2 list=$3
@@ -18,7 +18,7 @@ fi
 
 missing=()
 for p in ${list//,/ }; do
-  for wait in 0 15 30 60 120; do
+  for wait in 0 15 30 60 120 180 300 300; do
     sleep "$wait"
     [ "$(on_npm "@bevy-ts/$p" "$version")" = yes ] && { echo "@bevy-ts/$p@$version is on npm"; continue 2; }
   done
