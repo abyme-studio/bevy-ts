@@ -367,3 +367,95 @@ app.scene("hud", () => <text key="score" color={() => (res(Score).value > 10 ? "
     let t = node(&mut app, &["score"]).unwrap();
     assert_eq!(app.world().get::<TextColor>(t).unwrap().0, Color::from(Srgba::hex("#ffdd00").unwrap()));
 }
+
+const BOUND_IN_SLOTS: &str = r##"import { app, Component, u8, signal, Show, For, Update, type Query } from "bevy-ts";
+export class Alarm extends Component { static path = "game::Alarm"; declare on: u8 }
+const [s, setS] = signal<string | null>("x");
+const [later, setLater] = signal(false);
+const [clicked, setClicked] = signal(false);
+const [list, setList] = signal(["a"]);
+// Alarms pile up: the highest one says how far the test has got.
+export function step(q: Query<[Alarm]>) {
+  let top = 0;
+  q.each((a) => {
+    if (a.on > top) top = a.on;
+  });
+  if (top >= 1) setLater(top < 4);
+  if (top >= 2) setS("y");
+  if (top === 3) setList(["a", "b"]);
+}
+app.addSystems(Update, step);
+app.scene("slots", () => (
+  <node key="root">
+    <Show key="pre" when={() => s() !== null}>
+      <text key="bound">{() => `show ${s()}`}</text>
+      <text key="static">static in show</text>
+    </Show>
+    <Show key="else" when={() => s() === null} fallback={<text key="bound">{() => `fallback ${s()}`}</text>}>
+      <text key="never">never</text>
+    </Show>
+    <For each={list} key={(i: string) => i}>
+      {(i: string) => <text key="row">{() => `${i} ${s()}`}</text>}
+    </For>
+    <Show key="outer" when={() => true}>
+      <Show key="inner" when={() => true}>
+        <text key="bound">{() => `nested ${s()}`}</text>
+      </Show>
+    </Show>
+    <Show key="later" when={later}>
+      <text key="bound">{() => `later ${s()}`}</text>
+    </Show>
+    <button key="btn" onPointerClick={() => setClicked(true)} />
+    <Show key="clicked" when={clicked}>
+      <text key="bound">{() => `clicked ${s()}`}</text>
+    </Show>
+  </node>
+));
+"##;
+
+#[test]
+fn bound_text_in_show_and_for_renders_on_first_mount_and_on_toggle() {
+    let (_dir, mut app) = setup("rx-slot-bound", BOUND_IN_SLOTS);
+    let paths: [(&[&str], &str); 5] = [
+        (&["root", "pre", "then", "bound"], "show x"),
+        (&["root", "pre", "then", "static"], "static in show"),
+        (&["root", "else", "else", "bound"], "fallback x"),
+        (&["root", "For#0", "a", "row"], "a x"),
+        (&["root", "outer", "then", "inner", "then", "bound"], "nested x"),
+    ];
+    for (path, want) in paths {
+        assert_eq!(text(&mut app, path), want, "{path:?} on mount: {:?}", errors(&app));
+    }
+
+    // Mounted later by a system's signal, and by a click handler (inside the host call).
+    set_alarm(&mut app, 1);
+    updates(&mut app, 2);
+    assert_eq!(text(&mut app, &["root", "later", "then", "bound"]), "later x", "{:?}", errors(&app));
+    let btn = node(&mut app, &["root", "btn"]).unwrap();
+    click(&mut app, btn, 0.0);
+    updates(&mut app, 2);
+    assert_eq!(text(&mut app, &["root", "clicked", "then", "bound"]), "clicked x", "{:?}", errors(&app));
+
+    // Every binding follows its signal afterwards.
+    set_alarm(&mut app, 2);
+    updates(&mut app, 2);
+    for (path, want) in [
+        (&["root", "pre", "then", "bound"][..], "show y"),
+        (&["root", "else", "else", "bound"], "fallback y"),
+        (&["root", "For#0", "a", "row"], "a y"),
+        (&["root", "outer", "then", "inner", "then", "bound"], "nested y"),
+        (&["root", "later", "then", "bound"], "later y"),
+        (&["root", "clicked", "then", "bound"], "clicked y"),
+    ] {
+        assert_eq!(text(&mut app, path), want, "{path:?} after set: {:?}", errors(&app));
+    }
+
+    // A new For item, and a Show toggled off and on again.
+    set_alarm(&mut app, 3);
+    updates(&mut app, 2);
+    assert_eq!(text(&mut app, &["root", "For#0", "b", "row"]), "b y");
+    set_alarm(&mut app, 4);
+    updates(&mut app, 2);
+    assert!(node(&mut app, &["root", "later", "then", "bound"]).is_none());
+    assert!(errors(&app).is_empty(), "{:?}", errors(&app));
+}

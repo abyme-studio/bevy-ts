@@ -63,6 +63,8 @@ struct Response {
     /// One entry per `expand` item, in order: the error its expansion raised, or null.
     failures: Option<Vec<Option<ScriptError>>>,
     errors: Vec<ScriptError>,
+    /// Slot content this call mounted has bindings to start once it is mounted: call again.
+    more: bool,
 }
 
 /// A component by name with a native layout: a live TS component or a registered Rust one.
@@ -238,6 +240,8 @@ fn run(world: &mut World, changed: Vec<(Option<Entity>, String)>, mut rows: Vec<
     }
     payload.values = deliver(world, &changed);
 
+    // Slot content still to start when the rounds ran out: the next frame calls again.
+    let mut again = false;
     for _ in 0..MAX_ROUNDS {
         let t = std::time::Instant::now();
         // A u32 header length, the JSON header, then the binary rows (first round only).
@@ -263,11 +267,13 @@ fn run(world: &mut World, changed: Vec<(Option<Entity>, String)>, mut rows: Vec<
         };
         let t2 = std::time::Instant::now();
         world.resource_mut::<TsxTree>().reactive.call_us += (t2 - t).as_secs_f64() * 1e6;
+        let more = response.more;
+        again = more;
         let needs = apply(world, response);
         world.resource_mut::<TsxTree>().reactive.apply_us += t2.elapsed().as_secs_f64() * 1e6;
         let refs = std::mem::take(&mut world.resource_mut::<TsxTree>().reactive.new_refs);
         let instances = std::mem::take(&mut world.resource_mut::<TsxTree>().reactive.new_instances);
-        if needs.is_empty() && refs.is_empty() && instances.is_empty() {
+        if !more && needs.is_empty() && refs.is_empty() && instances.is_empty() {
             break;
         }
         let tree = world.resource::<TsxTree>();
@@ -283,7 +289,7 @@ fn run(world: &mut World, changed: Vec<(Option<Entity>, String)>, mut rows: Vec<
     }
 
     let mut tree = world.remove_resource::<TsxTree>().expect("tsx tree");
-    tree.reactive.due = false;
+    tree.reactive.due = again;
     tree.journal.close();
     let sweep = std::mem::take(&mut tree.reactive.sweep);
     let slots: Vec<_> = if sweep { tree.reactive.slots.values().cloned().collect() } else { vec![] };
@@ -489,7 +495,11 @@ fn expand_call(world: &mut World, items: &[ExpandItem]) -> Result<Expanded, Vec<
     let mut expanded = response.expanded.take().unwrap_or_default();
     let mut failures = response.failures.take().unwrap_or_default();
     let errors = std::mem::take(&mut response.errors);
-    // Whatever else the call produced (patches, mounts) applies as in any call.
+    // Whatever else the call produced (patches, mounts) applies as in any call; mounted slot
+    // content starts its bindings in the next frame's call.
+    if response.more {
+        world.resource_mut::<TsxTree>().reactive.due = true;
+    }
     apply(world, response);
     expanded.resize(items.len(), None);
     failures.resize(items.len(), None);

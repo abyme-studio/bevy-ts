@@ -142,6 +142,9 @@ Deno.test("Show mounts and unmounts its subtree and disposes its bindings", () =
   out = ctx.call({});
   eq(out.unmounts, [[1, "else"]]);
   eq(out.mounts[0][1], "then");
+  eq(out.needs, [], "the subtree's binding waits for Rust to mount it");
+  eq(out.more, true);
+  out = ctx.call({});
   eq(out.needs, [[9, "game::Health"]]);
   eq(out.subscribe, [[9, "game::Health"]]);
   out = ctx.call({ values: [[9, "game::Health", { hp: 3 }]] });
@@ -150,6 +153,45 @@ Deno.test("Show mounts and unmounts its subtree and disposes its bindings", () =
   out = ctx.call({});
   eq(out.unmounts, [[1, "then"]]);
   eq(out.unsubscribe, [[9, "game::Health"]], "the disposed binding stops watching");
+});
+
+Deno.test("bound children of Show and For start in the call after their mount, on first mount and on toggle", () => {
+  const ctx = new TsxContext();
+  const [name, setName] = signal("x");
+  const [items, setItems] = signal(["a"]);
+  const [later, setLater] = signal(false);
+  describe(
+    jsxs(Fragment, {
+      children: [
+        jsx(Show, { when: () => name() !== null, children: jsx("text", { children: () => `show ${name()}` }) }),
+        jsx(For, { each: () => items(), key: (i) => i, children: (i) => jsx("text", { children: () => `${i} ${name()}` }) }),
+        jsx(Show, { when: () => true, children: jsx(Show, { when: () => true, children: jsx("text", { children: () => `nested ${name()}` }) }) }),
+        jsx(Show, { when: () => later(), children: jsx("text", { children: () => `later ${name()}` }) }),
+      ],
+    }),
+    ctx,
+  );
+  // The first call mounts the slots' content (the inner Show's too, a round later); none of
+  // its bindings has run yet, since Rust has not mounted its nodes.
+  let out = ctx.call({});
+  eq(out.mounts.map(([s, g]) => [s, g]), [[1, "then"], [2, "a"], [3, "then"]]);
+  eq([out.patches, out.more], [[], true]);
+  out = ctx.call({});
+  eq(out.mounts.map(([s, g]) => [s, g]), [[5, "then"]]);
+  eq(out.patches.map(([, v]) => v), ["show x", "a x"]);
+  out = ctx.call({});
+  eq(out.patches.map(([, v]) => v), ["nested x"]);
+  eq(out.more, undefined, "nothing left to start: Rust stops calling");
+  // Toggled on, and a new item, outside a call: they start after the call that mounts them.
+  setLater(true);
+  setItems(["a", "b"]);
+  out = ctx.call({});
+  eq([out.mounts.length, out.patches, out.more], [2, [], true]);
+  out = ctx.call({});
+  eq(out.patches.map(([, v]) => v).sort(), ["b x", "later x"]);
+  setName("y");
+  out = ctx.call({});
+  eq(out.patches.map(([, v]) => v).sort(), ["a y", "b y", "later y", "nested y", "show y"]);
 });
 
 Deno.test("For keeps items by key and unmounts only the removed one", () => {

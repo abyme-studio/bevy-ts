@@ -642,6 +642,12 @@ export class TsxContext {
     this.needs = new Set();
     /** Computations made while describing; they first run in the host call, once mounted. */
     this.deferred = [];
+    /**
+     * Work a slot's mount registered: `waiting` until its mount leaves in an output, then
+     * `mounted`, started at the start of the next call, once Rust has mounted its nodes.
+     */
+    this.waiting = [];
+    this.mounted = [];
     this.inCall = false;
     this.flushRequested = false;
   }
@@ -853,6 +859,12 @@ export class TsxContext {
   }
 
   startPending() {
+    for (const w of this.mounted.splice(0)) {
+      if (w.owner.disposed) continue;
+      this.pendingBindings.push(...w.bindings);
+      this.pendingSlots.push(...w.slots);
+      this.deferred.push(...w.deferred);
+    }
     for (const b of this.pendingBindings.splice(0)) if (!b.computation && this.bindings.has(b.id)) this.startBinding(b);
     for (const site of this.waitingSites) site.start();
     this.waitingSites.clear();
@@ -886,6 +898,9 @@ export class TsxContext {
       sites: this.siteReads.splice(0),
       errors: this.errors.splice(0),
     };
+    // Slot content leaves now: its bindings start in the call after Rust mounted it.
+    this.mounted.push(...this.waiting.splice(0));
+    if (this.mounted.length) out.more = true;
     this.needs.clear();
     return out;
   }
@@ -1171,8 +1186,17 @@ class Slot {
   }
   /** Mounts `content` (elements, or a function making them) as group `key` under its own owner. */
   mount(key, content) {
-    const owner = new Owner(this.ctx.root);
-    const nodes = untrack(() => runScene(this.ctx, () => describeIn(this.ctx, evaluateContent(content), owner), owner));
+    const ctx = this.ctx;
+    const owner = new Owner(ctx.root);
+    const at = [ctx.pendingBindings.length, ctx.pendingSlots.length, ctx.deferred.length];
+    const nodes = untrack(() => runScene(ctx, () => describeIn(ctx, evaluateContent(content), owner), owner));
+    // What the content registered waits for its mount, not for whichever call comes next.
+    ctx.waiting.push({
+      owner,
+      bindings: ctx.pendingBindings.splice(at[0]),
+      slots: ctx.pendingSlots.splice(at[1]),
+      deferred: ctx.deferred.splice(at[2]),
+    });
     this.groups.set(key, owner);
     this.ctx.mounts.push([this.id, key, nodes]);
     requestFlush(this.ctx);

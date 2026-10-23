@@ -59,6 +59,10 @@ Under `bevy-ts dev`, reading a signal, `target.get(C)` or `res(R)` directly in a
 - **WHEN** a `<For each={items} key={(i) => i.id}>` loses the middle item
 - **THEN** only that item's entities are despawned and the other items keep their entity ids
 
+#### Scenario: Bound children of a mounted subtree
+- **WHEN** `<Show when={() => s() !== null}><text>{() => `show ${s()}`}</text></Show>` mounts with `s` already set, or a `<Show>` or `<For>` mounts its content later (a signal set by a system or a handler)
+- **THEN** each bound child shows its value in the frame its subtree mounts, and follows its signals afterwards
+
 ### Requirement: UI intrinsics over bevy_ui
 `<node>` SHALL spawn an entity with `Node`; its `style` prop SHALL map to `Node`'s fields (lengths through `px`, `percent`, `vw`, `vh`, `em`, `rem` helpers) and `background`, `border`, `radius` to `BackgroundColor`, `BorderColor` and `BorderRadius`. `<text>` SHALL spawn `Text` with `size` and `color` mapping to `TextFont` and `TextColor`; string and bound children SHALL be its content. `<image src>` SHALL spawn `ImageNode` with the asset loaded. `<button>` SHALL be a `<node>` with `Button` and picking enabled. UI entities SHALL be reconciled by the same reconciler as scene entities.
 
