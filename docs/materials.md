@@ -177,7 +177,9 @@ painter glazes shadows) and `depth_k` near 400 for a scene some tens of units de
   read it. Every outlined thing uses the toon kind.
 - Stair-stepped shadow edges: raise `DirectionalLightShadowMap` size, use one cascade sized to the
   view, or widen the `smoothstep`.
-- Cost: BENCH_PLACEHOLDER
+- Cost, 100 animated skinned foxes at 1080p on an M5 Max (`bench/toon/results/2026-10-23.md`):
+  3.5 ms a frame with `StandardMaterial`, 4.2 ms toon, 4.5 ms toon with prepass and ink. The ink's
+  texel loads are per pixel, not per character.
 
 ## Known limits
 

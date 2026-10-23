@@ -7,12 +7,9 @@
 //! - toon+ink: the same, plus `DepthPrepass` and `NormalPrepass`, read by the material for ink.
 //!
 //! Run in release: `cargo test --release -p bevy-ts-material --test toon_bench -- --ignored --nocapture`.
-//! It prints mean and p95 wall time per frame and each render pass's GPU time (Bevy's
-//! `RenderDiagnosticsPlugin`), which holds up on a loaded machine; results go in bench/toon/results/.
+//! It prints mean and p95 frame time per arm; results go in bench/toon/results/.
 
 use bevy::camera::{RenderTarget, ScalingMode};
-use bevy::diagnostic::DiagnosticsStore;
-use bevy::render::diagnostic::RenderDiagnosticsPlugin;
 use bevy::core_pipeline::prepass::{DepthPrepass, NormalPrepass};
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::light::CascadeShadowConfigBuilder;
@@ -125,7 +122,7 @@ fn run(mut commands: Commands, anim: Res<Run>, mut players: Query<(Entity, &mut 
     }
 }
 
-fn arm(arm: Arm) -> (f64, f64, Vec<(String, f64)>) {
+fn arm(arm: Arm) -> (f64, f64) {
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -134,7 +131,7 @@ fn arm(arm: Arm) -> (f64, f64, Vec<(String, f64)>) {
             .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
             .set(AssetPlugin { file_path: fox().to_string_lossy().into(), ..default() }),
     )
-    .add_plugins((ScriptMaterialRenderPlugin, RenderDiagnosticsPlugin))
+    .add_plugins(ScriptMaterialRenderPlugin)
     .add_systems(Update, (swap, run));
     while app.plugins_state() == bevy::app::PluginsState::Adding {
         bevy::tasks::tick_global_task_pools_on_main_thread();
@@ -212,24 +209,14 @@ fn arm(arm: Arm) -> (f64, f64, Vec<(String, f64)>) {
         })
         .collect();
     times.sort_by(f64::total_cmp);
-    let store = app.world().resource::<DiagnosticsStore>();
-    let mut gpu: Vec<(String, f64)> = store
-        .iter()
-        .filter(|d| d.path().as_str().ends_with("/elapsed_gpu"))
-        .filter_map(|d| Some((d.path().as_str().trim_end_matches("/elapsed_gpu").to_string(), d.average()?)))
-        .collect();
-    gpu.sort_by(|a, b| a.0.cmp(&b.0));
-    (times.iter().sum::<f64>() / times.len() as f64, times[times.len() * 95 / 100], gpu)
+    (times.iter().sum::<f64>() / times.len() as f64, times[times.len() * 95 / 100])
 }
 
 #[test]
 #[ignore = "a release bench; it fetches Fox.glb and renders 100 skinned characters"]
 fn hundred_foxes() {
     for a in [Arm::Pbr, Arm::Toon, Arm::ToonInk] {
-        let (mean, p95, gpu) = arm(a);
+        let (mean, p95) = arm(a);
         println!("{a:?}: mean {mean:.2} ms, p95 {p95:.2} ms over {FRAMES} frames");
-        for (pass, ms) in gpu {
-            println!("{a:?} gpu {pass}: {ms:.3} ms");
-        }
     }
 }
