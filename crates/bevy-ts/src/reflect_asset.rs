@@ -233,7 +233,10 @@ fn script_assets(world: &World) -> Result<&ScriptAssets, String> {
 pub fn add(world: &World, type_path: &str, props: &Value) -> Result<Value, String> {
     let registry = world.resource::<AppTypeRegistry>().read();
     let ty = asset_type(&registry, type_path)?;
-    let value = build(world, &registry, &ty, None, props)?;
+    let value = match hand_map(ty.id) {
+        Some(h) => (h.write)(world, None, props)?,
+        None => build(world, &registry, &ty, None, props)?,
+    };
     let (n, _) = script_assets(world)?.make(&ty, value);
     Ok(ref_json(n, ty.path))
 }
@@ -244,12 +247,12 @@ pub fn get(world: &World, r: &Value) -> Result<Value, String> {
     let assets = script_assets(world)?;
     let handle = assets.handle(n)?;
     let registry = world.resource::<AppTypeRegistry>().read();
-    if let Some(v) = assets.queued_value(n) {
-        return read_value(world, &registry, v.as_ref());
-    }
     let ty = asset_type_of(&registry, handle.type_id()).ok_or_else(|| format!("asset ref {n} is not a reflected asset"))?;
+    if let Some(v) = assets.queued_value(n) {
+        return read_asset(world, &registry, &ty, v.as_ref());
+    }
     match ty.reflect.get(world, handle.id()) {
-        Some(v) => read_value(world, &registry, v.as_partial_reflect()),
+        Some(v) => read_asset(world, &registry, &ty, v.as_partial_reflect()),
         None => Ok(Value::Null),
     }
 }
@@ -269,12 +272,60 @@ pub fn set(world: &World, r: &Value, patch: &Value) -> Result<(), String> {
             v.reflect_clone().map_err(|e| format!("{}: {e}", ty.path))?.into_partial_reflect()
         }
     };
-    let next = build(world, &registry, &ty, Some(current.as_ref()), patch)?;
-    if current.reflect_partial_eq(next.as_partial_reflect()) == Some(true) {
-        return Ok(());
-    }
+    let next = match hand_map(ty.id) {
+        // A hand-mapped type: the patch replaces the keys it gives in the current read, then the
+        // whole is written again; unchanged when the read is.
+        Some(h) => {
+            let read = (h.read)(world, current.as_ref())?;
+            let mut merged = read.clone();
+            match (merged.as_object_mut(), patch) {
+                (Some(m), Value::Object(p)) => m.extend(p.iter().map(|(k, v)| (k.clone(), v.clone()))),
+                _ => return Err(format!("assets.set on a {} takes an object, not {patch}", ty.path)),
+            }
+            let next = (h.write)(world, None, &merged)?;
+            if (h.read)(world, next.as_partial_reflect())? == read {
+                return Ok(());
+            }
+            next
+        }
+        None => {
+            let next = build(world, &registry, &ty, Some(current.as_ref()), patch)?;
+            if current.reflect_partial_eq(next.as_partial_reflect()) == Some(true) {
+                return Ok(());
+            }
+            next
+        }
+    };
     assets.queue_set(n, next);
     Ok(())
+}
+
+/// An asset type reflection cannot reach whole (`Image` is opaque; `AnimationGraph`'s graph has no
+/// reflected form), read and written by typed code instead of `reflect_value`.
+pub struct HandMap {
+    /// The asset's own type.
+    pub asset: fn() -> TypeId,
+    /// The asset as JSON.
+    pub read: fn(&World, &dyn PartialReflect) -> Result<Value, String>,
+    /// The asset from JSON: over `base` when given, else whole (a type with no default builds
+    /// from the JSON alone). `&World` only: the asset server loads, nothing else changes.
+    pub write: fn(&World, Option<&dyn PartialReflect>, &Value) -> Result<Box<dyn Reflect>, String>,
+}
+
+/// The hand-mapped asset types. `assets.set` on one merges its patch over the current read at the
+/// top level: a key given replaces that key whole.
+pub const HAND_MAPS: &[HandMap] = &[];
+
+fn hand_map(asset: TypeId) -> Option<&'static HandMap> {
+    HAND_MAPS.iter().find(|h| (h.asset)() == asset)
+}
+
+/// An asset as JSON: its hand-map's read, else the reflected reader.
+fn read_asset(world: &World, registry: &TypeRegistry, ty: &AssetType, value: &dyn PartialReflect) -> Result<Value, String> {
+    match hand_map(ty.id) {
+        Some(h) => (h.read)(world, value),
+        None => read_value(world, registry, value),
+    }
 }
 
 /// `json` written over `base` (the type's default when `None`), converted to the concrete type.
