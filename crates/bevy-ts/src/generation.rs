@@ -156,6 +156,10 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
 fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     let started = Instant::now();
     crate::layout_reflect::fill_once(world);
+    // Script-made assets live until reload or stop: their refs go stale with the generation.
+    if let Some(mut a) = world.get_resource_mut::<crate::reflect_asset::ScriptAssets>() {
+        a.clear();
+    }
     // Flush the previous generation's console output so the log reads in order.
     crate::runtime::pump(world);
     let number = world.resource::<Generations>().live + 1;
