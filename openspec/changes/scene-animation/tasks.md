@@ -43,4 +43,4 @@
 
 ## 7. Gate
 
-- [ ] 7.1 `cargo test` for the touched crates, `cargo clippy`, the TSX and cli suites, `scripts/gen-bevy-types.sh --check`, `openspec validate scene-animation --strict`
+- [x] 7.1 `cargo test` for the touched crates, `cargo clippy`, the TSX and cli suites, `scripts/gen-bevy-types.sh --check`, `openspec validate scene-animation --strict`
