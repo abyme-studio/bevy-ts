@@ -17,6 +17,19 @@
 //! | setState | 10 | state index u32, value u32 |
 //! | observe | 13 | entity u64, observer key index u32, len u32, its system declaration JSON |
 //! | insertReflect | 14 | entity u64, mode u8, type name len u16, name, JSON len u32, JSON (empty: the default) |
+//! | spawnBatch | 15 | n u32, n × (entity u64, components as in spawn) |
+//! | insertBatch | 16 | n u32, n × (entity u64, components as in insert) |
+//! | insertIfNew | 17 | as insert |
+//! | tryInsert | 18 | as insert |
+//! | retain | 19 | as remove |
+//! | clear | 20 | entity u64 |
+//! | removeWithRequires | 21 | as remove |
+//! | cloneAndSpawn | 22 | source u64, clone u64 |
+//! | insertRecursive | 23 | as insert |
+//! | removeRecursive | 24 | as remove |
+//! | addChildren | 25 | entity u64, n u32, n × child u64 |
+//! | detachChildren | 26 | entity u64 |
+//! | despawnChildren | 27 | entity u64 |
 //!
 //! Entities are `Entity::to_bits`. Component values are native layout bytes, except
 //! `insertReflect`'s: a reflected value's JSON, written by `reflect_value` (mode 0 inserts the
@@ -45,6 +58,19 @@ pub const OP_RUN_SYSTEM: u8 = 11;
 pub const OP_RUN_SCHEDULE: u8 = 12;
 pub const OP_OBSERVE: u8 = 13;
 pub const OP_INSERT_REFLECT: u8 = 14;
+pub const OP_SPAWN_BATCH: u8 = 15;
+pub const OP_INSERT_BATCH: u8 = 16;
+pub const OP_INSERT_IF_NEW: u8 = 17;
+pub const OP_TRY_INSERT: u8 = 18;
+pub const OP_RETAIN: u8 = 19;
+pub const OP_CLEAR: u8 = 20;
+pub const OP_REMOVE_WITH_REQUIRES: u8 = 21;
+pub const OP_CLONE_AND_SPAWN: u8 = 22;
+pub const OP_INSERT_RECURSIVE: u8 = 23;
+pub const OP_REMOVE_RECURSIVE: u8 = 24;
+pub const OP_ADD_CHILDREN: u8 = 25;
+pub const OP_DETACH_CHILDREN: u8 = 26;
+pub const OP_DESPAWN_CHILDREN: u8 = 27;
 
 /// `OP_INSERT_REFLECT`'s modes.
 pub const REFLECT_INSERT: u8 = 0;
@@ -59,8 +85,12 @@ const REMOVED_RECIPES: [(&str, &str); 3] = [
 
 /// Size of the Rust-owned arena handed to each call. Larger buffers overflow into JS.
 pub const ARENA_BYTES: usize = 64 * 1024;
-/// Entity ids pre-allocated for `spawn` per call.
+/// Entity ids pre-allocated for `spawn` per call; JS asks for more with one host call each time
+/// it runs out ([`RESERVE`]).
 pub const POOL_SIZE: usize = 256;
+/// The host function id of `reserve(n)`, which allocates `n` more pool ids during a call (a V8
+/// small integer, above any exported method's id).
+pub const RESERVE: u32 = 0x3FFF_FFFF;
 
 /// Marks entities spawned by TS, so a restart can despawn them.
 #[derive(Component, Reflect, Default, Clone, Copy, Debug)]
@@ -71,9 +101,14 @@ pub struct TsSpawned;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
     Spawn { entity: Entity, components: Vec<(ComponentId, Vec<u8>)> },
-    Insert { entity: Entity, components: Vec<(ComponentId, Vec<u8>)> },
+    Insert { entity: Entity, components: Vec<(ComponentId, Vec<u8>)>, how: Insert },
     Despawn { entity: Entity },
-    Remove { entity: Entity, components: Vec<ComponentId> },
+    Remove { entity: Entity, components: Vec<ComponentId>, how: Remove },
+    Clear { entity: Entity },
+    CloneAndSpawn { source: Entity, clone: Entity },
+    AddChildren { entity: Entity, children: Vec<Entity> },
+    DetachChildren { entity: Entity },
+    DespawnChildren { entity: Entity },
     SetParent { child: Entity, parent: Option<Entity> },
     SpawnNative { entity: Entity, recipe: String, params: serde_json::Value },
     Plugin { opcode: u16, bytes: Vec<u8> },
@@ -88,6 +123,24 @@ pub enum Op {
     /// declaration.
     Observe { entity: Entity, index: u32, decl: Box<crate::manifest::SystemDecl> },
     InsertReflect { entity: Entity, mode: u8, type_name: String, json: Option<serde_json::Value> },
+}
+
+/// How an insert treats what is there, as Bevy's `EntityCommands` methods of the same names.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Insert {
+    Insert,
+    IfNew,
+    Try,
+    Recursive,
+}
+
+/// What a remove takes, as Bevy's `EntityCommands` methods of the same names.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Remove {
+    Remove,
+    WithRequires,
+    Retain,
+    Recursive,
 }
 
 /// A plugin's command decoder: gets the op's bytes and `&mut World`.
@@ -188,6 +241,10 @@ impl<'a> Reader<'a> {
             })
             .collect()
     }
+    fn ids(&mut self) -> Result<Vec<ComponentId>, String> {
+        let n = self.u16()?;
+        (0..n).map(|_| Ok(ComponentId::new(self.u32()? as usize))).collect()
+    }
 }
 
 /// Decodes a whole buffer. Any malformed op or unknown opcode fails the whole buffer, so a
@@ -198,14 +255,43 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
     while r.at < bytes.len() {
         let op = match r.u8()? {
             OP_SPAWN => Op::Spawn { entity: r.entity()?, components: r.components(sizes)? },
-            OP_INSERT => Op::Insert { entity: r.entity()?, components: r.components(sizes)? },
-            OP_DESPAWN => Op::Despawn { entity: r.entity()? },
-            OP_REMOVE => {
-                let entity = r.entity()?;
-                let n = r.u16()?;
-                let components = (0..n).map(|_| Ok(ComponentId::new(r.u32()? as usize))).collect::<Result<_, String>>()?;
-                Op::Remove { entity, components }
+            op @ (OP_INSERT | OP_INSERT_IF_NEW | OP_TRY_INSERT | OP_INSERT_RECURSIVE) => {
+                let how = match op {
+                    OP_INSERT => Insert::Insert,
+                    OP_INSERT_IF_NEW => Insert::IfNew,
+                    OP_TRY_INSERT => Insert::Try,
+                    _ => Insert::Recursive,
+                };
+                Op::Insert { entity: r.entity()?, components: r.components(sizes)?, how }
             }
+            OP_DESPAWN => Op::Despawn { entity: r.entity()? },
+            op @ (OP_REMOVE | OP_REMOVE_WITH_REQUIRES | OP_RETAIN | OP_REMOVE_RECURSIVE) => {
+                let how = match op {
+                    OP_REMOVE => Remove::Remove,
+                    OP_REMOVE_WITH_REQUIRES => Remove::WithRequires,
+                    OP_RETAIN => Remove::Retain,
+                    _ => Remove::Recursive,
+                };
+                Op::Remove { entity: r.entity()?, components: r.ids()?, how }
+            }
+            OP_SPAWN_BATCH | OP_INSERT_BATCH => {
+                let spawn = ops_kind_is_spawn(bytes, r.at - 1);
+                let n = r.u32()?;
+                for _ in 0..n {
+                    let (entity, components) = (r.entity()?, r.components(sizes)?);
+                    ops.push(if spawn { Op::Spawn { entity, components } } else { Op::Insert { entity, components, how: Insert::Insert } });
+                }
+                continue;
+            }
+            OP_CLEAR => Op::Clear { entity: r.entity()? },
+            OP_CLONE_AND_SPAWN => Op::CloneAndSpawn { source: r.entity()?, clone: r.entity()? },
+            OP_ADD_CHILDREN => {
+                let entity = r.entity()?;
+                let n = r.u32()?;
+                Op::AddChildren { entity, children: (0..n).map(|_| r.entity()).collect::<Result<_, _>>()? }
+            }
+            OP_DETACH_CHILDREN => Op::DetachChildren { entity: r.entity()? },
+            OP_DESPAWN_CHILDREN => Op::DespawnChildren { entity: r.entity()? },
             OP_SET_PARENT => {
                 let child = r.entity()?;
                 let bits = r.u64()?;
@@ -283,6 +369,40 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
         ops.push(op);
     }
     Ok(ops)
+}
+
+fn ops_kind_is_spawn(bytes: &[u8], at: usize) -> bool {
+    bytes[at] == OP_SPAWN_BATCH
+}
+
+/// `e` and its descendants through `Children`, parents first.
+fn tree(world: &World, e: Entity) -> Vec<Entity> {
+    let mut out = vec![e];
+    let mut i = 0;
+    while i < out.len() {
+        if let Some(c) = world.get::<Children>(out[i]) {
+            out.extend(c.iter());
+        }
+        i += 1;
+    }
+    out
+}
+
+/// `ids` and every component they require, transitively, as Bevy's `remove_with_requires`.
+fn with_requires(world: &World, ids: &[ComponentId]) -> Vec<ComponentId> {
+    let mut out = ids.to_vec();
+    let mut i = 0;
+    while i < out.len() {
+        if let Some(info) = world.components().get_info(out[i]) {
+            for r in info.required_components().iter_ids() {
+                if !out.contains(&r) {
+                    out.push(r);
+                }
+            }
+        }
+        i += 1;
+    }
+    out
 }
 
 /// Inserts raw native bytes as a component.
@@ -372,25 +492,105 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                 }
                 Err(err) => warnings.push(format!("spawn {entity}: {err}")),
             },
-            Op::Insert { entity, components } => match world.get_entity_mut(entity) {
-                Ok(mut e) => {
-                    for (id, bytes) in components {
+            Op::Insert { entity, components, how } => {
+                if world.get_entity(entity).is_err() {
+                    let method = match how {
+                        Insert::Try => return,
+                        Insert::Insert => "insert",
+                        Insert::IfNew => "insertIfNew",
+                        Insert::Recursive => "insertRecursive",
+                    };
+                    warnings.push(format!("{method}: entity {entity} does not exist"));
+                    return;
+                }
+                let targets = if how == Insert::Recursive { tree(world, entity) } else { vec![entity] };
+                for t in targets {
+                    let mut e = world.entity_mut(t);
+                    for (id, bytes) in &components {
+                        if how == Insert::IfNew && e.contains_id(*id) {
+                            continue;
+                        }
                         // SAFETY: as above.
-                        unsafe { insert_bytes(&mut e, id, &bytes) };
+                        unsafe { insert_bytes(&mut e, *id, bytes) };
                     }
                 }
-                Err(_) => warnings.push(format!("insert: entity {entity} does not exist")),
-            },
+            }
             Op::Despawn { entity } => {
                 if !world.despawn(entity) {
                     warnings.push(format!("despawn: entity {entity} does not exist"));
                 }
             }
-            Op::Remove { entity, components } => match world.get_entity_mut(entity) {
-                Ok(mut e) => {
-                    e.remove_by_ids(&components);
+            Op::Remove { entity, components, how } => {
+                if world.get_entity(entity).is_err() {
+                    let method = match how {
+                        Remove::Remove => "remove",
+                        Remove::WithRequires => "removeWithRequires",
+                        Remove::Retain => "retain",
+                        Remove::Recursive => "removeRecursive",
+                    };
+                    warnings.push(format!("{method}: entity {entity} does not exist"));
+                    return;
                 }
-                Err(_) => warnings.push(format!("remove: entity {entity} does not exist")),
+                match how {
+                    Remove::Remove => {
+                        world.entity_mut(entity).remove_by_ids(&components);
+                    }
+                    Remove::WithRequires => {
+                        let all = with_requires(world, &components);
+                        world.entity_mut(entity).remove_by_ids(&all);
+                    }
+                    Remove::Retain => {
+                        // Bevy keeps the retained components' required components too.
+                        let keep = with_requires(world, &components);
+                        let drop: Vec<ComponentId> = world.entity(entity).archetype().components().iter().copied().filter(|c| !keep.contains(c)).collect();
+                        world.entity_mut(entity).remove_by_ids(&drop);
+                    }
+                    Remove::Recursive => {
+                        for t in tree(world, entity) {
+                            world.entity_mut(t).remove_by_ids(&components);
+                        }
+                    }
+                }
+            }
+            Op::Clear { entity } => match world.get_entity_mut(entity) {
+                Ok(mut e) => {
+                    e.clear();
+                }
+                Err(_) => warnings.push(format!("clear: entity {entity} does not exist")),
+            },
+            Op::CloneAndSpawn { source, clone } => {
+                if world.get_entity(source).is_err() {
+                    warnings.push(format!("cloneAndSpawn: entity {source} does not exist"));
+                    return;
+                }
+                if let Err(err) = world.spawn_empty_at(clone) {
+                    warnings.push(format!("cloneAndSpawn {clone}: {err}"));
+                    return;
+                }
+                bevy::ecs::entity::EntityCloner::build_opt_out(world).clone_entity(source, clone);
+            }
+            Op::AddChildren { entity, children } => {
+                if world.get_entity(entity).is_err() {
+                    warnings.push(format!("addChildren: entity {entity} does not exist"));
+                    return;
+                }
+                let (live, gone): (Vec<Entity>, Vec<Entity>) = children.into_iter().partition(|c| world.get_entity(*c).is_ok());
+                for c in gone {
+                    warnings.push(format!("addChildren: child {c} does not exist"));
+                }
+                world.entity_mut(entity).add_children(&live);
+            }
+            Op::DetachChildren { entity } => match world.get_entity_mut(entity) {
+                Ok(mut e) => {
+                    e.detach_all_children();
+                }
+                Err(_) => warnings.push(format!("detachChildren: entity {entity} does not exist")),
+            },
+            Op::DespawnChildren { entity } => match world.get_entity_mut(entity) {
+                Ok(mut e) => {
+                    e.despawn_children();
+                }
+                Err(_) => warnings.push(format!("despawnChildren: entity {entity} does not exist")),
             },
             Op::SetParent { child, parent } => match (world.get_entity(child).is_ok(), parent) {
                 (false, _) => warnings.push(format!("setParent: entity {child} does not exist")),

@@ -301,7 +301,7 @@ fn span<'s>(scope: &mut v8::PinScope<'s, '_>, buffers: &mut Vec<v8::Local<'s, v8
 /// One param's frame as the JS runtime reads it (see core.js `runSystem`).
 fn frame_value<'s>(s: &mut v8::PinScope<'s, '_>, buffers: &mut Vec<v8::Local<'s, v8::ArrayBuffer>>, p: &ParamFrame) -> v8::Local<'s, v8::Value> {
     match p {
-        ParamFrame::Query { tables } => {
+        ParamFrame::Query { tables, last_run } => {
             let arr = v8::Array::new(s, tables.len() as i32);
             for (i, t) in tables.iter().enumerate() {
                 let ents = span(s, buffers, t.entities as *mut u8, t.len * 8);
@@ -325,11 +325,32 @@ fn frame_value<'s>(s: &mut v8::PinScope<'s, '_>, buffers: &mut Vec<v8::Local<'s,
                     }
                     None => v8::null(s).into(),
                 };
+                let added = v8::Array::new(s, t.columns.len() as i32);
+                for (c, col) in t.columns.iter().enumerate() {
+                    let tv: v8::Local<v8::Value> = match col.added {
+                        Some(p) => span(s, buffers, p as *mut u8, t.len * 4).into(),
+                        None => v8::null(s).into(),
+                    };
+                    added.set_index(s, c as u32, tv);
+                }
                 let len = num(s, t.len as f64);
-                let tuple = v8::Array::new_with_elements(s, &[len, ents.into(), cols.into(), ticks.into(), rows]);
+                let has = num(s, t.has as f64);
+                let tuple = v8::Array::new_with_elements(s, &[len, ents.into(), cols.into(), ticks.into(), rows, has, added.into()]);
                 arr.set_index(s, i as u32, tuple.into());
             }
+            // The tables, with the system's last run beside them (for `Ref`).
+            let key = v8::String::new(s, "lastRun").unwrap();
+            let lr = num(s, *last_run as f64);
+            arr.set(s, key.into(), lr);
             arr.into()
+        }
+        ParamFrame::Entities { data, len } => {
+            let ab = span(s, buffers, *data as *mut u8, len * 8);
+            v8::Uint32Array::new(s, ab, 0, if ab.byte_length() == 0 { 0 } else { len * 2 }).unwrap().into()
+        }
+        ParamFrame::Ticks { this_run, last_run } => {
+            let (a, b) = (num(s, *this_run as f64), num(s, *last_run as f64));
+            v8::Array::new_with_elements(s, &[a, b]).into()
         }
         ParamFrame::Row { data, bytes, ticks } => {
             let d = span(s, buffers, *data, *bytes);

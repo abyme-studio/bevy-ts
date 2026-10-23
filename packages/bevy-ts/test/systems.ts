@@ -180,3 +180,35 @@ export function enemyPlugin(app: import("bevy-ts").App) {
 }
 
 app.addPlugins(enemyPlugin);
+
+// ---------- ecs-queries: query data, filters, params and commands under Bevy's names ----------
+
+export function ecsQueries(
+  q: import("bevy-ts").Query<[Entity, import("bevy-ts").Has<Shield>, import("bevy-ts").Ref<Health>, import("bevy-ts").AnyOf<[Health, Shield]>], import("bevy-ts").Or<[Changed<Health>, import("bevy-ts").Spawned]>>,
+  player: import("bevy-ts").Single<[Mut<Transform>], With<Player>>,
+  maybe: Option<import("bevy-ts").Single<[Entity], With<Player>>>,
+  horde: import("bevy-ts").Populated<[Enemy]>,
+  gone: import("bevy-ts").RemovedComponents<Health>,
+  ticks: import("bevy-ts").SystemChangeTick,
+  commands: Commands,
+) {
+  q.each((e, shielded, h, [hp, sh]) => {
+    const b: boolean = shielded;
+    if (h.isChanged() && b && hp && sh) console.log(e, h.hp, h.lastChanged(), sh.strength);
+    // @ts-expect-error  a Ref is read-only
+    h.hp = 1;
+  });
+  player[0].translation.x += 1;
+  if (maybe !== undefined) console.log(maybe[0]);
+  for (const [a, b] of horde.iterCombinations(2)) console.log(a, b);
+  const many: Entity[] = [...gone];
+  console.log(many, ticks.lastRun < ticks.thisRun, horde.isEmpty(), horde.contains(many[0]));
+  const [x, y] = commands.spawnBatch([[Enemy], [Enemy.of(), Alive.of()]]);
+  commands.entity(x).insertIfNew(Health.of({ hp: 3 })).retain(Health).addChildren([y]).withChildren((p) => p.spawn(Alive));
+  const c: Entity = commands.entity(y).cloneAndSpawn();
+  commands.insertBatch([[c, Alive.of()]]);
+}
+
+export function lastValue(on: On<import("bevy-ts").Remove<Health>>) {
+  console.log(on.entity, on.hp);
+}

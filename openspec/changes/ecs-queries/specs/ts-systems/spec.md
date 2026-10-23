@@ -195,7 +195,7 @@ An `EntityEvent` with `static propagate = true` triggered on `c` SHALL run its o
 - **THEN** the observer runs for `c` and `b`, not `a`
 
 ### Requirement: Disabled entities
-TS queries SHALL honour the world's `DefaultQueryFilters`, as a Bevy query does: an entity with `Disabled` (or any registered disabling component) SHALL NOT match unless the query names that component, so `Query<[Plain]>` skips disabled entities, `Query<[Plain], With<Disabled>>` sees only them, and `Option<Disabled>` sees both. Disabling components SHALL be read when the generation loads.
+TS queries SHALL honour the world's `DefaultQueryFilters`, as a Bevy query does: an entity with `Disabled` (or any registered disabling component) SHALL NOT match unless the query names that component, so `Query<[Plain]>` skips disabled entities, `Query<[Plain], With<Disabled>>` sees only them, and `Has<Disabled>` sees both (`Disabled` has no layout, so it is not query data). Disabling components SHALL be read when the generation loads.
 
 #### Scenario: A disabled entity
 - **WHEN** four entities have `Plain` and one of them also has `Disabled`

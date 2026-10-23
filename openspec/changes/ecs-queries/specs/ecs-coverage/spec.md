@@ -41,7 +41,7 @@ For each Bevy 0.20 item below, bevy-ts SHALL offer the TS form named, under Bevy
 | Required components (`#[require]`) | `static require = [...]` | `required_components_from_every_path` | audit: required |
 | `Disabled`, `DefaultQueryFilters` | queries skip disabled entities | `probe_disabled_and_sparse_filters` | audit: `Disabled` |
 | Sparse-set components in queries | filters match as Bevy; data refused | `probe_disabled_and_sparse_filters`, `sparse_set_data_is_refused` | research |
-| `Allow<T>` | declined for now: `Option<Disabled>` covers it | — | research |
+| `Allow<T>` | declined for now: `Has<Disabled>` covers it (`Disabled` has no layout, so `Option<Disabled>` is not query data) | — | research |
 | `SpawnDetails`, `sort`, `entry`, `queue` | declined: JS covers them (`Array.sort`), or no TS need | — | research |
 
 #### Scenario: Each row's test passes

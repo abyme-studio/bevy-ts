@@ -9,8 +9,9 @@
 use crate::manifest::{Lifecycle, SystemDecl};
 use bevy::ecs::observer::ObservedBy;
 use bevy::ecs::component::ComponentId;
+use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Trigger {
@@ -77,13 +78,6 @@ pub fn attached_path(world: &World, path: &[Entity]) -> Vec<Vec<String>> {
     path.iter().map(|e| attached(world, *e)).collect()
 }
 
-/// [`attached`] from inside a Bevy observer.
-type Attachments<'w, 's> = (Query<'w, 's, &'static ObservedBy>, Query<'w, 's, &'static TsEntityObserver>);
-
-fn attached_in((by, names): &Attachments, entity: Entity) -> Vec<String> {
-    by.get(entity).map(|by| by.get().iter().filter_map(|o| names.get(*o).ok()).map(|o| o.name.clone()).collect()).unwrap_or_default()
-}
-
 /// Every declaration a live attachment names, sorted, for the next generation to rebuild.
 pub fn observed(world: &mut World) -> Vec<String> {
     let mut names: Vec<String> = world.query::<&TsEntityObserver>().iter(world).map(|o| o.name.clone()).collect();
@@ -116,35 +110,50 @@ pub fn propagation_path(world: &World, target: Entity, bubble: bool) -> Vec<Enti
     path
 }
 
-/// Replaces the lifecycle observers with ones for `watched` (kind, component) pairs.
+/// Replaces the lifecycle observers with ones for `watched` (kind, component) pairs. `Discard`,
+/// `Remove` and `Despawn` copy a layout-tier component's bytes at trigger time, since the TS
+/// observer runs later, when the value (or the entity) is gone.
 pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
     let old = std::mem::take(&mut world.get_resource_or_init::<LifecycleObservers>().0);
     for o in old {
         let _ = world.try_despawn(o);
     }
+    // Layout-tier components by id, with their size: only these carry a value.
+    let mut sizes: HashMap<ComponentId, usize> = HashMap::new();
+    if let Some(ts) = world.get_resource::<crate::components::TsComponents>() {
+        let native = world.get_resource::<crate::layout::NativeLayouts>().cloned().unwrap_or_default();
+        sizes = ts.writable_sizes(&native);
+        sizes.extend(native.iter().map(|n| (n.id, n.layout.size)));
+    }
     let mut spawned = Vec::new();
-    for kind in [Lifecycle::Add, Lifecycle::Insert, Lifecycle::Remove] {
+    for kind in [Lifecycle::Add, Lifecycle::Insert, Lifecycle::Discard, Lifecycle::Remove, Lifecycle::Despawn] {
         let ids: Vec<ComponentId> = watched.iter().filter(|(k, _)| *k == kind).map(|(_, id)| *id).collect();
         if ids.is_empty() {
             continue;
         }
-        let watch = ids.clone();
+        let watch: Vec<(ComponentId, Option<usize>)> = ids.iter().map(|id| (*id, kind.carries_value().then(|| sizes.get(id).copied()).flatten())).collect();
         // A despawn's `Remove` runs before Bevy's `ObservedBy` hook, so the attachments are still
         // readable here.
-        let push = move |entity: Entity, components: &[ComponentId], queue: Option<ResMut<ObserverQueue>>, hidden: Query<(), With<crate::ScriptHidden>>, a: Attachments| {
-            let Some(mut queue) = queue else { return };
-            if hidden.contains(entity) {
+        let push = move |entity: Entity, components: &[ComponentId], mut world: DeferredWorld| {
+            if world.get_resource::<ObserverQueue>().is_none() || world.get::<crate::ScriptHidden>(entity).is_some() {
                 return;
             }
-            for id in components.iter().filter(|c| watch.contains(c)) {
-                let attached = vec![attached_in(&a, entity)];
-                queue.0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes: vec![], path: vec![entity], original: Some(entity), attached });
+            for (id, size) in watch.iter().filter(|(c, _)| components.contains(c)) {
+                let bytes = match (size, world.get_entity(entity).ok().and_then(|e| e.get_by_id(*id).ok())) {
+                    // SAFETY: a layout-tier component is `size` bytes of plain data.
+                    (Some(n), Some(p)) => unsafe { std::slice::from_raw_parts(p.as_ptr(), *n) }.to_vec(),
+                    _ => vec![],
+                };
+                let attached = vec![attached(&world, entity)];
+                world.resource_mut::<ObserverQueue>().0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes, path: vec![entity], original: Some(entity), attached });
             }
         };
         let observer = match kind {
-            Lifecycle::Add => Observer::new(move |ev: On<Add<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>, a: Attachments| push(ev.event().entity, ev.trigger().components, q, h, a)),
-            Lifecycle::Insert => Observer::new(move |ev: On<Insert<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>, a: Attachments| push(ev.event().entity, ev.trigger().components, q, h, a)),
-            Lifecycle::Remove => Observer::new(move |ev: On<Remove<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>, a: Attachments| push(ev.event().entity, ev.trigger().components, q, h, a)),
+            Lifecycle::Add => Observer::new(move |ev: On<Add<()>>, w: DeferredWorld| push(ev.event().entity, ev.trigger().components, w)),
+            Lifecycle::Insert => Observer::new(move |ev: On<Insert<()>>, w: DeferredWorld| push(ev.event().entity, ev.trigger().components, w)),
+            Lifecycle::Discard => Observer::new(move |ev: On<Discard<()>>, w: DeferredWorld| push(ev.event().entity, ev.trigger().components, w)),
+            Lifecycle::Remove => Observer::new(move |ev: On<Remove<()>>, w: DeferredWorld| push(ev.event().entity, ev.trigger().components, w)),
+            Lifecycle::Despawn => Observer::new(move |ev: On<Despawn<()>>, w: DeferredWorld| push(ev.event().entity, ev.trigger().components, w)),
         };
         spawned.push(world.spawn(observer.with_components(ids)).id());
     }

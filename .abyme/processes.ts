@@ -365,6 +365,10 @@ const processes = {
   // The thumbnail tests 15 times, a hung run sampled: the walk saw an empty crate and a hang.
   "pipelines-thumb-soak": { cmd: "scripts/thumbnail-soak.sh 15 2>&1 | tee target/thumb-soak.log" },
   "pipelines-materials": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do cargo test -p bevy-ts-cli --test it -- materials standard_material_limits 2>&1 | grep -v ld64 | grep -E \"^test |^test result|panicked|^error\"; done' 2>&1 | tee target/pipelines-materials.log" },
+  // Change ecs-queries: the crates it touches built, its tests, and the last round before it lands.
+  "ecs-queries-build": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo build -p bevy-ts -p bevy-ts-v8 -p bevy-ts-tsx -p bevy-ts-cli --tests 2>&1 | grep -v ld64 | tee target/ecs-queries-build.log | grep -E \"^(error|warning)\" -A14 | head -250'" },
+  "ecs-queries-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib && cargo test -p bevy-ts-tsx --lib && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --no-fail-fast --test ecs_queries --test systems --test tsx --test reload --test native_components) 2>&1 | grep -v ld64 | tee target/ecs-queries-tests.log | grep -E \"^test |^test result|FAILED|panicked|^error|left|right\"'" },
+  "ecs-queries-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/ecs-queries-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo gate exit $?'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

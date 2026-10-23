@@ -281,7 +281,7 @@ impl ScriptBackend for FakeBackend {
         let mut event = None;
         for p in run.params {
             match p {
-                ParamFrame::Query { tables } => queries.push(
+                ParamFrame::Query { tables, .. } => queries.push(
                     tables
                         .iter()
                         .map(|t| FakeTable {
