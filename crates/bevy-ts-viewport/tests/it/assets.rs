@@ -143,6 +143,39 @@ fn a_dropped_texture_arrives_on_the_watch() {
     assert_eq!(c["asset"]["loadState"], "not_loaded");
 }
 
+/// A second window opens the watch with the same params just after a file lands: its opening
+/// poll finds the file, and the first window is still sent it.
+#[test]
+fn a_second_window_opening_does_not_swallow_the_first_ones_changes() {
+    let dir = root("watch-two");
+    write_png(&dir.join("textures/floor.png"), 4, 4, [0, 0, 0, 255]);
+    let mut app = app(&dir);
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(watch(&mut app).unwrap()["assets"].as_array().unwrap().len(), 1, "a opens");
+    app.update();
+    assert!(watch(&mut app).is_none(), "a: quiet");
+    write_png(&dir.join("textures/wall.png"), 4, 4, [255, 0, 0, 255]);
+    // Within the poll interval, so b's opening poll is the one that finds wall.png.
+    app.update();
+    let a = watch(&mut app);
+    let b = watch(&mut app).expect("b opens");
+    let listed = |m: &Value| m["assets"].as_array().unwrap().iter().any(|f| f["path"] == "textures/wall.png");
+    assert!(listed(&b), "b's list has wall.png: {b}");
+    let mut sent = a.into_iter().collect::<Vec<_>>();
+    let t0 = Instant::now();
+    while !sent.iter().any(|m| m["changes"].as_array().is_some_and(|c| c.iter().any(|c| c["path"] == "textures/wall.png"))) {
+        assert!(t0.elapsed() < LONG, "a was never sent wall.png: {sent:?}");
+        std::thread::sleep(Duration::from_millis(30));
+        app.update();
+        sent.extend(watch(&mut app));
+        if let Some(m) = watch(&mut app) {
+            assert!(m["changes"].as_array().unwrap().iter().all(|c| c["path"] != "textures/wall.png" || c["change"] != "added"), "b already lists it: {m}");
+        }
+    }
+}
+
 fn decode(b64: &str) -> Image {
     // base64 back to bytes, then Bevy's PNG decoder.
     let table = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -65,7 +65,6 @@ pub fn add_methods(app: &mut App) {
     add_watching_method(app, CRATE, "bevy-ts/entities+watch", entities::watch);
     add_method(app, CRATE, "bevy-ts/systems", systems);
     add_watching_method(app, CRATE, "bevy-ts/log+watch", log_watch);
-    app.init_resource::<Subscribers>();
     app.add_systems(Last, entities::teardown_when_unwatched);
 }
 
@@ -93,6 +92,9 @@ pub fn add_watching_method<M>(
     handler: impl IntoSystem<In<Option<Value>>, BrpResult<Option<Value>>, M> + 'static,
 ) {
     check_contract(crate_name, name, true);
+    if !app.world().contains_resource::<Subscribers>() {
+        app.init_resource::<Subscribers>().add_systems(First, next_update);
+    }
     let id = app.world_mut().register_system(handler);
     app.world_mut().resource_mut::<RemoteMethods>().insert(name, RemoteMethodSystemId::Watching(id));
 }
@@ -121,36 +123,108 @@ pub fn frame(world: &World) -> u64 {
     world.get_resource::<ScriptFrame>().map_or(0, |f| f.0)
 }
 
-/// Per-subscriber cursors for watching methods, keyed by method and params. Watching handlers
-/// run once per open request per frame with that request's params; a key not served last frame
-/// belongs to a closed request, so the next call with it is a new subscriber.
+/// Per-subscriber cursors for watching methods, keyed by method and params.
+///
+/// Bevy runs a watching handler once per open request per update, with that request's params and
+/// nothing else, in the order of one list of every open watch. A new request is pushed on its end,
+/// and a closed one is dropped with `swap_remove`, which moves the last request into its place. So
+/// requests with the same params are told apart by their order within the update: the first `n`
+/// calls of an update, where `n` subscribers were served the update before, are those
+/// subscribers, and a call after them is a new one. A subscriber not served for an update has
+/// closed.
+///
+/// After a close the survivors can swap slots, and one can take another's cursor. A slot is
+/// therefore served the lowest cursor among it and the slots after it: a subscriber can be sent a
+/// message again, never miss one. Streams that send everything since the cursor catch every
+/// subscriber up each update, so their cursors are equal and a swap changes nothing; `level+watch`,
+/// which sends one event per update, is the exception and can repeat events after a close. One
+/// that opens in the update another with the same params closes is taken for the old one, and
+/// gets no opening message.
 #[derive(Resource, Default)]
 pub struct Subscribers {
-    cursors: HashMap<(String, String), (u64, u64)>,
+    update: u64,
+    streams: HashMap<(String, String), Stream>,
+}
+
+/// The subscribers of one method with one set of params.
+#[derive(Default)]
+struct Stream {
+    /// The update these subscribers were last served in.
+    update: u64,
+    /// How many were served in the update before that one.
+    before: usize,
+    /// How many have been served in `update`.
+    served: usize,
+    /// What each was last sent, in serving order.
+    cursors: Vec<u64>,
+}
+
+/// One call of a watching method: which subscriber it serves, and its cursor (`None` when the
+/// subscriber is new).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Turn {
+    pub slot: usize,
+    pub cursor: Option<u64>,
 }
 
 impl Subscribers {
-    /// Returns the subscriber's cursor, or `None` for a new one, and marks it served this frame.
-    pub fn cursor(&mut self, method: &str, params: &Option<Value>, frame: u64) -> Option<u64> {
-        let key = (method.to_string(), params.as_ref().map(Value::to_string).unwrap_or_default());
-        match self.cursors.get_mut(&key) {
-            Some((last_frame, cursor)) if *last_frame + 1 >= frame => {
-                *last_frame = frame;
-                Some(*cursor)
-            }
-            _ => {
-                self.cursors.insert(key, (frame, 0));
-                None
+    /// Marks the subscriber this call serves as served, and says which it is.
+    pub fn turn(&mut self, method: &str, params: &Option<Value>) -> Turn {
+        let now = self.update;
+        let s = self.streams.entry(key(method, params)).or_default();
+        if s.update != now {
+            s.before = if s.update + 1 == now { s.served } else { 0 };
+            s.cursors.truncate(s.before);
+            s.served = 0;
+            s.update = now;
+        }
+        let slot = s.served;
+        s.served += 1;
+        if slot < s.before {
+            // Any later slot's subscriber may have been moved here (see above).
+            let cursor = s.cursors[slot..s.before].iter().copied().min();
+            return Turn { slot, cursor };
+        }
+        s.cursors.truncate(slot);
+        s.cursors.push(0);
+        Turn { slot, cursor: None }
+    }
+
+    /// The update count, advanced in `First`. Unlike `ScriptFrame`, a Stop does not reset it.
+    pub fn update(&self) -> u64 {
+        self.update
+    }
+
+    /// Returns the subscriber's cursor, or `None` for a new one, and marks it served.
+    pub fn cursor(&mut self, method: &str, params: &Option<Value>) -> Option<u64> {
+        self.turn(method, params).cursor
+    }
+
+    /// Sets the cursor of the subscriber the last [`Subscribers::turn`] served.
+    pub fn set(&mut self, method: &str, params: &Option<Value>, cursor: u64) {
+        if let Some(s) = self.streams.get_mut(&key(method, params)) {
+            if let Some(c) = s.served.checked_sub(1).and_then(|i| s.cursors.get_mut(i)) {
+                *c = cursor;
             }
         }
     }
 
-    pub fn set(&mut self, method: &str, params: &Option<Value>, cursor: u64) {
-        let key = (method.to_string(), params.as_ref().map(Value::to_string).unwrap_or_default());
-        if let Some(c) = self.cursors.get_mut(&key) {
-            c.1 = cursor;
-        }
+    /// Whether a counter at `seq` is news to this subscriber: it is new, or `seq` moved since it
+    /// was last sent. For streams that send their whole state on open and on every change.
+    pub fn owed(&mut self, method: &str, params: &Option<Value>, seq: u64) -> bool {
+        let sent = self.cursor(method, params);
+        self.set(method, params, seq);
+        sent != Some(seq)
     }
+}
+
+fn key(method: &str, params: &Option<Value>) -> (String, String) {
+    (method.to_string(), params.as_ref().map(Value::to_string).unwrap_or_default())
+}
+
+/// `First`: a new update for [`Subscribers`].
+fn next_update(mut s: ResMut<Subscribers>) {
+    s.update += 1;
 }
 
 fn hello(In(_): In<Option<Value>>, world: &World) -> BrpResult {
@@ -211,10 +285,9 @@ fn reload(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
 }
 
 fn reload_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let frame = frame(world);
     let next = world.resource::<ReloadLog>().next_seq();
     let mut subs = world.resource_mut::<Subscribers>();
-    let Some(cursor) = subs.cursor("reload", &p, frame) else {
+    let Some(cursor) = subs.cursor("reload", &p) else {
         subs.set("reload", &p, next);
         return Ok(None);
     };
@@ -227,9 +300,8 @@ fn reload_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option
 }
 
 fn log_watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
-    let frame = frame(world);
     let next = world.resource::<ScriptLog>().next_seq();
-    let cursor = world.resource_mut::<Subscribers>().cursor("log", &p, frame);
+    let cursor = world.resource_mut::<Subscribers>().cursor("log", &p);
     // A new subscriber gets the recent history first.
     let from = cursor.unwrap_or(next.saturating_sub(100));
     if from >= next {
@@ -274,4 +346,77 @@ fn step(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {
 fn systems(In(_): In<Option<Value>>, world: &World) -> BrpResult {
     let list: Vec<_> = world.resource::<TsSystems>().iter().map(|s| s.info()).collect();
     serde_json::to_value(list).map_err(|e| internal(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two subscribers with the same params, one joining two updates late, then the first closing.
+    #[test]
+    fn subscribers_with_the_same_params_each_get_their_own_cursor() {
+        let mut s = Subscribers::default();
+        let p = Some(json!({ "k": 1 }));
+        let a = s.turn("m", &p);
+        assert_eq!(a, Turn { slot: 0, cursor: None }, "a is new");
+        s.set("m", &p, 5);
+        s.update += 1;
+        assert_eq!(s.cursor("m", &p), Some(5));
+        s.update += 1;
+        assert_eq!(s.cursor("m", &p), Some(5), "a, served first");
+        assert_eq!(s.turn("m", &p), Turn { slot: 1, cursor: None }, "b joins: new, though a has these params");
+        s.set("m", &p, 9);
+        s.update += 1;
+        assert_eq!(s.cursor("m", &p), Some(5), "a keeps its cursor");
+        s.set("m", &p, 7);
+        assert_eq!(s.cursor("m", &p), Some(9), "b has its own");
+        s.set("m", &p, 12);
+        // a closes: b moves into a's slot, and is served from the lower of the two cursors.
+        s.update += 1;
+        assert_eq!(s.cursor("m", &p), Some(7), "sent again, never skipped");
+        s.set("m", &p, 12);
+        s.update += 1;
+        assert_eq!(s.cursor("m", &p), Some(12));
+        // Nobody served for an update: the next call is a new subscriber.
+        s.update += 2;
+        assert_eq!(s.cursor("m", &p), None);
+    }
+
+    /// Three subscribers at different cursors; the first closes and Bevy moves the last into its
+    /// place. Nobody is served past what it was sent.
+    #[test]
+    fn a_close_never_skips_a_subscriber_past_its_cursor() {
+        let mut s = Subscribers::default();
+        let p = None;
+        for c in [3, 8, 5] {
+            s.cursor("m", &p);
+            s.set("m", &p, c);
+        }
+        s.update += 1;
+        // Served in the order [c, b]: c (sent 5) sits in a's slot, b in its own.
+        let first = s.cursor("m", &p).unwrap();
+        assert!(first <= 5, "c is served from at most what it was sent: {first}");
+        s.set("m", &p, 9);
+        let second = s.cursor("m", &p).unwrap();
+        assert!(second <= 8, "b likewise: {second}");
+        s.set("m", &p, 9);
+        s.update += 1;
+        assert_eq!((s.cursor("m", &p), s.cursor("m", &p)), (Some(9), Some(9)));
+    }
+
+    #[test]
+    fn owed_sends_on_open_and_when_the_counter_moves() {
+        let mut s = Subscribers::default();
+        let p = None;
+        assert!(s.owed("m", &p, 3), "on open");
+        s.update += 1;
+        assert!(!s.owed("m", &p, 3));
+        assert!(s.owed("m", &p, 3), "a second subscriber opens");
+        s.update += 1;
+        assert!(s.owed("m", &p, 4));
+        assert!(s.owed("m", &p, 4), "both are told");
+        s.update += 1;
+        assert!(!s.owed("m", &p, 4));
+        assert!(!s.owed("m", &p, 4));
+    }
 }

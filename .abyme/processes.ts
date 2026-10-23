@@ -356,6 +356,8 @@ const processes = {
   // The thumbnail tests 15 times, a hung run sampled: the walk saw an empty crate and a hang.
   "pipelines-thumb-soak": { cmd: "scripts/thumbnail-soak.sh 15 2>&1 | tee target/thumb-soak.log" },
   "pipelines-materials": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do cargo test -p bevy-ts-cli --test it -- materials standard_material_limits 2>&1 | grep -v ld64 | grep -E \"^test |^test result|panicked|^error\"; done' 2>&1 | tee target/pipelines-materials.log" },
+  // Change viewport-watch: the crates it touches and the tests that open a watch.
+  "viewport-watch-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test --no-fail-fast -p bevy-ts-remote -p bevy-ts-tsx -p bevy-ts-levels && cargo test --no-fail-fast -p bevy-ts-viewport -- --test-threads=1 && cargo test --no-fail-fast -p bevy-ts-cli --test it -- levels_protocol:: play_stop:: protocol:: tsx_protocol:: viewport_edit:: viewport_level:: viewport_preview:: viewport_thumbnail:: viewport_walk::) 2>&1 | grep -v ld64 | tee target/viewport-watch-tests.log | grep -E \"^test result|FAILED|panicked|^error|-->\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
