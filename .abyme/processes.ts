@@ -259,6 +259,7 @@ const processes = {
   // Fix arena-scene-camera: the tests on the examples' scene cameras, the game view in edit among them.
   "scene-camera-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-cli --no-fail-fast --test it -- play_stop:: build:: headless_ui:: dev_edit:: play:: protocol:: reload:: && cargo test -p bevy-ts-cli --test it play_after_edit:: -- --ignored --nocapture --test-threads=1) 2>&1 | grep -v ld64 | tee target/scene-camera-tests.log | grep -E \"^test |^test result|game view|plain|panicked|^error|left|right\"; echo tests exit ${PIPESTATUS[0]}'" },
   // Fix arena-scene-camera: the last round before it lands.
+  "scene-camera-proof": { cmd: "bash -c 'set -o pipefail; cargo test -p bevy-ts-cli --test play_after_edit -- --ignored --nocapture --test-threads=1 the_game_view_draws_each_example_in_edit 2>&1 | grep -v ld64 | tee target/scene-camera-proof.log | grep -E \"^test |^test result|game view|panicked|^error\"; echo proof exit ${PIPESTATUS[0]}'" },
   "scene-camera-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/scene-camera-gate.log | grep -E \"^test result|FAILED|panicked|^error\"; echo gate exit ${PIPESTATUS[0]}'" },
 } satisfies ProcessFile;
 

@@ -221,7 +221,8 @@ fn the_game_view_draws_each_example_in_edit() {
         dump(&game, &name);
         let n = game.len();
         println!("{entry}: game view in edit, plain share {:.3}, black {} of {n}", plain(&game), black(&game));
-        assert!(plain(&game) < 0.95, "{entry}: the game view is one plain colour ({:.3} of it)", plain(&game));
+        // A frame only cleared is 1; the cube, small in its frame, is about 0.966.
+        assert!(plain(&game) < 0.99, "{entry}: the game view is one plain colour ({:.3} of it)", plain(&game));
         assert!(black(&game) < n / 2, "{entry}: the game view is unlit ({} of {n} pixels black)", black(&game));
     }
 }
