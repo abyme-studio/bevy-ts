@@ -1,6 +1,9 @@
 import type { ProcessFile } from "@abyme/processes";
 
-export default {
+// Every process that runs cargo, itself or through a script, runs inside one of the machine's check
+// slots, named bevy-ts:<process> (docs/check-slots.md); `gated` below wraps it. A long-running
+// server holds a slot for its build only, so its entry wraps that step itself.
+const processes = {
   "bench-bindings-rust": {
     cmd: "cd bench/bindings/rust && cargo bench 2>&1 | tee ../results/rust-criterion.txt",
   },
@@ -37,15 +40,15 @@ export default {
   // Native task 4.4: what one exclusive slot costs the parallel executor.
   "bench-slot": { cmd: "cargo run --release -p bevy-ts-cli --example slot_barrier | tee bench/change-detection/results/slot-barrier.md" },
   "bench-bob": { cmd: "cargo run --release -p bevy-ts-cli --example bob_bench | tee bench/change-detection/results/bob-frame.md" },
-  skeleton: { cmd: "cargo run -p bevy-ts-cli -- skeleton --headless" },
-  cube: { cmd: "cargo run -p bevy-ts-cli -- dev examples/cube/src/game.ts --headless" },
+  skeleton: { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:skeleton -- cargo build -p bevy-ts-cli && ./target/debug/bevy-ts skeleton --headless" },
+  cube: { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:cube -- cargo build -p bevy-ts-cli && ./target/debug/bevy-ts dev examples/cube/src/game.ts --headless" },
   // A project engine (native crate + Rapier) built and run under the dev supervisor, headless.
   // A ports-only project engine: Rapier adopted in bevy-ts.json, no Rust in the project.
   rapier: {
-    cmd: "cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/rapier/src/game.tsx --headless --remote-port 15791 2>&1 | tee target/rapier.log",
+    cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:rapier -- cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/rapier/src/game.tsx --headless --remote-port 15791 2>&1 | tee target/rapier.log",
   },
   thrusters: {
-    cmd: "cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/thrusters/src/game.ts --headless --remote-port 15790 2>&1 | tee target/thrusters.log",
+    cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:thrusters -- cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts dev examples/thrusters/src/game.ts --headless --remote-port 15790 2>&1 | tee target/thrusters.log",
   },
   // Change build-command, task 5.4: a project engine built by `bevy-ts build`, its events kept.
   "build-thrusters": {
@@ -197,3 +200,20 @@ export default {
   // The gate's steps after the tests, for a lint fix that changes no behaviour.
   "script-networking-lint": { cmd: "bash -c 'set -o pipefail; (cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check) && openspec validate script-networking --type spec --strict) 2>&1 | grep -v ld64 | tee target/script-networking-lint.log | tail -30'" },
 } satisfies ProcessFile;
+
+const GATE_SLOT = "$HOME/dev/abyme/scripts/gate-slot";
+const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
+const quoted = (cmd: string) => `'${cmd.replaceAll("'", "'\\''")}'`;
+
+/** Each entry that runs cargo, and does not take its slot itself, as `gate-slot run` around it. */
+function gated(file: ProcessFile): ProcessFile {
+  return Object.fromEntries(
+    Object.entries(file).map(([name, p]) =>
+      runsCargo(p.cmd) && !p.cmd.includes(GATE_SLOT)
+        ? [name, { ...p, cmd: `${GATE_SLOT} run bevy-ts:${name} -- bash -c ${quoted(p.cmd)}` }]
+        : [name, p],
+    ),
+  );
+}
+
+export default gated(processes);

@@ -2,6 +2,7 @@
 # Regenerates the protocol types from protocol/bevy-ts.openrpc.json: Rust (typify) into
 # crates/bevy-ts-remote/src/protocol.rs and TS into packages/bevy-ts/protocol.d.ts.
 # With --check, fails when the regenerated files differ from what is checked in.
+source "$(dirname "$0")/slot.sh"
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo run -q -p bevy-ts-protocol-gen

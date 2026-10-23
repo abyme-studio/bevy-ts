@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # The gate a viewport task group lands on: clippy -D warnings, every workspace test, deno check.
+source "$(dirname "$0")/slot.sh"
 set -uo pipefail
 cd "$(dirname "$0")/.."
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | grep -v ld64 > target/clippy.log

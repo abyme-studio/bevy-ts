@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The gate a native task group lands on: clippy, every workspace test, the JS runtime tests,
 # the npm package check and vitest, the protocol and bevy-ts/bevy checks and the change's strict validation.
+source "$(dirname "$0")/slot.sh"
 set -uo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p target

@@ -2,6 +2,7 @@
 # Regenerates `bevy-ts/bevy` (crates/bevy-ts-v8/js/bevy.js and packages/bevy-ts/bevy.d.ts) from the
 # prebuilt engine's type registry, with no window and no GPU (native task 3.5).
 # With --check, fails when the regenerated files differ from what is checked in.
+source "$(dirname "$0")/slot.sh"
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p target

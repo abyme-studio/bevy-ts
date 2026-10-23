@@ -1,6 +1,7 @@
 #!/bin/bash
 # docs/build-cache.md: cold `cargo build --workspace --all-targets` without sccache, then with it warm.
 # Usage: scripts/sccache-bench.sh [runs per arm, default 3] [arms: none, sccache, ab; default "none sccache"]
+source "$(dirname "$0")/slot.sh"
 set -euo pipefail
 runs=${1:-3}
 arms=${2:-none sccache}
