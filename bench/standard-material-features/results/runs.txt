@@ -1,0 +1,332 @@
+[2m2026-10-22T23:51:33.095255Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Caught rendering error: Validation Error
+[2m2026-10-22T23:51:33.095312Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Caught rendering error: Validation Error
+[2m2026-10-22T23:51:35.296704Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Caught rendering error: Validation Error
+[2m2026-10-22T23:51:35.299126Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Caught rendering error: Validation Error
+[2m2026-10-22T23:51:35.300095Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.306974Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.307948Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.309271Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.310756Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.312350Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.313433Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.315258Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.317615Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.318468Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.320289Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.321510Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.323611Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.324874Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.326587Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.328148Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.328855Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.329635Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.330372Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.331174Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.332220Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.333598Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.334984Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.336623Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.337601Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.339131Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.340345Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.341862Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.343546Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.344127Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.344525Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.345245Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.345980Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.346670Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.347279Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.347852Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.349334Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.350328Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.351697Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.352399Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.353366Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.354286Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.355356Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.356527Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.357320Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.358091Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.358736Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.359710Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.360591Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.361587Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.362385Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.363126Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.363785Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.365003Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.366089Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.366957Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.368026Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.369040Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.369727Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.370617Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.371463Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.372331Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.372918Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.373816Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.375594Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.376365Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.379285Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.381857Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.388311Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.392191Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.393297Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.394964Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.398152Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.399533Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.401259Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.403051Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.404247Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.405138Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.405981Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.408173Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.410197Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.411724Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.412771Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.414003Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.414798Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.415695Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.417898Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.419724Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.420906Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.456383Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.472939Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.477285Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.481533Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.485389Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.487780Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.489592Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.491633Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.493188Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.494216Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.495179Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.496218Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.497368Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.498512Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.499626Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.500763Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.503202Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.504224Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.505725Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.506732Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.507705Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.509467Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.510453Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.511482Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.512160Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.513006Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.514243Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.515469Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.517108Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.518031Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.518918Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.520288Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.521165Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.522150Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.522929Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.523718Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.524549Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.525302Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.526028Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.526781Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.527479Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.528169Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.528764Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.529405Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.530329Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.531190Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.531936Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.532911Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.533813Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.534754Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.535642Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.536461Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.537367Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.538108Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.538940Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.539893Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.540935Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.541734Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.542534Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.543373Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.544301Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.545302Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.546219Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.547028Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.547865Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.548659Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.549507Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.550099Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.551156Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.552286Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.552846Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.553666Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.554702Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.555896Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.556926Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.557696Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.558517Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.559548Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.560495Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.561670Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.562732Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.563480Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.564201Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.564962Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.565751Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.566634Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.567321Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.568267Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.569154Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.570341Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.571218Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.571815Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.572584Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.573711Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.574282Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.574943Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.575957Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.577038Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.578004Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.579222Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.580150Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.581117Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.582117Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.583137Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.583927Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.585494Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.594001Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.597081Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.599517Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.600634Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.601984Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.603341Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.604329Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.605278Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.606052Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.606879Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.607809Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.608606Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.609569Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.610727Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.611900Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.613010Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.614155Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.615406Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.616473Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.617762Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.618971Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.619771Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.620762Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.621681Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.623000Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.623913Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.624825Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.625894Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.626891Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.627916Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.628858Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.629599Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.630604Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.631405Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.632460Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.633431Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.634432Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.635389Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.636377Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.637326Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.638210Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.639048Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.639993Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.640894Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.641688Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.642633Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.643430Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.644138Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.645087Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.645806Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.646737Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.647627Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.648494Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.649407Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.650187Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.650971Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.651715Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.652639Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.653896Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.655048Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.655941Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.656973Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.657894Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.658543Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.659182Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.659993Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.660850Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.661470Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.662429Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.663269Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.664231Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.665092Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.665860Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.667237Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.669071Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.670067Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.671438Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.672288Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.673416Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.674402Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.675466Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.676491Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.677475Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.678576Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.679713Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.680787Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.681849Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.682906Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.683921Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.684974Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.686201Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.687128Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.688275Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.689207Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.690279Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.691184Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.692292Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.693179Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.694086Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.695110Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.696236Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.697245Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+[2m2026-10-22T23:51:35.698323Z[0m [31mERROR[0m [2mbevy_render::error_handler[0m[2m:[0m Quitting the application due to Validation RenderError
+limits arm=on pbr_prepass_pipeline: fragment 15 textures 15 samplers, vertex 15 textures 15 samplers, ok
+limits arm=on pbr_opaque_mesh_pipeline: fragment 18 textures 18 samplers, vertex 15 textures 15 samplers, ok
+limits arm=off pbr_prepass_pipeline: fragment 6 textures 6 samplers, vertex 6 textures 6 samplers, ok
+limits arm=off pbr_opaque_mesh_pipeline: fragment 9 textures 9 samplers, vertex 6 textures 6 samplers, ok
+10:53  up 4 days,  7:38, 1 user, load averages: 32.49 40.78 41.00
+arm=on frames=600 size=3840x2160 frame_mean_ms=6.240 frame_p95_ms=9.200 gpu_synced_mean_ms=10.312
+arm=off frames=600 size=3840x2160 frame_mean_ms=10.575 frame_p95_ms=27.808 gpu_synced_mean_ms=14.902
+arm=on frames=600 size=3840x2160 frame_mean_ms=15.770 frame_p95_ms=37.166 gpu_synced_mean_ms=18.983
+arm=off frames=600 size=3840x2160 frame_mean_ms=9.647 frame_p95_ms=20.696 gpu_synced_mean_ms=13.862
+arm=on frames=600 size=3840x2160 frame_mean_ms=7.605 frame_p95_ms=15.778 gpu_synced_mean_ms=9.218
+arm=off frames=600 size=3840x2160 frame_mean_ms=5.213 frame_p95_ms=7.630 gpu_synced_mean_ms=8.486
+10:55  up 4 days,  7:40, 1 user, load averages: 28.05 36.93 39.47
+10:55  up 4 days,  7:40, 1 user, load averages: 26.86 36.25 39.18
+arm=on frames=600 size=3840x2160 frame_mean_ms=5.266 frame_p95_ms=6.479 gpu_synced_mean_ms=12.691
+arm=off frames=600 size=3840x2160 frame_mean_ms=8.847 frame_p95_ms=21.231 gpu_synced_mean_ms=16.689
+arm=on frames=600 size=3840x2160 frame_mean_ms=14.241 frame_p95_ms=41.478 gpu_synced_mean_ms=13.818
+arm=off frames=600 size=3840x2160 frame_mean_ms=10.444 frame_p95_ms=25.685 gpu_synced_mean_ms=13.984
+arm=on frames=600 size=3840x2160 frame_mean_ms=7.691 frame_p95_ms=15.217 gpu_synced_mean_ms=13.322
+arm=off frames=600 size=3840x2160 frame_mean_ms=8.507 frame_p95_ms=16.997 gpu_synced_mean_ms=14.821
+arm=on frames=600 size=3840x2160 frame_mean_ms=8.554 frame_p95_ms=16.077 gpu_synced_mean_ms=13.118
+arm=off frames=600 size=3840x2160 frame_mean_ms=6.264 frame_p95_ms=10.836 gpu_synced_mean_ms=11.890
+arm=on frames=600 size=3840x2160 frame_mean_ms=7.387 frame_p95_ms=13.967 gpu_synced_mean_ms=12.289
+arm=off frames=600 size=3840x2160 frame_mean_ms=11.675 frame_p95_ms=30.425 gpu_synced_mean_ms=10.248
+arm=on frames=600 size=3840x2160 frame_mean_ms=5.379 frame_p95_ms=7.052 gpu_synced_mean_ms=7.927
+arm=off frames=600 size=3840x2160 frame_mean_ms=5.537 frame_p95_ms=8.032 gpu_synced_mean_ms=8.726
+arm=on frames=600 size=3840x2160 frame_mean_ms=4.009 frame_p95_ms=4.638 gpu_synced_mean_ms=6.801
+arm=off frames=600 size=3840x2160 frame_mean_ms=4.496 frame_p95_ms=5.256 gpu_synced_mean_ms=8.285
+arm=on frames=600 size=3840x2160 frame_mean_ms=4.944 frame_p95_ms=5.798 gpu_synced_mean_ms=7.368
+arm=off frames=600 size=3840x2160 frame_mean_ms=4.078 frame_p95_ms=4.780 gpu_synced_mean_ms=10.171
+10:59  up 4 days,  7:44, 1 user, load averages: 25.81 33.90 37.71
