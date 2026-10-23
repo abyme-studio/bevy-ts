@@ -379,7 +379,7 @@ const processes = {
   // levels-watch-flake: the watch-order test, 16 copies at once for 10 rounds.
   "levels-watch-soak": { cmd: "scripts/levels-watch-soak.sh 16 10 2>&1 | tee target/levels-watch-soak.log" },
   // Change reflect-assets: the crates it touches, while it is built.
-  "reflect-assets-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib reflect_asset && cargo build -p bevy-ts-v8) 2>&1 | grep -v ld64 | tee target/reflect-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning\" -A3'" },
+  "reflect-assets-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib reflect_asset && cargo build -p bevy-ts-v8 && cargo check -p bevy-ts --no-default-features) 2>&1 | grep -v ld64 | tee target/reflect-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning\" -A3'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
