@@ -89,3 +89,14 @@ Deno.test("a gate that cannot start exits 75", async () => {
   assertEquals((await run({ LAND_BASE: "no-such-ref" })).code, 75);
   assertEquals((await run({ PATH: "/usr/bin:/bin" })).code, 75);
 });
+
+Deno.test("a bad LAND_BASE exits 75 before it waits for a slot", async () => {
+  const dir = await fixture();
+  const home = await Deno.makeTempDir();
+  await Deno.mkdir(`${home}/dev/abyme/scripts`, { recursive: true });
+  await Deno.writeTextFile(`${home}/dev/abyme/scripts/gate-slot`, "#!/bin/sh\necho asked\nexit 1\n");
+  await Deno.chmod(`${home}/dev/abyme/scripts/gate-slot`, 0o755);
+  const env = { HOME: home, ABYME_GATE_HELD: "", LAND_BASE: "no-such-ref" };
+  const out = await new Deno.Command(`${dir}/scripts/affected-gate.sh`, { cwd: dir, env, stdout: "piped", stderr: "null" }).output();
+  assertEquals([out.code, new TextDecoder().decode(out.stdout)], [75, ""]);
+});
