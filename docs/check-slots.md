@@ -48,4 +48,6 @@ steps for only what changed since `LAND_BASE`, by default the merge base with ma
   `protocol/`, and any path no rule claims. `--full` forces it: `scripts/native-gate.sh` is that.
 
 `scripts/affected-gate.sh --plan` prints the crates and steps and runs nothing; it takes no slot.
+It exits 0 when every step it ran passed, and 75 when it could not start: no cargo or jq, or a
+`LAND_BASE` that is not a commit.
 `deno test -A --no-check scripts/affected-gate.test.ts` checks the rules on a fixture workspace.

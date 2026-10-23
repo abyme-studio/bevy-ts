@@ -3,14 +3,17 @@
 # changed since LAND_BASE (default: the merge base with main), as docs/check-slots.md lists.
 # Clippy and the tests run for the changed crates and every workspace crate that depends on them.
 # --full runs every step on the whole workspace (native-gate.sh). --plan prints what would run.
+# Exits 0 when every step it ran passed, 75 when it could not start (no cargo or jq, a bad LAND_BASE).
 [[ " $* " == *" --plan "* ]] || source "$(dirname "$0")/slot.sh"
 set -uo pipefail
 cd "$(dirname "$0")/.."
 plan=""; full=""
 for a in "$@"; do case $a in --plan) plan=1 ;; --full) full=--full ;; esac; done
+cannot() { echo "affected-gate: cannot start: $*" >&2; exit 75; }
+command -v jq >/dev/null || cannot "no jq"
 
 # name<TAB>dir of each workspace crate, and its workspace dependencies (any kind) as name<TAB>dep,...
-meta=$(cargo metadata --no-deps --format-version 1 --offline) || exit 1
+meta=$(cargo metadata --no-deps --format-version 1 --offline) || cannot "cargo metadata failed"
 members=$(jq -r --arg root "$(pwd -P)/" \
   '.packages[] | "\(.name)\t\(.manifest_path | ltrimstr($root) | rtrimstr("/Cargo.toml"))"' <<<"$meta")
 
@@ -42,7 +45,8 @@ claim() {
 }
 
 if [[ -z $full ]]; then
-  base=${LAND_BASE:-$(git merge-base main HEAD)} || exit 1
+  base=${LAND_BASE:-$(git merge-base main HEAD)} || cannot "no merge base with main"
+  git rev-parse -q --verify "$base^{commit}" >/dev/null || cannot "LAND_BASE $base is not a commit"
   while IFS= read -r f; do
     [[ -n $f ]] && claim "$f"
     [[ -n $full ]] && break

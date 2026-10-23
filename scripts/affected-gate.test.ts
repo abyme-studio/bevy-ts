@@ -81,3 +81,11 @@ Deno.test("LAND_BASE sets what the change is measured from", async () => {
   assertEquals((await sh(dir, "scripts/affected-gate.sh --plan")).split("\n"), ["crates b c d", "steps clippy test"]);
   assertEquals((await sh(dir, "scripts/affected-gate.sh --plan", { LAND_BASE: "HEAD~1" })).split("\n"), ["crates b c", "steps clippy test"]);
 });
+
+Deno.test("a gate that cannot start exits 75", async () => {
+  const dir = await fixture();
+  const run = (env: Record<string, string>) =>
+    new Deno.Command(`${dir}/scripts/affected-gate.sh`, { args: ["--plan"], cwd: dir, env, stdout: "null", stderr: "null" }).output();
+  assertEquals((await run({ LAND_BASE: "no-such-ref" })).code, 75);
+  assertEquals((await run({ PATH: "/usr/bin:/bin" })).code, 75);
+});
