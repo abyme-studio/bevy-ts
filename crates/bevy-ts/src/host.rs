@@ -17,8 +17,8 @@
 //! `&mut` or the param writes that column.
 //!
 //! Wire format, engine-neutral: arguments and results are little-endian `f64` slots (scalars,
-//! `bool` as 0/1, `Entity` as its bits, vectors as their lanes, records field by field, `Option`
-//! as a flag slot then the value). Slices cross in place: up to four views over JS memory.
+//! `bool` as 0/1, `Entity` as its bits, vectors as their lanes, records field by field, a
+//! fieldless enum as its variant's index, `Option` as a flag slot then the value). Slices cross in place: up to four views over JS memory.
 
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::ComponentId;
@@ -42,6 +42,8 @@ pub enum Kind {
     Quat,
     /// A `NativeLayout` record: its TS name and fields.
     Record(&'static str, Vec<(String, Kind)>),
+    /// A fieldless enum: its TS name and variant names, crossing as the variant's index.
+    Enum(&'static str, Vec<&'static str>),
     Option(Box<Kind>),
     Unit,
 }
@@ -50,7 +52,7 @@ impl Kind {
     /// Slots the value takes.
     pub fn slots(&self) -> usize {
         match self {
-            Kind::Num(_) | Kind::Bool | Kind::Entity => 1,
+            Kind::Num(_) | Kind::Bool | Kind::Entity | Kind::Enum(..) => 1,
             Kind::Vec2 => 2,
             Kind::Vec3 => 3,
             Kind::Quat => 4,
@@ -69,6 +71,7 @@ impl Kind {
             Kind::Vec3 => "{ readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number]".into(),
             Kind::Quat => "{ readonly x: number; readonly y: number; readonly z: number; readonly w: number } | readonly [number, number, number, number]".into(),
             Kind::Record(name, _) => format!("Partial<{name}>"),
+            Kind::Enum(name, _) => name.to_string(),
             Kind::Option(k) => format!("{} | null | undefined", k.ts_in()),
             Kind::Unit => "void".into(),
         }
@@ -82,19 +85,29 @@ impl Kind {
             Kind::Vec2 => "{ readonly x: number; readonly y: number }".into(),
             Kind::Vec3 => "{ readonly x: number; readonly y: number; readonly z: number }".into(),
             Kind::Quat => "{ readonly x: number; readonly y: number; readonly z: number; readonly w: number }".into(),
-            Kind::Record(name, _) => name.to_string(),
+            Kind::Record(name, _) | Kind::Enum(name, _) => name.to_string(),
             Kind::Option(k) => format!("{} | undefined", k.ts_out()),
             Kind::Unit => "void".into(),
         }
     }
 
-    fn records(&self, out: &mut BTreeMap<&'static str, Vec<(String, Kind)>>) {
+    /// The TS declarations of the records and enums this kind names, by name.
+    fn declare(&self, out: &mut BTreeMap<&'static str, String>) {
         match self {
             Kind::Record(name, fields) => {
-                out.insert(name, fields.clone());
-                fields.iter().for_each(|(_, k)| k.records(out));
+                let mut s = format!("export interface {name} {{\n");
+                for (f, k) in fields {
+                    let _ = writeln!(s, "  readonly {f}: {};", k.ts_out());
+                }
+                s.push_str("}\n");
+                out.insert(name, s);
+                fields.iter().for_each(|(_, k)| k.declare(out));
             }
-            Kind::Option(k) => k.records(out),
+            Kind::Enum(name, variants) => {
+                let names: Vec<String> = variants.iter().map(|v| format!("{v:?}")).collect();
+                out.insert(name, format!("export type {name} = {};\n", names.join(" | ")));
+            }
+            Kind::Option(k) => k.declare(out),
             _ => {}
         }
     }
@@ -670,13 +683,16 @@ impl HostParams {
         self.params.iter().map(|r| (r.spec.ts.to_string(), glue(&r.spec, r.first))).collect()
     }
 
-    /// TS declarations of every param, grouped by module.
+    /// TS declarations of every param, grouped by module: the records and enums the module's
+    /// params use, once each, then the params.
     pub fn declarations(&self) -> BTreeMap<&'static str, String> {
-        let mut by_module: BTreeMap<&'static str, String> = BTreeMap::new();
+        let mut types: BTreeMap<&'static str, BTreeMap<&'static str, String>> = BTreeMap::new();
+        let mut params: BTreeMap<&'static str, String> = BTreeMap::new();
         for r in &self.params {
-            by_module.entry(r.spec.module).or_default().push_str(&declaration(&r.spec));
+            named_types(&r.spec, types.entry(r.spec.module).or_default());
+            params.entry(r.spec.module).or_default().push_str(&declaration(&r.spec));
         }
-        by_module
+        params.into_iter().map(|(m, p)| (m, types.remove(m).unwrap_or_default().into_values().collect::<String>() + &p)).collect()
     }
 }
 
@@ -724,11 +740,23 @@ fn write_js(kind: &Kind, expr: &str, out: &mut String) {
         Kind::Record(_, fields) => {
             let _ = write!(out, "{{ const r = {expr} || {{}}; ");
             for (f, k) in fields {
-                // A missing optional field is `None`; any other missing field is zero.
-                let e = if matches!(k, Kind::Option(_)) { format!("r[{f:?}]") } else { format!("(r[{f:?}] ?? 0)") };
+                // A missing optional field is `None`, a missing enum its first variant, any other
+                // missing field zero.
+                let e = match k {
+                    Kind::Option(_) => format!("r[{f:?}]"),
+                    Kind::Enum(_, variants) => format!("(r[{f:?}] ?? {:?})", variants[0]),
+                    _ => format!("(r[{f:?}] ?? 0)"),
+                };
                 write_js(k, &e, out);
             }
             out.push('}');
+        }
+        Kind::Enum(name, variants) => {
+            let _ = write!(
+                out,
+                "{{ const k = {variants:?}.indexOf({expr}); if (k < 0) throw new TypeError(`${{{expr}}} is not a {name}: give one of {}`); a[i++] = k; }}",
+                variants.join(", ")
+            );
         }
         Kind::Option(k) => {
             let _ = write!(out, "{{ const o = {expr}; if (o === null || o === undefined) {{ a[i++] = 0; i += {}; }} else {{ a[i++] = 1; ", k.slots());
@@ -752,6 +780,7 @@ fn read_js(kind: &Kind) -> String {
             let parts: Vec<String> = fields.iter().map(|(f, k)| format!("{f:?}: {}", read_js(k))).collect();
             format!("({{ {} }})", parts.join(", "))
         }
+        Kind::Enum(_, variants) => format!("{variants:?}[a[i++]]"),
         Kind::Option(k) => format!("(a[i++] !== 0 ? {} : (i += {}, undefined))", read_js(k), k.slots()),
         Kind::Unit => "undefined".into(),
     }
@@ -790,29 +819,21 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
     s
 }
 
-fn camel_records(spec: &ParamSpec) -> BTreeMap<&'static str, Vec<(String, Kind)>> {
-    let mut out = BTreeMap::new();
+/// The records and enums a param's methods use, by name.
+fn named_types(spec: &ParamSpec, out: &mut BTreeMap<&'static str, String>) {
     for m in &spec.methods {
-        m.ret.records(&mut out);
+        m.ret.declare(out);
         for a in &m.args {
             if let ArgSpec::Value(_, k) = a {
-                k.records(&mut out);
+                k.declare(out);
             }
         }
     }
-    out
 }
 
-/// The TS declaration of a param and the records its methods use.
+/// The TS declaration of a param.
 fn declaration(spec: &ParamSpec) -> String {
     let mut s = String::new();
-    for (name, fields) in camel_records(spec) {
-        let _ = writeln!(s, "export interface {name} {{");
-        for (f, k) in &fields {
-            let _ = writeln!(s, "  readonly {f}: {};", k.ts_out());
-        }
-        s.push_str("}\n");
-    }
     let _ = writeln!(s, "/** `{}`, a system param exported from Rust; take it as a system parameter. */", spec.rust);
     let _ = writeln!(s, "export interface {} {{", spec.ts);
     for m in &spec.methods {
@@ -859,6 +880,21 @@ mod tests {
     #[test]
     fn spellings_normalise() {
         assert_eq!(normalise_spelling("ResMut< bevy::time::Time<bevy::time::Virtual> >"), "ResMut<Time<Virtual>>");
+    }
+
+    #[test]
+    fn an_enum_crosses_as_its_variant_names() {
+        let settings = Kind::Record("Settings", vec![("visibility".into(), Kind::Enum("Seen", vec!["InView", "Any"])), ("early".into(), Kind::Bool)]);
+        let mut decls = BTreeMap::new();
+        settings.declare(&mut decls);
+        assert_eq!(decls["Seen"], "export type Seen = \"InView\" | \"Any\";\n");
+        assert!(decls["Settings"].contains("readonly visibility: Seen;"), "{decls:?}");
+        // A record that leaves the enum out gets its first variant; a name not in it throws.
+        let mut js = String::new();
+        write_js(&settings, "s", &mut js);
+        assert!(js.contains(r#"["InView", "Any"].indexOf((r["visibility"] ?? "InView"))"#), "{js}");
+        assert!(js.contains("is not a Seen: give one of InView, Any"), "{js}");
+        assert_eq!(read_js(&Kind::Enum("Seen", vec!["InView", "Any"])), r#"["InView", "Any"][a[i++]]"#);
     }
 
     #[test]
