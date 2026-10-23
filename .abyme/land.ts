@@ -2,8 +2,7 @@
 // 3 waiting, a quiet 10 minutes, or 45 minutes after its first branch joined; then `affected-gate`
 // (scripts/affected-gate.sh) checks the batch stacked on main, scoped by LAND_BASE. The full run,
 // `native-gate`, checks main's tip whole when the 04:30 trigger calls `land verify`
-// (.abyme/triggers.ts), reverting the first red landing. The land script (rjm:land) lands it too
-// until callers switch.
+// (.abyme/triggers.ts), reverting the first red landing.
 import type { LandFile } from "@abyme/land";
 
 export default {
