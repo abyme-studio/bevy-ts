@@ -746,6 +746,8 @@ impl crate::backend::HostCalls for WorldHost<'_> {
     #[cfg_attr(not(feature = "pbr"), allow(unused_variables))]
     fn call_json(&mut self, name: &str, args: &str) -> Result<String, String> {
         match name.split_once('.') {
+            // SAFETY: the run holds the world exclusively, and no Rust borrow of it is live between
+            // host calls; `assets` calls only read (the ref table is behind its own lock).
             #[cfg(feature = "pbr")]
             // SAFETY: the asset calls read resources only (the registry, `ScriptAssets`, the asset
             // server, `Assets<T>`), never a table a running system's regions point into, and they

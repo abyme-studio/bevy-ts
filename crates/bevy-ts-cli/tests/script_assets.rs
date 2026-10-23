@@ -282,7 +282,6 @@ export function build(meshes: ResMut<Assets<Mesh>>) {
 app.addSystems(Startup, build);
 "#,
     );
-    let before = app.world().resource::<Assets<Mesh>>().len();
     updates(&mut app, 2);
     // Bevy's own `GenerateTangentsError` text, and the precondition Bevy asserts, as errors.
     assert!(logged(&app, "add threw ").contains("generateTangents: missing vertex attributes 'Vertex_Normal'"), "{}", logged(&app, "add threw "));
@@ -290,7 +289,7 @@ app.addSystems(Startup, build);
     assert!(logged(&app, "flat threw ").contains("computeFlatNormals: needs a mesh without indices"));
     assert!(logged(&app, "lines threw ").contains("computeNormals: needs PrimitiveTopology.TriangleList, not LineList"));
     // The failed adds added nothing; the live mesh is unchanged.
-    assert_eq!(app.world().resource::<Assets<Mesh>>().len(), before + 1);
+    assert_eq!(app.world().resource::<Assets<Mesh>>().len(), 1);
     let m = mesh(&app, ref_of(&app, "kept "));
     assert!(m.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && m.attribute(Mesh::ATTRIBUTE_NORMAL).is_none());
 }
@@ -387,7 +386,7 @@ fn a_mesh_update_is_seen_as_modified() {
         _ => unreachable!(),
     };
     let before = ptr(&app);
-    let mut cursor = app.world().resource::<Messages<AssetEvent<Mesh>>>().get_cursor();
+    let mut cursor = app.world().resource::<Messages<AssetEvent<Mesh>>>().get_cursor_current();
     app.update();
     // Five writes in one run, one `Modified`; the same-length position data went into the same `Vec`.
     let modified = cursor.read(app.world().resource::<Messages<AssetEvent<Mesh>>>()).filter(|e| e.is_modified(&h)).count();

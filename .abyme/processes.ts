@@ -292,6 +292,7 @@ const processes = {
   "reflect-assets-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib reflect_asset && cargo test -p bevy-ts-tsx --lib) 2>&1 | grep -v ld64 | tee target/reflect-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning\" -A3'" },
   // Change script-assets: the crates it touches, while it is built; and the remesh bench (release).
   "script-assets-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --test script_assets --test exported) 2>&1 | grep -v ld64 | tee target/script-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning|left|right\" -A3'" },
+  "script-assets-check": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo check -p bevy-ts-cli --tests 2>&1 | grep -v ld64 | tee target/script-assets-check.log | grep -E \"^(error|warning)\" -A9 | head -150'" },
   "mesh-update-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --release -p bevy-ts-cli --test mesh_update_bench -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/mesh-update-bench.log | tail -20'" },
 } satisfies ProcessFile;
 

@@ -13,7 +13,7 @@
 use bevy::asset::{AssetId, RenderAssetUsages};
 use bevy::diagnostic::FrameCount;
 use bevy::ecs::system::SystemParam;
-use bevy::mesh::{Indices, MeshVertexAttribute, PrimitiveTopology, VertexAttributeValues};
+use bevy::mesh::{Indices, MeshVertexAttribute, PrimitiveTopology, VertexAttributeValues, VertexFormat};
 use bevy::platform::collections::HashSet;
 use bevy_ts::host::ScriptRef;
 use bevy_ts::reflect_asset::ScriptAssets;
@@ -88,9 +88,13 @@ fn attribute(index: u32) -> Result<(MeshVertexAttribute, &'static str), String> 
     ATTRIBUTES.get(i).map(|a| (a.clone(), ATTRIBUTE_NAMES[i])).ok_or_else(|| format!("{index} is not a Mesh.ATTRIBUTE_*"))
 }
 
-/// Components per vertex of a built-in attribute's format.
+/// Numbers per vertex of a built-in attribute's format.
 fn components(a: &MeshVertexAttribute) -> usize {
-    a.format.size() as usize / 4
+    match a.format {
+        VertexFormat::Float32x2 => 2,
+        VertexFormat::Float32x3 => 3,
+        _ => 4,
+    }
 }
 
 /// Fails with Bevy's text when the mesh's data went to the render world.
