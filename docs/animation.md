@@ -199,3 +199,40 @@ nothing; pairs over many rounds do. A diagnostic arm D, Rust-spawned foxes playe
 `PlayAnimation`, is level with A: the plugin does nothing per frame once a clip plays, and
 playing costs what Bevy's own wiring costs. B is ready a frame after A at most, the frame
 `PlayAnimation`'s system applies what the observer saw.
+
+### Paused and culled (change `animation-control`)
+
+The fox bench at N = 400 (`ARMS="B G P H K" scripts/animation-bench.sh 3 400`, process
+`animation-control-bench`): TSX foxes playing (B), the same with every player's
+`AnimationGraphHandle` removed once all play (G, the floor), `paused` (P), the camera turned away
+(H) and turned away with `cull` (K). 3 runs per arm, interleaved, niced, on a shared machine; mean
+± standard deviation over runs.
+
+| Arm | CPU | Update mean | Update p95 | Game GPU p50 |
+| --- | --- | --- | --- | --- |
+| B, playing | 256 ± 13 % | 4.27 ± 0.64 ms | 8.10 ms | 3.32 ms |
+| G, no graph (floor) | 180 ± 14 % | 3.04 ± 0.69 ms | 4.80 ms | 3.18 ms |
+| P, `paused` | 177 ± 9 % | 2.61 ± 0.28 ms | 3.21 ms | 3.11 ms |
+| H, off screen | 234 ± 10 % | 3.53 ± 0.30 ms | 5.27 ms | 1.47 ms |
+| K, off screen with `cull` | 176 ± 3 % | 2.92 ± 0.35 ms | 4.02 ms | 1.46 ms |
+
+`paused` and `cull` cost what the floor costs: about 80 CPU points and 1.3 ms of update less than
+playing. Off screen alone saves only GPU.
+
+Agent town's 100 villagers (each 102 joints, a 258-channel idle) at the fit, every villager
+spawned, headless 960x540, niced, 8 runs of 300 frames per arm
+(`node bench/animation-control/villagers.mjs target/release/bevy-ts`, process
+`animation-control-villagers`, agent town b9bf91c patched in a temp copy). Frame time is paced
+by the headless window, so CPU is the number that moves.
+
+| Arm | CPU | Frame |
+| --- | --- | --- |
+| 0 villagers | 54.0 ± 6.6 % | 20.72 ± 0.81 ms |
+| 100 playing | 102.9 ± 22.1 % | 21.28 ± 2.17 ms |
+| 100 at `speed` 0 | 108.4 ± 21.1 % | 22.50 ± 2.88 ms |
+| 100 `paused` | 64.7 ± 6.9 % | 20.78 ± 0.88 ms |
+| 100 hidden (`Visibility::Hidden`) | 103.4 ± 23.1 % | 20.72 ± 1.15 ms |
+| 100 hidden with `cull` | 58.5 ± 8.6 % | 20.44 ± 0.34 ms |
+
+Speed 0 and hiding cost what playing does; `paused` and `cull` bring 100 villagers to within about
+5 to 10 points of none.
