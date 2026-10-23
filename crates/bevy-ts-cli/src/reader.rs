@@ -41,8 +41,14 @@ pub fn port_claims() -> Vec<(String, String)> {
 /// Param kinds bevy-ts itself declares, recognised by name.
 const KINDS: &[&str] = &[
     "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "State", "NextState", "On", "In", "App", "Mut", "Option",
-    "Entity", "With", "Without", "Changed", "Added", "Add", "Insert", "Remove",
+    "Entity", "With", "Without", "Changed", "Added", "Add", "Insert", "Remove", "Discard", "Despawn", "Single", "Populated",
+    "RemovedComponents", "SystemChangeTick", "Has", "AnyOf", "Ref", "Or", "Spawned",
+    // Bevy items bevy-ts declines as query data (ecs-coverage); named so the error says so.
+    "SpawnDetails", "Allow",
 ];
+
+/// What query data may be, for errors.
+const DATA_KINDS: &str = "a component, Mut<C>, Ref<C>, Option<C>, Has<C>, AnyOf<[...]> or Entity";
 
 /// Field type names, which are types only and never bound.
 const FIELD_TYPES: &[&str] = &[
@@ -1157,20 +1163,22 @@ impl Reader<'_> {
         };
         let s = &scope;
         match name.as_str() {
-            "Query" => {
-                let data = match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
-                    Head::Tuple(ts, ds) => ts.iter().map(|d| self.datum(d, &ds)).collect::<Result<Vec<_>, _>>()?,
-                    _ => return Err(self.fail(s, span, "Query's data is a tuple: Query<[A, Mut<B>]>")),
-                };
-                let filter = match args.get(1) {
-                    None => Vec::new(),
-                    Some(f) => match self.head(f, s, 0)? {
-                        Head::Tuple(ts, fs) => ts.iter().map(|f| self.filter(f, &fs)).collect::<Result<Vec<_>, _>>()?,
-                        _ => vec![self.filter(f, s)?],
-                    },
-                };
-                Ok(json!({ "kind": "query", "data": data, "filter": filter }))
+            "Query" | "Single" | "Populated" => {
+                let (data, filter) = self.query(&name, &args, span, s)?;
+                Ok(json!({ "kind": name.to_lowercase(), "data": data, "filter": filter }))
             }
+            "Option" => match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
+                Head::Kind { name: inner, args: iargs, span: ispan, scope: is } if inner == "Single" => {
+                    let (data, filter) = self.query(&inner, &iargs, ispan, &is)?;
+                    Ok(json!({ "kind": "single", "data": data, "filter": filter, "optional": true }))
+                }
+                _ => Err(self.fail(s, span, "Option<...> as a param takes Single<...>; Option<C> belongs inside a Query")),
+            },
+            "RemovedComponents" => {
+                let c = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a component")?;
+                Ok(json!({ "kind": "removedComponents", "component": c }))
+            }
+            "SystemChangeTick" => Ok(json!({ "kind": "systemChangeTick" })),
             "Res" | "ResMut" => {
                 // An export that claims this spelling reads as that export. Every `Res<Time<..>>`
                 // is script-time's clock route (in `reference`), never a claim.
@@ -1213,12 +1221,12 @@ impl Reader<'_> {
                 Ok(json!({ "kind": "in", "event": e }))
             }
             "On" => match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
-                Head::Kind { name: l, args: largs, span: lspan, scope: ls } if matches!(l.as_str(), "Add" | "Insert" | "Remove") => {
+                Head::Kind { name: l, args: largs, span: lspan, scope: ls } if matches!(l.as_str(), "Add" | "Insert" | "Discard" | "Remove" | "Despawn") => {
                     let c = self.reference(self.arg(&l, &largs, 0, lspan, &ls)?, &ls, "a component")?;
                     Ok(json!({ "kind": "on", "lifecycle": l.to_lowercase(), "component": c }))
                 }
                 Head::Value(e) => Ok(json!({ "kind": "on", "event": e })),
-                _ => Err(self.fail(s, span, "On takes an event or Add/Insert/Remove<Component>")),
+                _ => Err(self.fail(s, span, "On takes an event or Add/Insert/Discard/Remove/Despawn<Component>")),
             },
             port if self.ports.iter().any(|p| p == port) => {
                 let refs = args.iter().map(|a| self.reference(a, s, "a value")).collect::<Result<Vec<_>, _>>()?;
@@ -1228,22 +1236,60 @@ impl Reader<'_> {
         }
     }
 
+    /// A query's data tuple and filter (`Query`, `Single`, `Populated`).
+    fn query(&mut self, name: &str, args: &[Ty], span: Span, s: &Scope) -> Result<(Vec<Value>, Vec<Value>), Fail> {
+        let data = match self.head(self.arg(name, args, 0, span, s)?, s, 0)? {
+            Head::Tuple(ts, ds) => ts.iter().map(|d| self.datum(d, &ds)).collect::<Result<Vec<_>, _>>()?,
+            _ => return Err(self.fail(s, span, format!("{name}'s data is a tuple: {name}<[A, Mut<B>]>"))),
+        };
+        let filter = match args.get(1) {
+            None => Vec::new(),
+            Some(f) => match self.head(f, s, 0)? {
+                Head::Tuple(ts, fs) => ts.iter().map(|f| self.filter(f, &fs)).collect::<Result<Vec<_>, _>>()?,
+                _ => vec![self.filter(f, s)?],
+            },
+        };
+        Ok((data, filter))
+    }
+
     fn datum(&mut self, t: &Ty, scope: &Scope) -> Result<Value, Fail> {
         match self.head(t, scope, 0)? {
             Head::Value(c) => Ok(json!({ "component": c, "mut": false, "optional": false })),
             Head::Kind { name, args, span, scope } => match name.as_str() {
                 "Entity" => Ok(json!({ "entity": true })),
-                "Mut" | "Option" => {
+                "Mut" | "Option" | "Ref" => {
                     let mut d = self.datum(self.arg(&name, &args, 0, span, &scope)?, &scope)?;
-                    if d.get("entity").is_some() {
-                        return Err(self.fail(&scope, span, format!("{name}<Entity> is not query data")));
+                    if d.get("component").is_none() {
+                        return Err(self.fail(&scope, span, format!("{name}<...> takes a component (Mut<C>, Option<C>, Ref<C>)")));
                     }
-                    d[if name == "Mut" { "mut" } else { "optional" }] = json!(true);
+                    let flag = match name.as_str() {
+                        "Mut" => "mut",
+                        "Option" => "optional",
+                        _ => "ref",
+                    };
+                    if (flag == "mut" && d.get("ref").is_some()) || (flag == "ref" && d["mut"] == json!(true)) {
+                        return Err(self.fail(&scope, span, "Ref<C> is read-only; take Mut<C> to write"));
+                    }
+                    d[flag] = json!(true);
                     Ok(d)
                 }
-                _ => Err(self.fail(&scope, span, format!("{name}<...> is not query data; data is a component, Mut<C>, Option<C> or Entity"))),
+                "Has" => {
+                    let c = self.reference(self.arg(&name, &args, 0, span, &scope)?, &scope, "a component")?;
+                    Ok(json!({ "has": c }))
+                }
+                "AnyOf" => match self.head(self.arg(&name, &args, 0, span, &scope)?, &scope, 0)? {
+                    Head::Tuple(ts, ps) => {
+                        let parts = ts.iter().map(|d| self.datum(d, &ps)).collect::<Result<Vec<_>, _>>()?;
+                        if parts.is_empty() || parts.iter().any(|p| p.get("component").is_none() || p["optional"] == json!(true)) {
+                            return Err(self.fail(&scope, span, "AnyOf takes a tuple of components, Mut<C> or Ref<C>: AnyOf<[A, B]>"));
+                        }
+                        Ok(json!({ "anyOf": parts }))
+                    }
+                    _ => Err(self.fail(&scope, span, "AnyOf takes a tuple: AnyOf<[A, B]>")),
+                },
+                _ => Err(self.fail(&scope, span, format!("{name} is not query data; data is {DATA_KINDS}"))),
             },
-            _ => Err(self.fail(scope, span_of(t), "query data is a component, Mut<C>, Option<C> or Entity")),
+            _ => Err(self.fail(scope, span_of(t), format!("query data is {DATA_KINDS}"))),
         }
     }
 
@@ -1255,7 +1301,12 @@ impl Reader<'_> {
                 m.insert(name.to_lowercase(), c);
                 Ok(Value::Object(m))
             }
-            _ => Err(self.fail(scope, span_of(t), "a query filter is With<C>, Without<C>, Changed<C> or Added<C>, or a tuple of them")),
+            Head::Kind { name, .. } if name == "Spawned" => Ok(json!("spawned")),
+            Head::Kind { name, args, span, scope } if name == "Or" => match self.head(self.arg(&name, &args, 0, span, &scope)?, &scope, 0)? {
+                Head::Tuple(ts, fs) if !ts.is_empty() => Ok(json!({ "or": ts.iter().map(|f| self.filter(f, &fs)).collect::<Result<Vec<_>, _>>()? })),
+                _ => Err(self.fail(&scope, span, "Or takes a tuple of filters: Or<[Changed<A>, Added<B>]>")),
+            },
+            _ => Err(self.fail(scope, span_of(t), "a query filter is With<C>, Without<C>, Changed<C>, Added<C>, Spawned or Or<[...]>, or a tuple of them")),
         }
     }
 }

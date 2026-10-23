@@ -206,8 +206,10 @@ pub struct ColumnFrame {
     /// The column's data, `len × size` bytes.
     pub data: *mut u8,
     pub bytes: usize,
-    /// The column's changed ticks, `len` `u32`s, for `write` components only.
+    /// The column's changed ticks, `len` `u32`s, for `write` and `Ref` components only.
     pub ticks: Option<*mut u32>,
+    /// The column's added ticks, `len` `u32`s, for `Ref` components only.
+    pub added: Option<*mut u32>,
 }
 
 /// One matched table: its row count, its entities as (index, generation) pairs, and one
@@ -219,15 +221,23 @@ pub struct TableFrame {
     pub entities: *const u32,
     /// A column the table lacks (an `Option<C>` the row does not have) has a null `data`.
     pub columns: Vec<ColumnFrame>,
-    /// For a query with `Changed`/`Added` filters: the rows that pass, `(ptr, count)`.
+    /// For a query with row filters (`Changed`, `Added`, `Spawned`): the rows that pass,
+    /// `(ptr, count)`.
     pub rows: Option<(*const u32, usize)>,
+    /// One bit per `Has<C>` datum, in order: whether this table has `C`.
+    pub has: u32,
 }
 
 /// One system param's memory for a run. Params are flattened in declaration order, bundles
 /// depth-first; params with nothing to hand over (`Commands`, writers, `NextState`) are `None`.
 #[derive(Clone, Debug)]
 pub enum ParamFrame {
-    Query { tables: Vec<TableFrame> },
+    /// A query's tables, and the system's last-run tick (for `Ref`).
+    Query { tables: Vec<TableFrame>, last_run: u32 },
+    /// Entities, `len` (index, generation) `u32` pairs: `RemovedComponents`.
+    Entities { data: *const u32, len: usize },
+    /// `SystemChangeTick`.
+    Ticks { this_run: u32, last_run: u32 },
     /// One row: a resource, a `Local`, or a computed view such as `Time`. `ticks` points at the
     /// row's changed tick when the param writes it.
     Row { data: *mut u8, bytes: usize, ticks: Option<*mut u32> },

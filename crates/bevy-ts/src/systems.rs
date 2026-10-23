@@ -184,14 +184,84 @@ pub struct Access {
     pub size: usize,
     pub write: bool,
     pub optional: bool,
+    /// `Ref<C>`: JS gets the changed and added ticks to read.
+    pub tracked: bool,
+}
+
+/// A filter term evaluated per row (`Changed`, `Added`, `Spawned`), or inside an `Or` a term
+/// constant per table (`With`, `Without`).
+#[derive(Clone, Debug)]
+enum Term {
+    Changed(ComponentId),
+    Added(ComponentId),
+    Spawned,
+    With(ComponentId),
+    Without(ComponentId),
+    Or(Vec<Term>),
+}
+
+impl Term {
+    /// Whether it reads anything per row.
+    fn per_row(&self) -> bool {
+        match self {
+            Term::Changed(_) | Term::Added(_) | Term::Spawned => true,
+            Term::With(_) | Term::Without(_) => false,
+            Term::Or(ts) => ts.iter().any(Term::per_row),
+        }
+    }
+
+    /// The term for one table: tick slices looked up once, `With`/`Without` decided.
+    fn live<'t>(&self, table: &'t bevy::ecs::storage::Table) -> Live<'t> {
+        match self {
+            Term::Changed(id) => table.get_changed_ticks_slice_for(*id).map_or(Live::Const(false), Live::Ticks),
+            Term::Added(id) => table.get_added_ticks_slice_for(*id).map_or(Live::Const(false), Live::Ticks),
+            Term::Spawned => Live::Spawned,
+            Term::With(id) => Live::Const(table.has_column(*id)),
+            Term::Without(id) => Live::Const(!table.has_column(*id)),
+            Term::Or(ts) => Live::Or(ts.iter().map(|t| t.live(table)).collect()),
+        }
+    }
+}
+
+/// A [`Term`] for one table.
+enum Live<'t> {
+    Ticks(&'t [std::cell::UnsafeCell<Tick>]),
+    Const(bool),
+    Spawned,
+    Or(Vec<Live<'t>>),
+}
+
+impl Live<'_> {
+    fn holds(&self, row: usize, entity: Entity, world: &World, last_run: Tick, tick: Tick) -> bool {
+        match self {
+            // SAFETY: exclusive stage; ticks are plain u32 cells.
+            Live::Ticks(t) => unsafe { *t[row].get() }.is_newer_than(last_run, tick),
+            Live::Const(b) => *b,
+            Live::Spawned => world.entities().entity_get_spawn_or_despawn_tick(entity).is_some_and(|t| t.is_newer_than(last_run, tick)),
+            Live::Or(ls) => ls.iter().any(|l| l.holds(row, entity, world, last_run, tick)),
+        }
+    }
+}
+
+/// What a `Single` or `Populated` param needs to match for the system to run.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Need {
+    Any,
+    One,
+    AtMostOne,
+    SomeRows,
 }
 
 pub struct QueryParam {
     state: QueryState<Entity>,
-    /// Data components in order (`Entity` data is not a column).
+    /// Data components in order (`Entity` and `Has` data are not columns; `AnyOf` gives one per
+    /// part).
     pub columns: Vec<Access>,
-    changed: Vec<ComponentId>,
-    added: Vec<ComponentId>,
+    /// Terms every row must pass (all of), each with a per-row part.
+    rows: Vec<Term>,
+    /// `Has<C>` data, in order: one bit each per table.
+    has: Vec<ComponentId>,
+    pub need: Need,
 }
 
 /// A resolved param, flattened (bundles depth-first) in the order frames are handed over.
@@ -202,6 +272,10 @@ pub enum RunParam {
     /// The nth `Local` of the system.
     Local(usize),
     MessageReader { index: usize },
+    /// `RemovedComponents<C>`: its cursor is kept in `SystemMemory` under `key`.
+    Removed { id: ComponentId, key: String },
+    /// `SystemChangeTick`.
+    ChangeTick,
     State { index: usize },
     /// An observer's trigger.
     Event,
@@ -350,12 +424,21 @@ pub fn rust_component_by_name(world: &World, name: &str) -> Option<ComponentId> 
     short
 }
 
+/// Whether a component is stored in a sparse set (it then splits no tables).
+fn is_sparse(world: &World, id: ComponentId) -> bool {
+    world.components().get_info(id).is_some_and(|i| i.storage_type() == bevy::ecs::component::StorageType::SparseSet)
+}
+
 /// Resolves a component reference as query data (TS, or native layout) or as a filter (any
 /// registered component).
 fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLayouts, data: bool) -> Result<(ComponentId, usize), String> {
     match r.source {
         ComponentSource::Ts => ts(&r.name).ok_or_else(|| format!("no component named {}", r.name)),
         ComponentSource::Rust => {
+            // A sparse-set column is not in table order, so it cannot be a zero-copy column.
+            if data && rust_component_by_name(world, &r.name).is_some_and(|id| is_sparse(world, id)) {
+                return Err(format!("`{}` is a sparse-set component; it can be a filter but not query data", r.name));
+            }
             if let Some(n) = native.get(&r.name).or_else(|| native.iter().find(|n| n.type_path == r.name)) {
                 return Ok((n.id, n.layout.size));
             }
@@ -526,40 +609,65 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], groups: &
     if errors.is_empty() { Ok(out) } else { Err(errors) }
 }
 
-fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], ts: &TsLookup) -> Result<QueryParam, String> {
+fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], need: Need, ts: &TsLookup) -> Result<QueryParam, String> {
     // A Rust type that had no value to read offsets from at startup is tiered from its first row.
-    for d in data {
-        if let DataDecl::Component { component, .. } = d
-            && component.source == ComponentSource::Rust
-        {
+    for (component, _) in data.iter().flat_map(DataDecl::components) {
+        if component.source == ComponentSource::Rust {
             crate::layout_reflect::retry(world, &component.name);
         }
     }
     let native = world.resource::<NativeLayouts>().clone();
     let mut columns = Vec::new();
+    let mut has = Vec::new();
+    // Each `AnyOf`: its parts' ids, matched as an `or` of `with`s.
+    let mut any_of: Vec<Vec<ComponentId>> = Vec::new();
+    let column = |d: &DataDecl, optional_part: bool, columns: &mut Vec<Access>| -> Result<Option<ComponentId>, String> {
+        let DataDecl::Component { component, mutable, optional, tracked } = d else {
+            return Err("AnyOf takes components, Mut<C> or Ref<C>".into());
+        };
+        let (id, size) = resolve_ref(world, component, ts, &native, true)?;
+        if *mutable && native.by_id(id).is_some_and(|n| !n.writable) {
+            return Err(format!("{} is an immutable Rust component; TS can read it but not take Mut<{}>", component.name, component.name));
+        }
+        columns.push(Access { name: component.name.clone(), id, size, write: *mutable, optional: *optional || optional_part, tracked: *tracked });
+        Ok(Some(id))
+    };
     for d in data {
-        if let DataDecl::Component { component, mutable, optional } = d {
-            let (id, size) = resolve_ref(world, component, ts, &native, true)?;
-            if *mutable && native.by_id(id).is_some_and(|n| !n.writable) {
-                return Err(format!("{} is an immutable Rust component; TS can read it but not take Mut<{}>", component.name, component.name));
+        match d {
+            DataDecl::Entity { .. } => {}
+            DataDecl::Component { .. } => {
+                column(d, false, &mut columns)?;
             }
-            if columns.iter().any(|c: &Access| c.id == id && c.write != *mutable) {
-                // The same component read and written in one query: written wins.
+            DataDecl::Has { has: r } => {
+                let id = resolve_ref(world, r, ts, &native, false)?.0;
+                if is_sparse(world, id) {
+                    return Err(format!("Has<{}>: sparse-set filters need the sparse-set query path", r.name));
+                }
+                has.push(id);
             }
-            columns.push(Access { name: component.name.clone(), id, size, write: *mutable, optional: *optional });
+            DataDecl::AnyOf { any_of: parts } => {
+                if parts.is_empty() {
+                    return Err("AnyOf needs at least one component".into());
+                }
+                let mut ids = Vec::new();
+                for p in parts {
+                    ids.extend(column(p, true, &mut columns)?);
+                }
+                any_of.push(ids);
+            }
         }
     }
-    let mut with = Vec::new();
-    let mut without = Vec::new();
-    let mut changed = Vec::new();
-    let mut added = Vec::new();
+    if has.len() > 32 {
+        return Err("a query takes at most 32 Has<C>".into());
+    }
+    let mut rows = Vec::new();
+    let mut archetypal = Vec::new();
     for f in filter {
-        match f {
-            FilterDecl::With(r) => with.push(resolve_ref(world, r, ts, &native, false)?.0),
-            FilterDecl::Without(r) => without.push(resolve_ref(world, r, ts, &native, false)?.0),
-            FilterDecl::Changed(r) => changed.push(resolve_ref(world, r, ts, &native, false)?.0),
-            FilterDecl::Added(r) => added.push(resolve_ref(world, r, ts, &native, false)?.0),
+        let t = term(world, f, ts, &native)?;
+        if t.per_row() {
+            rows.push(t.clone());
         }
+        archetypal.push(t);
     }
     let mut b = QueryBuilder::<Entity>::new(world);
     for c in &columns {
@@ -582,14 +690,82 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], ts: 
             }
         }
     }
-    for id in with.iter().chain(&changed).chain(&added) {
-        b.with_id(*id);
+    // `Has<C>` names `C` without access, so a disabling `C` (`Has<Disabled>`) lifts the default
+    // filter, as Bevy's `Has` does.
+    for id in &has {
+        let mut access = bevy::ecs::query::FilteredAccess::default();
+        access.access_mut().add_archetypal(*id);
+        b.extend_access(access);
     }
-    for id in without {
-        b.without_id(id);
+    for ids in &any_of {
+        b.or(|b| {
+            for id in ids {
+                b.with_id(*id);
+            }
+        });
+    }
+    for t in &archetypal {
+        add_archetypal(&mut b, t);
     }
     b.without::<crate::ScriptHidden>();
-    Ok(QueryParam { state: b.build(), columns, changed, added })
+    Ok(QueryParam { state: b.build(), columns, rows, has, need })
+}
+
+/// A filter as a [`Term`]. Sparse-set components are refused until queries take the
+/// sparse-set path.
+fn term(world: &World, f: &FilterDecl, ts: &TsLookup, native: &NativeLayouts) -> Result<Term, String> {
+    let id = |r: &ComponentRef| -> Result<ComponentId, String> {
+        let id = resolve_ref(world, r, ts, native, false)?.0;
+        if is_sparse(world, id) {
+            return Err(format!("{} is a sparse-set component: sparse-set filters need the sparse-set query path", r.name));
+        }
+        Ok(id)
+    };
+    Ok(match f {
+        FilterDecl::With(r) => Term::With(id(r)?),
+        FilterDecl::Without(r) => Term::Without(id(r)?),
+        FilterDecl::Changed(r) => Term::Changed(id(r)?),
+        FilterDecl::Added(r) => Term::Added(id(r)?),
+        FilterDecl::Spawned => Term::Spawned,
+        FilterDecl::Or(fs) => {
+            if fs.is_empty() {
+                return Err("Or needs at least one filter".into());
+            }
+            Term::Or(fs.iter().map(|f| term(world, f, ts, native)).collect::<Result<_, _>>()?)
+        }
+    })
+}
+
+/// Whether a term matches every archetype (so adds nothing to the builder).
+fn matches_all(t: &Term) -> bool {
+    match t {
+        Term::Spawned => true,
+        Term::Or(ts) => ts.iter().any(matches_all),
+        _ => false,
+    }
+}
+
+/// Adds a term's archetypal part: `Changed`/`Added` need the component, as Bevy's do.
+fn add_archetypal<D: bevy::ecs::query::QueryData>(b: &mut QueryBuilder<D>, t: &Term) {
+    match t {
+        Term::With(id) | Term::Changed(id) | Term::Added(id) => {
+            b.with_id(*id);
+        }
+        Term::Without(id) => {
+            b.without_id(*id);
+        }
+        Term::Spawned => {}
+        Term::Or(ts) => {
+            if matches_all(t) {
+                return;
+            }
+            b.or(|b| {
+                for t in ts {
+                    b.and(|b| add_archetypal(b, t));
+                }
+            });
+        }
+    }
 }
 
 fn flatten_params<'a>(params: &'a [ParamDecl], out: &mut Vec<&'a ParamDecl>) {
@@ -614,7 +790,18 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
     let mut observes = None;
     for (i, p) in flat.iter().enumerate() {
         let rp = match p {
-            ParamDecl::Query { data, filter } => RunParam::Query(Box::new(build_query(world, data, filter, ts).map_err(err)?)),
+            ParamDecl::Query { data, filter } => RunParam::Query(Box::new(build_query(world, data, filter, Need::Any, ts).map_err(err)?)),
+            ParamDecl::Single { data, filter, optional } => {
+                let need = if *optional { Need::AtMostOne } else { Need::One };
+                RunParam::Query(Box::new(build_query(world, data, filter, need, ts).map_err(err)?))
+            }
+            ParamDecl::Populated { data, filter } => RunParam::Query(Box::new(build_query(world, data, filter, Need::SomeRows, ts).map_err(err)?)),
+            ParamDecl::RemovedComponents { component } => {
+                let native = world.resource::<NativeLayouts>().clone();
+                let id = resolve_ref(world, component, ts, &native, false).map_err(err)?.0;
+                RunParam::Removed { id, key: format!("removed:{}", component.name) }
+            }
+            ParamDecl::SystemChangeTick => RunParam::ChangeTick,
             ParamDecl::Res { resource } | ParamDecl::ResMut { resource } => {
                 let write = matches!(p, ParamDecl::ResMut { .. });
                 if let Some(clock) = Clock::of(resource) {
@@ -950,6 +1137,8 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     let mut reader_cursors: Vec<(String, u64)> = Vec::new();
     let (mut ents_used, mut rows_used) = (0usize, 0usize);
     let mut failure: Option<ScriptError> = None;
+    // A `Single` or `Populated` that does not match skips the run, as Bevy's param validation does.
+    let mut skip = false;
     let mut memory = world.remove_resource::<SystemMemory>().unwrap_or_default();
     let mem = memory.0.entry(identity.clone()).or_default();
     // Columns and resource rows the run exposes, for the slice-overlap check of host calls.
@@ -978,14 +1167,16 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     q.state.update_archetypes(world);
                     let tables = &world.storages().tables;
                     let mut out = Vec::new();
+                    let mut count = 0usize;
                     for table_id in q.state.matched_tables() {
                         let table = tables.get(table_id).expect("matched table exists");
                         let len = table.entity_count() as usize;
                         if len == 0 {
                             continue;
                         }
-                        // Changed/Added: the rows whose tick is newer than this system's last run.
-                        let rows = if q.changed.is_empty() && q.added.is_empty() {
+                        // Row filters: the rows that pass against this system's last run.
+                        let rows = if q.rows.is_empty() {
+                            count += len;
                             None
                         } else {
                             if scratch.rows.len() <= rows_used {
@@ -993,18 +1184,16 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                             }
                             let list = &mut scratch.rows[rows_used];
                             list.clear();
-                            let changed: Vec<_> = q.changed.iter().filter_map(|id| table.get_changed_ticks_slice_for(*id)).collect();
-                            let added: Vec<_> = q.added.iter().filter_map(|id| table.get_added_ticks_slice_for(*id)).collect();
-                            for row in 0..len {
-                                // SAFETY: exclusive stage; ticks are plain u32 cells.
-                                let ok = changed.iter().chain(added.iter()).all(|t| unsafe { *t[row].get() }.is_newer_than(last_run, tick));
-                                if ok {
+                            let live: Vec<Live> = q.rows.iter().map(|t| t.live(table)).collect();
+                            for (row, e) in table.entities().iter().enumerate() {
+                                if live.iter().all(|l| l.holds(row, *e, world, last_run, tick)) {
                                     list.push(row as u32);
                                 }
                             }
                             if list.is_empty() {
                                 continue;
                             }
+                            count += list.len();
                             rows_used += 1;
                             Some((list.as_ptr(), list.len()))
                         };
@@ -1022,13 +1211,15 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                         let mut columns = Vec::with_capacity(q.columns.len());
                         for (ci, c) in q.columns.iter().enumerate() {
                             let Some(column) = table.get_column(c.id) else {
-                                columns.push(ColumnFrame { data: std::ptr::null_mut(), bytes: 0, ticks: None });
+                                columns.push(ColumnFrame { data: std::ptr::null_mut(), bytes: 0, ticks: None, added: None });
                                 continue;
                             };
                             // SAFETY: the column holds `len × size` bytes; only the start pointer is
                             // taken. Cells are `UnsafeCell`s and the stage is exclusive.
                             let data = unsafe { column.get_data_slice::<u8>(len) }.as_ptr() as *mut u8;
-                            let ticks = c.write.then(|| table.get_changed_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32);
+                            let changed = || table.get_changed_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32;
+                            let ticks = (c.write || c.tracked).then(changed);
+                            let added = c.tracked.then(|| table.get_added_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32);
                             if c.write {
                                 written.push((table_id, c.id));
                             } else if dev && !written_ids.contains(&c.id) {
@@ -1037,11 +1228,19 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                             if ports {
                                 regions.push(crate::host::Region { start: data as usize, end: data as usize + len * c.size, id: c.id });
                             }
-                            columns.push(ColumnFrame { data, bytes: len * c.size, ticks });
+                            columns.push(ColumnFrame { data, bytes: len * c.size, ticks, added });
                         }
-                        out.push(TableFrame { len, entities: ents.as_ptr(), columns, rows });
+                        let has = q.has.iter().enumerate().fold(0u32, |bits, (i, id)| bits | (table.has_column(*id) as u32) << i);
+                        out.push(TableFrame { len, entities: ents.as_ptr(), columns, rows, has });
                     }
-                    ParamFrame::Query { tables: out }
+                    let ok = match q.need {
+                        Need::Any => true,
+                        Need::One => count == 1,
+                        Need::AtMostOne => count <= 1,
+                        Need::SomeRows => count > 0,
+                    };
+                    skip |= !ok;
+                    ParamFrame::Query { tables: out, last_run: last_run.get() }
                 }
                 RunParam::Res { name, id, size, write } => match world.resource_entities().get(*id).and_then(|e| world.entities().get_spawned(e).ok()) {
                     Some(loc) => {
@@ -1084,6 +1283,30 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     reader_cursors.push((q.name.clone(), q.next_seq));
                     ParamFrame::Messages { parts: [(a.0.as_ptr(), a.1), (b.0.as_ptr(), b.1)], stride: q.layout.size.max(1) }
                 }
+                RunParam::Removed { id, key } => {
+                    if scratch.entities.len() <= ents_used {
+                        scratch.entities.push(Vec::new());
+                    }
+                    let ents = &mut scratch.entities[ents_used];
+                    ents_used += 1;
+                    ents.clear();
+                    let cursor = mem.cursors.get(key.as_str()).copied().unwrap_or(0);
+                    let mut next = cursor;
+                    if let Some(messages) = world.removed_components().get(*id) {
+                        for (m, mid) in messages.get_cursor().read_with_id(messages) {
+                            if (mid.id as u64) < cursor {
+                                continue;
+                            }
+                            let bits = Entity::from(m.clone()).to_bits();
+                            ents.push(bits as u32);
+                            ents.push((bits >> 32) as u32);
+                            next = mid.id as u64 + 1;
+                        }
+                    }
+                    reader_cursors.push((key.clone(), next));
+                    ParamFrame::Entities { data: ents.as_ptr(), len: ents.len() / 2 }
+                }
+                RunParam::ChangeTick => ParamFrame::Ticks { this_run: tick.get(), last_run: last_run.get() },
                 RunParam::State { index } => {
                     ParamFrame::State { value: world.resource::<TsPayloads>().states[*index].current.unwrap_or(u32::MAX) }
                 }
@@ -1109,10 +1332,17 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
         }
     }
 
+    if skip && failure.is_none() {
+        // Skipped like a false run condition: no call into JS, and the last run stays.
+        world.insert_resource(memory);
+        rt.scratch = scratch;
+        return false;
+    }
+
     let hashes: Vec<u64> = read_cols
         .iter()
         .map(|(f, t, c, _)| match &frames[*f] {
-            ParamFrame::Query { tables } => {
+            ParamFrame::Query { tables, .. } => {
                 let cf = &tables[*t].columns[*c];
                 // SAFETY: readable for the run.
                 hash_bytes(unsafe { std::slice::from_raw_parts(cf.data, cf.bytes) })
@@ -1133,12 +1363,16 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                 // calls fetch their params from this cell at the run's ticks.
                 let ticks = crate::host::RunTicks { last_run, this_run: tick };
                 let ports: Vec<usize> = sys.params.iter().filter_map(|p| if let RunParam::Port(i) = p { Some(*i) } else { None }).collect();
-                let mut host = crate::host::WorldHost { world: world.as_unsafe_world_cell(), ticks, regions: &regions, allowed: Some(&ports), params: &mut params };
+                let mut host = crate::host::WorldHost { world: world.as_unsafe_world_cell(), ticks, regions: &regions, allowed: Some(&ports), params: &mut params, reserved: Vec::new(), reserves: 0 };
                 let mut run = SystemRun { ctx: CallContext { frame, arena: &mut scratch.arena, pool: &pool, host: Some(&mut host) }, params: &frames };
-                rt.backend.run_system(sys.key, &mut run)
+                let r = rt.backend.run_system(sys.key, &mut run);
+                (r, host.reserved, host.reserves)
             };
+            let (r, reserved, reserves) = r;
             world.insert_resource(params);
             rt.pool = pool;
+            rt.pool.extend(reserved);
+            rt.reserve_calls += reserves;
             r
         }
     };
@@ -1153,7 +1387,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
         }
         if let Ok(out) = &result {
             for &(p, t, c) in &out.write_marks {
-                if let Some(ParamFrame::Query { tables }) = frames.get(p as usize)
+                if let Some(ParamFrame::Query { tables, .. }) = frames.get(p as usize)
                     && let Some(tf) = tables.get(t as usize)
                     && let Some(ticks) = tf.columns.get(c as usize).and_then(|c| c.ticks)
                 {
@@ -1164,7 +1398,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
         }
         if dev && !sys.warned_read_write {
             for ((f, t, c, id), before) in read_cols.iter().zip(&hashes) {
-                if let ParamFrame::Query { tables } = &frames[*f] {
+                if let ParamFrame::Query { tables, .. } = &frames[*f] {
                     let cf = &tables[*t].columns[*c];
                     // SAFETY: unchanged structurally since the run.
                     if hash_bytes(unsafe { std::slice::from_raw_parts(cf.data, cf.bytes) }) != *before {

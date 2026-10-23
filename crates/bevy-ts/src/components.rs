@@ -160,11 +160,17 @@ fn register(world: &mut World, decl: &ComponentDecl, layout: &ComponentLayout) -
             None,
             true,
             true,
-            ComponentCloneBehavior::Default,
+            ComponentCloneBehavior::Custom(clone_bytes),
             None,
         )
     };
     world.register_component_with_descriptor(descriptor)
+}
+
+/// Clones a TS component by copying its bytes (`cloneAndSpawn`): it is plain data.
+fn clone_bytes(source: &bevy::ecs::entity::SourceComponent, ctx: &mut bevy::ecs::entity::ComponentCloneCtx) {
+    // SAFETY: TS components are plain bytes with no drop, so a copy owns nothing twice.
+    unsafe { ctx.write_target_component_ptr(source.ptr()) };
 }
 
 fn entities_with(world: &mut World, id: ComponentId) -> Vec<Entity> {

@@ -712,10 +712,27 @@ pub struct WorldHost<'a> {
     /// The params the running system takes, by index; `None` for an entry call.
     pub allowed: Option<&'a [usize]>,
     pub params: &'a mut HostParams,
+    /// Pool ids `reserve` handed JS during the call, in order, after the call's pool.
+    pub reserved: Vec<u64>,
+    /// `reserve` calls made during the call.
+    pub reserves: u64,
 }
 
 impl crate::backend::HostCalls for WorldHost<'_> {
     fn call(&mut self, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
+        if id == crate::commands::RESERVE {
+            // `reserve(n)`: n more entity ids, as f64 slots (the pool's representation).
+            let n = args.get(..8).map_or(0.0, |b| f64::from_le_bytes(b.try_into().unwrap())) as usize;
+            let n = n.min(ret.len() / 8);
+            self.reserves += 1;
+            let alloc = self.world.entity_allocator();
+            for i in 0..n {
+                let bits = alloc.alloc().to_bits();
+                self.reserved.push(bits);
+                ret[i * 8..i * 8 + 8].copy_from_slice(&(bits as f64).to_le_bytes());
+            }
+            return Ok(n);
+        }
         self.params.call(self.world, self.ticks, self.regions, self.allowed, id, args, ret, slices)
     }
 }

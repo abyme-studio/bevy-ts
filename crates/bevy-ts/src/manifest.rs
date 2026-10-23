@@ -191,13 +191,34 @@ pub enum ComponentSource {
 #[serde(untagged)]
 pub enum DataDecl {
     Entity { entity: bool },
+    /// `Has<C>`: whether the row has `C`; never filters.
+    Has { has: ComponentRef },
+    /// `AnyOf<[A, B]>`: each part as `Option`, at least one present.
+    AnyOf {
+        #[serde(rename = "anyOf")]
+        any_of: Vec<DataDecl>,
+    },
     Component {
         component: ComponentRef,
         #[serde(default)]
         mutable: bool,
         #[serde(default)]
         optional: bool,
+        /// `Ref<C>`: read, with the row's change ticks.
+        #[serde(default, rename = "ref", skip_serializing_if = "std::ops::Not::not")]
+        tracked: bool,
     },
+}
+
+impl DataDecl {
+    /// The components this datum reads or writes, with whether it writes: `AnyOf` gives its parts.
+    pub fn components(&self) -> Vec<(&ComponentRef, bool)> {
+        match self {
+            DataDecl::Component { component, mutable, .. } => vec![(component, *mutable)],
+            DataDecl::AnyOf { any_of } => any_of.iter().flat_map(DataDecl::components).collect(),
+            DataDecl::Entity { .. } | DataDecl::Has { .. } => vec![],
+        }
+    }
 }
 
 /// A query filter.
@@ -208,6 +229,10 @@ pub enum FilterDecl {
     Without(ComponentRef),
     Changed(ComponentRef),
     Added(ComponentRef),
+    /// The entity was spawned since the system last ran.
+    Spawned,
+    /// Any of the terms.
+    Or(Vec<FilterDecl>),
 }
 
 /// A lifecycle event an observer can take.
@@ -216,7 +241,18 @@ pub enum FilterDecl {
 pub enum Lifecycle {
     Add,
     Insert,
+    /// Before a value is replaced or removed (Bevy 0.20's `Discard`).
+    Discard,
     Remove,
+    /// An entity with the component is despawned.
+    Despawn,
+}
+
+impl Lifecycle {
+    /// Kinds whose observers get the value as it was when the event fired.
+    pub fn carries_value(self) -> bool {
+        matches!(self, Lifecycle::Discard | Lifecycle::Remove | Lifecycle::Despawn)
+    }
 }
 
 /// One system parameter, as the compile step (or a setup closure) declared it.
@@ -228,6 +264,25 @@ pub enum ParamDecl {
         #[serde(default)]
         filter: Vec<FilterDecl>,
     },
+    /// `Single<D, F>` (`optional`: `Option<Single<D, F>>`): one row, or the system is skipped.
+    Single {
+        data: Vec<DataDecl>,
+        #[serde(default)]
+        filter: Vec<FilterDecl>,
+        #[serde(default)]
+        optional: bool,
+    },
+    /// `Populated<D, F>`: a query with at least one row, or the system is skipped.
+    Populated {
+        data: Vec<DataDecl>,
+        #[serde(default)]
+        filter: Vec<FilterDecl>,
+    },
+    /// `RemovedComponents<C>`.
+    RemovedComponents {
+        component: ComponentRef,
+    },
+    SystemChangeTick,
     Res {
         resource: String,
     },
@@ -405,7 +460,9 @@ impl SystemDecl {
     pub fn queries(&self) -> Vec<(&Vec<DataDecl>, &Vec<FilterDecl>)> {
         fn walk<'a>(p: &'a ParamDecl, out: &mut Vec<(&'a Vec<DataDecl>, &'a Vec<FilterDecl>)>) {
             match p {
-                ParamDecl::Query { data, filter } => out.push((data, filter)),
+                ParamDecl::Query { data, filter } | ParamDecl::Single { data, filter, .. } | ParamDecl::Populated { data, filter } => {
+                    out.push((data, filter))
+                }
                 ParamDecl::Bundle { fields } => fields.iter().for_each(|f| walk(&f.param, out)),
                 _ => {}
             }
@@ -421,12 +478,10 @@ impl SystemDecl {
         let mut read = Vec::new();
         let mut write = Vec::new();
         for (data, _) in self.queries() {
-            for d in data {
-                if let DataDecl::Component { component, mutable, .. } = d {
-                    let list = if *mutable { &mut write } else { &mut read };
-                    if !list.contains(&component.name) {
-                        list.push(component.name.clone());
-                    }
+            for (component, mutable) in data.iter().flat_map(DataDecl::components) {
+                let list = if mutable { &mut write } else { &mut read };
+                if !list.contains(&component.name) {
+                    list.push(component.name.clone());
                 }
             }
         }
