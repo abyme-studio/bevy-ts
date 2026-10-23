@@ -175,8 +175,8 @@ export function dim(ambient: ResMut<GlobalAmbientLight>, scale: Res<UiScale>) {
 `Res<R>` reads the resource's own row in place; `ResMut<R>` writes it in place and marks its
 change tick, so a Rust system's `Res<R>::is_changed()` sees the write that frame. Holes (such as
 `GlobalAmbientLight.color`) are never visible. A name resolves to a TS resource first, then to a
-Rust resource by type path or unambiguous short name. The load fails, naming the system, the
-param and the resource, for a reflect-tier resource (with its reason), a component that is not a
+Rust resource by type path or unambiguous short name. A Rust resource is never query data. The
+load fails, naming the system, the param and the resource, for a reflect-tier resource (with its reason), a component that is not a
 resource, `ResMut` of an immutable type, a short name several types share (with their paths), or
 an unknown name.
 
@@ -204,7 +204,8 @@ What reaches TS, by resource (tiers from `bevy-ts types` on the prebuilt engine)
 | `MouseScrollPixelsPerLine` | none: Bevy reflects it without `Resource` | not reachable | script-input-devices |
 | `PickingSettings`, `PointerInputSettings`, `MeshPickingSettings`, `SpritePickingSettings`, `UiPickingSettings` | layout | `Res`/`ResMut` | here |
 | `WireframeConfig`, `Wireframe2dConfig`, `GlobalUiDebugOptions`, `GlobalRenderDebugOverlay`, `TransformGizmoState` | layout | `Res`/`ResMut` | here |
-| `DefaultOpaqueRendererMethod`, `ManageAccessibilityUpdates`, `InputFocusVisible`, `GlobalsUniform` | layout | `Res`/`ResMut` | here |
+| `DefaultOpaqueRendererMethod`, `ManageAccessibilityUpdates`, `InputFocusVisible` | layout | `Res`/`ResMut` | here |
+| `GlobalsUniform` | layout | none: it lives only in the render world, so `Res` fails every run | here |
 | `ClearColor` | reflect (`Color` only) | not yet; see "Rust components in TS" | reflect-enums-color (reflect-coverage stage 3) |
 | `DirectionalLightShadowMap`, `PointLightShadowMap` | reflect (`usize` is opaque) | not yet | reflect-enums-color (reflect-coverage stage 3) |
 | `Time` | per-run value | `Res<Time>` | script-time |
