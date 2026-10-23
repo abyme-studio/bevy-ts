@@ -22,7 +22,7 @@ Native layouts already cover resources: `layout_reflect::fill` tiers every `Refl
 
 1b. **A Rust resource's row is in a sparse set.** `#[derive(Resource)]` stores the component as `SparseSet`, unlike a TS resource's table column. `RunParam::Res` reads the row and its changed-tick cell from `ComponentSparseSet::get_with_ticks` when the id has a sparse set, and from the table otherwise. Same zero-copy frame either way.
 
-4. **`Time` keeps its route.** script-time owns it and chose a per-run value for all four clocks (`docs/research/script-time.md` §1). The route runs before decision 1, so the generic path never sees `Time`. Until script-time widens the route to every `bevy_time::time::Time<..>` path, `Time<Real/Virtual/Fixed>` by path reach the generic path and refuse there as reflect tier; `bevy-ts/bevy` emits no class for them. When the route widens, nothing here changes.
+4. **`Time` keeps its route.** script-time owns it and chose a per-run value for all four clocks (`docs/research/script-time.md` §1). The route (script-time's `Clock::of`) takes every `Time` and `Time<..>` spelling and runs before decision 1, so the generic path never sees a `Time`; `bevy-ts/bevy` emits no class for the clocks.
 
 5. **Missing resource: as Bevy.** Bevy 0.20's `Res<T>` fails param validation when absent and the default error handler panics; `Option<Res<T>>` gets `None`. Here `Res`/`ResMut` keep today's run failure (`systems.rs:762`), which is our panic: the error is logged with the system's location and the generation keeps running. `Option<Res<R>>`/`Option<ResMut<R>>`:
    - reader (`reader.rs:1075`): `Option<Res<R>>` → `{ kind: "res", resource, optional: true }`.
