@@ -148,3 +148,21 @@ To settle with lead@script-gltf (not settled here):
    per root (all meshes not in view) or per player.
 4. Exposing `SharedGraph`'s clip → node map to TS, which any raw `AnimationPlayer` write needs.
 5. `docs/animation.md` and the fox bench (`animation_bench_engine.rs`), theirs, gain the new arms.
+
+## 6. Before and after (tasks 1 and 6)
+
+Agent town b9bf91c, all 100 villagers spawned at the fit, headless 960x540, niced, 300 frames a
+run, 8 runs per arm interleaved (`bench/animation-control/villagers.mjs`, which patches a temp copy
+of agent town; the machine shared with other builds, a test build overlapping the npm runs).
+
+| Arm | Before: npm engine 0.1.0-alpha.17, CPU % | After: this branch, CPU % | After, frame ms |
+| --- | --- | --- | --- |
+| 0 villagers | 54.0 ± 3.3 | 54.0 ± 6.6 | 20.72 ± 0.81 |
+| 100 playing | 119.1 ± 22.4 | 102.9 ± 22.1 | 21.28 ± 2.17 |
+| 100 at `speed` 0 | 127.7 ± 19.6 | 108.4 ± 21.1 | 22.50 ± 2.88 |
+| 100 hidden | 125.6 ± 23.3 | 103.4 ± 23.1 | 20.72 ± 1.15 |
+| 100 `paused` | – | 64.7 ± 6.9 | 20.78 ± 0.88 |
+| 100 hidden, `cull` | – | 58.5 ± 8.6 | 20.44 ± 0.34 |
+
+The fox bench at 400 (docs/animation.md, Cost): playing 256 ± 13 % CPU, the no-graph floor
+180 ± 14 %, `paused` 177 ± 9 %, off screen 234 ± 10 %, off screen with `cull` 176 ± 3 %.
