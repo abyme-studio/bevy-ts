@@ -1,18 +1,18 @@
 ## 0. Before starting
 
-- [ ] 0.1 The operator's go on design "Ask-first items" 1 (the `AssetRef` host kind, strong refs freed on drop and reload) and 2 (remesh performance)
+- [x] 0.1 The operator's go on design "Ask-first items" 1 (the `AssetRef` host kind, strong refs freed on drop and reload) and 2 (remesh performance)
 - [ ] 0.2 writable-native-params and reflect-assets stage 1 are on main; rebase. Agree with lead@reflect-assets: `ScriptAssets` stores an `UntypedHandle` per ref, and this change owns handle lifecycle and load state (their design names engine-core)
 - [ ] 0.3 Cargo only through `~/dev/abyme/scripts/gate-slot`, none during a load freeze; nothing on the operator's screen (headless engines only)
 
 ## 1. Stage 1: handles and load state
 
-- [ ] 1.1 `crates/bevy-ts/src/host.rs`: `Kind::AssetRef(type_path)` and `ScriptRef<A>(u32)`; JS glue wraps and unwraps `{ $asset: n }`, checks the asset type, throws naming method and both types; `bevy-ts types` declares `AssetRef<A>`; a test with a fixture export taking and returning `ScriptRef<Mesh>`
-- [ ] 1.2 `crates/bevy-ts/src/reflect_asset.rs`: `insert_strong`, `drop`, `remove`; hot reload drops the old session's strong entries; stop drops and removes all
+- [ ] 1.1 `crates/bevy-ts/src/host.rs`: `Kind::AssetRef(type_path)` and `ScriptRef<A>(u64)`; JS glue wraps and unwraps `{ $asset: n }`, checks the asset type, throws naming method and both types; `bevy-ts types` declares `AssetRef<A>`; a test with a fixture export taking and returning `ScriptRef<Mesh>`
+- [ ] 1.2 `crates/bevy-ts/src/reflect_asset.rs`: entry kind `Uuid | Strong`; `insert_strong -> u64`, `drop`, `remove`; `clear(world, false)` (hot reload) drops strong entries; stop drops and removes all
 - [ ] 1.3 `crates/bevy-ts-cli/src/assets.rs`: `ScriptAssetServer` (`stands_for = "Res<AssetServer>"`) with `load(path, type?)`, `loadState`, `dependencyLoadState`, `recursiveDependencyLoadState`, `isLoaded`, `isLoadedWithDirectDependencies`, `isLoadedWithDependencies`; the failed-state text through a `Uint8Array`; labelled path without a type throws; registered in every engine
 - [ ] 1.4 Runtime (`crates/bevy-ts-v8/js/core.js`, `packages/bevy-ts/runtime/core.js`): `assets.drop`, `assets.remove`, `ref.id`, and `isAdded`/`isModified`/`isRemoved`/`isUnused`/`isLoadedWithDependencies` on `AssetEvent`; types in `packages/bevy-ts/index.d.ts` and the `bevy-ts/assets` d.ts
 - [ ] 1.5 `crates/bevy-ts-cli/tests/script_assets.rs`: `a_texture_loads_and_reaches_loaded`, `a_missing_file_fails_with_bevys_error`, `a_gltf_waits_for_its_dependencies`, `a_labelled_path_needs_a_type`, `a_dropped_mesh_nothing_holds_is_freed`, `a_dropped_mesh_an_entity_draws_stays`, `remove_frees_at_once`, `a_stale_ref_throws`, `hot_reload_frees_what_only_the_old_script_held`, `a_uuid_ref_keeps_its_asset_after_drop`, `a_load_is_seen_as_an_event` (needs rust-events; `#[ignore]` with its name until it lands)
 - [ ] 1.6 `tests/typescript.rs`: `Res<AssetServer>` resolves to the export; `load` typed by its class argument
-- [ ] 1.7 `docs/assets.md`: handles, load state, drop and remove, ids and events; `docs/native.md`: the `AssetRef` kind
+- [ ] 1.7 `docs/assets.md`: handles, load state, drop and remove, ids and events; script-made (UUID) assets grow across hot reloads in dev only, freed on restart; `docs/native.md`: the `AssetRef` kind
 
 ## 2. Stage 2: `ResMut<Assets<Mesh>>` and the `Mesh` API
 

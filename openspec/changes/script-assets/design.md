@@ -46,19 +46,23 @@
    *Alternative:* methods on reflect-assets' `assets` object. Rejected: `assets` carries JSON,
    and Bevy's unit for this work is the param.
 
-2. **One ref table, strong entries.** reflect-assets' `ScriptAssets` keeps the table; this change
-   asks it to store an `UntypedHandle` per ref, strong or UUID, and adds `insert_strong(handle)
-   -> u32`, `drop(n)` and `remove(world, n)`. `server.load` and `meshes.add` insert strong
-   handles. `drop` removes the entry; Bevy's own handle drop sends `Unused` and frees the asset
-   when no component holds a clone. `remove` calls `Assets::remove` (through `ReflectAsset` for
-   any type) and removes the entry. A hot reload starts a new session tag (reflect-assets' rule:
-   old refs go stale) and now also drops the old session's strong entries; UUID entries keep
-   reflect-assets' rule (kept until stop). Stop drops and removes all.
+2. **One ref table, strong entries.** reflect-assets' `ScriptAssets` keeps the table and already
+   stores an `UntypedHandle` per ref (`Made { handle, reflect }`); ref numbers are `u64`, from 1,
+   never reused. This change adds an entry kind, `Uuid | Strong`, and `insert_strong(handle) ->
+   u64`, `drop(n)` and `remove(world, n)` beside it (agreed with build@reflect-assets,
+   2026-10-24). `server.load` and `meshes.add` insert strong handles; a strong entry is never
+   queued and has no `ReflectAsset` value. `drop` removes the entry; Bevy's own handle drop sends
+   `Unused` and frees the asset when no component holds a clone. `remove` calls `Assets::remove`
+   (through `ReflectAsset` for any type) and removes the entry. No new session tag: a hot reload
+   runs reflect-assets' `clear(world, false)`, which now also drops the strong entries; UUID
+   entries keep reflect-assets' rule (kept until restart or stop). Stop drops and removes all.
+   Script-made assets (`assets.add`, `.of`) stay UUID handles (the call has only `&World`), so
+   their growth across hot reloads is dev-only and freed on restart; `docs/assets.md` says so.
    *Alternative:* JS `FinalizationRegistry` to drop on GC. Rejected: GC timing is not
    deterministic, and a test could not say when an asset goes. Bevy's drop is explicit in
    effect too (scope end), so `assets.drop` is the honest spelling.
 
-3. **`AssetRef` is a host kind.** `Kind::AssetRef(type_path)`; Rust type `ScriptRef<A>(u32)`, one
+3. **`AssetRef` is a host kind.** `Kind::AssetRef(type_path)`; Rust type `ScriptRef<A>(u64)`, one
    slot holding the ref number. JS glue unwraps `{ $asset: n }` on the way in, checking its type
    against the method's `A`, and wraps the number on the way out into the same frozen object
    `assets` returns. The param resolves the number through `ScriptAssets` it holds. Any native
