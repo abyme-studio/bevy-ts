@@ -150,36 +150,137 @@ pub fn tick(app: &mut App) -> u32 {
     app.world_mut().read_change_tick().get()
 }
 
+/// An engine (or any long-lived child) a test started. It stays in the test runner's process
+/// group, so Ctrl-C or a hangup to `cargo test` reaches it as it reaches the runner. Dropping it
+/// kills it and every process under it and reaps it, so a test that panics leaves nothing behind,
+/// a supervised engine's child included.
+pub struct Engine(Child);
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn kill(pid: i32, sig: i32) -> i32;
+    fn getpgid(pid: i32) -> i32;
+}
+
+impl Engine {
+    pub fn spawn(cmd: &mut Command) -> Engine {
+        Engine(cmd.spawn().unwrap())
+    }
+
+    pub fn id(&self) -> u32 {
+        self.0.id()
+    }
+
+    pub fn child(&mut self) -> &mut Child {
+        &mut self.0
+    }
+
+    /// Every process under `pid`, children before their own.
+    pub fn descendants(pid: u32) -> Vec<u32> {
+        let out = Command::new("pgrep").args(["-P", &pid.to_string()]).output().map(|o| o.stdout).unwrap_or_default();
+        let children: Vec<u32> = String::from_utf8_lossy(&out).lines().filter_map(|l| l.trim().parse().ok()).collect();
+        children.iter().flat_map(|&c| std::iter::once(c).chain(Engine::descendants(c))).collect()
+    }
+
+    /// Whether `pid` is still a process (a zombie not yet reaped counts).
+    #[cfg(unix)]
+    pub fn alive(pid: u32) -> bool {
+        unsafe { kill(pid as i32, 0) == 0 }
+    }
+
+    /// The process group `pid` is in.
+    #[cfg(unix)]
+    pub fn group(pid: u32) -> i32 {
+        unsafe { getpgid(pid as i32) }
+    }
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        // The tree first, while it is still under the engine; then the engine, so a supervisor
+        // cannot start another child; then what was under it, now orphaned.
+        let under = Engine::descendants(self.0.id());
+        let _ = self.0.kill();
+        #[cfg(unix)]
+        for pid in under {
+            unsafe {
+                kill(pid as i32, 9);
+            }
+        }
+        let _ = self.0.wait();
+    }
+}
+
+/// How long an engine may take from spawn to its first applied generation. A first launch of a
+/// fresh binary on macOS under heavy load can stall for over a minute while the system scans it
+/// (the research team's first-launch-scan), so the launch gets this long bound of its own; what
+/// a test waits for after that keeps a short one, so real failures still show there.
+pub const LAUNCH: Duration = Duration::from_secs(300);
+
+/// The outer bound on waiting for what an engine does off the test's thread: a compile, an asset
+/// load, a file watcher, a launch's later steps. A loaded machine slows those by any amount, so a
+/// test waits on the event itself and this bound only catches what never comes.
+pub const BOUND: Duration = Duration::from_secs(120);
+
+/// Updates `app` until `done` holds, and returns how long that took. Past `BOUND` it panics
+/// naming `what`, with the script log: what did arrive.
+#[track_caller]
+pub fn until(app: &mut App, what: &str, mut done: impl FnMut(&mut App) -> bool) -> Duration {
+    let start = Instant::now();
+    loop {
+        app.update();
+        if done(app) {
+            return start.elapsed();
+        }
+        assert!(start.elapsed() < BOUND, "{what}: not within {BOUND:?}; the log: {:?}", messages(app));
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+/// Updates until every level root has loaded and reconciled.
+#[track_caller]
+pub fn settle_levels(app: &mut App) {
+    until(app, "the level never loaded", |app| {
+        let levels = app.world().resource::<bevy_ts_levels::engine::Levels>();
+        !levels.roots.is_empty() && levels.roots.values().all(|r| !r.dirty && !r.applied.is_empty())
+    });
+}
+
 /// Spawns `bevy-ts play <folder> --headless` with its stderr lines on a channel.
-pub fn play(folder: &Path) -> (Child, Receiver<String>) {
-    let mut child = Command::new(BIN)
-        .args(["play", folder.to_str().unwrap(), "--headless"])
-        .env("NO_COLOR", "1")
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+pub fn play(folder: &Path) -> (Engine, Receiver<String>) {
+    let mut engine = Engine::spawn(
+        Command::new(BIN)
+            .args(["play", folder.to_str().unwrap(), "--headless"])
+            .env("NO_COLOR", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped()),
+    );
     let (tx, rx) = channel();
-    let err = child.stderr.take().unwrap();
+    let err = engine.child().stderr.take().unwrap();
     std::thread::spawn(move || {
         for l in BufReader::new(err).lines().map_while(Result::ok) {
             let _ = tx.send(l);
         }
     });
-    (child, rx)
+    (engine, rx)
 }
 
 /// Lines until every needle has been seen, or the deadline.
 pub fn wait_for(rx: &Receiver<String>, needles: &[&str], within: Duration) -> Vec<String> {
-    let deadline = Instant::now() + within;
     let mut seen = Vec::new();
+    wait_more(rx, &mut seen, needles, within);
+    seen
+}
+
+/// As `wait_for`, adding to lines already seen, which count toward the needles.
+pub fn wait_more(rx: &Receiver<String>, seen: &mut Vec<String>, needles: &[&str], within: Duration) {
+    let deadline = Instant::now() + within;
     while !needles.iter().all(|n| seen.iter().any(|l: &String| l.contains(n))) {
         match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(l) => seen.push(l),
-            Err(_) => panic!("never saw {needles:?}; got:\n{}", seen.join("\n")),
+            Err(_) => panic!("never saw {needles:?} within {within:?}; got:\n{}", seen.join("\n")),
         }
     }
-    seen
 }
 
 /// The TCP ports a process listens on, from `lsof`.

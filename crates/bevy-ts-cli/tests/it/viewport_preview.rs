@@ -13,12 +13,12 @@ use bevy_ts::BevyTsPlugin;
 use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_v8::V8Options;
-use common::{messages, project, reload, write};
+use common::{BOUND, Engine, LAUNCH, messages, project, reload, write};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -105,7 +105,7 @@ fn preview_entities_never_reach_a_ts_query_or_the_entity_list() {
         if let Some(id) = r["preview"].as_u64() {
             break id;
         }
-        assert!(t0.elapsed() < Duration::from_secs(60), "the preview never loaded");
+        assert!(t0.elapsed() < BOUND, "the preview never loaded");
         std::thread::sleep(Duration::from_millis(5));
         app.update();
     };
@@ -125,15 +125,6 @@ fn preview_entities_never_reach_a_ts_query_or_the_entity_list() {
     let tree = call(&mut app, "bevy-ts/tsx_tree", Value::Null).unwrap();
     assert!(!tree.to_string().contains("preview"), "{tree}");
     assert_eq!(call(&mut app, "bevy-ts/asset_preview_close", json!({ "preview": id })).unwrap()["closed"], true);
-}
-
-struct Engine(Child);
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
 }
 
 fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
@@ -162,7 +153,7 @@ fn until(port: u16, method: &str, params: Value, what: &str, done: impl Fn(&Valu
         {
             return v;
         }
-        assert!(t0.elapsed() < Duration::from_secs(90), "{what}");
+        assert!(t0.elapsed() < BOUND, "{what}");
         std::thread::sleep(Duration::from_millis(50));
     }
 }
@@ -177,7 +168,7 @@ impl Stream {
     fn open(port: u16, method: &str) -> Stream {
         let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method }).to_string();
         let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
-        s.set_read_timeout(Some(Duration::from_secs(60))).unwrap();
+        s.set_read_timeout(Some(BOUND)).unwrap();
         let req = format!("POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len());
         s.write_all(req.as_bytes()).unwrap();
         Stream { s, buf: String::new() }
@@ -219,14 +210,20 @@ fn an_engine_whose_entry_throws_stays_up_and_runs_the_game_after_the_fix() {
     let dir = project("viewport-preview-throws", &[("game.ts", THROWS)]);
     write_gltf(&dir.join("assets/models/grunt.gltf"));
     let port = common::free_port();
-    let child = Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
-        .args(["dev", dir.join("game.ts").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let _engine = Engine(child);
-    let hello = until(port, "bevy-ts/hello", Value::Null, "the engine never answered hello", |_| true);
+    let _engine = Engine::spawn(
+        Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
+            .args(["dev", dir.join("game.ts").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
+    );
+    let t0 = Instant::now();
+    let hello = loop {
+        if let Ok(h) = post(port, "bevy-ts/hello", Value::Null) {
+            break h;
+        }
+        assert!(t0.elapsed() < LAUNCH, "the engine never answered hello within {LAUNCH:?}");
+        std::thread::sleep(Duration::from_millis(50));
+    };
     assert_eq!(hello["viewport"], true);
     assert_eq!(hello["protocol"], bevy_ts_remote::protocol::VERSION);
     Stream::open(port, "bevy-ts/log+watch").until("the first load's error never reached the log", |v| v.to_string().contains("broken on open"));
@@ -240,8 +237,11 @@ fn an_engine_whose_entry_throws_stays_up_and_runs_the_game_after_the_fix() {
     assert_eq!(preview["kind"], "mesh");
 
     let mut reloads = Stream::open(port, "bevy-ts/reload+watch");
-    // The stream's first message comes once it has a cursor; a save after that is reported.
-    std::thread::sleep(Duration::from_millis(300));
+    // The stream takes its cursor on the first frame that polls it, sending nothing; a save after
+    // that is reported. Two answered requests after the open mean those frames have run.
+    for _ in 0..2 {
+        until(port, "bevy-ts/hello", Value::Null, "the engine stopped answering", |_| true);
+    }
     write(&dir, "game.ts", &THROWS.replace("broken on open", "still broken"));
     reloads.until("a second failure was not reported", |v| reports(v).iter().any(|(s, _)| s == "failed"));
     write(&dir, "game.ts", FIXED);

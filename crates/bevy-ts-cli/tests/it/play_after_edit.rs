@@ -5,6 +5,9 @@
 //! `cargo test -p bevy-ts-cli --test it play_after_edit:: -- --ignored --nocapture`
 #![cfg(target_os = "macos")]
 
+use crate::common;
+
+use common::{BOUND, Engine, LAUNCH};
 use bevy_ts_viewport::mach::{Incoming, Viewer, release_port};
 use bevy_ts_viewport::surface::Surface;
 use serde_json::{Value, json};
@@ -12,22 +15,13 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 const W: u32 = 400;
 const H: u32 = 300;
-
-struct Engine(Child);
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
 
 fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
@@ -55,7 +49,7 @@ fn frames(viewer: &Viewer, seen: &mut Seen, n: usize) -> Vec<[u8; 4]> {
     let want = seen.frames.len() + n;
     let t0 = Instant::now();
     while seen.frames.len() < want {
-        assert!(t0.elapsed() < Duration::from_secs(60), "no frames: {} of {want}", seen.frames.len());
+        assert!(t0.elapsed() < BOUND, "no frames: {} of {want}", seen.frames.len());
         if let Some(m) = viewer.recv(Duration::from_millis(20)) {
             let Incoming::Message { method, params, port } = m else { continue };
             match method.as_str() {
@@ -100,11 +94,10 @@ impl Run {
             args.push("--edit".into());
         }
         args.extend(["--remote-port".to_string(), port.to_string()]);
-        let child = Command::new(env!("CARGO_BIN_EXE_bevy-ts")).args(&args).stdout(Stdio::null()).stderr(std::fs::File::create(&log).unwrap()).spawn().unwrap();
-        let engine = Engine(child);
+        let engine = Engine::spawn(Command::new(env!("CARGO_BIN_EXE_bevy-ts")).args(&args).stdout(Stdio::null()).stderr(std::fs::File::create(&log).unwrap()));
         let t0 = Instant::now();
         while post(port, "bevy-ts/hello", Value::Null).is_err() {
-            assert!(t0.elapsed() < Duration::from_secs(60), "the engine never answered");
+            assert!(t0.elapsed() < LAUNCH, "the engine never answered");
             std::thread::sleep(Duration::from_millis(50));
         }
         let a = post(port, "bevy-ts/viewport_attach", json!({ "w": W, "h": H, "scale": 1, "hz": 120 })).unwrap();

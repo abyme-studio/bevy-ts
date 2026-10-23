@@ -14,6 +14,12 @@ use bevy_ts_levels::engine::{LevelInstance, Levels, LevelsPlugin, reconcile_leve
 use bevy_ts_tsx::{Provenance, TsxNode, TsxPlugin, TsxTree};
 use serde_json::json;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+/// The outer bound on waiting for an asset load or reload. They finish on other threads, which a
+/// loaded machine slows by any amount: tests wait on the event, and this only catches what never
+/// comes.
+const BOUND: Duration = Duration::from_secs(120);
 
 struct Fixture {
     app: App,
@@ -83,17 +89,24 @@ impl Fixture {
         assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     }
 
-    /// Frames until every open level has loaded and reconciled.
-    fn settle(&mut self) {
-        for _ in 0..200 {
+    /// Frames until `done` holds; past `BOUND` the test fails naming `what`, with the errors logged.
+    #[track_caller]
+    fn until(&mut self, what: &str, mut done: impl FnMut(&mut Fixture) -> bool) {
+        let start = Instant::now();
+        loop {
             self.app.update();
-            let levels = self.app.world().resource::<Levels>();
-            if levels.roots.values().all(|r| !r.dirty) {
+            if done(self) {
                 return;
             }
-            std::thread::sleep(std::time::Duration::from_millis(2));
+            assert!(start.elapsed() < BOUND, "{what}: not within {BOUND:?}; errors: {:?}", self.errors());
+            std::thread::sleep(Duration::from_millis(2));
         }
-        panic!("levels never loaded");
+    }
+
+    /// Frames until every open level has loaded and reconciled.
+    #[track_caller]
+    fn settle(&mut self) {
+        self.until("levels never loaded", |f| f.app.world().resource::<Levels>().roots.values().all(|r| !r.dirty));
     }
 
     fn by_name(&mut self, name: &str) -> Entity {
@@ -205,13 +218,7 @@ fn a_bad_level_changes_nothing() {
     // Reload the asset by hand: the file watcher is a feature of its own.
     let handle = f.app.world().resource::<Levels>().roots["levels/arena.bsn"].handle.clone();
     f.app.world().resource::<AssetServer>().reload(handle.path().unwrap().clone());
-    for _ in 0..100 {
-        f.app.update();
-        if !f.errors().is_empty() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
+    f.until("the misspelt component was never reported", |f| !f.errors().is_empty());
     reconcile_level(f.app.world_mut(), "levels/arena.bsn");
     let errors = f.errors();
     assert!(errors.iter().any(|e| e.starts_with("levels/arena.bsn:9:1 levels: unknown component Transfrom")), "{errors:?}");
@@ -278,14 +285,10 @@ fn handle_fields_take_asset_paths() {
     assert_eq!(s.note.path().map(|p| p.to_string()).as_deref(), Some("levels/hello.note"));
     let id = s.note.id();
     let mut warned = Vec::new();
-    for _ in 0..200 {
-        f.app.update();
+    f.until("the note never loaded with the missing one warned", |f| {
         warned = f.app.world().resource::<ScriptLog>().since(0).filter(|e| e.level == bevy_ts::log::LogLevel::Warn).map(|e| format!("{} {}", e.location.as_ref().map(|l| l.to_string()).unwrap_or_default(), e.message)).collect();
-        if f.app.world().resource::<Assets<Note>>().get(id).is_some() && !warned.is_empty() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
+        f.app.world().resource::<Assets<Note>>().get(id).is_some() && !warned.is_empty()
+    });
     assert_eq!(f.app.world().resource::<Assets<Note>>().get(id).map(|n| n.0.as_str()), Some("hello"));
     assert!(warned.iter().any(|w| w.starts_with("levels/signs.bsn:5:8 levels: missing asset notes/gone.note")), "{warned:?}");
     // The level still loaded the entity, with the handle unresolved.
@@ -654,18 +657,10 @@ mod hot_reload {
         let hash = content_hash(text.as_bytes());
         let errors = f.errors().len();
         f.app.world().resource::<AssetServer>().reload(file.to_string());
-        for _ in 0..300 {
-            f.app.update();
-            if f.errors().len() > errors {
-                return;
-            }
+        f.until(&format!("{file} never reloaded"), |f| {
             let levels = f.app.world().resource::<Levels>();
-            if levels.affected(file).iter().all(|l| levels.roots[l].applied.get(file) == Some(&hash)) {
-                return;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(2));
-        }
-        panic!("{file} never reloaded");
+            f.errors().len() > errors || levels.affected(file).iter().all(|l| levels.roots[l].applied.get(file) == Some(&hash))
+        });
     }
 
     fn arena() -> Fixture {
@@ -820,6 +815,7 @@ mod sidecar {
         for _ in 0..50 {
             f.app.update();
         }
+        f.settle();
     }
 
     #[test]
@@ -832,13 +828,7 @@ mod sidecar {
         assert_eq!(r.status, "written", "{r:?}");
         let text = std::fs::read_to_string(f.dir.join("levels/arena.bsn")).unwrap();
         // The first write creates the file, which loads like any asset.
-        for _ in 0..200 {
-            f.app.update();
-            if f.translation(p).x == 2.0 {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(2));
-        }
+        f.until("the written level never loaded", |f| f.translation(p).x == 2.0);
         assert_eq!(text, "#p\nTransform { translation: Vec3 { x: 2.0, y: 0.0, z: -4.0 } }\n");
         assert_eq!(f.translation(p), Vec3::new(2.0, 0.0, -4.0), "{:?} {:?}", f.errors(), f.app.world().resource::<Levels>().roots.keys().collect::<Vec<_>>());
         assert_eq!(f.app.world().get::<TsxNode>(p).unwrap().components["Transform"].fields["translation"].provenance, Provenance::Override);
@@ -882,6 +872,7 @@ mod sidecar {
         for _ in 0..50 {
             f.app.update();
         }
+        f.settle();
         let opener = |f: &Fixture| f.app.world().resource::<Levels>().roots["levels/arena.bsn"].opener;
         assert_eq!(opener(&f), Opener::Ts);
         assert!(close_now(f.app.world_mut(), "levels/arena.bsn"));
@@ -907,6 +898,7 @@ mod sidecar {
         for _ in 0..50 {
             f.app.update();
         }
+        f.settle();
         let r = &f.app.world().resource::<Levels>().roots["levels/arena.bsn"];
         assert_eq!((r.opener, r.overlay.clone()), (bevy_ts_levels::engine::Opener::Ts, None));
         let p = f.by_name("player");
@@ -928,6 +920,7 @@ mod sidecar {
         for _ in 0..50 {
             f.app.update();
         }
+        f.settle();
         let r = &f.app.world().resource::<Levels>().roots["levels/arena.bsn"];
         assert_eq!((r.opener, r.overlay.clone()), (bevy_ts_levels::engine::Opener::Ts, None));
         assert_eq!(f.translation(p).x, 0.0, "its overrides leave the scene");

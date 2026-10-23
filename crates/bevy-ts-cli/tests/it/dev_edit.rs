@@ -23,19 +23,11 @@ mod arena {
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::path::Path;
-    use std::process::{Child, Command, Stdio};
+    use crate::common::{BOUND, Engine, LAUNCH};
+    use std::process::{Command, Stdio};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
-
-    struct Engine(Child);
-
-    impl Drop for Engine {
-        fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-        }
-    }
 
     fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
         let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
@@ -57,7 +49,7 @@ mod arena {
         let want = *seen + n;
         let t0 = Instant::now();
         while *seen < want {
-            assert!(t0.elapsed() < Duration::from_secs(60), "no frames: {seen} of {want}");
+            assert!(t0.elapsed() < BOUND, "no frames: {seen} of {want}");
             if let Some(Incoming::Message { method, port, .. }) = viewer.recv(Duration::from_millis(20)) {
                 if let Some(port) = port {
                     release_port(port);
@@ -101,16 +93,15 @@ mod arena {
         let arena = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena/src/game.tsx");
         let log = Path::new(env!("CARGO_TARGET_TMPDIR")).join("dev-edit-engine.log");
         let port = crate::common::free_port();
-        let child = Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
-            .args(["dev", arena.to_str().unwrap(), "--viewport", "--edit", "--remote-port", &port.to_string()])
-            .stdout(Stdio::null())
-            .stderr(std::fs::File::create(&log).unwrap())
-            .spawn()
-            .unwrap();
-        let _engine = Engine(child);
+        let _engine = Engine::spawn(
+            Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
+                .args(["dev", arena.to_str().unwrap(), "--viewport", "--edit", "--remote-port", &port.to_string()])
+                .stdout(Stdio::null())
+                .stderr(std::fs::File::create(&log).unwrap()),
+        );
         let t0 = Instant::now();
         while post(port, "bevy-ts/hello", Value::Null).is_err() {
-            assert!(t0.elapsed() < Duration::from_secs(60), "the engine never answered");
+            assert!(t0.elapsed() < LAUNCH, "the engine never answered");
             std::thread::sleep(Duration::from_millis(50));
         }
         let a = post(port, "bevy-ts/viewport_attach", json!({ "w": 400, "h": 300, "scale": 1, "hz": 120 })).unwrap();
@@ -130,7 +121,7 @@ mod arena {
         // The level loads on the first frames.
         let t0 = Instant::now();
         while enemies(port).len() < 4 {
-            assert!(t0.elapsed() < Duration::from_secs(60), "the level never loaded: {:?}", enemies(port));
+            assert!(t0.elapsed() < BOUND, "the level never loaded: {:?}", enemies(port));
             frames(&viewer, &mut seen, 5);
         }
         frames(&viewer, &mut seen, 30);

@@ -459,9 +459,20 @@ fn meshes_stay_lit_after_edit_and_back_to_play() {
     app.init_resource::<SwitchTo>().add_systems(Last, switch_late);
     let (_, viewer) = attach(&mut app, 160.0, 120.0, 1.0);
     let mut seen = Seen::default();
-    let (lit, clear) = free_pixel(&mut app, &viewer, &mut seen, 6);
+    // The first lit frame comes once the mesh's pipelines compile, on other threads that a loaded
+    // machine slows by any amount: frames until it is lit, or `LONG`.
+    let brighter = |l: [u8; 4], c: [u8; 4]| l[..3].iter().zip(&c[..3]).all(|(l, c)| l > c);
+    let t0 = std::time::Instant::now();
+    let (lit, clear) = loop {
+        let (lit, clear) = free_pixel(&mut app, &viewer, &mut seen, 1);
+        if brighter(lit, clear) || t0.elapsed() > LONG {
+            break (lit, clear);
+        }
+    };
+    // Settled: the frames after it draw the same.
+    let (lit, clear) = if brighter(lit, clear) { free_pixel(&mut app, &viewer, &mut seen, 6) } else { (lit, clear) };
     println!("play {lit:?} clear {clear:?}");
-    assert!(lit[..3].iter().zip(&clear[..3]).all(|(l, c)| l > c), "the cube is lit, brighter than the clear colour, in play: {lit:?} vs {clear:?}");
+    assert!(brighter(lit, clear), "the cube is lit, brighter than the clear colour, in play within {LONG:?}: {lit:?} vs {clear:?}");
     switch(&mut app, Mode::Edit);
     free_pixel(&mut app, &viewer, &mut seen, 6);
     // The walk's edit mode resized the hole and changed its scale.
@@ -668,7 +679,7 @@ fn clicking_plus_y_looks_down_and_keeps_the_selection() {
     // On through its warm-up, then off while the view is still.
     let t0 = std::time::Instant::now();
     while orient_camera(&mut app).is_active {
-        assert!(t0.elapsed() < Duration::from_secs(5), "a still view does not redraw it");
+        assert!(t0.elapsed() < LONG, "a still view does not redraw it");
         updates(&mut app, 1);
     }
     updates(&mut app, 3);
@@ -782,14 +793,14 @@ fn the_frames_show_the_orientation_gizmo() {
     assert!(green(px), "after the resize, +Y end at {up} is green: bgra {px:?}");
 }
 
-/// A pixel of the newest frame, once `ok` holds or 5 s on: how fast the first frames come depends
-/// on the machine's load, and a gizmo that is never drawn still fails.
+/// A pixel of the newest frame, once `ok` holds or `LONG` on: how fast the first frames come
+/// depends on the machine's load, and a gizmo that is never drawn still fails.
 fn pixel_shown(app: &mut App, viewer: &bevy_ts_viewport::mach::Viewer, seen: &mut Seen, at: Vec2, ok: impl Fn([u8; 4]) -> bool) -> [u8; 4] {
     let start = seen.frames.len();
     let t0 = std::time::Instant::now();
     let mut px = [0; 4];
     for n in start + 1.. {
-        if t0.elapsed() > Duration::from_secs(5) {
+        if t0.elapsed() > LONG {
             break;
         }
         run_until(app, viewer, seen, LONG, |s| s.frames.len() >= n);

@@ -68,17 +68,6 @@ fn by_name(app: &mut App) -> Vec<(String, bool, bool)> {
     out
 }
 
-fn until(app: &mut App, what: &str, done: impl Fn(&mut App) -> bool) {
-    for _ in 0..2000 {
-        app.update();
-        if done(app) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-    panic!("never: {what}");
-}
-
 fn hull(on: bool) -> (String, bool, bool) {
     ("hull".into(), on, !on)
 }

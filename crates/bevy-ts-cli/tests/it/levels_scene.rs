@@ -56,17 +56,6 @@ fn level_app(dir: &Path) -> App {
     app
 }
 
-fn settle(app: &mut App) {
-    for _ in 0..300 {
-        app.update();
-        let levels = app.world().resource::<Levels>();
-        if !levels.roots.is_empty() && levels.roots.values().all(|r| !r.dirty && !r.applied.is_empty()) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
-    panic!("the level never loaded: {:?}", messages(app));
-}
 
 fn named(app: &mut App, name: &str) -> Entity {
     let world = app.world_mut();
@@ -98,7 +87,7 @@ fn a_level_places_scene_components_with_props_and_overrides() {
     let mut app = level_app(&dir);
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    settle(&mut app);
+    settle_levels(&mut app);
     assert!(errors(&app).is_empty(), "{:?}", errors(&app));
     let (a, b) = (named(&mut app, "GruntA"), named(&mut app, "GruntB"));
     // The level's Transform patch layers over the prefab's.
@@ -120,13 +109,7 @@ fn a_level_places_scene_components_with_props_and_overrides() {
     set_hp(&mut app, b, 90.0);
     write(&dir, "assets/levels/arena.bsn", &ARENA.replace("@hp: 250.0", "@hp: 400.0"));
     app.world().resource::<AssetServer>().reload("levels/arena.bsn");
-    for _ in 0..300 {
-        app.update();
-        if health(&app, b).1 == 400.0 {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
+    until(&mut app, "the edited level never reloaded", |app| health(app, b).1 == 400.0);
     assert_eq!(named(&mut app, "GruntB"), b, "the same entity");
     assert_eq!(health(&app, b), (90.0, 400.0));
 
@@ -143,7 +126,7 @@ fn a_level_naming_an_unknown_prop_places_the_instance_without_it() {
     let dir = project("levels-scene-bad", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", &arena)]);
     let mut app = level_app(&dir);
     assert!(reload(&mut app, false).errors.is_empty());
-    settle(&mut app);
+    settle_levels(&mut app);
     assert!(errors(&app).is_empty(), "{:?}", errors(&app));
     // Under `bevy-ts dev` the misfit prop is a placeholder entry, warned at its line.
     let b = named(&mut app, "GruntB");
@@ -160,7 +143,7 @@ fn a_level_holding_a_newtype_still_loads() {
     let mut app = level_app(&dir);
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    settle(&mut app);
+    settle_levels(&mut app);
     assert!(errors(&app).is_empty(), "{:?}", errors(&app));
     let badge = named(&mut app, "Badge");
     assert_eq!(app.world().get::<ZIndex>(badge).unwrap().0, 2);

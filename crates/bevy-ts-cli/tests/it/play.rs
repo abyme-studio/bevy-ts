@@ -5,7 +5,7 @@ use crate::common;
 
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_cli::play::GameFile;
-use common::{BIN, listening, play, wait_for};
+use common::{BIN, BOUND, Engine, LAUNCH, listening, play, wait_for};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -55,16 +55,16 @@ fn cube_game(name: &str, version: &str) -> PathBuf {
 #[test]
 fn a_hand_made_cube_plays_without_dev_tooling() {
     let game = cube_game("play-cube", env!("CARGO_PKG_VERSION"));
-    let (mut child, rx) = play(&game);
-    let mut lines = wait_for(&rx, &["generation 1 applied", "cube system ran", "enemy exploded"], Duration::from_secs(60));
-    std::thread::sleep(Duration::from_millis(300));
-    lines.extend(rx.try_iter());
-    let ports = listening(child.id());
+    let (engine, rx) = play(&game);
+    // Launch to ready can stall for minutes on a loaded Mac's first launch of the binary (see
+    // `LAUNCH`); once the first generation applies, the game runs within seconds or it is broken.
+    let mut lines = wait_for(&rx, &["generation 1 applied"], LAUNCH);
+    common::wait_more(&rx, &mut lines, &["cube system ran", "enemy exploded", "src/enemy.ts:6:"], BOUND);
+    let ports = listening(engine.id());
     // A script edit does not reload: nothing watches the scripts.
     common::write(&game.join("scripts"), "src/enemy.ts", "export function report() {}\n");
     std::thread::sleep(Duration::from_millis(500));
-    let _ = child.kill();
-    let _ = child.wait();
+    drop(engine);
     let later: Vec<String> = rx.try_iter().collect();
     assert!(ports.is_empty(), "the game listens on {ports:?}");
     assert!(!later.iter().chain(&lines).any(|l| l.contains("generation 2")), "{later:?}");
@@ -126,4 +126,54 @@ fn game_json_switches_mesh_picking() {
     assert!(std::fs::read_to_string(game.join("game.json")).unwrap().contains(r#""meshPicking":true"#));
     let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
     assert!(app.world().contains_resource::<MeshPickingSettings>());
+}
+
+/// A test that panics with an engine up leaves none behind, nor anything the engine started; and
+/// the engine shares the runner's process group, so a signal to `cargo test` reaches it too.
+#[cfg(unix)]
+#[test]
+fn a_panicking_test_leaves_no_engine_behind() {
+    let gone = |pid: u32| {
+        // An orphan is a zombie until launchd reaps it.
+        let t0 = std::time::Instant::now();
+        while Engine::alive(pid) && t0.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        !Engine::alive(pid)
+    };
+    let game = cube_game("play-panics", env!("CARGO_PKG_VERSION"));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let panicked = std::thread::spawn(move || {
+        let (engine, lines) = play(&game);
+        assert_eq!(Engine::group(engine.id()), Engine::group(std::process::id()), "the engine is in the runner's group");
+        tx.send(engine.id()).unwrap();
+        wait_for(&lines, &["generation 1 applied"], LAUNCH);
+        panic!("the test fails with the engine up");
+    })
+    .join();
+    assert!(panicked.is_err());
+    let pid = rx.recv().unwrap();
+    assert!(gone(pid), "engine {pid} outlived the panic");
+
+    // A supervisor's child dies with it.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let panicked = std::thread::spawn(move || {
+        let engine = Engine::spawn(Command::new("sh").args(["-c", "sleep 600 & wait"]));
+        let t0 = std::time::Instant::now();
+        let under = loop {
+            let under = Engine::descendants(engine.id());
+            if !under.is_empty() || t0.elapsed() > BOUND {
+                break under;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        assert!(!under.is_empty(), "sh never started its child");
+        tx.send(under).unwrap();
+        panic!("the test fails with a supervised engine up");
+    })
+    .join();
+    assert!(panicked.is_err());
+    for pid in rx.recv().unwrap() {
+        assert!(gone(pid), "{pid}, under the engine, outlived the panic");
+    }
 }

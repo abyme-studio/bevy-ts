@@ -11,12 +11,12 @@ use crate::common;
 use bevy::math::{Mat4, Quat, Vec2, Vec3, Vec4};
 use bevy_ts_viewport::mach::{Incoming, Viewer, release_port};
 use bevy_ts_viewport::surface::Surface;
-use common::{project, write};
+use common::{BOUND, Engine, LAUNCH, project, write};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -41,15 +41,6 @@ const B_LINE: u32 = 8;
 const W: f32 = 800.0;
 const H: f32 = 600.0;
 
-struct Engine(Child);
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
 fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
     let mut s = TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
@@ -73,7 +64,7 @@ fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
 fn first_event(port: u16, method: &str) -> Value {
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method }).to_string();
     let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.set_read_timeout(Some(BOUND)).unwrap();
     let req = format!("POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len());
     s.write_all(req.as_bytes()).unwrap();
     let mut buf = vec![];
@@ -137,19 +128,18 @@ fn input(viewer: &Viewer, e: Value) {
 fn the_viewport_demo_walk() {
     let dir = project("viewport-walk", &[("enemy.tsx", ENEMY), ("game.tsx", &game("[3, 0, -4]"))]);
     let port = common::free_port();
-    let child = Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
-        .args(["dev", dir.join("game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let _engine = Engine(child);
+    let _engine = Engine::spawn(
+        Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
+            .args(["dev", dir.join("game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
+    );
     let t0 = Instant::now();
     let hello = loop {
         if let Ok(h) = post(port, "bevy-ts/hello", Value::Null) {
             break h;
         }
-        assert!(t0.elapsed() < Duration::from_secs(60), "the engine never answered");
+        assert!(t0.elapsed() < LAUNCH, "the engine never answered");
         std::thread::sleep(Duration::from_millis(50));
     };
     assert_eq!(hello["viewport"], true);
@@ -177,7 +167,7 @@ fn the_viewport_demo_walk() {
     let t0 = Instant::now();
     while seen.frames.len() < 10 {
         pump(&viewer, &mut seen, Duration::from_millis(20));
-        assert!(t0.elapsed() < Duration::from_secs(60), "no frames");
+        assert!(t0.elapsed() < BOUND, "no frames");
     }
     // A second of play at the viewer's pace.
     let before = post(port, "bevy-ts/viewport_stats", Value::Null).unwrap();
@@ -263,7 +253,7 @@ fn the_viewport_demo_walk() {
         if r["generation"].as_u64().unwrap() >= 2 {
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(10), "no reload");
+        assert!(t0.elapsed() < BOUND, "no reload");
         std::thread::sleep(Duration::from_millis(10));
     }
     let reload_ms = t_save.elapsed().as_secs_f64() * 1000.0;
@@ -293,7 +283,7 @@ fn the_viewport_demo_walk() {
         if seen.frames.last().is_some_and(|f| f["w"] == 1800 && f["h"] == 1000) {
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(5), "no frame at the new size");
+        assert!(t0.elapsed() < BOUND, "no frame at the new size");
     }
     println!("8 resized to 900x500 points: frames at 1800x1000 in {:.0} ms", t0.elapsed().as_secs_f64() * 1000.0);
 

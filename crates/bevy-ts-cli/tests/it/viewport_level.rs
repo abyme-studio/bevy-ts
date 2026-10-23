@@ -12,7 +12,7 @@ use bevy_ts::generation::DevSource;
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_levels::engine::{Levels, LevelsPlugin};
 use bevy_ts_v8::V8Options;
-use common::{project, reload};
+use common::{project, reload, settle_levels, until};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::Arc;
@@ -90,24 +90,13 @@ fn named(app: &mut App, name: &str) -> Entity {
     world.query::<(Entity, &Name)>().iter(world).find(|(_, n)| n.as_str() == name).map(|(e, _)| e).unwrap_or_else(|| panic!("no {name}"))
 }
 
-fn settle(app: &mut App) {
-    for _ in 0..300 {
-        app.update();
-        let levels = app.world().resource::<Levels>();
-        if !levels.roots.is_empty() && levels.roots.values().all(|r| !r.dirty && !r.applied.is_empty()) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
-    panic!("the level never loaded");
-}
 
 #[test]
 fn an_edit_to_a_level_placed_grunt_is_written_to_its_level() {
     let dir = project("viewport-level", &[("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", ARENA)]);
     let mut app = viewport_level_app(&dir);
     assert_eq!(reload(&mut app, false).status, bevy_ts::generation::ReloadStatus::Applied);
-    settle(&mut app);
+    settle_levels(&mut app);
     call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": "edit" }));
     app.update();
     let b = named(&mut app, "GruntB");
@@ -132,7 +121,7 @@ fn an_edit_to_a_level_placed_grunt_is_written_to_its_level() {
     assert_eq!(edit["status"], "written", "{edit:#}");
     let file = std::fs::read_to_string(dir.join("assets/levels/arena.bsn")).unwrap();
     assert!(file.contains("x: 5.0") && file.contains("x: -3.0"), "only b's x changed:\n{file}");
-    settle(&mut app);
+    settle_levels(&mut app);
     let b = named(&mut app, "GruntB");
     assert_eq!(app.world().get::<Transform>(b).unwrap().translation.x, 5.0, "no jump after the level reloads");
 }
@@ -143,21 +132,17 @@ fn a_dropped_gltf_is_written_as_a_world_asset_root_and_composes() {
     let dir = project("viewport-level-drop", &[("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", ARENA), ("assets/models/crate.gltf", &model)]);
     let mut app = viewport_level_app(&dir);
     assert_eq!(reload(&mut app, false).status, bevy_ts::generation::ReloadStatus::Applied);
-    settle(&mut app);
+    settle_levels(&mut app);
     let base = call(&mut app, "bevy-ts/level_list", Value::Null)["levels"][0]["hash"].clone();
     let w = call(&mut app, "bevy-ts/level_write", json!({ "file": "levels/arena.bsn", "base": base, "ops": [{ "op": "add_entity", "parent": [], "asset": "models/crate.gltf" }] }));
     assert_eq!(w["status"], "written", "{w:#}");
     let file = std::fs::read_to_string(dir.join("assets/levels/arena.bsn")).unwrap();
     assert!(file.contains("#crate\nWorldAssetRoot(\"models/crate.gltf#Scene0\")"), "{file}");
     // The write reconciles the level: the crate spawns.
-    for _ in 0..500 {
-        app.update();
+    until(&mut app, "the crate never spawned", |app| {
         let world = app.world_mut();
-        if world.query::<&Name>().iter(world).any(|n| n.as_str() == "crate") {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
+        world.query::<&Name>().iter(world).any(|n| n.as_str() == "crate")
+    });
     let errors: Vec<String> = common::logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Error).map(|e| e.message).collect();
     assert!(errors.is_empty(), "{errors:?}");
     // The level's crate: the glTF's own node is named `crate` too.
@@ -167,15 +152,8 @@ fn a_dropped_gltf_is_written_as_a_world_asset_root_and_composes() {
     };
     assert!(app.world().get::<bevy::world_serialization::WorldAssetRoot>(krate).is_some(), "the crate has its scene root");
     // The glTF's scene spawns under it: a mesh descends from the crate.
-    let mut meshes = false;
-    for _ in 0..500 {
-        app.update();
+    until(&mut app, "the crate's mesh never spawned under it", |app| {
         let world = app.world_mut();
-        meshes = world.query_filtered::<Entity, With<Mesh3d>>().iter(world).any(|m| std::iter::successors(Some(m), |e| world.get::<ChildOf>(*e).map(ChildOf::parent)).any(|e| e == krate));
-        if meshes {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
-    assert!(meshes, "the crate's mesh spawned under it");
+        world.query_filtered::<Entity, With<Mesh3d>>().iter(world).any(|m| std::iter::successors(Some(m), |e| world.get::<ChildOf>(*e).map(ChildOf::parent)).any(|e| e == krate))
+    });
 }

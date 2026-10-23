@@ -74,15 +74,7 @@ impl Walk {
     }
 
     fn settle(&mut self) {
-        for _ in 0..500 {
-            self.app.update();
-            let levels = self.app.world().resource::<Levels>();
-            if !levels.roots.is_empty() && levels.roots.values().all(|r| !r.dirty && !r.applied.is_empty()) {
-                return;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-        panic!("the level never loaded: {:?}", messages(&self.app));
+        settle_levels(&mut self.app);
     }
 
     fn file(&self) -> String {
@@ -96,15 +88,11 @@ impl Walk {
         let errors = self.errors().len();
         let t = Instant::now();
         self.app.world().resource::<AssetServer>().reload(LEVEL);
-        for _ in 0..500 {
-            self.app.update();
-            let levels = self.app.world().resource::<Levels>();
-            if levels.roots[LEVEL].applied.get(LEVEL) == Some(&hash) || self.errors().len() > errors {
-                return t.elapsed().as_secs_f64() * 1e3;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-        panic!("{LEVEL} never reloaded");
+        until(&mut self.app, &format!("{LEVEL} never reloaded"), |app| {
+            let failed = logs(app).iter().filter(|e| e.level == bevy_ts::log::LogLevel::Error).count() > errors;
+            app.world().resource::<Levels>().roots[LEVEL].applied.get(LEVEL) == Some(&hash) || failed
+        });
+        t.elapsed().as_secs_f64() * 1e3
     }
 
     fn errors(&self) -> Vec<String> {

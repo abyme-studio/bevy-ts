@@ -7,27 +7,21 @@
 //! `cargo test --release -p bevy-ts-cli --test it viewport_pacing:: -- --ignored --nocapture`
 #![cfg(target_os = "macos")]
 
+use crate::common;
+
+use common::{BOUND, Engine, LAUNCH};
 use bevy_ts_viewport::mach::{Incoming, Viewer, release_port};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 unsafe extern "C" {
     fn pthread_set_qos_class_self_np(qos: u32, relative_priority: i32) -> i32;
-}
-
-struct Engine(Child);
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
 }
 
 fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
@@ -129,18 +123,17 @@ fn the_arena_in_edit_mode_at_120_hz() {
     // A port the OS says is free: a fixed range collides with other engines, and the bench would
     // attach to theirs.
     let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let child = Command::new(&bin)
-        .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
-        .stdout(Stdio::null())
-        // `PACING_ENGINE_LOG=<file>`: the engine's stderr, to see why a run failed.
-        .stderr(std::env::var("PACING_ENGINE_LOG").map_or_else(|_| Stdio::null(), |f| std::fs::File::create(f).unwrap().into()))
-        .spawn()
-        .unwrap();
-    let pid = child.id();
-    let _engine = Engine(child);
+    let engine = Engine::spawn(
+        Command::new(&bin)
+            .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
+            .stdout(Stdio::null())
+            // `PACING_ENGINE_LOG=<file>`: the engine's stderr, to see why a run failed.
+            .stderr(std::env::var("PACING_ENGINE_LOG").map_or_else(|_| Stdio::null(), |f| std::fs::File::create(f).unwrap().into())),
+    );
+    let pid = engine.id();
     let t0 = Instant::now();
     while post(port, "bevy-ts/hello", Value::Null).is_err() {
-        assert!(t0.elapsed() < Duration::from_secs(60), "the engine never answered");
+        assert!(t0.elapsed() < LAUNCH, "the engine never answered");
         std::thread::sleep(Duration::from_millis(50));
     }
     println!("engine {bin}");
@@ -171,7 +164,7 @@ fn the_arena_in_edit_mode_at_120_hz() {
     while frames < 10 {
         // A short wait: pump returns only at a gap, and frames at 120 Hz leave none of 20 ms.
         frames += pump(&viewer, &mut last, &mut vec![], Duration::from_millis(1));
-        assert!(t0.elapsed() < Duration::from_secs(60), "no frames");
+        assert!(t0.elapsed() < BOUND, "no frames");
     }
     phase(&viewer, port, pid, "play at rest", 2.0, |_| {});
     post(port, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();

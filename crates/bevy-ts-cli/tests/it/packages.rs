@@ -8,7 +8,7 @@ use bevy_ts::generation::{DevChannel, Generations, ReloadLog, ReloadStatus};
 use bevy_ts_cli::compile::Compiler;
 use common::*;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// An app whose dev watcher compiles `game.ts` in `dir`.
 fn watched(dir: &std::path::Path) -> App {
@@ -17,16 +17,6 @@ fn watched(dir: &std::path::Path) -> App {
     app.insert_resource(channel);
     bevy_ts_cli::dev::spawn_watcher(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap()), tx);
     app
-}
-
-/// Updates until `done` holds, or panics after 10 s naming `what`.
-fn until(app: &mut App, what: &str, done: impl Fn(&App) -> bool) {
-    let start = Instant::now();
-    while !done(app) {
-        assert!(start.elapsed() < Duration::from_secs(10), "{what} never happened: {:?}", messages(app));
-        app.update();
-        std::thread::sleep(Duration::from_millis(5));
-    }
 }
 
 fn statuses(app: &App) -> Vec<ReloadStatus> {

@@ -59,15 +59,7 @@ impl Walk {
 
     /// Frames until the level has loaded and reconciled.
     fn settle(&mut self) {
-        for _ in 0..500 {
-            let levels = self.app.world().resource::<bevy_ts_levels::engine::Levels>();
-            if !levels.roots.is_empty() && levels.roots.values().all(|r| !r.dirty && !r.applied.is_empty()) {
-                return;
-            }
-            self.app.update();
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-        panic!("the level never loaded: {:?}", messages(&self.app));
+        settle_levels(&mut self.app);
     }
 
     /// Edits the level file and reloads it as the watcher would; returns the time to the
@@ -81,15 +73,8 @@ impl Walk {
         let hash = bevy_ts_levels::engine::content_hash(next.as_bytes());
         let t = Instant::now();
         self.app.world().resource::<AssetServer>().reload("levels/arena.bsn");
-        for _ in 0..500 {
-            self.app.update();
-            let levels = self.app.world().resource::<bevy_ts_levels::engine::Levels>();
-            if levels.roots["levels/arena.bsn"].applied.get("levels/arena.bsn") == Some(&hash) {
-                return t.elapsed().as_secs_f64() * 1e3;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-        panic!("arena.bsn never reloaded: {:?}", messages(&self.app));
+        until(&mut self.app, "arena.bsn never reloaded", |app| app.world().resource::<bevy_ts_levels::engine::Levels>().roots["levels/arena.bsn"].applied.get("levels/arena.bsn") == Some(&hash));
+        t.elapsed().as_secs_f64() * 1e3
     }
 
     fn enemy(&mut self, name: &str) -> Option<Entity> {

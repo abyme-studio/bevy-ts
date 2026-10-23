@@ -8,7 +8,7 @@ use bevy_ts::runtime::RuntimeInfo;
 use common::*;
 use serde_json::{Value, json};
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 const MARK: &str = "t.translation.y = 1.25;";
 
@@ -36,6 +36,7 @@ fn a_breakpoint_hits_in_ts_and_again_after_a_soft_reload() {
 
     let (events, seen) = mpsc::channel::<Value>();
     let (go, wait) = mpsc::channel::<&'static str>();
+    let (attached, ready) = mpsc::channel::<()>();
     let client = std::thread::spawn(move || {
         let (mut sock, _) = tungstenite::connect(ws.as_str()).unwrap();
         let mut id = 0;
@@ -54,6 +55,10 @@ fn a_breakpoint_hits_in_ts_and_again_after_a_soft_reload() {
                 Ok(_) => continue,
                 Err(_) => return hits,
             };
+            // The reply to `setBreakpointByUrl`, the third request: the session is ready.
+            if msg["id"] == 3 {
+                let _ = attached.send(());
+            }
             if msg["method"] == "Debugger.scriptParsed" {
                 scripts.insert(msg["params"]["scriptId"].as_str().unwrap().to_string(), msg["params"]["url"].clone());
             }
@@ -73,20 +78,17 @@ fn a_breakpoint_hits_in_ts_and_again_after_a_soft_reload() {
         }
     });
 
-    // Let the session attach before the generation loads.
-    let start = Instant::now();
-    while start.elapsed() < Duration::from_millis(300) {
-        app.update();
-    }
+    // The session sets its breakpoint before the generation loads.
+    until(&mut app, "the inspector session never set its breakpoint", |_| ready.try_recv().is_ok());
     assert_eq!(reload(&mut app, false).status, bevy_ts::generation::ReloadStatus::Applied);
 
     // The run blocks inside JS while paused; the client resumes it from its thread.
     let resume = std::thread::spawn({
         let go = go.clone();
         move || {
-            let first = seen.recv_timeout(Duration::from_secs(10)).expect("first breakpoint hit");
+            let first = seen.recv_timeout(BOUND).expect("first breakpoint hit");
             go.send("resume").unwrap();
-            let second = seen.recv_timeout(Duration::from_secs(10)).expect("breakpoint hit after reload");
+            let second = seen.recv_timeout(BOUND).expect("breakpoint hit after reload");
             go.send("resume").unwrap();
             (first, second)
         }
@@ -99,7 +101,7 @@ fn a_breakpoint_hits_in_ts_and_again_after_a_soft_reload() {
     assert!(first["url"].as_str().unwrap().ends_with("game.ts?gen=1"), "{first}");
     assert!(second["url"].as_str().unwrap().ends_with("game.ts?gen=2"), "{second}");
     assert_eq!(first["line"], line);
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + BOUND;
     while !client.is_finished() && Instant::now() < deadline {
         app.update();
     }

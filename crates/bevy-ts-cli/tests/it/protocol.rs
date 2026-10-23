@@ -209,7 +209,8 @@ fn stock_and_bevy_ts_share_the_port() {
     let (mut app, _) = cube_app_on(Some(port));
     let client = std::thread::spawn(move || {
         let post = |body: &str| -> String {
-            for _ in 0..200 {
+            let start = std::time::Instant::now();
+            while start.elapsed() < BOUND {
                 if let Ok(mut s) = std::net::TcpStream::connect(("127.0.0.1", port)) {
                     let req = format!("POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
                     s.write_all(req.as_bytes()).unwrap();
@@ -219,7 +220,7 @@ fn stock_and_bevy_ts_share_the_port() {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
-            panic!("server never came up");
+            panic!("the server never came up within {BOUND:?}");
         };
         let stock = post(r#"{"jsonrpc":"2.0","id":1,"method":"world.list_components","params":null}"#);
         let ours = post(r#"{"jsonrpc":"2.0","id":2,"method":"bevy-ts/hello"}"#);

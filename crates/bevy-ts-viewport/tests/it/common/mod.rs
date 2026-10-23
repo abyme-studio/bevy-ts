@@ -143,7 +143,10 @@ pub fn attach(app: &mut App, w: f64, h: f64, scale: f64) -> (String, Viewer) {
     (service, viewer)
 }
 
-pub const LONG: Duration = Duration::from_secs(60);
+/// The outer bound on waiting for what the engine does off the test's thread (an asset load, a
+/// frame, a watcher). A loaded machine slows those by any amount: tests wait on the event, and this
+/// only catches what never comes.
+pub const LONG: Duration = Duration::from_secs(120);
 
 /// A one-mesh glTF, a unit cube under one node, buffer inline, with a translation animation per
 /// name in `animations`.

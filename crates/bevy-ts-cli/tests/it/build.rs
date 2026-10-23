@@ -3,7 +3,7 @@
 
 use crate::common;
 
-use common::{BIN, listening, play, wait_for};
+use common::{BIN, LAUNCH, listening, play, wait_for};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -70,12 +70,11 @@ fn the_arena_builds_and_plays() {
         assert!(!bytes.windows(source.len()).any(|w| w == source), "{} holds src/game.tsx", f.display());
     }
 
-    let (mut child, rx) = play(&game);
-    let lines = wait_for(&rx, &["generation 1 applied: 4 systems"], Duration::from_secs(60));
+    let (engine, rx) = play(&game);
+    let lines = wait_for(&rx, &["generation 1 applied: 4 systems"], LAUNCH);
     std::thread::sleep(Duration::from_secs(2));
-    let ports = listening(child.id());
-    let _ = child.kill();
-    let _ = child.wait();
+    let ports = listening(engine.id());
+    drop(engine);
     let rest: Vec<String> = rx.try_iter().collect();
     assert!(ports.is_empty(), "the game listens on {ports:?}");
     let errors: Vec<_> = lines.iter().chain(&rest).filter(|l| l.contains("ERROR")).collect();
@@ -204,10 +203,8 @@ fn a_linked_package_ships_and_plays_without_node_modules() {
     let set = bevy_ts_cli::play::read_scripts(&game, &file).unwrap();
     assert_eq!(set.modules.len(), 3);
 
-    let (mut child, rx) = play(&game);
-    wait_for(&rx, &["connected over v1"], Duration::from_secs(60));
-    let _ = child.kill();
-    let _ = child.wait();
+    let (_engine, rx) = play(&game);
+    wait_for(&rx, &["connected over v1"], LAUNCH);
 }
 
 #[test]

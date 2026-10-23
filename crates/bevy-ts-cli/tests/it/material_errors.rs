@@ -71,13 +71,7 @@ fn fragment(app: &App) -> (bevy::asset::AssetId<Shader>, Option<String>) {
 /// Updates until a pipeline built from the fragment shader compiled.
 fn until_drawn(app: &mut App) {
     let (id, _) = fragment(app);
-    for _ in 0..600 {
-        app.update();
-        if app.world().resource::<PipelineWatch>().0.lock().unwrap().defs.contains_key(&id) {
-            return;
-        }
-    }
-    panic!("the material's pipeline never compiled; errors: {:?}", errors(app));
+    until(app, "the material's pipeline never compiled", |app| app.world().resource::<PipelineWatch>().0.lock().unwrap().defs.contains_key(&id));
 }
 
 fn errors(app: &App) -> Vec<String> {
@@ -185,24 +179,14 @@ fn a_broken_first_shader_is_reported_by_the_renderer_at_its_line() {
     let mut app = gpu_app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
-    for _ in 0..600 {
-        app.update();
-        if !errors(&app).is_empty() {
-            break;
-        }
-    }
+    until(&mut app, "no error was logged", |app| !errors(app).is_empty());
     let m = error_at(&app, 9);
     assert!(!m.contains("keeps drawing"), "nothing drew, so nothing is kept: {m}");
     // A second broken save, with no drawing shader to check it against first: the renderer's
     // failure is reported too.
     let n = errors(&app).len();
     save_wgsl(&mut app, &dir, &WGSL.replace("params.color.rgb * glow", "params.colour.rgb * glow"));
-    for _ in 0..600 {
-        app.update();
-        if errors(&app).len() > n {
-            break;
-        }
-    }
+    until_error(&mut app, n);
     let m = error_at(&app, 12);
     assert!(m.contains("colour"), "{m}");
 }
@@ -238,14 +222,9 @@ fn a_save_the_live_schema_accepts_applies_while_a_newer_one_waits() {
     assert!(fragment(&app).1.unwrap().contains("const FLOOR: f32 = 0.75;"));
 }
 
-/// Updates until an error past the first `n` is logged, or 600 frames.
+/// Updates until an error past the first `n` is logged.
 fn until_error(app: &mut App, n: usize) {
-    for _ in 0..600 {
-        app.update();
-        if errors(app).len() > n {
-            return;
-        }
-    }
+    until(app, &format!("no error past the first {n}"), |app| errors(app).len() > n);
 }
 
 // Metal has no f64 (every other capability the check assumes): macOS only.

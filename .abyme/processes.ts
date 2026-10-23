@@ -26,6 +26,13 @@ const processes = {
   "mesh-picking-test": { cmd: "bash -c 'set -o pipefail; (cargo test --no-fail-fast -p bevy-ts-viewport -p bevy-ts-cli --lib; cargo test --no-fail-fast -p bevy-ts-cli --test it -- headless_pointer:: mesh_picking:: play:: build::) 2>&1 | grep -v ld64 | tee target/mesh-picking-test.log | grep -E \"^error|^warning: unused|^test |test result|panicked\"'" },
   // Every cli test binary, past the first failure, for a change that moves what several assert.
   "cli-test-all": { cmd: "bash -c 'cargo test -p bevy-ts-cli --no-fail-fast 2>&1 | grep -v ld64 | tee target/cli-test-all.log | grep -E \"^     Running|FAILED|panicked\"'" },
+  // The whole gate (build, tests past failures, clippy) in one of the machine's two check slots:
+  // cargo runs nowhere else while bevy-ts shares the Mac. The slot is named after the worktree.
+  "gate": { cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:$(basename $PWD) -- bash -c \"cargo build --workspace --all-targets && cargo test --workspace --no-fail-fast && cargo clippy --workspace --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/gate.log | grep -E \"^error|^warning|-->|^     Running|FAILED|panicked|test result\"'" },
+  // Clippy alone in a check slot, for a gate whose build and tests already passed.
+  "gate-clippy": { cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:$(basename $PWD) -- cargo clippy --workspace --all-targets -- -D warnings 2>&1 | grep -v ld64 | tee target/gate-clippy.log | grep -E \"^error|^warning|-->|Finished\"'" },
+  // The cli test binaries that start an engine, in a check slot.
+  "gate-engine-tests": { cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:$(basename $PWD) -- bash -c \"cargo test -p bevy-ts-cli --test it -- play:: build:: headless_pointer:: viewport_preview:: dev_edit:: typescript:: animation:: && cargo clippy -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/gate-engine-tests.log | grep -E \"^error|^warning|-->|FAILED|panicked|^test |test result\"'" },
   "cli-test": { cmd: "cargo test -p bevy-ts-cli 2>&1 | tee target/cli-test.log | grep -E \"^test result|FAILED|panicked|^error\"" },
   // The npm package's vitest suite (examples, `new`), against the debug engine for the TS transform.
   "npm-test": { cmd: "bash -c 'set -o pipefail; cargo build -p bevy-ts-cli && cd packages/bevy-ts && pnpm install --frozen-lockfile && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm test 2>&1 | tee ../../target/npm-test.log | tail -40'" },

@@ -82,7 +82,8 @@ fn fox(app: &mut App, clip: &str) -> Entity {
 fn until(app: &mut App, what: &str, done: impl Fn(&mut World) -> bool) {
     let start = std::time::Instant::now();
     while !done(app.world_mut()) {
-        assert!(start.elapsed() < Duration::from_secs(30), "timed out waiting for {what}");
+        // Asset loads run on other threads, which a loaded machine slows by any amount.
+        assert!(start.elapsed() < Duration::from_secs(120), "timed out waiting for {what}");
         app.update();
         std::thread::sleep(Duration::from_millis(2));
     }

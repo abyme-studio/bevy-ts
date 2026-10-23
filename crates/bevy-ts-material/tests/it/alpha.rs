@@ -174,15 +174,19 @@ fn an_original_that_reloads_is_copied_again() {
     assert_eq!((c.perceptual_roughness, c.base_color.alpha()), (0.1, 0.5));
 }
 
+/// Frames until `done` holds. Shaders and assets finish on other threads, which a loaded machine
+/// slows by any amount, so the bound is a long wall-clock one that names what never came.
 fn until(app: &mut App, what: &str, done: impl Fn(&World) -> bool) {
-    for _ in 0..2000 {
+    let bound = std::time::Duration::from_secs(120);
+    let start = std::time::Instant::now();
+    loop {
         app.update();
         if done(app.world()) {
             return;
         }
+        assert!(start.elapsed() < bound, "never within {bound:?}: {what}");
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
-    panic!("never: {what}");
 }
 
 /// The root's mesh descendants, each with its glTF material name.

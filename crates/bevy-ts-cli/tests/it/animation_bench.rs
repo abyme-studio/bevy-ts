@@ -14,24 +14,18 @@
 //! (mean, p95), spawn-to-ready (frames, ms), the game's GPU p50, CPU and RSS.
 #![cfg(target_os = "macos")]
 
+use crate::common;
+
+use common::Engine;
 use bevy_ts_viewport::mach::Viewer;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-
-struct Engine(Child);
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
 
 fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
@@ -151,17 +145,16 @@ fn animation_cost() {
     let out = dir.join("probe.json");
 
     let port = crate::common::free_port();
-    let child = Command::new(&engine)
-        .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
-        .env("ANIMATION_BENCH_ARM", &arm)
-        .env("ANIMATION_BENCH_N", n.to_string())
-        .env("ANIMATION_BENCH_OUT", &out)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let pid = child.id();
-    let _engine = Engine(child);
+    let guard = Engine::spawn(
+        Command::new(&engine)
+            .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
+            .env("ANIMATION_BENCH_ARM", &arm)
+            .env("ANIMATION_BENCH_N", n.to_string())
+            .env("ANIMATION_BENCH_OUT", &out)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
+    );
+    let pid = guard.id();
     let t0 = Instant::now();
     while post(port, "bevy-ts/hello", Value::Null).map(|h| h["generation"].as_u64().unwrap_or(0)).unwrap_or(0) == 0 {
         assert!(t0.elapsed() < Duration::from_secs(120), "the scene never loaded");

@@ -133,7 +133,7 @@ fn a_level_opens_and_closes_over_the_wire() {
     let dir = project("levels-open", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", ARENA), ("assets/levels/room.bsn", ROOM)]);
     let mut app = level_app(&dir);
     assert!(reload(&mut app, false).errors.is_empty());
-    settle(&mut app);
+    settle_levels(&mut app);
     ok(&mut app, "bevy-ts/level+watch", None);
     assert_eq!(ok(&mut app, "bevy-ts/level_list", None)["levels"][0]["opener"], "ts");
 
@@ -155,24 +155,13 @@ fn a_level_opens_and_closes_over_the_wire() {
     assert_eq!(events, ["opened levels/room.bsn", "loaded levels/room.bsn", "closed levels/room.bsn"]);
 }
 
-fn settle(app: &mut App) {
-    for _ in 0..300 {
-        app.update();
-        let levels = app.world().resource::<Levels>();
-        if !levels.roots.is_empty() && levels.roots.values().all(|r| !r.dirty && !r.applied.is_empty()) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(2));
-    }
-    panic!("the level never loaded: {:?}", messages(app));
-}
 
 #[test]
 fn every_level_method_answers_on_contract() {
     let dir = project("levels-protocol", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", ARENA), ("assets/levels/room.bsn", ROOM)]);
     let mut app = level_app(&dir);
     assert!(reload(&mut app, false).errors.is_empty());
-    settle(&mut app);
+    settle_levels(&mut app);
     let arena = || std::fs::read_to_string(dir.join("assets/levels/arena.bsn")).unwrap();
     let room = || std::fs::read_to_string(dir.join("assets/levels/room.bsn")).unwrap();
 
@@ -254,7 +243,7 @@ fn every_level_method_answers_on_contract() {
     assert_eq!(w["status"], "written", "{w}");
     assert!(arena().contains("#GruntB\n@enemies::Grunt\nTransform"), "{}", arena());
     assert_eq!(w["inverse"][0]["op"], "set_prop", "{w}");
-    settle(&mut app);
+    settle_levels(&mut app);
     let after = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["GruntB"] })));
     assert_eq!((&after["props"][0]["value"], &after["props"][0]["overridden"]), (&json!(100), &json!(false)), "{after}");
     // A prop nothing overrides: nothing to apply.
@@ -287,7 +276,7 @@ fn arena_app(name: &str, extra: &str) -> App {
     bevy_ts_tsx::protocol::add_methods(&mut app);
     bevy_ts_levels::protocol::add_methods(&mut app);
     assert!(reload(&mut app, false).errors.is_empty());
-    settle(&mut app);
+    settle_levels(&mut app);
     app
 }
 
@@ -428,7 +417,8 @@ fn watch_until_settled(app: &mut App, last: &mut Vec<std::collections::BTreeMap<
     let mut out = Vec::new();
     let mut quiet = 0;
     let mut heard = std::time::Instant::now();
-    for _ in 0..300 {
+    let start = std::time::Instant::now();
+    while start.elapsed() < BOUND {
         app.update();
         quiet += 1;
         if let Some(m) = call(app, "bevy-ts/tsx_tree+watch", None).unwrap() {
@@ -446,7 +436,7 @@ fn watch_until_settled(app: &mut App, last: &mut Vec<std::collections::BTreeMap<
         }
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
-    panic!("no watch message: {:?}", messages(app));
+    panic!("the level never applied, settled and went quiet within {BOUND:?}; the watch sent {out:?}; the log: {:?}", messages(app));
 }
 
 #[test]
@@ -455,7 +445,7 @@ fn watch_deltas_keep_a_client_in_tsx_tree_order() {
     let mut app = level_app(&dir);
     bevy_ts_tsx::protocol::add_methods(&mut app);
     assert!(reload(&mut app, false).errors.is_empty());
-    settle(&mut app);
+    settle_levels(&mut app);
     let level = "level:levels/arena.bsn";
     let tree = |app: &mut App| call(app, "bevy-ts/tsx_tree", None).unwrap().unwrap();
     let id = |t: &Value, k: &[&str]| row(t, level, k)["node"].clone();
@@ -590,7 +580,7 @@ fn placeholders_over_the_wire() {
     let mut app = level_app(&dir);
     bevy_ts_tsx::protocol::add_methods(&mut app);
     assert!(reload(&mut app, false).errors.is_empty());
-    settle(&mut app);
+    settle_levels(&mut app);
     let root = "level:levels/squad.bsn";
     let tree = ok_tsx(&mut app);
     // The deleted boss: its row marks it, its saved text and kept overrides are on level_node.
@@ -646,7 +636,7 @@ fn placeholders_over_the_wire() {
     // The boss's class comes back: the same entity expands in place, and the marks go.
     write(&dir, "src/enemies.tsx", &SQUAD.replace("//BOSS", BOSS));
     assert!(reload(&mut app, false).errors.is_empty());
-    settle(&mut app);
+    settle_levels(&mut app);
     let tree = ok_tsx(&mut app);
     assert_eq!(row(&tree, root, &["Boss"])["entity"].as_u64().map(Entity::from_bits), Some(e), "no respawn");
     assert!(row(&tree, root, &["Boss"])["level"].get("missing").is_none(), "{tree}");
@@ -680,7 +670,7 @@ fn timer_field_round_trips() {
     bevy_ts_remote::add_methods(&mut app);
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    settle(&mut app);
+    settle_levels(&mut app);
     let e = app.world_mut().query::<(Entity, &Name)>().iter(app.world()).find(|(_, n)| n.as_str() == "Tower").map(|(e, _)| e).expect("Tower");
     // Read from the level: the fields it names, the rest zero.
     let t = &read_ts(&app, e, "enemies::Cooldown").unwrap()["cooldown"];
@@ -699,7 +689,7 @@ fn timer_field_round_trips() {
     let after = json!({ "elapsed": 0.0, "duration": 3.0, "times_finished_this_tick": 0, "mode": "Repeating", "paused": true, "finished": false });
     let before = json!({ "elapsed": 0.0, "duration": 2.0, "times_finished_this_tick": 0, "mode": "Repeating", "paused": false, "finished": false });
     bevy_ts_levels::write_from(app.world_mut(), 7, e, "enemies::Cooldown", "cooldown", Some(before), after).unwrap();
-    settle(&mut app);
+    settle_levels(&mut app);
     for _ in 0..50 {
         app.update();
     }

@@ -71,9 +71,10 @@ fn open(t: &mut SocketTransport, url: &str, protocols: &[&str]) {
     t.open(ID, &request);
 }
 
-/// Polls until an event matches `done`, or panics after 10 s; returns every event so far.
+/// Polls until an event matches `done`, or panics after 120 s; returns every event so far.
 fn until(t: &mut SocketTransport, events: &mut Vec<NetEvent>, done: impl Fn(&NetEvent) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    // Long: a loaded machine can starve the socket threads for many seconds.
+    let deadline = Instant::now() + Duration::from_secs(120);
     let mut seen = events.len();
     loop {
         t.poll(events);

@@ -9,7 +9,7 @@ use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
 use bevy_ts_viewport::ViewportPlugin;
 use bevy_ts_viewport::assets::{AssetRoot, png};
-use common::{scene, validate};
+use common::{LONG, scene, validate};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -134,7 +134,7 @@ fn a_dropped_texture_arrives_on_the_watch() {
         if let Some(m) = watch(&mut app) {
             break m;
         }
-        assert!(t0.elapsed() < Duration::from_secs(5), "no change arrived");
+        assert!(t0.elapsed() < LONG, "no change arrived");
     };
     let c = &msg["changes"][0];
     assert_eq!(c["path"], "textures/wall.png");
@@ -191,7 +191,7 @@ fn thumbnails_of_an_image_and_a_gltf_leave_the_game_alone() {
             break p.to_string();
         }
         assert_eq!(t["pending"], true);
-        assert!(t0.elapsed() < Duration::from_secs(60), "the thumbnail never finished");
+        assert!(t0.elapsed() < LONG, "the thumbnail never finished");
         std::thread::sleep(Duration::from_millis(5));
         app.update();
     };
@@ -341,7 +341,7 @@ fn the_arena_lists_every_kind_and_draws_the_crate() {
         if let Some(p) = t["png"].as_str() {
             break p.to_string();
         }
-        assert!(t0.elapsed() < Duration::from_secs(60), "the crate's thumbnail never finished");
+        assert!(t0.elapsed() < LONG, "the crate's thumbnail never finished");
         std::thread::sleep(Duration::from_millis(5));
         app.update();
     };

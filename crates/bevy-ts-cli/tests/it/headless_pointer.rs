@@ -4,10 +4,11 @@
 
 use crate::common;
 
+use common::{BOUND, Engine, LAUNCH};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
@@ -28,15 +29,6 @@ app.scene("s", () => (
 ));
 "##;
 
-struct Engine(Child);
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
 fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
     let mut s = TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
@@ -56,24 +48,23 @@ fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
 fn dev(name: &str, config: &str) -> (Engine, Receiver<String>, u16) {
     let dir = common::project(name, &[("bevy-ts.json", config), ("tsconfig.json", "{}"), ("src/game.tsx", GAME)]);
     let port = common::free_port();
-    let mut child = Command::new(common::BIN)
-        .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--headless", "--remote-port", &port.to_string()])
-        .env("NO_COLOR", "1")
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut engine = Engine::spawn(
+        Command::new(common::BIN)
+            .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--headless", "--remote-port", &port.to_string()])
+            .env("NO_COLOR", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped()),
+    );
     let (tx, rx) = channel();
-    let err = child.stderr.take().unwrap();
+    let err = engine.child().stderr.take().unwrap();
     std::thread::spawn(move || {
         for l in BufReader::new(err).lines().map_while(Result::ok) {
             let _ = tx.send(l);
         }
     });
-    let engine = Engine(child);
     let t0 = Instant::now();
     while post(port, "bevy-ts/hello", Value::Null).is_err() {
-        assert!(t0.elapsed() < Duration::from_secs(60), "the engine never answered");
+        assert!(t0.elapsed() < LAUNCH, "the engine never answered");
         std::thread::sleep(Duration::from_millis(50));
     }
     (engine, rx, port)
@@ -86,16 +77,19 @@ fn pointer(kind: &str, x: f64, y: f64) -> Value {
 #[test]
 fn a_test_clicks_a_mesh_headless() {
     let (_engine, rx, port) = dev("headless-pointer-click", r#"{ "meshPicking": true }"#);
-    common::wait_for(&rx, &["generation 1 applied"], Duration::from_secs(60));
-    // A few frames for the camera and the cube's bounds.
-    std::thread::sleep(Duration::from_millis(500));
+    common::wait_for(&rx, &["generation 1 applied"], LAUNCH);
+    // A few frames for the camera and the cube's bounds: each request is answered on a frame after
+    // the one before it, however slow the machine.
+    for _ in 0..10 {
+        post(port, "bevy-ts/hello", Value::Null).unwrap();
+    }
     assert_eq!(post(port, "bevy-ts/hello", Value::Null).unwrap()["viewport"], false);
 
     // The cube fills the middle of the 960×540 image.
     let (x, y) = (480.0, 270.0);
     let r = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("move", x, y), pointer("down", x, y), pointer("up", x, y)] })).unwrap();
     assert_eq!(r, json!({ "queued": 3 }));
-    let lines = common::wait_for(&rx, &["cube clicked"], Duration::from_secs(10));
+    let lines = common::wait_for(&rx, &["cube clicked"], BOUND);
     std::thread::sleep(Duration::from_millis(300));
     let clicks = lines.iter().chain(rx.try_iter().collect::<Vec<_>>().iter()).filter(|l| l.contains("cube clicked")).count();
     assert_eq!(clicks, 1);

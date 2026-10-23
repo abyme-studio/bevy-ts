@@ -14,7 +14,6 @@ use bevy_ts_animation::{AnimationTargets, PlayAnimation, SharedGraph};
 use bevy_ts_levels::engine::{Levels, LevelsPlugin};
 use common::*;
 use std::path::Path;
-use std::time::{Duration, Instant};
 
 fn anim_app(dir: &Path, entry: &str) -> App {
     let assets = dir.join("assets").canonicalize().unwrap();
@@ -38,15 +37,6 @@ fn fox_project(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
     std::fs::create_dir_all(dir.join("assets/models")).unwrap();
     std::fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/foxes/assets/models/Fox.glb"), dir.join("assets/models/Fox.glb")).unwrap();
     dir
-}
-
-fn until(app: &mut App, what: &str, done: impl Fn(&mut World) -> bool) {
-    let start = Instant::now();
-    while !done(app.world_mut()) {
-        assert!(start.elapsed() < Duration::from_secs(60), "timed out waiting for {what}: {:?}", messages(app));
-        app.update();
-        std::thread::sleep(Duration::from_millis(2));
-    }
 }
 
 fn the_fox(world: &mut World) -> Option<Entity> {
@@ -83,7 +73,10 @@ fn a_tsx_fox_plays_and_its_bound_clip_cross_fades() {
     let mut app = anim_app(&dir, "src/game.tsx");
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    until(&mut app, "the fox", |w| the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.0.is_empty())));
+    until(&mut app, "the fox", |app| {
+        let w = app.world_mut();
+        the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.0.is_empty()))
+    });
     app.update();
     let fox = the_fox(app.world_mut()).unwrap();
     let play = app.world().get::<PlayAnimation>(fox).unwrap().clone();
@@ -92,7 +85,10 @@ fn a_tsx_fox_plays_and_its_bound_clip_cross_fades() {
     assert!(playing(&mut app, fox, "models/Fox.glb#Animation2"), "the run plays");
 
     bevy_ts::plugin_api::call_entry(app.world_mut(), "walk", b"").unwrap();
-    until(&mut app, "the walk", |w| w.get::<PlayAnimation>(fox).is_some_and(|p| p.clip.path().is_some_and(|p| p.to_string().ends_with("#Animation1"))));
+    until(&mut app, "the walk", |app| {
+        let w = app.world_mut();
+        w.get::<PlayAnimation>(fox).is_some_and(|p| p.clip.path().is_some_and(|p| p.to_string().ends_with("#Animation1")))
+    });
     app.update();
     assert!(playing(&mut app, fox, "models/Fox.glb#Animation1"), "the walk plays after the binding changed");
 }
@@ -112,7 +108,10 @@ fn a_level_fox_plays_with_no_ts() {
     let mut app = anim_app(&dir, "src/game.ts");
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    until(&mut app, "the level fox", |w| the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.0.is_empty())));
+    until(&mut app, "the level fox", |app| {
+        let w = app.world_mut();
+        the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.0.is_empty()))
+    });
     app.update();
     let fox = the_fox(app.world_mut()).unwrap();
     assert!(playing(&mut app, fox, "models/Fox.glb#Animation1"), "the walk plays: {:?}", messages(&app));
@@ -154,7 +153,10 @@ fn a_click_on_a_scene_mesh_runs_the_roots_handler() {
             false
         })
     };
-    until(&mut app, "the fox's meshes", |w| the_fox(w).is_some_and(|f| mesh_under(w, f).is_some()));
+    until(&mut app, "the fox's meshes", |app| {
+        let w = app.world_mut();
+        the_fox(w).is_some_and(|f| mesh_under(w, f).is_some())
+    });
     let fox = the_fox(app.world_mut()).unwrap();
     let mesh = mesh_under(app.world_mut(), fox).unwrap();
     assert_ne!(mesh, fox, "the mesh is a descendant, not the root");

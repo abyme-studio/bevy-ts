@@ -16,24 +16,16 @@
 
 use crate::common;
 
+use common::{BOUND, Engine, LAUNCH};
 use bevy_ts_viewport::mach::Viewer;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-
-struct Engine(Child);
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
 
 fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
@@ -138,17 +130,16 @@ fn preview_cost() {
     std::fs::copy(&model, dir.join("assets/models/model.glb")).unwrap();
 
     let port = common::free_port();
-    let child = Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
-        .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let pid = child.id();
-    let _engine = Engine(child);
+    let engine = Engine::spawn(
+        Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
+            .args(["dev", dir.join("src/game.tsx").to_str().unwrap(), "--viewport", "--remote-port", &port.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
+    );
+    let pid = engine.id();
     let t0 = Instant::now();
     while post(port, "bevy-ts/hello", Value::Null).map(|h| h["generation"].as_u64().unwrap_or(0)).unwrap_or(0) == 0 {
-        assert!(t0.elapsed() < Duration::from_secs(120), "the arena never loaded");
+        assert!(t0.elapsed() < LAUNCH, "the arena never loaded");
         std::thread::sleep(Duration::from_millis(100));
     }
     let game = post(port, "bevy-ts/viewport_attach", json!({ "w": 1280, "h": 720, "scale": 2, "hz": 120 })).unwrap();
@@ -162,7 +153,7 @@ fn preview_cost() {
             if let Some(id) = r["preview"].as_u64() {
                 break id;
             }
-            assert!(t0.elapsed() < Duration::from_secs(120), "the model never loaded");
+            assert!(t0.elapsed() < BOUND, "the model never loaded");
             std::thread::sleep(Duration::from_millis(50));
         };
         let a = post(port, "bevy-ts/viewport_attach", json!({ "w": 800, "h": 600, "scale": 2, "hz": 120, "view": { "preview": id } })).unwrap();

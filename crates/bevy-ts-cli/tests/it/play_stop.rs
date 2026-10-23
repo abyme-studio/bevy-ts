@@ -13,7 +13,7 @@ use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_levels::engine::{Levels, LevelsPlugin, Opener};
 use bevy_ts_v8::V8Options;
-use common::{project, read_res, reload, write};
+use common::{project, read_res, reload, until, write};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::Arc;
@@ -135,13 +135,7 @@ fn played(name: &str) -> (std::path::PathBuf, App) {
     let mut app = stop_app(&dir);
     app.update();
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
-    for _ in 0..200 {
-        if named(&mut app, "EnemyA").len() == 1 && named(&mut app, "EnemyB").len() == 1 {
-            break;
-        }
-        updates(&mut app, 1);
-    }
-    assert_eq!(named(&mut app, "EnemyB").len(), 1, "the level never loaded");
+    until(&mut app, "the level never loaded", |app| named(app, "EnemyA").len() == 1 && named(app, "EnemyB").len() == 1);
     assert_eq!(mode(&mut app, "play")["started"], true);
     updates(&mut app, 20);
     (dir, app)
@@ -292,19 +286,11 @@ mod rapier {
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::path::Path;
-    use std::process::{Child, Command, Stdio};
+    use crate::common::{BOUND, Engine};
+    use std::process::{Command, Stdio};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
-
-    struct Engine(Child);
-
-    impl Drop for Engine {
-        fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-        }
-    }
 
     fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
         let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
@@ -326,7 +312,7 @@ mod rapier {
         let want = *seen + n;
         let t0 = Instant::now();
         while *seen < want {
-            assert!(t0.elapsed() < Duration::from_secs(60), "no frames: {seen} of {want}");
+            assert!(t0.elapsed() < BOUND, "no frames: {seen} of {want}");
             if let Some(Incoming::Message { method, port, .. }) = viewer.recv(Duration::from_millis(20)) {
                 if let Some(port) = port {
                     release_port(port);
@@ -390,14 +376,13 @@ mod rapier {
         let log = Path::new(env!("CARGO_TARGET_TMPDIR")).join("play-stop-rapier.log");
         let port = crate::common::free_port();
         let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-        let child = Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
-            .args(["dev", game.to_str().unwrap(), "--viewport", "--edit", "--remote-port", &port.to_string()])
-            .env("CARGO_TARGET_DIR", target)
-            .stdout(Stdio::null())
-            .stderr(std::fs::File::create(&log).unwrap())
-            .spawn()
-            .unwrap();
-        let _engine = Engine(child);
+        let _engine = Engine::spawn(
+            Command::new(env!("CARGO_BIN_EXE_bevy-ts"))
+                .args(["dev", game.to_str().unwrap(), "--viewport", "--edit", "--remote-port", &port.to_string()])
+                .env("CARGO_TARGET_DIR", target)
+                .stdout(Stdio::null())
+                .stderr(std::fs::File::create(&log).unwrap()),
+        );
         let t0 = Instant::now();
         while post(port, "bevy-ts/hello", Value::Null).is_err() {
             assert!(t0.elapsed() < Duration::from_secs(1200), "the engine never answered");
@@ -474,12 +459,7 @@ fn the_first_stop_of_a_game_booted_in_play_keeps_its_levels() {
     let mut app = stop_app_booted(&dir, false);
     app.update();
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
-    for _ in 0..200 {
-        if named(&mut app, "EnemyB").len() == 1 {
-            break;
-        }
-        updates(&mut app, 1);
-    }
+    until(&mut app, "the level never loaded", |app| named(app, "EnemyB").len() == 1);
     assert_eq!(call(&mut app, "bevy-ts/level_open", json!({ "file": "levels/room.bsn" }))["status"], "opened");
     updates(&mut app, 5);
     assert_eq!(mode(&mut app, "edit")["started"], false);
@@ -563,14 +543,11 @@ fn a_level_camera_reaches_the_watch_and_the_game_view_draws_the_hud() {
     }));
     assert_eq!(w["status"], "written", "{w:#}");
     let mut seen = vec![];
-    for _ in 0..500 {
-        updates(&mut app, 1);
-        seen.extend(mode_watch(&mut app, &key));
-        if seen.iter().any(|m| m["gameCameras"] == 1) {
-            break;
-        }
-    }
-    let m = seen.iter().find(|m| m["gameCameras"] == 1).unwrap_or_else(|| panic!("never counted: {seen:?}"));
+    until(&mut app, "the written camera was never counted", |app| {
+        seen.extend(mode_watch(app, &key));
+        seen.iter().any(|m| m["gameCameras"] == 1)
+    });
+    let m = seen.iter().find(|m| m["gameCameras"] == 1).unwrap();
     assert_eq!((m["cause"].as_str(), m["camera"].as_str()), (Some("cameras"), Some("game")), "{m}");
     updates(&mut app, 5);
     let world = app.world_mut();

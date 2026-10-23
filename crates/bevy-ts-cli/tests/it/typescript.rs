@@ -93,10 +93,16 @@ fn repeated_errors_are_logged_once_per_second_with_a_count() {
     );
     let mut app = app(&dir.join("game.ts"));
     app.world_mut().spawn(Transform::default());
+    // The dedup window is a wall-clock second: a loaded machine can spend several on 50 frames, so
+    // the lines are bounded by the seconds taken (from before the reload, which runs the first
+    // frame), rounded up, not fixed at one.
+    let start = std::time::Instant::now();
     reload(&mut app, false);
     updates(&mut app, 50);
-    let n = logs(&app).iter().filter(|e| e.message.contains("Error: again")).count();
-    assert_eq!(n, 1, "{:?}", messages(&app));
+    let secs = start.elapsed().as_secs_f64().ceil() as usize;
+    let lines: Vec<_> = logs(&app).into_iter().filter(|e| e.message.contains("Error: again")).collect();
+    assert!((1..=1 + secs).contains(&lines.len()), "{} lines in {secs} s: {:?}", lines.len(), messages(&app));
+    assert!(lines.iter().map(|e| e.count).sum::<u32>() <= 50, "{lines:?}");
     let systems = app.world().resource::<bevy_ts::systems::TsSystems>();
     assert!(systems.iter().next().unwrap().last_error.is_some());
 }

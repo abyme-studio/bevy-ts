@@ -13,7 +13,7 @@ use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_cli::headless::{HeadlessPlugin, Offscreen};
 use bevy_ts_v8::V8Options;
-use common::{project, reload};
+use common::{project, reload, until};
 use std::sync::{Arc, Mutex};
 
 /// A white cube and no lights but the ambient one; `insert` goes on the camera.
@@ -61,15 +61,15 @@ fn render(name: &str, insert: &str) -> (Option<AmbientLight>, f64) {
     app.world_mut().spawn(Screenshot::image(offscreen)).observe(move |c: On<ScreenshotCaptured>| {
         *s.lock().unwrap() = Some(c.image.clone());
     });
-    for _ in 0..200 {
-        app.update();
-        if let Some(img) = shot.lock().unwrap().take() {
-            let px = img.data.expect("screenshot data");
-            let rgb: u64 = px.as_chunks::<4>().0.iter().map(|p| p[0] as u64 + p[1] as u64 + p[2] as u64).sum();
-            return (light, rgb as f64 / (px.len() / 4 * 3) as f64);
-        }
-    }
-    panic!("{name}: the screenshot never arrived");
+    // The screenshot comes back from the render thread, which a loaded machine slows by any amount.
+    let mut img = None;
+    until(&mut app, &format!("{name}: the screenshot never arrived"), |_| {
+        img = shot.lock().unwrap().take();
+        img.is_some()
+    });
+    let px = img.unwrap().data.expect("screenshot data");
+    let rgb: u64 = px.as_chunks::<4>().0.iter().map(|p| p[0] as u64 + p[1] as u64 + p[2] as u64).sum();
+    (light, rgb as f64 / (px.len() / 4 * 3) as f64)
 }
 
 #[test]

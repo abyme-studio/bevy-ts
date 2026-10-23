@@ -14,7 +14,7 @@ use bevy_ts_cli::compile::Compiler;
 use bevy_ts_levels::engine::{Levels, LevelsPlugin};
 use bevy_ts_v8::V8Options;
 use bevy_ts_viewport::edit::EditorOnly;
-use common::{messages, project, reload};
+use common::{BOUND, messages, project, reload, settle_levels, until};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -65,14 +65,7 @@ fn app(dir: &Path) -> App {
     app.finish();
     app.cleanup();
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
-    for _ in 0..500 {
-        app.update();
-        let levels = app.world().resource::<Levels>();
-        if !levels.roots.is_empty() && levels.roots.values().all(|r| !r.dirty && !r.applied.is_empty()) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(1));
-    }
+    settle_levels(&mut app);
     for _ in 0..3 {
         app.update();
     }
@@ -124,6 +117,7 @@ fn thumbnail(app: &mut App, path: &str, size: u32, mut during: impl FnMut(&mut A
     let first = call(app, "bevy-ts/asset_thumbnail", json!({ "path": path, "size": size }));
     assert_eq!(first["pending"], true, "{first}");
     let (mut frames, mut times) = (0, vec![]);
+    let start = Instant::now();
     loop {
         let t = Instant::now();
         app.update();
@@ -135,7 +129,7 @@ fn thumbnail(app: &mut App, path: &str, size: u32, mut during: impl FnMut(&mut A
             return (decode(p), frames, times);
         }
         assert_eq!(r["pending"], true, "{r}");
-        assert!(frames < 2000, "the thumbnail never finished");
+        assert!(start.elapsed() < BOUND, "the thumbnail never finished within {BOUND:?}, after {frames} frames");
         std::thread::sleep(Duration::from_millis(1));
     }
 }
@@ -191,14 +185,10 @@ fn a_level_that_fails_to_compose_has_no_thumbnail() {
     let errors = app.world().resource::<bevy_ts::log::ScriptLog>().next_seq();
     call(&mut app, "bevy-ts/asset_thumbnail", json!({ "path": "levels/broken.bsn", "size": 64 }));
     let mut r = Value::Null;
-    for _ in 0..200 {
-        app.update();
-        r = call(&mut app, "bevy-ts/asset_thumbnail", json!({ "path": "levels/broken.bsn", "size": 64 }));
-        if r["pending"] == false {
-            break;
-        }
-    }
-    assert_eq!(r["pending"], false, "{r}");
+    until(&mut app, "the broken level's thumbnail stayed pending", |app| {
+        r = call(app, "bevy-ts/asset_thumbnail", json!({ "path": "levels/broken.bsn", "size": 64 }));
+        r["pending"] == false
+    });
     assert!(r["png"].is_null(), "{r}");
     let logged: Vec<String> = app.world().resource::<bevy_ts::log::ScriptLog>().since(errors).filter(|e| e.level != bevy_ts::log::LogLevel::Info).map(|e| e.message.clone()).collect();
     assert!(logged.is_empty(), "nothing logged to the game: {logged:?}");
@@ -320,16 +310,12 @@ fn thumbnails_asked_together_do_not_see_each_other() {
     let ask = |app: &mut App, path: &str| call(app, "bevy-ts/asset_thumbnail", json!({ "path": path, "size": 128 }))["png"].as_str().map(decode);
     assert!(ask(&mut app, "levels/arena.bsn").is_none() && ask(&mut app, "models/crate.gltf").is_none());
     let (mut arena, mut model) = (None, None);
-    for _ in 0..2000 {
-        app.update();
-        arena = arena.or_else(|| ask(&mut app, "levels/arena.bsn"));
-        model = model.or_else(|| ask(&mut app, "models/crate.gltf"));
-        if arena.is_some() && model.is_some() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(1));
-    }
-    let (arena, model) = (arena.expect("the arena never finished"), model.expect("the crate never finished"));
+    until(&mut app, "the arena's and the crate's thumbnails never both finished", |app| {
+        arena = arena.take().or_else(|| ask(app, "levels/arena.bsn"));
+        model = model.take().or_else(|| ask(app, "models/crate.gltf"));
+        arena.is_some() && model.is_some()
+    });
+    let (arena, model) = (arena.unwrap(), model.unwrap());
     assert_eq!(red(&model), 0, "the crate's picture holds no enemy");
     assert!(red(&model) == 0 && model.data.as_ref().unwrap()[((64 * 128 + 64) * 4) as usize + 3] > 0, "the crate fills its own picture");
     let alpha = |img: &Image| img.data.as_ref().unwrap().chunks(4).filter(|p| p[3] > 0).count();
