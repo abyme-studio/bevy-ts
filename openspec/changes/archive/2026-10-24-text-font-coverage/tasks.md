@@ -17,4 +17,4 @@
 
 ## 4. Follow-up, after headless-ui-camera lands
 
-- [ ] 4.1 A `BEVY_TS_SCREENSHOT` shot of the same `<text>`, checked by eye once per platform. Does not gate this change.
+- [x] 4.1 A `BEVY_TS_SCREENSHOT` shot of the same `<text>`, checked by eye once per platform. Does not gate this change. (macOS walked at c2a5c49: every glyph draws, U+10FFFD a box; Linux and Windows not walked)
