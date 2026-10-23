@@ -11,10 +11,8 @@ export { Time, Transform } from "bevy-ts";
 export declare const AnimatedBy: Reflected;
 export type AnimatedBy = InstanceType<typeof AnimatedBy>;
 
-export declare class AnimationPlayer extends ReflectComponent {
-  static readonly path: "bevy_animation::AnimationPlayer";
-  declare active_animations: Record<string, { weight: number; repeat: "Never" | { Count: number } | "Forever"; speed: number; elapsed: number; seek_time: number; last_seek_time: number | null; completions: number; just_completed: boolean; paused: boolean }>;
-}
+export declare const AnimationPlayer: Reflected;
+export type AnimationPlayer = InstanceType<typeof AnimationPlayer>;
 
 export declare const AnimationTargetId: Reflected;
 export type AnimationTargetId = InstanceType<typeof AnimationTargetId>;
@@ -22,11 +20,8 @@ export type AnimationTargetId = InstanceType<typeof AnimationTargetId>;
 export declare const AnimationGraphHandle: Reflected;
 export type AnimationGraphHandle = InstanceType<typeof AnimationGraphHandle>;
 
-export declare class AnimationTransitions extends ReflectComponent {
-  static readonly path: "bevy_animation::transition::AnimationTransitions";
-  declare main_animation: unknown | null;
-  declare transitions: readonly ({ current_weight: number; weight_decline_per_sec: number; animation: unknown })[];
-}
+export declare const AnimationTransitions: Reflected;
+export type AnimationTransitions = InstanceType<typeof AnimationTransitions>;
 
 export declare class ContrastAdaptiveSharpening extends Component {
   static readonly path: "bevy_anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening";
@@ -104,24 +99,17 @@ export declare class ManualTextureViewHandle extends Component {
   declare value: u32;
 }
 
-export declare class RenderTarget extends ReflectComponent {
-  static readonly path: "bevy_camera::camera::RenderTarget";
-  declare value: "Window" | { Window: Partial<"Primary" | { Entity: Entity }> } | "Image" | { Image: Partial<{ handle: string; scale_factor: number }> } | "TextureView" | { TextureView: Partial<number> } | { None: { size: { x: number; y: number } } };
-}
+export declare const RenderTarget: Reflected;
+export type RenderTarget = InstanceType<typeof RenderTarget>;
 
-export declare class ShadowLodOrigin extends ReflectComponent {
-  static readonly path: "bevy_camera::camera::ShadowLodOrigin";
-}
+export declare const ShadowLodOrigin: Reflected;
+export type ShadowLodOrigin = InstanceType<typeof ShadowLodOrigin>;
 
-export declare class Camera2d extends ReflectComponent {
-  static readonly path: "bevy_camera::components::Camera2d";
-}
+export declare const Camera2d: Reflected;
+export type Camera2d = InstanceType<typeof Camera2d>;
 
-export declare class Camera3d extends ReflectComponent {
-  static readonly path: "bevy_camera::components::Camera3d";
-  declare depth_load_op: { Clear: number } | "Load";
-  declare depth_texture_usages: number;
-}
+export declare const Camera3d: Reflected;
+export type Camera3d = InstanceType<typeof Camera3d>;
 
 export declare class CompositingSpace extends Component {
   static readonly path: "bevy_camera::components::CompositingSpace";
@@ -129,9 +117,8 @@ export declare class CompositingSpace extends Component {
   declare value: "Srgb" | "Linear" | "Oklab";
 }
 
-export declare class Hdr extends ReflectComponent {
-  static readonly path: "bevy_camera::components::Hdr";
-}
+export declare const Hdr: Reflected;
+export type Hdr = InstanceType<typeof Hdr>;
 
 export declare class Aabb extends Component {
   static readonly path: "bevy_camera::primitives::Aabb";
@@ -140,15 +127,11 @@ export declare class Aabb extends Component {
   declare readonly half_extents: Vec3;
 }
 
-export declare class CascadesFrusta extends ReflectComponent {
-  static readonly path: "bevy_camera::primitives::CascadesFrusta";
-  declare frusta: Record<string, readonly unknown[]>;
-}
+export declare const CascadesFrusta: Reflected;
+export type CascadesFrusta = InstanceType<typeof CascadesFrusta>;
 
-export declare class CubemapFrusta extends ReflectComponent {
-  static readonly path: "bevy_camera::primitives::CubemapFrusta";
-  declare frusta: readonly ({ half_spaces: readonly unknown[] })[];
-}
+export declare const CubemapFrusta: Reflected;
+export type CubemapFrusta = InstanceType<typeof CubemapFrusta>;
 
 export declare const Frustum: Reflected;
 export type Frustum = InstanceType<typeof Frustum>;
@@ -160,22 +143,17 @@ export declare class Sphere extends Component {
   declare radius: f32;
 }
 
-export declare class Projection extends ReflectComponent {
-  static readonly path: "bevy_camera::projection::Projection";
-  declare value: "Perspective" | { Perspective: Partial<{ fov: number; aspect_ratio: number; near: number; far: number; near_clip_plane: readonly [number, number, number, number] }> } | "Orthographic" | { Orthographic: Partial<{ near: number; far: number; viewport_origin: readonly [number, number]; scaling_mode: "WindowSize" | { Fixed: { width: number; height: number } } | { AutoMin: { min_width: number; min_height: number } } | { AutoMax: { max_width: number; max_height: number } } | { FixedVertical: { viewport_height: number } } | { FixedHorizontal: { viewport_width: number } }; scale: number; area: { min: readonly [number, number]; max: readonly [number, number] } }> } | "Custom" | { Custom: Partial<{  }> };
-}
+export declare const Projection: Reflected;
+export type Projection = InstanceType<typeof Projection>;
 
-export declare class CascadesVisibleEntities extends ReflectComponent {
-  static readonly path: "bevy_camera::visibility::CascadesVisibleEntities";
-}
+export declare const CascadesVisibleEntities: Reflected;
+export type CascadesVisibleEntities = InstanceType<typeof CascadesVisibleEntities>;
 
-export declare class CubemapVisibleEntities extends ReflectComponent {
-  static readonly path: "bevy_camera::visibility::CubemapVisibleEntities";
-}
+export declare const CubemapVisibleEntities: Reflected;
+export type CubemapVisibleEntities = InstanceType<typeof CubemapVisibleEntities>;
 
-export declare class DynamicSkinnedMeshBounds extends ReflectComponent {
-  static readonly path: "bevy_camera::visibility::DynamicSkinnedMeshBounds";
-}
+export declare const DynamicSkinnedMeshBounds: Reflected;
+export type DynamicSkinnedMeshBounds = InstanceType<typeof DynamicSkinnedMeshBounds>;
 
 export declare class InheritedVisibility extends Component {
   static readonly path: "bevy_camera::visibility::InheritedVisibility";
@@ -183,9 +161,8 @@ export declare class InheritedVisibility extends Component {
   declare value: bool;
 }
 
-export declare class NoFrustumCulling extends ReflectComponent {
-  static readonly path: "bevy_camera::visibility::NoFrustumCulling";
-}
+export declare const NoFrustumCulling: Reflected;
+export type NoFrustumCulling = InstanceType<typeof NoFrustumCulling>;
 
 export declare class ViewVisibility extends Component {
   static readonly path: "bevy_camera::visibility::ViewVisibility";
@@ -202,58 +179,44 @@ export declare class Visibility extends Component {
 export declare const VisibilityClass: Reflected;
 export type VisibilityClass = InstanceType<typeof VisibilityClass>;
 
-export declare class VisibleEntities extends ReflectComponent {
-  static readonly path: "bevy_camera::visibility::VisibleEntities";
-}
+export declare const VisibleEntities: Reflected;
+export type VisibleEntities = InstanceType<typeof VisibleEntities>;
 
-export declare class VisibleMeshEntities extends ReflectComponent {
-  static readonly path: "bevy_camera::visibility::VisibleMeshEntities";
-}
+export declare const VisibleMeshEntities: Reflected;
+export type VisibleMeshEntities = InstanceType<typeof VisibleMeshEntities>;
 
-export declare class VisibilityRange extends ReflectComponent {
-  static readonly path: "bevy_camera::visibility::range::VisibilityRange";
-  declare start_margin: unknown;
-  declare end_margin: unknown;
-  declare use_aabb: boolean;
-}
+export declare const VisibilityRange: Reflected;
+export type VisibilityRange = InstanceType<typeof VisibilityRange>;
 
 export declare const RenderLayers: Reflected;
 export type RenderLayers = InstanceType<typeof RenderLayers>;
 
-export declare class DeferredPrepass extends ReflectComponent {
-  static readonly path: "bevy_core_pipeline::prepass::DeferredPrepass";
-}
+export declare const DeferredPrepass: Reflected;
+export type DeferredPrepass = InstanceType<typeof DeferredPrepass>;
 
-export declare class DeferredPrepassDoubleBuffer extends ReflectComponent {
-  static readonly path: "bevy_core_pipeline::prepass::DeferredPrepassDoubleBuffer";
-}
+export declare const DeferredPrepassDoubleBuffer: Reflected;
+export type DeferredPrepassDoubleBuffer = InstanceType<typeof DeferredPrepassDoubleBuffer>;
 
-export declare class DepthPrepass extends ReflectComponent {
-  static readonly path: "bevy_core_pipeline::prepass::DepthPrepass";
-}
+export declare const DepthPrepass: Reflected;
+export type DepthPrepass = InstanceType<typeof DepthPrepass>;
 
-export declare class DepthPrepassDoubleBuffer extends ReflectComponent {
-  static readonly path: "bevy_core_pipeline::prepass::DepthPrepassDoubleBuffer";
-}
+export declare const DepthPrepassDoubleBuffer: Reflected;
+export type DepthPrepassDoubleBuffer = InstanceType<typeof DepthPrepassDoubleBuffer>;
 
-export declare class MotionVectorPrepass extends ReflectComponent {
-  static readonly path: "bevy_core_pipeline::prepass::MotionVectorPrepass";
-}
+export declare const MotionVectorPrepass: Reflected;
+export type MotionVectorPrepass = InstanceType<typeof MotionVectorPrepass>;
 
-export declare class NormalPrepass extends ReflectComponent {
-  static readonly path: "bevy_core_pipeline::prepass::NormalPrepass";
-}
+export declare const NormalPrepass: Reflected;
+export type NormalPrepass = InstanceType<typeof NormalPrepass>;
 
-export declare class NoBackgroundMotionVectors extends ReflectComponent {
-  static readonly path: "bevy_core_pipeline::prepass::background_motion_vectors::NoBackgroundMotionVectors";
-}
+export declare const NoBackgroundMotionVectors: Reflected;
+export type NoBackgroundMotionVectors = InstanceType<typeof NoBackgroundMotionVectors>;
 
 export declare const RootNonCameraView: Reflected;
 export type RootNonCameraView = InstanceType<typeof RootNonCameraView>;
 
-export declare class InfiniteGrid extends ReflectComponent {
-  static readonly path: "bevy_dev_tools::infinite_grid::InfiniteGrid";
-}
+export declare const InfiniteGrid: Reflected;
+export type InfiniteGrid = InstanceType<typeof InfiniteGrid>;
 
 /** Holes, never visible: x_axis_color: an enum with data (bevy_color::color::Color); z_axis_color: an enum with data (bevy_color::color::Color); minor_line_color: an enum with data (bevy_color::color::Color); major_line_color: an enum with data (bevy_color::color::Color). */
 export declare class InfiniteGridSettings extends Component {
@@ -265,15 +228,11 @@ export declare class InfiniteGridSettings extends Component {
   declare major_line_interval: u32;
 }
 
-export declare class PointerDebugOverlay extends ReflectComponent {
-  static readonly path: "bevy_dev_tools::picking_debug::PointerDebugOverlay";
-  declare overlay: Entity;
-}
+export declare const PointerDebugOverlay: Reflected;
+export type PointerDebugOverlay = InstanceType<typeof PointerDebugOverlay>;
 
-export declare class PointerDebugOverlayOf extends ReflectComponent {
-  static readonly path: "bevy_dev_tools::picking_debug::PointerDebugOverlayOf";
-  declare pointer: Entity;
-}
+export declare const PointerDebugOverlayOf: Reflected;
+export type PointerDebugOverlayOf = InstanceType<typeof PointerDebugOverlayOf>;
 
 /** Holes, never visible: mode: an enum with data (bevy_dev_tools::render_debug::RenderDebugMode). */
 export declare class RenderDebugOverlay extends Component {
@@ -283,9 +242,8 @@ export declare class RenderDebugOverlay extends Component {
   declare opacity: f32;
 }
 
-export declare class Disabled extends ReflectComponent {
-  static readonly path: "bevy_ecs::entity_disabling::Disabled";
-}
+export declare const Disabled: Reflected;
+export type Disabled = InstanceType<typeof Disabled>;
 
 /** Immutable: read-only in TS. */
 export declare class ChildOf extends Component {
@@ -310,15 +268,11 @@ export type IsResource = InstanceType<typeof IsResource>;
 export declare const MainEntity: Reflected;
 export type MainEntity = InstanceType<typeof MainEntity>;
 
-export declare class ShowAabbGizmo extends ReflectComponent {
-  static readonly path: "bevy_gizmos::aabb::ShowAabbGizmo";
-  declare color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null;
-}
+export declare const ShowAabbGizmo: Reflected;
+export type ShowAabbGizmo = InstanceType<typeof ShowAabbGizmo>;
 
-export declare class ShowFrustumGizmo extends ReflectComponent {
-  static readonly path: "bevy_gizmos::frustum::ShowFrustumGizmo";
-  declare color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null;
-}
+export declare const ShowFrustumGizmo: Reflected;
+export type ShowFrustumGizmo = InstanceType<typeof ShowFrustumGizmo>;
 
 /** Holes, never visible: handle: an enum with data (bevy_asset::handle::Handle<bevy_gizmos::GizmoAsset>); line_config: not plain data (bevy_gizmos::config::GizmoLineConfig). */
 export declare class Gizmo extends Component {
@@ -327,69 +281,44 @@ export declare class Gizmo extends Component {
   declare depth_bias: f32;
 }
 
-export declare class ShowSkinnedMeshBoundsGizmo extends ReflectComponent {
-  static readonly path: "bevy_gizmos::skinned_mesh_bounds::ShowSkinnedMeshBoundsGizmo";
-  declare color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | null;
-}
+export declare const ShowSkinnedMeshBoundsGizmo: Reflected;
+export type ShowSkinnedMeshBoundsGizmo = InstanceType<typeof ShowSkinnedMeshBoundsGizmo>;
 
-export declare class TransformGizmoCamera extends ReflectComponent {
-  static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoCamera";
-}
+export declare const TransformGizmoCamera: Reflected;
+export type TransformGizmoCamera = InstanceType<typeof TransformGizmoCamera>;
 
-export declare class TransformGizmoFocus extends ReflectComponent {
-  static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoFocus";
-}
+export declare const TransformGizmoFocus: Reflected;
+export type TransformGizmoFocus = InstanceType<typeof TransformGizmoFocus>;
 
-export declare class GltfExtras extends ReflectComponent {
-  static readonly path: "bevy_gltf::assets::GltfExtras";
-  declare value: string;
-}
+export declare const GltfExtras: Reflected;
+export type GltfExtras = InstanceType<typeof GltfExtras>;
 
-export declare class GltfMaterialExtras extends ReflectComponent {
-  static readonly path: "bevy_gltf::assets::GltfMaterialExtras";
-  declare value: string;
-}
+export declare const GltfMaterialExtras: Reflected;
+export type GltfMaterialExtras = InstanceType<typeof GltfMaterialExtras>;
 
 export declare const GltfMaterialName: Reflected;
 export type GltfMaterialName = InstanceType<typeof GltfMaterialName>;
 
-export declare class GltfMeshExtras extends ReflectComponent {
-  static readonly path: "bevy_gltf::assets::GltfMeshExtras";
-  declare value: string;
-}
+export declare const GltfMeshExtras: Reflected;
+export type GltfMeshExtras = InstanceType<typeof GltfMeshExtras>;
 
 export declare const GltfMeshName: Reflected;
 export type GltfMeshName = InstanceType<typeof GltfMeshName>;
 
-export declare class GltfSceneExtras extends ReflectComponent {
-  static readonly path: "bevy_gltf::assets::GltfSceneExtras";
-  declare value: string;
-}
+export declare const GltfSceneExtras: Reflected;
+export type GltfSceneExtras = InstanceType<typeof GltfSceneExtras>;
 
 export declare const GltfSceneName: Reflected;
 export type GltfSceneName = InstanceType<typeof GltfSceneName>;
 
-export declare class Gamepad extends ReflectComponent {
-  static readonly path: "bevy_input::gamepad::Gamepad";
-  declare vendor_id: number | null;
-  declare product_id: number | null;
-  declare digital: { pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] };
-  declare analog: { axis_data: Record<string, number> };
-}
+export declare const Gamepad: Reflected;
+export type Gamepad = InstanceType<typeof Gamepad>;
 
-export declare class GamepadSettings extends ReflectComponent {
-  static readonly path: "bevy_input::gamepad::GamepadSettings";
-  declare default_button_settings: { press_threshold: number; release_threshold: number };
-  declare default_axis_settings: { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number };
-  declare default_button_axis_settings: { high: number; low: number; threshold: number };
-  declare button_settings: Record<string, { press_threshold: number; release_threshold: number }>;
-  declare axis_settings: Record<string, { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }>;
-  declare button_axis_settings: Record<string, { high: number; low: number; threshold: number }>;
-}
+export declare const GamepadSettings: Reflected;
+export type GamepadSettings = InstanceType<typeof GamepadSettings>;
 
-export declare class AutoFocus extends ReflectComponent {
-  static readonly path: "bevy_input_focus::autofocus::AutoFocus";
-}
+export declare const AutoFocus: Reflected;
+export type AutoFocus = InstanceType<typeof AutoFocus>;
 
 export declare class TabGroup extends Component {
   static readonly path: "bevy_input_focus::tab_navigation::TabGroup";
@@ -404,13 +333,11 @@ export declare class TabIndex extends Component {
   declare value: i32;
 }
 
-export declare class NotShadowCaster extends ReflectComponent {
-  static readonly path: "bevy_light::NotShadowCaster";
-}
+export declare const NotShadowCaster: Reflected;
+export type NotShadowCaster = InstanceType<typeof NotShadowCaster>;
 
-export declare class NotShadowReceiver extends ReflectComponent {
-  static readonly path: "bevy_light::NotShadowReceiver";
-}
+export declare const NotShadowReceiver: Reflected;
+export type NotShadowReceiver = InstanceType<typeof NotShadowReceiver>;
 
 export declare class ShadowFilteringMethod extends Component {
   static readonly path: "bevy_light::ShadowFilteringMethod";
@@ -418,9 +345,8 @@ export declare class ShadowFilteringMethod extends Component {
   declare value: "Hardware2x2" | "Gaussian" | "Temporal";
 }
 
-export declare class TransmittedShadowReceiver extends ReflectComponent {
-  static readonly path: "bevy_light::TransmittedShadowReceiver";
-}
+export declare const TransmittedShadowReceiver: Reflected;
+export type TransmittedShadowReceiver = InstanceType<typeof TransmittedShadowReceiver>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
 export declare class AmbientLight extends Component {
@@ -438,15 +364,11 @@ export declare class CascadeShadowConfig extends Component {
   declare minimum_distance: f32;
 }
 
-export declare class Cascades extends ReflectComponent {
-  static readonly path: "bevy_light::cascade::Cascades";
-  declare cascades: Record<string, readonly ({ world_from_cascade: unknown; clip_from_cascade: unknown; clip_from_world: unknown; texel_size: number })[]>;
-}
+export declare const Cascades: Reflected;
+export type Cascades = InstanceType<typeof Cascades>;
 
-export declare class ClusterConfig extends ReflectComponent {
-  static readonly path: "bevy_light::cluster::ClusterConfig";
-  declare value: "None" | "Single" | { XYZ: { dimensions: { x: number; y: number; z: number }; z_config: { first_slice_depth: number; far_z_mode: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing: boolean } } | { FixedZ: { total: number; z_slices: number; z_config: { first_slice_depth: number; far_z_mode: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing: boolean } };
-}
+export declare const ClusterConfig: Reflected;
+export type ClusterConfig = InstanceType<typeof ClusterConfig>;
 
 /** Holes, never visible: base_color_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); normal_map_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); metallic_roughness_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); emissive_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class ClusteredDecal extends Component {
@@ -467,16 +389,11 @@ export declare class DirectionalLight extends Component {
   declare shadow_normal_bias: f32;
 }
 
-export declare class DirectionalLightTexture extends ReflectComponent {
-  static readonly path: "bevy_light::directional_light::DirectionalLightTexture";
-  declare image: string;
-  declare tiled: boolean;
-}
+export declare const DirectionalLightTexture: Reflected;
+export type DirectionalLightTexture = InstanceType<typeof DirectionalLightTexture>;
 
-export declare class ShowLightGizmo extends ReflectComponent {
-  static readonly path: "bevy_light::gizmos::ShowLightGizmo";
-  declare color: { Manual: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } } } | "Varied" | "MatchLightColor" | "ByLightType" | null;
-}
+export declare const ShowLightGizmo: Reflected;
+export type ShowLightGizmo = InstanceType<typeof ShowLightGizmo>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
 export declare class PointLight extends Component {
@@ -493,11 +410,8 @@ export declare class PointLight extends Component {
   declare shadow_map_near_z: f32;
 }
 
-export declare class PointLightTexture extends ReflectComponent {
-  static readonly path: "bevy_light::point_light::PointLightTexture";
-  declare image: string;
-  declare cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal";
-}
+export declare const PointLightTexture: Reflected;
+export type PointLightTexture = InstanceType<typeof PointLightTexture>;
 
 /** Holes, never visible: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class EnvironmentMapLight extends Component {
@@ -531,10 +445,8 @@ export declare class LightProbe extends Component {
   declare readonly falloff: Vec3;
 }
 
-export declare class ParallaxCorrection extends ReflectComponent {
-  static readonly path: "bevy_light::probe::ParallaxCorrection";
-  declare value: "None" | "Auto" | "Custom" | { Custom: Partial<readonly [number, number, number]> };
-}
+export declare const ParallaxCorrection: Reflected;
+export type ParallaxCorrection = InstanceType<typeof ParallaxCorrection>;
 
 /** Holes, never visible: image: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class Skybox extends Component {
@@ -571,10 +483,8 @@ export declare class SpotLight extends Component {
   declare inner_angle: f32;
 }
 
-export declare class SpotLightTexture extends ReflectComponent {
-  static readonly path: "bevy_light::spot_light::SpotLightTexture";
-  declare image: string;
-}
+export declare const SpotLightTexture: Reflected;
+export type SpotLightTexture = InstanceType<typeof SpotLightTexture>;
 
 /** Holes, never visible: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
 export declare class FogVolume extends Component {
@@ -597,9 +507,8 @@ export declare class VolumetricFog extends Component {
   declare step_count: u32;
 }
 
-export declare class VolumetricLight extends ReflectComponent {
-  static readonly path: "bevy_light::volumetric::VolumetricLight";
-}
+export declare const VolumetricLight: Reflected;
+export type VolumetricLight = InstanceType<typeof VolumetricLight>;
 
 export declare const Mesh2d: Reflected;
 export type Mesh2d = InstanceType<typeof Mesh2d>;
@@ -614,22 +523,14 @@ export declare class MeshTag extends Component {
   declare value: u32;
 }
 
-export declare class MeshMorphWeights extends ReflectComponent {
-  static readonly path: "bevy_mesh::morph::MeshMorphWeights";
-  declare value: { Value: { weights: readonly number[] } } | "Reference" | { Reference: Partial<Entity> };
-}
+export declare const MeshMorphWeights: Reflected;
+export type MeshMorphWeights = InstanceType<typeof MeshMorphWeights>;
 
-export declare class MorphWeights extends ReflectComponent {
-  static readonly path: "bevy_mesh::morph::MorphWeights";
-  declare weights: readonly number[];
-  declare first_mesh: string | null;
-}
+export declare const MorphWeights: Reflected;
+export type MorphWeights = InstanceType<typeof MorphWeights>;
 
-export declare class SkinnedMesh extends ReflectComponent {
-  static readonly path: "bevy_mesh::skinning::SkinnedMesh";
-  declare inverse_bindposes: string;
-  declare joints: readonly Entity[];
-}
+export declare const SkinnedMesh: Reflected;
+export type SkinnedMesh = InstanceType<typeof SkinnedMesh>;
 
 export declare class ContactShadows extends Component {
   static readonly path: "bevy_pbr::contact_shadows::ContactShadows";
@@ -688,18 +589,14 @@ export declare class ScreenSpaceTransmission extends Component {
 export declare const Mesh3dWireframe: Reflected;
 export type Mesh3dWireframe = InstanceType<typeof Mesh3dWireframe>;
 
-export declare class NoWireframe extends ReflectComponent {
-  static readonly path: "bevy_pbr::wireframe::NoWireframe";
-}
+export declare const NoWireframe: Reflected;
+export type NoWireframe = InstanceType<typeof NoWireframe>;
 
-export declare class Wireframe extends ReflectComponent {
-  static readonly path: "bevy_pbr::wireframe::Wireframe";
-}
+export declare const Wireframe: Reflected;
+export type Wireframe = InstanceType<typeof Wireframe>;
 
-export declare class WireframeColor extends ReflectComponent {
-  static readonly path: "bevy_pbr::wireframe::WireframeColor";
-  declare color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } };
-}
+export declare const WireframeColor: Reflected;
+export type WireframeColor = InstanceType<typeof WireframeColor>;
 
 export declare class WireframeLineWidth extends Component {
   static readonly path: "bevy_pbr::wireframe::WireframeLineWidth";
@@ -726,10 +623,8 @@ export declare class Pickable extends Component {
   declare is_hoverable: bool;
 }
 
-export declare class EntityCursor extends ReflectComponent {
-  static readonly path: "bevy_picking::cursor::EntityCursor";
-  declare value: "Custom" | { Custom: Partial<{ Image: { handle: string; texture_atlas: { layout: string; index: number } | null; flip_x: boolean; flip_y: boolean; rect: { min: unknown; max: unknown } | null; hotspot: readonly [number, number] } } | { Url: { url: string; hotspot: readonly [number, number] } }> } | "System" | { System: Partial<"Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut"> };
-}
+export declare const EntityCursor: Reflected;
+export type EntityCursor = InstanceType<typeof EntityCursor>;
 
 /** Immutable: read-only in TS. */
 export declare class DirectlyHovered extends Component {
@@ -751,30 +646,23 @@ export declare class PickingInteraction extends Component {
   declare value: "Pressed" | "Hovered" | "None";
 }
 
-export declare class MeshPickingCamera extends ReflectComponent {
-  static readonly path: "bevy_picking::mesh_picking::MeshPickingCamera";
-}
+export declare const MeshPickingCamera: Reflected;
+export type MeshPickingCamera = InstanceType<typeof MeshPickingCamera>;
 
-export declare class RayCastBackfaces extends ReflectComponent {
-  static readonly path: "bevy_picking::mesh_picking::ray_cast::RayCastBackfaces";
-}
+export declare const RayCastBackfaces: Reflected;
+export type RayCastBackfaces = InstanceType<typeof RayCastBackfaces>;
 
 export declare const SimplifiedMesh: Reflected;
 export type SimplifiedMesh = InstanceType<typeof SimplifiedMesh>;
 
-export declare class PointerId extends ReflectComponent {
-  static readonly path: "bevy_picking::pointer::PointerId";
-  declare value: "Mouse" | "Touch" | { Touch: Partial<number> } | "Custom" | { Custom: Partial<unknown> };
-}
+export declare const PointerId: Reflected;
+export type PointerId = InstanceType<typeof PointerId>;
 
-export declare class PointerInteraction extends ReflectComponent {
-  static readonly path: "bevy_picking::pointer::PointerInteraction";
-  declare sorted_entities: readonly (readonly [Entity, { camera: Entity; depth: number; position: readonly [number, number, number] | null; normal: readonly [number, number, number] | null }])[];
-}
+export declare const PointerInteraction: Reflected;
+export type PointerInteraction = InstanceType<typeof PointerInteraction>;
 
-export declare class PointerLocation extends ReflectComponent {
-  static readonly path: "bevy_picking::pointer::PointerLocation";
-}
+export declare const PointerLocation: Reflected;
+export type PointerLocation = InstanceType<typeof PointerLocation>;
 
 export declare class PointerPressState extends Component {
   static readonly path: "bevy_picking::pointer::PointerPressState";
@@ -859,17 +747,11 @@ export declare class TemporalJitter extends Component {
   declare readonly offset: Vec2;
 }
 
-export declare class OcclusionCulling extends ReflectComponent {
-  static readonly path: "bevy_render::occlusion_culling::OcclusionCulling";
-}
+export declare const OcclusionCulling: Reflected;
+export type OcclusionCulling = InstanceType<typeof OcclusionCulling>;
 
-export declare class ColorGrading extends ReflectComponent {
-  static readonly path: "bevy_render::view::ColorGrading";
-  declare global: { exposure: number; temperature: number; tint: number; hue: number; post_saturation: number; midtones_range: unknown };
-  declare shadows: { saturation: number; contrast: number; gamma: number; gain: number; lift: number };
-  declare midtones: { saturation: number; contrast: number; gamma: number; gain: number; lift: number };
-  declare highlights: { saturation: number; contrast: number; gamma: number; gain: number; lift: number };
-}
+export declare const ColorGrading: Reflected;
+export type ColorGrading = InstanceType<typeof ColorGrading>;
 
 export declare class DebandDither extends Component {
   static readonly path: "bevy_render::view::DebandDither";
@@ -889,22 +771,17 @@ export declare class Tonemapping extends Component {
   declare value: "None" | "Linear" | "Reinhard" | "ReinhardLuminance" | "AcesFitted" | "AgX" | "SomewhatBoringDisplayTransform" | "TonyMcMapface" | "BlenderFilmic" | "KhronosPbrNeutral";
 }
 
-export declare class RenderShadowMapVisibleEntities extends ReflectComponent {
-  static readonly path: "bevy_render::view::visibility::RenderShadowMapVisibleEntities";
-}
+export declare const RenderShadowMapVisibleEntities: Reflected;
+export type RenderShadowMapVisibleEntities = InstanceType<typeof RenderShadowMapVisibleEntities>;
 
 export declare const Screenshot: Reflected;
 export type Screenshot = InstanceType<typeof Screenshot>;
 
-export declare class SceneComponentInfo extends ReflectComponent {
-  static readonly path: "bevy_scene::scene_component::SceneComponentInfo";
-  declare spawned_from_scene: boolean;
-  declare component_name: string;
-}
+export declare const SceneComponentInfo: Reflected;
+export type SceneComponentInfo = InstanceType<typeof SceneComponentInfo>;
 
-export declare class SpritePickingCamera extends ReflectComponent {
-  static readonly path: "bevy_sprite::picking_backend::SpritePickingCamera";
-}
+export declare const SpritePickingCamera: Reflected;
+export type SpritePickingCamera = InstanceType<typeof SpritePickingCamera>;
 
 export declare class Anchor extends Component {
   static readonly path: "bevy_sprite::sprite::Anchor";
@@ -930,47 +807,26 @@ export declare class Text2dShadow extends Component {
   declare readonly offset: Vec2;
 }
 
-export declare const MeshMaterial2dColorMaterial: Reflected;
-export type MeshMaterial2dColorMaterial = InstanceType<typeof MeshMaterial2dColorMaterial>;
-
-export declare const MeshMaterial2dSpriteMeshMaterial: Reflected;
-export type MeshMaterial2dSpriteMeshMaterial = InstanceType<typeof MeshMaterial2dSpriteMeshMaterial>;
-
-export declare const MeshMaterial2dTilemapChunkMaterial: Reflected;
-export type MeshMaterial2dTilemapChunkMaterial = InstanceType<typeof MeshMaterial2dTilemapChunkMaterial>;
-
 export declare const Mesh2dWireframe: Reflected;
 export type Mesh2dWireframe = InstanceType<typeof Mesh2dWireframe>;
 
-export declare class NoWireframe2d extends ReflectComponent {
-  static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::NoWireframe2d";
-}
+export declare const NoWireframe2d: Reflected;
+export type NoWireframe2d = InstanceType<typeof NoWireframe2d>;
 
-export declare class Wireframe2d extends ReflectComponent {
-  static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2d";
-}
+export declare const Wireframe2d: Reflected;
+export type Wireframe2d = InstanceType<typeof Wireframe2d>;
 
-export declare class Wireframe2dColor extends ReflectComponent {
-  static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dColor";
-  declare color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } };
-}
+export declare const Wireframe2dColor: Reflected;
+export type Wireframe2dColor = InstanceType<typeof Wireframe2dColor>;
 
-export declare class TilemapChunk extends ReflectComponent {
-  static readonly path: "bevy_sprite_render::tilemap_chunk::TilemapChunk";
-  declare chunk_size: { x: number; y: number };
-  declare tile_display_size: { x: number; y: number };
-  declare tileset: string;
-  declare alpha_mode: "Opaque" | { Mask: number } | "Blend";
-}
+export declare const TilemapChunk: Reflected;
+export type TilemapChunk = InstanceType<typeof TilemapChunk>;
 
 export declare const TilemapChunkTileData: Reflected;
 export type TilemapChunkTileData = InstanceType<typeof TilemapChunkTileData>;
 
-export declare class TextBounds extends ReflectComponent {
-  static readonly path: "bevy_text::bounds::TextBounds";
-  declare width: number | null;
-  declare height: number | null;
-}
+export declare const TextBounds: Reflected;
+export type TextBounds = InstanceType<typeof TextBounds>;
 
 /** Holes, never visible: glyphs: not plain data (alloc::vec::Vec<bevy_text::glyph::PositionedGlyph>); run_geometry: not plain data (alloc::vec::Vec<bevy_text::pipeline::RunGeometry>); cursor: an enum with data (core::option::Option<(bool, bevy_math::rects::rect::Rect)>); selection_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); preedit_underline_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); inline_boxes: not plain data (alloc::vec::Vec<(bevy_ecs::entity::Entity, bevy_text::inline_box::InlineBoxKind, bevy_math::rects::rect::Rect)>). */
 export declare class TextLayoutInfo extends Component {
@@ -1001,15 +857,11 @@ export declare class FontHinting extends Component {
   declare value: "Disabled" | "Enabled";
 }
 
-export declare class LetterSpacing extends ReflectComponent {
-  static readonly path: "bevy_text::text::LetterSpacing";
-  declare value: "Px" | { Px: Partial<number> } | "Rem" | { Rem: Partial<number> };
-}
+export declare const LetterSpacing: Reflected;
+export type LetterSpacing = InstanceType<typeof LetterSpacing>;
 
-export declare class LineHeight extends ReflectComponent {
-  static readonly path: "bevy_text::text::LineHeight";
-  declare value: "Px" | { Px: Partial<number> } | "RelativeToFont" | { RelativeToFont: Partial<number> };
-}
+export declare const LineHeight: Reflected;
+export type LineHeight = InstanceType<typeof LineHeight>;
 
 export declare const StrikethroughColor: Reflected;
 export type StrikethroughColor = InstanceType<typeof StrikethroughColor>;
@@ -1040,28 +892,20 @@ export type TextSpan = InstanceType<typeof TextSpan>;
 export declare const UnderlineColor: Reflected;
 export type UnderlineColor = InstanceType<typeof UnderlineColor>;
 
-export declare class DelayedCommandQueue extends ReflectComponent {
-  static readonly path: "bevy_time::delayed_commands::DelayedCommandQueue";
-  declare submit_at: unknown;
-}
+export declare const DelayedCommandQueue: Reflected;
+export type DelayedCommandQueue = InstanceType<typeof DelayedCommandQueue>;
 
 export declare const GlobalTransform: Reflected;
 export type GlobalTransform = InstanceType<typeof GlobalTransform>;
 
-export declare class TransformTreeChanged extends ReflectComponent {
-  static readonly path: "bevy_transform::components::transform::TransformTreeChanged";
-}
+export declare const TransformTreeChanged: Reflected;
+export type TransformTreeChanged = InstanceType<typeof TransformTreeChanged>;
 
-export declare class ScriptHidden extends ReflectComponent {
-  static readonly path: "bevy_ts::ScriptHidden";
-}
+export declare const ScriptHidden: Reflected;
+export type ScriptHidden = InstanceType<typeof ScriptHidden>;
 
-export declare class TsSpawned extends ReflectComponent {
-  static readonly path: "bevy_ts::commands::TsSpawned";
-}
-
-export declare const MissingComponents: Reflected;
-export type MissingComponents = InstanceType<typeof MissingComponents>;
+export declare const TsSpawned: Reflected;
+export type TsSpawned = InstanceType<typeof TsSpawned>;
 
 export declare const MissingComponents: Reflected;
 export type MissingComponents = InstanceType<typeof MissingComponents>;
@@ -1100,29 +944,23 @@ export type BackgroundGradient = InstanceType<typeof BackgroundGradient>;
 export declare const BorderGradient: Reflected;
 export type BorderGradient = InstanceType<typeof BorderGradient>;
 
-export declare class Checkable extends ReflectComponent {
-  static readonly path: "bevy_ui::interaction_states::Checkable";
-}
+export declare const Checkable: Reflected;
+export type Checkable = InstanceType<typeof Checkable>;
 
-export declare class Checked extends ReflectComponent {
-  static readonly path: "bevy_ui::interaction_states::Checked";
-}
+export declare const Checked: Reflected;
+export type Checked = InstanceType<typeof Checked>;
 
-export declare class InteractionDisabled extends ReflectComponent {
-  static readonly path: "bevy_ui::interaction_states::InteractionDisabled";
-}
+export declare const InteractionDisabled: Reflected;
+export type InteractionDisabled = InstanceType<typeof InteractionDisabled>;
 
-export declare class Pressed extends ReflectComponent {
-  static readonly path: "bevy_ui::interaction_states::Pressed";
-}
+export declare const Pressed: Reflected;
+export type Pressed = InstanceType<typeof Pressed>;
 
-export declare class ContentSize extends ReflectComponent {
-  static readonly path: "bevy_ui::measurement::ContentSize";
-}
+export declare const ContentSize: Reflected;
+export type ContentSize = InstanceType<typeof ContentSize>;
 
-export declare class UiPickingCamera extends ReflectComponent {
-  static readonly path: "bevy_ui::picking_backend::UiPickingCamera";
-}
+export declare const UiPickingCamera: Reflected;
+export type UiPickingCamera = InstanceType<typeof UiPickingCamera>;
 
 export declare class ComputedStackIndex extends Component {
   static readonly path: "bevy_ui::stack::ComputedStackIndex";
@@ -1133,21 +971,14 @@ export declare class ComputedStackIndex extends Component {
 export declare const BackgroundColor: Reflected;
 export type BackgroundColor = InstanceType<typeof BackgroundColor>;
 
-export declare class BorderColor extends ReflectComponent {
-  static readonly path: "bevy_ui::ui_node::BorderColor";
-  declare top: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } };
-  declare right: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } };
-  declare bottom: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } };
-  declare left: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } };
-}
+export declare const BorderColor: Reflected;
+export type BorderColor = InstanceType<typeof BorderColor>;
 
 export declare const BoxShadow: Reflected;
 export type BoxShadow = InstanceType<typeof BoxShadow>;
 
-export declare class CalculatedClip extends ReflectComponent {
-  static readonly path: "bevy_ui::ui_node::CalculatedClip";
-  declare value: "Rects" | { Rects: Partial<readonly ({ rect: { min: readonly [number, number]; max: readonly [number, number] }; world_to_clip_local: { matrix2: { x_axis: readonly [number, number]; y_axis: readonly [number, number] }; translation: readonly [number, number] } })[]> } | "FullyClipped";
-}
+export declare const CalculatedClip: Reflected;
+export type CalculatedClip = InstanceType<typeof CalculatedClip>;
 
 /** Holes, never visible: border: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); border_radius: not plain data (bevy_ui::ui_node::ResolvedBorderRadius); padding: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); em_size: not plain data (bevy_text::text::EmSize); rem_size: not plain data (bevy_text::text::RemSize). */
 export declare class ComputedNode extends Component {
@@ -1170,14 +1001,11 @@ export declare class ComputedUiRenderTargetInfo extends Component {
   declare scale_factor: f32;
 }
 
-export declare class ComputedUiTargetCamera extends ReflectComponent {
-  static readonly path: "bevy_ui::ui_node::ComputedUiTargetCamera";
-  declare camera: Entity | null;
-}
+export declare const ComputedUiTargetCamera: Reflected;
+export type ComputedUiTargetCamera = InstanceType<typeof ComputedUiTargetCamera>;
 
-export declare class FixedNode extends ReflectComponent {
-  static readonly path: "bevy_ui::ui_node::FixedNode";
-}
+export declare const FixedNode: Reflected;
+export type FixedNode = InstanceType<typeof FixedNode>;
 
 export declare class GlobalZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::GlobalZIndex";
@@ -1188,9 +1016,8 @@ export declare class GlobalZIndex extends Component {
 export declare const IgnoreScroll: Reflected;
 export type IgnoreScroll = InstanceType<typeof IgnoreScroll>;
 
-export declare class IsDefaultUiCamera extends ReflectComponent {
-  static readonly path: "bevy_ui::ui_node::IsDefaultUiCamera";
-}
+export declare const IsDefaultUiCamera: Reflected;
+export type IsDefaultUiCamera = InstanceType<typeof IsDefaultUiCamera>;
 
 export declare class LayoutConfig extends Component {
   static readonly path: "bevy_ui::ui_node::LayoutConfig";
@@ -1223,16 +1050,11 @@ export declare class Node extends Component {
 export declare const OuterColor: Reflected;
 export type OuterColor = InstanceType<typeof OuterColor>;
 
-export declare class Outline extends ReflectComponent {
-  static readonly path: "bevy_ui::ui_node::Outline";
-  declare width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number };
-  declare offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number };
-  declare color: { Srgba: { red: number; green: number; blue: number; alpha: number } } | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Hsva: { hue: number; saturation: number; value: number; alpha: number } } | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } } | { Laba: { lightness: number; a: number; b: number; alpha: number } } | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Oklaba: { lightness: number; a: number; b: number; alpha: number } } | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } } | { Xyza: { x: number; y: number; z: number; alpha: number } } | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } } | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } } | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } };
-}
+export declare const Outline: Reflected;
+export type Outline = InstanceType<typeof Outline>;
 
-export declare class OverrideClip extends ReflectComponent {
-  static readonly path: "bevy_ui::ui_node::OverrideClip";
-}
+export declare const OverrideClip: Reflected;
+export type OverrideClip = InstanceType<typeof OverrideClip>;
 
 export declare class ScrollPosition extends Component {
   static readonly path: "bevy_ui::ui_node::ScrollPosition";
@@ -1259,9 +1081,8 @@ export declare class UiTransform extends Component {
   declare readonly scale: Vec2;
 }
 
-export declare class DeprecatedButton extends ReflectComponent {
-  static readonly path: "bevy_ui::widget::button::DeprecatedButton";
-}
+export declare const DeprecatedButton: Reflected;
+export type DeprecatedButton = InstanceType<typeof DeprecatedButton>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_ui::widget::image::NodeImageMode). */
 export declare class ImageNode extends Component {
@@ -1272,10 +1093,8 @@ export declare class ImageNode extends Component {
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
 }
 
-export declare class ImageNodeSize extends ReflectComponent {
-  static readonly path: "bevy_ui::widget::image::ImageNodeSize";
-  declare size: { x: number; y: number };
-}
+export declare const ImageNodeSize: Reflected;
+export type ImageNodeSize = InstanceType<typeof ImageNodeSize>;
 
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>). */
 export declare class InlineImage extends Component {
@@ -1285,9 +1104,8 @@ export declare class InlineImage extends Component {
   declare flip_y: bool;
 }
 
-export declare class Label extends ReflectComponent {
-  static readonly path: "bevy_ui::widget::label::Label";
-}
+export declare const Label: Reflected;
+export type Label = InstanceType<typeof Label>;
 
 export declare const Text: Reflected;
 export type Text = InstanceType<typeof Text>;
@@ -1307,10 +1125,8 @@ export declare class TextShadow extends Component {
   declare readonly offset: Vec2;
 }
 
-export declare class ViewportNode extends ReflectComponent {
-  static readonly path: "bevy_ui::widget::viewport::ViewportNode";
-  declare camera: Entity | null;
-}
+export declare const ViewportNode: Reflected;
+export type ViewportNode = InstanceType<typeof ViewportNode>;
 
 export declare class BoxShadowSamples extends Component {
   static readonly path: "bevy_ui_render::BoxShadowSamples";
@@ -1324,106 +1140,68 @@ export declare class UiAntiAlias extends Component {
   declare value: "On" | "Off";
 }
 
-export declare class UiDebugOptions extends ReflectComponent {
-  static readonly path: "bevy_ui_render::debug_overlay::UiDebugOptions";
-  declare enabled: boolean;
-  declare outline_border_box: boolean;
-  declare outline_padding_box: boolean;
-  declare outline_content_box: boolean;
-  declare outline_scrollbars: boolean;
-  declare line_width: number;
-  declare line_color_override: { red: number; green: number; blue: number; alpha: number } | null;
-  declare show_hidden: boolean;
-  declare show_clipped: boolean;
-  declare ignore_border_radius: boolean;
-}
+export declare const UiDebugOptions: Reflected;
+export type UiDebugOptions = InstanceType<typeof UiDebugOptions>;
 
 export declare const ImageNodeTextureAtlasLayout: Reflected;
 export type ImageNodeTextureAtlasLayout = InstanceType<typeof ImageNodeTextureAtlasLayout>;
 
-export declare class ActivateOnPress extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::button::ActivateOnPress";
-}
+export declare const ActivateOnPress: Reflected;
+export type ActivateOnPress = InstanceType<typeof ActivateOnPress>;
 
-export declare class Button extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::button::Button";
-}
+export declare const Button: Reflected;
+export type Button = InstanceType<typeof Button>;
 
-export declare class Checkbox extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::checkbox::Checkbox";
-}
+export declare const Checkbox: Reflected;
+export type Checkbox = InstanceType<typeof Checkbox>;
 
-export declare class Dialog extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::dialog::Dialog";
-}
+export declare const Dialog: Reflected;
+export type Dialog = InstanceType<typeof Dialog>;
 
-export declare class DialogDragHandle extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::dialog::DialogDragHandle";
-}
+export declare const DialogDragHandle: Reflected;
+export type DialogDragHandle = InstanceType<typeof DialogDragHandle>;
 
-export declare class DialogDragState extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::dialog::DialogDragState";
-  declare start_dialog_translation: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } };
-  declare start_pointer_location: readonly [number, number];
-}
+export declare const DialogDragState: Reflected;
+export type DialogDragState = InstanceType<typeof DialogDragState>;
 
 export declare const ActiveDescendant: Reflected;
 export type ActiveDescendant = InstanceType<typeof ActiveDescendant>;
 
-export declare class ListItem extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::list::ListItem";
-}
+export declare const ListItem: Reflected;
+export type ListItem = InstanceType<typeof ListItem>;
 
-export declare class MenuButton extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::menu::MenuButton";
-}
+export declare const MenuButton: Reflected;
+export type MenuButton = InstanceType<typeof MenuButton>;
 
-export declare class MenuFocusState extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::menu::MenuFocusState";
-  declare value: "Opening" | { Opening: Partial<"Next" | "Previous" | "First" | "Last"> } | "Open" | "Closed";
-}
+export declare const MenuFocusState: Reflected;
+export type MenuFocusState = InstanceType<typeof MenuFocusState>;
 
-export declare class MenuItem extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::menu::MenuItem";
-}
+export declare const MenuItem: Reflected;
+export type MenuItem = InstanceType<typeof MenuItem>;
 
-export declare class MenuPopup extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::menu::MenuPopup";
-  declare layout: "Column" | "Row" | "Grid";
-}
+export declare const MenuPopup: Reflected;
+export type MenuPopup = InstanceType<typeof MenuPopup>;
 
-export declare class ModalDialog extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::modal::ModalDialog";
-}
+export declare const ModalDialog: Reflected;
+export type ModalDialog = InstanceType<typeof ModalDialog>;
 
-export declare class ModalDialogBarrier extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::modal::ModalDialogBarrier";
-}
+export declare const ModalDialogBarrier: Reflected;
+export type ModalDialogBarrier = InstanceType<typeof ModalDialogBarrier>;
 
-export declare class Popover extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::popover::Popover";
-  declare positions: readonly ({ side: "Top" | "Bottom" | "Left" | "Right"; align: "Start" | "Center" | "End"; gap: number })[];
-  declare window_margin: number;
-}
+export declare const Popover: Reflected;
+export type Popover = InstanceType<typeof Popover>;
 
-export declare class RadioButton extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::radio::RadioButton";
-}
+export declare const RadioButton: Reflected;
+export type RadioButton = InstanceType<typeof RadioButton>;
 
-export declare class RadioGroup extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::radio::RadioGroup";
-}
+export declare const RadioGroup: Reflected;
+export type RadioGroup = InstanceType<typeof RadioGroup>;
 
-export declare class ScrollArea extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::scrollarea::ScrollArea";
-}
+export declare const ScrollArea: Reflected;
+export type ScrollArea = InstanceType<typeof ScrollArea>;
 
-export declare class Scrollbar extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::scrollbar::Scrollbar";
-  declare target: Entity;
-  declare orientation: "Horizontal" | "Vertical";
-  declare min_thumb_length: number;
-}
+export declare const Scrollbar: Reflected;
+export type Scrollbar = InstanceType<typeof Scrollbar>;
 
 export declare class ScrollbarDragState extends Component {
   static readonly path: "bevy_ui_widgets::scrollbar::ScrollbarDragState";
@@ -1432,23 +1210,14 @@ export declare class ScrollbarDragState extends Component {
   declare drag_origin: f32;
 }
 
-export declare class ScrollbarThumb extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::scrollbar::ScrollbarThumb";
-  declare border_radius: { top_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } };
-  declare border: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } };
-}
+export declare const ScrollbarThumb: Reflected;
+export type ScrollbarThumb = InstanceType<typeof ScrollbarThumb>;
 
-export declare class Slider extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::slider::Slider";
-  declare track_click: "Drag" | "Step" | "Snap";
-  declare orientation: "Auto" | "Horizontal" | "Vertical";
-}
+export declare const Slider: Reflected;
+export type Slider = InstanceType<typeof Slider>;
 
-export declare class SliderDragState extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::slider::SliderDragState";
-  declare dragging: boolean;
-  declare offset: number;
-}
+export declare const SliderDragState: Reflected;
+export type SliderDragState = InstanceType<typeof SliderDragState>;
 
 export declare class SliderPrecision extends Component {
   static readonly path: "bevy_ui_widgets::slider::SliderPrecision";
@@ -1456,18 +1225,14 @@ export declare class SliderPrecision extends Component {
   declare value: i32;
 }
 
-export declare class SliderRange extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::slider::SliderRange";
-  declare start: number;
-  declare end: number;
-}
+export declare const SliderRange: Reflected;
+export type SliderRange = InstanceType<typeof SliderRange>;
 
 export declare const SliderStep: Reflected;
 export type SliderStep = InstanceType<typeof SliderStep>;
 
-export declare class SliderThumb extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::slider::SliderThumb";
-}
+export declare const SliderThumb: Reflected;
+export type SliderThumb = InstanceType<typeof SliderThumb>;
 
 export declare const SliderValue: Reflected;
 export type SliderValue = InstanceType<typeof SliderValue>;
@@ -1475,9 +1240,8 @@ export type SliderValue = InstanceType<typeof SliderValue>;
 export declare const SelectedTab: Reflected;
 export type SelectedTab = InstanceType<typeof SelectedTab>;
 
-export declare class Tab extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::tabs::Tab";
-}
+export declare const Tab: Reflected;
+export type Tab = InstanceType<typeof Tab>;
 
 export declare class TabList extends Component {
   static readonly path: "bevy_ui_widgets::tabs::TabList";
@@ -1486,33 +1250,20 @@ export declare class TabList extends Component {
   declare activation: "Manual" | "Automatic";
 }
 
-export declare class SelectAllOnFocus extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::text_input::SelectAllOnFocus";
-}
+export declare const SelectAllOnFocus: Reflected;
+export type SelectAllOnFocus = InstanceType<typeof SelectAllOnFocus>;
 
-export declare class TextInput extends ReflectComponent {
-  static readonly path: "bevy_ui_widgets::text_input::TextInput";
-}
+export declare const TextInput: Reflected;
+export type TextInput = InstanceType<typeof TextInput>;
 
-export declare class CursorIcon extends ReflectComponent {
-  static readonly path: "bevy_window::cursor::CursorIcon";
-  declare value: "Custom" | { Custom: Partial<{ Image: { handle: string; texture_atlas: { layout: string; index: number } | null; flip_x: boolean; flip_y: boolean; rect: { min: unknown; max: unknown } | null; hotspot: readonly [number, number] } } | { Url: { url: string; hotspot: readonly [number, number] } }> } | "System" | { System: Partial<"Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut"> };
-}
+export declare const CursorIcon: Reflected;
+export type CursorIcon = InstanceType<typeof CursorIcon>;
 
-export declare class Monitor extends ReflectComponent {
-  static readonly path: "bevy_window::monitor::Monitor";
-  declare name: string | null;
-  declare physical_height: number;
-  declare physical_width: number;
-  declare physical_position: { x: number; y: number };
-  declare refresh_rate_millihertz: number | null;
-  declare scale_factor: number;
-  declare video_modes: readonly ({ physical_size: { x: number; y: number }; bit_depth: number; refresh_rate_millihertz: number })[];
-}
+export declare const Monitor: Reflected;
+export type Monitor = InstanceType<typeof Monitor>;
 
-export declare class PrimaryMonitor extends ReflectComponent {
-  static readonly path: "bevy_window::monitor::PrimaryMonitor";
-}
+export declare const PrimaryMonitor: Reflected;
+export type PrimaryMonitor = InstanceType<typeof PrimaryMonitor>;
 
 export declare class CursorOptions extends Component {
   static readonly path: "bevy_window::window::CursorOptions";
@@ -1522,9 +1273,8 @@ export declare class CursorOptions extends Component {
   declare hit_test: bool;
 }
 
-export declare class PrimaryWindow extends ReflectComponent {
-  static readonly path: "bevy_window::window::PrimaryWindow";
-}
+export declare const PrimaryWindow: Reflected;
+export type PrimaryWindow = InstanceType<typeof PrimaryWindow>;
 
 /** Holes, never visible: mode: an enum with data (bevy_window::window::WindowMode); position: an enum with data (bevy_window::window::WindowPosition); resolution: not plain data (bevy_window::window::WindowResolution); title: opaque to reflection (alloc::string::String); name: an enum with data (core::option::Option<alloc::string::String>); resize_constraints: not plain data (bevy_window::window::WindowResizeConstraints); enabled_buttons: not plain data (bevy_window::window::EnabledButtons); canvas: an enum with data (core::option::Option<alloc::string::String>); internal: not plain data (bevy_window::window::InternalWindowState); window_theme: an enum with data (core::option::Option<bevy_window::window::WindowTheme>); desired_maximum_frame_latency: an enum with data (core::option::Option<core::num::NonZeroU32>); recognize_pan_gesture: an enum with data (core::option::Option<(u8, u8)>). */
 export declare class Window extends Component {

@@ -326,12 +326,6 @@ export const Text2d = rustComponent("Text2d");
 
 export class Text2dShadow extends nativeComponent("Text2dShadow", { offset: vec2 }) {}
 
-export const MeshMaterial2dColorMaterial = rustComponent("MeshMaterial2d<ColorMaterial>");
-
-export const MeshMaterial2dSpriteMeshMaterial = rustComponent("MeshMaterial2d<SpriteMeshMaterial>");
-
-export const MeshMaterial2dTilemapChunkMaterial = rustComponent("MeshMaterial2d<TilemapChunkMaterial>");
-
 export const Mesh2dWireframe = rustComponent("Mesh2dWireframe");
 
 export const NoWireframe2d = rustComponent("NoWireframe2d");
@@ -381,8 +375,6 @@ export const TransformTreeChanged = rustComponent("TransformTreeChanged");
 export const ScriptHidden = rustComponent("ScriptHidden");
 
 export const TsSpawned = rustComponent("TsSpawned");
-
-export const MissingComponents = rustComponent("MissingComponents");
 
 export const AccessibleLabel = rustComponent("AccessibleLabel");
 

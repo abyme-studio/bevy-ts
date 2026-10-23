@@ -7,7 +7,6 @@
 **Goals:**
 - Script kinds draw in the prepass and shadow pass the way `MaterialPlugin<M>` draws a typed material.
 - Flags that match Bevy's `enable_shadows`/`enable_prepass`, with defaults that never draw a wrong shadow.
-- A TSX toon camera, tested.
 - Numbers for 100 skinned characters.
 
 **Non-Goals:**
@@ -26,7 +25,7 @@
 
 4. The flags live on `Kind` (resolved once from the declaration), and so in the kind's identity: a changed flag makes a new `Kind`, re-specialized as a changed `alphaMode` is today.
 
-5. The camera is plain TSX elements: `<Camera3d />`, `<Projection>`, the prepass markers and `<Tonemapping>`. The test found two gaps. No prop could switch a reflected enum component's variant (`Projection` stayed `Perspective`; the insert failed with "no field Orthographic"), and `bevy-ts/bevy` declared Bevy's reflect-tier components as untyped handles, so any prop failed `tsc`. The fix is in the reflect-tier element path and the type emitter, for every such component. An enum component takes `value`, as the emitter already declared for project enums and as layout-tier `<Tonemapping value="None" />` reads: a variant name, or `{ Variant: fields }`. A newtype variant starts from its field's `Default`, else `FromWorld` (`OrthographicProjection` has only `FromWorld`, which gives the 3D defaults), else its current value, and `fields` sets only what it names, so its type is `Partial`. Rejected: one prop per variant (`<Projection Orthographic={...} />`), which reads well but departs from the `value` the emitter and layout-tier enums use; and a `projection` option on the `camera3d` recipe, a one-off.
+5. The camera is plain TSX elements: `<Camera3d />`, `<Projection value={{ Orthographic: ... }} />`, the prepass markers and `<Tonemapping value="None" />`. A TSX prop could not switch `Projection`'s variant; reflect-enums-color owns that fix for every reflected enum, so this change depends on it and adds no camera code.
 
 6. The bench is an ignored release test in `crates/bevy-ts-material/tests/toon_bench.rs` (the crate already builds headless GPU tests; `bench/` holds separate workspaces), its results in `bench/toon/results/`: 100 `Fox.glb` instances (fetched from Bevy's repository at a pinned commit into a cache folder, not committed), each primitive's `StandardMaterial` swapped for a toon script material on `SceneInstanceReady`, playing their run animation, an orthographic camera, one shadowed directional light, rendered offscreen in release. Arms: no prepass (toon, shadows), and prepass plus ink. It records mean and p95 frame time, CPU and GPU where Bevy's diagnostics give them.
 

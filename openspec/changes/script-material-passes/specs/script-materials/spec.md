@@ -31,10 +31,3 @@ A script material kind SHALL take part in Bevy's prepass and shadow pass as a ty
 #### Scenario: Skinned meshes
 - **WHEN** an opaque script material is on a skinned mesh
 - **THEN** its shadow and its prepass depth follow the animated pose
-
-### Requirement: An orthographic prepass camera from TSX
-A TSX camera entity SHALL be able to carry `Projection` (orthographic, with its scaling mode), `DepthPrepass`, `NormalPrepass` and `Tonemapping` from `bevy-ts/bevy`, as reflect-tier or layout-tier elements, beside the `camera3d` recipe, with no Rust in the game.
-
-#### Scenario: The toon camera
-- **WHEN** a TSX entity uses the `camera3d` recipe with `<Projection>` set to orthographic with a fixed vertical height, `<DepthPrepass />`, `<NormalPrepass />` and `<Tonemapping value="None" />`
-- **THEN** the spawned camera has an orthographic projection of that height, both prepass markers and `Tonemapping::None`

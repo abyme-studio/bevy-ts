@@ -218,45 +218,6 @@ fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
     }
 }
 
-/// The members a reflect-tier component's class declares, its TSX props: a struct's fields, or
-/// for anything else `value`. An enum's `value` is a variant name, or `{ Variant: fields }` where a
-/// newtype variant's fields are partial, as `<Projection value={{ Orthographic: { near: -10 } }} />`
-/// sets only what it names. `None` for a type with neither (a tuple struct).
-fn reflect_members(registry: &TypeRegistry, path: &str, reg: &TypeRegistration) -> Option<Vec<String>> {
-    match reg.type_info() {
-        TypeInfo::Struct(st) => Some(st.iter().map(|f| format!("declare {}: {};", prop(f.name()), ts_type(registry, f.type_path(), 1))).collect()),
-        TypeInfo::Enum(e) if !path.starts_with("core::option::Option<") => {
-            let variants: Vec<String> = e
-                .iter()
-                .map(|v| match v {
-                    bevy::reflect::enums::VariantInfo::Tuple(t) if t.field_len() == 1 => {
-                        let inner = ts_type(registry, t.field_at(0).unwrap().type_path(), 1);
-                        format!("{:?} | {{ {}: Partial<{inner}> }}", v.name(), prop(v.name()))
-                    }
-                    _ => ts_type_variant(registry, v),
-                })
-                .collect();
-            Some(vec![format!("declare value: {};", variants.join(" | "))])
-        }
-        _ => None,
-    }
-}
-
-/// One enum variant as `ts_type` writes it.
-fn ts_type_variant(registry: &TypeRegistry, v: &bevy::reflect::enums::VariantInfo) -> String {
-    match v {
-        bevy::reflect::enums::VariantInfo::Unit(u) => format!("{:?}", u.name()),
-        bevy::reflect::enums::VariantInfo::Tuple(t) => {
-            let items: Vec<String> = t.iter().map(|f| ts_type(registry, f.type_path(), 1)).collect();
-            format!("{{ {}: readonly [{}] }}", prop(t.name()), items.join(", "))
-        }
-        bevy::reflect::enums::VariantInfo::Struct(st) => {
-            let fields: Vec<String> = st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(registry, f.type_path(), 1))).collect();
-            format!("{{ {}: {{ {} }} }}", prop(st.name()), fields.join("; "))
-        }
-    }
-}
-
 fn paren(t: String) -> String {
     if t.contains(' ') { format!("({t})") } else { t }
 }
@@ -402,13 +363,6 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                 if name == "Name" {
                     let _ = writeln!(dts, "/** `Name`; as an element, `<Name value=\"...\" />` (or `<entity name=\"...\">`). */");
                     let _ = writeln!(dts, "export declare const Name: Reflected & {{ readonly __nameElement: true }};");
-                } else if let Some(members) = reflect_members(&registry, &path, reg) {
-                    let _ = writeln!(dts, "export declare class {name} extends ReflectComponent {{\n  static readonly path: {path:?};");
-                    for m in members {
-                        let _ = writeln!(dts, "  {m}");
-                    }
-                    dts.push_str("}\n");
-                    continue;
                 } else {
                     let _ = writeln!(dts, "export declare const {name}: Reflected;");
                 }
@@ -462,9 +416,12 @@ pub fn emit(world: &World) -> String {
             if let Some(r) = native.reflect_tier(path) {
                 let _ = writeln!(s, "/** Reflect tier: {}. */", r.reason.replace("*/", "* /"));
             }
-            match reflect_members(&registry, path, reg) {
-                Some(members) => fields.extend(members),
-                None => fields.push(format!("declare value: {};", ts_type(&registry, path, 0))),
+            if let TypeInfo::Struct(st) = reg.type_info() {
+                for f in st.iter() {
+                    fields.push(format!("declare {}: {};", prop(f.name()), ts_type(&registry, f.type_path(), 1)));
+                }
+            } else {
+                fields.push(format!("declare value: {};", ts_type(&registry, path, 0)));
             }
             "ReflectComponent"
         };

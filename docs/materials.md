@@ -187,9 +187,9 @@ painter glazes shadows) and `depth_k` near 400 for a scene some tens of units de
   match the fragment's input fails at pipeline creation, which Bevy does not catch: wgpu treats it
   as a device error.
 - Prepass and shadows use Bevy's default prepass shader; a kind cannot bring its own yet (Bevy's
-  `prepass_vertex_shader`/`prepass_fragment_shader`). Follow-up.
-- A glTF scene spawns with `StandardMaterial`; putting a script material on its primitives (and
-  carrying their base colour textures over) has no TS path yet. Follow-up.
+  `prepass_vertex_shader`/`prepass_fragment_shader`); change `script-material-prepass-shaders`.
+- A script material on a glTF scene root gives every mesh one instance, so meshes lose their own
+  textures; change `scene-material-textures`.
 - A renderer failure is reported a frame after it happens: Bevy may apply a saved shader a frame
   late, so failures wait one frame to be sure they belong to the current source.
 

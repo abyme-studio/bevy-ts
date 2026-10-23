@@ -8,8 +8,7 @@
 
 - [ ] 2.1 `crates/bevy-ts-material/tests/toon.rs`: the proof's three-panel headless render, asserting a shadowed ground pixel on the toon panel is darker than an open one, and that the ink panel has ink-coloured pixels along a figure's silhouette and none inside the flat ground. Writes the PNGs only when `TOON_OUT` is set.
 - [ ] 2.2 Flags: `shadows: false` casts no shadow; a `vertex` kind defaults out of both passes; explicit `true` brings it in.
-- [ ] 2.3 `crates/bevy-ts-cli/tests/toon_camera.rs`: a TSX camera with `<Camera3d />`, `<Projection value={{ Orthographic: ... }} />`, `<DepthPrepass />`, `<NormalPrepass />` and `<Tonemapping value="None" />` spawns with all four, and a changed height writes in place. It failed first: no prop could switch `Projection`'s variant.
-- [ ] 2.5 `crates/bevy-ts-tsx/src/reflected.rs`: a reflect-tier enum component is set by `value` (a newtype variant from `Default`/`FromWorld`, partial fields), at insert and on change; `types.rs` declares reflect-tier structs and enums with typed props in `bevy-ts/bevy` and `native.d.ts`; `packages/bevy-ts/test/tsx/toon-camera.tsx` type-checks the docs' camera.
+- [ ] 2.3 The toon camera in TSX is reflect-enums-color's (its `reflect_values.rs` and `test/tsx/reflect.tsx`); this change lands after it.
 - [ ] 2.4 `kinds.rs` unit tests: defaults per alpha mode and `vertex`, and a non-boolean flag fails at `material()`.
 
 ## 3. Bench
