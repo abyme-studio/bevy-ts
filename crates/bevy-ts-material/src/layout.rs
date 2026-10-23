@@ -276,27 +276,11 @@ fn encode_base(name: &str, b: Base, value: &Value, bytes: &mut [u8], at: usize) 
     Ok(())
 }
 
-fn srgb_to_linear(c: f32) -> f32 {
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
-}
-
-/// A color as linear RGBA: `"#f80"`, `"#ff8800"`, `"#ff8800cc"`, or `[r, g, b, a?]` in sRGB.
+/// A color as linear RGBA, in any form `bevy_ts::color` takes (`"#f80"`, `[r, g, b, a?]` in sRGB,
+/// `{ Hsla: {...} }`, ...).
 pub fn color(value: &Value) -> Result<[f32; 4], String> {
-    let srgb: [f32; 4] = match value {
-        Value::String(s) => {
-            let c = bevy::color::Srgba::hex(s).map_err(|e| format!("color {s:?}: {e}"))?;
-            [c.red, c.green, c.blue, c.alpha]
-        }
-        Value::Array(a) if a.len() == 3 || a.len() == 4 => {
-            let mut c = [1.0; 4];
-            for (i, v) in a.iter().enumerate() {
-                c[i] = v.as_f64().ok_or("a color's components are numbers")? as f32;
-            }
-            c
-        }
-        _ => return Err(format!("a color is \"#rrggbb\" or [r, g, b, a], not {value}")),
-    };
-    Ok([srgb_to_linear(srgb[0]), srgb_to_linear(srgb[1]), srgb_to_linear(srgb[2]), srgb[3]])
+    use bevy::color::ColorToComponents;
+    Ok(bevy_ts::color::parse(value)?.to_linear().to_f32_array())
 }
 
 /// What a material binds, in binding order: the params struct (if any), then each texture and

@@ -277,10 +277,20 @@ pub struct NativeComponent {
     /// Fields TS cannot read (`name: why`): never exposed, never written. A type with holes
     /// offers no raw `q.tables` writes.
     pub holes: Vec<String>,
+    /// Holes reflection can write (every hole but an opaque one): TSX props, never columns.
+    pub reflect_holes: Vec<ReflectHole>,
     /// Whether a whole value may be inserted from bytes (spawn, insert, TSX): false when holes
     /// may own heap data.
     pub insertable: bool,
     pub source: NativeSource,
+}
+
+/// A hole of a layout-tier component that TSX writes through reflection (a light's `color`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReflectHole {
+    pub name: String,
+    /// The field's reflected type path, for its TS type.
+    pub type_path: String,
 }
 
 /// A registered reflected component that is not a column, and why.
@@ -418,6 +428,7 @@ impl NativeLayouts {
             defaults,
             writable,
             holes: Vec::new(),
+            reflect_holes: Vec::new(),
             insertable: true,
             source: NativeSource::OffsetOf,
         });

@@ -7,6 +7,7 @@
 //! [`fake::FakeBackend`] runs tests without any engine).
 
 pub mod backend;
+pub mod color;
 pub mod commands;
 pub mod components;
 pub mod engine;
@@ -25,6 +26,8 @@ pub mod observers;
 pub mod plugin_api;
 #[cfg(feature = "pbr")]
 pub mod recipes;
+#[cfg(feature = "pbr")]
+pub mod reflect_value;
 pub mod runtime;
 pub mod sets;
 pub mod systems;

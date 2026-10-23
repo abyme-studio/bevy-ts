@@ -105,7 +105,8 @@ fn check_inner(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> 
     if !section.errors.is_empty() {
         return Err(section.errors);
     }
-    let mut errors = resolve::check_roots(&overlaid.roots, input.components, world.resource::<NativeLayouts>());
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let mut errors = resolve::check_roots(&overlaid.roots, input.components, world.resource::<NativeLayouts>(), &registry.read());
     if !intrinsics::available(world)
         && let Some(at) = section.roots.iter().find_map(|r| uses_assets(&r.nodes))
     {
@@ -220,7 +221,8 @@ pub fn set_overlay(world: &mut World, scene: &str, mut nodes: Vec<desc::NodeDesc
     let mut merged = root.nodes.clone();
     overlay::merge(&mut merged, &nodes);
     let mut errors = Vec::new();
-    resolve::check_nodes(&merged, world.resource::<bevy_ts::components::TsComponents>(), world.resource::<NativeLayouts>(), &mut errors);
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    resolve::check_nodes(&merged, world.resource::<bevy_ts::components::TsComponents>(), world.resource::<NativeLayouts>(), &registry.read(), &mut errors);
     if !errors.is_empty() {
         return Err(errors);
     }

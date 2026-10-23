@@ -440,7 +440,8 @@ fn slot_op(world: &mut World, slot: u32, group: String, mut nodes: Vec<NodeDesc>
     types.push("group".into());
     normalize_sources(&mut nodes);
     let mut errors = Vec::new();
-    resolve::check_nodes(&nodes, world.resource::<TsComponents>(), world.resource::<NativeLayouts>(), &mut errors);
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    resolve::check_nodes(&nodes, world.resource::<TsComponents>(), world.resource::<NativeLayouts>(), &registry.read(), &mut errors);
     if let Some(e) = errors.into_iter().next() {
         log_error(world, e.message, e.location);
         return;

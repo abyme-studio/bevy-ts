@@ -1,37 +1,47 @@
-//! Reflect-tier Rust components, those with no native layout (`Mesh3d`, `WorldAssetRoot`): inserted
-//! from their `Default` and written field by field through reflection, so a changed prop writes
-//! one field as a controlled field does. A string in a `Handle<T>` field is an asset path, loaded
-//! as a `Handle<T>` (levels decision 12; 0.20 registers no `ReflectConvert` for handles).
+//! Reflect-tier Rust components, those with no native layout (`Mesh3d`, `Projection`), and the
+//! writable holes of layout-tier ones (a light's `color`): inserted from their `Default` and
+//! written field by field through `bevy_ts::reflect_value`, so a changed prop writes one field as
+//! a controlled field does. A field's value is its JSON over the default's value of that field. A
+//! component that is itself an enum takes its whole value as `value`.
 
-use bevy::asset::ReflectHandle;
 use bevy::ecs::reflect::ReflectComponent;
 use bevy::prelude::*;
-use bevy::reflect::serde::TypedReflectDeserializer;
 use bevy::reflect::{ParsedPath, PartialReflect, ReflectPath, ReflectRef, TypeRegistry};
-use serde::de::DeserializeSeed;
+use bevy_ts::reflect_value;
 use serde_json::{Map, Value};
 
-/// A field's value for its type: a handle loaded from a path, or the JSON read by reflection.
-fn field_value(registry: &TypeRegistry, server: &AssetServer, current: &dyn PartialReflect, v: &Value) -> Result<Box<dyn PartialReflect>, String> {
-    let info = current.get_represented_type_info().ok_or("a field with no type info")?;
-    let reg = registry.get(info.type_id()).ok_or_else(|| format!("{} is not registered", info.type_path()))?;
-    if let Some(h) = reg.data::<ReflectHandle>() {
-        let path = v.as_str().ok_or_else(|| format!("{}: expected an asset path, got {v}", info.type_path()))?;
-        let untyped = server.load_builder().load_erased(h.asset_type_id(), path.to_string());
-        return Ok(h.typed(untyped).into_partial_reflect());
+/// The reflection path a TS prop names: `value` is the component's single value, so the whole
+/// value of an enum component (reflect-enums-color) and `.0` of a newtype (native-components);
+/// levels write with reflection paths, so `0` stays valid. `None` is the whole value.
+fn reflect_path(target: &dyn PartialReflect, field: &str) -> Option<String> {
+    if field == "value" {
+        match target.reflect_ref() {
+            ReflectRef::Enum(_) => return None,
+            ReflectRef::TupleStruct(s) if s.field_len() == 1 => return Some(".0".into()),
+            _ => {}
+        }
     }
-    TypedReflectDeserializer::new(reg, registry).deserialize(v.clone()).map_err(|e| format!("{}: {e}", info.type_path()))
+    Some(format!(".{field}"))
 }
 
-fn set(registry: &TypeRegistry, server: &AssetServer, target: &mut dyn PartialReflect, field: &str, v: &Value) -> Result<(), String> {
-    // A newtype's one field is `value` in TS and `.0` to reflection (native-components); levels
-    // write here with reflection paths, so `0` stays valid.
-    let newtype = matches!(target.reflect_ref(), ReflectRef::TupleStruct(s) if s.field_len() == 1);
-    let reflect_field = if newtype && field == "value" { "0" } else { field };
-    let path = ParsedPath::parse(&format!(".{reflect_field}")).map_err(|_| format!("no field {field}"))?;
-    let slot = path.reflect_element_mut(target).map_err(|_| format!("no field {field}"))?;
-    let value = field_value(registry, server, slot, v)?;
-    slot.try_apply(&*value).map_err(|e| format!("{field}: {e}"))
+/// The slot `field` names in `target`.
+fn slot<'t>(target: &'t mut dyn PartialReflect, field: &str) -> Result<&'t mut dyn PartialReflect, String> {
+    let Some(path) = reflect_path(target, field) else { return Ok(target) };
+    let path = ParsedPath::parse(&path).map_err(|_| format!("no field {field}"))?;
+    path.reflect_element_mut(target).map_err(|_| format!("no field {field}"))
+}
+
+fn slot_ref<'t>(target: &'t dyn PartialReflect, field: &str) -> Option<&'t dyn PartialReflect> {
+    let Some(path) = reflect_path(target, field) else { return Some(target) };
+    ParsedPath::parse(&path).ok()?.reflect_element(target).ok()
+}
+
+/// Writes `v` into `field` of `target`, over `base`'s value of that field (the slot's own when
+/// there is no default).
+fn set(registry: &TypeRegistry, server: Option<&AssetServer>, target: &mut dyn PartialReflect, base: Option<&dyn PartialReflect>, type_path: &str, field: &str, v: &Value) -> Result<(), String> {
+    let s = slot(target, field).map_err(|e| format!("{type_path}: {e}"))?;
+    let b = base.and_then(|b| slot_ref(b, field));
+    reflect_value::write(registry, server, s, b, v).map_err(|e| format!("{type_path}.{field}: {e}"))
 }
 
 fn component<'r>(registry: &'r TypeRegistry, type_path: &str) -> Result<(&'r ReflectComponent, &'r bevy::reflect::TypeRegistration), String> {
@@ -40,30 +50,48 @@ fn component<'r>(registry: &'r TypeRegistry, type_path: &str) -> Result<(&'r Ref
     Ok((rc, reg))
 }
 
+/// A fresh default of the component, the base every write is over.
+fn default(reg: &bevy::reflect::TypeRegistration) -> Option<Box<dyn Reflect>> {
+    reg.data::<ReflectDefault>().map(|d| d.default())
+}
+
+/// Checks `props` against a default of the component without touching the world: the errors a
+/// load fails with (unknown fields, variants and keys, bad colours). A component with no default
+/// is checked when it is written.
+pub fn check(registry: &TypeRegistry, type_path: &str, props: &Map<String, Value>) -> Result<(), String> {
+    let (_, reg) = component(registry, type_path)?;
+    let Some(mut value) = default(reg) else { return Ok(()) };
+    for (f, v) in props {
+        set(registry, None, value.as_partial_reflect_mut(), None, type_path, f, v)?;
+    }
+    Ok(())
+}
+
 /// Inserts the component from its default with `props` set.
 pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String, Value>) -> Result<(), String> {
     let registry = world.resource::<AppTypeRegistry>().clone();
-    let server = world.resource::<AssetServer>().clone();
+    let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();
     let (rc, reg) = component(&registry, type_path)?;
-    let default = reg.data::<ReflectDefault>().ok_or_else(|| format!("{type_path} has no reflected Default, so a level cannot insert it"))?;
-    let mut value = default.default();
+    let mut value = default(reg).ok_or_else(|| format!("{type_path} has no reflected Default, so a level cannot insert it"))?;
     for (f, v) in props {
-        set(&registry, &server, value.as_partial_reflect_mut(), f, v)?;
+        set(&registry, server.as_ref(), value.as_partial_reflect_mut(), None, type_path, f, v)?;
     }
     rc.insert(&mut world.entity_mut(e), value.as_partial_reflect(), &registry);
     Ok(())
 }
 
-/// Writes one field of the entity's component; false when the entity no longer has it.
+/// Writes one field of the entity's component over the default's value of it; false when the
+/// entity no longer has the component.
 pub fn write(world: &mut World, e: Entity, type_path: &str, field: &str, v: &Value) -> Result<bool, String> {
     let registry = world.resource::<AppTypeRegistry>().clone();
-    let server = world.resource::<AssetServer>().clone();
+    let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();
-    let (rc, _) = component(&registry, type_path)?;
+    let (rc, reg) = component(&registry, type_path)?;
+    let base = default(reg);
     let mut em = world.entity_mut(e);
     let Some(mut m) = rc.reflect_mut(&mut em) else { return Ok(false) };
-    set(&registry, &server, m.as_partial_reflect_mut(), field, v)?;
+    set(&registry, server.as_ref(), m.as_partial_reflect_mut(), base.as_deref().map(|b| b.as_partial_reflect()), type_path, field, v)?;
     Ok(true)
 }
 

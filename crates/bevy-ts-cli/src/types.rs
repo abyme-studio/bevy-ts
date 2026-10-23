@@ -145,7 +145,9 @@ fn ident(short: &str) -> String {
 }
 
 /// A TS type for a reflected type, following `registry.schema`'s JSON shapes: numbers, strings,
-/// `Handle<T>` as an asset path, `Entity` as an entity, options as `| null`, lists as arrays.
+/// `Handle<T>` as an asset path, `Entity` as an entity, `Color` as `ColorValue`, options as
+/// `| null`, lists as arrays, enums in Bevy's shape. A nested struct's fields are optional: a
+/// written value is merged over the default.
 fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
     const NUMBERS: [&str; 14] = ["f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize"];
     if NUMBERS.contains(&path) {
@@ -156,6 +158,7 @@ fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
         "alloc::string::String" | "&str" | "alloc::borrow::Cow<str>" | "char" => return "string".into(),
         "bevy_ecs::entity::Entity" => return "Entity".into(),
         "bevy_ecs::name::Name" => return "string".into(),
+        "bevy_color::color::Color" => return "ColorValue".into(),
         "glam::Vec2" => return "readonly [number, number]".into(),
         "glam::Vec3" | "glam::Vec3A" => return "readonly [number, number, number]".into(),
         "glam::Vec4" | "glam::Quat" => return "readonly [number, number, number, number]".into(),
@@ -171,7 +174,7 @@ fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
     match reg.type_info() {
         TypeInfo::Struct(s) => {
             let fields: Vec<String> =
-                s.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(registry, f.type_path(), depth + 1))).collect();
+                s.iter().map(|f| format!("{}?: {}", prop(f.name()), ts_type(registry, f.type_path(), depth + 1))).collect();
             format!("{{ {} }}", fields.join("; "))
         }
         TypeInfo::TupleStruct(s) if s.field_len() == 1 => ts_type(registry, s.field_at(0).unwrap().type_path(), depth + 1),
@@ -209,7 +212,7 @@ fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
                     }
                     bevy::reflect::enums::VariantInfo::Struct(s) => {
                         let fields: Vec<String> =
-                            s.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(registry, f.type_path(), depth + 1))).collect();
+                            s.iter().map(|f| format!("{}?: {}", prop(f.name()), ts_type(registry, f.type_path(), depth + 1))).collect();
                         format!("{{ {}: {{ {} }} }}", prop(s.name()), fields.join("; "))
                     }
                 })
@@ -218,6 +221,16 @@ fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
         }
         _ => "unknown".into(),
     }
+}
+
+/// `static readonly tsxProps` for a layout-tier class's writable holes: TSX props TS system rows
+/// do not carry. `None` when it has none.
+fn hole_props(registry: &TypeRegistry, n: &bevy_ts::layout::NativeComponent) -> Option<String> {
+    if n.reflect_holes.is_empty() {
+        return None;
+    }
+    let props: Vec<String> = n.reflect_holes.iter().map(|h| format!("{}?: {}", prop(&h.name), ts_type(registry, &h.type_path, 1))).collect();
+    Some(format!("  static readonly tsxProps: {{ {} }};", props.join("; ")))
 }
 
 fn paren(t: String) -> String {
@@ -382,7 +395,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components TS can name.\n\
          import {{ Component, ReflectComponent }} from \"bevy-ts\";\n\
-         import type {{ bool, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
+         import type {{ bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          type Reflected<F = {{}}> = abstract new () => ReflectComponent & F;\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
@@ -415,8 +428,16 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                     ),
                     _ => None,
                 };
-                if let Some(props) = element {
-                    let _ = writeln!(dts, "  /** Its props as an element. */\n  static readonly __element: {{ {props} }};");
+                match element {
+                    Some(props) => {
+                        let _ = writeln!(dts, "  /** Its props as an element. */\n  static readonly __element: {{ {props} }};");
+                    }
+                    // Inserted from bytes: its writable holes are TSX props beside the columns.
+                    None => {
+                        if let Some(h) = hole_props(&registry, n) {
+                            let _ = writeln!(dts, "{h}");
+                        }
+                    }
                 }
                 for f in &n.layout.fields {
                     let ro = if f.ty.lanes().is_some() || !n.writable { "readonly " } else { "" };
@@ -437,6 +458,11 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                 if name == "Name" {
                     let _ = writeln!(dts, "/** `Name`; as an element, `<Name value=\"...\" />` (or `<entity name=\"...\">`). */");
                     let _ = writeln!(dts, "export declare const Name: Reflected & {{ readonly __nameElement: true }};");
+                } else if let TypeInfo::Enum(_) = reg.type_info() {
+                    // An enum component takes its whole value as `value`.
+                    let _ = writeln!(dts, "/** As an element, `<{name} value={{...}} />`: the whole value, in Bevy's shape. */");
+                    let _ = writeln!(dts, "export declare const {name}: Reflected & {{ readonly tsxProps: {{ value?: {name}Value }} }};");
+                    let _ = writeln!(dts, "export type {name}Value = {};", ts_type(&registry, &path, 0));
                 } else {
                     let _ = writeln!(dts, "export declare const {name}: Reflected{};", element_props(&registry, reg));
                 }
@@ -458,7 +484,7 @@ pub fn emit(world: &World) -> String {
          // Component and Resource classes are columns in TS systems; ReflectComponent classes are\n\
          // typed values for TSX, the protocol and With/Without filters.\n\n\
          import { Component, ReflectComponent, Resource } from \"bevy-ts\";\n\
-         import type { bool, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
+         import type { bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
     );
     let sets: Vec<String> = world.get_resource::<TsSets>().map(|t| t.iter().map(|x| format!("{:?}", x.name)).collect()).unwrap_or_default();
     let _ = writeln!(s, "/** System sets exposed with `app.ts_set`, for `.before`/`.after(systemSet(name))`. */");
@@ -507,6 +533,9 @@ pub fn emit(world: &World) -> String {
         };
         let _ = writeln!(s, "export declare class {name} extends {base} {{");
         let _ = writeln!(s, "  static readonly path: {path:?};");
+        if let Some(h) = layout.and_then(|n| hole_props(&registry, n)) {
+            let _ = writeln!(s, "{h}");
+        }
         for f in fields {
             let _ = writeln!(s, "  {f}");
         }

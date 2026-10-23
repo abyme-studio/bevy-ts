@@ -41,10 +41,11 @@ struct Node {
 fn resolve(world: &World, nodes: &[NodeDesc]) -> Result<Vec<Node>, ScriptError> {
     let ts = world.resource::<TsComponents>();
     let native = world.resource::<NativeLayouts>();
+    let registry = world.resource::<AppTypeRegistry>().read();
     nodes
         .iter()
         .filter(|n| n.slot.is_none())
-        .map(|n| Ok(Node { comps: resolve_node(n, ts, native)?, children: resolve(world, &n.children)? }))
+        .map(|n| Ok(Node { comps: resolve_node(n, ts, native, &registry)?, children: resolve(world, &n.children)? }))
         .collect()
 }
 

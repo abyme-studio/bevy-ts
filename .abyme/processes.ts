@@ -242,6 +242,10 @@ const processes = {
   // build and workspace tests on an export of HEAD.
   "target-bench-before": { cmd: "bash -c 'set -o pipefail; scripts/target-bench.sh before 1933a72 3 2>&1 | tee -a bench/results/target-bench.txt'" },
   "target-bench-after": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings 2>&1 | grep -v ld64 | tee target/lean-clippy.log | grep -E ^error -A8 | head -80; scripts/target-bench.sh after HEAD 3) 2>&1 | tee -a bench/results/target-bench.txt'" },
+  // Change reflect-enums-color: the touched crates' build, their tests, and the last round before it lands.
+  "reflect-build": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo build -p bevy-ts -p bevy-ts-tsx -p bevy-ts-material -p bevy-ts-levels -p bevy-ts-cli --tests 2>&1 | grep -v ld64 | tee target/reflect-build.log | grep -E \"^(error|warning)\" -A12 | head -200'" },
+  "reflect-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib && cargo test -p bevy-ts-tsx && cargo test -p bevy-ts-material && cargo test -p bevy-ts-levels && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --no-fail-fast --test reflect_values --test reflect_render --test tsx --test materials --test material_errors --test native_components --test tsx_reactive && scripts/gen-bevy-types.sh && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/reflect-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right|error TS\"'" },
+  "reflect-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-bevy-types.sh --check && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/reflect-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo gate exit $?'" },
 } satisfies ProcessFile;
 
 const GATE_SLOT = "$HOME/dev/abyme/scripts/gate-slot";

@@ -46,7 +46,8 @@ pub fn mount(world: &mut World, bytes: &[u8]) -> Result<(), String> {
         None => None,
     };
     let mut errors = Vec::new();
-    resolve::check_nodes(&op.nodes, world.resource::<TsComponents>(), world.resource::<NativeLayouts>(), &mut errors);
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    resolve::check_nodes(&op.nodes, world.resource::<TsComponents>(), world.resource::<NativeLayouts>(), &registry.read(), &mut errors);
     if let Some(e) = errors.into_iter().next() {
         return Err(e.to_string());
     }
