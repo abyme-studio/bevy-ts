@@ -97,14 +97,11 @@ fn err(message: impl Into<String>, at: &Option<SourceLocation>) -> ScriptError {
     ScriptError::at(message, at.clone())
 }
 
-/// `initialHp` → `hp`; `initial0` → `0`, a one-field tuple struct's `initialValue`.
+/// `initialHp` → `hp`.
 fn initial_field(prop: &str) -> Option<String> {
     let rest = prop.strip_prefix("initial")?;
     let mut chars = rest.chars();
     let first = chars.next()?;
-    if rest == "0" {
-        return Some(rest.into());
-    }
     first.is_uppercase().then(|| first.to_lowercase().chain(chars).collect())
 }
 
@@ -190,22 +187,22 @@ pub fn script_material(c: &ComponentDesc) -> Result<ScriptMaterialDesc, ScriptEr
     Ok(ScriptMaterialDesc { kind, props, gltf_material })
 }
 
-/// A one-field tuple struct's element (`<WorldAssetRoot value="..." />`): `value` is field `0`,
-/// `initialValue` its initial form, and no other prop exists. A level's patch
-/// (`WorldAssetRoot("...")`) arrives as `0` itself.
+/// A one-field tuple struct's element (`<WorldAssetRoot value="..." />`): its field is `value`
+/// (native-components; reflection writes it as `.0`), and no other prop exists. A level's patch
+/// (`WorldAssetRoot("...")`) arrives as `0`, Bevy's reflection path, and is taken as `value`.
 fn newtype_props(c: &ComponentDesc) -> Result<ComponentDesc, ScriptError> {
     let mut out = c.clone();
     out.props = Map::new();
     for (prop, v) in &c.props {
         let field = match prop.as_str() {
-            "value" | "0" => "0",
-            "initialValue" => "initial0",
+            "value" | "0" => "value",
+            "initialValue" => "initialValue",
             _ => return Err(err(format!("{} takes `value`, not {prop}: it is a tuple struct of one field (<{} value={{...}} />)", c.ty, c.ty), &at(c, prop))),
         };
         out.props.insert(field.into(), v.clone());
     }
-    if let Some(at) = out.overrides.remove("value").or_else(|| out.overrides.remove("0")) {
-        out.overrides.insert("0".into(), at);
+    if let Some(at) = out.overrides.remove("0") {
+        out.overrides.insert("value".into(), at);
     }
     Ok(out)
 }
@@ -425,6 +422,5 @@ mod tests {
         assert_eq!(initial_field("initial"), None);
         assert_eq!(initial_field("initialize"), None);
         assert_eq!(initial_field("hp"), None);
-        assert_eq!(initial_field("initial0").as_deref(), Some("0"));
     }
 }

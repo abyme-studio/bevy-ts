@@ -356,11 +356,9 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                     let _ = writeln!(dts, "/** {} */", notes.join(" ").replace("*/", "* /"));
                 }
                 let _ = writeln!(dts, "export declare class {name} extends Component {{\n  static readonly path: {path:?};\n  static readonly native: true;");
-                // An element's props where they are not the columns: a tuple struct of one field
-                // takes `value`; a component never inserted from bytes is written through
-                // reflection, holes included.
+                // An element's props where they are not the columns: a component never inserted
+                // from bytes is written through reflection, holes included.
                 let element = match reg.type_info() {
-                    TypeInfo::TupleStruct(t) if t.field_len() == 1 => n.layout.fields.first().map(|f| format!("value: {}", field_ts(&f.ty))),
                     TypeInfo::Struct(st) if !n.insertable && !n.holes.is_empty() => Some(
                         st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(&registry, f.type_path(), 1))).collect::<Vec<_>>().join("; "),
                     ),
