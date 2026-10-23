@@ -813,7 +813,7 @@ export interface SystemInfo {
     [k: string]: unknown;
   };
   /**
-   * Its params as the compile step declared them.
+   * Its params as the compile step declared them: kind query, single, populated, removedComponents, systemChangeTick, res, resMut, local, commands, messageReader, messageWriter, state, nextState, on, port or bundle. Query data may hold has, anyOf and ref; filters or and spawned; on lifecycle discard and despawn.
    */
   params: {
     kind: string;
