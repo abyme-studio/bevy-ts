@@ -24,7 +24,7 @@ async function run(cmd: string[], env: Record<string, string>) {
 
 const asked = (out: string): string[] => JSON.parse(out.split("\n")[0]);
 
-Deno.test("every process that runs cargo takes the slot named after it", async () => {
+Deno.test("every process that runs cargo takes a bevy-ts slot first", async () => {
   const home = await fakeHome();
   const env = { HOME: home, ABYME_GATE_HELD: "" };
   for (const [name, { cmd }] of Object.entries(processes)) {
@@ -32,7 +32,9 @@ Deno.test("every process that runs cargo takes the slot named after it", async (
     // In bash and in fish, the operator's shell: the fake runs first, so nothing else does.
     for (const shell of [["bash"], ["fish", "--no-config"]]) {
       const args = asked(await run([...shell, "-c", cmd], env));
-      assertEquals(args.slice(0, 3), ["run", `bevy-ts:${name}`, "--"], `${name} in ${shell[0]}`);
+      // Any bevy-ts slot name does: the name only labels the run in the slots' queue.
+      assertEquals([args[0], args[2]], ["run", "--"], `${name} in ${shell[0]}`);
+      assert(/^bevy-ts:[\w.-]+$/.test(args[1]), `${name} in ${shell[0]}: slot ${args[1]}`);
       assert(runsCargo(args.slice(3).join(" ")), `${name} in ${shell[0]}: ${args}`);
     }
   }
