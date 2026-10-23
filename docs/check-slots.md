@@ -33,8 +33,14 @@ asks for its own, and `ABYME_GATE_HELD` or a missing gate-slot skips it.
 
 ## The gate
 
-`scripts/affected-gate.sh` is what a branch runs before it lands. It runs `scripts/native-gate.sh`'s
+`scripts/affected-gate.sh` is the check land runs on each batch. It runs `scripts/native-gate.sh`'s
 steps for only what changed since `LAND_BASE`, by default the merge base with main.
+
+Who runs what (operator, 2026-10-23): a run whose purpose is landing belongs to land, which checks
+the batch, and does not sit in the check slots' queue. While a branch is in progress, its build role
+runs the tests of the crates it touched, through gate-slot. To land, it runs no gate: `abyme call land
+add`, then it acts on land's event (`landed`, `conflict`, or `red` with the check's log). A team may
+still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
 
 - **Crates.** A changed crate brings every workspace crate that depends on it, through any kind of
   dependency (`cargo metadata`). Clippy and `cargo test -p` run on that set. A change to `bevy-ts`
