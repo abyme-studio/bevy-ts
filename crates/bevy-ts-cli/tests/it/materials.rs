@@ -1,5 +1,6 @@
 //! Script materials end to end: a `.wgsl` import, `material()` in V8, `<material kind>` in TSX,
-//! and the Rust kinds, across reloads and shader saves. No GPU: shader and material assets only.
+//! and the Rust kinds, across reloads and shader saves. No GPU: shader and material assets only,
+//! but for `standard`, which draws standard materials headless (macOS, Metal).
 
 use crate::common;
 
@@ -307,4 +308,110 @@ fn a_bound_material_alpha_fades_a_shape_frame_by_frame() {
     updates(&mut app, 2);
     let m = standard(&mut app, "cube").1;
     assert_eq!((m.base_color.alpha(), m.alpha_mode), (1.0, AlphaMode::Opaque));
+}
+
+/// `<material>` without `kind`, drawn: textures, two-sided planes and normal maps.
+#[cfg(target_os = "macos")]
+mod drawn {
+    use super::common::*;
+    use bevy::prelude::*;
+    use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
+    use bevy_ts::BevyTsPlugin;
+    use bevy_ts::generation::{DevSource, ReloadStatus};
+    use bevy_ts_cli::compile::Compiler;
+    use bevy_ts_cli::headless::{self, Offscreen, SIZE};
+    use std::sync::{Arc, Mutex};
+
+    /// A PNG of `w` x `h` RGBA pixels, one colour.
+    fn png(w: u32, h: u32, rgba: [u8; 4]) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut enc = png::Encoder::new(&mut out, w, h);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(&rgba.repeat((w * h) as usize)).unwrap();
+        out
+    }
+
+    /// The scene `s`, with a black background and the camera and sun `stage` spawns.
+    fn draw(name: &str, stage: &str, scene: &str, textures: &[(&str, [u8; 4])]) -> Image {
+        let game = format!(
+            "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ Transform }} from \"bevy-ts/bevy\";\n\nexport function stage(commands: Commands) {{\n{stage}\n}}\napp.addSystems(Startup, stage);\n\napp.scene(\"s\", () => (\n  <>\n{scene}\n  </>\n));\n"
+        );
+        let dir = project(name, &[("game.tsx", &game), ("package.json", "{}")]);
+        for (path, rgba) in textures {
+            let p = dir.join("assets").join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, png(4, 4, *rgba)).unwrap();
+        }
+        let mut app = App::new();
+        app.add_plugins(headless::default_plugins(true).set(headless::asset_plugin_unwatched(&dir.join("assets"))))
+            .add_plugins(headless::HeadlessPlugin)
+            .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
+            .add_plugins(bevy_ts_tsx::TsxPlugin)
+            .insert_resource(ClearColor(Color::BLACK));
+        app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.tsx"), true).unwrap())));
+        app.finish();
+        app.cleanup();
+        let r = reload(&mut app, false);
+        assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+        // Long enough for textures to load and pipelines to compile.
+        for _ in 0..120 {
+            app.update();
+        }
+        let shot: Arc<Mutex<Option<Image>>> = Arc::default();
+        let into = shot.clone();
+        let target = app.world().resource::<Offscreen>().0.clone();
+        app.world_mut().spawn(Screenshot::image(target)).observe(move |c: On<ScreenshotCaptured>| {
+            *into.lock().unwrap() = Some(c.image.clone());
+        });
+        for _ in 0..60 {
+            app.update();
+            if let Some(image) = shot.lock().unwrap().take() {
+                let errors: Vec<_> = logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Error).map(|e| e.message).collect();
+                assert!(errors.is_empty(), "{errors:?}");
+                return image;
+            }
+        }
+        panic!("no screenshot");
+    }
+
+    /// The colour at a fraction of the view's width and height.
+    fn at(image: &Image, x: f32, y: f32) -> LinearRgba {
+        let (px, py) = ((SIZE.0 as f32 * x) as u32, (SIZE.1 as f32 * y) as u32);
+        image.get_color_at(px, py).unwrap().to_linear()
+    }
+
+    const CAMERA: &str = "  commands.spawnNative(\"camera3d\", { position: [0, 0, 3], lookAt: [0, 0, 0] });";
+
+    #[test]
+    fn a_textured_cube_draws_the_image() {
+        let scene = "    <entity>\n      <mesh shape=\"cuboid\" />\n      <material unlit baseColorTexture=\"textures/green.png\" />\n    </entity>";
+        let image = draw("standard-textured", CAMERA, scene, &[("textures/green.png", [0, 255, 0, 255])]);
+        let c = at(&image, 0.5, 0.5);
+        // Tonemapped, so not full green, but green and nothing else (an untextured face is white).
+        assert!(c.green > 0.3 && c.red < 0.1 && c.blue < 0.1, "the cube's face is the texture's green: {c:?}");
+    }
+
+    #[test]
+    fn a_two_sided_plane_draws_its_back() {
+        // Two planes facing up, seen from below and lit from below: only the two-sided one shows.
+        let stage = "  commands.spawnNative(\"camera3d\", { position: [0, -3, 0.5], lookAt: [0, 0, 0] });\n  commands.spawnNative(\"directionalLight\", { position: [0, -5, 0], lookAt: [0, 0, 0], shadows: false });";
+        let scene = "    <entity>\n      <Transform translation={[-0.75, 0, 0]} />\n      <mesh shape=\"plane\" />\n      <material color=\"#ffffff\" />\n    </entity>\n    <entity>\n      <Transform translation={[0.75, 0, 0]} />\n      <mesh shape=\"plane\" />\n      <material color=\"#ffffff\" doubleSided cullMode={null} />\n    </entity>";
+        let image = draw("standard-two-sided", stage, scene, &[]);
+        let (one, two) = (at(&image, 0.3, 0.5), at(&image, 0.7, 0.5));
+        assert!(one.red + one.green + one.blue < 0.01, "a one-sided plane's back is culled: {one:?}");
+        assert!(two.red > 0.2, "a two-sided plane's back is drawn lit: {two:?}");
+    }
+
+    #[test]
+    fn a_normal_map_shades_a_cube() {
+        // Two white cubes in one light; the right one's normal map tilts every normal.
+        let stage = format!("{CAMERA}\n  commands.spawnNative(\"directionalLight\", {{ position: [2, 3, 4], lookAt: [0, 0, 0], shadows: false }});");
+        let cube = |x: f32, extra: &str| format!("    <entity>\n      <Transform translation={{[{x}, 0, 0]}} />\n      <mesh shape=\"cuboid\" size={{[0.8, 0.8, 0.8]}} />\n      <material color=\"#ffffff\" {extra}/>\n    </entity>");
+        let scene = format!("{}\n{}", cube(-0.6, ""), cube(0.6, "normalMapTexture=\"textures/tilt.png\" "));
+        let image = draw("standard-normal-map", &stage, &scene, &[("textures/tilt.png", [240, 128, 160, 255])]);
+        let (plain, mapped) = (at(&image, 0.38, 0.5), at(&image, 0.62, 0.5));
+        let diff = (plain.red - mapped.red).abs() + (plain.green - mapped.green).abs() + (plain.blue - mapped.blue).abs();
+        assert!(diff > 0.05, "the normal map changes the lit face: {plain:?} vs {mapped:?}");
+    }
 }

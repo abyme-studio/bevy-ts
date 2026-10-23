@@ -178,3 +178,74 @@ scene-material swapped has no `StandardMaterial` and is skipped. When scene-mate
 that holds a fade copy, it keeps the copy as the mesh's own material; removing `MaterialAlpha`
 rewrites those back to the originals in `SceneMaterialTargets`, so each removal, in either order,
 leaves what the other still asks.
+
+## Standard materials
+
+`<material>` without `kind` is Bevy's `StandardMaterial`. Every field is a prop, under its Bevy
+name in camelCase, except two that keep their shorter names: `color` is `base_color` and
+`roughness` is `perceptual_roughness`. An unset prop keeps `StandardMaterial::default()`. Equal
+props share one material.
+
+```tsx
+<entity>
+  <mesh shape="cuboid" />
+  <material baseColorTexture="textures/crate.png" normalMapTexture="textures/crate_n.png" roughness={0.8} />
+</entity>
+```
+
+| Kind | Props |
+|---|---|
+| Colour (as `color`) | `color`, `emissive`, `specularTint`, `attenuationColor` |
+| Number | `emissiveExposureWeight`, `roughness`, `metallic`, `reflectance`, `diffuseTransmission`, `specularTransmission`, `thickness`, `ior`, `attenuationDistance`, `clearcoat`, `clearcoatPerceptualRoughness`, `anisotropyStrength`, `anisotropyRotation` (radians), `depthBias`, `parallaxDepthScale`, `maxParallaxLayerCount`, `lightmapExposure`, `deferredLightingPassId` (0 to 255) |
+| Boolean | `unlit`, `flipNormalMapY`, `doubleSided`, `fogEnabled` |
+| sRGB texture | `baseColorTexture`, `emissiveTexture` |
+| Linear texture | `metallicRoughnessTexture`, `normalMapTexture`, `occlusionTexture`, `depthMap` |
+| UV channel, `"uv0"` or `"uv1"` | `baseColorChannel`, `emissiveChannel`, `metallicRoughnessChannel`, `normalMapChannel`, `occlusionChannel` |
+| `cullMode` | `"back"` (Bevy's default), `"front"` or `null` (no culling) |
+| `opaqueRenderMethod` | `"forward"`, `"deferred"` or `"auto"` |
+| `parallaxMappingMethod` | `"occlusion"` or `{ relief: { maxSteps: 5 } }` |
+| `uvTransform` | `{ scale?: [x, y], rotation?: radians, translation?: [x, y] }`, Bevy's `Affine2::from_scale_angle_translation` |
+
+`alpha` and `alphaMode` are the material-alpha change's.
+
+- A texture is an asset path, loaded by the `AssetServer`. Colour textures (base colour, emissive)
+  load as sRGB; the rest are data and load linear, as Bevy's glTF loader does. One
+  file keeps the colour space of its first load, so keep colour and data textures in separate
+  files. A path that fails to load is an error at the element, naming the path. A saved texture
+  redraws by Bevy's asset reload.
+- A two-sided leaf needs both `doubleSided` and `cullMode={null}`, as in Bevy: `doubleSided` alone
+  lights the back face but still culls it.
+- `uvTransform` with a scale above 1 clamps rather than tiles: textures sample with Bevy's default
+  sampler, which clamps to the edge. Offsets, rotation and sub-rectangles work.
+- `normalMapTexture` or a non-zero `anisotropyStrength` give the entity's `<mesh>` vertex tangents, which Bevy needs for them. The
+  tangent mesh is built once per shape and shared; any other mesh stays as it is.
+- Bad values fail the load at the element: an unknown prop or enum name, a non-finite number, a bad
+  colour, a malformed `uvTransform`, an empty texture path, or a texture with no `AssetServer`.
+
+### Blocked on Bevy (16-sampler default limit)
+
+These 18 `StandardMaterial` fields are not props. Bevy compiles them only behind four features
+(`pbr_transmission_textures`, `pbr_specular_textures`, `pbr_multi_layer_material_textures`,
+`pbr_anisotropy_texture`), and with those on, Bevy's opaque PBR pipeline binds 18 sampled textures
+and 18 samplers to the fragment stage, set or not. wgpu's default limit is 16, so a device held
+to the defaults rejects every standard material, glTF ones included. Without the features it binds
+9. The features cost no measurable frame or GPU time. Numbers, and the command:
+[bench/standard-material-features/results](../bench/standard-material-features/results/README.md).
+`crates/bevy-ts-cli/tests/it/standard_material_limits.rs` checks the pipeline fits the defaults.
+Related upstream: [bevyengine/bevy#26028](https://github.com/bevyengine/bevy/issues/26028) (PCSS
+passes the same limit). TODO: link the upstream issue for these features once filed.
+
+| Field | Feature |
+|---|---|
+| `diffuse_transmission_texture`, `diffuse_transmission_channel` | `pbr_transmission_textures` |
+| `specular_transmission_texture`, `specular_transmission_channel` | `pbr_transmission_textures` |
+| `thickness_texture`, `thickness_channel` | `pbr_transmission_textures` |
+| `specular_texture`, `specular_channel` | `pbr_specular_textures` |
+| `specular_tint_texture`, `specular_tint_channel` | `pbr_specular_textures` |
+| `clearcoat_texture`, `clearcoat_channel` | `pbr_multi_layer_material_textures` |
+| `clearcoat_roughness_texture`, `clearcoat_roughness_channel` | `pbr_multi_layer_material_textures` |
+| `clearcoat_normal_texture`, `clearcoat_normal_channel` | `pbr_multi_layer_material_textures` |
+| `anisotropy_texture`, `anisotropy_channel` | `pbr_anisotropy_texture` |
+
+The scalar props for the same effects (`specularTransmission`, `thickness`, `clearcoat`,
+`anisotropyStrength` and the rest) work: only their textures are blocked.

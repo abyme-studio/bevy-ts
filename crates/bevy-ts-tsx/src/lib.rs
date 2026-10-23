@@ -69,6 +69,19 @@ pub(crate) fn uses_assets(nodes: &[desc::NodeDesc]) -> Option<Option<bevy_ts::ba
     None
 }
 
+/// A `<material>` texture is an asset path, which needs an `AssetServer` to load.
+fn textures_without_server(nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
+    for n in nodes {
+        for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::MATERIAL && !c.props.contains_key("kind")) {
+            let Ok(p) = serde_json::from_value::<intrinsics::MaterialProps>(serde_json::Value::Object(c.props.clone())) else { continue };
+            if let Some((prop, ..)) = p.textures().first() {
+                errors.push(ScriptError::at(format!("<material>: {prop} needs an AssetServer to load"), c.source.clone()));
+            }
+        }
+        textures_without_server(&n.children, errors);
+    }
+}
+
 /// Every `<material kind>` against the kinds the generation declares. Bound props are left to
 /// `resolve`, which fails them on their own.
 fn check_script_materials(plugin: bool, kinds: &std::collections::BTreeMap<String, Option<bevy_ts_material::layout::Bindings>>, nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
@@ -111,6 +124,11 @@ fn check_inner(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> 
         && let Some(at) = section.roots.iter().find_map(|r| uses_assets(&r.nodes))
     {
         errors.push(ScriptError::at("<mesh> and <material> need the render plugins (no Assets<Mesh>)", at));
+    }
+    if !world.contains_resource::<bevy::asset::AssetServer>() {
+        for r in &overlaid.roots {
+            textures_without_server(&r.nodes, &mut errors);
+        }
     }
     // The generation's kinds, read from its own `materials` section: sections are checked in the
     // order JS wrote them, and a scene may run before the first `material()`.
@@ -431,5 +449,6 @@ impl Plugin for TsxPlugin {
             host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare),
         );
         app.add_ts_command_kind(mount::UNMOUNT, mount::unmount);
+        app.add_systems(PostUpdate, intrinsics::report_texture_failures);
     }
 }

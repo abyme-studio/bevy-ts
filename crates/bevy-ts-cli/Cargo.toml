@@ -36,6 +36,8 @@ path = "src/lib.rs"
 bevy = { workspace = true }
 parley = { version = "0.11", default-features = false, features = ["std"] }
 jsonschema = { version = "0.33", default-features = false }
+# Test textures, written as PNG; already in the tree through Bevy's image loader.
+png = "0.18"
 tungstenite = "0.28"
 
 # Tests link Bevy as one dylib, except a release bench (`cargo static test --release` sets bevy_ts_static):

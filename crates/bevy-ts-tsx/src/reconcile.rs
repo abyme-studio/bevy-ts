@@ -493,7 +493,7 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
             }
         }
         Target::Mesh(p) => intrinsics::insert_mesh(world, e, p),
-        Target::Material(p) => intrinsics::insert_material(world, e, p),
+        Target::Material(p) => intrinsics::insert_material(world, e, p, r.source.clone()),
         Target::ScriptMaterial { kind, props, gltf_material } => intrinsics::insert_script_material(world, e, kind, props, gltf_material.as_deref(), r.source.clone()),
         Target::Ui(kind) => {
             let props: Map<String, Value> = r.controlled.clone().into_iter().collect();

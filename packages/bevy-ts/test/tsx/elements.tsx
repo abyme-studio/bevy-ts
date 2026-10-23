@@ -176,3 +176,60 @@ export const Controlled = () => <input value="x" />;
 export const BadEvent = () => <input onKeyboardInput={(e) => e.foo} />;
 // @ts-expect-error  a cancel has no value
 export const BadCancel = () => <input onCancel={(e) => e.value} />;
+
+// `<material>` takes every StandardMaterial field.
+export const Showcase = () => (
+  <entity>
+    <mesh shape="cuboid" />
+    <material
+      color="#fff"
+      baseColorChannel="uv1"
+      baseColorTexture="textures/crate.png"
+      emissive="#000"
+      emissiveExposureWeight={0.5}
+      emissiveChannel="uv0"
+      emissiveTexture="textures/glow.png"
+      roughness={0.4}
+      metallic={0.1}
+      metallicRoughnessChannel="uv0"
+      metallicRoughnessTexture="textures/mr.png"
+      reflectance={0.5}
+      specularTint="#fff"
+      diffuseTransmission={0.1}
+      specularTransmission={0.9}
+      thickness={0.2}
+      ior={1.5}
+      attenuationDistance={2}
+      attenuationColor="#88ccff"
+      normalMapChannel="uv0"
+      normalMapTexture="textures/n.png"
+      flipNormalMapY
+      occlusionChannel="uv0"
+      occlusionTexture="textures/ao.png"
+      clearcoat={1}
+      clearcoatPerceptualRoughness={0.2}
+      anisotropyStrength={0.5}
+      anisotropyRotation={1}
+      doubleSided
+      cullMode={null}
+      unlit={false}
+      fogEnabled
+      depthBias={0}
+      depthMap="textures/depth.png"
+      parallaxDepthScale={0.1}
+      parallaxMappingMethod={{ relief: { maxSteps: 8 } }}
+      maxParallaxLayerCount={16}
+      lightmapExposure={1}
+      opaqueRenderMethod="deferred"
+      deferredLightingPassId={1}
+      uvTransform={{ scale: [0.5, 0.5], rotation: 0, translation: [0.5, 0] }}
+    />
+  </entity>
+);
+export const OcclusionParallax = () => <material parallaxMappingMethod="occlusion" cullMode="front" />;
+// @ts-expect-error cullMode is "back", "front" or null
+export const BadCull = () => <material cullMode="both" />;
+// @ts-expect-error a texture blocked on Bevy (its feature is off) is not a prop
+export const BlockedTexture = () => <material clearcoatTexture="textures/cc.png" />;
+// @ts-expect-error a texture is an asset path
+export const BadTexture = () => <material baseColorTexture={1} />;
