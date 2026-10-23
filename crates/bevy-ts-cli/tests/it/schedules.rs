@@ -1,7 +1,7 @@
 //! ts-schedules: every main and fixed schedule, the startup lists, custom schedules, running a
 //! schedule or a one-shot system from commands, and Rust's side of each.
 
-mod common;
+use crate::common;
 
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;

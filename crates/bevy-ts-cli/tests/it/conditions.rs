@@ -1,7 +1,7 @@
 //! ts-conditions: Bevy's run conditions and combinators evaluated in Rust, their state across
 //! reloads, collective and distributive `runIf`, and conditions a crate exposes.
 
-mod common;
+use crate::common;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;

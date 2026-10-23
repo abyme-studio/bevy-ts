@@ -4093,7 +4093,7 @@ pub struct SourceLocation {
     pub file: ::std::string::String,
     pub line: u32,
 }
-///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.26) every main and fixed schedule, the startup lists, oneShot and schedule.
+///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.27) every main and fixed schedule, the startup lists, oneShot and schedule.
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
