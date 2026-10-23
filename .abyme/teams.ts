@@ -6,7 +6,7 @@
 import type { TeamFile } from "@abyme/teams";
 
 const instructions =
-  "Plain words, short sentences. One owner per concept. A change lands with its docs, spec and tests. Every role works in the team's one worktree: commit only your own paths. Ask the operator only as a question in your chat.";
+  "Plain words, short sentences. One owner per concept. A change lands with its docs, spec and tests; new tests follow docs/testing.md. Every role works in the team's one worktree: commit only your own paths. Ask the operator only as a question in your chat.";
 
 export default {
   // lead@bevy-ts, the one the operator talks with, in the main checkout, bringing up a team per piece
