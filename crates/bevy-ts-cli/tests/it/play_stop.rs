@@ -233,9 +233,8 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
         .filter_map(|n| Some((n["node"].as_str()?.to_string(), n["entity"].as_u64()?)))
         .collect();
     let (old_a, _) = named(&mut app, "EnemyA")[0];
-    let (b, _) = named(&mut app, "EnemyB")[0];
     assert!(client.values().any(|e| *e == old_a.to_bits()));
-    // The play moves A, so the Stop respawns it; B it keeps.
+    // The play moves A, so the Stop respawns it, whether it keeps the arena or remounts it.
     app.world_mut().get_mut::<Transform>(old_a).unwrap().translation.y = 1.0;
 
     mode(&mut app, "edit");
@@ -265,7 +264,6 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
         assert!(held.contains(&e.to_bits()), "{name} is in the tree with its new entity");
     }
     assert!(!held.contains(&old_a.to_bits()));
-    assert_eq!(named(&mut app, "EnemyB")[0].0, b, "B is kept, with its entity");
 }
 
 /// After a Stop the engine's own entities (the viewport's window, bevy_picking's pointers) are not
@@ -605,6 +603,8 @@ fn a_level_camera_reaches_the_watch_and_the_game_view_draws_the_hud() {
     call(&mut app, "bevy-ts/viewport_mode", json!({ "camera": "editor" }));
     updates(&mut app, 5);
     assert!(!ui_shows(&mut app), "and not in the editor view");
+}
+
 // Change stop-incremental: a Stop restores the levels the play changed, keeping the rest.
 
 const ARENA3: &str = "#EnemyA

@@ -1590,6 +1590,8 @@ mod boot {
         assert_eq!((m["gameCameras"].as_u64(), m["started"].as_bool()), (Some(1), Some(true)), "{m}");
         let cam = game_camera(&mut app);
         assert!(on(&app, cam), "the view shows that camera");
+    }
+
     /// Each start notification, with whether a `Startup` had run in the world by then.
     #[derive(Resource, Clone, Default)]
     struct Starts(Arc<Mutex<Vec<bool>>>);

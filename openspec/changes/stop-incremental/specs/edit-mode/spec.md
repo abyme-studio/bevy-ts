@@ -33,6 +33,29 @@ A hot reload applied during play SHALL be what Stop rebuilds. The `viewport_mode
 - **WHEN** a client sets `edit` after ten seconds of play, then `play`
 - **THEN** a `Startup` system reading `time.elapsed_secs` reads 0
 
+#### Scenario: The tree watch follows the remount
+- **WHEN** a client watches `tsx_tree+watch` during play, holding each row's entity by node id, and a client sets `edit`
+- **THEN** the next message sends each remounted or respawned row under `added` with its new entity, no level entity is left outside the client's tree (none shows as spawned at runtime), a kept row is not sent, and the watch does not start over with a snapshot
+
+### Requirement: Levels and the selection come back after Stop
+A Stop SHALL leave open exactly the levels that were open when play was entered, each with the opener it had then: a level a client opened during play SHALL close, and one a client closed during play SHALL open again. A game that booted in play (no `--edit`) entered no play to go back to: its first Stop SHALL keep the levels open at that moment. Each level SHALL stand as its files describe it before Stop answers: restored ("Stop restores the levels the play changed") or reconciled from disk. The selection SHALL be kept by node id: an item whose node id names an entity after the rebuild SHALL be selected again with that entity, the same one when the Stop kept it, and the change SHALL be streamed with `origin: "engine"`; an item with no node id, or whose node is gone, SHALL be dropped.
+
+#### Scenario: Enemy b stays selected
+- **WHEN** enemy `b` of `levels/arena.bsn` is selected, and a client sets `play` then `edit`
+- **THEN** after the Stop enemy `b`'s entity is selected (its new one, if the play changed it), and `viewport_selection+watch` sends it when it changed
+
+#### Scenario: A bullet was selected
+- **WHEN** during play a client selects a bullet a TS system spawned, then sets `edit`
+- **THEN** the selection is empty after the Stop
+
+#### Scenario: The first Stop of a game booted in play
+- **WHEN** an engine started without `--edit` has `levels/arena.bsn` open, a client opens `levels/room.bsn`, then sets `edit`
+- **THEN** both levels are open after the Stop, each reconciled from disk
+
+#### Scenario: A level opened during play
+- **WHEN** `levels/arena.bsn` was open at Play, and during play a client opens `levels/room.bsn`, then sets `edit`
+- **THEN** after the Stop only the arena is open, with the opener it had, and `level+watch` sent the room's `closed`
+
 ## ADDED Requirements
 
 ### Requirement: Stop restores the levels the play changed
