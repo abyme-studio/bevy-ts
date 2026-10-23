@@ -14,15 +14,18 @@ type argument.
 - **THEN** it reads Bevy's `Messages<AssetEvent<Image>>`, and a `MessageReader<AssetEvent<Mesh>>` in another system reads a different queue
 
 ### Requirement: ts_message and ts_event register a Rust type for TS
-`BevyTsNativeExt` SHALL offer `app.ts_message::<M>()` for any `M: Message + Reflect` and
-`app.ts_event::<E>()` for any `E: Event + Reflect` whose trigger is `Default`. Each SHALL
-register the type for reflection and add bevy-ts type data, `ReflectTsMessage` (read from a
-cursor, write from JSON) or `ReflectTsEvent` (build an observer for an optional target, trigger
-from JSON). The prebuilt engine SHALL register Bevy's window messages, input messages (keyboard,
+`BevyTsNativeExt` SHALL offer `app.ts_message::<M>()` for any `M: Message + Reflect`,
+`app.ts_event::<E>()` for any global `E: Event + Reflect`, and `app.ts_entity_event::<E>()` for
+any `E: EntityEvent + Reflect` whose trigger is `Default`, as Bevy splits `Event` and
+`EntityEvent`. Each SHALL register the type for reflection and add bevy-ts type data,
+`ReflectTsMessage` (read from a cursor, write) or `ReflectTsEvent` (build an observer for an
+optional target, trigger). The prebuilt engine SHALL register Bevy's window messages, input messages (keyboard,
 mouse button, motion, wheel, `CursorMoved`, touch, gestures, `GamepadEvent` and the
 `Gamepad*Event` family, `GamepadRumbleRequest`), `RequestRedraw`, picking events, focus events,
-UI widget events, `WorldInstanceReady`, and `AssetEvent<A>` and `AssetLoadFailedEvent<A>` for
-every asset type it registers.
+UI widget events, `ScreenshotCaptured`, `WorldInstanceReady`, and `AssetEvent<A>`
+for every reflected asset type it registers. Types without `Reflect` in Bevy 0.20
+(`StateTransitionEvent<S>`, `AssetLoadFailedEvent<A>`, `bevy_scene::Ready`) stay out, listed with
+that reason.
 
 #### Scenario: A project's own message
 - **WHEN** the native crate calls `app.ts_message::<Scored>()` for `#[derive(Message, Reflect)] struct Scored { points: u32 }`

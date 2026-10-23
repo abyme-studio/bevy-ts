@@ -31,6 +31,7 @@ pub mod recipes;
 #[cfg(feature = "reflect")]
 pub mod reflect_value;
 pub mod runtime;
+pub mod rust_events;
 pub mod schedules;
 pub mod sets;
 pub mod systems;

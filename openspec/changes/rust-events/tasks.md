@@ -6,7 +6,7 @@
 ## 2. Type data and the bench
 
 - [ ] 2.1 `crates/bevy-ts/src/rust_events.rs`: `ReflectTsMessage` (`read` from a cursor, `write` from JSON) and `ReflectTsEvent` (`observe(target)`, `trigger`), with unit tests on a test message and event
-- [ ] 2.2 `BevyTsNativeExt::ts_message::<M>()` and `ts_event::<E>()` in `crates/bevy-ts-native/src/lib.rs`
+- [x] 2.2 `BevyTsNativeExt::ts_message::<M>()` and `ts_event::<E>()` in `crates/bevy-ts-native/src/lib.rs`
 - [ ] 2.3 Rust `MessageReader` run param: per-system cursor, one JSON array per run, restart moves cursors to the end; `onMessage` on a Rust message
 - [ ] 2.4 Bench `crates/bevy-ts-cli/tests/rust_events_bench.rs`: 1,000 `CursorMoved` reads a frame; record the numbers in `docs/native.md`. Stop and report to the lead if the frame cost passes 1 ms
 
@@ -24,9 +24,9 @@
 
 ## 5. Registration and types
 
-- [ ] 5.1 `register_bevy(app)`: window, input (incl. gamepad events and `GamepadRumbleRequest`), `RequestRedraw`, picking, focus, UI widget events, `WorldInstanceReady`, `AssetEvent<A>`/`AssetLoadFailedEvent<A>` per engine asset type
+- [x] 5.1 `register_bevy(app)` (in `crates/bevy-ts-cli/src/rust_events.rs`): window, input (incl. gamepad events and `GamepadRumbleRequest`), `RequestRedraw`, picking, focus, UI widget events, `WorldInstanceReady`, `AssetEvent<A>`/`AssetLoadFailedEvent<A>` per engine asset type
 - [ ] 5.2 `types.rs` emits message and event classes (generic classes for generic types); regenerate `bevy.d.ts`; determinism test still passes
-- [ ] 5.3 `crates/bevy-ts-cli/tests/rust_events_coverage.rs`: the hole check with its allowlist (`StateTransitionEvent<S>`)
+- [x] 5.3 `crates/bevy-ts-cli/tests/rust_events_coverage.rs`: the hole check with its allowlist (`StateTransitionEvent<S>`)
 
 ## 6. Tests, one per coverage row
 
