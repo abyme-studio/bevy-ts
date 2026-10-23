@@ -197,7 +197,8 @@ pub struct QueryParam {
 /// A resolved param, flattened (bundles depth-first) in the order frames are handed over.
 pub enum RunParam {
     Query(Box<QueryParam>),
-    Res { name: String, id: ComponentId, size: usize, write: bool },
+    /// `optional`: `Option<Res<R>>`, absent gives no frame instead of failing the run.
+    Res { name: String, id: ComponentId, size: usize, write: bool, optional: bool },
     Time(Clock),
     /// The nth `Local` of the system.
     Local(usize),
@@ -372,6 +373,36 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
             Ok((id, 0))
         }
     }
+}
+
+/// Resolves a `Res`/`ResMut` name other than `Time`: a TS resource first, then a layout-tier
+/// Rust resource by type path or by short name when only one type has it.
+fn resolve_res(world: &mut World, name: &str, write: bool, ts: &TsLookup) -> Result<(ComponentId, usize), String> {
+    if let Some(hit) = ts(name) {
+        return Ok(hit);
+    }
+    crate::layout_reflect::retry(world, name);
+    let native = world.resource::<NativeLayouts>();
+    if let Some(t) = native.reflect_tier(name) {
+        return Err(if t.resource {
+            format!("{name} is a Rust resource without a native layout ({})", t.reason)
+        } else {
+            format!("{name} is a component, not a resource")
+        });
+    }
+    if let Some(n) = native.get(name) {
+        if !n.resource {
+            return Err(format!("{name} is a component, not a resource"));
+        }
+        if write && !n.writable {
+            return Err(format!("{name} is immutable; take Res<{name}>"));
+        }
+        return Ok((n.id, n.layout.size));
+    }
+    if let Some(paths) = native.ambiguous(name) {
+        return Err(format!("{name} names more than one Rust type ({}); use its type path", paths.join(", ")));
+    }
+    Err(format!("no resource named {name}"))
 }
 
 /// Orders systems by registration order adjusted by `after`/`before` (on systems or sets). Errors
@@ -615,8 +646,9 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
     for (i, p) in flat.iter().enumerate() {
         let rp = match p {
             ParamDecl::Query { data, filter } => RunParam::Query(Box::new(build_query(world, data, filter, ts).map_err(err)?)),
-            ParamDecl::Res { resource } | ParamDecl::ResMut { resource } => {
+            ParamDecl::Res { resource, optional } | ParamDecl::ResMut { resource, optional } => {
                 let write = matches!(p, ParamDecl::ResMut { .. });
+                let kind = if write { "ResMut" } else { "Res" };
                 if let Some(clock) = Clock::of(resource) {
                     let clock = clock.map_err(err)?;
                     if write {
@@ -624,8 +656,10 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                     }
                     RunParam::Time(clock)
                 } else {
-                    let (id, size) = ts(resource).ok_or_else(|| err(format!("no resource named {resource}")))?;
-                    RunParam::Res { name: resource.clone(), id, size, write }
+                    // A spelling an export claims (`ResMut<Time<Virtual>>`) never gets here: the
+                    // reader reads it as that export's port param.
+                    let (id, size) = resolve_res(world, resource, write, ts).map_err(|m| err(format!("{kind}<{resource}>: {m}")))?;
+                    RunParam::Res { name: resource.clone(), id, size, write, optional: *optional }
                 }
             }
             ParamDecl::Local { fields } => {
@@ -1043,8 +1077,17 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     }
                     ParamFrame::Query { tables: out }
                 }
-                RunParam::Res { name, id, size, write } => match world.resource_entities().get(*id).and_then(|e| world.entities().get_spawned(e).ok()) {
-                    Some(loc) => {
+                RunParam::Res { name, id, size, write, optional } => match world.resource_entities().get(*id).and_then(|e| Some((e, world.entities().get_spawned(e).ok()?))) {
+                    // A Rust resource is stored in a sparse set (`#[derive(Resource)]`); a TS one in a table.
+                    Some((e, _)) if world.storages().sparse_sets.get(*id).is_some() => {
+                        let set = world.storages().sparse_sets.get(*id).expect("sparse set");
+                        let (ptr, cells) = set.get_with_ticks(e).expect("resource row");
+                        // SAFETY: as for table rows; the stage is exclusive and the cells are `UnsafeCell`s.
+                        let data = ptr.as_ptr() as *mut u8;
+                        let ticks = write.then(|| cells.changed.get() as *mut u32);
+                        ParamFrame::Row { data, bytes: *size, ticks }
+                    }
+                    Some((_, loc)) => {
                         let table = world.storages().tables.get(loc.table_id).expect("resource table");
                         let row = loc.table_row.index();
                         let col = table.get_column(*id).expect("resource column");
@@ -1061,8 +1104,9 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                         }
                         ParamFrame::Row { data, bytes: *size, ticks }
                     }
+                    None if *optional => ParamFrame::None,
                     None => {
-                        failure = Some(ScriptError::new(format!("resource {name} does not exist; insert it with app.insertResource or guard with runIf(resourceExists({name}))")));
+                        failure = Some(ScriptError::new(format!("resource {name} does not exist; insert it with app.insertResource, take Option<Res<{name}>> or guard with runIf(resourceExists({name}))")));
                         ParamFrame::None
                     }
                 },

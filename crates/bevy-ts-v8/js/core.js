@@ -733,7 +733,18 @@ const NATIVE = [];
  * fields type the accessors; Rust's layout places them.
  */
 export function nativeComponent(name, fields) {
-  const at = callerLocation();
+  return nativeType(name, fields, "component", callerLocation());
+}
+
+/**
+ * A Rust resource with a native layout (`GlobalAmbientLight`, a native crate's `Wind`):
+ * `class Wind extends nativeResource("game_native::Wind", { speed: f32 }) {}`, for `Res<Wind>`.
+ */
+export function nativeResource(name, fields) {
+  return nativeType(name, fields, "resource", callerLocation());
+}
+
+function nativeType(name, fields, kind, at) {
   const C = class {
     constructor(init) {
       if (init) Object.assign(this, init);
@@ -747,7 +758,7 @@ export function nativeComponent(name, fields) {
   C.componentName = name;
   C.source = "rust";
   C.native = true;
-  C[KIND] = "component";
+  C[KIND] = kind;
   C.schema = fields;
   C.decl = { name, fields: fieldDecls(name, fields, at) };
   C.id = -1;
@@ -1374,7 +1385,7 @@ function resolveParams(g, params, at) {
       case "resMut": {
         const R = refClass(g, p.resource, at);
         if (R[KIND] !== "resource") throw declError(`${p.kind === "res" ? "Res" : "ResMut"}<${R.name}>: ${R.name} is not a Resource class`, at);
-        out.push({ kind: p.kind, resource: R.componentName, cls: R });
+        out.push({ kind: p.kind, resource: R.componentName, ...(p.optional ? { optional: true } : {}), cls: R });
         break;
       }
       case "local":
@@ -1580,7 +1591,7 @@ function end() {
   }
   const manifest = {
     components: byKind("component").filter((C) => C.source === "ts").map((C) => C.decl),
-    resources: byKind("resource").map((C) => ({ ...C.decl, insert: g.resourceInserts.has(C.componentName) ? jsonValues(C, g.resourceInserts.get(C.componentName)) : undefined })),
+    resources: byKind("resource").filter((C) => C.source === "ts").map((C) => ({ ...C.decl, insert: g.resourceInserts.has(C.componentName) ? jsonValues(C, g.resourceInserts.get(C.componentName)) : undefined })),
     messages: byKind("message").map((C) => ({ ...C.decl, added: g.addedMessages.has(C.componentName) })),
     events: byKind("event").map((C) => C.decl),
     states: byKind("state").map((C) => ({ ...C.decl, initial: g.initialStates.get(C.componentName) })),
@@ -2230,7 +2241,8 @@ function buildSystem(g, s) {
   const ctx = makeCtx();
   const marks = [];
   const consumers = []; // per flat frame: (frame, tick, index) => void
-  const make = (p) => {
+  // `set` places a param whose value changes per run (an optional res: `undefined` when absent).
+  const make = (p, set) => {
     switch (p.kind) {
       case "query": {
         const q = new QueryParam(p, marks);
@@ -2241,7 +2253,12 @@ function buildSystem(g, s) {
       case "resMut": {
         const C = p.cls;
         const acc = new (p.kind === "resMut" ? C.Write : C.Read)();
-        consumers.push((frame, tick) => bindRow(acc, C, frame[0], frame[1], tick));
+        if (p.optional) {
+          consumers.push((frame, tick) => {
+            if (frame) bindRow(acc, C, frame[0], frame[1], tick);
+            set(frame ? acc : undefined);
+          });
+        } else consumers.push((frame, tick) => bindRow(acc, C, frame[0], frame[1], tick));
         return acc;
       }
       case "local": {
@@ -2294,7 +2311,7 @@ function buildSystem(g, s) {
       }
       case "bundle": {
         const o = {};
-        for (const f of p.fields) o[f.name] = make(f.param);
+        for (const f of p.fields) o[f.name] = make(f.param, (v) => (o[f.name] = v));
         return o;
       }
       case "port": {
@@ -2304,7 +2321,8 @@ function buildSystem(g, s) {
       }
     }
   };
-  const args = s.params.map(make);
+  const args = [];
+  s.params.forEach((p, i) => (args[i] = make(p, (v) => (args[i] = v))));
   if (s.call === "setup") {
     // The setup's holders become the param objects: copy their prototypes' behaviour in.
     s.holders.forEach((h, i) => {

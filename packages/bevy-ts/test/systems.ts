@@ -3,7 +3,7 @@
 import {
   type Add, app, chain, type Changed, Component, type Commands, type Entity, EntityEvent, type f32, FixedUpdate,
   inState, type Local, Message, type MessageReader, type MessageWriter, type Mut, type NextState, type On,
-  OnEnter, type Option, type Query, type Res, type ResMut, Resource, SceneComponent, States, systems, SystemSet, Time,
+  OnEnter, type Option, type Query, type ReadView, type Res, type ResMut, Resource, SceneComponent, States, systems, SystemSet, Time,
   Transform, type u8, type u32, Update, vec3, type Vec3Like, type With, type Without,
 } from "bevy-ts";
 import { GlobalTransform } from "bevy-ts/bevy";
@@ -141,7 +141,26 @@ export function onHealthAdded(add: On<Add<Health>>, q: Query<[Mut<Health>]>) {
   if (h) h.hp = h.max;
 }
 
-// ---------- 4. A plugin ----------
+// ---------- 4. Optional resources ----------
+
+export function bonus(score: Option<Res<Score>>, best: Option<ResMut<Score>>, q: Query<[Option<Mut<Health>>]>) {
+  const view: ReadView<Score> | undefined = score;
+  void view;
+  // @ts-expect-error  an absent resource is undefined
+  void score.value;
+  if (score) {
+    // @ts-expect-error  Res is read-only
+    score.value = 1;
+  }
+  if (best) best.value += 1;
+  for (const [h] of q) {
+    // @ts-expect-error  Option<Mut<C>> query data may be undefined
+    h.hp = 0;
+    if (h) h.hp = 0;
+  }
+}
+
+// ---------- 5. A plugin ----------
 
 export function enemyPlugin(app: import("bevy-ts").App) {
   app

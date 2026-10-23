@@ -273,8 +273,14 @@ export declare function rustComponent(name: string): abstract new () => ReflectC
  * A Rust component with a native layout registered in Rust (a port's `Velocity`):
  * `class Thrust extends nativeComponent("Thrust", { power: f32 }) {}`.
  */
-export declare function nativeComponent<const S extends Schema>(name: string, fields: S): {
-  new (): Component & { -readonly [K in keyof S]: S[K] extends Field<"vec2" | "vec3"> ? Vec3 : S[K] extends Field<"quat"> ? Quat : S[K] extends Field<"bool"> ? boolean : S[K] extends Field<"entity"> ? Entity : S[K] extends Field<"enum", infer E> ? E : number };
+export declare function nativeComponent<const S extends Schema>(name: string, fields: S): NativeClass<Component, S>;
+/**
+ * A Rust resource with a native layout (`GlobalAmbientLight`, a native crate's `Wind`):
+ * `class Wind extends nativeResource("game_native::Wind", { speed: f32 }) {}`, for `Res<Wind>`.
+ */
+export declare function nativeResource<const S extends Schema>(name: string, fields: S): NativeClass<Resource, S>;
+type NativeClass<Base, S extends Schema> = {
+  new (): Base & { -readonly [K in keyof S]: S[K] extends Field<"vec2" | "vec3"> ? Vec3 : S[K] extends Field<"quat"> ? Quat : S[K] extends Field<"bool"> ? boolean : S[K] extends Field<"entity"> ? Entity : S[K] extends Field<"enum", infer E> ? E : number };
   readonly componentName: string;
   readonly source: "rust";
   readonly native: true;
@@ -299,8 +305,11 @@ type StateValueOf<G> = G extends { readonly [stateBrand]: { values: infer V exte
 declare const mutBrand: unique symbol;
 declare const optBrand: unique symbol;
 declare const filterBrand: unique symbol;
+declare const resBrand: unique symbol;
 export type Mut<T> = { readonly [mutBrand]: T };
-export type Option<T> = { readonly [optBrand]: T };
+/** Query data `Option<C>`; a system param `Option<Res<R>>` is `undefined` when `R` is absent. */
+export type Option<T> = T extends { readonly [resBrand]: true } ? T | undefined : OptionData<T>;
+type OptionData<T> = { readonly [optBrand]: T };
 export type With<T> = { readonly [filterBrand]: ["with", T] };
 export type Without<T> = { readonly [filterBrand]: ["without", T] };
 /** Rows whose component changed since this system last ran (bridge per-row ticks). */
@@ -310,7 +319,7 @@ export type Added<T> = { readonly [filterBrand]: ["added", T] };
 type NotReflect<T> = T extends ReflectComponent ? never : T;
 type Item<D> =
   D extends Entity ? Entity
-  : D extends Option<infer X> ? Item<X> | undefined
+  : D extends OptionData<infer X> ? Item<X> | undefined
   : D extends Mut<infer T> ? NotReflect<T>
   : D extends abstract new (...a: never) => infer I ? ReadView<NotReflect<I>> // value form: Mut(C) / C
   : ReadView<NotReflect<D>>;
@@ -373,8 +382,9 @@ type Claimed<C, T, Else> = {
 }[keyof C] extends infer R
   ? [R] extends [never] ? Else : R
   : Else;
-export type Res<T> = Claimed<ResClaims, T, ReadView<T>>;
-export type ResMut<T> = Claimed<ResMutClaims, T, T>;
+/** The brand (never read) lets `Option` tell a resource param from query data. */
+export type Res<T> = Claimed<ResClaims, T, ReadView<T> & { readonly [resBrand]: true }>;
+export type ResMut<T> = Claimed<ResMutClaims, T, T & { readonly [resBrand]: true }>;
 /** Per-system state with a layout, `Local<{ timer: f32; wave: u32 }>`. Kept in Rust under the system's id; survives reloads. */
 export type Local<T> = T;
 export interface MessageReader<M> extends Iterable<ReadView<M>> {

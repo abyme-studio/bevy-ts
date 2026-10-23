@@ -283,6 +283,8 @@ pub struct NativeComponent {
     /// may own heap data.
     pub insertable: bool,
     pub source: NativeSource,
+    /// A resource (`ReflectResource`, or `ts_resource_layout`): reachable only as `Res`/`ResMut`.
+    pub resource: bool,
 }
 
 /// A hole of a layout-tier component that TSX writes through reflection (a light's `color`).
@@ -304,6 +306,7 @@ pub struct ReflectTier {
     /// False when no value could be had yet: it is tiered again once a row exists.
     #[serde(skip)]
     pub sampled: bool,
+    pub resource: bool,
 }
 
 /// The native layout registry (bridge decision 4, native N1): every layout-tier Rust component,
@@ -386,9 +389,9 @@ impl NativeLayouts {
         self.by_path.insert(c.type_path.clone(), c);
     }
 
-    pub(crate) fn set_reflect_tier(&mut self, path: &str, short: &str, id: ComponentId, reason: String, sampled: bool) {
+    pub(crate) fn set_reflect_tier(&mut self, path: &str, short: &str, id: ComponentId, reason: String, sampled: bool, resource: bool) {
         self.index_short(short, path);
-        self.reflect_tier.insert(path.to_string(), ReflectTier { type_path: path.to_string(), id, reason, sampled });
+        self.reflect_tier.insert(path.to_string(), ReflectTier { type_path: path.to_string(), id, reason, sampled, resource });
     }
 
     /// Sets each component's TS name: its short name when no other tiered type shares it, else
@@ -408,6 +411,15 @@ impl NativeLayouts {
     /// caller vouches that `layout` describes `T` exactly: offsets from `offset_of!`, every field
     /// plain data. `defaults` is a whole value's bytes, or zeroes when `None`.
     pub fn register<T: Component>(&mut self, world: &mut World, layout: ComponentLayout, defaults: Option<Vec<u8>>) {
+        self.register_as::<T>(world, layout, defaults, false);
+    }
+
+    /// [`Self::register`] for a resource: reachable as `Res`/`ResMut`, never as query data.
+    pub fn register_resource<T: Resource>(&mut self, world: &mut World, layout: ComponentLayout, defaults: Option<Vec<u8>>) {
+        self.register_as::<T>(world, layout, defaults, true);
+    }
+
+    fn register_as<T: Component>(&mut self, world: &mut World, layout: ComponentLayout, defaults: Option<Vec<u8>>, resource: bool) {
         let path = std::any::type_name::<T>().to_string();
         assert_eq!(layout.size, size_of::<T>(), "native layout size for {path}");
         assert_eq!(layout.align, align_of::<T>(), "native layout align for {path}");
@@ -431,6 +443,7 @@ impl NativeLayouts {
             reflect_holes: Vec::new(),
             insertable: true,
             source: NativeSource::OffsetOf,
+            resource,
         });
         self.assign_names();
     }

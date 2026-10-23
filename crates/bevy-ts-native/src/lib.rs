@@ -154,6 +154,10 @@ pub trait BevyTsNativeExt {
     /// Registers a [`NativeLayout`] component as a column for TS systems, with zeroed defaults.
     fn ts_layout<T: NativeLayout>(&mut self) -> &mut Self;
 
+    /// Registers a [`NativeLayout`] resource for TS systems' `Res<T>`/`ResMut<T>`, with zeroed
+    /// defaults: the resource sibling of [`Self::ts_layout`]. Reflected resources need nothing.
+    fn ts_resource_layout<T: NativeLayout + Resource>(&mut self) -> &mut Self;
+
     /// Exposes `set` in `schedule` to TS as `name` (`"rapier:step"`), so TS systems can order
     /// before or after it. Names are `<crate>:<name>` and unique per engine.
     #[track_caller]
@@ -191,6 +195,15 @@ impl BevyTsNativeExt for App {
         let world = self.world_mut();
         let mut native = world.remove_resource::<NativeLayouts>().unwrap_or_default();
         native.register::<T>(world, layout, None);
+        world.insert_resource(native);
+        self
+    }
+
+    fn ts_resource_layout<T: NativeLayout + Resource>(&mut self) -> &mut Self {
+        let layout = T::native_layout();
+        let world = self.world_mut();
+        let mut native = world.remove_resource::<NativeLayouts>().unwrap_or_default();
+        native.register_resource::<T>(world, layout, None);
         world.insert_resource(native);
         self
     }
