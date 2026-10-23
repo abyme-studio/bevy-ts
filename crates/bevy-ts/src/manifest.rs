@@ -590,6 +590,31 @@ pub struct Resolution {
     /// Exported Rust system params by TS name: the JS glue building each param's class.
     #[serde(default)]
     pub ports: BTreeMap<String, String>,
+    /// Reflect-tier classes the generation's systems read, by name: each one's read target and
+    /// codec (`bevy_ts::reflect_codec`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reflect: BTreeMap<String, ResolvedReflect>,
+    /// Layout-tier classes the generation's systems read, by name: their holes, each with its
+    /// read target and the codec of the hole's type.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub holes: BTreeMap<String, Vec<ResolvedHole>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ResolvedReflect {
+    pub target: u32,
+    /// `reflect_codec::Codec` as JSON.
+    pub codec: serde_json::Value,
+    /// Its value's top-level field names when it reads as an object (a struct), for row getters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ResolvedHole {
+    pub name: String,
+    pub target: u32,
+    pub codec: serde_json::Value,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

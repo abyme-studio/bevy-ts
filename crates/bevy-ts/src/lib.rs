@@ -29,6 +29,8 @@ pub mod plugin_api;
 #[cfg(feature = "pbr")]
 pub mod recipes;
 #[cfg(feature = "reflect")]
+pub mod reflect_codec;
+#[cfg(feature = "reflect")]
 pub mod reflect_value;
 pub mod runtime;
 pub mod rust_events;

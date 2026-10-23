@@ -3,7 +3,7 @@
 import {
   type Add, app, chain, type Changed, Component, type Commands, type Entity, EntityEvent, type f32, FixedUpdate,
   inState, type Local, Message, type MessageReader, type MessageWriter, type Mut, type NextState, type On,
-  OnEnter, type Option, type Query, type ReadView, type Res, type ResMut, Resource, SceneComponent, States, systems, SystemSet, Time,
+  OnEnter, type Option, type Query, type ReadView, ReflectComponent, type Res, type ResMut, Resource, SceneComponent, States, systems, SystemSet, Time,
   Transform, type u8, type u32, Update, vec3, type Vec3Like, type With, type Without,
 } from "bevy-ts";
 import { GlobalTransform } from "bevy-ts/bevy";
@@ -180,3 +180,19 @@ export function enemyPlugin(app: import("bevy-ts").App) {
 }
 
 app.addPlugins(enemyPlugin);
+
+// ---------- Reflected rows (reflect-coverage stage 3) ----------
+
+declare class Weapon extends ReflectComponent { declare name: string; declare ammo: number }
+declare class Lens extends ReflectComponent { declare value: "Wide" | { Ortho: { scale: number } } }
+export function aim(q: Query<[Mut<Weapon>, Lens]>) {
+  q.each((w, l) => {
+    w.name = "laser";
+    const whole: { name: string; ammo: number } = w.value;
+    void whole;
+    const lens: "Wide" | { Ortho: { scale: number } } = l.value;
+    void lens;
+    // @ts-expect-error  Lens is read-only in this query
+    l.value = "Wide";
+  });
+}

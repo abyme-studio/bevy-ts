@@ -138,7 +138,9 @@ What is still missing:
    as layout-tier writes already use. Reads go through two layers (research-script-perf.md):
    - **Tick cache.** A per-type cache, entity → (changed tick, plain object), outlives the run.
      A row whose tick matches its entry returns the cached object with no host call (about
-     10 ns). The cache is dropped on reload and an entry on despawn or removal.
+     10 ns). The cache is dropped on reload. A despawned or removed row's entry is never hit again
+     (a reinserted component has a newer tick, a reused entity index a new generation), so a
+     target's cache is cleared whole when it passes 65,536 entries instead of watching removals.
    - **Binary codec on a miss.** At load, `reflect_value` compiles each reflected type's
      `TypeInfo` once into a list of ops (kind, size; flecs' `ecs_meta_op_t` pattern), and the JS
      runtime generates a decoder and encoder from the same ops. A miss is one host call that
@@ -147,13 +149,16 @@ What is still missing:
      `Handle` is its path string, and an opaque serde type is an embedded JSON op. The decoder's
      output is exactly `JSON.parse` of `read`'s JSON; the hole check (decision 3) asserts this
      for every type it covers. A type the ops cannot express falls back to `read`'s JSON.
-   A write through `Mut` (`cam.value = { Orthographic: {} }`, or a field assignment on the cached
-   object followed by the row's end) encodes with the same ops, calls a host function that writes
-   at once with `write`'s semantics and sets the change tick, then refreshes the cache entry with
-   the new tick. A layout-tier hole is a getter and setter on the row accessor doing the same for
+   A write through `Mut` (`cam.value = { Orthographic: {} }`) crosses as JSON text to a host
+   function that writes at once with `write`'s semantics and sets the change tick, then drops the
+   cache entry so the next read fetches what Rust made of it. Writes are JSON, not the codec: a
+   write may be partial (`{ Orthographic: {} }`) or in a form only `write` parses (a colour
+   string, `{ secs, nanos }`), which fixed binary ops cannot carry. A `Mut` getter hands out a copy;
+   a copy changed in place is written back at the end of the run. A layout-tier hole is a getter and setter on the row accessor doing the same for
    one field; `q.tables` and column arrays never include holes. In-place reflection writes do not
-   move archetypes, so open column views stay valid. `NodeRef.get` reads reflect-tier components
-   and holes through the same cache and codec and subscribes like any other component.
+   move archetypes, so open column views stay valid. `NodeRef.get` reads reflect-tier components and holes and subscribes like any other
+   component. Its values already cross in TSX's batched JSON delivery, on change only, so it reads
+   them with `read` there rather than through the codec.
    Stages 1 and 2 keep JSON: TSX, the protocol and `OP_INSERT_REFLECT` are not per-row per-frame.
    *Alternatives:* a host call and JSON per touched row per run (about 1 µs a row, every run);
    packing every matched row before the run (pays for rows the system never touches); zero-copy

@@ -418,6 +418,10 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
         resolution.components.insert(n.type_path.clone(), r.clone());
         resolution.components.insert(n.ts_name.clone(), r);
     }
+    #[cfg(feature = "reflect")]
+    {
+        (resolution.reflect, resolution.holes) = crate::reflect_codec::resolve(world, &systems);
+    }
     for clock in systems::Clock::ALL {
         let layout = systems::time_layout(clock).clone();
         resolution.components.insert(clock.resource().into(), ResolvedComponent { id: u32::MAX, layout, raw_writes: true, defaults: Vec::new() });

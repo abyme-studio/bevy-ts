@@ -761,6 +761,10 @@ pub struct WorldHost<'a> {
 
 impl crate::backend::HostCalls for WorldHost<'_> {
     fn call(&mut self, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
+        #[cfg(feature = "reflect")]
+        if id >= crate::reflect_codec::READ {
+            return crate::reflect_codec::call(self.world, self.ticks.this_run, id, args, ret, slices);
+        }
         self.params.call(self.world, self.ticks, self.regions, self.allowed, id, args, ret, slices)
     }
 }

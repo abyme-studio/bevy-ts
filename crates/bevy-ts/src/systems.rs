@@ -8,6 +8,8 @@ use crate::manifest::{ComponentRef, ComponentSource, DataDecl, FilterDecl, Group
 use crate::memory::SystemMemory;
 use crate::messages::TsPayloads;
 use crate::observers::{ObserverQueue, Trigger};
+#[cfg(feature = "reflect")]
+use crate::reflect_codec::ReflectTargets;
 use crate::runtime::{self, ScriptRuntime};
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::ComponentId;
@@ -184,6 +186,12 @@ pub struct Access {
     pub size: usize,
     pub write: bool,
     pub optional: bool,
+    /// A reflect-tier term: its read target ([`crate::reflect_codec::ReflectTargets`]). Its frame
+    /// is the component's changed-tick column; values cross through host calls.
+    pub reflect: Option<u32>,
+    /// A layout-tier term with holes: its frame carries its changed ticks even when read, which
+    /// key the holes' cache.
+    pub holes: bool,
 }
 
 pub struct QueryParam {
@@ -199,6 +207,8 @@ pub enum RunParam {
     Query(Box<QueryParam>),
     /// `optional`: `Option<Res<R>>`, absent gives no frame instead of failing the run.
     Res { name: String, id: ComponentId, size: usize, write: bool, optional: bool },
+    /// A reflect-tier Rust resource: its frame is the resource's changed-tick cell.
+    ReflectRes { name: String, id: ComponentId, target: u32, write: bool, optional: bool },
     Time(Clock),
     /// The nth `Local` of the system.
     Local(usize),
@@ -410,6 +420,78 @@ fn resolve_res(world: &mut World, name: &str, write: bool, ts: &TsLookup) -> Res
         return Err(format!("{name} names more than one Rust type ({}); use its type path", paths.join(", ")));
     }
     Err(format!("no resource named {name}"))
+}
+
+/// A reflect-tier Rust component named as query data: its id and its read target. `None` for
+/// any other reference (TS, layout tier, unknown), which [`resolve_ref`] resolves or names.
+#[cfg(feature = "reflect")]
+fn reflect_term(world: &mut World, r: &ComponentRef) -> Result<Option<(ComponentId, u32)>, String> {
+    if r.source != ComponentSource::Rust {
+        return Ok(None);
+    }
+    let native = world.resource::<NativeLayouts>();
+    if native.get(&r.name).is_some() {
+        return Ok(None);
+    }
+    let Some(id) = native.reflect_tier(&r.name).map(|t| t.id) else { return Ok(None) };
+    let info = world.components().get_info(id).ok_or_else(|| format!("{} is not registered", r.name))?;
+    if info.storage_type() != bevy::ecs::component::StorageType::Table {
+        return Err(format!("{} is stored in a sparse set; TS reads only table components as query data", r.name));
+    }
+    let type_id = info.type_id().ok_or_else(|| format!("{} has no Rust type", r.name))?;
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    if registry.get_type_data::<bevy::ecs::reflect::ReflectResource>(type_id).is_some() {
+        return Err(format!("{} is a resource, not a component; take Res<{}>", r.name, r.name));
+    }
+    let target = world.get_resource_or_init::<ReflectTargets>().component(&registry, id, type_id).map_err(|e| format!("{}: {e}", r.name))?;
+    Ok(Some((id, target)))
+}
+
+/// A reflect-tier Rust resource named by `Res`/`ResMut`: its id and read target, or `None` when
+/// the name is a TS resource, has a layout, or is no reflected resource.
+#[cfg(feature = "reflect")]
+fn reflect_resource(world: &mut World, name: &str, ts: &TsLookup) -> Result<Option<(ComponentId, u32)>, String> {
+    if ts(name).is_some() {
+        return Ok(None);
+    }
+    crate::layout_reflect::retry(world, name);
+    let native = world.resource::<NativeLayouts>();
+    if native.get(name).is_some() {
+        return Ok(None);
+    }
+    let Some(id) = native.reflect_tier(name).map(|t| t.id) else { return Ok(None) };
+    let Some(type_id) = world.components().get_info(id).and_then(|i| i.type_id()) else { return Ok(None) };
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    if registry.get_type_data::<bevy::ecs::reflect::ReflectResource>(type_id).is_none() {
+        return Err(format!("{name} is a component, not a resource"));
+    }
+    let target = world.get_resource_or_init::<ReflectTargets>().component(&registry, id, type_id).map_err(|e| format!("{name}: {e}"))?;
+    Ok(Some((id, target)))
+}
+
+/// Without the `reflect` feature reflect-tier terms stay filters only.
+#[cfg(not(feature = "reflect"))]
+fn reflect_term(_: &mut World, _: &ComponentRef) -> Result<Option<(ComponentId, u32)>, String> {
+    Ok(None)
+}
+
+#[cfg(not(feature = "reflect"))]
+fn reflect_resource(_: &mut World, _: &str, _: &TsLookup) -> Result<Option<(ComponentId, u32)>, String> {
+    Ok(None)
+}
+
+/// The changed-tick cell of `id` on entity `e`, in a table or a sparse set.
+fn changed_cell(world: &World, id: ComponentId, e: Entity) -> Option<*mut u32> {
+    if let Some(set) = world.storages().sparse_sets.get(id) {
+        let (_, cells) = set.get_with_ticks(e)?;
+        return Some(cells.changed.get() as *mut u32);
+    }
+    let loc = world.entities().get_spawned(e).ok()?;
+    let table = world.storages().tables.get(loc.table_id)?;
+    let ticks = table.get_changed_ticks_slice_for(id)?;
+    Some(ticks.get(loc.table_row.index())?.get() as *mut u32)
 }
 
 /// Orders systems by registration order adjusted by `after`/`before` (on systems or sets). Errors
@@ -635,10 +717,14 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], ts: 
             crate::layout_reflect::retry(world, &component.name);
         }
     }
-    let native = world.resource::<NativeLayouts>().clone();
     let mut columns = Vec::new();
     for d in data {
         if let DataDecl::Component { component, mutable, optional } = d {
+            if let Some((id, target)) = reflect_term(world, component)? {
+                columns.push(Access { name: component.name.clone(), id, size: 0, write: *mutable, optional: *optional, reflect: Some(target), holes: false });
+                continue;
+            }
+            let native = world.resource::<NativeLayouts>().clone();
             let (id, size) = resolve_ref(world, component, ts, &native, true)?;
             if *mutable && native.by_id(id).is_some_and(|n| !n.writable) {
                 return Err(format!("{} is an immutable Rust component; TS can read it but not take Mut<{}>", component.name, component.name));
@@ -646,9 +732,11 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], ts: 
             if columns.iter().any(|c: &Access| c.id == id && c.write != *mutable) {
                 // The same component read and written in one query: written wins.
             }
-            columns.push(Access { name: component.name.clone(), id, size, write: *mutable, optional: *optional });
+            let holes = native.by_id(id).is_some_and(|n| !n.holes.is_empty());
+            columns.push(Access { name: component.name.clone(), id, size, write: *mutable, optional: *optional, reflect: None, holes });
         }
     }
+    let native = world.resource::<NativeLayouts>().clone();
     let mut with = Vec::new();
     let mut without = Vec::new();
     let mut changed = Vec::new();
@@ -724,6 +812,8 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                         return Err(err(format!("ResMut<{resource}> is not allowed; clocks are read-only from TS")));
                     }
                     RunParam::Time(clock)
+                } else if let Some((id, target)) = reflect_resource(world, resource, ts).map_err(err)? {
+                    RunParam::ReflectRes { name: resource.clone(), id, target, write, optional: *optional }
                 } else {
                     // A spelling an export claims (`ResMut<Time<Virtual>>`) never gets here: the
                     // reader reads it as that export's port param, and refuses it under `Option`.
@@ -1194,10 +1284,17 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                                 columns.push(ColumnFrame { data: std::ptr::null_mut(), bytes: 0, ticks: None });
                                 continue;
                             };
+                            if c.reflect.is_some() {
+                                // A reflected term's frame is its changed ticks: JS keys its cache by
+                                // them and fetches a value only for a row it reads whose tick moved.
+                                let ticks = table.get_changed_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32;
+                                columns.push(ColumnFrame { data: ticks as *mut u8, bytes: len * 4, ticks: c.write.then_some(ticks) });
+                                continue;
+                            }
                             // SAFETY: the column holds `len × size` bytes; only the start pointer is
                             // taken. Cells are `UnsafeCell`s and the stage is exclusive.
                             let data = unsafe { column.get_data_slice::<u8>(len) }.as_ptr() as *mut u8;
-                            let ticks = c.write.then(|| table.get_changed_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32);
+                            let ticks = (c.write || c.holes).then(|| table.get_changed_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32);
                             if c.write {
                                 written.push((table_id, c.id));
                             } else if dev && !written_ids.contains(&c.id) {
@@ -1242,6 +1339,14 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     None if *optional => ParamFrame::None,
                     None => {
                         failure = Some(ScriptError::new(format!("resource {name} does not exist; insert it with app.insertResource, take Option<Res<{name}>> or guard with runIf(resourceExists({name}))")));
+                        ParamFrame::None
+                    }
+                },
+                RunParam::ReflectRes { name, id, write, optional, .. } => match world.resource_entities().get(*id).and_then(|e| changed_cell(world, *id, e)) {
+                    Some(cell) => ParamFrame::Row { data: cell as *mut u8, bytes: 4, ticks: write.then_some(cell) },
+                    None if *optional => ParamFrame::None,
+                    None => {
+                        failure = Some(ScriptError::new(format!("resource {name} does not exist; guard with runIf(resourceExists({name}))")));
                         ParamFrame::None
                     }
                 },
