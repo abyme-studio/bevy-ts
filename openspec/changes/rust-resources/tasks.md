@@ -30,4 +30,4 @@
 
 ## 6. Landing
 
-- [ ] 6.1 On landing, tell lead@script-input-devices and research@script-time that `Res<T>` of Bevy's layout-tier resources is on main, with the commit
+- [ ] 6.1 On landing, tell lead@script-input-devices and research@script-time (and build-reads@reflect-enums-color, who rebase reflect-tier Res onto it) that `Res<T>` of Bevy's layout-tier resources is on main, with the commit
