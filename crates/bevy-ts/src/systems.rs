@@ -359,6 +359,9 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
             if let Some(n) = native.get(&r.name).or_else(|| native.iter().find(|n| n.type_path == r.name)) {
                 return Ok((n.id, n.layout.size));
             }
+            let Some(id) = rust_component_by_name(world, &r.name) else {
+                return Err(format!("no Rust component named {} is registered in this engine", r.name));
+            };
             if data {
                 let why = native.reflect_tier(&r.name).map(|t| format!(" ({})", t.reason)).unwrap_or_default();
                 return Err(format!(
@@ -366,7 +369,7 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
                     r.name
                 ));
             }
-            rust_component_by_name(world, &r.name).map(|id| (id, 0)).ok_or_else(|| format!("no Rust component named {}", r.name))
+            Ok((id, 0))
         }
     }
 }

@@ -224,3 +224,36 @@ fn mesh_picking_is_baked_into_game_json_and_played() {
         assert_eq!(app.world().contains_resource::<MeshPickingSettings>(), on, "{name}");
     }
 }
+
+/// A project engine's game plays on its own executable: examples/thrusters built in release (its
+/// native crate and Rapier), played headless by the binary beside its `game/`, applies generation
+/// 1 and runs its Rust (`thrusters: rocket`). Slow (a release project-engine build):
+/// `cargo test --release -p bevy-ts-cli --test it thrusters_plays -- --ignored`.
+#[test]
+#[ignore = "builds the thrusters project engine in release"]
+fn thrusters_plays_on_its_own_engine() {
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/thrusters").canonicalize().unwrap();
+    let out = std::env::temp_dir().join(format!("bevy-ts-thrusters-dist-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
+    let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
+    let built = Command::new(BIN).args(["build", example.to_str().unwrap(), "--out", out.to_str().unwrap()]).env("CARGO_TARGET_DIR", &target).output().unwrap();
+    assert!(built.status.success(), "build failed:\n{}", String::from_utf8_lossy(&built.stderr));
+    let exe = out.join(if cfg!(windows) { "thrusters.exe" } else { "thrusters" });
+    let mut engine = common::Engine::spawn(
+        Command::new(&exe)
+            .args(["play", out.join("game").to_str().unwrap(), "--headless"])
+            .env("NO_COLOR", "1")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped()),
+    );
+    let (tx, rx) = std::sync::mpsc::channel();
+    let err = engine.child().stderr.take().unwrap();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        for l in std::io::BufReader::new(err).lines().map_while(Result::ok) {
+            let _ = tx.send(l);
+        }
+    });
+    let seen = wait_for(&rx, &["generation 1 applied", "thrusters: rocket"], LAUNCH);
+    assert!(!seen.iter().any(|l| l.contains("failed")), "a failed generation:\n{}", seen.join("\n"));
+}

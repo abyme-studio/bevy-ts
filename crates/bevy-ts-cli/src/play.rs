@@ -67,6 +67,23 @@ pub fn read_game(folder: &Path) -> Result<GameFile, String> {
     Ok(game)
 }
 
+/// Refuses a game built for another engine: a project engine's game runs only on that engine,
+/// the executable its build put beside `game/`.
+pub fn check_engine(game: &GameFile, folder: &Path, identity: &bevy_ts::engine::EngineIdentity) -> Result<(), String> {
+    let prebuilt = identity.kind == bevy_ts::engine::EngineKind::Prebuilt;
+    let fits = if game.engine == "prebuilt" { prebuilt } else { game.engine == identity.hash };
+    if fits {
+        return Ok(());
+    }
+    let exe_name = if cfg!(windows) { format!("{}.exe", game.name) } else { game.name.clone() };
+    let exe = folder.parent().map_or_else(|| PathBuf::from(&exe_name), |d| d.join(&exe_name));
+    Err(if game.engine == "prebuilt" {
+        format!("{} was built for the prebuilt engine, but this is project engine {}; play it with the prebuilt bevy-ts, or {}", game.name, identity.hash, exe.display())
+    } else {
+        format!("{} was built for its project engine {}, not this engine ({}); play it with {}", game.name, game.engine, identity.hash, exe.display())
+    })
+}
+
 /// The extensions a compiled module keeps: the build writes each with its source's name, and a
 /// shader as the `.wgsl` file itself.
 const SCRIPT_EXTENSIONS: [&str; 9] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "wgsl"];
@@ -119,6 +136,7 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
 pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display) -> Result<App, String> {
     let folder = std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf());
     let game = read_game(&folder)?;
+    check_engine(&game, &folder, &engine.identity)?;
     let set = read_scripts(&folder, &game)?;
     let entry = set.entry.clone();
     let (tx, channel) = DevChannel::new();

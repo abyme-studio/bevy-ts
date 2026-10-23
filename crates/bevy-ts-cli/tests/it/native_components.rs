@@ -46,6 +46,7 @@ export class Thrust extends nativeComponent("Thrust", { power: f32, dir: vec3 })
 export class Frozen extends nativeComponent("Frozen", { v: f32 }) {}
 export class Weapon extends nativeComponent("Weapon", { v: f32 }) {}
 export class Engine extends nativeComponent("Engine", { on: bool, gear: enumOf("Low", "High") }) {}
+export class Missing extends nativeComponent("Missing", { v: f32 }) {}
 "#;
 
 fn with_types(dir: &std::path::Path) -> App {
@@ -97,6 +98,8 @@ fn tiers_and_guards_fail_the_load_naming_the_component() {
     let cases = [
         ("Query<[Weapon]>", "Weapon"),
         ("Query<[Mut<Frozen>]>", "immutable"),
+        // A name this engine never registered (a project engine's component under the prebuilt one).
+        ("Query<[Missing]>", "no Rust component named Missing is registered in this engine"),
     ];
     for (i, (ty, want)) in cases.iter().enumerate() {
         let body = format!("export function s(q: {ty}) {{}}\napp.addSystems(Update, s);\n");

@@ -102,6 +102,19 @@ fn a_mismatched_engine_refuses_naming_both_versions() {
 }
 
 #[test]
+fn a_project_engine_game_refuses_the_prebuilt_engine_naming_its_executable() {
+    let game = cube_game("play-wrong-engine", env!("CARGO_PKG_VERSION"));
+    let mut file = bevy_ts_cli::play::read_game(&game).unwrap();
+    file.engine = "0123abcd".into();
+    std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
+    let out = Command::new(BIN).args(["play", game.to_str().unwrap(), "--headless"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr);
+    let exe = game.parent().unwrap().join(&file.name);
+    assert!(err.contains("0123abcd") && err.contains(&exe.display().to_string()), "{err}");
+}
+
+#[test]
 fn a_bare_start_with_no_game_prints_the_usage() {
     let out = Command::new(BIN).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
