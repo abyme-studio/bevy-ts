@@ -2,7 +2,7 @@
 //! a written value merged over the default, writable layout-tier holes as TSX props, and every
 //! colour form through every caller. Headless; the rendered checks are in `reflect_render.rs`.
 
-mod common;
+use crate::common;
 
 use bevy::camera::{OrthographicProjection, Projection, ScalingMode};
 use bevy::light::DirectionalLight;

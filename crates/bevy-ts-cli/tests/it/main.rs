@@ -31,6 +31,8 @@ mod play_after_edit;
 mod play_stop;
 mod preview_bench;
 mod protocol;
+mod reflect_render;
+mod reflect_values;
 mod reload;
 mod scene_material;
 mod stop_bench;
