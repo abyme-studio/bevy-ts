@@ -35,4 +35,4 @@
 - [x] 6.3 `crates/bevy-ts-cli/tests/headless_ui.rs` doc comment
 - [x] 6.4 `docs/build.md` headless paragraph: the method (chosen time via pause and step) and the variable (one shot, frame 60, for runs with no protocol)
 - [x] 6.5 `docs/viewport.md`: one line that `bevy-ts/screenshot` captures the viewport's frame
-- [ ] 6.6 Update `openspec/specs/headless-run/spec.md` Purpose at archive: "saved by `bevy-ts/screenshot` or `BEVY_TS_SCREENSHOT`"
+- [x] 6.6 Update `openspec/specs/headless-run/spec.md` Purpose at archive: "saved by `bevy-ts/screenshot` or `BEVY_TS_SCREENSHOT`"
