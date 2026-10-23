@@ -107,9 +107,9 @@ fn clicking_a_sprite_runs_its_handler_once_with_its_entity() {
     let mut app = setup("2d-pick-sprite", body);
     // No image loads: pick the sprite's rectangle, not its texels (design 6).
     app.world_mut().resource_mut::<SpritePickingSettings>().picking_mode = SpritePickingMode::BoundingBox;
-    // Bevy casts a pointer's ray only when some window is primary, even into an image target: a
-    // game has its window; this headless app gets one with no surface.
-    app.world_mut().spawn((Window::default(), bevy::window::PrimaryWindow));
+    // Bevy 0.20 casts a pointer's ray only when some window is primary, even into an image target;
+    // `bevy-ts dev --headless` spawns this one too (mesh-picking design 5a).
+    bevy_ts_viewport::spawn_windowless_primary(app.world_mut(), "two_d", (SIZE.0, SIZE.1, 1.0), ());
     let e = node(&mut app, "s");
     updates(&mut app, 3);
     let centre = Vec2::new(SIZE.0 as f32 / 2.0, SIZE.1 as f32 / 2.0);
