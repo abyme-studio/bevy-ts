@@ -1,0 +1,87 @@
+## ADDED Requirements
+
+### Requirement: Scripts add, read and set reflected assets
+`bevy-ts` SHALL export `assets` with `add(Type, props)`, `get(ref)` and `set(ref, patch)` for every asset type registered with `ReflectAsset` and a default. `add` SHALL build the asset from its type's default, write `props` over it with `bevy_ts::reflect_value::write`, convert it with `FromReflect`, and only then add it; a value that fails any step SHALL fail the call naming the type and field, and SHALL add nothing. `add` SHALL return an `AssetRef<T>`. A type with no default (`Mesh`) SHALL be refused, naming the type. `get` SHALL return the asset read by `reflect_value::read`, or `undefined` when the asset is gone. `set` SHALL write `patch` over the asset's current value; when the result equals the current value it SHALL NOT borrow the asset mutably, so no `AssetEvent::Modified` is sent; otherwise it SHALL apply the result once. A failing patch SHALL change nothing. The calls SHALL work inside a system's run and during a TSX render, apply at once, and throw elsewhere, naming where they may be called.
+
+#### Scenario: Add a material
+- **WHEN** a system calls `assets.add(StandardMaterial, { base_color: "#ff8800", unlit: true })`
+- **THEN** `Assets<StandardMaterial>` holds a new material with that colour and `unlit: true`, other fields at their defaults, and the call returns its ref
+
+#### Scenario: A bad field adds nothing
+- **WHEN** a system calls `assets.add(StandardMaterial, { roughnes: 0.5 })`
+- **THEN** the call throws naming `StandardMaterial` and `roughnes`, and the asset count is unchanged
+
+#### Scenario: A no-op set sends no event
+- **WHEN** a system calls `assets.set(mat, { unlit: true })` on a material already unlit
+- **THEN** no `AssetEvent::Modified` is sent for it
+
+#### Scenario: A set changes one field
+- **WHEN** a system calls `assets.set(mat, { perceptual_roughness: 0.2 })`
+- **THEN** `assets.get(mat).perceptual_roughness` is `0.2`, every other field keeps its value, and one `AssetEvent::Modified` is sent
+
+#### Scenario: Mesh has no default
+- **WHEN** a system calls `assets.add(Mesh, {})`
+- **THEN** the call throws naming `Mesh` and that it has no default
+
+### Requirement: An asset goes in any Handle slot
+A `Handle<T>` slot written through `reflect_value` SHALL take, besides an asset path: an `AssetRef<T>` from `assets.add`; an asset value `T.of(props)`; and, for a type with a loader-settings entry, `T.load(path, settings)`. This SHALL hold in every slot the writer reaches: a TSX prop of a reflect-tier component or a writable hole, a field of an asset given to `assets.add` or `assets.set`, and a script's reflected insert. A ref or value of another asset type SHALL fail naming both types. A ref after the script reloaded or stopped SHALL fail with "stale asset ref". A handle read by `reflect_value::read` SHALL read as its `AssetRef` when a script made the asset, and by reflect-coverage's rule otherwise.
+
+#### Scenario: A ref on a mesh entity
+- **WHEN** a TSX element has `<MeshMaterial3d value={mat} />` with `mat` from `assets.add`
+- **THEN** its `MeshMaterial3d<StandardMaterial>` holds that material's handle
+
+#### Scenario: A texture inside a material
+- **WHEN** a script calls `assets.add(StandardMaterial, { base_color_texture: img })` with `img` an image ref
+- **THEN** the material's `base_color_texture` is that image's handle
+
+#### Scenario: The wrong asset type
+- **WHEN** a `Handle<StandardMaterial>` slot is given an `Image` ref
+- **THEN** the write fails naming `StandardMaterial` and `Image`
+
+#### Scenario: A stale ref
+- **WHEN** a ref made before a script reload is used after it
+- **THEN** the call fails with "stale asset ref"
+
+### Requirement: Asset values are shared by equal props
+`T.of(props)` SHALL return a plain value and SHALL NOT touch the world. When it is written into a `Handle<T>` slot, slots given the same type and props (compared by canonical JSON, keys sorted) SHALL share one asset, built on the first write. A value SHALL be built only when its slot is written (an insert or a changed prop), never per frame. Assets made by `add` and by values SHALL live until the script reloads or stops.
+
+#### Scenario: Two equal values share
+- **WHEN** two entities have `<MeshMaterial3d value={StandardMaterial.of({ unlit: true, base_color: "#fff" })} />` and `<MeshMaterial3d value={StandardMaterial.of({ base_color: "#fff", unlit: true })} />`
+- **THEN** both hold the same handle, and one material was built
+
+#### Scenario: A value changes on re-render
+- **WHEN** a component re-renders with `StandardMaterial.of({ base_color: "#000" })` in place of `"#fff"`
+- **THEN** the entity's handle is the `"#000"` material, and the `"#fff"` material is not rebuilt
+
+### Requirement: Asset types in bevy-ts/bevy
+`bevy-ts/bevy` SHALL export a class for every type registered with `ReflectAsset` in the prebuilt engine, named by the rule components use, typed with its reflected fields as the writer takes them. A class SHALL have `.of(props)` only when the type has a default. A `Handle<T>` field SHALL be typed `string | AssetRef<T> | AssetValue<T> | null`. `assets.add` SHALL reject at the type level a class with no default and props with unknown fields.
+
+#### Scenario: Typed fields
+- **WHEN** a script calls `assets.add(StandardMaterial, { unlit: "yes" })`
+- **THEN** `tsc` reports the type of `unlit`
+
+#### Scenario: A handle field takes a ref
+- **WHEN** a script passes an `AssetRef<Image>` as `base_color_texture`
+- **THEN** it type-checks, and an `AssetRef<StandardMaterial>` there does not
+
+### Requirement: The hole check covers assets
+The reflected-coverage hole check SHALL walk every type registered with `ReflectAsset`. Every asset field it cannot cover SHALL be listed in `reflect_value::UNCOVERED` with a reason, and a field whose coverage this change owns SHALL have a reason starting `reflect-assets:`. When a stage of this change lands, no entry it covers SHALL remain, and the check SHALL pass.
+
+#### Scenario: A covered field leaves the list
+- **WHEN** stage 3 lands
+- **THEN** `UNCOVERED` has no `reflect-assets:` entry for `Image`'s sampler, and the hole check passes
+
+### Requirement: Image sampler and loader settings
+`Image` SHALL expose its `sampler` to `assets.get` and `assets.set`, though `Image` is opaque to reflection: `get` SHALL read it as an `ImageSampler` JSON value, and `set` SHALL write it over the current sampler and assign it only when it changed. `Image.load(path, { sampler?, is_srgb? })` SHALL be an asset value that loads `path` with `ImageLoaderSettings` holding those settings. An unknown settings key SHALL fail naming it. A `load` on a type with no loader-settings entry SHALL fail naming the type. Loading one path with two different settings in one session SHALL log a warning naming the path.
+
+#### Scenario: A repeating sampler
+- **WHEN** a script calls `assets.set(img, { sampler: { Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat" } } })`
+- **THEN** the image's sampler repeats on both axes, and `assets.get(img).sampler` reads it back
+
+#### Scenario: A loaded atlas that tiles
+- **WHEN** a slot is given `Image.load("textures/atlas.png", { sampler: { Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat" } } })`
+- **THEN** the image loads with that sampler, and a material with `uvTransform` scale 4 draws the atlas four times across
+
+#### Scenario: Linear data
+- **WHEN** a slot is given `Image.load("textures/wall_n.png", { is_srgb: false })`
+- **THEN** the image loads with `is_srgb: false`
