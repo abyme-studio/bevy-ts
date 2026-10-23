@@ -42,6 +42,7 @@ const KINDS: &[&str] = &[
 /// Field type names, which are types only and never bound.
 const FIELD_TYPES: &[&str] = &[
     "f32", "f64", "i8", "u8", "i16", "u16", "i32", "u32", "bool", "vec2", "vec3", "vec4", "quat", "entity", "Vec2", "Vec3", "Vec3Like", "Vec4", "Quat",
+    "TimerMode",
 ];
 
 /// Utility types that compute a type; the reader names them in its error.
@@ -243,6 +244,8 @@ struct FieldSrc {
     name: String,
     ty: Option<Ty>,
     default: Option<Value>,
+    /// Whether the field has an initialiser, read as `default` or not.
+    init: bool,
     span: Span,
 }
 
@@ -292,6 +295,36 @@ fn literal(e: &Expression) -> Option<Value> {
     }
 }
 
+/// `Timer.fromSeconds(2, "Repeating")`, `Timer.new(2, "Once")` or `Stopwatch.new()` as a
+/// constant: the field type it makes and its value, or why it is not a constant one.
+fn struct_init(e: &Expression, f: &FileInfo) -> Option<Result<(&'static str, Value), String>> {
+    let e = match e {
+        Expression::ParenthesizedExpression(p) => &p.expression,
+        e => e,
+    };
+    let Expression::CallExpression(c) = e else { return None };
+    let Expression::StaticMemberExpression(m) = &c.callee else { return None };
+    let Expression::Identifier(obj) = &m.object else { return None };
+    let ty = bevy_ts_name(f, obj.name.as_str()).filter(|n| matches!(*n, "Timer" | "Stopwatch"))?;
+    let method = m.property.name.as_str();
+    let args: Vec<&Expression> = c.arguments.iter().filter_map(|a| a.as_expression()).collect();
+    let seconds = |e: &Expression| literal(e).and_then(|v| v.as_f64());
+    let mode = |e: &Expression| match e {
+        Expression::StringLiteral(s) if matches!(s.value.as_str(), "Once" | "Repeating") => Some(s.value.to_string()),
+        _ => None,
+    };
+    Some(match (ty, method, args.as_slice()) {
+        ("Stopwatch", "new", []) => Ok(("stopwatch", json!({}))),
+        ("Timer", "fromSeconds" | "new", [d, m]) => match (seconds(d), mode(m)) {
+            // `from_seconds` takes an `f32`, as Bevy's does.
+            (Some(d), Some(m)) => Ok(("timer", json!({ "duration": if method == "new" { d } else { d as f32 as f64 }, "mode": m }))),
+            _ => Err(format!("Timer.{method} takes constant seconds and \"Once\" or \"Repeating\"")),
+        },
+        ("Timer", "fromSeconds" | "new", _) => Err(format!("Timer.{method} takes seconds and a mode: Timer.{method}(2, \"Once\")")),
+        _ => Err(format!("{ty}.{method}(...) is not a constant {ty}; use Timer.fromSeconds(s, mode), Timer.new(s, mode) or Stopwatch.new()")),
+    })
+}
+
 /// The `bevy-ts` export a local name is, if it is imported from `bevy-ts`.
 fn bevy_ts_name<'f>(f: &'f FileInfo, local: &str) -> Option<&'f str> {
     f.imports.get(local).filter(|i| i.spec == "bevy-ts" || i.spec.starts_with("bevy-ts/")).map(|i| i.imported.as_str())
@@ -335,8 +368,19 @@ fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
                     }
                     continue;
                 }
-                let default = p.value.as_ref().and_then(literal);
-                d.fields.push(FieldSrc { name: name.to_string(), ty: p.type_annotation.as_ref().map(|a| ty(&a.type_annotation)), default, span: p.span });
+                let mut default = p.value.as_ref().and_then(literal);
+                let mut field_ty = p.type_annotation.as_ref().map(|a| ty(&a.type_annotation));
+                // `cooldown = Timer.fromSeconds(2, "Repeating")` is a Timer field without a type.
+                match p.value.as_ref().and_then(|v| struct_init(v, f)) {
+                    Some(Ok((kind, v))) => {
+                        default = Some(v);
+                        let name = if kind == "timer" { "Timer" } else { "Stopwatch" };
+                        field_ty.get_or_insert(Ty::Ref { name: name.into(), args: Vec::new(), span: p.span });
+                    }
+                    Some(Err(why)) => d.errors.push((p.span, format!("field {name}: {why}"))),
+                    None => {}
+                }
+                d.fields.push(FieldSrc { name: name.to_string(), ty: field_ty, default, init: p.value.is_some(), span: p.span });
             }
             ClassElement::MethodDefinition(m) if m.r#static && m.key.static_name().as_deref() == Some("scene") => {
                 let mut scene = SceneSrc { ty: None, defaults: HashMap::new(), sites: HashMap::new(), span: m.span };
@@ -813,6 +857,9 @@ impl Reader<'_> {
                 // A reflect-tier Rust component's fields cross as JSON through reflection, so they
                 // may be strings (native-components).
                 match self.field_ty(t, scope, kind == "reflectComponent", 0) {
+                    Ok(ty) if matches!(ty["kind"].as_str(), Some("timer" | "stopwatch")) && f.init && f.default.is_none() => {
+                        errors.push((f.span, format!("{} field {}: a {} field's initialiser is Timer.fromSeconds(s, mode), Timer.new(s, mode) or Stopwatch.new()", c.name, f.name, ty["kind"].as_str().unwrap_or(""))));
+                    }
                     Ok(ty) => {
                         let mut field = json!({ "name": f.name, "type": ty });
                         if let Some(v) = &f.default {
@@ -904,9 +951,10 @@ impl Reader<'_> {
             ("f32", "f32"), ("f64", "f64"), ("i8", "i8"), ("u8", "u8"), ("i16", "i16"), ("u16", "u16"), ("i32", "i32"), ("u32", "u32"),
             ("bool", "bool"), ("Vec2", "vec2"), ("vec2", "vec2"), ("Vec3", "vec3"), ("vec3", "vec3"), ("Vec3Like", "vec3"),
             ("Vec4", "vec4"), ("vec4", "vec4"), ("Quat", "quat"), ("quat", "quat"), ("Entity", "entity"), ("entity", "entity"),
+            ("Timer", "timer"), ("Stopwatch", "stopwatch"),
         ];
         let bad = |span: Span, text: &str| {
-            (span, format!("{text} is not a field type (f32, f64, i8..u32, bool, Vec2, Vec3, Vec4, Quat, Entity, a string-literal union){}", if strings { " or string" } else { "" }))
+            (span, format!("{text} is not a field type (f32, f64, i8..u32, bool, Vec2, Vec3, Vec4, Quat, Entity, Timer, Stopwatch, a string-literal union){}", if strings { " or string" } else { "" }))
         };
         if depth > 32 {
             return Err((span_of(t), "type aliases nest too deep (a cycle?)".into()));
@@ -1008,6 +1056,18 @@ impl Reader<'_> {
     }
 
     fn value(&mut self, name: &str, args: &[Ty], span: Span, scope: &Scope) -> Result<Head, Fail> {
+        // `Time<Real>`: bevy-ts's `Time` with one of Bevy's clock markers names that clock.
+        if bevy_ts_name(&scope.file, name) == Some("Time") && !args.is_empty() {
+            let clock = match args {
+                [Ty::Ref { name: c, args: none, .. }] if none.is_empty() => bevy_ts_name(&scope.file, c).filter(|c| matches!(*c, "Real" | "Virtual" | "Fixed")),
+                _ => None,
+            };
+            let Some(clock) = clock else {
+                return Err(self.fail(scope, span, format!("{name} takes one clock imported from bevy-ts: {name}<Real>, {name}<Virtual> or {name}<Fixed>")));
+            };
+            self.referenced.insert(scope.file.path.clone());
+            return Ok(Head::Value(json!([scope.file.rel, name, clock])));
+        }
         if !args.is_empty() {
             return Err(self.fail(scope, span, format!("{name} is a value and takes no type arguments")));
         }

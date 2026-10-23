@@ -152,6 +152,10 @@ pub fn reset_clock(world: &mut World) {
         if let Some(mut generic) = world.get_resource_mut::<Time>() {
             *generic = fresh.as_generic();
         }
+        // The editor clock paused the fresh clock, so Play unpauses it.
+        if let Some(mut clock) = world.get_resource_mut::<ScriptClock>() {
+            clock.paused_virtual = true;
+        }
     }
     if let Some(old) = world.get_resource::<Time<Fixed>>() {
         let fresh = Time::<Fixed>::from_duration(old.timestep());
@@ -170,6 +174,9 @@ pub struct ScriptClock {
     pub step_frames: u32,
     /// Whether this frame runs the stages (set in `First`).
     pub running_this_frame: bool,
+    /// Whether this clock paused `Time<Virtual>`, so it unpauses only its own pause and a pause
+    /// the game made itself holds.
+    pub paused_virtual: bool,
 }
 
 pub(crate) fn stage_should_run(world: &World) -> bool {
@@ -177,7 +184,9 @@ pub(crate) fn stage_should_run(world: &World) -> bool {
 }
 
 /// `First`, before time advances: decides whether this frame runs, and pauses or unpauses
-/// `Time<Virtual>` so a stepped frame advances it by exactly one frame.
+/// `Time<Virtual>` so a stepped frame advances it by exactly one frame. It pauses only a running
+/// clock and unpauses only its own pause: a game's own pause holds, and a frame stepped over it
+/// advances zero virtual time, as in Bevy.
 pub fn advance_clock(mut clock: ResMut<ScriptClock>, mut frame: ResMut<ScriptFrame>, time: Option<ResMut<Time<Virtual>>>) {
     frame.0 += 1;
     let run = if !clock.paused {
@@ -190,10 +199,14 @@ pub fn advance_clock(mut clock: ResMut<ScriptClock>, mut frame: ResMut<ScriptFra
     };
     clock.running_this_frame = run;
     if let Some(mut time) = time {
-        if run && time.is_paused() {
-            time.unpause();
-        } else if !run && !time.is_paused() {
+        if run {
+            if clock.paused_virtual {
+                time.unpause();
+                clock.paused_virtual = false;
+            }
+        } else if !time.is_paused() {
             time.pause();
+            clock.paused_virtual = true;
         }
     }
 }

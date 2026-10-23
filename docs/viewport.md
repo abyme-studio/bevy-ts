@@ -148,7 +148,8 @@ The first `viewport_mode { mode: "play" }` starts the game: its `Startup` runs o
 stages. `bevy-ts/step` before that starts it too and stays in edit; `pause { paused: false }` fails
 with "the game has not started; switch to play". Triggers raised in edit mode are dropped, never
 fired on Play. A Rust rebuild of a project engine comes back in edit mode. `--edit` with
-`--headless` is refused.
+`--headless` is refused. Resuming, by Play or `pause { paused: false }`, unpauses `Time<Virtual>`
+only if edit mode or the pause paused it: a game's own pause of its clock holds (docs/time.md).
 
 ## Play and Stop
 

@@ -86,8 +86,8 @@ the field's address minus the value's. No `repr(C)` and no code per type.
 - **Layout tier**: a type with at least one plain-data field (`f32`, `f64`, integers, `bool`,
   `Entity`, glam vectors and quaternions, fieldless enums, arrays of numbers) is a zero-copy
   column in TS systems, with change ticks. Fields bevy-ts cannot read (`Duration`, `String`,
-  nested structs) are holes: never visible and never written. `Time` is a column for its
-  `delta_secs` and `elapsed_secs` around its `Duration`s. Enum variant bytes are read from the
+  nested structs) are holes: never visible and never written. `Time` is not a column: each
+  clock is a value built per run (docs/time.md). Enum variant bytes are read from the
   build, never assumed; `bool`, enum and `Entity` fields are written only through accessors.
   Components declared immutable are read-only. A type whose holes may own heap data is never
   inserted from bytes.

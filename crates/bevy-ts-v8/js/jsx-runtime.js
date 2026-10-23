@@ -1060,11 +1060,28 @@ class Site {
 
 class SitePairRead extends Error {}
 
+/** The fields of Rust's `timer_layout()` and `stopwatch_layout()` (layout.rs tests them). */
+export const STRUCT_FIELDS = {
+  timer: [
+    { name: "elapsed", raw: "_elapsed", type: { kind: "f64" }, offset: 0 },
+    { name: "duration", raw: "_duration", type: { kind: "f64" }, offset: 8 },
+    { name: "times_finished_this_tick", raw: "_times", type: { kind: "u32" }, offset: 16 },
+    { name: "mode", raw: "_mode", type: { kind: "enum", variants: ["Once", "Repeating"] }, offset: 20 },
+    { name: "paused", raw: "_paused", type: { kind: "bool" }, offset: 21 },
+    { name: "finished", raw: "_finished", type: { kind: "bool" }, offset: 22 },
+  ],
+  stopwatch: [
+    { name: "elapsed", raw: "_elapsed", type: { kind: "f64" }, offset: 0 },
+    { name: "paused", raw: "_paused", type: { kind: "bool" }, offset: 8 },
+  ],
+};
 const SCALAR_WIDTH = { f32: 4, f64: 8, i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, bool: 1, entity: 8, vec2: 8, vec3: 12, vec4: 16, quat: 16 };
 
 function fieldWidth(t) {
   if (t.kind === "enum") return t.repr ? t.repr.width : t.variants.length <= 256 ? 1 : t.variants.length <= 65536 ? 2 : 4;
   if (t.kind === "array") return fieldWidth(t.of) * t.len;
+  if (t.kind === "timer") return 24;
+  if (t.kind === "stopwatch") return 16;
   return SCALAR_WIDTH[t.kind];
 }
 
@@ -1099,6 +1116,10 @@ function decodeField(dv, o, t) {
       const w = fieldWidth(t.of);
       return Array.from({ length: t.len }, (_, i) => decodeField(dv, o + i * w, t.of));
     }
+    // A timer or stopwatch: a struct of its fields, as the protocol and the inspector show it.
+    case "timer":
+    case "stopwatch":
+      return Object.fromEntries(STRUCT_FIELDS[t.kind].map((f) => [f.name, decodeField(dv, o + f.offset, f.type)]));
   }
   return undefined;
 }

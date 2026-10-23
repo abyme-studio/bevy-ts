@@ -32,6 +32,33 @@ pub enum FieldType {
         repr: Option<EnumRepr>,
     },
     Array { of: Box<FieldType>, len: u32 },
+    /// Bevy's `Timer` as plain data, every `Duration` in seconds: the fields of [`timer_layout`].
+    Timer,
+    /// Bevy's `Stopwatch` as plain data: the fields of [`stopwatch_layout`].
+    Stopwatch,
+}
+
+/// A `Timer` field: 24 bytes aligned to 8. `mode` is `TimerMode`, `Once` 0 and `Repeating` 1.
+pub fn timer_layout() -> &'static ComponentLayout {
+    static L: std::sync::LazyLock<ComponentLayout> = std::sync::LazyLock::new(|| {
+        let mode = FieldType::Enum { variants: vec!["Once".into(), "Repeating".into()], repr: None };
+        ComponentLayout::c_layout([
+            ("elapsed", &FieldType::F64),
+            ("duration", &FieldType::F64),
+            ("times_finished_this_tick", &FieldType::U32),
+            ("mode", &mode),
+            ("paused", &FieldType::Bool),
+            ("finished", &FieldType::Bool),
+        ])
+    });
+    &L
+}
+
+/// A `Stopwatch` field: 16 bytes aligned to 8.
+pub fn stopwatch_layout() -> &'static ComponentLayout {
+    static L: std::sync::LazyLock<ComponentLayout> =
+        std::sync::LazyLock::new(|| ComponentLayout::c_layout([("elapsed", &FieldType::F64), ("paused", &FieldType::Bool)]));
+    &L
 }
 
 impl FieldType {
@@ -48,6 +75,7 @@ impl FieldType {
             FieldType::Enum { repr: Some(r), .. } => r.width as usize,
             FieldType::Enum { variants, .. } => enum_width(variants.len()),
             FieldType::Array { of, len } => of.size() * *len as usize,
+            FieldType::Timer | FieldType::Stopwatch => self.fields().unwrap().size,
         }
     }
 
@@ -57,6 +85,7 @@ impl FieldType {
         match self {
             FieldType::Vec2 | FieldType::Vec3 | FieldType::Vec4 | FieldType::Quat => 4,
             FieldType::Array { of, .. } => of.align(),
+            FieldType::Timer | FieldType::Stopwatch => 8,
             other => other.size(),
         }
     }
@@ -80,6 +109,17 @@ impl FieldType {
             FieldType::Entity => "entity".into(),
             FieldType::Enum { variants, .. } => format!("enumOf({})", variants.join(", ")),
             FieldType::Array { of, len } => format!("array({}, {len})", of.ts_name()),
+            FieldType::Timer => "Timer".into(),
+            FieldType::Stopwatch => "Stopwatch".into(),
+        }
+    }
+
+    /// A struct-like type's own fields (`Timer`, `Stopwatch`), read and written as an object of them.
+    pub fn fields(&self) -> Option<&'static ComponentLayout> {
+        match self {
+            FieldType::Timer => Some(timer_layout()),
+            FieldType::Stopwatch => Some(stopwatch_layout()),
+            _ => None,
         }
     }
 
@@ -104,6 +144,7 @@ impl FieldType {
             FieldType::Array { of, .. } if matches!(**of, FieldType::Array { .. }) => {
                 Err("arrays of arrays are not supported".into())
             }
+            FieldType::Array { of, .. } if of.fields().is_some() => Err(format!("arrays of {} are not supported", of.ts_name())),
             FieldType::Array { of, .. } => of.validate(),
             _ => Ok(()),
         }
@@ -141,7 +182,7 @@ impl FieldType {
     /// (`bool`, enums, `entity`), never as a raw array.
     pub fn accessor_only(&self) -> bool {
         match self {
-            FieldType::Bool | FieldType::Entity | FieldType::Enum { .. } => true,
+            FieldType::Bool | FieldType::Entity | FieldType::Enum { .. } | FieldType::Timer | FieldType::Stopwatch => true,
             FieldType::Array { of, .. } => of.accessor_only(),
             _ => false,
         }
@@ -430,6 +471,20 @@ mod tests {
         ]);
         assert_eq!(offsets(&l), vec![0, 2, 8]);
         assert_eq!((l.size, l.align), (16, 8));
+    }
+
+    #[test]
+    fn timer_and_stopwatch_layouts() {
+        let t = timer_layout();
+        assert_eq!((t.size, t.align), (24, 8));
+        assert_eq!(offsets(t), vec![0, 8, 16, 20, 21, 22]);
+        assert_eq!((FieldType::Timer.size(), FieldType::Timer.align()), (24, 8));
+        let s = stopwatch_layout();
+        assert_eq!((s.size, s.align), (16, 8));
+        assert_eq!(offsets(s), vec![0, 8]);
+        let l = layout(&[("hp", FieldType::F32), ("cooldown", FieldType::Timer)]);
+        assert_eq!(offsets(&l), vec![0, 8]);
+        assert_eq!((l.size, l.align), (32, 8));
     }
 
     #[test]

@@ -85,6 +85,7 @@ fn wvalue(ty: &ValueType, v: &Value) -> Result<WValue, String> {
         ValueType::Field(FieldType::Vec2 | FieldType::Vec3 | FieldType::Vec4 | FieldType::Quat | FieldType::Entity | FieldType::Array { .. }) => {
             return Err("a whole vector is written lane by lane".into());
         }
+        ValueType::Field(FieldType::Timer | FieldType::Stopwatch) => return Err("a whole timer is written field by field".into()),
         ValueType::Field(_) => WValue::Int(v.as_f64().ok_or("expected an integer")? as i64),
     })
 }
@@ -173,6 +174,27 @@ pub fn set_ops(world: &World, path: &[String], component: &str, field: &str, aft
             let ty = vector_type(t).expect("a vector");
             segs.truncate(2);
             ops.push(Op::Set { path, component: component.into(), field: segs, value: WValue::Float { v: after.as_f64().ok_or("expected a number")?, f32: true }, containers: vec![ty.into()] });
+        }
+        // A timer or stopwatch: one `set` per field that differs, inside `Timer { .. }`.
+        ValueType::Field(t) if t.fields().is_some() => {
+            let (layout, name) = (t.fields().expect("a struct"), t.ts_name());
+            let mut set = |sub: &str, v: &Value| -> Result<(), String> {
+                let f = layout.field(sub).ok_or_else(|| format!("{name} has no field {sub}"))?;
+                let value = wvalue(&ValueType::Field(f.ty.clone()), v)?;
+                ops.push(Op::Set { path: path.clone(), component: component.into(), field: vec![top.clone(), sub.into()], value, containers: vec![name.clone()] });
+                Ok(())
+            };
+            if segs.len() == 1 {
+                let new = after.as_object().ok_or_else(|| format!("expected a {name}, got {after}"))?;
+                let old = before.get(&top).and_then(Value::as_object);
+                for (k, v) in new {
+                    if old.and_then(|o| o.get(k)) != Some(v) {
+                        set(k, v)?;
+                    }
+                }
+            } else {
+                set(&segs[1], after)?;
+            }
         }
         ty => ops.push(Op::Set { path, component: component.into(), field: vec![top], value: wvalue(ty, after)?, containers: Vec::new() }),
     }

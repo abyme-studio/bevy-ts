@@ -103,6 +103,20 @@ pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Re
                 encode_field(&format!("{path}[{i}]"), of, x, &mut out[i * w..(i + 1) * w])?;
             }
         }
+        // An object of its fields; a field left out is zero.
+        FieldType::Timer | FieldType::Stopwatch => {
+            let layout = ty.fields().unwrap();
+            let o = v.as_object().ok_or_else(|| err(path, ty, format!("got {v}")))?;
+            if let Some(k) = o.keys().find(|k| layout.field(k).is_none()) {
+                return Err(err(path, ty, format!("{} has no field {k}", ty.ts_name())));
+            }
+            out.fill(0);
+            for f in &layout.fields {
+                if let Some(x) = o.get(&f.name) {
+                    encode_field(&format!("{path}.{}", f.name), &f.ty, x, &mut out[f.offset..f.offset + f.ty.size()])?;
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -134,6 +148,7 @@ pub fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
             let w = of.size();
             Value::Array((0..*len as usize).map(|i| decode_field(of, &b[i * w..(i + 1) * w])).collect())
         }
+        FieldType::Timer | FieldType::Stopwatch => decode_component(ty.fields().unwrap(), b),
     }
 }
 
@@ -202,7 +217,7 @@ pub struct PathTarget {
     pub field: String,
 }
 
-/// Resolves `.field`, `.field.x|y|z|w` and `.field[i]`.
+/// Resolves `.field`, `.field.x|y|z|w`, `.field[i]` and a timer's or stopwatch's `.field.elapsed`.
 pub fn resolve_path(layout: &ComponentLayout, path: &str) -> Result<PathTarget, ValueError> {
     let bad = |message: String| ValueError { path: path.to_string(), expected: "a field path".into(), message };
     let rest = path.strip_prefix('.').ok_or_else(|| bad("paths start with '.'".into()))?;
@@ -214,6 +229,12 @@ pub fn resolve_path(layout: &ComponentLayout, path: &str) -> Result<PathTarget, 
         if let Some(r) = rest.strip_prefix('.') {
             let end = r.find(['.', '[']).unwrap_or(r.len());
             let (lane, r2) = r.split_at(end);
+            if let Some(sub) = target.ty.fields() {
+                let f = sub.field(lane).ok_or_else(|| bad(format!("no field {lane} on {}", target.ty.ts_name())))?;
+                target = PathTarget { offset: target.offset + f.offset, ty: f.ty.clone(), field: target.field };
+                rest = r2;
+                continue;
+            }
             let lanes = target.ty.lanes().ok_or_else(|| bad(format!("{} has no lanes", target.ty.ts_name())))?;
             let i = ["x", "y", "z", "w"].iter().position(|x| *x == lane).filter(|i| *i < lanes);
             let i = i.ok_or_else(|| bad(format!("no lane {lane} on {}", target.ty.ts_name())))?;
@@ -283,6 +304,20 @@ mod tests {
         assert_eq!(resolve_path(&l, ".xs[2]").unwrap(), PathTarget { offset: 20, ty: FieldType::U16, field: "xs".into() });
         assert!(resolve_path(&l, ".p.w").is_err());
         assert!(resolve_path(&l, ".nope").is_err());
+    }
+
+    #[test]
+    fn a_timer_is_an_object_of_its_fields() {
+        let l = ComponentLayout::c_layout([("hp", &FieldType::F32), ("cooldown", &FieldType::Timer)]);
+        let t = resolve_path(&l, ".cooldown.duration").unwrap();
+        assert_eq!((t.offset, t.ty), (16, FieldType::F64));
+        let mut b = [0u8; 24];
+        encode_field(".cooldown", &FieldType::Timer, &json!({"duration": 2.0, "mode": "Repeating"}), &mut b).unwrap();
+        let v = decode_field(&FieldType::Timer, &b);
+        assert_eq!(v["duration"], json!(2.0));
+        assert_eq!(v["mode"], json!("Repeating"));
+        assert_eq!(v["finished"], json!(false));
+        assert!(encode_field(".cooldown", &FieldType::Timer, &json!({"nope": 1}), &mut b).is_err());
     }
 
     #[test]

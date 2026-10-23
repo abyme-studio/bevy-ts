@@ -76,9 +76,9 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `Transform` columns, `Vec3`/`Quat` helpers | idiomatic | `systems.rs` `a_vector_method_stores_the_tick_once` | — |
 | `Transform.lookingAt` | missing | — | reflect-coverage stage 2 |
 | `GlobalTransform` read; `TransformHelper` | missing; TS `PostUpdate` also runs before propagation | `bevy-ts/src/lib.rs:153` | reflect-coverage stage 3 (read); new: `ecs-schedules` (a slot after propagate) |
-| `Res<Time>` | idiomatic, read-only, a built value not a column (docs say column) | `surface.rs` `time_is_a_read_only_view`; fixed step: no test | new: `script-time` |
-| `Time<Real>`, `Time<Virtual>` pause and speed, `Time<Fixed>` timestep | missing | — | new: `script-time` |
-| `Timer`, `Stopwatch`, `on_timer`, delayed commands | missing (hand-rolled `Local`) | — | new: `script-time` |
+| `Res<Time>` | idiomatic, read-only, a built value (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`, `time.rs` `fixed_update_reads_timestep` | script-time stage 1 (done) |
+| `Time<Real>`, `Time<Virtual>` pause and speed, `Time<Fixed>` timestep | partial: every clock read (`Res<Time<C>>`); a game's own pause holds; writes (`ResMut<Time<Virtual>>`, `ResMut<Time<Fixed>>`) missing | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame` | script-time stage 2 (writes) |
+| `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: `Timer`, `Stopwatch`, `TimerMode` are field types with Bevy's methods; `onTimer` and the other conditions, `commands.delayed()` missing | `time.rs` `timer_matches_bevy`, `stopwatch_pauses` | script-time stages 3 (conditions), 4 (delayed commands) |
 | Keyboard (`ButtonInput<KeyCode>`), `InputFocus`, `KeyCode` | missing on main | — | text-input |
 | Mouse buttons, motion, scroll, cursor position | missing | — | new: `script-input-devices` |
 | Touch, gestures | missing | — | new: `script-input-devices` |
@@ -161,8 +161,8 @@ path, and a writable exported param, which most of them need, is refused by desi
 
 - `openspec/specs/ts-systems/spec.md:134` says a Rust resource with a native layout is reachable
   as `Res<Time>` is. Only `Time` is special-cased. `rust-resources` owns the fix.
-- `docs/native.md:89` and the same spec call `Time` a column. It is a value built per run.
-  `script-time` owns the fix.
+- `docs/native.md:89` and the same spec called `Time` a column. It is a value built per run.
+  Fixed by script-time stage 1.
 - `openspec/specs/native-components/spec.md:41-50` says shipped types carry JSON shapes;
   `bevy.d.ts` declares reflect-tier types bare. reflect-coverage stage 1 owns the fix.
 - No doc says `Commands` cannot insert a reflect-tier component; it is a runtime error. Closed

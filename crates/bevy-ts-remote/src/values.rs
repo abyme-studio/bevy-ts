@@ -29,6 +29,11 @@ fn field_schema(ty: &FieldType, hints: Option<&bevy_ts::manifest::FieldHints>) -
         }
         FieldType::Enum { variants, .. } => json!({ "type": "string", "enum": variants }),
         FieldType::Array { of, len } => json!({ "type": "array", "items": field_schema(of, None), "minItems": len, "maxItems": len }),
+        FieldType::Timer | FieldType::Stopwatch => {
+            let l = ty.fields().unwrap();
+            let properties: Map<String, Value> = l.fields.iter().map(|f| (f.name.clone(), field_schema(&f.ty, None))).collect();
+            json!({ "type": "object", "title": ty.ts_name(), "properties": properties, "required": l.fields.iter().map(|f| &f.name).collect::<Vec<_>>() })
+        }
         int => {
             let (min, max): (i64, i64) = match int {
                 FieldType::I8 => (i8::MIN.into(), i8::MAX.into()),

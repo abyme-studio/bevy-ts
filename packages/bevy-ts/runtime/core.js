@@ -10,7 +10,7 @@
 // is one call from Rust (`runSystem`) with one frame per param; Rust detaches every buffer when
 // the call returns. Field setters store the run's tick in the row's changed tick.
 
-import { NOT_TSX, TsxContext, describe, readResource, runScene, setHost } from "bevy-ts/jsx-runtime";
+import { NOT_TSX, STRUCT_FIELDS, TsxContext, describe, readResource, runScene, setHost } from "bevy-ts/jsx-runtime";
 
 // TSX's reactive surface, from the JSX runtime: no hooks, bindings read `ref.get(C)` directly.
 export { signal, computed, effect, untrack, onCleanup, batch, ref, Show, For, px, percent, vw, vh, em, rem, fr, minmax, repeat, span, deg, linearGradient, radialGradient, conicGradient } from "bevy-ts/jsx-runtime";
@@ -150,6 +150,14 @@ export const quat = callableField({ kind: "quat" }, (x = 0, y = 0, z = 0, w = 1)
 export const entity = new FieldType({ kind: "entity" });
 /** Rejected at declaration: components hold fixed-size data only. */
 export const string = new FieldType({ kind: "string" });
+/** Bevy's `Timer`: a field type, and `Timer.fromSeconds(2, "Repeating")` a value of it. */
+export const Timer = new FieldType({ kind: "timer" });
+/** `from_seconds` takes an `f32`, as Bevy's does. */
+Timer.fromSeconds = (seconds, mode) => new TimerValue(Math.fround(seconds), mode);
+Timer.new = (seconds, mode) => new TimerValue(seconds, mode);
+/** Bevy's `Stopwatch`: a field type, and `Stopwatch.new()` a value of it. */
+export const Stopwatch = new FieldType({ kind: "stopwatch" });
+Stopwatch.new = () => new StopwatchValue();
 
 export function enumOf(...variants) {
   return new FieldType({ kind: "enum", variants });
@@ -327,6 +335,213 @@ class Quat {
   }
 }
 Object.assign(Quat.prototype, QUAT_READ, QUAT_WRITE);
+
+// ---------------------------------------------------------------------------------------------
+// Timer and Stopwatch: Bevy 0.20's `bevy_time::{Timer, Stopwatch}` ported line for line, every
+// `Duration` in seconds. The getters and methods work on raw fields (`_elapsed`, ...): a column
+// view generates them over its row, a value holds them; `_touch()` stores the row tick once.
+
+const STRUCT_SIZE = { timer: 24, stopwatch: 16 };
+
+const STOPWATCH_READ = {
+  get elapsed() {
+    return this._elapsed;
+  },
+  get elapsed_secs() {
+    return Math.fround(this._elapsed);
+  },
+  get is_paused() {
+    return this._paused;
+  },
+  toJSON() {
+    return { elapsed: this._elapsed, paused: this._paused };
+  },
+};
+
+const STOPWATCH_WRITE = {
+  tick(delta) {
+    if (!this._paused) this._elapsed += delta;
+    this._touch();
+    return this;
+  },
+  pause() {
+    this._paused = true;
+    this._touch();
+  },
+  unpause() {
+    this._paused = false;
+    this._touch();
+  },
+  reset() {
+    this._elapsed = 0;
+    this._touch();
+  },
+  setElapsed(seconds) {
+    this._elapsed = seconds;
+    this._touch();
+  },
+};
+
+const TIMER_READ = {
+  get elapsed() {
+    return this._elapsed;
+  },
+  get elapsed_secs() {
+    return Math.fround(this._elapsed);
+  },
+  get duration() {
+    return this._duration;
+  },
+  get mode() {
+    return this._mode;
+  },
+  get is_paused() {
+    return this._paused;
+  },
+  get is_finished() {
+    return this._finished;
+  },
+  get just_finished() {
+    return this._times > 0;
+  },
+  get times_finished_this_tick() {
+    return this._times;
+  },
+  get remaining() {
+    // Bevy's `duration - elapsed`. Bevy's `Duration` subtraction panics when `elapsed` is past
+    // `duration` (after `setElapsed`); TS clamps to 0.
+    return Math.max(0, this._duration - this._elapsed);
+  },
+  get remaining_secs() {
+    return Math.fround(this.remaining);
+  },
+  get fraction() {
+    return this._duration === 0 ? 1 : Math.fround(Math.fround(this._elapsed) / Math.fround(this._duration));
+  },
+  get fraction_remaining() {
+    return Math.fround(1 - this.fraction);
+  },
+  toJSON() {
+    return { elapsed: this._elapsed, duration: this._duration, times_finished_this_tick: this._times, mode: this._mode, paused: this._paused, finished: this._finished };
+  },
+};
+
+const TIMER_WRITE = {
+  tick(delta) {
+    this._tick(delta);
+    this._touch();
+    return this;
+  },
+  _tick(delta) {
+    if (this._paused) {
+      this._times = 0;
+      if (this._mode === "Repeating") this._finished = false;
+      return;
+    }
+    if (this._mode !== "Repeating" && this._finished) {
+      this._times = 0;
+      return;
+    }
+    let elapsed = this._elapsed + delta;
+    const duration = this._duration;
+    this._finished = elapsed >= duration;
+    if (this._finished) {
+      if (this._mode === "Repeating") {
+        // Bevy divides nanoseconds: by a zero duration, u32::MAX finishes and no time left.
+        this._times = duration > 0 ? Math.min(Math.floor(elapsed / duration), 4294967295) : 4294967295;
+        elapsed = duration > 0 ? elapsed % duration : 0;
+      } else {
+        this._times = 1;
+        elapsed = duration;
+      }
+    } else {
+      this._times = 0;
+    }
+    this._elapsed = elapsed;
+  },
+  pause() {
+    this._paused = true;
+    this._touch();
+  },
+  unpause() {
+    this._paused = false;
+    this._touch();
+  },
+  reset() {
+    this._elapsed = 0;
+    this._finished = false;
+    this._times = 0;
+    this._touch();
+  },
+  finish() {
+    this._tick(this.remaining);
+    this._touch();
+  },
+  almostFinish() {
+    this._tick(Math.max(0, this.remaining - 1e-9));
+    this._touch();
+  },
+  setElapsed(seconds) {
+    this._elapsed = seconds;
+    this._touch();
+  },
+  setDuration(seconds) {
+    this._duration = seconds;
+    this._touch();
+  },
+  setMode(mode) {
+    if (mode !== "Once" && mode !== "Repeating") throw new RangeError(`unknown TimerMode ${mode}`);
+    if (this._mode !== "Repeating" && mode === "Repeating" && this._finished) {
+      this._elapsed = 0;
+      this._finished = this._times > 0;
+    }
+    this._mode = mode;
+    this._touch();
+  },
+};
+
+const STRUCT_METHODS = { timer: [TIMER_READ, TIMER_WRITE], stopwatch: [STOPWATCH_READ, STOPWATCH_WRITE] };
+
+/** Copies `proto`'s properties, getters included, onto `target`, keeping what it defines itself. */
+function mixIn(target, proto) {
+  for (const k of Object.getOwnPropertyNames(proto)) {
+    if (!Object.prototype.hasOwnProperty.call(target, k)) Object.defineProperty(target, k, Object.getOwnPropertyDescriptor(proto, k));
+  }
+}
+
+/** A timer or stopwatch value: `Timer.fromSeconds(2, "Repeating")`, for an initialiser or `C.of`. */
+class StructValue {
+  _touch() {}
+}
+class TimerValue extends StructValue {
+  constructor(duration, mode) {
+    super();
+    if (mode !== "Once" && mode !== "Repeating") throw new RangeError(`unknown TimerMode ${mode}`);
+    this._elapsed = 0;
+    this._duration = duration;
+    this._times = 0;
+    this._mode = mode;
+    this._paused = false;
+    this._finished = false;
+  }
+}
+mixIn(TimerValue.prototype, TIMER_READ);
+mixIn(TimerValue.prototype, TIMER_WRITE);
+class StopwatchValue extends StructValue {
+  constructor() {
+    super();
+    this._elapsed = 0;
+    this._paused = false;
+  }
+}
+mixIn(StopwatchValue.prototype, STOPWATCH_READ);
+mixIn(StopwatchValue.prototype, STOPWATCH_WRITE);
+
+/** A struct field's raw value by its layout name, from a value, a view or a plain object. */
+function structPart(v, f) {
+  if (v instanceof StructValue || (v && f.raw in v)) return v[f.raw];
+  return v ? v[f.name] : undefined;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Declarations: plain classes whose fields the compile step read (operator ruling 2026-10-20)
@@ -540,8 +755,22 @@ export const Transform = nativeClass("Transform", "bevy_transform::components::t
   scale: vec3.default([1, 1, 1]),
 });
 
-/** `Res<Time>`: Bevy's own field names; the fixed step in `FixedUpdate`. */
-export const Time = nativeClass("Time", "bevy_time::time::Time", { delta_secs: f32, elapsed_secs: f32, delta_secs_f64: f64, elapsed_secs_f64: f64 }, "resource");
+// Bevy's clocks, read-only views built per run (docs/time.md). Every clock's fields first, then
+// its own; Rust lays them out and fills them.
+const CLOCK = { delta_secs: f32, elapsed_secs: f32, delta_secs_f64: f64, elapsed_secs_f64: f64, elapsed_secs_wrapped_f64: f64, wrap_period: f64, elapsed_secs_wrapped: f32 };
+/** `Res<Time>`: Bevy's own field names; the fixed step in `FixedUpdate`. `Time<Real>`, `Time<Virtual>` and `Time<Fixed>` are `Time.clocks`. */
+export const Time = nativeClass("Time", "bevy_time::time::Time", CLOCK, "resource");
+Time.clocks = {
+  Real: nativeClass("Time<Real>", "bevy_time::time::Time<bevy_time::real::Real>", CLOCK, "resource"),
+  Virtual: nativeClass("Time<Virtual>", "bevy_time::time::Time<bevy_time::virt::Virtual>", {
+    ...CLOCK, is_paused: bool, was_paused: bool, relative_speed: f32, effective_speed: f32, relative_speed_f64: f64, effective_speed_f64: f64, max_delta: f64,
+  }, "resource"),
+  Fixed: nativeClass("Time<Fixed>", "bevy_time::time::Time<bevy_time::fixed::Fixed>", { ...CLOCK, overstep_fraction: f32, timestep: f64, overstep: f64, overstep_fraction_f64: f64 }, "resource"),
+};
+/** Bevy's clock markers, for `Time<Real>` and the like; types only, never values at run time. */
+export class Real {}
+export class Virtual {}
+export class Fixed {}
 
 // ---------------------------------------------------------------------------------------------
 // Schedules, sets, conditions, system configs
@@ -701,7 +930,7 @@ export function local(fields) {
   return setupParam("local()", { kind: "local", fields: fieldDecls("Local", fields), live: true });
 }
 
-const FIELD_BY_TYPE = { f32, f64, i8, u8, i16, u16, i32, u32, bool, vec2, vec3, vec4, quat, entity };
+const FIELD_BY_TYPE = { f32, f64, i8, u8, i16, u16, i32, u32, bool, vec2, vec3, vec4, quat, entity, timer: Timer, stopwatch: Stopwatch };
 
 // The compile step's hooks, installed on the host object below.
 function bindModule(module, names) {
@@ -879,11 +1108,17 @@ export function text(bytes) {
 
 function refClass(g, ref, at) {
   if (typeof ref === "function" || (ref && typeof ref === "object" && !Array.isArray(ref))) return ref;
-  const [module, name] = ref;
+  const [module, name, clock] = ref;
   const thunk = g.bindings.get(`${module}\u0000${name}`);
   if (!thunk) throw declError(`${name} is not bound in ${module}; was the module compiled by bevy-ts?`, at);
   const v = thunk();
   if (v === undefined) throw declError(`${name} has no value at run time; import it as a value, not with import type`, at);
+  // `Time<Real>`: the reader names the clock beside `Time`.
+  if (clock !== undefined) {
+    const c = v.clocks && v.clocks[clock];
+    if (!c) throw declError(`${name}<${clock}>: ${name} has no clock ${clock}`, at);
+    return c;
+  }
   return v;
 }
 
@@ -1125,7 +1360,7 @@ function end() {
 /** Field values as JSON for Rust (vectors as arrays). */
 function jsonValues(C, values) {
   const out = {};
-  for (const [k, v] of Object.entries(values)) out[k] = v && typeof v.toArray === "function" ? v.toArray() : v;
+  for (const [k, v] of Object.entries(values)) out[k] = v && typeof v.toArray === "function" ? v.toArray() : v instanceof StructValue ? v.toJSON() : v;
   return out;
 }
 
@@ -1159,6 +1394,7 @@ function viewsFor(layout) {
     if (LANES[t.kind]) need.add("f32");
     else if (t.kind === "enum") need.add(enumView(t));
     else if (t.kind === "array") add(t.of);
+    else if (STRUCT_FIELDS[t.kind]) STRUCT_FIELDS[t.kind].forEach((f) => add(f.type));
     else need.add(VIEW[t.kind]);
   };
   for (const f of layout.fields) add(f.type);
@@ -1197,6 +1433,15 @@ function scalarCode(kind, off, size, enumType) {
   return { get: `p.${view}[${idx}]`, set: `p.${view}[${idx}] = v;` };
 }
 
+/** Writes a whole timer or stopwatch into a view: raw fields, the row tick stored once. */
+function copyStruct(view, kind, v) {
+  for (const f of STRUCT_FIELDS[kind]) {
+    const x = structPart(v, f);
+    if (x !== undefined) view[f.raw] = x;
+  }
+  view._touch();
+}
+
 /** Generates the accessor class for a layout. `write` adds tick-storing setters and mutators. */
 function generateAccessor(name, layout, write) {
   const size = layout.size;
@@ -1232,6 +1477,21 @@ function generateAccessor(name, layout, write) {
           ? `set ${key}(v) { const s = this[${slot}]; if (Array.isArray(v)) s.set(...v); else s.set(${names.map((n) => "v." + n).join(", ")}); }`
           : `set ${key}(v) { throw new TypeError(READONLY); }`,
       );
+    } else if (STRUCT_FIELDS[t.kind]) {
+      // A timer or stopwatch: raw fields over the row, Bevy's getters and (write) methods mixed in.
+      const cls = [`class S { constructor(p) { this.p = p; }`];
+      for (const sf of STRUCT_FIELDS[t.kind]) {
+        const c = scalarCode(scalarKind(sf.type), f.offset + sf.offset, size, sf.type.kind === "enum" ? sf.type : undefined);
+        cls.push(`get ${sf.raw}() { const p = this.p; return ${c.get}; }`);
+        // Raw setters write without a tick: only a written view, whose methods store it once.
+        if (write) cls.push(`set ${sf.raw}(v) { const p = this.p; ${c.set} }`);
+      }
+      cls.push(`_touch() { const p = this.p; p.t[p.r] = p.k; }`);
+      cls.push(`}`, `return S;`);
+      subclasses.push({ src: `(function () { ${cls.join("\n")} })()`, struct: t.kind });
+      init.push(`this[${slot}] = new V_${subclasses.length - 1}(this);`);
+      parts.push(`get ${key}() { return this[${slot}]; }`);
+      parts.push(write ? `set ${key}(v) { copyStruct(this[${slot}], ${JSON.stringify(t.kind)}, v); }` : `set ${key}(v) { throw new TypeError(READONLY); }`);
     } else if (t.kind === "array") {
       const el = t.of;
       const w = el.kind === "enum" ? WIDTH[enumView(el)] : LANES[el.kind] ? LANES[el.kind] * 4 : WIDTH[el.kind];
@@ -1270,7 +1530,7 @@ function generateAccessor(name, layout, write) {
   }
   const views = viewsFor(layout);
   const src = `
-    ${subclasses.map((s, i) => `const V_${i} = ${s.src}; mix(V_${i}.prototype, ${s.quat ? "true" : "false"});`).join("\n")}
+    ${subclasses.map((s, i) => `const V_${i} = ${s.src}; mix(V_${i}.prototype, ${s.struct ? JSON.stringify(s.struct) : s.quat ? "true" : "false"});`).join("\n")}
     return class ${write ? "Write" : "Read"} {
       constructor() {
         this.r = 0; this.k = 0; this.t = null;
@@ -1282,12 +1542,18 @@ function generateAccessor(name, layout, write) {
     };`;
   // Shared methods, except those the generated class defines itself (the raw `set`).
   const mix = (proto, isQuat) => {
+    if (typeof isQuat === "string") {
+      const [read, writes] = STRUCT_METHODS[isQuat];
+      mixIn(proto, read);
+      if (write) mixIn(proto, writes);
+      return;
+    }
     const add = (k, fn) => Object.prototype.hasOwnProperty.call(proto, k) || Object.defineProperty(proto, k, { value: fn, writable: true });
     for (const [k, fn] of Object.entries(isQuat ? QUAT_READ : VEC_READ)) add(k, fn);
     if (write) for (const [k, fn] of Object.entries(isQuat ? QUAT_WRITE : VEC_WRITE)) add(k, fn);
   };
   try {
-    return new Function("READONLY", "mix", src)(READONLY, mix);
+    return new Function("READONLY", "mix", "copyStruct", src)(READONLY, mix, copyStruct);
   } catch (e) {
     throw new Error(`bevy-ts: generating accessors for ${name}: ${e.message}`);
   }
@@ -1328,9 +1594,10 @@ function cLayout(fields) {
     if (LANES[t.kind]) return LANES[t.kind] * 4;
     if (t.kind === "enum") return { u8: 1, u16: 2, u32: 4 }[enumView(t)];
     if (t.kind === "array") return size(t.of) * t.len;
+    if (STRUCT_SIZE[t.kind]) return STRUCT_SIZE[t.kind];
     return { f32: 4, f64: 8, i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, bool: 1, entity: 8 }[t.kind];
   };
-  const align = (t) => (LANES[t.kind] ? 4 : t.kind === "array" ? align(t.of) : size(t));
+  const align = (t) => (LANES[t.kind] ? 4 : t.kind === "array" ? align(t.of) : STRUCT_SIZE[t.kind] ? 8 : size(t));
   let offset = 0, max = 1;
   const out = [];
   for (const f of fields) {
@@ -2113,6 +2380,12 @@ function encodeField(dv, t, off, v, path) {
     const arr = Array.isArray(v) ? v : v && typeof v.toArray === "function" ? v.toArray() : ["x", "y", "z", "w"].slice(0, lanes).map((n) => v[n]);
     if (arr.length < lanes) throw new TypeError(`${path} expects ${t.kind}`);
     for (let i = 0; i < lanes; i++) dv.setFloat32(off + i * 4, arr[i], true);
+  } else if (STRUCT_FIELDS[t.kind]) {
+    if (!v || typeof v !== "object") throw new TypeError(`${path} expects ${t.kind === "timer" ? "a Timer" : "a Stopwatch"}`);
+    for (const f of STRUCT_FIELDS[t.kind]) {
+      const x = structPart(v, f);
+      if (x !== undefined) encodeScalar(dv, f.type.kind, off + f.offset, x, f.type);
+    }
   } else if (t.kind === "array") {
     const el = t.of;
     const w = el.kind === "enum" ? WIDTH[enumView(el)] : LANES[el.kind] ? LANES[el.kind] * 4 : WIDTH[el.kind] * (el.kind === "entity" ? 2 : 1);

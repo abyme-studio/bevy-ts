@@ -215,6 +215,9 @@ const processes = {
   "script-networking-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check) && openspec validate script-networking --type spec --strict) 2>&1 | grep -v ld64 | tee target/script-networking-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale|valid\"; echo gate exit ${PIPESTATUS[0]}'" },
   // The gate's steps after the tests, for a lint fix that changes no behaviour.
   "script-networking-lint": { cmd: "bash -c 'set -o pipefail; (cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check) && openspec validate script-networking --type spec --strict) 2>&1 | grep -v ld64 | tee target/script-networking-lint.log | tail -30'" },
+  // Change script-time: its time and levels tests, and the last round before stage 1 lands.
+  "script-time-time": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test -p bevy-ts-cli --no-fail-fast --test time --test levels_protocol 2>&1 | grep -v ld64 | tee target/script-time-time.log | grep -E \"^test |^test result|panicked|^error|left|right\"'" },
+  "script-time-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/script-time-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo gate exit $?'" },
 } satisfies ProcessFile;
 
 const GATE_SLOT = "$HOME/dev/abyme/scripts/gate-slot";

@@ -20,6 +20,8 @@ without recompiling Rust.
   ([docs/animation.md](docs/animation.md)).
 - **Custom materials without Rust**: a params schema in TS and the shader in a `.wgsl` file,
   hot reloaded ([docs/materials.md](docs/materials.md)).
+- **Bevy's time**: `Res<Time<Real>>`, `Res<Time<Virtual>>`, `Res<Time<Fixed>>`, and `Timer` and
+  `Stopwatch` fields with Bevy's methods ([docs/time.md](docs/time.md)).
 - **npm packages**: a script imports an ES module package by name; bevy-ts resolves it at compile
   time and ships it with the game ([docs/scripts.md](docs/scripts.md)).
 - **Pointer handlers** on entities and UI; 3D meshes pick with `"meshPicking": true`, and a test

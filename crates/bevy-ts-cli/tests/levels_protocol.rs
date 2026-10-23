@@ -662,3 +662,47 @@ fn ok_tsx(app: &mut App) -> Value {
     validate_in("bevy-ts-tsx", "bevy-ts/tsx_tree", &tree);
     tree
 }
+
+const COOLDOWN: &str = r#"import { app, Component, Timer } from "bevy-ts";
+export class Cooldown extends Component { cooldown = Timer.fromSeconds(1, "Once") }
+app.level("levels/tower.bsn");
+"#;
+
+/// script-time: a TS `Timer` field is a struct of its fields over the protocol and in `.bsn`.
+#[test]
+fn timer_field_round_trips() {
+    let tower = "#Tower\nenemies::Cooldown { cooldown: Timer { duration: 2.0, mode: Repeating } }\n";
+    let dir = project("levels-timer", &[("package.json", "{}"), ("src/enemies.tsx", COOLDOWN), ("assets/levels/tower.bsn", tower)]);
+    let mut app = level_app(&dir);
+    bevy_ts_remote::add_methods(&mut app);
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    settle(&mut app);
+    let e = app.world_mut().query::<(Entity, &Name)>().iter(app.world()).find(|(_, n)| n.as_str() == "Tower").map(|(e, _)| e).expect("Tower");
+    // Read from the level: the fields it names, the rest zero.
+    let t = &read_ts(&app, e, "enemies::Cooldown").unwrap()["cooldown"];
+    assert_eq!((t["duration"].as_f64(), t["mode"].as_str(), t["paused"].as_bool()), (Some(2.0), Some("Repeating"), Some(false)), "{t}");
+    // The protocol reads it as a struct and sets one of its fields by path.
+    let remote = |app: &mut App, method: &str, params: Value| {
+        let v = call(app, method, Some(params)).unwrap_or_else(|e| panic!("{method}: {e:?}")).unwrap();
+        validate_in("bevy-ts-remote", method, &v);
+        v
+    };
+    let g = remote(&mut app, "bevy-ts/get_components", json!({ "entity": e, "components": ["enemies::Cooldown"] }));
+    assert_eq!(g["components"]["enemies::Cooldown"]["cooldown"]["mode"], "Repeating", "{g}");
+    remote(&mut app, "bevy-ts/mutate_components", json!({ "entity": e, "component": "enemies::Cooldown", "path": ".cooldown.elapsed", "value": 0.5 }));
+    assert_eq!(read_ts(&app, e, "enemies::Cooldown").unwrap()["cooldown"]["elapsed"], json!(0.5));
+    // An edit writes the fields that changed into the level, inside `Timer { .. }`.
+    let after = json!({ "elapsed": 0.0, "duration": 3.0, "times_finished_this_tick": 0, "mode": "Repeating", "paused": true, "finished": false });
+    let before = json!({ "elapsed": 0.0, "duration": 2.0, "times_finished_this_tick": 0, "mode": "Repeating", "paused": false, "finished": false });
+    bevy_ts_levels::write_from(app.world_mut(), 7, e, "enemies::Cooldown", "cooldown", Some(before), after).unwrap();
+    settle(&mut app);
+    for _ in 0..50 {
+        app.update();
+    }
+    let text = std::fs::read_to_string(dir.join("assets/levels/tower.bsn")).unwrap();
+    assert!(text.contains("cooldown: Timer {") && text.contains("duration: 3.0") && text.contains("paused: true") && text.contains("mode: Repeating"), "{text}");
+    // Read back from the written file.
+    let t = &read_ts(&app, e, "enemies::Cooldown").unwrap()["cooldown"];
+    assert_eq!((t["duration"].as_f64(), t["paused"].as_bool()), (Some(3.0), Some(true)), "{t}\n{text}");
+}

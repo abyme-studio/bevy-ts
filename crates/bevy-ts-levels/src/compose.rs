@@ -942,6 +942,28 @@ fn convert(ctx: &FileCtx, field: &str, v: &syntax::Value, ty: &ValueType, base: 
         }
         FieldType::Entity => return Err(ctx.err("entity fields cannot be set from a level", v.span)),
         FieldType::Array { .. } => return Err(ctx.err("list values are not supported in .bsn files", v.span)),
+        // `Timer { duration: 2.0, mode: Repeating }`: its fields over `base`, the rest zero.
+        FieldType::Timer | FieldType::Stopwatch => {
+            let (layout, name) = (ty.fields().expect("a struct"), ty.ts_name());
+            let ValueKind::Type(p) = &v.kind else { return Err(ctx.err(format!("expected a {name}"), v.span)) };
+            let mut out = match base {
+                Value::Object(o) => o.clone(),
+                _ => serde_json::Map::new(),
+            };
+            match &p.fields {
+                Fields::Unit => {}
+                Fields::Named { fields, .. } => {
+                    for f in fields {
+                        let sub = layout.field(&f.name).ok_or_else(|| ctx.err(format!("{name} has no field {}", f.name), f.name_span))?;
+                        let at = format!("{field}.{}", f.name);
+                        let below = out.get(&f.name).cloned().unwrap_or(Value::Null);
+                        out.insert(f.name.clone(), convert(ctx, &at, &f.value, &ValueType::Field(sub.ty.clone()), &below)?);
+                    }
+                }
+                Fields::Tuple { .. } => return Err(ctx.err(format!("{name} takes named fields: {name} {{ duration: 2.0 }}"), p.span)),
+            }
+            Value::Object(out)
+        }
     };
     let mut scratch = vec![0u8; ty.size()];
     bevy_ts::value::encode_field(field, ty, &out, &mut scratch).map_err(|e| ctx.err(e.to_string(), v.span))?;

@@ -40,7 +40,7 @@ test tools). A Time-only write path. Reflecting Bevy's own `Timer` into TS colum
 | `Stopwatch` `new`, `tick`, `elapsed`, `elapsed_secs`, `pause`, `unpause`, `is_paused`, `reset`, `set_elapsed` | 1 | field type | `time.rs::stopwatch_pauses` |
 | Timer layout | 1 | 24 bytes, align 8 | `layout.rs::timer_and_stopwatch_layouts` |
 | Timer field in protocol, inspector, `.bsn` | 1 | struct of its fields | `levels_protocol.rs::timer_field_round_trips` |
-| Read-only timer has no methods | 1 | types | `typescript.rs::read_timer_has_no_tick` |
+| Read-only timer has no methods | 1 | types | `packages/bevy-ts/test/time.ts::readTimerHasNoTick` |
 | `Time<Virtual>` `pause`, `unpause`, `toggle`, `set_relative_speed`, `set_max_delta` | 2 | `ResMut<Time<Virtual>>` methods | stage 2's tests |
 | `Time<Fixed>` `set_timestep`, `set_timestep_seconds`, `set_timestep_hz`, `discard_overstep` | 2 | `ResMut<Time<Fixed>>` methods | stage 2's tests |
 | `on_timer`, `on_real_timer` | 3 | `onTimer`, `onRealTimer` | stage 3's tests |

@@ -405,7 +405,10 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
         resolution.components.insert(n.type_path.clone(), r.clone());
         resolution.components.insert(n.ts_name.clone(), r);
     }
-    resolution.components.insert(systems::TIME.into(), ResolvedComponent { id: u32::MAX, layout: systems::time_layout(), raw_writes: true });
+    for clock in systems::Clock::ALL {
+        let layout = systems::time_layout(clock).clone();
+        resolution.components.insert(clock.resource().into(), ResolvedComponent { id: u32::MAX, layout, raw_writes: true });
+    }
     for (name, op) in kinds.all() {
         resolution.command_kinds.insert(name.to_string(), op);
     }

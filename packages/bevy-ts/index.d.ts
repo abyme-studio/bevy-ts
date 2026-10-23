@@ -14,7 +14,7 @@
 
 export type FieldKind =
   | "f32" | "f64" | "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "bool" | "vec2" | "vec3" | "vec4" | "quat" | "entity" | "enum"
-  | "array";
+  | "array" | "timer" | "stopwatch";
 
 export interface Field<K extends FieldKind, E extends string = never> {
   readonly kind: K;
@@ -105,9 +105,64 @@ export type Vec4 = Quat;
 /** A vector prop or initial value: a tuple or a vector. */
 export type Vec3Like = readonly [number, number, number] | ReadonlyVec3;
 
+// ---------- Timer and Stopwatch: Bevy's, ported; every Duration in seconds ----------
+
+/** Bevy's `TimerMode`. */
+export type TimerMode = "Once" | "Repeating";
+/** A timer as a read view sees it: Bevy's getters. */
+export interface ReadonlyTimer {
+  readonly elapsed: f64;
+  readonly elapsed_secs: f32;
+  readonly duration: f64;
+  readonly mode: TimerMode;
+  readonly is_paused: boolean;
+  readonly is_finished: boolean;
+  readonly just_finished: boolean;
+  readonly times_finished_this_tick: u32;
+  readonly remaining: f64;
+  readonly remaining_secs: f32;
+  readonly fraction: f32;
+  readonly fraction_remaining: f32;
+}
+/** Bevy's `Timer`, a field of a component, resource or `Local`: `cooldown = Timer.fromSeconds(2, "Repeating")`. */
+export interface Timer extends ReadonlyTimer {
+  /** Advances by `seconds`; returns the timer, as Bevy's `tick` does. */
+  tick(seconds: number): this;
+  pause(): void;
+  unpause(): void;
+  reset(): void;
+  finish(): void;
+  almostFinish(): void;
+  setElapsed(seconds: number): void;
+  setDuration(seconds: number): void;
+  setMode(mode: TimerMode): void;
+}
+export declare const Timer: Field<"timer"> & {
+  /** Bevy's `Timer::from_seconds`: `seconds` as an `f32`. */
+  fromSeconds(seconds: number, mode: TimerMode): Timer;
+  /** Bevy's `Timer::new`. */
+  "new"(seconds: number, mode: TimerMode): Timer;
+};
+/** A stopwatch as a read view sees it. */
+export interface ReadonlyStopwatch {
+  readonly elapsed: f64;
+  readonly elapsed_secs: f32;
+  readonly is_paused: boolean;
+}
+/** Bevy's `Stopwatch`: `watch = Stopwatch.new()`. */
+export interface Stopwatch extends ReadonlyStopwatch {
+  tick(seconds: number): this;
+  pause(): void;
+  unpause(): void;
+  reset(): void;
+  setElapsed(seconds: number): void;
+}
+export declare const Stopwatch: Field<"stopwatch"> & { "new"(): Stopwatch };
+
 /** Read access: every field readonly, vectors without mutating methods. */
 export type ReadView<T> = {
-  readonly [K in keyof T as K extends symbol ? never : K]: T[K] extends Vec3 ? ReadonlyVec3 : T[K] extends Quat ? ReadonlyQuat : T[K];
+  readonly [K in keyof T as K extends symbol ? never : K]: T[K] extends Vec3 ? ReadonlyVec3 : T[K] extends Quat ? ReadonlyQuat
+    : T[K] extends Timer ? ReadonlyTimer : T[K] extends Stopwatch ? ReadonlyStopwatch : T[K];
 };
 /** Initial values, as Rust's `Health { hp: 3.0, ..default() }`: vectors take a tuple or a vector. */
 export type Init<T> = {
@@ -385,7 +440,7 @@ export declare function query<const Ds extends readonly unknown[]>(...data: Ds):
 export declare function res<R extends abstract new (...a: never) => unknown>(r: R): ReadView<InstanceType<R>>;
 export declare function resMut<R extends abstract new (...a: never) => unknown>(r: R): InstanceType<R>;
 export declare function commands(): Commands;
-export declare function local<const S extends Schema>(fields: S): { -readonly [K in keyof S]: S[K] extends Field<"vec2" | "vec3"> ? Vec3 : S[K] extends Field<"quat"> ? Quat : S[K] extends Field<"bool"> ? boolean : number };
+export declare function local<const S extends Schema>(fields: S): { -readonly [K in keyof S]: S[K] extends Field<"vec2" | "vec3"> ? Vec3 : S[K] extends Field<"quat"> ? Quat : S[K] extends Field<"bool"> ? boolean : S[K] extends Field<"timer"> ? Timer : S[K] extends Field<"stopwatch"> ? Stopwatch : number };
 
 // ---------- Rust types bevy-ts ships typed ----------
 
@@ -396,15 +451,44 @@ export declare class Transform extends Component {
   declare readonly rotation: Quat;
   declare readonly scale: Vec3;
 }
-/** Bevy's `Time`, its own field names (the fixed step in `FixedUpdate`); its `Duration` fields are not visible. */
-export declare class Time extends Resource {
-  static readonly path: "bevy_time::Time";
-  declare readonly delta_secs: f32;
-  declare readonly elapsed_secs: f32;
-  declare readonly delta_secs_f64: f64;
-  declare readonly elapsed_secs_f64: f64;
+/** Bevy's clock markers: `Res<Time<Real>>`, `Res<Time<Virtual>>`, `Res<Time<Fixed>>`. */
+export declare class Real { private readonly clock: "Real" }
+export declare class Virtual { private readonly clock: "Virtual" }
+export declare class Fixed { private readonly clock: "Fixed" }
+/** What every clock reads: Bevy's getters, every `Duration` in seconds. */
+export interface ClockView {
+  readonly delta_secs: f32;
+  readonly elapsed_secs: f32;
+  readonly elapsed_secs_wrapped: f32;
+  readonly delta_secs_f64: f64;
+  readonly elapsed_secs_f64: f64;
+  readonly elapsed_secs_wrapped_f64: f64;
+  readonly wrap_period: f64;
 }
-
+/** `Time<Virtual>`: the game clock. Read-only from TS until clock writes land (docs/time.md). */
+export interface VirtualClockView extends ClockView {
+  readonly is_paused: boolean;
+  readonly was_paused: boolean;
+  readonly relative_speed: f32;
+  readonly relative_speed_f64: f64;
+  readonly effective_speed: f32;
+  readonly effective_speed_f64: f64;
+  readonly max_delta: f64;
+}
+/** `Time<Fixed>`: the fixed-step clock. */
+export interface FixedClockView extends ClockView {
+  readonly timestep: f64;
+  readonly overstep: f64;
+  readonly overstep_fraction: f32;
+  readonly overstep_fraction_f64: f64;
+}
+/**
+ * Bevy's `Time<C>`, a read-only view built per run. `Time` alone is `Time<()>`: the virtual clock
+ * in `Update`, the fixed one in `FixedUpdate`. `Time<Real>`'s `Instant`s are not visible.
+ */
+export type Time<C extends Real | Virtual | Fixed | void = void> = Resource &
+  ([C] extends [Virtual] ? VirtualClockView : [C] extends [Fixed] ? FixedClockView : ClockView);
+export declare const Time: (abstract new () => Time) & { readonly path: "bevy_time::Time" };
 // ---------- App and plugins ----------
 
 export interface App {

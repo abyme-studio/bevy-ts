@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.25.0";
+pub const VERSION: &str = "1.26.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1185,7 +1185,7 @@ pub struct FieldRoutes {
     pub scale: EditRoute,
     pub translation: EditRoute,
 }
-///`FieldType`
+///A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct FieldType {
     pub kind: FieldTypeKind,
@@ -1242,6 +1242,10 @@ pub enum FieldTypeKind {
     Enum,
     #[serde(rename = "array")]
     Array,
+    #[serde(rename = "timer")]
+    Timer,
+    #[serde(rename = "stopwatch")]
+    Stopwatch,
 }
 impl ::std::fmt::Display for FieldTypeKind {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -1262,6 +1266,8 @@ impl ::std::fmt::Display for FieldTypeKind {
             Self::Entity => f.write_str("entity"),
             Self::Enum => f.write_str("enum"),
             Self::Array => f.write_str("array"),
+            Self::Timer => f.write_str("timer"),
+            Self::Stopwatch => f.write_str("stopwatch"),
         }
     }
 }
@@ -1287,6 +1293,8 @@ impl ::std::str::FromStr for FieldTypeKind {
             "entity" => Ok(Self::Entity),
             "enum" => Ok(Self::Enum),
             "array" => Ok(Self::Array),
+            "timer" => Ok(Self::Timer),
+            "stopwatch" => Ok(Self::Stopwatch),
             _ => Err("invalid value".into()),
         }
     }

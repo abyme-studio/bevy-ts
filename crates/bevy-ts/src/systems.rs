@@ -21,16 +21,160 @@ use std::time::Instant;
 // JS stores ticks as u32 straight into Bevy's tick column.
 const _: () = assert!(size_of::<Tick>() == 4 && align_of::<Tick>() == 4);
 
-/// The resource name `Res<Time>` takes, and its computed layout.
+/// The resource name `Res<Time>` takes; each clock's is `Time<Real>`, `Time<Virtual>`, `Time<Fixed>`.
 pub const TIME: &str = "Time";
 
-pub fn time_layout() -> ComponentLayout {
-    ComponentLayout::c_layout([
-        ("delta_secs", &FieldType::F32),
-        ("elapsed_secs", &FieldType::F32),
-        ("delta_secs_f64", &FieldType::F64),
-        ("elapsed_secs_f64", &FieldType::F64),
-    ])
+/// Which of Bevy's clocks a `Res<Time<C>>` reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Clock {
+    /// `Time` (`Time<()>`): the virtual clock in `Update`, the fixed one in `FixedUpdate`.
+    Generic,
+    Real,
+    Virtual,
+    Fixed,
+}
+
+impl Clock {
+    pub const ALL: [Clock; 4] = [Clock::Generic, Clock::Real, Clock::Virtual, Clock::Fixed];
+
+    /// The resource name the clock resolves under.
+    pub fn resource(self) -> &'static str {
+        match self {
+            Clock::Generic => TIME,
+            Clock::Real => "Time<Real>",
+            Clock::Virtual => "Time<Virtual>",
+            Clock::Fixed => "Time<Fixed>",
+        }
+    }
+
+    /// The clock a resource name stands for: `Time`, `Time<C>` or a `bevy_time::time::Time<..>`
+    /// path. `None` for a name that is not Time; an error for a context no clock has.
+    pub fn of(name: &str) -> Option<Result<Clock, String>> {
+        let (head, ctx) = match name.split_once('<') {
+            Some((h, rest)) => (h.trim(), Some(rest.strip_suffix('>').unwrap_or(rest).trim())),
+            None => (name, None),
+        };
+        if !matches!(head, "Time" | "bevy_time::Time" | "bevy_time::time::Time" | "bevy::time::Time" | "bevy::prelude::Time") {
+            return None;
+        }
+        let ctx = ctx.map(|c| c.rsplit("::").next().unwrap_or(c));
+        Some(match ctx {
+            None | Some("()") => Ok(Clock::Generic),
+            Some("Real") => Ok(Clock::Real),
+            Some("Virtual") => Ok(Clock::Virtual),
+            Some("Fixed") => Ok(Clock::Fixed),
+            Some(c) => Err(format!("{name}: Time has no clock {c}; use Time, Time<Real>, Time<Virtual> or Time<Fixed>")),
+        })
+    }
+}
+
+/// A clock's view: every clock's fields first (`Res<Time>`'s four at their old offsets), then
+/// its own. Bevy's getter names; every `Duration` in seconds.
+pub fn time_layout(clock: Clock) -> &'static ComponentLayout {
+    static LAYOUTS: std::sync::LazyLock<[ComponentLayout; 4]> = std::sync::LazyLock::new(|| {
+        let common: [(&str, FieldType); 7] = [
+            ("delta_secs", FieldType::F32),
+            ("elapsed_secs", FieldType::F32),
+            ("delta_secs_f64", FieldType::F64),
+            ("elapsed_secs_f64", FieldType::F64),
+            ("elapsed_secs_wrapped_f64", FieldType::F64),
+            ("wrap_period", FieldType::F64),
+            ("elapsed_secs_wrapped", FieldType::F32),
+        ];
+        let virt: [(&str, FieldType); 7] = [
+            ("is_paused", FieldType::Bool),
+            ("was_paused", FieldType::Bool),
+            ("relative_speed", FieldType::F32),
+            ("effective_speed", FieldType::F32),
+            ("relative_speed_f64", FieldType::F64),
+            ("effective_speed_f64", FieldType::F64),
+            ("max_delta", FieldType::F64),
+        ];
+        let fixed: [(&str, FieldType); 4] =
+            [("overstep_fraction", FieldType::F32), ("timestep", FieldType::F64), ("overstep", FieldType::F64), ("overstep_fraction_f64", FieldType::F64)];
+        let layout = |own: &[(&str, FieldType)]| ComponentLayout::c_layout(common.iter().chain(own).map(|(n, t)| (*n, t)));
+        [layout(&[]), layout(&[]), layout(&virt), layout(&fixed)]
+    });
+    &LAYOUTS[clock as usize]
+}
+
+/// One scalar of a clock's view, in layout order.
+#[derive(Clone, Copy)]
+enum TimeValue {
+    F32(f32),
+    F64(f64),
+    Bool(bool),
+}
+
+/// Appends a clock's view, read from the world with Bevy's getters, as little-endian words.
+fn push_time(world: &World, clock: Clock, out: &mut Vec<u64>) {
+    use bevy::time::{Fixed, Real, Virtual};
+    use TimeValue::*;
+    fn common<T: Default>(t: Option<&Time<T>>) -> [TimeValue; 7] {
+        let Some(t) = t else { return [F32(0.0), F32(0.0), F64(0.0), F64(0.0), F64(0.0), F64(0.0), F32(0.0)] };
+        [
+            F32(t.delta_secs()),
+            F32(t.elapsed_secs()),
+            F64(t.delta_secs_f64()),
+            F64(t.elapsed_secs_f64()),
+            F64(t.elapsed_secs_wrapped_f64()),
+            F64(t.wrap_period().as_secs_f64()),
+            F32(t.elapsed_secs_wrapped()),
+        ]
+    }
+    let mut values = [F32(0.0); 18];
+    let n = match clock {
+        Clock::Generic => {
+            values[..7].copy_from_slice(&common(world.get_resource::<Time>()));
+            7
+        }
+        Clock::Real => {
+            values[..7].copy_from_slice(&common(world.get_resource::<Time<Real>>()));
+            7
+        }
+        Clock::Virtual => {
+            let t = world.get_resource::<Time<Virtual>>();
+            values[..7].copy_from_slice(&common(t));
+            if let Some(t) = t {
+                values[7..14].copy_from_slice(&[
+                    Bool(t.is_paused()),
+                    Bool(t.was_paused()),
+                    F32(t.relative_speed()),
+                    F32(t.effective_speed()),
+                    F64(t.relative_speed_f64()),
+                    F64(t.effective_speed_f64()),
+                    F64(t.max_delta().as_secs_f64()),
+                ]);
+            }
+            14
+        }
+        Clock::Fixed => {
+            let t = world.get_resource::<Time<Fixed>>();
+            values[..7].copy_from_slice(&common(t));
+            if let Some(t) = t {
+                values[7..11].copy_from_slice(&[
+                    F32(t.overstep_fraction()),
+                    F64(t.timestep().as_secs_f64()),
+                    F64(t.overstep().as_secs_f64()),
+                    F64(t.overstep_fraction_f64()),
+                ]);
+            }
+            11
+        }
+    };
+    let layout = time_layout(clock);
+    debug_assert_eq!(layout.fields.len(), n);
+    let mut bytes = [0u8; 128];
+    for (f, v) in layout.fields.iter().zip(&values[..n]) {
+        let at = &mut bytes[f.offset..];
+        match *v {
+            F32(x) => at[..4].copy_from_slice(&x.to_le_bytes()),
+            F64(x) => at[..8].copy_from_slice(&x.to_le_bytes()),
+            Bool(x) => at[0] = x as u8,
+        }
+    }
+    let (words, _) = bytes[..layout.size].as_chunks::<8>();
+    out.extend(words.iter().map(|w| u64::from_le_bytes(*w)));
 }
 
 /// One data column of a query.
@@ -55,7 +199,7 @@ pub struct QueryParam {
 pub enum RunParam {
     Query(Box<QueryParam>),
     Res { name: String, id: ComponentId, size: usize, write: bool },
-    Time,
+    Time(Clock),
     /// The nth `Local` of the system.
     Local(usize),
     MessageReader { index: usize },
@@ -446,11 +590,12 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
             ParamDecl::Query { data, filter } => RunParam::Query(Box::new(build_query(world, data, filter, ts).map_err(err)?)),
             ParamDecl::Res { resource } | ParamDecl::ResMut { resource } => {
                 let write = matches!(p, ParamDecl::ResMut { .. });
-                if resource == TIME || resource.ends_with("::Time") {
+                if let Some(clock) = Clock::of(resource) {
+                    let clock = clock.map_err(err)?;
                     if write {
-                        return Err(err("ResMut<Time> is not allowed; Time is read-only from TS".into()));
+                        return Err(err(format!("ResMut<{resource}> is not allowed; clocks are read-only from TS")));
                     }
-                    RunParam::Time
+                    RunParam::Time(clock)
                 } else {
                     let (id, size) = ts(resource).ok_or_else(|| err(format!("no resource named {resource}")))?;
                     RunParam::Res { name: resource.clone(), id, size, write }
@@ -765,13 +910,9 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                         ParamFrame::None
                     }
                 },
-                RunParam::Time => {
-                    // Bevy's field names, `{ delta_secs: f32, elapsed_secs: f32, delta_secs_f64: f64,
-                    // elapsed_secs_f64: f64 }`: three u64 words. The frame is pointed at once
-                    // `scratch.time` stops growing (below).
-                    scratch.time.push((frame.dt as f32).to_bits() as u64 | ((frame.elapsed as f32).to_bits() as u64) << 32);
-                    scratch.time.push(frame.dt.to_bits());
-                    scratch.time.push(frame.elapsed.to_bits());
+                RunParam::Time(clock) => {
+                    // The frame is pointed at once `scratch.time` stops growing (below).
+                    push_time(world, *clock, &mut scratch.time);
                     ParamFrame::None
                 }
                 RunParam::Local(i) => {
@@ -802,11 +943,12 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
         const _: () = assert!(cfg!(target_endian = "little"));
         let mut t = 0;
         for (p, f) in sys.params.iter().zip(frames.iter_mut()) {
-            if matches!(p, RunParam::Time) {
-                // SAFETY: three words per Time param were pushed above.
-                let data = unsafe { scratch.time.as_mut_ptr().add(t * 3) } as *mut u8;
-                *f = ParamFrame::Row { data, bytes: time_layout().size, ticks: None };
-                t += 1;
+            if let RunParam::Time(clock) = p {
+                let bytes = time_layout(*clock).size;
+                // SAFETY: `bytes / 8` words per Time param were pushed above, in this order.
+                let data = unsafe { scratch.time.as_mut_ptr().add(t) } as *mut u8;
+                *f = ParamFrame::Row { data, bytes, ticks: None };
+                t += bytes / 8;
             }
         }
     }
