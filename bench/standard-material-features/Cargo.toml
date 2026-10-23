@@ -1,0 +1,17 @@
+[package]
+name = "standard-material-features-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# The cost of Bevy's four PBR texture features, which bevy-ts-tsx turns on so every
+# StandardMaterial field is a <material> prop (standard-material-fields, task 5.1). Plain Bevy:
+# bevy-ts-tsx cannot build with them off, since its props name the fields they gate.
+[features]
+textures = ["bevy/pbr_transmission_textures", "bevy/pbr_specular_textures", "bevy/pbr_multi_layer_material_textures", "bevy/pbr_anisotropy_texture"]
+
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false, features = ["3d", "png"] }
+
+[profile.release]
+debug = false
