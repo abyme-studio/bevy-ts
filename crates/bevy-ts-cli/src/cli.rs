@@ -5,7 +5,7 @@
 
 use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
 use bevy::prelude::*;
-use bevy_ts_tsx::picking::TsxHandlers;
+use bevy_ts_tsx::events::TsxHandlers;
 use bevy_ts::backend::{CompiledModule, ModuleSet};
 use bevy_ts::generation::{DevChannel, DevEvent, DevSource};
 use bevy_ts::runtime::RuntimeInfo;

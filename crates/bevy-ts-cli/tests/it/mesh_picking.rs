@@ -5,7 +5,7 @@ use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
 use bevy::prelude::*;
 use bevy_ts::log::{LogLevel, ScriptLog};
 use bevy_ts_cli::cli::{Display, Engine, base_app};
-use bevy_ts_tsx::picking::TsxHandlers;
+use bevy_ts_tsx::events::TsxHandlers;
 
 fn engine(extra: impl Plugin, mesh_picking: bool) -> App {
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
