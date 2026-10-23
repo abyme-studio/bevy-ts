@@ -287,6 +287,9 @@ const processes = {
   // Change reflect-coverage stages 1 and 2 (build-shapes): one cargo step at a time in the shared check
   // slot. The step is target/shapes-step.sh, written before each start; its log is target/shapes.log.
   "shapes-step": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:reflect-enums-color -- bash -c 'set -o pipefail; mkdir -p target; bash target/shapes-step.sh 2>&1 | grep -v ld64 > target/shapes.log; echo step exit $? >> target/shapes.log; tail -3 target/shapes.log'" },
+  // reflect-coverage stage 3 (build-reads): its crates' build and tests, one step at a time, in
+  // the shared slot. The step is target/reads-step.sh, written before each start; its log is target/reads.log.
+  "reads-step": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:reflect-enums-color -- bash -c 'set -o pipefail; mkdir -p target; bash target/reads-step.sh 2>&1 | grep -v ld64 > target/reads.log; echo step exit $? >> target/reads.log; tail -3 target/reads.log'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
