@@ -43,8 +43,9 @@ add`, then it acts on land's event (`landed`, `conflict`, or `red` with the chec
 still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
 
 - **Crates.** A changed crate brings every workspace crate that depends on it, through any kind of
-  dependency (`cargo metadata`). Clippy and `cargo test -p` run on that set. A change to `bevy-ts`
-  reaches nearly every crate, from the graph alone.
+  dependency (`cargo metadata`). Clippy and `cargo test -p` run on that set. A crate's integration
+  tests are one binary (`tests/it`, docs/build-cache.md), so the crate is the unit: the gate selects
+  no test files. A change to `bevy-ts` reaches nearly every crate, from the graph alone.
 - **Steps.** Each runs only when its paths changed: deno for `crates/bevy-ts-v8/js/`; npm for
   `packages/`, `examples/` or the cli; the protocol check for the generator, its outputs and the
   package's lockfile; bevy-ts/bevy for the cli; openspec for `openspec/`. The two deno tests take minutes,
@@ -52,9 +53,10 @@ still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
   every script, `affected-gate.test.ts` for the gate and its test; both under `--full`.
   `examples/` also brings the crates whose tests run them.
 - **Scripts.** A script runs its own step and `slot.test.ts`, not everything: `gen-protocol.sh` the
-  protocol check, `gen-bevy-types.sh` bevy-ts/bevy, `affected-gate.sh` and `native-gate.sh` the gate's
-  test. Benches, other teams' gates and the release's scripts (`npm-*`, `pack-npm.sh`) run no
-  gate step, so `slot.test.ts` alone. A script no rule names runs everything.
+  protocol check, `gen-bevy-types.sh` bevy-ts/bevy, `affected-gate.sh` and `native-gate.sh` the
+  gate's test. Benches (`target-bench.sh` among them), other teams' gates and the release's scripts
+  (`npm-*`, `pack-npm.sh`) run no gate step, so `slot.test.ts` alone. A script no rule names runs
+  everything.
 - **Nothing** for `docs/`, `README.md`, `.claude/`, `.github/`, `.gitignore`, `bench/` and the rest of
   `.abyme/`.
 - **Everything** for `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, `.cargo/`, `protocol/`, and

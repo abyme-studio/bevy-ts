@@ -38,7 +38,7 @@ claim() {
     scripts/gen-protocol.sh) want protocol slot; return ;;
     scripts/gen-bevy-types.sh) want bevy slot; return ;;
     # Benches, other teams' gates and the release's scripts: no gate step runs them.
-    scripts/animation-bench.sh | scripts/preview-bench.sh | scripts/sccache-bench.sh | scripts/levels-gate.sh \
+    scripts/animation-bench.sh | scripts/preview-bench.sh | scripts/sccache-bench.sh | scripts/target-bench.sh | scripts/levels-gate.sh \
       | scripts/systems-gate.sh | scripts/viewport-gate.sh | scripts/npm-await.sh | scripts/npm-lib.sh \
       | scripts/npm-publish.sh | scripts/pack-npm.sh) want slot; return ;;
     scripts/*.sh) want slot; full=$f; return ;;
