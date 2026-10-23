@@ -198,7 +198,7 @@ pub fn write_gltf(path: &std::path::Path, animations: &[&str]) {
 
 /// A fresh asset root under the temp dir with `models/`.
 pub fn asset_root(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join("bevy-ts-viewport-preview").join(name);
+    let dir = std::env::temp_dir().join("bevy-ts-viewport-preview").join(format!("{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("models")).unwrap();
     dir
