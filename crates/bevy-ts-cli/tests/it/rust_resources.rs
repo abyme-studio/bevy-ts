@@ -43,7 +43,7 @@ mod b {
 
 const HEAD: &str = r#"import { app, f32, nativeResource, Transform, u32, Update } from "bevy-ts";
 import type { Local, Option, Res, ResMut } from "bevy-ts";
-export class UiScale extends nativeResource("UiScale", { 0: f32 }) {}
+export class UiScale extends nativeResource("UiScale", { value: f32 }) {}
 export class ClearColor extends nativeResource("ClearColor", { v: f32 }) {}
 export class Seed extends nativeResource("Seed", { v: u32 }) {}
 export class Gust extends nativeResource("Gust", { v: f32 }) {}
@@ -107,7 +107,7 @@ app.addSystems(Update, dim);
 fn a_read_of_a_bevy_resource_does_not_move_its_tick() {
     let body = r#"
 export function show(scale: Res<UiScale>) {
-  console.log(`scale ${scale[0]}`);
+  console.log(`scale ${scale.value}`);
 }
 app.addSystems(Update, show);
 "#;
@@ -152,7 +152,7 @@ fn unusable_resources_fail_the_load_naming_the_system_and_resource() {
 fn an_absent_resource_fails_the_run_and_an_optional_one_is_undefined() {
     let body = r#"
 export function need(scale: Res<UiScale>) {
-  console.log(`need ${scale[0]}`);
+  console.log(`need ${scale.value}`);
 }
 app.addSystems(Update, need);
 "#;
@@ -165,7 +165,7 @@ app.addSystems(Update, need);
 
     let body = r#"
 export function maybe(scale: Option<Res<UiScale>>) {
-  console.log(`maybe ${scale === undefined ? "absent" : scale[0]}`);
+  console.log(`maybe ${scale === undefined ? "absent" : scale.value}`);
 }
 app.addSystems(Update, maybe);
 "#;
@@ -229,7 +229,7 @@ fn resource_exists_sees_a_rust_resource() {
     let body = r#"
 import { resourceExists, systems } from "bevy-ts";
 export function guarded(scale: Res<UiScale>) {
-  console.log(`guarded ${scale[0]}`);
+  console.log(`guarded ${scale.value}`);
 }
 app.addSystems(Update, systems(guarded).runIf(resourceExists(UiScale)));
 "#;

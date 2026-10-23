@@ -26,7 +26,7 @@ When the resource is absent at run time, `Res<R>` and `ResMut<R>` SHALL fail the
 
 #### Scenario: A Bevy resource read without a write
 - **WHEN** a TS system takes `scale: Res<UiScale>` and the app's `UiScale` is 2
-- **THEN** it reads `scale[0] === 2` (the tuple field's reflected name, `0`) and Bevy's change tick for `UiScale` does not move
+- **THEN** it reads `scale.value === 2` (a newtype's one field is `value`) and Bevy's change tick for `UiScale` does not move
 
 #### Scenario: A reflect-tier resource
 - **WHEN** a TS system takes `Res<ClearColor>`

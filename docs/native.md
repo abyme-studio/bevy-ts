@@ -168,7 +168,7 @@ takes it as Bevy does:
 import { GlobalAmbientLight, UiScale } from "bevy-ts/bevy";
 
 export function dim(ambient: ResMut<GlobalAmbientLight>, scale: Res<UiScale>) {
-  ambient.brightness = 400 * scale[0];
+  ambient.brightness = 400 * scale.value;
 }
 ```
 
