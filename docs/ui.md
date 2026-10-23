@@ -177,7 +177,8 @@ game that wants one styles it.
 There is no `value` prop. The text is Bevy's editor's; writing it from TS would fight the cursor
 and IME state. To clear a field, remount it with a new `key`.
 
-Its events, each with `entity`:
+Its events, each with `entity`, are the field's own: unlike picking events, they do not bubble
+from a descendant.
 
 - `onSubmit({ value })`: Enter went down.
 - `onCancel()`: Escape went down. Bevy has already cleared `InputFocus`.
