@@ -29,9 +29,11 @@ want() { for s in "$@"; do [[ $steps == *" $s "* ]] || steps+="$s "; done; }
 claim() {
   local f=$1 name dir
   case $f in
-    Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/* | scripts/* | protocol/*) full=$f; return ;;
-    docs/* | README.md | .claude/* | .github/* | .gitignore | bench/*) return ;;
-    .abyme/*) want scripts; return ;;
+    # The scripts' tests take minutes: only a change to what they test runs them.
+    scripts/*) want scripts; full=$f; return ;;
+    Cargo.toml | Cargo.lock | rust-toolchain* | .cargo/* | protocol/*) full=$f; return ;;
+    .abyme/processes.ts) want scripts; return ;;
+    docs/* | README.md | .claude/* | .github/* | .gitignore | bench/* | .abyme/*) return ;;
     openspec/*) want openspec; return ;;
     examples/*) seeds+=(bevy-ts-cli bevy-ts-animation bevy-ts-levels bevy-ts-viewport); want npm; return ;;
   esac
@@ -52,13 +54,13 @@ if [[ -z $full ]]; then
   base=${LAND_BASE:-$(git merge-base main HEAD)} || cannot "no merge base with main"
   while IFS= read -r f; do
     [[ -n $f ]] && claim "$f"
-    [[ -n $full ]] && break
   done < <(git diff --name-only "$base"; git ls-files --others --exclude-standard)
 fi
 
 if [[ -n $full ]]; then
   crates=$(cut -f1 <<<"$members" | tr '\n' ' ')
-  steps=" clippy test deno npm protocol bevy openspec scripts "
+  [[ $full == --full || $steps == *" scripts "* ]] && scripts=scripts || scripts=""
+  steps=" clippy test deno npm protocol bevy openspec ${scripts:+scripts }"
 else
   # The seeds and every workspace crate that depends on one, to a fixed point.
   crates=$(jq -r --args '

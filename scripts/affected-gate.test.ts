@@ -51,7 +51,7 @@ async function plan(paths: string[], env: Record<string, string> = {}) {
 }
 
 const all = "crates a b c d bevy-ts-cli";
-const every = "steps clippy test deno npm protocol bevy openspec scripts";
+const every = "steps clippy test deno npm protocol bevy openspec";
 
 Deno.test("a crate brings every workspace crate that depends on it", async () => {
   assertEquals(await plan(["crates/b/src/lib.rs"]), ["crates b c", "steps clippy test"]);
@@ -65,13 +65,19 @@ Deno.test("a crate the cli depends on brings the npm and bevy-ts/bevy steps", as
 Deno.test("a path a step claims runs only that step", async () => {
   assertEquals(await plan(["openspec/specs/x/spec.md"]), ["crates", "steps openspec"]);
   assertEquals(await plan([".abyme/processes.ts"]), ["crates", "steps scripts"]);
-  assertEquals(await plan(["docs/x.md", "README.md"]), ["crates", "steps"]);
+  assertEquals(await plan(["docs/x.md", "README.md", ".abyme/land.ts"]), ["crates", "steps"]);
 });
 
 Deno.test("a shared root or a path no step claims runs everything", async () => {
-  for (const p of ["Cargo.lock", "scripts/x.sh", "protocol/x.json", ".cargo/config.toml", "elsewhere/x"]) {
+  for (const p of ["Cargo.lock", "protocol/x.json", ".cargo/config.toml", "elsewhere/x"]) {
     assertEquals(await plan([p]), [`full ${p}`, all, every], p);
   }
+  // The scripts' tests only when the change touches scripts/ or the processes.
+  assertEquals(await plan(["scripts/x.sh"]), ["full scripts/x.sh", all, `${every} scripts`]);
+  assertEquals(await plan(["Cargo.lock", ".abyme/processes.ts"]), ["full Cargo.lock", all, `${every} scripts`]);
+  // --full, native-gate's daily run on main, runs them always.
+  const dir = await fixture();
+  assertEquals((await sh(dir, "scripts/affected-gate.sh --full --plan")).split("\n"), ["full --full", all, `${every} scripts`]);
 });
 
 Deno.test("LAND_BASE sets what the change is measured from", async () => {

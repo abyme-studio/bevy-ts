@@ -47,9 +47,11 @@ still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
   reaches nearly every crate, from the graph alone.
 - **Steps.** Each runs only when its paths changed: deno for `crates/bevy-ts-v8/js/`; npm for
   `packages/`, `examples/` or the cli; the protocol check for the generator, its outputs and the
-  package's lockfile; bevy-ts/bevy for the cli; openspec for `openspec/`; the scripts' tests for
-  `.abyme/`. `examples/` also brings the crates whose tests run them.
-- **Nothing** for `docs/`, `README.md`, `.claude/`, `.github/`, `.gitignore` and `bench/`.
+  package's lockfile; bevy-ts/bevy for the cli; openspec for `openspec/`; the scripts' tests
+  (3-6 minutes) for `scripts/` and `.abyme/processes.ts` only, and always under `--full`.
+  `examples/` also brings the crates whose tests run them.
+- **Nothing** for `docs/`, `README.md`, `.claude/`, `.github/`, `.gitignore`, `bench/` and the rest of
+  `.abyme/`.
 - **Everything** for `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, `.cargo/`, `scripts/`,
   `protocol/`, and any path no rule claims. `--full` forces it: `scripts/native-gate.sh` is that.
 
