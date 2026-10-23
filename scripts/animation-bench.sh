@@ -2,8 +2,10 @@
 # Change scene-animation, task 6: arms A, B and C at each N, RUNS runs each, one release engine per
 # run, rows appended to target/animation-bench.md.
 # scripts/animation-bench.sh [runs] [N ...]   (defaults: 3 runs, N = 50 100 200; ARMS="A B C D" adds the diagnostic arm)
+source "$(dirname "$0")/slot.sh"
 set -uo pipefail
 cd "$(dirname "$0")/.."
+mkdir -p target
 runs=${1:-3}
 shift || true
 ns=("$@")
