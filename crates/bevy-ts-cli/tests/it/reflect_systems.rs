@@ -1,7 +1,7 @@
 //! Reflect-tier rows and layout-tier holes in TS systems (reflect-coverage stage 3), through V8:
 //! the changed-tick cache, the binary codec on a miss, and writes through `reflect_value::write`.
 
-mod common;
+use crate::common;
 
 use bevy::camera::{PerspectiveProjection, Projection};
 use bevy::prelude::*;
