@@ -70,7 +70,7 @@ pub(crate) fn uses_assets(nodes: &[desc::NodeDesc]) -> Option<Option<bevy_ts::ba
 }
 
 /// A `<material>` texture is an asset path, which needs an `AssetServer` to load.
-fn textures_without_server(nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
+pub(crate) fn textures_without_server(nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
     for n in nodes {
         for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::MATERIAL && !c.props.contains_key("kind")) {
             let Ok(p) = serde_json::from_value::<intrinsics::MaterialProps>(serde_json::Value::Object(c.props.clone())) else { continue };

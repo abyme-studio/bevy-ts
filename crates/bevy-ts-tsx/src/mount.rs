@@ -54,6 +54,13 @@ pub fn mount(world: &mut World, bytes: &[u8]) -> Result<(), String> {
     if !crate::intrinsics::available(world) && crate::uses_assets(&op.nodes).is_some() {
         return Err("<mesh> and <material> need the render plugins (no Assets<Mesh>)".into());
     }
+    if !world.contains_resource::<AssetServer>() {
+        let mut errors = Vec::new();
+        crate::textures_without_server(&op.nodes, &mut errors);
+        if let Some(e) = errors.into_iter().next() {
+            return Err(e.to_string());
+        }
+    }
     // Under a parent, keys are scoped to it, so two parents may each mount an `e9`.
     let prefix: Vec<String> = parent.map(|p| vec![format!("@{}", p.to_bits())]).unwrap_or_default();
     let types: Vec<String> = prefix.iter().map(|_| "parent".to_string()).collect();

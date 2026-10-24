@@ -181,8 +181,8 @@ leaves what the other still asks.
 
 ## Standard materials
 
-`<material>` without `kind` is Bevy's `StandardMaterial`. Every field is a prop, under its Bevy
-name in camelCase, except two that keep their shorter names: `color` is `base_color` and
+`<material>` without `kind` is Bevy's `StandardMaterial`. Every field but the 18 blocked below is a
+prop, under its Bevy name in camelCase, two of them under shorter names: `color` is `base_color` and
 `roughness` is `perceptual_roughness`. An unset prop keeps `StandardMaterial::default()`. Equal
 props share one material.
 
@@ -233,7 +233,7 @@ to the defaults rejects every standard material, glTF ones included. Without the
 [bench/standard-material-features/results](../bench/standard-material-features/results/README.md).
 `crates/bevy-ts-cli/tests/it/standard_material_limits.rs` checks the pipeline fits the defaults.
 Related upstream: [bevyengine/bevy#26028](https://github.com/bevyengine/bevy/issues/26028) (PCSS
-passes the same limit). TODO: link the upstream issue for these features once filed.
+passes the same limit). No upstream issue names these features yet (TODO: link it once filed).
 
 | Field | Feature |
 |---|---|
