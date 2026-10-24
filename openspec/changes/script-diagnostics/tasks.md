@@ -3,8 +3,8 @@ All cargo runs through gate-slot. New tests are modules of their crate's one tes
 
 ## 1. Strings across exports
 
-- [ ] 1.1 `crates/bevy-ts/src/host.rs`: `Kind::Str` (argument) and a `String` result kind; `HostValue`-like impls for `&str`, `Option<&str>`, `String`, `Option<String>`; a result byte arena beside the slot result; a string argument counts toward `MAX_SLICES`
-- [ ] 1.2 `glue`: encode a string argument with `encodeInto` into a growable scratch `Uint8Array`; decode a string result; `declaration` types them `string` / `string | undefined`
+- [ ] 1.1 `crates/bevy-ts/src/host.rs`: `Kind::Str`; `HostValue` for `String` (so `Option<String>`), `&str` and `Option<&str>` through the derive; a string is its UTF-8 length then its bytes in the slots (design decision 3)
+- [ ] 1.2 `glue`: `H.str` encodes a string argument into the slots, `H.text` decodes a result; `declaration` types them `string` / `string | undefined`
 - [ ] 1.3 `crates/bevy-ts-native-derive`: accept `&str` arguments and `String` results; `HostRecord` with a `String` field fails to compile naming the field (a `compile_fail` doc test)
 - [ ] 1.4 Tests in `crates/bevy-ts/src/host.rs` unit tests: round trip of ASCII, non-ASCII and empty strings, `Option` both ways, a string longer than the scratch
 - [ ] 1.5 `docs/native.md`: strings in the list of argument and result types

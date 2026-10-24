@@ -161,3 +161,56 @@ app.addMessage(Bump).addSystems(Update, read);
     let m = messages(&app);
     assert!(m.iter().any(|l| l == "bump Hard 9 42"), "{m:?}");
 }
+
+#[derive(SystemParam)]
+pub struct Words<'w> {
+    ground: Option<Res<'w, Ground>>,
+}
+
+#[export(ts = "Words", module = "bevy-ts/test")]
+impl Words<'_> {
+    /// `word` back with its byte length and a number given after it.
+    pub fn echo(&self, word: &str, n: f32) -> String {
+        let _ = &self.ground;
+        format!("{word}|{}|{n}", word.len())
+    }
+
+    /// `None` in, `None` out.
+    pub fn maybe(&self, word: Option<&str>) -> Option<String> {
+        word.map(|w| w.to_uppercase())
+    }
+}
+
+const WORDS: &str = r#"import { app, Update } from "bevy-ts";
+import type { Words } from "bevy-ts/test";
+
+export function talk(w: Words) {
+  for (const s of ["", "ascii", "naïve 日本 🦀", "x".repeat(300)]) console.log(`echo ${w.echo(s, 7)}`);
+  console.log(`maybe ${w.maybe("loud")} ${w.maybe(null)} ${w.maybe(undefined)}`);
+  let caught = "";
+  try {
+    w.echo("y".repeat(5000), 1);
+  } catch (e) {
+    caught = e.message;
+  }
+  console.log(`too long: ${caught}`);
+}
+
+app.addSystems(Update, talk);
+"#;
+
+#[test]
+fn strings_cross_both_ways() {
+    let dir = project("exported-strings", &[("game.ts", WORDS)]);
+    let mut app = app(&dir.join("game.ts"));
+    app.ts_param::<Words<'static>>();
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    app.update();
+    let m = messages(&app);
+    for want in ["echo |0|7", "echo ascii|5|7", "echo naïve 日本 🦀|18|7", &format!("echo {}|300|7", "x".repeat(300)), "maybe LOUD undefined undefined"] {
+        assert!(m.iter().any(|l| l == want), "{want:?} in {m:?}");
+    }
+    assert!(m.iter().any(|l| l.starts_with("too long: a string argument of 5000 bytes does not fit")), "{m:?}");
+}

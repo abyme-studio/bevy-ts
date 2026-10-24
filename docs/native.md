@@ -330,9 +330,12 @@ A TS system takes it as a parameter and calls it: `rapier.castRay(origin, [0, -1
 system's run; slices are read and written in place, so `castRays` over 1,000 rays is one call.
 Arguments and results are numbers, `bool`, `Entity`, `Vec2`, `Vec3`, `Quat`, `#[derive(HostRecord)]`
 records and fieldless enums (an enum crosses as its variant names, `"Any" | "Visible"`; a record
-that leaves one out gets its first variant), `Option`s of these, and `&[T]` / `&mut [T]` of
-numbers; anything else is a compile error naming the type. A `Result` error, a param that fails
-validation, or a panic throws in JS, naming
+that leaves one out gets its first variant), strings, `Option`s of these, and `&[T]` / `&mut [T]`
+of numbers; anything else is a compile error naming the type. A string argument is `&str`,
+`Option<&str>` or `String`, and a result `String` or `Option<String>`, typed `string` in TS. Each
+call copies it as UTF-8 through the call's 4 KB of slots, so a string argument or result too long
+for them throws; pass long text through a slice. A record field cannot be a string. A `Result`
+error, a param that fails validation, or a panic throws in JS, naming
 the param and method.
 
 ### Params that write
