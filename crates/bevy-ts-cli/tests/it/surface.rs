@@ -258,6 +258,11 @@ fn an_event_field_named_entity_is_refused() {
 }
 
 #[test]
+fn an_event_field_named_original_is_refused() {
+    refuses_event_field("original", r#"export class Hit extends EntityEvent { static path = "game::Hit"; declare original: Entity }"#);
+}
+
+#[test]
 fn an_event_field_named_propagate_is_refused() {
     refuses_event_field("propagate", r#"export class Hit extends EntityEvent { static path = "game::Hit"; declare propagate: f32 }"#);
 }

@@ -22,7 +22,8 @@
 - [ ] 4.3 `commands.entity(e).observe(fn)`: `OP_OBSERVE`, lazy `TsSystem` keyed by `file#name`, remapped on reload, for TS and Rust entity events
 - [ ] 4.4 `index.d.ts`: `EntityCommands.observe`, `On<E>.original`
 - [ ] 4.5 Stage 2: a Rust event field named `entity`, `original`, `propagate` or `toJSON` stays on `On<E>.event` under its reflected name and never hides `On`'s API; generated class documents it; test with a `PointerClick` hop and a test event with a `propagate` field
-- [ ] 4.5a Stage 2: add `original` and `event` to accessor-slot-names' one list of names a TS-declared event may not use (it refuses `entity`, `propagate`, `toJSON` at load), with a test; if the list is not on main yet, ask lead@accessor-slot-names where it lives
+- [x] 4.5a Stage 1: `original` joins accessor-slot-names' `ON_MEMBERS` in `crates/bevy-ts-cli/src/reader.rs`, tested in `surface.rs`
+- [ ] 4.5b Stage 2: `event` joins `ON_MEMBERS` with `on.event`, with a test
 - [ ] 4.7 Stage 2: type `EntityCommands.observe` so tsc refuses an observer whose first param is not an entity event (today `On<never>` lets any function through)
 - [ ] 4.8 Stage 2: a failed reload keeps the attachments `observe` made since the last drain (today `NewTargeted` is dropped before the load), with a test
 - [ ] 4.6 Stage 2: `On<E>.event` for TS-declared events (whole value, `entity` included for an entity event) in both `core.js` copies and `index.d.ts`; test it reads as the direct fields do
