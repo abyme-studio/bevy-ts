@@ -65,7 +65,8 @@ None.
   system), `runtime.rs`, `observers.rs`.
 - Docs: `docs/scripts.md`, `docs/native.md` (the "Parallel systems" row, slots), README's runtime
   sentence, `docs/research/script-threading.md` (lands here).
-- Neighbours, both landing first; this change rebases onto them:
+- Neighbours, both landed (writable-native-params 584b78cf, ecs-schedules stage 1 3d641f44); this
+  change is rebased onto them:
   - ecs-schedules: its lazily-made stages become "add that schedule's systems at commit"; its
     collective `runIf` becomes Bevy's `run_if` on the group's set; its condition state moves to
     the condition systems, kept by identity across reload; `runSchedule`/`runSystem` apply from the

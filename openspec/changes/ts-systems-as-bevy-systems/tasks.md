@@ -1,7 +1,8 @@
 ## 1. Rebase and reconcile
 
-- [ ] 1.1 Rebase onto main after ecs-schedules stage 1 and writable-native-params land; all cargo through `~/dev/abyme/scripts/gate-slot`
-- [ ] 1.2 Rewrite the `ts-systems` delta on the archived "Schedules, ordering and run conditions" text, and add a `ts-schedules` delta replacing "one exclusive system in set `BevyTsSet::<Stage>`"; `openspec validate ts-systems-as-bevy-systems --strict`
+- [x] 1.1 Rebase onto main after ecs-schedules stage 1 (3d641f44) and writable-native-params (584b78cf) land; all cargo through `~/dev/abyme/scripts/gate-slot`
+- [x] 1.2 Rewrite the `ts-systems` delta on ecs-schedules' text of "Schedules, ordering and run conditions" (collective and distributive `runIf`); ecs-schedules' `ts-schedules` delta drops "one exclusive system" (theirs to edit; asked 2026-10-24)
+- [ ] 1.3 At archive: whichever of ecs-schedules and this change archives second takes the other's text of "Schedules, ordering and run conditions"
 
 ## 2. Fetch and call
 
@@ -13,16 +14,17 @@
 - [ ] 3.1 `crates/bevy-ts/src/bevy_system.rs`: `TsParams` (`unsafe impl SystemParam`) and `TsParamsBuilder`; `init_access` through `QueryState::init_access`, the `Res`/`ResMut` access per resource, and each exported param's kept access; an internal conflict is a load error naming both params
 - [ ] 3.2 `TsOutput` buffer: `apply` runs TS output, then exported params' deferred state in param order, then observers; `set_has_deferred` only for `Commands`, `MessageWriter`, `NextState` or a deferred exported param
 - [ ] 3.3 The system body: `NonSendMut<ScriptRuntime>`, Bevy's ticks, summary ticks, write marks, reader cursors, dev guard; errors and warnings to per-system stats and the log queue `pump` drains
-- [ ] 3.4 Run conditions as Bevy condition systems; carry each condition's state by `(identity, tree path)` across rebuild
+- [ ] 3.4 Run conditions as Bevy condition systems (`conditions.rs` compiles to them); a group's collective `runIf` is a `run_if` on the group's set, so one evaluation per schedule run covers members in the stage and in slots; each config owns its condition state; carry it by `(config identity, tree path)` across rebuild. Closes ecs-schedules' two review items (state per config, group cache across slot lists)
 - [ ] 3.5 Placement: stage systems in `BevyTsSet::<Stage>`, slot systems in `BevyTsSlot` sets, chained by `TsSystemSet(identity)`; edit mode's skip as a `run_if` on those sets; remove the `stage_*` and slot exclusive systems and `run_stage`
 - [ ] 3.6 Commit: diff by identity, keep unchanged systems, `remove_systems_in_set` and add for the rest, one edit per touched schedule; `set_last_run` from `SystemMemory` on every rebuilt system
 
 ## 4. Tests
 
 - [ ] 4.1 Every scenario in the three deltas, on `FakeBackend`: the Bevy system's name and access, a conflicting Rust system reported ambiguous, a non-conflicting Rust system allowed beside, a conflicting one never overlapping, a spawn seen by the next system, a skipped system with no JS call, body-only reload with no schedule edit, a moved system editing one schedule
-- [ ] 4.2 Reload keeps state: `last_run` (`Changed<T>` not refiring), `Local`s, message cursors, and ecs-schedules' `runOnce`, `resourceChanged` tick and `onTimer` time
-- [ ] 4.3 writable-native-params' tick-per-run, refusal and output-before-params-order tests still pass
-- [ ] 4.4 `pnpm check` and the cargo suite green through gate-slot
+- [ ] 4.2 The new `ts-systems` scenarios: a group split across a stage and a slot, two configs with separate state
+- [ ] 4.3 Reload keeps state: `last_run` (`Changed<T>` not refiring), `Local`s, message cursors, and ecs-schedules' `runOnce`, `resourceChanged` tick and `onTimer` time
+- [ ] 4.4 writable-native-params' tick-per-run, refusal, undeclared-param-throws and output-before-params-order tests still pass
+- [ ] 4.5 `pnpm check` and the cargo suite green through gate-slot
 
 ## 5. Docs
 

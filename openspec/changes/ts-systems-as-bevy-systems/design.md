@@ -22,8 +22,8 @@ Bevy 0.20 facts this design rests on (`bevy_ecs-0.20.0/src`):
 - A `Query` exposes no tables, so a built `Query<FilteredEntityMut>` cannot give the bridge whole
   column pointers.
 
-Neighbours land first and this change rebases onto them: ecs-schedules (stage 1 at tests) and
-writable-native-params (at review). Their leads agreed the shape below on 2026-10-23.
+Both neighbours have landed and this change is rebased onto them: writable-native-params
+(584b78cf) and ecs-schedules stage 1 (3d641f44, protocol 1.28.0). Their leads agreed the shape below on 2026-10-23.
 
 ## Goals / Non-Goals
 
@@ -117,14 +117,16 @@ TS `Update` system.
 
 ### 7. Run conditions are Bevy run conditions
 
-A compiled `Condition` becomes a Bevy condition system (`ReadOnlySystem<In = (), Out = bool>`)
+A compiled `Condition` (`conditions.rs`) becomes a Bevy condition system (`ReadOnlySystem<In = (), Out = bool>`)
 with its own declared access (`Res<TsPayloads>`, resource existence), added as the TS system's
-`run_if`. After the rebase, ecs-schedules' conditions and its native seam are the same kind of
-system; its collective `runIf` is Bevy's `run_if` on the group's set, `distributiveRunIf` is
+`run_if`. ecs-schedules' native seam already yields this kind of system; its collective `runIf` is Bevy's `run_if` on the group's set, `distributiveRunIf` is
 `distributive_run_if`, and its stage-3 predicate stays one evaluation per group. Each condition's
 state lives in the condition system; on a rebuild it is carried by `(identity, path in the
 condition tree)` from the old system to the new one, so `runOnce`, `resourceChanged`'s tick and
-`onTimer`'s time survive reload (lead@ecs-schedules).
+`onTimer`'s time survive reload (lead@ecs-schedules). This replaces the stage runner's per-stage
+group cache, which could not span a group whose members sit in a stage and a slot, and the shared
+`ConditionState` table: each config's condition system owns its state. Both were left open in
+ecs-schedules' review.
 
 ### 8. Commit edits schedules only for what changed
 
