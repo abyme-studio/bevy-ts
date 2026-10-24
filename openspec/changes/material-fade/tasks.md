@@ -22,6 +22,6 @@
 
 ## 4. Before/after frames (headless only, nothing on the operator's screen)
 
-- [ ] 4.1 From the look test's scene plus a textured multi-part model at 0.67, save a PNG on `main` (Blend) and on this branch (dither) under `/tmp/material-fade/`, as evidence, not a golden file
-- [ ] 4.2 Re-take the agent-town scene of `/tmp/civ-fade-1.png` (a Synty model at 0.67, same camera) on this branch, headless or in a tart VM, beside the original; if neither runs it, say so in the report
-- [ ] 4.3 Note in the report whether the first fade's pipeline compile shows as a hitch
+- [x] 4.1 From the look test's scene plus a textured multi-part model at 0.67, save a PNG on `main` (Blend) and on this branch (dither) under `/tmp/material-fade/`, as evidence, not a golden file (Blend reproduced on this branch with main's own copy rule, which saved a second engine build)
+- [x] 4.2 Re-take the agent-town scene of `/tmp/civ-fade-1.png` (a Synty model at 0.67, same camera) on this branch, headless or in a tart VM, beside the original; if neither runs it, say so in the report
+- [x] 4.3 Note in the report whether the first fade's pipeline compile shows as a hitch
