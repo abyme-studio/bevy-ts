@@ -45,6 +45,7 @@ mod scene_material;
 mod schedules;
 mod standard_material_limits;
 mod stop_bench;
+mod stop_walk;
 mod surface;
 mod systems;
 mod text_fonts;
