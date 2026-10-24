@@ -3,7 +3,7 @@
 //! that component and no other: a bound `<text>` writes `Text` and leaves `TextFont`,
 //! `TextColor` and `Node` alone.
 
-use bevy::input_focus::AutoFocus;
+use bevy::input_focus::{AutoFocus, tab_navigation::TabIndex};
 use bevy::prelude::*;
 use bevy::text::{EditableText, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, TextCursorStyle, Underline, UnderlineColor};
 use bevy::camera::RenderTarget;
@@ -1294,8 +1294,9 @@ pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             }
             let text = EditableText::new(props.get("initialValue").and_then(Value::as_str).unwrap_or_default());
             // `EditableText` first, so the one `TextInput` requires does not replace it. One line:
-            // no wrapping, so text wider than the field scrolls, focused or not.
-            world.entity_mut(e).insert((text, TextLayout::no_wrap())).insert(TextInput);
+            // no wrapping, so text wider than the field scrolls, focused or not. `TabIndex`, as
+            // Bevy's `text_input` example gives its fields: a click focuses only an entity with one.
+            world.entity_mut(e).insert((text, TextLayout::no_wrap())).insert((TextInput, TabIndex(0)));
             cursor(world, e, kind, props)?;
             parts.push(Part::Font);
         }
@@ -1348,7 +1349,7 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
             em.remove::<ViewportNode>();
         }
         UiKind::Input => {
-            em.remove::<(TextInput, EditableText, TextFont, TextColor, TextLayout, TextCursorStyle, AutoFocus)>();
+            em.remove::<(TextInput, TabIndex, EditableText, TextFont, TextColor, TextLayout, TextCursorStyle, AutoFocus)>();
         }
         UiKind::Node => {}
     }

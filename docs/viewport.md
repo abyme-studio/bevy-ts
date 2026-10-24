@@ -19,7 +19,8 @@ surfaces, pacing, input queue and counters.
   unchanged.
 - The virtual primary window, edit mode, picking and edits belong to the game viewport alone.
 - Under `--headless` there is no viewport, but `viewport_input` is served for `pointer` events,
-  onto the offscreen image ([picking.md](picking.md)).
+  onto the offscreen image, and for `key` and `ime` events, onto the headless primary window
+  ([picking.md](picking.md#clicking-headless)).
 - A viewport renders only while attached and visible. The leading viewer's ticks pace the engine:
   the game's while it is visible, else the first visible preview's. A preview never adds updates
   to a visible game; it renders in the game's frame.
@@ -99,9 +100,23 @@ does not (pointing at the sky). A model dropped on empty floor goes at `ground`.
 
 ## Typing
 
-Keys reach a focused `<input>` only in viewport mode (or a real window): Bevy sends keys to
-`InputFocus` only when there is a primary window, and `--headless` has none. A test that types
-attaches a viewer and posts `key` events to `bevy-ts/viewport_input`.
+Keys reach a focused `<input>` in viewport mode, in a real window and under `--headless`: Bevy
+sends keys to `InputFocus` only when there is a primary window, and headless spawns a window-less
+one. A test that types posts `key` events to `bevy-ts/viewport_input`; under `--headless` it needs
+no viewer:
+
+```json
+{ "jsonrpc": "2.0", "id": 1, "method": "bevy-ts/viewport_input", "params": { "events": [
+  { "type": "key", "state": "down", "code": "KeyH", "key": "h", "text": "h" },
+  { "type": "key", "state": "up", "code": "KeyH", "key": "h" },
+  { "type": "key", "state": "down", "code": "Enter", "key": "Enter" },
+  { "type": "key", "state": "up", "code": "Enter", "key": "Enter" }
+] } }
+```
+
+It answers `{ "queued": 4 }`. Headless applies one event a frame, so these four take four frames.
+`crates/bevy-ts-viewport/src/keyboard.rs` turns `key` and `ime` events into Bevy's
+`KeyboardInput` and `Ime` for both modes.
 
 The viewer sends each typed character once: as a `key` event's `text`, or as an `ime` `commit`
 for a composition, never both. Bevy's `TextInput` turns IME on and inserts both, so a viewer

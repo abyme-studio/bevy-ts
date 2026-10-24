@@ -3,7 +3,7 @@
 `onPointerClick`, `onPointerPress`, `onPointerRelease`, `onPointerOver` and `onPointerOut` on an
 `<entity>` or a UI element fire when Bevy's picking hits that entity. The code is
 `crates/bevy-ts-tsx/src/events.rs`; the switch and the warning are in `crates/bevy-ts-cli`, the
-headless pointer in `crates/bevy-ts-viewport/src/offscreen.rs`.
+headless input in `crates/bevy-ts-viewport/src/offscreen.rs`.
 
 ## Bubbling
 
@@ -60,8 +60,8 @@ parent of the meshes (a glTF scene's root, say) is not warned about: only an ent
 
 ## Clicking headless
 
-Under `bevy-ts dev --headless`, on every platform, `bevy-ts/viewport_input` takes `pointer` events.
-They drive one pointer over the offscreen image the cameras render into (960×540), with `x`, `y`
+Under `bevy-ts dev --headless`, on every platform, `bevy-ts/viewport_input` takes `pointer`, `key`
+and `ime` events. Pointer events drive one pointer over the offscreen image the cameras render into (960×540), with `x`, `y`
 in its pixels. `move` and `enter` move it, `down` and `up` press and release `left`, `right` or
 `middle` (`back` and `forward` are ignored), and `leave` cancels it and takes it off the image.
 A `down` or `up` away from the pointer moves it there first, a frame before the press.
@@ -74,11 +74,15 @@ A `down` or `up` away from the pointer moves it there first, a frame before the 
 ] } }
 ```
 
-It answers `{ "queued": 3 }`. The engine applies one event a frame, so the move's hover is in place
-before the press: a click takes three frames. Any other event type refuses the whole request with
+It answers `{ "queued": 3 }`. `key` and `ime` events go to the headless primary window, as in
+viewport mode ([viewport.md](viewport.md#typing)). All three share one queue: the engine applies
+one event a frame in arrival order, so the move's hover is in place before the press (a click
+takes three frames), and a key sent after a click on an `<input>` lands once the click has
+focused it. Any other event type (`wheel`, `touch`, `gamepad`, ...) refuses the whole request with
 an error naming the type, and nothing of it applies; so does a `viewport` other than 0. The other
 viewport methods are not served headless, and `bevy-ts/hello` still reports `viewport: false`.
-`crates/bevy-ts-cli/tests/it/headless_pointer.rs` clicks a cube this way.
+`crates/bevy-ts-cli/tests/it/headless_pointer.rs` clicks a cube this way, and `headless_keys.rs`
+types into a field.
 
 Headless has a primary window with no native window behind it, the image's size: Bevy 0.20's
 picking casts no ray without a `PrimaryWindow`, even for a pointer on an image. Nothing renders

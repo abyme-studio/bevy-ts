@@ -2,11 +2,12 @@
 //! exported params over Bevy's own `ButtonInput<KeyCode>`, `ButtonInput<Key>` and `InputFocus`;
 //! `KeyCode`, a TS enum, and `Key`, Bevy's logical key as one number, both generated from
 //! `bevy_ts::keys`. A TS system reads keys as a Rust one does:
-//! `keys.justPressed(KeyCode.KeyN) && focus.get() === undefined`.
+//! `keys.justPressed(KeyCode.KeyN) && !focus.typing()`.
 
 use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::Key;
 use bevy::input_focus::InputFocus;
+use bevy::text::EditableText;
 use bevy::prelude::*;
 use bevy_ts::keys::{CHARACTER_BASE, DEAD_KEY_BASE, DEAD_KEY_NONE, KEY_BASE, KEY_CODES, NAMED_KEYS, key_code_of, key_of};
 use bevy_ts_native::prelude::*;
@@ -21,7 +22,7 @@ impl Plugin for ScriptInputPlugin {
     fn build(&self, app: &mut App) {
         app.ts_param::<KeysParam<'static>>()
             .ts_param::<LogicalKeysParam<'static>>()
-            .ts_param::<FocusParam<'static>>()
+            .ts_param::<FocusParam<'static, 'static>>()
             .ts_module(MODULE, &js(), &dts());
     }
 }
@@ -89,17 +90,24 @@ impl LogicalKeysParam<'_> {
     }
 }
 
-/// `InputFocus`: `Res<InputFocus>`.
+/// `InputFocus`: `Res<InputFocus>`, and which entities are text fields.
 #[derive(SystemParam)]
-pub struct FocusParam<'w> {
+pub struct FocusParam<'w, 's> {
     focus: Option<Res<'w, InputFocus>>,
+    fields: Query<'w, 's, (), With<EditableText>>,
 }
 
 #[export(ts = "InputFocus", module = "bevy-ts/input")]
-impl FocusParam<'_> {
-    /// The focused entity, or `undefined` while nothing has focus.
+impl FocusParam<'_, '_> {
+    /// The focused entity, or `undefined` while nothing has focus. With a primary window, Bevy
+    /// focuses the window at start: guard a shortcut with `typing()`, not this.
     pub fn get(&self) -> Option<Entity> {
         self.focus.as_ref().and_then(|f| f.get())
+    }
+
+    /// Whether a text field (an entity with `EditableText`) has focus.
+    pub fn typing(&self) -> bool {
+        self.get().is_some_and(|e| self.fields.contains(e))
     }
 }
 

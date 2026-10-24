@@ -342,9 +342,10 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     }
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     if display == Display::Headless {
-        // Pointer input over `bevy-ts/viewport_input`, onto the image the cameras render into.
+        // Pointer, key and IME input over `bevy-ts/viewport_input`: the pointer onto the image the
+        // cameras render into, keys and IME onto the window-less primary window.
         let image = app.world().resource::<headless::Offscreen>().0.clone();
-        app.add_plugins(bevy_ts_viewport::offscreen::OffscreenPointerPlugin { image });
+        app.add_plugins(bevy_ts_viewport::offscreen::OffscreenInputPlugin { image });
     }
     bevy_ts_tsx::protocol::add_methods(&mut app);
     bevy_ts_levels::protocol::add_methods(&mut app);

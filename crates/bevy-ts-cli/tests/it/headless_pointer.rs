@@ -1,6 +1,7 @@
 //! Change `mesh-picking`: under `bevy-ts dev --headless`, `bevy-ts/viewport_input` drives a pointer
 //! on the offscreen image, so a click on a cube reaches its `onPointerClick` through Bevy's mesh
-//! picking, switched on by `"meshPicking": true`. Other input types are refused. Every platform.
+//! picking, switched on by `"meshPicking": true`. Keys and IME are applied (`headless_keys.rs`);
+//! other input types are refused. Every platform.
 
 use crate::common;
 
@@ -29,7 +30,7 @@ app.scene("s", () => (
 ));
 "##;
 
-fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
+pub(crate) fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
     let mut s = TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
     let req = format!("POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
@@ -46,7 +47,13 @@ fn post(port: u16, method: &str, params: Value) -> Result<Value, String> {
 
 /// `bevy-ts dev --headless` on the cube project, its stderr lines on a channel, once it answers.
 fn dev(name: &str, config: &str) -> (Engine, Receiver<String>, u16) {
-    let dir = common::project(name, &[("bevy-ts.json", config), ("tsconfig.json", "{}"), ("src/game.tsx", GAME)]);
+    dev_game(name, config, GAME)
+}
+
+/// `bevy-ts dev --headless` on a project of one `game`, its stderr lines on a channel, once it
+/// answers.
+pub(crate) fn dev_game(name: &str, config: &str, game: &str) -> (Engine, Receiver<String>, u16) {
+    let dir = common::project(name, &[("bevy-ts.json", config), ("tsconfig.json", "{}"), ("src/game.tsx", game)]);
     let port = common::free_port();
     let mut engine = Engine::spawn(
         Command::new(common::BIN)
@@ -70,7 +77,7 @@ fn dev(name: &str, config: &str) -> (Engine, Receiver<String>, u16) {
     (engine, rx, port)
 }
 
-fn pointer(kind: &str, x: f64, y: f64) -> Value {
+pub(crate) fn pointer(kind: &str, x: f64, y: f64) -> Value {
     json!({ "type": "pointer", "kind": kind, "x": x, "y": y, "button": "left" })
 }
 
@@ -95,11 +102,12 @@ fn a_test_clicks_a_mesh_headless() {
     assert_eq!(clicks, 1);
     assert!(lines.iter().any(|l| l.contains("cube clicked primary")), "{lines:?}");
 
-    // A key is refused, naming it, and nothing of the request applies: the pointer in it would
-    // otherwise click again.
-    let e = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("down", x, y), pointer("up", x, y), { "type": "key", "code": "KeyA", "state": "down" }] }))
-        .unwrap_err();
-    assert!(e.contains("key"), "{e}");
+    // A wheel is refused, naming it, and nothing of the request applies: the pointer and key in it
+    // would otherwise click again.
+    let wheel = json!({ "type": "wheel", "dx": 0, "dy": 1, "unit": "line" });
+    let key = json!({ "type": "key", "code": "KeyA", "key": "a", "state": "down" });
+    let e = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("down", x, y), pointer("up", x, y), key, wheel] })).unwrap_err();
+    assert!(e.contains("wheel"), "{e}");
     let e = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("move", x, y)], "viewport": 1 })).unwrap_err();
     assert!(e.contains("viewport 1"), "{e}");
     std::thread::sleep(Duration::from_millis(300));

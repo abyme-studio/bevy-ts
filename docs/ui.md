@@ -22,7 +22,7 @@ app.scene("hud", () => (
 | `<image src>` | `ImageNode` |
 | `<viewport camera>` | `Node`, `ViewportNode` |
 | `<button>` | `Node`, `Button`, picking |
-| `<input>` | `Node`, `TextInput` (with `EditableText`) |
+| `<input>` | `Node`, `TextInput` (with `EditableText`), `TabIndex(0)` |
 
 An unknown prop, style key or word fails the load and names it with the accepted ones.
 
@@ -172,7 +172,9 @@ game that wants one styles it.
 - `initialValue`: the text at mount. Like every `initial*` prop, a reload does not reset it, and
   what the player typed survives a reload.
 - `maxCharacters`: edits past it are dropped, as Bevy does.
-- `autoFocus`: the field takes `InputFocus` when it mounts.
+- `autoFocus`: the field takes `InputFocus` when it mounts. Without it, a click focuses the field:
+  it has `TabIndex(0)`, as Bevy's `text_input` example's fields do, and Bevy's click-to-focus
+  focuses only an entity with a `TabIndex`.
 
 There is no `value` prop. The text is Bevy's editor's; writing it from TS would fight the cursor
 and IME state. To clear a field, remount it with a new `key`.
@@ -193,7 +195,7 @@ from a descendant.
 Bevy's `TextInput` inserts a character only with no modifier or Shift, so Option (macOS) and
 AltGr characters are not typed, as in a native Bevy window.
 
-Keys reach a field only with a primary window: in a game window or in viewport mode, not under
-`--headless` ([viewport.md](viewport.md#typing)). A key typed into a field still shows in
-`Keys` from `bevy-ts/input`; check `InputFocus` for single-key shortcuts
+Keys reach a field through a primary window: a game window, viewport mode's virtual one, or the
+window-less one `--headless` spawns ([viewport.md](viewport.md#typing)). A key typed into a field still shows in
+`Keys` from `bevy-ts/input`; guard a single-key shortcut with `!focus.typing()`
 ([native.md](native.md#ports-and-built-in-modules)).
