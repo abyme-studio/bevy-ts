@@ -547,15 +547,16 @@ fn insert_reflect(world: &mut World, entity: Entity, mode: u8, type_name: &str, 
     }
 }
 
-/// Checks an `OP_INSERT_REFLECT` without touching the world: the type is a writable reflected
-/// component and `json` writes over a fresh default of it (a patch's fields too). A type whose only
-/// default needs the world is checked when it is inserted.
+/// Checks an `OP_INSERT_REFLECT` before any of its command applies: the type is a writable
+/// reflected component and `json` writes over a fresh default of it (a patch's fields too). A type
+/// whose only default is `FromWorld` is built from the live world for the check, as for its insert.
 #[cfg(feature = "reflect")]
-fn check_reflect(world: &World, mode: u8, type_name: &str, json: Option<&serde_json::Value>) -> Result<(), String> {
+fn check_reflect(world: &mut World, mode: u8, type_name: &str, json: Option<&serde_json::Value>) -> Result<(), String> {
     use crate::reflect_value;
-    use bevy::ecs::reflect::ReflectComponent;
+    use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld};
     use bevy::reflect::{ParsedPath, ReflectPath};
-    let registry = world.resource::<AppTypeRegistry>().read();
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
     let reg = registry
         .get_with_type_path(type_name)
         .or_else(|| registry.get_with_short_type_path(type_name))
@@ -563,7 +564,19 @@ fn check_reflect(world: &World, mode: u8, type_name: &str, json: Option<&serde_j
     let path = reg.type_info().type_path();
     reflect_value::refuse_computed(path)?;
     reg.data::<ReflectComponent>().ok_or_else(|| format!("{path} does not reflect Component"))?;
-    let Some(mut value) = reflect_value::default_of(&registry, reg.type_id()) else { return Ok(()) };
+    // A type whose only default needs the live world is built from it, as its insert will be.
+    let value = match reflect_value::default_of(&registry, reg.type_id()) {
+        Some(v) => Some(v),
+        None => match reg.data::<ReflectFromWorld>() {
+            Some(f) => Some(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f.from_world(world)))
+                    .map_err(|_| format!("{path}'s FromWorld panicked"))?
+                    .into_partial_reflect(),
+            ),
+            None => None,
+        },
+    };
+    let Some(mut value) = value else { return Ok(()) };
     match (mode, json) {
         (REFLECT_INSERT, None) => Ok(()),
         (REFLECT_INSERT, Some(json)) => reflect_value::write_component(&registry, None, value.as_mut(), None, json),
@@ -578,7 +591,7 @@ fn check_reflect(world: &World, mode: u8, type_name: &str, json: Option<&serde_j
 }
 
 #[cfg(not(feature = "reflect"))]
-fn check_reflect(_: &World, _: u8, type_name: &str, _: Option<&serde_json::Value>) -> Result<(), String> {
+fn check_reflect(_: &mut World, _: u8, type_name: &str, _: Option<&serde_json::Value>) -> Result<(), String> {
     Err(format!("{type_name}: bevy-ts is built without the reflect feature"))
 }
 
@@ -721,6 +734,40 @@ mod tests {
             other => panic!("{other:?}"),
         }
         assert_eq!(world.get::<DirectionalLight>(a).unwrap().color, Color::srgb(1.0, 0.0, 0.0));
+    }
+
+    /// A component whose only default is `FromWorld`.
+    #[derive(Component, Reflect, Debug)]
+    #[reflect(Component, FromWorld)]
+    struct Seeded {
+        seed: u32,
+    }
+
+    impl FromWorld for Seeded {
+        fn from_world(_: &mut World) -> Self {
+            Seeded { seed: 7 }
+        }
+    }
+
+    #[cfg(feature = "reflect")]
+    #[test]
+    fn a_from_world_type_with_a_bad_value_skips_its_command() {
+        use serde_json::json;
+        let mut world = World::new();
+        let registry = AppTypeRegistry::default();
+        registry.write().register::<Seeded>();
+        world.insert_resource(registry);
+        let (a, b) = (world.entity_allocator().alloc(), world.entity_allocator().alloc());
+        let mut enc = Encoder::default();
+        enc.spawn(a, &[]);
+        enc.insert_reflect(a, REFLECT_INSERT, "Seeded", Some(&json!({ "seed": "many" })));
+        enc.spawn(b, &[]);
+        enc.insert_reflect(b, REFLECT_INSERT, "Seeded", Some(&json!({ "seed": 3 })));
+        let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
+        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default());
+        assert!(warnings.len() == 1 && warnings[0].contains("Seeded") && warnings[0].contains("skipped"), "{warnings:?}");
+        assert!(world.get_entity(a).is_err(), "the failing spawn left nothing");
+        assert_eq!(world.get::<Seeded>(b).unwrap().seed, 3);
     }
 
     #[test]
