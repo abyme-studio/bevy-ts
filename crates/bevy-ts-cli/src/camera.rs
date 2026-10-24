@@ -23,8 +23,8 @@ pub struct Ray3d {
     pub direction: Vec3,
 }
 
-impl From<bevy::math::Ray3d> for Ray3d {
-    fn from(r: bevy::math::Ray3d) -> Self {
+impl From<bevy::shape::Ray3d> for Ray3d {
+    fn from(r: bevy::shape::Ray3d) -> Self {
         Ray3d { origin: r.origin, direction: *r.direction }
     }
 }
@@ -205,7 +205,7 @@ impl MeshRayCaster<'_, '_> {
         let filter = |e: Entity| !exclude.contains(&(e.to_bits() as f64));
         let early_exit: &dyn Fn(Entity) -> bool = if s.early_exit { &always } else { &never };
         let settings = MeshRayCastSettings { visibility: s.visibility.into(), filter: &filter, early_exit_test: early_exit };
-        Ok(self.cast.cast_ray(bevy::math::Ray3d::new(ray.origin, direction), &settings))
+        Ok(self.cast.cast_ray(bevy::shape::Ray3d::new(ray.origin, direction), &settings))
     }
 }
 
