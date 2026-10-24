@@ -29,13 +29,14 @@ fn app() -> (App, Replies) {
     app.add_plugins(MinimalPlugins).add_plugins(BevyTsPlugin::new(move || Box::new(h.backend()))).add_plugins(TsxPlugin);
     let replies: Replies = Arc::default();
     let r = replies.clone();
-    // `<entity name="list"><entity key="head" /><For ... /><entity key="tail" /></entity>`
+    // `<entity name="list"><entity key="head" /><For ... /><entity key="tail" /><For ... /></entity>`
     let section = json!({ "roots": [{ "name": "ui", "nodes": [{
         "key": "list", "type": "entity",
         "children": [
             { "key": "head", "type": "entity" },
             { "key": "for#0", "type": "For", "slot": SLOT },
-            { "key": "tail", "type": "entity" }
+            { "key": "tail", "type": "entity" },
+            { "key": "for#1", "type": "For", "slot": SLOT + 1 }
         ]
     }] }] });
     let health = ComponentDecl {
@@ -188,4 +189,15 @@ fn a_bad_group_among_good_ones_logs_and_the_rest_mount() {
     assert!(node(&mut app, &["bad", "row"]).is_none());
     let log: Vec<String> = app.world().resource::<ScriptLog>().since(0).map(|e| e.message.clone()).collect();
     assert!(log.iter().any(|m| m.contains("mx")), "{log:?}");
+}
+
+#[test]
+fn a_slot_grown_after_a_later_slot_mounted_keeps_its_rows_before_it() {
+    let (mut app, replies) = app();
+    call(&mut app, &replies, json!({ "mounts": [[SLOT, "a", row(false)], [SLOT + 1, "x", row(false)]] }));
+    call(&mut app, &replies, json!({ "mounts": [[SLOT, "b", row(false)]] }));
+    let (head, tail) = (node_at(&mut app, &["list", "head"]), node_at(&mut app, &["list", "tail"]));
+    let (a, b) = (node(&mut app, &["a", "row"]).unwrap(), node(&mut app, &["b", "row"]).unwrap());
+    let x = node_at(&mut app, &["list", "for#1", "x", "row"]);
+    assert_eq!(children(&mut app), vec![head, a, b, tail, x], "the second slot's rows stay after the first's");
 }

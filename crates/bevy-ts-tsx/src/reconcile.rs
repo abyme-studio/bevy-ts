@@ -7,7 +7,7 @@
 use crate::desc::{NodeDesc, node_id};
 use crate::intrinsics::{self, MeshProps};
 use crate::resolve::{self, NAME, Resolved, Target};
-use crate::tree::{BindTarget, FieldState, OwnedComponent, Provenance, ReconcileStats, SlotState, Tombstone, TsxNode, TsxTree};
+use crate::tree::{BindTarget, FieldState, Later, OwnedComponent, Provenance, ReconcileStats, SlotState, Tombstone, TsxNode, TsxTree};
 use crate::ui;
 use bevy::prelude::*;
 use bevy_ts::backend::{ScriptError, SourceLocation};
@@ -463,7 +463,7 @@ fn apply_node(
             for (i, c) in n.children.iter().enumerate() {
                 apply_node(world, tree, root, c, Some(e), seen, stats, slots);
                 if let Some(s) = c.slot.and_then(|s| tree.reactive.slots.get_mut(&s)) {
-                    s.later = n.children[i + 1..].iter().filter(|c| c.slot.is_none()).map(|c| c.id).collect();
+                    s.later = n.children[i + 1..].iter().map(|c| c.slot.map_or(Later::Node(c.id), Later::Slot)).collect();
                 }
             }
             if reorder {
@@ -604,18 +604,28 @@ pub fn order_slot(world: &mut World, root: &str, parent: Option<Entity>, prefix:
     world.insert_resource(tree);
 }
 
-/// Moves the entities of `later` (a slot's siblings described after it) to the end of `parent`'s
-/// children, in their order, so rows the slot just spawned sit before them.
-pub fn keep_after(world: &mut World, parent: Entity, later: &[u64]) {
+/// Moves the entities of `later` (a slot's siblings described after it, a later slot's rows
+/// included) to the end of `parent`'s children, keeping their order, so rows the slot just
+/// spawned sit before them.
+pub fn keep_after(world: &mut World, parent: Entity, later: &[Later]) {
     let tree = world.resource::<TsxTree>();
-    let after: HashMap<Entity, usize> =
-        later.iter().filter_map(|id| tree.entities.get(id).copied().filter(|e| alive(world, *e, *id))).enumerate().map(|(i, e)| (e, i)).collect();
+    let entity = |id: &u64| tree.entities.get(id).copied().filter(|e| alive(world, *e, *id));
+    let mut after = std::collections::HashSet::new();
+    for l in later {
+        match l {
+            Later::Node(id) => after.extend(entity(id)),
+            Later::Slot(s) => {
+                let Some(slot) = tree.reactive.slots.get(s) else { continue };
+                after.extend(slot.rows.values().flat_map(|r| r.tops.iter()).filter_map(entity));
+            }
+        }
+    }
     if after.is_empty() {
         return;
     }
     let Some(mut children) = world.get_mut::<Children>(parent) else { return };
     let n = children.len();
-    let place: HashMap<Entity, usize> = children.iter().enumerate().map(|(i, c)| (c, after.get(&c).map_or(i, |j| n + j))).collect();
+    let place: HashMap<Entity, usize> = children.iter().enumerate().map(|(i, c)| (c, if after.contains(&c) { n + i } else { i })).collect();
     children.sort_by_key(|c| place[c]);
 }
 
