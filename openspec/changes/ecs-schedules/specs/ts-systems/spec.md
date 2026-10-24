@@ -22,27 +22,6 @@ A param type that is none of these, an alias of one, or an object type whose pro
 - **WHEN** a registered one-shot system takes `In<SpawnAt>` as its second param
 - **THEN** loading fails with "In<SpawnAt> must be the first param", its file and line
 
-### Requirement: Schedules, ordering and run conditions
-`app.addSystems(schedule, ...systems)` SHALL register systems in a schedule (ts-schedules lists them) or a state transition (ts-states). Each schedule's TS systems SHALL run in system set `BevyTsSet::<Stage>` of that schedule, so Rust plugins can order around it; the `Update` stage SHALL run before `TransformSystems::Propagate`. Within a stage, systems SHALL run in registration order, adjusted by ordering: `systems(a, b)` groups systems as Bevy's tuple does, `chain(a, b, c)` orders them, and a group's `.after(x)`, `.before(x)` and `.inSet(set)` apply to each member. `x` is a system function, a set class (`class EnemySet extends SystemSet {}`, named like a component), or a set a Rust crate exposed (`systemSet("rapier:step")`, or a port's typed `PhysicsSet.StepSimulation`). A cycle SHALL fail the load.
-
-`.runIf(condition)` takes a condition (ts-conditions). On a group it SHALL be Bevy's collective `run_if`: evaluated once per run of the stage, the first time a member is about to run, and its result applied to every member in that run. `.distributiveRunIf(condition)` SHALL give each member its own instance, evaluated before that member, as Bevy's `distributive_run_if`. On a single system the two SHALL be the same. A skipped system gated only by Rust-evaluated conditions SHALL cost no JS call.
-
-#### Scenario: Two systems in one stage
-- **WHEN** `a` and `b` are registered in that order in `Update` and `a` writes a field `b` reads
-- **THEN** `b` sees `a`'s write in the same frame
-
-#### Scenario: A skipped system
-- **WHEN** `systems(chase).runIf(inState(Game.Playing))` is registered and the state is `Menu`
-- **THEN** `chase` is not called and the backend records no call into JS for it
-
-#### Scenario: Collective and distributive
-- **WHEN** `systems(a, b).runIf(runOnce())` and `systems(c, d).distributiveRunIf(runOnce())` are registered in `Update`
-- **THEN** on the first frame `a`, `b`, `c` and `d` all run; on later frames none of them runs
-
-#### Scenario: A group's condition is evaluated once
-- **WHEN** `systems(a, b).runIf(resourceEquals(Score.of({ value: 0 })))` is registered and `a` sets `Score.value` to 1
-- **THEN** `b` still runs in that stage run, as in Bevy, and neither runs on the next frame; with `distributiveRunIf` instead, `b` would not run
-
 ## REMOVED Requirements
 
 ### Requirement: States

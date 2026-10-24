@@ -35,6 +35,7 @@ The `bevy-ts` module SHALL export these param types, each mapping to Bevy's own:
 - `Commands`: the system's command buffer.
 - `MessageReader<M>` and `MessageWriter<M>`: a message type's queue (see "Messages").
 - `NextState<S>` and `State<S>`: a TS state machine (see "States").
+- `In<E>`: a one-shot system's input, first param only, `E` an `Event` class (ts-schedules).
 - Param kinds that native ports register (for example `ReadRapierContext`), declared in their types package and known to the compile step.
 
 A param type that is none of these, an alias of one, or an object type whose properties are these (a param bundle, Bevy's `#[derive(SystemParam)]`) SHALL fail the load with its file and line.
@@ -42,6 +43,10 @@ A param type that is none of these, an alias of one, or an object type whose pro
 #### Scenario: A param bundle
 - **WHEN** a system takes `{ score, time }: Scoring` where `interface Scoring { score: ResMut<Score>; time: Res<Time> }`
 - **THEN** it receives an object with a writable `score` and a read-only `time`
+
+#### Scenario: In anywhere but first
+- **WHEN** a registered one-shot system takes `In<SpawnAt>` as its second param
+- **THEN** loading fails with "In<SpawnAt> must be the first param", its file and line
 
 ### Requirement: Overlapping queries need no ParamSet
 A system MAY have several queries, and two of them MAY match the same entity with one writing a component the other reads. Both SHALL see the same column memory, so a write through one is visible through the other in the same run. The dev-only read-column guard SHALL hash only columns no query of the system writes.
@@ -58,7 +63,9 @@ A system MAY have several queries, and two of them MAY match the same entity wit
 - **THEN** loading fails with "ReturnType is not a system param type, an alias of one, or a param bundle", the file and line; rewritten as `system(() => { const q = query(Enemy, Mut(Transform)); return () => ... })` it loads
 
 ### Requirement: Schedules, ordering and run conditions
-`app.addSystems(schedule, ...systems)` SHALL register systems. `Startup`, `PreUpdate`, `Update`, `PostUpdate` and `FixedUpdate` SHALL map onto the bevy-ts stages; `OnEnter(state)` and `OnExit(state)` onto state transitions (see "States"). Each stage SHALL be one exclusive system per schedule, in system set `BevyTsSet::<Stage>`, so Rust plugins can order around it; the `Update` stage SHALL run before `TransformSystems::Propagate`. Within a stage, systems SHALL run in registration order, adjusted by ordering: `systems(a, b)` groups systems as Bevy's tuple does, `chain(a, b, c)` orders them, and a group's `.after(x)`, `.before(x)`, `.inSet(set)` and `.runIf(condition)` apply to each member. `x` is a system function, a set class (`class EnemySet extends SystemSet {}`, named like a component), or a set a Rust crate exposed (`systemSet("rapier:step")`, or a port's typed `PhysicsSet.StepSimulation`). A cycle SHALL fail the load. `inState`, `resourceExists`, `onMessage` and `not` SHALL be evaluated in Rust, so a skipped system costs no JS call. A system in `Startup` SHALL run once per identity per world (hot-reload).
+`app.addSystems(schedule, ...systems)` SHALL register systems in a schedule (ts-schedules lists them) or a state transition (`OnEnter(state)`, `OnExit(state)`). Each schedule's TS systems SHALL run in system set `BevyTsSet::<Stage>` of that schedule, so Rust plugins can order around it; the `Update` stage SHALL run before `TransformSystems::Propagate`. Within a stage, systems SHALL run in registration order, adjusted by ordering: `systems(a, b)` groups systems as Bevy's tuple does, `chain(a, b, c)` orders them, and a group's `.after(x)`, `.before(x)` and `.inSet(set)` apply to each member. `x` is a system function, a set class (`class EnemySet extends SystemSet {}`, named like a component), or a set a Rust crate exposed (`systemSet("rapier:step")`, or a port's typed `PhysicsSet.StepSimulation`). A cycle SHALL fail the load.
+
+`.runIf(condition)` takes a condition (ts-conditions). On a group it SHALL be Bevy's collective `run_if`: evaluated once per run of the stage, the first time a member is about to run, and its result applied to every member in that run. `.distributiveRunIf(condition)` SHALL give each member its own instance, evaluated before that member, as Bevy's `distributive_run_if`. On a single system the two SHALL be the same. A skipped system gated only by Rust-evaluated conditions SHALL cost no JS call.
 
 #### Scenario: Two systems in one stage
 - **WHEN** `a` and `b` are registered in that order in `Update` and `a` writes a field `b` reads
@@ -67,6 +74,14 @@ A system MAY have several queries, and two of them MAY match the same entity wit
 #### Scenario: A skipped system
 - **WHEN** `systems(chase).runIf(inState(Game.Playing))` is registered and the state is `Menu`
 - **THEN** `chase` is not called and the backend records no call into JS for it
+
+#### Scenario: Collective and distributive
+- **WHEN** `systems(a, b).runIf(runOnce())` and `systems(c, d).distributiveRunIf(runOnce())` are registered in `Update`
+- **THEN** on the first frame `a`, `b`, `c` and `d` all run; on later frames none of them runs
+
+#### Scenario: A group's condition is evaluated once
+- **WHEN** `systems(a, b).runIf(resourceEquals(Score.of({ value: 0 })))` is registered and `a` sets `Score.value` to 1
+- **THEN** `b` still runs in that stage run, as in Bevy, and neither runs on the next frame; with `distributiveRunIf` instead, `b` would not run
 
 ### Requirement: One boundary crossing per system run
 Running a TS system SHALL cost a fixed number of engine calls per run, independent of the number of entities and components: one call into JS for the run. Field reads and writes inside the run SHALL be plain typed-array accesses with no call into Rust.

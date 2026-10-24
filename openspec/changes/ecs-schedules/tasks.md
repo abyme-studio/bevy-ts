@@ -17,6 +17,7 @@
 - [x] 1.15 Docs: `docs/scripts.md` "Schedules, conditions and states" (schedules, custom schedules, conditions, combinators, one-shot systems, collective `runIf`); `docs/native.md` (`ts_schedule`, `ts_condition`, new anchors, `RunTsSystem`)
 - [x] 1.16 Coverage matrix `docs/research/bevy-coverage.md` (rebase onto main first; it is not on this branch): schedules row, conditions row (all but the TS predicate idiomatic), one-shot row, `GlobalTransform` row's slot part marked existing with the ignored test; new rows for `RunFixedMainLoop`/`SpawnScene`, combinators and the condition seam
 - [x] 1.17 Tell script-time and script-input-devices the seam is in (`ts_condition`, `nativeCondition`)
+- [x] 1.18 Sync stage 1 specs into `openspec/specs` (ts-schedules, ts-conditions but the predicate, native-ordering, ts-systems ordering and `In<E>`); the deltas keep only stages 2 and 3
 
 ## 2. Stage 2: TS states as Bevy states (operator's go needed)
 
