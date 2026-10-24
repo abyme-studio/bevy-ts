@@ -95,35 +95,49 @@ fi
 [[ -n $full ]] && echo "gate: full ($full)" || echo "gate: crates $crates"
 if [[ -n $full ]]; then pkgs=(--workspace); else pkgs=(); for c in $crates; do pkgs+=(-p "$c"); done; fi
 has() { [[ $steps == *" $1 "* ]]; }
-mkdir -p target
+# Each step's whole output goes to target/affected-gate/<step>.log, and a failed one is kept as
+# failed-<UTC time>-<step>.log, which the next run (land's rerun of a red check) does not overwrite,
+# so a flake can be named after the rerun passed. The newest 10 are kept.
+logs=target/affected-gate
+mkdir -p "$logs"
 result=""
+kept=""
 ok=1
-record() { result+=" $1=$2"; [[ $2 == 0 ]] || ok=0; }
+# step <name> <how to show its log> <command...>: runs it into its log, shows the lines that matter.
+step() {
+  local name=$1 show=$2 code f
+  shift 2
+  "$@" > "$logs/$name.log" 2>&1
+  code=$?
+  $show < "$logs/$name.log"
+  result+=" $name=$code"
+  if [[ $code != 0 ]]; then
+    ok=0
+    f="$logs/failed-$(date -u +%Y%m%dT%H%M%SZ)-$name.log"
+    cp "$logs/$name.log" "$f"
+    kept+=" $f"
+  fi
+}
+tail5() { grep -v ld64 | tail -5; }
+tail6() { grep -v ld64 | tail -6; }
+summary() { grep -E "^test result|FAILED|panicked" | sort | uniq -c; }
+npm_step() {
+  cargo build -q -p bevy-ts-cli && cd packages/bevy-ts && pnpm install --frozen-lockfile --silent \
+    && pnpm -s check && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm -s test
+}
 
-if has clippy; then
-  cargo clippy "${pkgs[@]}" --all-targets -- -D warnings 2>&1 | grep -v ld64 > target/clippy.log
-  record clippy "${PIPESTATUS[0]}"
-  tail -5 target/clippy.log
-fi
-if has test; then
-  cargo test "${pkgs[@]}" --no-fail-fast -- --test-threads=4 > target/test.log 2>&1
-  record tests $?
-  grep -E "^test result|FAILED|panicked" target/test.log | sort | uniq -c
-fi
-if has deno; then
-  deno test -A crates/bevy-ts-v8/js/test 2>&1 | tail -3
-  record deno "${PIPESTATUS[0]}"
-fi
-if has npm; then
-  cargo build -q -p bevy-ts-cli \
-    && (cd packages/bevy-ts && pnpm install --frozen-lockfile --silent && pnpm -s check && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm -s test 2>&1 | tail -6)
-  record npm $?
-fi
-if has protocol; then scripts/gen-protocol.sh --check; record protocol $?; fi
-if has bevy; then scripts/gen-bevy-types.sh --check; record bevy $?; fi
-if has openspec; then openspec validate --specs --strict; record spec $?; fi
-if has slot; then env -u LAND_BASE deno test -A --no-check scripts/slot.test.ts 2>&1 | tail -3; record slot "${PIPESTATUS[0]}"; fi
-if has affected; then env -u LAND_BASE deno test -A --no-check scripts/affected-gate.test.ts 2>&1 | tail -3; record affected "${PIPESTATUS[0]}"; fi
+has clippy && step clippy tail5 cargo clippy "${pkgs[@]}" --all-targets -- -D warnings
+has test && step tests summary cargo test "${pkgs[@]}" --no-fail-fast -- --test-threads=4
+has deno && step deno tail6 deno test -A crates/bevy-ts-v8/js/test
+has npm && step npm tail6 bash -c "$(declare -f npm_step); npm_step"
+has protocol && step protocol tail6 scripts/gen-protocol.sh --check
+has bevy && step bevy tail6 scripts/gen-bevy-types.sh --check
+has openspec && step spec tail6 openspec validate --specs --strict
+has slot && step slot tail6 env -u LAND_BASE deno test -A --no-check scripts/slot.test.ts
+has affected && step affected tail6 env -u LAND_BASE deno test -A --no-check scripts/affected-gate.test.ts
+# shellcheck disable=SC2012
+ls -t "$logs"/failed-*.log 2>/dev/null | tail -n +11 | xargs rm -f
 
+[[ -n $kept ]] && echo "gate: failed logs kept:$kept"
 echo "gate:${result:- nothing to check}"
 [[ $ok == 1 ]]

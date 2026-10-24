@@ -69,6 +69,9 @@ It exits 0 when every step it ran passed, and 75 when it could not start: no car
 `LAND_BASE` that is not a commit. Under land that is at once: land's check runs with
 `ABYME_GATE_HELD` set, so it waits for no slot. Started by hand, the `affected-gate` process is heavy
 and gets its slot first, so a bad `LAND_BASE` exits 75 only once the slot is free.
+Each step's whole output is `target/affected-gate/<step>.log`. A step that fails is also kept as
+`target/affected-gate/failed-<UTC time>-<step>.log`, named in the gate's last line, so a flake can
+be traced after land's rerun of a red check passes; the newest 10 are kept.
 `deno test -A --no-check scripts/affected-gate.test.ts` checks the rules on a fixture workspace.
 
 `.abyme/land.ts` names it as the land plugin's batch check (`check: "affected-gate"`, the process of
