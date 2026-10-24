@@ -12,10 +12,13 @@ use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
 use bevy::reflect::{CreateTypeData, GetTypeRegistration, PartialReflect};
 
+/// What a read hands each message to.
+pub type MessageVisitor<'a> = &'a mut dyn FnMut(&dyn PartialReflect);
+
 /// A Rust message TS can read and write: `app.ts_message::<M>()`.
 #[derive(Clone, Copy)]
 pub struct ReflectTsMessage {
-    read: fn(&World, usize, &mut dyn FnMut(&dyn PartialReflect)) -> usize,
+    read: fn(&World, usize, MessageVisitor) -> usize,
     end: fn(&World) -> usize,
     write: fn(&mut World, &dyn PartialReflect) -> Result<(), String>,
 }
@@ -23,7 +26,7 @@ pub struct ReflectTsMessage {
 impl ReflectTsMessage {
     /// Visits each message at or after `cursor` still in `Messages<M>`, oldest first, and returns
     /// the cursor past the last one.
-    pub fn read(&self, world: &World, cursor: usize, visit: &mut dyn FnMut(&dyn PartialReflect)) -> usize {
+    pub fn read(&self, world: &World, cursor: usize, visit: MessageVisitor) -> usize {
         (self.read)(world, cursor, visit)
     }
 
