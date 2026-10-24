@@ -40,7 +40,7 @@ pub fn port_claims() -> Vec<(String, String)> {
 
 /// Param kinds bevy-ts itself declares, recognised by name.
 const KINDS: &[&str] = &[
-    "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "State", "NextState", "On", "In", "App", "Mut", "Option",
+    "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "State", "NextState", "PreviousState", "On", "In", "App", "Mut", "Option",
     "Entity", "With", "Without", "Changed", "Added", "Add", "Insert", "Remove",
 ];
 
@@ -1194,9 +1194,14 @@ impl Reader<'_> {
                 let m = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a message")?;
                 Ok(json!({ "kind": if name == "MessageReader" { "messageReader" } else { "messageWriter" }, "message": m }))
             }
-            "State" | "NextState" => {
+            "State" | "NextState" | "PreviousState" => {
                 let st = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a state")?;
-                Ok(json!({ "kind": if name == "State" { "state" } else { "nextState" }, "state": st }))
+                let kind = match name.as_str() {
+                    "State" => "state",
+                    "NextState" => "nextState",
+                    _ => "previousState",
+                };
+                Ok(json!({ "kind": kind, "state": st }))
             }
             "In" => {
                 let e = self.reference(self.arg(&name, &args, 0, span, s)?, s, "an event")?;

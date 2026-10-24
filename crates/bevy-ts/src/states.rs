@@ -201,6 +201,14 @@ impl TsStates {
         self.by_path.get(path).copied()
     }
 
+    pub(crate) fn slots(&self) -> BTreeMap<String, u8> {
+        self.by_path.clone()
+    }
+
+    pub(crate) fn restore_slots(&mut self, slots: BTreeMap<String, u8>) {
+        self.by_path = slots;
+    }
+
     /// The slot for `path`: its own, or the next free one. Fails past the pool's size.
     pub(crate) fn assign(&mut self, path: &str) -> Result<u8, String> {
         if let Some(s) = self.by_path.get(path) {

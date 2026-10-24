@@ -386,6 +386,8 @@ export interface MessageWriter<M> {
 export type In<E> = ReadView<E>;
 export interface NextState<G> { set(v: StateValueOf<G>): void }
 export interface State<G> { readonly current: StateValueOf<G> }
+/** Bevy's `PreviousState<S>`: the value before the machine's last transition, `undefined` before the first. */
+export interface PreviousState<G> { readonly previous: StateValueOf<G> | undefined }
 
 export interface Commands {
   /** Components (`Health.of({ hp: 3 })`, or a class for its defaults) or a prefab element (`<Grunt speed={3} />`). */
@@ -460,6 +462,10 @@ export interface Condition {
 }
 export declare function inState<N extends string, V extends string>(v: StateValue<N, V>): Condition;
 export declare function onMessage(m: abstract new (...a: never) => unknown): Condition;
+/** Bevy's `state_changed`: the machine transitioned since this condition last ran. */
+export declare function stateChanged(s: abstract new (...a: never) => unknown): Condition;
+/** Bevy's `state_exists`: the machine has a value (`initState` gave one, or a sub state's source allows it). */
+export declare function stateExists(s: abstract new (...a: never) => unknown): Condition;
 export declare function not(c: Condition): Condition;
 /** True the first time it is evaluated. */
 export declare function runOnce(): Condition;
@@ -547,6 +553,8 @@ export declare const FixedPostUpdate: Schedule;
 export declare const FixedLast: Schedule;
 export declare function OnEnter<N extends string, V extends string>(v: StateValue<N, V>): Schedule;
 export declare function OnExit<N extends string, V extends string>(v: StateValue<N, V>): Schedule;
+/** Bevy's `OnTransition { exited, entered }`: runs on exactly that transition, between exit and enter work. */
+export declare function OnTransition<N extends string>(t: { exited: StateValue<N>; entered: StateValue<N> }): Schedule;
 /** `class Waves extends ScheduleLabel {}`, as Rust's `#[derive(ScheduleLabel)] struct Waves;`. Named like a component; `bevy_ts::TsSchedule` in Rust. */
 export declare abstract class ScheduleLabel { static readonly path?: string; protected readonly __schedule?: true }
 /** A custom schedule: a `ScheduleLabel` class, or one a Rust crate exposed. */

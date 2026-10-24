@@ -202,7 +202,8 @@ pub enum RunParam {
     /// The nth `Local` of the system.
     Local(usize),
     MessageReader { index: usize },
-    State { index: usize },
+    /// `State<S>` (`previous: false`) or `PreviousState<S>`: a machine by index in `TsPayloads`.
+    State { index: usize, previous: bool },
     /// An observer's trigger.
     Event,
     /// An exported Rust param: its index in `HostParams`.
@@ -237,8 +238,11 @@ pub struct TsSystems {
     pub pre_startup: Vec<TsSystem>,
     pub startup: Vec<TsSystem>,
     pub post_startup: Vec<TsSystem>,
+    /// `OnEnter`/`OnExit` lists by (state slot, value symbol), run from Bevy's schedules.
     pub on_enter: HashMap<(usize, u32), Vec<TsSystem>>,
     pub on_exit: HashMap<(usize, u32), Vec<TsSystem>>,
+    /// `OnTransition` lists by (state slot, exited, entered).
+    pub on_transition: HashMap<(usize, u32, u32), Vec<TsSystem>>,
     pub observers: Vec<TsSystem>,
     /// One-shot systems by identity; `None` while one runs.
     pub one_shot: BTreeMap<String, Option<TsSystem>>,
@@ -259,6 +263,7 @@ pub(crate) enum ListKey {
     Startup,
     PostStartup,
     OnEnter(usize, u32),
+    OnTransition(usize, u32, u32),
     OnExit(usize, u32),
 }
 
@@ -282,6 +287,7 @@ impl TsSystems {
             .chain(self.slots.values().flatten())
             .chain(self.on_enter.values().flatten())
             .chain(self.on_exit.values().flatten())
+            .chain(self.on_transition.values().flatten())
             .chain(self.observers.iter())
     }
 
@@ -295,6 +301,7 @@ impl TsSystems {
             ListKey::PostStartup => Some(std::mem::take(&mut self.post_startup)),
             ListKey::OnEnter(i, v) => self.on_enter.remove(&(*i, *v)),
             ListKey::OnExit(i, v) => self.on_exit.remove(&(*i, *v)),
+            ListKey::OnTransition(i, a, b) => self.on_transition.remove(&(*i, *a, *b)),
         }
         .unwrap_or_default()
     }
@@ -312,6 +319,7 @@ impl TsSystems {
             ListKey::PostStartup => self.post_startup = list,
             ListKey::OnEnter(i, v) => drop(self.on_enter.insert((*i, *v), list)),
             ListKey::OnExit(i, v) => drop(self.on_exit.insert((*i, *v), list)),
+            ListKey::OnTransition(i, a, b) => drop(self.on_transition.insert((*i, *a, *b), list)),
         }
     }
 
@@ -496,9 +504,10 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], groups: &
             }
         }
         let payloads = world.resource::<TsPayloads>();
+        // A state value as (slot, symbol): the key Bevy's schedules run TS lists by.
         let state_key = |state: &str, value: &str| -> Result<(usize, u32), String> {
-            let i = payloads.state(state).ok_or_else(|| format!("no state {state}"))?;
-            Ok((i, payloads.states[i].index(value).ok_or_else(|| format!("{state} has no value {value}"))?))
+            let m = &payloads.states[payloads.state(state).ok_or_else(|| format!("no state {state}"))?];
+            Ok((m.slot as usize, m.sym(value).ok_or_else(|| format!("{state} has no value {value}"))?))
         };
         let schedule = match placement {
             Placement::Slot(key) => {
@@ -519,6 +528,10 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], groups: &
                     map.insert(k, built);
                 }
                 Err(e) => errors.push(ScriptError::new(e)),
+            },
+            ScheduleDecl::OnTransition { state, exited, entered } => match (state_key(state, exited), state_key(state, entered)) {
+                (Ok((slot, a)), Ok((_, b))) => drop(out.on_transition.insert((slot, a, b), built)),
+                (Err(e), _) | (_, Err(e)) => errors.push(ScriptError::new(e)),
             },
             ScheduleDecl::Observer | ScheduleDecl::OneShot => unreachable!(),
         }
@@ -641,8 +654,9 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 let index = world.resource::<TsPayloads>().message(message).ok_or_else(|| err(format!("no message type {message}; call app.addMessage")))?;
                 RunParam::MessageReader { index }
             }
-            ParamDecl::State { state } => {
-                RunParam::State { index: world.resource::<TsPayloads>().state(state).ok_or_else(|| err(format!("no state {state}")))? }
+            ParamDecl::State { state } | ParamDecl::PreviousState { state } => {
+                let index = world.resource::<TsPayloads>().state(state).ok_or_else(|| err(format!("no state {state}")))?;
+                RunParam::State { index, previous: matches!(p, ParamDecl::PreviousState { .. }) }
             }
             ParamDecl::In { event } => {
                 if i != 0 {
@@ -744,26 +758,13 @@ pub fn run_custom_stage(world: &mut World, name: &str) {
     drive(world, &ListKey::Schedule(name.to_string()), None);
 }
 
-/// `StateTransition`: applies each pending TS state value, running `OnExit(old)` then
-/// `OnEnter(new)` systems.
-pub fn run_state_transitions(world: &mut World) {
+/// Runs a TS `OnEnter`/`OnExit`/`OnTransition` list: called from the exclusive system
+/// crate::states adds to Bevy's schedule of that name.
+pub(crate) fn run_state_list(world: &mut World, key: ListKey) {
     if !runtime::stage_should_run(world) {
         return;
     }
-    let pending: Vec<(usize, Option<u32>, u32)> = {
-        let mut p = world.resource_mut::<TsPayloads>();
-        p.states
-            .iter_mut()
-            .enumerate()
-            .filter_map(|(i, s)| s.next.take().filter(|n| Some(*n) != s.current).map(|n| (i, s.current.replace(n), n)))
-            .collect()
-    };
-    for (i, old, new) in pending {
-        if let Some(old) = old {
-            drive(world, &ListKey::OnExit(i, old), None);
-        }
-        drive(world, &ListKey::OnEnter(i, new), None);
-    }
+    drive(world, &key, None);
 }
 
 /// Runs the systems of one slot. Called from the slot's exclusive system, which
@@ -1084,8 +1085,11 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     reader_cursors.push((q.name.clone(), q.next_seq));
                     ParamFrame::Messages { parts: [(a.0.as_ptr(), a.1), (b.0.as_ptr(), b.1)], stride: q.layout.size.max(1) }
                 }
-                RunParam::State { index } => {
-                    ParamFrame::State { value: world.resource::<TsPayloads>().states[*index].current.unwrap_or(u32::MAX) }
+                RunParam::State { index, previous } => {
+                    // JS numbers a machine's values in its declared order.
+                    let m = &world.resource::<TsPayloads>().states[*index];
+                    let v = if *previous { crate::states::previous_of(world, m.slot) } else { crate::states::current_of(world, m.slot) };
+                    ParamFrame::State { value: v.and_then(|v| m.index_of_sym(v)).unwrap_or(u32::MAX) }
                 }
                 RunParam::Event => match event {
                     Some((bytes, entity)) => ParamFrame::Event { data: bytes.as_ptr(), bytes: bytes.len(), entity },
@@ -1264,6 +1268,7 @@ impl TsSystem {
             ScheduleDecl::Schedule { .. } => "schedule",
             ScheduleDecl::OnEnter { .. } => "onEnter",
             ScheduleDecl::OnExit { .. } => "onExit",
+            ScheduleDecl::OnTransition { .. } => "onTransition",
             ScheduleDecl::Observer => "observer",
             ScheduleDecl::OneShot => "oneShot",
         }

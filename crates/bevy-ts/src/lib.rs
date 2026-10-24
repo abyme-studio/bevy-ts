@@ -33,6 +33,7 @@ pub mod reflect_value;
 pub mod runtime;
 pub mod schedules;
 pub mod sets;
+pub mod states;
 pub mod systems;
 pub mod time_conditions;
 pub mod value;
@@ -47,6 +48,7 @@ pub mod prelude {
     pub use crate::manifest::Stage;
     pub use crate::plugin_api::BevyTsAppExt;
     pub use crate::schedules::{RunTsSystem, TsSchedule};
+    pub use crate::states::{TsState, TsStates};
     pub use crate::{BevyTsPlugin, BevyTsSet, EngineMode, ScriptHidden};
 }
 
@@ -157,6 +159,7 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<schedules::DeferredEdits>()
             .init_resource::<schedules::PendingRuns>()
             .init_resource::<schedules::OrderState>()
+            .init_resource::<states::TsStates>()
             .init_resource::<messages::TsPayloads>()
             .init_resource::<observers::ObserverQueue>()
             .init_resource::<host::HostParams>()
@@ -193,7 +196,16 @@ impl Plugin for BevyTsPlugin {
         app.world_mut().resource_mut::<plugin_api::RestartHandlers>().0.push(Arc::new(net::close_all));
         app.add_systems(First, drop_edit_triggers.after(generation::apply_pending).run_if(in_state(EngineMode::Edit)));
         app.add_systems(First, messages::update_messages.after(generation::apply_pending));
-        app.add_systems(bevy::state::state::StateTransition, systems::run_state_transitions);
+        // TS states are Bevy states (crate::states). `StateTransition` runs on one thread: its many
+        // tiny systems cost far less there (bench 2.1). A game opts back in with Bevy's own
+        // `edit_schedule(StateTransition, ...)` after this plugin.
+        app.edit_schedule(bevy::state::state::StateTransition, |s| {
+            s.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
+        });
+        app.add_systems(
+            bevy::state::state::StateTransition,
+            states::hold_while_paused.before(bevy::state::state::StateTransitionSystems::DependentTransitions),
+        );
         // A stage made while its schedule runs (`First`, by the generation applied in it) is added
         // when that schedule ends.
         app.add_systems(First, schedules::apply_deferred_edits.before(runtime::advance_clock));
