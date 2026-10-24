@@ -159,7 +159,8 @@ network in clear text. `Refusal::Wss` goes; `Refusal::HeadersNotLoopback`'s mess
 
 On the phone: the host passes `ABYME_URL=https://mac.<tailnet>.ts.net:<port>` and
 `ABYME_KEY=<device key>` in `env`; the game's `net.allow` holds `${ABYME_URL}`; `connect()` sends
-`authorization: Bearer <key>` over `wss:`.
+`authorization: Bearer <key>` over `wss:`. abymed accepts a device key that way, as it does a
+CLI's `ABYME_KEY` (abyme `docs/abymed.md`, Devices); the cookie is only for browsers.
 
 ### 7. JS engine: V8 from source, QuickJS-ng as the fallback
 
@@ -203,7 +204,5 @@ on the moved code.
 
 - The spike's verdict on V8 versus QuickJS-ng. This design and the specs are updated when it
   reports.
-- Does abymed accept a device key as `authorization: Bearer` on `/api/stream`, or only as the
-  cookie? (For lead@abyme; if only the cookie, the header is `cookie:` and the rule is the same.)
 - How abyme gets the library: built by its `scripts/android` from the pinned bevy-ts, or a
   prebuilt bevy-ts publishes. Default: abyme builds it, with the V8 cache.
