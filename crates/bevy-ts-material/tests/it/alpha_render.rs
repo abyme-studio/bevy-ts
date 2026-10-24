@@ -23,11 +23,15 @@ const H: u32 = 180;
 static GPU: Mutex<()> = Mutex::new(());
 
 fn app() -> App {
+    app_with(|p| p)
+}
+
+/// `app()`, its plugins changed by `f`.
+fn app_with(f: impl FnOnce(bevy::app::PluginGroupBuilder) -> bevy::app::PluginGroupBuilder) -> App {
     let mut app = App::new();
     let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
     app.add_plugins(
-        DefaultPlugins
-            .build()
+        f(DefaultPlugins.build())
             .disable::<WinitPlugin>()
             .disable::<bevy::log::LogPlugin>()
             .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
@@ -243,4 +247,49 @@ fn a_faded_targets_shadow_follows_its_alpha() {
         let ok = targets == 3 && s[0] < bare - 30.0 && s[1] < bare - 10.0 && s[1] > s[0] + 10.0 && same(s[2]) && same(s[3]) && same(s[4]);
         if ok { Ok(()) } else { Err(format!("ship targets {targets}, ground under 1, 0.5, 0, ship 0, NotShadowCaster: {s:?}, bare {bare}")) }
     });
+}
+
+/// A camera with depth, normal and motion-vector prepasses (each a TS component): the prepass
+/// compiles `fade.wesl`'s entry with outputs, and the cube still draws half its pixels.
+#[test]
+fn a_faded_shape_under_prepasses_compiles_and_dithers() {
+    use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
+    use bevy::render::RenderApp;
+    use bevy::render::render_resource::{CachedPipelineState, PipelineCache, PipelineDescriptor};
+    use bevy::shader::ShaderDefVal;
+    let _gpu = GPU.lock().unwrap_or_else(|e| e.into_inner());
+    // Not pipelined, so the render world stays reachable for its pipeline cache.
+    let mut app = app_with(|p| p.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>());
+    let world = app.world_mut();
+    let (target, cam) = camera(world, Transform::from_xyz(0.0, 0.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y));
+    world.entity_mut(cam).insert((DepthPrepass, NormalPrepass, MotionVectorPrepass));
+    let cube = world.resource_mut::<Assets<Mesh>>().add(Cuboid::default());
+    let solid = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial { base_color: Color::srgb(1.0, 0.0, 0.0), unlit: true, ..default() });
+    world.spawn((Mesh3d(cube), MeshMaterial3d(solid), MaterialAlpha { alpha: 0.5 }));
+
+    until_drawn(&mut app, &target, |w, img| {
+        let face = project(w, cam, Vec3::new(-0.5, -0.5, 0.5), Vec3::new(0.5, 0.5, 0.5), 3)?;
+        let r = fraction(img, face, red);
+        if (r - 0.5).abs() <= 1.0 / 16.0 { Ok(()) } else { Err(format!("red {r}")) }
+    });
+    // The cube is the only mesh, so every normal-prepass pipeline is its fade copy's. One that
+    // failed would not stop the main pass from drawing: look in the pipeline cache.
+    let def = |d: &[ShaderDefVal], name: &str| d.iter().any(|v| matches!(v, ShaderDefVal::Bool(n, true) if n == name));
+    let start = Instant::now();
+    loop {
+        let cache = app.sub_app(RenderApp).world().resource::<PipelineCache>();
+        let mut prepass_ok = false;
+        for p in cache.pipelines() {
+            let PipelineDescriptor::RenderPipelineDescriptor(d) = &p.descriptor else { continue };
+            assert!(!matches!(p.state, CachedPipelineState::Err(_)), "{:?} failed: {:?}", d.label, p.state);
+            if d.fragment.as_ref().is_some_and(|f| def(&f.shader_defs, "PREPASS_FRAGMENT") && def(&f.shader_defs, "NORMAL_PREPASS")) {
+                prepass_ok |= matches!(p.state, CachedPipelineState::Ok(_));
+            }
+        }
+        if prepass_ok {
+            return;
+        }
+        assert!(start.elapsed() < Duration::from_secs(180), "no normal-prepass pipeline compiled");
+        app.update();
+    }
 }

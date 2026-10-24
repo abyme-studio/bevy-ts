@@ -12,6 +12,8 @@ import bevy_pbr::{
 };
 @if(PREPASS_PIPELINE && MOTION_VECTOR_PREPASS)
 import bevy_pbr::render::pbr_prepass_functions::calculate_motion_vector;
+@if(PREPASS_PIPELINE && VISIBILITY_RANGE_DITHER)
+import bevy_pbr::render::pbr_functions::visibility_range_dither;
 @if(!PREPASS_PIPELINE)
 import bevy_pbr::{
     render::{
@@ -80,10 +82,13 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
 }
 
 // Prepass and shadow pass with outputs (a normal or motion-vector prepass, or emulated unclipped
-// depth). The normal is the mesh's, without a normal map.
+// depth). The normal is the mesh's as interpolated: no normal map, and a double-sided back face
+// keeps its front's normal.
 @if(PREPASS_PIPELINE && PREPASS_FRAGMENT)
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
+@if(VISIBILITY_RANGE_DITHER)
+    visibility_range_dither(in.position, in.visibility_range_dither);
     dither(in.position);
     prepass_sample_color_and_alpha_discard(in);
 
@@ -102,6 +107,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
 @if(PREPASS_PIPELINE && !PREPASS_FRAGMENT)
 @fragment
 fn fragment(in: VertexOutput) {
+@if(VISIBILITY_RANGE_DITHER)
+    visibility_range_dither(in.position, in.visibility_range_dither);
     dither(in.position);
     prepass_sample_color_and_alpha_discard(in);
 }

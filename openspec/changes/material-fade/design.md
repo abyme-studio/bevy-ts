@@ -18,6 +18,8 @@ Our setup: forward, no depth prepass, no TAA, cameras at 4× MSAA; render tests 
 - `MaterialAlpha`'s API, its binding and its composition with scene-material stay as they are.
 
 **Non-Goals:**
+- Deferred rendering: under `DeferredPrepass` the gbuffer pass uses `StandardMaterial`'s deferred
+  shader, so a faded opaque mesh draws solid and only its shadow fades. Forward only.
 - Smooth (sub-1/16) fades, or hiding the pattern: that wants TAA, which we do not run.
 - Fading a script material, or TSX children.
 - A fade for `VisibilityRange` or any other Bevy fade.
@@ -31,15 +33,23 @@ Our setup: forward, no depth prepass, no TAA, cameras at 4× MSAA; render tests 
    mode gets the dithered shadow. Alternative: keep `StandardMaterial` copies for transparent
    originals. Rejected: two copy types, and their shadow would stay full.
 
-2. The WGSL is `src/fade.wgsl`, embedded (`embedded_asset!`), one fragment entry for the main pass
-   and one for the prepass. Both compute `bayer4(frag_coord.xy)` (thresholds `(i + 0.5) / 16`) and
-   discard where it is above `alpha`. The main pass skips the discard when the base's alpha mode is
-   a blend mode (read from `pbr_input.material.flags`), and the Rust side already scaled the
-   base's `base_color` alpha. The prepass always dithers. Built on Bevy's `pbr_fragment` /
+2. The shader is `src/fade.wesl`: wesl, because Bevy 0.20's own shaders are wesl and its imports
+   (`pbr_fragment`, `prepass::io`) resolve only from wesl. One fragment entry for the main pass and
+   two for the prepass (with outputs, and depth only), picked by `@if`. Each computes
+   `bayer4(frag_coord.xy)` (thresholds `(i + 0.5) / 16`) and discards where it is above `alpha`.
+   The main pass skips the discard when the base's alpha mode is a blend mode (read from
+   `pbr_input.material.flags`), and the Rust side already scaled the base's `base_color` alpha. The
+   prepass always dithers. Built on Bevy's `pbr_input_from_standard_material` /
    `apply_pbr_lighting` / `main_pass_post_lighting_processing` and
-   `prepass_alpha_discard`, as Bevy's `extended_material` example does. Why the prepass: the
-   shadow pass specializes with `prepass_specialize`, and a material with a prepass fragment shader
-   is not depth-only, so the shadow map loses the same texels and PCF softens it.
+   `prepass_sample_color_and_alpha_discard`, as `pbr.wesl` and `pbr_prepass.wesl` do. Why the
+   prepass: the shadow pass specializes with `prepass_specialize`. Setting a prepass fragment shader
+   makes `prepass_reads_material()` true, so Bevy binds the material in the depth-only and shadow
+   draws; but Bevy gives an opaque base's depth-only pipeline no fragment stage at all (only
+   `MAY_DISCARD` or prepass outputs add one). So `Fade::specialize` adds the shader's depth-only
+   entry to any pipeline that has no fragment stage, and the shadow map loses the same texels; PCF
+   softens it. The shader is inserted into `Assets<Shader>` under a fixed uuid handle at plugin
+   build, not `embedded_asset!`: `specialize` gets no asset server, so it needs a handle it can
+   name. Cost: no hot reload of `fade.wesl`, which only a bevy-ts developer edits.
 
 3. `alpha.rs` owns the swap and the original. On fade: remove `MeshMaterial3d<StandardMaterial>`,
    insert `MeshMaterial3d<FadeMaterial>`. On restore: the reverse. `MaterialAlphaTargets` keeps
@@ -57,7 +67,7 @@ Our setup: forward, no depth prepass, no TAA, cameras at 4× MSAA; render tests 
 
 5. Shadows: nothing beyond the prepass dither. `alpha.rs` never touches `NotShadowCaster`.
 
-6. Registration: `alpha::plugin` adds `MaterialPlugin::<FadeMaterial>` and the embedded shader.
+6. Registration: `alpha::plugin` adds `MaterialPlugin::<FadeMaterial>` and inserts the shader under its handle.
    It sits in `ScriptMaterialRenderPlugin`, as `alpha::plugin` does today, so headless tests that
    add that plugin get it.
 
