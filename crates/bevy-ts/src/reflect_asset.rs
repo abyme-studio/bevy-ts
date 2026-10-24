@@ -205,7 +205,7 @@ pub fn drop_queued(world: &World) {
     let mut guard = assets.table();
     let t = &mut *guard;
     let queued = std::mem::take(&mut t.queued);
-    for (n, q) in queued.into_iter().filter(|(_, q)| q.added) {
+    for (n, _) in queued.into_iter().filter(|(_, q)| q.added) {
         if let Some(m) = t.refs.remove(&n) {
             t.by_id.remove(&m.handle.id());
             t.sources.remove(&m.handle.id());
@@ -443,7 +443,11 @@ pub struct HandMap {
 pub const HAND_MAPS: &[HandMap] = &[];
 
 fn hand_map(asset: TypeId) -> Option<&'static HandMap> {
-    HAND_MAPS.iter().find(|h| (h.asset)() == asset)
+    #[cfg(test)]
+    let maps = HAND_MAPS.iter().chain(tests::TEST_MAPS);
+    #[cfg(not(test))]
+    let maps = HAND_MAPS.iter();
+    maps.into_iter().find(|h| (h.asset)() == asset)
 }
 
 fn default_value(registry: &TypeRegistry, ty: &AssetType) -> Result<Box<dyn PartialReflect>, String> {
@@ -689,6 +693,69 @@ mod tests {
         assert_ne!(a.id(), c.id());
         let e = slots.write(TypeId::of::<Image>(), &serde_json::json!({ "$of": MAT, "props": {} })).unwrap_err();
         assert!(e.contains("StandardMaterial") && e.contains("Image"), "{e}");
+    }
+
+    /// A fixture asset reflection cannot read whole, hand-mapped as `{ text, count }`.
+    #[derive(Asset, Reflect, Default, Clone, PartialEq)]
+    #[reflect(Default)]
+    struct Note {
+        #[reflect(ignore)]
+        text: String,
+        #[reflect(ignore)]
+        count: u32,
+    }
+
+    fn note_read(_: &Slots, _: Option<&Value>, v: &dyn PartialReflect) -> Result<Value, String> {
+        let n = v.try_downcast_ref::<Note>().ok_or("not a Note")?;
+        Ok(serde_json::json!({ "text": n.text, "count": n.count }))
+    }
+
+    fn note_write(_: &Slots, base: Option<&dyn PartialReflect>, json: &Value) -> Result<Box<dyn Reflect>, String> {
+        let mut n = base.and_then(|b| b.try_downcast_ref::<Note>()).cloned().unwrap_or_default();
+        if let Some(t) = json.get("text") {
+            n.text = t.as_str().ok_or("text is a string")?.to_string();
+        }
+        if let Some(c) = json.get("count") {
+            n.count = c.as_u64().ok_or("count is a number")? as u32;
+        }
+        Ok(Box::new(n))
+    }
+
+    pub(super) const TEST_MAPS: &[HandMap] = &[HandMap { asset: TypeId::of::<Note>, read: note_read, write: note_write }];
+
+    const NOTE: &str = "bevy_ts::reflect_asset::tests::Note";
+
+    #[test]
+    fn a_hand_mapped_type_reads_and_writes_by_its_entry() {
+        let mut app = app();
+        app.init_asset::<Note>().register_asset_reflect::<Note>();
+        let r = call(&app, "assets.add", serde_json::json!([NOTE, { "text": "hi", "count": 1 }])).unwrap();
+        assert_eq!(call(&app, "assets.get", serde_json::json!([r])).unwrap(), serde_json::json!({ "text": "hi", "count": 1 }));
+        flush(app.world_mut());
+        call(&app, "assets.set", serde_json::json!([r, { "count": 1 }])).unwrap();
+        assert!(app.world().resource::<ScriptAssets>().table().queued.is_empty(), "equal reads queue nothing");
+        call(&app, "assets.set", serde_json::json!([r, { "count": 2 }])).unwrap();
+        flush(app.world_mut());
+        let h = app.world().resource::<ScriptAssets>().handle(1).unwrap();
+        let n = app.world().resource::<Assets<Note>>().get(h.id().typed::<Note>()).unwrap().clone();
+        assert_eq!((n.text.as_str(), n.count), ("hi", 2), "the patch merged over the current read");
+        assert_eq!(app.world().resource::<ScriptAssets>().source(h.id()), Some(serde_json::json!({ "text": "hi", "count": 2 })));
+    }
+
+    #[test]
+    fn a_ref_passes_a_check_by_its_type_and_fails_with_no_hook() {
+        let app = pbr_app();
+        let registry = app.world().resource::<AppTypeRegistry>().read();
+        let assets = ScriptAssets::default();
+        let slots = Slots { registry: &registry, server: None, assets: &assets, check: true };
+        let mut m = StandardMaterial::default();
+        let img = ref_json(7, IMG);
+        reflect_value::write_with(slots.cx(), m.as_partial_reflect_mut(), None, &serde_json::json!({ "base_color_texture": img })).expect("a ref the table does not know passes a check by its type");
+        let mat = ref_json(7, MAT);
+        let e = reflect_value::write_with(slots.cx(), m.as_partial_reflect_mut(), None, &serde_json::json!({ "base_color_texture": mat })).unwrap_err();
+        assert!(e.contains("StandardMaterial") && e.contains("Image"), "{e}");
+        let e = reflect_value::write(&registry, None, m.as_partial_reflect_mut(), None, &serde_json::json!({ "base_color_texture": img })).unwrap_err();
+        assert!(e.contains("Handle"), "with no hook a ref fails naming the handle type: {e}");
     }
 
     #[test]
