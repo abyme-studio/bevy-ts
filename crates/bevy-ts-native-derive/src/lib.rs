@@ -97,6 +97,12 @@ pub fn derive_host_record(input: TokenStream) -> TokenStream {
     for f in &fields.named {
         let id = f.ident.clone().unwrap();
         let ty = &f.ty;
+        // A record has a fixed layout of slots; a string's length varies.
+        if is_string(ty) || option_of(ty).is_some_and(is_string) {
+            return syn::Error::new(ty.span(), format!("HostRecord: field `{id}` is a string; strings cross as method arguments and results, not record fields"))
+                .to_compile_error()
+                .into();
+        }
         let ts = camel(&id.to_string());
         kinds.push(quote_spanned!(ty.span()=> (::std::string::String::from(#ts), <#ty as #h::HostValue>::kind())));
         reads.push(quote_spanned!(ty.span()=> #id: <#ty as #h::HostValue>::read(r)?));
@@ -167,6 +173,34 @@ fn camel(s: &str) -> String {
         }
     }
     out
+}
+
+/// Whether `t` is `String`, `&str` or `str`.
+fn is_string(t: &Type) -> bool {
+    match t {
+        Type::Reference(r) => is_string(&r.elem),
+        Type::Path(p) => p.qself.is_none() && p.path.segments.last().is_some_and(|s| (s.ident == "String" || s.ident == "str") && s.arguments.is_none()),
+        _ => false,
+    }
+}
+
+/// `&str` when `t` is written `&str`.
+fn is_str_ref(t: &Type) -> bool {
+    matches!(t, Type::Reference(r) if r.mutability.is_none() && matches!(&*r.elem, Type::Path(p) if p.path.is_ident("str")))
+}
+
+/// `T` when `t` is written `Option<T>`.
+fn option_of(t: &Type) -> Option<&Type> {
+    let Type::Path(p) = t else { return None };
+    let seg = p.path.segments.last()?;
+    if seg.ident != "Option" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(a) = &seg.arguments else { return None };
+    match a.args.first()? {
+        syn::GenericArgument::Type(t) if a.args.len() == 1 => Some(t),
+        _ => None,
+    }
 }
 
 /// `T` when `t` is written `Result<T, E>`.
@@ -303,8 +337,21 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
                     }
                     specs.push(quote_spanned!(elem.span()=> #h::ArgSpec::Slice(#h::SliceSpec { name: #ts_arg, view: <#elem as #h::HostElem>::view(), mutable: #mutable })));
                 }
+                // `&str` and `Option<&str>`: read as an owned string, lent to the method.
+                ty if is_str_ref(ty) || option_of(ty).is_some_and(is_str_ref) => {
+                    let optional = !is_str_ref(ty);
+                    let owned = if optional { quote!(::core::option::Option<::std::string::String>) } else { quote!(::std::string::String) };
+                    let held = format_ident!("__{}_owned", name);
+                    decls.push(quote_spanned!(ty.span()=> let #held: #owned = <#owned as #h::HostValue>::read(__r)?;));
+                    if optional {
+                        decls.push(quote_spanned!(ty.span()=> let #local: #ty = #held.as_deref();));
+                    } else {
+                        decls.push(quote_spanned!(ty.span()=> let #local: #ty = #held.as_str();));
+                    }
+                    specs.push(quote_spanned!(ty.span()=> #h::ArgSpec::Value(#ts_arg, <#owned as #h::HostValue>::kind())));
+                }
                 Type::Reference(r) => {
-                    return Err(syn::Error::new(r.span(), format!("argument {name}: only &[T] and &mut [T] references cross to TS")));
+                    return Err(syn::Error::new(r.span(), format!("argument {name}: only &str, &[T] and &mut [T] references cross to TS")));
                 }
                 ty => {
                     decls.push(quote_spanned!(ty.span()=> let #local: #ty = <#ty as #h::HostValue>::read(__r)?;));

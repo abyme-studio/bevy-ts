@@ -47,14 +47,18 @@ writable-native-params landed: an export may hold `Deferred<T>` params, every ex
    Rejected: a measurement would land mid-run, unlike Bevy, and the store would be exclusive to
    every TS system holding the export.
 
-3. **Strings cross as UTF-8 slices.** A `&str` argument is a new `Kind::Str` the derive accepts.
-   The glue encodes it with `encodeInto` into a scratch `Uint8Array` grown as needed, and passes
-   it as one of the call's four slices; Rust checks UTF-8 and borrows it. A `String` result is
-   written into a per-call byte arena beside `H.result`, its length in a slot, and decoded by
-   the glue's `TextDecoder`. Strings are not slice elements or record fields, so records keep a
-   fixed layout. This is general: every export may use it. *Alternative:* the store's paths as
-   numbers. Rejected: render paths appear at run time and `HashMap` order is not stable, so ids
-   need a second table and a lookup by name anyway.
+3. **Strings cross as UTF-8 in the slots.** A `&str` argument is a new `Kind::Str` the derive
+   accepts (and `Option<&str>`, `String`). The glue encodes it into the call's `f64` slot array: its
+   byte length in one slot, then its bytes packed into the slots after it. Rust reads the bytes,
+   checks UTF-8 and lends the method a `&str`. A `String` result comes back the same way in the
+   result slots, decoded by the glue. No new op, slice or arena: the slots already cross whole,
+   so the host ABI is unchanged and a string takes none of the four slices. A string is bounded
+   by the call's 4 KB of slots and throws past it; long text goes through a slice. Strings are not
+   record fields, so records keep a fixed layout. This is general: every export may use it.
+   *Alternative:* a slice per string argument and a result byte arena (the first draft). Rejected:
+   a new op argument and a slice per string, for paths of tens of bytes. *Alternative:* the
+   store's paths as numbers. Rejected: render paths appear at run time and `HashMap` order is not
+   stable, so ids need a second table and a lookup by name anyway.
 
 4. **Paths listed sorted.** `len()` and `path(i)` read the store's keys sorted. A store holds
    tens of paths; sorting on each call is cheap, and a system that walks them gets a stable order.

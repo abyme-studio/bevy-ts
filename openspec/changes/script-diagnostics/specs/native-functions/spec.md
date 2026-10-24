@@ -14,7 +14,7 @@ A Rust crate (the project's own or a port) SHALL be able to export a Bevy `Syste
 ## ADDED Requirements
 
 ### Requirement: Strings cross as UTF-8
-An exported method SHALL be able to take `&str` and `Option<&str>` arguments and return `String` or `Option<String>`, typed `string` (and `string | undefined`) in TS. The JS glue SHALL encode a string argument as UTF-8 into a scratch byte view and Rust SHALL read it in place for the length of the call; a string argument SHALL count as one of the method's slice arguments. A string result SHALL be written by Rust into a byte arena and decoded by the glue into a JS string. A `String` SHALL NOT be a field of a `HostRecord` or a slice element. A string argument SHALL NOT be checked against the run's columns for overlap: it never views one.
+An exported method SHALL be able to take `&str` and `Option<&str>` arguments and return `String` or `Option<String>`, typed `string` (and `string | undefined`) in TS. The JS glue SHALL encode a string argument as UTF-8 into the call's argument slots (its byte length, then its bytes), and Rust SHALL read and check it there; a string argument SHALL NOT take one of the method's slice arguments. A string result SHALL come back the same way in the result slots and be decoded by the glue into a JS string. A string too long for the call's slots SHALL throw, naming its length. A `String` SHALL NOT be a field of a `HostRecord` or a slice element. A string argument SHALL NOT be checked against the run's columns for overlap: it never views one.
 
 #### Scenario: A path in, a name out
 - **WHEN** a crate exports `pub fn suffix(&self, path: &str) -> Option<String>` and a TS system calls `p.suffix("frame_time")`
@@ -23,6 +23,10 @@ An exported method SHALL be able to take `&str` and `Option<&str>` arguments and
 #### Scenario: Not ASCII
 - **WHEN** a TS system passes `"bâtiment/面"` to a `&str` argument whose method returns it unchanged
 - **THEN** the system reads `"bâtiment/面"`
+
+#### Scenario: Too long for one call
+- **WHEN** a TS system passes a string of 5,000 bytes to a `&str` argument
+- **THEN** the call throws, naming the string's length, and Rust is not called
 
 #### Scenario: A string in a record
 - **WHEN** a crate derives `HostRecord` on a struct with a `String` field
