@@ -24,19 +24,23 @@ async function run(cmd: string[], env: Record<string, string>) {
 
 const asked = (out: string): string[] => JSON.parse(out.split("\n")[0]);
 
-Deno.test("every process that runs cargo takes a bevy-ts slot first", async () => {
-  const home = await fakeHome();
-  const env = { HOME: home, ABYME_GATE_HELD: "" };
-  for (const [name, { cmd }] of Object.entries(processes)) {
-    if (!runsCargo(cmd)) continue;
-    // In bash and in fish, the operator's shell: the fake runs first, so nothing else does.
-    for (const shell of [["bash"], ["fish", "--no-config"]]) {
-      const args = asked(await run([...shell, "-c", cmd], env));
-      // Any bevy-ts slot name does: the name only labels the run in the slots' queue.
-      assertEquals([args[0], args[2]], ["run", "--"], `${name} in ${shell[0]}`);
-      assert(/^bevy-ts:[\w.-]+$/.test(args[1]), `${name} in ${shell[0]}: slot ${args[1]}`);
-      assert(runsCargo(args.slice(3).join(" ")), `${name} in ${shell[0]}: ${args}`);
-    }
+Deno.test("every process that runs cargo is heavy, or takes a bevy-ts slot itself", () => {
+  for (const [name, p] of Object.entries(processes as Record<string, { cmd: string; heavy?: boolean }>)) {
+    if (!runsCargo(p.cmd)) continue;
+    // Heavy: abyme holds a slot while it runs. In bash, which has pipefail, as gated() writes it.
+    if (p.heavy) assert(p.cmd.startsWith("bash -c '"), `${name}: ${p.cmd}`);
+    // Else it wraps the step that builds (a server) or the whole run in gate-slot; any bevy-ts slot
+    // name does, as the name only labels the run in the slots' queue.
+    else assert(/scripts\/gate-slot run bevy-ts:/.test(p.cmd), `${name}: ${p.cmd}`);
+  }
+});
+
+Deno.test("a heavy process runs in bash under the operator's shell", async () => {
+  // abyme runs a heavy command as "$SHELL" -c "<cmd>"; gated() hands it to bash in both shells.
+  const cmd = `bash -c ${"'set -o pipefail; echo ran | tee /dev/null; false | tee /dev/null'"}`;
+  for (const shell of [["bash"], ["fish", "--no-config"]]) {
+    const out = await new Deno.Command(shell[0], { args: [...shell.slice(1), "-c", cmd], stdout: "piped" }).output();
+    assertEquals([new TextDecoder().decode(out.stdout).trim(), out.code], ["ran", 1], shell[0]);
   }
 });
 
@@ -68,8 +72,9 @@ Deno.test("a gate that pipes its output exits with the gate's status, not tee's"
   // land reads a check's exit code: a pipe without pipefail turns a red gate green.
   for (const name of ["native-gate", "affected-gate", "levels-gate", "systems-gate", "test", "clippy"]) {
     const { cmd } = (processes as Record<string, { cmd: string }>)[name];
-    // In bash, as gated() runs it: the operator's fish has no pipefail.
-    assert(/ -- bash -c '.*set -o pipefail/.test(cmd), `${name}: ${cmd}`);
+    // Heavy, in bash, as gated() writes it: the operator's fish has no pipefail.
+    const p = (processes as Record<string, { cmd: string; heavy?: boolean }>)[name];
+    assert(p.heavy && /^bash -c '.*set -o pipefail/.test(cmd), `${name}: ${cmd}`);
   }
   const red = await new Deno.Command("bash", { args: ["-c", "set -o pipefail; false | tee /dev/null"] }).output();
   assertEquals(red.code, 1);

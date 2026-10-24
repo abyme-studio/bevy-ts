@@ -1,8 +1,8 @@
 import type { ProcessFile } from "@abyme/processes";
 
 // Every process that runs cargo, itself or through a script, runs inside one of the machine's check
-// slots, named bevy-ts:<process> (docs/check-slots.md); `gated` below wraps it. A long-running
-// server holds a slot for its build only, so its entry wraps that step itself.
+// slots (docs/check-slots.md): `gated` below marks it heavy, and abyme holds a slot while it runs. A
+// long-running server holds a slot for its build only, so its entry wraps that step in gate-slot itself.
 const processes = {
   "bench-bindings-rust": {
     cmd: "cd bench/bindings/rust && cargo bench 2>&1 | tee ../results/rust-criterion.txt",
@@ -276,17 +276,16 @@ const processes = {
   "ecs-schedules-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo build --workspace --all-targets && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo test --workspace --exclude bevy-ts-viewport && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo test -p bevy-ts-viewport -- --test-threads=1 && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- cargo clippy --workspace --all-targets -- -D warnings && ~/dev/abyme/scripts/gate-slot run bevy-ts:ecs-schedules -- scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/ecs-schedules-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo gate exit $?'" },
 } satisfies ProcessFile;
 
-const GATE_SLOT = "$HOME/dev/abyme/scripts/gate-slot";
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
+const takesSlot = (cmd: string) => /scripts\/gate-slot/.test(cmd);
 const quoted = (cmd: string) => `'${cmd.replaceAll("'", "'\\''")}'`;
 
-/** Each entry that runs cargo, and does not take its slot itself, as `gate-slot run` around it. */
+/** Each entry that runs cargo, and does not take its slot itself, marked heavy: abyme holds one of
+ * the check slots while it runs. In bash, as before: the operator's shell (fish) has no pipefail. */
 function gated(file: ProcessFile): ProcessFile {
   return Object.fromEntries(
     Object.entries(file).map(([name, p]) =>
-      runsCargo(p.cmd) && !p.cmd.includes(GATE_SLOT)
-        ? [name, { ...p, cmd: `${GATE_SLOT} run bevy-ts:${name} -- bash -c ${quoted(p.cmd)}` }]
-        : [name, p],
+      runsCargo(p.cmd) && !takesSlot(p.cmd) ? [name, { ...p, cmd: `bash -c ${quoted(p.cmd)}`, heavy: true }] : [name, p],
     ),
   );
 }

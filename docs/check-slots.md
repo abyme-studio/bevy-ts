@@ -16,20 +16,22 @@ its own. A run that finds both slots held prints who holds them and waits.
 
 The repo takes the slot itself, so nothing has to remember to:
 
-- **Processes.** `.abyme/processes.ts` wraps every entry whose command runs cargo or a script in
-  `scripts/` as `gate-slot run bevy-ts:<process> -- bash -c '<cmd>'`. A long-running server
-  (`cube`, `rapier`, `thrusters`, `skeleton`) wraps only its `cargo build` step, so it does not hold
-  a slot for as long as it runs.
+- **Processes.** `.abyme/processes.ts` marks every entry whose command runs cargo or a script in
+  `scripts/` `heavy: true`, its command as `bash -c '<cmd>'` (the operator's fish has no
+  `pipefail`). abyme holds a check slot while a heavy process runs, through gate-slot, so what it
+  runs takes none of its own. An entry that wraps itself in gate-slot is left alone: a long-running
+  server (`cube`, `rapier`, `thrusters`, `skeleton`) wraps only its `cargo build` step, so it does
+  not hold a slot for as long as it runs.
 - **Scripts.** Each script in `scripts/` that runs cargo sources `scripts/slot.sh` first, which
   runs it again under `gate-slot run bevy-ts:<script>`. It runs as it is when `ABYME_GATE_HELD` is
-  set (a gated process called it) or when there is no gate-slot (CI, another machine).
+  set (a heavy process, or land's check, called it) or when there is no gate-slot (CI, another machine).
   `BEVY_TS_GATE_SLOT` points it at another gate-slot.
 - **By hand.** A cargo command typed in a shell is not wrapped: run it as
   `~/dev/abyme/scripts/gate-slot run bevy-ts:<what> -- cargo ...`.
 
-`deno test -A --no-check scripts/slot.test.ts` checks all of it against a fake gate-slot: each
-process that runs cargo, in bash and in fish, asks for the slot named after it, each cargo script
-asks for its own, and `ABYME_GATE_HELD` or a missing gate-slot skips it.
+`deno test -A --no-check scripts/slot.test.ts` checks all of it: each process that runs cargo is
+heavy and in bash, or wraps itself in a `bevy-ts:` slot; against a fake gate-slot, each cargo
+script asks for its own slot, and `ABYME_GATE_HELD` or a missing gate-slot skips it.
 
 ## The gate
 
@@ -64,7 +66,9 @@ still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
 
 `scripts/affected-gate.sh --plan` prints the crates and steps and runs nothing; it takes no slot.
 It exits 0 when every step it ran passed, and 75 when it could not start: no cargo or jq, or a
-`LAND_BASE` that is not a commit.
+`LAND_BASE` that is not a commit. Under land that is at once: land's check runs with
+`ABYME_GATE_HELD` set, so it waits for no slot. Started by hand, the `affected-gate` process is heavy
+and gets its slot first, so a bad `LAND_BASE` exits 75 only once the slot is free.
 `deno test -A --no-check scripts/affected-gate.test.ts` checks the rules on a fixture workspace.
 
 `.abyme/land.ts` names it as the land plugin's batch check (`check: "affected-gate"`, the process of
