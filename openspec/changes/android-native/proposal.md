@@ -75,9 +75,10 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
 - Needs the operator's go:
   - **V8 from source in the build.** 1-2 h a clean build, about 13 min cached; NDK r25b+ and API
     29, above abyme's `minSdk` 26. The alternative is QuickJS-ng (no JIT, ~1 MB).
-  - **A TLS crate.** rustls with webpki-roots, through `async-tungstenite`'s rustls feature
-    (`futures-rustls`), in `bevy-ts` on every target. New dependencies.
-  - **The header rule.** Headers allowed over `wss:` to any allowed host, not only loopback.
+  - **A TLS crate.** `futures-rustls` with `ring` and `webpki-roots`, in `bevy-ts` on every
+    target. New dependencies.
+  - **The header rule.** Headers allowed over `wss:` to any allowlisted host, not only loopback.
+    The alternative is headers only to an origin the embedding host names.
   - **The engine as a per-version download, loaded by path.** The `.so` is not in abyme's APK: the
     host downloads one per bevy-ts version into `filesDir/engines/<version>/` and loads it with
     `Engine.load(path)` (`System.load`). The APK stays at 8.6 MB, but it is native code
@@ -93,4 +94,5 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
     architectural pattern, and two new crates.
   - **A possible second `ScriptBackend`** (QuickJS-ng), if the spike rules V8 out.
   - **Performance:** a phone GPU and CPU run the game; skinned meshes are known broken on some
-    Adreno GPUs (bevy#24926).
+    Adreno GPUs (bevy#24926, open in 0.20.0); the fix forces skinning onto uniform buffers on
+    Adreno only, and needs a real Adreno phone to confirm.

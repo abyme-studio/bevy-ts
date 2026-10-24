@@ -143,8 +143,13 @@ surface creation does the rest, Vulkan by default. On a new window the runner re
 `RawHandleWrapper`; on null it removes it and waits until the render world has dropped the
 surface before answering. Resize writes `WindowResized`.
 
-This is the riskiest Bevy assumption; the spike proves it. If replacing the handle doesn't
-recreate the surface, the runner despawns the window entity and spawns a new one.
+The spike confirmed this from Bevy 0.20's sources, and `jinleili/bevy-in-app` does the same:
+bevy_render's window code handles a handle removed on Android suspend and a new one inserted on
+resume (`bevy_render` `view/window/mod.rs`). What winit would do and we must: our own runner, the
+`WindowResized` messages, and pipelined rendering off (`PipelinedRenderingPlugin` left out), so the
+render world drops the surface inside the frame that removes the handle. Still to see on a device;
+if a new handle doesn't recreate the surface, the runner despawns the window entity and spawns a
+new one.
 
 Alternative: winit's Android backend through `android-activity`. It wants to own an activity and
 has open resume bugs (bevy#26282). Rejected.
@@ -159,8 +164,9 @@ has open resume bugs (bevy#26282). Rejected.
 
 `env` reaches `NetPolicy::from_config` as its lookup, in place of `std::env::var`.
 
-Assets: Bevy on Android defaults to its `AndroidAssetReader` (the APK's assets). The embedding
-registers the default source as a `FileAssetReader` rooted at `<game>/assets`, unwatched.
+Assets: Bevy on Android defaults to its `AndroidAssetReader`, which panics without an
+android-activity app, and a Kotlin host has none. The embedding registers the default source as a
+`FileAssetReader` rooted at `<game>/assets`, unwatched, before `AssetPlugin` builds.
 
 abyme's shell owns getting the folder: abymed serves the built `game/` and the shell downloads it
 with the device's key into `filesDir/games/<name>/`. The JS is data the engine reads, so it is not
@@ -174,13 +180,20 @@ entity. The viewport keeps its Mach and HTTP carriers and calls it. One owner, o
 
 ### 6. `wss:` with rustls, and headers over TLS
 
-The async-io transport gains a TLS connector: rustls with webpki-roots (`futures-rustls`, or
-`async-tungstenite`'s `async-tls`), on every target. No platform verifier: tailscale serve uses
+The async-io transport gains a TLS connector: `futures-rustls` with the `ring` provider and
+`webpki-roots`, on every target. `async-tungstenite` stays on its `handshake` feature only: its own
+TLS features are stale or tokio-only, so the transport wraps the TCP stream in TLS itself. No platform verifier: tailscale serve uses
 Let's Encrypt certificates, which webpki roots trust, and a platform verifier on Android needs JNI
 setup. Tests add a root through a Rust-only API, never from a script.
 
-The header rule becomes: headers go to loopback, or over `wss:`. A key still never crosses the
-network in clear text. `Refusal::Wss` goes; `Refusal::HeadersNotLoopback`'s message changes.
+The header rule becomes: headers go to loopback, or over `wss:`, and only ever to a host in the
+allowlist (`net/policy.rs`'s check order is unchanged). A key still never crosses the network in
+clear text. `Refusal::Wss` goes; `Refusal::HeadersNotLoopback`'s message changes.
+
+Headers go to any allowlisted `wss:` host, not only to an origin the host names. The allowlist is
+already the game author's list of where it may connect, and a second list would split one rule in
+two. The alternative, headers only to an origin the embedding host passes, protects a key from a
+game whose allowlist is wider than its author meant; the operator decides (proposal, Impact).
 
 On the phone: the host passes `ABYME_URL=https://mac.<tailnet>.ts.net:<port>` and
 `ABYME_KEY=<device key>` in `env`; the game's `net.allow` holds `${ABYME_URL}`; `connect()` sends
@@ -191,7 +204,9 @@ CLI's `ABYME_KEY` (abyme `docs/abymed.md`, Devices); the cookie is only for brow
 
 `scripts/android` runs `cargo ndk -t arm64-v8a -P 29 build -p bevy-ts-android --release` with
 `V8_FROM_SOURCE=1` and a persistent V8 build cache (`~/.cache/bevy-ts/v8-android`). API 29 is
-the lowest the recipe proves.
+the lowest the recipe proves. The spike's likely fix for deno_core#738 is building V8 with
+`use_relative_vtables_abi=false`; it is set in the build if the stock build reproduces the crash.
+Not yet run: the spike's V8 builds wait for a check slot.
 
 If the spike shows deno_core or V8 can't run there, `crates/bevy-ts-quickjs` implements
 `ScriptBackend` (`crates/bevy-ts/src/backend.rs`) on `rquickjs` 0.14, and `bevy-ts-android`
@@ -202,8 +217,8 @@ ops become rquickjs functions. No JIT and no inspector, about 1 MB.
 
 - [deno_core aborts at init on Android (#738)] → the spike runs deno_core's hello world on the
   phone first; QuickJS-ng is the fallback.
-- [Bevy 0.20 won't take a window it didn't create, or won't recreate its surface] → the spike
-  proves it; despawn and respawn the window as the fallback.
+- [Bevy 0.20 won't recreate its surface on a new handle] → confirmed from source, not yet on a
+  device; despawn and respawn the window as the fallback.
 - [V8 builds take 1-2 h] → a persistent cache; abyme pins a bevy-ts build and doesn't rebuild V8
   per promote.
 - [API 29 above abyme's `minSdk` 26] → abyme gates the game pane on API 29 (`Build.VERSION`), or
@@ -211,8 +226,12 @@ ops become rquickjs functions. No JIT and no inspector, about 1 MB.
 - [A 20-60 MB engine download per bevy-ts version] → measured once the library builds; strip,
   `opt-level = "s"` for
   non-render crates, LTO.
-- [Adreno skinned-mesh and PowerVR bugs (bevy#24926, #25788)] → known upstream; the device walk
-  reports them, `gles` is the fallback backend.
+- [Skinned meshes break on Adreno (bevy#24926), open in 0.20.0, a GPU-path bug that hits agent
+  town] → force skinning onto uniform buffers on Adreno only, chosen from the adapter's vendor at
+  start; it needs a real Adreno phone to confirm. PowerVR aborts (#25788): `gles` as the fallback
+  backend.
+- [Frame pacing with `multi_threaded`, MSAA cost and background CPU (from #26282's notes)] → the
+  smoke run measures them; MSAA defaults off on Android if it costs.
 - [Fonts: no fontconfig on Android] → fallback fonts read `/system/fonts` through fontdb; checked
   in the device walk (`docs/fonts.md`).
 - [A held socket during a long pause overflows its queue] → the existing limits close it with
