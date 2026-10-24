@@ -9,4 +9,5 @@ mod bsn_spike;
 mod newtype;
 mod primitives;
 mod reconcile;
+mod restore;
 mod standard_material;

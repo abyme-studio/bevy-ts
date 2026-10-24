@@ -30,14 +30,14 @@
 
 ## 5. Tests
 
-- [x] 5.1 `crates/bevy-ts-cli/tests/play_stop.rs` (levels with scene components need V8 and the compiler; the start notification's in `crates/bevy-ts-viewport/tests/edit.rs`), one per edit-mode scenario: nothing touched (entity ids kept, watch empty), one enemy moved and one given `Stunned`, a killed enemy, a stepped game, a level saved during play, a level with a handler, the selection keeps its entity, a native `Added` counter
+- [x] 5.1 `crates/bevy-ts-cli/tests/it/play_stop.rs` (levels with scene components need V8 and the compiler; the start notification's in `crates/bevy-ts-viewport/tests/it/edit.rs`), one per edit-mode scenario: nothing touched (entity ids kept, watch empty), one enemy moved and one given `Stunned`, a killed enemy, a stepped game, a level saved during play, a level with a handler, the selection keeps its entity, a native `Added` counter
 - [x] 5.2 play-stop's Stop tests pass unchanged (the arena, paused, a save during play, the camera, time, levels and selection)
 - [x] 5.3 tsx-hot-reload: a Stop keeps `b` and respawns `a`; `restart` still mounts as if first
 - [x] 5.4 `examples/rapier` under `--edit`: play, Stop, play gives the same body positions frame for frame (play-stop's check, now with kept entities)
 
 ## 6. Measure
 
-- [x] 6.1 `crates/bevy-ts-cli/tests/stop_bench.rs` (`--ignored`, release) at 1k and 10k instances (2k and 20k entities), 3 runs per arm: play-stop's full Stop; restore with nothing touched; 100 touched; every entity touched. Steps timed: plan (scan, hashes), rebuild, restore, settle
+- [x] 6.1 `crates/bevy-ts-cli/tests/it/stop_bench.rs` (`--ignored`, release) at 1k and 10k instances (2k and 20k entities), 3 runs per arm: play-stop's full Stop; restore with nothing touched; 100 touched; every entity touched. Steps timed: plan (scan, hashes), rebuild, restore, settle
 - [x] 6.2 The kept trees' memory at 20k entities
 - [x] 6.3 The same bench with rendering on (in a tart VM or headless render): does any derived component mark every entity?
 - [x] 6.4 `docs/research/stop-cost.md`: the table; targets about 50 ms nothing touched and about 115 ms all touched at 20k
