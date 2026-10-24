@@ -1,0 +1,529 @@
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 13 m)
+  machine-wide-build-limit (build-limit:tests, pid 43993, 1 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 14 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 14 m)
+  viewport-watch (bevy-ts:viewport-watch-tests, pid 70221, 3 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 20 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 20 m)
+  land-affected (land-affected:gate-fixes-protocol, pid 84621, 0 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 20 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 21 m)
+  civ-followups (agent-town node tests, pid 30677, 0 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 21 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 22 m)
+  lean-test-binaries (bevy-ts:doctests, pid 98603, 3 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 23 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 23 m)
+  limit-pauses-resume (agents-record, pid 24852, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 25 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 26 m)
+  animation-control (bevy-ts:animation-control-test, pid 1820, 3 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 32 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 32 m)
+  reflect-reads (bevy-ts:reflect-enums-color, pid 6571, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 33 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 34 m)
+  permissions-stick (test-promote, pid 7325, 12 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 42 m)
+  engine-cache-link (bevy-ts:engine-cache-link, pid 35493, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 46 m)
+  stop-incremental (bevy-ts:stop-incremental-tests, pid 42008, 11 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 64 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 65 m)
+  macos-async-pipelines (bevy-ts:pipelines-registry, pid 47635, 4 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 65 m)
+  rust-events (bevy-ts:gate, pid 53708, 15 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 77 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 78 m)
+  standard-material-fields (bevy-ts:smf-tsx, pid 58628, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 81 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 81 m)
+  standard-material-fields (bevy-ts:smf-cli, pid 59557, 11 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 84 m)
+  ecs-queries (bevy-ts:ecs-queries, pid 69431, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 93 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 93 m)
+  script-assets (bevy-ts:mesh-update-bench, pid 86992, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 94 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 94 m)
+  reflect-assets (bevy-ts:reflect-assets-test, pid 1860, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 94 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  hosted-gateway (hosted-node, pid 91531, 94 m)
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 52147, 1 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  town-scale-1 (town-scale-1-unit, pid 38797, 22 s)
+  abyme-land-full (scripts/check, pid 78844, 1 m)
+  scale-walls (occlusion-red, pid 33890, 1 m)
+  machine-wide-build-limit (build-limit:tests, pid 25090, 1 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  abyme-land-full (scripts/check, pid 78844, 3 m)
+  scale-walls (occlusion-red, pid 33890, 3 m)
+  machine-wide-build-limit (build-limit:tests, pid 25090, 3 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  stop-incremental (bevy-ts:stop-incremental, pid 88816, 16 s)
+  abyme-land-full (scripts/check, pid 78844, 3 m)
+  scale-walls (occlusion-red, pid 33890, 3 m)
+  machine-wide-build-limit (build-limit:tests, pid 25090, 3 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  town-scale-1 (town-scale-1-unit, pid 7600, 32 s)
+  abyme-land-full (scripts/check, pid 78844, 6 m)
+  scale-walls (occlusion-red, pid 33890, 6 m)
+  machine-wide-build-limit (build-limit:tests, pid 25090, 6 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  abyme-land-full (scripts/check, pid 78844, 6 m)
+  scale-walls (occlusion-red, pid 33890, 6 m)
+  machine-wide-build-limit (build-limit:tests, pid 25090, 6 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  macos-async-pipelines (bevy-ts:walk-pipelines, pid 40637, 11 s)
+  abyme-land-full (scripts/check, pid 78844, 6 m)
+  scale-walls (occlusion-red, pid 33890, 6 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  macos-async-pipelines (bevy-ts:walk-pipelines, pid 40637, 24 s)
+  abyme-land-full (scripts/check, pid 78844, 6 m)
+  scale-walls (occlusion-red, pid 33890, 6 m)
+  viewport-watch (bevy-ts:viewport-watch-flake, pid 1778, 9 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  macos-async-pipelines (bevy-ts:walk-pipelines, pid 40637, 50 s)
+  abyme-land-full (scripts/check, pid 78844, 7 m)
+  scale-walls (occlusion-red, pid 33890, 7 m)
+  script-assets (bevy-ts:script-assets-check, pid 3258, 7 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  macos-async-pipelines (bevy-ts:walk-pipelines, pid 40637, 1 m)
+  reflect-assets (bevy-ts:reflect-assets-test, pid 4902, 10 s)
+  script-assets (bevy-ts:script-assets-check, pid 3258, 46 s)
+gate: a slot is free, running
+build slots16: 24.1 s, binary 7.60 MB
+build slots32: 37.6 s, binary 12.32 MB
+run 1, load averages: 43.16 52.37 41.93
+slots compiled: 32, frames per run: 20000
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 25.49 | - | 31.12 | - |
+| 1 | 129.68 | 81.726 | 172.47 | 126.336 |
+| 8 | 195.77 | 18.477 | 342.70 | 37.070 |
+| 32 | 406.41 | 11.202 | 440.75 | 12.332 |
+run 2, load averages: 51.24 43.88 40.34
+slots compiled: 32, frames per run: 20000
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 44.70 | - | 41.16 | - |
+| 1 | 191.89 | 167.993 | 192.19 | 157.607 |
+| 8 | 342.93 | 39.879 | 430.44 | 49.481 |
+| 32 | 820.67 | 24.899 | 590.92 | 17.386 |
+run 3, load averages: 30.90 42.03 40.97
+slots compiled: 32, frames per run: 20000
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 12.90 | - | 12.43 | - |
+| 1 | 69.30 | 56.983 | 83.32 | 72.662 |
+| 8 | 109.17 | 12.106 | 147.06 | 17.051 |
+| 32 | 294.63 | 8.822 | 382.03 | 11.605 |
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 14 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 9 m)
+  reflect-shapes (bevy-ts:reflect-enums-color, pid 55688, 55 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 15 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 9 m)
+  engine-cache-link (bevy-ts:engine-cache-link, pid 61741, 4 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 17 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 12 m)
+  animation-control (bevy-ts:animation-control-test, pid 65728, 1 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 19 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 14 m)
+  kinds (mcp-record, pid 66962, 1 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 22 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 16 m)
+  material-fade (bevy-ts:material-fade-tests, pid 76164, 5 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 26 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 20 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 26 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 20 m)
+  civ-followups (agent-town node tests, pid 77497, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 26 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 20 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 26 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 20 m)
+  agent-town-lc-main-IQUJ (agent-town land-check loop, pid 81957, 6 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 27 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 21 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 27 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 21 m)
+  script-time (bevy-ts:script-time-test, pid 89025, 5 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 31 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 25 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 31 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 25 m)
+  flake-hunt (flake-hunt:affected-gate, pid 93499, 6 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 40 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 34 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 40 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 34 m)
+  accessor-slot-names (bevy-ts:slot-tests, pid 97638, 5 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 42 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 37 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 42 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 37 m)
+  town-scale-1 (town-scale-1-unit, pid 36522, 5 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 43 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 37 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 43 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 37 m)
+  reflect-enums-color (reflect-enums-color:pcss-bench, pid 70480, 10 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 47 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 42 m)
+  script-assets (bevy-ts:script-assets-check, pid 52497, 3 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 48 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 42 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 48 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 42 m)
+  stop-incremental (bevy-ts:stop-incremental, pid 59747, 8 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 50 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 44 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 50 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 44 m)
+  reflect-assets (bevy-ts:reflect-assets-test, pid 11765, 8 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 52 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 46 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 52 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 47 m)
+  macos-async-pipelines (bevy-ts:walk-prep, pid 77756, 7 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 53 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 47 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 53 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 47 m)
+  text-input (bevy-ts:text-input, pid 32705, 9 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 55 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 49 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 55 m)
+  scale-walls (scale-walls:tsx-for-before, pid 53958, 49 m)
+  script-input-devices (bevy-ts:script-input-devices, pid 10362, 13 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 57 m)
+  standard-material-fields (standard-material-fields:smf-tsx, pid 73451, 6 s)
+  script-input-devices (bevy-ts:script-input-devices, pid 10362, 2 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 60 m)
+  kinds (abymed release build, pid 66646, 1 s)
+  script-input-devices (bevy-ts:script-input-devices, pid 10362, 4 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 60 m)
+  kinds (abymed release build, pid 66646, 12 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 60 m)
+  kinds (abymed release build, pid 66646, 33 s)
+  scale-walls (scale-walls:tsx-for-tests, pid 4104, 20 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 62 m)
+  scale-walls (scale-walls:tsx-for-tests, pid 4104, 1 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 62 m)
+  abyme-land-full (scripts/check, pid 51709, 3 s)
+  reconciler-goals (abymed release build, pid 18240, 1 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 65 m)
+  abyme-land-full (scripts/check, pid 51709, 3 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 65 m)
+  abyme-land-full (scripts/check, pid 51709, 3 m)
+  reflect-shapes (bevy-ts:reflect-enums-color, pid 14652, 4 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 66 m)
+  engine-cache-link (bevy-ts:engine-cache-link, pid 34725, 4 s)
+  reflect-shapes (bevy-ts:reflect-enums-color, pid 14652, 59 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 68 m)
+  reflect-shapes (bevy-ts:reflect-enums-color, pid 14652, 2 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 69 m)
+  viewport-watch (viewport-watch:viewport-watch-tests, pid 25075, 30 s)
+  reflect-shapes (bevy-ts:reflect-enums-color, pid 14652, 3 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 78 m)
+  viewport-watch (viewport-watch:viewport-watch-tests, pid 25075, 9 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 78 m)
+  viewport-watch (viewport-watch:viewport-watch-tests, pid 25075, 9 m)
+  kinds (mcp-record, pid 10930, 9 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 78 m)
+  kinds (mcp-record, pid 10930, 20 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 78 m)
+  agent-town-lc-main-IQUJ (agent-town land-check loop, pid 82128, 13 s)
+  kinds (mcp-record, pid 10930, 36 s)
+gate: a slot is free, running
+build slots16: 25.3 s, binary 7.53 MB
+build slots32: 26.0 s, binary 12.17 MB
+run 1, load averages: 32.89 28.25 31.60
+slots compiled: 32, frames per run: 20000
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 18.70 | - | 21.15 | - |
+| 1 | 96.68 | 80.819 | 130.85 | 116.338 |
+| 8 | 234.12 | 27.281 | 290.63 | 34.514 |
+| 32 | 507.86 | 15.375 | 482.88 | 14.637 |
+run 2, load averages: 21.72 26.42 30.24
+slots compiled: 32, frames per run: 20000
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 16.08 | - | 18.82 | - |
+| 1 | 96.07 | 79.376 | 76.42 | 61.557 |
+| 8 | 117.11 | 12.553 | 144.92 | 16.257 |
+| 32 | 354.15 | 10.546 | 415.83 | 12.530 |
+run 3, load averages: 19.65 23.88 28.61
+slots compiled: 32, frames per run: 20000
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 14.26 | - | 13.55 | - |
+| 1 | 65.93 | 50.995 | 77.44 | 63.154 |
+| 8 | 129.91 | 14.373 | 225.55 | 26.408 |
+| 32 | 384.80 | 11.558 | 464.88 | 14.081 |
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 89 m)
+  accessor-slot-names (bevy-ts:slot-tests, pid 31101, 13 s)
+  animation-control (animation-control:animation-control-test, pid 61708, 4 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 90 m)
+  animation-control (animation-control:animation-control-test, pid 61708, 4 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 90 m)
+  script-assets (bevy-ts:script-assets-test, pid 99135, 1 s)
+  animation-control (animation-control:animation-control-test, pid 61708, 4 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 92 m)
+  flake-hunt (flake-hunt:affected-gate, pid 77802, 0 s)
+  animation-control (animation-control:animation-control-test, pid 61708, 7 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 95 m)
+  flake-hunt (flake-hunt:affected-gate, pid 77802, 2 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 95 m)
+  flake-hunt (flake-hunt:affected-gate, pid 77802, 2 m)
+  stop-incremental (bevy-ts:stop-incremental, pid 40234, 8 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 95 m)
+  flake-hunt (flake-hunt:affected-gate, pid 77802, 3 m)
+  reflect-enums-color (reflect-enums-color:pcss-bench, pid 3425, 3 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 97 m)
+  reflect-enums-color (reflect-enums-color:pcss-bench, pid 3425, 2 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 98 m)
+  hosted-gateway (hosted-node, pid 17156, 0 s)
+  reflect-enums-color (reflect-enums-color:pcss-bench, pid 3425, 2 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 103 m)
+  hosted-gateway (hosted-node, pid 17156, 5 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 103 m)
+  hosted-gateway (hosted-node, pid 17156, 5 m)
+  macos-async-pipelines (bevy-ts:walk-thumb, pid 83516, 6 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 105 m)
+  hosted-gateway (hosted-node, pid 17156, 6 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 105 m)
+  hosted-gateway (hosted-node, pid 17156, 6 m)
+  text-input (bevy-ts:text-input, pid 49164, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 105 m)
+  hosted-gateway (hosted-node, pid 17156, 7 m)
+  kit-space (bevy-ts:kit-space, pid 72980, 1 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 107 m)
+  hosted-gateway (hosted-node, pid 17156, 8 m)
+  standard-material-fields (bevy-ts:walk, pid 15304, 7 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 108 m)
+  hosted-gateway (hosted-node, pid 17156, 10 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 109 m)
+  hosted-gateway (hosted-node, pid 17156, 10 m)
+  scale-walls (scale-walls:tsx-for-tests, pid 40215, 9 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 112 m)
+  hosted-gateway (hosted-node, pid 17156, 14 m)
+  script-input-devices (bevy-ts:script-input-devices, pid 11896, 3 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 113 m)
+  hosted-gateway (hosted-node, pid 17156, 15 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 113 m)
+  hosted-gateway (hosted-node, pid 17156, 15 m)
+  engine-cache-link (bevy-ts:engine-cache-link, pid 61737, 7 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 115 m)
+  hosted-gateway (hosted-node, pid 17156, 17 m)
+  viewport-watch (viewport-watch:viewport-watch-flake, pid 39736, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 117 m)
+  hosted-gateway (hosted-node, pid 17156, 18 m)
+  android-spike (bevy-ts:android-v8, pid 32376, 2 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 120 m)
+  hosted-gateway (hosted-node, pid 17156, 22 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 120 m)
+  hosted-gateway (hosted-node, pid 17156, 22 m)
+  kinds (kernel-test, pid 80259, 8 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 123 m)
+  hosted-gateway (hosted-node, pid 17156, 25 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 123 m)
+  hosted-gateway (hosted-node, pid 17156, 25 m)
+  material-fade (bevy-ts:material-fade-tests, pid 61386, 9 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 124 m)
+  hosted-gateway (hosted-node, pid 17156, 26 m)
+  scale-walls (bevy-ts:scale-walls-walk, pid 31756, 0 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 126 m)
+  hosted-gateway (hosted-node, pid 17156, 28 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 126 m)
+  hosted-gateway (hosted-node, pid 17156, 28 m)
+  script-time (bevy-ts:script-time-test, pid 30127, 6 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 127 m)
+  hosted-gateway (hosted-node, pid 17156, 28 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 127 m)
+  hosted-gateway (hosted-node, pid 17156, 29 m)
+  text-input (bevy-ts:text-input, pid 63672, 4 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 130 m)
+  hosted-gateway (hosted-node, pid 17156, 32 m)
+  town-scale-1 (town-scale-1-unit, pid 33332, 1 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 131 m)
+  hosted-gateway (hosted-node, pid 17156, 32 m)
+  accessor-slot-names (bevy-ts:slot-tests, pid 35127, 7 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 131 m)
+  hosted-gateway (hosted-node, pid 17156, 33 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 131 m)
+  hosted-gateway (hosted-node, pid 17156, 33 m)
+  stop-incremental (bevy-ts:stop-incremental, pid 1027, 8 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 133 m)
+  hosted-gateway (hosted-node, pid 17156, 35 m)
+  town-scale-1 (town-scale-1-unit, pid 31496, 0 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 134 m)
+  hosted-gateway (hosted-node, pid 17156, 35 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  bevy-ui-coverage (bevy-ts:ui-tests, pid 41601, 134 m)
+  hosted-gateway (hosted-node, pid 17156, 36 m)
+  script-assets (bevy-ts:script-assets-test, pid 11876, 3 s)
+gate: a slot is free, running
+build slots16: 35.1 s, binary 7.53 MB
+build slots32: 26.9 s, binary 12.16 MB
+run 1, load averages: 39.07 35.71 34.48
+slots compiled: 32, frames per run: 20000, StateTransition multi-threaded
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 18.97 | - | 19.14 | - |
+| 1 | 99.07 | 76.659 | 107.00 | 87.004 |
+| 8 | 176.68 | 19.283 | 173.05 | 19.131 |
+| 32 | 275.39 | 7.906 | 329.63 | 9.676 |
+slots compiled: 32, frames per run: 20000, StateTransition single-threaded
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 15.88 | - | 16.04 | - |
+| 1 | 12.85 | -2.300 | 16.64 | -2.526 |
+| 8 | 20.96 | 0.726 | 23.07 | 0.489 |
+| 32 | 23.66 | 0.266 | 109.46 | 2.822 |
+run 2, load averages: 15.57 27.23 31.22
+slots compiled: 32, frames per run: 20000, StateTransition multi-threaded
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 15.20 | - | 17.68 | - |
+| 1 | 80.82 | 47.992 | 76.46 | 59.321 |
+| 8 | 153.08 | 15.033 | 155.60 | 17.308 |
+| 32 | 451.93 | 13.097 | 611.18 | 18.564 |
+slots compiled: 32, frames per run: 20000, StateTransition single-threaded
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 29.63 | - | 22.41 | - |
+| 1 | 20.96 | -4.230 | 21.09 | -0.095 |
+| 8 | 23.02 | -0.272 | 34.81 | 1.702 |
+| 32 | 39.72 | 0.454 | 115.68 | 2.953 |
+run 3, load averages: 23.92 26.71 30.19
+slots compiled: 32, frames per run: 20000, StateTransition multi-threaded
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 15.23 | - | 18.52 | - |
+| 1 | 99.80 | 78.984 | 96.44 | 79.601 |
+| 8 | 137.31 | 14.562 | 153.02 | 17.024 |
+| 32 | 292.96 | 8.505 | 304.25 | 8.982 |
+slots compiled: 32, frames per run: 20000, StateTransition single-threaded
+| machines | quiet µs/frame | quiet µs/machine | transition µs/frame | transition µs/machine |
+| --- | --- | --- | --- | --- |
+| 0 | 14.74 | - | 15.45 | - |
+| 1 | 15.47 | 1.588 | 17.36 | 2.330 |
+| 8 | 23.98 | 1.262 | 22.48 | 0.930 |
+| 32 | 25.37 | 0.359 | 96.04 | 2.531 |
