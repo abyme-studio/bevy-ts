@@ -103,13 +103,14 @@ const SUN: &str = "<DirectionalLight illuminance={8000} color={hex(\"#ffd7a8\")}
 
 #[test]
 fn a_light_colour_is_a_prop_written_through_reflection() {
-    let probe = "\nimport { Update } from \"bevy-ts\";\nimport type { Query } from \"bevy-ts\";\nexport function look(q: Query<[DirectionalLight]>) {\n  q.each((l) => console.log(`light ${l.illuminance} color=${(l as any).color}`));\n}\napp.addSystems(Update, look);\n";
+    let probe = "\nimport { Update } from \"bevy-ts\";\nimport type { Query } from \"bevy-ts\";\nexport function look(q: Query<[DirectionalLight]>) {\n  q.each((l) => console.log(`light ${l.illuminance} color=${JSON.stringify((l as any).color)}`));\n}\napp.addSystems(Update, look);\n";
     let (dir, mut app) = setup("reflect-sun", &format!("{}{probe}", scene("DirectionalLight", SUN)));
     let l = the::<DirectionalLight>(&mut app);
     assert_eq!(l.illuminance, 8000.0, "written from bytes");
     assert_eq!(l.color, Color::from(Srgba::hex("#ffd7a8").unwrap()), "written through reflection");
     updates(&mut app, 3);
-    assert!(messages(&app).iter().any(|m| m == "light 8000 color=undefined"), "a TS row has no color: {:?}", messages(&app));
+    // A TS row reads the hole through reflection (reflect-coverage stage 3).
+    assert!(messages(&app).iter().any(|m| m.starts_with("light 8000 color={\"Srgba\"")), "a TS row reads its color: {:?}", messages(&app));
 
     save(&mut app, &dir, &format!("{}{probe}", scene("DirectionalLight", "<DirectionalLight illuminance={8000} color={srgb(1, 0.9, 0.8)} />")));
     let l = the::<DirectionalLight>(&mut app);

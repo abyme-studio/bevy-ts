@@ -99,7 +99,7 @@ fn codec_output_equals_read_for_every_covered_type() {
         let codec = compile_component(&registry, registry.get(id).unwrap().type_info());
         let mut bytes = Vec::new();
         if let Err(e) = encode(&registry, &codec, value.as_ref(), &mut bytes) {
-            panic!("{path}: read covers it but the codec fails: {e}");
+            panic!("{path}: read covers it but the codec fails: {e}\n  codec: {codec:?}");
         }
         cases.push(serde_json::json!({ "type": path, "codec": codec, "bytes": bytes, "json": json.to_string() }));
     }
