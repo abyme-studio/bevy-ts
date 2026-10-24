@@ -14,13 +14,14 @@
 //! every slot given equal props shares one asset.
 
 use bevy::asset::uuid::Uuid;
-use bevy::asset::{ReflectAsset, UntypedAssetId, UntypedHandle};
+use crate::reflect_value;
+use bevy::asset::{AssetServer, ReflectAsset, UntypedAssetId, UntypedHandle};
 use bevy::prelude::*;
 use bevy::reflect::{PartialReflect, ReflectFromReflect, TypeRegistry};
 use serde_json::{Map, Value};
 use std::any::TypeId;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// One session's assets past this many log a warning: `assets.add` in a per-frame system grows
 /// memory until reload.
@@ -76,6 +77,9 @@ struct Table {
     by_id: HashMap<UntypedAssetId, u64>,
     values: HashMap<(TypeId, String), u64>,
     queued: BTreeMap<u64, Queued>,
+    /// The JSON each hand-mapped asset a script made was last written from, for entries whose
+    /// read gives it back (`AnimationClip`).
+    sources: HashMap<UntypedAssetId, Value>,
     /// Assets of refs a reload made stale, kept for the entities that still use them until the
     /// next restart or stop.
     retired: Vec<Made>,
@@ -85,8 +89,8 @@ struct Table {
 /// The ref table: every asset scripts made this session, by ref number and by asset id, the
 /// asset-value cache, and the values waiting for [`flush`]. Behind a lock: scripts reach it
 /// through `&World` during a run.
-#[derive(Resource, Default)]
-pub struct ScriptAssets(Mutex<Table>);
+#[derive(Resource, Default, Clone)]
+pub struct ScriptAssets(Arc<Mutex<Table>>);
 
 impl ScriptAssets {
     fn table(&self) -> MutexGuard<'_, Table> {
@@ -156,6 +160,15 @@ impl ScriptAssets {
         t.queued.insert(n, Queued { added, value });
     }
 
+    /// The JSON a hand-mapped asset was last written from, if a script wrote it.
+    pub fn source(&self, id: UntypedAssetId) -> Option<Value> {
+        self.table().sources.get(&id).cloned()
+    }
+
+    fn set_source(&self, id: UntypedAssetId, json: Value) {
+        self.table().sources.insert(id, json);
+    }
+
     /// How many assets the table holds.
     pub fn len(&self) -> usize {
         self.table().refs.len()
@@ -196,6 +209,7 @@ pub fn clear(world: &mut World, remove: bool) {
         t.by_id.clear();
         t.values.clear();
         t.queued.clear();
+        t.sources.clear();
         t.warned = false;
         let made: Vec<Made> = t.refs.drain().map(|(_, m)| m).collect();
         t.retired.extend(made);
@@ -210,14 +224,17 @@ pub fn clear(world: &mut World, remove: bool) {
 pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String> {
     let args: Vec<Value> = serde_json::from_str(args).map_err(|e| format!("{name}: {e}"))?;
     let arg = |i: usize| args.get(i).unwrap_or(&Value::Null);
+    let assets = world.get_resource::<ScriptAssets>().ok_or_else(|| "assets need BevyTsPlugin".to_string())?;
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let slots = Slots { registry: &registry, server: world.get_resource::<AssetServer>(), assets, check: false };
     let out = match name {
         "assets.add" => {
             let path = arg(0).as_str().ok_or_else(|| format!("assets.add: the type is a type path, not {}", arg(0)))?;
-            add(world, path, arg(1))?
+            add(&slots, path, arg(1))?
         }
-        "assets.get" => get(world, arg(0))?,
+        "assets.get" => get(world, &slots, arg(0))?,
         "assets.set" => {
-            set(world, arg(0), arg(1))?;
+            set(world, &slots, arg(0), arg(1))?;
             Value::Null
         }
         _ => return Err(format!("no host service {name}")),
@@ -225,47 +242,137 @@ pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String
     Ok(out.to_string())
 }
 
-fn script_assets(world: &World) -> Result<&ScriptAssets, String> {
-    world.get_resource::<ScriptAssets>().ok_or_else(|| "assets need BevyTsPlugin".to_string())
+/// What writing and reading assets reach, and the `Handle<T>` hook `reflect_value` calls for refs
+/// and asset values. Borrows no `World`, so TSX can hold one while it writes a component in place.
+/// In `check` mode nothing is made: a ref the table does not know is checked by its form and named
+/// type, values are built and dropped.
+pub struct Slots<'a> {
+    pub registry: &'a TypeRegistry,
+    pub server: Option<&'a AssetServer>,
+    pub assets: &'a ScriptAssets,
+    pub check: bool,
+}
+
+impl Slots<'_> {
+    /// The writer's context with this hook.
+    pub fn cx(&self) -> reflect_value::Cx<'_> {
+        reflect_value::Cx { registry: self.registry, server: self.server, handles: Some(self) }
+    }
+
+    /// `json` written over `base` (the type's default when `None`), converted to the concrete
+    /// type. A value that fails any step builds nothing.
+    fn build(&self, ty: &AssetType, base: Option<&dyn PartialReflect>, json: &Value) -> Result<Box<dyn Reflect>, String> {
+        if let Some(h) = hand_map(ty.id) {
+            return (h.write)(self, base, json);
+        }
+        let mut value = match base {
+            Some(b) => b.reflect_clone().map_err(|e| format!("{}: {e}", ty.path))?.into_partial_reflect(),
+            None => default_value(self.registry, ty)?,
+        };
+        reflect_value::write_with(self.cx(), value.as_mut(), None, json).map_err(|e| format!("{}: {e}", ty.path))?;
+        let from = self.registry.get_type_data::<ReflectFromReflect>(ty.id).ok_or_else(|| format!("{} is not FromReflect", ty.path))?;
+        from.from_reflect(value.as_ref()).ok_or_else(|| format!("{}: the written value is not a whole {}", ty.path, ty.path))
+    }
+
+    /// An asset as JSON: its hand-map's read (given the JSON a script last wrote it from), else
+    /// the reflected reader with this hook.
+    fn read(&self, ty: &AssetType, id: UntypedAssetId, value: &dyn PartialReflect) -> Result<Value, String> {
+        match hand_map(ty.id) {
+            Some(h) => (h.read)(self, self.assets.source(id).as_ref(), value),
+            None => reflect_value::read_with(self.registry, Some(self), value),
+        }
+    }
+
+    /// `T.of(props)` in a slot of asset type `asset`: the cached asset with these props, else a new
+    /// one, cached.
+    fn value(&self, asset: TypeId, type_path: &Value, props: &Value) -> Result<UntypedHandle, String> {
+        let path = type_path.as_str().ok_or_else(|| format!("an asset value's $of is a type path, not {type_path}"))?;
+        let ty = asset_type(self.registry, path)?;
+        if ty.id != asset {
+            return Err(format!("{}.of(...) is not a {}", ty.path, path_of(self.registry, asset)));
+        }
+        let key = canonical(props);
+        if let Some(n) = self.assets.cached(ty.id, &key) {
+            return self.assets.handle(n);
+        }
+        let value = self.build(&ty, None, props)?;
+        if self.check {
+            return Ok(UntypedHandle::Uuid { type_id: ty.id, uuid: Uuid::nil() });
+        }
+        let (n, handle) = self.assets.make(&ty, value);
+        if hand_map(ty.id).is_some() {
+            self.assets.set_source(handle.id(), props.clone());
+        }
+        self.assets.cache(ty.id, key, n);
+        Ok(handle)
+    }
+}
+
+impl reflect_value::HandleSlots for Slots<'_> {
+    fn write(&self, asset: TypeId, json: &Value) -> Result<UntypedHandle, String> {
+        let Some(o) = json.as_object() else {
+            return Err(format!("expected an asset path, an asset ref or T.of(...), got {json}"));
+        };
+        if let Some(n) = parse_ref(json) {
+            let n = n?;
+            if self.check && self.assets.handle(n).is_err() {
+                // A check before the run that makes it: the ref's form and its named type.
+                let ty = o.get("type").and_then(Value::as_str).ok_or_else(|| format!("asset ref {n} names no type"))?;
+                let ty = asset_type(self.registry, ty)?;
+                if ty.id != asset {
+                    return Err(format!("asset ref {n} is a {}, not a {}", ty.path, path_of(self.registry, asset)));
+                }
+                return Ok(UntypedHandle::Uuid { type_id: asset, uuid: Uuid::nil() });
+            }
+            return self.assets.handle_for(self.registry, asset, n);
+        }
+        if let Some(path) = o.get("$of") {
+            return self.value(asset, path, o.get("props").unwrap_or(&Value::Null));
+        }
+        if o.contains_key("$load") {
+            return Err(format!("{} has no loader settings", path_of(self.registry, asset)));
+        }
+        Err(format!("expected an asset path, an asset ref or T.of(...), got {json}"))
+    }
+
+    fn read(&self, handle: &UntypedHandle) -> Option<Value> {
+        let n = self.assets.ref_of(handle.id())?;
+        Some(ref_json(n, &path_of(self.registry, handle.type_id())))
+    }
 }
 
 /// `assets.add(Type, props)`: `props` written over the type's default, converted, then made.
-pub fn add(world: &World, type_path: &str, props: &Value) -> Result<Value, String> {
-    let registry = world.resource::<AppTypeRegistry>().read();
-    let ty = asset_type(&registry, type_path)?;
-    let value = match hand_map(ty.id) {
-        Some(h) => (h.write)(world, None, props)?,
-        None => build(world, &registry, &ty, None, props)?,
-    };
-    let (n, _) = script_assets(world)?.make(&ty, value);
+pub fn add(slots: &Slots, type_path: &str, props: &Value) -> Result<Value, String> {
+    let ty = asset_type(slots.registry, type_path)?;
+    let value = slots.build(&ty, None, props)?;
+    let (n, handle) = slots.assets.make(&ty, value);
+    if hand_map(ty.id).is_some() {
+        slots.assets.set_source(handle.id(), props.clone());
+    }
     Ok(ref_json(n, ty.path))
 }
 
 /// `assets.get(ref)`: the asset as JSON, its queued value if it has one; `null` when it is gone.
-pub fn get(world: &World, r: &Value) -> Result<Value, String> {
+pub fn get(world: &World, slots: &Slots, r: &Value) -> Result<Value, String> {
     let n = parse_ref(r).unwrap_or_else(|| Err(format!("assets.get takes an asset ref, not {r}")))?;
-    let assets = script_assets(world)?;
-    let handle = assets.handle(n)?;
-    let registry = world.resource::<AppTypeRegistry>().read();
-    let ty = asset_type_of(&registry, handle.type_id()).ok_or_else(|| format!("asset ref {n} is not a reflected asset"))?;
-    if let Some(v) = assets.queued_value(n) {
-        return read_asset(world, &registry, &ty, v.as_ref());
+    let handle = slots.assets.handle(n)?;
+    let ty = asset_type_of(slots.registry, handle.type_id()).ok_or_else(|| format!("asset ref {n} is not a reflected asset"))?;
+    if let Some(v) = slots.assets.queued_value(n) {
+        return slots.read(&ty, handle.id(), v.as_ref());
     }
     match ty.reflect.get(world, handle.id()) {
-        Some(v) => read_asset(world, &registry, &ty, v.as_partial_reflect()),
+        Some(v) => slots.read(&ty, handle.id(), v.as_partial_reflect()),
         None => Ok(Value::Null),
     }
 }
 
 /// `assets.set(ref, patch)`: `patch` written over the asset's current value; queued only when the
 /// result differs, so a no-op set marks nothing changed.
-pub fn set(world: &World, r: &Value, patch: &Value) -> Result<(), String> {
+pub fn set(world: &World, slots: &Slots, r: &Value, patch: &Value) -> Result<(), String> {
     let n = parse_ref(r).unwrap_or_else(|| Err(format!("assets.set takes an asset ref, not {r}")))?;
-    let assets = script_assets(world)?;
-    let handle = assets.handle(n)?;
-    let registry = world.resource::<AppTypeRegistry>().read();
-    let ty = asset_type_of(&registry, handle.type_id()).ok_or_else(|| format!("asset ref {n} is not a reflected asset"))?;
-    let current = match assets.queued_value(n) {
+    let handle = slots.assets.handle(n)?;
+    let ty = asset_type_of(slots.registry, handle.type_id()).ok_or_else(|| format!("asset ref {n} is not a reflected asset"))?;
+    let current = match slots.assets.queued_value(n) {
         Some(v) => v,
         None => {
             let v = ty.reflect.get(world, handle.id()).ok_or_else(|| format!("asset ref {n}: the asset is gone"))?;
@@ -276,27 +383,29 @@ pub fn set(world: &World, r: &Value, patch: &Value) -> Result<(), String> {
         // A hand-mapped type: the patch replaces the keys it gives in the current read, then the
         // whole is written again; unchanged when the read is.
         Some(h) => {
-            let read = (h.read)(world, current.as_ref())?;
+            let source = slots.assets.source(handle.id());
+            let read = (h.read)(slots, source.as_ref(), current.as_ref())?;
             let mut merged = read.clone();
             match (merged.as_object_mut(), patch) {
                 (Some(m), Value::Object(p)) => m.extend(p.iter().map(|(k, v)| (k.clone(), v.clone()))),
                 _ => return Err(format!("assets.set on a {} takes an object, not {patch}", ty.path)),
             }
-            let next = (h.write)(world, None, &merged)?;
-            if (h.read)(world, next.as_partial_reflect())? == read {
+            let next = (h.write)(slots, Some(current.as_ref()), &merged)?;
+            if (h.read)(slots, Some(&merged), next.as_partial_reflect())? == read {
                 return Ok(());
             }
+            slots.assets.set_source(handle.id(), merged);
             next
         }
         None => {
-            let next = build(world, &registry, &ty, Some(current.as_ref()), patch)?;
+            let next = slots.build(&ty, Some(current.as_ref()), patch)?;
             if current.reflect_partial_eq(next.as_partial_reflect()) == Some(true) {
                 return Ok(());
             }
             next
         }
     };
-    assets.queue_set(n, next);
+    slots.assets.queue_set(n, next);
     Ok(())
 }
 
@@ -305,11 +414,12 @@ pub fn set(world: &World, r: &Value, patch: &Value) -> Result<(), String> {
 pub struct HandMap {
     /// The asset's own type.
     pub asset: fn() -> TypeId,
-    /// The asset as JSON.
-    pub read: fn(&World, &dyn PartialReflect) -> Result<Value, String>,
+    /// The asset as JSON; the second argument is the JSON a script last wrote it from, `None` for
+    /// an asset no script wrote (a loaded file).
+    pub read: fn(&Slots, Option<&Value>, &dyn PartialReflect) -> Result<Value, String>,
     /// The asset from JSON: over `base` when given, else whole (a type with no default builds
-    /// from the JSON alone). `&World` only: the asset server loads, nothing else changes.
-    pub write: fn(&World, Option<&dyn PartialReflect>, &Value) -> Result<Box<dyn Reflect>, String>,
+    /// from the JSON alone). The asset server loads; nothing else changes.
+    pub write: fn(&Slots, Option<&dyn PartialReflect>, &Value) -> Result<Box<dyn Reflect>, String>,
 }
 
 /// The hand-mapped asset types. `assets.set` on one merges its patch over the current read at the
@@ -320,43 +430,11 @@ fn hand_map(asset: TypeId) -> Option<&'static HandMap> {
     HAND_MAPS.iter().find(|h| (h.asset)() == asset)
 }
 
-/// An asset as JSON: its hand-map's read, else the reflected reader.
-fn read_asset(world: &World, registry: &TypeRegistry, ty: &AssetType, value: &dyn PartialReflect) -> Result<Value, String> {
-    match hand_map(ty.id) {
-        Some(h) => (h.read)(world, value),
-        None => read_value(world, registry, value),
-    }
-}
-
-/// `json` written over `base` (the type's default when `None`), converted to the concrete type.
-/// A value that fails any step builds nothing.
-fn build(world: &World, registry: &TypeRegistry, ty: &AssetType, base: Option<&dyn PartialReflect>, json: &Value) -> Result<Box<dyn Reflect>, String> {
-    let mut value = match base {
-        Some(b) => b.reflect_clone().map_err(|e| format!("{}: {e}", ty.path))?.into_partial_reflect(),
-        None => default_value(registry, ty)?,
-    };
-    write_value(world, registry, value.as_mut(), json)?;
-    let from = registry.get_type_data::<ReflectFromReflect>(ty.id).ok_or_else(|| format!("{} is not FromReflect", ty.path))?;
-    from.from_reflect(value.as_ref()).ok_or_else(|| format!("{}: the written value is not a whole {}", ty.path, ty.path))
-}
-
 fn default_value(registry: &TypeRegistry, ty: &AssetType) -> Result<Box<dyn PartialReflect>, String> {
     registry
         .get_type_data::<ReflectDefault>(ty.id)
         .map(|d| d.default().into_partial_reflect())
         .ok_or_else(|| format!("{} has no default: assets.add cannot build it", ty.path))
-}
-
-/// Writes `json` into `slot` through `reflect_value`'s writer, with this module's handle hook.
-fn write_value(_world: &World, _registry: &TypeRegistry, _slot: &mut dyn PartialReflect, _json: &Value) -> Result<(), String> {
-    // reflect-coverage stage 1 brings `reflect_value::write_with` and the `HandleSlots` hook.
-    Err("assets: the reflected writer is not on main yet".into())
-}
-
-/// Reads `value` as JSON through `reflect_value`'s reader, with this module's handle hook.
-fn read_value(_world: &World, _registry: &TypeRegistry, _value: &dyn PartialReflect) -> Result<Value, String> {
-    // reflect-coverage stage 1 brings `reflect_value::read_with`.
-    Err("assets: the reflected reader is not on main yet".into())
 }
 
 /// A ref as JSON: `{ "$asset": n, "type": path }`.
@@ -391,6 +469,7 @@ pub fn canonical(json: &Value) -> String {
 mod tests {
     use super::*;
     use bevy::asset::AssetPlugin;
+    use bevy::ecs::message::Messages;
     use bevy::image::Image;
 
     fn app() -> App {
@@ -468,11 +547,140 @@ mod tests {
         assert!(e.contains("Image") && e.contains("Mesh"), "{e}");
     }
 
+    fn call(app: &App, name: &str, args: Value) -> Result<Value, String> {
+        host_call(app.world(), name, &args.to_string()).map(|s| serde_json::from_str(&s).expect("json"))
+    }
+
+    const MAT: &str = "bevy_pbr::pbr_material::StandardMaterial";
+    const IMG: &str = "bevy_image::image::Image";
+
+    fn pbr_app() -> App {
+        let mut app = app();
+        app.init_asset::<StandardMaterial>().register_asset_reflect::<StandardMaterial>();
+        app
+    }
+
+    fn material(app: &App, r: &Value) -> StandardMaterial {
+        let h = app.world().resource::<ScriptAssets>().handle(parse_ref(r).unwrap().unwrap()).unwrap();
+        app.world().resource::<Assets<StandardMaterial>>().get(h.id().typed::<StandardMaterial>()).expect("added").clone()
+    }
+
+    fn modified(app: &App) -> usize {
+        let msgs = app.world().resource::<Messages<AssetEvent<StandardMaterial>>>();
+        msgs.iter_current_update_messages().filter(|e| matches!(e, AssetEvent::Modified { .. })).count()
+    }
+
     #[test]
     fn mesh_has_no_default() {
         let app = app();
-        let e = add(app.world(), "bevy_mesh::mesh::Mesh", &serde_json::json!({})).unwrap_err();
+        let e = call(&app, "assets.add", serde_json::json!(["bevy_mesh::mesh::Mesh", {}])).unwrap_err();
         assert!(e.contains("Mesh") && e.contains("no default"), "{e}");
+    }
+
+    #[test]
+    fn add_builds_from_the_default_and_is_seen_at_once() {
+        let mut app = pbr_app();
+        let r = call(&app, "assets.add", serde_json::json!([MAT, { "base_color": "#ff8800", "unlit": true }])).unwrap();
+        assert_eq!(r["$asset"], 1);
+        assert_eq!(r["type"], MAT);
+        let got = call(&app, "assets.get", serde_json::json!([r])).unwrap();
+        assert_eq!(got["unlit"], true, "get reads the queued value");
+        flush(app.world_mut());
+        let m = material(&app, &r);
+        assert!(m.unlit);
+        assert_eq!(m.base_color, Color::srgb_u8(0xff, 0x88, 0x00));
+        assert_eq!(m.perceptual_roughness, StandardMaterial::default().perceptual_roughness);
+    }
+
+    #[test]
+    fn a_bad_field_adds_nothing() {
+        let app = pbr_app();
+        let e = call(&app, "assets.add", serde_json::json!([MAT, { "roughnes": 0.5 }])).unwrap_err();
+        assert!(e.contains("StandardMaterial") && e.contains("roughnes"), "{e}");
+        assert!(app.world().resource::<ScriptAssets>().is_empty());
+    }
+
+    #[test]
+    fn set_changes_one_field_and_a_no_op_set_sends_nothing() {
+        let mut app = pbr_app();
+        let r = call(&app, "assets.add", serde_json::json!([MAT, { "unlit": true }])).unwrap();
+        flush(app.world_mut());
+        app.update();
+        call(&app, "assets.set", serde_json::json!([r, { "unlit": true }])).unwrap();
+        assert!(app.world().resource::<ScriptAssets>().table().queued.is_empty(), "a no-op set queues nothing");
+        call(&app, "assets.set", serde_json::json!([r, { "perceptual_roughness": 0.2 }])).unwrap();
+        flush(app.world_mut());
+        assert_eq!(modified(&app), 1);
+        let m = material(&app, &r);
+        assert_eq!(m.perceptual_roughness, 0.2);
+        assert!(m.unlit, "other fields keep their value");
+        let got = call(&app, "assets.get", serde_json::json!([r])).unwrap();
+        assert!((got["perceptual_roughness"].as_f64().unwrap() - 0.2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_texture_ref_goes_in_a_material_and_reads_back_as_its_ref() {
+        let mut app = pbr_app();
+        let img = {
+            let ty = image(&app);
+            let (n, _) = app.world().resource::<ScriptAssets>().make(&ty, Box::new(Image::default()));
+            ref_json(n, IMG)
+        };
+        let r = call(&app, "assets.add", serde_json::json!([MAT, { "base_color_texture": img }])).unwrap();
+        flush(app.world_mut());
+        let tex = material(&app, &r).base_color_texture.expect("a texture");
+        let want = app.world().resource::<ScriptAssets>().handle(1).unwrap();
+        assert_eq!(tex.id().untyped(), want.id());
+        let got = call(&app, "assets.get", serde_json::json!([r])).unwrap();
+        assert_eq!(got["base_color_texture"]["$asset"], 1);
+    }
+
+    #[test]
+    fn a_ref_of_the_wrong_type_names_both() {
+        let app = pbr_app();
+        let r = call(&app, "assets.add", serde_json::json!([MAT, {}])).unwrap();
+        let e = call(&app, "assets.add", serde_json::json!([MAT, { "base_color_texture": r }])).unwrap_err();
+        assert!(e.contains("StandardMaterial") && e.contains("Image"), "{e}");
+    }
+
+    #[test]
+    fn a_stale_ref_fails() {
+        let mut app = pbr_app();
+        let r = call(&app, "assets.add", serde_json::json!([MAT, {}])).unwrap();
+        clear(app.world_mut(), true);
+        let e = call(&app, "assets.get", serde_json::json!([r])).unwrap_err();
+        assert!(e.contains("stale asset ref"), "{e}");
+    }
+
+    #[test]
+    fn equal_values_share_one_asset() {
+        let app = pbr_app();
+        let registry = app.world().resource::<AppTypeRegistry>().read();
+        let assets = app.world().resource::<ScriptAssets>();
+        let slots = Slots { registry: &registry, server: None, assets, check: false };
+        use reflect_value::HandleSlots;
+        let id = TypeId::of::<StandardMaterial>();
+        let a = slots.write(id, &serde_json::json!({ "$of": MAT, "props": { "unlit": true, "base_color": "#fff" } })).unwrap();
+        let b = slots.write(id, &serde_json::json!({ "$of": MAT, "props": { "base_color": "#fff", "unlit": true } })).unwrap();
+        assert_eq!(a.id(), b.id());
+        assert_eq!(assets.len(), 1, "one material built");
+        let c = slots.write(id, &serde_json::json!({ "$of": MAT, "props": { "base_color": "#000" } })).unwrap();
+        assert_ne!(a.id(), c.id());
+        let e = slots.write(TypeId::of::<Image>(), &serde_json::json!({ "$of": MAT, "props": {} })).unwrap_err();
+        assert!(e.contains("StandardMaterial") && e.contains("Image"), "{e}");
+    }
+
+    #[test]
+    fn check_mode_builds_nothing() {
+        let app = pbr_app();
+        let registry = app.world().resource::<AppTypeRegistry>().read();
+        let assets = app.world().resource::<ScriptAssets>();
+        let slots = Slots { registry: &registry, server: None, assets, check: true };
+        use reflect_value::HandleSlots;
+        slots.write(TypeId::of::<StandardMaterial>(), &serde_json::json!({ "$of": MAT, "props": { "unlit": true } })).unwrap();
+        assert!(assets.is_empty());
+        let e = slots.write(TypeId::of::<StandardMaterial>(), &serde_json::json!({ "$of": MAT, "props": { "nope": 1 } })).unwrap_err();
+        assert!(e.contains("nope"), "{e}");
     }
 
     #[test]
