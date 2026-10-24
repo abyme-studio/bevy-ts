@@ -48,6 +48,10 @@ still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
   dependency (`cargo metadata`). Clippy and `cargo test -p` run on that set. A crate's integration
   tests are one binary (`tests/it`, docs/build-cache.md), so the crate is the unit: the gate selects
   no test files. A change to `bevy-ts` reaches nearly every crate, from the graph alone.
+- **Alone.** Each changed crate is built by itself (`cargo build -p <crate>`, one at a time). A
+  workspace build unifies Bevy's features across crates, so a crate that uses a feature only a
+  neighbour turns on builds there and fails alone, as it fails in a project engine. When a crate's
+  `Cargo.toml` changed, every crate the change reaches is built alone, since its features moved.
 - **Steps.** Each runs only when its paths changed: deno for `crates/bevy-ts-v8/js/`; npm for
   `packages/`, `examples/` or the cli; the protocol check for the generator, its outputs and the
   package's lockfile; bevy-ts/bevy for the cli; openspec for `openspec/`. The two deno tests take minutes,
