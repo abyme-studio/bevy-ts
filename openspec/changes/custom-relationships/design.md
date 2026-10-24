@@ -110,7 +110,7 @@ Research: `docs/research/custom-relationships.md` (options, Bevy's hook code, th
    A change gives it a new id with hooks for its new role, through `commit`'s `Planned::New`.
    When either half of a pair gets a new id in a generation, `commit`:
    1. sets `TsHooks.suspended` for the pair, so the dispatcher skips its hooks;
-   2. migrates sources by bytes as today, and removes every old target component (its drop runs);
+   2. migrates sources by field name as any layout change does, and removes every old target component (its drop runs);
    3. clears the flag, then rebuilds: for each entity holding the source, push it onto its
       target's list under the new target id, inserting the target where missing.
    A target is never byte-copied. One rule for every case, rather than relying on push and
@@ -126,7 +126,7 @@ Research: `docs/research/custom-relationships.md` (options, Bevy's hook code, th
     allowSelfReferential?: boolean }`. A target's `layout` is reported with no fields, and its
     value in `get_components` is a JSON array of entity ids. A mutation of a target is refused, as
     Bevy hands out no mutable list. Added fields only: a minor bump, the next free minor at
-    landing (1.24.0 on main today).
+    landing.
 
 ## Risks / Trade-offs
 

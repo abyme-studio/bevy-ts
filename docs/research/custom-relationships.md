@@ -52,6 +52,8 @@ Researched 2026-10-23 against Bevy 0.20.0 (`Cargo.lock`), source in
 
 ## 2. Options for the target list
 
+The design (openspec/changes/custom-relationships/design.md) supersedes points 4 and 5 below: target lists are rebuilt on reload (decision 8), and the source is immutable, so a move retarget is a `get_mut_assume_mutable_by_id` write (decision 6).
+
 The plain-bytes rule: a TS component is registered with `drop: None` and
 `ComponentCloneBehavior::Default` (`crates/bevy-ts/src/components.rs:152-167`). JS sees its column
 zero-copy, and hot reload migrates it by copying bytes into a new id (`components.rs:293-315`).
