@@ -125,17 +125,21 @@ pub fn frame(world: &World) -> u64 {
 
 /// Per-subscriber cursors for watching methods, keyed by method and params.
 ///
-/// Bevy runs a watching handler once per open request per frame, in the order the requests opened,
-/// with that request's params and nothing else. So two requests with the same params are told
-/// apart by their order within the update: the first `n` calls of an update, where `n` subscribers
-/// were served the update before, are those subscribers, and any call after them is a new one.
-/// A subscriber not served for an update has closed.
+/// Bevy runs a watching handler once per open request per update, with that request's params and
+/// nothing else, in the order of one list of every open watch. A new request is pushed on its end,
+/// and a closed one is dropped with `swap_remove`, which moves the last request into its place. So
+/// requests with the same params are told apart by their order within the update: the first `n`
+/// calls of an update, where `n` subscribers were served the update before, are those
+/// subscribers, and a call after them is a new one. A subscriber not served for an update has
+/// closed.
 ///
-/// Bevy drops a closed request with `swap_remove`, moving the last one into its place, so after a
-/// close a subscriber may sit in a slot whose cursor was another's. A slot is therefore served the
-/// lowest cursor among it and the slots after it: once someone closes, a subscriber can be sent a
-/// message again, but never misses one. One that opens in the update another with the same params
-/// closes is taken for the old one, and gets no opening message.
+/// After a close the survivors can swap slots, and one can take another's cursor. A slot is
+/// therefore served the lowest cursor among it and the slots after it: a subscriber can be sent a
+/// message again, never miss one. Streams that send everything since the cursor catch every
+/// subscriber up each update, so their cursors are equal and a swap changes nothing; `level+watch`,
+/// which sends one event per update, is the exception and can repeat events after a close. One
+/// that opens in the update another with the same params closes is taken for the old one, and
+/// gets no opening message.
 #[derive(Resource, Default)]
 pub struct Subscribers {
     update: u64,

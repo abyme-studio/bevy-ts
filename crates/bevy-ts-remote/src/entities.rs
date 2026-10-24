@@ -37,12 +37,13 @@ fn info(world: &World, entity: Entity) -> Value {
 }
 
 /// Components whose entities the engine keeps for itself: windows, monitors, gamepads and picking
-/// pointers. Not `ScriptHidden`, which would hide them from TS queries too; matched by type path,
-/// so this crate needs none of those Bevy features.
+/// pointers. Not `ScriptHidden`, which would hide them from TS queries too; looked up by type path
+/// in the type registry, so this crate needs none of those Bevy features.
 const ENGINE: [&str; 4] = ["bevy_window::window::Window", "bevy_window::monitor::Monitor", "bevy_input::gamepad::Gamepad", "bevy_picking::pointer::PointerId"];
 
 fn engine_components(world: &World) -> Vec<ComponentId> {
-    world.components().iter_registered().filter(|(_, c)| ENGINE.contains(&c.name().to_string().as_str())).map(|(id, _)| id).collect()
+    let registry = world.resource::<AppTypeRegistry>().read();
+    ENGINE.iter().filter_map(|path| world.components().get_id(registry.get_with_type_path(path)?.type_id())).collect()
 }
 
 /// Observers and resource entities are bookkeeping, not scene content; `ScriptHidden` entities
@@ -83,6 +84,8 @@ pub(crate) struct EntityWatch {
     events: Vec<Event>,
     known: HashSet<Entity>,
     pub(crate) seq: u64,
+    /// [`engine_components`] as of `components().len()` components.
+    engine: (usize, Vec<ComponentId>),
     last_frame: u64,
     /// The message computed for `last_frame`, shared by every subscriber that frame.
     message: Option<Value>,
@@ -161,11 +164,14 @@ fn delta(world: &mut World) -> Option<Value> {
         Some(c) => Some(c.decl.name.clone()),
         None => world.components().get_name(*id).map(|n| n.to_string()),
     };
-    let engine = engine_components(world);
+    if w.engine.0 != world.components().len() {
+        w.engine = (world.components().len(), engine_components(world));
+    }
+    let engine = &w.engine.1;
     let (mut spawned, mut despawned, mut reparented, mut renamed, mut add, mut rem) = (vec![], vec![], vec![], vec![], vec![], vec![]);
     for e in touched {
         // Observers are bookkeeping, not scene content.
-        if world.get_entity(e).is_ok_and(|r| internal(&r, &engine)) || w.observers.contains(&e) {
+        if world.get_entity(e).is_ok_and(|r| internal(&r, engine)) || w.observers.contains(&e) {
             continue;
         }
         let exists = world.get_entity(e).is_ok();

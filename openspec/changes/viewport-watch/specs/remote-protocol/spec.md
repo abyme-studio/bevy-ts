@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Each subscriber of a watch is served on its own
-Every `+watch` method SHALL serve each open request on its own, even when several have the same params: each SHALL get the method's opening message when it opens, then every message owed to it after. A request that was not served for an update SHALL count as closed, so the same params opened again get the opening message again. When a request closes, another with the same params MAY be sent a message again, and SHALL NOT miss one; a request that opens in the update another with the same params closes MAY get no opening message. A Stop SHALL NOT restart open watches.
+Every `+watch` method SHALL serve each open request on its own, even when several have the same params: each SHALL get the method's opening message when it opens, then every message owed to it after. A request that was not served for an update SHALL count as closed, so the same params opened again get the opening message again. When a request closes, another with the same params SHALL NOT miss a message, and `bevy-ts/level+watch`, which sends one event per update, MAY send one again; a request that opens in the update another with the same params closes MAY get no opening message. A Stop SHALL NOT restart open watches.
 
 #### Scenario: A second studio window opens the same watch
 - **WHEN** a client has `bevy-ts/viewport_tools+watch` open and a second request with the same params opens later
