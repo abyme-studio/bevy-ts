@@ -28,7 +28,8 @@ An unknown prop, style key or word fails the load and names it with the accepted
 
 A list is `<For each={items} key={(i) => i.id}>{(i) => ...}</For>`. Its rows keep their entities
 by key, and sit in the items' order among their parent's children, so a reordered list moves rows
-in the layout without respawning them. A change costs what it adds, removes or moves, not the
+in the layout without respawning them. Rows sit where the `<For>` is written: after the siblings
+before it and before the siblings after it. A change costs what it adds, removes or moves, not the
 length of the list.
 
 ## Style

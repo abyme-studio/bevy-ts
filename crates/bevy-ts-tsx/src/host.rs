@@ -494,7 +494,7 @@ fn collect_rows(tree: &mut TsxTree, rows: GroupRows, tops: &mut Vec<u64>, rest: 
 /// logs its error and is left out; the rest apply.
 fn slot_apply(world: &mut World, slot: u32, ops: SlotOps) {
     let Some(state) = world.resource::<TsxTree>().reactive.slots.get(&slot) else { return };
-    let (root, parent, prefix) = (state.root.clone(), state.parent, state.prefix.clone());
+    let (root, parent, prefix, later) = (state.root.clone(), state.parent, state.prefix.clone(), state.later.clone());
     let mut types = state.types.clone();
     types.push("group".into());
     let registry = world.resource::<AppTypeRegistry>().clone();
@@ -551,7 +551,14 @@ fn slot_apply(world: &mut World, slot: u32, ops: SlotOps) {
         let rows = &world.resource::<TsxTree>().reactive.slots[&slot].rows;
         keys.iter().filter_map(|k| rows.get(k)).flat_map(|r| r.tops.iter().copied()).collect::<Vec<u64>>()
     });
-    apply_root(world, &root, None, &resolved, parent, prune);
+    let stats = apply_root(world, &root, None, &resolved, parent, prune);
+    // New rows were appended to the parent's children: siblings described after the slot go
+    // back behind them.
+    if stats.spawned > 0
+        && let Some(p) = parent
+    {
+        reconcile::keep_after(world, p, &later);
+    }
     if let Some(tops) = order {
         reconcile::order_slot(world, &root, parent, &prefix, &tops);
     }

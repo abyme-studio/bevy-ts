@@ -1301,7 +1301,11 @@ class Slot {
     const kept = this.order.filter((k) => seen.has(k) && this.groups.has(k));
     const now = kept.concat(added);
     const live = keys.filter((k) => this.groups.has(k));
-    if (now.length !== live.length || now.some((k, i) => k !== live[i])) this.ctx.orders.push([this.id, live]);
+    if (now.length !== live.length || now.some((k, i) => k !== live[i])) {
+      this.ctx.orders.push([this.id, live]);
+      // A reorder mounts nothing: outside a call, it asks for one itself.
+      requestFlush(this.ctx);
+    }
     this.order = live;
   }
 }

@@ -29,12 +29,13 @@ fn app() -> (App, Replies) {
     app.add_plugins(MinimalPlugins).add_plugins(BevyTsPlugin::new(move || Box::new(h.backend()))).add_plugins(TsxPlugin);
     let replies: Replies = Arc::default();
     let r = replies.clone();
-    // `<entity name="list"><entity key="head" /><For ... /></entity>`
+    // `<entity name="list"><entity key="head" /><For ... /><entity key="tail" /></entity>`
     let section = json!({ "roots": [{ "name": "ui", "nodes": [{
         "key": "list", "type": "entity",
         "children": [
             { "key": "head", "type": "entity" },
-            { "key": "for#0", "type": "For", "slot": SLOT }
+            { "key": "for#0", "type": "For", "slot": SLOT },
+            { "key": "tail", "type": "entity" }
         ]
     }] }] });
     let health = ComponentDecl {
@@ -111,7 +112,10 @@ fn many_groups_in_one_call_are_one_reconcile() {
     let (mut app, replies) = app();
     assert_eq!(mount(&mut app, &replies, (0..1000).map(|i| format!("k{i}"))), 1);
     assert_eq!(last(&app).spawned, 2000);
-    assert_eq!(children(&mut app).len(), 1001, "head and the 1,000 rows");
+    let kids = children(&mut app);
+    assert_eq!(kids.len(), 1002, "head, the 1,000 rows and tail");
+    let tail = node_at(&mut app, &["list", "tail"]);
+    assert_eq!(kids.last(), Some(&tail), "rows mount before a sibling described after the slot");
 }
 
 #[test]
@@ -135,16 +139,16 @@ fn what_a_slot_reconcile_checks_does_not_grow_with_the_slot() {
 fn a_reversed_list_keeps_its_entities_and_sorts_children() {
     let (mut app, replies) = app();
     mount(&mut app, &replies, ["a", "b", "c"].map(String::from));
-    let head = node_at(&mut app, &["list", "head"]);
+    let (head, tail) = (node_at(&mut app, &["list", "head"]), node_at(&mut app, &["list", "tail"]));
     let [a, b, c] = ["a", "b", "c"].map(|k| node(&mut app, &[k, "row"]).unwrap());
-    assert_eq!(children(&mut app), vec![head, a, b, c]);
+    assert_eq!(children(&mut app), vec![head, a, b, c, tail]);
     assert_eq!(call(&mut app, &replies, json!({ "orders": [[SLOT, ["c", "b", "a"]]] })), 1);
     assert_eq!(last(&app), ReconcileStats::default(), "nothing spawned, despawned or written");
-    assert_eq!(children(&mut app), vec![head, c, b, a], "the head stays where it was");
+    assert_eq!(children(&mut app), vec![head, c, b, a, tail], "head and tail stay where they were");
     // An order with a mount and an unmount in the same call.
     call(&mut app, &replies, json!({ "unmounts": [[SLOT, "b"]], "mounts": [[SLOT, "d", row(false)]], "orders": [[SLOT, ["d", "a", "c"]]] }));
     let d = node(&mut app, &["d", "row"]).unwrap();
-    assert_eq!(children(&mut app), vec![head, d, a, c]);
+    assert_eq!(children(&mut app), vec![head, d, a, c, tail]);
 }
 
 fn node_at(app: &mut App, path: &[&str]) -> Entity {
