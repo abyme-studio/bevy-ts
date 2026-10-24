@@ -406,6 +406,7 @@ fn apply_node(
             types: n.types.clone(),
             groups: BTreeSet::new(),
             rows: HashMap::new(),
+            later: Vec::new(),
         });
         tree.reactive.due = true;
         slots.push(n.path.clone());
@@ -459,8 +460,11 @@ fn apply_node(
                 }
             }
             let reorder = n.children.iter().any(|c| tree.moved.contains_key(&c.id));
-            for c in &n.children {
+            for (i, c) in n.children.iter().enumerate() {
                 apply_node(world, tree, root, c, Some(e), seen, stats, slots);
+                if let Some(s) = c.slot.and_then(|s| tree.reactive.slots.get_mut(&s)) {
+                    s.later = n.children[i + 1..].iter().filter(|c| c.slot.is_none()).map(|c| c.id).collect();
+                }
             }
             if reorder {
                 order_children(world, tree, e, n);
@@ -598,6 +602,21 @@ pub fn order_slot(world: &mut World, root: &str, parent: Option<Entity>, prefix:
     let list = (root.to_string(), tree.parent_row(root, prefix));
     tree.journal.open.ordered.push(list);
     world.insert_resource(tree);
+}
+
+/// Moves the entities of `later` (a slot's siblings described after it) to the end of `parent`'s
+/// children, in their order, so rows the slot just spawned sit before them.
+pub fn keep_after(world: &mut World, parent: Entity, later: &[u64]) {
+    let tree = world.resource::<TsxTree>();
+    let after: HashMap<Entity, usize> =
+        later.iter().filter_map(|id| tree.entities.get(id).copied().filter(|e| alive(world, *e, *id))).enumerate().map(|(i, e)| (e, i)).collect();
+    if after.is_empty() {
+        return;
+    }
+    let Some(mut children) = world.get_mut::<Children>(parent) else { return };
+    let n = children.len();
+    let place: HashMap<Entity, usize> = children.iter().enumerate().map(|(i, c)| (c, after.get(&c).map_or(i, |j| n + j))).collect();
+    children.sort_by_key(|c| place[c]);
 }
 
 /// Spawns a node's entity. Its `ChildOf`, `TsxNode` and native-layout components go in with one

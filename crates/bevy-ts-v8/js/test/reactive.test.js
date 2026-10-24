@@ -303,6 +303,23 @@ Deno.test("For sends its key order when it changed, and only then", () => {
   eq([out.mounts.map(([, g]) => g), out.orders], [["e"], [[1, ["e", "c", "a", "d"]]]]);
 });
 
+Deno.test("For reordered outside a host call asks for one", () => {
+  const ctx = new TsxContext();
+  const asked = [];
+  setHost({ requestFlush: () => (asked.push(1), true) });
+  try {
+    const [items, setItems] = signal(["a", "b", "c"]);
+    describe(jsx(For, { each: () => items(), key: (i) => i, children: (i) => jsx("entity", { name: i }) }), ctx);
+    ctx.call({});
+    asked.length = 0;
+    setItems(["b", "c", "a"]);
+    eq(asked.length, 1, "a pure permutation asks for a call");
+    eq(ctx.call({}).orders, [[1, ["b", "c", "a"]]]);
+  } finally {
+    setHost(null);
+  }
+});
+
 Deno.test("For withdraws an item mounted and removed between two calls", () => {
   const ctx = new TsxContext();
   const [items, setItems] = signal(["a"]);

@@ -118,6 +118,9 @@ pub struct SlotState {
     pub groups: BTreeSet<String>,
     /// What each mounted group holds, so a slot's reconcile touches only the groups it is given.
     pub rows: HashMap<String, GroupRows>,
+    /// The nodes described after the slot among its parent's children: rows a mount spawns go
+    /// before them.
+    pub later: Vec<u64>,
 }
 
 /// The nodes one group of a slot mounted.
