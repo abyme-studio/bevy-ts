@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: PlayAnimation names a clip for a scene
-The engine SHALL register a reflected Rust component `PlayAnimation` with `ReflectComponent` and `ReflectDefault`, and these fields: `clip: Handle<AnimationClip>` (default: none), `repeat: RepeatAnimation` (Bevy's enum, default `Forever`), `speed: f32` (default `1.0`), `transition_secs: f32` (default `0.25`), `paused: bool` (default `false`), `cull: bool` (default `false`) and `graph: Handle<AnimationGraph>` (default: none; see the graph requirement). It SHALL be tiered by the native-components rules: its plain fields (`speed`, `transition_secs`, `paused`, `cull`) are columns TS systems read and write, and `clip`, `repeat` and `graph` are holes TS columns never see. It SHALL be named `PlayAnimation` in `bevy-ts/bevy`, never inserted from bytes, and written through reflection, `clip`, `repeat` and `graph` included, wherever it is placed: a TSX component element (its type listing every field as a prop), a level patch and the editor. `clip` SHALL be written as an asset path with a label (`"models/Fox.glb#Animation2"`) and loaded as a `Handle<AnimationClip>`. `repeat` SHALL be written as Bevy names its variants: `"Never"`, `"Forever"` or `{ Count: n }` in TSX, `Never`, `Forever` or `Count(n)` in a level. It SHALL go on the entity that carries `WorldAssetRoot`.
+The engine SHALL register a reflected Rust component `PlayAnimation` with `ReflectComponent` and `ReflectDefault`, and these fields: `clip: Handle<AnimationClip>` (default: none), `repeat: RepeatAnimation` (Bevy's enum, default `Forever`), `speed: f32` (default `1.0`), `transition_secs: f32` (default `0.25`), `paused: bool` (default `false`), `cull: bool` (default `false`) and `graph: Handle<AnimationGraph>` (default: none; see the graph requirement). It SHALL be tiered by the native-components rules: its plain fields (`speed`, `transition_secs`, `paused`, `cull`) are columns TS systems read and write, and `clip`, `repeat` and `graph` are holes TS columns never see. It SHALL be named `PlayAnimation` in `bevy-ts/bevy`, never inserted from bytes, and written through reflection, `clip`, `repeat` and `graph` included, wherever it is placed: a TSX component element (its type listing every field as a prop), a level patch and the editor. `clip` SHALL be written as an asset path with a label (`"models/Fox.glb#Animation2"`) and loaded as a `Handle<AnimationClip>`. `repeat` SHALL be written as Bevy names its variants: `"Never"`, `"Forever"` or `{ Count: n }` in TSX, `Never`, `Forever` or `Count(n)` in a level. It SHALL go on the entity that carries `WorldAssetRoot`, or on any other entity, which then is its own player (see the clip requirement).
 
 #### Scenario: Placed in TSX
 - **WHEN** a scene describes `<entity><WorldAssetRoot value="models/Fox.glb#Scene0" /><PlayAnimation clip="models/Fox.glb#Animation2" /></entity>`
@@ -136,8 +136,47 @@ A root whose `PlayAnimation` has a `graph` SHALL give its players that graph's h
 - **WHEN** the reflected-coverage hole check walks `AnimationGraph`
 - **THEN** `graph` round-trips, and `reflect_value::UNCOVERED` has no entry for `AnimationGraph`
 
+### Requirement: Any entity plays an AnimationClip built in TS
+`bevy-ts/bevy` SHALL export `AnimationClip` as a builder with Bevy's names: `new AnimationClip()`, `addCurveToTarget(target, curve)`, `setDuration(secs)` and `duration`. A curve SHALL be `new AnimatableCurve(animatedField(Component, field), curve)`, `animatedField` standing for Bevy's `animated_field!`: any reflected, mutable component and one of its top-level fields whose type is `Animatable`; `tsc` SHALL reject an unknown field. `curve` SHALL be built from Bevy's constructors, by their names: `EasingCurve(start, end, ease)` with every `EaseFunction` variant, `ConstantCurve`, `SampleAutoCurve`, `UnevenSampleAutoCurve`, `AnimatableKeyframeCurve`, `SteppedKeyframeCurve`, `CubicKeyframeCurve`, `CubicRotationCurve`, and `toCurve()` or `toCurveCyclic()` of `CubicBezier`, `CubicHermite`, `CubicCardinalSpline`, `CubicBSpline`, `CubicNurbs` and `LinearSpline`; and from the adaptors `reparametrizeLinear`, `reverse`, `repeat`, `forever`, `pingPong`, `chain` and `chainContinue`. A target SHALL be as in the graph requirement, plus `AnimationTargetId.root`. Building SHALL make no host call; a built clip SHALL be an asset value, and go in `PlayAnimation.clip`, a graph's `addClip` and `assets.add`.
+
+Rust SHALL hand-map `AnimationClip` in the reflected-asset writer and reader: write builds Bevy's curves with Bevy's `add_curve_to_target`, so the clip's duration is the longest curve's domain end unless `duration` is given, and fails, naming the curve, on an unknown component or field, a value of the wrong type, or an unbounded curve with no `duration`. Read SHALL give back the JSON a script wrote, and `duration` with `curves: null` for a clip from a file; writing `curves: null` SHALL keep the clip's curves.
+
+`PlayAnimation` on an entity with no `WorldAssetRoot` SHALL play the frame it is added. When that entity has no `AnimationPlayer` under it, Rust SHALL insert one on the entity, and give the entity (with the empty path) and every descendant with a `Name` and no `AnimationTargetId` a target id from its name path below it, and `AnimatedBy` the entity. Everything `PlayAnimation` does on a scene root (`repeat`, `speed`, `paused`, `cull`, `graph`, cross-fades, `Animations`) SHALL hold for it. A curve on a field the target lacks SHALL be skipped, as Bevy skips it. An animated `MaterialAlpha.alpha` SHALL be drawn the frame it is sampled.
+
+#### Scenario: Translate with an ease
+- **WHEN** a TSX entity has `<Transform /><PlayAnimation clip={clip} repeat="Never" />`, `clip` holding `AnimatableCurve(animatedField(Transform, "translation"), new EasingCurve([0, 0, 0], [0, 2, 0], "CubicOut").reparametrizeLinear(interval(0, 0.5)))` on `AnimationTargetId.root`
+- **THEN** at 0.25 s its `translation.y` is the cubic-out ease of 0.5 times 2, at 0.5 s it is 2 and stays 2, and no TS ran after the insert
+
+#### Scenario: Rotate
+- **WHEN** the curve is `EasingCurve(Quat.IDENTITY, Quat.fromRotationY(PI), "Linear").reparametrizeLinear(interval(0, 1))` on `Transform` `rotation`
+- **THEN** at 0.5 s the entity has turned a quarter turn about Y
+
+#### Scenario: Scale, back and forth
+- **WHEN** the curve is `EasingCurve([1, 1, 1], [2, 2, 2], "SineInOut").reparametrizeLinear(interval(0, 0.4)).pingPong()` on `Transform` `scale`
+- **THEN** the scale reaches 2 at 0.4 s and is back at 1 at 0.8 s
+
+#### Scenario: Fade out
+- **WHEN** a mesh entity with `MaterialAlpha` plays a curve `EasingCurve(1, 0, "QuadraticIn").reparametrizeLinear(interval(0, 1))` on `MaterialAlpha` `alpha`
+- **THEN** its drawn material's alpha follows the curve, the same frame it is sampled, and is 0 at 1 s
+
+#### Scenario: A named child
+- **WHEN** a TSX entity with `PlayAnimation` has a child `<entity><Name value="lid" /><Transform /></entity>`, and its clip targets `AnimationTargetId.fromNames(["lid"])`
+- **THEN** the child moves and the parent does not
+
+#### Scenario: A wrong field
+- **WHEN** a script writes a clip with `animatedField(Transform, "translation")` over a curve of `f32`
+- **THEN** the write fails naming `Transform::translation`, `Vec3` and `f32`
+
+#### Scenario: A paused tween parks
+- **WHEN** a tweening entity's `paused` is set to true
+- **THEN** its player has no `AnimationGraphHandle` and its `Transform` stops changing
+
+#### Scenario: A script clip round-trips
+- **WHEN** a script calls `assets.add(clip)` and then `assets.get(ref)`
+- **THEN** it reads the curves it wrote, and writing that back gives an equal clip
+
 ### Requirement: Every animation control has a stated TS path
-Every public field and method of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation`, `AnimationTransitions`, `AnimationGraph`, `AnimationGraphNode` and `AnimationTargetId`, and the graph's loader and serialized types, SHALL be listed below with its TS name, or the reason it stays in Rust, and the test that proves it. Raw `AnimationPlayer` and `AnimationTransitions` stay reflect-tier components as they are today; no TS name SHALL take an index into the shared graph; a TS-built graph's own node numbers are the only node indices TS sees (see the graph requirement). A new public item in a Bevy upgrade SHALL be added to this table in the change that takes the upgrade.
+Every public field and method of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation`, `AnimationTransitions`, `AnimationGraph`, `AnimationGraphNode`, `AnimationTargetId`, `AnimatedBy` and `AnimationClip`, the graph's loader and serialized types, `AnimatableCurve` and its property types, and `bevy_curve`'s curve constructors, eases and adaptors, SHALL be listed below with its TS name, or the reason it stays in Rust, and the test that proves it. Raw `AnimationPlayer` and `AnimationTransitions` stay reflect-tier components as they are today; no TS name SHALL take an index into the shared graph; a TS-built graph's own node numbers are the only node indices TS sees (see the graph requirement). A new public item in a Bevy upgrade SHALL be added to this table in the change that takes the upgrade.
 
 | Bevy item | TS name | Test |
 | --- | --- | --- |
@@ -174,6 +213,23 @@ Every public field and method of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation
 | `SerializedAnimationGraph`, `SerializedAnimationGraphNode`, `SerializedAnimationNodeType` | Rust only: the shape the hand-map reads and writes | `reflect_asset.rs::animation_graph_round_trips` |
 | `AnimationGraph::save` | Rust only: writes a file; `assets.get` reads the value | – |
 | `ThreadedAnimationGraph`, `ThreadedAnimationGraphs`, `ThreadedAnimationSubgraph` | Rust only: Bevy's evaluation cache | – |
+| `AnimationClip` (`Default`), `add_curve_to_target`, `duration`, `set_duration` | `new AnimationClip()`, `addCurveToTarget`, `duration`, `setDuration` | `clip.rs::a_tween_translates_with_an_ease`, `animation-clip.test.ts` |
+| `AnimationClip::curves`, `curves_mut`, `curves_for_target`, `curves_for_target_mut`, `add_variable_curve_to_target`, `VariableCurve` | Rust only: boxed curves; `assets.get` reads a script clip's JSON | `reflect_asset.rs::animation_clip_round_trips` |
+| `AnimationClip::add_event`, `add_event_to_target`, `add_event_fn`, `add_event_fn_to_target`, `AnimationEvent` | Rust only: a typed Rust event; TS cannot observe one yet | – |
+| `AnimationClip::sample_clamped` | Rust only: a read of a typed property | – |
+| `AnimatableCurve::new`, `animated_field!`, `AnimatedField` | `new AnimatableCurve(animatedField(C, field), curve)` | `clip.rs::a_tween_translates_with_an_ease`, `clip.rs::a_wrong_field_fails` |
+| `AnimatableProperty`, `EvaluatorId::ComponentField` | Rust only: `ReflectedField`, Bevy's id | `clip.rs::a_script_rotation_blends_with_a_gltf_clip` |
+| `EvaluatorId::Type`, `AnimationCurve`, `AnimationCurveEvaluator` | Rust only: custom properties are Rust | – |
+| `Animatable` value types | the types `animatedField` accepts | `animation-clip.test.ts` |
+| `EasingCurve::new`, `EaseFunction` (every variant), `JumpAt` | `new EasingCurve(start, end, ease)`, Bevy's variant names | `clip.rs::every_ease_samples_as_bevy` |
+| `ConstantCurve`, `SampleAutoCurve`, `UnevenSampleAutoCurve`, `AnimatableKeyframeCurve` | constructors of the same names | `clip.rs::every_curve_samples_as_bevy` |
+| `SteppedKeyframeCurve`, `CubicKeyframeCurve`, `CubicRotationCurve` | constructors of the same names | `clip.rs::every_curve_samples_as_bevy` |
+| `WideLinearKeyframeCurve`, `WideSteppedKeyframeCurve`, `WideCubicKeyframeCurve`, `WeightsCurve` | Rust only: morph weights, iterable curves no field takes | – |
+| `CubicBezier`, `CubicHermite`, `CubicCardinalSpline`, `CubicBSpline`, `CubicNurbs`, `LinearSpline`, `to_curve`, `to_curve_cyclic` | constructors of the same names, `toCurve`, `toCurveCyclic` | `clip.rs::every_curve_samples_as_bevy` |
+| `Curve::reparametrize_linear`, `reverse`, `repeat`, `forever`, `ping_pong`, `chain`, `chain_continue`, `interval` | `reparametrizeLinear`, `reverse`, `repeat`, `forever`, `pingPong`, `chain`, `chainContinue`, `interval` | `clip.rs::every_curve_samples_as_bevy`, `clip.rs::scale_ping_pongs` |
+| `FunctionCurve`, `Curve::map`, `reparametrize`, `reparametrize_by_curve`, `zip`, `graph`, `SampleCurve`, `UnevenSampleCurve`, `resample*` | Rust only: closures, or not an animatable value | – |
+| `AnimationTargetId` on a plain entity, `AnimatedBy` | given by `PlayAnimation` (design 19); `AnimationTargetId.root` | `clip.rs::a_named_child_moves_alone` |
+| `MaterialAlpha.alpha` as a curve target | `animatedField(MaterialAlpha, "alpha")` | `clip.rs::a_fade_draws_the_frame_it_samples` |
 
 #### Scenario: The table is the coverage
 - **WHEN** a reviewer reads `crates/bevy-ts-animation`, `docs/animation.md` and the table
