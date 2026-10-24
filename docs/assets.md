@@ -58,3 +58,63 @@ assets live until the script reloads or stops:
 
 Adding an asset every frame grows memory until reload, and a warning is logged past 10,000 assets:
 add once and `set` after. Freeing an asset sooner is script-assets' handle lifecycle, not here.
+
+## Meshes
+
+A system that takes `meshes: ResMut<Assets<Mesh>>` builds and updates meshes with Bevy's `Mesh`
+API under Bevy's names. The param is the engine's `Meshes` export (`bevy-ts/assets`,
+`crates/bevy-ts-cli/src/assets.rs`).
+
+```ts
+import type { Assets, AssetRef, MeshData, ResMut } from "bevy-ts";
+import { Indices, Mesh, PrimitiveTopology, RenderAssetUsages } from "bevy-ts/assets";
+
+let chunk: AssetRef<MeshData> | undefined;
+
+export function remesh(meshes: ResMut<Assets<Mesh>>) {
+  const { positions, normals, uvs, indices } = buildSurface(); // Float32Array, Float32Array, Float32Array, Uint32Array
+  if (!chunk) {
+    chunk = meshes.add(
+      Mesh.new(PrimitiveTopology.TriangleList, RenderAssetUsages.default())
+        .insertAttribute(Mesh.ATTRIBUTE_POSITION, positions)
+        .insertAttribute(Mesh.ATTRIBUTE_NORMAL, normals)
+        .insertAttribute(Mesh.ATTRIBUTE_UV_0, uvs)
+        .insertIndices(Indices.U32(indices)),
+    );
+    return;
+  }
+  meshes.getMut(chunk)!
+    .insertAttribute(Mesh.ATTRIBUTE_POSITION, positions)
+    .insertAttribute(Mesh.ATTRIBUTE_NORMAL, normals)
+    .insertAttribute(Mesh.ATTRIBUTE_UV_0, uvs)
+    .insertIndices(Indices.U32(indices));
+}
+```
+
+- `Mesh.new(topology, usage)` makes a mesh that records its calls in JS; nothing crosses until
+  `meshes.add(mesh)`, which builds it in Rust and adds it in one go, returning a strong ref. A
+  failed step adds nothing.
+- `insertAttribute` takes the eight built-in `Mesh.ATTRIBUTE_*`: a `Float32Array` of the
+  attribute's `components` per vertex (3, 3, 2, 2, 4, 4, 4), and a `Uint16Array` of 4 for
+  `ATTRIBUTE_JOINT_INDEX`. `insertIndices` takes `Indices.U16(Uint16Array)` or
+  `Indices.U32(Uint32Array)`. Also `removeAttribute`, `removeIndices`, `computeNormals`,
+  `computeFlatNormals`, `computeSmoothNormals`, `computeAreaWeightedNormals`, `generateTangents`,
+  `duplicateVertices`, `countVertices`, and `attribute(attr)` and `indices()`, which return copies.
+- `meshes.getMut(ref)` is the live mesh: each call is one host call into the asset. Data of the
+  same length and format as what is there is copied into the mesh's own buffer, with no
+  allocation. However many calls change a mesh in a frame, Bevy sends one
+  `AssetEvent::Modified`, and re-uploads the whole mesh once. `meshes.get(ref)` is the same mesh,
+  read-only; both are `undefined` once the mesh is gone. `meshes.remove(ref)` is Bevy's
+  `Assets::remove`.
+- What Bevy refuses throws with Bevy's text and the method's name, and leaves the mesh as it was:
+  a wrong array or length, normals on a topology other than `TriangleList`, flat normals on an
+  indexed mesh, smooth normals without indices, an index past the last vertex, tangents without
+  normals or UVs, and data of a `RENDER_WORLD`-only mesh once it has gone to the render world.
+
+### Cost
+
+A 24,000-vertex chunk (positions, normals, UVs, colours, 36,000 `U32` indices) remeshed with
+`getMut` costs 45 µs median from TS against 29 µs for the same copies in Rust (Apple M5 Max;
+`docs/research/script-assets.md`). Remeshing an edited chunk every frame from TS is fine. Keep
+one mesh per chunk and `getMut` it: a changed vertex count costs a little more (allocation), and
+adding a new mesh per edit makes a new asset every time; if you do, `assets.drop` the old ref.

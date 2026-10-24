@@ -5,9 +5,12 @@
 //! - (b) TS: `meshes.getMut` and four `insertAttribute` and one `insertIndices`, same lengths.
 //! - (c) TS: as (b), the vertex count changing every frame, so every buffer is allocated.
 //! - (d) TS: `Mesh.new` and `meshes.add` of a whole chunk, the old one dropped (per chunk).
-//! - (0) TS: the same system with nothing to do, the frame's own cost, subtracted from each arm.
+//! - (0) TS: the same system with nothing to do, the cost of running a TS system, subtracted from
+//!   the TS arms.
 //!
-//! Each arm runs 3 times, 200 frames after 20 to warm up, in a fresh app. Ignored by default; run
+//! Each arm runs 3 times, 200 frames after 20 to warm up, in a fresh app. A TS arm is timed by the
+//! system's own run time (`TsSystems`' `last_run_us`: the JS, its host calls and the copies), the
+//! Rust arm inside its system, so the frame's other work stays out of the numbers. Ignored by default; run
 //! with `cargo test --release -p bevy-ts-cli --test it mesh_update_bench -- --ignored --nocapture`.
 
 use crate::common;
@@ -74,12 +77,15 @@ struct Chunk {
     c: Vec<[f32; 4]>,
     i: Vec<u32>,
     frame: u32,
+    /// The last remesh's time, µs.
+    took: f64,
 }
 
 fn rust_remesh(mut chunk: ResMut<Chunk>, mut meshes: ResMut<Assets<Mesh>>) {
+    let t = Instant::now();
     chunk.frame += 1;
     chunk.p[0][0] = chunk.frame as f32;
-    let chunk = &*chunk;
+    let chunk = chunk.into_inner();
     let mut m = meshes.get_mut(&chunk.mesh).unwrap();
     let copy = |m: &mut Mesh, attr, src: &[f32]| match m.attribute_mut(attr).unwrap() {
         VertexAttributeValues::Float32x2(v) => v.as_flattened_mut().copy_from_slice(src),
@@ -93,6 +99,8 @@ fn rust_remesh(mut chunk: ResMut<Chunk>, mut meshes: ResMut<Assets<Mesh>>) {
     copy(&mut m, Mesh::ATTRIBUTE_COLOR, chunk.c.as_flattened());
     let Some(Indices::U32(i)) = m.indices_mut() else { unreachable!() };
     i.copy_from_slice(&chunk.i);
+    drop(m);
+    chunk.took = t.elapsed().as_secs_f64() * 1e6;
 }
 
 fn base_app() -> App {
@@ -125,20 +133,22 @@ fn rust_app() -> App {
         .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, c.clone())
         .with_inserted_indices(Indices::U32(i.clone()));
     let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
-    app.insert_resource(Chunk { mesh, p, n, uv, c, i, frame: 0 }).add_systems(Update, rust_remesh);
+    app.insert_resource(Chunk { mesh, p, n, uv, c, i, frame: 0, took: 0.0 }).add_systems(Update, rust_remesh);
     app
 }
 
-/// Frame times in µs of one run.
+/// Remesh times in µs of one run: the TS system's run, or the Rust system's own timing.
 fn run(mut app: App) -> Vec<f64> {
     for _ in 0..WARM {
         app.update();
     }
     (0..FRAMES)
         .map(|_| {
-            let t = Instant::now();
             app.update();
-            t.elapsed().as_secs_f64() * 1e6
+            match app.world().get_resource::<Chunk>() {
+                Some(c) => c.took,
+                None => app.world().resource::<bevy_ts::systems::TsSystems>().iter().next().unwrap().last_run_us as f64,
+            }
         })
         .collect()
 }
@@ -157,20 +167,14 @@ fn arm(make: &dyn Fn() -> App) -> (f64, f64) {
 #[test]
 #[ignore = "a benchmark: run by hand in release"]
 fn chunk_remesh_costs() {
-    let (rust_frame, _) = arm(&|| {
-        let mut app = base_app();
-        app.add_systems(Update, || {});
-        app
-    });
     let (empty, _) = arm(&|| ts_app("empty"));
     let arms: [(&str, &str, f64, Box<dyn Fn() -> App>); 4] = [
-        ("a", "Rust get_mut + copies (floor)", rust_frame, Box::new(rust_app)),
+        ("a", "Rust get_mut + copies (floor)", 0.0, Box::new(rust_app)),
         ("b", "TS getMut + 4 insertAttribute + insertIndices, same length", empty, Box::new(|| ts_app("same"))),
         ("c", "TS, vertex count changing each frame", empty, Box::new(|| ts_app("resize"))),
         ("d", "TS Mesh.new + meshes.add, old dropped", empty, Box::new(|| ts_app("add"))),
     ];
-    println!("chunk remesh, {N} vertices, {RUNS} runs x {FRAMES} frames; µs per remesh, frame cost without remesh subtracted");
-    println!("frame alone: Rust {rust_frame:.1} µs, TS {empty:.1} µs");
+    println!("chunk remesh, {N} vertices, {RUNS} runs x {FRAMES} frames; µs per remesh, a TS system's own run ({empty:.1} µs median) subtracted from TS arms");
     println!("| arm | what | median µs | p95 µs | ns/vertex |");
     println!("|---|---|---|---|---|");
     let mut medians = Vec::new();
