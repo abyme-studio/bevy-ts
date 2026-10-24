@@ -23,6 +23,7 @@
 3. Validation stays first: every event's `type` is checked before any is queued; an unknown type refuses the whole request, naming it.
 4. The plugin becomes `OffscreenInputPlugin`, its one call site in `cli.rs` updated. It still spawns the window-less primary window; that window is now also what keys need, so the workaround comment names both reasons.
 5. `headless-ui-camera` is unaffected: no window is added or removed, and its rule reads cameras on the image.
+6. `InputFocus.typing()` (lead@bevy-ts, 2026-10-24). With a primary window, Bevy's `set_initial_focus` puts `InputFocus` on the window, so the old guard `focus.get() === undefined` blocks every shortcut in viewport mode and now headless too. `typing()` answers what the guard meant: is a text field focused, read as `EditableText` on the focused entity, through a read-only `Query` in `FocusParam`. Alternative: compare `get()` to the window. Rejected: a focused button would then block shortcuts, and scripts would need the window entity.
 
 ## Risks / Trade-offs
 
