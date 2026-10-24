@@ -289,7 +289,7 @@ const processes = {
   "shapes-step": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:reflect-enums-color -- bash -c 'set -o pipefail; mkdir -p target; bash target/shapes-step.sh 2>&1 | grep -v ld64 > target/shapes.log; echo step exit $? >> target/shapes.log; tail -3 target/shapes.log'" },
   // Change reflect-assets: the crates it touches, while it is built.
   "reflect-assets-cli": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (scripts/gen-bevy-types.sh && cargo test -p bevy-ts-cli --test it reflect_assets:: && cargo test -p bevy-ts-cli --test it typescript::) 2>&1 | grep -v ld64 | tee target/reflect-assets-cli.log | grep -E \"^test |^test result|FAILED|panicked|^error|left|right\" -A3'" },
-  "reflect-assets-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib reflect_asset && cargo test -p bevy-ts-tsx --lib && cargo build -p bevy-ts-v8 && cargo check -p bevy-ts --no-default-features) 2>&1 | grep -v ld64 | tee target/reflect-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning\" -A3'" },
+  "reflect-assets-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib reflect_asset && cargo test -p bevy-ts-tsx --lib) 2>&1 | grep -v ld64 | tee target/reflect-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning\" -A3'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

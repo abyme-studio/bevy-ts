@@ -608,8 +608,13 @@ mod tests {
         app.update();
         call(&app, "assets.set", serde_json::json!([r, { "unlit": true }])).unwrap();
         assert!(app.world().resource::<ScriptAssets>().table().queued.is_empty(), "a no-op set queues nothing");
+        flush(app.world_mut());
+        app.update();
+        assert_eq!(modified(&app), 0, "a no-op set sends no Modified");
         call(&app, "assets.set", serde_json::json!([r, { "perceptual_roughness": 0.2 }])).unwrap();
         flush(app.world_mut());
+        // Bevy sends asset events from its own system, in the next update.
+        app.update();
         assert_eq!(modified(&app), 1);
         let m = material(&app, &r);
         assert_eq!(m.perceptual_roughness, 0.2);
