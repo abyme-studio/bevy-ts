@@ -375,7 +375,9 @@ The other devices read the same way, each over Bevy's own state:
 - `MouseButtons` (`pressed`, `justPressed`, `justReleased`) over `ButtonInput<MouseButton>`.
 - `Cursor` (`position()`, `physicalPosition()`) over the window with `PrimaryWindow`: Bevy's
   `cursor_position()`, `undefined` while the cursor is outside it or there is no window. It is
-  not `Window`, which TS already has as a reflected component.
+  not `Window`, which TS already has as a reflected component. `bevy-ts dev --viewport` moves the
+  viewport's window cursor with the viewer's pointer; `--headless` has no window, so `Cursor` reads
+  `undefined` there.
 - `Gamepads` over every `Gamepad`, the pad's entity first: `pressed`, `justPressed`,
   `justReleased`, `get` and `getUnclamped` (a button or an axis; Bevy starts each at 0 when the
   pad connects), `leftStick`, `rightStick`, `dpad`, `vendorId`, `productId`. Find pads as in Bevy,
