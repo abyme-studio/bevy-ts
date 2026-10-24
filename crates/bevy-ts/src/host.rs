@@ -18,7 +18,9 @@
 //!
 //! Wire format, engine-neutral: arguments and results are little-endian `f64` slots (scalars,
 //! `bool` as 0/1, `Entity` as its bits, vectors as their lanes, records field by field, a
-//! fieldless enum as its variant's index, `Option` as a flag slot then the value). Slices cross in place: up to four views over JS memory.
+//! fieldless enum as its variant's index, `Option` as a flag slot then the value). A string is its
+//! UTF-8 length in one slot, then its bytes packed into the slots after it. Slices cross in place:
+//! up to four views over JS memory.
 
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::ComponentId;
@@ -45,14 +47,16 @@ pub enum Kind {
     /// A fieldless enum: its TS name and variant names, crossing as the variant's index.
     Enum(&'static str, Vec<&'static str>),
     Option(Box<Kind>),
+    /// A UTF-8 string: `&str` or `String` as an argument, `String` as a result.
+    Str,
     Unit,
 }
 
 impl Kind {
-    /// Slots the value takes.
+    /// Slots the value takes; a string's are its length slot, as an empty string's.
     pub fn slots(&self) -> usize {
         match self {
-            Kind::Num(_) | Kind::Bool | Kind::Entity | Kind::Enum(..) => 1,
+            Kind::Num(_) | Kind::Bool | Kind::Entity | Kind::Enum(..) | Kind::Str => 1,
             Kind::Vec2 => 2,
             Kind::Vec3 => 3,
             Kind::Quat => 4,
@@ -73,6 +77,7 @@ impl Kind {
             Kind::Record(name, _) => format!("Partial<{name}>"),
             Kind::Enum(name, _) => name.to_string(),
             Kind::Option(k) => format!("{} | null | undefined", k.ts_in()),
+            Kind::Str => "string".into(),
             Kind::Unit => "void".into(),
         }
     }
@@ -87,6 +92,7 @@ impl Kind {
             Kind::Quat => "{ readonly x: number; readonly y: number; readonly z: number; readonly w: number }".into(),
             Kind::Record(name, _) | Kind::Enum(name, _) => name.to_string(),
             Kind::Option(k) => format!("{} | undefined", k.ts_out()),
+            Kind::Str => "string".into(),
             Kind::Unit => "void".into(),
         }
     }
@@ -129,6 +135,13 @@ impl<'a> SlotReader<'a> {
         self.at += 8;
         Ok(f64::from_le_bytes(b.try_into().unwrap()))
     }
+
+    /// `n` bytes packed into the slots from here, advancing past every slot they touch.
+    pub fn bytes(&mut self, n: usize) -> Result<&'a [u8], String> {
+        let b = self.bytes.get(self.at..self.at + n).ok_or("a string runs past the arguments")?;
+        self.at += n.div_ceil(8) * 8;
+        Ok(b)
+    }
 }
 
 /// Writes `f64` slots into a buffer of fixed capacity.
@@ -151,6 +164,19 @@ impl<'a> SlotWriter<'a> {
         self.at += 8;
     }
 
+    /// Packs `b` into the slots from here, the last one zero-padded.
+    pub fn push_bytes(&mut self, b: &[u8]) {
+        let end = self.at + b.len().div_ceil(8) * 8;
+        match self.bytes.get_mut(self.at..end) {
+            Some(dst) => {
+                dst[..b.len()].copy_from_slice(b);
+                dst[b.len()..].fill(0);
+            }
+            None => self.overflow = true,
+        }
+        self.at = end;
+    }
+
     /// Slots written, or an error when the result did not fit.
     pub fn finish(self) -> Result<usize, String> {
         if self.overflow { Err("the result is too large for one call; return it through a &mut slice".into()) } else { Ok(self.at / 8) }
@@ -160,7 +186,7 @@ impl<'a> SlotWriter<'a> {
 /// A value that crosses as slots: an argument or a result of an exported method.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot cross to TS as an argument or result of an exported method",
-    note = "exported methods take and return numbers, bool, Entity, Vec2, Vec3, Quat, NativeLayout records, Option of these, and &[T] / &mut [T] slices"
+    note = "exported methods take and return numbers, bool, Entity, Vec2, Vec3, Quat, NativeLayout records, strings (&str or String in, String out), Option of these, and &[T] / &mut [T] slices"
 )]
 pub trait HostValue: Sized {
     fn kind() -> Kind;
@@ -269,6 +295,24 @@ impl<T: HostValue> HostValue for Option<T> {
                 }
             }
         }
+    }
+}
+
+impl HostValue for String {
+    fn kind() -> Kind {
+        Kind::Str
+    }
+    fn read(r: &mut SlotReader) -> Result<Self, String> {
+        let n = r.slot()?;
+        if n < 0.0 || n.fract() != 0.0 {
+            return Err(format!("{n} is not a string length"));
+        }
+        let b = r.bytes(n as usize)?;
+        String::from_utf8(b.to_vec()).map_err(|_| "a string argument is not UTF-8".to_string())
+    }
+    fn write(&self, w: &mut SlotWriter) {
+        w.push(self.len() as f64);
+        w.push_bytes(self.as_bytes());
     }
 }
 
@@ -766,9 +810,13 @@ fn write_js(kind: &Kind, expr: &str, out: &mut String) {
             );
         }
         Kind::Option(k) => {
-            let _ = write!(out, "{{ const o = {expr}; if (o === null || o === undefined) {{ a[i++] = 0; i += {}; }} else {{ a[i++] = 1; ", k.slots());
+            // A `None`'s value slots are zeroed: a string's length slot must read as empty.
+            let _ = write!(out, "{{ const o = {expr}; if (o === null || o === undefined) {{ a[i++] = 0; a.fill(0, i, i + {n}); i += {n}; }} else {{ a[i++] = 1; ", n = k.slots());
             write_js(k, "o", out);
             out.push_str(" } }");
+        }
+        Kind::Str => {
+            let _ = write!(out, "i = H.str({expr}, i);");
         }
         Kind::Unit => {}
     }
@@ -789,6 +837,7 @@ fn read_js(kind: &Kind) -> String {
         }
         Kind::Enum(_, variants) => format!("{variants:?}[a[i++]]"),
         Kind::Option(k) => format!("(a[i++] !== 0 ? {} : (i += {}, undefined))", read_js(k), k.slots()),
+        Kind::Str => "((t) => ((i = t[1]), t[0]))(H.text(i))".into(),
         Kind::Unit => "undefined".into(),
     }
 }
@@ -875,6 +924,45 @@ mod tests {
         assert_eq!(Option::<Vec3>::read(&mut r).unwrap(), Some(Vec3::new(1.0, 2.0, 3.0)));
         assert_eq!(Option::<Vec3>::read(&mut r).unwrap(), None);
         assert_eq!(Entity::read(&mut r).unwrap(), Entity::from_bits(42));
+    }
+
+    #[test]
+    fn strings_round_trip() {
+        let long = "x".repeat(300);
+        let cases = ["", "ascii", "naïve 日本 🦀", long.as_str()];
+        let mut buf = vec![0u8; 8 * 128];
+        let mut w = SlotWriter::new(&mut buf);
+        for c in cases {
+            c.to_string().write(&mut w);
+        }
+        Some("in".to_string()).write(&mut w);
+        None::<String>.write(&mut w);
+        7u32.write(&mut w);
+        // Each string: a length slot, then its bytes rounded up to whole slots.
+        let used: usize = cases.iter().map(|c| 1 + c.len().div_ceil(8)).sum::<usize>() + (1 + 1 + 1) + (1 + 1) + 1;
+        assert_eq!(w.finish().unwrap(), used);
+        let mut r = SlotReader::new(&buf);
+        for c in cases {
+            assert_eq!(String::read(&mut r).unwrap(), c);
+        }
+        assert_eq!(Option::<String>::read(&mut r).unwrap().as_deref(), Some("in"));
+        assert_eq!(Option::<String>::read(&mut r).unwrap(), None);
+        assert_eq!(u32::read(&mut r).unwrap(), 7, "what follows a string is read where it was written");
+    }
+
+    #[test]
+    fn a_string_longer_than_the_slots_is_refused() {
+        let mut buf = vec![0u8; 8 * 4];
+        let mut w = SlotWriter::new(&mut buf);
+        "a string of more than twenty-four bytes".to_string().write(&mut w);
+        assert!(w.finish().is_err(), "a result that does not fit is an error");
+        let mut args = vec![0u8; 8 * 2];
+        args[..8].copy_from_slice(&100f64.to_le_bytes());
+        assert!(String::read(&mut SlotReader::new(&args)).is_err(), "a length past the arguments is an error");
+        let mut bad = vec![0u8; 8 * 2];
+        bad[..8].copy_from_slice(&2f64.to_le_bytes());
+        bad[8..10].copy_from_slice(&[0xff, 0xfe]);
+        assert!(String::read(&mut SlotReader::new(&bad)).is_err(), "bytes that are not UTF-8 are an error");
     }
 
     #[test]

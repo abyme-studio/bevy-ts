@@ -138,8 +138,26 @@ pub trait NativeLayout: Component {
 /// pub struct Names<'w> { time: Res<'w, Time> }
 /// #[export(ts = "Names", module = "bevy-ts/game")]
 /// impl Names<'_> {
-///     pub fn find(&self, name: String) -> bool { name.is_empty() }
+///     pub fn find(&self, names: Vec<f32>) -> bool { names.is_empty() }
 /// }
+/// ```
+/// Strings cross as arguments (`&str`, `Option<&str>`, `String`) and results (`String`):
+/// ```no_run,standalone_crate
+/// use bevy::ecs::system::SystemParam;
+/// use bevy_ts_native::prelude::*;
+/// #[derive(SystemParam)]
+/// pub struct Names<'w> { time: Res<'w, Time> }
+/// #[export(ts = "Names", module = "bevy-ts/game")]
+/// impl Names<'_> {
+///     pub fn greet(&self, name: &str, title: Option<&str>) -> String { format!("{} {name}", title.unwrap_or("")) }
+/// }
+/// fn main() { App::new().ts_param::<Names<'static>>(); }
+/// ```
+/// but not as record fields, whose slots are fixed:
+/// ```compile_fail
+/// use bevy_ts_native::prelude::*;
+/// #[derive(HostRecord)]
+/// pub struct Hit { pub name: String, pub at: f32 }
 /// ```
 #[diagnostic::on_unimplemented(
     message = "`{Self}` must be a system param to be exported to TS",
