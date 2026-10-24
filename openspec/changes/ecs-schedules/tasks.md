@@ -21,16 +21,17 @@
 
 ## 2. Stage 2: TS states as Bevy states (operator's go needed)
 
-- [ ] 2.1 Bench first (`crates/bevy-ts-cli/tests/states_bench.rs`, the `stop_bench.rs` pattern): a prototype pool with 1, 8 and 32 machines, quiet frames and transition frames, µs per frame; build time and binary size of 16 vs 32 slots. Report to the operator with the fallback; stop here until they say go
-- [ ] 2.2 `crates/bevy-ts/src/states.rs`: `TsState<N>(Sym)`, value interning, slot assignment by path, per-slot registration (resources, message, state-scoped systems, component reflect), `TsStates::slot`, the 32 limit error
-- [ ] 2.3 Split `run_state_transitions` into the three `StateTransitionSystems` systems; Rust `NextState<TsState<N>>` and `OnExit`/`OnEnter` schedules; a removed value transitions to `initState`
+- [x] 2.1 Bench first (`bench/states`, outside the workspace per `docs/testing.md`; results in `bench/results/states-bench.txt`): a prototype pool with 1, 8 and 32 machines, quiet frames and transition frames, µs per frame; build time and binary size of 16 vs 32 slots. Reported; go given for the 32-slot pool with `StateTransition` on the single-threaded executor
+- [ ] 2.1a `StateTransition` on `SingleThreadedExecutor` in `BevyTsPlugin`; docs say transition systems run on one thread and show the opt-out; a test of the opt-out
+- [ ] 2.2 `crates/bevy-ts/src/states.rs`: `TsState<N>(Sym)`, value interning, slot assignment by path, per-slot registration at run time (resources, message, `register_state`, state-scoped systems, component reflect), `TsStates::slot`, the 32 limit error and its test
+- [ ] 2.3 Bevy drives transitions: TS `OnEnter`/`OnExit` systems run from Bevy's `OnEnter`/`OnExit(TsState::<N>(v))` schedules; TS `next.set` and Rust `NextState<TsState<N>>` alike; pending values held while paused; a removed value transitions to `initState`
 - [ ] 2.4 `OnTransition`, `PreviousState<S>`, `stateChanged`, `stateExists` (manifest, runtimes, `index.d.ts`, compile step)
 - [ ] 2.5 The six state-scoped components in TSX, commands and levels, mapped to the slot on insert
 - [ ] 2.6 `SubStates` and `ComputedStates`: declaration, source order, compute called only on a source transition
 - [ ] 2.7 `app.ts_state::<S>()`, `EngineMode` registered, Rust states in `native.d.ts`
 - [ ] 2.8 Protocol: `onTransition` in `Stage`, next free minor; regenerate
-- [ ] 2.9 Tests (`crates/bevy-ts-cli/tests/states.rs`): one per ts-states scenario; the existing `entering_playing_runs_exit_then_enter_and_unlocks_systems` still passes
-- [ ] 2.10 Docs (`docs/scripts.md` states part, `docs/native.md` `ts_state`) and coverage rows (sub/computed/previous/transition, state-scoped entities)
+- [ ] 2.9 Tests (`crates/bevy-ts-cli/tests/it/states.rs`): one per ts-states scenario; the existing `entering_playing_runs_exit_then_enter_and_unlocks_systems` still passes
+- [ ] 2.10 Docs (`docs/scripts.md` states part with the 32-machine limit, the single-threaded `StateTransition` and its opt-out, `docs/native.md` `ts_state`) and coverage rows (sub/computed/previous/transition, state-scoped entities)
 
 ## 3. Stage 3: TS predicate conditions (operator's go needed)
 
