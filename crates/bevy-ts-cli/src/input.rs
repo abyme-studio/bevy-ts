@@ -1,13 +1,15 @@
 //! `bevy-ts/input`, a built-in module every engine ships: exported params over Bevy's own input
-//! state (`Keys`, `InputFocus`, `InputFocusVisible`, `DirectionalNavigation`, `MouseButtons`,
-//! `Cursor`, `Gamepads`, `Touches`), and the enums `KeyCode`, `MouseButton`, `GamepadButton` and
-//! `GamepadAxis`, generated from `bevy_ts::keys`, and `CompassOctant`.
+//! state (`Keys`, `LogicalKeys`, `InputFocus`, `InputFocusVisible`, `DirectionalNavigation`,
+//! `MouseButtons`, `Cursor`, `Gamepads`, `Touches`), the enums `KeyCode`, `MouseButton`,
+//! `GamepadButton` and `GamepadAxis`, generated from `bevy_ts::keys`, and `CompassOctant`, and
+//! `Key`, Bevy's logical key as one number.
 //! A TS system reads input as a Rust one does:
 //! `keys.justPressed(KeyCode.KeyN) && focus.get() === undefined`.
 
 use bevy::ecs::schedule::BoxedCondition;
 use bevy::ecs::system::SystemParam;
 use bevy::input::gamepad::{Gamepad, GamepadInput};
+use bevy::input::keyboard::Key;
 use bevy::input::touch::{Touch, Touches};
 use bevy::input_focus::{InputFocus, InputFocusVisible};
 use bevy::math::CompassOctant;
@@ -15,8 +17,8 @@ use bevy::ui::auto_directional_navigation::AutoDirectionalNavigator;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_ts::keys::{
-    GAMEPAD_AXES, GAMEPAD_AXIS_BASE, GAMEPAD_BUTTON_BASE, GAMEPAD_BUTTONS, InputCode, KEY_CODES, MOUSE_BUTTON_BASE,
-    MOUSE_BUTTONS, input_code_of, key_code_of, names,
+    CHARACTER_BASE, DEAD_KEY_BASE, DEAD_KEY_NONE, GAMEPAD_AXES, GAMEPAD_AXIS_BASE, GAMEPAD_BUTTON_BASE, GAMEPAD_BUTTONS,
+    InputCode, KEY_BASE, KEY_CODES, MOUSE_BUTTON_BASE, MOUSE_BUTTONS, NAMED_KEYS, input_code_of, key_code_of, key_of, names,
 };
 use bevy_ts_native::prelude::*;
 use std::fmt::Write as _;
@@ -29,6 +31,7 @@ pub struct ScriptInputPlugin;
 impl Plugin for ScriptInputPlugin {
     fn build(&self, app: &mut App) {
         app.ts_param::<KeysParam<'static>>()
+            .ts_param::<LogicalKeysParam<'static>>()
             .ts_param::<FocusParam<'static>>()
             .ts_param::<FocusVisibleParam<'static>>()
             .ts_param::<NavigationParam<'static, 'static>>()
@@ -74,6 +77,38 @@ impl KeysParam<'_> {
     /// Whether the key went up this frame.
     pub fn just_released(&self, code: u32) -> Result<bool, String> {
         let k = self::code(code)?;
+        Ok(self.keys.as_ref().is_some_and(|keys| keys.just_released(k)))
+    }
+}
+
+/// `LogicalKeys`: `Res<ButtonInput<Key>>`, the key by what it types. No resource reads as no key
+/// down.
+#[derive(SystemParam)]
+pub struct LogicalKeysParam<'w> {
+    keys: Option<Res<'w, ButtonInput<Key>>>,
+}
+
+fn key(n: u32) -> Result<Key, String> {
+    key_of(n).ok_or_else(|| not_a(n, "Key", "Key.Enter, Key.Character(\"z\")"))
+}
+
+#[export(ts = "LogicalKeys", module = "bevy-ts/input")]
+impl LogicalKeysParam<'_> {
+    /// Whether the key is down.
+    pub fn pressed(&self, key: u32) -> Result<bool, String> {
+        let k = self::key(key)?;
+        Ok(self.keys.as_ref().is_some_and(|keys| keys.pressed(k)))
+    }
+
+    /// Whether the key went down this frame.
+    pub fn just_pressed(&self, key: u32) -> Result<bool, String> {
+        let k = self::key(key)?;
+        Ok(self.keys.as_ref().is_some_and(|keys| keys.just_pressed(k)))
+    }
+
+    /// Whether the key went up this frame.
+    pub fn just_released(&self, key: u32) -> Result<bool, String> {
+        let k = self::key(key)?;
         Ok(self.keys.as_ref().is_some_and(|keys| keys.just_released(k)))
     }
 }
@@ -184,6 +219,7 @@ fn not_a(n: u32, want: &str, example: &str) -> String {
         Some(InputCode::Mouse(_)) => " (a MouseButton)",
         Some(InputCode::GamepadButton(_)) => " (a GamepadButton)",
         Some(InputCode::GamepadAxis(_)) => " (a GamepadAxis)",
+        None if key_of(n).is_some() => " (a Key)",
         None => "",
     };
     format!("{n}{of} is not a {want}; use {example} and friends from bevy-ts/input")
@@ -488,9 +524,39 @@ fn js() -> String {
         }
         s.push_str("});\n");
     }
+    s.push_str(&key_js());
+    for (i, (name, _)) in NAMED_KEYS.iter().enumerate() {
+        let _ = writeln!(s, "  {name}: {},", KEY_BASE + i as u32);
+    }
+    s.push_str("});\n");
     s.push_str(CONDITIONS_JS);
     s
 }
+
+/// `Key`'s head: `Key.Character` and `Key.Dead` turn one character into its number here, so no
+/// string reaches Rust. The named members follow.
+fn key_js() -> String {
+    format!(
+        r#"function codePoint(fn, c) {{
+  const cps = typeof c === "string" ? [...c.normalize("NFC")] : [];
+  if (cps.length !== 1) throw new RangeError(`Key.${{fn}}(${{JSON.stringify(c)}}): takes one character, one code point after NFC`);
+  return cps[0].codePointAt(0);
+}}
+export const Key = Object.freeze({{
+  Character: (c) => {CHARACTER_BASE} + codePoint("Character", c),
+  Dead: (c) => (c === undefined ? {DEAD_KEY_NONE} : {DEAD_KEY_BASE} + codePoint("Dead", c)),
+"#
+    )
+}
+
+const KEY_DTS: &str = r#"/** Bevy's `Key`, the logical key: what the key types under the layout and modifiers. */
+export type Key = number & { readonly __brand: "Key" };
+export declare namespace Key {
+  /** `Key::Character(c)`; throws unless `c` is one code point after NFC. */
+  function Character(c: string): Key;
+  /** `Key::Dead(c)`, or `Key::Dead(None)` with no `c`. */
+  function Dead(c?: string): Key;
+"#;
 
 /// Bevy's input conditions, evaluated in Rust: the conditions `ScriptInputPlugin` exposes.
 const CONDITIONS_JS: &str = r#"export const inputPressed = (code) => nativeCondition("input:pressed", { code });
@@ -519,6 +585,11 @@ fn dts() -> String {
         }
         s.push_str("}\n");
     }
+    s.push_str(KEY_DTS);
+    for (name, _) in NAMED_KEYS {
+        let _ = writeln!(s, "  const {name}: Key;");
+    }
+    s.push_str("}\n");
     s.push_str(CONDITIONS_DTS);
     s
 }
@@ -573,5 +644,49 @@ mod tests {
         );
         assert!(gamepad_button(MOUSE_BUTTON_BASE).unwrap_err().contains("(a MouseButton)"));
         assert!(gamepad_input(1).unwrap_err().contains("(a KeyCode)"));
+    }
+
+    /// `Key`'s named members are the Rust list, numbered from `KEY_BASE`, above every other enum.
+    #[test]
+    fn the_ts_key_is_the_list() {
+        for (i, (name, k)) in NAMED_KEYS.iter().enumerate() {
+            let n = KEY_BASE + i as u32;
+            assert!(js().contains(&format!("  {name}: {n},\n")));
+            assert!(dts().contains(&format!("  const {name}: Key;\n")));
+            assert_eq!(key(n).as_ref(), Ok(k));
+            assert!(input_code_of(n).is_none());
+        }
+        assert!(OCTANT_BASE + OCTANTS.len() as u32 <= KEY_BASE);
+        assert!(key(0).unwrap_err().contains("(a KeyCode) is not a Key"));
+        assert!(mouse_button(KEY_BASE).unwrap_err().contains("(a Key)"));
+    }
+
+    /// The declarations type-check, and a misspelt member is a type error. Needs `deno`.
+    #[test]
+    fn key_declarations_type_check() {
+        if std::process::Command::new("deno").arg("--version").output().is_err() {
+            eprintln!("skipped: no deno");
+            return;
+        }
+        // Per process: another worktree's run must not share its files.
+        let dir = std::env::temp_dir().join(format!("bevy-ts-input-dts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let decls = format!("{KEY_DTS}{}}}\n", NAMED_KEYS.iter().map(|(n, _)| format!("  const {n}: Key;\n")).collect::<String>());
+        std::fs::write(dir.join("input.ts"), decls).unwrap();
+        let check = r#"import { Key } from "./input.ts";
+const enter: Key = Key.Enter;
+const z: Key = Key.Character("z");
+const dead: Key = Key.Dead();
+const n: number = enter + z + dead;
+// @ts-expect-error  a misspelt member
+Key.Entr;
+// @ts-expect-error  a number is not a Key
+const bad: Key = 42;
+export { bad, n };
+"#;
+        std::fs::write(dir.join("check.ts"), check).unwrap();
+        let out = std::process::Command::new("deno").arg("check").arg("check.ts").current_dir(&dir).output().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     }
 }

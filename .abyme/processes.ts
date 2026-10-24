@@ -578,6 +578,8 @@ const processes = {
   "script-assets-check": { cmd: "bash -c 'mkdir -p target; cargo check -p bevy-ts-cli --tests 2>&1 | grep -v ld64 > /tmp/script-assets-check.log; s=${PIPESTATUS[0]}; grep -E \"^(error|warning)\" -A9 /tmp/script-assets-check.log | head -150; exit $s'" },
   "script-assets-reflect-check": { cmd: "bash -c 'mkdir -p target; cargo check -p bevy-ts --no-default-features --features reflect --lib 2>&1 | grep -v ld64 > /tmp/script-assets-reflect-check.log; s=${PIPESTATUS[0]}; grep -E \"^(error|warning)\" -A9 /tmp/script-assets-reflect-check.log | head -150; exit $s'" },
   "mesh-update-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --release -p bevy-ts-cli --test it mesh_update_bench -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/mesh-update-bench.log | tail -20'" },
+  // Change logical-keys: the Key codec, bevy-ts/input's module, and the viewport key tests.
+  "logical-keys-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib keys && cargo test -p bevy-ts-cli --lib input && cargo test -p bevy-ts-cli --test it -- text_input::) 2>&1 | grep -v ld64 | tee target/logical-keys-tests.log | grep -E \"^test |^test result|FAILED|panicked|^error\" -A3; echo tests exit $?'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

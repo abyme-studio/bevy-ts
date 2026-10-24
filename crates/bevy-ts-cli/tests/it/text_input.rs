@@ -290,3 +290,81 @@ fn typed_text_arrives_once_from_a_key_or_from_an_ime_commit() {
     updates(&mut app, 2);
     assert_eq!(value(&mut app), "hé");
 }
+
+// Change `logical-keys`: `LogicalKeys` and `Key` from `bevy-ts/input`, read from the `key` the
+// viewer sends, as Bevy's `ButtonInput<Key>` fills from each `KeyboardInput`'s `logical_key`.
+const LOGICAL: &str = r#"import { app, Update } from "bevy-ts";
+import { Key, KeyCode, type Keys, type LogicalKeys } from "bevy-ts/input";
+
+let held = false;
+export function watch(keys: LogicalKeys, codes: Keys) {
+  if (keys.justPressed(Key.Character("z"))) console.log(`z KeyZ ${codes.justPressed(KeyCode.KeyZ)} KeyY ${codes.justPressed(KeyCode.KeyY)}`);
+  if (keys.justPressed(Key.Enter)) console.log("enter down");
+  if (keys.pressed(Key.Enter) !== held) {
+    held = !held;
+    console.log(`enter held ${held}`);
+  }
+  if (keys.justReleased(Key.Enter)) console.log("enter up");
+  if (keys.justPressed(Key.Character("N"))) console.log(`N ${keys.pressed(Key.Character("N"))} n ${keys.pressed(Key.Character("n"))}`);
+}
+app.addSystems(Update, watch);
+"#;
+
+#[test]
+fn logical_keys_read_what_the_key_types() {
+    let (_dir, mut app) = start("logical-keys", LOGICAL);
+    // A German layout: the key at KeyY types z.
+    input(&mut app, vec![down("KeyY", "z")]);
+    updates(&mut app, 2);
+    input(&mut app, vec![up("KeyY", "z")]);
+    updates(&mut app, 2);
+    assert_eq!(logged(&app, "z "), vec!["z KeyZ false KeyY true"]);
+
+    input(&mut app, vec![down("Enter", "Enter")]);
+    updates(&mut app, 3);
+    assert_eq!(logged(&app, "enter"), vec!["enter down", "enter held true"]);
+    input(&mut app, vec![up("Enter", "Enter")]);
+    updates(&mut app, 2);
+    assert_eq!(logged(&app, "enter"), vec!["enter down", "enter held true", "enter held false", "enter up"]);
+
+    // Shift held: the key types N, so N is down and n is not.
+    input(&mut app, vec![down("ShiftLeft", "Shift"), down("KeyN", "N")]);
+    updates(&mut app, 2);
+    assert_eq!(logged(&app, "N "), vec!["N true n false"]);
+}
+
+#[test]
+fn key_character_takes_one_code_point_and_logical_keys_refuse_a_key_code() {
+    let src = r#"import { app, Update } from "bevy-ts";
+import { Key, KeyCode, type LogicalKeys } from "bevy-ts/input";
+
+let done = false;
+export function once(keys: LogicalKeys) {
+  if (done) return;
+  done = true;
+  try {
+    Key.Character("ab");
+  } catch (e) {
+    console.log(`threw ${(e as Error).message}`);
+  }
+  console.log(`same ${Key.Character("é") === Key.Character("é")}`);
+  try {
+    keys.pressed(KeyCode.KeyN);
+  } catch (e) {
+    console.log(`threw ${(e as Error).message}`);
+  }
+}
+app.addSystems(Update, once);
+"#;
+    let (_dir, app) = start("logical-keys-bad", src);
+    let threw = logged(&app, "threw");
+    assert_eq!(threw.len(), 2, "{:?}", messages(&app));
+    for needle in ["Key.Character", "\"ab\""] {
+        assert!(threw[0].contains(needle), "{needle} in {}", threw[0]);
+    }
+    let n = bevy_ts::keys::KEY_CODES.iter().position(|(name, _)| *name == "KeyN").unwrap().to_string();
+    for needle in ["LogicalKeys", "pressed", n.as_str()] {
+        assert!(threw[1].contains(needle), "{needle} in {}", threw[1]);
+    }
+    assert_eq!(logged(&app, "same"), vec!["same true"]);
+}
