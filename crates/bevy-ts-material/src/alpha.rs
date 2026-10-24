@@ -1,21 +1,30 @@
-//! `MaterialAlpha` (openspec change `material-alpha`): fades what an entity draws. Its targets
-//! are the entity's own `MeshMaterial3d<StandardMaterial>` and, on a glTF scene root, the meshes
-//! its scene spawned. Originals are shared (every red cube, every instance of a model), so each
-//! target draws with a copy owned by the entity, one per distinct original, edited in place as
-//! `alpha` changes. Removing it puts the originals back and drops the copies.
+//! `MaterialAlpha` (openspec changes `material-alpha`, `material-fade`): fades what an entity
+//! draws. Its targets are the entity's own `MeshMaterial3d<StandardMaterial>` and, on a glTF scene
+//! root, the meshes its scene spawned. Originals are shared (every red cube, every instance of a
+//! model), so each target draws with a [`FadeMaterial`] copy owned by the entity, one per distinct
+//! original, edited in place as `alpha` changes. Removing it puts the originals back and drops the
+//! copies. This is the one place that knows a faded mesh's original ([`standard_of`]).
 
-use bevy::asset::AssetEventSystems;
+use bevy::app::AnimationSystems;
+use bevy::asset::{AssetEventSystems, uuid_handle};
 use bevy::ecs::entity::EntityHashSet;
+use bevy::mesh::MeshVertexBufferLayoutRef;
+use bevy::pbr::{ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+use bevy::render::render_resource::{AsBindGroup, FragmentState, RenderPipelineDescriptor, SpecializedMeshPipelineError};
+use bevy::shader::ShaderRef;
 use bevy::world_serialization::WorldInstanceReady;
 
-use crate::scene::{SceneMaterialSet, SceneMaterialTargets, scene_entities};
+use crate::scene::{SceneMaterialSet, scene_entities};
 
-/// Fades the entity's materials: each target draws with a copy whose `base_color` alpha is the
-/// original's times `alpha` (clamped to 0..1), in `Blend` below 1 when the original was `Opaque`,
-/// `Mask` or `AlphaToCoverage`. Remove it when not fading: while it is on, the entity's meshes no
-/// longer batch with others sharing their material.
+/// Fades the entity's materials: each target draws with a [`FadeMaterial`] copy that keeps the
+/// original's alpha mode and draws about `alpha` (clamped to 0..1) of its pixels, picked by a 4×4
+/// ordered dither, so alpha steps in sixteenths and the pattern shows. Depth stays written, so a
+/// model fades as one solid; its shadow loses the same pixels. A `Blend`, `Premultiplied`, `Add`
+/// or `Multiply` original is faded through its `base_color` alpha instead, and only its shadow
+/// dithers. Remove it when not fading: while it is on, the entity's meshes no longer batch with
+/// others sharing their material.
 #[derive(Component, Reflect, Clone, Copy, Debug, PartialEq)]
 #[reflect(Component, Default)]
 pub struct MaterialAlpha {
@@ -28,7 +37,45 @@ impl Default for MaterialAlpha {
     }
 }
 
+/// What a faded target draws with: its original as `base`, and the dither.
+pub type FadeMaterial = ExtendedMaterial<StandardMaterial, Fade>;
+
+/// The dither of a [`FadeMaterial`]: about `alpha` of the pixels draw, in the main pass (unless the
+/// base is a blend mode) and in the prepass the shadow pass runs. `src/fade.wesl`.
+#[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Copy, PartialEq, Default)]
+pub struct Fade {
+    #[uniform(100)]
+    pub alpha: f32,
+}
+
+const SHADER: Handle<Shader> = uuid_handle!("245ee06b-5b02-400a-9e77-28ea1d135a80");
+
+impl MaterialExtension for Fade {
+    fn fragment_shader() -> ShaderRef {
+        SHADER.into()
+    }
+
+    fn prepass_fragment_shader() -> ShaderRef {
+        SHADER.into()
+    }
+
+    /// Bevy gives an opaque base's depth-only prepass and shadow pipelines no fragment stage, so
+    /// nothing would discard there: give them the dither's.
+    fn specialize(
+        _: &MaterialExtensionPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        _: &MeshVertexBufferLayoutRef,
+        _: MaterialExtensionKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        if descriptor.fragment.is_none() {
+            descriptor.fragment = Some(FragmentState { shader: SHADER, shader_defs: descriptor.vertex.shader_defs.clone(), ..default() });
+        }
+        Ok(())
+    }
+}
+
 type Id = AssetId<StandardMaterial>;
+type CopyId = AssetId<FadeMaterial>;
 
 /// What a faded entity owns: its copies, and the meshes it faded at the last sync.
 #[derive(Component, Debug, Default)]
@@ -36,21 +83,39 @@ pub struct MaterialAlphaTargets {
     /// The meshes drawing one of the copies at the last sync.
     pub targets: Vec<Entity>,
     /// By original: the original and its copy.
-    copies: HashMap<Id, (Handle<StandardMaterial>, Handle<StandardMaterial>)>,
+    copies: HashMap<Id, (Handle<StandardMaterial>, Handle<FadeMaterial>)>,
     /// By copy: its original.
-    originals: HashMap<Id, Id>,
+    originals: HashMap<CopyId, Id>,
 }
 
 impl MaterialAlphaTargets {
     /// The copies the entity owns.
-    pub fn copies(&self) -> impl Iterator<Item = &Handle<StandardMaterial>> {
+    pub fn copies(&self) -> impl Iterator<Item = &Handle<FadeMaterial>> {
         self.copies.values().map(|(_, c)| c)
     }
 
     /// The original a copy was made from; `None` for a handle that is not one of its copies.
-    pub fn original(&self, copy: Id) -> Option<&Handle<StandardMaterial>> {
+    pub fn original(&self, copy: CopyId) -> Option<&Handle<StandardMaterial>> {
         self.originals.get(&copy).map(|o| &self.copies[o].0)
     }
+}
+
+/// The `StandardMaterial` `mesh` draws, or the original of the fade copy it draws instead; `None`
+/// for neither (a script material, no material). Its owner is `mesh` or an ancestor.
+pub fn standard_of(world: &World, mesh: Entity) -> Option<Handle<StandardMaterial>> {
+    let e = world.get_entity(mesh).ok()?;
+    if let Some(m) = e.get::<MeshMaterial3d<StandardMaterial>>() {
+        return Some(m.0.clone());
+    }
+    let copy = e.get::<MeshMaterial3d<FadeMaterial>>()?.0.id();
+    let mut at = Some(mesh);
+    while let Some(a) = at {
+        if let Some(o) = world.get::<MaterialAlphaTargets>(a).and_then(|t| t.original(copy)) {
+            return Some(o.clone());
+        }
+        at = world.get::<ChildOf>(a).map(ChildOf::parent);
+    }
+    None
 }
 
 /// Faded roots whose scene became ready since the last `PostUpdate`.
@@ -58,10 +123,14 @@ impl MaterialAlphaTargets {
 struct ReadyRoots(EntityHashSet);
 
 pub(crate) fn plugin(app: &mut App) {
+    let shader = Shader::from_wesl(include_str!("fade.wesl"), "embedded://bevy_ts_material/fade.wesl");
+    app.world_mut().resource_mut::<Assets<Shader>>().insert(SHADER.id(), shader).expect("a uuid handle");
+    app.add_plugins(MaterialPlugin::<FadeMaterial>::default());
     app.register_type::<MaterialAlpha>().init_resource::<ReadyRoots>().add_observer(on_ready).add_systems(
         PostUpdate,
-        // After scene-material, so its swaps and restores are applied before this reads the meshes.
-        changed.after(AssetEventSystems).after(SceneMaterialSet).run_if(|q: Query<(), Faded>| !q.is_empty()),
+        // After scene-material, so its swaps and restores are applied before this reads the meshes;
+        // after animation, so an animated `alpha` reaches the copies the frame it is written.
+        changed.after(AssetEventSystems).after(SceneMaterialSet).after(AnimationSystems).run_if(|q: Query<(), Faded>| !q.is_empty()),
     );
 }
 
@@ -79,28 +148,28 @@ type Faded = Or<(With<MaterialAlpha>, With<MaterialAlphaTargets>)>;
 type Asks = Or<(Changed<MaterialAlpha>, (With<MaterialAlphaTargets>, Without<MaterialAlpha>))>;
 
 /// The entities `entity` fades: itself, and the meshes of its scene instance (none before it is
-/// ready), those that hold a `StandardMaterial`. TSX children are not in it; a child takes its own
-/// `MaterialAlpha`. A mesh scene-material gave a script material holds none.
+/// ready), those that hold a `StandardMaterial` or a fade copy. TSX children are not in it; a
+/// child takes its own `MaterialAlpha`. A mesh scene-material gave a script material holds neither.
 fn targets(world: &World, entity: Entity) -> Vec<Entity> {
     let mut out = vec![entity];
     out.extend(scene_entities(world, entity));
-    out.retain(|e| world.get::<MeshMaterial3d<StandardMaterial>>(*e).is_some());
+    out.retain(|e| world.get::<MeshMaterial3d<StandardMaterial>>(*e).is_some() || world.get::<MeshMaterial3d<FadeMaterial>>(*e).is_some());
     out
 }
 
-/// What a copy of `original` draws with at `alpha`.
-fn faded(original: &StandardMaterial, alpha: f32) -> (Color, AlphaMode) {
-    let color = original.base_color.with_alpha(original.base_color.alpha() * alpha);
-    let mode = match original.alpha_mode {
-        AlphaMode::Opaque | AlphaMode::Mask(_) | AlphaMode::AlphaToCoverage if alpha < 1.0 => AlphaMode::Blend,
-        m => m,
+/// What a copy of `original` draws with at `alpha`: its base colour, and its dither. A blend-mode
+/// original fades through its colour's alpha; the dither then only reaches its shadow.
+fn faded(original: &StandardMaterial, alpha: f32) -> (Color, Fade) {
+    let color = match original.alpha_mode {
+        AlphaMode::Blend | AlphaMode::Premultiplied | AlphaMode::Add | AlphaMode::Multiply => original.base_color.with_alpha(original.base_color.alpha() * alpha),
+        _ => original.base_color,
     };
-    (color, mode)
+    (color, Fade { alpha })
 }
 
-fn copy_of(original: &StandardMaterial, alpha: f32) -> StandardMaterial {
-    let (base_color, alpha_mode) = faded(original, alpha);
-    StandardMaterial { base_color, alpha_mode, ..original.clone() }
+fn copy_of(original: &StandardMaterial, alpha: f32) -> FadeMaterial {
+    let (base_color, extension) = faded(original, alpha);
+    FadeMaterial { base: StandardMaterial { base_color, ..original.clone() }, extension }
 }
 
 /// What asks for a sync: `MaterialAlpha` added, changed or removed, a scene ready, a mesh given a
@@ -137,9 +206,8 @@ fn recopy(world: &mut World, entity: Entity, original: Id) {
     let (Some(alpha), Some(targets)) = (world.get::<MaterialAlpha>(entity), world.get::<MaterialAlphaTargets>(entity)) else { return };
     let alpha = alpha.alpha.clamp(0.0, 1.0);
     let Some((o, c)) = targets.copies.get(&original).cloned() else { return };
-    let mut assets = world.resource_mut::<Assets<StandardMaterial>>();
-    let Some(new) = assets.get(&o).map(|o| copy_of(o, alpha)) else { return };
-    if let Some(mut c) = assets.get_mut(&c) {
+    let Some(new) = world.resource::<Assets<StandardMaterial>>().get(&o).map(|o| copy_of(o, alpha)) else { return };
+    if let Some(mut c) = world.resource_mut::<Assets<FadeMaterial>>().get_mut(&c) {
         *c = new;
     }
 }
@@ -159,35 +227,35 @@ pub fn sync(world: &mut World, entity: Entity) {
     };
     let targets = targets(world, entity);
     for &t in &targets {
-        let h = world.get::<MeshMaterial3d<StandardMaterial>>(t).expect("a target").0.clone();
-        if state.originals.contains_key(&h.id()) {
-            continue;
-        }
+        // A fade copy already: this entity's, or another's to leave alone.
+        let Some(h) = world.get::<MeshMaterial3d<StandardMaterial>>(t).map(|m| m.0.clone()) else { continue };
         let copy = match state.copies.get(&h.id()) {
             Some((_, c)) => c.clone(),
             None => {
-                let mut assets = world.resource_mut::<Assets<StandardMaterial>>();
-                let Some(m) = assets.get(&h).map(|o| copy_of(o, alpha)) else { continue };
-                let c = assets.add(m);
+                let Some(m) = world.resource::<Assets<StandardMaterial>>().get(&h).map(|o| copy_of(o, alpha)) else { continue };
+                let c = world.resource_mut::<Assets<FadeMaterial>>().add(m);
                 state.originals.insert(c.id(), h.id());
                 state.copies.insert(h.id(), (h, c.clone()));
                 c
             }
         };
-        world.entity_mut(t).insert(MeshMaterial3d(copy));
+        world.entity_mut(t).remove::<MeshMaterial3d<StandardMaterial>>().insert(MeshMaterial3d(copy));
     }
     // A changed alpha: rewrite only the copies whose values differ, so an unchanged one is not
     // prepared again.
-    let mut assets = world.resource_mut::<Assets<StandardMaterial>>();
-    for (o, c) in state.copies.values() {
-        let Some(want) = assets.get(o).map(|o| faded(o, alpha)) else { continue };
-        if assets.get(c).is_some_and(|c| (c.base_color, c.alpha_mode) != want)
-            && let Some(mut c) = assets.get_mut(c)
+    let wants: Vec<_> = {
+        let originals = world.resource::<Assets<StandardMaterial>>();
+        state.copies.values().filter_map(|(o, c)| Some((c.id(), faded(originals.get(o)?, alpha)))).collect()
+    };
+    let mut copies = world.resource_mut::<Assets<FadeMaterial>>();
+    for (c, want) in wants {
+        if copies.get(c).is_some_and(|c| (c.base.base_color, c.extension) != want)
+            && let Some(mut c) = copies.get_mut(c)
         {
-            (c.base_color, c.alpha_mode) = want;
+            (c.base.base_color, c.extension) = want;
         }
     }
-    state.targets = targets.into_iter().filter(|t| world.get::<MeshMaterial3d<StandardMaterial>>(*t).is_some_and(|m| state.originals.contains_key(&m.0.id()))).collect();
+    state.targets = targets.into_iter().filter(|t| world.get::<MeshMaterial3d<FadeMaterial>>(*t).is_some_and(|m| state.originals.contains_key(&m.0.id()))).collect();
     match world.get_mut::<MaterialAlphaTargets>(entity) {
         Some(mut t) => *t = state,
         None => {
@@ -197,23 +265,15 @@ pub fn sync(world: &mut World, entity: Entity) {
 }
 
 /// `MaterialAlpha` removed: every mesh still drawing one of the entity's copies draws its original
-/// again, and dropping `MaterialAlphaTargets` frees the copies. A copy scene-material kept as a
-/// mesh's own material, to put back when its script material goes, becomes the original.
+/// again, and dropping `MaterialAlphaTargets` frees the copies.
 fn restore(world: &mut World, entity: Entity) {
     let Some(state) = world.entity_mut(entity).take::<MaterialAlphaTargets>() else { return };
-    if let Some(mut kept) = world.get_mut::<SceneMaterialTargets>(entity) {
-        for (_, h) in kept.0.iter_mut() {
-            if let Some(o) = state.original(h.id()) {
-                *h = o.clone();
-            }
-        }
-    }
     let mut candidates = targets(world, entity);
     candidates.extend(state.targets.iter().copied());
     for t in candidates {
-        let Some(h) = world.get_entity(t).ok().and_then(|e| e.get::<MeshMaterial3d<StandardMaterial>>()) else { continue };
+        let Some(h) = world.get_entity(t).ok().and_then(|e| e.get::<MeshMaterial3d<FadeMaterial>>()) else { continue };
         if let Some(o) = state.original(h.0.id()).cloned() {
-            world.entity_mut(t).insert(MeshMaterial3d(o));
+            world.entity_mut(t).remove::<MeshMaterial3d<FadeMaterial>>().insert(MeshMaterial3d(o));
         }
     }
 }

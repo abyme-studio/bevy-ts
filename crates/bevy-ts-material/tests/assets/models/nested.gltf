@@ -1,0 +1,150 @@
+{
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 24,
+   "max": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "min": [
+    -0.5,
+    -0.5,
+    -0.5
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  }
+ ],
+ "asset": {
+  "generator": "bevy-ts-material tests/alpha_render.rs",
+  "version": "2.0"
+ },
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 288,
+   "byteOffset": 0
+  },
+  {
+   "buffer": 0,
+   "byteLength": 288,
+   "byteOffset": 288
+  },
+  {
+   "buffer": 0,
+   "byteLength": 72,
+   "byteOffset": 576
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 648,
+   "uri": "data:application/octet-stream;base64,AAAAPwAAAL8AAAC/AAAAPwAAAD8AAAC/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAvwAAAD8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAPwAAAD8AAAC/AAAAvwAAAL8AAAA/AAAAvwAAAL8AAAC/AAAAPwAAAL8AAAC/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAPwAAAL8AAAA/AAAAPwAAAD8AAAA/AAAAvwAAAD8AAAA/AAAAPwAAAL8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcA"
+  }
+ ],
+ "materials": [
+  {
+   "name": "red",
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     1,
+     0,
+     0,
+     1
+    ]
+   },
+   "extensions": {
+    "KHR_materials_unlit": {}
+   }
+  },
+  {
+   "name": "black",
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "extensions": {
+    "KHR_materials_unlit": {}
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "outer",
+   "primitives": [
+    {
+     "attributes": {
+      "NORMAL": 1,
+      "POSITION": 0
+     },
+     "indices": 2,
+     "material": 0
+    }
+   ]
+  },
+  {
+   "name": "inner",
+   "primitives": [
+    {
+     "attributes": {
+      "NORMAL": 1,
+      "POSITION": 0
+     },
+     "indices": 2,
+     "material": 1
+    }
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "model",
+   "children": [
+    1,
+    2
+   ]
+  },
+  {
+   "mesh": 0,
+   "name": "outer"
+  },
+  {
+   "mesh": 1,
+   "name": "inner",
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ]
+  }
+ ],
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "extensionsUsed": [
+  "KHR_materials_unlit"
+ ]
+}

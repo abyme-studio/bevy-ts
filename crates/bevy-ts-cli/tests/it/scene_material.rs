@@ -11,7 +11,7 @@ use bevy::render::settings::{RenderCreation, WgpuSettings};
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
 use bevy_ts::generation::ReloadStatus;
-use bevy_ts_material::{ScriptMaterial3d, ScriptMaterialPlugin};
+use bevy_ts_material::{FadeMaterial, ScriptMaterial3d, ScriptMaterialPlugin};
 use bevy_ts_v8::V8Options;
 use common::*;
 use std::path::Path;
@@ -133,20 +133,21 @@ fn a_bound_material_alpha_fades_a_scene_frame_by_frame() {
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     let alphas = |app: &mut App| {
         let world = app.world_mut();
-        let hs: Vec<Handle<StandardMaterial>> = world.query_filtered::<&MeshMaterial3d<StandardMaterial>, With<GltfMaterialName>>().iter(world).map(|m| m.0.clone()).collect();
-        let assets = world.resource::<Assets<StandardMaterial>>();
-        hs.iter().map(|h| assets.get(h).map(|m| (m.base_color.alpha(), m.alpha_mode))).collect::<Option<Vec<_>>>().unwrap_or_default()
+        let hs: Vec<Handle<FadeMaterial>> = world.query_filtered::<&MeshMaterial3d<FadeMaterial>, With<GltfMaterialName>>().iter(world).map(|m| m.0.clone()).collect();
+        let assets = world.resource::<Assets<FadeMaterial>>();
+        hs.iter().map(|h| assets.get(h).map(|m| (m.extension.alpha, m.base.alpha_mode))).collect::<Option<Vec<_>>>().unwrap_or_default()
     };
     until(&mut app, "the ship faded", |app| {
         let a = alphas(app);
-        a.len() == 3 && a.iter().all(|(x, m)| *x < 1.0 && *m == AlphaMode::Blend)
+        a.len() == 3 && a.iter().all(|(x, m)| *x < 1.0 && *m == AlphaMode::Opaque)
     });
-    let assets = app.world().resource::<Assets<StandardMaterial>>().len();
+    let count = |app: &App| app.world().resource::<Assets<StandardMaterial>>().len() + app.world().resource::<Assets<FadeMaterial>>().len();
+    let assets = count(&app);
     let mut last = f32::MAX;
     for _ in 0..40 {
         app.update();
         let a = alphas(&mut app);
-        assert_eq!(app.world().resource::<Assets<StandardMaterial>>().len(), assets, "no asset added");
+        assert_eq!(count(&app), assets, "no asset added");
         assert!(a.iter().all(|(x, _)| *x == a[0].0), "every mesh at the root's alpha: {a:?}");
         assert!(a[0].0 <= last);
         last = a[0].0;

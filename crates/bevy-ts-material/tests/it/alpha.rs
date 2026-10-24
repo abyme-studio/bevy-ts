@@ -1,7 +1,8 @@
-//! `MaterialAlpha` (change `material-alpha`), headless: the engine's plugins with no window and no
+//! `MaterialAlpha` (changes `material-alpha`, `material-fade`), headless: the engine's plugins with no window and no
 //! GPU. `ship.gltf` (scene-material's) has three mesh entities: two on material `hull`, one on
 //! `trim`.
 
+use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use bevy::render::RenderPlugin;
 use bevy::render::settings::{RenderCreation, WgpuSettings};
@@ -10,7 +11,7 @@ use bevy::winit::WinitPlugin;
 use bevy::gltf::GltfMaterialName;
 use bevy::world_serialization::WorldAssetRoot;
 use bevy_ts_material::layout::{Base, Bindings, ParamType};
-use bevy_ts_material::{Kind, MaterialAlpha, MaterialAlphaTargets, SceneMaterialTargets, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
+use bevy_ts_material::{FadeMaterial, Kind, MaterialAlpha, MaterialAlphaTargets, SceneMaterialTargets, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -44,16 +45,29 @@ fn cube(app: &mut App, material: &Handle<StandardMaterial>, extra: impl Bundle) 
     app.world_mut().spawn((Mesh3d(mesh), MeshMaterial3d(material.clone()), extra)).id()
 }
 
+/// The `StandardMaterial` `e` draws; panics on a faded one.
 fn drawn(app: &App, e: Entity) -> Handle<StandardMaterial> {
+    assert!(app.world().get::<MeshMaterial3d<FadeMaterial>>(e).is_none(), "{e} holds no fade copy");
     app.world().get::<MeshMaterial3d<StandardMaterial>>(e).unwrap().0.clone()
+}
+
+/// The fade copy `e` draws; panics on an unfaded one.
+fn faded_copy(app: &App, e: Entity) -> Handle<FadeMaterial> {
+    assert!(app.world().get::<MeshMaterial3d<StandardMaterial>>(e).is_none(), "{e} holds no StandardMaterial while faded");
+    app.world().get::<MeshMaterial3d<FadeMaterial>>(e).unwrap().0.clone()
 }
 
 fn get(app: &App, h: &Handle<StandardMaterial>) -> StandardMaterial {
     app.world().resource::<Assets<StandardMaterial>>().get(h).unwrap().clone()
 }
 
+fn copy(app: &App, h: &Handle<FadeMaterial>) -> FadeMaterial {
+    app.world().resource::<Assets<FadeMaterial>>().get(h).unwrap().clone()
+}
+
+/// Material assets of both kinds.
 fn count(app: &App) -> usize {
-    app.world().resource::<Assets<StandardMaterial>>().len()
+    app.world().resource::<Assets<StandardMaterial>>().len() + app.world().resource::<Assets<FadeMaterial>>().len()
 }
 
 #[test]
@@ -64,12 +78,11 @@ fn a_shape_fades_with_a_copy_and_its_twin_does_not() {
     let twin = cube(&mut app, &m, ());
     app.update();
 
-    let copy = drawn(&app, faded);
-    assert_ne!(copy, m, "the faded cube draws a copy");
+    let c = faded_copy(&app, faded);
     assert_eq!(drawn(&app, twin), m, "its twin keeps the shared material");
-    let c = get(&app, &copy);
-    assert_eq!(c.base_color.alpha(), 0.5);
-    assert_eq!(c.alpha_mode, AlphaMode::Blend);
+    let f = copy(&app, &c);
+    assert_eq!(f.extension.alpha, 0.5);
+    assert_eq!((f.base.base_color, f.base.alpha_mode), (Color::srgb(1.0, 0.0, 0.0), AlphaMode::Opaque), "an opaque copy keeps its colour and mode");
     let o = get(&app, &m);
     assert_eq!((o.base_color.alpha(), o.alpha_mode), (1.0, AlphaMode::Opaque), "the original is untouched");
     assert_eq!(app.world().get::<MaterialAlphaTargets>(faded).unwrap().targets, vec![faded]);
@@ -79,44 +92,81 @@ fn a_shape_fades_with_a_copy_and_its_twin_does_not() {
     for a in [0.4, 0.3, 1.0, 0.0] {
         app.world_mut().get_mut::<MaterialAlpha>(faded).unwrap().alpha = a;
         app.update();
-        assert_eq!(drawn(&app, faded), copy);
+        assert_eq!(faded_copy(&app, faded), c);
         assert_eq!(count(&app), before);
-        let c = get(&app, &copy);
-        assert_eq!(c.base_color.alpha(), a);
-        assert_eq!(c.alpha_mode, if a < 1.0 { AlphaMode::Blend } else { AlphaMode::Opaque }, "at 1 the copy equals the original");
+        let f = copy(&app, &c);
+        assert_eq!((f.extension.alpha, f.base.alpha_mode), (a, AlphaMode::Opaque));
     }
 
     // Clamped, not refused.
     app.world_mut().get_mut::<MaterialAlpha>(faded).unwrap().alpha = 3.0;
     app.update();
-    assert_eq!(get(&app, &copy).base_color.alpha(), 1.0);
+    assert_eq!(copy(&app, &c).extension.alpha, 1.0);
 
     // Removal restores the original and drops the copy.
-    let id = copy.id();
-    drop(copy);
+    let id = c.id();
+    drop(c);
     app.world_mut().entity_mut(faded).remove::<MaterialAlpha>();
     app.update();
-    assert_eq!(drawn(&app, faded), m);
+    assert_eq!(drawn(&app, faded), m, "its StandardMaterial back, no fade copy");
     assert!(app.world().get::<MaterialAlphaTargets>(faded).is_none());
     app.update();
     app.update();
-    assert!(app.world().resource::<Assets<StandardMaterial>>().get(id).is_none(), "the copy is freed");
+    assert!(app.world().resource::<Assets<FadeMaterial>>().get(id).is_none(), "the copy is freed");
 }
 
 #[test]
-fn one_copy_per_original_and_alpha_multiplies() {
+fn a_blending_original_fades_through_its_colour() {
+    for mode in [AlphaMode::Blend, AlphaMode::Add] {
+        let mut app = app();
+        let half = app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial {
+            base_color: Color::srgba(1.0, 0.0, 0.0, 0.5),
+            alpha_mode: mode,
+            ..default()
+        });
+        let e = cube(&mut app, &half, MaterialAlpha { alpha: 0.5 });
+        app.update();
+        let c = copy(&app, &faded_copy(&app, e));
+        assert_eq!(c.base.base_color.alpha(), 0.25, "{mode:?}: the original's alpha times alpha");
+        assert_eq!(c.base.alpha_mode, mode, "a mode that blends already is kept");
+        assert_eq!(c.extension.alpha, 0.5, "its shadow dithers");
+        assert_eq!(app.world().get::<MaterialAlphaTargets>(e).unwrap().copies().count(), 1);
+    }
+}
+
+#[test]
+fn an_alpha_animated_in_animation_systems_reaches_the_copy_that_frame() {
     let mut app = app();
-    let half = app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.0, 0.0, 0.5),
-        alpha_mode: AlphaMode::Add,
-        ..default()
-    });
-    let e = cube(&mut app, &half, MaterialAlpha { alpha: 0.5 });
+    let m = red(&mut app);
+    let e = cube(&mut app, &m, MaterialAlpha { alpha: 1.0 });
     app.update();
-    let c = get(&app, &drawn(&app, e));
-    assert_eq!(c.base_color.alpha(), 0.25, "the original's alpha times alpha");
-    assert_eq!(c.alpha_mode, AlphaMode::Add, "a mode that blends already is kept");
-    assert_eq!(app.world().get::<MaterialAlphaTargets>(e).unwrap().copies().count(), 1);
+    app.add_systems(PostUpdate, (|mut q: Query<&mut MaterialAlpha>| q.iter_mut().for_each(|mut a| a.alpha = 0.25)).in_set(bevy::app::AnimationSystems));
+    app.update();
+    assert_eq!(copy(&app, &faded_copy(&app, e)).extension.alpha, 0.25);
+}
+
+#[test]
+fn a_mask_original_keeps_its_mode() {
+    let mut app = app();
+    let mask = app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial { alpha_mode: AlphaMode::Mask(0.3), ..default() });
+    let e = cube(&mut app, &mask, MaterialAlpha { alpha: 0.25 });
+    app.update();
+    let c = copy(&app, &faded_copy(&app, e));
+    assert_eq!((c.base.alpha_mode, c.base.base_color.alpha(), c.extension.alpha), (AlphaMode::Mask(0.3), 1.0, 0.25));
+}
+
+#[test]
+fn an_authored_not_shadow_caster_stays() {
+    let mut app = app();
+    let m = red(&mut app);
+    let e = cube(&mut app, &m, (NotShadowCaster, MaterialAlpha { alpha: 1.0 }));
+    let plain = cube(&mut app, &m, MaterialAlpha { alpha: 0.0 });
+    app.update();
+    assert!(app.world().get::<NotShadowCaster>(e).is_some());
+    assert!(app.world().get::<NotShadowCaster>(plain).is_none(), "alpha 0 adds none: the dither hides the shadow");
+    app.world_mut().entity_mut(e).remove::<MaterialAlpha>();
+    app.update();
+    assert!(app.world().get::<NotShadowCaster>(e).is_some(), "removal keeps it");
 }
 
 #[test]
@@ -125,21 +175,19 @@ fn a_shape_given_another_material_is_faded_again() {
     let m = red(&mut app);
     let e = cube(&mut app, &m, MaterialAlpha { alpha: 0.5 });
     app.update();
-    let first = drawn(&app, e);
+    let first = faded_copy(&app, e);
 
     // A TS save re-inserts the same original: the same copy comes back.
     app.world_mut().entity_mut(e).insert(MeshMaterial3d(m.clone()));
     app.update();
-    assert_eq!(drawn(&app, e), first);
+    assert_eq!(faded_copy(&app, e), first);
 
     // A new colour: a copy of the new material, at the same alpha.
     let blue = app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::from(Color::srgb(0.0, 0.0, 1.0)));
     app.world_mut().entity_mut(e).insert(MeshMaterial3d(blue.clone()));
     app.update();
-    let second = drawn(&app, e);
-    assert_ne!(second, blue);
-    let c = get(&app, &second);
-    assert_eq!((c.base_color.to_srgba().blue, c.base_color.alpha()), (1.0, 0.5));
+    let c = copy(&app, &faded_copy(&app, e));
+    assert_eq!((c.base.base_color.to_srgba().blue, c.extension.alpha), (1.0, 0.5));
 
     app.world_mut().entity_mut(e).remove::<MaterialAlpha>();
     app.update();
@@ -153,7 +201,7 @@ fn a_tsx_child_is_untouched() {
     let parent = cube(&mut app, &m, MaterialAlpha { alpha: 0.5 });
     let child = cube(&mut app, &m, ChildOf(parent));
     app.update();
-    assert_ne!(drawn(&app, parent), m);
+    faded_copy(&app, parent);
     assert_eq!(drawn(&app, child), m);
     // Its material changing asks the parent to sync, which still leaves it alone.
     app.world_mut().entity_mut(child).insert(MeshMaterial3d(m.clone()));
@@ -167,11 +215,11 @@ fn an_original_that_reloads_is_copied_again() {
     let m = red(&mut app);
     let e = cube(&mut app, &m, MaterialAlpha { alpha: 0.5 });
     app.update();
-    let copy = drawn(&app, e);
+    let c = faded_copy(&app, e);
     app.world_mut().resource_mut::<Assets<StandardMaterial>>().get_mut(&m).unwrap().perceptual_roughness = 0.1;
     app.update();
-    let c = get(&app, &copy);
-    assert_eq!((c.perceptual_roughness, c.base_color.alpha()), (0.1, 0.5));
+    let c = copy(&app, &c);
+    assert_eq!((c.base.perceptual_roughness, c.extension.alpha), (0.1, 0.5));
 }
 
 /// Frames until `done` holds. Shaders and assets finish on other threads, which a loaded machine
@@ -213,11 +261,45 @@ fn ship(app: &mut App, extra: impl Bundle) -> Entity {
     root
 }
 
-/// Each scene mesh's `StandardMaterial` handle, by glTF material name; none for a script material.
-fn drawn_by_name(app: &App, root: Entity) -> Vec<(String, Option<Handle<StandardMaterial>>)> {
-    let mut out: Vec<_> = meshes(app.world(), root).into_iter().map(|(e, n)| (n, app.world().get::<MeshMaterial3d<StandardMaterial>>(e).map(|m| m.0.clone()))).collect();
+/// What each scene mesh draws, by glTF material name: its `StandardMaterial`, or its fade copy.
+#[derive(Clone, Debug, PartialEq)]
+enum Drawn {
+    Standard(Handle<StandardMaterial>),
+    Fade(Handle<FadeMaterial>),
+    /// A script material.
+    Other,
+}
+
+fn drawn_by_name(app: &App, root: Entity) -> Vec<(String, Drawn)> {
+    let w = app.world();
+    let mut out: Vec<_> = meshes(w, root)
+        .into_iter()
+        .map(|(e, n)| {
+            let d = match (w.get::<MeshMaterial3d<StandardMaterial>>(e), w.get::<MeshMaterial3d<FadeMaterial>>(e)) {
+                (Some(m), None) => Drawn::Standard(m.0.clone()),
+                (None, Some(m)) => Drawn::Fade(m.0.clone()),
+                (None, None) => Drawn::Other,
+                (Some(_), Some(_)) => panic!("{n} holds both"),
+            };
+            (n, d)
+        })
+        .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
     out
+}
+
+fn standard(d: &Drawn) -> Handle<StandardMaterial> {
+    match d {
+        Drawn::Standard(h) => h.clone(),
+        d => panic!("not a StandardMaterial: {d:?}"),
+    }
+}
+
+fn fade(d: &Drawn) -> Handle<FadeMaterial> {
+    match d {
+        Drawn::Fade(h) => h.clone(),
+        d => panic!("not a fade copy: {d:?}"),
+    }
 }
 
 fn tint(app: &mut App) -> Handle<ScriptMaterial> {
@@ -239,13 +321,11 @@ fn a_scene_root_fades_its_meshes_and_another_instance_does_not() {
     let t = app.world().get::<MaterialAlphaTargets>(root).unwrap();
     assert_eq!(t.targets.len(), 3);
     assert_eq!(t.copies().count(), 2, "one copy per distinct original: hull and trim");
-    for ((n, copy), (_, original)) in faded.iter().zip(&originals) {
-        let (copy, original) = (copy.clone().unwrap(), original.clone().unwrap());
-        assert_ne!(copy, original, "{n} draws a copy");
-        assert_eq!(t.original(copy.id()), Some(&original));
-        let (c, o) = (get(&app, &copy), get(&app, &original));
-        assert_eq!(c.base_color.alpha(), o.base_color.alpha() * 0.5);
-        assert_eq!(c.alpha_mode, AlphaMode::Blend);
+    for ((n, c), (_, original)) in faded.iter().zip(&originals) {
+        let (c, original) = (fade(c), standard(original));
+        assert_eq!(t.original(c.id()), Some(&original), "{n} draws a copy of its original");
+        let (c, o) = (copy(&app, &c), get(&app, &original));
+        assert_eq!((c.base.base_color, c.base.alpha_mode, c.extension.alpha), (o.base_color, o.alpha_mode, 0.5));
         assert_eq!(o.alpha_mode, AlphaMode::Opaque, "the original is untouched");
     }
     assert_eq!(faded[0].1, faded[1].1, "both hull meshes share the root's one hull copy");
@@ -280,8 +360,8 @@ fn a_respawned_scene_is_faded_again_and_a_tsx_child_is_not() {
     });
     app.update();
     let t = app.world().get::<MaterialAlphaTargets>(root).unwrap();
-    for (n, h) in drawn_by_name(&app, root) {
-        assert!(t.original(h.unwrap().id()).is_some(), "{n} is faded again");
+    for (n, d) in drawn_by_name(&app, root) {
+        assert!(t.original(fade(&d).id()).is_some(), "{n} is faded again");
     }
     assert_eq!(t.copies().count(), 2, "the same originals, the same copies");
     assert_eq!(drawn(&app, child), m);
@@ -293,14 +373,14 @@ fn script_and_alpha(remove_alpha_first: bool) {
     let plain = ship(&mut app, ());
     let originals = drawn_by_name(&app, plain);
     let s = tint(&mut app);
-    // Faded first, so scene-material keeps the hull's copies as the materials to put back.
+    // Faded first, so scene-material must ask alpha.rs for the hull's originals.
     let root = ship(&mut app, MaterialAlpha { alpha: 0.5 });
     app.world_mut().entity_mut(root).insert((ScriptMaterial3d(s.clone()), bevy_ts_material::GltfMaterialFilter("hull".into())));
     app.update();
     let script = |app: &App| meshes(app.world(), root).into_iter().filter(|(e, _)| app.world().get::<ScriptMaterial3d>(*e).is_some_and(|m| m.0 == s)).map(|(_, n)| n).collect::<Vec<_>>();
     assert_eq!(script(&app), ["hull", "hull"], "hull keeps the script material, unfaded");
-    let trim = drawn_by_name(&app, root).into_iter().find(|(n, _)| n == "trim").unwrap().1.unwrap();
-    assert_ne!(Some(trim), originals[2].1.clone(), "trim fades");
+    let trim = drawn_by_name(&app, root).into_iter().find(|(n, _)| n == "trim").unwrap().1;
+    fade(&trim);
 
     if remove_alpha_first {
         app.world_mut().entity_mut(root).remove::<MaterialAlpha>();
@@ -308,7 +388,7 @@ fn script_and_alpha(remove_alpha_first: bool) {
         assert_eq!(script(&app).len(), 2);
         assert_eq!(drawn_by_name(&app, root)[2], originals[2], "trim restored");
         for (_, h) in &app.world().get::<SceneMaterialTargets>(root).unwrap().0 {
-            assert!(originals.iter().any(|(_, o)| o.as_ref() == Some(h)), "scene-material keeps an original, not a copy");
+            assert!(originals.iter().any(|(_, o)| standard(o) == *h), "scene-material keeps an original, not a copy");
         }
         app.world_mut().entity_mut(root).remove::<ScriptMaterial3d>();
         app.update();
@@ -318,8 +398,8 @@ fn script_and_alpha(remove_alpha_first: bool) {
         app.update();
         app.update();
         let t = app.world().get::<MaterialAlphaTargets>(root).unwrap();
-        for (n, h) in drawn_by_name(&app, root) {
-            assert!(t.original(h.unwrap().id()).is_some(), "{n} fades once its script material goes");
+        for (n, d) in drawn_by_name(&app, root) {
+            assert!(t.original(fade(&d).id()).is_some(), "{n} fades once its script material goes");
         }
         app.world_mut().entity_mut(root).remove::<MaterialAlpha>();
         app.update();
