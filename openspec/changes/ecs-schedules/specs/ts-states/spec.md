@@ -20,6 +20,13 @@ Each TS state machine SHALL be backed by a Rust state type `bevy_ts::TsState<N>`
 - **WHEN** `Game` is `Playing` and its values are reordered in the source and saved
 - **THEN** the state is still `Playing` and no transition runs
 
+### Requirement: Transition systems run on one thread
+`BevyTsPlugin` SHALL set Bevy's `StateTransition` schedule to Bevy's `SingleThreadedExecutor`, for every state in the app, Rust's included: its many small systems cost far less on one thread (bench 2.1). A game SHALL be able to opt back into the multi-threaded executor with Bevy's own `app.edit_schedule(StateTransition, |s| { s.set_executor(MultiThreadedExecutor::new()); })` after adding the plugin, and TS states SHALL keep working under it.
+
+#### Scenario: Opting back in
+- **WHEN** a game sets `StateTransition` to `MultiThreadedExecutor` after `BevyTsPlugin` and a TS system sets `Game.Playing`
+- **THEN** `OnExit(Game.Menu)` and `OnEnter(Game.Playing)` systems still run, in that order
+
 ### Requirement: A value removed on reload
 When a reload removes the current value of a machine, the next `StateTransition` SHALL transition the machine to its `initState` value, as a normal transition: exit systems and exit-scoped components of the removed value SHALL apply. A removed value's `OnEnter`/`OnExit` systems are gone with the old generation and SHALL NOT run.
 
