@@ -6,9 +6,9 @@
 // lib.dom.d.ts uses, and `process` through `NodeJS.Process`/`NodeJS.ProcessEnv` as @types/node
 // declares it, so a project whose packages pull in @types/node still type-checks.
 //
-// @types/node declares `DOMException`, `URL`, `URLSearchParams` and `WebSocket` with its own
-// constructor types, and a `var` declared twice must have one type. Those four therefore take
-// @types/node's constructor when it is present (`global` exists only there) and this file's
+// @types/node declares `DOMException`, `URL`, `URLSearchParams`, `WebSocket` and `performance`
+// with its own types, and a `var` declared twice must have one type. Those five therefore take
+// @types/node's type when it is present (`global` exists only there) and this file's
 // otherwise. That works when @types/node comes first, as it does when an imported package
 // references it; a tsconfig naming both in `types` lists `node` first. This file is a module
 // with `declare global` so its globals merge after @types/node's, which are declared the same way.
@@ -28,6 +28,16 @@ declare global {
     warn(...data: any[]): void;
   }
   var console: Console;
+
+  // Performance: the clock only (installed by the engine before any module)
+
+  interface Performance {
+    /** Milliseconds since the engine started, with sub-millisecond precision. A reload does not reset it. */
+    now(): number;
+    /** When the engine started, in Unix milliseconds. */
+    readonly timeOrigin: number;
+  }
+  var performance: typeof globalThis extends { global: any; performance: infer T } ? T : Performance;
 
   // Events
 
