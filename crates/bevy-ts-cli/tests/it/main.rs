@@ -60,6 +60,7 @@ mod session;
 mod standard_material_limits;
 mod states;
 mod stop_bench;
+mod stop_walk;
 mod surface;
 mod systems;
 mod text_fonts;
