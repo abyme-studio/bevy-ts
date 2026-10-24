@@ -9,6 +9,11 @@ license.workspace = true
 name = "bevy-ts"
 path = "src/main.rs"
 
+[features]
+# Bevy's percentage-closer soft shadows (`DirectionalLight::soft_shadow_size`), for the pcss bench's
+# second arm (tests/it/pcss_bench.rs).
+pcss = ["bevy/experimental_pbr_pcss"]
+
 [dependencies]
 bevy = { workspace = true, features = ["3d", "bevy_ui_render", "bevy_remote", "file_watcher", "system_font_discovery"] }
 bevy-ts = { workspace = true, features = ["pbr"] }
