@@ -319,6 +319,10 @@ fn cast_check<T>(bytes: &[u8], what: &str) -> Result<usize, String> {
 
 /// Views JS memory as `&[T]` in place.
 pub fn slice_ref<'a, T: HostElem>(bytes: &'a [u8], what: &str) -> Result<&'a [T], String> {
+    // An empty JS array has no aligned address to give; it needs none.
+    if bytes.is_empty() {
+        return Ok(&[]);
+    }
     let n = cast_check::<T>(bytes, what)?;
     // SAFETY: length and alignment checked; any bit pattern is a valid T (HostElem).
     Ok(unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const T, n) })
@@ -326,6 +330,9 @@ pub fn slice_ref<'a, T: HostElem>(bytes: &'a [u8], what: &str) -> Result<&'a [T]
 
 /// Views JS memory as `&mut [T]` in place.
 pub fn slice_mut<'a, T: HostElem>(bytes: &'a mut [u8], what: &str) -> Result<&'a mut [T], String> {
+    if bytes.is_empty() {
+        return Ok(&mut []);
+    }
     let n = cast_check::<T>(bytes, what)?;
     // SAFETY: as above, and the bytes are exclusively borrowed.
     Ok(unsafe { std::slice::from_raw_parts_mut(bytes.as_mut_ptr() as *mut T, n) })
@@ -922,5 +929,8 @@ mod tests {
         let bytes = unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, 12) };
         assert_eq!(slice_ref::<f32>(bytes, "xs").unwrap(), &[1.0, 2.0, 3.0]);
         assert!(slice_ref::<f32>(&bytes[1..], "xs").is_err());
+        // An empty array, at whatever address, is an empty slice.
+        assert_eq!(slice_ref::<f64>(&bytes[1..1], "none").unwrap(), &[] as &[f64]);
+        assert_eq!(slice_mut::<f64>(&mut [], "none").unwrap(), &mut [] as &mut [f64]);
     }
 }
