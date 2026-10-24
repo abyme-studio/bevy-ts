@@ -157,10 +157,14 @@ import { MaterialAlpha } from "bevy-ts/bevy";
 - Removing it gives every mesh its own material back and drops the copies. Remove it when not
   fading: while it is on, even at 1, the entity's meshes do not batch with others sharing their
   material, a discard costs their early depth test, and their shadow runs a fragment shader.
-- The first fade of each distinct material compiles a pipeline.
+- The first fade of each distinct material compiles its pipelines: a visible hitch, about half a
+  second on an M5 Max for a Synty building (main's `Blend` fade cost about 0.3 s). Fade it once
+  off-screen, or early, to warm it.
 
 ## Known limits
 
+- `MaterialAlpha`'s fade on screen needs forward rendering. Under `DeferredPrepass` a faded mesh
+  draws solid; only its shadow fades.
 - The check skips files that use inline module paths (`a::b::c(...)`) or `@if` outside the
   imports; those reach the renderer unchecked, and its failures are reported with its message.
 - The check validates each stage alone, with every capability. A vertex output that does not
