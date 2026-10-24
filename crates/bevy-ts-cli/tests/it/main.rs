@@ -39,6 +39,7 @@ mod preview_bench;
 mod protocol;
 mod reflect_coverage;
 mod reflect_render;
+mod reflect_scripts;
 mod reflect_values;
 mod reload;
 mod scene_material;
