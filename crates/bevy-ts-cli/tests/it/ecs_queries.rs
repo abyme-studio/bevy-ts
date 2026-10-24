@@ -628,13 +628,34 @@ fn retain_and_clear() {
             let f = spawn_ts(app, "game::Health", json!({}), Transform::default());
             vec![e, f]
         },
-        "let done = false;\nexport function trim(c: Commands) { if (done) return; done = true; c.entity($0).retain(Transform); c.entity($1).clear(); }\napp.addSystems(Update, trim);\n",
+        r#"let done = false;
+export function trim(c: Commands) {
+  if (done) return;
+  done = true;
+  c.entity($0).retain(Transform);
+  c.entity($1).clear();
+  const g = c.spawn(Health.of(), Transform);
+  c.entity(g).clear();
+  const h = c.spawn(Health.of(), Transform);
+  c.entity(h).retain(Transform);
+  console.log(`made ${g} ${h}`);
+}
+app.addSystems(Update, trim);
+"#,
     );
     app.update();
     assert!(app.world().get::<Transform>(es[0]).is_some());
     assert!(!has(&app, es[0], "game::Health") && !has(&app, es[0], "game::Shield"));
     assert!(app.world().get_entity(es[1]).is_ok(), "clear keeps the entity");
     assert_eq!(app.world().entity(es[1]).archetype().component_count(), 0);
+    // A TS spawn keeps bevy-ts's mark through clear and retain, so a restart still despawns it.
+    let made: Vec<Entity> = lines(&mut app, "made")[0].trim_start_matches("made ").split(' ').map(|s| Entity::from_bits(s.parse().unwrap())).collect();
+    for e in &made {
+        assert!(app.world().get::<bevy_ts::commands::TsSpawned>(*e).is_some(), "{e} kept TsSpawned");
+    }
+    assert!(!has(&app, made[0], "game::Health") && app.world().get::<Transform>(made[1]).is_some());
+    reload(&mut app, true);
+    assert!(made.iter().all(|e| app.world().get_entity(*e).is_err()), "gone after a restart");
 }
 
 #[test]
@@ -655,12 +676,33 @@ fn clone_and_spawn_copies_components() {
     let (_, mut app, es) = staged(
         "ecsq-clone",
         |app| vec![ts(app, "game::Health", json!({ "hp": 4 }))],
-        "let done = false;\nexport function copy(c: Commands) { if (done) return; done = true; console.log(`clone ${c.entity($0).cloneAndSpawn()}`); }\napp.addSystems(Update, copy);\n",
+        r#"app.scene("s", () => <entity name="src"><Shield v={2} /></entity>);
+let done = false;
+export function copy(c: Commands, scene: Query<[Entity], With<Shield>>) {
+  if (done) return;
+  done = true;
+  const [[src]] = [...scene];
+  console.log(`clone ${c.entity($0).cloneAndSpawn()} ${c.entity(src).cloneAndSpawn()}`);
+}
+app.addSystems(Update, copy);
+"#,
     );
     app.update();
-    let c = Entity::from_bits(lines(&mut app, "clone")[0].trim_start_matches("clone ").parse().unwrap());
+    let clones: Vec<Entity> = lines(&mut app, "clone")[0].trim_start_matches("clone ").split(' ').map(|s| Entity::from_bits(s.parse().unwrap())).collect();
+    let (c, t) = (clones[0], clones[1]);
     assert_ne!(c, es[0]);
     assert_eq!(read_ts(&app, c, "game::Health").unwrap()["hp"], 4.0);
+    // Changing one leaves the other.
+    insert_ts(&mut app, c, "game::Health", json!({ "hp": 9 }));
+    assert_eq!(read_ts(&app, es[0], "game::Health").unwrap()["hp"], 4.0);
+    // A clone of a tsx-made entity is not a tsx node: only the original is in the tree.
+    assert_eq!(read_ts(&app, t, "game::Shield").unwrap()["v"], 2.0);
+    assert!(app.world().get::<bevy_ts_tsx::TsxNode>(t).is_none());
+    // A clone is a TS spawn, whatever made its source: a restart despawns it, not the source.
+    assert!(app.world().get::<bevy_ts::commands::TsSpawned>(c).is_some());
+    reload(&mut app, true);
+    assert!(app.world().get_entity(c).is_err() && app.world().get_entity(t).is_err(), "clones gone after a restart");
+    assert!(app.world().get_entity(es[0]).is_ok());
 }
 
 #[test]

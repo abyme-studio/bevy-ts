@@ -431,6 +431,7 @@ fn restart(world: &mut World) {
 
 impl Plugin for TsxPlugin {
     fn build(&self, app: &mut App) {
+        bevy_ts::commands::Bookkeeping::add::<TsxNode>(app.world_mut());
         app.init_resource::<TsxTree>()
             .init_resource::<intrinsics::IntrinsicAssets>()
             .init_resource::<reconcile::TemplateCache>();
