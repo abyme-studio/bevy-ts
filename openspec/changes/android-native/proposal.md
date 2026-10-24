@@ -84,7 +84,11 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
     downloaded at run time: fine outside Play, refused by Play's policy, and dlopen from app
     storage on API 29+ must be proven (W^X forbids exec there, not mapping a library, as far as
     known). Each download, best guess before the spike: stripped `.so` 45-60 MB with V8, 20-30 MB
-    with QuickJS-ng; gzipped about 40% smaller.
+    with QuickJS-ng; gzipped about 40% smaller. `Engine.load` checks an ABI number, not the bevy-ts
+    version, so one APK loads any engine of its ABI.
+  - **A new npm package and release job.** `@bevy-ts/android-arm64` at every release, built on a
+    Linux runner with V8 from source (1-2 h uncached), its first version published by hand. abymed
+    fetches it by the game's version.
   - **A no-winit window path.** Bevy gets a window it didn't create, from a raw handle; a new
     architectural pattern, and two new crates.
   - **A possible second `ScriptBackend`** (QuickJS-ng), if the spike rules V8 out.

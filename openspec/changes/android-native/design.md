@@ -99,8 +99,17 @@ abyme keeps one engine per version in `filesDir/engines/<version>/libbevy_ts_and
 downloaded from abymed, and the APK carries none.
 
 `Engine.java` never calls `System.loadLibrary`. The host calls `Engine.load(absolutePath)`, which
-`System.load`s it and compares the library's version with the class's; `Engine.version()` names
-the class's, so the host knows which engine to fetch. abyme compiles the small class into the APK.
+`System.load`s it and compares the library's `bevy_ts_abi()` with the class's `Engine.ABI`. The
+check is the ABI, not the bevy-ts version, so one `Engine.java` compiled into the APK loads any
+engine of its ABI, and the game's `game.json` picks which version to fetch. `Engine.version()` reads
+the loaded library's `bevy_ts_version()`. The ABI number rises only on an incompatible change to the
+C ABI, its config keys or its event shapes; a new APK is needed only then.
+
+Where engines come from: the release workflow publishes `@bevy-ts/android-arm64` at every version,
+as it does the desktop engines (`docs/release.md`), not as an optional dependency of `bevy-ts`.
+abymed fetches `@bevy-ts/android-arm64@<version>` from npm into its state folder on first ask and
+serves it to the phone. Alternative: abyme's `scripts/android` builds it from the pinned bevy-ts;
+that pins one version and puts a 1-2 h V8 build in abyme's promote.
 
 Risk: dlopen of a library in app storage on API 29+. Android's W^X rule forbids `exec` of files
 there and, as far as known, still allows mapping a library; the smoke run (task 4.6) proves it. If

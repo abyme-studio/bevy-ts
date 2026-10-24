@@ -1,11 +1,15 @@
 ## ADDED Requirements
 
 ### Requirement: A host drives the engine through a C ABI
-`bevy-ts-embed` SHALL export a C ABI, declared in `crates/bevy-ts-embed/include/bevy_ts_embed.h`: `bevy_ts_create`, `bevy_ts_surface`, `bevy_ts_pause`, `bevy_ts_resume`, `bevy_ts_input`, `bevy_ts_destroy` and `bevy_ts_free_string`, on an opaque `BevyTsEngine *` handle. The engine SHALL run on a thread of its own that it starts in `bevy_ts_create`. Every call SHALL be safe from any one host thread and SHALL return without waiting for a frame, except `bevy_ts_surface` with no window and `bevy_ts_destroy`, which wait as their requirements say. At most one engine SHALL be live in a process: `bevy_ts_create` while one is live SHALL fail, saying one engine is already running.
+`bevy-ts-embed` SHALL export a C ABI, declared in `crates/bevy-ts-embed/include/bevy_ts_embed.h`: `bevy_ts_create`, `bevy_ts_surface`, `bevy_ts_pause`, `bevy_ts_resume`, `bevy_ts_input`, `bevy_ts_destroy`, `bevy_ts_free_string`, `bevy_ts_abi` and `bevy_ts_version`, on an opaque `BevyTsEngine *` handle. The engine SHALL run on a thread of its own that it starts in `bevy_ts_create`. Every call SHALL be safe from any one host thread and SHALL return without waiting for a frame, except `bevy_ts_surface` with no window and `bevy_ts_destroy`, which wait as their requirements say. At most one engine SHALL be live in a process: `bevy_ts_create` while one is live SHALL fail, saying one engine is already running. `bevy_ts_abi()` SHALL return the ABI number, a `uint32_t` raised whenever a function, its arguments, the config keys or the event shapes change incompatibly, and kept across bevy-ts versions otherwise; `bevy_ts_version()` SHALL return the bevy-ts version as a static string.
 
 #### Scenario: A second engine
 - **WHEN** a host creates an engine and, before destroying it, creates another
 - **THEN** the second `bevy_ts_create` returns null with the error "an engine is already running", and the first keeps playing
+
+#### Scenario: Two versions, one ABI
+- **WHEN** bevy-ts 0.4.0 and 0.4.1 change nothing in the C ABI
+- **THEN** both libraries return the same `bevy_ts_abi()` and different `bevy_ts_version()`
 
 #### Scenario: Calls do not wait for frames
 - **WHEN** the engine is stuck in a long frame and the host calls `bevy_ts_input` and `bevy_ts_pause`

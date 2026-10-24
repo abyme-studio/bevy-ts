@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: An Android engine library with a Java class
-bevy-ts SHALL build `libbevy_ts_android.so` for `aarch64-linux-android` (Android API 29 and later) from `crates/bevy-ts-android`, and SHALL ship the Java class `dev.bevyts.Engine` (`crates/bevy-ts-android/java/dev/bevyts/Engine.java`) whose native methods it exports over JNI. The class SHALL NOT load the library by name: the host SHALL call `static void load(String absolutePath)` once, which calls `System.load` on that path and checks the library's version against the class's own, throwing `UnsatisfiedLinkError` on a mismatch. The class SHALL offer `static String version()` (the bevy-ts version it was built with), `static Engine create(String configJson, Surface surface, int width, int height, float scale, Listener listener)`, `void surface(Surface surface, int width, int height, float scale)`, `void pause()`, `void resume()`, `void input(String json)` and `void close()`, each calling the matching C ABI function (engine-embedding), and `interface Listener { void onEvent(String json); }`, called on the engine's thread. `create` SHALL throw `IllegalStateException` with the C ABI's error. A null `Surface` SHALL mean no window. `scripts/android` SHALL build the library and write it, `Engine.java` and `bevy_ts_embed.h` to `dist/aarch64-linux-android/`.
+bevy-ts SHALL build `libbevy_ts_android.so` for `aarch64-linux-android` (Android API 29 and later) from `crates/bevy-ts-android`, and SHALL ship the Java class `dev.bevyts.Engine` (`crates/bevy-ts-android/java/dev/bevyts/Engine.java`) whose native methods it exports over JNI. The class SHALL NOT load the library by name: the host SHALL call `static void load(String absolutePath)` once, which calls `System.load` on that path and checks the library's `bevy_ts_abi()` against the class's `Engine.ABI`, throwing `UnsatisfiedLinkError` naming both on a mismatch. The bevy-ts version SHALL NOT be checked at load: one compiled class SHALL load any engine of its ABI, and the game's `game.json` picks the engine version. The class SHALL offer `static final int ABI`, `static String version()` (the loaded library's `bevy_ts_version()`), `static Engine create(String configJson, Surface surface, int width, int height, float scale, Listener listener)`, `void surface(Surface surface, int width, int height, float scale)`, `void pause()`, `void resume()`, `void input(String json)` and `void close()`, each calling the matching C ABI function (engine-embedding), and `interface Listener { void onEvent(String json); }`, called on the engine's thread. `create` SHALL throw `IllegalStateException` with the C ABI's error. A null `Surface` SHALL mean no window. `scripts/android` SHALL build the library and write it, `Engine.java` and `bevy_ts_embed.h` to `dist/aarch64-linux-android/`.
 
 #### Scenario: Building for the phone
 - **WHEN** `scripts/android` runs on the Mac with the NDK installed
@@ -9,7 +9,7 @@ bevy-ts SHALL build `libbevy_ts_android.so` for `aarch64-linux-android` (Android
 
 #### Scenario: Loading a downloaded engine
 - **WHEN** a host calls `Engine.load("/data/user/0/app.abyme.android/files/engines/0.4.0/libbevy_ts_android.so")` with a library of that version
-- **THEN** it returns, and `create` works; with a library of another version, `load` throws naming both versions
+- **THEN** it returns, `Engine.version()` is `"0.4.0"` and `create` works; the same class then loading 0.4.1's library of the same ABI in a new process also works, and a library of another ABI throws naming both ABI numbers
 
 #### Scenario: A host in Kotlin
 - **WHEN** after `Engine.load`, a Kotlin host calls `Engine.create(config, holder.surface, w, h, density, listener)` from `surfaceCreated`
@@ -50,3 +50,10 @@ A game folder SHALL be platform-neutral: the `game/` that `bevy-ts build` writes
 #### Scenario: A game from another version
 - **WHEN** the same folder is created on a 0.4.1 engine
 - **THEN** `create` fails naming 0.4.0 and 0.4.1
+
+### Requirement: An Android engine package per release
+The release workflow SHALL build `libbevy_ts_android.so` for every bevy-ts version it releases and publish it, with `Engine.java` and `bevy_ts_embed.h`, as the npm package `@bevy-ts/android-arm64` at that version, with provenance, as it publishes the desktop engine packages. `bevy-ts` SHALL NOT list it as an optional dependency, so a desktop install never fetches it. A host SHALL fetch an engine by the version in a game's `game.json`.
+
+#### Scenario: A host fetches an engine
+- **WHEN** bevy-ts 0.4.0 is released
+- **THEN** `npm view @bevy-ts/android-arm64@0.4.0` exists, its tarball holds `libbevy_ts_android.so`, and `npm i bevy-ts@0.4.0` on a Mac does not download it
