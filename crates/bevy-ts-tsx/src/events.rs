@@ -6,7 +6,8 @@
 //! queue goes to JS in the frame's one host call, in arrival order. Picking events bubble up
 //! `ChildOf` as Bevy's do (change scene-pick): a handler also runs for a hit on a descendant, a
 //! glTF scene's meshes included, with `entity` its own entity and `target` the one hit. An entity
-//! with a pointer handler gets a default `Pickable`, which Bevy's sprite backend needs. JS runs
+//! with a pointer handler gets a default `Pickable`, which Bevy's sprite backend needs, until its
+//! last pointer handler goes. JS runs
 //! after Bevy's walk, so a handler cannot stop it. An `<input>`'s keyboard events are the field's
 //! own: a key that bubbled from a descendant is not.
 
@@ -28,6 +29,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct TsxHandlers {
     pub ids: BTreeMap<String, u32>,
     observed: BTreeSet<String>,
+    /// tsx inserted the entity's `Pickable`, so it removes it with the last pointer handler.
+    pickable: bool,
 }
 
 fn button(b: PointerButton) -> &'static str {
@@ -143,8 +146,13 @@ pub fn set(world: &mut World, e: Entity, ids: &BTreeMap<String, u32>) {
     let mut em = world.entity_mut(e);
     // Bevy 0.20's sprite backend picks only entities with `Pickable`; its default is what the
     // mesh and UI backends assume without one, so a pointer handler needs no other setup.
-    if ids.keys().any(|k| k.starts_with("Pointer")) && !em.contains::<Pickable>() {
+    let pointer = ids.keys().any(|k| k.starts_with("Pointer"));
+    if pointer && !em.contains::<Pickable>() {
         em.insert(Pickable::default());
+        h.pickable = true;
+    } else if !pointer && h.pickable {
+        em.remove::<Pickable>();
+        h.pickable = false;
     }
     for kind in ids.keys() {
         // One observer serves every key event.
@@ -163,5 +171,27 @@ pub fn set(world: &mut World, e: Entity, ids: &BTreeMap<String, u32>) {
     }
     if current.as_ref() != Some(&h) {
         em.insert(h);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pointer_handler_brings_pickable_and_takes_back_only_its_own() {
+        let mut world = World::new();
+        let click = BTreeMap::from([("PointerClick".to_string(), 1)]);
+        let e = world.spawn_empty().id();
+        set(&mut world, e, &click);
+        assert!(world.get::<Pickable>(e).is_some(), "a sprite needs Pickable to be picked");
+        set(&mut world, e, &BTreeMap::new());
+        assert!(world.get::<Pickable>(e).is_none(), "gone with the last pointer handler");
+
+        // A Pickable the entity already had is not tsx's to take.
+        let own = world.spawn(Pickable::IGNORE).id();
+        set(&mut world, own, &click);
+        set(&mut world, own, &BTreeMap::new());
+        assert_eq!(world.get::<Pickable>(own), Some(&Pickable::IGNORE));
     }
 }
