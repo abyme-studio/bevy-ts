@@ -47,7 +47,7 @@
 - [x] 6.5 `packages/bevy-ts/test/time.ts`: `timeConditionsTakeSeconds`, a `@ts-expect-error` on `onTimer("2")` and on `paused(1)`; the conditions combine with `andThen`
 - [x] 6.6 Whatever snapshot or test of `native.d.ts`'s `NativeCondition` now lists the seven `bevy:` names (`bevy-ts-cli/src/types.rs` tests, `compile.rs`)
 - [x] 6.7 Docs: `docs/time.md` a "Run conditions" section (the seven, which clock each ticks, the fixed schedule, reload and Stop) and drop them from "Not yet built"; `docs/scripts.md`'s condition table gains the seven rows; `docs/native.md` says bevy-ts exposes `bevy:` time conditions as it does `bevy:` anchors; `docs/research/bevy-coverage.md` row 86 (and 214) name the conditions covered by stage 3
-- [ ] 6.8 `openspec validate script-time --strict`; the repo's full check green (cargo through `~/dev/abyme/scripts/gate-slot`); no protocol change
+- [x] 6.8 `openspec validate script-time --strict`; the repo's full check green (cargo through `~/dev/abyme/scripts/gate-slot`); no protocol change
 
 ## 7. Clock writes (stage 2)
 
