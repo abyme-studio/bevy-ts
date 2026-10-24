@@ -74,7 +74,8 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
   here.
 - Needs the operator's go:
   - **V8 from source in the build.** 1-2 h a clean build, about 13 min cached; NDK r25b+ and API
-    29, above abyme's `minSdk` 26. The alternative is QuickJS-ng (no JIT, ~1 MB).
+    29, above abyme's `minSdk` 26, and a patched V8 checkout to build from a Mac. The alternative
+    is QuickJS-ng (no JIT, 1.46 MB).
   - **A TLS crate.** `futures-rustls` with `ring` and `webpki-roots`, in `bevy-ts` on every
     target. New dependencies.
   - **The header rule.** Headers allowed over `wss:` to any allowlisted host, not only loopback.
@@ -84,8 +85,8 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
     `Engine.load(path)` (`System.load`). The APK stays at 8.6 MB, but it is native code
     downloaded at run time: fine outside Play, refused by Play's policy, and dlopen from app
     storage on API 29+ must be proven (W^X forbids exec there, not mapping a library, as far as
-    known). Each download, best guess before the spike: stripped `.so` 45-60 MB with V8, 20-30 MB
-    with QuickJS-ng; gzipped about 40% smaller. `Engine.load` checks an ABI number, not the bevy-ts
+    known). Each download, measured by the spike: Bevy alone is 66.9 MB stripped and
+    22.3 MB gzipped; QuickJS-ng adds 1.46 MB (0.68 MB gzipped); V8 is not yet measured. `Engine.load` checks an ABI number, not the bevy-ts
     version, so one APK loads any engine of its ABI.
   - **A new npm package and release job.** `@bevy-ts/android-arm64` at every release, built on a
     Linux runner with V8 from source (1-2 h uncached), its first version published by hand. abymed

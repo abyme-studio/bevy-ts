@@ -23,7 +23,7 @@
 ## 3. The embedding runner, window and C ABI
 
 - [ ] 3.1 The engine thread and custom runner: command channel, loop while resumed with a window or headless, park otherwise
-- [ ] 3.2 Raw-handle window: `Window` + `PrimaryWindow` + `RawHandleWrapper` from the host's handle, no `WinitPlugin`, no `PipelinedRenderingPlugin`; replace on a new window, resize with `WindowResized`, drop and wait on null
+- [ ] 3.2 Raw-handle window: `Window` + `PrimaryWindow` + `RawHandleWrapper` from the host's handle, no `WinitPlugin`, no `PipelinedRenderingPlugin`; replace on a new window, resize with `WindowResized` (and `WindowCreated`, `WindowScaleFactorChanged`), drop and wait on null
 - [ ] 3.3 Default asset source as a `FileAssetReader` at `<game>/assets`, unwatched, on every platform (Bevy's Android reader panics with no android-activity app)
 - [ ] 3.4 Events out: `started` (inputs, js), `log` (source-mapped), `ime`, `exited`
 - [ ] 3.5 The C ABI and `include/bevy_ts_embed.h`; one engine per process; refuse a project-engine game at create; error strings and `bevy_ts_free_string`
@@ -34,11 +34,11 @@
 
 - [ ] 4.1 `crates/bevy-ts-android` (cdylib): JNI exports for `dev.bevyts.Engine`, `ANativeWindow_fromSurface` and release, listener calls on the engine thread (attached once)
 - [ ] 4.2 `crates/bevy-ts-android/java/dev/bevyts/Engine.java`: `load(absolutePath)` by `System.load` with a version check, `version()`, no `loadLibrary`
-- [ ] 4.3 `bevy-ts-v8` builds from source for `aarch64-linux-android` (`V8_FROM_SOURCE=1`, cached at `~/.cache/bevy-ts/v8-android`); or, if 0.1 says so, `crates/bevy-ts-quickjs` as a `ScriptBackend` and a feature selecting it
+- [ ] 4.3 `bevy-ts-v8` builds from source for `aarch64-linux-android` (`V8_FROM_SOURCE=1`, `use_relative_vtables_abi=false`, the Mac-host patch set from `docs/research/android.md`, `bevy_asset`'s `android-native-activity` on, cached at `~/.cache/bevy-ts/v8-android`); or, if 0.1 says so, `crates/bevy-ts-quickjs` as a `ScriptBackend` and a feature selecting it
 - [ ] 4.4 `scripts/android`: `cargo ndk -t arm64-v8a -P 29`, writing `dist/aarch64-linux-android/` (`.so`, `Engine.java`, header)
 - [ ] 4.5 A CI job that builds the Android library (build only) and checks its exports with `llvm-readelf`
 - [ ] 4.7 `packages/platforms/android-arm64` and a release job publishing `@bevy-ts/android-arm64` at every version (Linux runner, V8 from source with a cached build), not an optional dependency of `bevy-ts`; the package's first version by hand on the operator's go (`docs/release.md`); document it there
-- [ ] 4.9 Adreno skinning: force skinned meshes onto uniform buffers when the adapter is Adreno (bevy#24926); confirm on a real Adreno phone with agent town's characters
+- [ ] 4.9 Adreno skinning: on Adreno only, `max_storage_buffers_per_shader_stage = 0` in `WgpuSettings.constrained_limits` (bevy#24926); confirm on a real Adreno phone with agent town's characters
 - [ ] 4.8 `bevy_ts_abi()` and `bevy_ts_version()` exports, `Engine.ABI`, and a test that `Engine.load` refuses another ABI
 - [ ] 4.6 A smoke run on a headless emulator (`emulator -no-window`), from `bench/android-smoke/` outside the gate: a minimal Kotlin host creates the engine on a `SurfaceView`, plays `examples/arena`, reports `started`, a tap and `exited`. loading the `.so` by path from the app's `filesDir`. Record the stripped and gzipped `.so` sizes and the first-frame time
 
