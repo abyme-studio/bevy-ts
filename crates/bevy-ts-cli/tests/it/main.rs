@@ -22,6 +22,7 @@ mod dev_edit;
 mod ecs_queries;
 mod exported;
 mod gizmos;
+mod headless_keys;
 mod headless_pointer;
 mod heap_fields;
 mod headless_ui;

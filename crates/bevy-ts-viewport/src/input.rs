@@ -1,12 +1,12 @@
 //! Viewport input: events from the viewer become the Bevy 0.20 messages `bevy_winit` writes for
 //! a window, applied in `First` so `bevy_input`, picking, UI and game code take one path.
 
-use bevy_ts::keys;
+use crate::keyboard::write;
 use crate::shared::SharedRes;
 use crate::VirtualWindow;
 use bevy::input::ButtonState;
 use bevy::input::gestures::{DoubleTapGesture, PinchGesture, RotationGesture};
-use bevy::input::keyboard::{KeyboardFocusLost, KeyboardInput};
+use bevy::input::keyboard::KeyboardFocusLost;
 use bevy::input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::input::gamepad::{
     GamepadAxis, GamepadButton, GamepadConnection, GamepadConnectionEvent, RawGamepadAxisChangedEvent, RawGamepadButtonChangedEvent,
@@ -14,7 +14,7 @@ use bevy::input::gamepad::{
 };
 use bevy::input::touch::{ForceTouch, TouchInput, TouchPhase};
 use bevy::prelude::*;
-use bevy::window::{CursorEntered, CursorLeft, CursorMoved, Ime, WindowEvent, WindowFocused};
+use bevy::window::{CursorEntered, CursorLeft, CursorMoved, WindowEvent, WindowFocused};
 use bevy_ts_remote::protocol::{self as p, ViewportInput};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -72,11 +72,6 @@ pub(crate) fn queue_at(world: &mut World, at: Instant, params: Value) -> bool {
             false
         }
     }
-}
-
-fn write(world: &mut World, e: impl Into<WindowEvent> + Message + Clone) {
-    world.write_message(e.clone());
-    world.write_message(e.into());
 }
 
 fn button(b: Option<p::PointerEventButton>) -> MouseButton {
@@ -181,29 +176,8 @@ fn apply_one(world: &mut World, window: Entity, e: ViewportInput) {
                 p::GestureEventKind::DoubleTap => write(world, DoubleTapGesture),
             }
         }
-        ViewportInput::KeyEvent(e) => {
-            let Some(key_code) = keys::key_code(&e.code) else {
-                warn!("viewport: unknown key code {}", e.code);
-                return;
-            };
-            let logical_key = keys::logical_key(e.key.as_deref().unwrap_or(""));
-            let state = if e.state == p::KeyEventState::Down { ButtonState::Pressed } else { ButtonState::Released };
-            let text = e.text.filter(|t| !t.is_empty() && state == ButtonState::Pressed).map(Into::into);
-            write(world, KeyboardInput { key_code, logical_key, state, text, repeat: e.repeat.unwrap_or(false), window });
-        }
-        ViewportInput::ImeEvent(e) => {
-            let value = e.text.unwrap_or_default();
-            let ime = match e.kind {
-                p::ImeEventKind::Enabled => Ime::Enabled { window },
-                p::ImeEventKind::Disabled => Ime::Disabled { window },
-                p::ImeEventKind::Commit => Ime::Commit { window, value },
-                p::ImeEventKind::Preedit => {
-                    let cursor = e.cursor.and_then(|c| (c.len() == 2).then(|| (c[0] as usize, c[1] as usize)));
-                    Ime::Preedit { window, value, cursor }
-                }
-            };
-            write(world, ime);
-        }
+        ViewportInput::KeyEvent(e) => crate::keyboard::key(world, window, e),
+        ViewportInput::ImeEvent(e) => crate::keyboard::ime(world, window, e),
         ViewportInput::FocusEvent(e) => {
             if let Some(mut w) = world.get_mut::<Window>(window) {
                 w.focused = e.on;

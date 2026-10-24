@@ -209,8 +209,8 @@ import { KeyCode, type InputFocus, type Keys } from "bevy-ts/input";
 
 let count = 0;
 export function countN(keys: Keys, focus: InputFocus) {
-  if (keys.justPressed(KeyCode.KeyN)) console.log(`n ${focus.get() === undefined ? "free" : "field"}`);
-  if (keys.justPressed(KeyCode.KeyN) && focus.get() === undefined) {
+  if (keys.justPressed(KeyCode.KeyN)) console.log(`n ${focus.typing() ? "field" : "free"}`);
+  if (keys.justPressed(KeyCode.KeyN) && !focus.typing()) {
     count += 1;
     console.log(`count ${count}`);
   }
@@ -219,6 +219,26 @@ app.addSystems(Update, countN);
 
 app.scene("form", () => <input key="field" autoFocus />);
 "#;
+
+#[test]
+fn typing_guards_a_shortcut_only_while_a_field_has_focus() {
+    let src = COUNTER.replace(" autoFocus", "");
+    let (_dir, mut app) = start("text-input-typing", &src);
+    let press = |app: &mut App| {
+        input(app, vec![down("KeyN", "n")]);
+        updates(app, 2);
+        input(app, vec![up("KeyN", "n")]);
+        updates(app, 2);
+    };
+    let f = field(&mut app);
+    assert_ne!(focus(&app), Some(f));
+    press(&mut app);
+    assert_eq!(logged(&app, "count"), vec!["count 1"], "no field has focus: {:?}", focus(&app));
+    app.world_mut().resource_mut::<InputFocus>().set(f, bevy::input_focus::FocusCause::Navigated);
+    press(&mut app);
+    assert_eq!(logged(&app, "n "), vec!["n free", "n field"]);
+    assert_eq!(logged(&app, "count"), vec!["count 1"]);
+}
 
 #[test]
 fn keys_and_input_focus_read_n_only_while_nothing_has_focus() {
