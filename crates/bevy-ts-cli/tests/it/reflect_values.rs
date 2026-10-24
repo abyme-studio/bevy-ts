@@ -118,6 +118,16 @@ fn a_light_colour_is_a_prop_written_through_reflection() {
     assert_eq!(written(&app), 1, "only color is written");
 }
 
+/// The prebuilt engine has Bevy's soft shadows (`pcss`): a sun's `soft_shadow_size` is a TSX prop,
+/// an `Option` written through reflection, `null` turning them off again.
+#[test]
+fn a_sun_takes_a_soft_shadow_size() {
+    let (dir, mut app) = setup("reflect-soft-shadow", &scene("DirectionalLight", "<DirectionalLight shadow_maps_enabled soft_shadow_size={0.5} />"));
+    assert_eq!(the::<DirectionalLight>(&mut app).soft_shadow_size, Some(0.5));
+    save(&mut app, &dir, &scene("DirectionalLight", "<DirectionalLight shadow_maps_enabled soft_shadow_size={null} />"));
+    assert_eq!(the::<DirectionalLight>(&mut app).soft_shadow_size, None);
+}
+
 #[test]
 fn an_opaque_hole_loads_and_a_bound_one_fails_naming_it() {
     // An opaque hole with reflected serde loads (reflect-coverage): `steps` is a `usize`.

@@ -1,6 +1,6 @@
 //! What Bevy's `experimental_pbr_pcss` feature costs the prebuilt engine with soft shadows unset: a
 //! civ-like board (a ground and a grid of cubes) under one shadowed sun, drawn offscreen, no
-//! window. One arm per build: run it as is, then with `--features pcss`; each prints its frame
+//! window. One arm per build: run it with `--no-default-features`, then as is; each prints its frame
 //! times and saves its last frame, and the second compares its frame with the first's by pixel.
 //! `cargo static test --release -p bevy-ts-cli --test it pcss_bench:: -- --ignored --nocapture`.
 #![cfg(target_os = "macos")]
@@ -28,7 +28,10 @@ fn arm() -> &'static str {
 
 /// The arm's last frame: a PNG to look at, and its raw RGBA to compare.
 fn frame_path(arm: &str, ext: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/pcss-{arm}.{ext}"))
+    // Outside target/, which test runs prune.
+    let dir = std::env::temp_dir().join("bevy-ts-pcss");
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.join(format!("pcss-{arm}.{ext}"))
 }
 
 #[test]
