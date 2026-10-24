@@ -36,7 +36,7 @@ fn setup(name: &str, body: &str) -> App {
     .add_plugins(bevy_ts_cli::headless::HeadlessPlugin)
     .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
     .add_plugins(bevy_ts_tsx::TsxPlugin);
-    app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.tsx"), true).unwrap())));
+    app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.tsx"), true).unwrap())));
     app.finish();
     app.cleanup();
     let r = reload(&mut app, false);
