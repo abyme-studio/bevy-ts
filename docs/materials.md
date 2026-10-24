@@ -34,7 +34,9 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
   the load fails at the `material()` call.
 - `fragment` (required) and `vertex` are `.wgsl` imports, resolved relative to the importing file
   and watched. A WGSL string is rejected. `alphaMode` is `"opaque"` (default), `"blend"`,
-  `"premultiplied"`, `"add"`, `"multiply"`, `"alphaToCoverage"` or `{ mask: 0.5 }`.
+  `"premultiplied"`, `"add"`, `"multiply"`, `"alphaToCoverage"` or `{ mask: 0.5 }`. The fragment's
+  colour is premultiplied: with `"add"` it is added as returned, so its alpha does not dim it; scale
+  the colour itself to fade an additive glow.
 - Equal props share one material instance. Props cannot be bindings yet.
 - The shape is a `<mesh>` ([meshes.md](meshes.md)).
 - `kind` and `gltfMaterial` are props of `<material>` itself, so no param or texture may take
@@ -232,6 +234,7 @@ to the defaults rejects every standard material, glTF ones included. Without the
 9. The features cost no measurable frame or GPU time. Numbers, and the command:
 [bench/standard-material-features/results](../bench/standard-material-features/results/README.md).
 `crates/bevy-ts-cli/tests/it/standard_material_limits.rs` checks the pipeline fits the defaults.
+Per platform: [docs/research/standard-material-texture-limit.md](research/standard-material-texture-limit.md).
 Related upstream: [bevyengine/bevy#26028](https://github.com/bevyengine/bevy/issues/26028) (PCSS
 passes the same limit). No upstream issue names these features yet (TODO: link it once filed).
 
