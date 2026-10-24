@@ -349,7 +349,7 @@ mod drawn {
             .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
             .add_plugins(bevy_ts_tsx::TsxPlugin)
             .insert_resource(ClearColor(Color::BLACK));
-        app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.tsx"), true).unwrap())));
+        app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.tsx"), true).unwrap())));
         app.finish();
         app.cleanup();
         let r = reload(&mut app, false);
