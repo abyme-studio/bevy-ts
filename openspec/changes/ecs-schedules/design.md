@@ -53,6 +53,7 @@ Non-goals: exclusive world access from TS (declined, JS stays batched); `Main`, 
 - Per-frame cost, stage 3: about 3 µs per predicate evaluation (`docs/research/change-detection.md:130`), every frame its stage runs. Bench before it ships (task 3.1): one predicate on 1 and 8 systems, collective and distributive. Fallback if declined: no TS predicates; a system tests its own params and returns early, which costs the same call but is explicit.
 - Collective `runIf` changes behaviour for a group gated by a stateful condition or by one a member's commands flip. Every gated group in the repo today (`packages/bevy-ts/test/systems.ts`, `bench/dx/examples`) uses `inState`, which cannot change inside a stage, so none changes behaviour.
 - Custom schedule labels leak one string each; bounded by the labels a project declares.
+- Spec overlap: this change and ts-systems-as-bevy-systems both MODIFY ts-systems "Schedules, ordering and run conditions". Whichever archives second takes the other's text. The specs name only the set `BevyTsSet::<Stage>`, not one exclusive system, so both changes hold.
 
 ## Answers to the research's open questions
 
