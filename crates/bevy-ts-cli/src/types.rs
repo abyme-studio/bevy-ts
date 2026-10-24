@@ -186,10 +186,7 @@ fn glam_ts(path: &str) -> Option<String> {
         "Affine2" | "DAffine2" => ("number", 6),
         "Affine3" | "Affine3A" | "DAffine3" => ("number", 12),
         _ => {
-            let n = match name.chars().rev().find(char::is_ascii_digit).filter(|_| name.contains("Vec")) {
-                Some(d) => d.to_digit(10)? as usize,
-                None => return None,
-            };
+            let n = name.chars().rev().find(char::is_ascii_digit).filter(|_| name.contains("Vec"))?.to_digit(10)? as usize;
             (if name.starts_with("BVec") { "boolean" } else { "number" }, n)
         }
     };
