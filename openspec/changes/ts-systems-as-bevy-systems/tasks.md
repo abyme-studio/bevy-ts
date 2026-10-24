@@ -1,7 +1,7 @@
 ## 1. Rebase and reconcile
 
 - [x] 1.1 Rebase onto main after ecs-schedules stage 1 (3d641f44) and writable-native-params (584b78cf) land; all cargo through `~/dev/abyme/scripts/gate-slot`
-- [x] 1.2 Rewrite the `ts-systems` delta on ecs-schedules' text of "Schedules, ordering and run conditions" (collective and distributive `runIf`); ecs-schedules' `ts-schedules` delta drops "one exclusive system" (theirs to edit; asked 2026-10-24)
+- [x] 1.2 Rewrite the `ts-systems` delta on the synced text of "Schedules, ordering and run conditions" (main 0594ddd7), and a `ts-schedules` delta: a stage is `BevyTsSet::<Stage>` holding each TS system as its own Bevy system; `openspec validate --strict`
 - [ ] 1.3 At archive: whichever of ecs-schedules and this change archives second takes the other's text of "Schedules, ordering and run conditions"
 
 ## 2. Fetch and call
