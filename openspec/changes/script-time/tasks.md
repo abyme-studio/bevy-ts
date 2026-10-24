@@ -40,7 +40,7 @@
 
 ## 6. Time conditions (stage 3)
 
-- [x] 6.1 `crates/bevy-ts/src/time_conditions.rs` (new): `expose(app)` registers the seven conditions of design.md's stage 3 table with `conditions::expose`, each factory calling Bevy's `bevy::time::common_conditions` function; `secs` checked finite and `>= 0`, else `"<tsName> takes seconds, a finite number >= 0; got <value>"`; `paused` ignores args. Called from the plugin's `build` beside `sets::expose_anchors` (`lib.rs:168`)
+- [x] 6.1 `crates/bevy-ts/src/time_conditions.rs` (new): `expose_all(app)` registers the seven conditions of design.md's stage 3 table with `conditions::expose`, each factory calling Bevy's `bevy::time::common_conditions` function; `secs` checked finite and `>= 0`, else `"<tsName> takes seconds, a finite number >= 0; got <value>"`; `paused` ignores args. Called from the plugin's `build` beside `sets::expose_anchors` (`lib.rs:168`)
 - [x] 6.2 `crates/bevy-ts-v8/js/core.js`: `onTimer`, `onRealTimer`, `onceAfterDelay`, `onceAfterRealDelay`, `repeatingAfterDelay`, `repeatingAfterRealDelay` (each `nativeCondition("bevy:<name>", { secs })`) and `paused()`, beside `runOnce`; `node scripts/sync-runtime.mjs` in `packages/bevy-ts` for `runtime/core.js`
 - [x] 6.3 `packages/bevy-ts/index.d.ts`: the seven declarations, `(seconds: number) => Condition` and `paused(): Condition`, each with a one-line doc naming Bevy's function
 - [x] 6.4 `crates/bevy-ts-cli/tests/it/time.rs`: `time_conditions_match_bevy` (each timed condition in `Update`, and `onTimer` in `FixedUpdate`, against Bevy's own gating a Rust system, `TimeUpdateStrategy::ManualDuration`, same frames), `paused_follows_the_game_clock`, `time_condition_survives_a_reload`, `a_bad_duration_fails_the_load` (file and line of the call)

@@ -106,7 +106,7 @@ the load with the line.
 
 **Stage 3: time conditions through the seam.** bevy-ts exposes Bevy's seven conditions from
 `bevy_time::common_conditions` with `ts_condition`, under `bevy:` names, as it exposes its
-`bevy:` set anchors. A new `crates/bevy-ts/src/time_conditions.rs` holds `expose(app)`, called
+`bevy:` set anchors. A new `crates/bevy-ts/src/time_conditions.rs` holds `expose_all(app)`, called
 from the plugin's `build` beside `sets::expose_anchors`. Each factory calls Bevy's function and
 boxes it: no port of Bevy's logic. `bevy-ts` exports a typed wrapper per condition, in camelCase
 (`core.js` beside `runOnce`, typed in `index.d.ts`):

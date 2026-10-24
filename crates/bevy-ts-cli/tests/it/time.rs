@@ -416,7 +416,7 @@ export function f() { console.log("fired repeatingAfterRealDelay"); }
 export function g() { console.log("fired fixedOnTimer"); }
 app.addSystems(Update, systems(a).runIf(onTimer(0.25)), systems(b).runIf(onRealTimer(0.3)), systems(c).runIf(onceAfterDelay(0.45)), systems(d).runIf(onceAfterRealDelay(0.2)),
   systems(e).runIf(repeatingAfterDelay(0.5)), systems(f).runIf(repeatingAfterRealDelay(0.35)));
-app.addSystems(FixedUpdate, systems(g).runIf(onTimer(0.05)));
+app.addSystems(FixedUpdate, systems(g).runIf(onTimer(0.5)));
 "#;
     let (_, mut app) = load("time-conditions", &format!("{CONDITIONS_HEAD}{src}"));
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(100)));
@@ -429,11 +429,11 @@ app.addSystems(FixedUpdate, systems(g).runIf(onTimer(0.05)));
     bevy_gated(&mut app, Update, "onceAfterRealDelay", once_after_real_delay(s(0.2)));
     bevy_gated(&mut app, Update, "repeatingAfterDelay", repeating_after_delay(s(0.5)));
     bevy_gated(&mut app, Update, "repeatingAfterRealDelay", repeating_after_real_delay(s(0.35)));
-    bevy_gated(&mut app, FixedUpdate, "fixedOnTimer", on_timer(s(0.05)));
+    bevy_gated(&mut app, FixedUpdate, "fixedOnTimer", on_timer(s(0.5)));
     let (ts, bevy) = fired_frames(&mut app, 20, |_, _| {});
     assert_eq!(ts, bevy);
     let total = |n: &str| ts.iter().flatten().filter(|x| *x == n).count();
-    assert!(total("onTimer") >= 7 && total("onceAfterDelay") == 1 && total("repeatingAfterDelay") > 10 && total("fixedOnTimer") > 20, "{ts:?}");
+    assert!(total("onTimer") >= 7 && total("onceAfterDelay") == 1 && total("repeatingAfterDelay") > 10 && total("fixedOnTimer") >= 3, "{ts:?}");
 }
 
 #[test]
@@ -484,7 +484,7 @@ fn time_condition_survives_a_reload() {
 
 #[test]
 fn a_bad_duration_fails_the_load() {
-    for (arg, got) in [("-1", "-1"), ("NaN", "null"), ("Infinity", "null")] {
+    for (arg, got) in [("-1", "-1"), ("NaN", "null"), ("Infinity", "null"), ("1e20", "1e+20")] {
         let src = format!("{CONDITIONS_HEAD}export function a() {{}}\napp.addSystems(Update, systems(a).runIf(onTimer({arg})));\n");
         let errors = load_errors(&format!("time-cond-bad{got}{}", arg.len()), &src);
         let want = format!("onTimer takes seconds, a finite number >= 0; got {got}");
@@ -492,4 +492,28 @@ fn a_bad_duration_fails_the_load() {
         let at = e.location.as_ref().unwrap();
         assert!(at.file.ends_with("game.ts") && at.line as usize == CONDITIONS_HEAD.lines().count() + 2, "{at:?}");
     }
+}
+
+#[test]
+fn changed_seconds_start_a_fresh_timer() {
+    use bevy::time::common_conditions::on_timer;
+    let body = |secs: &str| format!("{CONDITIONS_HEAD}export function a() {{ console.log(\"fired {secs}\"); }}\napp.addSystems(Update, systems(a).runIf(onTimer({secs})));\n");
+    let (dir, mut app) = load("time-cond-fresh", &body("1"));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(250)));
+    app.init_resource::<Fired>();
+    bevy_gated(&mut app, Update, "1", on_timer(Duration::from_secs(1)));
+    let (ts, bevy) = fired_frames(&mut app, 16, |app, frame| {
+        // Mid-way to the second firing, a reload to `onTimer(2)`, beside a Bevy timer of 2 s that
+        // starts this frame.
+        if frame == 6 {
+            write(&dir, "game.ts", &body("2"));
+            let r = reload(app, false);
+            assert!(r.errors.is_empty(), "{:?}", r.errors);
+            bevy_gated(app, Update, "2", on_timer(Duration::from_secs(2)));
+        }
+    });
+    let only = |v: &[Vec<String>], n: &str| v.iter().map(|f| f.iter().filter(|x| *x == n).count()).collect::<Vec<_>>();
+    assert_eq!(only(&ts[..6], "1"), only(&bevy[..6], "1"), "before the reload");
+    assert_eq!(only(&ts, "2"), only(&bevy, "2"), "the reload kept the old timer");
+    assert_eq!(only(&ts, "2").iter().sum::<usize>(), 1, "{ts:?}");
 }

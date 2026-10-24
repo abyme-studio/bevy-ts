@@ -22,13 +22,11 @@ where
     expose(app, name, move |args| Ok(Box::new(IntoSystem::into_system(make(seconds(ts_name, args)?))) as BoxedCondition));
 }
 
-/// `args.secs` as a `Duration`: a finite number `>= 0`. JS's `NaN` and `Infinity` arrive as `null`.
+/// `args.secs` as a `Duration`: a finite number `>= 0` that fits one (`1e20` does not). JS's `NaN`
+/// and `Infinity` arrive as `null`.
 fn seconds(ts_name: &str, args: &serde_json::Value) -> Result<Duration, String> {
     let secs = &args["secs"];
-    match secs.as_f64() {
-        Some(s) if s.is_finite() && s >= 0.0 => Ok(Duration::from_secs_f64(s)),
-        _ => Err(format!("{ts_name} takes seconds, a finite number >= 0; got {secs}")),
-    }
+    secs.as_f64().and_then(|s| Duration::try_from_secs_f64(s).ok()).ok_or_else(|| format!("{ts_name} takes seconds, a finite number >= 0; got {secs}"))
 }
 
 /// Registers the seven conditions. Called from the plugin's `build`.
@@ -57,7 +55,7 @@ mod tests {
         assert_eq!(c.names().filter(|n| n.starts_with("bevy:")).count(), 7);
         let on_timer = c.get("bevy:on-timer").unwrap().factory.clone();
         assert!(on_timer(&serde_json::json!({ "secs": 0.5 })).is_ok());
-        for bad in [serde_json::json!({ "secs": -1 }), serde_json::json!({ "secs": null }), serde_json::json!({ "secs": "2" }), serde_json::json!(null)] {
+        for bad in [serde_json::json!({ "secs": -1 }), serde_json::json!({ "secs": null }), serde_json::json!({ "secs": "2" }), serde_json::json!({ "secs": 1e20 }), serde_json::json!(null)] {
             let e = on_timer(&bad).err().unwrap();
             assert!(e.starts_with("onTimer takes seconds, a finite number >= 0; got "), "{e}");
         }
