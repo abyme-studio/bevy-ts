@@ -1,10 +1,13 @@
 //! W3C `KeyboardEvent.code` and `key` values to Bevy's `KeyCode` and `Key` and back, as winit
-//! maps them, and the numbers `bevy-ts/input` gives each `KeyCode`. One owner for the viewport's
-//! key events, the TSX keyboard events and `KeyCode` in TS.
+//! maps them, and the numbers `bevy-ts/input` gives each `KeyCode`, `MouseButton`,
+//! `GamepadButton` and `GamepadAxis`. One owner for the viewport's key events, the TSX keyboard
+//! events and the input enums in TS.
 //! Generated from bevy_winit 0.20's converters; W3C names that winit spells differently are
 //! aliased, the W3C name first.
 
+use bevy::input::gamepad::{GamepadAxis, GamepadButton};
 use bevy::input::keyboard::{Key, KeyCode, NativeKey};
+use bevy::input::mouse::MouseButton;
 
 /// Every `KeyCode` without data, in Bevy's order: W3C `code` names (the first is the one
 /// [`code_name`] gives), then the variant. A variant's index here is its number in TS.
@@ -554,6 +557,85 @@ pub fn key_code_of(n: u32) -> Option<KeyCode> {
     KEY_CODES.get(n as usize).map(|(_, k)| *k)
 }
 
+/// Where each input enum's numbers start in TS: one number space, so a condition or method can
+/// tell the device from the number. `KeyCode` starts at 0.
+pub const MOUSE_BUTTON_BASE: u32 = 0x1000;
+pub const GAMEPAD_BUTTON_BASE: u32 = 0x2000;
+pub const GAMEPAD_AXIS_BASE: u32 = 0x2100;
+
+/// `MouseButton`'s variants without data, in Bevy's order; TS numbers start at
+/// [`MOUSE_BUTTON_BASE`].
+pub const MOUSE_BUTTONS: &[(&str, MouseButton)] = &[
+    ("Left", MouseButton::Left),
+    ("Right", MouseButton::Right),
+    ("Middle", MouseButton::Middle),
+    ("Back", MouseButton::Back),
+    ("Forward", MouseButton::Forward),
+];
+
+/// `GamepadButton`'s variants without data, in Bevy's order; TS numbers start at
+/// [`GAMEPAD_BUTTON_BASE`].
+pub const GAMEPAD_BUTTONS: &[(&str, GamepadButton)] = &[
+    ("South", GamepadButton::South),
+    ("East", GamepadButton::East),
+    ("North", GamepadButton::North),
+    ("West", GamepadButton::West),
+    ("C", GamepadButton::C),
+    ("Z", GamepadButton::Z),
+    ("LeftTrigger", GamepadButton::LeftTrigger),
+    ("LeftTrigger2", GamepadButton::LeftTrigger2),
+    ("RightTrigger", GamepadButton::RightTrigger),
+    ("RightTrigger2", GamepadButton::RightTrigger2),
+    ("Select", GamepadButton::Select),
+    ("Start", GamepadButton::Start),
+    ("Mode", GamepadButton::Mode),
+    ("LeftThumb", GamepadButton::LeftThumb),
+    ("RightThumb", GamepadButton::RightThumb),
+    ("DPadUp", GamepadButton::DPadUp),
+    ("DPadDown", GamepadButton::DPadDown),
+    ("DPadLeft", GamepadButton::DPadLeft),
+    ("DPadRight", GamepadButton::DPadRight),
+];
+
+/// `GamepadAxis`'s variants without data, in Bevy's order; TS numbers start at
+/// [`GAMEPAD_AXIS_BASE`].
+pub const GAMEPAD_AXES: &[(&str, GamepadAxis)] = &[
+    ("LeftStickX", GamepadAxis::LeftStickX),
+    ("LeftStickY", GamepadAxis::LeftStickY),
+    ("LeftZ", GamepadAxis::LeftZ),
+    ("RightStickX", GamepadAxis::RightStickX),
+    ("RightStickY", GamepadAxis::RightStickY),
+    ("RightZ", GamepadAxis::RightZ),
+];
+
+/// An input enum's TS number, decoded: which device, and the variant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputCode {
+    Key(KeyCode),
+    Mouse(MouseButton),
+    GamepadButton(GamepadButton),
+    GamepadAxis(GamepadAxis),
+}
+
+/// The variant of any input enum TS numbers as `n`, `None` for a number no enum gives.
+pub fn input_code_of(n: u32) -> Option<InputCode> {
+    fn at<T: Copy>(n: u32, list: &[(&str, T)], base: u32) -> Option<T> {
+        n.checked_sub(base).and_then(|i| list.get(i as usize)).map(|(_, v)| *v)
+    }
+    if let Some(k) = key_code_of(n) {
+        return Some(InputCode::Key(k));
+    }
+    at(n, MOUSE_BUTTONS, MOUSE_BUTTON_BASE)
+        .map(InputCode::Mouse)
+        .or_else(|| at(n, GAMEPAD_BUTTONS, GAMEPAD_BUTTON_BASE).map(InputCode::GamepadButton))
+        .or_else(|| at(n, GAMEPAD_AXES, GAMEPAD_AXIS_BASE).map(InputCode::GamepadAxis))
+}
+
+/// The names of an input list, in order.
+pub fn names<T>(list: &[(&'static str, T)]) -> Vec<&'static str> {
+    list.iter().map(|(n, _)| *n).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -604,5 +686,38 @@ mod tests {
         }
         assert_eq!(info.iter().count(), KEY_CODES.len() + 1, "only Unidentified carries data");
         assert_eq!(key_code_of(KEY_CODES.len() as u32), None);
+    }
+
+    /// The names of `T`'s unit variants, in Bevy's order.
+    fn units<T: Typed>() -> Vec<&'static str> {
+        let TypeInfo::Enum(info) = T::type_info() else { panic!("an enum") };
+        info.iter().filter(|v| matches!(v, VariantInfo::Unit(_))).map(|v| v.name()).collect()
+    }
+
+    /// Fails when Bevy changes a mouse or gamepad enum's variants, or when two enums' numbers
+    /// could meet.
+    #[test]
+    fn the_device_lists_are_bevys_and_never_overlap() {
+        assert_eq!(names(MOUSE_BUTTONS), units::<MouseButton>());
+        assert_eq!(names(GAMEPAD_BUTTONS), units::<GamepadButton>());
+        assert_eq!(names(GAMEPAD_AXES), units::<GamepadAxis>());
+        for (name, b) in MOUSE_BUTTONS {
+            assert_eq!(format!("{b:?}"), *name);
+        }
+        for (name, b) in GAMEPAD_BUTTONS {
+            assert_eq!(format!("{b:?}"), *name);
+        }
+        for (name, a) in GAMEPAD_AXES {
+            assert_eq!(format!("{a:?}"), *name);
+        }
+        assert!((KEY_CODES.len() as u32) <= MOUSE_BUTTON_BASE);
+        assert!(MOUSE_BUTTON_BASE + MOUSE_BUTTONS.len() as u32 <= GAMEPAD_BUTTON_BASE);
+        assert!(GAMEPAD_BUTTON_BASE + GAMEPAD_BUTTONS.len() as u32 <= GAMEPAD_AXIS_BASE);
+        assert_eq!(input_code_of(0), Some(InputCode::Key(KEY_CODES[0].1)));
+        assert_eq!(input_code_of(MOUSE_BUTTON_BASE), Some(InputCode::Mouse(MouseButton::Left)));
+        assert_eq!(input_code_of(GAMEPAD_BUTTON_BASE + 7), Some(InputCode::GamepadButton(GamepadButton::LeftTrigger2)));
+        assert_eq!(input_code_of(GAMEPAD_AXIS_BASE), Some(InputCode::GamepadAxis(GamepadAxis::LeftStickX)));
+        assert_eq!(input_code_of(MOUSE_BUTTON_BASE + MOUSE_BUTTONS.len() as u32), None);
+        assert_eq!(input_code_of(KEY_CODES.len() as u32), None);
     }
 }

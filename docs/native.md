@@ -370,6 +370,72 @@ export function openNotes(keys: Keys, focus: InputFocus) {
 
 A number that is not a `KeyCode` throws, naming the param, the method and the number.
 
+The other devices read the same way, each over Bevy's own state:
+
+- `MouseButtons` (`pressed`, `justPressed`, `justReleased`) over `ButtonInput<MouseButton>`.
+- `Cursor` (`position()`, `physicalPosition()`) over the window with `PrimaryWindow`: Bevy's
+  `cursor_position()`, `undefined` while the cursor is outside it or there is no window. It is
+  not `Window`, which TS already has as a reflected component.
+- `Gamepads` over every `Gamepad`, the pad's entity first: `pressed`, `justPressed`,
+  `justReleased`, `get` and `getUnclamped` (a button or an axis, `undefined` until the pad
+  reports it), `leftStick`, `rightStick`, `dpad`, `vendorId`, `productId`. Find pads as in Bevy,
+  with `Query<[Entity], With<Gamepad>>`; an entity with no `Gamepad` throws.
+- `Touches` over `Touches`: Bevy's `anyJustPressed`, `justPressed(id)`, `getPressed(id)`,
+  `firstPressedPosition` and the rest. Its iterators are `count()`/`at(i)`,
+  `justPressedCount()`/`justPressedAt(i)` and the same for released and canceled, in an order that
+  holds for the whole run. A touch is the record `{ id, position, startPosition,
+  previousPosition, delta, distance }`, without Bevy's `force` (read `TouchInput` for it). Ids are
+  winit's, as numbers.
+
+`MouseButton`, `GamepadButton` and `GamepadAxis` are enums like `KeyCode`, without the `Other(n)`
+variants. Their numbers never meet (`KeyCode` from 0, `MouseButton` from `0x1000`,
+`GamepadButton` from `0x2000`, `GamepadAxis` from `0x2100`), so `gamepads.get(pad, ..)` takes
+either gamepad enum, as Bevy's does, and a number of the wrong enum throws naming the one it is:
+
+```ts
+import type { Entity, Query, With } from "bevy-ts";
+import { Gamepad } from "bevy-ts/bevy";
+import { GamepadAxis, GamepadButton, MouseButton, type Cursor, type Gamepads, type MouseButtons } from "bevy-ts/input";
+
+export function aim(mouse: MouseButtons, cursor: Cursor, gamepads: Gamepads, pads: Query<[Entity], With<Gamepad>>) {
+  const at = cursor.position();
+  if (at && mouse.justPressed(MouseButton.Left)) fireAt(at);
+  pads.each((pad) => {
+    if (gamepads.justPressed(pad, GamepadButton.South)) jump();
+    steer(gamepads.get(pad, GamepadAxis.LeftStickX) ?? 0);
+  });
+}
+```
+
+Every public Bevy 0.20 input type, and where TS reaches it:
+
+| Bevy type | TS | Owner |
+|---|---|---|
+| `ButtonInput<KeyCode>`, `KeyCode` | `Keys`, `KeyCode` | text-input |
+| `InputFocus` | `InputFocus` | text-input |
+| `ButtonInput<Key>`, `Key` (logical keys) | beside `Keys` | text-input, a later stage |
+| `KeyboardInput`, `KeyboardFocusLost` | `MessageReader` | rust-events |
+| `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` | script-input-devices |
+| `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollPixelsPerLine`, `MouseScrollUnit` | `Res<T>` | rust-resources; script-input-devices stage 2 |
+| `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events; script-input-devices stage 3 |
+| `Window::cursor_position`, `physical_cursor_position` | `Cursor` | script-input-devices |
+| `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events; stage 3 |
+| `Touches`, `Touch` | `Touches`, its touch record (no `force`) | script-input-devices |
+| `TouchInput`, `TouchPhase`, `ForceTouch` | `MessageReader` | rust-events; stage 3 |
+| `PinchGesture`, `RotationGesture`, `DoubleTapGesture`, `PanGesture` | `MessageReader` | rust-events; stage 3 |
+| `Gamepad` | `With<Gamepad>` to find pads, `Gamepads` for its methods | script-input-devices |
+| `GamepadButton`, `GamepadAxis`, `GamepadInput` | enums; `get` takes either | script-input-devices |
+| `GamepadSettings`, `ButtonSettings`, `AxisSettings`, `ButtonAxisSettings` | read through reflection; no write | a follow-up |
+| `GamepadEvent`, `GamepadConnectionEvent`, `GamepadButtonChangedEvent`, `GamepadButtonStateChangedEvent`, `GamepadAxisChangedEvent`, `RawGamepadEvent` and its parts | `MessageReader` | rust-events; stage 3 |
+| `GamepadRumbleRequest`, `GamepadRumbleIntensity` | `MessageWriter` | rust-events; stage 3 |
+| Rumble in viewport mode | none: the viewport protocol carries no rumble | a follow-up |
+| `input_pressed`, `input_just_pressed`, `input_just_released`, `input_toggle_active` | `inputPressed` and friends | script-input-devices, on ecs-schedules' native conditions |
+| Condition combinators | `not`, `and`, `or` | ecs-schedules |
+| `ButtonState`, `Axis<T>` | through the params | none needed |
+| `Gilrs`, `GilrsGamepads`, `RunningRumbleEffects`, `RumbleSystems` | none: backend internals | none |
+
+Bevy has no gamepad condition: a pad's buttons belong to its entity, not to a `ButtonInput`.
+
 `examples/rapier` uses all of it with no Rust in the project. Plans for leafwing-input-manager,
 avian and bevy_hanabi are in [research/native-ports.md](research/native-ports.md).
 

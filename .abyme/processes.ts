@@ -306,6 +306,9 @@ const processes = {
   // The gate's steps after the tests, for a lint fix that changes no behaviour.
   "smf-lint": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/smf-lint.log | grep -E \"^error|^warning|stale|-->\" -A6 | head -80; echo lint exit $?'" },
   "smf-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/smf-gate.log | grep -E \"^test result|FAILED|panicked|^error|stale\"; echo gate exit $?'" },
+  // Change script-input-devices: the touched crates' build and their tests, in the shared check slot.
+  "input-devices-build": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:script-input-devices -- bash -c 'set -o pipefail; mkdir -p target; cargo build -p bevy-ts -p bevy-ts-cli --tests 2>&1 | grep -v ld64 | tee target/input-devices-build.log | grep -E \"^(error|warning)\" -A12 | head -200'" },
+  "input-devices-tests": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:script-input-devices -- bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib keys && cargo test -p bevy-ts-cli --lib input && cargo test -p bevy-ts-cli --test it -- input_devices:: exported::) 2>&1 | grep -v ld64 | tee target/input-devices-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

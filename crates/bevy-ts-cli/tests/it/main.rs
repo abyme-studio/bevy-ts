@@ -19,6 +19,7 @@ mod dev_edit;
 mod exported;
 mod headless_pointer;
 mod headless_ui;
+mod input_devices;
 mod inspector;
 mod launcher_commands;
 mod levels_bench;
