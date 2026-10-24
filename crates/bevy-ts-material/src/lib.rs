@@ -9,7 +9,7 @@ pub mod render;
 pub mod scene;
 pub mod wgsl;
 
-pub use alpha::{MaterialAlpha, MaterialAlphaTargets};
+pub use alpha::{Fade, FadeMaterial, MaterialAlpha, MaterialAlphaTargets, standard_of};
 pub use kinds::MaterialKinds;
 pub use render::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
 pub use scene::{GltfMaterialFilter, SceneMaterialSet, SceneMaterialTargets, scene_entities};

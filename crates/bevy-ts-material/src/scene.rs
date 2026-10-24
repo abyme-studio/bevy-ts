@@ -1,8 +1,10 @@
 //! A script material on a glTF scene root (openspec change `scene-material`): the root's
 //! `ScriptMaterial3d` draws the meshes its scene spawned, optionally only those whose glTF
 //! material has one name. The root has no mesh, so it is the source of truth: each swapped mesh's
-//! `StandardMaterial` is kept on the root and put back when the material goes.
+//! `StandardMaterial` is kept on the root and put back when the material goes. A mesh faded by
+//! `MaterialAlpha` keeps its original, which `alpha.rs` knows; put back, it is faded again.
 
+use crate::alpha::{FadeMaterial, standard_of};
 use crate::render::ScriptMaterial3d;
 use bevy::ecs::entity::EntityHashSet;
 use bevy::gltf::GltfMaterialName;
@@ -103,7 +105,7 @@ pub fn sync(world: &mut World, root: Entity) {
     if let Some(m) = &material {
         for (e, _) in &kept {
             if world.get::<ScriptMaterial3d>(*e) != Some(m) {
-                world.entity_mut(*e).remove::<MeshMaterial3d<StandardMaterial>>().insert(m.clone());
+                world.entity_mut(*e).remove::<(MeshMaterial3d<StandardMaterial>, MeshMaterial3d<FadeMaterial>)>().insert(m.clone());
             }
         }
         let known: EntityHashSet = kept.iter().map(|(e, _)| *e).collect();
@@ -111,8 +113,8 @@ pub fn sync(world: &mut World, root: Entity) {
             if known.contains(&e) || !wants(world, e) {
                 continue;
             }
-            let Some(original) = world.get::<MeshMaterial3d<StandardMaterial>>(e).map(|m| m.0.clone()) else { continue };
-            world.entity_mut(e).remove::<MeshMaterial3d<StandardMaterial>>().insert(m.clone());
+            let Some(original) = standard_of(world, e) else { continue };
+            world.entity_mut(e).remove::<(MeshMaterial3d<StandardMaterial>, MeshMaterial3d<FadeMaterial>)>().insert(m.clone());
             kept.push((e, original));
         }
     }

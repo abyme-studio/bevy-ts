@@ -139,16 +139,25 @@ import { MaterialAlpha } from "bevy-ts/bevy";
 - It fades the entity's own `MeshMaterial3d<StandardMaterial>` and, on a glTF scene root
   (`WorldAssetRoot`), every mesh its scene spawned, again whenever the scene is ready. TSX children
   are not faded; give each its own. A mesh drawing a script material (above) is left alone.
-- Each faded mesh draws with a copy of its material owned by the entity, at the original's alpha
-  times `alpha` (clamped to 0..1), in `Blend` below 1 when the original was opaque, masked or
-  alpha-to-coverage. Other entities sharing the material are not faded. A changed `alpha` edits
-  the copies in place; it makes no asset. A material changed under it (a TS save, a glTF saved
-  again) is faded again.
+- Each faded mesh draws with a copy of its material owned by the entity: a `FadeMaterial`
+  (`ExtendedMaterial<StandardMaterial, Fade>`), its base a clone of the original. While faded, the
+  mesh holds `MeshMaterial3d<FadeMaterial>` and no `MeshMaterial3d<StandardMaterial>`. Other
+  entities sharing the material are not faded. A changed `alpha` edits the copies in place; it
+  makes no asset. A material changed under it (a TS save, a glTF saved again) is faded again.
+- The copy dithers: it keeps the original's alpha mode and draws about `alpha` (clamped to 0..1)
+  of its pixels, picked by a 4×4 ordered (Bayer) map on screen, as Bevy's `VisibilityRange`
+  cross-fade does. Depth stays written, so a model fades as one solid, its inner faces hidden. At
+  1 it draws as the original; at 0, nothing.
+- Alpha steps in sixteenths, and the pattern shows: we run no TAA to smooth it.
+- Its shadow follows: the shadow pass drops the same pixels, so the shadow lightens as `alpha`
+  falls and is gone at 0. `MaterialAlpha` never touches `NotShadowCaster`; one on a mesh keeps it
+  from casting at any alpha.
+- An original that blends already (`blend`, `premultiplied`, `add`, `multiply`) keeps its mode and
+  fades through its colour: its alpha times `alpha`, no dither on screen. Only its shadow dithers.
 - Removing it gives every mesh its own material back and drops the copies. Remove it when not
   fading: while it is on, even at 1, the entity's meshes do not batch with others sharing their
-  material, and each changed frame prepares the copies again.
-- Bevy casts no shadow from blended meshes, and sorts them per mesh, so parts of one model may
-  overlap in the wrong order mid-fade.
+  material, a discard costs their early depth test, and their shadow runs a fragment shader.
+- The first fade of each distinct material compiles a pipeline.
 
 ## Known limits
 
@@ -173,11 +182,15 @@ root's descendants, which is how TSX children stay untouched. That walk is
 `bevy_ts_material::scene_entities(world, root)`. Every swap runs in `SceneMaterialSet`
 (`PostUpdate`), so other per-root work on a scene's meshes can run after it.
 
-`MaterialAlpha` is `alpha.rs`. It runs after `SceneMaterialSet` on the same walk, so a mesh
-scene-material swapped has no `StandardMaterial` and is skipped. When scene-material swaps a mesh
-that holds a fade copy, it keeps the copy as the mesh's own material; removing `MaterialAlpha`
-rewrites those back to the originals in `SceneMaterialTargets`, so each removal, in either order,
-leaves what the other still asks.
+`MaterialAlpha` is `alpha.rs`, with its shader `fade.wesl`. It runs after `SceneMaterialSet` on
+the same walk, so a mesh scene-material swapped holds neither material and is skipped. `alpha.rs`
+is the one place that knows a faded mesh's original: when scene-material swaps a faded mesh, it
+asks `alpha::standard_of` and keeps the original, and when it puts that back under a faded root,
+`MaterialAlpha` fades it again. Each removal, in either order, leaves what the other still asks.
+
+The shadow pass runs a material's prepass fragment shader only when it may discard, which an
+opaque base does not; `Fade::specialize` gives those pipelines `fade.wesl`'s prepass fragment, so
+the shadow drops the same pixels.
 
 ## Standard materials
 

@@ -6,7 +6,7 @@ use crate::common;
 
 use bevy::prelude::*;
 use bevy_ts::generation::{DevChannel, DevEvent, ReloadStatus};
-use bevy_ts_material::{MaterialKinds, ScriptMaterial, ScriptMaterial3d, ScriptMaterialPlugin};
+use bevy_ts_material::{FadeMaterial, MaterialKinds, ScriptMaterial, ScriptMaterial3d, ScriptMaterialPlugin};
 use common::*;
 use std::path::Path;
 
@@ -199,6 +199,15 @@ fn standard(app: &mut App, name: &str) -> (Handle<StandardMaterial>, StandardMat
     (h, m)
 }
 
+/// The fade copy a faded entity draws, which holds no `StandardMaterial` while faded.
+fn faded(app: &mut App, name: &str) -> (Handle<FadeMaterial>, FadeMaterial) {
+    let e = named(app, name);
+    assert!(app.world().get::<MeshMaterial3d<StandardMaterial>>(e).is_none(), "{name} holds no StandardMaterial while faded");
+    let h = app.world().get::<MeshMaterial3d<FadeMaterial>>(e).expect("a fade copy").0.clone();
+    let m = app.world().resource::<Assets<FadeMaterial>>().get(&h).unwrap().clone();
+    (h, m)
+}
+
 fn standard_game(cube: &str) -> String {
     format!("import {{ app }} from \"bevy-ts\";\n\napp.scene(\"s\", () => (\n  <entity name=\"cube\">\n    <mesh shape=\"cuboid\" />\n    {cube}\n  </entity>\n));\n")
 }
@@ -270,21 +279,21 @@ fn a_bound_material_alpha_fades_a_shape_frame_by_frame() {
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     updates(&mut app, 2);
-    let (copy, _) = standard(&mut app, "cube");
+    let (copy, _) = faded(&mut app, "cube");
     let (shared, twin) = standard(&mut app, "twin");
-    assert_ne!(copy, shared, "the faded cube draws its own copy");
-    let assets = app.world().resource::<Assets<StandardMaterial>>().len();
+    let count = |app: &App| app.world().resource::<Assets<StandardMaterial>>().len() + app.world().resource::<Assets<FadeMaterial>>().len();
+    let assets = count(&app);
     let mut last = f32::MAX;
     for _ in 0..12 {
         app.update();
-        let (h, m) = standard(&mut app, "cube");
+        let (h, m) = faded(&mut app, "cube");
         assert_eq!(h, copy, "edited in place");
-        assert!(m.base_color.alpha() <= last, "{} after {last}", m.base_color.alpha());
-        last = m.base_color.alpha();
-        assert_eq!(app.world().resource::<Assets<StandardMaterial>>().len(), assets, "no asset added");
+        assert!(m.extension.alpha <= last, "{} after {last}", m.extension.alpha);
+        last = m.extension.alpha;
+        assert_eq!(count(&app), assets, "no asset added");
     }
     assert_eq!(last, 0.0);
-    assert_eq!(standard(&mut app, "cube").1.alpha_mode, AlphaMode::Blend);
+    assert_eq!(faded(&mut app, "cube").1.base.alpha_mode, AlphaMode::Opaque, "the copy keeps the original's mode");
     assert_eq!((twin.base_color.alpha(), twin.alpha_mode), (1.0, AlphaMode::Opaque));
     assert_eq!(standard(&mut app, "twin").0, shared, "the twin keeps the shared material");
 
@@ -295,11 +304,10 @@ fn a_bound_material_alpha_fades_a_shape_frame_by_frame() {
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     updates(&mut app, 3);
     assert_eq!(named(&mut app, "cube"), cube);
-    let (h, m) = standard(&mut app, "cube");
-    let c = m.base_color.to_srgba();
+    let m = faded(&mut app, "cube").1;
+    let c = m.base.base_color.to_srgba();
     assert_eq!((c.red, c.blue), (0.0, 1.0));
-    assert!(m.base_color.alpha() < 1.0 && m.alpha_mode == AlphaMode::Blend);
-    assert_ne!(h, standard(&mut app, "twin").0);
+    assert!(m.extension.alpha < 1.0 && m.base.alpha_mode == AlphaMode::Opaque);
 
     // A save without MaterialAlpha: the cube is opaque blue again.
     write(&dir, "game.tsx", &FADE.replacen("<material color=\"#ff0000\" />", "<material color=\"#0000ff\" />", 1).replace("<MaterialAlpha alpha={() => k()} />", ""));
