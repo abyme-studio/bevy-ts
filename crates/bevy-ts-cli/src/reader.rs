@@ -1186,6 +1186,14 @@ impl Reader<'_> {
             }
             "Option" => match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
                 Head::Kind { name: inner, args: iargs, span: ispan, scope: is } if matches!(inner.as_str(), "Res" | "ResMut") => {
+                    // A claimed spelling is an export, which is never absent: it cannot be optional.
+                    let clock_read = inner == "Res" && matches!(iargs.first(), Some(Ty::Ref { name: t, args: a, .. }) if !a.is_empty() && bevy_ts_name(&is.file, t) == Some("Time"));
+                    if !clock_read {
+                        let spelling = format!("{inner}<{}>", iargs.iter().map(spell).collect::<Vec<_>>().join(","));
+                        if let Some((_, port)) = self.claims.iter().find(|(c, _)| *c == spelling) {
+                            return Err(self.fail(s, span, format!("Option<{spelling}>: {port} claims {spelling}, which cannot be optional; take it without Option")));
+                        }
+                    }
                     let r = self.reference(self.arg(&inner, &iargs, 0, ispan, &is)?, &is, "a resource")?;
                     Ok(json!({ "kind": if inner == "Res" { "res" } else { "resMut" }, "resource": r, "optional": true }))
                 }
@@ -1580,6 +1588,18 @@ export function wrong(p: Option<Query<[Pos]>>) {}
         assert!(none["pause"]["error"].is_string());
         assert_eq!(d["fixed"], none["fixed"]);
         assert_eq!(d["read"], none["read"]);
+    }
+
+    #[test]
+    fn a_claimed_spelling_cannot_be_optional() {
+        let src = "import type { ResMut, Option } from \"bevy-ts\";\nexport function pause(time: Option<ResMut<Time<Virtual>>>) {}\n";
+        let path = Path::new("/p/src/game.ts");
+        let allocator = Allocator::default();
+        let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
+        let claims = vec![("ResMut<Time<Virtual>>".to_string(), "VirtualTime".to_string())];
+        let d = declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), vec!["VirtualTime".into()], claims).ok().unwrap().code);
+        let err = d["pause"]["error"].as_str().unwrap();
+        assert!(err.contains("Option<ResMut<Time<Virtual>>>: VirtualTime claims ResMut<Time<Virtual>>, which cannot be optional"), "{err}");
     }
 
     #[test]
