@@ -7,6 +7,7 @@
 use bevy::ecs::reflect::ReflectComponent;
 use bevy::prelude::*;
 use bevy::reflect::{ParsedPath, PartialReflect, ReflectPath, ReflectRef, TypeRegistry};
+use bevy_ts::reflect_asset::{ScriptAssets, Slots};
 use bevy_ts::reflect_value;
 use serde_json::{Map, Value};
 
@@ -38,10 +39,15 @@ fn slot_ref<'t>(target: &'t dyn PartialReflect, field: &str) -> Option<&'t dyn P
 
 /// Writes `v` into `field` of `target`, over `base`'s value of that field (the slot's own when
 /// there is no default).
-fn set(registry: &TypeRegistry, server: Option<&AssetServer>, target: &mut dyn PartialReflect, base: Option<&dyn PartialReflect>, type_path: &str, field: &str, v: &Value) -> Result<(), String> {
+fn set(slots: &Slots, target: &mut dyn PartialReflect, base: Option<&dyn PartialReflect>, type_path: &str, field: &str, v: &Value) -> Result<(), String> {
     let s = slot(target, field).map_err(|e| format!("{type_path}: {e}"))?;
     let b = base.and_then(|b| slot_ref(b, field));
-    reflect_value::write(registry, server, s, b, v).map_err(|e| format!("{type_path}.{field}: {e}"))
+    reflect_value::write_with(slots.cx(), s, b, v).map_err(|e| format!("{type_path}.{field}: {e}"))
+}
+
+/// The asset hook for writes into the world: refs and asset values in `Handle<T>` slots.
+fn slots_of(world: &World) -> ScriptAssets {
+    world.get_resource::<ScriptAssets>().cloned().unwrap_or_default()
 }
 
 fn component<'r>(registry: &'r TypeRegistry, type_path: &str) -> Result<(&'r ReflectComponent, &'r bevy::reflect::TypeRegistration), String> {
@@ -62,8 +68,10 @@ pub fn check(registry: &TypeRegistry, type_path: &str, props: &Map<String, Value
     reflect_value::refuse_computed(type_path)?;
     let (_, reg) = component(registry, type_path)?;
     let Some(mut value) = default(reg) else { return Ok(()) };
+    let assets = ScriptAssets::default();
+    let slots = Slots { registry, server: None, assets: &assets, check: true };
     for (f, v) in props {
-        set(registry, None, value.as_partial_reflect_mut(), None, type_path, f, v)?;
+        set(&slots, value.as_partial_reflect_mut(), None, type_path, f, v)?;
     }
     Ok(())
 }
@@ -76,8 +84,10 @@ pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String,
     let registry = registry.read();
     let (rc, reg) = component(&registry, type_path)?;
     let mut value = default(reg).ok_or_else(|| format!("{type_path} has no reflected Default, so a level cannot insert it"))?;
+    let assets = slots_of(world);
+    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
     for (f, v) in props {
-        set(&registry, server.as_ref(), value.as_partial_reflect_mut(), None, type_path, f, v)?;
+        set(&slots, value.as_partial_reflect_mut(), None, type_path, f, v)?;
     }
     rc.insert(&mut world.entity_mut(e), value.as_partial_reflect(), &registry);
     Ok(())
@@ -92,9 +102,11 @@ pub fn write(world: &mut World, e: Entity, type_path: &str, field: &str, v: &Val
     let registry = registry.read();
     let (rc, reg) = component(&registry, type_path)?;
     let base = default(reg);
+    let assets = slots_of(world);
+    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
     let mut em = world.entity_mut(e);
     let Some(mut m) = rc.reflect_mut(&mut em) else { return Ok(false) };
-    set(&registry, server.as_ref(), m.as_partial_reflect_mut(), base.as_deref().map(|b| b.as_partial_reflect()), type_path, field, v)?;
+    set(&slots, m.as_partial_reflect_mut(), base.as_deref().map(|b| b.as_partial_reflect()), type_path, field, v)?;
     Ok(true)
 }
 

@@ -700,7 +700,10 @@ impl crate::backend::HostCalls for WorldHost<'_> {
     fn call_json(&mut self, name: &str, args: &str) -> Result<String, String> {
         match name.split_once('.') {
             #[cfg(feature = "pbr")]
-            Some(("assets", _)) => crate::reflect_asset::host_call(self.world, name, args),
+            // SAFETY: the asset calls read resources only (the registry, `ScriptAssets`, the asset
+            // server, `Assets<T>`), never a table a running system's regions point into, and they
+            // change nothing: what they make waits in `ScriptAssets` for the run's end.
+            Some(("assets", _)) => crate::reflect_asset::host_call(unsafe { self.world.world() }, name, args),
             _ => Err(format!("no host service {name}")),
         }
     }
