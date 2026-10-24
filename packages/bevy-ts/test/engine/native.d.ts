@@ -1383,13 +1383,14 @@ export declare class TsSpawned extends ReflectComponent {
   static readonly path: "bevy_ts::commands::TsSpawned";
 }
 
-/** Holes, never visible: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>). */
+/** Holes, never visible: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
-  static readonly tsxProps: { clip?: string | null };
-  declare repeat: bool;
+  static readonly tsxProps: { clip?: string | null; repeat?: "Never" | { Count: number } | "Forever" };
   declare speed: f32;
   declare transition_secs: f32;
+  declare paused: bool;
+  declare cull: bool;
 }
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
