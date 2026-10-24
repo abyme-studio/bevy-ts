@@ -1020,7 +1020,7 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
         adopt_targeted(world, rt, systems);
         let Some(p) = world.get_resource_mut::<ObserverQueue>().and_then(|mut q| q.0.pop_front()) else { return };
         let targets: Vec<Option<Entity>> = if p.path.is_empty() { vec![None] } else { p.path.iter().copied().map(Some).collect() };
-        'path: for target in targets {
+        'path: for (hop, target) in targets.into_iter().enumerate() {
             let mut stop = false;
             let bits = (target.map_or(u64::MAX, Entity::to_bits), p.original.map_or(u64::MAX, Entity::to_bits));
             // Bevy's order: global observers, then the target's own.
@@ -1029,8 +1029,9 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
                     stop |= run_one(world, rt, o, Some((&p.bytes, bits)));
                 }
             }
-            for name in target.map(|t| crate::observers::attached(world, t)).unwrap_or_default() {
-                if let Some(o) = systems.targeted.get_mut(&name)
+            // Attachments as they stood when the trigger was queued.
+            for name in p.attached.get(hop).into_iter().flatten() {
+                if let Some(o) = systems.targeted.get_mut(name)
                     && o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger)
                 {
                     stop |= run_one(world, rt, o, Some((&p.bytes, bits)));

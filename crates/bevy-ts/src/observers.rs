@@ -7,6 +7,7 @@
 //! `e`; the drain runs the declaration's observer for a hop whose target `e` is watched by it.
 
 use crate::manifest::{Lifecycle, SystemDecl};
+use bevy::ecs::observer::ObservedBy;
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
 use std::collections::VecDeque;
@@ -27,6 +28,9 @@ pub struct Pending {
     pub path: Vec<Entity>,
     /// The first target of a bubbling trigger, `On<E>.original`; `None` for a global event.
     pub original: Option<Entity>,
+    /// Per hop of `path`, the declarations of the TS observers attached to it when the trigger
+    /// was queued, so a target despawned before the drain still runs them, as Bevy's would.
+    pub attached: Vec<Vec<String>>,
 }
 
 #[derive(Resource, Default, Debug)]
@@ -64,8 +68,20 @@ pub fn observe(world: &mut World, entity: Entity, index: u32, decl: SystemDecl) 
 
 /// The declarations of the TS observers attached to `entity`, in attachment order.
 pub fn attached(world: &World, entity: Entity) -> Vec<String> {
-    let Some(by) = world.get::<bevy::ecs::observer::ObservedBy>(entity) else { return vec![] };
+    let Some(by) = world.get::<ObservedBy>(entity) else { return vec![] };
     by.get().iter().filter_map(|o| world.get::<TsEntityObserver>(*o)).map(|o| o.name.clone()).collect()
+}
+
+/// [`attached`] for each hop of a path.
+pub fn attached_path(world: &World, path: &[Entity]) -> Vec<Vec<String>> {
+    path.iter().map(|e| attached(world, *e)).collect()
+}
+
+/// [`attached`] from inside a Bevy observer.
+type Attachments<'w, 's> = (Query<'w, 's, &'static ObservedBy>, Query<'w, 's, &'static TsEntityObserver>);
+
+fn attached_in((by, names): &Attachments, entity: Entity) -> Vec<String> {
+    by.get(entity).map(|by| by.get().iter().filter_map(|o| names.get(*o).ok()).map(|o| o.name.clone()).collect()).unwrap_or_default()
 }
 
 /// Every declaration a live attachment names, sorted, for the next generation to rebuild.
@@ -113,19 +129,22 @@ pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
             continue;
         }
         let watch = ids.clone();
-        let push = move |entity: Entity, components: &[ComponentId], queue: Option<ResMut<ObserverQueue>>, hidden: Query<(), With<crate::ScriptHidden>>| {
+        // A despawn's `Remove` runs before Bevy's `ObservedBy` hook, so the attachments are still
+        // readable here.
+        let push = move |entity: Entity, components: &[ComponentId], queue: Option<ResMut<ObserverQueue>>, hidden: Query<(), With<crate::ScriptHidden>>, a: Attachments| {
             let Some(mut queue) = queue else { return };
             if hidden.contains(entity) {
                 return;
             }
             for id in components.iter().filter(|c| watch.contains(c)) {
-                queue.0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes: vec![], path: vec![entity], original: Some(entity) });
+                let attached = vec![attached_in(&a, entity)];
+                queue.0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes: vec![], path: vec![entity], original: Some(entity), attached });
             }
         };
         let observer = match kind {
-            Lifecycle::Add => Observer::new(move |ev: On<Add<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>| push(ev.event().entity, ev.trigger().components, q, h)),
-            Lifecycle::Insert => Observer::new(move |ev: On<Insert<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>| push(ev.event().entity, ev.trigger().components, q, h)),
-            Lifecycle::Remove => Observer::new(move |ev: On<Remove<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>| push(ev.event().entity, ev.trigger().components, q, h)),
+            Lifecycle::Add => Observer::new(move |ev: On<Add<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>, a: Attachments| push(ev.event().entity, ev.trigger().components, q, h, a)),
+            Lifecycle::Insert => Observer::new(move |ev: On<Insert<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>, a: Attachments| push(ev.event().entity, ev.trigger().components, q, h, a)),
+            Lifecycle::Remove => Observer::new(move |ev: On<Remove<()>>, q: Option<ResMut<ObserverQueue>>, h: Query<(), With<crate::ScriptHidden>>, a: Attachments| push(ev.event().entity, ev.trigger().components, q, h, a)),
         };
         spawned.push(world.spawn(observer.with_components(ids)).id());
     }

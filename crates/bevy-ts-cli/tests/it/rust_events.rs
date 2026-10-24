@@ -125,3 +125,35 @@ fn a_restart_removes_entity_observers() {
     app.update();
     assert_eq!(attachments(&mut app), 1, "the startup attached it again, once");
 }
+
+#[test]
+fn an_entity_observer_runs_for_a_trigger_whose_target_is_despawned_before_the_drain() {
+    let (_, mut app) = load(
+        "entity-observe-despawned",
+        &src(
+            r#"import type { Remove } from "bevy-ts";
+let step = 0;
+export function setup(c: Commands) {
+  const a = c.spawn(Tag.of({ n: 1 }));
+  c.entity(a).observe(onHit);
+  const b = c.spawn(Tag.of({ n: 2 }));
+  c.entity(b).observe(onGone);
+}
+export function onHit(hit: On<Hit>) { console.log(`hit ${hit.amount}`); }
+export function onGone(gone: On<Remove<Tag>>) { console.log("gone"); }
+export function drive(q: Query<[Entity, Tag]>, c: Commands) {
+  step++;
+  // Trigger, then despawn the target, in one system: Bevy runs the target's observer.
+  if (step === 2) q.each((e, t) => { if (t.n === 1) { c.trigger(Hit.of({ entity: e, amount: 7 })); c.entity(e).despawn(); } });
+  // Despawning an entity whose observer watches Remove<Tag> runs it.
+  if (step === 3) q.each((e, t) => { if (t.n === 2) c.entity(e).despawn(); });
+}
+app.addSystems(Startup, setup).addSystems(Update, drive);
+"#,
+        ),
+    );
+    updates(&mut app, 5);
+    assert_eq!(lines(&app, "hit "), ["hit 7"], "{:?}", messages(&app));
+    assert_eq!(lines(&app, "gone"), ["gone"], "{:?}", messages(&app));
+    assert_eq!(attachments(&mut app), 0, "both went with their entities");
+}
