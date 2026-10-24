@@ -3,6 +3,11 @@
 [profile.dev]
 debug = "line-tables-only"
 
+# One that sets dependencies to `opt-level = 0` leaves sha2 unoptimized: a dev cli then takes 20 s
+# to hash an engine before it links it from a shared cache (docs/research/engine-cache-link.md).
+[profile.dev.package.sha2]
+opt-level = 3
+
 # `cargo static <command>`: the command with Bevy linked statically. Tests and examples link Bevy as
 # a dylib; a release bench must time what ships, so it runs as `cargo static test --release`
 # (docs/build-cache.md, Bevy as a dylib for tests). A target.<cfg> rustflags entry adds to the
