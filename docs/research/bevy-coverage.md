@@ -127,6 +127,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | Script material on a glTF scene | missing on main | — | scene-material |
 | Post-process settings (`Bloom`, `Tonemapping`, `DepthOfField`, AA…) | idiomatic for numbers; colours and nested structs are holes | `bevy.d.ts` | reflect-enums-color |
 | `RenderLayers`, `Visibility`, `NoFrustumCulling`, shadows markers | partial: `Visibility` a column (no test); `RenderLayers` reflect tier | — | reflect-coverage |
+| `OcclusionCulling` | idiomatic: brings its `DepthPrepass` (bevy-ts requires it), MSAA may stay on. Removing `DepthPrepass` alone from a camera that keeps `OcclusionCulling` still crashes (bevyengine/bevy#22747); Bevy leaves deferred unsupported | `crates/bevy-ts-cli/tests/it/occlusion_render.rs` | occlusion-culling-prereqs |
 | `<mesh>` primitives | partial: cuboid, sphere, plane | `intrinsics.rs:27` | mesh-primitives |
 | Custom meshes from TS (`Mesh::new`, attributes, indices) | missing | — | new: `script-assets` |
 | Wireframes | partial: markers via TSX | — | reflect-coverage |

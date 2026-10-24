@@ -171,6 +171,12 @@ impl Plugin for BevyTsPlugin {
 
         #[cfg(feature = "pbr")]
         recipes::register(app);
+        // Bevy's docs say `OcclusionCulling` needs a `DepthPrepass`; its code quits the app without
+        // one (bevyengine/bevy#22747). Registered in `build`, before any spawn, or Bevy refuses it.
+        #[cfg(feature = "pbr")]
+        if let Err(why) = app.try_register_required_components::<bevy::render::occlusion_culling::OcclusionCulling, bevy::core_pipeline::prepass::DepthPrepass>() {
+            bevy::log::debug!("OcclusionCulling does not get a required DepthPrepass: {why}");
+        }
 
         app.add_systems(
             First,
