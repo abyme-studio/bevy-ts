@@ -232,3 +232,35 @@ fn every_kind_is_a_tsx_prop_and_a_list_is_replaced() {
     save(&mut app, &dir, &src("[\"c\"]"));
     assert_eq!(the::<Kit>(&mut app).items, vec!["c".to_string()], "a list is replaced, not merged");
 }
+
+/// A string at a `Handle<T>` loads through the AssetServer, at any depth (an `Option` here), from
+/// TSX and from `.of`. `register_asset_reflect` is what `ImagePlugin` does for a real app.
+#[test]
+fn an_asset_path_at_a_handle_loads_it_from_tsx_and_of() {
+    use bevy::asset::AssetApp;
+    use bevy::light::Skybox;
+    let check = |app: &mut App| {
+        let sky = the::<Skybox>(app);
+        let image = sky.image.expect("an image handle, not None");
+        assert_ne!(image, Handle::<Image>::default(), "a loaded handle, not the default");
+        assert_eq!(image.path().map(|p| p.to_string()).as_deref(), Some("sky.ktx2"));
+        assert_eq!(sky.brightness, 1000.0);
+    };
+    let tsx = scene("Skybox", "<Skybox image=\"sky.ktx2\" brightness={1000} />");
+    let dir = project("reflect-skybox", &[("game.tsx", &tsx)]);
+    let mut app = reflect_app(&dir.join("game.tsx"));
+    app.register_asset_reflect::<Image>().register_type::<Skybox>();
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    check(&mut app);
+
+    let of = "import { app, Startup } from \"bevy-ts\";\nimport type { Commands } from \"bevy-ts\";\nimport { Skybox } from \"bevy-ts/bevy\";\nexport function setup(commands: Commands) {\n  commands.spawn(Skybox.of({ image: \"sky.ktx2\", brightness: 1000 }));\n}\napp.addSystems(Startup, setup);\n";
+    let dir = project("reflect-skybox-of", &[("game.ts", of)]);
+    let mut app = reflect_app(&dir.join("game.ts"));
+    app.register_asset_reflect::<Image>().register_type::<Skybox>();
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 3);
+    check(&mut app);
+}
