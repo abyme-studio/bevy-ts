@@ -211,7 +211,7 @@ props share one material.
 - A texture is an asset path, loaded by the `AssetServer`. Colour textures (base colour, emissive)
   load as sRGB; the rest are data and load linear, as Bevy's glTF loader does. One
   file keeps the colour space of its first load, so keep colour and data textures in separate
-  files. A path that fails to load is an error at the element, naming the path. A saved texture
+  files. A path that fails to load is an error at the element, naming the path, and the mesh stays undrawn (Bevy draws no material with an unloaded texture). A saved texture
   redraws by Bevy's asset reload.
 - A two-sided leaf needs both `doubleSided` and `cullMode={null}`, as in Bevy: `doubleSided` alone
   lights the back face but still culls it.
