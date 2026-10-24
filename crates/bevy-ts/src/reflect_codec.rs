@@ -62,6 +62,8 @@ pub enum Node {
     Duration,
     Entity,
     Struct { fields: Vec<(String, Node)> },
+    /// A tuple struct of one field nested in a value: its inner value.
+    Newtype { of: Box<Node> },
     /// A tuple, or a tuple struct of other than one field: an array.
     Tuple { items: Vec<Node> },
     Array { of: Box<Node>, n: u32 },
@@ -193,6 +195,10 @@ const MAX_DEPTH: usize = 16;
 
 /// Compiles a whole component's or resource's codec.
 pub fn compile_component(registry: &TypeRegistry, info: &TypeInfo) -> Codec {
+    // `Name` is a newtype `read` takes whole, as a string: `{ value }` of the whole value's JSON.
+    if info.type_id() == TypeId::of::<Name>() {
+        return Codec { wrap: true, node: Node::Json };
+    }
     match info {
         TypeInfo::TupleStruct(t) if t.field_len() == 1 => {
             let inner = t.field_at(0).and_then(|f| f.type_info());
@@ -226,7 +232,9 @@ pub fn compile(registry: &TypeRegistry, info: &TypeInfo, depth: usize) -> Node {
     let path = info.type_path();
     // An uncovered type is `read`'s error; other glam types (`BVec3`, `I64Vec2`, ...) read as
     // their serde shape; handles may read through a hook.
-    if depth >= MAX_DEPTH || reflect_value::uncovered(path).is_some() || path.starts_with("glam::") || registry.get(id).is_some_and(|r| r.data::<bevy::asset::ReflectHandle>().is_some()) {
+    // `read` takes `Name` and numeric ranges whole, as scalars.
+    let whole = id == TypeId::of::<Name>() || path.starts_with("core::ops::Range");
+    if depth >= MAX_DEPTH || whole || reflect_value::uncovered(path).is_some() || path.starts_with("glam::") || registry.get(id).is_some_and(|r| r.data::<bevy::asset::ReflectHandle>().is_some()) {
         return Node::Json;
     }
     let sub = |i: Option<&'static TypeInfo>| i.map_or(Node::Json, |i| compile(registry, i, depth + 1));
@@ -265,7 +273,7 @@ pub fn compile(registry: &TypeRegistry, info: &TypeInfo, depth: usize) -> Node {
         }
         TypeInfo::Struct(s) => Node::Struct { fields: s.iter().filter(|f| covered(f)).map(|f| (f.name().to_string(), sub(f.type_info()))).collect() },
         // A newtype nested in a value is its inner value.
-        TypeInfo::TupleStruct(t) if t.field_len() == 1 => sub(t.field_at(0).and_then(|f| f.type_info())),
+        TypeInfo::TupleStruct(t) if t.field_len() == 1 => Node::Newtype { of: Box::new(sub(t.field_at(0).and_then(|f| f.type_info()))) },
         TypeInfo::TupleStruct(t) => Node::Tuple { items: t.iter().map(|f| sub(f.type_info())).collect() },
         TypeInfo::Tuple(t) => Node::Tuple { items: t.iter().map(|f| sub(f.type_info())).collect() },
         TypeInfo::Array(a) => Node::Array { of: Box::new(sub(a.item_info())), n: a.capacity() as u32 },
@@ -298,6 +306,11 @@ fn mismatch(node: &Node, v: &dyn PartialReflect) -> String {
 
 /// Encodes `v` along `codec`.
 pub fn encode(registry: &TypeRegistry, codec: &Codec, v: &dyn PartialReflect, out: &mut Vec<u8>) -> Result<(), String> {
+    // Embedded JSON of a newtype is `read` of the whole value: the same as of its field, except
+    // for a type `read` takes whole (`Name`, a newtype of its hashed string).
+    if codec.wrap && codec.node == Node::Json {
+        return put_json(registry, v, out);
+    }
     if codec.wrap {
         let ReflectRef::TupleStruct(t) = v.reflect_ref() else { return Err(mismatch(&codec.node, v)) };
         return put(registry, &codec.node, t.field(0).ok_or_else(|| mismatch(&codec.node, v))?, out);
@@ -381,6 +394,10 @@ pub fn put(registry: &TypeRegistry, node: &Node, v: &dyn PartialReflect, out: &m
             }
             Ok(())
         }
+        Node::Newtype { of } => {
+            let ReflectRef::TupleStruct(t) = v.reflect_ref() else { return Err(bad()) };
+            put(registry, of, t.field(0).ok_or_else(bad)?, out)
+        }
         Node::Tuple { items } => {
             match v.reflect_ref() {
                 ReflectRef::TupleStruct(t) => {
@@ -393,7 +410,6 @@ pub fn put(registry: &TypeRegistry, node: &Node, v: &dyn PartialReflect, out: &m
                         put(registry, n, t.field(i).ok_or_else(bad)?, out)?;
                     }
                 }
-                // A newtype the op tree saw through (compiled as its inner value) never reaches here.
                 _ => return Err(bad()),
             }
             Ok(())

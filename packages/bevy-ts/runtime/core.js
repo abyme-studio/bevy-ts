@@ -2261,8 +2261,12 @@ function reflectStr(u8, o, n) {
   return decoder.decode(u8.subarray(o, o + n));
 }
 
-/** A decoder for one codec: `(dv, u8) => value`, as JS source generated from its ops. */
-function reflectDecoder(codec) {
+/**
+ * A decoder for one codec: `(dv, u8) => value`, as JS source generated from its ops. `whole`
+ * gives a newtype component as `read_component` does (`{ value }`); a row's `value` is the inner
+ * value itself.
+ */
+function reflectDecoder(codec, whole) {
   let n = 0;
   const v = () => `v${n++}`;
   const lines = [];
@@ -2322,6 +2326,8 @@ function reflectDecoder(codec) {
         lines.push(`const ${out} = { ${fs.join(", ")} };`);
         break;
       }
+      case "newtype":
+        return gen(node.of);
       case "tuple": {
         const items = node.items.map(gen);
         lines.push(`const ${out} = [${items.join(", ")}];`);
@@ -2374,7 +2380,7 @@ function reflectDecoder(codec) {
     return out;
   };
   const root = gen(codec.node);
-  const src = `let o = 0;\n${lines.join("\n")}\nreturn ${codec.wrap ? `{ value: ${root} }` : root};`;
+  const src = `let o = 0;\n${lines.join("\n")}\nreturn ${codec.wrap && whole ? `{ value: ${root} }` : root};`;
   return new Function("S", `return function decode(dv, u8) {\n${src}\n};`)(reflectStr);
 }
 
@@ -2386,7 +2392,7 @@ export function __reflectCheck(cases) {
   const bad = [];
   for (const c of cases) {
     const u8 = Uint8Array.from(c.bytes);
-    const got = reflectDecoder(c.codec)(new DataView(u8.buffer), u8);
+    const got = reflectDecoder(c.codec, true)(new DataView(u8.buffer), u8);
     const want = JSON.parse(c.json);
     if (!reflectSame(got, want)) bad.push({ type: c.type, got, want });
   }

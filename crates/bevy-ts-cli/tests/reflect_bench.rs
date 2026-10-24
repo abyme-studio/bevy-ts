@@ -19,7 +19,7 @@ const ROWS: usize = 1000;
 const REPEAT: usize = 10;
 const FRAMES: usize = 200;
 
-const GAME: &str = r#"import { __reflectJson, __reflectTarget, app, rustComponent, Update } from "bevy-ts";
+const GAME: &str = r##"import { __reflectJson, __reflectTarget, app, chain, rustComponent, Update } from "bevy-ts";
 import { DirectionalLight, Transform } from "bevy-ts/bevy";
 import type { Entity, Mut, Query } from "bevy-ts";
 const Projection = rustComponent("Projection");
@@ -47,8 +47,17 @@ export function jsonProjection(q: Query<[Entity, Projection]>) {
 }
 export function writeColor(q: Query<[Mut<DirectionalLight>]>) { q.each((l: any) => { l.color = "#ff8000"; }); }
 export function writeProjection(q: Query<[Mut<Projection>]>) { q.each((p: any) => { p.value = { Perspective: { fov: 0.9 } }; }); }
-app.addSystems(Update, __SYSTEM__);
-"#;
+let zoom = 0;
+export function zoomOne(q: Query<[Entity, Mut<Projection>]>) {
+  // One camera's zoom a frame (agent town): one Mut write, the other rows untouched.
+  zoom = (zoom + 1) % 100;
+  q.each((e, p: any) => { if (e === first) p.value = { Orthographic: { scale: 1 + zoom / 100 } }; });
+}
+export function emptyOne(q: Query<[Entity, Mut<Projection>]>) { q.each((e) => { if (e === first) sink++; }); }
+let first = -1;
+export function pickFirst(q: Query<[Entity, Projection]>) { if (first < 0) q.each((e) => { if (first < 0) first = e; }); }
+app.addSystems(Update, chain(pickFirst, __SYSTEM__));
+"##;
 
 /// Marks every row changed before the TS stage, so each read misses.
 fn touch(mut q: Query<(&mut DirectionalLight, &mut Projection)>) {
@@ -107,4 +116,7 @@ fn reflected_reads_per_row() {
         println!("| {name} | {} |", per_row(us, repeat));
     }
     println!("(empty system over the same {ROWS} rows: {empty} µs a run, subtracted)");
+    // One reflected write a frame on one of the rows, less the same loop without the write.
+    let one = run("zoomOne", false) - run("emptyOne", false);
+    println!("| one Mut<Projection> write a frame (agent town's zoom) | {} ns a frame |", (one.max(0.0) * 1000.0).round());
 }
