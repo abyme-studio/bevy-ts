@@ -5,9 +5,9 @@
 //! pairs to watch. A quiet frame makes no call.
 
 use crate::desc::{NodeDesc, normalize_sources};
-use crate::reconcile::{self, Prune, apply_root, log_error, resolve_tree};
+use crate::reconcile::{self, Prune, RNode, apply_root, log_error, resolve_tree};
 use crate::resolve;
-use crate::tree::{BindTarget, FieldState, Provenance, Subscription, TsxNode, TsxTree};
+use crate::tree::{BindTarget, FieldState, GroupRows, Provenance, Subscription, TsxNode, TsxTree};
 use crate::ui::UiKind;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::query::QueryBuilder;
@@ -53,6 +53,8 @@ struct Response {
     patches: Vec<(u32, Value)>,
     mounts: Vec<(u32, String, Vec<NodeDesc>)>,
     unmounts: Vec<(u32, String)>,
+    /// A slot's group keys in item order, when it changed other than by appending.
+    orders: Vec<(u32, Vec<String>)>,
     subscribe: Vec<(Option<u64>, String)>,
     unsubscribe: Vec<(Option<u64>, String)>,
     needs: Vec<(Option<u64>, String)>,
@@ -358,11 +360,20 @@ fn apply(world: &mut World, r: Response) -> Vec<(Option<Entity>, String)> {
     for (id, v) in r.patches {
         patch(world, id, v);
     }
+    // Each slot's part of the call, in the order its slots first appear: one reconcile each.
+    let mut slots: Vec<(u32, SlotOps)> = Vec::new();
+    let mut at = std::collections::HashMap::new();
     for (slot, group) in r.unmounts {
-        slot_op(world, slot, group, Vec::new(), false);
+        slot_ops(&mut slots, &mut at, slot).unmounts.push(group);
     }
     for (slot, group, nodes) in r.mounts {
-        slot_op(world, slot, group, nodes, true);
+        slot_ops(&mut slots, &mut at, slot).mounts.push((group, nodes));
+    }
+    for (slot, keys) in r.orders {
+        slot_ops(&mut slots, &mut at, slot).order = Some(keys);
+    }
+    for (slot, ops) in slots {
+        slot_apply(world, slot, ops);
     }
     r.needs.into_iter().filter_map(|(bits, name)| key(bits).map(|e| (e, name))).collect()
 }
@@ -431,36 +442,117 @@ fn patch(world: &mut World, binding: u32, v: Value) {
     }
 }
 
-/// Mounts (or, with `mount` false, unmounts) one group of a slot's content.
-fn slot_op(world: &mut World, slot: u32, group: String, mut nodes: Vec<NodeDesc>, mount: bool) {
-    let Some(state) = world.resource::<TsxTree>().reactive.slots.get(&slot).cloned() else { return };
-    let mut prefix = state.prefix.clone();
-    prefix.push(group.clone());
+/// One slot's part of a host call: the groups it unmounts and mounts, in order, and its new key
+/// order, if JS sent one.
+#[derive(Default)]
+struct SlotOps {
+    unmounts: Vec<String>,
+    mounts: Vec<(String, Vec<NodeDesc>)>,
+    order: Option<Vec<String>>,
+}
+
+fn slot_ops<'a>(slots: &'a mut Vec<(u32, SlotOps)>, at: &mut std::collections::HashMap<u32, usize>, slot: u32) -> &'a mut SlotOps {
+    let i = *at.entry(slot).or_insert_with(|| {
+        slots.push((slot, SlotOps::default()));
+        slots.len() - 1
+    });
+    &mut slots[i].1
+}
+
+/// The node ids under one group's described nodes, its top-level ones, and the slots in it.
+fn group_rows(nodes: &[RNode], rows: &mut GroupRows, top: bool) {
+    for n in nodes {
+        if let Some(s) = n.slot {
+            rows.slots.push(s);
+            continue;
+        }
+        rows.nodes.push(n.id);
+        if top {
+            rows.tops.push(n.id);
+        }
+        group_rows(&n.children, rows, false);
+    }
+}
+
+/// The node ids of `rows` and of the slots in it, recursively (taking the inner slots' rows): top
+/// nodes in `tops`, the rest in `rest`.
+fn collect_rows(tree: &mut TsxTree, rows: GroupRows, tops: &mut Vec<u64>, rest: &mut Vec<u64>) {
+    rest.extend(rows.nodes.iter().filter(|n| !rows.tops.contains(n)));
+    tops.extend(rows.tops);
+    for s in rows.slots {
+        let Some(inner) = tree.reactive.slots.get_mut(&s) else { continue };
+        let groups: Vec<GroupRows> = std::mem::take(&mut inner.rows).into_values().collect();
+        inner.groups.clear();
+        for g in groups {
+            collect_rows(tree, g, tops, rest);
+        }
+    }
+}
+
+/// Applies one slot's unmounts, mounts and order in one reconcile. A group that fails its check
+/// logs its error and is left out; the rest apply.
+fn slot_apply(world: &mut World, slot: u32, ops: SlotOps) {
+    let Some(state) = world.resource::<TsxTree>().reactive.slots.get(&slot) else { return };
+    let (root, parent, prefix) = (state.root.clone(), state.parent, state.prefix.clone());
     let mut types = state.types.clone();
     types.push("group".into());
-    normalize_sources(&mut nodes);
-    let mut errors = Vec::new();
     let registry = world.resource::<AppTypeRegistry>().clone();
-    resolve::check_nodes(&nodes, world.resource::<TsComponents>(), world.resource::<NativeLayouts>(), &registry.read(), &mut errors);
-    if let Some(e) = errors.into_iter().next() {
-        log_error(world, e.message, e.location);
-        return;
-    }
-    let resolved = match resolve_tree(world, &state.root, &nodes, (&prefix, &types)) {
-        Ok(r) => r,
-        Err(e) => {
+    let mut resolved = Vec::new();
+    let mut mounted = Vec::new();
+    for (group, mut nodes) in ops.mounts {
+        let mut path = prefix.clone();
+        path.push(group.clone());
+        normalize_sources(&mut nodes);
+        let mut errors = Vec::new();
+        resolve::check_nodes(&nodes, world.resource::<TsComponents>(), world.resource::<NativeLayouts>(), &registry.read(), &mut errors);
+        if let Some(e) = errors.into_iter().next() {
             log_error(world, e.message, e.location);
-            return;
+            continue;
         }
-    };
-    apply_root(world, &state.root, None, &resolved, state.parent, Prune::Under(prefix));
-    let mut tree = world.resource_mut::<TsxTree>();
-    if let Some(s) = tree.reactive.slots.get_mut(&slot) {
-        if mount {
-            s.groups.insert(group);
-        } else {
-            s.groups.remove(&group);
+        match resolve_tree(world, &root, &nodes, (&path, &types)) {
+            Ok(r) => {
+                let mut rows = GroupRows::default();
+                group_rows(&r, &mut rows, true);
+                resolved.extend(r);
+                mounted.push((group, rows));
+            }
+            Err(e) => log_error(world, e.message, e.location),
         }
+    }
+    let (mut drop, mut rest, mut stale) = (Vec::new(), Vec::new(), Vec::new());
+    {
+        let mut tree = world.resource_mut::<TsxTree>();
+        let tree = &mut *tree;
+        let Some(state) = tree.reactive.slots.get_mut(&slot) else { return };
+        let mut gone = Vec::new();
+        for g in &ops.unmounts {
+            state.groups.remove(g);
+            if let Some(rows) = state.rows.remove(g) {
+                gone.push(rows);
+            }
+        }
+        for (g, rows) in &mounted {
+            state.groups.insert(g.clone());
+            if let Some(old) = state.rows.insert(g.clone(), rows.clone()) {
+                stale.extend(old.nodes);
+            }
+        }
+        for rows in gone {
+            collect_rows(tree, rows, &mut drop, &mut rest);
+        }
+    }
+    // Top nodes from the last: each leaves its parent's `Children` from the back, which is cheap,
+    // and takes its descendants with it, so the rest are only checked.
+    drop.reverse();
+    drop.append(&mut rest);
+    let prune = Prune::Groups { drop, stale };
+    let order = ops.order.map(|keys| {
+        let rows = &world.resource::<TsxTree>().reactive.slots[&slot].rows;
+        keys.iter().filter_map(|k| rows.get(k)).flat_map(|r| r.tops.iter().copied()).collect::<Vec<u64>>()
+    });
+    apply_root(world, &root, None, &resolved, parent, prune);
+    if let Some(tops) = order {
+        reconcile::order_slot(world, &root, parent, &prefix, &tops);
     }
 }
 

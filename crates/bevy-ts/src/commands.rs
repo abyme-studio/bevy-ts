@@ -261,6 +261,26 @@ pub unsafe fn insert_bytes(entity: &mut EntityWorldMut, id: ComponentId, bytes: 
     // The component took ownership of the bytes by copy; `buf` has no drop glue to run twice.
 }
 
+/// Inserts `typed` (values already owned by pointer, with their ids) and raw native bytes as
+/// components, all in one archetype move.
+///
+/// # Safety
+/// Each `typed` pointer must hold a value of its id's type, and each id in `parts` must be as
+/// [`insert_bytes`] requires for its bytes. No id may appear twice.
+pub unsafe fn insert_bytes_many<'a>(entity: &mut EntityWorldMut, typed: Vec<(ComponentId, OwningPtr<'a>)>, parts: &[(ComponentId, &[u8])]) {
+    // Each copied into 16-aligned storage, as `insert_bytes` does.
+    let mut bufs: Vec<Vec<u128>> = parts.iter().map(|(_, b)| vec![0u128; b.len().div_ceil(16).max(1)]).collect();
+    for (buf, (_, bytes)) in bufs.iter_mut().zip(parts) {
+        // SAFETY: `buf` holds at least `bytes.len()` bytes.
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr() as *mut u8, bytes.len()) };
+    }
+    let ids: Vec<ComponentId> = typed.iter().map(|(id, _)| *id).chain(parts.iter().map(|(id, _)| *id)).collect();
+    // SAFETY: each buffer pointer is valid and aligned to 16.
+    let raw = bufs.iter_mut().map(|b| unsafe { OwningPtr::new(NonNull::new_unchecked(b.as_mut_ptr() as *mut u8)) });
+    // SAFETY: the caller vouches for every pointer's type.
+    unsafe { entity.insert_by_ids(&ids, typed.into_iter().map(|(_, p)| p).chain(raw)) };
+}
+
 /// Applies decoded ops in order. Errors in single ops (a missing entity) are collected as
 /// warnings and the rest still apply.
 pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &NativeRecipes) -> Vec<String> {

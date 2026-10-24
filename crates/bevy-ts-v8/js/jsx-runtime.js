@@ -643,6 +643,8 @@ export class TsxContext {
     this.patches = [];
     this.mounts = [];
     this.unmounts = [];
+    /** `[slot, keys]`: a `<For>`'s keys in item order, when its entities are out of that order. */
+    this.orders = [];
     this.errors = [];
     this.needs = new Set();
     /** Computations made while describing; they first run in the host call, once mounted. */
@@ -658,7 +660,7 @@ export class TsxContext {
   }
 
   hasOutput() {
-    return this.patches.length > 0 || this.mounts.length > 0 || this.unmounts.length > 0;
+    return this.patches.length > 0 || this.mounts.length > 0 || this.unmounts.length > 0 || this.orders.length > 0;
   }
 
   refId(r) {
@@ -899,8 +901,13 @@ export class TsxContext {
     }
     const out = {
       patches: [...last],
-      mounts: this.mounts.splice(0),
+      // A mount withdrawn before it left is dropped here, not searched for when withdrawn.
+      mounts: this.mounts.splice(0).filter((m) => {
+        m.pending = false;
+        return !m.withdrawn;
+      }),
       unmounts: this.unmounts.splice(0),
+      orders: this.orders.splice(0),
       subscribe,
       unsubscribe,
       needs: [...this.needs].map((p) => [p.entity, p.C.componentName]),
@@ -1200,6 +1207,8 @@ class Slot {
     this.owner = owner;
     this.parentType = parentType;
     this.groups = new Map();
+    /** A `<For>`'s keys in the order its entities are in: mount order, or the last order sent. */
+    this.order = [];
     this.current = undefined;
     this.computation = null;
   }
@@ -1239,6 +1248,7 @@ class Slot {
     const w = { owner, bindings: ctx.pendingBindings.splice(at[0]), slots: ctx.pendingSlots.splice(at[1]), deferred: ctx.deferred.splice(at[2]) };
     if (w.bindings.length || w.slots.length || w.deferred.length) ctx.waiting.push(w);
     owner.mount = [this.id, key, nodes];
+    owner.mount.pending = true;
     this.groups.set(key, owner);
     ctx.mounts.push(owner.mount);
     requestFlush(ctx);
@@ -1250,8 +1260,7 @@ class Slot {
     this.groups.delete(key);
     // A mount not sent yet is withdrawn rather than undone: Rust applies a call's unmounts
     // before its mounts, so then -> else -> then in one batch would leave else mounted.
-    const i = this.ctx.mounts.indexOf(owner.mount);
-    if (i >= 0) this.ctx.mounts.splice(i, 1);
+    if (owner.mount.pending) owner.mount.withdrawn = true;
     else this.ctx.unmounts.push([this.id, key]);
     requestFlush(this.ctx);
   }
@@ -1273,13 +1282,26 @@ class Slot {
       warnOnce("<For> without key={(item) => ...} keys items by index, so removing one shifts the rest", this.el.source);
     }
     const seen = new Set();
+    const keys = [];
+    const added = [];
     items.forEach((item, i) => {
       const k = String(typeof keyOf === "function" ? keyOf(item, i) : i);
       if (seen.has(k)) throw located(`<For> gives two items the key ${JSON.stringify(k)}`, this.el.source);
       seen.add(k);
-      if (!this.groups.has(k)) this.mount(k, () => render(item, i));
+      keys.push(k);
+      if (!this.groups.has(k)) {
+        this.mount(k, () => render(item, i));
+        if (this.groups.has(k)) added.push(k);
+      }
     });
     for (const k of [...this.groups.keys()]) if (!seen.has(k)) this.unmount(k);
+    // Kept items stay in their order and new ones are spawned after them: when that is not the
+    // items' order, Rust sorts the entities by the keys sent.
+    const kept = this.order.filter((k) => seen.has(k) && this.groups.has(k));
+    const now = kept.concat(added);
+    const live = keys.filter((k) => this.groups.has(k));
+    if (now.length !== live.length || now.some((k, i) => k !== live[i])) this.ctx.orders.push([this.id, live]);
+    this.order = live;
   }
 }
 

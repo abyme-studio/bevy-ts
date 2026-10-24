@@ -122,12 +122,15 @@ fn alive(world: &World, e: Entity, id: u64) -> bool {
 }
 
 /// What a reconcile may despawn: nothing it was not given (runtime mounts), every node of the
-/// root it was not given (a generation), or the nodes under one key path (a slot's group).
+/// root it was not given (a generation), the nodes under one key path, or a slot's groups: `drop`
+/// (unmounted groups) despawned before the nodes apply, and those of `stale` (remounted groups'
+/// old nodes) the nodes did not describe again.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Prune {
     None,
     Root,
     Under(Vec<String>),
+    Groups { drop: Vec<u64>, stale: Vec<u64> },
 }
 
 fn key_path(world: &World, tree: &TsxTree, id: u64) -> Option<Vec<String>> {
@@ -149,6 +152,13 @@ pub fn apply_root(
     let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
     let mut seen = BTreeSet::new();
     let mut slots = Vec::new();
+    // Unmounted groups go first, so a group unmounted and mounted again in one call is respawned.
+    if let Prune::Groups { drop, .. } = &prune {
+        stats.checked += drop.len();
+        for id in drop {
+            forget(world, &mut tree, *id, &mut stats);
+        }
+    }
     let added = tree.journal.open.added.len();
     for n in nodes {
         apply_node(world, &mut tree, root, n, parent, &mut seen, &mut stats, &mut slots);
@@ -163,14 +173,32 @@ pub fn apply_root(
     let candidates: Vec<u64> = match &prune {
         Prune::None => vec![],
         Prune::Root | Prune::Under(_) => state.nodes.difference(&seen).copied().collect(),
+        Prune::Groups { stale, .. } => {
+            stats.checked += stale.len();
+            stale.iter().filter(|id| !seen.contains(id)).copied().collect()
+        }
     };
     state.nodes.extend(seen);
     tree.moved.retain(|_, r| r != root);
     let new: Vec<u64> = tree.journal.open.added[added..].to_vec();
     lists.extend(new.into_iter().filter_map(|id| key_path(world, &tree, id)));
+    // Many new nodes share one sibling list: it is recorded once.
+    let mut recorded = std::collections::HashSet::new();
     for path in lists {
         let list = (root.to_string(), tree.parent_row(root, &path));
-        tree.journal.open.ordered.push(list);
+        if recorded.insert(list.clone()) {
+            tree.journal.open.ordered.push(list);
+        }
+    }
+    if let Prune::Groups { .. } = &prune {
+        // A slot's stale nodes are its own: no key path to check.
+        for id in candidates {
+            forget(world, &mut tree, id, &mut stats);
+        }
+        tree.last = stats.clone();
+        tree.reconciles += 1;
+        world.insert_resource(tree);
+        return stats;
     }
     for id in candidates {
         let path = key_path(world, &tree, id);
@@ -383,6 +411,7 @@ fn apply_node(
             prefix: n.path.clone(),
             types: n.types.clone(),
             groups: BTreeSet::new(),
+            rows: HashMap::new(),
         });
         tree.reactive.due = true;
         slots.push(n.path.clone());
@@ -473,14 +502,7 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
             let bytes = r.insert_bytes().expect("native target");
             // SAFETY: `id` was registered with the layout `bytes` was encoded with.
             unsafe { bevy_ts::commands::insert_bytes(&mut world.entity_mut(e), *id, &bytes) };
-            // Holes given as props, over the bytes.
-            if let Some(type_path) = type_path {
-                for (f, v) in &r.reflected {
-                    if let Err(m) = crate::reflected::write(world, e, type_path, f, v) {
-                        log_error(world, m, r.source.clone());
-                    }
-                }
-            }
+            holes(world, e, r, type_path.as_deref());
         }
         Target::Name => {
             let Some(Value::String(s)) = r.controlled.get("value") else { unreachable!("checked") };
@@ -500,6 +522,16 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
             if let Err(m) = ui::insert(world, e, *kind, &props) {
                 log_error(world, format!("<{}> {m}", r.key), r.source.clone());
             }
+        }
+    }
+}
+
+/// A native component's holes given as props, written over its bytes through reflection.
+fn holes(world: &mut World, e: Entity, r: &Resolved, type_path: Option<&str>) {
+    let Some(type_path) = type_path else { return };
+    for (f, v) in &r.reflected {
+        if let Err(m) = crate::reflected::write(world, e, type_path, f, v) {
+            log_error(world, m, r.source.clone());
         }
     }
 }
@@ -543,24 +575,73 @@ fn order_children(world: &mut World, tree: &TsxTree, e: Entity, n: &RNode) {
     }
 }
 
+/// Puts a slot's group entities in `tops` order among `parent`'s children, leaving the other
+/// children where they are, and records the order for `tsx_tree`.
+pub fn order_slot(world: &mut World, root: &str, parent: Option<Entity>, prefix: &[String], tops: &[u64]) {
+    let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
+    let rank: HashMap<Entity, usize> = tops
+        .iter()
+        .filter_map(|id| tree.entities.get(id).copied().filter(|e| alive(world, *e, *id)))
+        .enumerate()
+        .map(|(i, e)| (e, i))
+        .collect();
+    if let Some(state) = tree.roots.get_mut(root) {
+        for (i, id) in tops.iter().enumerate() {
+            state.order.insert(*id, i as u32);
+        }
+    }
+    if let Some(p) = parent
+        && let Some(mut children) = world.get_mut::<Children>(p)
+    {
+        let mut sorted: Vec<Entity> = children.iter().filter(|c| rank.contains_key(c)).collect();
+        sorted.sort_by_key(|e| rank[e]);
+        let mut next = sorted.into_iter();
+        // Each slot entity's place goes to the next in order; every other child keeps its own.
+        let place: HashMap<Entity, usize> =
+            children.iter().enumerate().map(|(i, c)| (if rank.contains_key(&c) { next.next().expect("as many") } else { c }, i)).collect();
+        children.sort_by_key(|c| place[c]);
+    }
+    let list = (root.to_string(), tree.parent_row(root, prefix));
+    tree.journal.open.ordered.push(list);
+    world.insert_resource(tree);
+}
+
+/// Spawns a node's entity. Its `ChildOf`, `TsxNode` and native-layout components go in with one
+/// archetype move; the rest (reflection, assets, UI) after.
 fn spawn(world: &mut World, root: &str, n: &RNode, parent: Option<Entity>, stats: &mut ReconcileStats) -> Entity {
-    let e = world.spawn_empty().id();
-    if let Some(p) = parent {
-        world.entity_mut(e).insert(ChildOf(p));
-    }
     let mut components = BTreeMap::new();
+    // By id: a component given twice keeps its last value, as inserting it twice would.
+    let mut native: BTreeMap<bevy::ecs::component::ComponentId, Vec<u8>> = BTreeMap::new();
+    let mut after = Vec::new();
     for r in n.comps.iter() {
-        insert(world, e, r);
         components.insert(r.key.clone(), owned(r));
+        match &r.target {
+            Target::Native { id, .. } => {
+                native.insert(*id, r.insert_bytes().expect("native target"));
+                after.push(r);
+            }
+            _ => after.push(r),
+        }
     }
-    world.entity_mut(e).insert(TsxNode {
-        id: n.id,
-        root: root.to_string(),
-        key_path: n.path.clone(),
-        types: n.types.clone(),
-        source: n.source.clone(),
-        components,
+    let node = TsxNode { id: n.id, root: root.to_string(), key_path: n.path.clone(), types: n.types.clone(), source: n.source.clone(), components };
+    let ids = (world.register_component::<TsxNode>(), world.register_component::<ChildOf>());
+    let parts: Vec<_> = native.iter().map(|(id, b)| (*id, b.as_slice())).collect();
+    let mut em = world.spawn_empty();
+    let e = em.id();
+    bevy::ptr::OwningPtr::make(node, |node| match parent {
+        // SAFETY: each pointer holds a value of its id's type, and each native id was registered
+        // with the layout its bytes were encoded with.
+        Some(p) => bevy::ptr::OwningPtr::make(ChildOf(p), |child_of| unsafe {
+            bevy_ts::commands::insert_bytes_many(&mut em, vec![(ids.0, node), (ids.1, child_of)], &parts)
+        }),
+        None => unsafe { bevy_ts::commands::insert_bytes_many(&mut em, vec![(ids.0, node)], &parts) },
     });
+    for r in after {
+        match &r.target {
+            Target::Native { type_path, .. } => holes(world, e, r, type_path.as_deref()),
+            _ => insert(world, e, r),
+        }
+    }
     stats.spawned += 1;
     e
 }
