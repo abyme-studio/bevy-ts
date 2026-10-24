@@ -951,7 +951,7 @@ pub(crate) fn run_one_shot(world: &mut World, identity: &str, input: Option<&[u8
         return;
     }
     with_systems(world, |world, rt, systems| {
-        run_one(world, rt, &mut sys, input.map(|b| (b, u64::MAX)));
+        run_one(world, rt, &mut sys, input.map(|b| (b, (u64::MAX, u64::MAX))));
         drain_observers(world, rt, systems);
     });
     if let Some(mut s) = world.get_resource_mut::<TsSystems>()
