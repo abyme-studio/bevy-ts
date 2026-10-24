@@ -288,6 +288,9 @@ type NativeClass<Base, S extends Schema> = {
 };
 
 declare const assetBrand: unique symbol;
+declare const assetPath: unique symbol;
+/** An asset's fields `F`, tagged with its type path `P` so two assets' refs never type as each other. */
+export type AssetFields<P extends string, F> = F & { readonly [assetPath]?: P };
 /** A reflected asset type (`Mesh`): its fields `F` as the writer takes them. */
 export interface AssetType<F = {}> {
   readonly typePath: string;
