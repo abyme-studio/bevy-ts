@@ -1167,13 +1167,6 @@ impl Reader<'_> {
                 let (data, filter) = self.query(&name, &args, span, s)?;
                 Ok(json!({ "kind": name.to_lowercase(), "data": data, "filter": filter }))
             }
-            "Option" => match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
-                Head::Kind { name: inner, args: iargs, span: ispan, scope: is } if inner == "Single" => {
-                    let (data, filter) = self.query(&inner, &iargs, ispan, &is)?;
-                    Ok(json!({ "kind": "single", "data": data, "filter": filter, "optional": true }))
-                }
-                _ => Err(self.fail(s, span, "Option<...> as a param takes Single<...>; Option<C> belongs inside a Query")),
-            },
             "RemovedComponents" => {
                 let c = self.reference(self.arg(&name, &args, 0, span, s)?, s, "a component")?;
                 Ok(json!({ "kind": "removedComponents", "component": c }))
@@ -1193,6 +1186,10 @@ impl Reader<'_> {
                 Ok(json!({ "kind": if name == "Res" { "res" } else { "resMut" }, "resource": r }))
             }
             "Option" => match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
+                Head::Kind { name: inner, args: iargs, span: ispan, scope: is } if inner == "Single" => {
+                    let (data, filter) = self.query(&inner, &iargs, ispan, &is)?;
+                    Ok(json!({ "kind": "single", "data": data, "filter": filter, "optional": true }))
+                }
                 Head::Kind { name: inner, args: iargs, span: ispan, scope: is } if matches!(inner.as_str(), "Res" | "ResMut") => {
                     // A claimed spelling is an export, which is never absent: it cannot be optional.
                     let clock_read = inner == "Res" && matches!(iargs.first(), Some(Ty::Ref { name: t, args: a, .. }) if !a.is_empty() && bevy_ts_name(&is.file, t) == Some("Time"));
@@ -1205,7 +1202,7 @@ impl Reader<'_> {
                     let r = self.reference(self.arg(&inner, &iargs, 0, ispan, &is)?, &is, "a resource")?;
                     Ok(json!({ "kind": if inner == "Res" { "res" } else { "resMut" }, "resource": r, "optional": true }))
                 }
-                _ => Err(self.fail(s, span, "Option<...> as a system param takes Res<R> or ResMut<R>; Option<C> of a component belongs inside a Query")),
+                _ => Err(self.fail(s, span, "Option<...> as a system param takes Res<R>, ResMut<R> or Single<...>; Option<C> of a component belongs inside a Query")),
             },
             "Local" => {
                 let fields = match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
@@ -1604,7 +1601,7 @@ export function wrong(p: Option<Query<[Pos]>>) {}
             json!([{ "kind": "res", "resource": score, "optional": true }, { "kind": "resMut", "resource": score, "optional": true }])
         );
         let err = d["wrong"]["error"].as_str().unwrap();
-        assert!(err.starts_with("src/game.ts:5:26: Option<...> as a system param takes Res<R> or ResMut<R>"), "{err}");
+        assert!(err.starts_with("src/game.ts:5:26: Option<...> as a system param takes Res<R>, ResMut<R> or Single<...>"), "{err}");
     }
 
     #[test]
