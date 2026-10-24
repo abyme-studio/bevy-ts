@@ -281,6 +281,22 @@ fn a_texture_with_no_asset_server_fails_at_the_element() {
 }
 
 #[test]
+fn a_mounted_texture_with_no_asset_server_fails_the_mount() {
+    let handle = FakeHandle::default();
+    let h = handle.clone();
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .init_resource::<Assets<Mesh>>()
+        .init_resource::<Assets<StandardMaterial>>()
+        .add_plugins(BevyTsPlugin::new(move || Box::new(h.backend())))
+        .add_plugins(TsxPlugin);
+    let op = json!({ "nodes": [entity("a", Some("cuboid"), Some(json!({ "baseColorTexture": "t/crate.png" })))] });
+    let e = bevy_ts_tsx::mount::mount(app.world_mut(), &serde_json::to_vec(&op).unwrap()).unwrap_err();
+    assert!(e.contains("baseColorTexture needs an AssetServer"), "{e}");
+    assert!(app.world_mut().query::<&MeshMaterial3d<StandardMaterial>>().iter(app.world()).next().is_none(), "nothing mounted");
+}
+
+#[test]
 fn equal_props_share_one_handle() {
     let (mut app, fake) = app();
     let props = json!({ "color": "#fff", "baseColorTexture": "textures/checker.png", "doubleSided": true });

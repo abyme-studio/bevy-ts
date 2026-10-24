@@ -422,10 +422,16 @@ fn material_handle(world: &mut World, p: &MaterialProps, at: Option<SourceLocati
         return h.clone();
     }
     let server = world.get_resource::<AssetServer>().cloned();
+    // A section's check and a mount fail a texture with no AssetServer first; any other way in
+    // draws the material untextured and says why.
+    if server.is_none()
+        && let Some((prop, ..)) = p.textures().first()
+    {
+        crate::reconcile::log_error(world, format!("<material>: {prop} needs an AssetServer to load"), at.clone());
+    }
     let mut loaded = Vec::new();
     let material = p.material(&mut |path, srgb| {
-        // Checked: a texture fails the load without an AssetServer.
-        let server = server.as_ref().expect("checked");
+        let Some(server) = server.as_ref() else { return Handle::default() };
         let h: Handle<Image> = if srgb {
             server.load(path.to_string())
         } else {
