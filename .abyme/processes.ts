@@ -322,6 +322,8 @@ const processes = {
   // Agent town's 100 villagers: the pinned npm engine (before), then this branch's release engine (after).
   "animation-control-villagers-before": { cmd: "bash -c 'set -o pipefail; mkdir -p target; node bench/animation-control/villagers.mjs npm none play speed0 hidden 2>&1 | tee target/animation-control-villagers-before.log'" },
   "animation-control-villagers": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; cargo build --release -p bevy-ts-cli 2>&1 | tail -3 && node bench/animation-control/villagers.mjs target/release/bevy-ts 2>&1 | tee target/animation-control-villagers.log'" },
+  // `bevy-ts/bevy` regenerated after a rebase that conflicts in it.
+  "animation-control-types": { cmd: "bash -c 'set -o pipefail; export RUSTC_WRAPPER=; scripts/gen-bevy-types.sh 2>&1 | tail -5; git status --short'" },
   "animation-control-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; export RUSTC_WRAPPER=; (cargo test -p bevy-ts-animation -- --test-threads 1 && cargo test -p bevy-ts-levels && cargo test -p bevy-ts-cli --lib types && cargo test -p bevy-ts-cli --test it -- --test-threads 1 animation:: levels_scene:: && cargo clippy -p bevy-ts-animation -p bevy-ts-levels -p bevy-ts-cli --all-targets -- -D warnings && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/animation-control-test.log | grep -E \"^test |test result|panicked|^error|^warning|left|right|-->\" | tail -80'" },
 } satisfies ProcessFile;
 

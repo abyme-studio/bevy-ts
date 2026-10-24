@@ -990,9 +990,7 @@ export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { clip: string | null; repeat: boolean; speed: number; transition_secs: number };
-  declare repeat: bool;
-  static readonly __element: { clip: string; repeat: "Never" | { Count: number } | "Forever"; speed: number; transition_secs: number; paused: boolean; cull: boolean };
+  static readonly __element: { clip: string | null; repeat: "Never" | { Count: number } | "Forever"; speed: number; transition_secs: number; paused: boolean; cull: boolean };
   declare speed: f32;
   declare transition_secs: f32;
   declare paused: bool;
