@@ -330,7 +330,12 @@ fn park(
                 }
             }
         }
-        let culled = play.cull && !targets.meshes.is_empty() && !targets.meshes.iter().any(|&m| seen.get(m).is_ok_and(|v| v.get()));
+        // A root whose players were just found has meshes Bevy has not judged in view yet: it
+        // plays its first frame, and `cull` judges it from the next.
+        let culled = play.cull
+            && !targets.is_added()
+            && !targets.meshes.is_empty()
+            && !targets.meshes.iter().any(|&m| seen.get(m).is_ok_and(|v| v.get()));
         let parked = play.paused || culled;
         let Some(&first) = targets.players.first() else { continue };
         let Ok((_, graph)) = players.get(first) else { continue };

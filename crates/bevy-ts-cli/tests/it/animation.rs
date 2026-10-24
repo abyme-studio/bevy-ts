@@ -62,7 +62,7 @@ app.entry("walk", () => { setClip(1); });
 app.scene("foxes", () => (
   <entity key="fox">
     <WorldAssetRoot value="models/Fox.glb#Scene0" />
-    <PlayAnimation clip={() => clips[clip()]} repeat="Forever" transition_secs={0.25} />
+    <PlayAnimation clip={() => clips[clip()]} repeat={{ Count: 3 }} transition_secs={0.25} />
   </entity>
 ));
 "#;
@@ -81,8 +81,11 @@ fn a_tsx_fox_plays_and_its_bound_clip_cross_fades() {
     let fox = the_fox(app.world_mut()).unwrap();
     let play = app.world().get::<PlayAnimation>(fox).unwrap().clone();
     assert_eq!(play.clip.path().unwrap().to_string(), "models/Fox.glb#Animation2");
-    assert_eq!((play.repeat, play.speed, play.transition_secs, play.paused, play.cull), (RepeatAnimation::Forever, 1.0, 0.25, false, false));
+    assert_eq!((play.repeat, play.speed, play.transition_secs, play.paused, play.cull), (RepeatAnimation::Count(3), 1.0, 0.25, false, false));
     assert!(playing(&mut app, fox, "models/Fox.glb#Animation2"), "the run plays");
+    let run = node(&mut app, "models/Fox.glb#Animation2");
+    let p = app.world().get::<AnimationTargets>(fox).unwrap().players[0];
+    assert_eq!(app.world().get::<AnimationPlayer>(p).unwrap().animation(run).unwrap().repeat_mode(), RepeatAnimation::Count(3), "TSX's count reached the player");
 
     bevy_ts::plugin_api::call_entry(app.world_mut(), "walk", b"").unwrap();
     until(&mut app, "the walk", |app| {
@@ -229,4 +232,24 @@ fn animations_status() {
     let held = last("held");
     assert_eq!((field(&held, "seek"), field(&held, "paused"), field(&held, "parked")), ("0.00".into(), "true".into(), "true".into()), "{held}");
     assert_eq!(last("other"), "other none", "{m:?}");
+}
+
+const BOOL_REPEAT: &str = r#"import { app } from "bevy-ts";
+import { PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
+app.scene("foxes", () => (
+  <entity key="fox">
+    <WorldAssetRoot value="models/Fox.glb#Scene0" />
+    <PlayAnimation clip="models/Fox.glb#Animation2" repeat={true} />
+  </entity>
+));
+"#;
+
+/// The old bool `repeat` is refused at the reflected write, naming the field and its type.
+#[test]
+fn a_bool_repeat_is_refused() {
+    let dir = fox_project("animation-bool-repeat", &[("package.json", "{}"), ("src/game.tsx", BOOL_REPEAT)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    let r = reload(&mut app, false);
+    let said = format!("{:?} {:?}", r.errors, messages(&app));
+    assert!(said.contains("PlayAnimation.repeat") && said.contains("RepeatAnimation"), "{said}");
 }

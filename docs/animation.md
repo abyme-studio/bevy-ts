@@ -61,7 +61,8 @@ the handle back, and the clip goes on from the seek time, weights and transition
   `paused: false` resumes where it stood. A root spawned paused holds the clip at 0.
 - `cull: true` parks the root while none of its meshes (every `Mesh3d` under it, recorded when
   its players are found; a TSX child mesh counts) is in any camera's view, and wakes it once one
-  is. A root with no mesh is never culled. Off by default.
+  is. A root with no mesh is never culled. A root plays its first frame before `cull` judges it,
+  since Bevy has not yet worked out which of its new meshes are in view. Off by default.
 - A parked clip's time stands still: a culled villager that walks back into view goes on from
   where it left, not where it would be. A game that cares seeks on wake.
 - The decision runs in `PostUpdate` before Bevy's animation, and reads the visibility Bevy
