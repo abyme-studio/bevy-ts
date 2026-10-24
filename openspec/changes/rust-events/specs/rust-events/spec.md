@@ -79,6 +79,22 @@ SHALL trigger a Rust event when the system's commands are applied. Observers reg
 - **WHEN** a TS observer takes `On<PointerClick>` and the user clicks a child entity whose parent is also pickable
 - **THEN** the observer runs twice at the next bevy-ts stage start, first with `entity` the child, then the parent, both with `original` the child
 
+### Requirement: A Rust event field never hides On's own API
+A Rust event field named `entity`, `original`, `propagate` or `toJSON` SHALL NOT replace `On<E>`'s
+own member of that name. `On<E>.event` SHALL hold the event's whole value in reflect-coverage's
+shape, as Bevy's `On::event()`, so such a field is read as `on.event.<name>` under its reflected
+field name; every other field is also read directly on `On<E>`. The generated class SHALL
+document the field as reachable only through `event`. TS-declared events refusing these names at
+load belongs to accessor-slot-names, not this change.
+
+#### Scenario: A field named entity
+- **WHEN** a Rust entity event has a field `entity` (its target, as `PointerClick` has) and bubbles from a child to its parent
+- **THEN** at the parent hop `on.entity` is the parent and `on.event.entity` is the event's own field, the child
+
+#### Scenario: A field named propagate
+- **WHEN** a Rust event has a field `propagate: bool`
+- **THEN** `on.propagate(false)` still stops bubbling and `on.event.propagate` reads the field
+
 ### Requirement: Generated types for Rust messages and events
 `bevy-ts types` SHALL emit every type with `ReflectTsMessage` or `ReflectTsEvent` as a class
 extending `Message`, `Event` or `EntityEvent`, with `static readonly path`, `static readonly

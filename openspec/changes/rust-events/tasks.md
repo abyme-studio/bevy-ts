@@ -21,6 +21,7 @@
 - [ ] 4.2 `propagate(false)` drops the remaining TS hops of one Rust trigger
 - [ ] 4.3 `commands.entity(e).observe(fn)`: `OP_OBSERVE`, lazy `TsSystem` keyed by `file#name`, remapped on reload, for TS and Rust entity events
 - [ ] 4.4 `index.d.ts`: `EntityCommands.observe`, `On<E>.original`
+- [ ] 4.5 Stage 2: a Rust event field named `entity`, `original`, `propagate` or `toJSON` stays on `On<E>.event` under its reflected name and never hides `On`'s API; generated class documents it; test with a `PointerClick` hop and a test event with a `propagate` field
 
 ## 5. Registration and types
 
