@@ -2,13 +2,11 @@
 //! values with holes through `commands.spawn`, `Transform.lookingAt` against Bevy's `looking_at`,
 //! and the removed built-in recipes naming their replacements. Headless.
 
-mod common;
-
+use crate::common::*;
 use bevy::camera::{OrthographicProjection, Projection, ScalingMode};
 use bevy::light::DirectionalLight;
 use bevy::prelude::*;
 use bevy_ts::generation::ReloadStatus;
-use common::*;
 use std::path::Path;
 
 fn scripts_app(entry: &Path) -> App {

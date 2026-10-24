@@ -63,7 +63,9 @@ commands.spawn(DirectionalLight.of({ illuminance: 8000, color: hex("#ffd7a8") })
 ```
 
 A value that fails to write fails its whole command, logged with the type and field: a spawn
-with a bad value spawns nothing, an insert inserts nothing. The system's other commands still
+with a bad value spawns nothing, an insert inserts nothing. A type whose only default is
+`FromWorld` is checked the same way, over a value built from the world, so its `FromWorld` runs
+even for a command that is then skipped. The system's other commands still
 apply. `Transform.lookingAt(eye, target, up = [0, 1, 0])` is
 Bevy's `Transform::looking_at`, computed in JS.
 
