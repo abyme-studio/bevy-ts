@@ -1,6 +1,6 @@
 //! Rust messages and events from TS, and `commands.entity(e).observe` (openspec rust-events).
 
-mod common;
+use crate::common;
 
 use bevy::prelude::*;
 use bevy_ts::generation::ReloadStatus;
