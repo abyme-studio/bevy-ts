@@ -244,9 +244,29 @@ A TS system takes it as a parameter and calls it: `rapier.castRay(origin, [0, -1
 { excludeRigidBody: e })`. Each call is one host call (a V8 fast op), synchronous inside the
 system's run; slices are read and written in place, so `castRays` over 1,000 rays is one call.
 Arguments and results are numbers, `bool`, `Entity`, `Vec2`, `Vec3`, `Quat`, `#[derive(HostRecord)]`
-records, `Option`s of these, and `&[T]` / `&mut [T]` of numbers; anything else is a compile error
-naming the type. A `Result` error, a param that fails validation, or a panic throws in JS, naming
+records, `Option`s of these, asset refs, and `&[T]` / `&mut [T]` of numbers; anything else is a
+compile error naming the type. A `Result` error, a param that fails validation, or a panic throws in JS, naming
 the param and method.
+
+### Asset refs
+
+A method takes or returns `ScriptRef<A>` (`bevy_ts::host::ScriptRef`) for a script's handle to an
+asset of type `A`, and `UntypedScriptRef` for one of any type. JS passes and receives the same
+frozen `AssetRef<A>` object `assets` and `meshes.add` give (`{ $asset, type }`); a ref of another
+asset type throws naming the method and both types. In Rust, `r.handle(&script_assets)` is the
+strong `Handle<A>`, and `ScriptRef::new(script_assets.insert_strong(handle.untyped()))` hands one
+out: the script holds it until `assets.drop`, a hot reload or stop (docs/assets.md). `bevy-ts types`
+declares it `AssetRef<A>`.
+
+```rust
+#[bevy_ts_native::export(ts = "Terrain", module = "bevy-ts/terrain")]
+impl Terrain<'_> {
+    pub fn chunk(&mut self, x: i32, z: i32) -> ScriptRef<Mesh> {
+        let h = self.meshes.add(build_chunk(x, z));
+        ScriptRef::new(self.refs.insert_strong(h.untyped()))
+    }
+}
+```
 
 ### Params that write
 

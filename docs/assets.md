@@ -45,19 +45,49 @@ A ref goes in any `Handle<T>` slot the reflected writer reaches: a TSX prop
 of another asset type fails naming both types. A handle a script made reads back as its ref; any
 other handle reads as its path, or `null`.
 
+## Loading and load state
+
+A system that takes `server: Res<AssetServer>` gets Bevy's `AssetServer` (the engine's
+`ScriptAssetServer` export, `crates/bevy-ts-cli/src/assets.rs`):
+
+```ts
+import type { AssetRef, AssetServer, Res } from "bevy-ts";
+import { Mesh } from "bevy-ts/assets";
+
+let fox: AssetRef<unknown> | undefined;
+export function watch(server: Res<AssetServer>) {
+  fox ??= server.load("models/fox.glb");
+  if (server.isLoadedWithDependencies(fox)) { /* ... */ }
+}
+```
+
+- `server.load(path)` is Bevy's load: a strong ref, typed by the loader of the path's extension.
+  `server.load(path, Mesh)` names the type; a labelled path (`"fox.glb#Mesh0/Primitive0"`) needs
+  it and throws without. Loading a path again gives the same ref.
+- `loadState`, `dependencyLoadState` and `recursiveDependencyLoadState` give Bevy's variants by
+  name: `"NotLoaded"`, `"Loading"`, `"Loaded"`, or `{ Failed: <Bevy's error text> }`.
+  `isLoaded`, `isLoadedWithDirectDependencies` and `isLoadedWithDependencies` are Bevy's.
+- Each is one host call; a failed state makes one more for its text.
+
 ## Lifetime
 
-A ref is `{ $asset: n, type }`; `n` counts up from 1 and is never reused in a session. Script-made
-assets live until the script reloads or stops:
+A ref is `{ $asset: n, type }`; `n` counts up from 1 and is never reused in a session. A ref goes
+stale when the script drops it, removes it, or reloads; using a stale ref throws "stale asset ref".
 
-- After a hot reload every ref is stale: using one throws "stale asset ref". The assets stay for
-  the entities the reload kept, until the next restart. The reloaded script adds its assets again,
-  so under `bevy-ts dev` each hot reload keeps one more copy of them until a restart or Stop; a
-  shipped game never hot reloads.
-- A restart or a Stop removes every script-made asset.
+- A ref from `server.load` or `meshes.add` holds Bevy's strong handle, so the asset stays while the
+  script holds it, used or not. `assets.drop(ref)` lets go: Bevy sends `AssetEvent::Unused` and
+  frees the asset once no component holds it either. A hot reload drops every strong ref the old
+  script held, and a restart or Stop drops them all; what an entity still uses stays.
+- `assets.remove(ref)` (and `meshes.remove(ref)`) is Bevy's `Assets::remove`: the asset goes when
+  the run ends (`meshes.remove`: at once), even while a component holds it, which then draws
+  nothing.
+- A script-made asset from `assets.add` or `T.of` is a UUID handle, as Bevy's are, and lives until
+  restart or Stop: `drop` forgets the ref and keeps the asset. After a hot reload the reloaded
+  script adds its assets again, so under `bevy-ts dev` each hot reload keeps one more copy of them
+  until a restart or Stop; a shipped game never hot reloads.
 
-Adding an asset every frame grows memory until reload, and a warning is logged past 10,000 assets:
-add once and `set` after. Freeing an asset sooner is script-assets' handle lifecycle, not here.
+Adding an asset every frame grows memory, and a warning is logged past 10,000 refs: add once and
+`set` or `getMut` after, or `drop` what you replace.
 
 ## Meshes
 
