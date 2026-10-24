@@ -736,7 +736,7 @@ type JsxChild = import("bevy-ts/jsx-runtime").Child;
 
 /** Mounts its children while `when` is truthy, `fallback` otherwise. */
 export declare function Show(props: { when: boolean | (() => unknown); fallback?: JsxChild | (() => JsxChild); children?: JsxChild | (() => JsxChild) }): JsxElement;
-/** One subtree per item, kept by `key` across changes. */
+/** One subtree per item, kept by `key` across changes, in the items' order among its parent's children. */
 export declare function For<T>(props: { each: readonly T[] | (() => readonly T[]); key?: (item: T, index: number) => string | number; children: (item: T, index: number) => JsxElement }): JsxElement;
 
 export declare function px(n: number): string;

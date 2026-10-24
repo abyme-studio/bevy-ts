@@ -10,3 +10,4 @@ mod newtype;
 mod primitives;
 mod reconcile;
 mod standard_material;
+mod slot;

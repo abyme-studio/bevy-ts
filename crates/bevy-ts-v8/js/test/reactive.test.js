@@ -280,6 +280,40 @@ Deno.test("For keeps items by key and unmounts only the removed one", () => {
   eq(out.mounts, []);
 });
 
+Deno.test("For sends its key order when it changed, and only then", () => {
+  const ctx = new TsxContext();
+  const [items, setItems] = signal(["a", "b", "c"]);
+  describe(jsx(For, { each: () => items(), key: (i) => i, children: (i) => jsx("entity", { name: i }) }), ctx);
+  let out = ctx.call({});
+  eq([out.mounts.length, out.orders], [3, []], "mounts in item order need no order");
+  setItems(["c", "b", "a"]);
+  out = ctx.call({});
+  eq([out.mounts, out.unmounts, out.orders], [[], [], [[1, ["c", "b", "a"]]]]);
+  setItems(["c", "b", "a"]);
+  setItems((xs) => [...xs]);
+  out = ctx.call({});
+  eq([out.mounts, out.unmounts, out.orders], [[], [], []], "the same order sends none");
+  // Removing one and adding one at the end keeps the others' order: nothing to sort.
+  setItems(["c", "a", "d"]);
+  out = ctx.call({});
+  eq([out.mounts.map(([, g]) => g), out.unmounts, out.orders], [["d"], [[1, "b"]], []]);
+  // A new item before an old one is out of mount order.
+  setItems(["e", "c", "a", "d"]);
+  out = ctx.call({});
+  eq([out.mounts.map(([, g]) => g), out.orders], [["e"], [[1, ["e", "c", "a", "d"]]]]);
+});
+
+Deno.test("For withdraws an item mounted and removed between two calls", () => {
+  const ctx = new TsxContext();
+  const [items, setItems] = signal(["a"]);
+  describe(jsx(For, { each: () => items(), key: (i) => i, children: (i) => jsx("entity", { name: i }) }), ctx);
+  ctx.call({});
+  setItems(["a", "b"]);
+  setItems(["a"]);
+  const out = ctx.call({});
+  eq([out.mounts, out.unmounts, out.orders], [[], [], []]);
+});
+
 Deno.test("a read outside a binding warns once with its location", () => {
   const warnings = [];
   const old = console.warn;

@@ -79,6 +79,8 @@ pub struct ReconcileStats {
     /// Controlled fields written on existing components.
     pub written: usize,
     pub tombstoned: usize,
+    /// Nodes a slot's reconcile checked for despawn: the old nodes of the groups it was given.
+    pub checked: usize,
 }
 
 impl ReconcileStats {
@@ -93,6 +95,7 @@ impl ReconcileStats {
         self.removed += o.removed;
         self.written += o.written;
         self.tombstoned += o.tombstoned;
+        self.checked += o.checked;
     }
 }
 
@@ -113,6 +116,19 @@ pub struct SlotState {
     pub types: Vec<String>,
     /// Groups mounted since the generation applied.
     pub groups: BTreeSet<String>,
+    /// What each mounted group holds, so a slot's reconcile touches only the groups it is given.
+    pub rows: HashMap<String, GroupRows>,
+}
+
+/// The nodes one group of a slot mounted.
+#[derive(Clone, Debug, Default)]
+pub struct GroupRows {
+    /// Every node id, top-level ones included.
+    pub nodes: Vec<u64>,
+    /// The top-level nodes, in order: the entities that sit among the slot's parent's children.
+    pub tops: Vec<u64>,
+    /// The slots inside the group, whose content goes with it.
+    pub slots: Vec<u32>,
 }
 
 /// A site: bindings on one element's native-layout field, across every instance. Rust scans the
