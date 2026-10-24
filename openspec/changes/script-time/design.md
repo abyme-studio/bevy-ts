@@ -41,8 +41,18 @@ test tools). A Time-only write path. Reflecting Bevy's own `Timer` into TS colum
 | Timer layout | 1 | 24 bytes, align 8 | `layout.rs::timer_and_stopwatch_layouts` |
 | Timer field in protocol, inspector, `.bsn` | 1 | struct of its fields | `levels_protocol.rs::timer_field_round_trips` |
 | Read-only timer has no methods | 1 | types | `packages/bevy-ts/test/time.ts::readTimerHasNoTick` |
-| `Time<Virtual>` `pause`, `unpause`, `toggle`, `set_relative_speed`, `set_max_delta` | 2 | `ResMut<Time<Virtual>>` methods | stage 2's tests |
-| `Time<Fixed>` `set_timestep`, `set_timestep_seconds`, `set_timestep_hz`, `discard_overstep` | 2 | `ResMut<Time<Fixed>>` methods | stage 2's tests |
+| `Time<Virtual>` `pause`, `unpause`, `toggle` | 2 | `ResMut<Time<Virtual>>` `pause()`, `unpause()`, `toggle()` | `time_writes.rs::virtual_writes_match_bevy` |
+| `Time<Virtual>` `set_relative_speed`, `set_relative_speed_f64`, `set_max_delta` | 2 | `setRelativeSpeed(r)`, `setRelativeSpeedF64(r)`, `setMaxDelta(s)` | `time_writes.rs::virtual_writes_match_bevy` |
+| `Time<Fixed>` `set_timestep`, `set_timestep_seconds`, `set_timestep_hz`, `discard_overstep` | 2 | `ResMut<Time<Fixed>>` `setTimestep(s)`, `setTimestepSeconds(s)`, `setTimestepHz(hz)`, `discardOverstep(s)` | `time_writes.rs::fixed_writes_match_bevy` |
+| `Time::set_wrap_period` on `Time<Virtual>`, `Time<Fixed>` | 2 | `setWrapPeriod(s)` on both | `time_writes.rs::virtual_writes_match_bevy`, `fixed_writes_match_bevy` |
+| every clock getter on a written clock | 2 | snake_case properties of `ResMut<Time<Virtual>>`, `ResMut<Time<Fixed>>`, read live | `time_writes.rs::a_write_reads_back_in_the_same_run` |
+| Bevy's setter panics (`set_max_delta(0)`, negative or non-finite speed, zero timestep or Hz, zero wrap period) | 2 | the call throws naming the export and method, the clock unchanged | `time_writes.rs::bad_clock_writes_throw` |
+| a TS pause over an editor step | 2 | the game's pause holds | `time_writes.rs::ts_pause_survives_an_editor_step` |
+| `ResMut<Time>`, `ResMut<Time<Real>>` | 2 | load error naming the clocks TS may write | `time_writes.rs::unwritable_clocks_fail_the_load` |
+| `Res<Time<..>>` beside a written clock | 2 | stage-1 per-run view, no host call | `time_writes.rs::clock_reads_make_no_host_call` |
+| clock write types | 2 | `ResMut<Time<Virtual>>` is `VirtualTime`, `Res<Time<Virtual>>` has no methods | `packages/bevy-ts/test/time_writes.ts` |
+| `#[getter]` on an export | 2 | a read-only property under the Rust name | `exported.rs::a_getter_reads_as_a_property`, `bevy-ts-native` doc test `a getter takes no arguments` |
+| `Time::advance_by`, `advance_to`, `Time<Fixed>::accumulate_overstep`, `Time<Real>::update*`, `context_mut`, `Time<..>::from_*`/`new_with` | — | not visible: host and test tools, or constructors of a resource Bevy owns | — |
 | `on_timer`, `on_real_timer` | 3 | `onTimer(s)`, `onRealTimer(s)` | `time.rs::time_conditions_match_bevy` |
 | `once_after_delay`, `once_after_real_delay`, `repeating_after_delay`, `repeating_after_real_delay` | 3 | `onceAfterDelay(s)`, `onceAfterRealDelay(s)`, `repeatingAfterDelay(s)`, `repeatingAfterRealDelay(s)` | `time.rs::time_conditions_match_bevy` |
 | `on_timer` in `FixedUpdate` ticks `Time<Fixed>` | 3 | same | `time.rs::time_conditions_match_bevy` |
@@ -72,7 +82,8 @@ load. This is the one place `Time` is special-cased, and it is ours, not rust-re
 
 **TS types.** `Time<C = void>` is a declared generic class in `index.d.ts`; `Real`, `Virtual`,
 `Fixed` are declared marker classes. The type of each clock's properties is conditional on `C`, so
-`time.is_paused` on `Res<Time>` is a type error. Writes are absent from the types until stage 2.
+`time.is_paused` on `Res<Time>` is a type error. `Res<Time<..>>` never has writes; stage 2's
+`ResMut` claims carry them.
 
 **Editor pause vs game pause.** `ScriptClock` gains `paused_virtual: bool`: true when the editor
 clock (pause, a non-running frame, edit mode, `reset_clock`) paused `Time<Virtual>`. `advance_clock`
@@ -129,19 +140,85 @@ of each, where Bevy's own systems already run in Rust through the seam. Rejected
 `bevy-ts/time` module for the wrappers; every other built-in condition is a `bevy-ts` export.
 
 **Stage 2: writes under Bevy's names.** Scripts write `ResMut<Time<Virtual>>` and
-`ResMut<Time<Fixed>>`, never a second name. Behind them are Rust params exported through
-writable-native-params' mechanism into the `bevy-ts/time` module: `VirtualTime { time:
-ResMut<Time<Virtual>> }` (`pause`, `unpause`, `toggle`, `set_relative_speed`, `set_max_delta`) and
-`FixedTime { time: ResMut<Time<Fixed>> }` (`set_timestep`, `set_timestep_seconds`,
-`set_timestep_hz`, `discard_overstep`). One synchronous host call per method, stamped with the TS
-system's tick, effective in the next frame's delta as in Bevy. Each export declares the TS spelling
-it stands for: `#[export(ts = "VirtualTime", module = "bevy-ts/time", stands_for =
-"ResMut<Time<Virtual>>")]`, `FixedTime` claiming `ResMut<Time<Fixed>>`. On a claimed spelling the
-reader emits the same port decl a `VirtualTime` param gets, so the run path is unchanged, and
-`bevy-ts`'s `ResMut<T>` type resolves to the export's class (research@writable-native-params,
-2026-10-23). writable-native-params owns the mechanism (`stands_for`, the registry, the reader, the
-declarations); script-time owns `VirtualTime`, `FixedTime`, their claims, the `bevy-ts/time`
-module's spec and the consumer requirement in stage 2's delta.
+`ResMut<Time<Fixed>>`, never a second name. Behind them are two params exported through
+writable-native-params' mechanism (on `main`, `docs/native.md` "Standing for a Bevy spelling"):
+
+```rust
+#[derive(SystemParam)]
+pub struct VirtualClock<'w> { time: ResMut<'w, Time<Virtual>> }
+
+#[export(ts = "VirtualTime", module = "bevy-ts/time", stands_for = "ResMut<Time<Virtual>>")]
+impl VirtualClock<'_> {
+    pub fn pause(&mut self) { self.time.pause() }
+    pub fn set_relative_speed(&mut self, ratio: f32) -> Result<(), String> { ... }
+    #[getter]
+    pub fn is_paused(&self) -> bool { self.time.is_paused() }
+    ...
+}
+```
+
+`FixedClock` (`ts = "FixedTime"`, `stands_for = "ResMut<Time<Fixed>>"`) holds
+`ResMut<Time<Fixed>>`. Both live in `crates/bevy-ts-cli/src/time.rs`, whose `ScriptTimePlugin`
+registers them and the `bevy-ts/time` module, added beside `ScriptInputPlugin` in `cli.rs` and
+`types.rs`, as `bevy-ts/input` is. The reader already reads a claimed spelling as the export
+(`reader.rs`, `a_claimed_spelling_reads_as_its_export`), and `ResMut<T>`'s type already resolves
+through `ResMutClaims`; this stage adds the exports, not a route.
+
+Methods, Bevy's names in camelCase, every `Duration` in seconds:
+
+| Bevy | `VirtualTime` | `FixedTime` |
+|---|---|---|
+| `pause`, `unpause`, `toggle` | `pause()`, `unpause()`, `toggle()` | — |
+| `set_relative_speed(f32)`, `set_relative_speed_f64(f64)` | `setRelativeSpeed(r)`, `setRelativeSpeedF64(r)` | — |
+| `set_max_delta(Duration)` | `setMaxDelta(s)` | — |
+| `set_timestep(Duration)`, `set_timestep_seconds(f64)`, `set_timestep_hz(f64)` | — | `setTimestep(s)`, `setTimestepSeconds(s)`, `setTimestepHz(hz)` |
+| `discard_overstep(Duration)` | — | `discardOverstep(s)` |
+| `set_wrap_period(Duration)` | `setWrapPeriod(s)` | `setWrapPeriod(s)` |
+
+Getters, as properties under Bevy's names, read live: every clock's seven (`delta_secs`,
+`elapsed_secs`, `elapsed_secs_wrapped`, their `_f64`s, `wrap_period`), then `Time<Virtual>`'s
+seven or `Time<Fixed>`'s four, the stage-1 list. So `time.pause(); time.is_paused` reads `true`,
+as Bevy's `is_paused()` does after `pause()`, and the two spellings read alike:
+`Res<Time<Virtual>>`'s `is_paused` and `ResMut<Time<Virtual>>`'s.
+
+Not visible, as in the Non-Goals: `advance_by`, `advance_to` and `accumulate_overstep` (Bevy: "for
+use in tests"; the fixed loop owns the overstep), `Time<Real>`'s `update*` (the host's clock),
+`context_mut`, and the constructors (`from_hz`, `new_with`, ...): TS writes the resource Bevy owns,
+never replaces it. `ResMut<Time>` and `ResMut<Time<Real>>` fail the load, naming
+`ResMut<Time<Virtual>>` and `ResMut<Time<Fixed>>` as the clocks TS writes: Bevy rebuilds `Time`
+from those every frame and every fixed step, and `Time<Real>` is the wall clock.
+
+**Bevy's panics are errors.** Each setter checks what Bevy asserts before calling it and returns
+`Err` with Bevy's message (`"tried to go back in time"`, `"attempted to set fixed timestep to
+zero"`, `"Hz less than or equal to zero"`, ...), so the call throws in JS naming the export and the
+method and the clock is unchanged. A seconds argument goes through one helper, `secs(value) ->
+Result<Duration, String>` (`Duration::try_from_secs_f64`), which refuses negative and non-finite
+values. The mechanism already catches a panic, but a Bevy assert is an expected input error, not
+a bug.
+
+**When a write lands.** A method writes `Time<Virtual>` or `Time<Fixed>` in place, at the TS
+system's tick. Bevy reads them in `First` (`update_virtual_time`) and in
+`run_fixed_main_schedule`, so a pause or speed takes effect in the next frame's delta, and a
+timestep set in `FixedUpdate` takes effect on the next fixed step, as from a Rust system.
+
+**The editor clock.** A TS `pause()` is a game pause: it never touches
+`ScriptClock::paused_virtual`, so stage 1's rule holds unchanged. Over an editor step
+(`advance_clock` cleared `paused_virtual` and unpaused for the stepped frame), a TS `pause()` leaves
+the clock paused, the next held frame finds it paused and records nothing, and resume leaves it
+paused. A TS `unpause()` runs only in a running or stepped frame, so the editor never has its own
+pause undone. No change to `runtime.rs`.
+
+**Getters on exports: `#[getter]`.** `#[export]` makes every `pub fn` a camelCase method today; it
+has no property. A `pub fn` marked `#[getter]`, `&self` and no arguments, becomes a read-only
+property under its Rust name (snake_case, as the stage-1 views and Bevy's getters), one host call
+per read. The macro refuses a getter that takes arguments or `&mut self`, naming it. Declarations
+say `readonly is_paused: boolean`; the handshake's `ExportedParam` gains `properties: string[]`
+beside `methods`, an addition in the next free protocol minor (1.30.0 if nothing takes it first).
+This extends writable-native-params' mechanism, now on `main` with no owner team; script-time
+owns the extension. Rejected: getter methods (`time.isPaused()`), which would make
+`Res<Time<Virtual>>` and `ResMut<Time<Virtual>>` read differently; a per-run snapshot on the
+export, which reads stale after `pause()`; merging the stage-1 view into the port value, which
+changes `run_one`'s glue writable-native-params kept fixed.
 
 Resolution order for `Res<R>` and `ResMut<R>`, agreed with lead@rust-resources (2026-10-23):
 
@@ -150,12 +227,6 @@ Resolution order for `Res<R>` and `ResMut<R>`, agreed with lead@rust-resources (
    `ResMut<Time>` stays refused.
 2. Otherwise a spelling an export claims with `stands_for`: that export.
 3. Otherwise rust-resources' generic `Res`/`ResMut` path.
-
-`HostParams::register` refuses two exports claiming one spelling, naming both Rust types. An
-export and a native-layout resource may share a spelling: the export's claim wins, and
-rust-resources' resolution skips claimed spellings (research@writable-native-params with
-rust-resources, 2026-10-23). rust-resources leaves a hook point in resolution for steps 1-2; the
-claims are not theirs.
 
 Every `Res<Time<..>>` stays the stage-1 per-run value, with no host call. `VirtualTime` claims only
 `ResMut<Time<Virtual>>` and `FixedTime` only `ResMut<Time<Fixed>>`; each `ResMut` class carries the
@@ -173,8 +244,12 @@ name. Levels write it as a struct value of those fields, as they write a vector'
   differ in the last bits → the test compares `elapsed` within 1e-9 s, flags and counts exactly.
 - A TS Timer and a Rust component's Bevy `Timer` are two types → both read alike (seconds,
   Bevy's names); docs say which is which.
-- Stage 2 slipping leaves pause read-only in TS → research's fallback (queue on the TS command
-  buffer) is stage 2's call, not made here.
+- A getter is a host call per read, where `Res<Time<..>>` is a per-run value → a system reading
+  many clock values each frame takes `Res<Time<Virtual>>` beside the `ResMut`; docs say so. A host
+  call is a V8 fast op; seven reads a frame are noise.
+- A Rust system pausing `Time<Virtual>` while the editor holds it paused is a no-op Bevy pause,
+  and the editor's resume undoes it. TS cannot hit this (its stages are stopped); stage 1's rule,
+  unchanged here.
 
 ## Migration Plan
 
@@ -182,7 +257,4 @@ Additions only. `Res<Time>` keeps its four fields at their offsets; the new fiel
 
 ## Open Questions
 
-- Stage 2: `stands_for` is confirmed by research@writable-native-params (2026-10-23) and is a
-  requirement of their design. If it does not land, stage 2 waits; it does not ship
-  `vt: VirtualTime` as the TS name.
 - Stage 4: whether writable-native-params' `Commands` work covers `delayed()`.

@@ -49,9 +49,23 @@
 - [x] 6.7 Docs: `docs/time.md` a "Run conditions" section (the seven, which clock each ticks, the fixed schedule, reload and Stop) and drop them from "Not yet built"; `docs/scripts.md`'s condition table gains the seven rows; `docs/native.md` says bevy-ts exposes `bevy:` time conditions as it does `bevy:` anchors; `docs/research/bevy-coverage.md` row 86 (and 214) name the conditions covered by stage 3
 - [ ] 6.8 `openspec validate script-time --strict`; the repo's full check green (cargo through `~/dev/abyme/scripts/gate-slot`); no protocol change
 
-## 7. Later stages
+## 7. Clock writes (stage 2)
 
-Not tasks of this change: each is a follow-up change once its shape lands.
+Rebase on `main` first: writable-native-params (584b78c) and protocol 1.29.0 are there, not here.
 
-- Stage 2, `ResMut<Time<Virtual>>` (`pause`, `unpause`, `toggle`, `setRelativeSpeed`, `setMaxDelta`) and `ResMut<Time<Fixed>>` (`setTimestep`, `setTimestepSeconds`, `setTimestepHz`, `discardOverstep`) through exported `VirtualTime`/`FixedTime` claiming those spellings with `stands_for`, resolution order in design.md: waits on writable-native-params' export mechanism and `stands_for`
+- [ ] 7.1 `#[getter]` in `crates/bevy-ts-native-derive/src/lib.rs`: a marked `pub fn` with `&self` and no arguments becomes a property under its Rust name; arguments or `&mut self` are a compile error naming it; `crates/bevy-ts/src/host.rs` `MethodSpec` says which methods are getters
+- [ ] 7.2 The port glue in `crates/bevy-ts-v8/js/core.js` defines each getter as a property (`get` over the same host call, no setter), then `node scripts/sync-runtime.mjs`; `bevy-ts-cli/src/types.rs` declares it `readonly <name>: <type>`
+- [ ] 7.3 `protocol/bevy-ts.openrpc.json`: `ExportedParam.properties` (array of string, optional), the next free minor on `main` at landing (1.30.0 unless taken); regenerate (`scripts/gen-protocol.sh`); the handshake fills it
+- [ ] 7.4 `crates/bevy-ts-cli/src/time.rs` (new): `ScriptTimePlugin` registers `VirtualClock` (`ts = "VirtualTime"`, `stands_for = "ResMut<Time<Virtual>>"`) and `FixedClock` (`ts = "FixedTime"`, `stands_for = "ResMut<Time<Fixed>>"`) in module `bevy-ts/time`, with design.md's method table and every getter of the clock's stage-1 list; one `secs(value)` helper over `Duration::try_from_secs_f64`; each setter returns `Err` with Bevy's message where Bevy asserts. Added beside `ScriptInputPlugin` in `cli.rs` and `types.rs`
+- [ ] 7.5 `crates/bevy-ts/src/systems.rs`: the `ResMut` clock refusal names `ResMut<Time<Virtual>>` and `ResMut<Time<Fixed>>` as the clocks TS writes; it now only meets `ResMut<Time>` and `ResMut<Time<Real>>` (or a claimed clock with no plugin)
+- [ ] 7.6 `crates/bevy-ts-cli/tests/it/time_writes.rs` (new, `mod time_writes;` in `main.rs`): `virtual_writes_match_bevy` (each `VirtualTime` method, the resource after the call and the next frame's `Res<Time>` delta against the same call from Rust), `fixed_writes_match_bevy` (each `FixedTime` method; `FixedUpdate` run counts against Rust), `a_write_reads_back_in_the_same_run`, `bad_clock_writes_throw` (every Bevy assert: the message, the export and method named, the clock unchanged), `ts_pause_survives_an_editor_step`, `unwritable_clocks_fail_the_load`, `clock_reads_make_no_host_call`
+- [ ] 7.7 `crates/bevy-ts-cli/tests/it/exported.rs`: `a_getter_reads_as_a_property` (and its `properties` in the handshake); a `compile_fail` doc test in `crates/bevy-ts-native/src/lib.rs`, a getter that takes an argument
+- [ ] 7.8 `packages/bevy-ts/test/time_writes.ts` (under `tsc -p test`): `ResMut<Time<Virtual>>` has `pause()` and `readonly is_paused`; `@ts-expect-error` on `Res<Time<Virtual>>`'s `pause`, on assigning `is_paused`, and on `ResMut<Time<Fixed>>`'s `pause`
+- [ ] 7.9 Docs: `docs/time.md` a "Writing the clocks" section (both tables, when a write lands, a TS pause vs the editor's, reads as properties and `Res` beside `ResMut` for many reads) and drop stage 2 from "Not yet built"; `docs/native.md` "Calling Rust from TS" documents `#[getter]`, and "Standing for a Bevy spelling" names `VirtualTime`/`FixedTime` as shipped; `docs/research/bevy-coverage.md` row 85 (and 213) name the writes covered
+- [ ] 7.10 `openspec validate script-time --strict`; the repo's full check green (cargo through `~/dev/abyme/scripts/gate-slot`); protocol version the next free minor on `main` at landing
+
+## 8. Later stages
+
+Not tasks of this change: a follow-up change once its shape lands.
+
 - Stage 4, `commands.delayed().secs(s)`: waits on writable-native-params' `Commands`
