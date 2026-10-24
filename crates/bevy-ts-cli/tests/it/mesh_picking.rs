@@ -73,11 +73,11 @@ struct Seen(Vec<&'static str>);
 /// cube in the middle of the image that records its pointer events.
 fn pointer_scene() -> App {
     use bevy::picking::events::{PointerClick, PointerOut, PointerOver};
-    use bevy_ts_viewport::offscreen::OffscreenPointerPlugin;
+    use bevy_ts_viewport::offscreen::OffscreenInputPlugin;
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
     let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, bevy_ts_cli::project::Switches { mesh_picking: true, ..Default::default() }, &[], false);
     let image = app.world().resource::<bevy_ts_cli::headless::Offscreen>().0.clone();
-    app.add_plugins(OffscreenPointerPlugin { image });
+    app.add_plugins(OffscreenInputPlugin { image });
     app.finish();
     app.cleanup();
     app.init_resource::<Seen>();
@@ -96,8 +96,8 @@ fn pointer_scene() -> App {
 
 /// Queues pointer events at the cube's pixel and runs `frames` updates; what the cube saw.
 fn send(app: &mut App, kinds: &[bevy_ts_remote::protocol::PointerEventKind], frames: usize) -> Vec<&'static str> {
-    use bevy_ts_remote::protocol::{PointerEvent, PointerEventButton, PointerEventType};
-    let events = kinds.iter().map(|kind| PointerEvent {
+    use bevy_ts_remote::protocol::{PointerEvent, PointerEventButton, PointerEventType, ViewportInput};
+    let events = kinds.iter().map(|kind| ViewportInput::PointerEvent(PointerEvent {
         button: Some(PointerEventButton::Left),
         buttons: vec![],
         clicks: None,
@@ -108,7 +108,7 @@ fn send(app: &mut App, kinds: &[bevy_ts_remote::protocol::PointerEventKind], fra
         type_: PointerEventType::Pointer,
         x: 480.0,
         y: 270.0,
-    });
+    }));
     app.world_mut().resource_mut::<bevy_ts_viewport::offscreen::Pending>().0.extend(events);
     for _ in 0..frames {
         app.update();

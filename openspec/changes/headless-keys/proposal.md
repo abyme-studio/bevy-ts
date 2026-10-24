@@ -18,6 +18,7 @@ None.
 ### Modified Capabilities
 - `viewport-input`: the headless requirement takes `key` and `ime`, and typing works under `--headless`.
 - `script-input`: `InputFocus.typing()`, the single-key shortcut guard that works with a primary window.
+- `shared-surface`: its windowed-mode requirement names `key` and `ime` beside `pointer` headless.
 
 ## Impact
 

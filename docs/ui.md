@@ -324,9 +324,9 @@ from a descendant.
 Bevy's `TextInput` inserts a character only with no modifier or Shift, so Option (macOS) and
 AltGr characters are not typed, as in a native Bevy window.
 
-Keys reach a field only with a primary window: in a game window or in viewport mode, not under
-`--headless` ([viewport.md](viewport.md#typing)). A key typed into a field still shows in
-`Keys` from `bevy-ts/input`; check `InputFocus` for single-key shortcuts
+Keys reach a field through a primary window: a game window, viewport mode's virtual one, or the
+window-less one `--headless` spawns ([viewport.md](viewport.md#typing)). A key typed into a field
+still shows in `Keys` from `bevy-ts/input`; guard a single-key shortcut with `!focus.typing()`
 ([native.md](native.md#ports-and-built-in-modules)).
 
 ## Widgets
