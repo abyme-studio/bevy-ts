@@ -44,7 +44,7 @@ fn logged(app: &App, needle: &str) -> bool {
 fn a_system_adds_reads_and_sets_a_material() {
     let (_dir, app) = setup(
         "assets-add-set",
-        r#"
+        r##"
 let mat: any = null;
 let done = false;
 function make() {
@@ -58,7 +58,7 @@ function tweak() {
   console.log(`roughness=${assets.get(mat).perceptual_roughness}`);
 }
 app.addSystems(Startup, make).addSystems(Update, tweak);
-"#,
+"##,
     );
     assert!(logged(&app, "added 1 unlit=true"), "{:?}", messages(&app));
     assert!(logged(&app, "roughness=0.25"), "{:?}", messages(&app));
@@ -73,12 +73,12 @@ app.addSystems(Startup, make).addSystems(Update, tweak);
 fn a_ref_from_a_render_goes_on_a_mesh_entity() {
     let (_dir, mut app) = setup(
         "assets-ref-tsx",
-        r#"
+        r##"
 app.scene("s", () => {
   const mat = assets.add(StandardMaterial, { unlit: true });
   return <entity name="it"><MeshMaterial3d value={mat} /></entity>;
 });
-"#,
+"##,
     );
     let ids = entity_materials(&mut app);
     assert_eq!(ids.len(), 1);
@@ -90,14 +90,14 @@ app.scene("s", () => {
 fn equal_values_share_one_material() {
     let (_dir, mut app) = setup(
         "assets-of-share",
-        r#"
+        r##"
 app.scene("s", () => (
   <entity name="root">
     <entity name="a"><MeshMaterial3d value={StandardMaterial.of({ unlit: true, base_color: "#fff" })} /></entity>
     <entity name="b"><MeshMaterial3d value={StandardMaterial.of({ base_color: "#fff", unlit: true })} /></entity>
   </entity>
 ));
-"#,
+"##,
     );
     let ids = entity_materials(&mut app);
     assert_eq!(ids.len(), 2);
@@ -109,7 +109,7 @@ app.scene("s", () => (
 fn a_ref_of_the_wrong_type_names_both() {
     let (_dir, app) = setup(
         "assets-wrong-type",
-        r#"
+        r##"
 function make() {
   const mat = assets.add(StandardMaterial, {});
   try {
@@ -119,7 +119,7 @@ function make() {
   }
 }
 app.addSystems(Startup, make);
-"#,
+"##,
     );
     let m = messages(&app);
     let line = m.iter().find(|l| l.starts_with("threw ")).unwrap_or_else(|| panic!("no throw: {m:?}"));
@@ -130,19 +130,19 @@ app.addSystems(Startup, make);
 fn a_ref_from_before_a_reload_is_stale() {
     let (dir, mut app) = setup(
         "assets-stale",
-        r#"
+        r##"
 function make() {
   (globalThis as any).old = assets.add(StandardMaterial, {});
 }
 app.addSystems(Startup, make);
-"#,
+"##,
     );
     write(
         &dir,
         "game.tsx",
         &format!(
             "{HEAD}{}",
-            r#"
+            r##"
 let tried = false;
 function probe() {
   if (tried) return;
@@ -154,7 +154,7 @@ function probe() {
   }
 }
 app.addSystems(Update, probe);
-"#
+"##
         ),
     );
     let r = reload(&mut app, false);
