@@ -84,7 +84,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `Res<Time>` | idiomatic, read-only, a built value (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`, `time.rs` `fixed_update_reads_timestep` | script-time stage 1 (done) |
 | `Time<Real>`, `Time<Virtual>` pause and speed, `Time<Fixed>` timestep | partial: every clock read (`Res<Time<C>>`); a game's own pause holds; writes (`ResMut<Time<Virtual>>`, `ResMut<Time<Fixed>>`) missing | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame` | script-time stage 2 (writes) |
 | `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: `Timer`, `Stopwatch`, `TimerMode` are field types with Bevy's methods; `onTimer` and the other conditions, `commands.delayed()` missing | `time.rs` `timer_matches_bevy`, `stopwatch_pauses` | script-time stages 3 (conditions), 4 (delayed commands) |
-| Keyboard (`ButtonInput<KeyCode>`), `InputFocus`, `KeyCode` | missing on main | — | text-input |
+| Keyboard (`ButtonInput<KeyCode>`, `ButtonInput<Key>`), `InputFocus`, `KeyCode`, `Key` | covered: `Keys`, `LogicalKeys`, `InputFocus` in `bevy-ts/input` (`docs/native.md`) | `text_input.rs` `keys_and_input_focus_read_n_only_while_nothing_has_focus`, `logical_keys_read_what_the_key_types` | text-input, logical-keys |
 | Mouse buttons, motion, scroll, cursor position | missing | — | new: `script-input-devices` |
 | Touch, gestures | missing | — | new: `script-input-devices` |
 | Gamepads (buttons, axes, sticks, rumble) | missing | — | new: `script-input-devices` |

@@ -1,6 +1,6 @@
 //! W3C `KeyboardEvent.code` and `key` values to Bevy's `KeyCode` and `Key` and back, as winit
-//! maps them, and the numbers `bevy-ts/input` gives each `KeyCode`. One owner for the viewport's
-//! key events, the TSX keyboard events and `KeyCode` in TS.
+//! maps them, and the numbers `bevy-ts/input` gives each `KeyCode` and `Key`. One owner for the
+//! viewport's key events, the TSX keyboard events and `KeyCode` and `Key` in TS.
 //! Generated from bevy_winit 0.20's converters; W3C names that winit spells differently are
 //! aliased, the W3C name first.
 
@@ -554,6 +554,93 @@ pub fn key_code_of(n: u32) -> Option<KeyCode> {
     KEY_CODES.get(n as usize).map(|(_, k)| *k)
 }
 
+/// Where `Key`'s numbers start in TS, in the one input number space: named keys from
+/// [`KEY_BASE`], a character at [`CHARACTER_BASE`] plus its code point, a dead key at
+/// [`DEAD_KEY_BASE`] plus its code point, and `Dead(None)` at [`DEAD_KEY_NONE`].
+pub const KEY_BASE: u32 = 0x3000;
+pub const CHARACTER_BASE: u32 = 0x10_0000;
+pub const DEAD_KEY_BASE: u32 = 0x30_0000;
+pub const DEAD_KEY_NONE: u32 = DEAD_KEY_BASE + 0x11_0000;
+
+/// Every `Key` variant without data, in Bevy's order. A variant's index here, plus
+/// [`KEY_BASE`], is its number in TS.
+macro_rules! named_keys {
+    ($($variant:ident,)*) => {
+        /// `Key`'s variants without data, by name.
+        pub const NAMED_KEYS: &[(&str, Key)] = &[$((stringify!($variant), Key::$variant),)*];
+    };
+}
+
+named_keys! {
+    Alt, AltGraph, CapsLock, Control, Fn, FnLock, NumLock, ScrollLock, Shift, Symbol, SymbolLock, Meta, Hyper,
+    Super, Enter, Tab, Space, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, End, Home, PageDown, PageUp, Backspace,
+    Clear, Copy, CrSel, Cut, Delete, EraseEof, ExSel, Insert, Paste, Redo, Undo, Accept, Again, Attn, Cancel,
+    ContextMenu, Escape, Execute, Find, Help, Pause, Play, Props, Select, ZoomIn, ZoomOut, BrightnessDown,
+    BrightnessUp, Eject, LogOff, Power, PowerOff, PrintScreen, Hibernate, Standby, WakeUp, AllCandidates,
+    Alphanumeric, CodeInput, Compose, Convert, FinalMode, GroupFirst, GroupLast, GroupNext, GroupPrevious,
+    ModeChange, NextCandidate, NonConvert, PreviousCandidate, Process, SingleCandidate, HangulMode,
+    HanjaMode, JunjaMode, Eisu, Hankaku, Hiragana, HiraganaKatakana, KanaMode, KanjiMode, Katakana, Romaji,
+    Zenkaku, ZenkakuHankaku, Soft1, Soft2, Soft3, Soft4, ChannelDown, ChannelUp, Close, MailForward,
+    MailReply, MailSend, MediaClose, MediaFastForward, MediaPause, MediaPlay, MediaPlayPause, MediaRecord,
+    MediaRewind, MediaStop, MediaTrackNext, MediaTrackPrevious, New, Open, Print, Save, SpellCheck, Key11,
+    Key12, AudioBalanceLeft, AudioBalanceRight, AudioBassBoostDown, AudioBassBoostToggle,
+    AudioBassBoostUp, AudioFaderFront, AudioFaderRear, AudioSurroundModeNext, AudioTrebleDown,
+    AudioTrebleUp, AudioVolumeDown, AudioVolumeUp, AudioVolumeMute, MicrophoneToggle,
+    MicrophoneVolumeDown, MicrophoneVolumeUp, MicrophoneVolumeMute, SpeechCorrectionList,
+    SpeechInputToggle, LaunchApplication1, LaunchApplication2, LaunchCalendar, LaunchContacts,
+    LaunchMail, LaunchMediaPlayer, LaunchMusicPlayer, LaunchPhone, LaunchScreenSaver, LaunchSpreadsheet,
+    LaunchWebBrowser, LaunchWebCam, LaunchWordProcessor, BrowserBack, BrowserFavorites, BrowserForward,
+    BrowserHome, BrowserRefresh, BrowserSearch, BrowserStop, AppSwitch, Call, Camera, CameraFocus, EndCall,
+    GoBack, GoHome, HeadsetHook, LastNumberRedial, Notification, MannerMode, VoiceDial, TV, TV3DMode,
+    TVAntennaCable, TVAudioDescription, TVAudioDescriptionMixDown, TVAudioDescriptionMixUp,
+    TVContentsMenu, TVDataService, TVInput, TVInputComponent1, TVInputComponent2, TVInputComposite1,
+    TVInputComposite2, TVInputHDMI1, TVInputHDMI2, TVInputHDMI3, TVInputHDMI4, TVInputVGA1,
+    TVMediaContext, TVNetwork, TVNumberEntry, TVPower, TVRadioService, TVSatellite, TVSatelliteBS,
+    TVSatelliteCS, TVSatelliteToggle, TVTerrestrialAnalog, TVTerrestrialDigital, TVTimer, AVRInput,
+    AVRPower, ColorF0Red, ColorF1Green, ColorF2Yellow, ColorF3Blue, ColorF4Grey, ColorF5Brown,
+    ClosedCaptionToggle, Dimmer, DisplaySwap, DVR, Exit, FavoriteClear0, FavoriteClear1, FavoriteClear2,
+    FavoriteClear3, FavoriteRecall0, FavoriteRecall1, FavoriteRecall2, FavoriteRecall3, FavoriteStore0,
+    FavoriteStore1, FavoriteStore2, FavoriteStore3, Guide, GuideNextDay, GuidePreviousDay, Info,
+    InstantReplay, Link, ListProgram, LiveContent, Lock, MediaApps, MediaAudioTrack, MediaLast,
+    MediaSkipBackward, MediaSkipForward, MediaStepBackward, MediaStepForward, MediaTopMenu, NavigateIn,
+    NavigateNext, NavigateOut, NavigatePrevious, NextFavoriteChannel, NextUserProfile, OnDemand, Pairing,
+    PinPDown, PinPMove, PinPToggle, PinPUp, PlaySpeedDown, PlaySpeedReset, PlaySpeedUp, RandomToggle,
+    RcLowBattery, RecordSpeedNext, RfBypass, ScanChannelsToggle, ScreenModeNext, Settings,
+    SplitScreenToggle, STBInput, STBPower, Subtitle, Teletext, VideoModeNext, Wink, ZoomToggle, F1, F2, F3, F4,
+    F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29,
+    F30, F31, F32, F33, F34, F35,}
+
+/// The `Key` TS numbers as `n`: a named key, a character or a dead key; `None` for any other
+/// number, or a code point that is no `char`.
+pub fn key_of(n: u32) -> Option<Key> {
+    let char_at = |base: u32| char::from_u32(n - base);
+    match n {
+        _ if n >= KEY_BASE && n < KEY_BASE + NAMED_KEYS.len() as u32 => {
+            Some(NAMED_KEYS[(n - KEY_BASE) as usize].1.clone())
+        }
+        CHARACTER_BASE..0x21_0000 => char_at(CHARACTER_BASE).map(|c| Key::Character(c.to_string().into())),
+        DEAD_KEY_BASE..DEAD_KEY_NONE => char_at(DEAD_KEY_BASE).map(|c| Key::Dead(Some(c))),
+        DEAD_KEY_NONE => Some(Key::Dead(None)),
+        _ => None,
+    }
+}
+
+/// The number TS gives `key`; `None` for `Unidentified` and a character of more than one code
+/// point.
+pub fn key_number(key: &Key) -> Option<u32> {
+    match key {
+        Key::Character(s) => {
+            let mut chars = s.chars();
+            let c = chars.next()?;
+            chars.next().is_none().then_some(CHARACTER_BASE + c as u32)
+        }
+        Key::Dead(Some(c)) => Some(DEAD_KEY_BASE + *c as u32),
+        Key::Dead(None) => Some(DEAD_KEY_NONE),
+        Key::Unidentified(_) => None,
+        named => NAMED_KEYS.iter().position(|(_, k)| k == named).map(|i| KEY_BASE + i as u32),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -604,5 +691,58 @@ mod tests {
         }
         assert_eq!(info.iter().count(), KEY_CODES.len() + 1, "only Unidentified carries data");
         assert_eq!(key_code_of(KEY_CODES.len() as u32), None);
+    }
+
+    #[test]
+    fn every_key_number_round_trips() {
+        for (i, (_, k)) in NAMED_KEYS.iter().enumerate() {
+            assert_eq!(key_number(k), Some(KEY_BASE + i as u32), "{k:?}");
+            assert_eq!(key_of(KEY_BASE + i as u32).as_ref(), Some(k));
+        }
+        for c in ['a', 'Z', '?', 'é', 'ß', '日', '😀', '\u{10FFFF}'] {
+            let k = Key::Character(c.to_string().into());
+            assert_eq!(key_number(&k), Some(CHARACTER_BASE + c as u32));
+            assert_eq!(key_of(CHARACTER_BASE + c as u32), Some(k));
+            let d = Key::Dead(Some(c));
+            assert_eq!(key_of(key_number(&d).unwrap()), Some(d));
+        }
+        assert_eq!(key_of(DEAD_KEY_NONE), Some(Key::Dead(None)));
+        assert_eq!(key_number(&Key::Dead(None)), Some(DEAD_KEY_NONE));
+        assert_eq!(key_number(&Key::Character("ab".into())), None);
+        assert_eq!(key_number(&Key::Unidentified(NativeKey::Unidentified)), None);
+        for n in [0, KEY_BASE - 1, KEY_BASE + NAMED_KEYS.len() as u32, CHARACTER_BASE + 0xD800, DEAD_KEY_NONE + 1] {
+            assert_eq!(key_of(n), None, "{n:#x}");
+        }
+    }
+
+    /// Fails when Bevy adds, removes, renames or reorders a data-free `Key` variant.
+    #[test]
+    fn the_list_is_bevys_key() {
+        let TypeInfo::Enum(info) = Key::type_info() else { panic!("Key is an enum") };
+        let bevy: Vec<&str> = info.iter().filter(|v| matches!(v, VariantInfo::Unit(_))).map(|v| v.name()).collect();
+        let ours: Vec<&str> = NAMED_KEYS.iter().map(|(n, _)| *n).collect();
+        assert_eq!(ours, bevy);
+        for (name, k) in NAMED_KEYS {
+            let ReflectRef::Enum(e) = k.reflect_ref() else { unreachable!() };
+            assert_eq!(e.variant_name(), *name);
+        }
+        assert_eq!(info.iter().count(), NAMED_KEYS.len() + 3, "Character, Unidentified and Dead carry data");
+    }
+
+    /// `Key`'s ranges sit above `KeyCode`'s and the 0x1000..0x3000 block the mouse and gamepad
+    /// enums take, and clear of each other, all below `u32::MAX`.
+    #[test]
+    fn key_ranges_overlap_no_other() {
+        let ranges = [
+            (0, KEY_CODES.len() as u32),
+            (0x1000, KEY_BASE),
+            (KEY_BASE, KEY_BASE + NAMED_KEYS.len() as u32),
+            (CHARACTER_BASE, CHARACTER_BASE + 0x11_0000),
+            (DEAD_KEY_BASE, DEAD_KEY_NONE + 1),
+        ];
+        for w in ranges.windows(2) {
+            assert!(w[0].1 <= w[1].0, "{:#x?} overlaps {:#x?}", w[0], w[1]);
+        }
+        assert!(KEY_CODES.len() as u32 <= 0x1000);
     }
 }

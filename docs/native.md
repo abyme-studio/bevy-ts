@@ -352,6 +352,27 @@ export function openNotes(keys: Keys, focus: InputFocus) {
 
 A number that is not a `KeyCode` throws, naming the param, the method and the number.
 
+`LogicalKeys` (`pressed`, `justPressed`, `justReleased`) reads Bevy's `ButtonInput<Key>`: the key
+by what it types under the layout and modifiers, not where it sits. Use it to bind "the key that
+types `?`" on any layout; use `Keys` for movement and anything held, where the key's place
+matters. `Key` is Bevy's `Key` as one number: a member per named key (`Key.Enter`, `Key.Escape`,
+`Key.Shift`), `Key.Character("z")` for a character and `Key.Dead("´")` or `Key.Dead()` for a dead
+key. `Key.Character` takes one code point after NFC and throws otherwise; `Unidentified` keys have
+no member.
+
+```ts
+import { Key, type LogicalKeys } from "bevy-ts/input";
+
+export function help(keys: LogicalKeys) {
+  if (keys.justPressed(Key.Character("?"))) toggleHelp();
+}
+```
+
+As in Bevy, a character key's release can name another character than its press: press `N` with
+Shift, let Shift go first, and the release is `n`, so `Key.Character("N")` reads as pressed until
+the window loses focus. A number outside `Key`'s ranges (a `KeyCode`, say) throws, naming
+`LogicalKeys`, the method and the number.
+
 `examples/rapier` uses all of it with no Rust in the project. Plans for leafwing-input-manager,
 avian and bevy_hanabi are in [research/native-ports.md](research/native-ports.md).
 
