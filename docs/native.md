@@ -377,8 +377,8 @@ The other devices read the same way, each over Bevy's own state:
   `cursor_position()`, `undefined` while the cursor is outside it or there is no window. It is
   not `Window`, which TS already has as a reflected component.
 - `Gamepads` over every `Gamepad`, the pad's entity first: `pressed`, `justPressed`,
-  `justReleased`, `get` and `getUnclamped` (a button or an axis, `undefined` until the pad
-  reports it), `leftStick`, `rightStick`, `dpad`, `vendorId`, `productId`. Find pads as in Bevy,
+  `justReleased`, `get` and `getUnclamped` (a button or an axis; Bevy starts each at 0 when the
+  pad connects), `leftStick`, `rightStick`, `dpad`, `vendorId`, `productId`. Find pads as in Bevy,
   with `Query<[Entity], With<Gamepad>>`; an entity with no `Gamepad` throws.
 - `Touches` over `Touches`: Bevy's `anyJustPressed`, `justPressed(id)`, `getPressed(id)`,
   `firstPressedPosition` and the rest. Its iterators are `count()`/`at(i)`,
@@ -407,6 +407,23 @@ export function aim(mouse: MouseButtons, cursor: Cursor, gamepads: Gamepads, pad
 }
 ```
 
+Bevy's input conditions come from `bevy-ts/input` too, taking a `KeyCode` or a `MouseButton`:
+`inputPressed`, `inputJustPressed`, `inputJustReleased` and `inputToggleActive(initial, code)`.
+Each is Bevy's own condition, exposed with `app.ts_condition("input:just-pressed", ..)` and
+called through `nativeCondition`, so it runs in Rust and a skipped system costs no call into JS.
+`inputToggleActive` keeps its on/off state per use across reloads, as any native condition does.
+A gamepad number fails the load: Bevy has no gamepad condition, since a pad's buttons belong to
+its entity, not to a `ButtonInput`. Read them with `Gamepads` in the system.
+
+```ts
+import { app, systems, Update } from "bevy-ts";
+import { inputJustPressed, inputToggleActive, KeyCode } from "bevy-ts/input";
+
+app.addSystems(Update,
+  systems(pause).runIf(inputJustPressed(KeyCode.Escape)),
+  systems(debugOverlay).runIf(inputToggleActive(false, KeyCode.F1)));
+```
+
 Every public Bevy 0.20 input type, and where TS reaches it:
 
 | Bevy type | TS | Owner |
@@ -429,12 +446,10 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 | `GamepadEvent`, `GamepadConnectionEvent`, `GamepadButtonChangedEvent`, `GamepadButtonStateChangedEvent`, `GamepadAxisChangedEvent`, `RawGamepadEvent` and its parts | `MessageReader` | rust-events; stage 3 |
 | `GamepadRumbleRequest`, `GamepadRumbleIntensity` | `MessageWriter` | rust-events; stage 3 |
 | Rumble in viewport mode | none: the viewport protocol carries no rumble | a follow-up |
-| `input_pressed`, `input_just_pressed`, `input_just_released`, `input_toggle_active` | `inputPressed` and friends | script-input-devices, on ecs-schedules' native conditions |
+| `input_pressed`, `input_just_pressed`, `input_just_released`, `input_toggle_active` | `inputPressed` and friends, native conditions | script-input-devices |
 | Condition combinators | `not`, `and`, `or` | ecs-schedules |
 | `ButtonState`, `Axis<T>` | through the params | none needed |
 | `Gilrs`, `GilrsGamepads`, `RunningRumbleEffects`, `RumbleSystems` | none: backend internals | none |
-
-Bevy has no gamepad condition: a pad's buttons belong to its entity, not to a `ButtonInput`.
 
 `examples/rapier` uses all of it with no Rust in the project. Plans for leafwing-input-manager,
 avian and bevy_hanabi are in [research/native-ports.md](research/native-ports.md).

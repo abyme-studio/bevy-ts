@@ -762,12 +762,13 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
     let mut s = format!("const NAME = {:?};\nreturn class {} {{\n", spec.ts, spec.ts);
     for (m, method) in spec.methods.iter().enumerate() {
         let id = first as usize + m;
+        // Arguments are `$`-prefixed in JS so none meets the glue's own `a`, `i`, `n` and `r`.
         let names: Vec<String> = method
             .args
             .iter()
             .map(|a| match a {
-                ArgSpec::Value(n, _) => n.to_string(),
-                ArgSpec::Slice(sl) => sl.name.to_string(),
+                ArgSpec::Value(n, _) => format!("${n}"),
+                ArgSpec::Slice(sl) => format!("${}", sl.name),
             })
             .collect();
         let _ = writeln!(s, "  {}({}) {{", method.name, names.join(", "));
@@ -775,8 +776,8 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
         let mut slices = Vec::new();
         for arg in &method.args {
             match arg {
-                ArgSpec::Value(n, k) => write_js(k, n, &mut s),
-                ArgSpec::Slice(sl) => slices.push(format!("H.bytes({}, {:?})", sl.name, sl.name)),
+                ArgSpec::Value(n, k) => write_js(k, &format!("${n}"), &mut s),
+                ArgSpec::Slice(sl) => slices.push(format!("H.bytes(${}, {:?})", sl.name, sl.name)),
             }
         }
         while slices.len() < MAX_SLICES {

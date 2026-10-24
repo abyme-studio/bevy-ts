@@ -4,6 +4,7 @@
 //! A TS system reads input as a Rust one does:
 //! `keys.justPressed(KeyCode.KeyN) && focus.get() === undefined`.
 
+use bevy::ecs::schedule::BoxedCondition;
 use bevy::ecs::system::SystemParam;
 use bevy::input::gamepad::{Gamepad, GamepadInput};
 use bevy::input::touch::{Touch, Touches};
@@ -30,6 +31,13 @@ impl Plugin for ScriptInputPlugin {
             .ts_param::<CursorParam<'static, 'static>>()
             .ts_param::<GamepadsParam<'static, 'static>>()
             .ts_param::<TouchesParam<'static>>()
+            .ts_condition("input:pressed", |a| condition(a, "inputPressed", Cond::Pressed))
+            .ts_condition("input:just-pressed", |a| condition(a, "inputJustPressed", Cond::JustPressed))
+            .ts_condition("input:just-released", |a| condition(a, "inputJustReleased", Cond::JustReleased))
+            .ts_condition("input:toggle-active", |a| {
+                let default = a["default"].as_bool().ok_or("inputToggleActive takes (default: boolean, code)")?;
+                condition(a, "inputToggleActive", Cond::ToggleActive(default))
+            })
             .ts_module(MODULE, &js(), &dts());
     }
 }
@@ -76,6 +84,38 @@ impl FocusParam<'_> {
     /// The focused entity, or `undefined` while nothing has focus.
     pub fn get(&self) -> Option<Entity> {
         self.focus.as_ref().and_then(|f| f.get())
+    }
+}
+
+/// Bevy's four input conditions, as `bevy-ts/input` exposes them.
+#[derive(Clone, Copy)]
+enum Cond {
+    Pressed,
+    JustPressed,
+    JustReleased,
+    ToggleActive(bool),
+}
+
+/// Builds Bevy's condition `c` over `ButtonInput<KeyCode>` or `ButtonInput<MouseButton>`, chosen
+/// by the range of the call's `code`. Gamepad numbers fail: a pad's buttons are its entity's.
+fn condition(args: &serde_json::Value, call: &str, c: Cond) -> Result<BoxedCondition, String> {
+    fn of<T: Clone + Eq + std::hash::Hash + Send + Sync + 'static>(input: T, c: Cond) -> BoxedCondition {
+        use bevy::input::common_conditions::*;
+        match c {
+            Cond::Pressed => Box::new(IntoSystem::into_system(input_pressed(input))),
+            Cond::JustPressed => Box::new(IntoSystem::into_system(input_just_pressed(input))),
+            Cond::JustReleased => Box::new(IntoSystem::into_system(input_just_released(input))),
+            Cond::ToggleActive(default) => Box::new(IntoSystem::into_system(input_toggle_active(default, input))),
+        }
+    }
+    let n = args["code"].as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| format!("{call} takes a KeyCode or a MouseButton"))?;
+    match input_code_of(n) {
+        Some(InputCode::Key(k)) => Ok(of(k, c)),
+        Some(InputCode::Mouse(b)) => Ok(of(b, c)),
+        Some(InputCode::GamepadButton(_) | InputCode::GamepadAxis(_)) => Err(format!(
+            "{call}({n}): {n} is a gamepad input, and Bevy has no gamepad condition; read a pad's buttons with Gamepads in the system"
+        )),
+        None => Err(not_a(n, "KeyCode or MouseButton", "KeyCode.Space")),
     }
 }
 
@@ -194,8 +234,8 @@ impl GamepadsParam<'_, '_> {
         Ok(self.pad(pad)?.just_released(b))
     }
 
-    /// A button's or axis's value after the pad's settings, or `undefined` for one it never
-    /// reported.
+    /// A button's or axis's value after the pad's settings: Bevy starts every standard input at
+    /// `0` when the pad connects.
     pub fn get(&self, pad: Entity, input: u32) -> Result<Option<f32>, String> {
         let i = gamepad_input(input)?;
         Ok(self.pad(pad)?.get(i))
@@ -207,7 +247,7 @@ impl GamepadsParam<'_, '_> {
         Ok(self.pad(pad)?.get_unclamped(i))
     }
 
-    /// The left stick, `LeftStickX` and `LeftStickY`, each `0` until reported.
+    /// The left stick, `LeftStickX` and `LeftStickY`.
     pub fn left_stick(&self, pad: Entity) -> Result<Vec2, String> {
         Ok(self.pad(pad)?.left_stick())
     }
@@ -381,7 +421,7 @@ fn enums() -> [(&'static str, &'static str, Vec<&'static str>, u32); 4] {
 
 /// The module's JS: each enum, one number per variant, numbers disjoint across enums.
 fn js() -> String {
-    let mut s = String::from("// `bevy-ts/input`: generated from bevy_ts::keys.\n");
+    let mut s = String::from("// `bevy-ts/input`: generated from bevy_ts::keys.\nimport { nativeCondition } from \"bevy-ts\";\n");
     for (name, _, variants, base) in enums() {
         let _ = writeln!(s, "export const {name} = Object.freeze({{");
         for (i, v) in variants.iter().enumerate() {
@@ -389,12 +429,30 @@ fn js() -> String {
         }
         s.push_str("});\n");
     }
+    s.push_str(CONDITIONS_JS);
     s
 }
 
+/// Bevy's input conditions, evaluated in Rust: the conditions `ScriptInputPlugin` exposes.
+const CONDITIONS_JS: &str = r#"export const inputPressed = (code) => nativeCondition("input:pressed", { code });
+export const inputJustPressed = (code) => nativeCondition("input:just-pressed", { code });
+export const inputJustReleased = (code) => nativeCondition("input:just-released", { code });
+export const inputToggleActive = (initial, code) => nativeCondition("input:toggle-active", { default: initial, code });
+"#;
+
+const CONDITIONS_DTS: &str = r#"/** Bevy's `input_pressed`: true while the key or button is down. Evaluated in Rust. */
+export declare function inputPressed(code: KeyCode | MouseButton): Condition;
+/** Bevy's `input_just_pressed`: true on the frame the key or button goes down. */
+export declare function inputJustPressed(code: KeyCode | MouseButton): Condition;
+/** Bevy's `input_just_released`: true on the frame the key or button goes up. */
+export declare function inputJustReleased(code: KeyCode | MouseButton): Condition;
+/** Bevy's `input_toggle_active`: starts at `initial` and flips each frame the input is just pressed. */
+export declare function inputToggleActive(initial: boolean, code: KeyCode | MouseButton): Condition;
+"#;
+
 /// The module's declarations; the params are declared from their `#[export]`.
 fn dts() -> String {
-    let mut s = String::new();
+    let mut s = String::from("import type { Condition } from \"bevy-ts\";\n");
     for (name, doc, variants, base) in enums() {
         let _ = writeln!(s, "/** {doc} */\nexport declare enum {name} {{");
         for (i, v) in variants.iter().enumerate() {
@@ -402,6 +460,7 @@ fn dts() -> String {
         }
         s.push_str("}\n");
     }
+    s.push_str(CONDITIONS_DTS);
     s
 }
 

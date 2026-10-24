@@ -1,5 +1,5 @@
 //! Change `script-input-devices`: `MouseButtons`, `Cursor`, `Gamepads` and `Touches` from
-//! `bevy-ts/input`, read by TS systems in a headless app. Each test writes the messages Bevy's
+//! `bevy-ts/input`, read by TS systems in a headless app, and Bevy's input conditions. Each test writes the messages Bevy's
 //! input systems consume, runs a frame, and reads what the system logged.
 
 use crate::common;
@@ -10,14 +10,21 @@ use bevy::input::gamepad::{
     Gamepad, GamepadConnection, GamepadConnectionEvent, RawGamepadAxisChangedEvent, RawGamepadButtonChangedEvent,
     RawGamepadEvent,
 };
+use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
 use bevy::input::mouse::MouseButtonInput;
 use bevy::input::touch::{TouchInput, TouchPhase};
 use bevy::prelude::*;
 use bevy::window::{ExitCondition, PrimaryWindow};
-use common::messages;
+use common::{calls, messages};
 
 /// A headless app with Bevy's input and window plugins and `bevy-ts/input`, `game.ts` loaded.
 fn input_app(name: &str, src: &str, window: bool) -> App {
+    let (app, r) = try_load(name, src, window);
+    assert!(r.errors.is_empty(), "load failed: {:?}", r.errors);
+    app
+}
+
+fn try_load(name: &str, src: &str, window: bool) -> (App, bevy_ts::generation::ReloadReport) {
     let dir = common::project(name, &[("game.ts", src)]);
     let mut app = common::app(&dir.join("game.ts"));
     app.add_plugins(InputPlugin)
@@ -28,8 +35,7 @@ fn input_app(name: &str, src: &str, window: bool) -> App {
         })
         .add_plugins(bevy_ts_cli::input::ScriptInputPlugin);
     let r = common::reload(&mut app, false);
-    assert!(r.errors.is_empty(), "load failed: {:?}", r.errors);
-    app
+    (app, r)
 }
 
 fn window(app: &mut App) -> Entity {
@@ -42,8 +48,11 @@ fn last(app: &App, prefix: &str) -> String {
     messages(app).into_iter().rfind(|m| m.starts_with(prefix)).unwrap_or_else(|| panic!("no {prefix:?} in {:?}", messages(app)))
 }
 
+/// One frame, then the last line it logged starting with `prefix`. Console output reaches the
+/// log when the runtime is pumped, so pump it.
 fn frame(app: &mut App, prefix: &str) -> String {
     app.update();
+    bevy_ts::runtime::pump(app.world_mut());
     last(app, prefix)
 }
 
@@ -144,10 +153,10 @@ fn gamepads_read_each_pads_state() {
     let mut app = input_app("input-gamepads", PADS, true);
     let pad = app.world_mut().spawn_empty().id();
     let connected = GamepadConnection::Connected { name: "Test pad".into(), vendor_id: Some(0x45e), product_id: None };
-    app.world_mut().write_message(RawGamepadEvent::Connection(GamepadConnectionEvent::new(pad, connected)));
+    // A backend (gilrs) writes the connection itself; Bevy turns only the raw button and axis events.
+    app.world_mut().write_message(GamepadConnectionEvent::new(pad, connected));
     common::until(&mut app, "the pad connects", |app| app.world().get::<Gamepad>(pad).is_some());
-    app.update();
-    assert_eq!(last(&app, "pad"), "pad false false undefined 0 undefined undefined 0 1118 undefined");
+    assert_eq!(frame(&mut app, "pad"), "pad false false 0 0 0 0 0 1118 undefined", "a pad starts with every standard input at 0");
 
     let south = RawGamepadButtonChangedEvent::new(pad, GamepadButton::South, 1.0);
     let stick = RawGamepadAxisChangedEvent::new(pad, GamepadAxis::LeftStickX, 0.5);
@@ -155,7 +164,7 @@ fn gamepads_read_each_pads_state() {
     app.world_mut().write_message(RawGamepadEvent::Axis(stick));
     let line = frame(&mut app, "pad");
     let x = app.world().get::<Gamepad>(pad).unwrap().left_stick().x;
-    assert_eq!(line, format!("pad true true 1 {x} {x} undefined 0 1118 undefined"), "Bevy's processed value");
+    assert_eq!(line, format!("pad true true 1 {x} {x} 0 0 1118 undefined"), "Bevy's processed value");
     assert!(frame(&mut app, "pad").starts_with("pad false true 1 "), "just pressed is one frame");
 
     let threw = last(&app, "threw");
@@ -193,4 +202,94 @@ fn touches_list_by_index_with_bevys_positions() {
     assert_eq!(frame(&mut app, "touch"), "touch false undefined 0 1 20,10 10,0 10,10 20,10 false undefined none undefined");
     touch(&mut app, TouchPhase::Ended, 20.0);
     assert_eq!(frame(&mut app, "touch"), "touch false undefined 0 0 none none none none true 1 10,0 undefined");
+}
+
+/// A key going down or up, as winit reports it.
+fn key(app: &mut App, key_code: KeyCode, state: ButtonState) {
+    let window = window(app);
+    let logical_key = Key::Unidentified(NativeKey::Unidentified);
+    app.world_mut().write_message(KeyboardInput { key_code, logical_key, state, text: None, repeat: false, window });
+}
+
+/// A key pressed and released within one frame: just pressed and just released that frame.
+fn tap(app: &mut App, code: KeyCode) {
+    key(app, code, ButtonState::Pressed);
+    key(app, code, ButtonState::Released);
+}
+
+/// How many times each system has logged its name.
+fn runs(app: &mut App, name: &str) -> usize {
+    bevy_ts::runtime::pump(app.world_mut());
+    messages(app).iter().filter(|m| *m == name).count()
+}
+
+const CONDITIONS: &str = r#"import { app, systems, Update } from "bevy-ts";
+import { inputJustPressed, inputJustReleased, inputPressed, inputToggleActive, KeyCode, MouseButton } from "bevy-ts/input";
+
+export function pause() { console.log("pause"); }
+export function drag() { console.log("drag"); }
+export function lifted() { console.log("lifted"); }
+export function overlay() { console.log("overlay"); }
+app.addSystems(Update,
+  systems(pause).runIf(inputJustPressed(KeyCode.Escape)),
+  systems(drag).runIf(inputPressed(MouseButton.Left)),
+  systems(lifted).runIf(inputJustReleased(KeyCode.Space)),
+  systems(overlay).runIf(inputToggleActive(false, KeyCode.F1)));
+"#;
+
+#[test]
+fn input_conditions_run_in_rust_and_skipped_systems_cost_no_call() {
+    let mut app = input_app("input-conditions", CONDITIONS, true);
+    app.update();
+    let before = calls(&app);
+    common::updates(&mut app, 3);
+    assert_eq!(calls(&app), before, "no input, no call into JS");
+
+    key(&mut app, KeyCode::Escape, ButtonState::Pressed);
+    common::updates(&mut app, 3);
+    assert_eq!(runs(&mut app, "pause"), 1, "just pressed is one frame");
+    key(&mut app, KeyCode::Escape, ButtonState::Released);
+
+    let w = window(&mut app);
+    app.world_mut().write_message(MouseButtonInput { button: MouseButton::Left, state: ButtonState::Pressed, window: w });
+    common::updates(&mut app, 3);
+    assert_eq!(runs(&mut app, "drag"), 3, "pressed holds");
+    app.world_mut().write_message(MouseButtonInput { button: MouseButton::Left, state: ButtonState::Released, window: w });
+    common::updates(&mut app, 2);
+    assert_eq!(runs(&mut app, "drag"), 3);
+
+    key(&mut app, KeyCode::Space, ButtonState::Pressed);
+    common::updates(&mut app, 2);
+    assert_eq!(runs(&mut app, "lifted"), 0);
+    key(&mut app, KeyCode::Space, ButtonState::Released);
+    common::updates(&mut app, 2);
+    assert_eq!(runs(&mut app, "lifted"), 1);
+}
+
+#[test]
+fn input_toggle_active_flips_on_each_press() {
+    let mut app = input_app("input-toggle", CONDITIONS, true);
+    // F1 on frames 2 and 5: the overlay runs on 2, 3 and 4.
+    let mut ran = vec![];
+    for frame in 1..=7 {
+        if frame == 2 || frame == 5 {
+            tap(&mut app, KeyCode::F1);
+        }
+        let n = runs(&mut app, "overlay");
+        app.update();
+        if runs(&mut app, "overlay") > n {
+            ran.push(frame);
+        }
+    }
+    assert_eq!(ran, [2, 3, 4]);
+}
+
+#[test]
+fn a_gamepad_condition_fails_the_load_pointing_at_gamepads() {
+    let src = "import { app, systems, Update } from \"bevy-ts\";\nimport { GamepadButton, inputPressed } from \"bevy-ts/input\";\nexport function jump() {}\napp.addSystems(Update, systems(jump).runIf(inputPressed(GamepadButton.South)));\n";
+    let (_, r) = try_load("input-condition-pad", src, true);
+    let e = r.errors.iter().find(|e| e.message.contains("inputPressed")).unwrap_or_else(|| panic!("{:?}", r.errors));
+    assert!(e.message.contains("Gamepads") && e.message.contains("8192"), "{e:?}");
+    let at = e.location.as_ref().unwrap();
+    assert!(at.file.ends_with("game.ts") && at.line == 4, "the call's location, not the module's: {at:?}");
 }

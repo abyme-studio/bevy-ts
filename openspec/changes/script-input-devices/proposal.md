@@ -17,11 +17,12 @@ row 7 asks for all of Bevy 0.20's input from TS. Research is in
 - Three generated enums, `MouseButton`, `GamepadButton` and `GamepadAxis`, named as in Bevy, in
   number ranges disjoint from `KeyCode` and from each other (0x1000, 0x2000, 0x2100).
 - Four run conditions, `inputPressed`, `inputJustPressed`, `inputJustReleased` and
-  `inputToggleActive`, evaluated in Rust over `ButtonInput<KeyCode>` or `ButtonInput<MouseButton>`,
-  so a skipped system costs no JS call.
+  `inputToggleActive`: Bevy's own conditions over `ButtonInput<KeyCode>` or
+  `ButtonInput<MouseButton>`, exposed on ecs-schedules' native conditions (`app.ts_condition`,
+  `nativeCondition`), so they run in Rust and a skipped system costs no JS call.
 - Docs: the input section of `docs/native.md`, with a coverage table of every Bevy 0.20 input type,
   its TS path and its owner.
-- Headless tests in `crates/bevy-ts-cli/tests/` for every param, enum and condition; later stages
+- Headless tests in `crates/bevy-ts-cli/tests/it/` for every param, enum and condition; later stages
   add tests for `Res<AccumulatedMouse*>` (after rust-resources) and for input messages, gestures and
   rumble (after rust-events and reflect-coverage stage 1).
 - Not here: input messages (rust-events), `Res<T>` of input resources (rust-resources), condition
@@ -42,10 +43,10 @@ None.
 ## Impact
 
 - Code: `crates/bevy-ts-cli/src/input.rs` (params, module JS and d.ts); `crates/bevy-ts/src/keys.rs`
-  (the input number tables); `crates/bevy-ts/src/manifest.rs` and `systems.rs` (four
-  `ConditionDecl` arms, compile and evaluate); new `crates/bevy-ts-cli/tests/input_devices.rs`;
-  `docs/native.md`.
-- Order: stage 1 starts after text-input lands, which owns `input.rs` until then. Stage 2 waits on
+  (the input number tables); new `crates/bevy-ts-cli/tests/it/input_devices.rs`; `docs/native.md`.
+  The conditions are four `ts_condition`s in `input.rs`; no engine crate changes for them.
+- Order: stage 1 starts after text-input lands, which owns `input.rs` until then, and its
+  conditions after ecs-schedules stage 1, which owns native conditions. Stage 2 waits on
   rust-resources; stage 3 on rust-events and reflect-coverage stage 1.
 - No new dependency: gilrs and every input feature are already compiled into the engine.
 - No new export pattern: `Touches` uses index accessors, agreed with lead@writable-native-params.

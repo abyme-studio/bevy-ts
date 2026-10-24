@@ -48,7 +48,7 @@
 - **THEN** the first frame `touches.anyJustPressed()` is true and `touches.justPressedAt(0).id` is 1; the next frame `touches.getPressed(1).delta` is `Vec2(10, 0)` and `touches.count()` is 1
 
 ### Requirement: Input run conditions
-`bevy-ts/input` SHALL export `inputPressed(code)`, `inputJustPressed(code)`, `inputJustReleased(code)` and `inputToggleActive(default, code)`, Bevy's input conditions, taking a `KeyCode` or a `MouseButton`. They SHALL be evaluated in Rust against `ButtonInput<KeyCode>` or `ButtonInput<MouseButton>`, chosen by the number's range, so a skipped system costs no JS call. `inputToggleActive` SHALL keep its on/off bit per system identity across frames, flipping it on each frame the input is just pressed, as Bevy's `Local<bool>`. A `GamepadButton` or `GamepadAxis` number SHALL fail the load, naming the system and saying gamepad buttons are read per pad with `Gamepads`.
+`bevy-ts/input` SHALL export `inputPressed(code)`, `inputJustPressed(code)`, `inputJustReleased(code)` and `inputToggleActive(default, code)`, Bevy's input conditions, taking a `KeyCode` or a `MouseButton`. They SHALL be Bevy's own conditions over `ButtonInput<KeyCode>` or `ButtonInput<MouseButton>`, chosen by the number's range, exposed as native conditions (`nativeCondition`), so they run in Rust and a skipped system costs no JS call. `inputToggleActive` SHALL keep its on/off state per use across frames and reloads, flipping it on each frame the input is just pressed, as Bevy's `Local<bool>`. A `GamepadButton` or `GamepadAxis` number SHALL fail the load at the call's location, saying gamepad buttons are read per pad with `Gamepads`.
 
 #### Scenario: Pause on Escape
 - **WHEN** `systems(pause).runIf(inputJustPressed(KeyCode.Escape))` is registered and Escape is pressed once
@@ -60,7 +60,7 @@
 
 #### Scenario: A gamepad condition
 - **WHEN** a system is registered with `runIf(inputPressed(GamepadButton.South))`
-- **THEN** the load fails naming the system and pointing at `Gamepads`
+- **THEN** the load fails at the `inputPressed` call, pointing at `Gamepads`
 
 ### Requirement: Mouse motion and scroll as resources
 Mouse motion and scroll SHALL be read through `Res<T>` of Bevy's own resources, with no param of `bevy-ts/input`: `Res<AccumulatedMouseMotion>` (`delta`), `Res<AccumulatedMouseScroll>` (`unit`, `delta`) and `Res<MouseScrollPixelsPerLine>`, through the `Res<T>` path of Rust resources.

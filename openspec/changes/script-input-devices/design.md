@@ -2,9 +2,9 @@
 
 text-input ships `bevy-ts/input` in `crates/bevy-ts-cli/src/input.rs`: `Keys` and `InputFocus`,
 exported params over Bevy's resources, and `KeyCode`, a TS enum generated from the table
-`bevy_ts::keys::KEY_CODES`. Run conditions are JS builders (`{ condition: true, kind, ... }`)
-lowered to `ConditionDecl` in `crates/bevy-ts/src/manifest.rs`, compiled and evaluated in Rust in
-`crates/bevy-ts/src/systems.rs`. The engine already compiles `mouse`, `touch`, `gestures`,
+`bevy_ts::keys::KEY_CODES`. ecs-schedules stage 1 lets a crate expose a Bevy condition with
+`app.ts_condition(name, factory)`, called from TS as `nativeCondition(name, args)` and run in
+Rust; docs/native.md, "Schedules, conditions and one-shot systems from Rust". The engine already compiles `mouse`, `touch`, `gestures`,
 `gamepad` and `bevy_gilrs`. Research: `docs/research/script-input-devices.md`.
 
 Neighbours, agreed during research: rust-events owns reading and writing every message by type;
@@ -77,8 +77,7 @@ Alternative: one param per pad. Rejected: TS has no per-entity param.
 
 `KeyCode` keeps text-input's `0..`; `MouseButton` starts at `0x1000`, `GamepadButton` at `0x2000`,
 `GamepadAxis` at `0x2100`. The tables sit beside `KEY_CODES` in `bevy_ts::keys`, the one owner of
-input numbers, because `systems.rs` (crate `bevy-ts`) decodes `KeyCode` and `MouseButton` for
-conditions. So `inputJustPressed(KeyCode.Space)` and `inputJustPressed(MouseButton.Left)` share one
+input numbers, because the viewport's key events, the TSX keyboard events and these params all read them. So `inputJustPressed(KeyCode.Space)` and `inputJustPressed(MouseButton.Left)` share one
 function, and `gamepads.get(pad, GamepadButton.LeftTrigger2)` / `get(pad, GamepadAxis.LeftStickX)`
 keep Bevy's one `get`. Alternative: a device tag in each condition (`inputJustPressed.mouse(..)`).
 Rejected: Bevy's names would not stand. Decided by the lead.
@@ -93,22 +92,27 @@ a new export pattern. Rejected with lead@writable-native-params, who is not addi
 `Touch` is a `HostRecord` built from Bevy's getters. `force` is left out (an enum with data); the
 `TouchInput` message carries it. Ids are `u64` passed as numbers; winit ids are small.
 
-### Conditions are four `ConditionDecl` arms
+### Conditions are Bevy's own, exposed as native conditions
 
-`InputPressed { code }`, `InputJustPressed { code }`, `InputJustReleased { code }`,
-`InputToggleActive { default, code }`. `compile_condition` decodes the number into a `KeyCode` or
-`MouseButton` (a gamepad or unknown number fails the load) and `evaluate` reads the matching
-`ButtonInput`. Each arm stands alone, so ecs-schedules' combinators wrap them unchanged; whoever
-lands second rebases. The JS builders live in `bevy-ts/input`'s generated JS, beside the enums.
+`ScriptInputPlugin` exposes `input:pressed`, `input:just-pressed`, `input:just-released` and
+`input:toggle-active` with `app.ts_condition`. Each factory reads `{ code }` (and `default` for the
+toggle), decodes the number into a `KeyCode` or `MouseButton`, and returns Bevy's own
+`input_pressed(k)` and friends as a `BoxedCondition`; a gamepad or unknown number is an error,
+which fails the load at the call's location. `bevy-ts/input`'s JS wraps them typed:
+`inputJustPressed(code)` is `nativeCondition("input:just-pressed", { code })`. ecs-schedules'
+combinators wrap them as any condition.
 
-`inputToggleActive` keeps its bit in the system's `SystemMemory` entry, as `onMessage` keeps its
-cursor there. `evaluate` takes `&World`, so the toggle flips in a step before evaluation that has
-the memory mutably; the flip happens once per frame per system, when its condition is checked, as
-Bevy's `Local<bool>` flips when its condition runs.
+`inputToggleActive` is Bevy's `input_toggle_active`, whose `Local<bool>` lives in the condition
+instance. The seam builds one instance per use per generation and keeps it across reloads while
+the arguments stay the same, so the toggle survives a reload and resets on a restart.
+
+Alternative: four `ConditionDecl` arms in `manifest.rs`, compiled and evaluated in `systems.rs`.
+Rejected once ecs-schedules shipped native conditions: Bevy's own conditions need no engine code,
+and two changes no longer edit `ConditionDecl`. Decided by lead@script-input-devices.
 
 ### Tests are headless Rust
 
-`crates/bevy-ts-cli/tests/input_devices.rs`, not macOS-gated: `MinimalPlugins`, `InputPlugin`,
+`crates/bevy-ts-cli/tests/it/input_devices.rs`, a module of the crate's one test binary, not macOS-gated: `MinimalPlugins`, `InputPlugin`,
 `WindowPlugin` with a spawned primary window, `BevyTsPlugin`, `ScriptInputPlugin`, no
 `GilrsPlugin`. Each test writes the messages Bevy's input systems consume
 (`MouseButtonInput`, `TouchInput`, `RawGamepadEvent`), or calls `Window::set_cursor_position`,
@@ -117,15 +121,13 @@ runs `app.update()`, and asserts on a TS resource. Conditions count runs and che
 
 ## Risks / Trade-offs
 
-- Two changes edit `ConditionDecl` (this and ecs-schedules) → arms are self-contained; the second to
-  land rebases.
 - Stages 2 and 3 depend on other teams → their tasks are docs and tests only; stage 1 stands alone.
 - Bevy adds an input variant → the enum tests fail, naming it.
 - `Touch` ids above 2^53 lose precision → winit ids are small; documented.
 
 ## Migration Plan
 
-Additive. Stage 1 lands after text-input; stages 2 and 3 land as their dependencies do.
+Additive. Stage 1 lands after text-input and ecs-schedules stage 1; stages 2 and 3 land as their dependencies do.
 
 ## Open Questions
 
