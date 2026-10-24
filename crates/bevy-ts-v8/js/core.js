@@ -84,6 +84,8 @@ function logger(level) {
 }
 
 if (core) globalThis.console = { debug: logger(0), log: logger(1), info: logger(1), warn: logger(2), error: logger(3), trace: logger(0) };
+// The web's `performance`, clock only: milliseconds since the engine started, finer than `Date.now`.
+if (core) globalThis.performance = Object.freeze({ now: () => core.ops.op_bevyts_performance_now(), timeOrigin: core.ops.op_bevyts_time_origin() });
 
 // ---------------------------------------------------------------------------------------------
 // Field types: each is a value (for schemas) and, in the types package, a TS type

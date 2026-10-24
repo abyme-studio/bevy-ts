@@ -67,3 +67,7 @@ export function timeConditionsTakeSeconds() {
   // @ts-expect-error  paused takes no arguments
   paused(1);
 }
+
+// `performance` is the clock only: milliseconds since the engine started.
+export const sinceStart: number = performance.now();
+export const origin: number = performance.timeOrigin;

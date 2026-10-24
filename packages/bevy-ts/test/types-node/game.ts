@@ -36,3 +36,6 @@ target.dispatchEvent(new Event("ping"));
 console.log(new CloseEvent("close", { code: 1000 }).code, new MessageEvent("message", { data: 1 }).data);
 
 void connect(url.href, { signal });
+
+const elapsed: number = performance.now() - performance.timeOrigin;
+console.log(elapsed);

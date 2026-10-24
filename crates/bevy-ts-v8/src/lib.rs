@@ -108,6 +108,28 @@ fn op_bevyts_now(state: &mut OpState) -> f64 {
     state.borrow::<Clock>().now
 }
 
+/// When the engine's first runtime started: `performance`'s origin, kept across reloads and
+/// restarts, as an `Instant` and as Unix milliseconds.
+fn origin() -> &'static (bevy::platform::time::Instant, f64) {
+    static ORIGIN: std::sync::OnceLock<(bevy::platform::time::Instant, f64)> = std::sync::OnceLock::new();
+    ORIGIN.get_or_init(|| {
+        let unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0);
+        (bevy::platform::time::Instant::now(), unix)
+    })
+}
+
+/// `performance.now()`: milliseconds since [`origin`].
+#[op2(fast)]
+fn op_bevyts_performance_now() -> f64 {
+    origin().0.elapsed().as_secs_f64() * 1000.0
+}
+
+/// `performance.timeOrigin`: the origin in Unix milliseconds.
+#[op2(fast)]
+fn op_bevyts_time_origin() -> f64 {
+    origin().1
+}
+
 #[op2(fast)]
 fn op_bevyts_timer_deadline(state: &mut OpState, ms: f64) {
     state.borrow_mut::<Clock>().deadline = ms;
@@ -159,6 +181,8 @@ deno_core::extension!(
         op_bevyts_host,
         op_bevyts_host_error,
         op_bevyts_now,
+        op_bevyts_performance_now,
+        op_bevyts_time_origin,
         op_bevyts_timer_deadline,
         op_bevyts_ws_open,
         op_bevyts_ws_send_text,
@@ -171,6 +195,7 @@ deno_core::extension!(
         state.put(HostError::default());
         state.put(Outbox::default());
         state.put(Clock::default());
+        origin();
     }
 );
 

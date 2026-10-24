@@ -558,3 +558,28 @@ fn process_env_shows_only_the_named_variables_frozen() {
     load_run(&mut app, &[("env2.js", r#"console.log("same " + (process.env === globalThis.firstEnv));"#)]);
     assert_eq!(tagged(&app, "same "), vec!["true"]);
 }
+
+/// `performance.now()`: monotonic, finer than a millisecond, and not reset by a reload.
+#[test]
+fn performance_now_is_a_fine_clock_a_reload_keeps() {
+    let mut app = app();
+    let probe = r#"
+const a = performance.now();
+let b = performance.now();
+while (b === a) b = performance.now();
+console.log(`perf ${a} ${b} ${performance.timeOrigin}`);
+"#;
+    load_run(&mut app, &[("main.js", probe)]);
+    let first: Vec<f64> = tagged(&app, "perf ").last().expect("logged").split(' ').map(|v| v.parse().unwrap()).collect();
+    let (a, b, origin) = (first[0], first[1], first[2]);
+    assert!(a >= 0.0 && b > a, "monotonic: {a} then {b}");
+    assert!(b - a < 1.0, "a tick finer than a millisecond: {a} then {b}");
+    let unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() * 1000.0;
+    assert!(origin > 0.0 && origin <= unix, "timeOrigin is Unix milliseconds in the past: {origin}");
+    // A new generation keeps the clock: it reads past where the last one stopped.
+    let probe = probe.replace("perf ", "again ");
+    load_run(&mut app, &[("main.js", probe.as_str())]);
+    let again: Vec<f64> = tagged(&app, "again ").last().expect("logged").split(' ').map(|v| v.parse().unwrap()).collect();
+    assert!(again[0] > b, "not reset by a reload: {} after {b}", again[0]);
+    assert_eq!(again[2], origin, "same origin");
+}
