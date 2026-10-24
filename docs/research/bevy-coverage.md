@@ -207,6 +207,8 @@ Recommended order: the enabler, then ECS (everything else uses it), then the res
 4. `rust-events`: `MessageReader<M>`/`MessageWriter<M>` of any reflected Rust message (input,
    window, asset, state transition, port messages without hand forwarding); `addObserver` and
    `entity(e).observe` on any reflected Rust `Event`/`EntityEvent`, with bubbling.
+   A Rust event field named like one of On<E>'s own members is read as `on.event.<name>`
+   (openspec/changes/rust-events, task 4.5).
 5. `rust-resources`: `Res`/`ResMut` of every Rust resource: layout tier zero-copy, reflect tier
    through reflect-coverage's reader and writer; the spec fix. Settle with reflect-coverage
    whether its stage 3 already takes this (it names "`Res` data" for reflect tier only).
