@@ -477,7 +477,8 @@ fn group_rows(nodes: &[RNode], rows: &mut GroupRows, top: bool) {
 /// The node ids of `rows` and of the slots in it, recursively (taking the inner slots' rows): top
 /// nodes in `tops`, the rest in `rest`.
 fn collect_rows(tree: &mut TsxTree, rows: GroupRows, tops: &mut Vec<u64>, rest: &mut Vec<u64>) {
-    rest.extend(rows.nodes.iter().filter(|n| !rows.tops.contains(n)));
+    let top: std::collections::HashSet<u64> = rows.tops.iter().copied().collect();
+    rest.extend(rows.nodes.iter().filter(|n| !top.contains(n)));
     tops.extend(rows.tops);
     for s in rows.slots {
         let Some(inner) = tree.reactive.slots.get_mut(&s) else { continue };
