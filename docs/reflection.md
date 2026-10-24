@@ -30,7 +30,7 @@ Keys left out take the base's value. Lists, sets and maps are written whole, nev
 | `Duration` | seconds | `{ secs, nanos }` | `number` | `durations_take_seconds_or_secs_and_nanos` |
 | `f32`, `f64` | number; `"Infinity"`, `"-Infinity"`, `"NaN"` when not finite | | `number` | `shapes_of_each_kind` |
 | `i64`, `u64`, `i128`, `u128`, `isize`, `usize` | number within ±(2^53 − 1), else a decimal string | either | `number \| string` | `big_integers_from_strings_and_numbers` |
-| `Handle<T>` | its asset path, or `null` for a handle with none | `null` keeps the default handle | `string \| null` | `reflect_values.rs` |
+| `Handle<T>` | a script-made asset's ref `{ $asset, type }`, else its asset path, else `null` | `null` keeps the default handle; a ref or `T.of(props)` for a reflected asset type ([assets](assets.md)) | `string \| AssetRef<T> \| AssetValue<T> \| null`, `string \| null` for a type with no `ReflectAsset` | `reflect_values.rs`, `reflect_assets.rs` |
 | `Range<T>`, `RangeInclusive<T>` of a number type | `{ start, end }` | | `{ start: number; end: number }` | `colour_grading_round_trips_with_its_midtones_range` |
 | `Exposure` (opaque in Bevy 0.20) | `{ ev100 }` | | `{ ev100?: number }` | `exposure_is_ev100` |
 | `Entity` | `Entity::to_bits` as a number | | `Entity` | `a_map_with_entity_keys` |
@@ -39,10 +39,12 @@ Keys left out take the base's value. Lists, sets and maps are written whole, nev
 | Dynamic values | by the kind they represent | only when they represent a registered type | as represented | `reflect_coverage.rs` |
 
 The tests named are in `crates/bevy-ts/src/reflect_value.rs` unless a file is given;
-`reflect_values.rs` is `crates/bevy-ts-cli/tests/it/reflect_values.rs`.
+`reflect_values.rs` and `reflect_assets.rs` are in `crates/bevy-ts-cli/tests/it/`.
 
 A `HandleSlots` hook, when one is installed (reflect-assets), goes first for `Handle<T>`: it reads a
 handle it knows as its own JSON, and is given any handle JSON that is neither a string nor `null`.
+`bevy_ts::reflect_asset::Slots` is the one TSX and scripts install: refs from `assets.add` and
+`T.of(props)` values ([docs/assets.md](assets.md)).
 
 Components Bevy computes (`GlobalTransform`, `ComputedNode`, `TextLayoutInfo`) read like any
 other and refuse writes, naming themselves.
