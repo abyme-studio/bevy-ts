@@ -22,3 +22,31 @@ What is left, if 10,000-entity scenes become a target: the section is JSON that 
 The HUD row is the per-frame tsx work in `PostUpdate` when the player's `Health` changed (one host call, one `Text` written) and when nothing it reads changed (no call: the cost of checking the subscribed pair's tick). It does not grow with the number of enemies, whose `Health` the HUD does not read.
 
 Bindings on native-layout fields, per site (decision 11), are measured separately: 10,000 bound instances with 100 changed per frame cost 170 µs a frame against 125 µs for a TS system doing the same (`crates/bevy-ts-cli/tests/it/tsx_sites.rs`, design.md decision 11).
+
+## `<For>`: one change costs what it changes
+
+Change `tsx-keyed-for-linear`. Measured 2026-10-24 on the shared M5 Max (load 18 to 43), release, with `bench/tsx-for/`: one keyed `<For>` of n rows (`<entity>`, `Transform`, a TS `Row`) under one parent, a fresh headless engine per run, 3 runs per arm. Time is from the signal set in `Update` to the end of the frame the rows are all there.
+
+```
+cargo build --release -p bevy-ts-cli && cp target/release/bevy-ts target/tsx-for-after
+node bench/tsx-for/bench.mjs after target/tsx-for-after
+node bench/tsx-for/summary.mjs before after
+```
+
+| arm | rows | before, ms | after, ms |
+|---|---|---|---|
+| grow 0 to n in one set | 1,000 | 98 | 30 |
+| | 10,000 | 10,518 | 257 |
+| | 100,000 | over 600 s | 2,524 |
+| grow 1,000 a frame | 10,000 | 18,779 | 315 |
+| | 100,000 | over 600 s | 3,871 (longest frame 56) |
+| reverse | 10,000 | 3 (moves nothing) | 4 |
+| | 100,000 | not reached | 41 |
+| clear | 10,000 | 20,422 | 28 |
+| | 100,000 | not reached | 207 |
+| `commands.spawn` (reference) | 10,000 | 540 | 246 |
+| | 100,000 | 3,068 | 2,236 |
+
+Before, 100k timed out at 600 s in every arm but the reference; `reverse` and `clear` never finished mounting. After, a 10k grow is 1.04 times `commands.spawn` of the same rows, and 100k is 9.8 times 10k: linear. Before, `reverse` was fast because it did nothing: the entities kept their first order. Now they are sorted into item order, in one write of the parent's `Children`.
+
+The cause was in Rust. Each `<For>` item was a group applied alone, and each apply took every node of the whole root as a despawn candidate and cloned its key path to test it: group k walked the k−1 before it. Unmounting all items had the same shape. Now a host call's groups for one slot are one reconcile, its despawn candidates come from the groups it was given (`SlotState.rows`), a spawned node's `ChildOf`, `TsxNode` and native-layout components go in with one `insert_by_ids`, and JS sends a slot's key order only when its entities would be out of it.

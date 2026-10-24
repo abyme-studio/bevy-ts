@@ -122,14 +122,13 @@ fn alive(world: &World, e: Entity, id: u64) -> bool {
 }
 
 /// What a reconcile may despawn: nothing it was not given (runtime mounts), every node of the
-/// root it was not given (a generation), the nodes under one key path, or a slot's groups: `drop`
+/// root it was not given (a generation), or a slot's groups: `drop`
 /// (unmounted groups) despawned before the nodes apply, and those of `stale` (remounted groups'
 /// old nodes) the nodes did not describe again.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Prune {
     None,
     Root,
-    Under(Vec<String>),
     Groups { drop: Vec<u64>, stale: Vec<u64> },
 }
 
@@ -172,7 +171,7 @@ pub fn apply_root(
     }
     let candidates: Vec<u64> = match &prune {
         Prune::None => vec![],
-        Prune::Root | Prune::Under(_) => state.nodes.difference(&seen).copied().collect(),
+        Prune::Root => state.nodes.difference(&seen).copied().collect(),
         Prune::Groups { stale, .. } => {
             stats.checked += stale.len();
             stale.iter().filter(|id| !seen.contains(id)).copied().collect()
@@ -202,14 +201,9 @@ pub fn apply_root(
     }
     for id in candidates {
         let path = key_path(world, &tree, id);
-        let inside = match (&prune, &path) {
-            (Prune::Under(prefix), Some(p)) => p.starts_with(prefix),
-            (Prune::Under(_), None) => false,
-            _ => true,
-        };
         // Slot content is the slot's to keep or drop, after JS mounts it again.
         let in_slot = path.as_ref().is_some_and(|p| slots.iter().any(|s: &Vec<String>| p.starts_with(s)));
-        if !inside || in_slot {
+        if in_slot {
             continue;
         }
         forget(world, &mut tree, id, &mut stats);
