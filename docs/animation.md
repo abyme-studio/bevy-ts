@@ -96,8 +96,25 @@ loaded), `seekTime`, `elapsed`, `completions`, `justCompleted`, `finished`, `pau
 and `weight`. It returns `undefined` for an entity that is not a `PlayAnimation` root, or whose
 scene has no player yet. The root names its clip by path; no node index reaches TS.
 
-`seek`, `rewind` and `replay` come with writable exported params (change
-writable-native-params).
+`seek(root, secs)`, `rewind(root)` and `replay(root)` drive the root's clip on every player under
+it: Bevy's `seek_to` (events between the old time and the new fire on the next update), `rewind`
+(back to 0) and `replay` (back to no time elapsed and no completions). Each returns false, and
+changes nothing, where `status` is `undefined`. A seek on a parked root moves its clip; the pose
+shows it once the root wakes. Seeking each villager to a different time once its clip has loaded
+starts them out of step:
+
+```ts
+const started = new Set<Entity>();
+export function offsets(anims: Animations, villagers: Query<[Entity, PlayAnimation]>) {
+  villagers.each((v) => {
+    const s = anims.status(v);
+    if (s?.loaded && !started.has(v)) {
+      started.add(v);
+      anims.seek(v, Math.random() * s.duration);
+    }
+  });
+}
+```
 
 ## Placing it
 
@@ -140,12 +157,12 @@ No TS name takes a node index.
 | --- | --- | --- |
 | `AnimationPlayer::play`, `AnimationTransitions::play` | `PlayAnimation.clip`, `transition_secs` | `play.rs::a_new_clip_cross_fades`, `animation.rs::a_tsx_fox_plays_and_its_bound_clip_cross_fades` |
 | `AnimationPlayer::stop`, `stop_all` | removing `PlayAnimation` | `play.rs::removing_it_stops_the_players` |
-| `AnimationPlayer::start`, `ActiveAnimation::replay` | `Animations.replay` (with writable-native-params) | `animation.rs::animations_seek_rewind_replay` |
+| `AnimationPlayer::start`, `ActiveAnimation::replay` | `Animations.replay` | `animation.rs::animations_seek_rewind_replay` |
 | `ActiveAnimation::pause`, `resume`, `is_paused`, `AnimationPlayer::pause_all`, `resume_all`, `all_paused` | `PlayAnimation.paused`; `status().paused` | `park.rs::paused_parks_and_resumes_where_it_stood`, `animation.rs::animations_status` |
 | `ActiveAnimation::speed`, `set_speed`, `is_playback_reversed` | `PlayAnimation.speed` (negative reverses) | `play.rs::speed_applies_in_place`, `park.rs::speed_zero_does_not_park` |
 | `AnimationPlayer::adjust_speeds` | Rust only: `speed` sets the one clip a root plays | – |
 | `ActiveAnimation::repeat`, `set_repeat`, `repeat_mode` | `PlayAnimation.repeat` | `play.rs::repeat_count_finishes`, `animation.rs::a_level_fox_plays_with_no_ts` |
-| `ActiveAnimation::seek_to`, `rewind`, `AnimationPlayer::rewind_all` | `Animations.seek`, `rewind` (with writable-native-params) | `animation.rs::animations_seek_rewind_replay` |
+| `ActiveAnimation::seek_to`, `rewind`, `AnimationPlayer::rewind_all` | `Animations.seek`, `rewind` | `animation.rs::animations_seek_rewind_replay` |
 | `ActiveAnimation::set_seek_time`, `AnimationPlayer::seek_all_by` | Rust only: `seek` is the one seek, Bevy's event-firing `seek_to` | – |
 | `ActiveAnimation::seek_time`, `elapsed`, `completions`, `just_completed`, `is_finished`, `AnimationPlayer::all_finished` | `status()` fields | `animation.rs::animations_status` |
 | `ActiveAnimation::last_seek_time` | Rust only: an internal of event firing | – |

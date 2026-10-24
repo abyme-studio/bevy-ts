@@ -20,9 +20,9 @@
 
 ## 4. `Animations` writers (after writable-native-params lands)
 
-- [ ] 4.1 Rebase onto main once writable-native-params lands
-- [ ] 4.2 `seek(root, secs)` (`seek_to`), `rewind(root)`, `replay(root)` on every player of the root; false when there is no status
-- [ ] 4.3 `tests/animation.rs`: `animations_seek_rewind_replay`, including the start-offset scenario and a seek on a parked root
+- [x] 4.1 Rebase onto main once writable-native-params lands
+- [x] 4.2 `seek(root, secs)` (`seek_to`), `rewind(root)`, `replay(root)` on every player of the root; false when there is no status
+- [x] 4.3 `tests/animation.rs`: `animations_seek_rewind_replay`, including the start-offset scenario and a seek on a parked root
 
 ## 5. Types, docs, examples
 

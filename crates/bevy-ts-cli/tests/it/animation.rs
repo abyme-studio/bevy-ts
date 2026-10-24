@@ -253,3 +253,67 @@ fn a_bool_repeat_is_refused() {
     let said = format!("{:?} {:?}", r.errors, messages(&app));
     assert!(said.contains("PlayAnimation.repeat") && said.contains("RepeatAnimation"), "{said}");
 }
+
+const DRIVE_GAME: &str = r#"import { app, Update } from "bevy-ts";
+import type { Entity, Query } from "bevy-ts";
+import { PlayAnimation, Transform, WorldAssetRoot } from "bevy-ts/bevy";
+import type { Animations } from "bevy-ts/animation";
+let step = 0;
+export function drive(anims: Animations, roots: Query<[Entity, PlayAnimation]>, others: Query<[Entity, Transform]>) {
+  const rs: [Entity, string][] = [];
+  let ready = true;
+  roots.each((e, p) => {
+    rs.push([e, p.paused ? "held" : "run"]);
+    if (anims.status(e) === undefined) ready = false;
+  });
+  if (!ready || rs.length < 2) return;
+  step++;
+  const at = () => rs.map(([e, tag]) => `${tag} ${anims.status(e)!.seekTime.toFixed(2)}`).join(" ");
+  if (step === 1) {
+    // The frame both scenes are ready: start offsets, one on a parked root.
+    console.log(`seeked ${rs.map(([e, tag]) => anims.seek(e, tag === "held" ? 0.3 : 0.7)).join(" ")}`);
+    let other: Entity | undefined;
+    others.each((e) => { if (other === undefined && anims.status(e) === undefined) other = e; });
+    console.log(`other ${anims.seek(other!, 1)} ${anims.rewind(other!)} ${anims.replay(other!)}`);
+  } else if (step === 3) {
+    console.log(`after seek ${at()}`);
+    for (const [e, tag] of rs) if (tag === "run") anims.rewind(e); else anims.replay(e);
+  } else if (step === 5) {
+    console.log(`after rewind ${at()}`);
+  }
+}
+app.addSystems(Update, drive);
+app.scene("foxes", () => (
+  <>
+    <entity key="run">
+      <WorldAssetRoot value="models/Fox.glb#Scene0" />
+      <PlayAnimation clip="models/Fox.glb#Animation2" />
+    </entity>
+    <entity key="held">
+      <WorldAssetRoot value="models/Fox.glb#Scene0" />
+      <PlayAnimation clip="models/Fox.glb#Animation2" paused={true} />
+    </entity>
+  </>
+));
+"#;
+
+#[test]
+fn animations_seek_rewind_replay() {
+    let dir = fox_project("animation-seek", &[("package.json", "{}"), ("src/game.tsx", DRIVE_GAME)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    until(&mut app, "the rewind line", |app| messages(app).iter().any(|l| l.starts_with("after rewind")));
+    let m = messages(&app);
+    let line = |p: &str| m.iter().find(|l| l.starts_with(p)).cloned().unwrap_or_else(|| panic!("no {p} in {m:?}"));
+    assert_eq!(line("seeked"), "seeked true true");
+    assert_eq!(line("other"), "other false false false", "a non-root changes nothing");
+    let field = |l: &str, tag: &str| -> f32 { l.split(' ').skip_while(|w| *w != tag).nth(1).unwrap().parse().unwrap() };
+    let after = line("after seek");
+    let run = field(&after, "run");
+    assert!((0.7..1.0).contains(&run), "the run plays on from 0.7: {after}");
+    assert_eq!(field(&after, "held"), 0.3, "a parked root's clip moved and stands still: {after}");
+    let back = line("after rewind");
+    assert!(field(&back, "run") < 0.2, "rewound to 0 and playing: {back}");
+    assert_eq!(field(&back, "held"), 0.0, "replayed, still parked: {back}");
+}

@@ -772,6 +772,7 @@ mod tests {
         assert!(out.contains("declare module \"bevy-ts/animation\" {"), "{out}");
         assert!(out.contains("status(root: Entity)"), "{out}");
         assert!(out.contains("seekTime: number"), "{out}");
+        assert!(out.contains("seek(root: Entity, secs: number): boolean"), "{out}");
     }
 
     #[test]

@@ -381,12 +381,12 @@ pub struct AnimationStatus {
     pub weight: f32,
 }
 
-/// Reads a root's clip from TS (`bevy-ts/animation`), keyed by the root that carries
+/// Reads and drives a root's clip from TS (`bevy-ts/animation`), keyed by the root that carries
 /// `PlayAnimation`, which names its clip by asset path. No node index reaches TS.
 #[derive(SystemParam)]
 pub struct Animations<'w, 's> {
     roots: Query<'w, 's, (&'static PlayAnimation, &'static AnimationTargets)>,
-    players: Query<'w, 's, (&'static AnimationPlayer, Has<AnimationGraphHandle>)>,
+    players: Query<'w, 's, (&'static mut AnimationPlayer, Has<AnimationGraphHandle>)>,
     shared: Res<'w, SharedGraph>,
     clips: Res<'w, Assets<AnimationClip>>,
 }
@@ -413,5 +413,46 @@ impl Animations<'_, '_> {
             parked: !graph,
             weight: a.weight(),
         })
+    }
+
+    /// Bevy's `seek_to` on the root's clip on every player under it: events between the old
+    /// time and `secs` fire on the next update. A parked root's clip moves, and shows once it
+    /// wakes. False, changing nothing, where `status` is `undefined`.
+    pub fn seek(&mut self, root: Entity, secs: f32) -> bool {
+        self.each(root, |a| {
+            a.seek_to(secs);
+        })
+    }
+
+    /// Bevy's `rewind` on the root's clip on every player under it.
+    pub fn rewind(&mut self, root: Entity) -> bool {
+        self.each(root, |a| {
+            a.rewind();
+        })
+    }
+
+    /// Bevy's `replay` on the root's clip on every player under it: back to no time elapsed and
+    /// no completions.
+    pub fn replay(&mut self, root: Entity) -> bool {
+        self.each(root, ActiveAnimation::replay)
+    }
+}
+
+impl Animations<'_, '_> {
+    /// Runs `f` on the root's clip on every player under it; false where `status` is `None`.
+    fn each(&mut self, root: Entity, f: impl Fn(&mut ActiveAnimation)) -> bool {
+        if self.status(root).is_none() {
+            return false;
+        }
+        let Ok((play, targets)) = self.roots.get(root) else { return false };
+        let Some(node) = self.shared.node_of(&play.clip) else { return false };
+        for &p in &targets.players {
+            if let Ok((mut player, _)) = self.players.get_mut(p)
+                && let Some(a) = player.animation_mut(node)
+            {
+                f(a);
+            }
+        }
+        true
     }
 }
