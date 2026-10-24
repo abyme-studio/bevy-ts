@@ -5,7 +5,7 @@
 //! `reflect_value::NO_DEFAULT` lists it; `type_data` entries Bevy already reflects fail. An entry
 //! no walked type uses fails too.
 
-mod common;
+use crate::common;
 
 use bevy::prelude::*;
 use bevy_ts::reflect_codec::{compile_component, encode};
