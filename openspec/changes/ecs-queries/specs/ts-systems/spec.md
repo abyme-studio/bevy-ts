@@ -12,6 +12,7 @@ The `bevy-ts` module SHALL export these param types, each mapping to Bevy's own:
 - `Commands`: the system's command buffer.
 - `MessageReader<M>` and `MessageWriter<M>`: a message type's queue (see "Messages").
 - `NextState<S>` and `State<S>`: a TS state machine (see "States").
+- `In<E>`: a one-shot system's input, first param only, `E` an `Event` class (ts-schedules).
 - Param kinds that native ports register (for example `ReadRapierContext`), declared in their types package and known to the compile step.
 
 A param type that is none of these, an alias of one, or an object type whose properties are these (a param bundle, Bevy's `#[derive(SystemParam)]`) SHALL fail the load with its file and line.
@@ -19,6 +20,10 @@ A param type that is none of these, an alias of one, or an object type whose pro
 #### Scenario: A param bundle
 - **WHEN** a system takes `{ score, time }: Scoring` where `interface Scoring { score: ResMut<Score>; time: Res<Time> }`
 - **THEN** it receives an object with a writable `score` and a read-only `time`
+
+#### Scenario: In anywhere but first
+- **WHEN** a registered one-shot system takes `In<SpawnAt>` as its second param
+- **THEN** loading fails with "In<SpawnAt> must be the first param", its file and line
 
 #### Scenario: Or of two row filters
 - **WHEN** a system has `Query<[Entity], Or<[Changed<Health>, Added<Shield>]>>`, and since its last run one entity's `Health` changed and another got `Shield`
