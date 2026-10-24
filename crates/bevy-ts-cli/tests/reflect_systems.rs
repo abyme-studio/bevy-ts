@@ -63,6 +63,8 @@ app.addSystems(Update, chain(ortho, seen));
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     app.update();
     assert!(matches!(app.world().get::<Projection>(cam), Some(Projection::Orthographic(_))), "{:?}", app.world().get::<Projection>(cam));
+    // Console output reaches the log on a later frame.
+    updates(&mut app, 2);
     assert!(messages(&app).iter().any(|m| m == "changed Orthographic"), "{:?}", messages(&app));
 }
 
@@ -106,7 +108,7 @@ app.addSystems(Update, chain(names, positions));
 
 #[test]
 fn a_hole_reads_and_writes_and_column_views_stay_valid() {
-    let body = r#"
+    let body = r##"
 export function light(q: Query<[Mut<Transform>, Mut<Lamp>]>) {
   q.each((t, l: any) => {
     if (l.power !== 0) return;
@@ -118,7 +120,7 @@ export function light(q: Query<[Mut<Transform>, Mut<Lamp>]>) {
   });
 }
 app.addSystems(Update, light);
-"#;
+"##;
     let mut app = with_types("reflect-hole", body);
     let e = app.world_mut().spawn((Transform::default(), Lamp::default())).id();
     app.update();
@@ -129,6 +131,7 @@ app.addSystems(Update, light);
     assert_eq!(lamp.power, 2.0);
     assert_eq!(lamp.tint.to_srgba(), Srgba::RED);
     assert_eq!(app.world().get::<Transform>(e).unwrap().translation.x, 5.0);
+    updates(&mut app, 2);
     assert!(messages(&app).iter().any(|m| m.starts_with("tint {\"Srgba\"") && m.ends_with("x 5")), "{:?}", messages(&app));
 }
 
@@ -168,7 +171,7 @@ app.addSystems(Update, raw);
     app.world_mut().spawn(Badge::default());
     app.update();
     reload(&mut app, false);
-    app.update();
+    updates(&mut app, 3);
     assert!(messages(&app).iter().any(|m| m.contains("never a column")), "{:?}", messages(&app));
 }
 
