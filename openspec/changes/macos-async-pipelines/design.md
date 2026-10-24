@@ -36,7 +36,11 @@ bevy-ts builds engines from three manifests:
 
 **Project engines patch in their generated manifest.** `Plan::manifest()` appends `[patch.crates-io]` with `bevy_render` from the same `Source` the bevy-ts crates come from:
 - `Source::Path(root)`: `bevy_render = { path = "<root>/vendor/bevy_render" }`.
-- `Source::Registry`: `bevy_render = { git = "https://github.com/abyme-studio/bevy-ts", tag = "v<VERSION>" }`. Cargo finds the package by name inside the repository. Alternatives: publishing the patched crate under another name (a crates.io package we maintain, and a renamed patch); writing the vendored source out of the CLI binary (1.6 MB embedded). The git tag needs nothing new published and is pinned by the version already in the hash. It is dormant until bevy-ts's crates are on crates.io (`docs/release.md`); the release workflow already tags `v<version>`.
+- `Source::Registry`: `bevy_render = { git = "https://github.com/abyme-studio/bevy-ts", tag = "v<VERSION>" }`. Cargo finds the package by name inside the repository. Alternatives: publishing the patched crate under another name (a crates.io package we maintain, and a renamed patch); writing the vendored source out of the CLI binary (1.6 MB embedded). The git tag needs nothing new published and is pinned by the version already in the hash. It is dormant until bevy-ts's crates are on crates.io (`docs/release.md`); the release workflow already tags `v<version>`. Decided by lead@bevy-ts (2026-10-23): the git source, from the public `abyme-studio/bevy-ts` repository, pinned by tag `v<version>`. It goes, with the rest of the patch, once Bevy ships the async-on-macOS fix (bevy#26151).
+
+**Thumbnails wait for their pipelines.** With pipelines compiling in the background, a mesh draws only once its pipeline is ready, so a capture a fixed number of frames after spawning can miss it. The asset viewer's thumbnail (`crates/bevy-ts-viewport/src/assets.rs`) reads back only once, for three updates in a row, no pipeline in the render world's `PipelineCache` is compiling (`Creating`), the cache holds no new pipeline, and the subject has no newly loaded mesh (a glTF part spawns and loads frames after its subject; it is reframed when it does), or after 30 s. A render-world system in `Cleanup` publishes that to the main world through a shared flag. `BEVY_TS_SCREENSHOT`, a walk hook at fixed frames 60 and 75, is unchanged and may now catch a mesh before its pipeline is ready on a cold cache; no test asserts on its pixels.
+
+**Pixel tests compile synchronously.** `bevy-ts-viewport`'s tests, and `bevy-ts-cli`'s `headless_ui` and `ambient_light`, read pixels a set number of frames in. With background compiling a mesh, outline or gizmo draws a varying number of frames late, so they failed at random under load. Their apps set `RenderPlugin { synchronous_pipeline_compilation: true }`, Bevy's own switch for this, so they see what they always saw; they test the viewport, not compile timing. Waiting on the pipeline cache from the tests was tried and dropped: a mesh queues its pipeline frames after it spawns and a scene with no camera has none, so no idle test was both safe and finite.
 
 **`GENERATOR` goes to `"2"`.** The manifest changed shape, so cached engines (local and shared) built without the patch miss. Under `Source::Path`, edits to the vendored crate already change the hash through the CLI binary's stamp, since the CLI links the same crate.
 
@@ -47,7 +51,7 @@ bevy-ts builds engines from three manifests:
 - [Upstream kept macOS synchronous for a reason we have not found] → the measurement runs arena on macOS cold and warm and watches for crashes, validation errors and wrong draws; the shader-compile-stall run saw none. Dropping the patch is one revert.
 - [A native crate's own `cargo check`/`cargo test`, outside bevy-ts, builds unpatched bevy_render] → harmless (no engine runs from it); `docs/native.md` says so.
 - [A Bevy bump silently ignores the patch] → the version check (task 2.3) fails the build.
-- [Registry engines fetch from GitHub at build time; offline or GitHub down fails a first build] → cargo caches git sources like registry ones; the shared engine cache still serves authors without a toolchain. Needs the operator's go before it ships.
+- [Registry engines fetch from GitHub at build time; offline or GitHub down fails a first build] → cargo caches git sources like registry ones; the shared engine cache still serves authors without a toolchain. Decided by lead@bevy-ts (2026-10-23).
 - [Vendored source bloats the repo by ~1.6 MB] → accepted; it is one crate.
 
 ## Migration Plan
@@ -56,15 +60,23 @@ Lands with the code. Existing project engines rebuild once (the `GENERATOR` bump
 
 ## Measurements
 
-Filled by task 5: arena on the operator's Mac, cold (no pipeline or shader cache) and warm, 3 runs each, before and after. Time from engine start to all pipelines ready, the longest frame meanwhile.
+Arena, headless, on the operator's M5 Max (macOS 26.4), the debug CLI (`opt-level = 1`, dependencies 3), 2026-10-23. `scripts/pipeline-bench.sh` (`pipelines-*` processes) builds the arena with each arm's CLI and plays it.
+
+- All pipelines ready: `BEVY_TS_PIPELINE_TRACE=1` makes the engine print, from a render-world system after the render, each time the pipeline cache's queue empties: seconds since start, pipelines held, longest render frame so far. A run ends 15 s after its last line; that line is the cell.
+- Cold: the run sits in a `sandbox-exec` profile that denies the user's Metal shader cache (`$(getconf DARWIN_USER_CACHE_DIR)com.apple.metal`), so every shader compiles afresh. Clearing that cache instead would have stalled every other process sharing it. Warm: the same binary straight after, cache allowed.
+- The machine was shared with other teams' builds; load varied 22-94, so absolute times are noisy. The arms are far outside each other's noise, so 3 runs each stand.
+
+Each cell: time from engine start to all 46 pipelines ready / longest render frame meanwhile (load average at the run).
 
 | Arm | Run 1 | Run 2 | Run 3 |
 |---|---|---|---|
-| before, cold | | | |
-| before, warm | | | |
-| after, cold | | | |
-| after, warm | | | |
+| before, cold | 10.95 s / 7.74 s (38) | 11.25 s / 7.73 s (37) | 14.60 s / 10.97 s (41) |
+| before, warm | 53.75 s / 43.70 s (94) | 4.58 s / 2.58 s (76) | 2.44 s / 1.41 s (68) |
+| after, cold | 4.33 s / 95 ms (22) | 4.05 s / 107 ms (23) | 4.59 s / 103 ms (28) |
+| after, warm | 4.59 s / 120 ms (29) | 1.60 s / 283 ms (27) | 1.60 s / 409 ms (27) |
+
+Before, the render thread stalls 1.4-44 s while pipelines compile on it. After, no frame passes 0.41 s, and pipelines are ready sooner cold too (4.0-4.6 s against 11-15 s), since they compile in parallel. No run logged an error or panic; 46 pipelines in every run. Draws: the arena's lit-viewport checks (`play_after_edit`, ignored by default, run by hand) pass after. `bevy-ts-cli`'s `viewport_thumbnail` failed after: a thumbnail read back three frames after its subject spawned, before the subject's pipelines compiled, so the crate came out empty (Decisions, Thumbnails wait).
 
 ## Open Questions
 
-- The git source for registry-built engines needs the operator's go (proposal, Impact).
+None. The git source for registry-built engines was decided by lead@bevy-ts (Decisions).

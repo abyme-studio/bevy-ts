@@ -17,7 +17,7 @@ pub const TARGET: &str = env!("BEVY_TS_TARGET");
 /// The Bevy version this engine was built with.
 pub const BEVY_VERSION: &str = env!("BEVY_TS_BEVY_VERSION");
 /// Bumped when the generated engine crate changes shape, so old cache entries miss.
-const GENERATOR: &str = "1";
+const GENERATOR: &str = "2";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Profile {
@@ -73,6 +73,15 @@ impl Source {
         match self {
             Source::Registry => format!("{krate} = \"={VERSION}\""),
             Source::Path(root) => format!("{krate} = {{ path = {:?} }}", root.join("crates").join(krate).display().to_string()),
+        }
+    }
+
+    /// The `[patch.crates-io]` line for bevy-ts's vendored `bevy_render`, which compiles render
+    /// pipelines off the render thread on macOS (`vendor/bevy_render/PATCH.md`).
+    fn patch(&self) -> String {
+        match self {
+            Source::Registry => format!("bevy_render = {{ git = \"https://github.com/abyme-studio/bevy-ts\", tag = \"v{VERSION}\" }}"),
+            Source::Path(root) => format!("bevy_render = {{ path = {:?} }}", root.join("vendor/bevy_render").display().to_string()),
         }
     }
 
@@ -302,6 +311,8 @@ impl Plan {
             }
             s.push_str(" }\n");
         }
+        // Its own workspace, so the bevy-ts workspace's patch does not reach it.
+        let _ = writeln!(s, "\n[patch.crates-io]\n{}", self.source.patch());
         s.push_str("\n[profile.dev]\nopt-level = 1\n\n[profile.dev.package.\"*\"]\nopt-level = 3\n");
         s
     }
@@ -1045,6 +1056,50 @@ mod tests {
 
     fn is_link(p: &Path) -> bool {
         std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink())
+    }
+
+    #[test]
+    fn generated_engine_patches_bevy_render() {
+        let d = tmp("patch");
+        let p = project_with_native(&d);
+        let plan = Plan::new(&p, Profile::Dev).unwrap().unwrap();
+        let checkout = PathBuf::from("/checkout");
+        let path = Plan { source: Source::Path(checkout.clone()), ..plan.clone() }.manifest();
+        let line = format!("bevy_render = {{ path = {:?} }}", checkout.join("vendor/bevy_render").display().to_string());
+        assert!(path.contains(&format!("[patch.crates-io]\n{line}\n")), "{path}");
+        let registry = Plan { source: Source::Registry, ..plan }.manifest();
+        let line = format!("bevy_render = {{ git = \"https://github.com/abyme-studio/bevy-ts\", tag = \"v{VERSION}\" }}");
+        assert!(registry.contains(&format!("[patch.crates-io]\n{line}\n")), "{registry}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A Bevy bump without re-vendoring would leave the patch unused, which cargo only warns of.
+    #[test]
+    fn vendored_bevy_render_matches_the_locked_bevy() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = std::fs::read_to_string(root.join("vendor/bevy_render/Cargo.toml")).unwrap();
+        let version = manifest.lines().find_map(|l| l.strip_prefix("version = ")).unwrap().trim_matches('"');
+        assert_eq!(version, BEVY_VERSION, "re-vendor vendor/bevy_render at Bevy {BEVY_VERSION} (vendor/bevy_render/PATCH.md)");
+    }
+
+    /// Cargo resolves a generated engine's bevy_render to the checkout's vendored crate.
+    #[test]
+    fn thrusters_engine_resolves_the_vendored_bevy_render() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+        let p = project::find(&root.join("examples/thrusters")).unwrap().unwrap();
+        let plan = Plan { source: Source::Path(root.clone()), ..Plan::new(&p, Profile::Dev).unwrap().unwrap() };
+        let d = tmp("resolve");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Cargo.toml"), plan.manifest()).unwrap();
+        std::fs::write(d.join("main.rs"), plan.main_rs("abc")).unwrap();
+        std::fs::copy(plan.pkg.as_ref().unwrap().lock_path(), d.join("Cargo.lock")).unwrap();
+        let out = cargo().unwrap().args(["metadata", "--format-version", "1", "--manifest-path"]).arg(d.join("Cargo.toml")).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        let render = v["packages"].as_array().unwrap().iter().find(|p| p["name"] == "bevy_render").unwrap();
+        assert!(render["source"].is_null(), "{render:?}");
+        assert_eq!(Path::new(render["manifest_path"].as_str().unwrap()), root.join("vendor/bevy_render/Cargo.toml"));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

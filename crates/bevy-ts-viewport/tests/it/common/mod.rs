@@ -31,6 +31,13 @@ pub fn app() -> App {
     app_with(|_| {})
 }
 
+/// Pipelines compiled on the render thread, as Bevy's own pixel tests do: these tests read pixels
+/// a set number of frames in, and an engine compiles pipelines in the background
+/// (`vendor/bevy_render/PATCH.md`), so a mesh would draw a varying number of frames late.
+pub fn sync_pipelines() -> bevy::render::RenderPlugin {
+    bevy::render::RenderPlugin { synchronous_pipeline_compilation: true, ..default() }
+}
+
 /// An app with extra plugins added before it is finished.
 pub fn app_with(extra: impl FnOnce(&mut App)) -> App {
     let mut app = render_app();
@@ -38,7 +45,8 @@ pub fn app_with(extra: impl FnOnce(&mut App)) -> App {
         DefaultPlugins
             .build()
             .disable::<WinitPlugin>()
-            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }),
+            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
+            .set(sync_pipelines()),
     )
     .add_plugins(RemotePlugin::default())
     .add_plugins(ViewportPlugin::default())
@@ -212,7 +220,8 @@ pub fn app_at(dir: &std::path::Path) -> App {
             .build()
             .disable::<WinitPlugin>()
             .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
-            .set(AssetPlugin { file_path: dir.display().to_string(), ..default() }),
+            .set(AssetPlugin { file_path: dir.display().to_string(), ..default() })
+            .set(sync_pipelines()),
     )
     .add_plugins(RemotePlugin::default())
     .add_plugins(ViewportPlugin::default())

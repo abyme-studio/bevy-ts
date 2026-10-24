@@ -33,6 +33,45 @@ impl Default for AssetRoot {
 
 pub(crate) fn build(app: &mut App) {
     app.init_resource::<AssetRoot>().init_resource::<Listing>().init_resource::<Thumbnails>().add_systems(Update, (poll, thumbnails)).add_observer(mark_parts);
+    let pipelines = Pipelines::default();
+    app.insert_resource(pipelines.clone());
+    if let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp) {
+        render.insert_resource(pipelines).add_systems(bevy::render::Render, note_pipelines.in_set(bevy::render::RenderSystems::Cleanup));
+    }
+}
+
+/// The render world's pipeline cache at its last frame: how many pipelines it holds, and
+/// [`COMPILING`] while any is compiling. Pipelines compile in the background, so a mesh draws only
+/// once its pipeline is ready; a thumbnail reads back only once this has held still. A pipeline
+/// retrying on a shader that has not loaded is not compiling, so one that never loads holds no
+/// thumbnail back.
+#[derive(Resource, Clone, Default)]
+struct Pipelines(std::sync::Arc<std::sync::atomic::AtomicU64>);
+
+const COMPILING: u64 = 1 << 63;
+
+fn note_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>, pipelines: Res<Pipelines>) {
+    use bevy::render::render_resource::CachedPipelineState;
+    let compiling = cache.pipelines().any(|p| matches!(p.state, CachedPipelineState::Creating(_)));
+    let held = cache.pipelines().count() as u64;
+    pipelines.0.store(held | if compiling { COMPILING } else { 0 }, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The subject's meshes whose mesh asset is loaded: a glTF part spawns, and its mesh loads, some
+/// frames after the subject does, and only then queues its pipeline.
+fn loaded_meshes(world: &World, subject: Entity) -> usize {
+    let meshes = world.resource::<Assets<Mesh>>();
+    let mut stack = vec![subject];
+    let mut n = 0;
+    while let Some(e) = stack.pop() {
+        if world.get::<Mesh3d>(e).is_some_and(|m| meshes.contains(&m.0)) {
+            n += 1;
+        }
+        if let Some(c) = world.get::<Children>(e) {
+            stack.extend(c.iter());
+        }
+    }
+    n
 }
 
 pub(crate) fn add_methods(app: &mut App) {
@@ -294,7 +333,9 @@ fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>
 /// A thumbnail in progress, or done.
 enum Job {
     Loading { handle: UntypedHandle, size: u32, since: Instant },
-    Rendering { entities: Vec<Entity>, image: Handle<Image>, frames: u32, framed: bool },
+    /// `seen`: the pipeline cache's state and the subject's loaded meshes at the last update;
+    /// `idle`: updates in a row they held still with nothing compiling; `since`: when it was staged.
+    Rendering { entities: Vec<Entity>, image: Handle<Image>, frames: u32, framed: bool, seen: (u64, usize), idle: u32, since: Instant },
     Reading { entities: Vec<Entity> },
 }
 
@@ -386,6 +427,8 @@ fn image_thumbnail(path: &Path, size: u32) -> Result<Vec<u8>, String> {
 const LOAD_TIMEOUT: Duration = Duration::from_secs(20);
 /// Frames to let a scene spawn and its bounds settle before framing it.
 const SETTLE_FRAMES: u32 = 3;
+/// How long a thumbnail waits for its pipelines to compile before it reads back anyway.
+const PIPELINE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// One stage at a time: every subject sits at the origin on layer 30, so two would be drawn in
 /// each other's pictures. A loaded job waits while another renders or reads back.
@@ -435,12 +478,21 @@ fn thumbnails(world: &mut World) {
                     _ => Some(Job::Loading { handle, size, since }),
                 }
             }
-            Job::Rendering { entities, image, frames, framed } => {
+            Job::Rendering { entities, image, frames, framed, seen, idle, since } => {
+                let now = (world.resource::<Pipelines>().0.load(std::sync::atomic::Ordering::Relaxed), loaded_meshes(world, entities[0]));
+                // A part that loaded since the framing changes the bounds: frame again.
+                if framed && now.1 != seen.1 {
+                    frame_thumbnail(world, &entities);
+                }
+                // Held still three updates in a row: the render world runs a frame behind, and a
+                // loaded mesh queues its pipeline a frame after it is extracted.
+                let idle = if now == seen && now.0 & COMPILING == 0 { idle + 1 } else { 0 };
                 if frames == SETTLE_FRAMES && !framed {
                     frame_thumbnail(world, &entities);
-                    Some(Job::Rendering { entities, image, frames: frames + 1, framed: true })
-                } else if frames < SETTLE_FRAMES + 3 {
-                    Some(Job::Rendering { entities, image, frames: frames + 1, framed })
+                    // Framed: count idle updates from here, over what the camera now shows.
+                    Some(Job::Rendering { entities, image, frames: frames + 1, framed: true, seen: now, idle: 0, since })
+                } else if frames < SETTLE_FRAMES + 3 || (idle < 3 && since.elapsed() < PIPELINE_TIMEOUT) {
+                    Some(Job::Rendering { entities, image, frames: frames + 1, framed, seen: now, idle, since })
                 } else {
                     let reader = world.spawn((Readback::texture(image), EditorOnly)).observe(on_readback).id();
                     world.resource_mut::<Thumbnails>().done.insert(reader, key.clone());
@@ -509,7 +561,7 @@ fn stage(world: &mut World, subject: Entity, size: u32) -> Job {
             ThumbnailCamera,
         ))
         .id();
-    Job::Rendering { entities: vec![subject, light, camera], image, frames: 0, framed: false }
+    Job::Rendering { entities: vec![subject, light, camera], image, frames: 0, framed: false, seen: (0, 0), idle: 0, since: Instant::now() }
 }
 
 #[derive(Component)]

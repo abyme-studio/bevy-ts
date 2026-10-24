@@ -19,6 +19,7 @@ None.
 
 ### Modified Capabilities
 
+- `asset-list`: a thumbnail reads back only once its pipelines are compiled.
 - `project-engine`: every engine bevy-ts builds or ships, prebuilt or project, compiles render pipelines off the render thread on macOS; the generated engine manifest carries the patch.
 
 ## Impact
@@ -26,6 +27,7 @@ None.
 - `vendor/bevy_render/` (new): the patched crate and its `PATCH.md`.
 - `Cargo.toml`: `[patch.crates-io] bevy_render`, `exclude` gains `vendor/bevy_render`. `Cargo.lock` re-resolves bevy_render to the path source.
 - `crates/bevy-ts-cli/src/engine.rs`: `Plan::manifest()` writes the patch for both `Source`s; `GENERATOR` goes to `"2"` so cached engines built without it miss; a unit test.
+- `crates/bevy-ts-viewport/src/assets.rs`: an asset thumbnail reads back once no pipeline is compiling (`asset-list`), since a fixed three frames no longer guarantees its subject's pipelines are ready.
 - `docs/native.md` (project engines), `docs/build.md` (the shipped engine): the patch and why.
 - Unchanged, and why: `.github/workflows/release.yml` builds `-p bevy-ts-cli` in the workspace, so npm's engines get the patch from `Cargo.toml`; `crates/bevy-ts-rapier3d` and `examples/thrusters/native` are only ever built inside a generated engine; `bench/*` crates are benchmarks, not engines, and stay unpatched.
-- Needs the operator's go: a project engine built from crates.io fetches the patch over git from the public `abyme-studio/bevy-ts` repository at tag `v<version>`. That is a new place a user's build reaches at build time. It is dormant until bevy-ts's crates are on crates.io.
+- Decided by lead@bevy-ts (2026-10-23): a project engine built from crates.io fetches the patch over git from the public `abyme-studio/bevy-ts` repository at tag `v<version>`. That is a new place a user's build reaches at build time. It is dormant until bevy-ts's crates are on crates.io.
