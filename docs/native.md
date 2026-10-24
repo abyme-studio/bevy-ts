@@ -643,6 +643,27 @@ export function openNotes(keys: Keys, focus: InputFocus) {
 
 A number that is not a `KeyCode` throws, naming the param, the method and the number.
 
+`LogicalKeys` (`pressed`, `justPressed`, `justReleased`) reads Bevy's `ButtonInput<Key>`: the key
+by what it types under the layout and modifiers, not where it sits. Use it to bind "the key that
+types `?`" on any layout; use `Keys` for movement and anything held, where the key's place
+matters. `Key` is Bevy's `Key` as one number: a member per named key (`Key.Enter`, `Key.Escape`,
+`Key.Shift`), `Key.Character("z")` for a character and `Key.Dead("´")` or `Key.Dead()` for a dead
+key. `Key.Character` takes one code point after NFC and throws otherwise; `Unidentified` keys have
+no member.
+
+```ts
+import { Key, type LogicalKeys } from "bevy-ts/input";
+
+export function help(keys: LogicalKeys) {
+  if (keys.justPressed(Key.Character("?"))) toggleHelp();
+}
+```
+
+As in Bevy, a character key's release can name another character than its press: press `N` with
+Shift, let Shift go first, and the release is `n`, so `Key.Character("N")` reads as pressed until
+the window loses focus. A number outside `Key`'s ranges (a `KeyCode`, say) throws, naming
+`LogicalKeys`, the method and the number.
+
 The other devices read the same way, each over Bevy's own state:
 
 - `MouseButtons` (`pressed`, `justPressed`, `justReleased`) over `ButtonInput<MouseButton>`.
@@ -664,7 +685,7 @@ The other devices read the same way, each over Bevy's own state:
 
 `MouseButton`, `GamepadButton` and `GamepadAxis` are enums like `KeyCode`, without the `Other(n)`
 variants. Their numbers never meet (`KeyCode` from 0, `MouseButton` from `0x1000`,
-`GamepadButton` from `0x2000`, `GamepadAxis` from `0x2100`), so `gamepads.get(pad, ..)` takes
+`GamepadButton` from `0x2000`, `GamepadAxis` from `0x2100`, `Key` from `0x3000`), so `gamepads.get(pad, ..)` takes
 either gamepad enum, as Bevy's does, and a number of the wrong enum throws naming the one it is:
 
 ```ts
@@ -769,7 +790,7 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 | `InputFocus` | `InputFocus` | text-input |
 | `InputFocusVisible` | `InputFocusVisible` | bevy-ui-coverage |
 | `DirectionalNavigation`, `AutoDirectionalNavigator`, `CompassOctant` | `DirectionalNavigation`, `CompassOctant` | bevy-ui-coverage |
-| `ButtonInput<Key>`, `Key` (logical keys) | beside `Keys` | text-input, a later stage |
+| `ButtonInput<Key>`, `Key` (logical keys) | `LogicalKeys`, `Key` | logical-keys |
 | `KeyboardInput`, `KeyboardFocusLost` | `MessageReader` | rust-events |
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` | script-input-devices |
 | `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollUnit` | `Res<T>`; the unit as `"Line" \| "Pixel"` | rust-resources; script-input-devices |
