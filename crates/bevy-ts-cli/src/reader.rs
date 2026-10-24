@@ -243,7 +243,7 @@ const DATA: &[&str] = &["Component", "SceneComponent", "ReflectComponent", "Reso
 
 /// `On<E>`'s own members, beside the event's fields it derefs to: no TS event field may take one
 /// of these names (an `EntityEvent`'s `entity` is its target, skipped before the check).
-const ON_MEMBERS: &[&str] = &["entity", "propagate", "toJSON"];
+const ON_MEMBERS: &[&str] = &["entity", "original", "propagate", "toJSON"];
 
 /// A class declaring a component, resource, message, event, state machine or system set.
 #[derive(Debug)]
@@ -875,8 +875,8 @@ impl Reader<'_> {
                 if kind == "entityEvent" && f.name == "entity" {
                     continue; // the target, carried beside the payload
                 }
-                // `On<E>` derefs to the event's fields beside its own `entity`, `propagate` and
-                // `toJSON`: a field by one of those names would be shadowed.
+                // `On<E>` derefs to the event's fields beside its own `entity`, `original`,
+                // `propagate` and `toJSON`: a field by one of those names would be shadowed.
                 if matches!(kind, "event" | "entityEvent") && ON_MEMBERS.contains(&f.name.as_str()) {
                     errors.push((f.span, format!("field {} shadows On<{}>.{}; rename it", f.name, c.name, f.name)));
                     continue;
