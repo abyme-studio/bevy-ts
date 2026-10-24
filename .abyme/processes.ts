@@ -284,6 +284,8 @@ const processes = {
   "stage2-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --no-fail-fast; scripts/dylib-check.sh) 2>&1 | grep -v ld64 | tee target/stage2-gate.log | grep -E \"^test result|FAILED|panicked|^error|should be|NOT|refused|dylib-check\"'" },
   // The workspace doctests in this checkout (a doctest that runs cannot find the Bevy dylib).
   "doctests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --workspace --doc 2>&1 | grep -v ld64 | tee target/doctests.log | grep -E \"^test result|FAILED|dyld|^error\"'" },
+  // Item pcss: experimental_pbr_pcss off and on, three runs each, alternating so both arms see one load.
+  "pcss-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; T=\"cargo static test --release -p bevy-ts-cli --test it\"; ($T --no-run && CARGO_TARGET_DIR=target/pcss-on $T --features pcss --no-run && for i in 1 2 3; do uptime; $T pcss_bench:: -- --ignored --nocapture; CARGO_TARGET_DIR=target/pcss-on $T --features pcss pcss_bench:: -- --ignored --nocapture; done) 2>&1 | grep -v ld64 | tee target/pcss-bench.log | grep -E \"^pcss|load average|test result|panicked|^error\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

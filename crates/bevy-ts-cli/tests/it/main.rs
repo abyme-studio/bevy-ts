@@ -32,6 +32,7 @@ mod native_components;
 mod native_params_bench;
 mod native_writes;
 mod packages;
+mod pcss_bench;
 mod play;
 mod play_after_edit;
 mod play_stop;
