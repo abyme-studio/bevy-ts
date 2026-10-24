@@ -219,7 +219,7 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             if (c.ts)(resource).is_none()
                 && let Some(paths) = world.resource::<NativeLayouts>().ambiguous(resource)
             {
-                return Err(format!("resourceExists({resource}): {resource} names more than one Rust type ({}); use its type path", paths.join(", ")));
+                return Err(format!("resourceExists({resource}): {resource} names more than one Rust type ({}); use its type path", paths.join(", ")).into());
             }
             Condition::ResourceExists { id: resource_id(world, resource, c.ts) }
         }
