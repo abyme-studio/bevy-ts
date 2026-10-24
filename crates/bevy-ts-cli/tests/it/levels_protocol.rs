@@ -251,8 +251,11 @@ fn every_level_method_answers_on_contract() {
     assert_eq!(w["status"], "written", "{w}");
     assert!(arena().contains("#GruntB\n@enemies::Grunt\nTransform"), "{}", arena());
     assert_eq!(w["inverse"][0]["op"], "set_prop", "{w}");
+    // Until the write is applied: settling alone can return before the level is marked dirty.
+    let node = |app: &mut App| ok(app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["GruntB"] })));
+    until(&mut app, "the write never applied", |app| node(app)["props"][0]["overridden"] == json!(false));
     settle_levels(&mut app);
-    let after = ok(&mut app, "bevy-ts/level_node", Some(json!({ "level": "levels/arena.bsn", "namePath": ["GruntB"] })));
+    let after = node(&mut app);
     assert_eq!((&after["props"][0]["value"], &after["props"][0]["overridden"]), (&json!(100), &json!(false)), "{after}");
     // A prop nothing overrides: nothing to apply.
     let none = ok(&mut app, "bevy-ts/level_apply", Some(json!({ "entity": grunt["entity"], "component": "enemies::Grunt", "field": "@speed" })));
