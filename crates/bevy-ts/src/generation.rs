@@ -195,12 +195,14 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
             h(world);
         }
         world.insert_resource(TsSystems::default());
+        crate::bevy_system::retire_all(world);
         rt.entries.clear();
         rt.backend.restart();
     } else if rt.backend.heap_used().is_some_and(|h| h > HEAP_RESTART_BYTES) {
         crate::net::close_all(world);
         rt.backend.restart();
         world.insert_resource(TsSystems::default());
+        crate::bevy_system::retire_all(world);
         rt.entries.clear();
     }
 
@@ -448,6 +450,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     crate::sets::ensure_slots(world);
     crate::schedules::reconcile_order(world, &manifest.schedule_order);
     crate::schedules::ensure_stages(world, &manifest.init_schedules);
+    crate::bevy_system::commit(world);
     crate::observers::install(world, &watched);
     rt.entries = manifest.entries.iter().map(|e| e.name.clone()).collect();
     Ok((migrations, sections, requests))

@@ -143,13 +143,13 @@ pub(crate) fn placement(world: &World, d: &SystemDecl) -> Result<Option<SlotKey>
     Ok(Some(SlotKey { set: name.to_string(), after: *after }))
 }
 
-/// Slots made so far: each is one exclusive system in its set's schedule, kept for the life of
-/// the app (an emptied slot is skipped).
+/// Slots made so far: each is a set ordered against its exposed set, kept for the life of the app
+/// (an emptied slot holds no system).
 #[derive(Resource, Default, Debug)]
 pub struct MadeSlots(pub std::collections::BTreeSet<SlotKey>);
 
-/// Makes the slots a just-committed generation names for the first time: one schedule edit each,
-/// applied at this frame boundary. Later generations reuse them without touching schedules.
+/// Configures the slot sets a just-committed generation names for the first time, at this frame
+/// boundary. Later generations reuse them.
 pub(crate) fn ensure_slots(world: &mut World) {
     let wanted: Vec<SlotKey> = match world.get_resource::<TsSystems>() {
         Some(s) => s.slots.iter().filter(|(_, l)| !l.is_empty()).map(|(k, _)| k.clone()).collect(),
@@ -159,13 +159,13 @@ pub(crate) fn ensure_slots(world: &mut World) {
     for key in wanted.into_iter().filter(|k| !made.contains(k)) {
         let Some(set) = world.resource::<TsSets>().get(&key.set).cloned() else { continue };
         let slot = if key.after { BevyTsSlot::after(&key.set) } else { BevyTsSlot::before(&key.set) };
-        let run = {
-            let key = key.clone();
-            move |world: &mut World| crate::systems::run_slot(world, &key)
-        };
-        let mut schedules = world.resource_mut::<Schedules>();
-        let placed = if key.after { run.after(set.set).in_set(slot) } else { run.before(set.set).in_set(slot) };
-        schedules.add_systems(set.schedule, placed);
+        let label = set.schedule;
+        let placed = if key.after { slot.clone().after(set.set) } else { slot.clone().before(set.set) };
+        crate::schedules::edit(world, label, false, move |world| {
+            let mut schedules = world.resource_mut::<Schedules>();
+            schedules.configure_sets(label, placed);
+            crate::bevy_system::configure_slot(&mut schedules, label, slot);
+        });
         world.resource_mut::<MadeSlots>().0.insert(key);
     }
 }

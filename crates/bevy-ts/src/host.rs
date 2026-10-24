@@ -581,6 +581,18 @@ impl HostParams {
         &self.params[index].writes
     }
 
+    /// Whether param `index` has deferred state (`Commands`, `Gizmos`).
+    pub fn deferred(&self, index: usize) -> bool {
+        self.params[index].state.deferred()
+    }
+
+    /// Param `index`'s TS name and the world access it registers, which the TS systems taking it
+    /// declare.
+    pub fn access(&self, index: usize, world: &mut World) -> Option<(&'static str, SystemAccess)> {
+        let reg = self.params.get(index)?;
+        Some((reg.spec.ts, reg.state.access(world)))
+    }
+
     /// Applies param `index`'s deferred state if a call since the last apply queued any.
     pub fn apply(&mut self, index: usize, world: &mut World) {
         let reg = &mut self.params[index];

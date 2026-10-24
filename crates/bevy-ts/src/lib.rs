@@ -7,6 +7,7 @@
 //! [`fake::FakeBackend`] runs tests without any engine).
 
 pub mod backend;
+pub mod bevy_system;
 pub mod color;
 pub mod commands;
 pub mod components;
@@ -77,8 +78,8 @@ fn drop_edit_triggers(mut queue: ResMut<observers::ObserverQueue>) {
     queue.0.clear();
 }
 
-/// The system set each bevy-ts stage runs in, so Rust plugins can order around it. A custom
-/// schedule's stage runs in `Schedule(path)`.
+/// The system set each bevy-ts stage's TS systems run in, each as a Bevy system of its own, so
+/// Rust plugins can order around them. A custom schedule's stage runs in `Schedule(path)`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BevyTsSet {
     First,
@@ -99,8 +100,8 @@ pub enum BevyTsSet {
 /// Builds the backend on the main thread when the plugin is added.
 pub type BackendFactory = Arc<dyn Fn() -> Box<dyn ScriptBackend> + Send + Sync>;
 
-/// Adds the bridge: the runtime as non-send data, the four stages, generation application in
-/// `First`, and the native layout registry filled from reflection.
+/// Adds the bridge: the runtime as non-send data, the four eager stages' sets, generation
+/// application in `First`, and the native layout registry filled from reflection.
 pub struct BevyTsPlugin {
     backend: BackendFactory,
     /// Dev mode: reload, the read-column check, inspector.
@@ -116,19 +117,6 @@ impl BevyTsPlugin {
         self.dev = dev;
         self
     }
-}
-
-fn stage_pre_update(world: &mut World) {
-    systems::run_stage(world, Stage::PreUpdate);
-}
-fn stage_update(world: &mut World) {
-    systems::run_stage(world, Stage::Update);
-}
-fn stage_post_update(world: &mut World) {
-    systems::run_stage(world, Stage::PostUpdate);
-}
-fn stage_fixed_update(world: &mut World) {
-    systems::run_stage(world, Stage::FixedUpdate);
 }
 
 impl Plugin for BevyTsPlugin {
@@ -198,11 +186,13 @@ impl Plugin for BevyTsPlugin {
         app.add_systems(Last, schedules::apply_deferred_edits);
         // `Main` holds the schedule orders while it runs: a generation's order edits wait for it.
         app.add_systems(Main, schedules::apply_pending_order.after(Main::run_main));
-        app.configure_sets(PostUpdate, BevyTsSet::PostUpdate.before(bevy::transform::TransformSystems::Propagate));
-        app.add_systems(PreUpdate, stage_pre_update.in_set(BevyTsSet::PreUpdate))
-            .add_systems(Update, stage_update.in_set(BevyTsSet::Update))
-            .add_systems(PostUpdate, stage_post_update.in_set(BevyTsSet::PostUpdate))
-            .add_systems(FixedUpdate, stage_fixed_update.in_set(BevyTsSet::FixedUpdate));
+        // The eager stages' sets exist from startup; a generation adds its TS systems to them.
+        app.init_resource::<bevy_system::LiveSystems>();
+        for stage in Stage::ALL.into_iter().filter(|s| s.eager()) {
+            schedules::configure_stage(&mut app.world_mut().resource_mut::<Schedules>(), stage);
+        }
+        // Errors TS systems left on the runtime are on the log when the frame ends.
+        app.add_systems(Last, runtime::flush_log_system.after(BevyTsSet::Last));
     }
 
     fn finish(&self, app: &mut App) {

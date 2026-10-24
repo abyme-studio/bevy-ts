@@ -726,6 +726,10 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
         }
         None => None,
     };
+    if matches!(d.schedule, ScheduleDecl::Stage { .. } | ScheduleDecl::Schedule { .. }) {
+        // A Bevy system: its params' access must not conflict, as a Rust system's.
+        crate::bevy_system::check_access(world, d, &params)?;
+    }
     let local_refs: Vec<&[crate::manifest::FieldDecl]> = locals.iter().map(|l| l.as_slice()).collect();
     world.get_resource_or_init::<SystemMemory>().declare(&d.name, &local_refs);
     let fingerprint = fingerprint(d, &params, condition.as_ref());

@@ -12,7 +12,7 @@
 
 use crate::backend::ScriptError;
 use crate::conditions::TsCondition;
-use crate::manifest::{ParamDecl, Stage, SystemDecl};
+use crate::manifest::{ParamDecl, SystemDecl};
 use crate::memory::SystemMemory;
 use crate::messages::TsPayloads;
 use crate::runtime::{Pending, ScriptFrame, ScriptRuntime};
@@ -20,7 +20,6 @@ use crate::sets::BevyTsSlot;
 use crate::systems::{Clock, RunBytes, RunParam, SlotKey, TsSystem, TsSystemCell, TsSystems};
 use bevy::ecs::change_detection::{CheckChangeTicks, Tick};
 use bevy::ecs::component::ComponentId;
-use bevy::ecs::intern::Interned;
 use bevy::ecs::query::FilteredAccess;
 use bevy::ecs::resource::IS_RESOURCE;
 use bevy::ecs::schedule::{InternedScheduleLabel, InternedSystemSet, ScheduleCleanupPolicy, SystemSet};
@@ -30,7 +29,7 @@ use bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell;
 use bevy::prelude::*;
 use bevy::utils::prelude::DebugName;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// The set holding one TS system, by identity: the chain orders each system after its
 /// predecessor's set, so an edge survives the predecessor's rebuild.
@@ -117,6 +116,8 @@ impl TsBevySystem {
 struct Declared {
     what: String,
     access: FilteredAccess,
+    /// A TS query's, which `initialize` declares through `QueryState::init_access`.
+    query: bool,
 }
 
 fn resource(id: ComponentId, write: bool) -> FilteredAccess {
@@ -132,19 +133,19 @@ fn declared(world: &mut World, params: &[RunParam]) -> Vec<Declared> {
     let mut out = Vec::new();
     let mut runtime = FilteredAccess::default();
     runtime.add_write(world.components_registrator().register_non_send::<ScriptRuntime>());
-    out.push(Declared { what: "the bevy-ts runtime".into(), access: runtime });
-    out.push(Declared { what: "bevy-ts system memory".into(), access: resource(world.register_resource::<SystemMemory>(), true) });
-    out.push(Declared { what: "bevy-ts payloads".into(), access: resource(world.register_resource::<TsPayloads>(), false) });
-    out.push(Declared { what: "the bevy-ts frame".into(), access: resource(world.register_resource::<ScriptFrame>(), false) });
-    out.push(Declared { what: "Res<Time>".into(), access: resource(world.register_resource::<Time>(), false) });
+    out.push(Declared { what: "the bevy-ts runtime".into(), access: runtime, query: false });
+    out.push(Declared { what: "bevy-ts system memory".into(), access: resource(world.register_resource::<SystemMemory>(), true), query: false });
+    out.push(Declared { what: "bevy-ts payloads".into(), access: resource(world.register_resource::<TsPayloads>(), false), query: false });
+    out.push(Declared { what: "the bevy-ts frame".into(), access: resource(world.register_resource::<ScriptFrame>(), false), query: false });
+    out.push(Declared { what: "Res<Time>".into(), access: resource(world.register_resource::<Time>(), false), query: false });
     if params.iter().any(|p| matches!(p, RunParam::Port(_))) {
-        out.push(Declared { what: "exported params".into(), access: resource(world.register_resource::<crate::host::HostParams>(), true) });
+        out.push(Declared { what: "exported params".into(), access: resource(world.register_resource::<crate::host::HostParams>(), true), query: false });
     }
     for p in params {
         match p {
             RunParam::Query(q) => {
                 let cols: Vec<String> = q.columns.iter().map(|c| if c.write { format!("Mut<{}>", c.name) } else { c.name.clone() }).collect();
-                out.push(Declared { what: format!("Query<[{}]>", cols.join(", ")), access: q.state.component_access().clone() });
+                out.push(Declared { what: format!("Query<[{}]>", cols.join(", ")), access: q.state.component_access().clone(), query: true });
             }
             RunParam::Res { name, id, write, .. } => {
                 let what = if *write { format!("ResMut<{name}>") } else { format!("Res<{name}>") };
@@ -157,13 +158,13 @@ fn declared(world: &mut World, params: &[RunParam]) -> Vec<Declared> {
                     Clock::Virtual => world.register_resource::<Time<bevy::time::Virtual>>(),
                     Clock::Fixed => world.register_resource::<Time<bevy::time::Fixed>>(),
                 };
-                out.push(Declared { what: format!("Res<{}>", clock.resource()), access: resource(id, false) });
+                out.push(Declared { what: format!("Res<{}>", clock.resource()), access: resource(id, false), query: false });
             }
             RunParam::Port(i) => {
                 let Some((ts, access)) = world.resource_scope(|world, host: Mut<crate::host::HostParams>| host.access(*i, world)) else { continue };
                 if let SystemAccess::Shared(set) = access {
                     for f in set.filtered_accesses() {
-                        out.push(Declared { what: ts.to_string(), access: f.clone() });
+                        out.push(Declared { what: ts.to_string(), access: f.clone(), query: false });
                     }
                 }
             }
@@ -258,8 +259,7 @@ impl System for TsBevySystem {
         let mut access = SystemAccess::default();
         access.ensure_metadata_access();
         let name = self.decl.name.clone();
-        for (d, p) in declared(world, &self.params).into_iter().zip(std::iter::repeat(())) {
-            let _ = p;
+        for d in declared(world, &self.params).into_iter().filter(|d| !d.query) {
             access.ensure_filtered_access(d.access);
         }
         // Queries declare through Bevy's own code, as a `Query` param does (checked at build).
@@ -328,18 +328,6 @@ struct Wanted<'a> {
     place: Place,
     /// Its groups' sets.
     groups: Vec<String>,
-}
-
-/// Leaks `s` once per distinct value, for interned set names.
-fn intern(s: String) -> &'static str {
-    static NAMES: Mutex<BTreeMap<String, &'static str>> = Mutex::new(BTreeMap::new());
-    let mut names = NAMES.lock().unwrap();
-    if let Some(n) = names.get(&s) {
-        return n;
-    }
-    let n: &'static str = Box::leak(s.clone().into_boxed_str());
-    names.insert(s, n);
-    n
 }
 
 /// Places a just-committed generation's scheduled systems: keeps unchanged Bevy systems, removes
@@ -483,7 +471,7 @@ impl Edit {
             for a in self.add {
                 let mut config = a.system.in_set(a.place.set).in_set(TsSystemSet(a.identity));
                 for g in a.groups {
-                    config = config.in_set(TsGroupSet(intern(g).to_string()));
+                    config = config.in_set(TsGroupSet(g));
                 }
                 config = match a.place.after {
                     After::Head(set) => config.after(TsStageHead(set)),
@@ -496,16 +484,5 @@ impl Edit {
                 };
             }
         });
-    }
-}
-
-/// Unused interned handle type, so `Interned` stays imported for readers of this module.
-#[allow(dead_code)]
-type SetName = Interned<dyn SystemSet>;
-
-impl Stage {
-    /// The set a stage's TS systems run in.
-    pub fn set(self) -> InternedSystemSet {
-        crate::schedules::stage_set(self).intern()
     }
 }

@@ -401,6 +401,19 @@ pub struct SystemDecl {
 }
 
 impl SystemDecl {
+    /// Every param, bundles flattened depth-first, in order.
+    pub fn params_flat(&self) -> impl Iterator<Item = &ParamDecl> {
+        fn walk<'a>(p: &'a ParamDecl, out: &mut Vec<&'a ParamDecl>) {
+            match p {
+                ParamDecl::Bundle { fields } => fields.iter().for_each(|f| walk(&f.param, out)),
+                p => out.push(p),
+            }
+        }
+        let mut out = Vec::new();
+        self.params.iter().for_each(|p| walk(p, &mut out));
+        out.into_iter()
+    }
+
     /// Every query param, bundles included, in order.
     pub fn queries(&self) -> Vec<(&Vec<DataDecl>, &Vec<FilterDecl>)> {
         fn walk<'a>(p: &'a ParamDecl, out: &mut Vec<(&'a Vec<DataDecl>, &'a Vec<FilterDecl>)>) {
