@@ -15,7 +15,7 @@ use bevy::ecs::message::MessageRegistry;
 use bevy::prelude::*;
 use bevy::state::state::{FreelyMutableState, StateTransition, StateTransitionEvent, StateTransitionSystems};
 use bevy::state::state_scoped::{
-    despawn_entities_on_enter_state, despawn_entities_on_exit_state, despawn_entities_when_state, disable_entities_on_enter_state,
+    DespawnOnEnter, DespawnOnExit, DisableOnEnter, DisableOnExit, EnableOnEnter, EnableOnExit, despawn_entities_on_enter_state, despawn_entities_on_exit_state, despawn_entities_when_state, disable_entities_on_enter_state,
     disable_entities_on_exit_state, disable_entities_when_state, enable_entities_on_enter_state, enable_entities_on_exit_state,
     enable_entities_when_state,
 };
@@ -79,6 +79,41 @@ pub struct SlotOps {
     take_next: fn(&mut World) -> Option<u32>,
     state_id: fn(&World) -> Option<ComponentId>,
     add_runner: fn(&mut World, RunKind, u32, u32),
+    insert_scoped: fn(&mut World, Entity, u8, u32),
+    remove_scoped: fn(&mut World, Entity, u8),
+}
+
+/// Bevy's six state-scoped components, by name, in the order of their kind number.
+pub const SCOPED: [&str; 6] = ["DespawnOnExit", "DespawnOnEnter", "DisableOnExit", "DisableOnEnter", "EnableOnExit", "EnableOnEnter"];
+
+/// The kind number of a state-scoped component's name.
+pub fn scoped_kind(name: &str) -> Option<u8> {
+    SCOPED.iter().position(|n| *n == name).map(|i| i as u8)
+}
+
+fn insert_scoped<const N: u8>(world: &mut World, e: Entity, kind: u8, value: u32) {
+    let Ok(mut e) = world.get_entity_mut(e) else { return };
+    let s = TsState::<N>(value);
+    match kind {
+        0 => drop(e.insert(DespawnOnExit(s))),
+        1 => drop(e.insert(DespawnOnEnter(s))),
+        2 => drop(e.insert(DisableOnExit(s))),
+        3 => drop(e.insert(DisableOnEnter(s))),
+        4 => drop(e.insert(EnableOnExit(s))),
+        _ => drop(e.insert(EnableOnEnter(s))),
+    }
+}
+
+fn remove_scoped<const N: u8>(world: &mut World, e: Entity, kind: u8) {
+    let Ok(mut e) = world.get_entity_mut(e) else { return };
+    match kind {
+        0 => drop(e.remove::<DespawnOnExit<TsState<N>>>()),
+        1 => drop(e.remove::<DespawnOnEnter<TsState<N>>>()),
+        2 => drop(e.remove::<DisableOnExit<TsState<N>>>()),
+        3 => drop(e.remove::<DisableOnEnter<TsState<N>>>()),
+        4 => drop(e.remove::<EnableOnExit<TsState<N>>>()),
+        _ => drop(e.remove::<EnableOnEnter<TsState<N>>>()),
+    }
 }
 
 fn register<const N: u8>(world: &mut World, initial: u32) {
@@ -176,6 +211,8 @@ macro_rules! ops {
             take_next: take_next::<$n>,
             state_id: state_id::<$n>,
             add_runner: add_runner::<$n>,
+            insert_scoped: insert_scoped::<$n>,
+            remove_scoped: remove_scoped::<$n>,
         }),*]
     };
 }
@@ -245,6 +282,30 @@ pub fn set_next_of(world: &mut World, slot: u8, value: u32) -> bool {
 /// The resource id of `State<TsState<N>>`, once registered: for `stateChanged`.
 pub fn state_id_of(world: &World, slot: u8) -> Option<ComponentId> {
     (OPS[slot as usize].state_id)(world)
+}
+
+/// Inserts state-scoped component `kind` (crate::states::SCOPED) of machine `slot`'s `value`:
+/// Bevy's own `DespawnOnExit<TsState<N>>` and kin, run by Bevy's systems.
+pub fn insert_scoped_at(world: &mut World, e: Entity, kind: u8, slot: u8, value: u32) {
+    (OPS[slot as usize].insert_scoped)(world, e, kind, value);
+}
+
+/// [`insert_scoped_at`] for a machine by path and a value by name, as TSX and levels give them.
+pub fn insert_scoped(world: &mut World, e: Entity, kind: u8, state: &str, value: &str) -> Result<(), String> {
+    let payloads = world.resource::<TsPayloads>();
+    let m = payloads.state(state).map(|i| &payloads.states[i]).ok_or_else(|| format!("{}: no state machine {state}", SCOPED[kind as usize]))?;
+    let sym = m.sym(value).ok_or_else(|| format!("{}: {state} has no value {value}", SCOPED[kind as usize]))?;
+    let slot = m.slot;
+    insert_scoped_at(world, e, kind, slot, sym);
+    Ok(())
+}
+
+/// Removes state-scoped component `kind` of any machine.
+pub fn remove_scoped(world: &mut World, e: Entity, kind: u8) {
+    let slots: Vec<u8> = world.get_resource::<TsStates>().map(|s| s.by_path.values().copied().collect()).unwrap_or_default();
+    for slot in slots {
+        (OPS[slot as usize].remove_scoped)(world, e, kind);
+    }
 }
 
 /// After a generation commits, and when the game starts: gives each machine with an `initState`

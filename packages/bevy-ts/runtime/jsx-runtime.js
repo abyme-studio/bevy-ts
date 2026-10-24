@@ -1396,6 +1396,8 @@ function propValue(v, name, el, nested) {
   }
   if (isElement(v)) throw located(`<${typeName(el.type)} ${name}={...}>: an element is not a prop value`, el.source);
   if (v instanceof NodeRef) throw located(`<${typeName(el.type)} ${name}={...}>: a ref is not a prop value; read it in a binding`, el.source);
+  // A state value (`Game.Playing`): its machine and value by name.
+  if (v !== null && typeof v === "object" && v.machine && typeof v.state === "string") return { state: v.state, value: v.value };
   if (Array.isArray(v)) return v.map((x, i) => propValue(x, `${name}[${i}]`, el, true));
   if (v !== null && typeof v === "object") {
     if (typeof v.toArray === "function") return v.toArray();

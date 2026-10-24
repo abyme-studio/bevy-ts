@@ -445,9 +445,29 @@ export interface State<G> { readonly current: StateValueOf<G> }
 /** Bevy's `PreviousState<S>`: the value before the machine's last transition, `undefined` before the first. */
 export interface PreviousState<G> { readonly previous: StateValueOf<G> | undefined }
 
+declare const stateScopedBrand: unique symbol;
+/** A state-scoped component's value, `DespawnOnExit.of(Game.Playing)`, for `spawn`/`insert`. */
+export interface StateScopedValue { readonly [stateScopedBrand]: true }
+/**
+ * Bevy's state-scoped component of a TS state value, run by Bevy's own systems: despawn, insert
+ * `Disabled` or remove it on the named exit or enter. `DespawnOnExit.of(Game.Playing)` in
+ * commands, `<DespawnOnExit value={Game.Playing} />` in TSX, `DespawnOnExit { value: "game::Game.Playing" }`
+ * in a level.
+ */
+export interface StateScoped {
+  readonly __stateScoped: true;
+  of<N extends string, V extends string>(value: StateValue<N, V>): StateScopedValue;
+}
+export declare const DespawnOnExit: StateScoped;
+export declare const DespawnOnEnter: StateScoped;
+export declare const DisableOnExit: StateScoped;
+export declare const DisableOnEnter: StateScoped;
+export declare const EnableOnExit: StateScoped;
+export declare const EnableOnEnter: StateScoped;
+
 export interface Commands {
   /** Components (`Health.of({ hp: 3 })`, or a class for its defaults) or a prefab element (`<Grunt speed={3} />`). */
-  spawn(...parts: readonly (Component | ReflectComponent | ComponentClass | Element)[]): Entity;
+  spawn(...parts: readonly (Component | ReflectComponent | ComponentClass | Element | StateScopedValue)[]): Entity;
   entity(e: Entity): EntityCommands;
   /** As Rust's `commands.trigger(Explode { entity, radius })`: an entity event carries its target. */
   trigger(event: EntityEvent | Event): void;
@@ -471,8 +491,8 @@ export interface Commands {
   runSystemWith<E extends Event>(target: SystemId | ((input: In<E>, ...params: never[]) => void), input: E): void;
 }
 export interface EntityCommands {
-  insert(...parts: readonly (Component | ReflectComponent | ComponentClass | Element)[]): EntityCommands;
-  remove(...cs: readonly ComponentClass[]): EntityCommands;
+  insert(...parts: readonly (Component | ReflectComponent | ComponentClass | Element | StateScopedValue)[]): EntityCommands;
+  remove(...cs: readonly (ComponentClass | StateScoped)[]): EntityCommands;
   setParent(parent: Entity | null): EntityCommands;
   /**
    * Attaches an observer to this entity alone, as Bevy's `EntityCommands::observe`: an exported

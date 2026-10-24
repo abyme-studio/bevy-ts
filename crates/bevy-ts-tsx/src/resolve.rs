@@ -53,6 +53,9 @@ pub enum Target {
     ScriptMaterial { kind: String, props: Map<String, Value>, gltf_material: Option<String> },
     /// A reflect-tier Rust component, by type path: written field by field through reflection.
     Reflect { type_path: String },
+    /// Bevy's state-scoped component of a TS state value (`<DespawnOnExit value={Game.Playing} />`),
+    /// by kind (`bevy_ts::states::SCOPED`): the machine's slot is found on insert.
+    StateScoped { kind: u8 },
     Ui(UiKind),
 }
 
@@ -305,6 +308,20 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
             }
             let Some(Value::String(s)) = v else { return Err(err("<Name> needs value=\"...\" (a string)", &c.source)) };
             Ok(resolved(Target::Name, (BTreeMap::from([("value".to_string(), Value::String(s))]), BTreeMap::new(), BTreeMap::new())))
+        }
+        ComponentKind::Rust if bevy_ts::states::scoped_kind(&c.ty).is_some() => {
+            let kind = bevy_ts::states::scoped_kind(&c.ty).expect("checked");
+            // TSX gives the state value as `{ state, value }`; a level as "game::Game.Playing".
+            let v = match c.props.get("value") {
+                Some(Value::String(s)) => s.rsplit_once('.').map(|(state, value)| serde_json::json!({ "state": state, "value": value })),
+                Some(v) if v["state"].is_string() && v["value"].is_string() => Some(v.clone()),
+                _ => None,
+            };
+            let Some(v) = v.filter(|_| c.props.len() == 1) else {
+                return Err(err(format!("<{}> takes one prop, value: a state value (<{} value={{Game.Playing}} />, or \"game::Game.Playing\" in a level)", c.ty, c.ty), &c.source));
+            };
+            let controlled = BTreeMap::from([("value".to_string(), v)]);
+            Ok(resolved(Target::StateScoped { kind }, (controlled, BTreeMap::new(), BTreeMap::new())))
         }
         ComponentKind::Rust if reflect_path(native, &c.ty).is_some() => {
             let type_path = reflect_path(native, &c.ty).expect("checked");

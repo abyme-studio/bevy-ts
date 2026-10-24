@@ -813,6 +813,11 @@ impl Schema for WorldSchema<'_> {
         if path == "Name" || path == "bevy_ecs::name::Name" {
             return Ok(ComponentSchema { name: "Name".into(), kind: ComponentKind::Rust, fields: Vec::new(), is_name: true });
         }
+        // Bevy's state-scoped components of a TS state: `DespawnOnExit { value: "game::Game.Playing" }`.
+        if bevy_ts::states::scoped_kind(path).is_some() {
+            let value = FieldSchema { name: "value".into(), ty: ValueType::String, default: Value::String(String::new()) };
+            return Ok(ComponentSchema { name: path.to_string(), kind: ComponentKind::Rust, fields: vec![value], is_name: false });
+        }
         if let Some(s) = self.ts_schema(path) {
             return Ok(s);
         }

@@ -512,6 +512,13 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
                 log_error(world, m, r.source.clone());
             }
         }
+        Target::StateScoped { kind } => {
+            let v = &r.controlled["value"];
+            let (state, value) = (v["state"].as_str().unwrap_or(""), v["value"].as_str().unwrap_or(""));
+            if let Err(m) = bevy_ts::states::insert_scoped(world, e, *kind, state, value) {
+                log_error(world, m, r.source.clone());
+            }
+        }
         Target::Mesh(p) => intrinsics::insert_mesh(world, e, p),
         Target::Material(p) => intrinsics::insert_material(world, e, p, r.source.clone()),
         Target::ScriptMaterial { kind, props, gltf_material } => intrinsics::insert_script_material(world, e, kind, props, gltf_material.as_deref(), r.source.clone()),
@@ -705,6 +712,9 @@ fn remove(world: &mut World, e: Entity, key: &str, prev: &OwnedComponent) {
         }
         resolve::MATERIAL => intrinsics::remove_material(world, e),
         tag if ui::UiKind::from_tag(tag).is_some() => ui::remove(world, e, ui::UiKind::from_tag(tag).expect("checked")),
+        scoped if bevy_ts::states::scoped_kind(scoped).is_some() => {
+            bevy_ts::states::remove_scoped(world, e, bevy_ts::states::scoped_kind(scoped).expect("checked"));
+        }
         name => {
             let id = world
                 .resource::<TsComponents>()
@@ -814,7 +824,8 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
             target => {
                 // Name and asset intrinsics: their props as a whole, rebuilt when they change.
                 if props_of(prev) != r.controlled.clone().into_iter().collect::<Map<_, _>>() {
-                    if let Target::Mesh(_) = target {
+                    // A scoped component may move to another machine's slot: its old type goes first.
+                    if matches!(target, Target::Mesh(_) | Target::StateScoped { .. }) {
                         remove(world, e, &r.key, prev);
                     }
                     insert(world, e, r);

@@ -770,6 +770,38 @@ function nativeType(name, fields, kind, at) {
   return C;
 }
 
+const SCOPED = Symbol.for("bevy-ts.stateScoped");
+const SCOPED_KINDS = ["DespawnOnExit", "DespawnOnEnter", "DisableOnExit", "DisableOnEnter", "EnableOnExit", "EnableOnEnter"];
+
+/** Bevy's state-scoped component `name`, of a state value: `DespawnOnExit.of(Game.Playing)`, or `<DespawnOnExit value={Game.Playing} />`. */
+function stateScoped(name) {
+  const C = class {
+    constructor(value) {
+      this.value = value;
+    }
+    static of(value) {
+      if (!value || !value.machine) throw new TypeError(`${name}.of(...): pass a state value (Game.Playing)`);
+      return new C(value);
+    }
+  };
+  Object.defineProperty(C, "name", { value: name });
+  C.componentName = name;
+  C.source = "rust";
+  C[KIND] = "component";
+  C[SCOPED] = SCOPED_KINDS.indexOf(name);
+  C.id = -1;
+  C.layout = null;
+  return C;
+}
+export const DespawnOnExit = stateScoped("DespawnOnExit");
+export const DespawnOnEnter = stateScoped("DespawnOnEnter");
+export const DisableOnExit = stateScoped("DisableOnExit");
+export const DisableOnEnter = stateScoped("DisableOnEnter");
+export const EnableOnExit = stateScoped("EnableOnExit");
+export const EnableOnEnter = stateScoped("EnableOnEnter");
+
+const isScoped = (p) => p && typeof p === "object" && p.constructor && p.constructor[SCOPED] !== undefined;
+
 /** A Rust component by type path or short name: usable in `With`/`Without` only. */
 export function rustComponent(name) {
   const C = class {};
@@ -2505,7 +2537,7 @@ function makeCtx() {
 // Commands: a binary arena in Rust memory, overflow kept in JS
 
 const OP_SPAWN = 1, OP_INSERT = 2, OP_DESPAWN = 3, OP_REMOVE = 4, OP_SET_PARENT = 5, OP_SPAWN_NATIVE = 6, OP_PLUGIN = 7;
-const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12, OP_OBSERVE = 13;
+const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12, OP_OBSERVE = 13, OP_STATE_SCOPED = 14;
 
 class EntityCommands {
   constructor(commands, id) {
@@ -2515,11 +2547,15 @@ class EntityCommands {
   insert(...parts) {
     const els = parts.filter(isElement);
     if (els.length) for (const el of els) this.commands.mount(el, { parent: this.id });
-    const comps = parts.filter((p) => !isElement(p));
+    const comps = parts.filter((p) => !isElement(p) && !isScoped(p));
     if (comps.length) this.commands.op(encodeComponentsOp(OP_INSERT, this.id, comps));
+    for (const p of parts.filter(isScoped)) this.commands.scoped(this.id, p);
     return this;
   }
-  remove(...classes) {
+  remove(...all) {
+    for (const C of all.filter((C) => C && C[SCOPED] !== undefined)) this.commands.scoped(this.id, C, true);
+    const classes = all.filter((C) => !(C && C[SCOPED] !== undefined));
+    if (!classes.length) return this;
     const w = new Writer();
     w.u8(OP_REMOVE);
     w.entity(this.id);
@@ -2621,9 +2657,29 @@ class Commands {
       return undefined;
     }
     const e = this.alloc();
-    this.op(encodeComponentsOp(OP_SPAWN, e, parts.filter((p) => !isElement(p))));
+    this.op(encodeComponentsOp(OP_SPAWN, e, parts.filter((p) => !isElement(p) && !isScoped(p))));
+    for (const p of parts.filter(isScoped)) this.scoped(e, p);
     for (const el of parts.filter(isElement)) this.mount(el, { parent: e });
     return e;
+  }
+  /** A state-scoped component on `e`: its kind, machine and value as the generation numbers them. */
+  scoped(e, p, remove) {
+    const w = new Writer();
+    w.u8(OP_STATE_SCOPED);
+    w.entity(e);
+    const kind = (typeof p === "function" ? p : p.constructor)[SCOPED];
+    w.u8(remove ? kind | 0x80 : kind);
+    if (remove) {
+      w.u32(0xffffffff);
+      w.u32(0xffffffff);
+    } else {
+      const St = p.value.machine;
+      const index = this.res && this.res.states[St.componentName];
+      if (index === undefined) throw new Error(`${St.componentName} is not a declared state`);
+      w.u32(index);
+      w.u32(St.values.indexOf(p.value.value));
+    }
+    this.op(w.bytes());
   }
   /** Commands for one entity. */
   entity(e) {

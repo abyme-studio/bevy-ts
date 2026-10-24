@@ -39,6 +39,9 @@ pub const OP_SET_STATE: u8 = 10;
 pub const OP_RUN_SYSTEM: u8 = 11;
 pub const OP_RUN_SCHEDULE: u8 = 12;
 pub const OP_OBSERVE: u8 = 13;
+/// A state-scoped component (`DespawnOnExit.of(Game.Playing)`): entity, kind (bit 7: remove),
+/// machine index and value index in the generation.
+pub const OP_STATE_SCOPED: u8 = 14;
 
 /// Size of the Rust-owned arena handed to each call. Larger buffers overflow into JS.
 pub const ARENA_BYTES: usize = 64 * 1024;
@@ -70,6 +73,7 @@ pub enum Op {
     /// `commands.entity(e).observe(fn)`: the observer's key index in the live generation and its
     /// declaration.
     Observe { entity: Entity, index: u32, decl: Box<crate::manifest::SystemDecl> },
+    StateScoped { entity: Entity, kind: u8, remove: bool, machine: u32, value: u32 },
 }
 
 /// A plugin's command decoder: gets the op's bytes and `&mut World`.
@@ -250,6 +254,11 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 let decl = serde_json::from_slice(r.take(n)?).map_err(|e| format!("observe: {e}"))?;
                 Op::Observe { entity, index, decl: Box::new(decl) }
             }
+            OP_STATE_SCOPED => {
+                let entity = r.entity()?;
+                let kind = r.u8()?;
+                Op::StateScoped { entity, kind: kind & 0x7f, remove: kind & 0x80 != 0, machine: r.u32()?, value: r.u32()? }
+            }
             other => return Err(format!("unknown command op {other} at byte {}", r.at - 1)),
         };
         ops.push(op);
@@ -400,6 +409,19 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
             Op::RunSystem { identity, input } => {
                 use crate::schedules::{PendingRun, PendingRuns, RunTarget};
                 world.get_resource_or_init::<PendingRuns>().0.push_back(PendingRun { target: RunTarget::System { identity, input }, caller: None });
+            }
+            Op::StateScoped { entity, kind, remove, machine, value } => {
+                if world.get_entity(entity).is_err() {
+                    warnings.push(format!("{}: entity {entity} does not exist", crate::states::SCOPED[(kind as usize).min(5)]));
+                } else if remove {
+                    crate::states::remove_scoped(world, entity, kind);
+                } else {
+                    let target = world.resource::<crate::messages::TsPayloads>().states.get(machine as usize).and_then(|m| m.syms.get(value as usize).map(|s| (m.slot, *s)));
+                    match target {
+                        Some((slot, sym)) => crate::states::insert_scoped_at(world, entity, kind, slot, sym),
+                        None => warnings.push(format!("{}: no state {machine} value {value}", crate::states::SCOPED[(kind as usize).min(5)])),
+                    }
+                }
             }
             Op::RunSchedule { label } => {
                 use crate::schedules::{PendingRun, PendingRuns, RunTarget};
