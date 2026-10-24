@@ -74,18 +74,32 @@ pub struct EventType {
     pub propagate: bool,
 }
 
-/// A TS state machine.
+/// A TS state machine: its values (by name and symbol) and its slot. Its value is Bevy's
+/// `State<TsState<N>>` (crate::states).
 #[derive(Clone, Debug)]
 pub struct StateMachine {
     pub name: String,
     pub values: Vec<String>,
-    pub current: Option<u32>,
-    pub next: Option<u32>,
+    /// Each value's interned symbol, in `values` order.
+    pub syms: Vec<u32>,
+    pub slot: u8,
+    /// The `initState` value's symbol.
+    pub initial: Option<u32>,
 }
 
 impl StateMachine {
     pub fn index(&self, value: &str) -> Option<u32> {
         self.values.iter().position(|v| v == value).map(|i| i as u32)
+    }
+
+    /// A value's symbol by name.
+    pub fn sym(&self, value: &str) -> Option<u32> {
+        self.index(value).map(|i| self.syms[i as usize])
+    }
+
+    /// The index in `values` of a symbol, as JS numbers values.
+    pub fn index_of_sym(&self, sym: u32) -> Option<u32> {
+        self.syms.iter().position(|s| *s == sym).map(|i| i as u32)
     }
 }
 
@@ -110,7 +124,8 @@ impl TsPayloads {
 
     /// Applies a generation's declarations. Message queues and state values persist by name;
     /// a message whose layout changed starts empty.
-    pub fn declare(&mut self, messages: &[PayloadDecl], events: &[PayloadDecl], states: &[StateDecl]) {
+    /// `slot` gives each machine's slot (crate::states::TsStates::assign).
+    pub fn declare(&mut self, messages: &[PayloadDecl], events: &[PayloadDecl], states: &[StateDecl], slot: &mut dyn FnMut(&str) -> u8) {
         for m in messages {
             let layout = m.layout();
             match self.message(&m.name) {
@@ -126,33 +141,24 @@ impl TsPayloads {
                 None => self.events.push(t),
             }
         }
-        for s in states {
-            let i = match self.state(&s.name) {
-                Some(i) => {
-                    let old = self.states[i].clone();
-                    let remap = |v: Option<u32>| v.and_then(|v| old.values.get(v as usize)).and_then(|n| s.values.iter().position(|x| x == n)).map(|i| i as u32);
-                    self.states[i] = StateMachine { name: s.name.clone(), values: s.values.clone(), current: remap(old.current), next: remap(old.next) };
-                    i
-                }
-                None => {
-                    self.states.push(StateMachine { name: s.name.clone(), values: s.values.clone(), current: None, next: None });
-                    self.states.len() - 1
-                }
+        for st in states {
+            let machine = StateMachine {
+                name: st.name.clone(),
+                values: st.values.clone(),
+                syms: st.values.iter().map(|v| crate::states::sym(v)).collect(),
+                slot: slot(&st.name),
+                initial: st.initial.as_deref().map(crate::states::sym),
             };
-            let m = &mut self.states[i];
-            if m.current.is_none() && m.next.is_none() {
-                m.next = s.initial.as_deref().and_then(|v| m.index(v));
+            match self.state(&st.name) {
+                Some(i) => self.states[i] = machine,
+                None => self.states.push(machine),
             }
         }
     }
 
-    /// Forgets every state's value and every message, as a restart does.
+    /// Forgets every message, as a restart does (states lose their values in crate::states).
     pub fn reset(&mut self) {
         self.messages.iter_mut().for_each(|m| *m = MessageQueue::new(&m.name.clone(), m.layout.clone()));
-        self.states.iter_mut().for_each(|s| {
-            s.current = None;
-            s.next = None;
-        });
     }
 }
 
@@ -167,7 +173,7 @@ pub fn state_values(world: &World) -> HashMap<String, Option<String>> {
         .resource::<TsPayloads>()
         .states
         .iter()
-        .map(|s| (s.name.clone(), s.current.and_then(|c| s.values.get(c as usize).cloned())))
+        .map(|s| (s.name.clone(), crate::states::current_of(world, s.slot).map(|v| crate::states::name(v).to_string())))
         .collect()
 }
 
