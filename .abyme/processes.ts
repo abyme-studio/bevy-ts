@@ -26,7 +26,7 @@ const processes = {
   "mesh-picking-test": { cmd: "bash -c 'set -o pipefail; (cargo test --no-fail-fast -p bevy-ts-viewport -p bevy-ts-cli --lib; cargo test --no-fail-fast -p bevy-ts-cli --test it -- headless_pointer:: mesh_picking:: play:: build::) 2>&1 | grep --line-buffered -v ld64 | tee target/mesh-picking-test.log | grep -E \"^error|^warning: unused|^test |test result|panicked\"'" },
   // rust-events: the crates it changes, their unit tests and its CLI tests, in the gate slot.
   "rust-events-test": {
-    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts --lib && cargo build -p bevy-ts-native && cargo test -p bevy-ts-cli --no-fail-fast --test it -- rust_events:: rust_events_coverage:: surface:: reload::\" 2>&1 | grep -v ld64 | tee target/rust-events-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked|holes\" | tail -60'",
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- rust_events:: rust_events_coverage:: surface:: reload::\" 2>&1 | grep -v ld64 | tee target/rust-events-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked|holes\" | tail -60'",
   },
   // Every cli test binary, past the first failure, for a change that moves what several assert.
   "cli-test-all": { cmd: "bash -c 'cargo test -p bevy-ts-cli --no-fail-fast 2>&1 | grep --line-buffered -v ld64 | tee target/cli-test-all.log | grep -E \"^     Running|FAILED|panicked\"'" },
