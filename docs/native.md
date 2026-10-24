@@ -124,7 +124,9 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
 - A layout-tier component's holes that reflection can write (a `Color`, an enum with data, an
   `Option`, a nested struct) are TSX props: `<DirectionalLight illuminance={8000}
   color={hex("#ffd7a8")} />` writes `illuminance` from bytes and `color` through reflection, on
-  insert and whenever it changes. TS systems still never see them. An opaque hole (`usize`,
+  insert and whenever it changes. TS systems still never see them. The prebuilt engine has Bevy's
+  soft shadows (`experimental_pbr_pcss`), so a sun takes `soft_shadow_size={0.5}` (`null` for hard
+  shadows). An opaque hole (`usize`,
   `Duration`) fails the load; a hole prop takes a value, not a binding.
 
 Colours have one parser (`bevy_ts::color`), used by every colour bevy-ts takes: TSX props, `<mesh

@@ -9,6 +9,8 @@ export const Lights = () => (
   <>
     <entity><DirectionalLight illuminance={8000} color={hex("#ffd7a8")} /></entity>
     <entity><DirectionalLight color={warm} /></entity>
+    <entity><DirectionalLight shadow_maps_enabled soft_shadow_size={0.5} /></entity>
+    <entity><DirectionalLight soft_shadow_size={null} /></entity>
     <entity><PointLight color={hsl(30, 0.8, 0.6)} /></entity>
     <entity><PointLight color="#fff" /></entity>
     <entity><PointLight color={[1, 0.5, 0]} /></entity>

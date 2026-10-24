@@ -10,8 +10,10 @@ name = "bevy-ts"
 path = "src/main.rs"
 
 [features]
-# Bevy's percentage-closer soft shadows (`DirectionalLight::soft_shadow_size`), for the pcss bench's
-# second arm (tests/it/pcss_bench.rs).
+default = ["pcss"]
+# Bevy's percentage-closer soft shadows: `soft_shadow_size` on lights. On in the prebuilt engine: it
+# costs nothing measurable with soft shadows unset (tests/it/pcss_bench.rs; the bench's other arm is
+# `--no-default-features`).
 pcss = ["bevy/experimental_pbr_pcss"]
 
 [dependencies]
