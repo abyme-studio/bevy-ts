@@ -183,7 +183,9 @@ A crate exposes a run condition with `app.ts_condition("time:on-timer", factory)
 takes the JSON arguments of `nativeCondition("time:on-timer", { secs: 2 })` and returns a Bevy
 `BoxedCondition`, or an error that fails the load with the call's location. It runs once per use
 per generation; the instance is kept across reloads while the arguments stay the same, so its own
-`Local`s and last-run tick survive. A port wraps it in a typed function (`onTimer(2)`).
+`Local`s and last-run tick survive. A port wraps it in a typed function. bevy-ts exposes Bevy's
+time conditions this way, as `bevy:on-timer` and the rest, as it exposes the `bevy:` anchors;
+scripts call the wrappers, `onTimer(2)` (`docs/time.md`).
 
 ```rust
 app.ts_condition("time:on-timer", |args| {

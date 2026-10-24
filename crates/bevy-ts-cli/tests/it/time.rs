@@ -368,3 +368,128 @@ app.addSystems(Update, slots);
     assert_eq!(t.len(), 2, "{:?}", messages(&app));
     assert_eq!((t[1]["r"].as_u64(), t[1]["t"]["elapsed"].as_f64()), (Some(2), Some(0.5)));
 }
+
+// ---------- Time conditions (stage 3) ----------
+
+const CONDITIONS_HEAD: &str = r#"import { app, FixedUpdate, Update, not, onceAfterDelay, onceAfterRealDelay, onRealTimer, onTimer, paused, repeatingAfterDelay, repeatingAfterRealDelay, systems } from "bevy-ts";
+"#;
+
+/// The names Rust systems gated by Bevy's own conditions pushed this frame.
+#[derive(Resource, Default)]
+struct Fired(Vec<&'static str>);
+
+/// Bevy's condition gating a Rust system that records `name` each time it runs.
+fn bevy_gated<M>(app: &mut App, schedule: impl bevy::ecs::schedule::ScheduleLabel, name: &'static str, c: impl SystemCondition<M>) {
+    app.add_systems(schedule, (move |mut f: ResMut<Fired>| f.0.push(name)).run_if(c));
+}
+
+/// Per frame, the sorted names TS logged as `fired <name>` and those Bevy's gating recorded.
+fn fired_frames(app: &mut App, frames: usize, between: impl Fn(&mut App, usize)) -> (Vec<Vec<String>>, Vec<Vec<String>>) {
+    let (mut ts, mut bevy) = (vec![], vec![]);
+    let mut seen = 0;
+    for frame in 0..frames {
+        between(app, frame);
+        app.update();
+        bevy_ts::runtime::pump(app.world_mut());
+        let all = messages(app);
+        let mut t: Vec<String> = all[seen..].iter().filter_map(|m| m.strip_prefix("fired ")).map(String::from).collect();
+        seen = all.len();
+        let mut b: Vec<String> = app.world_mut().resource_mut::<Fired>().0.drain(..).map(String::from).collect();
+        t.sort();
+        b.sort();
+        ts.push(t);
+        bevy.push(b);
+    }
+    (ts, bevy)
+}
+
+#[test]
+fn time_conditions_match_bevy() {
+    use bevy::time::common_conditions::*;
+    let src = r#"
+export function a() { console.log("fired onTimer"); }
+export function b() { console.log("fired onRealTimer"); }
+export function c() { console.log("fired onceAfterDelay"); }
+export function d() { console.log("fired onceAfterRealDelay"); }
+export function e() { console.log("fired repeatingAfterDelay"); }
+export function f() { console.log("fired repeatingAfterRealDelay"); }
+export function g() { console.log("fired fixedOnTimer"); }
+app.addSystems(Update, systems(a).runIf(onTimer(0.25)), systems(b).runIf(onRealTimer(0.3)), systems(c).runIf(onceAfterDelay(0.45)), systems(d).runIf(onceAfterRealDelay(0.2)),
+  systems(e).runIf(repeatingAfterDelay(0.5)), systems(f).runIf(repeatingAfterRealDelay(0.35)));
+app.addSystems(FixedUpdate, systems(g).runIf(onTimer(0.05)));
+"#;
+    let (_, mut app) = load("time-conditions", &format!("{CONDITIONS_HEAD}{src}"));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(100)));
+    app.world_mut().resource_mut::<Time<Virtual>>().set_max_delta(Duration::from_secs(10));
+    app.init_resource::<Fired>();
+    let s = Duration::from_secs_f64;
+    bevy_gated(&mut app, Update, "onTimer", on_timer(s(0.25)));
+    bevy_gated(&mut app, Update, "onRealTimer", on_real_timer(s(0.3)));
+    bevy_gated(&mut app, Update, "onceAfterDelay", once_after_delay(s(0.45)));
+    bevy_gated(&mut app, Update, "onceAfterRealDelay", once_after_real_delay(s(0.2)));
+    bevy_gated(&mut app, Update, "repeatingAfterDelay", repeating_after_delay(s(0.5)));
+    bevy_gated(&mut app, Update, "repeatingAfterRealDelay", repeating_after_real_delay(s(0.35)));
+    bevy_gated(&mut app, FixedUpdate, "fixedOnTimer", on_timer(s(0.05)));
+    let (ts, bevy) = fired_frames(&mut app, 20, |_, _| {});
+    assert_eq!(ts, bevy);
+    let total = |n: &str| ts.iter().flatten().filter(|x| *x == n).count();
+    assert!(total("onTimer") >= 7 && total("onceAfterDelay") == 1 && total("repeatingAfterDelay") > 10 && total("fixedOnTimer") > 20, "{ts:?}");
+}
+
+#[test]
+fn paused_follows_the_game_clock() {
+    use bevy::time::common_conditions::paused;
+    let src = r#"
+export function a() { console.log("fired paused"); }
+export function b() { console.log("fired running"); }
+app.addSystems(Update, systems(a).runIf(paused()), systems(b).runIf(not(paused())));
+"#;
+    let (_, mut app) = load("time-paused", &format!("{CONDITIONS_HEAD}{src}"));
+    app.init_resource::<Fired>();
+    bevy_gated(&mut app, Update, "paused", paused);
+    bevy_gated(&mut app, Update, "running", not(paused));
+    let (ts, bevy) = fired_frames(&mut app, 6, |app, frame| {
+        let mut t = app.world_mut().resource_mut::<Time<Virtual>>();
+        match frame {
+            2 => t.pause(),
+            4 => t.unpause(),
+            _ => {}
+        }
+    });
+    assert_eq!(ts, bevy);
+    assert_eq!(ts[3], ["paused"]);
+    assert_eq!(ts[5], ["running"]);
+}
+
+#[test]
+fn time_condition_survives_a_reload() {
+    use bevy::time::common_conditions::on_timer;
+    let body = |word: &str| format!("{CONDITIONS_HEAD}export function a() {{ console.log(\"fired onTimer\"); console.log(\"{word}\"); }}\napp.addSystems(Update, systems(a).runIf(onTimer(1)));\n");
+    let (dir, mut app) = load("time-cond-reload", &body("one"));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(250)));
+    app.init_resource::<Fired>();
+    bevy_gated(&mut app, Update, "onTimer", on_timer(Duration::from_secs(1)));
+    let (ts, bevy) = fired_frames(&mut app, 12, |app, frame| {
+        // Mid-way to the second firing, a reload that keeps `onTimer(1)`.
+        if frame == 6 {
+            write(&dir, "game.ts", &body("two"));
+            let r = reload(app, false);
+            assert!(r.errors.is_empty(), "{:?}", r.errors);
+        }
+    });
+    assert_eq!(ts, bevy, "the reload restarted the timer");
+    assert!(ts.iter().flatten().count() >= 2, "{ts:?}");
+    assert!(messages(&app).iter().any(|m| m == "two"), "the reload applied");
+}
+
+#[test]
+fn a_bad_duration_fails_the_load() {
+    for (arg, got) in [("-1", "-1"), ("NaN", "null"), ("Infinity", "null")] {
+        let src = format!("{CONDITIONS_HEAD}export function a() {{}}\napp.addSystems(Update, systems(a).runIf(onTimer({arg})));\n");
+        let errors = load_errors(&format!("time-cond-bad{got}{}", arg.len()), &src);
+        let want = format!("onTimer takes seconds, a finite number >= 0; got {got}");
+        let e = errors.iter().find(|e| e.message.contains(&want)).unwrap_or_else(|| panic!("{arg}: {errors:?}"));
+        let at = e.location.as_ref().unwrap();
+        assert!(at.file.ends_with("game.ts") && at.line as usize == CONDITIONS_HEAD.lines().count() + 2, "{at:?}");
+    }
+}

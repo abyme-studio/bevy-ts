@@ -88,13 +88,33 @@ from Bevy's in the last bits. Flags and counts match exactly.
 A TS `Timer` is not Bevy's `Timer` type. A Rust component holding Bevy's own `Timer` is a Rust
 component like any other (docs/native.md); its timer is not a TS timer field.
 
+## Run conditions
+
+Bevy's time conditions (`bevy::time::common_conditions`), under camelCase names. Each runs Bevy's
+own function in Rust, through the `bevy:` conditions bevy-ts exposes (`docs/native.md`); a skipped
+system costs no JS call.
+
+| Condition | Bevy | Clock | True when |
+|---|---|---|---|
+| `onTimer(s)` | `on_timer` | the schedule's `Time` | each time `s` seconds pass |
+| `onRealTimer(s)` | `on_real_timer` | `Time<Real>` | each time `s` seconds pass |
+| `onceAfterDelay(s)` | `once_after_delay` | the schedule's `Time` | once, when `s` seconds have passed |
+| `onceAfterRealDelay(s)` | `once_after_real_delay` | `Time<Real>` | once, when `s` seconds have passed |
+| `repeatingAfterDelay(s)` | `repeating_after_delay` | the schedule's `Time` | every evaluation after `s` seconds |
+| `repeatingAfterRealDelay(s)` | `repeating_after_real_delay` | `Time<Real>` | every evaluation after `s` seconds |
+| `paused()` | `paused` | `Time<Virtual>` | the game clock is paused |
+
+`s` is a finite number `>= 0`; anything else fails the load at the call's line. In
+`FixedUpdate` the schedule's `Time` is the fixed clock: `onTimer(1)` ticks by the timestep. The
+timer ticks only when the condition is evaluated, as in Bevy: while the editor pauses, the stages
+do not run, so no condition ticks. Each use keeps its own timer. A reload that keeps the call and
+its seconds keeps the timer; other seconds start a fresh one; a Stop clears them all.
+
 ## Not yet built
 
 - Writing the clocks: `ResMut<Time<Virtual>>` (`pause`, `unpause`, `toggle`, `setRelativeSpeed`,
   `setMaxDelta`) and `ResMut<Time<Fixed>>` (`setTimestep`, `setTimestepSeconds`,
   `setTimestepHz`, `discardOverstep`). Waits on writable-native-params.
-- Time run conditions: `onTimer`, `onRealTimer`, `onceAfterDelay`, `repeatingAfterDelay`, their
-  real forms and `paused`. Waits on ecs-schedules' `runIf`.
 - `commands.delayed().secs(s)`. Waits on writable-native-params' `Commands`.
 
 Out of scope: `TimeUpdateStrategy`, `TimeSender`/`TimeReceiver`, `Time::advance_by`.

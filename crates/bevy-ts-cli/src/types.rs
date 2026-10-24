@@ -691,9 +691,12 @@ mod tests {
         bevy_ts::layout_reflect::fill(&mut world);
         let mut app = App::new();
         bevy_ts::sets::expose(&mut app, "rapier:step", FixedUpdate, bevy::transform::TransformSystems::Propagate);
+        bevy_ts::time_conditions::expose_all(&mut app);
         world.insert_resource(app.world().resource::<TsSets>().clone());
+        world.insert_resource(app.world().resource::<bevy_ts::conditions::TsConditions>().clone());
         let out = emit(&world);
         assert!(out.contains("export type NativeSet = \"rapier:step\";"), "{out}");
+        assert!(out.contains("export type NativeCondition = \"bevy:on-real-timer\" | \"bevy:on-timer\" | \"bevy:once-after-delay\" | \"bevy:once-after-real-delay\" | \"bevy:paused\" | \"bevy:repeating-after-delay\" | \"bevy:repeating-after-real-delay\";"), "{out}");
         assert!(out.contains("export declare class Transform extends Component {\n  static readonly path: \"bevy_transform::components::transform::Transform\";\n  declare readonly translation: Vec3;"), "{out}");
         assert!(out.contains("declare value: \"Inherited\" | \"Hidden\" | \"Visible\";"), "{out}");
         assert_eq!(out, emit(&world), "deterministic");

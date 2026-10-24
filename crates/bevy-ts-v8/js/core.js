@@ -943,6 +943,18 @@ export function conditionChangedTo(c, to) {
 export function nativeCondition(name, args) {
   return new Condition({ kind: "native", name, args: args === undefined ? null : args, location: callerLocation() });
 }
+// Bevy's time conditions (`bevy::time::common_conditions`), exposed by bevy-ts under `bevy:` names.
+// The Rust factory checks the seconds.
+const timeCondition = (name) => (seconds) => nativeCondition(`bevy:${name}`, { secs: seconds });
+export const onTimer = timeCondition("on-timer");
+export const onRealTimer = timeCondition("on-real-timer");
+export const onceAfterDelay = timeCondition("once-after-delay");
+export const onceAfterRealDelay = timeCondition("once-after-real-delay");
+export const repeatingAfterDelay = timeCondition("repeating-after-delay");
+export const repeatingAfterRealDelay = timeCondition("repeating-after-real-delay");
+export function paused() {
+  return nativeCondition("bevy:paused");
+}
 
 class SystemConfig {
   constructor(items, chained) {

@@ -140,6 +140,10 @@ call.
 | `anyComponentRemoved(C)` | `C` was removed from some entity since the last evaluation |
 | `anyMatchFilter(With(C), Without(D), Added(E), Changed(F))` | some entity matches every filter |
 | `conditionChanged(c)`, `conditionChangedTo(c, true)` | `c`'s value changed (to `true`) |
+| `onTimer(s)`, `onRealTimer(s)` | each time `s` seconds pass on the schedule's clock, or real time (`docs/time.md`) |
+| `onceAfterDelay(s)`, `onceAfterRealDelay(s)` | once, `s` seconds in |
+| `repeatingAfterDelay(s)`, `repeatingAfterRealDelay(s)` | every evaluation after `s` seconds |
+| `paused()` | `Time<Virtual>` is paused |
 | `not(c)` | `c` is false |
 | `nativeCondition("crate:name", args)` | a condition a crate exposed (`docs/native.md`) |
 

@@ -2,7 +2,8 @@
 // be an error.
 import {
   Component, type f32, Fixed, type Local, type Mut, type Query, Real, type Res, Resource, Stopwatch, Time, Timer,
-  type TimerMode, Virtual,
+  type TimerMode, Virtual, type Condition, onTimer, onRealTimer, onceAfterDelay, onceAfterRealDelay, repeatingAfterDelay,
+  repeatingAfterRealDelay, paused, runOnce,
 } from "bevy-ts";
 
 export class Cooldown extends Component { cooldown = Timer.fromSeconds(2, "Repeating"); hp: f32 = 1 }
@@ -52,3 +53,17 @@ export function readTimerHasNoTick(rows: Query<[Cooldown]>, time: Res<Time>) {
 // @ts-expect-error  not a TimerMode
 Timer.fromSeconds(1, "Forever");
 export const made = Cooldown.of({ cooldown: Timer.new(0.5, "Once") });
+
+// ---------- Time conditions ----------
+
+export function timeConditionsTakeSeconds() {
+  const all: Condition[] = [
+    onTimer(2), onRealTimer(0.5), onceAfterDelay(1), onceAfterRealDelay(1), repeatingAfterDelay(3),
+    repeatingAfterRealDelay(3), paused(), onTimer(1).andThen(runOnce()), paused().orElse(onRealTimer(1)),
+  ];
+  void all;
+  // @ts-expect-error  seconds are a number
+  onTimer("2");
+  // @ts-expect-error  paused takes no arguments
+  paused(1);
+}

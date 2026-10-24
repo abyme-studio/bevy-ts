@@ -493,6 +493,20 @@ export declare function conditionChanged(c: Condition): Condition;
 export declare function conditionChangedTo(c: Condition, to: boolean): Condition;
 /** A condition a Rust crate exposed with `app.ts_condition(name, factory)`; ports export typed wrappers. */
 export declare function nativeCondition(name: string, args?: unknown): Condition;
+/** Bevy's `on_timer`: true each time `seconds` pass on the schedule's clock (`Time`; the fixed clock in `FixedUpdate`). */
+export declare function onTimer(seconds: number): Condition;
+/** Bevy's `on_real_timer`: true each time `seconds` pass on `Time<Real>`, paused or not. */
+export declare function onRealTimer(seconds: number): Condition;
+/** Bevy's `once_after_delay`: true once, when `seconds` have passed on the schedule's clock. */
+export declare function onceAfterDelay(seconds: number): Condition;
+/** Bevy's `once_after_real_delay`: true once, when `seconds` have passed on `Time<Real>`. */
+export declare function onceAfterRealDelay(seconds: number): Condition;
+/** Bevy's `repeating_after_delay`: false until `seconds` pass on the schedule's clock, then true. */
+export declare function repeatingAfterDelay(seconds: number): Condition;
+/** Bevy's `repeating_after_real_delay`: false until `seconds` pass on `Time<Real>`, then true. */
+export declare function repeatingAfterRealDelay(seconds: number): Condition;
+/** Bevy's `paused`: `Time<Virtual>` is paused. */
+export declare function paused(): Condition;
 
 /** `class EnemySet extends SystemSet {}`, as Rust's `#[derive(SystemSet)] struct EnemySet;`. Named like a component. */
 export declare abstract class SystemSet { static readonly path?: string; protected readonly __set?: true }

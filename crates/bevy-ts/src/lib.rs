@@ -34,6 +34,7 @@ pub mod runtime;
 pub mod schedules;
 pub mod sets;
 pub mod systems;
+pub mod time_conditions;
 pub mod value;
 
 use crate::backend::ScriptBackend;
@@ -166,6 +167,7 @@ impl Plugin for BevyTsPlugin {
         // types: in `finish`, or when the first generation applies if the app never finishes.
         app.register_type::<Transform>().init_resource::<layout::NativeLayouts>();
         sets::expose_anchors(app);
+        time_conditions::expose_all(app);
 
         #[cfg(feature = "pbr")]
         recipes::register(app);

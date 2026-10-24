@@ -83,7 +83,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `GlobalTransform` read; `TransformHelper` | missing (read); the slot after propagation exists (`bevy:transform-propagate`) | `schedules.rs` `after_propagation_reads_this_frames_global_transform` (ignored until the read lands) | reflect-coverage stage 3 (read) |
 | `Res<Time>` | idiomatic, read-only, a built value (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`, `time.rs` `fixed_update_reads_timestep` | script-time stage 1 (done) |
 | `Time<Real>`, `Time<Virtual>` pause and speed, `Time<Fixed>` timestep | partial: every clock read (`Res<Time<C>>`); a game's own pause holds; writes (`ResMut<Time<Virtual>>`, `ResMut<Time<Fixed>>`) missing | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame` | script-time stage 2 (writes) |
-| `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: `Timer`, `Stopwatch`, `TimerMode` are field types with Bevy's methods; `onTimer` and the other conditions, `commands.delayed()` missing | `time.rs` `timer_matches_bevy`, `stopwatch_pauses` | script-time stages 3 (conditions), 4 (delayed commands) |
+| `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: `Timer`, `Stopwatch`, `TimerMode` are field types with Bevy's methods; `onTimer` and Bevy's six other time conditions run Bevy's own (`bevy:` conditions); `commands.delayed()` missing | `time.rs` `timer_matches_bevy`, `stopwatch_pauses`, `time_conditions_match_bevy`, `paused_follows_the_game_clock` | script-time stage 3 (done), stage 4 (delayed commands) |
 | Keyboard (`ButtonInput<KeyCode>`), `InputFocus`, `KeyCode` | missing on main | — | text-input |
 | Mouse buttons, motion, scroll, cursor position | missing | — | new: `script-input-devices` |
 | Touch, gestures | missing | — | new: `script-input-devices` |
@@ -211,8 +211,8 @@ Recommended order: the enabler, then ECS (everything else uses it), then the res
    through reflect-coverage's reader and writer; the spec fix. Settle with reflect-coverage
    whether its stage 3 already takes this (it names "`Res` data" for reflect tier only).
 6. `script-time`: `Time<Real>`, `Time<Virtual>` (pause, speed), `Time<Fixed>` (timestep,
-   overstep); `Timer` and `Stopwatch` as TS values with Bevy's methods; `onTimer` conditions;
-   delayed commands.
+   overstep); `Timer` and `Stopwatch` as TS values with Bevy's methods; `onTimer` conditions
+   (stage 3, done); delayed commands.
 7. `script-input-devices`: extends text-input's `bevy-ts/input` with `Mouse`, `MouseMotion`,
    `MouseScroll`, cursor position, `Touches`, gestures, `Gamepads` (buttons, axes, sticks,
    rumble), and `inputJustPressed` conditions.
