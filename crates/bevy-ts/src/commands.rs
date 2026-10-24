@@ -97,6 +97,23 @@ pub const RESERVE: u32 = 0x3FFF_FFFF;
 #[reflect(Component, Default)]
 pub struct TsSpawned;
 
+/// bevy-ts's own bookkeeping components (`TsSpawned`, `ScriptHidden`, tsx's `TsxNode`): `clear`
+/// and `retain` keep them, and `cloneAndSpawn` does not copy them, so a restart and the tsx tree
+/// still see what made each entity.
+#[derive(Resource, Default, Clone, Debug)]
+pub struct Bookkeeping(pub Vec<ComponentId>);
+
+impl Bookkeeping {
+    /// Adds `C` to the set.
+    pub fn add<C: Component>(world: &mut World) {
+        let id = world.register_component::<C>();
+        let mut b = world.get_resource_or_init::<Bookkeeping>();
+        if !b.0.contains(&id) {
+            b.0.push(id);
+        }
+    }
+}
+
 /// A decoded op.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
@@ -274,8 +291,8 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 };
                 Op::Remove { entity: r.entity()?, components: r.ids()?, how }
             }
-            OP_SPAWN_BATCH | OP_INSERT_BATCH => {
-                let spawn = ops_kind_is_spawn(bytes, r.at - 1);
+            op @ (OP_SPAWN_BATCH | OP_INSERT_BATCH) => {
+                let spawn = op == OP_SPAWN_BATCH;
                 let n = r.u32()?;
                 for _ in 0..n {
                     let (entity, components) = (r.entity()?, r.components(sizes)?);
@@ -369,10 +386,6 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
         ops.push(op);
     }
     Ok(ops)
-}
-
-fn ops_kind_is_spawn(bytes: &[u8], at: usize) -> bool {
-    bytes[at] == OP_SPAWN_BATCH
 }
 
 /// `e` and its descendants through `Children`, parents first.
@@ -478,6 +491,11 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
     warnings
 }
 
+/// The [`Bookkeeping`] components' ids, for `clear`, `retain` and `cloneAndSpawn`.
+fn bookkeeping(world: &World) -> Vec<ComponentId> {
+    world.get_resource::<Bookkeeping>().map(|b| b.0.clone()).unwrap_or_default()
+}
+
 /// Applies one op, pushing what fails to `warnings`.
 fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRecipes, warnings: &mut Vec<String>) {
     {
@@ -540,8 +558,10 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                         world.entity_mut(entity).remove_by_ids(&all);
                     }
                     Remove::Retain => {
-                        // Bevy keeps the retained components' required components too.
-                        let keep = with_requires(world, &components);
+                        // Bevy keeps the retained components' required components too; bevy-ts keeps
+                        // its bookkeeping.
+                        let mut keep = with_requires(world, &components);
+                        keep.extend(bookkeeping(world));
                         let drop: Vec<ComponentId> = world.entity(entity).archetype().components().iter().copied().filter(|c| !keep.contains(c)).collect();
                         world.entity_mut(entity).remove_by_ids(&drop);
                     }
@@ -552,12 +572,18 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                     }
                 }
             }
-            Op::Clear { entity } => match world.get_entity_mut(entity) {
-                Ok(mut e) => {
-                    e.clear();
+            Op::Clear { entity } => {
+                // Every component but bevy-ts's bookkeeping, which is not the game's.
+                let ours = bookkeeping(world);
+                let drop: Option<Vec<ComponentId>> =
+                    world.get_entity(entity).ok().map(|e| e.archetype().components().iter().copied().filter(|c| !ours.contains(c)).collect());
+                match drop {
+                    Some(drop) => {
+                        world.entity_mut(entity).remove_by_ids(&drop);
+                    }
+                    None => warnings.push(format!("clear: entity {entity} does not exist")),
                 }
-                Err(_) => warnings.push(format!("clear: entity {entity} does not exist")),
-            },
+            }
             Op::CloneAndSpawn { source, clone } => {
                 if world.get_entity(source).is_err() {
                     warnings.push(format!("cloneAndSpawn: entity {source} does not exist"));
@@ -567,7 +593,11 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                     warnings.push(format!("cloneAndSpawn {clone}: {err}"));
                     return;
                 }
-                bevy::ecs::entity::EntityCloner::build_opt_out(world).clone_entity(source, clone);
+                // The clone is a TS spawn: bevy-ts's own markers are not copied, and it is marked
+                // as one.
+                let ours = bookkeeping(world);
+                bevy::ecs::entity::EntityCloner::build_opt_out(world).deny_by_ids(ours).clone_entity(source, clone);
+                world.entity_mut(clone).insert(TsSpawned);
             }
             Op::AddChildren { entity, children } => {
                 if world.get_entity(entity).is_err() {

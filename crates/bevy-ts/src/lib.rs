@@ -139,6 +139,8 @@ impl Plugin for BevyTsPlugin {
         app.insert_non_send(runtime::ScriptRuntime::new(backend, self.dev));
         app.insert_non_send(net::NetRegistry::new(Box::new(net::SocketTransport::default())));
         app.register_type::<commands::TsSpawned>().register_type::<ScriptHidden>();
+        commands::Bookkeeping::add::<commands::TsSpawned>(app.world_mut());
+        commands::Bookkeeping::add::<ScriptHidden>(app.world_mut());
         app.init_resource::<components::TsComponents>()
             .init_resource::<systems::TsSystems>()
             .init_resource::<commands::CommandKinds>()

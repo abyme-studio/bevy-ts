@@ -82,7 +82,8 @@ returns the scene's root. Components passed beside the element go on that root, 
 parent. Before, the element was mounted as a child of a new entity. A fragment (`<>...</>`)
 throws: spawn each, or wrap them in `<entity>`. A component given beside the element and on its
 root throws. `commands.entity(e).insert(<el/>)` puts the root's components on `e` and its
-children under `e`.
+children under `e`. An entity tsx made (a scene's, or one `spawn(<el/>)` returned) refuses `insert(<el/>)`: mount
+the element under it, or insert components.
 
 `spawn` returns a real entity at once. There is no limit per run: the id pool refills with one
 host call per 256 spawns past the first 256.
@@ -103,6 +104,8 @@ after the run:
 | `setParent`, `addChildren`, `withChildren((p) => p.spawn(...))`, `detachChildren`, `despawnChildren` | `ChildOf`, `add_children`, `with_children`, `detach_all_children`, `despawn_children` |
 
 A command on a gone entity logs a warning naming the method and entity; `tryInsert` stays quiet.
+`clear` and `retain` remove every game component but keep bevy-ts's own markers (what made the
+entity), and `cloneAndSpawn`'s clone is a TS spawn: a restart despawns it.
 
 ## Observers
 
