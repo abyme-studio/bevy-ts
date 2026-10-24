@@ -265,8 +265,7 @@ impl<T: HostValue> HostValue for Option<T> {
 
 /// An asset ref crossing an exported method: the ref number of an entry in [`ScriptAssets`]. JS
 /// passes and receives the frozen `{ $asset, type }` object `assets` uses; the glue checks the type.
-///
-/// [`ScriptAssets`]: crate::reflect_asset::ScriptAssets
+/// The table, `reflect_asset::ScriptAssets`, is behind the `pbr` feature.
 pub struct ScriptRef<A: Asset>(pub u64, std::marker::PhantomData<fn() -> A>);
 
 impl<A: Asset> ScriptRef<A> {
@@ -275,6 +274,7 @@ impl<A: Asset> ScriptRef<A> {
     }
 
     /// The handle the ref holds; a stale ref or one of another asset type fails naming it.
+    #[cfg(feature = "pbr")]
     pub fn handle(&self, assets: &crate::reflect_asset::ScriptAssets) -> Result<Handle<A>, String> {
         assets.handle(self.0)?.try_typed::<A>().map_err(|_| format!("asset ref {} is not a {}", self.0, A::type_path()))
     }
