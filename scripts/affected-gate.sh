@@ -70,7 +70,7 @@ fi
 if [[ -n $full ]]; then
   crates=$(cut -f1 <<<"$members" | tr '\n' ' ')
   [[ $full == --full ]] && want slot affected
-  for s in clippy test deno npm protocol bevy openspec; do want $s; done
+  for s in clippy alone test deno npm protocol bevy openspec; do want $s; done
 else
   # The seeds and every workspace crate that depends on one, to a fixed point.
   crates=$(jq -r --args '
@@ -79,7 +79,7 @@ else
         | ($s + [$p[] | select(any(.deps[]; IN($s[]))) | .name] | unique) as $n
         | if $n == $s then $s else $n | close end;
     $ARGS.positional | unique | close | join(" ")' "${seeds[@]}" <<<"$meta")
-  [[ -n $crates ]] && want clippy test
+  [[ -n $crates ]] && want clippy alone test
   # The npm tests and bevy-ts/bevy run the engine binary, so they follow the cli.
   [[ " $crates " == *" bevy-ts-cli "* ]] && want npm bevy
 fi
@@ -88,7 +88,7 @@ if [[ -n $plan ]]; then
   [[ -n $full ]] && echo "full $full"
   echo "crates $crates" | sed 's/ *$//'
   ordered=""
-  for s in clippy test deno npm protocol bevy openspec slot affected; do [[ $steps == *" $s "* ]] && ordered+=" $s"; done
+  for s in clippy alone test deno npm protocol bevy openspec slot affected; do [[ $steps == *" $s "* ]] && ordered+=" $s"; done
   echo "steps$ordered"
   exit 0
 fi
@@ -122,12 +122,23 @@ step() {
 tail5() { grep -v ld64 | tail -5; }
 tail6() { grep -v ld64 | tail -6; }
 summary() { grep -E "^test result|FAILED|panicked" | sort | uniq -c; }
+# Each crate built by itself: a workspace build unifies Bevy's features across crates, so a crate
+# that uses a feature only a neighbour enables builds there and fails alone, as a project engine
+# building it fails.
+alone_step() {
+  local c
+  for c in $crates; do
+    echo "alone: $c"
+    cargo build -q -p "$c" || return 1
+  done
+}
 npm_step() {
   cargo build -q -p bevy-ts-cli && cd packages/bevy-ts && pnpm install --frozen-lockfile --silent \
     && pnpm -s check && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm -s test
 }
 
 has clippy && step clippy tail5 cargo clippy "${pkgs[@]}" --all-targets -- -D warnings
+has alone && step alone tail6 bash -c "crates='$crates'; $(declare -f alone_step); alone_step"
 has test && step tests summary cargo test "${pkgs[@]}" --no-fail-fast -- --test-threads=4
 has deno && step deno tail6 deno test -A crates/bevy-ts-v8/js/test
 has npm && step npm tail6 bash -c "$(declare -f npm_step); npm_step"

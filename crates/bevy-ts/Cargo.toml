@@ -22,7 +22,8 @@ async-channel = "2"
 async-io = "2"
 async-tungstenite = { version = "0.33", default-features = false, features = ["handshake"] }
 blocking = "1"
-bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log", "async_executor", "bevy_state", "bevy_color"] }
+# keyboard, mouse and gamepad: `keys` names their inputs; bevy_image: `WindowImage` holds a `Handle<Image>`.
+bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log", "async_executor", "bevy_state", "bevy_color", "keyboard", "mouse", "gamepad", "bevy_image"] }
 serde.workspace = true
 serde_json.workspace = true
 

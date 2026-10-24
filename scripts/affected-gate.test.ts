@@ -51,15 +51,15 @@ async function plan(paths: string[], env: Record<string, string> = {}) {
 }
 
 const all = "crates a b c d bevy-ts-cli";
-const every = "steps clippy test deno npm protocol bevy openspec";
+const every = "steps clippy alone test deno npm protocol bevy openspec";
 
 Deno.test("a crate brings every workspace crate that depends on it", async () => {
-  assertEquals(await plan(["crates/b/src/lib.rs"]), ["crates b c", "steps clippy test"]);
-  assertEquals(await plan(["crates/d/src/lib.rs"]), ["crates d", "steps clippy test"]);
+  assertEquals(await plan(["crates/b/src/lib.rs"]), ["crates b c", "steps clippy alone test"]);
+  assertEquals(await plan(["crates/d/src/lib.rs"]), ["crates d", "steps clippy alone test"]);
 });
 
 Deno.test("a crate the cli depends on brings the npm and bevy-ts/bevy steps", async () => {
-  assertEquals(await plan(["crates/a/src/lib.rs"]), ["crates a b bevy-ts-cli c", "steps clippy test npm bevy"]);
+  assertEquals(await plan(["crates/a/src/lib.rs"]), ["crates a b bevy-ts-cli c", "steps clippy alone test npm bevy"]);
 });
 
 Deno.test("a path a step claims runs only that step", async () => {
@@ -93,7 +93,7 @@ Deno.test("a script runs its own step and slot.test.ts, not everything", async (
 Deno.test("each deno test runs only for what it tests", async () => {
   assertEquals(await plan(["scripts/affected-gate.test.ts"]), ["crates", "steps affected"]);
   assertEquals(await plan(["scripts/slot.sh"]), ["crates", "steps slot"]);
-  assertEquals(await plan(["crates/d/src/lib.rs", ".abyme/teams.ts"]), ["crates d", "steps clippy test"]);
+  assertEquals(await plan(["crates/d/src/lib.rs", ".abyme/teams.ts"]), ["crates d", "steps clippy alone test"]);
 });
 
 Deno.test("LAND_BASE sets what the change is measured from", async () => {
@@ -102,8 +102,8 @@ Deno.test("LAND_BASE sets what the change is measured from", async () => {
   await sh(dir, "git -c user.name=t -c user.email=t@t commit -qam one");
   await Deno.writeTextFile(`${dir}/crates/b/src/lib.rs`, "// two\n");
   await sh(dir, "git -c user.name=t -c user.email=t@t commit -qam two");
-  assertEquals((await sh(dir, "scripts/affected-gate.sh --plan")).split("\n"), ["crates b c d", "steps clippy test"]);
-  assertEquals((await sh(dir, "scripts/affected-gate.sh --plan", { LAND_BASE: "HEAD~1" })).split("\n"), ["crates b c", "steps clippy test"]);
+  assertEquals((await sh(dir, "scripts/affected-gate.sh --plan")).split("\n"), ["crates b c d", "steps clippy alone test"]);
+  assertEquals((await sh(dir, "scripts/affected-gate.sh --plan", { LAND_BASE: "HEAD~1" })).split("\n"), ["crates b c", "steps clippy alone test"]);
 });
 
 Deno.test("a gate that cannot start exits 75", async () => {
