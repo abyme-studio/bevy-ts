@@ -78,8 +78,13 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
   - **A TLS crate.** rustls with webpki-roots, through `async-tungstenite`'s rustls feature
     (`futures-rustls`), in `bevy-ts` on every target. New dependencies.
   - **The header rule.** Headers allowed over `wss:` to any allowed host, not only loopback.
-  - **APK growth.** abyme's APK goes from 8.6 MB to an estimated 60-80 MB, and every promote that
-    changes the pinned bevy-ts ships a new one.
+  - **The engine as a per-version download, loaded by path.** The `.so` is not in abyme's APK: the
+    host downloads one per bevy-ts version into `filesDir/engines/<version>/` and loads it with
+    `Engine.load(path)` (`System.load`). The APK stays at 8.6 MB, but it is native code
+    downloaded at run time: fine outside Play, refused by Play's policy, and dlopen from app
+    storage on API 29+ must be proven (W^X forbids exec there, not mapping a library, as far as
+    known). Each download, best guess before the spike: stripped `.so` 45-60 MB with V8, 20-30 MB
+    with QuickJS-ng; gzipped about 40% smaller.
   - **A no-winit window path.** Bevy gets a window it didn't create, from a raw handle; a new
     architectural pattern, and two new crates.
   - **A possible second `ScriptBackend`** (QuickJS-ng), if the spike rules V8 out.

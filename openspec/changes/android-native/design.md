@@ -90,6 +90,22 @@ into `libabyme_phone.so` (the phone crate is Tauri, built alone, and would carry
 when no game runs; a separate `.so` loads only when a game opens); a Rust API only (no iOS or
 other host later without a rewrite).
 
+### 1b. The engine is a per-version download, loaded by path; games come from any build
+
+A game folder is platform-neutral (compiled JS, assets, `game.json`), so the phone plays the
+`game/` of any prebuilt-engine build: abymed serves `dist/<host target>/game/`, and there is no
+Android build target. `game.json`'s `bevyTs` must match the engine exactly, as on the desktop, so
+abyme keeps one engine per version in `filesDir/engines/<version>/libbevy_ts_android.so`,
+downloaded from abymed, and the APK carries none.
+
+`Engine.java` never calls `System.loadLibrary`. The host calls `Engine.load(absolutePath)`, which
+`System.load`s it and compares the library's version with the class's; `Engine.version()` names
+the class's, so the host knows which engine to fetch. abyme compiles the small class into the APK.
+
+Risk: dlopen of a library in app storage on API 29+. Android's W^X rule forbids `exec` of files
+there and, as far as known, still allows mapping a library; the smoke run (task 4.6) proves it. If
+it fails, the fallback is the engine in the APK (60-80 MB of growth).
+
 ### 2. The engine owns a thread; the host never drives frames
 
 `bevy_ts_create` validates `game.json` on the caller's thread (fast, so errors come back
@@ -183,7 +199,8 @@ ops become rquickjs functions. No JIT and no inspector, about 1 MB.
   per promote.
 - [API 29 above abyme's `minSdk` 26] → abyme gates the game pane on API 29 (`Build.VERSION`), or
   raises `minSdk`; abyme's decision.
-- [APK from 8.6 MB to ~60-80 MB] → measured once the library builds; strip, `opt-level = "s"` for
+- [A 20-60 MB engine download per bevy-ts version] → measured once the library builds; strip,
+  `opt-level = "s"` for
   non-render crates, LTO.
 - [Adreno skinned-mesh and PowerVR bugs (bevy#24926, #25788)] → known upstream; the device walk
   reports them, `gles` is the fallback backend.

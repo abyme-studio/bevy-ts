@@ -33,11 +33,11 @@
 ## 4. The Android library
 
 - [ ] 4.1 `crates/bevy-ts-android` (cdylib): JNI exports for `dev.bevyts.Engine`, `ANativeWindow_fromSurface` and release, listener calls on the engine thread (attached once)
-- [ ] 4.2 `crates/bevy-ts-android/java/dev/bevyts/Engine.java`, loading the library itself
+- [ ] 4.2 `crates/bevy-ts-android/java/dev/bevyts/Engine.java`: `load(absolutePath)` by `System.load` with a version check, `version()`, no `loadLibrary`
 - [ ] 4.3 `bevy-ts-v8` builds from source for `aarch64-linux-android` (`V8_FROM_SOURCE=1`, cached at `~/.cache/bevy-ts/v8-android`); or, if 0.1 says so, `crates/bevy-ts-quickjs` as a `ScriptBackend` and a feature selecting it
 - [ ] 4.4 `scripts/android`: `cargo ndk -t arm64-v8a -P 29`, writing `dist/aarch64-linux-android/` (`.so`, `Engine.java`, header)
 - [ ] 4.5 A CI job that builds the Android library (build only) and checks its exports with `llvm-readelf`
-- [ ] 4.6 A smoke run on a headless emulator (`emulator -no-window`), from `bench/android-smoke/` outside the gate: a minimal Kotlin host creates the engine on a `SurfaceView`, plays `examples/arena`, reports `started`, a tap and `exited`. Record APK size growth and the first-frame time
+- [ ] 4.6 A smoke run on a headless emulator (`emulator -no-window`), from `bench/android-smoke/` outside the gate: a minimal Kotlin host creates the engine on a `SurfaceView`, plays `examples/arena`, reports `started`, a tap and `exited`. loading the `.so` by path from the app's `filesDir`. Record the stripped and gzipped `.so` sizes and the first-frame time
 
 ## 5. Docs and handover
 
