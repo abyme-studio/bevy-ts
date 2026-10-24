@@ -84,8 +84,14 @@ A Rust event field named `entity`, `original`, `propagate` or `toJSON` SHALL NOT
 own member of that name. `On<E>.event` SHALL hold the event's whole value in reflect-coverage's
 shape, as Bevy's `On::event()`, so such a field is read as `on.event.<name>` under its reflected
 field name; every other field is also read directly on `On<E>`. The generated class SHALL
-document the field as reachable only through `event`. TS-declared events refusing these names at
-load belongs to accessor-slot-names, not this change.
+document the field as reachable only through `event`. `On<E>.event` SHALL exist for a TS-declared
+event too, holding its whole value (fields, and `entity` for an entity event), so both kinds read
+the same way. TS-declared events refusing these names at load belongs to accessor-slot-names, not
+this change.
+
+#### Scenario: on.event on a TS event
+- **WHEN** a TS observer takes `On<Explode>` for `class Explode extends EntityEvent { radius: f32 }`, triggered on `e` with radius 3
+- **THEN** `on.event` is `{ entity: e, radius: 3 }`, equal to the direct `on.radius`
 
 #### Scenario: A field named entity
 - **WHEN** a Rust entity event has a field `entity` (its target, as `PointerClick` has) and bubbles from a child to its parent
