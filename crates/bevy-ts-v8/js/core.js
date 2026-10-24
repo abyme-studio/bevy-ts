@@ -2299,6 +2299,9 @@ function buildSystem(g, s) {
       const a = args[i];
       Object.setPrototypeOf(h, Object.getPrototypeOf(a));
       Object.assign(h, a);
+      // An accessor's nested views (vectors, arrays, timers) read their row through their parent:
+      // make it the holder, the object bound from now on.
+      for (const k of Object.getOwnPropertySymbols(a)) if (a[k] && a[k].p === a) a[k].p = h;
       args[i] = h;
     });
     // Accessor-backed params (res, local) are objects bound in place: rebind consumers to holders.

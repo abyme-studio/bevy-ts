@@ -220,6 +220,54 @@ app.insertResource(Score.of()).addSystems(Startup, spawn).addSystems(Update, dri
 }
 
 #[test]
+fn a_setup_systems_resource_and_local_vectors_read_and_write_their_rows() {
+    let (_, mut app) = load(
+        "setup-vectors",
+        &src(
+            r#"import { local, vec3 } from "bevy-ts";
+export class Aim extends Resource { static path = "game::Aim"; declare at: vec3; declare lx: f32; declare n: u32 }
+export const aim = system(() => {
+  const a = resMut(Aim);
+  const l = local({ at: vec3, n: u32 });
+  return () => { a.at.set(a.at.x + 1, 2, 3); l.at.x += 1; l.n += 1; a.lx = l.at.x; a.n = l.n; };
+});
+app.insertResource(Aim.of()).addSystems(Update, aim);
+"#,
+        ),
+    );
+    updates(&mut app, 3);
+    // Each run steps the resource's vector and the Local's: after k runs all read k.
+    let aim = read_res(&app, "game::Aim").unwrap();
+    let k = aim["n"].as_f64().unwrap();
+    assert!(k >= 2.0, "{aim}");
+    assert_eq!(aim["at"], json!([k, 2.0, 3.0]), "{aim}");
+    assert_eq!(aim["lx"], json!(k), "{aim}");
+}
+
+/// An event field named like one of `On<E>`'s own members fails the load at the field.
+fn refuses_event_field(name: &str, class: &str) {
+    let errors = load_errors(&format!("event-{name}"), &src(&format!("{class}\n")));
+    let want = format!("field {name} shadows On<Hit>.{name}; rename it");
+    assert!(errors.iter().any(|e| e.message.contains(&want)), "{name}: {errors:?}");
+    assert!(errors.iter().all(|e| e.location.is_some()), "{name}: located: {errors:?}");
+}
+
+#[test]
+fn an_event_field_named_entity_is_refused() {
+    refuses_event_field("entity", r#"export class Hit extends Event { static path = "game::Hit"; declare entity: Entity; declare n: u32 }"#);
+}
+
+#[test]
+fn an_event_field_named_propagate_is_refused() {
+    refuses_event_field("propagate", r#"export class Hit extends EntityEvent { static path = "game::Hit"; declare propagate: f32 }"#);
+}
+
+#[test]
+fn an_event_field_named_to_json_is_refused() {
+    refuses_event_field("toJSON", r#"export class Hit extends Event { static path = "game::Hit"; declare toJSON: f32 }"#);
+}
+
+#[test]
 fn a_declaring_call_outside_a_setup_fails_with_its_location() {
     let errors = load_errors("outside", &src("const q = query(Health);\n"));
     assert!(errors[0].message.contains("setup"), "{errors:?}");

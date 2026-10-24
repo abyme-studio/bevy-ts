@@ -221,8 +221,12 @@ export declare abstract class SceneComponent extends Component {
 export declare abstract class ReflectComponent extends Data { readonly [tierBrand]?: "reflect" }
 export declare abstract class Resource extends Data { readonly [resourceBrand]?: true }
 export declare abstract class Message extends Data { readonly [messageBrand]?: true }
+/** An Event. `entity`, `propagate` and `toJSON` are `On<E>`'s own: a field by those names fails the load. */
 export declare abstract class Event extends Data { readonly [eventBrand]?: "global" }
-/** An EntityEvent: targets `entity`; `static propagate = true` bubbles it up `ChildOf`. */
+/**
+ * An EntityEvent: targets `entity`; `static propagate = true` bubbles it up `ChildOf`. A field named
+ * `propagate` or `toJSON` fails the load: `On<E>` has its own.
+ */
 export declare abstract class EntityEvent extends Data {
   readonly [eventBrand]?: "entity";
   entity: Entity;
@@ -429,7 +433,8 @@ export type Remove<C> = { readonly [lifecycleBrand]: ["remove", C] };
 /**
  * An observer's first parameter, as Bevy's `On<Explode>` / `On<Add<Health>>`: the event's fields
  * directly (`explode.radius`, as Rust's `On` derefs to the event), the target as `entity`, and
- * `propagate`.
+ * `propagate`. So an event's fields may not be named `entity` (bar an EntityEvent's target),
+ * `propagate` or `toJSON`.
  */
 export type On<E> =
   & (E extends { readonly [lifecycleBrand]: unknown } ? { readonly entity: Entity } : ReadView<E> & { readonly entity: Entity })
