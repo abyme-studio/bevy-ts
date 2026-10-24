@@ -1,0 +1,20 @@
+[package]
+name = "states-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# ecs-schedules task 2.1: what TS states as real Bevy states cost. A pool of 32 (or 16) state
+# types `TsState<N>`, each registered with Bevy's own `init_state` (State, NextState,
+# PreviousState, StateTransitionEvent and the nine state-scoped systems), timed per frame with 0,
+# 1, 8 and 32 machines, in quiet frames and in frames where every machine transitions.
+# `run.sh` also times the pool's build and measures its binary at 16 and 32 slots.
+
+[features]
+slots16 = []
+
+[dependencies]
+bevy = { version = "0.20", default-features = false, features = ["std", "multi_threaded", "async_executor", "bevy_state"] }
+
+[profile.release]
+debug = false
