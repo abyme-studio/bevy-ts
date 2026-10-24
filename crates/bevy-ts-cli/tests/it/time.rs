@@ -96,13 +96,14 @@ app.addSystems(FixedUpdate, step);
 
 #[test]
 fn clock_writes_fail_the_load() {
-    let head = "import { app, Time, Update, Virtual } from \"bevy-ts\";\nimport type { ResMut } from \"bevy-ts\";\n";
-    let errors = load_errors("time-write", &format!("{head}export function w(t: ResMut<Time<Virtual>>) {{}}\napp.addSystems(Update, w);\n"));
+    // The clocks TS writes are time_writes.rs's; these two it never writes.
+    let head = "import { app, Real, Time, Update } from \"bevy-ts\";\nimport type { ResMut } from \"bevy-ts\";\n";
+    let errors = load_errors("time-write", &format!("{head}export function w(t: ResMut<Time<Real>>) {{}}\napp.addSystems(Update, w);\n"));
     let e = &errors[0];
-    assert!(e.message.contains("clocks are read-only from TS"), "{e:?}");
+    assert!(e.message.contains("ResMut<Time<Real>> is not allowed"), "{e:?}");
     assert_eq!(e.location.as_ref().map(|l| l.line), Some(3), "{e:?}");
     let errors = load_errors("time-write-generic", &format!("{head}export function w(t: ResMut<Time>) {{}}\napp.addSystems(Update, w);\n"));
-    assert!(errors[0].message.contains("read-only"), "{:?}", errors[0]);
+    assert!(errors[0].message.contains("ResMut<Time> is not allowed"), "{:?}", errors[0]);
 }
 
 const COUNTER: &str = r#"

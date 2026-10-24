@@ -82,7 +82,7 @@ impl<C: GizmoConfigGroup> crate::ExportParam for TsGizmos<'static, 'static, C> {
     fn spec() -> ParamSpec {
         let (ts, claim) = names::<C>();
         let mut methods = draw::methods::<C>();
-        let config = |name: &str, ty, call| MethodSpec { name: name.into(), args: Vec::new(), ret: Kind::Json(ty), call, chain: None, of: None };
+        let config = |name: &str, ty, call| MethodSpec { name: name.into(), args: Vec::new(), ret: Kind::Json(ty), call, chain: None, of: None, getter: false };
         methods.push(config("config", "GizmoConfig", call_config::<C, false>));
         methods.push(config("configExt", "GizmoGroupValues[G]", call_config::<C, true>));
         ParamSpec {

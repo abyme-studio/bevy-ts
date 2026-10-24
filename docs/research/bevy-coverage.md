@@ -92,7 +92,7 @@ Bevy features with no owner. They are ranked at the end.
 | `Transform.lookingAt` | idiomatic, a value for `spawn` (not a method on a live column) | `reflect_scripts.rs` `looking_at_matches_bevy` | — |
 | `GlobalTransform` read; `TransformHelper` | `GlobalTransform` idiomatic: `bevy-ts` ships it typed, with Bevy 0.20's read methods (`translation()`, `rotation()`, `scale()`, `computeTransform()`, directions, `transformPoint`, `reparentedTo`, ...); writes refused. `TransformHelper` missing | `reflect_systems.rs` `global_transform_reads_as_bevys`, `a_computed_component_refuses_a_write`; `schedules.rs` `after_propagation_reads_this_frames_global_transform` | `TransformHelper`: open |
 | `Res<Time>` | idiomatic, read-only (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`; `time.rs` `fixed_update_reads_timestep` | — |
-| `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | partial: every clock reads; writes fail the load | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame`, `clock_writes_fail_the_load` | script-time stage 2 |
+| `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | idiomatic: every clock reads; `ResMut<Time<Virtual>>` and `ResMut<Time<Fixed>>` write under Bevy's method names (`bevy-ts/time`); `ResMut<Time>` and `ResMut<Time<Real>>` fail the load | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame`; `time_writes.rs` `virtual_writes_match_bevy`, `fixed_writes_match_bevy`, `unwritable_clocks_fail_the_load` | script-time stage 2 (done) |
 | `Timer`, `Stopwatch`, `on_timer`, delayed commands | idiomatic: timers, Bevy's time conditions, and `commands.delayed()` on Bevy's own `DelayedCommandQueue` | `time.rs` `timer_matches_bevy`, `stopwatch_pauses`, `time_conditions_match_bevy`, `paused_follows_the_game_clock`; `delayed_commands.rs` `bevys_test_matches_rust`, `delays_follow_the_game_clock`, `every_command_kind_can_wait` | — |
 | Keyboard (`ButtonInput<KeyCode>`, `ButtonInput<Key>`), `InputFocus`, `KeyCode`, `Key` | idiomatic: `Keys`, `LogicalKeys`, `InputFocus`, generated `KeyCode` and `Key` (`bevy-ts/input`) | `text_input.rs` `keys_and_input_focus_read_n_only_while_nothing_has_focus`, `logical_keys_read_what_the_key_types`; `rust_events.rs` `a_ts_reader_sees_keyboard_input_once` | — |
 | Mouse buttons, motion, scroll, cursor position | idiomatic: `MouseButtons`, `Cursor`, `AccumulatedMouseMotion`/`Scroll` | `input_devices.rs` `mouse_buttons_read_bevys_button_input`, `the_cursor_is_the_primary_windows`, `mouse_motion_and_scroll_read_as_bevys_resources` | — |
@@ -204,8 +204,7 @@ Missing or partial, no running owner, ranked by which a game team waits on.
     commands, the `Insert` observer, `RenderTarget`, `Hdr`, `CursorIcon`, render markers.
 
 Owned by a running change, so not ranked: heap fields (ts-heap-fields-2), `iterDescendants`
-(ecs-queries 6.1), custom relationships, clock
-writes (script-time stage 2), sprite-sheet animation and tilemaps (script-2d), path text
+(ecs-queries 6.1), custom relationships, sprite-sheet animation and tilemaps (script-2d), path text
 (world-text-stage-2). heimdall-labels has
 named no ask.
 

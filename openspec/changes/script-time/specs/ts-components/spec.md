@@ -6,9 +6,10 @@ A component SHALL be declared as a plain class extending `Component`, its fields
 ```ts
 export class Mover extends Component { speed: f32 = 1; amplitude: f32 = 2 }
 export class Target extends Component { declare entity: Entity }
+export class Tag extends Component { label: string = "crate"; scores: u32[] = [] }
 ```
 
-The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, `Timer`, `Stopwatch` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero. `string`, arrays, objects and other heap data SHALL fail the load with the file and line.
+The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, `Timer`, `Stopwatch` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A component field MAY also be `string` (a heap field, Rust's `String`) or `T[]` with `T` one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool` or `string` (a heap field, Rust's `Vec<T>`). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero, `""` for a string and `[]` for a list. Objects, nested lists, lists of vectors or entities and other heap data SHALL fail the load with the file and line.
 
 The class SHALL be the component's handle in queries (`Query<[Mover]>`), its TSX tag (`<Mover speed={2} />`) and, through `Mover.of({ speed: 2 })`, its constructor for commands. Its instance type SHALL be the component's data. A class with no fields is a marker. A class extending `SceneComponent` is a component whose `static scene(props)` builds a scene spawned with it, as Bevy's `#[derive(SceneComponent)]` (tsx, levels).
 
@@ -19,7 +20,15 @@ The component's name in Bevy, the protocol and `.bsn` files SHALL default to a R
 - **THEN** a component named `game::Mover` with two `f32` fields, defaulting to 1 and 2, exists in the world after the module loads
 
 #### Scenario: A string field
-- **WHEN** a component declares `name: string = "x"`
+- **WHEN** a component declares `name: string = "x"` and `Tag.of({})` is spawned
+- **THEN** the entity's `name` reads `"x"` in a TS system, in Rust through the component's bytes and over the protocol
+
+#### Scenario: A list field
+- **WHEN** a component declares `scores: u32[] = [1, 2]` and an entity is spawned with `scores: [7]`
+- **THEN** a TS system reads `[7]`, and another entity spawned without it reads `[1, 2]`
+
+#### Scenario: A refused heap type
+- **WHEN** a component declares `points: Vec3[]` or `meta: { a: f32 }`
 - **THEN** loading fails with an error naming the class, the field, the file and the line
 
 #### Scenario: A pinned name survives a rename

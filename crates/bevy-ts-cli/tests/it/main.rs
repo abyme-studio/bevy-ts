@@ -84,6 +84,7 @@ mod text_fonts;
 mod text_input;
 mod test_dir;
 mod time;
+mod time_writes;
 mod tsx;
 mod tsx_expand;
 mod tsx_overlay;

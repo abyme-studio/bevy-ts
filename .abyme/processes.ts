@@ -115,6 +115,8 @@ const processes = {
   // The cli test binaries that start an engine, in a check slot.
   "gate-engine-tests": { cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:$(basename $PWD) -- bash -c \"cargo test -p bevy-ts-cli --test it -- play:: build:: headless_pointer:: viewport_preview:: dev_edit:: typescript:: animation:: && cargo clippy -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep --line-buffered -v ld64 | tee target/gate-engine-tests.log | grep -E \"^error|^warning|-->|FAILED|panicked|^test |test result\"'" },
   // Change script-time stage 3: the time conditions' crates, their unit and integration tests.
+  // Change script-time stage 2: protocol regenerated, then the clock writes' crates and tests.
+  "script-time-stage2": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (scripts/gen-protocol.sh && cargo test -p bevy-ts --lib host && cargo test -p bevy-ts-native --doc && cargo test -p bevy-ts-cli --lib -- time:: types:: && cargo test -p bevy-ts-cli --test it -- time_writes:: time:: exported:: native_writes:: protocol::) 2>&1 | grep -v ld64 | tee target/script-time-stage2.log | grep -E \"^error|^warning: [^\\`]|-->|^test |test result|panicked\"'" },
   "script-time-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib time_conditions && cargo test -p bevy-ts-cli --test it -- time::) 2>&1 | grep --line-buffered -v ld64 | tee target/script-time-test.log | grep -E \"^error|^warning|-->|^test |test result|panicked\"'" },
   // reflect-coverage stage 2: bevy-ts/bevy regenerated, the command checks, the script-writes and reflected-values tests, clippy.
   // The Skybox handle case alone, with its output.

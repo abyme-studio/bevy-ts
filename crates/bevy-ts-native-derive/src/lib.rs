@@ -267,7 +267,8 @@ fn stands_for_spelling(n: &str) -> bool {
 /// `pub fn(&self, ...)` or `pub fn(&mut self, ...)` becomes a method of the TS type `Name`,
 /// called synchronously from TS systems as one host call. Register it with
 /// `app.ts_param::<P>()`. `stands_for = "ResMut<Time<Virtual>>"` makes a TS param written with
-/// that Bevy spelling this export.
+/// that Bevy spelling this export. A `pub fn(&self)` with no arguments marked `#[getter]` is a
+/// read-only property under its Rust name (`time.is_paused`), one host call per read.
 #[proc_macro_attribute]
 pub fn export(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut ts = None;
@@ -291,8 +292,19 @@ pub fn export(attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(())
     });
     parse_macro_input!(attr with parser);
-    let item = parse_macro_input!(item as ItemImpl);
-    match expand_export(&item, ts, module, stands_for) {
+    let mut item = parse_macro_input!(item as ItemImpl);
+    // `#[getter]` is read here and removed: it is no attribute of its own.
+    let mut getters = Vec::new();
+    for it in &mut item.items {
+        if let ImplItem::Fn(f) = it {
+            let before = f.attrs.len();
+            f.attrs.retain(|a| !a.path().is_ident("getter"));
+            if f.attrs.len() != before {
+                getters.push(f.sig.ident.clone());
+            }
+        }
+    }
+    match expand_export(&item, ts, module, stands_for, &getters) {
         Ok(t) => quote!(#item #t).into(),
         Err(e) => {
             let e = e.to_compile_error();
@@ -301,7 +313,7 @@ pub fn export(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::LitStr>, stands_for: Option<syn::LitStr>) -> syn::Result<proc_macro2::TokenStream> {
+fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::LitStr>, stands_for: Option<syn::LitStr>, getters: &[syn::Ident]) -> syn::Result<proc_macro2::TokenStream> {
     let ts = ts.ok_or_else(|| syn::Error::new(item.span(), "export needs ts = \"Name\", the TS type"))?;
     let module = module.ok_or_else(|| syn::Error::new(item.span(), "export needs module = \"bevy-ts/<module>\""))?;
     if item.trait_.is_some() {
@@ -318,13 +330,21 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
     let mut methods = Vec::new();
     for it in &item.items {
         let ImplItem::Fn(f) = it else { continue };
-        if !matches!(f.vis, Visibility::Public(_)) {
-            continue;
-        }
         let sig = &f.sig;
         let method = &sig.ident;
+        let getter = getters.contains(method);
+        if !matches!(f.vis, Visibility::Public(_)) {
+            if getter {
+                return Err(syn::Error::new(sig.span(), format!("getter {method} must be `pub`")));
+            }
+            continue;
+        }
         match sig.inputs.first() {
-            Some(FnArg::Receiver(r)) if r.reference.is_some() => {}
+            Some(FnArg::Receiver(r)) if r.reference.is_some() => {
+                if getter && (r.mutability.is_some() || sig.inputs.len() > 1) {
+                    return Err(syn::Error::new(sig.span(), format!("getter {method} must take &self and no arguments: it reads as a property")));
+                }
+            }
             _ => return Err(syn::Error::new(sig.span(), format!("exported method {method} must take &self or &mut self"))),
         }
         let mut decls = Vec::new();
@@ -405,7 +425,8 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
         } else {
             quote!(__p.#method(#(#call_args),*))
         };
-        let ts_method = camel(&method.to_string());
+        // A getter keeps its Rust name, as Bevy's getters and the clock views read.
+        let ts_method = if getter { method.to_string() } else { camel(&method.to_string()) };
         methods.push(quote! {{
             fn __call(
                 __state: &mut #h::ParamState,
@@ -433,6 +454,7 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
                 name: ::std::string::String::from(#ts_method),
                 args: ::std::vec![#(#specs),*],
                 ret: <#ret as #h::HostValue>::kind(),
+                getter: #getter,
                 call: __call,
                 chain: ::core::option::Option::None,
                 of: ::core::option::Option::None,

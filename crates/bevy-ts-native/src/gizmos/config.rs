@@ -94,7 +94,7 @@ fn insert(state: &mut ParamState, world: UnsafeWorldCell<'_>, ticks: RunTicks, r
 }
 
 fn method(name: &str, args: Vec<host::ArgSpec>, ret: Kind, call: host::HostFn) -> MethodSpec {
-    MethodSpec { name: name.into(), args, ret, call, chain: None, of: None }
+    MethodSpec { name: name.into(), args, ret, call, chain: None, of: None, getter: false }
 }
 
 fn group_arg() -> host::ArgSpec {

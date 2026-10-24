@@ -555,6 +555,26 @@ throws before the call crosses, as `Cameras.worldsToViewport: points must be a F
 Float64Array`. A `Result` error, a param that fails validation, or a panic throws in JS, naming
 the param and method.
 
+A `pub fn(&self)` with no arguments marked `#[getter]` is a read-only property under its Rust
+name, read live, one host call per read:
+
+```rust
+#[bevy_ts_native::export(ts = "NavEdit", module = "bevy-ts/game")]
+impl NavEdit<'_, '_> {
+    #[getter]
+    pub fn blocked(&self) -> u32 { self.mesh.blocked() }
+}
+```
+
+```ts
+if (nav.blocked > 10) nav.clear();
+```
+
+Use it for every read of a param that writes, so its `ResMut` reads as the `Res` it stands beside
+(`time.is_paused` on both). A getter that takes arguments or `&mut self` is a compile error naming
+it. Declarations say `readonly blocked: number`; the handshake lists getters as the param's
+`properties`, apart from its `methods`.
+
 Bevy's own argument shapes cross too, as Bevy's `impl Into<..>` takes them:
 
 | Rust argument | TS forms | Crossing |
@@ -663,7 +683,8 @@ export function storm(wind: ResMut<Wind>) { wind.gust(2); }
 One export per spelling; a second claim fails `app.ts_param` naming both Rust types. Unclaimed
 spellings read as before. `bevy-ts types` adds each claim to `ResClaims`/`ResMutClaims` in
 `native.d.ts`, so `ResMut<Wind>` is typed as `WindEdit`, when TS declares the inner type (a class in
-`native.d.ts`, or a clock: `ResMut<Time<Virtual>>` can be claimed by a `VirtualTime` export). A
+`native.d.ts`, or a clock: bevy-ts's own `VirtualTime` and `FixedTime` claim `ResMut<Time<Virtual>>`
+and `ResMut<Time<Fixed>>`, docs/time.md). A
 claim whose inner type TS does not declare is listed in a comment there and not typed. Every
 `Res<Time<..>>` stays the clock read docs/time.md describes, never a claim. The handshake lists the
 claim as the param's `standsFor`. A `Gizmos<G>` spelling no export claims fails the load, naming it

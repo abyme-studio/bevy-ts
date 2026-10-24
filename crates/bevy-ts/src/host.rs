@@ -1008,6 +1008,8 @@ pub struct MethodSpec {
     /// and JS returns the param object. Settings of one name share one JS method, the first
     /// declared, so every builder's setting of that name takes the same slots.
     pub of: Option<&'static str>,
+    /// `#[getter]`: a read-only property under its Rust name, no arguments.
+    pub getter: bool,
 }
 
 /// What `#[export]` generates for a param.
@@ -1515,7 +1517,11 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
                 ArgSpec::Slice(sl) | ArgSpec::Points(sl, _) => format!("${}", sl.name),
             })
             .collect();
-        let _ = writeln!(s, "  {}({}) {{", method.name, names.join(", "));
+        if method.getter {
+            let _ = writeln!(s, "  get {}() {{", method.name);
+        } else {
+            let _ = writeln!(s, "  {}({}) {{", method.name, names.join(", "));
+        }
         // A setting on a builder a later builder call replaced throws (design 5); the buffer
         // check in Rust cannot tell two builders apart.
         if method.of.is_some() {
@@ -1669,6 +1675,10 @@ fn interface(spec: &ParamSpec, head: &str) -> String {
     let _ = writeln!(s, "/** `{}`, a system param exported from Rust; take it as a system parameter. */", spec.rust);
     let _ = writeln!(s, "export interface {head} {{");
     for m in spec.methods.iter().filter(|m| m.of.is_none()) {
+        if m.getter {
+            let _ = writeln!(s, "  readonly {}: {};", m.name, m.ret.ts_out());
+            continue;
+        }
         let ret = m.chain.map_or_else(|| m.ret.ts_out(), str::to_string);
         let _ = writeln!(s, "  {}({}): {ret};", m.name, ts_args(m));
     }
@@ -1754,7 +1764,7 @@ mod tests {
     /// argument is `$`-prefixed, so `at(i)` is not `let i` declared twice.
     #[test]
     fn glue_arguments_never_meet_its_locals() {
-        let method = |name: &str, args| MethodSpec { name: name.into(), args, ret: Kind::Unit, call: |_, _, _, _, _, _| Ok(()), chain: None, of: None };
+        let method = |name: &str, args| MethodSpec { name: name.into(), args, ret: Kind::Unit, call: |_, _, _, _, _, _| Ok(()), chain: None, of: None, getter: false };
         let spec = ParamSpec {
             ts: "Probe",
             module: "bevy-ts/probe",
@@ -1914,14 +1924,14 @@ mod tests {
             stands_for: None,
             init: init::<()>,
             module_declares: false,
-            methods: vec![MethodSpec { name: "m".into(), args, ret: Kind::Unit, call: |_, _, _, _, _, _| Ok(()), chain, of }],
+            methods: vec![MethodSpec { name: "m".into(), args, ret: Kind::Unit, call: |_, _, _, _, _, _| Ok(()), chain, of, getter: false }],
         }
     }
 
     #[test]
     fn builder_glue_returns_a_builder() {
         let mut spec = probe(vec![ArgSpec::Value("radius", Kind::Num("f32"))], Some("CircleBuilder"), None);
-        let setting = |name: &str, args, of| MethodSpec { name: name.into(), args, ret: Kind::Unit, call: |_, _, _, _, _, _| Ok(()), chain: None, of: Some(of) };
+        let setting = |name: &str, args, of| MethodSpec { name: name.into(), args, ret: Kind::Unit, call: |_, _, _, _, _, _| Ok(()), chain: None, of: Some(of), getter: false };
         spec.methods.push(setting("resolution", vec![ArgSpec::Value("resolution", Kind::Num("u32"))], "CircleBuilder"));
         spec.methods.push(setting("skew", vec![ArgSpec::Value("skew", Kind::Vec3)], "CircleBuilder"));
         // A second builder's setting of the same name shares the first one's JS method.
@@ -1950,7 +1960,7 @@ mod tests {
     #[test]
     fn a_recorder_records_drawing_calls_and_settings() {
         let mut spec = probe(vec![ArgSpec::Value("radius", Kind::Num("f32")), <HostPoints<Vec3> as HostArg>::spec("positions")], Some("CircleBuilder"), None);
-        let method = |name: &str, ret, of| MethodSpec { name: name.into(), args: vec![ArgSpec::Value("n", Kind::Num("u32"))], ret, call: |_, _, _, _, _, _| Ok(()), chain: None, of };
+        let method = |name: &str, ret, of| MethodSpec { name: name.into(), args: vec![ArgSpec::Value("n", Kind::Num("u32"))], ret, call: |_, _, _, _, _, _| Ok(()), chain: None, of, getter: false };
         spec.methods.push(method("resolution", Kind::Unit, Some("CircleBuilder")));
         spec.methods.push(method("config", Kind::Json("GizmoConfig"), None));
         spec.methods.push(method("dot", Kind::Unit, None));

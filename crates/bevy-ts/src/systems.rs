@@ -1248,7 +1248,9 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 if let Some(clock) = Clock::of(resource) {
                     let clock = clock.map_err(err)?;
                     if write {
-                        return Err(err(format!("ResMut<{resource}> is not allowed; clocks are read-only from TS")));
+                        return Err(err(format!(
+                            "ResMut<{resource}> is not allowed: TS writes the clocks as ResMut<Time<Virtual>> and ResMut<Time<Fixed>> (docs/time.md), and Bevy rebuilds Time from them; Time<Real> is the wall clock"
+                        )));
                     }
                     RunParam::Time(clock)
                 } else if let Some((id, target)) = if *reflect { reflect_resource(world, resource, ts).map_err(err)? } else { None } {

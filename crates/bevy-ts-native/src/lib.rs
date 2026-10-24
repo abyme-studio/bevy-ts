@@ -139,6 +139,18 @@ pub trait NativeLayout: Component {
 /// }
 /// fn main() { App::new().ts_param::<&'static mut World>(); }
 /// ```
+/// A `#[getter]` is a property: one that takes an argument fails naming it:
+/// ```compile_fail
+/// use bevy::ecs::system::SystemParam;
+/// use bevy_ts_native::prelude::*;
+/// #[derive(SystemParam)]
+/// pub struct Clock<'w> { time: Res<'w, Time> }
+/// #[export(ts = "Clock", module = "bevy-ts/game")]
+/// impl Clock<'_> {
+///     #[getter]
+///     pub fn delta_times(&self, n: f32) -> f32 { self.time.delta_secs() * n }
+/// }
+/// ```
 /// A method argument that cannot cross fails naming its type:
 /// ```compile_fail
 /// use bevy::ecs::system::SystemParam;

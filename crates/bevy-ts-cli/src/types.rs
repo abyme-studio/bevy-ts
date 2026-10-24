@@ -36,6 +36,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         .add_plugins(crate::gizmos::GizmosPlugin)
         .add_plugins(crate::input::ScriptInputPlugin)
         .add_plugins(crate::audio::ScriptAudioPlugin)
+        .add_plugins(crate::time::ScriptTimePlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
         .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
         .add_plugins(crate::session::ScriptSessionPlugin)
@@ -1241,7 +1242,6 @@ mod tests {
     fn a_claim_is_typed_only_when_ts_declares_its_inner_type() {
         let claims = [
             Claim { spelling: "ResMut<Wind>", module: "bevy-ts/claims-test", ts: "WindEdit" },
-            Claim { spelling: "ResMut<Time<Virtual>>", module: "bevy-ts/claims-test", ts: "VirtualTime" },
             Claim { spelling: "ResMut<NavMesh>", module: "bevy-ts/claims-test", ts: "NavEdit" },
         ];
         let out = claims_ts(&claims, &|t| (t == "Wind" || CLOCKS.contains(&t)).then(|| t.to_string()));
@@ -1251,6 +1251,25 @@ mod tests {
         let block = out.split_once("declare module").map(|(_, b)| format!("declare module{b}")).unwrap();
         let fixture = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/bevy-ts/test/claims.ts")).unwrap();
         assert!(fixture.contains(&block), "packages/bevy-ts/test/claims.ts no longer holds what claims_ts emits:\n{block}");
+    }
+
+    /// packages/bevy-ts/test/time-module.d.ts and time_writes.ts hold what `bevy-ts types` writes
+    /// for `bevy-ts/time` and its two claims, verbatim, and `tsc -p test` checks them.
+    #[test]
+    fn the_time_module_is_typed_as_its_type_test_says() {
+        let mut app = App::new();
+        app.add_plugins(crate::time::ScriptTimePlugin);
+        let modules = emit_modules(app.world());
+        let start = modules.find("declare module \"bevy-ts/time\" {").unwrap();
+        let module = &modules[start..start + modules[start..].find("\n}\n").unwrap() + 3];
+        let host = app.world().resource::<bevy_ts::host::HostParams>();
+        let claims: Vec<Claim> = host.specs().filter_map(|p| Some(Claim { spelling: p.stands_for?, module: p.module, ts: p.ts })).collect();
+        let out = claims_ts(&claims, &|t| CLOCKS.contains(&t).then(|| t.to_string()));
+        let block = out.split_once("declare module").map(|(_, b)| format!("declare module{b}")).unwrap();
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/bevy-ts/test/");
+        let read = |f: &str| std::fs::read_to_string(format!("{dir}{f}")).unwrap();
+        assert!(read("time-module.d.ts").contains(module), "test/time-module.d.ts no longer holds what emit_modules writes:\n{module}");
+        assert!(read("time_writes.ts").contains(&block), "test/time_writes.ts no longer holds what claims_ts emits:\n{block}");
     }
 
     /// `bevy-ts/bevy` as generated (`scripts/gen-bevy-types.sh --check` keeps it current): the

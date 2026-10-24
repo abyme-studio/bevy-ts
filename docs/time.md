@@ -27,14 +27,56 @@ Every clock has `delta_secs`, `elapsed_secs`, `elapsed_secs_wrapped`, their `_f6
 visible: they have no seconds value.
 
 A clock is a value built for each run from the world, not a column: nothing is reflected and
-nothing is written back. Writing one fails the load: `ResMut<Time<Virtual>>` says clocks are
-read-only from TS.
+nothing is written back. TS writes `Time<Virtual>` and `Time<Fixed>` through `ResMut` (Writing the
+clocks); `ResMut<Time>` and `ResMut<Time<Real>>` fail the load.
 
 ### What `Res<Time>` is
 
 As in Bevy, it depends on the schedule. In `Update` and the other frame schedules it holds
 `Time<Virtual>`'s values. In `FixedUpdate` and every fixed schedule it holds `Time<Fixed>`'s:
 `time.delta_secs` is the timestep (1/64 s by default) on every run.
+
+## Writing the clocks
+
+`ResMut<Time<Virtual>>` and `ResMut<Time<Fixed>>` write Bevy's own resources, under Bevy's method
+names in camelCase, every `Duration` in seconds. Behind them are `VirtualTime` and `FixedTime`,
+exported params in `bevy-ts/time` (`docs/native.md`, Standing for a Bevy spelling); scripts never
+write those names.
+
+```ts
+export function menu(time: ResMut<Time<Virtual>>, keys: Keys) {
+  if (keys.justPressed(KeyCode.Escape)) time.toggle();
+}
+```
+
+| `ResMut<Time<Virtual>>` | Bevy |
+|---|---|
+| `pause()`, `unpause()`, `toggle()` | `pause`, `unpause`, `toggle` |
+| `setRelativeSpeed(r)`, `setRelativeSpeedF64(r)` | `set_relative_speed`, `set_relative_speed_f64` |
+| `setMaxDelta(s)` | `set_max_delta` |
+| `setWrapPeriod(s)` | `set_wrap_period` |
+
+| `ResMut<Time<Fixed>>` | Bevy |
+|---|---|
+| `setTimestep(s)`, `setTimestepSeconds(s)`, `setTimestepHz(hz)` | `set_timestep`, `set_timestep_seconds`, `set_timestep_hz` |
+| `discardOverstep(s)` | `discard_overstep` |
+| `setWrapPeriod(s)` | `set_wrap_period` |
+
+A value Bevy asserts against throws, with Bevy's message, naming the clock and the method
+(`VirtualTime.setRelativeSpeed: tried to go back in time`), and leaves the clock as it was. So do
+negative or non-finite seconds. Not visible: `advance_by`, `advance_to`, `accumulate_overstep`
+(Bevy's, for tests), the constructors, and `Time<Real>`'s updates.
+
+A write lands at once, in place. Bevy reads the clocks in `First` and in the fixed loop, so a pause
+or a speed shows in the next frame's delta, and a timestep set in `FixedUpdate` in the next fixed
+step, as from a Rust system.
+
+A `ResMut` clock reads as its `Res` does, under the same property names, read live:
+`time.pause(); time.is_paused` is `true`. Each read is one call into Rust; `Res<Time<..>>` is the
+per-run value and makes none, so a system that reads many values and writes one can take both.
+
+A TS `pause()` is a game pause, the same as one from Rust: the editor's pause, step and resume
+leave it as it is.
 
 ## The editor's pause and a game's pause
 
@@ -144,11 +186,5 @@ commands.delayed().duration(3).write(Wave.of({ n: 2 }));
   held.
 - Queue entities are ordinary entities: `Query<[DelayedCommandQueue]>` (`bevy-ts/bevy`) reads
   `submit_at` in seconds; the queue itself is not visible, and TS cannot insert one.
-
-## Not yet built
-
-- Writing the clocks: `ResMut<Time<Virtual>>` (`pause`, `unpause`, `toggle`, `setRelativeSpeed`,
-  `setMaxDelta`) and `ResMut<Time<Fixed>>` (`setTimestep`, `setTimestepSeconds`,
-  `setTimestepHz`, `discardOverstep`). Waits on writable-native-params.
 
 Out of scope: `TimeUpdateStrategy`, `TimeSender`/`TimeReceiver`, `Time::advance_by`.

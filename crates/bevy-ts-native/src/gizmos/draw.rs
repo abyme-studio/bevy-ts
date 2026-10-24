@@ -440,14 +440,14 @@ fn call_setting<C: GizmoConfigGroup, const S: usize>(
 pub fn methods<C: GizmoConfigGroup>() -> Vec<MethodSpec> {
     let mut out: Vec<MethodSpec> = Entry::ALL
         .iter()
-        .map(|e| MethodSpec { name: e.ts().into(), args: e.args(), ret: Kind::Unit, call: e.call::<C>(), chain: e.builder(), of: None })
+        .map(|e| MethodSpec { name: e.ts().into(), args: e.args(), ret: Kind::Unit, call: e.call::<C>(), chain: e.builder(), of: None, getter: false })
         .collect();
     let mut seen = std::collections::HashSet::new();
     for (_, builder, settings) in builders() {
         for (s, args) in settings {
             // A setting of several primitive builders is declared once on their TS interface.
             if seen.insert((builder, s)) {
-                out.push(MethodSpec { name: s.ts().into(), args, ret: Kind::Unit, call: setting_call::<C>(s), chain: None, of: Some(builder) });
+                out.push(MethodSpec { name: s.ts().into(), args, ret: Kind::Unit, call: setting_call::<C>(s), chain: None, of: Some(builder), getter: false });
             }
         }
     }

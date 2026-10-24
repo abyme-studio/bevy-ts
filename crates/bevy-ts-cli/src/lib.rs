@@ -20,6 +20,7 @@ pub mod reader;
 pub mod rust_events;
 pub mod session;
 pub mod supervise;
+pub mod time;
 pub mod types;
 
 pub use bevy_ts::engine::{EngineIdentity, NativeIdentity};

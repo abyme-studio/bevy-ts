@@ -415,37 +415,26 @@ app.addSystems(Update, a).addSystems(PostUpdate, b);
 
 // ---------- stands_for ----------
 
-// Claims are process-wide, as the compile step reads them: these tests claim spellings no other
-// test of the binary writes (`ResMut<Time<Virtual>>` is time.rs's read-only case).
-#[derive(SystemParam)]
-pub struct FixedClock<'w> {
-    time: ResMut<'w, Time<Fixed>>,
-}
-
-#[export(ts = "FixedClock", module = "bevy-ts/test", stands_for = "ResMut<Time<Fixed>>")]
-impl FixedClock<'_> {
-    pub fn set_hz(&mut self, hz: f64) {
-        self.time.set_timestep_hz(hz);
-    }
-}
-
+// Claims are process-wide, as the compile step reads them: the clock claims are the engine's own
+// (`bevy_ts_cli::time`, every test that claims a clock adds it), and the others claim spellings no
+// other test of the binary writes.
 #[test]
 fn a_system_taking_res_mut_time_fixed_gets_the_claiming_export() {
     let body = r#"
 import type { Time, Fixed } from "bevy-ts";
-export function step(time: ResMut<Time<Fixed>>) { time.setHz(30); }
+export function step(time: ResMut<Time<Fixed>>) { time.setTimestepHz(30); }
 app.addSystems(Update, step);
 "#;
     let mut app = game("native-writes-claim", body, |app| {
-        app.ts_param::<FixedClock<'static>>();
+        app.add_plugins(bevy_ts_cli::time::ScriptTimePlugin);
     });
     assert_ne!(app.world().resource::<Time<Fixed>>().timestep().as_secs_f64(), 1.0 / 30.0);
     app.update();
     assert!((app.world().resource::<Time<Fixed>>().timestep().as_secs_f64() - 1.0 / 30.0).abs() < 1e-9);
-    assert_eq!(app.world().resource::<HostParams>().claimed("ResMut< Time<Fixed> >"), Some("FixedClock"));
+    assert_eq!(app.world().resource::<HostParams>().claimed("ResMut< Time<Fixed> >"), Some("FixedTime"));
     // `bevy-ts types` types the spelling as the export (bevy-ts declares `Time<Fixed>`).
     let dts = bevy_ts_cli::types::emit(app.world());
-    assert!(dts.contains("\"ResMut<Time<Fixed>>\": [Time<Fixed>, import(\"bevy-ts/test\").FixedClock];"), "{dts}");
+    assert!(dts.contains("\"ResMut<Time<Fixed>>\": [Time<Fixed>, import(\"bevy-ts/time\").FixedTime];"), "{dts}");
 }
 
 #[test]
@@ -453,11 +442,11 @@ fn an_unclaimed_spelling_reads_as_before() {
     let src = format!("{HEAD}import {{ Time, Real }} from \"bevy-ts\";\nexport function f(time: ResMut<Time<Real>>) {{}}\napp.addSystems(Update, f);\n");
     let dir = project("native-writes-unclaimed", &[("game.ts", &src)]);
     let mut app = app(&dir.join("game.ts"));
-    app.register_type::<Health>().register_type::<Armor>().ts_param::<FixedClock<'static>>();
+    app.register_type::<Health>().register_type::<Armor>().add_plugins(bevy_ts_cli::time::ScriptTimePlugin);
     let r = reload(&mut app, false);
-    // script-time's answer for a clock write, untouched by the claim of another clock.
-    assert!(r.errors.iter().any(|e| e.message.contains("read-only")), "{:?}", r.errors);
-    assert!(!r.errors.iter().any(|e| e.message.contains("FixedClock")), "{:?}", r.errors);
+    // script-time's answer for a clock TS cannot write, untouched by the claims of the others.
+    assert!(r.errors.iter().any(|e| e.message.contains("ResMut<Time<Real>> is not allowed")), "{:?}", r.errors);
+    assert!(!r.errors.iter().any(|e| e.message.contains("FixedTime")), "{:?}", r.errors);
 }
 
 #[derive(Resource)]

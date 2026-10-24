@@ -56,6 +56,12 @@ impl Probe<'_> {
     pub fn height(&self) -> Result<f32, String> {
         self.ground()
     }
+
+    /// A property: `probe.has_ground`, read live.
+    #[getter]
+    pub fn has_ground(&self) -> bool {
+        self.ground.is_some()
+    }
 }
 
 const SRC: &str = r#"import { app, Update } from "bevy-ts";
@@ -226,4 +232,42 @@ fn strings_cross_both_ways() {
         assert!(m.iter().any(|l| l == want), "{want:?} in {m:?}");
     }
     assert!(m.iter().any(|l| l.starts_with("too long: a string argument of 5000 bytes does not fit")), "{m:?}");
+}
+
+#[test]
+fn a_getter_reads_as_a_property() {
+    use bevy::remote::{RemoteMethodSystemId, RemoteMethods, RemotePlugin};
+    let src = r#"import { app, Update } from "bevy-ts";
+import type { Probe } from "bevy-ts/test";
+export function look(probe: Probe) {
+  console.log(`ground ${probe.has_ground} ${typeof Object.getOwnPropertyDescriptor(Object.getPrototypeOf(probe), "has_ground")?.get}`);
+  try { (probe as any).has_ground = false; console.log(`kept ${probe.has_ground}`); } catch (e) { console.log(`threw ${(e as Error).constructor.name}`); }
+}
+app.addSystems(Update, look);
+"#;
+    let dir = project("exported-getter", &[("game.ts", src)]);
+    let mut app = with_probe(&dir);
+    app.add_plugins(RemotePlugin::default());
+    bevy_ts_remote::add_methods(&mut app);
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let before = app.world().resource::<HostParams>().calls;
+    app.update();
+    // One read, one host call; the assignment has no setter, so a module (strict) throws.
+    assert_eq!(app.world().resource::<HostParams>().calls - before, 1);
+    app.world_mut().remove_resource::<Ground>();
+    updates(&mut app, 2);
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l == "ground true function"), "{m:?}");
+    assert!(m.iter().any(|l| l == "ground false function"), "the property reads live: {m:?}");
+    assert!(m.iter().any(|l| l == "threw TypeError"), "{m:?}");
+    // The handshake lists it as a property, not a method; the declaration as a readonly field.
+    let id = *app.world().resource::<RemoteMethods>().get("bevy-ts/hello").unwrap();
+    let RemoteMethodSystemId::Instant(id) = id else { panic!("hello is instant") };
+    let hello = app.world_mut().run_system_with(id, None).unwrap().unwrap();
+    let probe = hello["params"].as_array().unwrap().iter().find(|p| p["name"] == "Probe").unwrap();
+    assert_eq!(probe["properties"], serde_json::json!(["has_ground"]), "{probe}");
+    assert!(!probe["methods"].as_array().unwrap().iter().any(|m| m == "has_ground" || m == "hasGround"), "{probe}");
+    let dts = &app.world().resource::<HostParams>().declarations()["bevy-ts/test"];
+    assert!(dts.contains("  readonly has_ground: boolean;\n"), "{dts}");
 }
