@@ -177,7 +177,12 @@ export function spawnDoor(commands: Commands) {
 - It runs only when the trigger's current target is `e`, bubbling hops included: an observer on a
   parent runs, with `entity` the parent, when a `static propagate = true` event bubbles up from a
   child. As in Bevy, global observers (`addObserver`) run first for each hop.
+- `on.original` is the trigger's first target, the child in that case (Bevy's
+  `original_event_target`). It is `undefined` for a global event, as `entity` is.
+- The observers attached to a target are taken when the event is triggered, so triggering on `e`
+  and despawning it in one system still runs them, as does `On<Remove<C>>` when `e` is despawned.
 - It goes when `e` is despawned. A restart removes every one.
 - It follows its function across a reload: edit `onHit` and the next hit runs the new body. If
-  `onHit` is removed or renamed, its observers are removed with a warning.
+  `onHit` is removed or renamed, its observers are removed with a warning. If its first param
+  stops being an entity event, the reload fails, naming it.
 - A function whose first param is not an entity event fails the run that observes it.

@@ -187,18 +187,20 @@ pub trait BevyTsNativeExt {
     fn ts_module(&mut self, specifier: &str, js: &str, dts: &str) -> &mut Self;
 
     /// Lets TS read (`MessageReader<M>`) and write (`MessageWriter<M>`) the Rust message `M`, by
-    /// its reflect type path, payloads as JSON. Adds the message if it is not yet.
+    /// its reflect type path, payloads as JSON. Adds the message if it is not yet. The TS side
+    /// lands with the rest of openspec rust-events; until then this only registers the type data.
     fn ts_message<M>(&mut self) -> &mut Self
     where
         M: Message + FromReflect + TypePath + GetTypeRegistration;
 
-    /// Lets TS observe (`On<E>`) and trigger the Rust global event `E`.
+    /// Lets TS observe (`On<E>`) and trigger the Rust global event `E`. The TS side lands with the
+    /// rest of openspec rust-events.
     fn ts_event<E>(&mut self) -> &mut Self
     where
         E: for<'a> Event<Trigger<'a> = GlobalTrigger> + Reflect + FromReflect + TypePath + GetTypeRegistration;
 
     /// Lets TS observe (`On<E>`, `entity(e).observe`) and trigger the Rust entity event `E`,
-    /// bubbling as Bevy does.
+    /// bubbling as Bevy does. The TS side lands with the rest of openspec rust-events.
     fn ts_entity_event<E>(&mut self) -> &mut Self
     where
         E: EntityEvent + Reflect + FromReflect + TypePath + GetTypeRegistration,
