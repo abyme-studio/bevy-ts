@@ -37,10 +37,11 @@ claim() {
     scripts/slot.sh | scripts/slot.test.ts | .abyme/processes.ts) want slot; return ;;
     scripts/gen-protocol.sh) want protocol slot; return ;;
     scripts/gen-bevy-types.sh) want bevy slot; return ;;
-    # Benches, other teams' gates and the release's scripts: no gate step runs them.
+    # Benches, other teams' gates, the release's scripts and tools run by hand (pruning target/, the
+    # Linux font run in docker): no gate step runs them.
     scripts/animation-bench.sh | scripts/preview-bench.sh | scripts/sccache-bench.sh | scripts/target-bench.sh | scripts/levels-gate.sh \
       | scripts/systems-gate.sh | scripts/viewport-gate.sh | scripts/npm-await.sh | scripts/npm-lib.sh \
-      | scripts/npm-publish.sh | scripts/pack-npm.sh) want slot; return ;;
+      | scripts/npm-publish.sh | scripts/pack-npm.sh | scripts/prune-tests.sh | scripts/linux-fonts.sh) want slot; return ;;
     scripts/*.sh) want slot; full=$f; return ;;
     docs/* | README.md | .claude/* | .github/* | .gitignore | bench/* | .abyme/*) return ;;
     openspec/*) want openspec; return ;;

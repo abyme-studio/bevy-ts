@@ -83,6 +83,8 @@ Deno.test("a shared root or a path no step claims runs everything", async () => 
 Deno.test("a script runs its own step and slot.test.ts, not everything", async () => {
   assertEquals(await plan(["scripts/npm-await.sh"]), ["crates", "steps slot"]);
   assertEquals(await plan(["scripts/target-bench.sh"]), ["crates", "steps slot"]);
+  assertEquals(await plan(["scripts/prune-tests.sh"]), ["crates", "steps slot"]);
+  assertEquals(await plan(["scripts/linux-fonts.sh"]), ["crates", "steps slot"]);
   assertEquals(await plan(["scripts/gen-bevy-types.sh"]), ["crates", "steps bevy slot"]);
   assertEquals(await plan(["scripts/gen-protocol.sh"]), ["crates", "steps protocol slot"]);
   assertEquals(await plan(["scripts/affected-gate.sh", "scripts/affected-gate.test.ts"]), ["crates", "steps slot affected"]);

@@ -56,9 +56,9 @@ still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
   `examples/` also brings the crates whose tests run them.
 - **Scripts.** A script runs its own step and `slot.test.ts`, not everything: `gen-protocol.sh` the
   protocol check, `gen-bevy-types.sh` bevy-ts/bevy, `affected-gate.sh` and `native-gate.sh` the
-  gate's test. Benches (`target-bench.sh` among them), other teams' gates and the release's scripts
-  (`npm-*`, `pack-npm.sh`) run no gate step, so `slot.test.ts` alone. A script no rule names runs
-  everything.
+  gate's test. Benches (`target-bench.sh` among them), other teams' gates, the release's scripts
+  (`npm-*`, `pack-npm.sh`) and tools run by hand (`prune-tests.sh`, `linux-fonts.sh`) run no gate
+  step, so `slot.test.ts` alone. A script no rule names runs everything.
 - **Nothing** for `docs/`, `README.md`, `.claude/`, `.github/`, `.gitignore`, `bench/` and the rest of
   `.abyme/`.
 - **Everything** for `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, `.cargo/`, `protocol/`, and
