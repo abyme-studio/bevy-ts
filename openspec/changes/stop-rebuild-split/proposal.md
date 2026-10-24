@@ -32,7 +32,7 @@ None.
 - `crates/bevy-ts-v8`: `V8Backend` holds an optional spare `JsRuntime` and a retired one to drop; the inspector moves to the new runtime as today.
 - `crates/bevy-ts-tsx`: `restore::changed` answers the changed components per node; `write_back(world, root, nodes)`; the recomputed list next to `restore::derived`.
 - `crates/bevy-ts-levels`: `check_section` skips the levels in the `StopPlan`; `restore` writes back or respawns per node and stamps only respawned ones.
-- `crates/bevy-ts-cli/tests/stop_bench.rs`: times the rebuild's steps; `docs/research/stop-cost.md` gets the table.
+- `crates/bevy-ts-cli/tests/it/stop_bench.rs`: times the rebuild's steps; `docs/research/stop-cost.md` gets the table.
 - No protocol change. No new dependency.
 - Needs the operator's go, though lead@bevy-ts cleared the stage under the bevy delegation:
   - **A new mechanism: the spare engine.** One booted V8 runtime held in memory at all times under `bevy-ts dev`, a few MB. The boot takes about 9 ms in a later edit frame instead of in the Stop. The alternative is to boot it in the Stop as today.

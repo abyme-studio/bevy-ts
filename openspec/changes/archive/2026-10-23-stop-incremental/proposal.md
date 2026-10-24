@@ -39,7 +39,7 @@ None.
 - `crates/bevy-ts-levels`: the Stop plan (which roots are kept: file hashes against `applied`, no apply since the baseline, no callbacks, not a sidecar); `after_generation` and `after_restart` leave kept roots clean; stamping only the restored nodes.
 - `crates/bevy-ts-viewport`: `edit.rs` `stop()` plans before `generation::rebuild` and restores after `restore_open`.
 - No protocol change: `tsx_tree+watch` and `level+watch` report what was respawned, with the same messages.
-- Tests: tsx unit tests for `apply_at` and the scan; `crates/bevy-ts-viewport/tests/edit.rs` Stop scenarios; `stop_bench.rs` at 2k and 20k entities.
+- Tests: tsx unit tests for `apply_at` and the scan; `crates/bevy-ts-viewport/tests/it/edit.rs` Stop scenarios; `stop_bench.rs` at 2k and 20k entities.
 - Docs: `docs/viewport.md` (what Stop keeps), `docs/native.md` (no `Added` for kept entities), `docs/research/stop-cost.md` (the measurements).
 - Builds on play-stop (play-snapshot), which lands first.
 - Needs the operator's go:
