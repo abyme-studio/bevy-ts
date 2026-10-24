@@ -597,6 +597,9 @@ export declare class Lightmap extends Component {
 export declare const MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt: Reflected<{ value: string | null }>;
 export type MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt = InstanceType<typeof MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt>;
 
+export declare const MeshMaterial3dExtendedMaterialStandardMaterialFade: Reflected<{ value: string | null }>;
+export type MeshMaterial3dExtendedMaterialStandardMaterialFade = InstanceType<typeof MeshMaterial3dExtendedMaterialStandardMaterialFade>;
+
 export declare const MeshMaterial3dStandardMaterial: Reflected<{ value: string | null }>;
 export type MeshMaterial3dStandardMaterial = InstanceType<typeof MeshMaterial3dStandardMaterial>;
 
