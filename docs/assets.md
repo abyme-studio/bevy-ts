@@ -8,14 +8,14 @@ The code is `crates/bevy-ts/src/reflect_asset.rs`.
 
 ```tsx
 import { assets } from "bevy-ts";
-import { Image, MeshMaterial3d, StandardMaterial } from "bevy-ts/bevy";
+import { MeshMaterial3dStandardMaterial, StandardMaterial } from "bevy-ts/bevy";
 
 const mat = assets.add(StandardMaterial, { base_color: "#ffd7a8", unlit: true });
 assets.set(mat, { perceptual_roughness: 0.3 });
 assets.get(mat)?.perceptual_roughness; // 0.3
 
 <entity>
-  <MeshMaterial3d value={mat} />
+  <MeshMaterial3dStandardMaterial value={mat} />
 </entity>
 ```
 
@@ -40,7 +40,7 @@ adds its assets: their refs were handed out.
 ## Refs in slots
 
 A ref goes in any `Handle<T>` slot the reflected writer reaches: a TSX prop
-(`<MeshMaterial3d value={mat} />`), a field of another asset
+(`<MeshMaterial3dStandardMaterial value={mat} />`), a field of another asset
 (`assets.add(StandardMaterial, { base_color_texture: img })`) or a script's reflected insert. A ref
 of another asset type fails naming both types. A handle a script made reads back as its ref; any
 other handle reads as its path, or `null`.

@@ -9,12 +9,13 @@ use bevy_ts::generation::ReloadStatus;
 use common::*;
 use std::path::{Path, PathBuf};
 
-const HEAD: &str = "import { app, asset, assets, Startup, Update } from \"bevy-ts\";\nimport { MeshMaterial3d } from \"bevy-ts/bevy\";\nconst StandardMaterial = asset(\"bevy_pbr::pbr_material::StandardMaterial\");\n";
+const HEAD: &str = "import { app, asset, assets, Startup, Update } from \"bevy-ts\";\nimport { MeshMaterial3dStandardMaterial } from \"bevy-ts/bevy\";\nconst StandardMaterial = asset(\"bevy_pbr::pbr_material::StandardMaterial\");\n";
 
 fn assets_app(entry: &Path) -> App {
     let mut app = app(entry);
     app.add_plugins(AssetPlugin::default()).init_asset::<Image>().init_asset::<StandardMaterial>();
     app.register_asset_reflect::<Image>().register_asset_reflect::<StandardMaterial>();
+    app.register_type::<MeshMaterial3d<StandardMaterial>>();
     app
 }
 
@@ -76,7 +77,7 @@ fn a_ref_from_a_render_goes_on_a_mesh_entity() {
         r##"
 app.scene("s", () => {
   const mat = assets.add(StandardMaterial, { unlit: true });
-  return <entity name="it"><MeshMaterial3d value={mat} /></entity>;
+  return <entity name="it"><MeshMaterial3dStandardMaterial value={mat} /></entity>;
 });
 "##,
     );
@@ -93,8 +94,8 @@ fn equal_values_share_one_material() {
         r##"
 app.scene("s", () => (
   <entity name="root">
-    <entity name="a"><MeshMaterial3d value={StandardMaterial.of({ unlit: true, base_color: "#fff" })} /></entity>
-    <entity name="b"><MeshMaterial3d value={StandardMaterial.of({ base_color: "#fff", unlit: true })} /></entity>
+    <entity name="a"><MeshMaterial3dStandardMaterial value={StandardMaterial.of({ unlit: true, base_color: "#fff" })} /></entity>
+    <entity name="b"><MeshMaterial3dStandardMaterial value={StandardMaterial.of({ base_color: "#fff", unlit: true })} /></entity>
   </entity>
 ));
 "##,
