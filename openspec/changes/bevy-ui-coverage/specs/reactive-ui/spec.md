@@ -20,19 +20,23 @@
 - **THEN** the load fails naming `gridTemplateColums`
 
 ### Requirement: Events from bevy_picking, batched
-`onPointerClick`, `onPointerPress`, `onPointerRelease`, `onPointerOver`, `onPointerOut`, `onPointerEnter`, `onPointerLeave`, `onPointerMove`, `onPointerCancel`, `onPointerDragStart`, `onPointerDrag`, `onPointerDragEnd`, `onPointerDragEnter`, `onPointerDragOver`, `onPointerDragLeave`, `onPointerDragDrop` and `onPointerScroll` on any `<entity>` or UI element SHALL register handler ids with Rust, which SHALL observe the matching Bevy 0.20 picking event on that entity and queue it; each prop is an entity-local observer, as `on(...)` is in BSN (operator ruling 2026-10-20). The prop name is `on` plus the Bevy event's name. Queued events SHALL be delivered in the same per-frame host call as subscription changes, in arrival order. A handler SHALL receive the event (entity, pointer position, button) and a `ctx` with `commands` and `frame`; drag events add `delta` and `distance`, drag-and-drop events add `dropped` (the dragged entity), and `onPointerScroll` adds `unit` (`"line"` or `"pixel"`), `x` and `y`. Picking events SHALL NOT bubble.
+`onPointerClick`, `onPointerPress`, `onPointerRelease`, `onPointerOver`, `onPointerOut`, `onPointerEnter`, `onPointerLeave`, `onPointerMove`, `onPointerCancel`, `onPointerDragStart`, `onPointerDrag`, `onPointerDragEnd`, `onPointerDragEnter`, `onPointerDragOver`, `onPointerDragLeave`, `onPointerDragDrop` and `onPointerScroll` on any `<entity>` or UI element SHALL register handler ids with Rust, which SHALL observe the matching Bevy 0.20 picking event on that entity and queue it; each prop is an entity-local observer, as `on(...)` is in BSN (operator ruling 2026-10-20). The prop name is `on` plus the Bevy event's name. Events SHALL bubble up `ChildOf` as Bevy's do: a handler SHALL also run for an event whose original target is a descendant of its entity, including a mesh of a scene spawned under a `WorldAssetRoot`. Queued events SHALL be delivered in the same per-frame host call as subscription changes, in arrival order. A handler SHALL receive the event (`entity`, the entity whose handler runs; `target`, the entity the pointer hit; pointer position; button) and a `ctx` with `commands` and `frame`; click and press add `count`, `onPointerMove` adds `delta`, drag events add `delta` and `distance` as Bevy gives them, `onPointerDragEnter`, `onPointerDragOver` and `onPointerDragLeave` add `dragged`, `onPointerDragDrop` adds `dropped` (the dragged entity), and `onPointerScroll` adds `unit` (`"line"` or `"pixel"`), `x` and `y`. A handler SHALL NOT be able to stop propagation: it runs after Bevy's walk.
 
 #### Scenario: Three clicks in one frame
 - **WHEN** three buttons are clicked in one frame
 - **THEN** one host call runs the three handlers in click order
 
+#### Scenario: A click bubbles to its parent's handler
+- **WHEN** an entity with `onPointerClick` has a child entity, and the child is clicked
+- **THEN** the parent's handler runs with `entity` the parent and `target` the child
+
+#### Scenario: A click on a glTF scene's mesh
+- **WHEN** an entity carries `WorldAssetRoot("models/Fox.glb#Scene0")` and `onPointerClick`, and a mesh of the spawned fox is clicked
+- **THEN** the root's handler runs once, with `entity` the root and `target` the mesh's entity
+
 #### Scenario: A drop
 - **WHEN** an entity is dragged onto a `<node onPointerDragDrop={h}>`
 - **THEN** `h` runs once with `dropped` the dragged entity
-
-#### Scenario: A child's click
-- **WHEN** a `<node onPointerClick={h}>` has a child `<node>` and the child is clicked
-- **THEN** `h` does not run
 
 ## ADDED Requirements
 

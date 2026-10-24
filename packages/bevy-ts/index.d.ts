@@ -712,6 +712,12 @@ export type ReadValue<C> = ReadView<C>;
 export interface NodeRef {
   /** The component's current value; inside a binding, the binding re-runs when it changes. */
   get<C extends abstract new () => unknown>(c: C): ReadValue<InstanceType<C>>;
+  /**
+   * Whether the entity carries component `C`, a marker (`Pressed`, `Checked`, `InteractionDisabled`)
+   * or any other; inside a binding, the binding re-runs when that changes. Rust compares presence
+   * each frame, without calling JS.
+   */
+  has(c: abstract new (...a: never) => unknown): boolean;
   /** The entity, once mounted. */
   readonly entity: Entity | null;
 }

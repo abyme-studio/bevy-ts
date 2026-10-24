@@ -15,6 +15,10 @@
 - **WHEN** a scene describes `<WorldAssetRoot path="models/Fox.glb#Scene0" />`
 - **THEN** the scene fails with an error naming the element's file and line and saying `WorldAssetRoot` takes `value`
 
+#### Scenario: An input is typed
+- **WHEN** a project writes `<input initialValue="" onKeyboardInput={(e) => e.value.length} />`
+- **THEN** `tsc` reports no errors, and `<input value="x" />` or `onKeyboardInput={(e) => e.foo}` is a type error
+
 #### Scenario: A widget is typed
 - **WHEN** a project writes `<checkbox checked={() => on()} onValueChange={(e) => e.value} />`
 - **THEN** `tsc` reports no errors, and `<checkbox onChange={f} />` or `onValueChange={(e) => e.key}` on a `<checkbox>` is a type error

@@ -4,9 +4,37 @@
 import type { ColorValue, Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
 import type { AlphaMode } from "bevy-ts/material";
 
+/** Bevy 0.20's picking events, each an `on` prop on any `<entity>` or UI element. */
+export type PointerKind =
+  | "PointerClick" | "PointerPress" | "PointerRelease" | "PointerOver" | "PointerOut" | "PointerEnter" | "PointerLeave" | "PointerMove"
+  | "PointerCancel" | "PointerDragStart" | "PointerDrag" | "PointerDragEnd" | "PointerDragEnter" | "PointerDragOver" | "PointerDragLeave"
+  | "PointerDragDrop" | "PointerScroll";
+
+/** The fields Bevy adds to some picking events, by kind. */
+interface PointerExtras {
+  PointerClick: { readonly count: number };
+  PointerPress: { readonly count: number };
+  /** How far the pointer moved since the last event. */
+  PointerMove: { readonly delta: readonly [number, number] };
+  /** `delta` since the last drag event, `distance` since the drag started. */
+  PointerDrag: { readonly delta: readonly [number, number]; readonly distance: readonly [number, number] };
+  PointerDragEnd: { readonly distance: readonly [number, number] };
+  /** The entity being dragged over this one. */
+  PointerDragEnter: { readonly dragged: Entity };
+  PointerDragOver: { readonly dragged: Entity };
+  PointerDragLeave: { readonly dragged: Entity };
+  /** The entity dropped on this one. */
+  PointerDragDrop: { readonly dropped: Entity };
+  PointerScroll: { readonly unit: "line" | "pixel"; readonly x: number; readonly y: number };
+}
+
+/** One picking event's payload. */
+export type PointerEventOf<K extends PointerKind> = PointerEventBase & { readonly kind: K } & (K extends keyof PointerExtras ? PointerExtras[K] : {});
+/** Any picking event's payload. */
+export type PointerEvent = { [K in PointerKind]: PointerEventOf<K> }[PointerKind];
+
 /** What a picking handler receives: the event, and the call's `commands` and `frame`. */
-export interface PointerEvent {
-  readonly kind: "PointerClick" | "PointerPress" | "PointerRelease" | "PointerOver" | "PointerOut";
+interface PointerEventBase {
   /** The entity whose handler runs. */
   readonly entity: Entity;
   /**
@@ -17,12 +45,12 @@ export interface PointerEvent {
   readonly target: Entity;
   /** The pointer's position in its render target. */
   readonly position: readonly [number, number];
-  /** For click, press and release. */
+  /** For click, press, release and the drag events. */
   readonly button: "primary" | "secondary" | "middle" | null;
   readonly commands: Commands;
   readonly frame: number;
 }
-export type PointerHandler = (event: PointerEvent) => void;
+export type PointerHandler<K extends PointerKind = PointerKind> = (event: PointerEventOf<K>) => void;
 
 /** What every `<input>` handler receives besides its event: the call's `commands` and `frame`. */
 interface InputEventBase {
@@ -90,11 +118,39 @@ export interface EntityProps {
   /** Components and child entities. */
   children?: Child;
   /** Entity-local observers of Bevy 0.20's picking events; they bubble up `ChildOf`, as Bevy's do. */
-  onPointerClick?: PointerHandler;
-  onPointerPress?: PointerHandler;
-  onPointerRelease?: PointerHandler;
-  onPointerOver?: PointerHandler;
-  onPointerOut?: PointerHandler;
+  onPointerClick?: PointerHandler<"PointerClick">;
+  onPointerPress?: PointerHandler<"PointerPress">;
+  onPointerRelease?: PointerHandler<"PointerRelease">;
+  onPointerOver?: PointerHandler<"PointerOver">;
+  onPointerOut?: PointerHandler<"PointerOut">;
+  onPointerEnter?: PointerHandler<"PointerEnter">;
+  onPointerLeave?: PointerHandler<"PointerLeave">;
+  onPointerMove?: PointerHandler<"PointerMove">;
+  onPointerCancel?: PointerHandler<"PointerCancel">;
+  onPointerDragStart?: PointerHandler<"PointerDragStart">;
+  onPointerDrag?: PointerHandler<"PointerDrag">;
+  onPointerDragEnd?: PointerHandler<"PointerDragEnd">;
+  onPointerDragEnter?: PointerHandler<"PointerDragEnter">;
+  onPointerDragOver?: PointerHandler<"PointerDragOver">;
+  onPointerDragLeave?: PointerHandler<"PointerDragLeave">;
+  onPointerDragDrop?: PointerHandler<"PointerDragDrop">;
+  onPointerScroll?: PointerHandler<"PointerScroll">;
+}
+
+/** `Activate`: a `<button>` was clicked, or pressed Enter or Space while focused. */
+export interface ActivateEvent {
+  readonly kind: "Activate";
+  readonly entity: Entity;
+  readonly commands: Commands;
+  readonly frame: number;
+}
+
+/** `<button>`: a `<node>` with Bevy's `Button`. */
+export interface ButtonProps extends NodeProps {
+  /** Entity-local observer of Bevy's `Activate`, raised on click and on Enter or Space while focused; not while `disabled`. */
+  onActivate?: (event: ActivateEvent) => void;
+  /** `ActivateOnPress`: activate on press rather than on release. */
+  activateOnPress?: Bindable<boolean>;
 }
 
 /** A length: a number of logical pixels, or `px(8)`, `percent(50)`, `"auto"`, `"2rem"`... */
@@ -202,6 +258,8 @@ export interface NodeProps extends EntityProps {
   transform?: Bindable<UiTransform>;
   /** `UiTargetCamera`: the camera a root UI element draws on, written once the ref mounts. Root elements only. */
   camera?: NodeRef | Entity;
+  /** `InteractionDisabled` while true: Bevy's widgets ignore pointer and keyboard input. */
+  disabled?: Bindable<boolean>;
 }
 
 /** The text props Bevy applies per span (`TextFont`, `TextColor`, decorations). */
@@ -598,7 +656,7 @@ export declare namespace JSX {
     mesh: MeshProps;
     material: MaterialProps | ScriptMaterialProps;
     node: NodeProps & KeyAttribute;
-    button: NodeProps & KeyAttribute;
+    button: ButtonProps & KeyAttribute;
     text: TextProps & KeyAttribute;
     span: SpanProps & KeyAttribute;
     image: ImageProps & KeyAttribute;

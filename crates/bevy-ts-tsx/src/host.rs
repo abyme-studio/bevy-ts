@@ -11,6 +11,7 @@ use crate::tree::{BindTarget, FieldState, Provenance, Subscription, TsxNode, Tsx
 use crate::ui::UiKind;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::query::QueryBuilder;
+use bevy::ecs::reflect::ReflectComponent;
 use bevy::prelude::*;
 use bevy_ts::backend::{ScriptError, SourceLocation};
 use bevy_ts::components::TsComponents;
@@ -92,7 +93,43 @@ fn key(bits: Option<u64>) -> Option<Option<Entity>> {
     }
 }
 
+/// A `has(C)` pair's component: a native-layout one, or any reflected component by type path or
+/// short type path (markers such as `Pressed` have no layout). `None` while the world has not
+/// registered it, which no entity can then carry.
+fn presence_component(world: &World, name: &str) -> Option<ComponentId> {
+    if let Some((id, _)) = component(world, name) {
+        return Some(id);
+    }
+    let registry = world.resource::<AppTypeRegistry>().read();
+    let reg = registry.get_with_type_path(name).or_else(|| registry.get_with_short_type_path(name))?;
+    world.components().get_id(reg.type_id())
+}
+
+/// As [`presence_component`], registering a reflected component the world has not seen yet, so
+/// the pair has an id to watch before any entity carries it.
+fn presence_component_mut(world: &mut World, name: &str) -> Option<ComponentId> {
+    if let Some(id) = presence_component(world, name) {
+        return Some(id);
+    }
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    let reg = registry.get_with_type_path(name).or_else(|| registry.get_with_short_type_path(name))?;
+    let rc = reg.data::<ReflectComponent>()?;
+    Some(rc.register_component(world))
+}
+
+/// Whether the entity is alive and carries the component.
+fn present(world: &World, e: Option<Entity>, id: Option<ComponentId>) -> bool {
+    match (e.and_then(|e| world.get_entity(e).ok()), id) {
+        (Some(em), Some(id)) => em.contains_id(id),
+        _ => false,
+    }
+}
+
 fn read_pair(world: &World, e: Option<Entity>, name: &str) -> Value {
+    if let Some(c) = name.strip_prefix('?') {
+        return Value::Bool(present(world, e, presence_component(world, c)));
+    }
     let Some((id, _)) = component(world, name) else { return Value::Null };
     match target(world, e, id) {
         Some(t) => read(world, t, name),
@@ -130,6 +167,13 @@ fn frame_inner(world: &mut World) {
     let now = world.read_change_tick();
     let mut changed = Vec::new();
     for ((e, name), sub) in &reactive.subs {
+        // A `has` pair: one archetype lookup, the same order of cost as a tick read.
+        if let Some(was) = sub.present {
+            if present(world, *e, Some(sub.id)) != was {
+                changed.push((*e, name.clone()));
+            }
+            continue;
+        }
         let moved = match target(world, *e, sub.id).and_then(|t| world.get_entity(t).ok()) {
             Some(em) => em.get_change_ticks_by_id(sub.id).is_none_or(|t| t.is_changed(sub.last, now)),
             // Despawned (or the resource removed): tell JS once (null), then stop watching.
@@ -312,6 +356,9 @@ fn deliver(world: &mut World, pairs: &[(Option<Entity>, String)]) -> Vec<(Option
             tree.reactive.subs.remove(&(*e, name.clone()));
         } else if let Some(s) = tree.reactive.subs.get_mut(&(*e, name.clone())) {
             s.last = now;
+            if s.present.is_some() {
+                s.present = v.as_bool();
+            }
         }
     }
     values
@@ -330,9 +377,20 @@ fn apply(world: &mut World, r: Response) -> Vec<(Option<Entity>, String)> {
     }
     for (bits, name) in &r.subscribe {
         let Some(e) = key(*bits) else { continue };
+        if let Some(c) = name.strip_prefix('?') {
+            match presence_component_mut(world, c) {
+                Some(id) => {
+                    // JS holds the value delivered this frame, so it is the presence now.
+                    let was = present(world, e, Some(id));
+                    world.resource_mut::<TsxTree>().reactive.subs.insert((e, name.clone()), Subscription { id, last: now, present: Some(was) });
+                }
+                None => log_error(world, format!("ref.has({c}): no registered component is named {c}"), None),
+            }
+            continue;
+        }
         match component(world, name) {
             Some((id, _)) => {
-                world.resource_mut::<TsxTree>().reactive.subs.insert((e, name.clone()), Subscription { id, last: now });
+                world.resource_mut::<TsxTree>().reactive.subs.insert((e, name.clone()), Subscription { id, last: now, present: None });
             }
             None => log_error(world, format!("ref.get({name}): tsx reads components with a native layout (TS components, Transform)"), None),
         }

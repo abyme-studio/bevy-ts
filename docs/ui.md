@@ -152,6 +152,47 @@ element and `<entity>` takes the picking events, which bubble as Bevy's do
 ([picking.md](picking.md)). A handler runs in the frame's one host call, in arrival order, and gets
 the event with the call's `commands` and `frame`.
 
+| Prop | Adds to `{ kind, entity, target, position, button }` |
+|---|---|
+| `onPointerClick`, `onPointerPress` | `count` |
+| `onPointerRelease`, `onPointerOver`, `onPointerOut`, `onPointerEnter`, `onPointerLeave`, `onPointerCancel`, `onPointerDragStart` | nothing |
+| `onPointerMove` | `delta` |
+| `onPointerDrag` | `delta`, `distance` |
+| `onPointerDragEnd` | `distance` |
+| `onPointerDragEnter`, `onPointerDragOver`, `onPointerDragLeave` | `dragged` |
+| `onPointerDragDrop` | `dropped` |
+| `onPointerScroll` | `unit` (`"line"` or `"pixel"`), `x`, `y` |
+
+Drags work on any picked entity: a UI node, a mesh, or a glTF scene's root, which hears a drag on
+its meshes as it hears a click. As in Bevy, a drag starts on the first move while a button is
+down, with no threshold; a game that wants one ignores `onPointerDrag` until `distance` passes it.
+
+`<button onActivate>` hears Bevy's `Activate`: a click, or Enter or Space while the button has
+focus. It does not bubble. `activateOnPress` (`ActivateOnPress`) activates on press rather than
+release. `disabled` on any UI element inserts `InteractionDisabled` while true: Bevy's widgets
+then ignore pointer and keys, and `onActivate` does not run.
+
+```tsx
+<button onActivate={({ commands }) => start(commands)} disabled={() => !ready()}>
+  <text>Start</text>
+</button>
+```
+
+## Reading markers
+
+`ref.has(C)` is whether the entity carries `C`, a marker included (`Pressed`, `Hovered`,
+`InteractionDisabled`; later `Checked`). In a binding it re-runs when that changes. Rust compares
+presence after the bevy-ts stages each frame, without calling JS, so a quiet frame costs one
+archetype lookup per read and no host call.
+
+```tsx
+const b = ref();
+<button ref={b} background={() => (b.has(Pressed) ? "#246" : "#36c")} />
+```
+
+A `has` read stays watched while the component is absent: absence is its value. It works in UI
+prop bindings, not in a bound component field.
+
 ## `<input>`
 
 A one-line text field: Bevy 0.20's `TextInput`. Focus, typing, selection, paste and Escape are

@@ -25,9 +25,15 @@ const INHERITED = ["size", "color", "font", "weight", "italic", "lineHeight", "l
 /** Props every entity-making element takes besides its components. */
 const PICKING = /^on[A-Z]/;
 /** `on` plus a Bevy 0.20 picking event's name: an entity-local observer (operator ruling 2026-10-20). */
-const POINTER_EVENTS = new Set(["PointerClick", "PointerPress", "PointerRelease", "PointerOver", "PointerOut"]);
+const POINTER_EVENTS = new Set([
+  "PointerClick", "PointerPress", "PointerRelease", "PointerOver", "PointerOut", "PointerEnter", "PointerLeave", "PointerMove",
+  "PointerCancel", "PointerDragStart", "PointerDrag", "PointerDragEnd", "PointerDragEnter", "PointerDragOver", "PointerDragLeave",
+  "PointerDragDrop", "PointerScroll",
+]);
 /** `<input>`'s own events: Bevy's `TextEditChange` and `KeyboardInput`, and `Submit` (Enter) and `Cancel` (Escape). */
 const INPUT_EVENTS = new Set(["TextEditChange", "KeyboardInput", "Submit", "Cancel"]);
+/** Events only some elements raise, beside the pointer events every one takes: Bevy triggers each on that widget. */
+const ELEMENT_EVENTS = { input: INPUT_EVENTS, button: new Set(["Activate"]) };
 
 /** Marks `Show` and `For`: control flow, described as slots rather than called as prefabs. */
 const CONTROL = Symbol.for("bevy-ts.control");
@@ -543,6 +549,22 @@ class NodeRef {
     if (RowInstance) return RowInstance.site.read(RowInstance, this.resolved, C);
     return ctx.read(this.resolved, C);
   }
+  /**
+   * Whether the entity carries component `C` (a marker such as `Pressed` included); inside a
+   * binding, the binding re-runs when that changes. Rust compares presence each frame, no JS.
+   */
+  has(C) {
+    if (typeof C !== "function" || typeof C.componentName !== "string") {
+      throw new TypeError(`ref.has(C): ${String(C)} is not a component`);
+    }
+    untrackedRead(`ref.has(${C.componentName})`);
+    if (RowInstance) throw new Error(`ref.has(${C.componentName}) in a bound component field: bind a UI prop instead, which Rust watches by presence`);
+    this.src.track();
+    if (this.resolved === null) throw PENDING;
+    const ctx = Ctx;
+    if (!ctx) throw new Error(`ref.has(${C.componentName}) outside a scene or binding`);
+    return ctx.readPresence(this.resolved, C);
+  }
 }
 
 /** A node ref: unbound until an element takes it as `ref`, or wrapping an `Entity`. */
@@ -606,9 +628,12 @@ function requestFlush(ctx) {
 }
 
 class Pair {
-  constructor(entity, C) {
+  /** `presence`: a `has(C)` read, whose value is whether the entity carries `C`; Rust names it `?<name>`. */
+  constructor(entity, C, presence = false) {
     this.entity = entity;
     this.C = C;
+    this.presence = presence;
+    this.name = presence ? `?${C.componentName}` : C.componentName;
     this.src = new Source();
     this.has = false;
     this.value = undefined;
@@ -679,6 +704,22 @@ export class TsxContext {
     let p = this.pairs.get(key);
     if (!p) {
       p = new Pair(entity, C);
+      this.pairs.set(key, p);
+    }
+    p.src.track();
+    if (!p.has) {
+      this.needs.add(p);
+      throw PENDING;
+    }
+    return p.value;
+  }
+
+  /** Whether an entity carries `C`, as last delivered; tracked like `read`. Rust compares presence each frame. */
+  readPresence(entity, C) {
+    const key = `${entity}|?${C.componentName}`;
+    let p = this.pairs.get(key);
+    if (!p) {
+      p = new Pair(entity, C, true);
       this.pairs.set(key, p);
     }
     p.src.track();
@@ -794,12 +835,12 @@ export class TsxContext {
           const key = `${entity}|${name}`;
           const p = this.pairs.get(key);
           if (p) {
-            p.value = json === null ? undefined : componentValue(p.C, json);
+            p.value = p.presence ? json === true : json === null ? undefined : componentValue(p.C, json);
             p.has = true;
             this.needs.delete(p);
             p.src.notify();
           }
-          const b = this.rowWaiting.get(entity);
+          const b = name[0] === "?" ? undefined : this.rowWaiting.get(entity);
           if (b) {
             const C = this.byName.get(name);
             b.own[name] = json === null ? undefined : componentValue(C, json, true);
@@ -886,8 +927,8 @@ export class TsxContext {
     const unsubscribe = [];
     for (const [key, p] of this.pairs) {
       const watched = p.src.observers.size > 0;
-      if (watched && !p.watched) subscribe.push([p.entity, p.C.componentName]);
-      if (!watched && p.watched) unsubscribe.push([p.entity, p.C.componentName]);
+      if (watched && !p.watched) subscribe.push([p.entity, p.name]);
+      if (!watched && p.watched) unsubscribe.push([p.entity, p.name]);
       p.watched = watched;
       if (!watched && !this.needs.has(p)) this.pairs.delete(key);
     }
@@ -903,7 +944,7 @@ export class TsxContext {
       unmounts: this.unmounts.splice(0),
       subscribe,
       unsubscribe,
-      needs: [...this.needs].map((p) => [p.entity, p.C.componentName]),
+      needs: [...this.needs].map((p) => [p.entity, p.name || p.C.componentName]),
       sites: this.siteReads.splice(0),
       errors: this.errors.splice(0),
     };
@@ -1441,9 +1482,9 @@ function describeEntity(el, key, type, parentType) {
     const v = el.props[k];
     if (v === undefined || !PICKING.test(k)) continue;
     const event = k.slice(2);
-    const input = el.type === "input" && INPUT_EVENTS.has(event);
-    if (!POINTER_EVENTS.has(event) && !input) {
-      const known = el.type === "input" ? [...POINTER_EVENTS, ...INPUT_EVENTS] : [...POINTER_EVENTS];
+    const own = ELEMENT_EVENTS[el.type];
+    if (!POINTER_EVENTS.has(event) && !(own && own.has(event))) {
+      const known = [...POINTER_EVENTS, ...(own || [])];
       throw located(`<${typeName(el.type)} ${k}>: no such event; use ${known.map((e) => `on${e}`).join(", ")}`, el.source);
     }
     if (typeof v !== "function") throw located(`<${typeName(el.type)} ${k}> takes a function`, el.source);
