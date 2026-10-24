@@ -28,7 +28,7 @@ use bevy::ecs::system::{SystemAccess, SystemMeta, SystemParam, SystemParamItem, 
 use bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell;
 use bevy::prelude::*;
 use std::any::Any;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::sync::{Mutex, OnceLock};
 
@@ -94,6 +94,16 @@ impl Kind {
             Kind::Option(k) => format!("{} | undefined", k.ts_out()),
             Kind::Str => "string".into(),
             Kind::Unit => "void".into(),
+        }
+    }
+
+    /// Whether this kind's TS type names `Entity`, which the declarations import from `bevy-ts`.
+    fn names_entity(&self) -> bool {
+        match self {
+            Kind::Entity => true,
+            Kind::Record(_, fields) => fields.iter().any(|(_, k)| k.names_entity()),
+            Kind::Option(k) => k.names_entity(),
+            _ => false,
         }
     }
 
@@ -737,14 +747,27 @@ impl HostParams {
 
     /// TS declarations of every param, grouped by module: the records and enums the module's
     /// params use, once each, then the params.
+    /// Each module's declarations of its params and the records they use, with the import of
+    /// what they name from `bevy-ts`.
     pub fn declarations(&self) -> BTreeMap<&'static str, String> {
         let mut types: BTreeMap<&'static str, BTreeMap<&'static str, String>> = BTreeMap::new();
         let mut params: BTreeMap<&'static str, String> = BTreeMap::new();
+        let mut entity: BTreeSet<&'static str> = BTreeSet::new();
         for r in &self.params {
             named_types(&r.spec, types.entry(r.spec.module).or_default());
             params.entry(r.spec.module).or_default().push_str(&declaration(&r.spec));
+            let kinds = r.spec.methods.iter().flat_map(|m| m.args.iter().filter_map(|a| if let ArgSpec::Value(_, k) = a { Some(k) } else { None }).chain([&m.ret]));
+            if kinds.into_iter().any(Kind::names_entity) {
+                entity.insert(r.spec.module);
+            }
         }
-        params.into_iter().map(|(m, p)| (m, types.remove(m).unwrap_or_default().into_values().collect::<String>() + &p)).collect()
+        params
+            .into_iter()
+            .map(|(m, p)| {
+                let import = if entity.contains(m) { "import type { Entity } from \"bevy-ts\";\n" } else { "" };
+                (m, format!("{import}{}{p}", types.remove(m).unwrap_or_default().into_values().collect::<String>()))
+            })
+            .collect()
     }
 }
 

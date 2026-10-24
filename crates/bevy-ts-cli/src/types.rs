@@ -455,10 +455,13 @@ pub fn emit_modules(world: &World) -> String {
     }
     for (module, decls) in modules {
         let _ = writeln!(s, "declare module {module:?} {{");
-        if !decls.contains("import type") {
-            s.push_str("  import type { Entity } from \"bevy-ts\";\n");
+        // The module's own declarations and its params' each import what they name from
+        // `bevy-ts`; one import of them all, as two imports of a name collide.
+        let (imports, rest) = bevy_ts_imports(&decls);
+        if !imports.is_empty() {
+            let _ = writeln!(s, "  import type {{ {} }} from \"bevy-ts\";", imports.into_iter().collect::<Vec<_>>().join(", "));
         }
-        for line in decls.lines() {
+        for line in rest {
             // Already ambient inside `declare module`.
             let _ = writeln!(s, "  {}", line.replacen("export declare ", "export ", 1));
         }
@@ -473,6 +476,21 @@ pub fn emit_modules(world: &World) -> String {
 /// Bevy generics registered at their default type argument, named as Bevy code writes them:
 /// `AudioPlayer`, not `AudioPlayerAudioSource`.
 const DEFAULT_ARGUMENTS: &[(&str, &str)] = &[("AudioPlayer<AudioSource>", "AudioPlayer")];
+
+/// The names `decls` imports from `bevy-ts` with `import type { .. } from "bevy-ts";` lines, and
+/// its other lines.
+fn bevy_ts_imports(decls: &str) -> (BTreeSet<&str>, Vec<&str>) {
+    let mut names = BTreeSet::new();
+    let mut rest = Vec::new();
+    for line in decls.lines() {
+        let list = line.trim().strip_prefix("import type {").and_then(|l| l.strip_suffix("} from \"bevy-ts\";"));
+        match list {
+            Some(list) => names.extend(list.split(',').map(str::trim).filter(|n| !n.is_empty())),
+            None => rest.push(line),
+        }
+    }
+    (names, rest)
+}
 
 /// Every reflected component (and layout-tier resource) with a TS identifier: its short name,
 /// prefixed by its crate when two types share one. Sorted by type path.
@@ -816,6 +834,19 @@ mod tests {
         assert!(out.contains("export interface RayMeshHit {"), "{out}");
         assert!(out.contains("export type RayCastVisibility = \"VisibleInView\" | \"Visible\" | \"Any\";"), "{out}");
         assert_eq!(out.matches("export interface Ray3d {").count(), 1, "declared once in the module: {out}");
+    }
+
+    /// `bevy-ts/input`'s own declarations import `Condition`, its params name `Entity`: one
+    /// import of both, so `Gamepads` and `InputFocus` resolve `Entity` (alpha.23 lacked it).
+    #[test]
+    fn a_module_imports_what_its_declarations_and_params_name_once() {
+        let mut app = App::new();
+        app.add_plugins(crate::input::ScriptInputPlugin);
+        let out = emit_modules(app.world());
+        let block = out.split("declare module \"bevy-ts/input\" {").nth(1).unwrap().split("\n}\n").next().unwrap();
+        assert!(block.contains("  import type { Condition, Entity } from \"bevy-ts\";"), "{block}");
+        assert_eq!(block.matches("import type").count(), 1, "{block}");
+        assert!(block.contains("pressed(pad: Entity, button: number): boolean;"), "{block}");
     }
 
     #[test]
