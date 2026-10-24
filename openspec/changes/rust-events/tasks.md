@@ -22,6 +22,7 @@
 - [ ] 4.3 `commands.entity(e).observe(fn)`: `OP_OBSERVE`, lazy `TsSystem` keyed by `file#name`, remapped on reload, for TS and Rust entity events
 - [ ] 4.4 `index.d.ts`: `EntityCommands.observe`, `On<E>.original`
 - [ ] 4.5 Stage 2: a Rust event field named `entity`, `original`, `propagate` or `toJSON` stays on `On<E>.event` under its reflected name and never hides `On`'s API; generated class documents it; test with a `PointerClick` hop and a test event with a `propagate` field
+- [ ] 4.5a Stage 2: add `original` and `event` to accessor-slot-names' one list of names a TS-declared event may not use (it refuses `entity`, `propagate`, `toJSON` at load), with a test; if the list is not on main yet, ask lead@accessor-slot-names where it lives
 - [ ] 4.6 Stage 2: `On<E>.event` for TS-declared events (whole value, `entity` included for an entity event) in both `core.js` copies and `index.d.ts`; test it reads as the direct fields do
 
 ## 5. Registration and types
