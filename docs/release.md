@@ -71,3 +71,13 @@ engine may ship: packing fails on one with anything under `native` in `bevy-ts.j
 
 `pnpm test` in `packages/bevy-ts` syncs the examples, makes a project from each and type-checks it,
 and checks `npm pack --dry-run` holds exactly them.
+
+## Bumping Bevy
+
+A Bevy bump re-vendors `vendor/bevy_render` at the new version and re-applies its patch, or
+deletes the patch if Bevy shipped the fix ([PATCH.md](../vendor/bevy_render/PATCH.md)). A
+`bevy-ts-cli` test fails while the vendored version differs from the lock's Bevy, since cargo would
+otherwise drop a stale patch with only a warning.
+
+A release tag `v<version>` is also where a project engine built from crates.io fetches the patched
+`bevy_render`, so a published version's tag stays.

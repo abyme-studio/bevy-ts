@@ -338,6 +338,23 @@ const processes = {
   "two-d": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test -p bevy-ts-cli --test it two_d:: -- --nocapture 2>&1 | grep -v ld64 | tee target/two-d.log | grep -E \"^test |^test result|panicked|^error|left|right|-->\" | tail -40'" },
   // The tests script-2d's crates touch: tsx, and the cli's TSX and 2D tests.
   "two-d-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-tsx && cargo test -p bevy-ts-cli --test it -- tsx two_d) 2>&1 | grep -v ld64 | tee target/two-d-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },
+  // Change macos-async-pipelines: the arena's time to all pipelines ready, per arm (design.md, Measurements).
+  "pipelines-prep-before": { cmd: "scripts/pipeline-bench.sh prep before 2>&1 | tee target/pipelines-prep-before.log" },
+  "pipelines-prep-after": { cmd: "scripts/pipeline-bench.sh prep after 2>&1 | tee target/pipelines-prep-after.log" },
+  "pipelines-before": { cmd: "bash -c 'scripts/pipeline-bench.sh run before 3 cold; scripts/pipeline-bench.sh run before 3 warm' 2>&1 | tee -a target/pipelines-before.log" },
+  "pipelines-after": { cmd: "bash -c 'scripts/pipeline-bench.sh run after 3 cold; scripts/pipeline-bench.sh run after 3 warm' 2>&1 | tee -a target/pipelines-after.log" },
+  // Its crate's tests (every cli test binary, then the arena's ignored draw checks), then a project engine built in release.
+  "pipelines-tests": { cmd: "bash -c 'cargo test -p bevy-ts-cli --no-fail-fast 2>&1 | grep -v ld64 | tee target/pipelines-tests.log | grep -E \"^     Running|^test result|FAILED|panicked|^error\"; cargo test -p bevy-ts-cli --test play_after_edit -- --ignored --nocapture 2>&1 | grep -v ld64 | tee target/pipelines-draw.log | grep -E \"black|plain|test |panicked|assert\"'" },
+  "pipelines-build-thrusters": { cmd: "bash -c 'CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts build examples/thrusters --out target/pipelines-thrusters > target/pipelines-thrusters.log 2>&1; echo build exit $?; grep -c bevy_render target/pipelines-thrusters.log; grep -q \"vendor/bevy_render\" examples/thrusters/.bevy-ts/engine/Cargo.toml && echo patched; BEVY_TS_PIPELINE_TRACE=1 timeout 60 ./target/debug/bevy-ts play target/pipelines-thrusters/game --headless 2>&1 | grep -E \"pipelines ready|ERROR|panicked\" | tail -3'" },
+  // Thumbnails wait for their pipelines: the cli's thumbnail tests, then the viewport crate's.
+  "pipelines-thumbnails": { cmd: "bash -c 'set -o pipefail; (cargo test -p bevy-ts-viewport --test preview -- --test-threads=1 && cargo test -p bevy-ts-cli --test viewport_thumbnail && cargo test -p bevy-ts-viewport -- --test-threads=1) 2>&1 | grep -v ld64 | tee target/pipelines-thumbnails.log | grep -E \"^test result|FAILED|panicked|^error|^warning\"'" },
+  // Change macos-async-pipelines: the last round before it lands.
+  "pipelines-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo build --workspace --all-targets && cargo test --workspace --exclude bevy-ts-viewport && cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo clippy --workspace --all-targets -- -D warnings) 2>&1 | grep -v ld64 | tee target/pipelines-gate.log | grep -E \"^test result|FAILED|panicked|^error|^warning: unused\"'" },
+  "pipelines-edit": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do cargo test -p bevy-ts-viewport --test edit --test preview -- --test-threads=1 2>&1 | grep -v ld64 | grep -E \"^test result|FAILED|panicked\"; done 2>&1 | tee target/pipelines-edit.log'" },
+  // The registry engine's patch source resolves: bevy_render from the bevy-ts git repository (here its branch, as no tag carries vendor/ yet).
+  "pipelines-registry": { cmd: "bash -c 'cargo metadata --format-version 1 --manifest-path target/regpatch/Cargo.toml > target/regpatch.json 2> target/regpatch.err; echo exit $?; grep -A2 \"name = .bevy_render.\" target/regpatch/Cargo.lock'" },
+  // The thumbnail tests 15 times, a hung run sampled: the walk saw an empty crate and a hang.
+  "pipelines-thumb-soak": { cmd: "scripts/thumbnail-soak.sh 15 2>&1 | tee target/thumb-soak.log" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

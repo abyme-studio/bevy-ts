@@ -27,7 +27,7 @@ fn arena(name: &str) -> App {
     let list: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
     let dir = project(name, &list);
     let mut app = App::new();
-    app.add_plugins(headless::default_plugins(true).set(headless::asset_plugin_unwatched(&dir.join("assets"))))
+    app.add_plugins(headless::default_plugins(true).set(sync_pipelines()).set(headless::asset_plugin_unwatched(&dir.join("assets"))))
         .add_plugins(headless::HeadlessPlugin)
         .add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
         .add_plugins(bevy_ts_tsx::TsxPlugin)

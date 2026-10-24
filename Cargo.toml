@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen", "crates/bevy-ts-tsx", "crates/bevy-ts-native", "crates/bevy-ts-native-derive", "crates/bevy-ts-viewport", "crates/bevy-ts-levels", "crates/bevy-ts-material", "crates/bevy-ts-animation"]
-exclude = ["bench", "crates/bevy-ts-rapier3d"]
+exclude = ["bench", "crates/bevy-ts-rapier3d", "vendor/bevy_render"]
 
 [workspace.package]
 version = "0.1.0"
@@ -31,6 +31,10 @@ bevy-ts-animation = { path = "crates/bevy-ts-animation" }
 # statically; each crate's tests/it/main.rs refuses a release build without it.
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(bevy_ts_static)"] }
+
+# Compiles render pipelines off the render thread on macOS (vendor/bevy_render/PATCH.md).
+[patch.crates-io]
+bevy_render = { path = "vendor/bevy_render" }
 
 # Line tables only: backtraces keep file and line, without the full debug info that made most of
 # target/ (docs/build-cache.md). Dependencies carry none. The test profile inherits these.
