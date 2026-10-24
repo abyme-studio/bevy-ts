@@ -237,6 +237,8 @@ export class Lightmap extends nativeComponent("Lightmap", { bicubic_sampling: bo
 
 export const MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt = rustComponent("MeshMaterial3d<ExtendedMaterial<StandardMaterial, ForwardDecalMaterialExt>>");
 
+export const MeshMaterial3dExtendedMaterialStandardMaterialFade = rustComponent("MeshMaterial3d<ExtendedMaterial<StandardMaterial, Fade>>");
+
 export const MeshMaterial3dStandardMaterial = rustComponent("MeshMaterial3d<StandardMaterial>");
 
 export class ScreenSpaceAmbientOcclusion extends nativeComponent("ScreenSpaceAmbientOcclusion", { radius: f32, constant_object_thickness: f32 }) {}
