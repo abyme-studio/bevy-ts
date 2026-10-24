@@ -144,7 +144,7 @@ fn take_next<const N: u8>(world: &mut World) -> Option<u32> {
 }
 
 fn state_id<const N: u8>(world: &World) -> Option<ComponentId> {
-    world.components().resource_id::<State<TsState<N>>>()
+    world.components().component_id::<State<TsState<N>>>()
 }
 
 fn add_runner<const N: u8>(world: &mut World, kind: RunKind, a: u32, b: u32) {
