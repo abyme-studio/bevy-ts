@@ -660,7 +660,7 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                     RunParam::Time(clock)
                 } else {
                     // A spelling an export claims (`ResMut<Time<Virtual>>`) never gets here: the
-                    // reader reads it as that export's port param.
+                    // reader reads it as that export's port param, and refuses it under `Option`.
                     let (id, size) = resolve_res(world, resource, write, ts).map_err(|m| err(format!("{kind}<{resource}>: {m}")))?;
                     RunParam::Res { name: resource.clone(), id, size, write, optional: *optional }
                 }
