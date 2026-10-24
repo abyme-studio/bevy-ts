@@ -75,7 +75,7 @@ fn picture(app: &mut App, done: impl Fn(&Image) -> bool) -> Image {
             last = Some(img);
         }
     }
-    panic!("the picture never settled; last: {}", last.is_some());
+    panic!("the picture never settled; a picture was captured: {}", last.is_some());
 }
 
 fn px(img: &Image, x: u32, y: u32) -> [u8; 3] {
