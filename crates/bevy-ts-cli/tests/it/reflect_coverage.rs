@@ -3,7 +3,7 @@
 //! `reflect_value::read`, writes back equal through `write`, and has a TS type, unless
 //! `reflect_value::UNCOVERED` lists it with a reason. An entry no walked type uses fails too.
 
-mod common;
+use crate::common;
 
 use bevy::prelude::*;
 use bevy_ts::reflect_codec::{compile_component, encode};

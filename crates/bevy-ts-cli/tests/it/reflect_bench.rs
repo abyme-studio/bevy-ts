@@ -4,9 +4,9 @@
 //! against a layout-tier column read (`Transform.translation.x`). Each arm is one system; its time
 //! is the system's run time less an empty system's over the same rows, per row, median of the
 //! measured frames. Ignored by default; run it in release:
-//! `cargo test --release -p bevy-ts-cli --test reflect_bench -- --ignored --nocapture`.
+//! `cargo test --release -p bevy-ts-cli --test it reflect_bench:: -- --ignored --nocapture`.
 
-mod common;
+use crate::common;
 
 use bevy::camera::{PerspectiveProjection, Projection};
 use bevy::light::DirectionalLight;
