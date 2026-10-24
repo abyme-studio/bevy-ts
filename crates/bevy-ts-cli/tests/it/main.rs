@@ -41,6 +41,8 @@ mod reflect_coverage;
 mod reflect_render;
 mod reflect_values;
 mod reload;
+mod rust_events;
+mod rust_events_coverage;
 mod scene_material;
 mod schedules;
 mod standard_material_limits;
