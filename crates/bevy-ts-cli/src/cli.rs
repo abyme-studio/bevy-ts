@@ -243,6 +243,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
+    headless::pipeline_trace(&mut app);
     // After `extra`: a native crate that adds it itself keeps its own settings.
     if mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
         app.add_plugins(MeshPickingPlugin);

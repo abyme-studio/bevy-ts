@@ -68,6 +68,16 @@ not inputs, so a TS edit never rebuilds anything.
   engine keeps running and cargo's errors are printed. World state does not cross the restart.
 - `bevy-ts build` ships the project engine in the release profile inside a game folder
   ([build.md](build.md)).
+- The generated `Cargo.toml` patches `bevy_render` with bevy-ts's vendored copy, which compiles
+  render pipelines off the render thread on macOS (Bevy 0.20 blocks on each one there, so a fresh
+  engine froze 33-91 s on its first render; bevy#26151). From a checkout the patch is the
+  checkout's `vendor/bevy_render`; from crates.io it is the bevy-ts git repository at tag
+  `v<version>`, fetched once by cargo. It goes once Bevy ships the fix
+  ([vendor/bevy_render/PATCH.md](../vendor/bevy_render/PATCH.md)). A native crate's own `cargo`
+  commands, run outside bevy-ts, build unpatched Bevy; that is harmless, since no engine runs from
+  them.
+- `BEVY_TS_PIPELINE_TRACE=1` makes any engine print, to stderr, each time its render pipelines
+  have all compiled: seconds since start, how many, and the longest render frame so far.
 
 ### Sharing engines in a team
 

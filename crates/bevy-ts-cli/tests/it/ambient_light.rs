@@ -13,7 +13,7 @@ use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_cli::headless::{HeadlessPlugin, Offscreen};
 use bevy_ts_v8::V8Options;
-use common::{project, reload, until};
+use common::{project, reload, sync_pipelines, until};
 use std::sync::{Arc, Mutex};
 
 /// A white cube and no lights but the ambient one; `insert` goes on the camera.
@@ -40,7 +40,8 @@ fn render(name: &str, insert: &str) -> (Option<AmbientLight>, f64) {
         DefaultPlugins
             .build()
             .disable::<WinitPlugin>()
-            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }),
+            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
+            .set(sync_pipelines()),
     )
     .add_plugins(HeadlessPlugin)
     .add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true))

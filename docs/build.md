@@ -35,6 +35,8 @@ dist/aarch64-apple-darwin/
 
 - The engine is a copy of the prebuilt engine running the build, or, for a project with Rust, the
   project engine in the release profile (from the caches, or built by cargo).
+- Either engine carries bevy-ts's patched `bevy_render`, so on macOS a game's first frames keep
+  presenting while its render pipelines compile ([native.md](native.md#project-engines)).
 - Scripts are compiled as under `bevy-ts dev`, with the production JSX transform and source maps
   that keep only the file's path in the project (`src/enemy.tsx`), never its text. No path of
   the build machine is shipped. A thrown error

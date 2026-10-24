@@ -18,6 +18,13 @@ pub const BIN: &str = env!("CARGO_BIN_EXE_bevy-ts");
 
 /// A free local port for an engine's remote server. Every module runs in this one process, so a
 /// port taken from the process id would be the same for all of them.
+/// Pipelines compiled on the render thread, as Bevy's own pixel tests do: a test that reads pixels
+/// a set number of frames in would otherwise see a mesh draw some frames late, since an engine
+/// compiles pipelines in the background (`vendor/bevy_render/PATCH.md`).
+pub fn sync_pipelines() -> bevy::render::RenderPlugin {
+    bevy::render::RenderPlugin { synchronous_pipeline_compilation: true, ..Default::default() }
+}
+
 pub fn free_port() -> u16 {
     std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
 }

@@ -122,6 +122,35 @@ pub fn screenshot_on_request(mut commands: Commands, offscreen: Option<Res<Offsc
     commands.spawn(shot).observe(save_to_disk(path));
 }
 
+/// `BEVY_TS_PIPELINE_TRACE=1` prints, to stderr, each time the render world's pipeline cache
+/// empties its queue: seconds since the engine started, how many pipelines it holds, and the
+/// longest render frame so far. The last line of a run is when all its pipelines were ready.
+pub fn pipeline_trace(app: &mut App) {
+    use bevy::render::render_resource::PipelineCache;
+    use bevy::render::{Render, RenderApp, RenderSystems};
+    use std::time::Instant;
+    if std::env::var_os("BEVY_TS_PIPELINE_TRACE").is_none() {
+        return;
+    }
+    let start = Instant::now();
+    let Some(render) = app.get_sub_app_mut(RenderApp) else { return };
+    let mut last: Option<Instant> = None;
+    let mut longest = Duration::ZERO;
+    let mut reported = 0;
+    render.add_systems(Render, (move |cache: Res<PipelineCache>| {
+        let now = Instant::now();
+        if let Some(last) = last {
+            longest = longest.max(now - last);
+        }
+        last = Some(now);
+        let total = cache.pipelines().count();
+        if total != reported && cache.waiting_pipelines().next().is_none() {
+            reported = total;
+            eprintln!("pipelines ready t={:.3}s total={total} longest_frame={:.1}ms", (now - start).as_secs_f64(), longest.as_secs_f64() * 1000.0);
+        }
+    }).in_set(RenderSystems::Cleanup));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
