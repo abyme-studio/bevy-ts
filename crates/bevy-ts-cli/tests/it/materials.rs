@@ -334,10 +334,17 @@ mod drawn {
 
     /// The scene `s`, with a black background and the camera and sun `stage` spawns.
     fn draw(name: &str, stage: &str, scene: &str, textures: &[(&str, [u8; 4])]) -> Image {
+        draw_with(name, "", stage, scene, &[], textures, Color::BLACK)
+    }
+
+    /// As `draw`, with `header` after the imports, `files` beside the game, and a `clear` colour.
+    fn draw_with(name: &str, header: &str, stage: &str, scene: &str, files: &[(&str, &str)], textures: &[(&str, [u8; 4])], clear: Color) -> Image {
         let game = format!(
-            "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ Transform }} from \"bevy-ts/bevy\";\n\nexport function stage(commands: Commands) {{\n{stage}\n}}\napp.addSystems(Startup, stage);\n\napp.scene(\"s\", () => (\n  <>\n{scene}\n  </>\n));\n"
+            "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ Transform }} from \"bevy-ts/bevy\";\n{header}\n\nexport function stage(commands: Commands) {{\n{stage}\n}}\napp.addSystems(Startup, stage);\n\napp.scene(\"s\", () => (\n  <>\n{scene}\n  </>\n));\n"
         );
-        let dir = project(name, &[("game.tsx", &game), ("package.json", "{}")]);
+        let mut all = vec![("game.tsx", game.as_str()), ("package.json", "{}")];
+        all.extend_from_slice(files);
+        let dir = project(name, &all);
         for (path, rgba) in textures {
             let p = dir.join("assets").join(path);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -348,7 +355,8 @@ mod drawn {
             .add_plugins(headless::HeadlessPlugin)
             .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
             .add_plugins(bevy_ts_tsx::TsxPlugin)
-            .insert_resource(ClearColor(Color::BLACK));
+            .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
+            .insert_resource(ClearColor(clear));
         app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.tsx"), true).unwrap())));
         app.finish();
         app.cleanup();
@@ -413,5 +421,30 @@ mod drawn {
         let (plain, mapped) = (at(&image, 0.38, 0.5), at(&image, 0.62, 0.5));
         let diff = (plain.red - mapped.red).abs() + (plain.green - mapped.green).abs() + (plain.blue - mapped.blue).abs();
         assert!(diff > 0.05, "the normal map changes the lit face: {plain:?} vs {mapped:?}");
+    }
+
+    /// A cube that adds over a red background: what is behind shows through its green.
+    fn adds(c: LinearRgba) -> bool {
+        c.red > 0.1 && c.green > 0.1
+    }
+
+    const RED: Color = Color::srgb(0.6, 0.0, 0.0);
+    const GREEN: &str = "import bevy_pbr::render::forward_io::VertexOutput;\n\n@fragment\nfn fragment(in: VertexOutput) -> @location(0) vec4<f32> {\n    return vec4<f32>(0.0, 0.6, 0.0, 1.0);\n}\n";
+
+    #[test]
+    fn a_script_material_with_alpha_mode_add_adds() {
+        let header = "import { f32, material } from \"bevy-ts/material\";\nimport green from \"./green.wgsl\";\nexport const Add = material(\"game::Add\", { params: { k: f32 }, fragment: green, alphaMode: \"add\" });";
+        let scene = "    <entity>\n      <mesh shape=\"cuboid\" />\n      <material kind={Add} k={1} />\n    </entity>";
+        let image = draw_with("standard-add-script", header, CAMERA, scene, &[("green.wgsl", GREEN)], &[], RED);
+        let c = at(&image, 0.5, 0.5);
+        assert!(adds(c), "the cube adds its green to the red behind: {c:?}");
+    }
+
+    #[test]
+    fn a_standard_material_with_alpha_mode_add_adds() {
+        let scene = "    <entity>\n      <mesh shape=\"cuboid\" />\n      <material unlit color=\"#009900\" alphaMode=\"add\" />\n    </entity>";
+        let image = draw_with("standard-add", "", CAMERA, scene, &[], &[], RED);
+        let c = at(&image, 0.5, 0.5);
+        assert!(adds(c), "the cube adds its green to the red behind: {c:?}");
     }
 }

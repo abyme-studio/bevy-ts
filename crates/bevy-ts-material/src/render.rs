@@ -9,8 +9,10 @@ use bevy::asset::{AsAssetId, AssetEventSystems};
 use bevy::core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
 use bevy::ecs::system::SystemParamItem;
 use bevy::ecs::system::lifetimeless::{SRes, SResMut};
-use bevy::material::key::{ErasedMaterialKey, ErasedMeshPipelineKey};
+use bevy::material::key::{ErasedMaterialKey, ErasedMaterialPipelineKey, ErasedMeshPipelineKey};
+use bevy::material::specialize::{SpecializedMeshPipelineError, UserSpecializeFn};
 use bevy::material::{MaterialProperties, RenderPhaseType};
+use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{
     DrawMaterial, EntitiesNeedingSpecialization, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
     MainPassTransparentDrawFunction, MaterialFragmentShader, MaterialVertexShader, MeshPipelineKey, PreparedMaterial,
@@ -25,8 +27,8 @@ use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_phase::DrawFunctions;
 use bevy::render::render_resource::binding_types::{sampler, texture_2d, uniform_buffer_sized};
 use bevy::render::render_resource::{
-    BindGroupBuilder, BindGroupLayoutDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
-    TextureSampleType, TextureViewDimension, UnpreparedBindingResource, UnpreparedBindingResources,
+    BindGroupBuilder, BindGroupLayoutDescriptor, BlendComponent, BlendFactor, BlendOperation, BlendState,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, TextureSampleType, TextureViewDimension, UnpreparedBindingResource, UnpreparedBindingResources,
 };
 use bevy::render::renderer::RenderDevice;
 use bevy::render::sync_world::MainEntity;
@@ -203,6 +205,7 @@ impl ErasedRenderAsset for ScriptMaterial {
             mesh_pipeline_key_bits: ErasedMeshPipelineKey::new(MeshPipelineKey::empty()),
             base_specialize: Some(base_specialize),
             material_key: ErasedMaterialKey::new(kind.id),
+            user_specialize: matches!(kind.alpha_mode, AlphaMode::Add).then_some(additive as UserSpecializeFn),
             ..default()
         };
         properties.add_draw_function(MainPassOpaqueDrawFunction, opaque.read().id::<DrawMaterial>());
@@ -224,6 +227,23 @@ impl ErasedRenderAsset for ScriptMaterial {
             a.free(b);
         }
     }
+}
+
+/// `AlphaMode::Add`: Bevy shares the premultiplied blend with `Premultiplied` and zeroes alpha in
+/// its PBR shader to add. A script material's own WGSL keeps its alpha, which then covers what is
+/// behind, so the blend itself adds: colour plus what is there, its alpha kept.
+fn additive(
+    _: &dyn std::any::Any,
+    descriptor: &mut RenderPipelineDescriptor,
+    _: &MeshVertexBufferLayoutRef,
+    _: ErasedMaterialPipelineKey,
+) -> Result<(), SpecializedMeshPipelineError> {
+    let add = BlendComponent { src_factor: BlendFactor::One, dst_factor: BlendFactor::One, operation: BlendOperation::Add };
+    let keep = BlendComponent { src_factor: BlendFactor::Zero, dst_factor: BlendFactor::One, operation: BlendOperation::Add };
+    for target in descriptor.fragment.iter_mut().flat_map(|f| f.targets.iter_mut()).flatten() {
+        target.blend = Some(BlendState { color: add, alpha: keep });
+    }
+    Ok(())
 }
 
 type VisibilityOrMaterialChanged = Or<(Changed<ViewVisibility>, Changed<ScriptMaterial3d>)>;
