@@ -87,7 +87,7 @@ fn op_bevyts_host(
 #[string]
 fn op_bevyts_host_json(state: &mut OpState, #[string] name: &str, #[string] args: &str) -> String {
     let Some(host) = state.borrow::<HostSlot>().0 else {
-        state.borrow_mut::<HostError>().0 = format!("{name} can only be called while a system runs or TSX renders");
+        state.borrow_mut::<HostError>().0 = format!("{name} can only be called while a system runs, TSX renders or the script loads");
         return String::new();
     };
     // SAFETY: as in `op_bevyts_host`.
@@ -602,6 +602,13 @@ impl ScriptBackend for V8Backend {
                 Err(vec![e])
             }
         }
+    }
+
+    fn load_with(&mut self, generation: &Generation, host: &mut dyn HostCalls) -> Result<LoadedGeneration, Vec<ScriptError>> {
+        self.set_host(Some(host));
+        let r = self.load(generation);
+        self.set_host(None);
+        r
     }
 
     fn commit(&mut self, generation: u64, resolution: &Resolution) -> Result<(), Vec<ScriptError>> {

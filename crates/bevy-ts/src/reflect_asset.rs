@@ -199,6 +199,22 @@ pub fn flush(world: &mut World) {
     }
 }
 
+/// Forgets every queued value and the refs of queued adds, as when a load fails: none goes in.
+pub fn drop_queued(world: &World) {
+    let Some(assets) = world.get_resource::<ScriptAssets>() else { return };
+    let mut guard = assets.table();
+    let t = &mut *guard;
+    let queued = std::mem::take(&mut t.queued);
+    for (n, q) in queued.into_iter().filter(|(_, q)| q.added) {
+        if let Some(m) = t.refs.remove(&n) {
+            t.by_id.remove(&m.handle.id());
+            t.sources.remove(&m.handle.id());
+        }
+    }
+    let refs = &t.refs;
+    t.values.retain(|_, n| refs.contains_key(n));
+}
+
 /// Empties the table when the script reloads or stops: refs given before are stale from now on.
 /// A restart or stop (`remove`) also removes every script-made asset; a hot reload keeps them for
 /// the entities it keeps, until the next restart.

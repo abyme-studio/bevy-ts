@@ -759,6 +759,27 @@ pub struct WorldHost<'a> {
     pub params: &'a mut HostParams,
 }
 
+/// The host while a generation's modules evaluate: no Rust params (no system runs), only the
+/// bridge's JSON services, so a scene's first render can call `assets`.
+pub struct LoadHost<'a> {
+    pub world: &'a World,
+}
+
+impl crate::backend::HostCalls for LoadHost<'_> {
+    fn call(&mut self, _id: u32, _args: &[u8], _ret: &mut [u8], _slices: &mut [&mut [u8]]) -> Result<usize, String> {
+        Err("Rust params can only be called while a system runs".into())
+    }
+
+    #[cfg_attr(not(feature = "pbr"), allow(unused_variables))]
+    fn call_json(&mut self, name: &str, args: &str) -> Result<String, String> {
+        match name.split_once('.') {
+            #[cfg(feature = "pbr")]
+            Some(("assets", _)) => crate::reflect_asset::host_call(self.world, name, args),
+            _ => Err(format!("no host service {name}")),
+        }
+    }
+}
+
 impl crate::backend::HostCalls for WorldHost<'_> {
     fn call(&mut self, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
         self.params.call(self.world, self.ticks, self.regions, self.allowed, id, args, ret, slices)

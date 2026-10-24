@@ -48,11 +48,11 @@ fn a_system_adds_reads_and_sets_a_material() {
         r##"
 let mat: any = null;
 let done = false;
-function make() {
+export function make() {
   mat = assets.add(StandardMaterial, { base_color: "#ff8800", unlit: true });
   console.log(`added ${mat.$asset} unlit=${assets.get(mat).unlit}`);
 }
-function tweak() {
+export function tweak() {
   if (done) return;
   done = true;
   assets.set(mat, { perceptual_roughness: 0.25 });
@@ -111,7 +111,7 @@ fn a_ref_of_the_wrong_type_names_both() {
     let (_dir, app) = setup(
         "assets-wrong-type",
         r##"
-function make() {
+export function make() {
   const mat = assets.add(StandardMaterial, {});
   try {
     assets.add(StandardMaterial, { base_color_texture: mat });
@@ -132,7 +132,7 @@ fn a_ref_from_before_a_reload_is_stale() {
     let (dir, mut app) = setup(
         "assets-stale",
         r##"
-function make() {
+export function make() {
   (globalThis as any).old = assets.add(StandardMaterial, {});
 }
 app.addSystems(Startup, make);
@@ -145,7 +145,7 @@ app.addSystems(Startup, make);
             "{HEAD}{}",
             r##"
 let tried = false;
-function probe() {
+export function probe() {
   if (tried) return;
   tried = true;
   try {
@@ -167,10 +167,18 @@ app.addSystems(Update, probe);
 
 #[test]
 fn assets_throw_outside_a_run() {
-    let dir = project("assets-outside", &[("game.tsx", &format!("{HEAD}assets.add(StandardMaterial, {{}});\n"))]);
-    let mut app = assets_app(&dir.join("game.tsx"));
-    let r = reload(&mut app, false);
-    assert_eq!(r.status, ReloadStatus::Failed);
-    let m = r.errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join("\n");
-    assert!(m.contains("assets.add can only be called while a system runs or TSX renders"), "{m}");
+    let (_dir, mut app) = setup(
+        "assets-outside",
+        r##"
+setTimeout(() => {
+  try {
+    assets.add(StandardMaterial, {});
+  } catch (e) {
+    console.log(`threw ${(e as Error).message}`);
+  }
+}, 0);
+"##,
+    );
+    updates(&mut app, 3);
+    assert!(logged(&app, "assets.add can only be called while a system runs, TSX renders or the script loads"), "{:?}", messages(&app));
 }

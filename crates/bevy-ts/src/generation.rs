@@ -315,7 +315,19 @@ fn component_decls(manifest: &crate::manifest::Manifest) -> Vec<crate::manifest:
 
 fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Generation) -> Result<Applied, Vec<ScriptError>> {
     let number = generation.number;
-    let LoadedGeneration { manifest, sections, requests } = rt.backend.load(generation)?;
+    let LoadedGeneration { manifest, sections, requests } = {
+        let mut host = crate::host::LoadHost { world: &*world };
+        let loaded = rt.backend.load_with(generation, &mut host);
+        if loaded.is_err() {
+            // A failed load's assets never go in.
+            #[cfg(feature = "pbr")]
+            crate::reflect_asset::drop_queued(world);
+        }
+        loaded?
+    };
+    // Assets a scene's first render made go in before its tree applies.
+    #[cfg(feature = "pbr")]
+    crate::reflect_asset::flush(world);
 
     let fail = |rt: &mut ScriptRuntime, errors: Vec<ScriptError>| {
         rt.backend.discard(number);

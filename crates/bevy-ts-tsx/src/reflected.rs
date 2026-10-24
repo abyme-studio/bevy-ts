@@ -90,6 +90,8 @@ pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String,
         set(&slots, value.as_partial_reflect_mut(), None, type_path, f, v)?;
     }
     rc.insert(&mut world.entity_mut(e), value.as_partial_reflect(), &registry);
+    // Asset values the props made go in now: no run ends after a TSX write.
+    bevy_ts::reflect_asset::flush(world);
     Ok(())
 }
 
@@ -107,6 +109,8 @@ pub fn write(world: &mut World, e: Entity, type_path: &str, field: &str, v: &Val
     let mut em = world.entity_mut(e);
     let Some(mut m) = rc.reflect_mut(&mut em) else { return Ok(false) };
     set(&slots, m.as_partial_reflect_mut(), base.as_deref().map(|b| b.as_partial_reflect()), type_path, field, v)?;
+    drop(m);
+    bevy_ts::reflect_asset::flush(world);
     Ok(true)
 }
 

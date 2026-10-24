@@ -293,6 +293,14 @@ pub trait ScriptBackend: 'static {
     /// manifest sections. Nothing becomes live until [`ScriptBackend::commit`].
     fn load(&mut self, generation: &Generation) -> Result<LoadedGeneration, Vec<ScriptError>>;
 
+    /// [`ScriptBackend::load`] with `host` reachable from JS while the modules evaluate, so a scene's
+    /// first render can call the bridge's JSON services (`assets`). A backend without host calls
+    /// at load ignores it.
+    fn load_with(&mut self, generation: &Generation, host: &mut dyn HostCalls) -> Result<LoadedGeneration, Vec<ScriptError>> {
+        let _ = host;
+        self.load(generation)
+    }
+
     /// Makes a loaded generation live with the ids and layouts Rust resolved, replacing the
     /// previous one. The previous generation's systems, startups and entries are dropped.
     fn commit(&mut self, generation: u64, resolution: &Resolution) -> Result<(), Vec<ScriptError>>;
