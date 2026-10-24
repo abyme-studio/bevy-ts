@@ -38,10 +38,20 @@
 - [x] 5.1 `openspec validate script-time --strict`
 - [ ] 5.2 The repo's full check green; protocol version is the next free minor on `main` at landing
 
-## 6. Later stages
+## 6. Time conditions (stage 3)
+
+- [ ] 6.1 `crates/bevy-ts/src/time_conditions.rs` (new): `expose(app)` registers the seven conditions of design.md's stage 3 table with `conditions::expose`, each factory calling Bevy's `bevy::time::common_conditions` function; `secs` checked finite and `>= 0`, else `"<tsName> takes seconds, a finite number >= 0; got <value>"`; `paused` ignores args. Called from the plugin's `build` beside `sets::expose_anchors` (`lib.rs:168`)
+- [ ] 6.2 `crates/bevy-ts-v8/js/core.js`: `onTimer`, `onRealTimer`, `onceAfterDelay`, `onceAfterRealDelay`, `repeatingAfterDelay`, `repeatingAfterRealDelay` (each `nativeCondition("bevy:<name>", { secs })`) and `paused()`, beside `runOnce`; `node scripts/sync-runtime.mjs` in `packages/bevy-ts` for `runtime/core.js`
+- [ ] 6.3 `packages/bevy-ts/index.d.ts`: the seven declarations, `(seconds: number) => Condition` and `paused(): Condition`, each with a one-line doc naming Bevy's function
+- [ ] 6.4 `crates/bevy-ts-cli/tests/it/time.rs`: `time_conditions_match_bevy` (each timed condition in `Update`, and `onTimer` in `FixedUpdate`, against Bevy's own gating a Rust system, `TimeUpdateStrategy::ManualDuration`, same frames), `paused_follows_the_game_clock`, `time_condition_survives_a_reload`, `a_bad_duration_fails_the_load` (file and line of the call)
+- [ ] 6.5 `packages/bevy-ts/test/time.ts`: `timeConditionsTakeSeconds`, a `@ts-expect-error` on `onTimer("2")` and on `paused(1)`; the conditions combine with `andThen`
+- [ ] 6.6 Whatever snapshot or test of `native.d.ts`'s `NativeCondition` now lists the seven `bevy:` names (`bevy-ts-cli/src/types.rs` tests, `compile.rs`)
+- [ ] 6.7 Docs: `docs/time.md` a "Run conditions" section (the seven, which clock each ticks, the fixed schedule, reload and Stop) and drop them from "Not yet built"; `docs/scripts.md`'s condition table gains the seven rows; `docs/native.md` says bevy-ts exposes `bevy:` time conditions as it does `bevy:` anchors; `docs/research/bevy-coverage.md` row 86 (and 214) name the conditions covered by stage 3
+- [ ] 6.8 `openspec validate script-time --strict`; the repo's full check green (cargo through `~/dev/abyme/scripts/gate-slot`); no protocol change
+
+## 7. Later stages
 
 Not tasks of this change: each is a follow-up change once its shape lands.
 
 - Stage 2, `ResMut<Time<Virtual>>` (`pause`, `unpause`, `toggle`, `setRelativeSpeed`, `setMaxDelta`) and `ResMut<Time<Fixed>>` (`setTimestep`, `setTimestepSeconds`, `setTimestepHz`, `discardOverstep`) through exported `VirtualTime`/`FixedTime` claiming those spellings with `stands_for`, resolution order in design.md: waits on writable-native-params' export mechanism and `stands_for`
-- Stage 3, `onTimer`, `onRealTimer`, `onceAfterDelay`, `onceAfterRealDelay`, `repeatingAfterDelay`, `repeatingAfterRealDelay`, `paused` wrapping Bevy's conditions: waits on ecs-schedules' `runIf` condition shape
 - Stage 4, `commands.delayed().secs(s)`: waits on writable-native-params' `Commands`

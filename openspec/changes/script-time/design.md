@@ -13,8 +13,8 @@ schedules and `runIf`. reflect-coverage owns Rust components holding Bevy's `Tim
 
 ## Goals / Non-Goals
 
-**Goals:** every Bevy 0.20 time item reachable from TS by its Bevy name (table below), stage 1
-built here, stages 2-4 named with what they wait on.
+**Goals:** every Bevy 0.20 time item reachable from TS by its Bevy name (table below), stages 1
+and 3 built here, stages 2 and 4 named with what they wait on.
 
 **Non-Goals:** `TimeUpdateStrategy`, `TimeSender`/`TimeReceiver`, `Time::advance_by` (host and
 test tools). A Time-only write path. Reflecting Bevy's own `Timer` into TS columns.
@@ -43,9 +43,13 @@ test tools). A Time-only write path. Reflecting Bevy's own `Timer` into TS colum
 | Read-only timer has no methods | 1 | types | `packages/bevy-ts/test/time.ts::readTimerHasNoTick` |
 | `Time<Virtual>` `pause`, `unpause`, `toggle`, `set_relative_speed`, `set_max_delta` | 2 | `ResMut<Time<Virtual>>` methods | stage 2's tests |
 | `Time<Fixed>` `set_timestep`, `set_timestep_seconds`, `set_timestep_hz`, `discard_overstep` | 2 | `ResMut<Time<Fixed>>` methods | stage 2's tests |
-| `on_timer`, `on_real_timer` | 3 | `onTimer`, `onRealTimer` | stage 3's tests |
-| `once_after_delay`, `once_after_real_delay`, `repeating_after_delay`, `repeating_after_real_delay` | 3 | camelCase conditions | stage 3's tests |
-| `paused` | 3 | `paused` condition | stage 3's tests |
+| `on_timer`, `on_real_timer` | 3 | `onTimer(s)`, `onRealTimer(s)` | `time.rs::time_conditions_match_bevy` |
+| `once_after_delay`, `once_after_real_delay`, `repeating_after_delay`, `repeating_after_real_delay` | 3 | `onceAfterDelay(s)`, `onceAfterRealDelay(s)`, `repeatingAfterDelay(s)`, `repeatingAfterRealDelay(s)` | `time.rs::time_conditions_match_bevy` |
+| `on_timer` in `FixedUpdate` ticks `Time<Fixed>` | 3 | same | `time.rs::time_conditions_match_bevy` |
+| `paused` | 3 | `paused()` | `time.rs::paused_follows_the_game_clock` |
+| a time condition's timer across a reload | 3 | kept while the seconds stay the same | `time.rs::time_condition_survives_a_reload` |
+| a bad duration | 3 | load error at the call | `time.rs::a_bad_duration_fails_the_load` |
+| condition types | 3 | `(seconds: number) => Condition` | `packages/bevy-ts/test/time.ts::timeConditionsTakeSeconds` |
 | `DelayedCommands` (`commands.delayed().secs(s)`) | 4 | `commands.delayed().secs(s)` | stage 4's tests |
 | `Duration` | 1 | seconds as `number` | every row above |
 
@@ -88,6 +92,41 @@ for-line port of `bevy_time::{Timer, Stopwatch}` (0.20) in `f64` seconds; the te
 **Initialisers.** `reader.rs` reads `Timer.fromSeconds(2, "Repeating")`, `Timer.new(2, "Once")`
 and `Stopwatch.new()` as constant defaults, as it reads `vec3(1, 2, 3)`; other expressions fail
 the load with the line.
+
+**Stage 3: time conditions through the seam.** bevy-ts exposes Bevy's seven conditions from
+`bevy_time::common_conditions` with `ts_condition`, under `bevy:` names, as it exposes its
+`bevy:` set anchors. A new `crates/bevy-ts/src/time_conditions.rs` holds `expose(app)`, called
+from the plugin's `build` beside `sets::expose_anchors`. Each factory calls Bevy's function and
+boxes it: no port of Bevy's logic. `bevy-ts` exports a typed wrapper per condition, in camelCase
+(`core.js` beside `runOnce`, typed in `index.d.ts`):
+
+| TS | Exposed name | Bevy | Args |
+|---|---|---|---|
+| `onTimer(seconds)` | `bevy:on-timer` | `on_timer` | `{ secs }` |
+| `onRealTimer(seconds)` | `bevy:on-real-timer` | `on_real_timer` | `{ secs }` |
+| `onceAfterDelay(seconds)` | `bevy:once-after-delay` | `once_after_delay` | `{ secs }` |
+| `onceAfterRealDelay(seconds)` | `bevy:once-after-real-delay` | `once_after_real_delay` | `{ secs }` |
+| `repeatingAfterDelay(seconds)` | `bevy:repeating-after-delay` | `repeating_after_delay` | `{ secs }` |
+| `repeatingAfterRealDelay(seconds)` | `bevy:repeating-after-real-delay` | `repeating_after_real_delay` | `{ secs }` |
+| `paused()` | `bevy:paused` | `paused` | none |
+
+A wrapper is `nativeCondition("bevy:on-timer", { secs: seconds })` and nothing else. The factory
+owns the check: `secs` a finite number `>= 0`, else an error naming the TS function and the value
+(`onTimer takes seconds, a finite number >= 0; got -1`), which fails the load at the call's line
+(`callerLocation` skips `core.js` frames). JS's `NaN` and `Infinity` reach it as JSON `null`.
+`paused()` takes no args, as `runOnce()`. A `Duration` is seconds, as in stage 1.
+
+The seam keys an instance by its use and its JSON args, so a reload that keeps `onTimer(2)` keeps
+its timer, `onTimer(3)` starts a fresh one, and a Stop clears every instance (`generation.rs`).
+`Res<Time>` inside a condition is the schedule's clock, as in Bevy: `onTimer` in `FixedUpdate`
+ticks by the fixed timestep. While the editor pauses, the bevy-ts stages do not run, so no
+condition is evaluated; a real-time condition's next tick then adds only that frame's delta,
+Bevy's answer. `NativeCondition` in `native.d.ts` lists the seven names as it lists any exposed
+condition; scripts use the wrappers.
+
+Rejected: a `Condition::Time` variant per condition in `conditions.rs`. Seven variants and a port
+of each, where Bevy's own systems already run in Rust through the seam. Rejected: a
+`bevy-ts/time` module for the wrappers; every other built-in condition is a `bevy-ts` export.
 
 **Stage 2: writes under Bevy's names.** Scripts write `ResMut<Time<Virtual>>` and
 `ResMut<Time<Fixed>>`, never a second name. Behind them are Rust params exported through
@@ -146,6 +185,4 @@ Additions only. `Res<Time>` keeps its four fields at their offsets; the new fiel
 - Stage 2: `stands_for` is confirmed by research@writable-native-params (2026-10-23) and is a
   requirement of their design. If it does not land, stage 2 waits; it does not ship
   `vt: VirtualTime` as the TS name.
-- Stage 3: ecs-schedules' condition shape for Rust-evaluated conditions with state (`on_timer` keeps
-  a `Timer` per condition).
 - Stage 4: whether writable-native-params' `Commands` work covers `delayed()`.
