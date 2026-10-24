@@ -17,6 +17,7 @@ None.
 
 ### Modified Capabilities
 - `viewport-input`: the headless requirement takes `key` and `ime`, and typing works under `--headless`.
+- `script-input`: `InputFocus.typing()`, the single-key shortcut guard that works with a primary window.
 
 ## Impact
 
@@ -24,6 +25,7 @@ None.
 - `crates/bevy-ts-viewport/src/offscreen.rs`: accepts `key` and `ime`, one queue for all three; the plugin keeps its name or becomes `OffscreenInputPlugin` (one call site, `crates/bevy-ts-cli/src/cli.rs`).
 - `crates/bevy-ts-cli/tests/it/`: a headless test types `h`, `i`, `Enter` into an `<input>` and sees `onSubmit` `"hi"`; `headless_pointer.rs`'s refused-type test moves to `wheel`.
 - Docs: `docs/viewport.md` (Typing, the headless line), `docs/picking.md` (Clicking headless), `docs/ui.md`.
+- `crates/bevy-ts-cli/src/input.rs`: `InputFocus.typing()`, true when the focused entity has `EditableText`; `docs/native.md` and `docs/ui.md` use `!focus.typing()` as the shortcut guard, since `get()` is the window in viewport mode and headless.
 - Protocol: none; the event types are already in the schema.
 - `headless-ui-camera` is untouched: the primary window already exists headless, and the default UI camera rule does not change.
 - Separate paths from logical-keys (`keys.rs`, `input.rs` in `bevy-ts-cli`, `systems.rs`).
