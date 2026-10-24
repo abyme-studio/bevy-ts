@@ -26,7 +26,7 @@
 
 - [x] 5.1 `crates/bevy-ts-cli/tests`: `ResMut<GlobalAmbientLight>` write seen by a Rust system the same frame with `is_changed()`, not changed the next frame; `Res<UiScale>` reads without moving the tick; each refusal; absent `UiScale` fails the run, `Option<Res<UiScale>>` reads `undefined`; an optional TS resource inserted later; a `ts_resource_layout` resource from a native fixture crate
 - [x] 5.2 `docs/native.md`: "Rust resources" section (using one, the refusals, `Option<Res<R>>`, `runIf(resourceExists(R))`) and the coverage table from the research, tiers taken from the generated `bevy.d.ts`, reflect rows pointing at the reflect docs, dependents' rows (`AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollPixelsPerLine`, `Time<..>`) naming their owners
-- [ ] 5.3 `cargo test` for `bevy-ts`, `bevy-ts-cli`, `bevy-ts-native`; package tests; `scripts/gen-bevy-types.sh --check`
+- [x] 5.3 `cargo test` for `bevy-ts`, `bevy-ts-cli`, `bevy-ts-native`; package tests; `scripts/gen-bevy-types.sh --check`
 
 ## 6. Landing
 
