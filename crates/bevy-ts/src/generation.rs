@@ -135,6 +135,7 @@ pub fn start_game(world: &mut World) {
     }
     world.resource_mut::<Generations>().started = true;
     world.resource_mut::<crate::observers::ObserverQueue>().0.clear();
+    crate::states::sync(world);
     run_startups(world);
 }
 
@@ -195,6 +196,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         world.insert_resource(crate::conditions::NativeConditions::default());
         world.resource_mut::<crate::messages::TsPayloads>().reset();
         crate::observers::detach(world, |_| true);
+        crate::states::restart(world);
         let handlers = world.resource::<RestartHandlers>().clone();
         for h in handlers.0.iter() {
             h(world);
@@ -381,12 +383,27 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
 
     // Payloads first (systems resolve message, event and state indices), kept aside so a failed
     // generation leaves the old ones untouched.
+    // State slots are kept for the life of the app; a failed generation gives back the ones it took.
+    let old_slots = world.get_resource_or_init::<crate::states::TsStates>().slots();
+    let mut slot_errors = Vec::new();
+    let mut assigned = std::collections::HashMap::new();
+    for st in &manifest.states {
+        match world.resource_mut::<crate::states::TsStates>().assign(&st.name) {
+            Ok(n) => drop(assigned.insert(st.name.clone(), n)),
+            Err(e) => slot_errors.push(ScriptError::at(e, st.location.clone())),
+        }
+    }
+    if !slot_errors.is_empty() {
+        world.resource_mut::<crate::states::TsStates>().restore_slots(old_slots);
+        return fail(rt, slot_errors);
+    }
     let old_payloads = world.remove_resource::<crate::messages::TsPayloads>().unwrap_or_default();
     let mut payloads = old_payloads.clone();
-    payloads.declare(&manifest.messages, &manifest.events, &manifest.states);
+    payloads.declare(&manifest.messages, &manifest.events, &manifest.states, &mut |name| assigned[name]);
     world.insert_resource(payloads);
     let restore = |world: &mut World, old: crate::messages::TsPayloads| {
         world.insert_resource(old);
+        world.resource_mut::<crate::states::TsStates>().restore_slots(old_slots.clone());
     };
 
     let pending = components::prepare(world, &decls);
@@ -474,6 +491,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     crate::sets::ensure_slots(world);
     crate::schedules::reconcile_order(world, &manifest.schedule_order);
     crate::schedules::ensure_stages(world, &manifest.init_schedules);
+    crate::states::sync(world);
     crate::observers::install(world, &watched);
     rt.entries = manifest.entries.iter().map(|e| e.name.clone()).collect();
     Ok((migrations, sections, requests))

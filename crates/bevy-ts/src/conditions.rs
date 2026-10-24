@@ -21,7 +21,11 @@ use std::sync::{Arc, Mutex};
 
 /// A run condition, compiled for Rust. `slot` keys a stateful node's memory.
 pub enum Condition {
-    InState { index: usize, value: u32 },
+    /// A TS machine's slot and a value's symbol.
+    InState { slot: u8, value: u32 },
+    /// Bevy's `state_changed` on a TS machine: its `State` changed since this condition ran.
+    StateChanged { slot: u8, key: String },
+    StateExists { slot: u8 },
     /// Messages written since this condition last ran: its own cursor, as Bevy's `on_message`.
     OnMessage { index: usize, slot: String },
     RunOnce { slot: String },
@@ -201,13 +205,18 @@ fn hidden_query(world: &mut World, with: &[ComponentId], without: &[ComponentId]
 pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile) -> Result<Condition, CompileError> {
     let slot_key = format!("{}@{path}", c.config);
     let slot = || slot_key.clone();
+    let slot_key = &slot_key;
     let child = |i: usize| if path.is_empty() { i.to_string() } else { format!("{path}.{i}") };
     Ok(match d {
         ConditionDecl::InState { state, value } => {
             let payloads = world.resource::<TsPayloads>();
-            let index = payloads.state(state).ok_or_else(|| format!("no state {state}"))?;
-            let value = payloads.states[index].index(value).ok_or_else(|| format!("{state} has no value {value}"))?;
-            Condition::InState { index, value }
+            let m = &payloads.states[payloads.state(state).ok_or_else(|| format!("no state {state}"))?];
+            Condition::InState { slot: m.slot, value: m.sym(value).ok_or_else(|| format!("{state} has no value {value}"))? }
+        }
+        ConditionDecl::StateChanged { state } | ConditionDecl::StateExists { state } => {
+            let payloads = world.resource::<TsPayloads>();
+            let slot = payloads.states[payloads.state(state).ok_or_else(|| format!("no state {state}"))?].slot;
+            if matches!(d, ConditionDecl::StateChanged { .. }) { Condition::StateChanged { slot, key: slot_key.clone() } } else { Condition::StateExists { slot } }
         }
         ConditionDecl::OnMessage { message } => {
             let index = world.resource::<TsPayloads>().message(message).ok_or_else(|| format!("no message {message}"))?;
@@ -301,7 +310,15 @@ fn state<'w>(world: &'w mut World, slot: &str) -> &'w mut ConditionState {
 /// condition systems do.
 pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
     match c {
-        Condition::InState { index, value } => world.resource::<TsPayloads>().states.get(*index).is_some_and(|s| s.current == Some(*value)),
+        Condition::InState { slot, value } => crate::states::current_of(world, *slot) == Some(*value),
+        Condition::StateExists { slot } => crate::states::current_of(world, *slot).is_some(),
+        Condition::StateChanged { slot, key } => {
+            // The `State` resource exists once the machine has a value.
+            let this_run = world.change_tick();
+            let ticks = crate::states::state_id_of(world, *slot).and_then(|id| world.get_resource_change_ticks_by_id(id));
+            let last_run = std::mem::replace(&mut state(world, key).last_run, this_run);
+            ticks.is_some_and(|t| t.is_changed(last_run, this_run))
+        }
         Condition::OnMessage { index, slot } => {
             let Some(next) = world.resource::<TsPayloads>().messages.get(*index).map(|q| q.next_seq) else { return false };
             let cursor = std::mem::replace(&mut state(world, slot).messages, next);

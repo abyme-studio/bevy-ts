@@ -255,6 +255,10 @@ pub enum ParamDecl {
     NextState {
         state: String,
     },
+    /// The value before the machine's last transition.
+    PreviousState {
+        state: String,
+    },
     /// A one-shot system's input, `In<E>`: an event by name, first param only.
     In {
         event: String,
@@ -297,6 +301,8 @@ pub enum ScheduleDecl {
     Schedule { label: String },
     OnEnter { state: String, value: String },
     OnExit { state: String, value: String },
+    /// Bevy's `OnTransition { exited, entered }`.
+    OnTransition { state: String, exited: String, entered: String },
     Observer,
     /// A one-shot system, run by `commands.runSystem` or `RunTsSystem`.
     OneShot,
@@ -310,6 +316,10 @@ pub type MatchFilter = FilterDecl;
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ConditionDecl {
     InState { state: String, value: String },
+    /// Bevy's `state_changed`: the machine transitioned since this condition last ran.
+    StateChanged { state: String },
+    /// Bevy's `state_exists`: the machine has a value.
+    StateExists { state: String },
     OnMessage { message: String },
     RunOnce,
     ResourceExists { resource: String },

@@ -387,10 +387,13 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                 });
             }
             Op::SetState { index, value } => {
-                match world.get_resource_mut::<crate::messages::TsPayloads>().and_then(|mut p| {
-                    p.states.get_mut(index as usize).filter(|s| (value as usize) < s.values.len()).map(|s| s.next = Some(value))
-                }) {
-                    Some(()) => {}
+                let target = world.get_resource::<crate::messages::TsPayloads>().and_then(|p| p.states.get(index as usize)).and_then(|m| m.syms.get(value as usize).map(|s| (m.slot, *s, m.name.clone())));
+                match target {
+                    Some((slot, sym, name)) => {
+                        if !crate::states::set_next_of(world, slot, sym) {
+                            warnings.push(format!("setState: {name} has no value yet; give it one with app.initState"));
+                        }
+                    }
                     None => warnings.push(format!("setState: no state {index} value {value}")),
                 }
             }

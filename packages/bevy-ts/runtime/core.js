@@ -829,6 +829,11 @@ export const FixedLast = stage("FixedLast", "fixedLast");
 export function OnEnter(v) {
   return sched("onEnter", { state: v.state, value: v.value });
 }
+/** Bevy's `OnTransition { exited, entered }`: systems that run on exactly that transition. */
+export function OnTransition({ exited, entered }) {
+  if (!exited || !entered || exited.state !== entered.state) throw declError("OnTransition({ exited, entered }): two values of one state machine", callerLocation());
+  return sched("onTransition", { state: exited.state, exited: exited.value, entered: entered.value });
+}
 export function OnExit(v) {
   return sched("onExit", { state: v.state, value: v.value });
 }
@@ -904,6 +909,18 @@ function resValue(kind, value) {
 
 export function inState(v) {
   return new Condition({ kind: "inState", state: v.state, value: v.value });
+}
+/** Bevy's `state_changed`: the machine transitioned since this condition last ran. */
+export function stateChanged(S) {
+  return new Condition({ kind: "stateChanged", state: stateName(S, "stateChanged") });
+}
+/** Bevy's `state_exists`: the machine has a value. */
+export function stateExists(S) {
+  return new Condition({ kind: "stateExists", state: stateName(S, "stateExists") });
+}
+function stateName(S, what) {
+  if (!S || S[KIND] !== "state") throw declError(`${what}: ${String(S && S.name)} is not a States class`, callerLocation());
+  return S.componentName;
 }
 export function onMessage(M) {
   return new Condition({ kind: "onMessage", message: M.componentName });
@@ -1457,6 +1474,7 @@ function resolveParams(g, params, at) {
         break;
       }
       case "state":
+      case "previousState":
       case "nextState": {
         const St = refClass(g, p.state, at);
         if (St[KIND] !== "state") throw declError(`${St.name} is not a States class`, at);
@@ -1636,6 +1654,8 @@ function scheduleDecl(s) {
     case "onEnter":
     case "onExit":
       return { kind: s.schedule, state: s.state, value: s.value };
+    case "onTransition":
+      return { kind: "onTransition", state: s.state, exited: s.exited, entered: s.entered };
     default:
       return { kind: s.schedule };
   }
@@ -2405,6 +2425,12 @@ function buildSystem(g, s) {
         const St = p.cls;
         const o = { current: undefined };
         consumers.push((frame) => (o.current = frame >= 0 && frame < St.values.length ? St[St.values[frame]] : undefined));
+        return o;
+      }
+      case "previousState": {
+        const St = p.cls;
+        const o = { previous: undefined };
+        consumers.push((frame) => (o.previous = frame >= 0 && frame < St.values.length ? St[St.values[frame]] : undefined));
         return o;
       }
       case "nextState": {
