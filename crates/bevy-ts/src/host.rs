@@ -857,6 +857,24 @@ mod tests {
         assert!(w.finish().is_err());
     }
 
+    /// An argument may share a name with the glue's own locals (`a`, `i`, `n`, `r`): the JS
+    /// argument is `$`-prefixed, so `at(i)` is not `let i` declared twice.
+    #[test]
+    fn glue_arguments_never_meet_its_locals() {
+        let method = |name: &str, args| MethodSpec { name: name.into(), args, ret: Kind::Unit, call: |_, _, _, _, _, _| Ok(()) };
+        let spec = ParamSpec {
+            ts: "Probe",
+            module: "bevy-ts/probe",
+            rust: "Probe",
+            stands_for: None,
+            init: init::<()>,
+            methods: vec![method("at", vec![ArgSpec::Value("i", Kind::Num("u32")), ArgSpec::Value("a", Kind::Vec2)])],
+        };
+        let js = glue(&spec, 0);
+        assert!(js.contains("  at($i, $a) {"), "{js}");
+        assert!(js.contains("a[i++] = +$i;") && js.contains("const v = $a;"), "{js}");
+    }
+
     #[test]
     fn spellings_normalise() {
         assert_eq!(normalise_spelling("ResMut< bevy::time::Time<bevy::time::Virtual> >"), "ResMut<Time<Virtual>>");

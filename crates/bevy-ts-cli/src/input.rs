@@ -307,7 +307,7 @@ pub struct TouchesParam<'w> {
 
 /// A touch id from TS: a whole number that fits.
 fn touch_id(id: f64) -> Result<u64, String> {
-    if id >= 0.0 && id.fract() == 0.0 && id <= u64::MAX as f64 { Ok(id as u64) } else { Err(format!("{id} is not a touch id")) }
+    if id >= 0.0 && id.fract() == 0.0 && id < u64::MAX as f64 { Ok(id as u64) } else { Err(format!("{id} is not a touch id")) }
 }
 
 impl TouchesParam<'_> {

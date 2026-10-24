@@ -442,7 +442,7 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 | `PinchGesture`, `RotationGesture`, `DoubleTapGesture`, `PanGesture` | `MessageReader` | rust-events; stage 3 |
 | `Gamepad` | `With<Gamepad>` to find pads, `Gamepads` for its methods | script-input-devices |
 | `GamepadButton`, `GamepadAxis`, `GamepadInput` | enums; `get` takes either | script-input-devices |
-| `GamepadSettings`, `ButtonSettings`, `AxisSettings`, `ButtonAxisSettings` | read through reflection; no write | a follow-up |
+| `GamepadSettings`, `ButtonSettings`, `AxisSettings`, `ButtonAxisSettings` | read through reflection; no write | a follow-up: writing them belongs to reflect-coverage / writable-native-params |
 | `GamepadEvent`, `GamepadConnectionEvent`, `GamepadButtonChangedEvent`, `GamepadButtonStateChangedEvent`, `GamepadAxisChangedEvent`, `RawGamepadEvent` and its parts | `MessageReader` | rust-events; stage 3 |
 | `GamepadRumbleRequest`, `GamepadRumbleIntensity` | `MessageWriter` | rust-events; stage 3 |
 | Rumble in viewport mode | none: the viewport protocol carries no rumble | a follow-up |

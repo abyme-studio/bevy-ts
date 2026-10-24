@@ -19,12 +19,12 @@ use common::{calls, messages};
 
 /// A headless app with Bevy's input and window plugins and `bevy-ts/input`, `game.ts` loaded.
 fn input_app(name: &str, src: &str, window: bool) -> App {
-    let (app, r) = try_load(name, src, window);
+    let (_, app, r) = try_load(name, src, window);
     assert!(r.errors.is_empty(), "load failed: {:?}", r.errors);
     app
 }
 
-fn try_load(name: &str, src: &str, window: bool) -> (App, bevy_ts::generation::ReloadReport) {
+fn try_load(name: &str, src: &str, window: bool) -> (std::path::PathBuf, App, bevy_ts::generation::ReloadReport) {
     let dir = common::project(name, &[("game.ts", src)]);
     let mut app = common::app(&dir.join("game.ts"));
     app.add_plugins(InputPlugin)
@@ -35,7 +35,7 @@ fn try_load(name: &str, src: &str, window: bool) -> (App, bevy_ts::generation::R
         })
         .add_plugins(bevy_ts_cli::input::ScriptInputPlugin);
     let r = common::reload(&mut app, false);
-    (app, r)
+    (dir, app, r)
 }
 
 fn window(app: &mut App) -> Entity {
@@ -284,10 +284,31 @@ fn input_toggle_active_flips_on_each_press() {
     assert_eq!(ran, [2, 3, 4]);
 }
 
+/// Whether the overlay runs on the next frame.
+fn overlay_runs(app: &mut App) -> bool {
+    let n = runs(app, "overlay");
+    app.update();
+    runs(app, "overlay") > n
+}
+
+#[test]
+fn input_toggle_active_survives_a_reload_and_resets_on_restart() {
+    let (dir, mut app, r) = try_load("input-toggle-reload", CONDITIONS, true);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    tap(&mut app, KeyCode::F1);
+    assert!(overlay_runs(&mut app), "F1 turns it on");
+    common::write(&dir, "game.ts", &format!("{CONDITIONS}// edited\n"));
+    assert!(common::reload(&mut app, false).errors.is_empty());
+    assert!(overlay_runs(&mut app) && overlay_runs(&mut app), "a reload keeps it on");
+    assert!(common::reload(&mut app, true).errors.is_empty());
+    assert!(!overlay_runs(&mut app) && !overlay_runs(&mut app), "a restart puts it back to its default, off");
+}
+
 #[test]
 fn a_gamepad_condition_fails_the_load_pointing_at_gamepads() {
     let src = "import { app, systems, Update } from \"bevy-ts\";\nimport { GamepadButton, inputPressed } from \"bevy-ts/input\";\nexport function jump() {}\napp.addSystems(Update, systems(jump).runIf(inputPressed(GamepadButton.South)));\n";
-    let (_, r) = try_load("input-condition-pad", src, true);
+    let (_, _, r) = try_load("input-condition-pad", src, true);
     let e = r.errors.iter().find(|e| e.message.contains("inputPressed")).unwrap_or_else(|| panic!("{:?}", r.errors));
     assert!(e.message.contains("Gamepads") && e.message.contains("8192"), "{e:?}");
     let at = e.location.as_ref().unwrap();
