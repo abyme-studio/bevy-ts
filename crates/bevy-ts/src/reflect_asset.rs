@@ -326,7 +326,6 @@ pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String
         }
         "assets.drop" | "assets.remove" => {
             let n = parse_ref(arg(0)).unwrap_or_else(|| Err(format!("{name} takes an asset ref, not {}", arg(0))))?;
-            let assets = script_assets(world)?;
             if name == "assets.drop" { assets.drop(n)? } else { assets.remove(n)? }
             Value::Null
         }
