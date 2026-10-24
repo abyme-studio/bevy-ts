@@ -1,4 +1,7 @@
-//! `Meshes`, the engine's own exported param for `ResMut<Assets<Mesh>>` (`bevy-ts/assets`): Bevy's
+//! The engine's own asset params (`bevy-ts/assets`): `ScriptAssetServer` for `Res<AssetServer>`
+//! (loads and their load state, below the meshes) and `Meshes` for `ResMut<Assets<Mesh>>`.
+//!
+//! `Meshes`, for `ResMut<Assets<Mesh>>`: Bevy's
 //! `Mesh` API from TS. Vertex data crosses as typed-array views read in place, one call per
 //! attribute, and is copied once into the mesh's own `Vec`; an attribute or index buffer of the
 //! same length and format is overwritten in place, with no allocation. A mesh made with `Mesh.new`
@@ -10,21 +13,22 @@
 //! precondition Bevy asserts is checked first, so no call panics and a failed call leaves the mesh
 //! as it was. A changed mesh sends one `Modified` per frame however many calls change it.
 
-use bevy::asset::{AssetId, RenderAssetUsages};
+use bevy::asset::{AssetId, AssetPath, DependencyLoadState, LoadState, RecursiveDependencyLoadState, RenderAssetUsages, UntypedHandle};
 use bevy::diagnostic::FrameCount;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::{Indices, MeshVertexAttribute, PrimitiveTopology, VertexAttributeValues, VertexFormat};
 use bevy::platform::collections::HashSet;
-use bevy_ts::host::ScriptRef;
+use bevy_ts::host::{ScriptRef, UntypedScriptRef};
 use bevy_ts::reflect_asset::ScriptAssets;
 use bevy_ts_native::prelude::*;
 
-/// Exports `Meshes`. Every engine adds it.
+/// Exports `ScriptAssetServer` and `Meshes`. Every engine adds it.
 pub struct ScriptAssetsPlugin;
 
 impl Plugin for ScriptAssetsPlugin {
     fn build(&self, app: &mut App) {
-        app.ts_param::<Meshes<'static, 'static>>().ts_module("bevy-ts/assets", include_str!("../ts/assets.js"), include_str!("../ts/assets.d.ts"));
+        app.ts_param::<ScriptAssetServer<'static>>()
+            .ts_param::<Meshes<'static, 'static>>().ts_module("bevy-ts/assets", include_str!("../ts/assets.js"), include_str!("../ts/assets.d.ts"));
     }
 }
 
@@ -429,5 +433,131 @@ impl Meshes<'_, '_> {
         let h = mesh.handle(&self.refs)?;
         self.refs.drop(mesh.0)?;
         Ok(self.meshes.remove(&h).is_some())
+    }
+}
+
+/// A load state as a code: `NotLoaded` 0, `Loading` 1, `Loaded` 2, `Failed` 3.
+fn state_code(state: &LoadState) -> u32 {
+    match state {
+        LoadState::NotLoaded => 0,
+        LoadState::Loading => 1,
+        LoadState::Loaded => 2,
+        LoadState::Failed(_) => 3,
+    }
+}
+
+/// Copies `text`'s UTF-8 into `out`, as much as fits; returns its whole length in bytes.
+fn put_text(text: &str, out: &mut [u8]) -> u32 {
+    let n = text.len().min(out.len());
+    out[..n].copy_from_slice(&text.as_bytes()[..n]);
+    text.len() as u32
+}
+
+fn utf8<'a>(bytes: &'a [u8], what: &str) -> Result<&'a str, String> {
+    std::str::from_utf8(bytes).map_err(|e| format!("{what} is not UTF-8: {e}"))
+}
+
+/// `Res<AssetServer>` for TS: Bevy's loads, held by the script as strong refs.
+#[derive(SystemParam)]
+pub struct ScriptAssetServer<'w> {
+    server: Res<'w, AssetServer>,
+    refs: Res<'w, ScriptAssets>,
+    registry: Res<'w, AppTypeRegistry>,
+}
+
+impl ScriptAssetServer<'_> {
+    fn id(&self, r: UntypedScriptRef) -> Result<bevy::asset::UntypedAssetId, String> {
+        Ok(r.handle(&self.refs)?.id())
+    }
+}
+
+#[export(ts = "ScriptAssetServer", module = "bevy-ts/assets", stands_for = "Res<AssetServer>")]
+impl ScriptAssetServer<'_> {
+    /// `AssetServer::load`: the asset at `path` (UTF-8), of the asset type at `type_path` when
+    /// given, else of the type the path's extension loads. Returns a strong ref; the same path
+    /// gives the same ref. The runtime gives it the asset's type.
+    pub fn load_path(&self, path: &[u8], type_path: &[u8]) -> Result<UntypedScriptRef, String> {
+        let path = utf8(path, "load: the path")?;
+        let type_path = utf8(type_path, "load: the type")?;
+        let parsed = AssetPath::try_parse(path).map_err(|e| format!("load: {path:?} is not an asset path: {e}"))?;
+        let type_id = if type_path.is_empty() {
+            if parsed.label().is_some() {
+                return Err(format!("load: {path:?} names a labelled asset; pass its type, server.load({path:?}, Mesh)"));
+            }
+            let ext = parsed.get_full_extension().ok_or_else(|| format!("load: {path:?} has no extension; pass the asset type"))?;
+            let loader = bevy::tasks::futures::now_or_never(self.server.get_asset_loader_with_extension(&ext))
+                .ok_or_else(|| format!("load: the loader for .{ext} is not ready yet; pass the asset type"))?
+                .map_err(|e| format!("load: {e}"))?;
+            loader.asset_type_id()
+        } else {
+            let registry = self.registry.read();
+            registry.get_with_type_path(type_path).ok_or_else(|| format!("load: {type_path} is not a registered type"))?.type_id()
+        };
+        let handle: UntypedHandle = self.server.load_builder().load_erased(type_id, parsed);
+        Ok(UntypedScriptRef(self.refs.insert_strong(handle)))
+    }
+
+    /// Copies the type path of ref `r`'s asset into `out`; returns its length.
+    pub fn type_path(&self, r: UntypedScriptRef, out: &mut [u8]) -> Result<u32, String> {
+        let id = r.handle(&self.refs)?.type_id();
+        let registry = self.registry.read();
+        let path = registry.get(id).map(|t| t.type_info().type_path()).ok_or("type_path: the asset type is not registered")?;
+        Ok(put_text(path, out))
+    }
+
+    /// `load_state` as a code.
+    pub fn load_state_code(&self, r: UntypedScriptRef) -> Result<u32, String> {
+        Ok(state_code(&self.server.load_state(self.id(r)?)))
+    }
+
+    pub fn dependency_load_state_code(&self, r: UntypedScriptRef) -> Result<u32, String> {
+        Ok(match self.server.dependency_load_state(self.id(r)?) {
+            DependencyLoadState::NotLoaded => 0,
+            DependencyLoadState::Loading => 1,
+            DependencyLoadState::Loaded => 2,
+            DependencyLoadState::Failed(_) => 3,
+        })
+    }
+
+    pub fn recursive_dependency_load_state_code(&self, r: UntypedScriptRef) -> Result<u32, String> {
+        Ok(match self.server.recursive_dependency_load_state(self.id(r)?) {
+            RecursiveDependencyLoadState::NotLoaded => 0,
+            RecursiveDependencyLoadState::Loading => 1,
+            RecursiveDependencyLoadState::Loaded => 2,
+            RecursiveDependencyLoadState::Failed(_) => 3,
+        })
+    }
+
+    /// The error of a failed state (`which`: 0 load, 1 dependency, 2 recursive), copied into
+    /// `out`; returns its whole length, 0 when that state is not failed.
+    pub fn failed_text(&self, r: UntypedScriptRef, which: u32, out: &mut [u8]) -> Result<u32, String> {
+        let id = self.id(r)?;
+        let error = match which {
+            0 => match self.server.load_state(id) {
+                LoadState::Failed(e) => Some(e.to_string()),
+                _ => None,
+            },
+            1 => match self.server.dependency_load_state(id) {
+                DependencyLoadState::Failed(e) => Some(e.to_string()),
+                _ => None,
+            },
+            _ => match self.server.recursive_dependency_load_state(id) {
+                RecursiveDependencyLoadState::Failed(e) => Some(e.to_string()),
+                _ => None,
+            },
+        };
+        Ok(error.map_or(0, |e| put_text(&e, out)))
+    }
+
+    pub fn is_loaded(&self, r: UntypedScriptRef) -> Result<bool, String> {
+        Ok(self.server.is_loaded(self.id(r)?))
+    }
+
+    pub fn is_loaded_with_direct_dependencies(&self, r: UntypedScriptRef) -> Result<bool, String> {
+        Ok(self.server.is_loaded_with_direct_dependencies(self.id(r)?))
+    }
+
+    pub fn is_loaded_with_dependencies(&self, r: UntypedScriptRef) -> Result<bool, String> {
+        Ok(self.server.is_loaded_with_dependencies(self.id(r)?))
     }
 }

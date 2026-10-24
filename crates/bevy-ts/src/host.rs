@@ -43,7 +43,8 @@ pub enum Kind {
     /// A `NativeLayout` record: its TS name and fields.
     Record(&'static str, Vec<(String, Kind)>),
     Option(Box<Kind>),
-    /// An asset ref (`ScriptRef<A>`), by the asset's type path. One slot, the ref number.
+    /// An asset ref (`ScriptRef<A>`), by the asset's type path; `""` for any asset type
+    /// (`UntypedScriptRef`). One slot, the ref number.
     AssetRef(&'static str),
     Unit,
 }
@@ -300,6 +301,30 @@ impl<A: Asset> HostValue for ScriptRef<A> {
     }
     fn read(r: &mut SlotReader) -> Result<Self, String> {
         Ok(ScriptRef::new(r.slot()? as u64))
+    }
+    fn write(&self, w: &mut SlotWriter) {
+        w.push(self.0 as f64);
+    }
+}
+
+/// An asset ref of any asset type, for a method that takes every type (`server.loadState`).
+#[derive(Clone, Copy, Debug)]
+pub struct UntypedScriptRef(pub u64);
+
+impl UntypedScriptRef {
+    /// The handle the ref holds; a stale ref fails naming it.
+    #[cfg(feature = "pbr")]
+    pub fn handle(&self, assets: &crate::reflect_asset::ScriptAssets) -> Result<bevy::asset::UntypedHandle, String> {
+        assets.handle(self.0)
+    }
+}
+
+impl HostValue for UntypedScriptRef {
+    fn kind() -> Kind {
+        Kind::AssetRef("")
+    }
+    fn read(r: &mut SlotReader) -> Result<Self, String> {
+        Ok(UntypedScriptRef(r.slot()? as u64))
     }
     fn write(&self, w: &mut SlotWriter) {
         w.push(self.0 as f64);

@@ -1,5 +1,6 @@
-//! script-assets: meshes built and updated from TS through `ResMut<Assets<Mesh>>` and Bevy's
-//! `Mesh` API, compared with the same calls in Rust. Headless, no GPU.
+//! script-assets: loads and their load state through `Res<AssetServer>`, strong refs dropped and
+//! removed, and meshes built and updated from TS through `ResMut<Assets<Mesh>>` and Bevy's `Mesh`
+//! API, compared with the same calls in Rust. Headless; only the glTF test needs the GPU.
 
 use crate::common;
 
@@ -17,8 +18,8 @@ use bevy_ts_v8::V8Options;
 use common::*;
 use std::sync::Arc;
 
-const IMPORTS: &str = r#"import { app, Startup, Update } from "bevy-ts";
-import type { Assets, AssetRef, MeshData, ResMut } from "bevy-ts";
+const IMPORTS: &str = r#"import { app, asset, assets, Startup, Update } from "bevy-ts";
+import type { AssetServer, Assets, AssetRef, MeshData, Res, ResMut } from "bevy-ts";
 import { Indices, Mesh, PrimitiveTopology, RenderAssetUsages } from "bevy-ts/assets";
 "#;
 
@@ -29,16 +30,25 @@ fn mesh_app(name: &str, body: &str) -> App {
 
 /// As [`mesh_app`], with `extra` added before the load.
 fn mesh_app_with(name: &str, body: &str, extra: impl FnOnce(&mut App)) -> App {
+    assets_app(name, body, &[], extra).1
+}
+
+/// The project folder, with `files` beside `game.ts` (the asset root), and its loaded app.
+fn assets_app(name: &str, body: &str, files: &[(&str, &[u8])], extra: impl FnOnce(&mut App)) -> (std::path::PathBuf, App) {
     let dir = project(name, &[("game.ts", &format!("{IMPORTS}{body}"))]);
+    for (f, bytes) in files {
+        std::fs::write(dir.join(f), bytes).unwrap();
+    }
     let mut app = App::new();
-    app.add_plugins((MinimalPlugins, AssetPlugin::default(), MeshPlugin))
+    let root = AssetPlugin { file_path: dir.to_string_lossy().into_owned(), ..default() };
+    app.add_plugins((MinimalPlugins, root, MeshPlugin, bevy::image::ImagePlugin::default()))
         .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true))
         .add_plugins(bevy_ts_cli::assets::ScriptAssetsPlugin);
     extra(&mut app);
     app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.ts"), true).unwrap())));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "load failed: {:?}", r.errors);
-    app
+    (dir, app)
 }
 
 /// The number after `prefix` in the script's log.
@@ -455,3 +465,400 @@ app.addSystems(Startup, build);
     assert_eq!(logged(&app, "refs "), "bevy_mesh::mesh::Mesh true 3 4 3");
     assert_eq!(logged(&app, "wrong "), "Shapes.vertices: expected an AssetRef<bevy_mesh::mesh::Mesh>, got an AssetRef<bevy_image::image::Image>");
 }
+
+// ---------- handles and load state ----------
+
+/// A 2x2 RGBA PNG: zlib with one stored block, so no encoder is needed.
+fn png() -> Vec<u8> {
+    fn crc(bytes: &[u8]) -> u32 {
+        let mut c = 0xffff_ffffu32;
+        for &b in bytes {
+            c ^= b as u32;
+            for _ in 0..8 {
+                c = if c & 1 != 0 { 0xedb8_8320 ^ (c >> 1) } else { c >> 1 };
+            }
+        }
+        !c
+    }
+    fn chunk(out: &mut Vec<u8>, kind: &[u8], data: &[u8]) {
+        out.extend((data.len() as u32).to_be_bytes());
+        let mut body = kind.to_vec();
+        body.extend(data);
+        out.extend(&body);
+        out.extend(crc(&body).to_be_bytes());
+    }
+    let raw: Vec<u8> = (0..2).flat_map(|_| [0u8, 255, 0, 0, 255, 0, 255, 0, 255]).collect();
+    let (mut a, mut b) = (1u32, 0u32);
+    for &x in &raw {
+        a = (a + x as u32) % 65521;
+        b = (b + a) % 65521;
+    }
+    let mut z = vec![0x78, 0x01, 0x01];
+    z.extend((raw.len() as u16).to_le_bytes());
+    z.extend((!(raw.len() as u16)).to_le_bytes());
+    z.extend(&raw);
+    z.extend(((b << 16) | a).to_be_bytes());
+    let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+    let mut ihdr = Vec::new();
+    ihdr.extend(2u32.to_be_bytes());
+    ihdr.extend(2u32.to_be_bytes());
+    ihdr.extend([8, 6, 0, 0, 0]);
+    chunk(&mut out, b"IHDR", &ihdr);
+    chunk(&mut out, b"IDAT", &z);
+    chunk(&mut out, b"IEND", &[]);
+    out
+}
+
+/// Runs frames until the script logs `prefix`, up to 200.
+fn until_logged(app: &mut App, prefix: &str) -> String {
+    for _ in 0..200 {
+        app.update();
+        if let Some(l) = messages(app).iter().find_map(|l| l.strip_prefix(prefix)) {
+            return l.to_string();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    panic!("no {prefix:?} in {:?}", messages(app));
+}
+
+#[test]
+fn a_texture_loads_and_reaches_loaded() {
+    let png = png();
+    let (_, mut app) = assets_app(
+        "load-texture",
+        r#"
+let r: AssetRef<unknown> | undefined;
+let first = true;
+export function watch(server: Res<AssetServer>) {
+  if (!r) {
+    r = server.load("grid.png");
+    const again = server.load("grid.png");
+    console.log(`loading ${r.$asset} ${r.type} ${again.$asset === r.$asset}`);
+  }
+  const state = server.loadState(r);
+  if (first) {
+    first = false;
+    console.log(`first ${JSON.stringify(state)} ${server.isLoadedWithDependencies(r)}`);
+  }
+  if (state === "Loaded") console.log(`loaded ${server.isLoaded(r)} ${server.isLoadedWithDependencies(r)} ${JSON.stringify(server.recursiveDependencyLoadState(r))}`);
+}
+app.addSystems(Update, watch);
+"#,
+        &[("grid.png", &png)],
+        |_| {},
+    );
+    let done = until_logged(&mut app, "loaded ");
+    assert_eq!(done, "true true \"Loaded\"");
+    let loading = logged(&app, "loading ");
+    let parts: Vec<&str> = loading.split(' ').collect();
+    assert_eq!(parts[1..], ["bevy_image::image::Image", "true"]);
+    assert_eq!(logged(&app, "first "), "\"Loading\" false");
+    let h = app.world().resource::<ScriptAssets>().handle(parts[0].parse().unwrap()).unwrap().typed::<Image>();
+    assert_eq!(app.world().resource::<Assets<Image>>().get(&h).unwrap().size(), UVec2::new(2, 2));
+}
+
+#[test]
+fn a_missing_file_fails_with_bevys_error() {
+    let (_, mut app) = assets_app(
+        "load-missing",
+        r#"
+let r: AssetRef<unknown> | undefined;
+export function watch(server: Res<AssetServer>) {
+  r ??= server.load("missing.png");
+  const s = server.loadState(r);
+  if (typeof s === "object") console.log(`failed ${s.Failed} | ${JSON.stringify(server.recursiveDependencyLoadState(r))}`);
+}
+app.addSystems(Update, watch);
+"#,
+        &[],
+        |_| {},
+    );
+    let failed = until_logged(&mut app, "failed ");
+    assert!(failed.contains("missing.png"), "{failed}");
+    assert!(failed.contains("| {\"Failed\":"), "{failed}");
+    app.update();
+}
+
+#[test]
+fn a_labelled_path_needs_a_type() {
+    let mut app = mesh_app(
+        "load-labelled",
+        r#"
+export function load(server: Res<AssetServer>) {
+  try {
+    server.load("models/fox.glb#Mesh0/Primitive0");
+  } catch (e) {
+    console.log(`threw ${(e as Error).message}`);
+  }
+  const r = server.load("models/fox.glb#Mesh0/Primitive0", Mesh);
+  console.log(`typed ${r.type}`);
+}
+app.addSystems(Startup, load);
+"#,
+    );
+    updates(&mut app, 2);
+    assert!(logged(&app, "threw ").contains("load: \"models/fox.glb#Mesh0/Primitive0\" names a labelled asset; pass its type"), "{}", logged(&app, "threw "));
+    assert_eq!(logged(&app, "typed "), "bevy_mesh::mesh::Mesh");
+}
+
+/// `AssetEvent<Mesh>`s sent since `cursor`, for `id`, by kind.
+fn mesh_events(app: &App, cursor: &mut bevy::ecs::message::MessageCursor<AssetEvent<Mesh>>, id: AssetId<Mesh>) -> Vec<&'static str> {
+    cursor
+        .read(app.world().resource::<Messages<AssetEvent<Mesh>>>())
+        .filter_map(|e| match e {
+            AssetEvent::Added { id: i } if *i == id => Some("Added"),
+            AssetEvent::Modified { id: i } if *i == id => Some("Modified"),
+            AssetEvent::Removed { id: i } if *i == id => Some("Removed"),
+            AssetEvent::Unused { id: i } if *i == id => Some("Unused"),
+            AssetEvent::LoadedWithDependencies { id: i } if *i == id => Some("LoadedWithDependencies"),
+            _ => None,
+        })
+        .collect()
+}
+
+const TRIANGLE: &str = r#"
+const tri = () => Mesh.new(PrimitiveTopology.TriangleList).insertAttribute(Mesh.ATTRIBUTE_POSITION, new Float32Array(9));
+"#;
+
+#[test]
+fn a_dropped_mesh_nothing_holds_is_freed() {
+    let mut app = mesh_app(
+        "drop-free",
+        &format!(
+            r#"{TRIANGLE}
+let r: AssetRef<MeshData> | undefined;
+let frame = 0;
+export function run(meshes: ResMut<Assets<Mesh>>) {{
+  frame++;
+  if (frame === 1) {{ r = meshes.add(tri()); console.log(`added ${{r.$asset}}`); }}
+  if (frame === 3) assets.drop(r!);
+  if (frame === 4) {{ try {{ meshes.get(r!); }} catch (e) {{ console.log(`stale ${{(e as Error).message}}`); }} }}
+}}
+app.addSystems(Update, run);
+"#
+        ),
+    );
+    updates(&mut app, 2);
+    let n = ref_of(&app, "added ");
+    let id = app.world().resource::<ScriptAssets>().handle(n).unwrap().typed::<Mesh>().id();
+    let mut cursor = app.world().resource::<Messages<AssetEvent<Mesh>>>().get_cursor_current();
+    updates(&mut app, 4);
+    assert!(app.world().resource::<Assets<Mesh>>().get(id).is_none(), "freed");
+    assert_eq!(mesh_events(&app, &mut cursor, id), ["Unused", "Removed"]);
+    assert!(logged(&app, "stale ").contains(&format!("stale asset ref {n}")), "{}", logged(&app, "stale "));
+}
+
+#[test]
+fn a_dropped_mesh_an_entity_draws_stays() {
+    let mut app = mesh_app(
+        "drop-held",
+        &format!(
+            r#"{TRIANGLE}
+let r: AssetRef<MeshData> | undefined;
+let frame = 0;
+export function run(meshes: ResMut<Assets<Mesh>>) {{
+  frame++;
+  if (frame === 1) {{ r = meshes.add(tri()); console.log(`added ${{r.$asset}}`); }}
+  if (frame === 3) assets.drop(r!);
+}}
+app.addSystems(Update, run);
+"#
+        ),
+    );
+    updates(&mut app, 2);
+    // What a `<Mesh3d value={ref} />` holds: a clone of the strong handle.
+    let h = app.world().resource::<ScriptAssets>().handle(ref_of(&app, "added ")).unwrap().typed::<Mesh>();
+    let e = app.world_mut().spawn(Mesh3d(h.clone())).id();
+    let id = h.id();
+    drop(h);
+    updates(&mut app, 4);
+    assert!(app.world().resource::<Assets<Mesh>>().get(id).is_some(), "kept while the entity holds it");
+    app.world_mut().despawn(e);
+    updates(&mut app, 2);
+    assert!(app.world().resource::<Assets<Mesh>>().get(id).is_none(), "freed once the entity is gone");
+}
+
+#[test]
+fn remove_frees_at_once() {
+    let mut app = mesh_app(
+        "remove",
+        &format!(
+            r#"{TRIANGLE}
+let r: AssetRef<MeshData> | undefined;
+let r2: AssetRef<MeshData> | undefined;
+let frame = 0;
+export function run(meshes: ResMut<Assets<Mesh>>) {{
+  frame++;
+  if (frame === 1) {{ r = meshes.add(tri()); r2 = meshes.add(tri()); console.log(`added ${{r.$asset}} ${{r2.$asset}}`); }}
+  if (frame === 3) {{ assets.remove(r!); console.log(`removed ${{meshes.remove(r2!)}}`); }}
+}}
+app.addSystems(Update, run);
+"#
+        ),
+    );
+    updates(&mut app, 2);
+    let added = logged(&app, "added ");
+    let refs = app.world().resource::<ScriptAssets>().clone();
+    let held: Vec<Handle<Mesh>> = added.split(' ').map(|n| refs.handle(n.parse().unwrap()).unwrap().typed()).collect();
+    let mut cursor = app.world().resource::<Messages<AssetEvent<Mesh>>>().get_cursor_current();
+    // An entity holds both: `remove` frees them anyway, the frame it runs.
+    app.world_mut().spawn((Mesh3d(held[0].clone()),));
+    app.world_mut().spawn((Mesh3d(held[1].clone()),));
+    app.update();
+    for h in &held {
+        assert!(app.world().resource::<Assets<Mesh>>().get(h).is_none(), "removed the same frame");
+    }
+    app.update();
+    assert_eq!(mesh_events(&app, &mut cursor, held[0].id()), ["Removed"]);
+    assert_eq!(logged(&app, "removed "), "true");
+}
+
+#[test]
+fn a_stale_ref_throws() {
+    let mut app = mesh_app(
+        "stale",
+        &format!(
+            r#"{TRIANGLE}
+export function run(meshes: ResMut<Assets<Mesh>>) {{
+  const r = meshes.add(tri());
+  assets.drop(r);
+  for (const [what, f] of [["getMut", () => meshes.getMut(r)], ["drop", () => assets.drop(r)], ["remove", () => meshes.remove(r)]] as const) {{
+    try {{ f(); console.log(`${{what}} ok`); }} catch (e) {{ console.log(`${{what}} threw ${{(e as Error).message}}`); }}
+  }}
+}}
+app.addSystems(Startup, run);
+"#
+        ),
+    );
+    updates(&mut app, 2);
+    for what in ["getMut ", "drop ", "remove "] {
+        assert!(logged(&app, what).contains("threw") && logged(&app, what).contains("stale asset ref 1"), "{what}{}", logged(&app, what));
+    }
+}
+
+#[test]
+fn hot_reload_frees_what_only_the_old_script_held() {
+    let body = format!(
+        r#"{TRIANGLE}
+export function run(meshes: ResMut<Assets<Mesh>>) {{
+  const a = meshes.add(tri());
+  const b = meshes.add(tri());
+  console.log(`added ${{a.$asset}} ${{b.$asset}}`);
+}}
+app.addSystems(Startup, run);
+"#
+    );
+    let (dir, mut app) = assets_app("reload-free", &body, &[], |_| {});
+    updates(&mut app, 2);
+    let added = logged(&app, "added ");
+    let refs = app.world().resource::<ScriptAssets>().clone();
+    let ids: Vec<Handle<Mesh>> = added.split(' ').map(|n| refs.handle(n.parse().unwrap()).unwrap().typed()).collect();
+    // The first goes on an entity, as a slot would hold it.
+    app.world_mut().spawn(Mesh3d(ids[0].clone()));
+    let (on_entity, only_script) = (ids[0].id(), ids[1].id());
+    drop(ids);
+    write(&dir, "game.ts", &format!("{IMPORTS}// edited\n{body}"));
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    updates(&mut app, 3);
+    let meshes = app.world().resource::<Assets<Mesh>>();
+    assert!(meshes.get(on_entity).is_some(), "the entity's mesh stays");
+    assert!(meshes.get(only_script).is_none(), "the one only the old script held is freed");
+}
+
+#[test]
+fn a_uuid_ref_keeps_its_asset_after_drop() {
+    let mut app = mesh_app(
+        "uuid-drop",
+        r#"
+const Image = asset("bevy_image::image::Image");
+export function run() {
+  const r = assets.add(Image, {});
+  console.log(`made ${r.$asset}`);
+  assets.drop(r);
+}
+app.addSystems(Startup, run);
+"#,
+    );
+    let handle = {
+        updates(&mut app, 2);
+        let n = ref_of(&app, "made ");
+        // The ref is stale, but the UUID handle is derived from its number.
+        let uuid = bevy::asset::uuid::Uuid::from_u64_pair(0x6265_7679_2d74_7341, n);
+        Handle::<Image>::Uuid(uuid, std::marker::PhantomData)
+    };
+    updates(&mut app, 2);
+    assert!(app.world().resource::<Assets<Image>>().get(&handle).is_some(), "a UUID asset stays after drop");
+}
+
+const GLTF: &str = r#"{"asset":{"version":"2.0"},
+"buffers":[{"byteLength":36,"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAA"}],
+"bufferViews":[{"buffer":0,"byteLength":36}],
+"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]}],
+"images":[{"uri":"tex.png"}],"textures":[{"source":0}],
+"materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],
+"meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0}]}],
+"nodes":[{"mesh":0}],"scenes":[{"nodes":[0]}],"scene":0}"#;
+
+/// A glTF whose material reads a texture file: the file's load and its dependencies' are seen
+/// apart. Bevy's glTF loader needs the full engine, so this runs on the GPU (macOS, as the other
+/// GPU tests).
+#[cfg(target_os = "macos")]
+#[test]
+fn a_gltf_waits_for_its_dependencies() {
+    use bevy::window::ExitCondition;
+    use bevy::winit::WinitPlugin;
+    let png = png();
+    let dir = project(
+        "load-gltf",
+        &[(
+            "game.ts",
+            &format!(
+                r#"{IMPORTS}
+let r: AssetRef<unknown> | undefined;
+const seen: string[] = [];
+export function watch(server: Res<AssetServer>) {{
+  r ??= server.load("tri.gltf");
+  const line = `${{server.isLoaded(r)}} ${{server.isLoadedWithDirectDependencies(r)}} ${{server.isLoadedWithDependencies(r)}} ${{JSON.stringify(server.dependencyLoadState(r))}} ${{JSON.stringify(server.recursiveDependencyLoadState(r))}}`;
+  if (seen[seen.length - 1] !== line) {{ seen.push(line); console.log(`state ${{line}}`); }}
+  if (server.isLoadedWithDependencies(r)) console.log(`done ${{r.type}}`);
+}}
+app.addSystems(Update, watch);
+"#
+            ),
+        )],
+    );
+    std::fs::write(dir.join("tri.gltf"), GLTF).unwrap();
+    std::fs::write(dir.join("tex.png"), &png).unwrap();
+    let mut app = App::new();
+    app.add_plugins(
+        DefaultPlugins
+            .build()
+            .disable::<WinitPlugin>()
+            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
+            .set(AssetPlugin { file_path: dir.to_string_lossy().into_owned(), ..default() }),
+    )
+    .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true))
+    .add_plugins(bevy_ts_cli::assets::ScriptAssetsPlugin);
+    app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.ts"), true).unwrap())));
+    app.finish();
+    app.cleanup();
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(until_logged(&mut app, "done "), "bevy_gltf::Gltf");
+    app.update();
+    let states: Vec<String> = messages(&app).iter().filter_map(|l| l.strip_prefix("state ")).map(str::to_string).collect();
+    for line in &states {
+        let f: Vec<&str> = line.split(' ').collect();
+        let (loaded, all, recursive) = (f[0] == "true", f[2] == "true", f[4]);
+        // `isLoaded` comes no later than `isLoadedWithDependencies`, and the recursive state is
+        // `Loaded` exactly when it is true.
+        assert!(!all || loaded, "{states:?}");
+        assert_eq!(recursive == "\"Loaded\"", all, "{states:?}");
+    }
+    assert!(states.last().unwrap().starts_with("true true true"), "{states:?}");
+}
+
+#[test]
+#[ignore = "needs rust-events: MessageReader<AssetEvent<A>> in TS"]
+fn a_load_is_seen_as_an_event() {}

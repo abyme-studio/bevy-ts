@@ -389,7 +389,7 @@ fn is_resource(reg: &TypeRegistration) -> bool {
 }
 
 /// Inner types bevy-ts's own declarations name, so a claim of them is typed.
-const CLOCKS: &[&str] = &["Time<Real>", "Time<Virtual>", "Time<Fixed>", "Assets<Mesh>"];
+const CLOCKS: &[&str] = &["Time<Real>", "Time<Virtual>", "Time<Fixed>", "Assets<Mesh>", "AssetServer"];
 
 /// One `stands_for` claim: the spelling, and the module and TS name of the export.
 pub struct Claim<'a> {

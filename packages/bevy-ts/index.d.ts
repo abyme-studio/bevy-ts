@@ -322,6 +322,12 @@ export declare const assets: {
   /** Bevy's `Assets::remove`: the asset goes when the run ends, even while a component holds it, and the ref goes stale. */
   remove(ref: AssetRef<unknown>): void;
 };
+/** Bevy's `AssetServer` resource, for `Res<AssetServer>`: an export stands for it (`ScriptAssetServer`). */
+export interface AssetServer {
+  readonly [assetsBrand]?: "AssetServer";
+}
+/** Bevy's `LoadState` (and its dependency forms), by variant name. */
+export type LoadState = "NotLoaded" | "Loading" | "Loaded" | { readonly Failed: string };
 declare const assetsBrand: unique symbol;
 /** Bevy's `Assets<A>` resource, for `ResMut<Assets<Mesh>>`: an export stands for it (`Meshes`). */
 export interface Assets<A> {

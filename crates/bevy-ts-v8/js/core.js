@@ -1409,8 +1409,47 @@ function meshesClass(Base) {
   };
 }
 
+// Load states (docs/assets.md): the export returns a code, and the failed text in a second call.
+const LOAD_STATES = ["NotLoaded", "Loading", "Loaded"];
+const TEXT = new Uint8Array(4096);
+
+/** `ScriptAssetServer` with Bevy's `AssetServer` names over its host calls. */
+function serverClass(Base) {
+  return class ScriptAssetServer extends Base {
+    #text(r, which) {
+      let n = super.failedText(r, which, TEXT);
+      if (n <= TEXT.length) return decoder.decode(TEXT.subarray(0, n));
+      const big = new Uint8Array(n);
+      n = super.failedText(r, which, big);
+      return decoder.decode(big.subarray(0, n));
+    }
+    #state(code, r, which) {
+      return code === 3 ? Object.freeze({ Failed: this.#text(r, which) }) : LOAD_STATES[code];
+    }
+    /** `AssetServer::load`: a strong ref, typed by `T` (an asset class) or by the path's extension. A labelled path needs `T`. */
+    load(path, T) {
+      if (typeof path !== "string") throw new TypeError("server.load takes an asset path string");
+      const type = T === undefined ? "" : T && typeof T.typePath === "string" ? T.typePath : undefined;
+      if (type === undefined) throw new TypeError("server.load(path, T): T is an asset class (Mesh, Image)");
+      const r = super.loadPath(encoder.encode(path), encoder.encode(type));
+      if (type) return HOST.asRef(r.$asset, type);
+      const len = super.typePath(r, TEXT);
+      return HOST.asRef(r.$asset, decoder.decode(TEXT.subarray(0, len)));
+    }
+    loadState(r) {
+      return this.#state(super.loadStateCode(r), r, 0);
+    }
+    dependencyLoadState(r) {
+      return this.#state(super.dependencyLoadStateCode(r), r, 1);
+    }
+    recursiveDependencyLoadState(r) {
+      return this.#state(super.recursiveDependencyLoadStateCode(r), r, 2);
+    }
+  };
+}
+
 /** JS wrappers of engine exports, by TS name: Bevy's names over the raw host calls. */
-const PORT_WRAPS = { Meshes: meshesClass };
+const PORT_WRAPS = { Meshes: meshesClass, ScriptAssetServer: serverClass };
 
 const FIELD_BY_TYPE = { f32, f64, i8, u8, i16, u16, i32, u32, bool, vec2, vec3, vec4, quat, entity, timer: Timer, stopwatch: Stopwatch };
 
@@ -2530,8 +2569,8 @@ const HOST = {
   /** An `AssetRef` argument's ref number; a ref of another asset type throws naming both. */
   ref(v, type, param, method) {
     const n = v && v.$asset;
-    if (typeof n !== "number") throw new TypeError(`${param}.${method}: expected an AssetRef<${type}>, got ${v === undefined ? "undefined" : JSON.stringify(v)}`);
-    if (v.type !== type) throw new TypeError(`${param}.${method}: expected an AssetRef<${type}>, got an AssetRef<${v.type}>`);
+    if (typeof n !== "number") throw new TypeError(`${param}.${method}: expected an AssetRef${type ? `<${type}>` : ""}, got ${v === undefined ? "undefined" : JSON.stringify(v)}`);
+    if (type !== "" && v.type !== type) throw new TypeError(`${param}.${method}: expected an AssetRef<${type}>, got an AssetRef<${v.type}>`);
     return n;
   },
   /** An `AssetRef` result: the frozen ref `assets` returns. */
