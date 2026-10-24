@@ -16,6 +16,7 @@ mod cameras;
 mod classes;
 mod conditions;
 mod dev_edit;
+mod ecs_queries;
 mod exported;
 mod headless_pointer;
 mod headless_ui;
