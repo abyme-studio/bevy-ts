@@ -1,7 +1,7 @@
 //! The `ecs-coverage` rows: Bevy 0.20's query, command, lifecycle and hierarchy items under
 //! Bevy's names in TS, one test each (openspec/changes/ecs-queries).
 
-mod common;
+use crate::common;
 
 use bevy::prelude::*;
 use bevy_ts::generation::ReloadStatus;
