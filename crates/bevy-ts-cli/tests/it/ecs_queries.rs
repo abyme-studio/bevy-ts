@@ -12,23 +12,23 @@ use std::path::PathBuf;
 /// A sparse-set marker, as Bevy advises for markers added and removed often.
 #[derive(Component, Default)]
 #[component(storage = "SparseSet")]
-struct Tag;
+struct QTag;
 
 /// Sparse-set data: refused as query data.
 #[derive(Component, Default)]
 #[component(storage = "SparseSet")]
-struct Spark;
+struct QSpark;
 
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
-#[require(Armor)]
-pub struct Knight {
+#[require(QArmor)]
+pub struct QKnight {
     pub level: f32,
 }
 
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
-pub struct Armor {
+pub struct QArmor {
     pub v: f32,
 }
 
@@ -41,10 +41,10 @@ export class Plain extends Component { static path = "game::Plain"; n: u32 = 0 }
 export class Enemy extends Component { static path = "game::Enemy" }
 export class Player extends Component { static path = "game::Player" }
 export class Frozen extends Component { static path = "game::Frozen" }
-export const Tag = rustComponent("Tag");
-export const Spark = rustComponent("Spark");
-export class Knight extends nativeComponent("Knight", { level: f32 }) {}
-export class Armor extends nativeComponent("Armor", { v: f32 }) {}
+export const QTag = rustComponent("QTag");
+export const QSpark = rustComponent("QSpark");
+export class QKnight extends nativeComponent("QKnight", { level: f32 }) {}
+export class QArmor extends nativeComponent("QArmor", { v: f32 }) {}
 export class Hit extends EntityEvent { static path = "game::Hit"; static propagate = true; declare n: u32 }
 "#;
 
@@ -56,9 +56,9 @@ fn src(body: &str) -> String {
 fn test_app(dir: &std::path::Path) -> App {
     let mut app = app(&dir.join("game.tsx"));
     app.add_plugins(AssetPlugin::default()).init_asset::<Mesh>().init_asset::<StandardMaterial>();
-    app.register_type::<Knight>().register_type::<Armor>();
-    app.world_mut().register_component::<Tag>();
-    app.world_mut().register_component::<Spark>();
+    app.register_type::<QKnight>().register_type::<QArmor>();
+    app.world_mut().register_component::<QTag>();
+    app.world_mut().register_component::<QSpark>();
     app
 }
 
@@ -126,10 +126,10 @@ fn with(app: &mut App, component: &str) -> Vec<Entity> {
 
 #[test]
 fn sparse_set_data_is_refused() {
-    let e = errors("ecsq-spark", "export function s(q: Query<[Spark]>) {}\napp.addSystems(Update, s);\n");
-    assert!(e.iter().any(|e| e.message.contains("`Spark` is a sparse-set component; it can be a filter but not query data")), "{e:?}");
+    let e = errors("ecsq-spark", "export function s(q: Query<[QSpark]>) {}\napp.addSystems(Update, s);\n");
+    assert!(e.iter().any(|e| e.message.contains("`QSpark` is a sparse-set component; it can be a filter but not query data")), "{e:?}");
     assert!(e.iter().all(|e| e.location.as_ref().is_some_and(|l| l.file.ends_with("game.tsx"))), "located: {e:?}");
-    let e = errors("ecsq-spark-has", "export function s(q: Query<[Entity, Has<Tag>]>) {}\napp.addSystems(Update, s);\n");
+    let e = errors("ecsq-spark-has", "export function s(q: Query<[Entity, Has<QTag>]>) {}\napp.addSystems(Update, s);\n");
     assert!(e.iter().any(|e| e.message.contains("sparse-set filters need the sparse-set query path")), "{e:?}");
     // A declined item (ecs-coverage): not query data, named, located.
     let e = errors("ecsq-declined", "export function s(q: Query<[SpawnDetails]>) {}\napp.addSystems(Update, s);\n");
@@ -149,7 +149,7 @@ app.addSystems(PostUpdate, probe);
         |app| {
             let es: Vec<Entity> = (0..4).map(|_| ts(app, "game::Plain", json!({}))).collect();
             app.world_mut().entity_mut(es[1]).insert(bevy::ecs::entity_disabling::Disabled);
-            app.world_mut().entity_mut(es[2]).insert(Tag);
+            app.world_mut().entity_mut(es[2]).insert(QTag);
             es
         },
         body,
@@ -157,7 +157,7 @@ app.addSystems(PostUpdate, probe);
     updates(&mut app, 3);
     assert_eq!(lines(&mut app, "probe"), vec!["probe 3 1 4"; 3]);
     // Sparse-set filters are refused at load until queries take the sparse-set path.
-    for (i, f) in ["With<Tag>", "Without<Tag>", "Changed<Tag>", "Or<[With<Tag>, Added<Plain>]>"].iter().enumerate() {
+    for (i, f) in ["With<QTag>", "Without<QTag>", "Changed<QTag>", "Or<[With<QTag>, Added<Plain>]>"].iter().enumerate() {
         let e = errors(&format!("ecsq-probe-sparse-{i}"), &format!("export function s(q: Query<[Entity, Plain], {f}>) {{}}\napp.addSystems(Update, s);\n"));
         assert!(e.iter().any(|e| e.message.contains("sparse-set filters need the sparse-set query path")), "{f}: {e:?}");
     }
@@ -662,13 +662,13 @@ app.addSystems(Update, trim);
 fn remove_with_requires() {
     let (_, mut app, es) = staged(
         "ecsq-requires",
-        |app| vec![app.world_mut().spawn(Knight::default()).id(), app.world_mut().spawn(Knight::default()).id()],
-        "export function strip(c: Commands) { c.entity($0).removeWithRequires(Knight); c.entity($1).remove(Knight); }\napp.addSystems(Update, strip);\n",
+        |app| vec![app.world_mut().spawn(QKnight::default()).id(), app.world_mut().spawn(QKnight::default()).id()],
+        "export function strip(c: Commands) { c.entity($0).removeWithRequires(QKnight); c.entity($1).remove(QKnight); }\napp.addSystems(Update, strip);\n",
     );
-    assert!(app.world().get::<Armor>(es[0]).is_some(), "Knight requires Armor");
+    assert!(app.world().get::<QArmor>(es[0]).is_some(), "QKnight requires QArmor");
     app.update();
-    assert!(app.world().get::<Knight>(es[0]).is_none() && app.world().get::<Armor>(es[0]).is_none());
-    assert!(app.world().get::<Knight>(es[1]).is_none() && app.world().get::<Armor>(es[1]).is_some(), "remove keeps what it required");
+    assert!(app.world().get::<QKnight>(es[0]).is_none() && app.world().get::<QArmor>(es[0]).is_none());
+    assert!(app.world().get::<QKnight>(es[1]).is_none() && app.world().get::<QArmor>(es[1]).is_some(), "remove keeps what it required");
 }
 
 #[test]
