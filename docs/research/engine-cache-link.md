@@ -40,3 +40,31 @@ this workspace does not enable; `openssl dgst -sha256`, which does use them, has
 in 0.5 s, and `shasum -a 256` in 2.9 s. The copy path paid the same hash before this change, on
 top of the scan. With hardware SHA-256, B's first launch would be about the hash, 0.5 s, plus the
 0.26 s start.
+
+## The hash, with the CPU's SHA instructions
+
+Measured 2026-10-24, same machine, with `examples/sha256_bench.rs` (the `ecl-sha` process): the
+cli's `sha256_file` on the 639 MB engine, three times, in the dev profile.
+
+| build | load | 1, s | 2, s | 3, s |
+|---|---:|---:|---:|---:|
+| software `compress`, unoptimized | 60 | 17.7 | 23.7 | 45.8 |
+| `asm`, unoptimized | 41 | 17.1 | 12.9 | 5.7 |
+| `asm`, `opt-level = 3` | 22-83 | 2.2 | 1.7 | 2.4 |
+
+`asm` alone was not enough. The workspace builds dependencies at `opt-level = 3` in dev, but this
+machine's `~/.cargo/config.toml` sets them to 0 and beats `Cargo.toml`, so sha2's NEON intrinsics
+ran as calls (`sample` shows `vaddq_u32` and `step_by` frames inside `sha256_compress`). The repo's
+`.cargo/config.toml` now builds sha2 at 3 whatever the machine says, and `asm` is on for aarch64
+only (`crates/bevy-ts-cli/Cargo.toml`). `openssl dgst -sha256` takes 0.4 s on the same file.
+
+The release cli, as `release.yml` builds it (`cargo build --release -p bevy-ts-cli`, the
+`ecl-release` process: clean, 7 min 50 s, Bevy linked statically), run through the bench above:
+
+| run | load | A first, s | B first, s | B second, s |
+|---:|---:|---:|---:|---:|
+| 1 | 23 | 5.7 | 1.09 | 0.38 |
+| 2 | 23 | 7.6 | 0.44 | 0.15 |
+| 3 | 21 | 25.9 | 1.15 | 0.52 |
+
+B's first launch is now about a second, down from 23-52 s; the hash is no longer what it waits on.
