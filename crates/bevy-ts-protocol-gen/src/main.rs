@@ -66,17 +66,44 @@ pub fn generate(doc: &Value) -> String {
     )
 }
 
+/// Writes `src` to `path` only when its bytes differ, so a check that changes nothing leaves the
+/// file's mtime, and the crates built from it, alone. Whether it wrote.
+fn write_if_changed(path: &std::path::Path, src: &str) -> bool {
+    if std::fs::read(path).is_ok_and(|old| old == src.as_bytes()) {
+        return false;
+    }
+    std::fs::write(path, src).unwrap();
+    true
+}
+
 fn main() {
     let root = root();
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(root.join("protocol/bevy-ts.openrpc.json")).unwrap()).unwrap();
     let out = root.join("crates/bevy-ts-remote/src/protocol.rs");
-    std::fs::write(&out, generate(&doc)).unwrap();
-    eprintln!("wrote {}", out.display());
+    if write_if_changed(&out, &generate(&doc)) {
+        eprintln!("wrote {}", out.display());
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_same_bytes_are_not_written_again() {
+        let dir = std::env::temp_dir().join(format!("protocol-gen-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("protocol.rs");
+        assert!(write_if_changed(&path, "a"));
+        let mtime = || std::fs::metadata(&path).unwrap().modified().unwrap();
+        let before = mtime();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert!(!write_if_changed(&path, "a"));
+        assert_eq!(mtime(), before);
+        assert!(write_if_changed(&path, "b"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "b");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn methods_of_feature_crates_come_out_of_the_same_run() {

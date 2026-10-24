@@ -66,5 +66,10 @@ export interface ChannelMessages {
 ${channel}
 }
 `;
-writeFileSync(here("../protocol.d.ts"), out);
-console.error("wrote packages/bevy-ts/protocol.d.ts");
+// Only when it changed: a check that rewrote the same bytes would touch its mtime.
+let old = "";
+try { old = readFileSync(here("../protocol.d.ts"), "utf8"); } catch {}
+if (old !== out) {
+  writeFileSync(here("../protocol.d.ts"), out);
+  console.error("wrote packages/bevy-ts/protocol.d.ts");
+}
