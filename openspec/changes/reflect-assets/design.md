@@ -127,10 +127,12 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    assets.get(mat)?.base_color;
    <entity><Mesh3d value={meshRef} /><MeshMaterial3d value={StandardMaterial.of({ unlit: true })} /></entity>
    ```
-   `assets` works wherever scripts reach the world: inside a system's run and during a TSX render.
+   `assets` works wherever scripts reach the world: inside a system's run, during a TSX render, and
+   during the script's load (a scene's first render runs at module load; `ScriptBackend::load_with`
+   with `host::LoadHost`).
    Each call is one host call carrying JSON through one new `HostCalls` method; its result is
    visible to the script at once and lands in `Assets<T>` when the run ends (decisions 2, 3).
-   Outside those it throws, naming where it may be called.
+   Outside those (a timer callback) it throws, naming where it may be called.
    `types.rs`'s `named()` also takes registrations with `ReflectAsset`, emitted as
    `asset("<type path>")` classes typed `AssetClass<{ fields }>`, with the same short-name and
    crate-prefix rule. `Image` is typed by its hand-mapped fields (`{ sampler: ImageSampler }`)
