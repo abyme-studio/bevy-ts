@@ -65,7 +65,8 @@ pub enum Op {
     Plugin { opcode: u16, bytes: Vec<u8> },
     WriteMessage { index: u32, bytes: Vec<u8> },
     Trigger { index: u32, target: Option<Entity>, bytes: Vec<u8> },
-    SetState { index: u32, value: u32 },
+    /// `next.set(v)`, or `next.setIfNeq(v)` with `if_neq` (bit 31 of the value index).
+    SetState { index: u32, value: u32, if_neq: bool },
     /// `commands.runSystem(id)` / `runSystemWith(id, input)`.
     RunSystem { identity: String, input: Option<Vec<u8>> },
     /// `commands.runSchedule(label)`.
@@ -234,7 +235,11 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 let n = r.u32()? as usize;
                 Op::Trigger { index, target, bytes: r.take(n)?.to_vec() }
             }
-            OP_SET_STATE => Op::SetState { index: r.u32()?, value: r.u32()? },
+            OP_SET_STATE => {
+                let index = r.u32()?;
+                let v = r.u32()?;
+                Op::SetState { index, value: v & 0x7fff_ffff, if_neq: v & 0x8000_0000 != 0 }
+            }
             OP_RUN_SYSTEM => {
                 let identity = r.text()?;
                 let input = match r.u8()? {
@@ -395,15 +400,17 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                     path,
                 });
             }
-            Op::SetState { index, value } => {
+            Op::SetState { index, value, if_neq } => {
                 let target = world
                     .get_resource::<crate::messages::TsPayloads>()
                     .and_then(|p| p.states.get(index as usize))
-                    .and_then(|m| m.syms.get(value as usize).map(|s| (m.slot, *s, m.name.clone(), m.derived())));
+                    .and_then(|m| m.syms.get(value as usize).map(|s| (m.slot, *s, m.name.clone(), m.derived(), !m.computed.is_empty())));
                 match target {
-                    Some((slot, sym, name, derived)) => {
+                    // A computed state follows its sources only, as in Bevy.
+                    Some((_, _, name, _, true)) => warnings.push(format!("setState: {name} is a computed state; its value follows its sources")),
+                    Some((slot, sym, name, derived, false)) => {
                         // A sub state's NextState is ignored while it does not exist, as in Bevy.
-                        if !crate::states::set_next_of(world, slot, sym) && !derived {
+                        if !crate::states::set_next_of(world, slot, sym, if_neq) && !derived {
                             warnings.push(format!("setState: {name} has no value yet; give it one with app.initState"));
                         }
                     }

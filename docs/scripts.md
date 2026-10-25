@@ -172,11 +172,17 @@ the first time a generation declares it, so Rust reads `State<TsState<N>>`, writ
 `NextState<TsState<N>>` and sees `StateTransitionEvent`s as for any state. An app has at most 32
 state machines, sub and computed states included; a 33rd fails the load with "at most 32 state
 machines". A value is its name, so reordering or adding values keeps the current one; a reload
-that removes the current value moves the machine back to its `initState` value.
+that removes the current value moves the machine back to its `initState` value. A slot keeps its
+depth (1 for a plain state, more for a sub or computed state) for the life of the app, so a reload
+that changes a machine's depth, a plain state becoming a sub state, moves it to another slot: Rust
+looks its slot up again with `TsStates::slot`.
 
 Bevy runs the transitions in `StateTransition`, after `PreUpdate`: `OnExit(old)`, then
 `OnTransition({ exited, entered })`, then `OnEnter(new)`, deepest machine first on exit. While the
-game is paused, pending transitions wait. `State<S>` reads the value, `NextState<S>` sets it,
+game is paused (and in edit mode), pending transitions wait, and so does a new machine's first
+`OnEnter`. `State<S>` reads the value. `NextState<S>` sets it: `next.set(v)` always transitions,
+even to the current value, so `OnExit` and `OnEnter` run again and `DespawnOnExit` entities go;
+`next.setIfNeq(v)` does nothing when `v` is the current value, as Bevy's `set_if_neq`.
 `PreviousState<S>` reads the value before the last transition. `stateChanged(S)` is true in the
 frame a machine transitioned, `stateExists(S)` while it has a value.
 
@@ -203,8 +209,11 @@ export class InGame extends ComputedStates(Game, (g) => (g === Game.Playing || g
 A sub state exists only while its source is in that value, and enters at its first value; its
 `NextState` is ignored while it does not exist. A computed state's value comes from its sources
 (an array for several), `undefined` meaning it does not exist; its function is a JS call only when
-a source transitions. `PreviousState` reads `undefined` for sub and computed states: Bevy gives no
-way to keep it for states it does not derive itself.
+a source transitions, and once after each reload. Its `NextState` is ignored with a warning. A
+reload that removes a sub state's current value sends it to its first value. `PreviousState` of a
+sub or computed state is cleared whenever it enters, leaves or is recomputed (Bevy gives no way to
+write it for states it does not derive itself); it reads a value only after a sub state changes
+through its own `NextState`.
 
 A Rust state a crate exposes with `app.ts_state::<S>()` is a class in `bevy-ts/states`, its unit
 variants its values: `import { EngineMode } from "bevy-ts/states"`, then `inState(EngineMode.Play)`,

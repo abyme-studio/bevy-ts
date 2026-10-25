@@ -454,7 +454,15 @@ export interface MessageWriter<M> {
 }
 /** A one-shot system's input, first param only: an `Event` value `commands.runSystemWith` passed. */
 export type In<E> = ReadView<E>;
-export interface NextState<G> { set(v: StateValueOf<G>): void }
+/**
+ * Bevy's `NextState<S>`. `set` always transitions, even to the current value: `OnExit` and
+ * `OnEnter` run again and `DespawnOnExit` entities go. `setIfNeq` does nothing when `v` is the
+ * current value (Bevy's `set_if_neq`).
+ */
+export interface NextState<G> {
+  set(v: StateValueOf<G>): void;
+  setIfNeq(v: StateValueOf<G>): void;
+}
 export interface State<G> { readonly current: StateValueOf<G> }
 /** Bevy's `PreviousState<S>`: the value before the machine's last transition, `undefined` before the first. */
 export interface PreviousState<G> { readonly previous: StateValueOf<G> | undefined }

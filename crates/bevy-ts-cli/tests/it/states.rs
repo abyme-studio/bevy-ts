@@ -276,3 +276,122 @@ app.initState(Game.Menu).addSystems(OnEnter(Game.Playing), spawn).addSystems(Upd
     app.update();
     assert_eq!(enemies(&mut app), 0, "despawned on leaving Playing");
 }
+
+#[test]
+fn set_reenters_the_current_value_and_set_if_neq_does_not() {
+    let body = |call: &str| {
+        format!(
+            r#"export class Game extends States("Menu", "Playing") {{ static path = "game::Game" }}
+export function again(next: NextState<Game>) {{ next.{call}(Game.Menu); }}
+export function enterMenu() {{ console.log("enterMenu"); }}
+app.initState(Game.Menu).addSystems(Update, again).addSystems(OnEnter(Game.Menu), enterMenu);
+"#
+        )
+    };
+    let (_, mut app) = load("states-set-if-neq", &src(&body("setIfNeq")));
+    updates(&mut app, 4);
+    assert_eq!(said(&mut app), ["enterMenu"], "only the initial enter");
+    let (_, mut app) = load("states-set-same", &src(&body("set")));
+    updates(&mut app, 4);
+    assert!(said(&mut app).len() >= 3, "set re-enters Menu each frame");
+}
+
+#[test]
+fn a_reload_that_makes_a_state_a_sub_state_moves_its_slot_and_derives_it_after_its_source() {
+    // Gen 1: Pause is a plain state, declared before Game.
+    let gen1 = r#"export class Pause extends States("Running", "Paused") { static path = "game::Pause" }
+export class Game extends States("Menu", "Playing") { static path = "game::Game" }
+app.initState(Pause.Running).initState(Game.Menu);
+"#;
+    let (dir, mut app) = load("states-kind-change", &src(gen1));
+    updates(&mut app, 2);
+    let before = slot(&app, "game::Pause");
+    let gen2 = r#"import { SubStates } from "bevy-ts";
+export class Game extends States("Menu", "Playing") { static path = "game::Game" }
+export class Pause extends SubStates(Game.Playing, "Running", "Paused") { static path = "game::Pause" }
+export function go(next: NextState<Game>, g: State<Game>, p: State<Pause>) { console.log(`g${g.current.value}p${p.current ? p.current.value : "-"}`); if (g.current === Game.Menu) next.set(Game.Playing); }
+app.initState(Game.Menu).addSystems(Update, go);
+"#;
+    write(&dir, "game.ts", &src(gen2));
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    updates(&mut app, 3);
+    assert_ne!(slot(&app, "game::Pause"), before, "a slot keeps its depth: Pause moved");
+    let m = said(&mut app);
+    assert!(m.contains(&"gMenup-".to_string()) && m.contains(&"gPlayingpRunning".to_string()), "{m:?}");
+    assert!(!m.contains(&"gPlayingp-".to_string()), "the sub state follows its source in the same frame: {m:?}");
+}
+
+#[test]
+fn a_machine_given_its_first_value_while_paused_runs_its_ts_on_enter_when_the_game_resumes() {
+    let (dir, mut app) = load("states-first-paused", &src("app;\n"));
+    app.update();
+    app.world_mut().resource_mut::<bevy_ts::runtime::ScriptClock>().paused = true;
+    let body = r#"export class Game extends States("Menu", "Playing") { static path = "game::Game" }
+export function enterMenu() { console.log("enterMenu"); }
+app.initState(Game.Menu).addSystems(OnEnter(Game.Menu), enterMenu);
+"#;
+    write(&dir, "game.ts", &src(body));
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    updates(&mut app, 2);
+    assert!(said(&mut app).is_empty(), "no OnEnter while paused");
+    app.world_mut().resource_mut::<bevy_ts::runtime::ScriptClock>().paused = false;
+    app.update();
+    assert_eq!(said(&mut app), ["enterMenu"]);
+}
+
+#[test]
+fn removing_a_rust_state_scoped_component_removes_it() {
+    let body = r#"import { DespawnOnExit, Component } from "bevy-ts";
+import type { Commands, Entity, Query } from "bevy-ts";
+import { EngineMode } from "bevy-ts/states";
+export class Enemy extends Component { static path = "game::Enemy" }
+let frame = 0;
+export function step(c: Commands, q: Query<[Entity, Enemy]>) {
+  frame++;
+  if (frame === 1) c.spawn(Enemy, DespawnOnExit.of(EngineMode.Play));
+  if (frame === 2) q.each((e) => c.entity(e).remove(DespawnOnExit));
+}
+app.addSystems(Update, step);
+"#;
+    let (_, mut app) = load("states-rust-scoped", &src(body));
+    updates(&mut app, 2);
+    let scoped = app.world_mut().query::<&bevy::state::state_scoped::DespawnOnExit<bevy_ts::EngineMode>>().iter(app.world()).count();
+    assert_eq!(scoped, 0, "the component is gone");
+    app.world_mut().resource_mut::<NextState<bevy_ts::EngineMode>>().set(bevy_ts::EngineMode::Edit);
+    updates(&mut app, 2);
+    let id = bevy_ts::plugin_api::component_by_name(app.world(), "game::Enemy").unwrap().0;
+    let world = app.world_mut();
+    assert_eq!(QueryBuilder::<Entity>::new(world).with_id(id).build().iter(world).count(), 1, "leaving Play keeps the enemy");
+}
+
+#[test]
+fn a_reload_rederives_sub_and_computed_states() {
+    let gen = |values: &str, tag: &str| {
+        format!(
+            r#"import {{ SubStates, ComputedStates }} from "bevy-ts";
+export class Game extends States("Menu", "Playing") {{ static path = "game::Game" }}
+export class Pause extends SubStates(Game.Playing, {values}) {{ static path = "game::Pause" }}
+export class InGame extends ComputedStates(Game, (g) => {{ console.log("{tag}"); return g === Game.Playing ? InGame.Yes : undefined; }}, "Yes") {{ static path = "game::InGame" }}
+export function step(ng: NextState<Game>, np: NextState<Pause>, g: State<Game>, p: State<Pause>) {{
+  console.log(`p${{p.current ? p.current.value : "-"}}`);
+  if (g.current === Game.Menu) ng.set(Game.Playing);
+  else if (p.current && p.current.value === "Running" && (Pause as any).Paused) np.set((Pause as any).Paused);
+}}
+app.initState(Game.Menu).addSystems(Update, step);
+"#
+        )
+    };
+    let (dir, mut app) = load("states-rederive", &src(&gen(r#""Running", "Paused""#, "compute1")));
+    updates(&mut app, 4);
+    assert_eq!(said(&mut app).iter().rev().find(|l| l.starts_with('p')).map(String::as_str), Some("pPaused"));
+    // Paused is gone, and the compute function changed.
+    write(&dir, "game.ts", &src(&gen(r#""Running""#, "compute2")));
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    updates(&mut app, 2);
+    let m = said(&mut app);
+    assert_eq!(m.iter().rev().find(|l| l.starts_with('p')).map(String::as_str), Some("pRunning"), "{m:?}");
+    assert_eq!(m.iter().filter(|l| *l == "compute2").count(), 1, "recomputed once: {m:?}");
+}

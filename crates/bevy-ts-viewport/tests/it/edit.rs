@@ -1042,14 +1042,15 @@ mod boot {
         SystemDecl { name: name.into(), schedule, params, after: vec![], before: vec![], sets: vec![], condition: None, groups: vec![], location: None }
     }
 
-    /// `setup` in `Startup`, `tick` in `Update`, `moved` on `Insert<Transform>`, and `wave` in
-    /// `Startup` when asked.
+    /// `setup` in `Startup`, `tick` in `Update`, `moved` on `Insert<Transform>`, `played` on
+    /// `OnEnter(EngineMode.Play)`, and `wave` in `Startup` when asked.
     fn program(runs: &Runs, wave: bool) -> FakeProgram {
         let moved = ParamDecl::On { event: None, lifecycle: Some(Lifecycle::Insert), component: Some(ComponentRef { name: "Transform".into(), source: ComponentSource::Rust }) };
         let mut systems = vec![
             ("setup", decl("game.ts#setup", ScheduleDecl::Startup, vec![])),
             ("tick", decl("game.ts#tick", ScheduleDecl::Stage { stage: Stage::Update }, vec![])),
             ("moved", decl("game.ts#moved", ScheduleDecl::Observer, vec![moved])),
+            ("played", decl("game.ts#played", ScheduleDecl::OnEnter { state: "bevy_ts::EngineMode".into(), value: "Play".into() }, vec![])),
         ];
         if wave {
             systems.push(("wave", decl("game.ts#wave", ScheduleDecl::Startup, vec![])));
@@ -1158,6 +1159,7 @@ mod boot {
         assert_eq!((r["mode"].as_str(), r["started"].as_bool()), (Some("play"), Some(true)));
         assert_eq!(runs.of("setup"), 1, "the first play runs Startup, at once");
         assert_eq!(engine_mode(&app), EngineMode::Play, "the state follows in the same frame");
+        assert_eq!(runs.of("played"), 1, "TS OnEnter(EngineMode.Play) runs with it");
         updates(&mut app, 3);
         assert!(runs.of("tick") >= 2, "and the game runs");
         assert!(spins.0.load(Ordering::Relaxed) >= 2);

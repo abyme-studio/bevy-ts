@@ -2532,7 +2532,11 @@ function buildSystem(g, s) {
         return {
           set(v) {
             if (!v || v.state !== St.componentName) throw new TypeError(`next.set: not a ${St.name} value`);
-            ctx.commands.setState(St, v.value);
+            ctx.commands.setState(St, v.value, false);
+          },
+          setIfNeq(v) {
+            if (!v || v.state !== St.componentName) throw new TypeError(`next.setIfNeq: not a ${St.name} value`);
+            ctx.commands.setState(St, v.value, true);
           },
         };
       }
@@ -2827,13 +2831,14 @@ class Commands {
     } else w.u8(0);
     this.op(w.bytes());
   }
-  setState(St, value) {
+  /** `ifNeq`: Bevy's `set_if_neq`, no transition when `value` is the current one. */
+  setState(St, value, ifNeq) {
     const index = this.res && this.res.states[St.componentName];
     if (index === undefined) throw new Error(`${St.componentName} is not a declared state`);
     const w = new Writer();
     w.u8(OP_SET_STATE);
     w.u32(index);
-    w.u32(St.values.indexOf(value));
+    w.u32((St.values.indexOf(value) | (ifNeq ? 0x80000000 : 0)) >>> 0);
     this.op(w.bytes());
   }
   /** Spawns through a native Rust recipe (`camera3d`, `directionalLight`, `cuboid`). */

@@ -406,8 +406,13 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     let old_slots = world.get_resource_or_init::<crate::states::TsStates>().slots();
     let mut slot_errors = Vec::new();
     let mut assigned = std::collections::HashMap::new();
+    let (depths, depth_errors) = crate::states::depths(&manifest.states);
+    slot_errors.extend(depth_errors.into_iter().map(|(i, e)| ScriptError::at(e, manifest.states[i].location.clone())));
     for st in &manifest.states {
-        match world.resource_mut::<crate::states::TsStates>().assign(&st.name) {
+        if !slot_errors.is_empty() {
+            break;
+        }
+        match world.resource_mut::<crate::states::TsStates>().assign(&st.name, depths[&st.name]) {
             Ok(n) => drop(assigned.insert(st.name.clone(), n)),
             Err(e) => slot_errors.push(ScriptError::at(e, st.location.clone())),
         }

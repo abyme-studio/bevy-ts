@@ -267,11 +267,14 @@ A TS state machine is a Bevy state of the type `bevy_ts::TsState<N>`, one of 32 
 `world.resource::<TsStates>().slot("game::Game")` gives its `N`. Read it with
 `Res<State<TsState<N>>>`, set it with `NextState<TsState<N>>`, and name a value with
 `TsState(bevy_ts::states::sym("Playing"))`. `bevy_ts::states::name` turns a value back into its
-name.
+name. A reload that turns a plain state into a sub or computed state (or changes its sources'
+depth) moves it to another slot, so look the slot up after a reload rather than keeping it.
 
 A crate makes its own state reachable from TS with `app.ts_state::<S>()`, for an enum whose
 unit variants are its values and that reflects (`#[derive(States, Reflect)]`). TS imports it from
-`bevy-ts/states`. bevy-ts exposes `EngineMode` this way.
+`bevy-ts/states` by its type's short name, so that name must be a plain identifier (no generic
+state) and unique among exposed states: `ts_state` panics otherwise. bevy-ts exposes `EngineMode`
+this way.
 
 `StateTransition` runs on Bevy's single-threaded executor (`docs/scripts.md`, States); a crate that
 needs parallel transition systems sets it back with `app.edit_schedule(StateTransition, ...)` after

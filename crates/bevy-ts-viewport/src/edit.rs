@@ -471,7 +471,16 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
                 Mode::Edit => EngineMode::Edit,
                 Mode::Play => EngineMode::Play,
             });
+            // Entering Play runs the stages from here on, so TS `OnEnter(EngineMode.Play)` and
+            // the transitions held while editing run now too.
+            let was = world.get_resource::<bevy_ts::runtime::ScriptClock>().map(|c| c.running_this_frame);
+            if let (Mode::Play, Some(mut clock)) = (mode, world.get_resource_mut::<bevy_ts::runtime::ScriptClock>()) {
+                clock.running_this_frame = true;
+            }
             let _ = world.try_run_schedule(bevy::state::state::StateTransition);
+            if let (Some(was), Some(mut clock)) = (was, world.get_resource_mut::<bevy_ts::runtime::ScriptClock>()) {
+                clock.running_this_frame = was;
+            }
         }
         match mode {
             Mode::Edit => {

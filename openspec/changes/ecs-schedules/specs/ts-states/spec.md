@@ -1,20 +1,30 @@
 ## ADDED Requirements
 
 ### Requirement: State machines
-`class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (a Rust-style path from its module, such as `game::Game`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. `inState(S.Value)` SHALL be a Rust-evaluated run condition (ts-conditions).
+`class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (a Rust-style path from its module, such as `game::Game`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. As Bevy's `set`, it SHALL transition even to the current value, running its exit and enter work again. `NextState<S>.setIfNeq(S.Value)` SHALL queue it only when the value differs from the current one, as Bevy's `set_if_neq`. `inState(S.Value)` SHALL be a Rust-evaluated run condition (ts-conditions).
 
 #### Scenario: Entering Playing
 - **WHEN** a system calls `next.set(Game.Playing)` from `Menu`
 - **THEN** in the next `StateTransition`, `OnExit(Game.Menu)` systems run, then `OnEnter(Game.Playing)` systems, and systems with `runIf(inState(Game.Playing))` run from that frame on
 
+#### Scenario: Setting the current value
+- **WHEN** `Game` is `Over` and a system calls `next.set(Game.Over)` every frame
+- **THEN** `OnExit(Game.Over)` and `OnEnter(Game.Over)` run every frame; with `next.setIfNeq(Game.Over)` neither runs
+
 ### Requirement: TS states are Bevy states
 This requirement and the rest of this capability are stage 2 and SHALL ship only after the states bench (design) is reported to the operator and approved.
 
-Each TS state machine SHALL be backed by a Rust state type `bevy_ts::TsState<N>`, one of a pool of 32, assigned the first time a generation declares the machine, by path, and kept for the life of the app. Its value SHALL be the value's name, interned for the life of the app, so adding or reordering values on reload keeps every stored value valid. For each assigned machine, the world SHALL hold Bevy's `State<TsState<N>>`, `PreviousState<TsState<N>>` once it has transitioned, and `NextState<TsState<N>>`, and SHALL send Bevy's `StateTransitionEvent<TsState<N>>` on each transition, so Rust, the inspector and rust-events see TS states as Bevy states. Rust SHALL find a machine's slot by path (`TsStates::slot("game::Game")`). A Rust write of `NextState<TsState<N>>` SHALL queue a transition as a TS `next.set` does. A 33rd machine SHALL fail the load with "at most 32 state machines", naming the machine.
+Each TS state machine SHALL be backed by a Rust state type `bevy_ts::TsState<N>`, one of a pool of 32, assigned the first time a generation declares the machine, by path, and kept for the life of the app. A slot SHALL keep the depth it was first placed at (1 for a plain state, one more than its deepest source for a sub or computed state); a reload that changes a machine's depth SHALL move it to a free slot of that depth or a new one, leaving the old slot's value as a transition. Sources that form a cycle SHALL fail the load. Its value SHALL be the value's name, interned for the life of the app, so adding or reordering values on reload keeps every stored value valid. For each assigned machine, the world SHALL hold Bevy's `State<TsState<N>>`, `PreviousState<TsState<N>>` once it has transitioned, and `NextState<TsState<N>>`, and SHALL send Bevy's `StateTransitionEvent<TsState<N>>` on each transition, so Rust, the inspector and rust-events see TS states as Bevy states. Rust SHALL find a machine's slot by path (`TsStates::slot("game::Game")`). A Rust write of `NextState<TsState<N>>` SHALL queue a transition as a TS `next.set` does. A 33rd machine SHALL fail the load with "at most 32 state machines", naming the machine.
 
 #### Scenario: Rust reads a TS state
 - **WHEN** a TS system sets `Game.Playing` and a Rust system reads `Res<State<TsState<N>>>` for `game::Game`'s slot the next frame
 - **THEN** it reads `Playing`, and a Rust `MessageReader<StateTransitionEvent<TsState<N>>>` read one message from `Menu` to `Playing`
+
+While the bevy-ts stages do not run (paused, or in edit mode), a TS machine's pending value and a new machine's first `OnEnter` SHALL wait for the next frame they run, so no TS transition system is skipped. The switch from edit to play SHALL count as running: TS `OnEnter(EngineMode.Play)` systems run with it.
+
+#### Scenario: A machine added while paused
+- **WHEN** the game is paused and a reload adds `Game` with `initState(Game.Menu)` and a TS `OnEnter(Game.Menu)` system
+- **THEN** that system runs on the first frame after the game resumes
 
 #### Scenario: A reorder on reload
 - **WHEN** `Game` is `Playing` and its values are reordered in the source and saved
@@ -28,14 +38,14 @@ Each TS state machine SHALL be backed by a Rust state type `bevy_ts::TsState<N>`
 - **THEN** `OnExit(Game.Menu)` and `OnEnter(Game.Playing)` systems still run, in that order
 
 ### Requirement: A value removed on reload
-When a reload removes the current value of a machine, the next `StateTransition` SHALL transition the machine to its `initState` value, as a normal transition: exit systems and exit-scoped components of the removed value SHALL apply. A removed value's `OnEnter`/`OnExit` systems are gone with the old generation and SHALL NOT run.
+When a reload removes the current value of a machine, the next `StateTransition` SHALL transition the machine to its `initState` value, as a normal transition: exit systems and exit-scoped components of the removed value SHALL apply. A sub state SHALL go to its first value instead. Every reload SHALL recompute computed states, once. A removed value's `OnEnter`/`OnExit` systems are gone with the old generation and SHALL NOT run.
 
 #### Scenario: Removing Paused
 - **WHEN** `Game` is `Paused`, entities carry `DespawnOnExit={Game.Paused}`, and `Paused` is deleted from the source
 - **THEN** after the reload the state is the `initState` value and those entities are despawned
 
 ### Requirement: Transition order
-Transitions SHALL follow Bevy's `StateTransitionSystems`: in `DependentTransitions`, every pending value is taken and sub and computed states are recomputed in source order; then in `ExitSchedules` exit work runs deepest machine first; then in `TransitionSchedules` and `EnterSchedules`, `OnTransition` and enter work run shallowest first. Exit work SHALL be TS `OnExit` systems, Rust `OnExit(TsState::<N>(..))` schedules and exit-scoped components; enter work likewise.
+Transitions SHALL follow Bevy's `StateTransitionSystems`: in `DependentTransitions`, every pending value is taken and sub and computed states are recomputed shallowest first, whatever order they were declared in; then in `ExitSchedules` exit work runs deepest machine first; then in `TransitionSchedules` and `EnterSchedules`, `OnTransition` and enter work run shallowest first. Exit work SHALL be TS `OnExit` systems, Rust `OnExit(TsState::<N>(..))` schedules and exit-scoped components; enter work likewise.
 
 #### Scenario: Leaving a parent
 - **WHEN** `Pause` is a sub state of `Game.Playing`, the state is `Playing`/`Paused`, and `Game` is set to `Menu`
@@ -63,7 +73,7 @@ Transitions SHALL follow Bevy's `StateTransitionSystems`: in `DependentTransitio
 - **THEN** the enemy is despawned in that `StateTransition`, before `OnEnter(Game.Menu)` systems run
 
 ### Requirement: Sub and computed states
-`class Pause extends SubStates(Game.Playing, "Running", "Paused") {}` SHALL declare a machine that exists only while its source is in that value, entered at its first value, as Bevy's `SubStates`. `class InGame extends ComputedStates(Game, (g) => g === Game.Playing || g === Game.Paused ? InGame.Yes : undefined, "Yes") {}` SHALL declare a machine whose value is computed from its sources, `undefined` meaning absent, as Bevy's `ComputedStates`; several sources SHALL be passed as an array. The compute function SHALL be a JS call only when a source transitions. A sub state's `NextState` SHALL be ignored while it does not exist. Each counts against the pool. `PreviousState` of a sub or computed state SHALL read `undefined`: Bevy gives no way to keep it for states it does not derive itself.
+`class Pause extends SubStates(Game.Playing, "Running", "Paused") {}` SHALL declare a machine that exists only while its source is in that value, entered at its first value, as Bevy's `SubStates`. `class InGame extends ComputedStates(Game, (g) => g === Game.Playing || g === Game.Paused ? InGame.Yes : undefined, "Yes") {}` SHALL declare a machine whose value is computed from its sources, `undefined` meaning absent, as Bevy's `ComputedStates`; several sources SHALL be passed as an array. The compute function SHALL be a JS call only when a source transitions. A sub state's `NextState` SHALL be ignored while it does not exist; a computed state's SHALL be ignored with a warning. Each counts against the pool. `PreviousState` of a sub or computed state SHALL be cleared whenever bevy-ts enters, leaves or recomputes it (Bevy gives no way to write it for states it does not derive itself); it SHALL read a value only after a sub state changes through its own `NextState`, as Bevy sets it then.
 
 #### Scenario: A pause sub state
 - **WHEN** the state is `Menu` and a system sets `NextState<Pause>` to `Paused`
