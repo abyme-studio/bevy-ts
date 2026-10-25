@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # macos-async-pipelines: the cli's thumbnail tests <runs> times, each capped at 180 s; a run that
 # hangs is sampled (target/thumb-soak-<n>.sample) before it is killed.
+source "$(dirname "$0")/slot.sh"
 set -uo pipefail
 cd "$(dirname "$0")/.."
 bin=$(cargo test -p bevy-ts-cli --test it --no-run --message-format=json 2>/dev/null | python3 -c "import sys,json
