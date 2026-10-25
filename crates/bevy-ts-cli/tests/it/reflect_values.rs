@@ -121,6 +121,7 @@ fn a_light_colour_is_a_prop_written_through_reflection() {
 /// The prebuilt engine has Bevy's soft shadows (`pcss`): a sun's `soft_shadow_size` is a TSX prop,
 /// an `Option` written through reflection, `null` turning them off again.
 #[test]
+#[cfg(feature = "pcss")]
 fn a_sun_takes_a_soft_shadow_size() {
     let (dir, mut app) = setup("reflect-soft-shadow", &scene("DirectionalLight", "<DirectionalLight shadow_maps_enabled soft_shadow_size={0.5} />"));
     assert_eq!(the::<DirectionalLight>(&mut app).soft_shadow_size, Some(0.5));
