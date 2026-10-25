@@ -114,7 +114,7 @@ that pins one version and puts a 1-2 h V8 build in abyme's promote.
 Risk: dlopen of a library in app storage on API 29+. Android's W^X rule forbids `exec` of files
 there and, as far as known, still allows mapping a library; the smoke run (task 4.6) proves it. If
 it fails, the fallback is the engine in the APK: abyme stores `.so` files uncompressed, so the APK
-grows by the stripped size, about 67 MB for Bevy alone plus V8.
+grows by the stripped size: 8.6 MB to about 82 MB.
 
 ### 2. The engine owns a thread; the host never drives frames
 
@@ -202,46 +202,58 @@ On the phone: the host passes `ABYME_URL=https://mac.<tailnet>.ts.net:<port>` an
 `authorization: Bearer <key>` over `wss:`. abymed accepts a device key that way, as it does a
 CLI's `ABYME_KEY` (abyme `docs/abymed.md`, Devices); the cookie is only for browsers.
 
-### 7. JS engine: V8 from source, QuickJS-ng as the fallback
+### 7. JS engine: V8 from source
 
-`scripts/android` runs `cargo ndk -t arm64-v8a -P 29 build -p bevy-ts-android --release` with
-`V8_FROM_SOURCE=1`, `GN_ARGS=use_relative_vtables_abi=false` and a persistent V8 build cache
-(`~/.cache/bevy-ts/v8-android`). API 29 is the lowest the recipe proves. The locked `v8` is
-150.4.0.
+The spike ran deno_core 0.412's `hello_world` on an arm64 Android 14 emulator: it works
+(`docs/research/android.md`). V8 is the engine; there is no second backend.
 
-deno_core#738's cause, from the code (`docs/research/android.md`): V8's GN turns on relative
-vtables for arm64 Android with the custom libc++, so a vtable holds 32-bit offsets. rusty_v8's
-`OneByteConst` lays out an `ExternalOneByteStringResource` vtable by hand with absolute pointers,
-and deno_core makes every static string with it while it sets up `Deno.core`. V8 reads the
-pointers as offsets and jumps to a misaligned address, which is #738's `BUS_ADRALN`. Turning the
-flag off fixes it; the other fix is a rusty_v8 patch laying the vtable out as offsets on Android.
-The run that confirms it waits for a check slot.
+`scripts/android` runs `cargo ndk -t arm64-v8a -P 29 build -p bevy-ts-android` with
+`V8_FROM_SOURCE=1` and a persistent V8 build cache (`~/.cache/bevy-ts/v8-android`). API 29 is the
+lowest the recipe proves. The locked `v8` is 150.4.0. What the build needs:
 
-Building V8 for Android from a Mac needs a recipe rusty_v8 no longer keeps (its Android CI stopped
-in 2024): a git checkout with submodules (the crate leaves out `build/android/`), allowing a Mac
-host in `BUILDCONFIG.gn`, writing in `android_ndk_version`, the NDK symlinked at
-`third_party/android_toolchain/ndk`, a stub `aarch64-linux-android24-clang++` so `build.rs` doesn't
-fetch a Linux NDK, and the NDK's clang runtimes copied into Chromium's clang. `scripts/android`
-applies these as a patch set on a pinned checkout; the release job builds on a Linux runner, where
-most of them fall away.
+- deno_core#738 doesn't reproduce: rusty_v8 turned relative vtables off in its own `.gn` in PR
+  #1581 (2024), so no GN argument is needed.
+- deno_core 0.412 doesn't compile for Android as published: `uv_compat/tty.rs` has no
+  `errno_location` for it. A 3-line fix (bionic's `__errno`) is carried as a `[patch.crates-io]`
+  and sent upstream.
+- The link needs compiler-rt's builtins (V8 calls `__clear_cache`): the NDK's
+  `libclang_rt.builtins-aarch64-android.a` as a link argument.
+- From a Mac, V8 needs a recipe rusty_v8 no longer keeps (its Android CI stopped in 2024): a git
+  checkout with submodules (the crate leaves out `build/android/`), allowing a Mac host in
+  `BUILDCONFIG.gn`, writing in `android_ndk_version`, the NDK symlinked at
+  `third_party/android_toolchain/ndk`, a stub `aarch64-linux-android24-clang++` so `build.rs`
+  doesn't fetch a Linux NDK, and the NDK's clang runtimes copied into Chromium's clang.
+  `scripts/android` applies these as a patch set on a pinned checkout. The release job builds on a
+  Linux runner, where most of them fall away.
+- A clean V8 build takes 47 min at `-j4` on the Mac. Ninja is capped with a `NINJA` wrapper that
+  passes `-j4`; uncapped, it runs a job per core and the load passed 90. On the Mac it runs
+  through the gate slot like any other build.
 
-If the spike shows deno_core or V8 can't run there, `crates/bevy-ts-quickjs` implements
-`ScriptBackend` (`crates/bevy-ts/src/backend.rs`) on `rquickjs` 0.14, and `bevy-ts-android`
-selects it by feature. The globals in `bevy-ts-v8/js/web.js` are plain JS and port as they are; the
-ops become rquickjs functions. No JIT and no inspector: 1.46 MB stripped, 0.68 MB gzipped.
+The Android profile is `opt-level = "z"`, fat LTO and `codegen-units = 1`, which takes Bevy from
+66.9 MB to 30.7 MB stripped. `panic` stays `unwind`, unlike the spike's size probe: the C ABI
+catches a panic at the boundary and sends `exited`, where `abort` would kill abyme's app. V8's own
+size barely moves with the Rust profile: 42.2 MB stripped, 15.2 MB gzipped, most of it V8's C++ and
+built-in ICU data.
+
+Sizes, from the spike: an engine is about 73 MB on disk and about 27 MB gzipped to download (Bevy
+30.7 + 12.1 gzipped, V8 42.2 + 15.2). In the APK instead, abyme stores `.so` files uncompressed, so
+the APK would go from 8.6 MB to about 82 MB.
+
+Alternative: QuickJS-ng (`rquickjs` 0.14) as a second `ScriptBackend`, 1.0 MB in the size profile.
+An engine would then be a 12.6 MB download, but with no JIT, no inspector and a second backend to
+keep. Not needed now that V8 runs.
 
 ## Risks / Trade-offs
 
-- [deno_core aborts at init on Android (#738)] → the spike runs deno_core's hello world on the
-  phone first; QuickJS-ng is the fallback.
+- [deno_core needs a patch to compile for Android] → carried as `[patch.crates-io]` and sent
+  upstream; dropped when a release has it.
 - [Bevy 0.20 won't recreate its surface on a new handle] → confirmed from source, not yet on a
   device; despawn and respawn the window as the fallback.
-- [V8 builds take 1-2 h] → a persistent cache; abyme pins a bevy-ts build and doesn't rebuild V8
-  per promote.
+- [V8 builds take 47 min at `-j4`] → a persistent cache; abyme fetches published engines and never
+  builds V8.
 - [API 29 above abyme's `minSdk` 26] → abyme gates the game pane on API 29 (`Build.VERSION`), or
   raises `minSdk`; abyme's decision.
-- [A large engine download per bevy-ts version: Bevy alone is 66.9 MB stripped, 22.3 MB gzipped;
-  V8 not yet measured] → served gzipped; strip, thin LTO, `opt-level = "s"` for non-render crates.
+- [A 27 MB gzipped engine download per bevy-ts version, 73 MB on disk] → served gzipped; the Android size profile (decision 7).
 - [`bevy_asset` pulls in `android-activity` on Android, which won't compile without an activity
   backend] → turn on `android-native-activity`, never used.
 - [Skinned meshes break on Adreno (bevy#24926), open in 0.20.0, a GPU-path bug that hits agent
@@ -266,7 +278,5 @@ on the moved code.
 
 ## Open Questions
 
-- The spike's verdict on V8 versus QuickJS-ng. This design and the specs are updated when it
-  reports.
-- How abyme gets the library: built by its `scripts/android` from the pinned bevy-ts, or a
-  prebuilt bevy-ts publishes. Default: abyme builds it, with the V8 cache.
+- None open for bevy-ts. Still to see on a device: Bevy drawing into a handle it didn't create
+  (decision 3), and the Adreno workaround (Risks).

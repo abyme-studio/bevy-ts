@@ -1,6 +1,6 @@
 ## 0. Gate on the spike
 
-- [ ] 0.1 Read `android-native/spike`'s report: V8 from source on the phone, deno_core 0.412's hello world (deno_core#738), Bevy 0.20 drawing into a window from a raw handle. Update design.md decisions 3 and 7, the android-engine spec's JS requirement and these tasks if any fails
+- [x] 0.1 Read `android-native/spike`'s report: V8 from source on the phone, deno_core 0.412's hello world (deno_core#738), Bevy 0.20 drawing into a window from a raw handle. Update design.md decisions 3 and 7, the android-engine spec's JS requirement and these tasks if any fails
 - [ ] 0.2 Get the operator's go on the ask-first items in proposal.md's Impact before group 2
 
 ## 1. Move play and input into `bevy-ts-embed` (no behaviour change)
@@ -34,7 +34,7 @@
 
 - [ ] 4.1 `crates/bevy-ts-android` (cdylib): JNI exports for `dev.bevyts.Engine`, `ANativeWindow_fromSurface` and release, listener calls on the engine thread (attached once)
 - [ ] 4.2 `crates/bevy-ts-android/java/dev/bevyts/Engine.java`: `load(absolutePath)` by `System.load` with a version check, `version()`, no `loadLibrary`
-- [ ] 4.3 `bevy-ts-v8` builds from source for `aarch64-linux-android` (`V8_FROM_SOURCE=1`, `use_relative_vtables_abi=false`, the Mac-host patch set from `docs/research/android.md`, `bevy_asset`'s `android-native-activity` on, cached at `~/.cache/bevy-ts/v8-android`); or, if 0.1 says so, `crates/bevy-ts-quickjs` as a `ScriptBackend` and a feature selecting it
+- [ ] 4.3 `bevy-ts-v8` builds from source for `aarch64-linux-android` (`V8_FROM_SOURCE=1`, the Mac-host patch set from `docs/research/android.md`, ninja capped at `-j4` through a `NINJA` wrapper, cached at `~/.cache/bevy-ts/v8-android`); deno_core's Android `errno_location` as a `[patch.crates-io]`, sent upstream; compiler-rt builtins at link; `bevy_asset`'s `android-native-activity` on; the Android profile `opt-level = "z"`, fat LTO, `panic = "unwind"`
 - [ ] 4.4 `scripts/android`: `cargo ndk -t arm64-v8a -P 29`, writing `dist/aarch64-linux-android/` (`.so`, `Engine.java`, header)
 - [ ] 4.5 A CI job that builds the Android library (build only) and checks its exports with `llvm-readelf`
 - [ ] 4.7 `packages/platforms/android-arm64` and a release job publishing `@bevy-ts/android-arm64` at every version (Linux runner, V8 from source with a cached build), not an optional dependency of `bevy-ts`; the package's first version by hand on the operator's go (`docs/release.md`); document it there

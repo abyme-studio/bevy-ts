@@ -23,7 +23,7 @@ The JNI layer SHALL turn a `Surface` into an `ANativeWindow` with `ANativeWindow
 - **THEN** the app's own activity is the only one, and the engine library links no winit symbols
 
 ### Requirement: Scripts run as on the desktop
-The Android engine SHALL run a game's compiled scripts with the same globals, networking, timers and source-mapped errors as the desktop engine. Its JS engine SHALL be V8, built from source for Android. If V8 or deno_core cannot run on Android, it SHALL be QuickJS-ng behind the same `ScriptBackend` seam, and the `started` event's `js` SHALL say which.
+The Android engine SHALL run a game's compiled scripts with the same globals, networking, timers and source-mapped errors as the desktop engine. Its JS engine SHALL be V8 through deno_core, built from source for Android, and the `started` event's `js` SHALL be `"v8"`.
 
 #### Scenario: A game that connects to abymed
 - **WHEN** a built game whose script calls `@abyme/client`'s `connect()` plays on the phone with `ABYME_URL` set to the Mac's `https:` tailnet address and `ABYME_KEY` to the device key

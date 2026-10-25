@@ -26,8 +26,8 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
   `ANativeWindow_fromSurface`. It plays prebuilt-engine games only, with no compiler, remote,
   inspector, viewport or hot reload.
 - **V8 from source for Android.** `bevy-ts-v8` builds with `V8_FROM_SOURCE=1` through cargo-ndk.
-  If the spike (`android-native/spike`) finds V8 or deno_core can't run on Android, the fallback is
-  a QuickJS-ng `ScriptBackend` (`rquickjs`), a second backend behind the existing seam.
+  The spike ran deno_core on an arm64 Android emulator: it works with a 3-line deno_core patch and
+  compiler-rt's builtins at link. No second JS engine.
 - **`wss:`.** The `WebSocket` client gains TLS (rustls with webpki roots). `wss:` URLs to allowed
   hosts open on every target.
 - **The header rule.** A `headers` option is allowed to a loopback host, as now, or over `wss:`
@@ -68,14 +68,14 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
   `bevy-ts-embed`; the CLI calls them. `beside_exe()` stays in the CLI.
 - `crates/bevy-ts-viewport`: `input.rs` moves to `bevy-ts-embed`; the viewport calls it.
 - `crates/bevy-ts`: `net/` (TLS, the header rule, `wss:` refusal gone).
-- `crates/bevy-ts-v8`: an Android build path. Possibly a new `crates/bevy-ts-quickjs`.
+- `crates/bevy-ts-v8`: an Android build path. A `[patch.crates-io]` for deno_core's Android errno.
 - Docs: a new `docs/android.md`; `docs/networking.md`, `docs/build.md`, `docs/viewport.md`.
 - abyme: a follow-up change in `crates/phone` (Kotlin, Gradle, the download), named here, not done
   here.
 - Needs the operator's go:
-  - **V8 from source in the build.** 1-2 h a clean build, about 13 min cached; NDK r25b+ and API
-    29, above abyme's `minSdk` 26, and a patched V8 checkout to build from a Mac. The alternative
-    is QuickJS-ng (no JIT, 1.46 MB).
+  - **V8 from source in the build.** 47 min a clean build at `-j4` on the Mac, cached after; a
+    patched V8 checkout to build from a Mac; NDK r28 and API 29, above abyme's `minSdk` 26; a
+    patched deno_core until upstream takes the fix. The alternative is QuickJS-ng (no JIT, 1 MB).
   - **A TLS crate.** `futures-rustls` with `ring` and `webpki-roots`, in `bevy-ts` on every
     target. New dependencies.
   - **The header rule.** Headers allowed over `wss:` to any allowlisted host, not only loopback.
@@ -85,15 +85,14 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
     `Engine.load(path)` (`System.load`). The APK stays at 8.6 MB, but it is native code
     downloaded at run time: fine outside Play, refused by Play's policy, and dlopen from app
     storage on API 29+ must be proven (W^X forbids exec there, not mapping a library, as far as
-    known). Each download, measured by the spike: Bevy alone is 66.9 MB stripped and
-    22.3 MB gzipped; QuickJS-ng adds 1.46 MB (0.68 MB gzipped); V8 is not yet measured. `Engine.load` checks an ABI number, not the bevy-ts
+    known). Each download, measured by the spike: about 27 MB gzipped, 73 MB on disk (Bevy
+    30.7 MB and V8 42.2 MB stripped, in the size profile). `Engine.load` checks an ABI number, not the bevy-ts
     version, so one APK loads any engine of its ABI.
   - **A new npm package and release job.** `@bevy-ts/android-arm64` at every release, built on a
     Linux runner with V8 from source (1-2 h uncached), its first version published by hand. abymed
     fetches it by the game's version.
   - **A no-winit window path.** Bevy gets a window it didn't create, from a raw handle; a new
     architectural pattern, and two new crates.
-  - **A possible second `ScriptBackend`** (QuickJS-ng), if the spike rules V8 out.
   - **Performance:** a phone GPU and CPU run the game; skinned meshes are known broken on some
     Adreno GPUs (bevy#24926, open in 0.20.0); the fix forces skinning onto uniform buffers on
     Adreno only, and needs a real Adreno phone to confirm.

@@ -64,7 +64,7 @@ The engine's frame loop SHALL run only while it is resumed and has a window, or 
 - **THEN** the log has a warning naming the event, and the game keeps playing
 
 ### Requirement: Events come back as JSON on one callback
-The engine SHALL call `on_event(user, json, len)` from its own thread with one JSON object per call: `{"event":"started","inputs":[...],"js":"v8"|"quickjs"}` after the first frame is presented (or the first frame runs, headless), `inputs` being the input types it reads; `{"event":"log","level","message","file"?,"line"?}` for each script log line and error, mapped through source maps; `{"event":"ime","kind":"enabled"|"disabled"}` when the game wants text input or no longer does; and `{"event":"exited","code","message"?}` once, last, when the engine stops for any reason. The host SHALL NOT call `bevy_ts_destroy` or `bevy_ts_surface` with a null window from inside the callback; other calls MAY be made from it.
+The engine SHALL call `on_event(user, json, len)` from its own thread with one JSON object per call: `{"event":"started","inputs":[...],"js":"v8"}` after the first frame is presented (or the first frame runs, headless), `inputs` being the input types it reads; `{"event":"log","level","message","file"?,"line"?}` for each script log line and error, mapped through source maps; `{"event":"ime","kind":"enabled"|"disabled"}` when the game wants text input or no longer does; and `{"event":"exited","code","message"?}` once, last, when the engine stops for any reason. The host SHALL NOT call `bevy_ts_destroy` or `bevy_ts_surface` with a null window from inside the callback; other calls MAY be made from it.
 
 #### Scenario: A script error reaches the host
 - **WHEN** a system in `src/enemy.tsx` throws
