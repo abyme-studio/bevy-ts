@@ -119,8 +119,9 @@ pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Re
             let lanes = ty.lanes().unwrap();
             let names = ["x", "y", "z", "w"];
             let values: Vec<f64> = match v {
-                Value::Array(a) if a.len() == lanes => {
-                    a.iter().map(|x| as_number(path, ty, x)).collect::<Result<_, _>>()?
+                // A `Vec2` field is a vector view whose z reads 0 in TS, so a vector arrives with 3 lanes.
+                Value::Array(a) if a.len() == lanes || (*ty == FieldType::Vec2 && a.len() == 3) => {
+                    a[..lanes].iter().map(|x| as_number(path, ty, x)).collect::<Result<_, _>>()?
                 }
                 Value::Object(o) => names[..lanes]
                     .iter()
@@ -511,5 +512,13 @@ mod tests {
         let mut v = [0u8; 12];
         encode_field(".p", &FieldType::Vec3, &json!({"x":1,"y":2,"z":3}), &mut v).unwrap();
         assert_eq!(unsafe { decode_field(&FieldType::Vec3, &v) }, json!([1.0, 2.0, 3.0]));
+    }
+
+    #[test]
+    fn a_vec2_takes_a_ts_vector_of_three_lanes() {
+        let mut b = [0u8; 8];
+        encode_field(".value", &FieldType::Vec2, &json!([4, 5, 0]), &mut b).unwrap();
+        assert_eq!(decode_field(&FieldType::Vec2, &b), json!([4.0, 5.0]));
+        assert!(encode_field(".value", &FieldType::Vec2, &json!([4, 5, 0, 0]), &mut b).is_err());
     }
 }
