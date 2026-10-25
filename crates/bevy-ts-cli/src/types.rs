@@ -573,16 +573,19 @@ pub fn emit_bevy(world: &World) -> (String, String) {
     let mut js = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name. Column classes have a native\n\
          // layout read from reflection; the rest are handles for With/Without filters and TSX.\n\
-         import {{ array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, reflectClass, u16, u32, u8, vec2, vec3, vec4 }} from \"bevy-ts\";\n\n\
+         import {{ array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, reflectClass, rustAsset, rustEntityEvent, rustEvent, rustGeneric, rustMessage, u16, u32, u8, vec2, vec3, vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name.\n\
-         import {{ Component, Resource }} from \"bevy-ts\";\n\
-         import type {{ AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, ReflectClass, ReflectValue, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
+         import {{ Component, EntityEvent, Event, Message, Resource }} from \"bevy-ts\";\n\
+         import type {{ AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
-    for (path, name, reg) in named(&registry, native) {
+    let components = named(&registry, native);
+    let mut taken: BTreeSet<String> = components.iter().map(|(_, n, _)| n.clone()).collect();
+    taken.extend(["Time".to_string(), "Transform".to_string()]);
+    for (path, name, reg) in components {
         // `Time` and its clocks are `bevy-ts`'s own (script-time).
         if name == "Transform" || name == "Time" || path.starts_with("bevy_time::time::Time<") {
             continue;
@@ -670,7 +673,157 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         let class = if default { "AssetClass" } else { "AssetType" };
         let _ = writeln!(dts, "export declare const {name}: {class}<{name}>;");
     }
+    emit_rust_events(&registry, &mut taken, &mut js, &mut dts);
     (js, dts)
+}
+
+/// A Rust message or event TS can name (rust-events): its registration and what it is.
+struct RustData<'r> {
+    path: String,
+    reg: &'r TypeRegistration,
+    message: bool,
+    /// `Some(entity)` for an event: whether it is an `EntityEvent`.
+    event: Option<bool>,
+}
+
+impl RustData<'_> {
+    /// Its `bevy-ts` factory call.
+    fn factory(&self) -> String {
+        match self.event {
+            None => format!("rustMessage({:?})", self.path),
+            Some(entity) => {
+                let f = if entity { "rustEntityEvent" } else { "rustEvent" };
+                if self.message { format!("{f}({:?}, true)", self.path) } else { format!("{f}({:?})", self.path) }
+            }
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self.event {
+            None => "message",
+            Some(true) => "entityEvent",
+            Some(false) => "event",
+        }
+    }
+
+    fn base(&self) -> &'static str {
+        match self.event {
+            None => "Message",
+            Some(true) => "EntityEvent",
+            Some(false) => "Event",
+        }
+    }
+
+    /// Its instance type, for a generic's instance or an enum: `RustEnum<..>` or `RustStruct<..>`.
+    fn instance_ts(&self, registry: &TypeRegistry) -> String {
+        let value = ts_type(registry, &self.path, 1);
+        match self.reg.type_info() {
+            TypeInfo::Struct(_) => format!("RustStruct<{:?}, {value}>", self.kind()),
+            _ => format!("RustEnum<{:?}, {value}>", self.kind()),
+        }
+    }
+}
+
+/// `On<E>`'s own members: a Rust event field by these names is read as `on.event.<name>`.
+const ON_OWN: [&str; 5] = ["entity", "original", "propagate", "toJSON", "event"];
+
+/// Every type with `ReflectTsMessage` or `ReflectTsEvent` as a class: a struct as a class with its
+/// fields, an enum as its value's type, a generic type (`AssetEvent<A>`) as one name whose
+/// instances the reader picks by type argument. An asset type a generic is instanced on gets a
+/// marker to spell it (`AssetEvent<Image>`).
+fn emit_rust_events(registry: &TypeRegistry, taken: &mut BTreeSet<String>, js: &mut String, dts: &mut String) {
+    use bevy_ts::rust_events::{ReflectTsEvent, ReflectTsMessage};
+    let mut all: Vec<RustData> = registry
+        .iter()
+        .filter_map(|reg| {
+            let message = reg.data::<ReflectTsMessage>().is_some();
+            let event = reg.data::<ReflectTsEvent>().map(|e| e.entity);
+            (message || event.is_some()).then(|| RustData { path: reg.type_info().type_path().to_string(), reg, message, event })
+        })
+        .collect();
+    all.sort_by(|a, b| a.path.cmp(&b.path));
+    // Generic instances by their type's path without arguments.
+    let mut generics: BTreeMap<String, Vec<&RustData>> = BTreeMap::new();
+    let mut plain = Vec::new();
+    for d in &all {
+        match d.path.split_once('<') {
+            Some((base, _)) => generics.entry(base.to_string()).or_default().push(d),
+            None => plain.push(d),
+        }
+    }
+    let unique = |taken: &mut BTreeSet<String>, short: &str, krate: &str| {
+        let mut name = ident(short);
+        if taken.contains(&name) {
+            name = format!("{}{name}", ident(krate));
+        }
+        while !taken.insert(name.clone()) {
+            name.push('_');
+        }
+        name
+    };
+    js.push_str("\n// Rust messages and events, by type path (rust-events).\n");
+    dts.push_str("\n// Rust messages and events, by type path (rust-events). Values are in reflect-coverage's shape.\n");
+    for d in plain {
+        let table = d.reg.type_info().type_path_table();
+        let name = unique(taken, table.short_path(), table.crate_name().unwrap_or(""));
+        let _ = writeln!(js, "export const {name} = {};", d.factory());
+        match d.reg.type_info() {
+            TypeInfo::Struct(st) => {
+                let _ = writeln!(dts, "export declare class {name} extends {} {{\n  static readonly path: {:?};\n  static readonly native: true;", d.base(), d.path);
+                for f in st.iter() {
+                    // An entity event's `entity` is its target, `On<E>.entity` at the first hop.
+                    if d.event.is_some() && ON_OWN.contains(&f.name()) && !(d.event == Some(true) && f.name() == "entity") {
+                        let _ = writeln!(dts, "  /** In an observer, read as `on.event.{0}`: `On<E>` has its own `{0}`. */", f.name());
+                    }
+                    let _ = writeln!(dts, "  declare readonly {}: {};", prop(f.name()), ts_type(registry, f.type_path(), 1));
+                }
+                dts.push_str("}\n");
+            }
+            _ => {
+                let _ = writeln!(dts, "/** Its value is Bevy's enum, as `of(value)` takes it and a reader hands it. */");
+                let _ = writeln!(dts, "export declare const {name}: RustClass<{name}, {name}Value> & {{ readonly path: {:?} }};", d.path);
+                let _ = writeln!(dts, "export type {name} = RustEnum<{:?}, {name}Value>;", d.kind());
+                let _ = writeln!(dts, "export type {name}Value = {};", ts_type(registry, &d.path, 0));
+            }
+        }
+    }
+    for (base, instances) in generics {
+        let short = base.rsplit("::").next().unwrap_or(&base);
+        let krate = base.split("::").next().unwrap_or("");
+        let name = unique(taken, short, krate);
+        let mut js_items = Vec::new();
+        let mut dts_items = Vec::new();
+        let mut args = Vec::new();
+        let mut types = Vec::new();
+        for d in instances {
+            // The argument as TS spells it, an asset type by its marker.
+            let short_path = d.reg.type_info().type_path_table().short_path();
+            let mut arg = short_path.split_once('<').map_or("", |(_, a)| a).strip_suffix('>').unwrap_or("").to_string();
+            let generic_args: Vec<_> = d.reg.type_info().generics().iter().collect();
+            if let [g] = generic_args.as_slice()
+                && let Some(reg) = registry.get(g.type_id())
+                && reg.data::<bevy::asset::ReflectAsset>().is_some()
+            {
+                let t = reg.type_info().type_path_table();
+                let marker = ident(t.short_path());
+                if taken.insert(marker.clone()) {
+                    let _ = writeln!(js, "export const {marker} = rustAsset({:?});", t.path());
+                    let _ = writeln!(dts, "/** The asset type `{}`, for a generic's argument (`AssetEvent<{marker}>`). */", t.path());
+                    let _ = writeln!(dts, "export declare abstract class {marker} {{\n  static readonly path: {:?};\n  private readonly __asset: {:?};\n}}", t.path(), t.path());
+                }
+                arg = marker;
+            }
+            js_items.push(format!("{arg:?}: {}", d.factory()));
+            let ty = d.instance_ts(registry);
+            dts_items.push(format!("  readonly {:?}: RustClass<{ty}, unknown> & {{ readonly path: {:?} }};", arg, d.path));
+            args.push(arg);
+            types.push(ty);
+        }
+        let _ = writeln!(js, "export const {name} = rustGeneric({name:?}, {{ {} }});", js_items.join(", "));
+        let _ = writeln!(dts, "/** Generic: each registered instance by its type argument. */");
+        let _ = writeln!(dts, "export declare const {name}: RustGeneric<{{\n{}\n}}>;", dts_items.join("\n"));
+        let _ = writeln!(dts, "export type {name}<A extends {}> = A extends unknown ? {} : never;", args.join(" | "), types.join(" | "));
+    }
 }
 
 /// The `.d.ts` text for a world whose native layouts are filled: one class per reflected
