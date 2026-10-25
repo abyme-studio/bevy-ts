@@ -222,6 +222,9 @@ app.addSystems(Update, s);
     let mut app = app(&dir.join("game.ts"));
     app.register_type::<a::Health>().register_type::<b::Health>();
     let r = reload(&mut app, false);
-    let want = "Health names more than one Rust type (it::native_components::a::Health, it::native_components::b::Health)";
-    assert!(r.errors.iter().any(|e| e.message.contains(want)), "{:?}", r.errors);
+    // Every reflected `Health` in this test binary is registered, so the list may name more.
+    let named = |m: &str| {
+        m.contains("Health names more than one Rust type") && ["it::native_components::a::Health", "it::native_components::b::Health"].iter().all(|p| m.contains(p))
+    };
+    assert!(r.errors.iter().any(|e| named(&e.message)), "{:?}", r.errors);
 }
