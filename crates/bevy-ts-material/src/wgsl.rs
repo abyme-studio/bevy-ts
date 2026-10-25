@@ -436,6 +436,9 @@ pub fn watch_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>,
                     drawing.insert(id);
                     w.defs.insert(id, defs.clone());
                 }
+                // Bevy leaves a pipeline waiting on its shader or an import in `Err` until its next
+                // pass queues it again: not a failure.
+                CachedPipelineState::Err(bevy::shader::ShaderCacheError::ShaderNotLoaded(_) | bevy::shader::ShaderCacheError::ShaderImportNotYetAvailable) => {}
                 CachedPipelineState::Err(e) => {
                     let message = e.to_string();
                     let version = w.applied.get(&id).copied().unwrap_or_default();
