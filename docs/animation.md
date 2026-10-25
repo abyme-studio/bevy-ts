@@ -226,7 +226,10 @@ The four common tweens:
 `animatedField(C, field)` is Bevy's `animated_field!`: any reflected component's top-level field
 whose type Bevy can animate (`f32`, `f64`, `bool`, the `Vec`, `DVec` and `Quat` types, `Rot2`,
 `Transform`, and the linear colour types). A field of another type fails `tsc`, and Rust refuses
-it naming the field and its type. A newtype component's one field is `value`. A script rotation
+it naming the field and its type. A newtype component's one field is `value`. A `Vec2` field is
+a `Vec3` view in TS whose `z` reads 0, so its values are `[x, y, 0]` (`[x, y]` works too, and a
+`z` that is not 0 is refused). Two gaps in `tsc`: an integer field (`u32`, `i32`) passes as a
+number and Rust refuses it at the write; a `Rot2` field has no TS type, so it cannot be named. A script rotation
 on a bone blends with the glTF clips on the same bone, since both are the same Bevy field.
 
 **Curves.** Bevy's constructors by their names: `EasingCurve(start, end, ease)`,
@@ -247,13 +250,16 @@ them: use `SampleAutoCurve` or a keyframe curve); the cubic curves and splines t
 
 **Targets.** `AnimationTargetId.root` is the entity carrying `PlayAnimation`;
 `fromNames([...])` is a descendant by its `Name` path from it. On an entity with no scene, Rust
-makes the entity its own `AnimationPlayer` and gives it and every named descendant its target id.
+makes the entity its own `AnimationPlayer` and gives it and its named descendants their target
+ids, the frame it starts: a descendant counts when every entity between it and the root is named
+too. A child named under an unnamed one, or added later, is not a target; give it its
+`AnimationTargetId` (`fromNames`) and `AnimatedBy` in Rust.
 
 **Duration.** A clip lasts as long as its longest curve. A curve with no end (`forever()`, an
 unbounded domain) needs `clip.setDuration(secs)`; without one the clip is refused naming the curve.
 
 The clip is an asset value: `assets.add(clip)` gives a ref, `assets.set(ref, clip)` replaces its
-curves, and a graph's `addClip` takes it. `assets.get(ref)` reads back the JSON written; a clip
+curves (a clip's events, Rust-only, go with them), and a graph's `addClip` takes it. `assets.get(ref)` reads back the JSON written; a clip
 from a file reads as `{ duration, curves: null }` (its curves have no JSON form), and writing
 `curves: null` keeps them.
 

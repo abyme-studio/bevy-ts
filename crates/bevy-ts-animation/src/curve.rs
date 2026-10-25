@@ -299,8 +299,21 @@ fn spline<A: ScriptValue>(registry: &TypeRegistry, json: &Value) -> Result<Splin
     })
 }
 
-/// A value of type `A` from its reflected JSON, refused naming both types.
+/// A value of type `A` from its reflected JSON, refused naming both types. A `Vec2` field is a
+/// `Vec3` view in TS whose `z` reads 0, so a `Vec2` value is `[x, y]` or `[x, y, 0]`.
 fn value<A: ScriptValue>(registry: &TypeRegistry, json: &Value) -> Result<A, String> {
+    let flat = [TypeId::of::<Vec2>(), TypeId::of::<DVec2>()].contains(&TypeId::of::<A>());
+    let two;
+    let json = match json.as_array() {
+        Some(a) if flat && a.len() == 3 => {
+            if a[2].as_f64() != Some(0.0) {
+                return Err(format!("a {} value is [x, y] or [x, y, 0], not {json}", A::short_type_path()));
+            }
+            two = Value::Array(a[..2].to_vec());
+            &two
+        }
+        _ => json,
+    };
     let v = bevy_ts::reflect_value::value_of(registry, TypeId::of::<A>(), json)
         .map_err(|e| format!("a {} value, not {} ({json}): {e}", A::short_type_path(), json_kind(json)))?;
     A::from_reflect(v.as_ref()).ok_or_else(|| format!("a {} value, not {}", A::short_type_path(), json_kind(json)))

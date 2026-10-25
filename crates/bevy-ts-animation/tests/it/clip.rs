@@ -154,6 +154,32 @@ fn a_named_child_moves_alone() {
     assert_eq!(app.world().get::<AnimationTargetId>(lid), Some(&AnimationTargetId::from_names([Name::new("lid")].iter())));
 }
 
+/// A component with a `Vec2` field, as `UiTransform.scale` is.
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+struct Pop {
+    scale: Vec2,
+}
+
+#[test]
+fn a_vec2_field_takes_its_ts_view() {
+    let mut app = the_app();
+    app.register_type::<Pop>();
+    let pop = <Pop as TypePath>::type_path();
+    // TS types a Vec2 field as a Vec3 view whose z reads 0: [x, y, 0], as tsc asks, or [x, y].
+    let c = clip(&mut app, &[(root(), json!({ "property": field(pop, "scale"), "curve": tween(json!([1, 1, 0]), json!([2, 2, 0]), json!("Linear"), 0.5) }))]);
+    let e = tweened(&mut app, c, Pop::default());
+    play(&mut app, e, 0.6, |_, _| {});
+    assert_eq!(app.world().get::<Pop>(e).unwrap().scale, Vec2::splat(2.0));
+    let registry = app.world().resource::<AppTypeRegistry>().read();
+    let mut c = AnimationClip::default();
+    let two = json!({ "property": field(pop, "scale"), "curve": tween(json!([1, 1]), json!([2, 2]), json!("Linear"), 1.0) });
+    add_curve(&registry, &mut c, target(&root()).unwrap(), &two).unwrap();
+    let z = json!({ "property": field(pop, "scale"), "curve": tween(json!([1, 1, 1]), json!([2, 2, 0]), json!("Linear"), 1.0) });
+    let e = add_curve(&registry, &mut c, target(&root()).unwrap(), &z).unwrap_err();
+    assert!(e.contains("[x, y, 0]"), "a z that is not 0 is refused: {e}");
+}
+
 #[test]
 fn a_wrong_field_fails() {
     let app = the_app();

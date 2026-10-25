@@ -1,7 +1,7 @@
 // Type tests for the `AnimationGraph` and `AnimationClip` builders (docs/animation.md): `tsc -p test` must pass, and
 // every `@ts-expect-error` must be an error.
 import { assets, Transform, type AssetRef } from "bevy-ts";
-import { AnimatableCurve, animatedField, AnimationClip, AnimationGraph, AnimationTargetId, ConstantCurve, EasingCurve, interval } from "bevy-ts/bevy";
+import { AnimatableCurve, animatedField, AnimationClip, AnimationGraph, AnimationTargetId, ConstantCurve, EasingCurve, interval, UiTransform } from "bevy-ts/bevy";
 
 export function build() {
   const g = new AnimationGraph();
@@ -35,6 +35,9 @@ export function clip() {
   assets.set(r, c);
   const d: number | undefined = assets.get(r)?.duration;
   void d;
+
+  // A Vec2 field is a Vec3 view whose z reads 0: its curve takes [x, y, 0] (a UI pop).
+  new AnimatableCurve(animatedField(UiTransform, "scale"), new EasingCurve([1, 1, 0], [1.2, 1.2, 0], "BackOut"));
 
   // @ts-expect-error  a translation curve holds Vec3 values, not numbers
   new AnimatableCurve(animatedField(Transform, "translation"), new ConstantCurve(interval(0, 1), 3));

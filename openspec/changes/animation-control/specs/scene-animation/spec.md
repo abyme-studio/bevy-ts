@@ -148,8 +148,8 @@ Rust SHALL hand-map `AnimationClip` in the reflected-asset writer and reader: wr
 - **THEN** at 0.25 s its `translation.y` is the cubic-out ease of 0.5 times 2, at 0.5 s it is 2 and stays 2, and no TS ran after the insert
 
 #### Scenario: Rotate
-- **WHEN** the curve is `EasingCurve(Quat.IDENTITY, Quat.fromRotationY(PI), "Linear").reparametrizeLinear(interval(0, 1))` on `Transform` `rotation`
-- **THEN** at 0.5 s the entity has turned a quarter turn about Y
+- **WHEN** the curve is `EasingCurve([0, 0, 0, 1], [0, sin(PI/4), 0, cos(PI/4)], "Linear").reparametrizeLinear(interval(0, 1))` (identity to a quarter turn about Y, as `[x, y, z, w]`) on `Transform` `rotation`
+- **THEN** each frame's rotation is Bevy's own curve sampled at the seek time, and at 0.5 s the entity has turned an eighth of a turn about Y
 
 #### Scenario: Scale, back and forth
 - **WHEN** the curve is `EasingCurve([1, 1, 1], [2, 2, 2], "SineInOut").reparametrizeLinear(interval(0, 0.4)).pingPong()` on `Transform` `scale`
@@ -204,17 +204,17 @@ Every public field and method of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation
 | `AnimationGraph::add_additive_blend`, `add_additive_blend_with_mask` | `addAdditiveBlend`, `addAdditiveBlendWithMask` | `graph.rs::an_additive_blend_adds` |
 | `AnimationGraph::add_edge`, `remove_edge` | `addEdge`, `removeEdge` | `animation-graph.test.ts`, `graph.rs::an_edited_graph_plays_new_clips` |
 | `AnimationGraph::get`, `get_mut`, `Index`, `IndexMut`, `nodes` | `get(node)` (a live node view), `nodes()` | `animation-graph.test.ts` |
-| `AnimationGraph.root`, `.graph` | `root`; `graph` is the hand-mapped JSON the builder holds | `reflect_asset.rs::animation_graph_round_trips` |
+| `AnimationGraph.root`, `.graph` | `root`; `graph` is the hand-mapped JSON the builder holds | `bevy-ts-animation/src/hand.rs::animation_graph_round_trips` |
 | `AnimationGraph.mask_groups`, `add_target_to_mask_group` | `mask_groups`, `addTargetToMaskGroup(target, group)` | `graph.rs::a_mask_keeps_a_bone_still` |
 | `AnimationGraphNode.node_type`, `weight`, `mask`, `add_mask`, `remove_mask`, `add_mask_group`, `remove_mask_group` | the node view's `node_type`, `weight`, `mask`, `addMask`, `removeMask`, `addMaskGroup`, `removeMaskGroup` | `animation-graph.test.ts`, `animation.rs::a_ts_graph_reweights_live` |
-| `AnimationNodeType::Clip`, `Blend`, `Add` | `{ Clip: path }`, `"Blend"`, `"Add"` | `reflect_asset.rs::animation_graph_round_trips` |
+| `AnimationNodeType::Clip`, `Blend`, `Add` | `{ Clip: path }`, `"Blend"`, `"Add"` | `bevy-ts-animation/src/hand.rs::animation_graph_round_trips` |
 | `AnimationTargetId::from_names`, `from_name`, its UUID | `AnimationTargetId.fromNames(names)`, `fromName(name)`, or a UUID string | `graph.rs::a_mask_keeps_a_bone_still` |
 | `AnimationGraphAssetLoader` (`.animgraph.ron`, `.animgraph`) | `PlayAnimation.graph` as an asset path | `graph.rs::a_ron_graph_plays` |
-| `SerializedAnimationGraph`, `SerializedAnimationGraphNode`, `SerializedAnimationNodeType` | Rust only: the shape the hand-map reads and writes | `reflect_asset.rs::animation_graph_round_trips` |
+| `SerializedAnimationGraph`, `SerializedAnimationGraphNode`, `SerializedAnimationNodeType` | Rust only: the shape the hand-map reads and writes | `bevy-ts-animation/src/hand.rs::animation_graph_round_trips` |
 | `AnimationGraph::save` | Rust only: writes a file; `assets.get` reads the value | – |
 | `ThreadedAnimationGraph`, `ThreadedAnimationGraphs`, `ThreadedAnimationSubgraph` | Rust only: Bevy's evaluation cache | – |
 | `AnimationClip` (`Default`), `add_curve_to_target`, `duration`, `set_duration` | `new AnimationClip()`, `addCurveToTarget`, `duration`, `setDuration` | `clip.rs::a_tween_translates_with_an_ease`, `animation-clip.test.ts` |
-| `AnimationClip::curves`, `curves_mut`, `curves_for_target`, `curves_for_target_mut`, `add_variable_curve_to_target`, `VariableCurve` | Rust only: boxed curves; `assets.get` reads a script clip's JSON | `reflect_asset.rs::animation_clip_round_trips` |
+| `AnimationClip::curves`, `curves_mut`, `curves_for_target`, `curves_for_target_mut`, `add_variable_curve_to_target`, `VariableCurve` | Rust only: boxed curves; `assets.get` reads a script clip's JSON | `bevy-ts-animation/src/hand.rs::animation_clip_round_trips` |
 | `AnimationClip::add_event`, `add_event_to_target`, `add_event_fn`, `add_event_fn_to_target`, `AnimationEvent` | Rust only: a typed Rust event; TS cannot observe one yet | – |
 | `AnimationClip::sample_clamped` | Rust only: a read of a typed property | – |
 | `AnimatableCurve::new`, `animated_field!`, `AnimatedField` | `new AnimatableCurve(animatedField(C, field), curve)` | `clip.rs::a_tween_translates_with_an_ease`, `clip.rs::a_wrong_field_fails` |
