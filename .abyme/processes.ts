@@ -38,6 +38,10 @@ const processes = {
   "rust-events-bench": {
     cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bench/rust-events/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tail -40'",
   },
+  // rust-events: the gate's GPU render tests alone, to tell load from a regression.
+  "rust-events-gpu": {
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts-cli --test it -- --exact materials::drawn::a_textured_cube_draws_the_image standard_material_limits::every_texture_fits_wgpus_default_limits && cargo test -p bevy-ts-material --test it -- --exact alpha_render::faded_shapes_and_scenes_dither_and_their_twins_do_not\" 2>&1 | grep -v ld64 | tee target/rust-events-gpu.log | grep -E \"test result|FAILED|panicked\"'",
+  },
   // rust-events: bevy-ts/bevy regenerated, the crates it changes, their unit tests, its CLI tests and tsc, in the gate slot.
   "rust-events-test": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"scripts/gen-bevy-types.sh && git diff --stat -- packages/bevy-ts/bevy.d.ts && cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- rust_events:: rust_events_coverage:: surface:: reload:: && (cd packages/bevy-ts && pnpm check)\" 2>&1 | grep -v ld64 | tee target/rust-events-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked|holes|error TS|bevy.d.ts\" | tail -60'",
