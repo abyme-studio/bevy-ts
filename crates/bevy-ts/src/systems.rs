@@ -348,21 +348,21 @@ pub type TsLookup<'a> = dyn Fn(&str) -> Option<(ComponentId, usize)> + 'a;
 pub type TsEncode<'a> = dyn Fn(&str, &serde_json::Map<String, serde_json::Value>) -> Option<Result<(Vec<u8>, ComponentLayout), String>> + 'a;
 
 /// Finds a registered Rust component by type path, or by its short name when only one type has
-/// it; a short name several types share is an error naming their paths.
-pub fn rust_component_by_name(world: &World, name: &str) -> Result<ComponentId, String> {
+/// it: `None` when none has it, and an error naming their paths when several share it.
+pub fn rust_component_by_name(world: &World, name: &str) -> Result<Option<ComponentId>, String> {
     let mut short = Vec::new();
     for (id, info) in world.components().iter_registered() {
         let full = info.name().to_string();
         if full == name {
-            return Ok(id);
+            return Ok(Some(id));
         }
         if full.rsplit("::").next() == Some(name) {
             short.push((full, id));
         }
     }
     match short.as_mut_slice() {
-        [] => Err(format!("no Rust component named {name} is registered in this engine")),
-        [(_, id)] => Ok(*id),
+        [] => Ok(None),
+        [(_, id)] => Ok(Some(*id)),
         many => {
             many.sort();
             let paths: Vec<&str> = many.iter().map(|(p, _)| p.as_str()).collect();
@@ -383,7 +383,7 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
                 }
                 return Ok((n.id, n.layout.size));
             }
-            let id = rust_component_by_name(world, &r.name)?;
+            let id = rust_component_by_name(world, &r.name)?.ok_or_else(|| format!("no Rust component named {} is registered in this engine", r.name))?;
             if data {
                 let why = native.reflect_tier(&r.name).map(|t| format!(" ({})", t.reason)).unwrap_or_default();
                 return Err(format!(

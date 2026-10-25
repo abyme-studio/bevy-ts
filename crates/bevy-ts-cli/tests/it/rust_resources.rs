@@ -255,3 +255,17 @@ app.addSystems(Update, systems(s).runIf(resourceExists(Gust)));
     let r = reload(&mut app, false);
     assert!(r.errors.iter().any(|e| e.message.contains("resourceExists(Gust): Gust names more than one Rust type")), "{:?}", r.errors);
 }
+
+#[test]
+fn resource_changed_refuses_an_ambiguous_short_name() {
+    let body = r#"
+import { resourceChanged, systems } from "bevy-ts";
+export function s() {}
+app.addSystems(Update, systems(s).runIf(resourceChanged(Gust)));
+"#;
+    let dir = project("rust-res-changed-ambiguous", &[("game.ts", &format!("{HEAD}{body}"))]);
+    let mut app = with_types(&dir);
+    let r = reload(&mut app, false);
+    let named = |m: &str| m.contains("resourceChanged(Gust): Gust names more than one Rust type") && m.contains("a::Gust") && m.contains("b::Gust");
+    assert!(r.errors.iter().any(|e| named(&e.message)), "{:?}", r.errors);
+}
