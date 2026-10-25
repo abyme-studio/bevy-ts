@@ -8,7 +8,8 @@ publish = false
 # a frame through one TS system, end to end through V8. `run.sh` runs it in release.
 
 [dependencies]
-bevy = { version = "0.20", default-features = false, features = ["bevy_window", "bevy_input"] }
+# Window and input come with bevy-ts-cli's features.
+bevy = { version = "0.20", default-features = false }
 bevy-ts = { path = "../../crates/bevy-ts", features = ["reflect"] }
 bevy-ts-cli = { path = "../../crates/bevy-ts-cli" }
 bevy-ts-v8 = { path = "../../crates/bevy-ts-v8" }
