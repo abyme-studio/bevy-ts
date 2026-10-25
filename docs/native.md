@@ -328,9 +328,12 @@ entity first clicked.
 A type with only Bevy's `#[reflect(Message)]` or `#[reflect(Event)]` can still be written,
 triggered and observed; reading it fails the load, saying to register it with `ts_message`.
 
-The cost is paid per message read: each message a TS reader sees is serialized once in Rust and
-parsed once in JS. A system that does not run pays nothing. Filter in Rust, or read fewer types,
-where many messages arrive a frame. 1,000 `CursorMoved` a frame cost BENCH (bench/rust-events).
+The cost is paid per message read: each message a TS reader sees is encoded once in Rust, along
+its type's codec (`reflect_codec`, compiled once per type), and decoded once in JS. A system that
+does not run pays nothing. Filter in Rust, or read fewer types, where many messages arrive a
+frame. 1,000 `CursorMoved` a frame cost 0.05-0.17 ms (median 0.08), about 40 ns a message of it
+encoding, over 8 release runs at load 91-94 on 18 cores (bench/rust-events, results/runs.txt).
+Without the `reflect` feature a reader's run crosses as JSON instead.
 
 `plugin_api::write_message` stays for a type without `Reflect` (Rapier's `CollisionEvent`): a port
 forwards it into a TS message of the same name.

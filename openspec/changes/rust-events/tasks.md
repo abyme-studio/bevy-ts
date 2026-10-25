@@ -7,8 +7,8 @@
 
 - [x] 2.1 `crates/bevy-ts/src/rust_events.rs`: `ReflectTsMessage` (`read` from a cursor, `write` from JSON) and `ReflectTsEvent` (`observe(target)`, `trigger`), with unit tests on a test message and event
 - [x] 2.2 `BevyTsNativeExt::ts_message::<M>()` and `ts_event::<E>()` in `crates/bevy-ts-native/src/lib.rs`
-- [x] 2.3 Rust `MessageReader` run param: per-system cursor, one JSON array per run, restart moves cursors to the end; `onMessage` on a Rust message
-- [ ] 2.4 Bench `bench/rust-events` (`rust-events-bench` process): 1,000 `CursorMoved` reads a frame; record the numbers in `docs/native.md`. Stop and report to the lead if the frame cost passes 1 ms
+- [x] 2.3 Rust `MessageReader` run param: per-system cursor, one run per call (codec-encoded with `reflect`, else one JSON array), restart moves cursors to the end; `onMessage` on a Rust message
+- [x] 2.4 Bench `bench/rust-events` (`rust-events-bench` process): 1,000 `CursorMoved` reads a frame; record the numbers in `docs/native.md`. Stop and report to the lead if the frame cost passes 1 ms. JSON ran 1.1-1.7 ms even quiet; lead@bevy-ts routed reads through `reflect_codec` (rust-events/go-bench): 0.05-0.17 ms over 8 runs at load 91-94
 
 ## 3. Writing and triggering
 

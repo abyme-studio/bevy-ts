@@ -47,7 +47,8 @@ system has not read yet, each a plain JSON value, as for a TS message. The curso
 per system identity. Bevy's `message_update_system` SHALL own expiry, so a message is readable
 for two updates. `onMessage(M)` SHALL be true when the system's cursor has unread messages of
 `M`. A restart SHALL move every cursor to the queue's end, so old messages are not replayed. A
-system that does not run SHALL pay no serialization.
+system that does not run SHALL pay no encoding. With `reflect`, a run SHALL cross encoded along the
+message type's codec and decode to the same values as its JSON.
 
 #### Scenario: Keyboard input read once
 - **WHEN** Bevy writes two `KeyboardInput` messages in a frame and two TS systems take `MessageReader<KeyboardInput>`
@@ -128,4 +129,4 @@ example relies on reading cursor or pointer messages.
 
 #### Scenario: Running the bench
 - **WHEN** the bench runs in release
-- **THEN** it prints the per-message cost of serialization and parse, and the frame cost of 1,000 reads
+- **THEN** it prints the per-message cost of encoding and of crossing, decoding and the loop, and the frame cost of 1,000 reads
