@@ -140,7 +140,7 @@ impl From<&Frame> for OwnerFrame {
 /// writes whose code is missing, failed or does not fit. Written by the reconcile; removed with
 /// its last entry. The missing types themselves are not on the entity, so no query matches them.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
-#[reflect(Component)]
+#[reflect(Component, Default)]
 pub struct MissingComponents(pub Vec<MissingComponent>);
 
 /// Who opened a level.

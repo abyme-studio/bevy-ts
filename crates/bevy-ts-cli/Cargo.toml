@@ -19,7 +19,7 @@ pcss = ["bevy/experimental_pbr_pcss"]
 
 [dependencies]
 bevy = { workspace = true, features = ["3d", "bevy_ui_render", "bevy_remote", "file_watcher", "system_font_discovery", "sysinfo_plugin"] }
-bevy-ts = { workspace = true, features = ["pbr"] }
+bevy-ts = { workspace = true, features = ["pbr", "engine_type_data"] }
 bevy-ts-v8.workspace = true
 bevy-ts-remote.workspace = true
 bevy-ts-tsx.workspace = true

@@ -68,6 +68,40 @@ pub const COMPUTED: &[&str] = &[
     "bevy_text::pipeline::TextLayoutInfo",
 ];
 
+/// Components with no Rust `Default`, so TSX, levels and the editor cannot insert them: read and
+/// written like any other, each with its reason. A component that has one gets `ReflectDefault`
+/// in `type_data` instead. The hole check fails on a component on neither list (`no default`)
+/// and on an entry no registered type uses. An entry ending in `<` names every instance.
+pub const NO_DEFAULT: &[(&str, &str)] = &[
+    ("bevy_animation::AnimatedBy", "the Entity of its AnimationPlayer"),
+    ("bevy_animation::AnimationTargetId", "a Uuid hashed from the target's name path"),
+    ("bevy_camera::camera::MainPassResolutionOverride", "a resolution an upscaler sets"),
+    ("bevy_core_pipeline::schedule::RootNonCameraView", "an interned schedule label bevy_core_pipeline makes"),
+    ("bevy_dev_tools::picking_debug::PointerDebugOverlay", "a relationship to an Entity"),
+    ("bevy_dev_tools::picking_debug::PointerDebugOverlayOf", "a relationship to an Entity"),
+    ("bevy_ecs::resource::IsResource", "marks a resource's entity; made by the World"),
+    ("bevy_extract::sync_world::MainEntity", "the render world's link to a main-world Entity"),
+    ("bevy_input_focus::FocusedInput<", "an input event with its target Entity"),
+    ("bevy_light::directional_light::DirectionalLightTexture", "needs an image Handle"),
+    ("bevy_light::point_light::PointLightTexture", "needs an image Handle"),
+    ("bevy_light::spot_light::SpotLightTexture", "needs an image Handle"),
+    ("bevy_mesh::morph::MeshMorphWeights", "an enum with no default; set from the mesh's morph targets"),
+    ("bevy_picking::mesh_picking::ray_cast::SimplifiedMesh", "needs a mesh Handle"),
+    ("bevy_render::view::window::screenshot::Screenshot", "a one-shot request for a RenderTarget, spawned by code"),
+    ("bevy_time::delayed_commands::DelayedCommandQueue", "holds a CommandQueue; made by delayed commands"),
+    ("bevy_ui::ui_node::UiTargetCamera", "needs a camera Entity"),
+    ("bevy_ui::widget::viewport::ViewportNode", "needs a camera Entity"),
+    ("bevy_ui_render::image::ImageNodeTextureAtlasLayout", "private to bevy_ui_render"),
+    ("bevy_ui_widgets::scrollbar::Scrollbar", "needs a target Entity"),
+    ("bevy_window::monitor::Monitor", "made by the window backend for each display"),
+    ("bevy_window::monitor::PrimaryMonitor", "made by the window backend for the primary display"),
+];
+
+/// The reason a component is on [`NO_DEFAULT`], if it is.
+pub fn no_default(type_path: &str) -> Option<&'static str> {
+    NO_DEFAULT.iter().find(|(p, _)| *p == type_path || (p.ends_with('<') && type_path.starts_with(p))).map(|(_, why)| *why)
+}
+
 /// The reason a type is on [`UNCOVERED`], if it is.
 pub fn uncovered(type_path: &str) -> Option<&'static str> {
     UNCOVERED.iter().find(|(p, _)| *p == type_path || (p.ends_with('<') && type_path.starts_with(p))).map(|(_, why)| *why)

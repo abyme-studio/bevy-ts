@@ -1,9 +1,11 @@
 //! The hole check (reflect-coverage decision 3): every reflected component, resource and asset in
 //! the prebuilt engine, and in a project engine with the Rapier port, reads through
 //! `reflect_value::read`, writes back equal through `write`, and has a TS type, unless
-//! `reflect_value::UNCOVERED` lists it with a reason. An entry no walked type uses fails too.
+//! `reflect_value::UNCOVERED` lists it with a reason. A component TSX cannot insert fails unless
+//! `reflect_value::NO_DEFAULT` lists it; `type_data` entries Bevy already reflects fail. An entry
+//! no walked type uses fails too.
 
-use bevy_ts::reflect_value::UNCOVERED;
+use bevy_ts::reflect_value::{NO_DEFAULT, UNCOVERED};
 use bevy_ts_cli::cli::Engine;
 use bevy_ts_cli::coverage::{Report, walk};
 use std::collections::BTreeSet;
@@ -21,10 +23,11 @@ fn gaps(report: &Report) -> Vec<String> {
     report.gaps.iter().map(|g| format!("{} [{}] in {}{}: {}", g.type_path, g.kind, g.root, g.field, g.error)).collect()
 }
 
-/// The entries of `UNCOVERED` that `which` selects and no type in `listed` matches.
+/// The entries of `UNCOVERED` and `NO_DEFAULT` that `which` selects and no type in `listed` matches.
 fn stale(listed: &BTreeSet<String>, which: impl Fn(&str) -> bool) -> Vec<&'static str> {
     UNCOVERED
         .iter()
+        .chain(NO_DEFAULT)
         .map(|(p, _)| *p)
         .filter(|p| which(p))
         .filter(|p| !listed.iter().any(|l| l == p || (p.ends_with('<') && l.starts_with(p))))
@@ -39,9 +42,11 @@ fn prebuilt_engine_has_no_unlisted_gap() {
     let report = walk(app.world());
     assert!(report.met.len() > 200, "the walk met only {} types", report.met.len());
     let gaps = gaps(&report);
-    assert!(gaps.is_empty(), "{} reflected types have a gap not on reflect_value::UNCOVERED:\n{}", gaps.len(), gaps.join("\n"));
+    assert!(gaps.is_empty(), "{} reflected types have a gap not on reflect_value::UNCOVERED or NO_DEFAULT:\n{}", gaps.len(), gaps.join("\n"));
     let stale = stale(&report.listed, |p| !rapier_entry(p));
-    assert!(stale.is_empty(), "reflect_value::UNCOVERED names types no registered type uses: {stale:?}");
+    assert!(stale.is_empty(), "reflect_value::UNCOVERED or NO_DEFAULT names types no registered type uses: {stale:?}");
+    let redundant = &app.world().resource::<bevy_ts::type_data::RedundantTypeData>().0;
+    assert!(redundant.is_empty(), "bevy_ts::type_data adds type data Bevy already reflects; delete: {redundant:?}");
 }
 
 #[test]
@@ -66,8 +71,8 @@ fn rapier_port_has_no_unlisted_gap() {
         .iter()
         .map(|g| format!("{} [{}] in {}{}: {}", g["type_path"].as_str().unwrap(), g["kind"].as_str().unwrap(), g["root"].as_str().unwrap(), g["field"].as_str().unwrap(), g["error"].as_str().unwrap()))
         .collect();
-    assert!(gaps.is_empty(), "{} reflected types have a gap not on reflect_value::UNCOVERED:\n{}", gaps.len(), gaps.join("\n"));
+    assert!(gaps.is_empty(), "{} reflected types have a gap not on reflect_value::UNCOVERED or NO_DEFAULT:\n{}", gaps.len(), gaps.join("\n"));
     let listed: BTreeSet<String> = report["listed"].as_array().unwrap().iter().map(|t| t.as_str().unwrap().to_string()).collect();
     let stale = stale(&listed, rapier_entry);
-    assert!(stale.is_empty(), "reflect_value::UNCOVERED names Rapier types no registered type uses: {stale:?}");
+    assert!(stale.is_empty(), "reflect_value::UNCOVERED or NO_DEFAULT names Rapier types no registered type uses: {stale:?}");
 }
