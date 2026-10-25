@@ -1,0 +1,15 @@
+[package]
+name = "world-saves-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# openspec world-saves task 5.3: what a save and a load of 10k entities cost the main thread.
+# Release, Bevy linked statically, as what ships. Run with `run.sh [runs]`.
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false, features = ["std", "multi_threaded", "bevy_log", "async_executor", "bevy_asset", "bevy_world_serialization"] }
+bevy-ts = { path = "../../crates/bevy-ts", default-features = false }
+serde_json = "1"
+
+[profile.release]
+debug = false

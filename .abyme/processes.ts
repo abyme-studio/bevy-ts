@@ -37,6 +37,8 @@ const processes = {
   "material-params-it": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:material-params -- cargo test -p bevy-ts-cli --no-fail-fast --test it -- materials:: 2>&1 | grep -v ld64 | tee target/material-params-it.log | grep -E \"^error|-->|test result|FAILED|panicked\" | tail -60'" },
   // Every cli test binary, past the first failure, for a change that moves what several assert.
   "cli-test-all": { cmd: "bash -c 'cargo test -p bevy-ts-cli --no-fail-fast 2>&1 | grep --line-buffered -v ld64 | tee target/cli-test-all.log | grep -E \"^     Running|FAILED|panicked\"'" },
+  // Change world-saves, task 5.3: 10k entities saved and loaded (bench/world-saves), RUNS times (3).
+  "world-saves-bench": { cmd: "bash -c 'set -o pipefail; bench/world-saves/run.sh ${RUNS:-3} 2>&1 | grep -E \"^entities=|load av|^error|panicked\" -A6 | tee -a bench/world-saves/results/runs.txt'" },
   // The whole gate (build, tests past failures, clippy) in one of the machine's two check slots:
   // cargo runs nowhere else while bevy-ts shares the Mac. The slot is named after the worktree.
   "gate": { cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:$(basename $PWD) -- bash -c \"cargo build --workspace --all-targets && cargo test --workspace --no-fail-fast && cargo clippy --workspace --all-targets -- -D warnings\" 2>&1 | grep --line-buffered -v ld64 | tee target/gate.log | grep -E \"^error|^warning|-->|^     Running|FAILED|panicked|test result\"'" },

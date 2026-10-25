@@ -1,0 +1,5 @@
+ 0:58  up 1 day, 5 hrs, 2 users, load averages: 130.90 112.53 115.11
+entities=10000 save_main_ms=146.5 save_total_ms=381.1 file_kb=4606 load_main_ms=225.0 load_total_ms=505.6
+entities=10000 save_main_ms=120.8 save_total_ms=291.7 file_kb=4606 load_main_ms=214.5 load_total_ms=467.6
+entities=10000 save_main_ms=184.0 save_total_ms=295.8 file_kb=4606 load_main_ms=136.9 load_total_ms=223.9
+ 0:58  up 1 day, 5 hrs, 2 users, load averages: 133.71 113.42 115.41
