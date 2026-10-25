@@ -347,20 +347,28 @@ pub type TsLookup<'a> = dyn Fn(&str) -> Option<(ComponentId, usize)> + 'a;
 /// bytes and layout, or `None` when the name is no TS type.
 pub type TsEncode<'a> = dyn Fn(&str, &serde_json::Map<String, serde_json::Value>) -> Option<Result<(Vec<u8>, ComponentLayout), String>> + 'a;
 
-/// Finds a registered Rust component by type path or by its short name.
-pub fn rust_component_by_name(world: &World, name: &str) -> Option<ComponentId> {
-    let comps = world.components();
-    let mut short = None;
-    for (id, info) in comps.iter_registered() {
+/// Finds a registered Rust component by type path, or by its short name when only one type has
+/// it; a short name several types share is an error naming their paths.
+pub fn rust_component_by_name(world: &World, name: &str) -> Result<ComponentId, String> {
+    let mut short = Vec::new();
+    for (id, info) in world.components().iter_registered() {
         let full = info.name().to_string();
         if full == name {
-            return Some(id);
+            return Ok(id);
         }
         if full.rsplit("::").next() == Some(name) {
-            short = Some(id);
+            short.push((full, id));
         }
     }
-    short
+    match short.as_mut_slice() {
+        [] => Err(format!("no Rust component named {name} is registered in this engine")),
+        [(_, id)] => Ok(*id),
+        many => {
+            many.sort();
+            let paths: Vec<&str> = many.iter().map(|(p, _)| p.as_str()).collect();
+            Err(format!("{name} names more than one Rust type ({}); use its type path", paths.join(", ")))
+        }
+    }
 }
 
 /// Resolves a component reference as query data (TS, or native layout) or as a filter (any
@@ -375,9 +383,7 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
                 }
                 return Ok((n.id, n.layout.size));
             }
-            let Some(id) = rust_component_by_name(world, &r.name) else {
-                return Err(format!("no Rust component named {} is registered in this engine", r.name));
-            };
+            let id = rust_component_by_name(world, &r.name)?;
             if data {
                 let why = native.reflect_tier(&r.name).map(|t| format!(" ({})", t.reason)).unwrap_or_default();
                 return Err(format!(
