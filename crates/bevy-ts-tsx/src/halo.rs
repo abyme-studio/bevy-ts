@@ -31,6 +31,7 @@ impl Default for TextHalo {
 
 /// Under the text (`TEXT`, 0.06), over a selection (`TEXT_SELECTION`, 0.055).
 const HALO_Z: f32 = 0.058;
+const _: () = assert!(HALO_Z > stack_z_offsets::TEXT_SELECTION && HALO_Z < stack_z_offsets::TEXT);
 
 pub(crate) fn plugin(app: &mut App) {
     // In `Last`, after every write of the frame and before extraction.
@@ -123,5 +124,4 @@ fn extract_text_halos(
             }
         }
     }
-    debug_assert!(HALO_Z > stack_z_offsets::TEXT_SELECTION && HALO_Z < stack_z_offsets::TEXT);
 }
