@@ -277,7 +277,7 @@ app.addSystems(Update, typed, resized).addObserver(clicked);
 
 - A message is a plain value in Bevy's reflected shape: enums as Bevy writes them
   (`"KeyA"`, `{ Character: "a" }`), vectors as arrays, a `Duration` in seconds.
-- Each message is serialized for each reader that reads it, so the cost grows with the messages
+- Each message is encoded for each reader that reads it, so the cost grows with the messages
   read (docs/native.md has the numbers). Read the types you need.
 - Writing is `MessageWriter<M>.write(M.of(value))` or `commands.write(...)`; triggering is
   `commands.trigger(E.of(value))`. An enum's `of` takes its value whole:

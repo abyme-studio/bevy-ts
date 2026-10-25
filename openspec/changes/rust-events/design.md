@@ -41,8 +41,11 @@ hooks (ecs-queries); message update under fixed timestep (ecs-schedules); asset 
    `ReflectEvent::{trigger, create_observer}`. Reading needs ours; the load error says so.
 4. Readers. A Rust `MessageReader` is `RunParam::RustMessageReader { type, cursor }`, cursor kept
    per system identity in `TsSystems` beside the TS cursors. Each run Rust calls `read` and
-   hands JS one JSON array string; JS parses it once. A system skipped by its condition makes
-   no call. Restart sets each cursor to `Messages<M>::len` end.
+   hands JS a count then each message encoded along its type's codec (`reflect_codec`, compiled
+   once per type; the resolution's `rustMessages` carries it to JS); JS decodes the run once on
+   first use. JSON ran 1.1-1.7 ms for 1,000 `CursorMoved`, over the 1 ms budget, so lead@bevy-ts
+   chose the codec (rust-events/go-bench). Without `reflect` the run is one JSON array. A system
+   skipped by its condition makes no call. Restart sets each cursor to `Messages<M>::len` end.
 5. Writers and triggers. Three ops, applied in order with the buffer's other ops:
    `OP_WRITE_REFLECT { type, json }`, `OP_TRIGGER_REFLECT { type, json }`,
    `OP_OBSERVE { entity, decl, event }`. JS picks the reflect op when the class has
