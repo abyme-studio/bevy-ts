@@ -70,11 +70,15 @@ mod viewport {
         updates(app, 2);
     }
 
-    /// A menu whose owner opens it on `open-*` and `toggle`, and closes it on `close-all`.
+    /// A menu whose owner opens it on `open-*` and `toggle`, and closes it on `close-all`. A
+    /// floating dialog (Bevy's `GlobalZIndex` 50) covers the items; the popup's 100 is above it.
     const MENU: &str = r#"import { app, px, signal, Show } from "bevy-ts";
+import { GlobalZIndex } from "bevy-ts/bevy";
 const [open, setOpen] = signal(false);
 const cell = { width: px(100), height: px(20) };
 app.scene("ui", () => (
+  <>
+  <dialog key="float" style={{ position: "absolute", left: 0, top: px(30), width: px(120), height: px(60) }} />
   <node key="menu" style={{ position: "absolute", left: 0, top: 0, flexDirection: "column" }}
     onMenuEvent={({ action }) => {
       console.log(`menu ${action}`);
@@ -85,11 +89,13 @@ app.scene("ui", () => (
     <menuButton key="button" tabIndex={0} autoFocus style={cell} />
     <Show when={open}>
       <menuPopup key="popup" style={{ flexDirection: "column" }}>
+        <GlobalZIndex value={100} />
         <menuItem key="a" style={cell} onActivate={() => console.log("item a")} />
         <menuItem key="b" style={cell} onActivate={() => console.log("item b")} />
       </menuPopup>
     </Show>
   </node>
+  </>
 ));
 "#;
 
@@ -144,15 +150,22 @@ app.scene("ui", () => (
         assert!((at - Vec2::new(115.0, 129.0)).length() < 1.0, "popover centre {at}");
     }
 
+    /// A floating dialog (Bevy's `GlobalZIndex` 50) sits where the barrier is clicked; the
+    /// barrier's 99 is above it.
     const MODAL: &str = r#"import { app, percent, px } from "bevy-ts";
+import { GlobalZIndex } from "bevy-ts/bevy";
 app.scene("ui", () => (
+  <>
+  <dialog key="float" style={{ position: "absolute", left: 0, top: 0, width: px(60), height: px(60) }} />
   <modalDialogBarrier key="barrier" style={{ position: "absolute", width: percent(100), height: percent(100) }}
     onRequestClose={({ entity, source }) => console.log(`close ${source === entity}`)}>
+    <GlobalZIndex value={99} />
     <dialog key="d" modal style={{ position: "absolute", left: px(150), top: px(100), width: px(100), height: px(60), flexDirection: "column" }}>
       <dialogDragHandle key="handle" style={{ width: px(100), height: px(20) }} />
       <button key="ok" tabIndex={0} autoFocus style={{ width: px(40), height: px(20) }} />
     </dialog>
   </modalDialogBarrier>
+  </>
 ));
 "#;
 
@@ -167,12 +180,11 @@ app.scene("ui", () => (
         press(&mut app, "Escape");
         updates(&mut app, 4);
         // Bevy 0.20 asks on Escape's release as well as its press.
-        let n = said(&app, "close").len();
-        assert!(n >= 1 && said(&app, "close").iter().all(|l| l == "close true"), "the barrier names itself: {:?}", said(&app, "close"));
+        assert_eq!(said(&app, "close"), ["close true", "close true"], "the barrier names itself");
         click(&mut app, 200.0, 140.0);
-        assert_eq!(said(&app, "close").len(), n, "a click on the dialog does not close it");
+        assert_eq!(said(&app, "close").len(), 2, "a click on the dialog does not close it");
         click(&mut app, 10.0, 10.0);
-        assert_eq!(said(&app, "close").len(), n + 1, "a click on the barrier does");
+        assert_eq!(said(&app, "close").len(), 3, "a click on the barrier, over a floating dialog, does");
     }
 
     #[test]

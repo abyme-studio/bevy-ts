@@ -382,6 +382,10 @@ owner observer does; no element above it hears it.
 - `onRequestClose({ entity, source })`: a click on a `<modalDialogBarrier>`, or Escape inside it;
   `source` is the barrier.
 
+Floating dialogs draw over anything without a higher `GlobalZIndex`, so give a menu's popover and
+a modal's barrier one, as Bevy's feathers widgets do: `<GlobalZIndex value={100} />` in the
+popover, `<GlobalZIndex value={99} />` in the barrier (from `bevy-ts/bevy`).
+
 ```tsx
 const [open, setOpen] = signal(false);
 
@@ -393,6 +397,7 @@ const [open, setOpen] = signal(false);
   <menuButton><text>Difficulty</text></menuButton>
   <Show when={open}>
     <popover positions={[{ side: "bottom", align: "start", gap: 2 }]}>
+      <GlobalZIndex value={100} />
       <menuPopup>
         <menuItem onActivate={() => setLevel("easy")}><text>Easy</text></menuItem>
         <menuItem onActivate={() => setLevel("hard")}><text>Hard</text></menuItem>
@@ -414,9 +419,12 @@ const [open, setOpen] = signal(false);
   `"center"` or `"end"`; pixels) that fits the window, keeping `windowMargin` pixels from its
   edge. Bevy writes its `Node`'s place and its transform each frame, so its own `style` gives it
   only its size and look.
-- `<dialog>` (`Dialog`) is a tab group. `modal` adds `ModalDialog`: Tab stays inside it, and 0.1 s
-  after it comes Bevy focuses its last focusable element. Bound, `modal` going `false` gives the
-  group back its plain `TabGroup`.
+- `<dialog>` (`Dialog`) is a tab group. A dialog that is not modal floats: Bevy stacks floating
+  dialogs at `GlobalZIndex` 50 to 89, and a press brings one to the front. `modal` adds
+  `ModalDialog`: Tab stays inside it, and 0.1 s after it comes Bevy focuses its last focusable
+  element. Give `modal` at mount and mount a modal dialog when it opens (`<Show>`): Bevy keeps a
+  dialog that mounted floating in its floating stack, with its `GlobalZIndex`, after `modal`
+  comes. Bevy also makes the group modal over a `tabGroup` prop's `modal: false`.
 - `<modalDialogBarrier>` (`ModalDialogBarrier`) is the cover around a modal dialog: a click on it,
   not on the dialog, or Escape asks to close. Bevy 0.20 asks on Escape's release as well as its
   press, so a handler that toggles hears it twice: set closed, do not flip.

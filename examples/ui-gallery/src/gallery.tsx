@@ -2,7 +2,7 @@
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
 import { app, Show, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled, vec2 } from "bevy-ts";
-import { AutoDirectionalNavigation, Camera3d, Checked, Pressed, ScrollPosition, Transform, ZIndex } from "bevy-ts/bevy";
+import { AutoDirectionalNavigation, Camera3d, Checked, GlobalZIndex, Pressed, ScrollPosition, Transform, ZIndex } from "bevy-ts/bevy";
 import { CompassOctant, KeyCode, type DirectionalNavigation, type InputFocusVisible, type Keys } from "bevy-ts/input";
 import type { Child } from "bevy-ts/jsx-runtime";
 
@@ -258,6 +258,8 @@ const Overlays = () => (
       </menuButton>
       <Show when={menuOpen}>
         <popover key="pop" positions={[{ side: "bottom", align: "start", gap: 2 }, { side: "top", align: "start", gap: 2 }]}>
+          {/* Over floating dialogs, which Bevy stacks at 50 to 89. */}
+          <GlobalZIndex value={100} />
           <menuPopup key="popup" style={{ flexDirection: "column", padding: px(2), border: px(1) }} background="#11151c" border="#3a4150">
             {["easy", "normal", "hard"].map((k) => (
               <menuItem key={k} style={itemLook} background={() => (picked() === k ? "#2f5fa8" : "#00000000")} onActivate={() => setPicked(k)}>
@@ -278,17 +280,21 @@ const Overlays = () => (
   </Panel>
 );
 
-/** Over everything while shown; `modal` follows it, so it traps focus only then. Escape or a click outside closes it. */
+/** Over everything while shown; the barrier stays mounted, hidden, and the dialog mounts modal when it opens. Escape or a click outside closes it. */
 const Modal = () => (
   <modalDialogBarrier key="modal" style={() => ({ display: modalShown() ? "flex" : "none", position: "absolute", width: percent(100), height: percent(100), justifyContent: "center", alignItems: "center" })}
     background="#000000aa" onRequestClose={() => setModalShown(false)}>
-    <dialog key="d" modal={() => modalShown()} style={{ flexDirection: "column", padding: px(12), rowGap: px(8), border: px(1) }} background="#1b1f27" border="#3a4150" radius={px(6)}>
-      <dialogDragHandle key="title"><text key="t" size={16}>A modal dialog</text></dialogDragHandle>
-      <text key="body" size={13}>Tab stays inside. Escape or a click outside closes it.</text>
-      <button key="ok" tabIndex={0} style={{ padding: px(4) }} background="#2f5fa8" radius={px(4)} onActivate={() => setModalShown(false)}>
-        <text key="t" size={13}>OK</text>
-      </button>
-    </dialog>
+    {/* Over floating dialogs and menus' popovers. */}
+    <GlobalZIndex value={99} />
+    <Show when={modalShown}>
+      <dialog key="d" modal style={{ flexDirection: "column", padding: px(12), rowGap: px(8), border: px(1) }} background="#1b1f27" border="#3a4150" radius={px(6)}>
+        <dialogDragHandle key="title"><text key="t" size={16}>A modal dialog</text></dialogDragHandle>
+        <text key="body" size={13}>Tab stays inside. Escape or a click outside closes it.</text>
+        <button key="ok" tabIndex={0} style={{ padding: px(4) }} background="#2f5fa8" radius={px(4)} onActivate={() => setModalShown(false)}>
+          <text key="t" size={13}>OK</text>
+        </button>
+      </dialog>
+    </Show>
   </modalDialogBarrier>
 );
 
