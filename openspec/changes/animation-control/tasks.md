@@ -38,7 +38,7 @@
 
 ## 7. Gate
 
-- [ ] 7.1 Build, the crates' tests, clippy, `scripts/gen-bevy-types.sh --check`, through gate-slot; `openspec validate animation-control --strict`
+- [x] 7.1 Build, the crates' tests, clippy, `scripts/gen-bevy-types.sh --check`, through gate-slot; `openspec validate animation-control --strict`
 
 ## 8. Stage 2: AnimationGraph from TS
 
@@ -66,5 +66,5 @@
 - [x] 9.8 `crates/bevy-ts-cli/tests/animation.rs`: `a_tsx_tween_moves_with_no_ts_per_frame` (a TSX entity tweens; the TS system run count does not grow with frames)
 - [x] 9.9 Bench: 400 cubes tweening `translation`, a clip arm against a TS-system arm writing `Transform`; numbers in `docs/animation.md`
 - [x] 9.10 `docs/animation.md`: tweens (the four cases), curves and eases, targets on plain entities, fades through `MaterialAlpha`, the clip rows of the coverage table, why clip events stay Rust; `examples/foxes` gains a tweened sign
-- [ ] 9.11 Delete any `reflect_value::UNCOVERED` entry for `AnimationClip`; gate as 8.11
+- [x] 9.11 Delete any `reflect_value::UNCOVERED` entry for `AnimationClip` (there was none: the hole check round-trips hand-mapped assets); gate as 8.11
 
