@@ -52,7 +52,7 @@
 - [x] 8.8 `packages/bevy-ts`: the `AnimationGraph` builder (design 10) and `AnimationTargetId.fromNames`/`fromName`, emitted into `bevy-ts/bevy` by `scripts/gen-bevy-types.sh` in place of the generated class; `test/vitest/animation-graph.test.ts` (each `add*`'s node number and JSON, `fromClip`, `fromClips`, `addEdge`, `removeEdge`, `get(node)` writes, mask methods); `test/tsx/elements.tsx` covers `graph`
 - [x] 8.9 `crates/bevy-ts-cli/tests/animation.rs`: `a_ts_built_graph_blends` (a TSX fox with `graph={g}`) and `a_ts_graph_reweights_live` (`assets.set` of a weight from a TS system)
 - [x] 8.10 `docs/animation.md`: building a graph, masks and target paths, a graph file, the graph rows of the coverage table; "When to write Rust instead" drops blends and masks; `examples/foxes` gains a blended fox
-- [ ] 8.11 Gate as 7.1, plus `pnpm -C packages/bevy-ts test`; `openspec validate animation-control --strict`
+- [x] 8.11 Gate as 7.1, plus `pnpm -C packages/bevy-ts test`; `openspec validate animation-control --strict`
 
 ## 9. Stage 2: AnimationClip from TS, on any entity
 
