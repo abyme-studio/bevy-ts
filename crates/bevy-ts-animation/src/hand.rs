@@ -14,38 +14,39 @@
 //! cannot compute: a UUID string, or `{ names }`, which Bevy's `from_names` turns into the id.
 //! Reads give UUIDs. A clip is an asset path, or an asset ref or value (a script-built clip).
 
-use super::{HandMap, Slots, curve};
-use crate::reflect_value::HandleSlots;
+use crate::curve;
+use bevy_ts::reflect_asset::Slots;
+use bevy_ts::reflect_value::HandleSlots;
 use bevy::animation::AnimationTargetId;
 use bevy::animation::graph::{AnimationGraph, AnimationGraphNode, AnimationNodeIndex as NodeIndex, AnimationNodeType};
 use bevy::asset::uuid::Uuid;
 use bevy::prelude::*;
-use bevy::reflect::PartialReflect;
 use serde_json::{Value, json};
 use std::any::TypeId;
 
-pub const GRAPH: HandMap = HandMap { asset: TypeId::of::<AnimationGraph>, read: graph_read, write: graph_write };
+/// Hand-maps `AnimationGraph` and `AnimationClip` for scripts (`assets.add`, `get`, `set`, refs).
+pub(crate) fn register(app: &mut App) {
+    use bevy_ts::prelude::BevyTsAppExt;
+    app.ts_hand_map::<AnimationGraph>(graph_read, graph_write).ts_hand_map::<AnimationClip>(clip_read, clip_write);
+}
 
 /// An `AnimationClip` (design 20): `{ curves: [[target, { property, curve }], ...] | null,
-/// duration? }`, each curve as `reflect_asset::curve` builds it. Bevy keeps a clip's curves as
-/// boxed trait objects no read can turn back into JSON, so a read gives the JSON the script wrote,
-/// and a file clip reads as `{ duration, curves: null }`.
-pub const CLIP: HandMap = HandMap { asset: TypeId::of::<AnimationClip>, read: clip_read, write: clip_write };
-
-fn clip_read(_: &Slots, source: Option<&Value>, value: &dyn PartialReflect) -> Result<Value, String> {
+/// duration? }`, each curve as [`curve`] builds it. Bevy keeps a clip's curves as boxed trait
+/// objects no read can turn back into JSON, so a read gives the JSON the script wrote, and a file
+/// clip reads as `{ duration, curves: null }`.
+fn clip_read(_: &Slots, source: Option<&Value>, c: &AnimationClip) -> Result<Value, String> {
     if let Some(s) = source {
         return Ok(s.clone());
     }
-    let c = value.try_downcast_ref::<AnimationClip>().ok_or("not an AnimationClip")?;
     Ok(json!({ "duration": c.duration(), "curves": null }))
 }
 
 /// `curves` replaces the clip's curves (`null` or absent keeps the base's); `duration` sets it,
 /// else it is the longest curve's end. A curve with no end needs a `duration`. Check mode builds
 /// the curves and keeps nothing else either way: nothing loads.
-fn clip_write(slots: &Slots, base: Option<&dyn PartialReflect>, json: &Value) -> Result<Box<dyn Reflect>, String> {
+fn clip_write(slots: &Slots, base: Option<&AnimationClip>, json: &Value) -> Result<AnimationClip, String> {
     let o = json.as_object().ok_or_else(|| format!("an AnimationClip is an object, not {json}"))?;
-    let mut clip = base.and_then(|b| b.try_downcast_ref::<AnimationClip>()).cloned().unwrap_or_default();
+    let mut clip = base.cloned().unwrap_or_default();
     let mut unbounded = None;
     match o.get("curves") {
         None | Some(Value::Null) => {}
@@ -73,13 +74,12 @@ fn clip_write(slots: &Slots, base: Option<&dyn PartialReflect>, json: &Value) ->
             clip.set_duration(d as f32);
         }
     }
-    Ok(Box::new(clip))
+    Ok(clip)
 }
 
 /// The graph as JSON. A clip with no path reads as its ref when a script made it, and fails
 /// naming its node otherwise, as Bevy's `TryFrom<AnimationGraph>` does.
-fn graph_read(slots: &Slots, _: Option<&Value>, value: &dyn PartialReflect) -> Result<Value, String> {
-    let g = value.try_downcast_ref::<AnimationGraph>().ok_or("not an AnimationGraph")?;
+fn graph_read(slots: &Slots, _: Option<&Value>, g: &AnimationGraph) -> Result<Value, String> {
     let mut nodes = vec![];
     for n in g.graph.node_indices() {
         let node = &g.graph[n];
@@ -109,7 +109,7 @@ fn graph_read(slots: &Slots, _: Option<&Value>, value: &dyn PartialReflect) -> R
 /// The graph from JSON, whole: a key left out takes `AnimationGraph::new()`'s (one blend node, the
 /// root). Each clip path loads through the asset server; in check mode (no server) nothing loads
 /// and the form alone is checked.
-fn graph_write(slots: &Slots, _: Option<&dyn PartialReflect>, json: &Value) -> Result<Box<dyn Reflect>, String> {
+fn graph_write(slots: &Slots, _: Option<&AnimationGraph>, json: &Value) -> Result<AnimationGraph, String> {
     let o = json.as_object().ok_or_else(|| format!("an AnimationGraph is an object, not {json}"))?;
     let mut g = AnimationGraph::new();
     if let Some(graph) = o.get("graph") {
@@ -153,7 +153,7 @@ fn graph_write(slots: &Slots, _: Option<&dyn PartialReflect>, json: &Value) -> R
             *g.mask_groups.entry(target).or_default() |= mask;
         }
     }
-    Ok(Box::new(g))
+    Ok(g)
 }
 
 fn list<'a>(v: Option<&'a Value>, what: &str) -> Result<&'a [Value], String> {
@@ -214,7 +214,7 @@ pub fn target(json: &Value) -> Result<AnimationTargetId, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reflect_asset::{ScriptAssets, add, flush, get};
+    use bevy_ts::reflect_asset::{ScriptAssets, add, flush, get, parse_ref};
     use bevy::animation::graph::SerializedAnimationGraph;
     use bevy::asset::AssetPlugin;
 
@@ -224,6 +224,7 @@ mod tests {
         app.register_type::<Name>();
         app.register_type::<Transform>();
         app.init_resource::<ScriptAssets>();
+        register(&mut app);
         app
     }
 
@@ -268,7 +269,7 @@ mod tests {
         assert_eq!(read, want, "a write then a read gives the value written, targets as UUIDs");
 
         // Bevy's own serialized shape, for a graph whose clips all have paths.
-        let n = super::super::parse_ref(&r).unwrap().unwrap();
+        let n = parse_ref(&r).unwrap().unwrap();
         let h = app.world().resource::<ScriptAssets>().handle(n).unwrap();
         let g = app.world().resource::<Assets<AnimationGraph>>().get(h.id().typed::<AnimationGraph>()).unwrap().clone();
         let mut bevy = serde_json::to_value(SerializedAnimationGraph::try_from(g).unwrap()).unwrap();
@@ -277,7 +278,7 @@ mod tests {
 
         // A UUID target writes back as itself.
         let again = with_slots(&app, false, |s| graph_write(s, None, &read)).unwrap();
-        assert_eq!(with_slots(&app, false, |s| graph_read(s, None, again.as_partial_reflect())).unwrap(), read);
+        assert_eq!(with_slots(&app, false, |s| graph_read(s, None, &again)).unwrap(), read);
     }
 
     const CLIP_PATH: &str = "bevy_animation::AnimationClip";
@@ -301,7 +302,7 @@ mod tests {
         let r = with_slots(&app, false, |s| add(s, CLIP_PATH, &tween())).unwrap();
         flush(app.world_mut());
         assert_eq!(with_slots(&app, false, |s| get(app.world(), s, &r)).unwrap(), tween(), "a read gives the JSON written");
-        let n = super::super::parse_ref(&r).unwrap().unwrap();
+        let n = parse_ref(&r).unwrap().unwrap();
         let h = app.world().resource::<ScriptAssets>().handle(n).unwrap();
         let c = app.world().resource::<Assets<AnimationClip>>().get(h.id().typed::<AnimationClip>()).unwrap();
         assert_eq!(c.duration(), 2.0);
@@ -314,14 +315,13 @@ mod tests {
         short["curves"].as_array_mut().unwrap().pop();
         short.as_object_mut().unwrap().remove("duration");
         let c = with_slots(&app, true, |s| clip_write(s, None, &short)).unwrap();
-        assert_eq!(c.as_partial_reflect().try_downcast_ref::<AnimationClip>().unwrap().duration(), 0.5);
+        assert_eq!(c.duration(), 0.5);
 
         // A clip no script wrote (a file) reads its duration and no curves; writing that back keeps its curves.
         let file = with_slots(&app, true, |s| clip_write(s, None, &tween())).unwrap();
-        let read = with_slots(&app, true, |s| clip_read(s, None, file.as_partial_reflect())).unwrap();
+        let read = with_slots(&app, true, |s| clip_read(s, None, &file)).unwrap();
         assert_eq!(read, json!({ "duration": 2.0, "curves": null }));
-        let back = with_slots(&app, true, |s| clip_write(s, Some(file.as_partial_reflect()), &json!({ "curves": null, "duration": 3 }))).unwrap();
-        let back = back.as_partial_reflect().try_downcast_ref::<AnimationClip>().unwrap();
+        let back = with_slots(&app, true, |s| clip_write(s, Some(&file), &json!({ "curves": null, "duration": 3 }))).unwrap();
         assert_eq!((back.duration(), back.curves().len()), (3.0, 2));
     }
 
@@ -345,7 +345,6 @@ mod tests {
     fn an_empty_object_is_a_new_graph() {
         let app = app();
         let g = with_slots(&app, true, |s| graph_write(s, None, &json!({}))).unwrap();
-        let g = g.as_partial_reflect().try_downcast_ref::<AnimationGraph>().unwrap();
         assert_eq!((g.graph.node_count(), g.root.index()), (1, 0));
     }
 
@@ -364,7 +363,6 @@ mod tests {
         let hip = AnimationTargetId::from_names([Name::new("root"), Name::new("b_Hip_01")].iter());
         let j = json!({ "mask_groups": [[{ "names": ["root", "b_Hip_01"] }, 1], [hip.0.to_string(), 4]] });
         let g = with_slots(&app, true, |s| graph_write(s, None, &j)).unwrap();
-        let g = g.as_partial_reflect().try_downcast_ref::<AnimationGraph>().unwrap();
         assert_eq!(g.mask_groups.get(&hip), Some(&5));
     }
 
@@ -384,7 +382,7 @@ mod tests {
         let mut g = AnimationGraph::new();
         // A clip handle with no path that no script made.
         g.add_clip(Handle::Uuid(Uuid::from_u128(7), Default::default()), 1.0, g.root);
-        let e = with_slots(&app, false, |s| graph_read(s, None, g.as_partial_reflect())).unwrap_err();
+        let e = with_slots(&app, false, |s| graph_read(s, None, &g)).unwrap_err();
         assert!(e.contains("node 1"), "{e}");
     }
 }

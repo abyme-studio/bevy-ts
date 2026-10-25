@@ -33,9 +33,8 @@ assets.get(mat)?.perceptual_roughness; // 0.3
 - `assets.set(ref, patch)` writes `patch` over the asset's current value. A patch that changes
   nothing marks nothing changed: no `AssetEvent::Modified`, no re-prepare.
 
-A hand-mapped type (`reflect_asset::HAND_MAPS`; `AnimationGraph` and `AnimationClip`,
-[animation](animation.md))
-is read and written whole by its entry, not field by field: a patch replaces each top-level key it
+A hand-mapped type (below; `AnimationGraph` and `AnimationClip`, [animation](animation.md)) is
+read and written whole by its entry, not field by field: a patch replaces each top-level key it
 gives.
 
 They work inside a system's run, during a TSX render and while the script loads, and throw

@@ -11,7 +11,11 @@
 //! A root with a `graph` plays that `AnimationGraph` in place of the shared one: every clip node
 //! in it, blended by its weights and masks (stage 2 of `animation-control`). A root with no scene
 //! is its own player: it plays the frame it gets `PlayAnimation`, its named descendants its
-//! targets, so a script-built clip tweens any entity.
+//! targets, so a script-built clip tweens any entity. Scripts build graphs and clips through
+//! `assets`: [`hand`] maps both, and [`curve`] builds a clip's curves.
+
+pub mod curve;
+mod hand;
 
 use bevy::animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex, AnimationNodeType};
 use bevy::animation::transition::AnimationTransitions;
@@ -195,6 +199,7 @@ impl Plugin for PlayAnimationPlugin {
             .add_observer(on_ready)
             .add_systems(PostUpdate, (stop_removed, apply_changed, edited_graphs, park, report_failed_clips).chain().before(AnimationSystems))
             .ts_param::<Animations<'static, 'static>>();
+        hand::register(app);
     }
 }
 

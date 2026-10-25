@@ -35,7 +35,7 @@ use std::any::TypeId;
 use std::fmt;
 use std::sync::Arc;
 
-pub use super::animation::target;
+pub use crate::hand::target;
 
 type Dyn<A> = Arc<dyn Curve<A> + Send + Sync>;
 
@@ -301,7 +301,7 @@ fn spline<A: ScriptValue>(registry: &TypeRegistry, json: &Value) -> Result<Splin
 
 /// A value of type `A` from its reflected JSON, refused naming both types.
 fn value<A: ScriptValue>(registry: &TypeRegistry, json: &Value) -> Result<A, String> {
-    let v = crate::reflect_value::value_of(registry, TypeId::of::<A>(), json)
+    let v = bevy_ts::reflect_value::value_of(registry, TypeId::of::<A>(), json)
         .map_err(|e| format!("a {} value, not {} ({json}): {e}", A::short_type_path(), json_kind(json)))?;
     A::from_reflect(v.as_ref()).ok_or_else(|| format!("a {} value, not {}", A::short_type_path(), json_kind(json)))
 }

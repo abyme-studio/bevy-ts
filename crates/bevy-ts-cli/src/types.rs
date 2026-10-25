@@ -224,7 +224,7 @@ fn assets_named(registry: &TypeRegistry) -> Vec<(String, String, &TypeRegistrati
 
 /// A `bevy-ts/bevy` class written by hand in place of the generated one (change
 /// `animation-control`): a builder TS holds as JSON for a hand-mapped asset
-/// (`reflect_asset::HAND_MAPS`), or statics on a component. Its JS and d.ts replace the generated
+/// (`app.ts_hand_map`), or statics on a component. Its JS and d.ts replace the generated
 /// lines; an asset's `fields` is the JSON its hand-map reads and writes.
 struct Hand {
     path: &'static str,

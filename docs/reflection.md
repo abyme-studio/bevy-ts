@@ -60,9 +60,9 @@ one, and that its TS type is not `unknown`. A failure fails the test with the ty
 component and field it was met in, and what failed, unless `reflect_value::UNCOVERED` lists the
 type with a reason. An entry the walk never meets fails the test too, so the list cannot rot.
 
-A hand-mapped asset (`reflect_asset::HAND_MAPS`: `AnimationGraph`) is not walked into: its entry
-reads and writes it whole, so the check writes `{}` through the entry, reads it, writes that back
-and reads again, and fails when the two reads differ. Its TS type is hand-written
+A hand-mapped asset (`app.ts_hand_map`: `AnimationGraph`, `AnimationClip`) is not walked into:
+its entry reads and writes it whole, so the check adds `{}` with `assets.add`, reads it with
+`assets.get`, adds that read and reads again, and fails when the two reads differ. Its TS type is hand-written
 ([animation](animation.md)).
 
 ## Uncovered

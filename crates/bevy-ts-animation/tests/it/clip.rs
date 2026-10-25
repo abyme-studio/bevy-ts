@@ -9,7 +9,7 @@ use bevy::curve::easing::{EaseFunction, EasingCurve, JumpAt};
 use bevy::curve::{Curve, Interval};
 use bevy::prelude::*;
 use bevy::world_serialization::WorldAssetRoot;
-use bevy_ts::reflect_asset::curve::{add_curve, build, eases, target};
+use bevy_ts_animation::curve::{add_curve, build, eases, target};
 use bevy_ts_animation::{AnimationTargets, PlayAnimation};
 use bevy_ts_material::{FadeMaterial, MaterialAlpha};
 use serde_json::{Value, json};
