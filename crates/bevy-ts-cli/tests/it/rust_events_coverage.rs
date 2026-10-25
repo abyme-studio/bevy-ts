@@ -57,7 +57,8 @@ fn every_bevy_message_and_event_is_registered_for_ts() {
     let mut holes = Vec::new();
     for r in registry.iter() {
         let p = path(r);
-        if allowed(p) {
+        // This binary's own test types are registered automatically too; they are not Bevy's.
+        if allowed(p) || p.starts_with("it::") {
             continue;
         }
         if r.data::<ReflectMessage>().is_some() && r.data::<ReflectTsMessage>().is_none() {
