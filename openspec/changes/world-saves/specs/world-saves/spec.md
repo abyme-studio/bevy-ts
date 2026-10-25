@@ -45,7 +45,7 @@ A save SHALL be built by Bevy's `DynamicWorldBuilder` over the saved set, with t
 - **THEN** the file holds both, and no other resource
 
 ### Requirement: The file is Bevy's own world RON
-A save SHALL be one file `<name>.scn.ron`, written by `DynamicWorld::serialize` with the app's type registry, so Bevy's `WorldAssetLoader` reads it. TS resources SHALL ride as one reflected resource `TsSavedResources`, as `TsSaved` does for entities. Handles SHALL be written as their asset path, as Bevy writes them. The world walk and serialisation SHALL run in the op; the write SHALL run on Bevy's `IoTaskPool`, to a temporary file in the same folder renamed over the old one, so a crash mid-write never leaves a broken save.
+A save SHALL be one file `<name>.scn.ron`, written by `DynamicWorld::serialize` with the app's type registry, so Bevy's `WorldAssetLoader` reads it. TS resources SHALL ride as one reflected resource `TsSavedResources`, as `TsSaved` does for entities. Handles SHALL be written as their asset path, as Bevy writes them. The world walk and serialisation SHALL run in the op; the write SHALL run on Bevy's `IoTaskPool`, to a temporary file of its own in the same folder renamed over the old one, so a crash mid-write, or two saves of one name at once, never leaves a broken save.
 
 #### Scenario: Bevy reads a bevy-ts save
 - **WHEN** a save holding only Rust components is loaded by Bevy's `WorldAssetLoader` in a plain Bevy app with the same types registered
@@ -55,8 +55,12 @@ A save SHALL be one file `<name>.scn.ron`, written by `DynamicWorld::serialize` 
 - **WHEN** a save of `slot1` exists and a second save of `slot1` fails before its rename
 - **THEN** `slot1.scn.ron` is the first save, whole
 
+#### Scenario: Two saves of one name at once
+- **WHEN** two saves of `slot1` with different entities are started in the same frame
+- **THEN** both report no error and `slot1.scn.ron` loads as one of them, whole
+
 ### Requirement: Load adds fresh entities and remaps references
-`loadWorld(name)` SHALL read the file on the `IoTaskPool`, deserialise it with Bevy's `WorldDeserializer` (its `load_from_path` the `AssetServer`), and write it into the world with `DynamicWorld::write_to_world` and a fresh `EntityHashMap`, in a later frame. Each saved entity SHALL become a new entity; the live world SHALL be left as it is (load adds; it does not despawn). Rust `Entity` fields SHALL be remapped by Bevy. TS `Entity` fields SHALL be remapped through the same map; a TS `Entity` field naming an entity outside the save SHALL be mapped as Bevy maps such a Rust field. Each loaded entity SHALL get `TsSpawned`, so a restart despawns it like any TS-spawned entity. `parent: entity` SHALL make every loaded entity without a parent a child of `entity`. `TsSaved` and `TsSavedResources` SHALL be removed once their TS components and resources are written, except for entries kept under the next requirement.
+`loadWorld(name)` SHALL read the file on the `IoTaskPool`, deserialise it with Bevy's `WorldDeserializer` (its `load_from_path` the `AssetServer`), and write it into the world with `DynamicWorld::write_to_world` and a fresh `EntityHashMap`, in a later frame. Each saved entity SHALL become a new entity; the live world SHALL be left as it is (load adds; it does not despawn). Rust `Entity` fields SHALL be remapped by Bevy. TS `Entity` fields SHALL be remapped through the same map; a TS `Entity` field naming an entity outside the save SHALL be mapped as Bevy maps such a Rust field. Each loaded entity SHALL get `TsSpawned`, so a restart despawns it like any TS-spawned entity. A saved `ChildOf` whose parent is not in the save, and `Children` entries not in it, SHALL be left out, so such an entity loads as a root. `parent: entity` SHALL make every loaded entity without a parent a child of `entity`. `TsSaved` and `TsSavedResources` SHALL be removed once their TS components and resources are written, except for entries kept under the next requirement.
 
 #### Scenario: Save, despawn all, load, compare
 - **WHEN** a world of `Save`-marked entities with Rust and TS components is saved, every one despawned, and the save loaded
@@ -69,6 +73,10 @@ A save SHALL be one file `<name>.scn.ron`, written by `DynamicWorld::serialize` 
 #### Scenario: A hierarchy survives
 - **WHEN** a parent and child, both with `Save`, are saved, despawned and loaded
 - **THEN** the loaded child's `ChildOf` names the loaded parent
+
+#### Scenario: A parent outside the save
+- **WHEN** a `Save`-marked entity under an unmarked level entity is saved, despawned and loaded, once without and once with `parent: level`
+- **THEN** it loads as a root whose `GlobalTransform` is its own `Transform`, then as the level's child
 
 #### Scenario: Load adds
 - **WHEN** a save of 3 entities is loaded twice with nothing despawned

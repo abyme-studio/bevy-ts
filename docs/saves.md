@@ -32,8 +32,9 @@ export function loadGame(c: Commands, saved: Query<[Entity], With<Save>>) {
   applied, and return nothing.
 - `name` is 1 to 64 of `A-Z a-z 0-9 _ -`. Anything else (`"../x"`, `"a/b"`, `""`) throws in TS
   and is refused again in Rust, so a save never leaves its folder.
-- The file is `<name>.scn.ron`. It is written to `<name>.scn.ron.tmp` in the same folder, synced,
-  then renamed over the old one: a crash or a failed write leaves the old save whole.
+- The file is `<name>.scn.ron`. Each save writes its own `<name>.scn.ron.<n>.tmp` in the same
+  folder, syncs it, then renames it over the old one: a crash or a failed write leaves the old save
+  whole, and two saves of one name at once leave one of them whole (the last rename).
 - The outcome is a message. `WorldSaved { name, error }` comes once the file is in place or the
   save failed; `WorldLoaded { name, entities, error }` once the entities are in the world, with
   the new entities. `error` is absent on success and names the cause: a missing file, Bevy's parse
@@ -43,7 +44,8 @@ export function loadGame(c: Commands, saved: Query<[Entity], With<Save>>) {
 
 ## What a save holds
 
-- By default, every entity with the `Save` marker, disabled ones included. `Save` is a Rust
+- By default, every entity with the `Save` marker, disabled ones included. Resource entities are
+  never saved as entities, even when `entities` names one. `Save` is a Rust
   component, saved itself, so a loaded entity has it again. Level entities come back from their
   level, so they are not marked.
 - `entities: query` (every entity it matches) or `entities: [a, b]` replaces that set.
@@ -84,7 +86,13 @@ registered type, so a Bevy upgrade that adds an unserialisable component fails t
   TS `Entity` fields through the same map. A reference to an entity outside the save maps as Bevy
   maps one in a Rust field: to an entity that is never alive.
 - Each loaded entity gets `TsSpawned`, so a restart despawns it like any spawned entity.
-- `parent: e` makes each loaded entity that has no parent a child of `e`.
+- The hierarchy is cut at the save's edge: a `ChildOf` whose parent the save does not hold is
+  left out, so an enemy saved without its level loads as a root; a saved parent's `Children`
+  keep only the saved children.
+- `parent: e` makes each loaded entity that has no parent a child of `e`, such as the level the
+  enemies were under.
+- A load reads the file as it is when the load starts: a save of that name still writing is not
+  in it.
 - Saved Rust resources overwrite the live ones; saved TS resources are inserted or overwritten.
 
 ## Old saves in new code
@@ -99,6 +107,8 @@ A TS component whose class no longer exists is never dropped: its JSON stays in 
 `TsSaved`, the log warns once per name, and a later save of that entity writes it again. When the
 class comes back, the next load turns it into the component. Its `Entity` fields are not remapped
 while it waits, since nothing declares which fields they are.
+A TS resource whose class is gone is kept the same way, in `TsSavedResources`, and written by
+every later save.
 
 Rust types follow Bevy's rules: a field Bevy cannot read fails the load with Bevy's error.
 
@@ -169,6 +179,7 @@ Every public item of Bevy 0.20's `bevy_world_serialization` a save or load touch
 | `WorldDeserializer { type_registry, load_from_path }` | `loadWorld` (`AssetServer` loads handles) | covered | `save_despawn_all_load_compare` |
 | `write_to_world`, `write_to_world_with` | `loadWorld`: fresh entities, load adds | covered | `save_despawn_all_load_compare` |
 | `Entity` fields remapped (`SceneEntityMapper`) | Rust fields by Bevy, TS fields by the same map | covered | `save_despawn_all_load_compare`; `saves::tests::a_high_generation_entity_maps_exactly` |
+| `ChildOf`, `Children` at the save's edge | cut: an unsaved parent or child is left out | covered | `a_parent_outside_the_save_is_cut` |
 | `WorldAssetLoader` (`.scn`, `.scn.ron`) | none: a save is not an asset; Bevy reads a bevy-ts save | covered (Bevy reads ours) | `bevy_reads_a_rust_only_save_and_handles_are_paths` |
 | `DynamicWorldRoot(Handle<DynamicWorld>)` | `loadWorld(name, { parent })` | covered (parent); as an asset from TSX: out of scope, levels are `.bsn` | `a_load_under_a_parent` |
 | `WorldInstanceReady` | `WorldLoaded` | covered | `save_despawn_all_load_compare` |
@@ -176,6 +187,6 @@ Every public item of Bevy 0.20's `bevy_world_serialization` a save or load touch
 | `#[reflect(skip_serializing)]` | Rust types: as Bevy; TS fields: none | open | — |
 | The save folder | `SaveDir`: dev and per-user data folder | covered | `saves::tests::the_data_folder_per_os`; cli `a_script_saves_and_loads_in_the_dev_folder`, `a_played_game_saves_in_the_players_data_folder` |
 | Save names | `[A-Za-z0-9_-]{1,64}` | covered | `a_name_with_a_path_writes_nothing`; `saves::tests::a_name_cannot_leave_the_folder`; cli `a_script_saves_and_loads_in_the_dev_folder` |
-| Temporary file then rename | the write | covered | `a_missing_slot_and_a_failed_write` |
+| Temporary file then rename | the write, one temporary file per save | covered | `a_missing_slot_and_a_failed_write`, `two_saves_of_one_slot_at_once` |
 | Migration and kept classes | hot-reload rules on load | covered | `old_saves_migrate_and_unknown_classes_stay` |
 | Web (`localStorage`) | none | out of scope (no web builds) | — |
