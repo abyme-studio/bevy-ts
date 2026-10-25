@@ -37,7 +37,9 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
   `"premultiplied"`, `"add"`, `"multiply"`, `"alphaToCoverage"` or `{ mask: 0.5 }`. The fragment's
   colour is premultiplied: with `"add"` it is added as returned, so its alpha does not dim it; scale
   the colour itself to fade an additive glow.
-- Equal props share one material instance. Props cannot be bindings yet.
+- Equal props share one material instance. New props take another instance, never write the
+  shared one, so no other element's material changes. An instance no entity holds is freed at the
+  end of the frame. Props cannot be bindings yet.
 - The shape is a `<mesh>` ([meshes.md](meshes.md)).
 - `kind` and `gltfMaterial` are props of `<material>` itself, so no param or texture may take
   either name.

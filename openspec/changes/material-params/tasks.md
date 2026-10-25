@@ -1,15 +1,15 @@
 ## 0. Gates
 
-- [ ] 0.1 Stage 1 is buildable now (lead@engine-core's go)
+- [x] 0.1 Stage 1 is buildable now (lead@engine-core's go)
 - [ ] 0.2 Stage 2 waits for reflect-assets to land `app.ts_hand_map::<T: Asset + TypePath>(read, write)` (after its stage 1, before its stage 2); rebase on main once it has
 - [ ] 0.3 Stage 3 waits for stage 2's 60 Hz bench (4.4), its numbers in stage 2's landing note, and the operator's go on its ask-first items (proposal, Impact)
 
 ## 1. Stage 1: sweep unused keyed instances (buildable now)
 
-- [ ] 1.1 `crates/bevy-ts-material/src/kinds.rs`: `sweep(world)` drops each `KindState::instances` entry whose `Handle::Strong` Arc has a strong count of 1
-- [ ] 1.2 `crates/bevy-ts-material/src/lib.rs`: run `sweep` in `PostUpdate` after the TSX reconcile (order against `bevy-ts-tsx`'s reconcile set)
-- [ ] 1.3 `crates/bevy-ts-cli/tests/it/materials.rs`: state-driven `pulse` changing every frame for 120 frames keeps the kind's instances and `Assets<ScriptMaterial>` at most 2; one of two sharers removed keeps the other's handle
-- [ ] 1.4 `docs/materials.md`: "Equal props share one material instance", plus unused ones are freed and keyed instances are never written in place
+- [x] 1.1 `crates/bevy-ts-material/src/kinds.rs`: `sweep(world)` drops each `KindState::instances` entry whose `Handle::Strong` Arc has a strong count of 1
+- [x] 1.2 `crates/bevy-ts-material/src/lib.rs`: run `sweep` in `PostUpdate` after the TSX reconcile (order against `bevy-ts-tsx`'s reconcile set)
+- [x] 1.3 `crates/bevy-ts-cli/tests/it/materials.rs`: state-driven `pulse` changing every frame for 120 frames keeps the kind's instances and `Assets<ScriptMaterial>` at most 2; one of two sharers removed keeps the other's handle
+- [x] 1.4 `docs/materials.md`: "Equal props share one material instance", plus unused ones are freed and keyed instances are never written in place
 - [ ] 1.5 `openspec/changes/material-params/specs/script-materials/spec.md` keyed-instance requirement holds; land stage 1
 
 ## 2. Stage 2: owned instances written in place (after reflect-assets' `ts_hand_map`)

@@ -104,6 +104,47 @@ fn a_schema_change_re_encodes_instances_by_name() {
     assert!(fragment_source(&app).contains("    speed: f32,\n"));
 }
 
+/// A `Glow` per row of `rows`, keyed by its pulse, so a new pulse is a new key; `tick` sets `rows`
+/// each frame.
+fn rows(tick: &str) -> String {
+    format!(
+        "import {{ app, signal, For, Update, type Local, type u32 }} from \"bevy-ts\";\nimport {{ f32, material }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n\nexport const Glow = material(\"game::Glow\", {{ params: {{ pulse: f32 }}, fragment: glow }});\nexport const [rows, setRows] = signal<{{ name: string; pulse: number }}[]>([{{ name: \"a\", pulse: 1 }}, {{ name: \"b\", pulse: 1 }}]);\nexport function tick(frames: Local<{{ n: u32 }}>) {{ frames.n += 1; {tick} }}\napp.addSystems(Update, tick);\n\napp.scene(\"s\", () => (\n  <For each={{rows}} key={{(r: {{ name: string; pulse: number }}) => `${{r.name}}-${{r.pulse}}`}}>\n    {{(r: {{ name: string; pulse: number }}) => <entity name={{r.name}}><mesh shape=\"cuboid\" /><material kind={{Glow}} pulse={{r.pulse}} /></entity>}}\n  </For>\n));\n"
+    )
+}
+
+fn kept(app: &App) -> (usize, usize) {
+    (app.world().resource::<MaterialKinds>().live["game::Glow"].instances.len(), app.world().resource::<Assets<ScriptMaterial>>().len())
+}
+
+#[test]
+fn props_that_change_every_frame_free_the_old_instances() {
+    let (_dir, mut app) = setup("materials-sweep", &rows("setRows([{ name: \"a\", pulse: frames.n }]);"));
+    updates(&mut app, 2);
+    // The id, not the handle: a handle held here would keep the instance.
+    let first = cube(&mut app).1.id();
+    for i in 0..120 {
+        app.update();
+        let (instances, assets) = kept(&app);
+        assert!(instances <= 2 && assets <= 2, "frame {i}: {instances} instances, {assets} assets");
+    }
+    assert_ne!(cube(&mut app).1.id(), first, "the pulse moved on");
+}
+
+#[test]
+fn one_of_two_sharers_removed_keeps_the_others_instance() {
+    let (_dir, mut app) = setup("materials-sharers", &rows("if (frames.n === 3) setRows([{ name: \"b\", pulse: 1 }]);"));
+    app.update();
+    let (a, b) = (named(&mut app, "a"), named(&mut app, "b"));
+    let held = |app: &mut App, e: Entity| app.world().get::<ScriptMaterial3d>(e).unwrap().0.clone();
+    let shared = held(&mut app, b);
+    assert_eq!(held(&mut app, a), shared, "equal props, one instance");
+    updates(&mut app, 4);
+    assert!(app.world().get_entity(a).is_err(), "a is gone");
+    assert_eq!(held(&mut app, b), shared, "b keeps the handle");
+    assert_eq!(kept(&app), (1, 1));
+    assert!(app.world().resource::<Assets<ScriptMaterial>>().get(&shared).is_some());
+}
+
 #[test]
 fn a_wgsl_string_is_rejected_with_the_material_and_line() {
     let src = "import { app } from \"bevy-ts\";\nimport { f32, material } from \"bevy-ts/material\";\n\nexport const Glow = material(\"game::Glow\", { params: { pulse: f32 }, fragment: \"@fragment fn f() {}\" });\n";

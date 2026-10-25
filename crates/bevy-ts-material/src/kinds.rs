@@ -550,6 +550,16 @@ pub fn instance(world: &mut World, kind: &str, props: &Map<String, Value>) -> Op
     Some(h)
 }
 
+/// `PostUpdate`, after the TSX reconcile: drops each instance only the cache holds. Every
+/// `ScriptMaterial3d`, a glTF mesh's clone included, shares the handle's `Arc`, so a count of 1
+/// means nothing draws it; dropping it frees the asset and its binding. A key removed and added
+/// again within the frame is held again by then, so it keeps its asset.
+pub fn sweep(mut kinds: ResMut<MaterialKinds>) {
+    for k in kinds.live.values_mut() {
+        k.instances.retain(|_, (h, _)| !matches!(h, Handle::Strong(a) if Arc::strong_count(a) == 1));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
