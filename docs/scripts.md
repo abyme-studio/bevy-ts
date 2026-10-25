@@ -262,9 +262,10 @@ import { get, type SessionBytes } from "bevy-ts/session";
 const buf = new Uint8Array(64);
 
 export function remember(session: SessionBytes) {
-  session.put("heimdall/camera", new Uint8Array(new Float32Array([x, y, z, yaw]).buffer));
+  const pose = new Float32Array([0, 4, 10, 0.5]); // x, y, z, yaw
+  session.put("heimdall/camera", new Uint8Array(pose.buffer));
   const camera = get(session, "heimdall/camera"); // a new Uint8Array, or undefined
-  const n = session.read(`heimdall/agent/${id}`, buf); // into buf, no allocation
+  const n = session.read("heimdall/agent/42", buf); // into buf, no allocation
 }
 ```
 

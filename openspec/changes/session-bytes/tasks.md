@@ -34,4 +34,4 @@
 ## 6. Gate
 
 - [x] 6.1 `openspec validate session-bytes --strict`
-- [ ] 6.2 The repository's check for the batch, scoped to what changed, through gate-slot
+- [x] 6.2 The repository's check for the batch, scoped to what changed, through gate-slot (land runs it on the batch: `.abyme/land.ts` check, scripts/affected-gate.sh)

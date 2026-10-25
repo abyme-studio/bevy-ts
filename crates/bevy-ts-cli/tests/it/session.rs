@@ -203,7 +203,7 @@ fn limits_and_types() {
     assert!(one("long ").contains("1025 bytes"), "{}", one("long "));
     assert_eq!(one("max "), "stored");
     let over = one("over ");
-    assert!(over.contains("\"heimdall/more\"") && over.contains(&format!("{}-byte value", 5 << 20)) && over.contains("64 MiB"), "{over}");
+    assert!(over.contains("\"heimdall/more\"") && over.contains(&format!("{}-byte (5 MiB) value", 5 << 20)) && over.contains("64 MiB"), "{over}");
     let after: Vec<String> = one("after ").split(' ').map(str::to_string).collect();
     assert_eq!((after[0..2].join(" ")), after[2..4].join(" "), "an overflowing put changes nothing");
     let float = one("float ");

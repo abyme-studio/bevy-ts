@@ -25,6 +25,12 @@ fn shown(key: &str) -> String {
     }
 }
 
+/// A size as an error names it: `5 MiB`, `0.1 MiB`.
+fn mib(n: usize) -> String {
+    let m = n as f64 / (1 << 20) as f64;
+    if m.fract() == 0.0 { format!("{m} MiB") } else { format!("{m:.1} MiB") }
+}
+
 impl SessionBytes {
     /// Stores a copy of `value` under `key`, replacing the old one. Past a limit it errs and
     /// changes nothing; a replaced value is not counted.
@@ -36,9 +42,10 @@ impl SessionBytes {
         let next = self.bytes - old + key.len() + value.len();
         if next > STORE_MAX_BYTES {
             return Err(format!(
-                "key {}: a {}-byte value would make the store {next} bytes, past its {STORE_MAX_BYTES}-byte (64 MiB) limit",
+                "key {}: a {}-byte ({}) value would make the store {next} bytes, past its {STORE_MAX_BYTES}-byte (64 MiB) limit",
                 shown(key),
-                value.len()
+                value.len(),
+                mib(value.len())
             ));
         }
         self.values.insert(key.to_string(), value.into());
@@ -120,7 +127,7 @@ mod tests {
         assert_eq!(s.bytes(), STORE_MAX_BYTES);
         s.put("big", &big).unwrap();
         let e = s.put("keep", &[1, 2]).unwrap_err();
-        assert!(e.contains("\"keep\"") && e.contains("2-byte value") && e.contains("67108864"), "{e}");
+        assert!(e.contains("\"keep\"") && e.contains("2-byte (0.0 MiB) value") && e.contains("67108864"), "{e}");
         assert_eq!((s.count(), s.bytes(), s.get("keep")), (2, STORE_MAX_BYTES, Some(&[1u8][..])));
     }
 }
