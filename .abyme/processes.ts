@@ -38,9 +38,9 @@ const processes = {
   "rust-events-bench": {
     cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bench/rust-events/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tail -40'",
   },
-  // rust-events: the crates it changes, their unit tests and its CLI tests, in the gate slot.
+  // rust-events: bevy-ts/bevy regenerated, the crates it changes, their unit tests, its CLI tests and tsc, in the gate slot.
   "rust-events-test": {
-    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- rust_events:: rust_events_coverage:: surface:: reload::\" 2>&1 | grep -v ld64 | tee target/rust-events-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked|holes\" | tail -60'",
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"scripts/gen-bevy-types.sh && git diff --stat -- packages/bevy-ts/bevy.d.ts && cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- rust_events:: rust_events_coverage:: surface:: reload:: && (cd packages/bevy-ts && pnpm check)\" 2>&1 | grep -v ld64 | tee target/rust-events-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked|holes|error TS|bevy.d.ts\" | tail -60'",
   },
   // Change typed-array-kind: bevy-ts' unit tests and the typed-array param tests, in a check slot.
   "typed-array-kind-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:typed-array-kind -- bash -c \"cargo build -p bevy-ts-cli && cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- exported:: cameras::\" 2>&1 | grep -v ld64 | tee target/typed-array-kind-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked\" | tail -60'" },
