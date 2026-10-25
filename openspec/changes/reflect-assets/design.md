@@ -81,8 +81,9 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    rule (path, else `null`). With no hook, any of the three shapes fails naming the handle type
    (reflect-coverage's rule): nothing could apply it. So every check pass that may meet one
    installs the hook in check mode: TSX's load-time `check` and the dry run before `add`/`set`. In
-   check mode the hook checks each shape's form, that a ref is live and of the slot's asset type,
-   and that a value's props write over its type's default; it builds and loads nothing. No pass
+   check mode the hook checks each shape's form and that a ref is of the slot's asset type, and
+   that a value's props write over its type's default; it builds and loads nothing. It does not check that a ref is live (`reflected::check` runs with
+   an empty table); the live write catches a stale ref. No pass
    runs without the hook and must accept them: the hole check round-trips `read` output, which
    holds no refs, and TS type-checking runs no Rust. The TS type of a `Handle<T>` slot becomes `string | AssetRef<T> | AssetValue<T> |
    null`; reflect-coverage owns `types.rs`'s handle arm and takes that type.
@@ -93,14 +94,16 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    reverse map by `UntypedAssetId`. An entry is one of two kinds. `Uuid` entries are this
    change's: a `Handle::Uuid`, kept until restart or stop (below). `Strong` entries are
    script-assets': a strong handle it adds with `insert_strong` and frees with its `drop` and
-   `remove`, dropped on hot reload. The rules below are for `Uuid` entries. The UUID is built from the asset type, a per-session tag and
+   `remove`, dropped on hot reload. The rules below are for `Uuid` entries. The UUID is built from the asset type, the constant `UUID_TAG` and
    `n`, so a ref has its id before the asset exists, and the flush after the run (decision 2)
    inserts the asset at that id with `ReflectAsset::insert`. `assets.add` and the value cache
    (decision 6) put entries in it. A ref is `{ $asset: n, type }` in TS, an `AssetRef<T>` frozen
-   object; `n` counts up from 1 and is never reused in a session.
-   A UUID handle holds no strong count, so the asset stays until it is removed. A hot reload
-   starts a new tag: old refs fail with "stale asset ref", but their assets stay, so entities
-   that hold the handles keep drawing. A restart or stop removes every asset the table made, with
+   object; `n` counts up from 1 and never resets in a session, so ids never collide across
+   reloads.
+   A UUID handle holds no strong count, so the asset stays until it is removed. A hot reload,
+   once it applies, starts a new ref generation: older refs fail with "stale asset ref", but their assets stay, so entities
+   that hold the handles keep drawing. A reload that fails leaves the live generation's refs
+   working. A restart or stop removes every asset the table made, with
    `ReflectAsset::remove`. Freeing an asset sooner is script-assets' handle lifecycle.
    *Alternatives:* strong index handles (need `&mut World` to reserve, which a run lacks); raw
    `AssetId` bits (no id before the flush).
@@ -111,7 +114,7 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    canonical JSON (keys sorted). A hit returns the cached handle; a miss calls `add` and caches.
    So every slot given equal props shares one asset, as `<material>` does today. Cached handles
    live in `ScriptAssets` with the same lifetime. A value is built only when its slot is written: TSX
-   insert and changed prop, `assets.add`/`set` with it in a field, a reflected insert. Never per
+   insert and changed prop, `assets.add`/`set` with it in a field. Never per
    frame. `assets.set` on the ref of a cached value changes every slot sharing it; docs say so,
    and `assets.add` makes an unshared one.
    *Alternative:* a TSX element as a value (`material={<StandardMaterial ... />}`). Rejected here:

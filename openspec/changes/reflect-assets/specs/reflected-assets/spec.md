@@ -4,8 +4,8 @@
 `bevy-ts` SHALL export `assets` with `add(Type, props)`, `get(ref)` and `set(ref, patch)` for every asset type registered with `ReflectAsset` and a default. `add` SHALL build the asset from its type's default, write `props` over it with `bevy_ts::reflect_value::write`, convert it with `FromReflect`, and only then add it; a value that fails any step SHALL fail the call naming the type and field, and SHALL add nothing. `add` SHALL return an `AssetRef<T>`. A type with no default (`Mesh`) SHALL be refused, naming the type. `get` SHALL return the asset read by `reflect_value::read`, or `undefined` when the asset is gone. `set` SHALL write `patch` over the asset's current value; when the result equals the current value it SHALL NOT borrow the asset mutably, so no `AssetEvent::Modified` is sent; otherwise it SHALL apply the result once. A failing patch SHALL change nothing. The calls SHALL work inside a system's run, during a TSX render and during the script's load (a scene's first render runs at module load), and SHALL throw elsewhere (a timer callback), naming where they may be called. An `add` or `set` SHALL be checked at the call, throwing there on an error, and SHALL be visible to the script at once (a `get` in the same run reads it); it SHALL be in `Assets<T>`, with its `AssetEvent`, when the run ends, before the run's commands apply. A no-op `set` SHALL queue nothing.
 
 #### Scenario: Visible at once, in Assets when the run ends
-- **WHEN** a system calls `assets.add(StandardMaterial, { unlit: true })`, then `assets.get` on the ref, then `commands.spawn` with the ref in `MeshMaterial3d`, in one run
-- **THEN** `get` returns the material with `unlit: true`, and after the run `Assets<StandardMaterial>` holds it and the spawned entity's handle points at it
+- **WHEN** a system calls `assets.add(StandardMaterial, { unlit: true })`, then `assets.get` on the ref, in one run
+- **THEN** `get` returns the material with `unlit: true`, and after the run `Assets<StandardMaterial>` holds it, flushed before the run's commands apply
 
 #### Scenario: Add a material
 - **WHEN** a system calls `assets.add(StandardMaterial, { base_color: "#ff8800", unlit: true })`
@@ -28,7 +28,7 @@
 - **THEN** the call throws naming `Mesh` and that it has no default
 
 ### Requirement: An asset goes in any Handle slot
-A `Handle<T>` slot written through `reflect_value` SHALL take, besides an asset path: an `AssetRef<T>` from `assets.add`; an asset value `T.of(props)`; and, for a type with a loader-settings entry, `T.load(path, settings)`. This SHALL hold in every slot the writer reaches: a TSX prop of a reflect-tier component or a writable hole, a field of an asset given to `assets.add` or `assets.set`, and a script's reflected insert. A ref or value of another asset type SHALL fail naming both types. A ref after a hot reload, restart or stop SHALL fail with "stale asset ref". A handle read by `reflect_value::read` SHALL read as its `AssetRef` when a script made the asset, and by reflect-coverage's rule otherwise.
+A `Handle<T>` slot written through `reflect_value` SHALL take, besides an asset path: an `AssetRef<T>` from `assets.add`; an asset value `T.of(props)`; and, for a type with a loader-settings entry, `T.load(path, settings)`. This SHALL hold in every slot the writer reaches: a TSX prop of a reflect-tier component or a writable hole, and a field of an asset given to `assets.add` or `assets.set`. A ref or value of another asset type SHALL fail naming both types. A ref after a hot reload, restart or stop SHALL fail with "stale asset ref"; a hot reload SHALL make refs stale only once it applies, so a failed reload leaves the live refs working. A handle read by `reflect_value::read` SHALL read as its `AssetRef` when a script made the asset, and by reflect-coverage's rule otherwise.
 
 #### Scenario: A ref on a mesh entity
 - **WHEN** a TSX element has `<MeshMaterial3d value={mat} />` with `mat` from `assets.add`

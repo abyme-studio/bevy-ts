@@ -18,7 +18,7 @@ Three stages, each landable on its own, in this order.
    through `reflect_value::read`. `assets.set(ref, patch)` writes over the current value and borrows
    the asset mutably only when the value changes, so a no-op set sends no `AssetEvent::Modified`.
    An `AssetRef` goes in any `Handle<T>` slot: a TSX prop (`<MeshMaterial3d value={ref} />`), a
-   field of another asset (`base_color_texture: img`), or a script's reflected insert.
+   or a field of another asset (`base_color_texture: img`).
    `bevy.d.ts` gains a class per reflected asset type with its fields typed, and `Handle<T>` fields
    type `string | AssetRef<T> | AssetValue<T> | null`. **BREAKING (wire):** a reflected handle to a
    script-made asset reads as its ref, not `null`; the protocol moves to the next free minor.
