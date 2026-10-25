@@ -10,31 +10,33 @@
 //!   the main world (`RenderAssetUsages::default()`).
 //! - (0) TS: the same system with nothing to do, subtracted from the TS arms.
 //!
-//! Each arm runs 8 times, 200 frames after 20 to warm up, in a fresh app. A TS arm is timed by the
-//! system's own run time (`TsSystems`' `last_run_us`), a Rust arm inside its system. The GPU upload
-//! (Bevy's `write_texture`) is not here: it is the same for Rust and TS. Ignored by default; run
-//! with the `image-bytes-bench` process.
-
-use crate::common;
+//! Each arm runs 3 times (8 when arms are within noise, `RUNS=8`), 200 frames after 20 to warm up,
+//! in a fresh app. A TS arm is timed by the system's own run time (`TsSystems`' `last_run_us`), a
+//! Rust arm inside its system. The GPU upload (Bevy's `write_texture`) is not here: it is the same
+//! for Rust and TS. Run by the `image-bytes-bench` process (`run.sh`), outside the gate's build
+//! (docs/testing.md rule 8).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy_ts::BevyTsPlugin;
-use bevy_ts::generation::DevSource;
+use bevy_ts::generation::{DevSource, ReloadReport};
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_native::prelude::*;
 use bevy_ts_v8::V8Options;
-use common::*;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 const SIDE: u32 = 1024;
 const FRAMES: usize = 200;
 const WARM: usize = 20;
-// 8, not 3: arms (a) and (b) came out within noise of each other at 3.
-const RUNS: usize = 8;
+
+/// Runs per arm: `RUNS`, 3 unless given; 8 when arms come out within noise of each other.
+fn runs() -> usize {
+    std::env::var("RUNS").ok().and_then(|n| n.parse().ok()).unwrap_or(3)
+}
 
 #[derive(Resource)]
 struct Target(Handle<Image>);
@@ -102,6 +104,19 @@ export function paint(p: Pixels) {
 app.addSystems(Update, paint);
 "#;
 
+/// A fresh directory holding `game.ts`, under the temp dir.
+fn project(name: &str, src: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join("bevy-ts-bench").join(format!("{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("game.ts"), src).unwrap();
+    dir
+}
+
+fn reload(app: &mut App) -> ReloadReport {
+    bevy_ts::generation::reload_now(app.world_mut(), false).unwrap()
+}
+
 fn image() -> Image {
     let size = Extent3d { width: SIDE, height: SIDE, depth_or_array_layers: 1 };
     Image::new_fill(size, TextureDimension::D2, &[0, 0, 0, 255], TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())
@@ -116,12 +131,12 @@ fn base_app() -> App {
 }
 
 fn ts_app(arm: &str) -> App {
-    let dir = project(&format!("image-bench-{arm}"), &[("game.ts", &TS.replace("__ARM__", arm))]);
+    let dir = project(&format!("image-bench-{arm}"), &TS.replace("__ARM__", arm));
     let mut app = base_app();
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true));
     app.ts_param::<Pixels<'static>>();
     app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.ts"), true).unwrap())));
-    let r = reload(&mut app, false);
+    let r = reload(&mut app);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     app
 }
@@ -185,14 +200,12 @@ fn pct(sorted: &[f64], p: f64) -> f64 {
 
 /// Median and p95 µs over every run's frames.
 fn arm(make: &dyn Fn() -> App) -> (f64, f64) {
-    let mut all: Vec<f64> = (0..RUNS).flat_map(|_| run(make())).collect();
+    let mut all: Vec<f64> = (0..runs()).flat_map(|_| run(make())).collect();
     all.sort_by(f64::total_cmp);
     (pct(&all, 0.5), pct(&all, 0.95))
 }
 
-#[test]
-#[ignore = "a benchmark: run by hand in release"]
-fn image_update_costs() {
+fn main() {
     let (empty, _) = arm(&|| ts_app("empty"));
     let mib = (SIDE * SIDE * 4) as f64 / (1024.0 * 1024.0);
     let arms: [(&str, &str, f64, f64, Box<dyn Fn() -> App>); 5] = [
@@ -202,7 +215,7 @@ fn image_update_costs() {
         ("d", "TS one writeRect, 256x256", empty, 0.25, Box::new(|| ts_app("rect"))),
         ("e", "Rust Image::clone (extraction, main world kept)", 0.0, mib, Box::new(|| rust_app(true))),
     ];
-    println!("{SIDE}x{SIDE} RGBA8 ({mib} MiB), {RUNS} runs x {FRAMES} frames; µs per update, a TS system's own run ({empty:.1} µs median) subtracted from TS arms");
+    println!("{SIDE}x{SIDE} RGBA8 ({mib} MiB), {} runs x {FRAMES} frames; µs per update, a TS system's own run ({empty:.1} µs median) subtracted from TS arms", runs());
     println!("| arm | what | median µs | p95 µs | GB/s |");
     println!("|---|---|---|---|---|");
     for (k, what, base, mib, make) in arms {

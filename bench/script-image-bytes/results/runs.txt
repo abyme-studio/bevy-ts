@@ -1,0 +1,10 @@
+19:16  up 23:18, 2 users, load averages: 66.03 57.62 50.62
+1024x1024 RGBA8 (4 MiB), 3 runs x 200 frames; µs per update, a TS system's own run (13.0 µs median) subtracted from TS arms
+| arm | what | median µs | p95 µs | GB/s |
+|---|---|---|---|---|
+| a | Rust get_mut + copy_from_slice, whole image (floor) | 107.8 | 148.9 | 38.9 |
+| b | TS one write(bytes), whole image | 141.0 | 385.0 | 29.7 |
+| c | TS every pixel written in JS, then write(bytes) | 932.0 | 1682.0 | 4.5 |
+| d | TS one writeRect, 256x256 | 49.0 | 152.0 | 5.3 |
+| e | Rust Image::clone (extraction, main world kept) | 121.6 | 164.4 | 34.5 |
+19:16  up 23:18, 2 users, load averages: 62.10 56.94 50.42

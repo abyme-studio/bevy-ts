@@ -27,7 +27,6 @@ mod headless_pointer;
 mod heap_fields;
 mod headless_ui;
 mod input_devices;
-mod image_bytes_bench;
 mod inspector;
 mod launcher_commands;
 mod levels_bench;

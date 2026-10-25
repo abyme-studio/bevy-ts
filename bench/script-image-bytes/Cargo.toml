@@ -1,0 +1,19 @@
+[package]
+name = "script-image-bytes-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# What a 1024² RGBA8 image update costs from TS beside the same copy in Rust (change
+# script-image-bytes, docs/research/script-image-bytes.md). Outside the workspace, so the gate does
+# not build it (docs/testing.md rule 8); Bevy is linked statically, as what ships.
+
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false, features = ["3d"] }
+bevy-ts = { path = "../../crates/bevy-ts", default-features = false }
+bevy-ts-cli = { path = "../../crates/bevy-ts-cli" }
+bevy-ts-native = { path = "../../crates/bevy-ts-native" }
+bevy-ts-v8 = { path = "../../crates/bevy-ts-v8" }
+
+[profile.release]
+debug = false

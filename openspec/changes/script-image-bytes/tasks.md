@@ -35,7 +35,7 @@ holds its proposal and research only.
 
 ## 5. Bench
 
-- [ ] 5.1 Move `crates/bevy-ts-cli/tests/it/image_bytes_bench.rs` to `bench/script-image-bytes/` (a crate with path dependencies, its own target; docs/testing.md rule 8, design decision 7); remove its `mod` line; point the `image-bytes-bench` process at it
+- [x] 5.1 Move `crates/bevy-ts-cli/tests/it/image_bytes_bench.rs` to `bench/script-image-bytes/` (a crate with path dependencies, its own target; docs/testing.md rule 8, design decision 7); remove its `mod` line; point the `image-bytes-bench` process at it
 - [ ] 5.2 Add arm (f), `images.getMut(ref).setData` through `Images`; 3 runs per arm, 8 when arms are within noise; numbers into `docs/research/script-image-bytes.md` and `docs/assets.md`; target: (f) within 1.5 × (a) + 5 µs
 
 ## 6. Docs
