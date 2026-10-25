@@ -68,6 +68,17 @@ A `Handle<T>` slot written through `reflect_value` SHALL take, besides an asset 
 - **WHEN** a script passes an `AssetRef<Image>` as `base_color_texture`
 - **THEN** it type-checks, and an `AssetRef<StandardMaterial>` there does not
 
+### Requirement: Rust hand-maps asset types
+`bevy_ts::prelude::BevyTsAppExt` SHALL have `ts_hand_map::<T: Asset>(read, write)`, callable from any crate, with `read(slots, source, &T) -> JSON` and `write(slots, base: Option<&T>, json) -> T`. `T` SHALL need no `Reflect` or `ReflectAsset`. `assets.add`, `assets.get`, `assets.set`, `T.of(props)` and refs SHALL find `T` by its type path and use its entry in place of the reflected path, a hand map winning over reflection for a type that has both. The flush SHALL insert the built `T` whole into `Assets<T>` at the ref's id, for an add and a set. `read` SHALL be given the JSON a script last wrote the asset from, `None` for an asset no script wrote. `set` SHALL merge its patch over the current read at the top level, write the result over the current asset, and queue nothing when the new read equals the old. A restart or stop SHALL remove hand-mapped assets as it removes reflected ones. A check before a run (TSX's load check) SHALL know hand-mapped types.
+
+#### Scenario: A type with no Reflect
+- **WHEN** a crate calls `app.init_asset::<Note>().ts_hand_map::<Note>(read, write)` for a `Note` that is `Asset` and `TypePath` only, and a script calls `assets.add(Note, { text: "a" })`
+- **THEN** after the run `Assets<Note>` holds the `Note` write built, at the ref's id, and `assets.get` on the ref returns `read`'s JSON
+
+#### Scenario: A hand-mapped set merges at the top level
+- **WHEN** a script calls `assets.set(note, { count: 2 })` on a note added with `{ text: "hi", count: 1 }`
+- **THEN** the note has `text: "hi"` and `count: 2`, and a second `set` with `{ count: 2 }` queues nothing
+
 ### Requirement: The hole check covers assets
 The reflected-coverage hole check SHALL walk every type registered with `ReflectAsset`. Every asset field it cannot cover SHALL be listed in `reflect_value::UNCOVERED` with a reason, and a field whose coverage this change owns SHALL have a reason starting `reflect-assets:`. When a stage of this change lands, no entry it covers SHALL remain, and the check SHALL pass.
 

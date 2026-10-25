@@ -17,6 +17,13 @@
 - [x] 1.10 `docs/assets.md` (the API, refs, assets kept across hot reloads and removed on restart or stop, `get` cost); asset rows in `docs/reflection.md`; link from `README.md`
 - [x] 1.11 The hand-mapped types list (design decision 9): whole-type entries `{ asset TypeId, read, write }`; `add`/`get`/`set` use an entry in place of the reflected path; `set` merges the patch over `read(current)` at the top level and queues nothing when the reads match; a test with a fixture entry; animation-control's `AnimationGraph` entry uses it
 
+## 1a. The runtime hand map (after stage 1, before stage 2)
+
+- [x] 1a.1 `app.ts_hand_map::<T: Asset>(read, write)` on `BevyTsAppExt`, typed over `T`, replacing the const `HAND_MAPS`; `T` needs no `Reflect`; lookup by `T::type_path()`, ahead of the registry; the flush inserts the built `T` into `Assets<T>` at the ref's id; restart and stop remove it
+- [x] 1a.2 Move the entries onto it: the test fixture `Note`, now `Asset + TypePath` only; script-gizmos (`GizmoAsset`), material-params (`ScriptMaterial`) and animation-control (`AnimationGraph`, `AnimationClip`) each register their own
+- [x] 1a.3 Unit tests: add, get, set, `T.of` sharing, ref reads and checks, restart removal for a type with no `Reflect`
+- [x] 1a.4 `docs/assets.md` (hand-mapped types); spec `reflected-assets` (Rust hand-maps asset types); design decision 9
+
 ## 2. Stage 2: asset values; <material> on the generic path
 
 - [ ] 2.1 material-alpha and standard-material-fields have landed; rebase on main

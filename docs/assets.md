@@ -61,3 +61,30 @@ works until the script reloads or stops; the asset can outlive it:
 
 Adding an asset every frame grows memory until a restart or Stop, and a warning is logged past 10,000 assets:
 add once and `set` after. Freeing an asset sooner is script-assets' handle lifecycle, not here.
+
+## Hand-mapped types
+
+An asset type reflection cannot reach whole (`GizmoAsset`, `AnimationGraph`, a material crate's
+own type) is hand-mapped from Rust, by the crate that owns it. `T` needs only `Asset`, no
+`Reflect`:
+
+```rust
+use bevy_ts::prelude::*;
+
+app.init_asset::<Note>().ts_hand_map::<Note>(
+    |_slots, _source, note| Ok(serde_json::json!({ "text": note.text })),
+    |_slots, base, json| {
+        let mut note = base.cloned().unwrap_or_default();
+        note.text = json["text"].as_str().ok_or("text is a string")?.into();
+        Ok(note)
+    },
+);
+```
+
+Then `assets.add`, `get`, `set`, `T.of(props)` and refs reach `T` through the two functions, by
+`T`'s type path. `write` gets the current asset as its base for a `set`, and none for an `add` or
+a value. `read` gets the JSON a script last wrote the asset from, `None` for a loaded asset. The
+built `T` goes whole into `Assets<T>` at its ref's id when the run ends. `set` merges its patch
+over the current read at the top level: a key given replaces that key whole; when the new read
+equals the old, nothing is queued. A type both hand-mapped and reflected uses its hand map.
+Mapping a type again replaces its entry. The map is process-wide, like a type registration.

@@ -158,8 +158,12 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    *Alternative:* `<material>` takes Bevy's snake_case names. Rejected: breaks every script.
 
 9. **Hand-mapped types (stage 1), Image's entry and one typed loader entry (stage 3).** An asset
-   type opaque to reflection gets one whole-type entry in a list in `reflect_asset`:
-   `{ asset: TypeId, read(&World, &dyn Reflect) -> Value, write(&World, base, json) -> Box<dyn Reflect> }`.
+   type opaque to reflection gets one whole-type entry, registered at runtime by the crate that
+   owns it: `app.ts_hand_map::<T: Asset>(read(slots, source, &T) -> Value, write(slots,
+   Option<&T>, json) -> T)`. `T` needs no `Reflect` (`GizmoAsset` is `TypePath` only); it is found
+   by `T::type_path()` ahead of the registry, and the flush inserts the built `T` whole into
+   `Assets<T>` at the ref's id. The list is process-wide, like a type registration, so TSX's load
+   check, which has only the type registry, sees it.
    `add`, `get` and `set` use a type's entry in place of the reflected path. `add` writes over the
    type's default; `set` merges the patch over `read(current)` at the top level (no deep merge),
    writes the result, and detects a no-op by comparing that read with the current read: equal

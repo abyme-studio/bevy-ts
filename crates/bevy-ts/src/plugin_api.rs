@@ -106,6 +106,12 @@ pub trait BevyTsAppExt {
     /// Called when files the module graph imports but does not run (`.wgsl`) are saved and no
     /// module changed. No generation starts.
     fn on_ts_files_changed(&mut self, f: impl Fn(&mut World, &[std::path::PathBuf]) + Send + Sync + 'static) -> &mut Self;
+
+    /// Hand-maps asset type `T` for scripts (`assets.add`, `get`, `set`, `T.of` and refs): `read`
+    /// gives it as JSON, `write` builds it from JSON, and the built `T` goes whole into
+    /// `Assets<T>` at its ref's id. `T` needs no `Reflect`. See [`crate::reflect_asset::register`].
+    #[cfg(feature = "reflect")]
+    fn ts_hand_map<T: Asset>(&mut self, read: crate::reflect_asset::HandRead<T>, write: crate::reflect_asset::HandWrite<T>) -> &mut Self;
 }
 
 impl BevyTsAppExt for App {
@@ -154,6 +160,12 @@ impl BevyTsAppExt for App {
 
     fn on_ts_files_changed(&mut self, f: impl Fn(&mut World, &[std::path::PathBuf]) + Send + Sync + 'static) -> &mut Self {
         self.world_mut().get_resource_or_init::<FileHandlers>().0.push(Arc::new(f));
+        self
+    }
+
+    #[cfg(feature = "reflect")]
+    fn ts_hand_map<T: Asset>(&mut self, read: crate::reflect_asset::HandRead<T>, write: crate::reflect_asset::HandWrite<T>) -> &mut Self {
+        crate::reflect_asset::register(read, write);
         self
     }
 }
