@@ -169,6 +169,8 @@ export class AccumulatedMouseMotion extends nativeResource("AccumulatedMouseMoti
 
 export class AccumulatedMouseScroll extends nativeResource("AccumulatedMouseScroll", { unit: enumOf("Line", "Pixel"), delta: vec2 }) {}
 
+export const FocusedInputKeyboardInput = rustComponent("FocusedInput<KeyboardInput>");
+
 export class InputFocusVisible extends nativeResource("InputFocusVisible", { value: bool }) {}
 
 export const AutoFocus = rustComponent("AutoFocus");
