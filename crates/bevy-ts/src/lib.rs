@@ -34,6 +34,7 @@ pub mod reflect_value;
 pub mod reflect_asset;
 pub mod runtime;
 pub mod rust_events;
+pub mod saves;
 pub mod schedules;
 pub mod sets;
 pub mod states;
@@ -51,6 +52,7 @@ pub mod prelude {
     pub use crate::backend::{ModuleSet, ScriptBackend, ScriptError};
     pub use crate::manifest::Stage;
     pub use crate::plugin_api::BevyTsAppExt;
+    pub use crate::saves::{Save, SaveDir, WorldLoaded, WorldSaved};
     pub use crate::schedules::{RunTsSystem, TsSchedule};
     pub use crate::states::{TsState, TsStates};
     pub use crate::{BevyTsPlugin, BevyTsSet, EngineMode, ScriptHidden};
@@ -147,6 +149,7 @@ impl Plugin for BevyTsPlugin {
         app.insert_non_send(net::NetRegistry::new(Box::new(net::SocketTransport::default())));
         app.register_type::<commands::TsSpawned>().register_type::<ScriptHidden>();
         type_data::register(app);
+        saves::register(app);
         app.init_resource::<components::TsComponents>()
             .init_resource::<systems::TsSystems>()
             .init_resource::<commands::CommandKinds>()

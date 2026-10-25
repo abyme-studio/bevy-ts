@@ -36,8 +36,11 @@ hyper = { version = "1.12", features = ["client", "http1"] }
 smol-hyper = { version = "0.1", default-features = false }
 # Resolving a redirect's `location`; already in every engine through deno_core.
 url = "2"
-# keyboard, mouse and gamepad: `keys` names their inputs; bevy_image: `WindowImage` holds a `Handle<Image>`.
-bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log", "async_executor", "bevy_state", "bevy_color", "keyboard", "mouse", "gamepad", "bevy_image"] }
+# keyboard, mouse and gamepad: `keys` names their inputs; bevy_image: `WindowImage` holds a `Handle<Image>`;
+# bevy_world_serialization (with its serde, on by default): world saves.
+bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log", "async_executor", "bevy_state", "bevy_color", "keyboard", "mouse", "gamepad", "bevy_image", "bevy_world_serialization"] }
+# A save is read with Bevy's `WorldDeserializer` over a RON deserializer built here; the version Bevy uses.
+ron = "0.12"
 serde.workspace = true
 serde_json.workspace = true
 

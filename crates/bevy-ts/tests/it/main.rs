@@ -9,5 +9,6 @@ mod http;
 mod net;
 mod plugin_api;
 mod restart;
+mod saves;
 mod slots;
 mod socket;

@@ -16,6 +16,8 @@
 //! | trigger | 9 | event index u32, target u64 (`u64::MAX` for a global event), len u32, bytes |
 //! | setState | 10 | state index u32, value u32 |
 //! | observe | 13 | entity u64, observer key index u32, len u32, its system declaration JSON |
+//! | saveWorld | 14 | name len u16, name, len u32, options JSON (`saves::SaveOptions`) |
+//! | loadWorld | 15 | name len u16, name, parent u64 (`u64::MAX` for none) |
 //!
 //! Entities are `Entity::to_bits`. Component values are native layout bytes.
 
@@ -42,6 +44,8 @@ pub const OP_OBSERVE: u8 = 13;
 /// A state-scoped component (`DespawnOnExit.of(Game.Playing)`): entity, kind (bit 7: remove),
 /// machine index and value index in the generation.
 pub const OP_STATE_SCOPED: u8 = 14;
+pub const OP_SAVE_WORLD: u8 = 15;
+pub const OP_LOAD_WORLD: u8 = 16;
 
 /// Size of the Rust-owned arena handed to each call. Larger buffers overflow into JS.
 pub const ARENA_BYTES: usize = 64 * 1024;
@@ -75,6 +79,10 @@ pub enum Op {
     /// declaration.
     Observe { entity: Entity, index: u32, decl: Box<crate::manifest::SystemDecl> },
     StateScoped { entity: Entity, kind: u8, remove: bool, machine: u32, value: u32 },
+    /// `commands.saveWorld(name, options)`.
+    SaveWorld { name: String, options: crate::saves::SaveOptions },
+    /// `commands.loadWorld(name, { parent })`.
+    LoadWorld { name: String, parent: Option<Entity> },
 }
 
 /// A plugin's command decoder: gets the op's bytes and `&mut World`.
@@ -264,6 +272,22 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 let kind = r.u8()?;
                 Op::StateScoped { entity, kind: kind & 0x7f, remove: kind & 0x80 != 0, machine: r.u32()?, value: r.u32()? }
             }
+            OP_SAVE_WORLD => {
+                let name = r.text()?;
+                let n = r.u32()? as usize;
+                let options = serde_json::from_slice(r.take(n)?).map_err(|e| format!("saveWorld({name}) options: {e}"))?;
+                Op::SaveWorld { name, options }
+            }
+            OP_LOAD_WORLD => {
+                let name = r.text()?;
+                let bits = r.u64()?;
+                let parent = if bits == u64::MAX {
+                    None
+                } else {
+                    Some(Entity::try_from_bits(bits).ok_or_else(|| format!("{bits} is not an entity"))?)
+                };
+                Op::LoadWorld { name, parent }
+            }
             other => return Err(format!("unknown command op {other} at byte {}", r.at - 1)),
         };
         ops.push(op);
@@ -445,6 +469,8 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                 }
                 crate::observers::observe(world, entity, index, *decl);
             }
+            Op::SaveWorld { name, options } => crate::saves::save(world, &name, options),
+            Op::LoadWorld { name, parent } => crate::saves::load(world, &name, parent),
             Op::Plugin { opcode, bytes } => {
                 let (name, decoder) = kinds.get(opcode).expect("decode checked the opcode").clone();
                 if let Err(err) = decoder(world, &bytes) {
@@ -515,6 +541,20 @@ impl Encoder {
         self.bytes.extend((d.len() as u32).to_le_bytes());
         self.bytes.extend(d);
     }
+    pub fn save_world(&mut self, name: &str, options: &serde_json::Value) {
+        self.bytes.push(OP_SAVE_WORLD);
+        self.bytes.extend((name.len() as u16).to_le_bytes());
+        self.bytes.extend(name.as_bytes());
+        let o = options.to_string();
+        self.bytes.extend((o.len() as u32).to_le_bytes());
+        self.bytes.extend(o.as_bytes());
+    }
+    pub fn load_world(&mut self, name: &str, parent: Option<Entity>) {
+        self.bytes.push(OP_LOAD_WORLD);
+        self.bytes.extend((name.len() as u16).to_le_bytes());
+        self.bytes.extend(name.as_bytes());
+        self.bytes.extend(parent.map_or(u64::MAX, Entity::to_bits).to_le_bytes());
+    }
     pub fn plugin(&mut self, opcode: u16, bytes: &[u8]) {
         self.bytes.push(OP_PLUGIN);
         self.bytes.extend(opcode.to_le_bytes());
@@ -550,6 +590,36 @@ mod tests {
         enc.plugin(9, b"x");
         let e = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap_err();
         assert!(e.contains("opcode 9"), "{e}");
+    }
+
+    #[test]
+    fn save_and_load_ops_round_trip() {
+        let parent = Entity::from_raw_u32(7).unwrap();
+        let mut enc = Encoder::default();
+        enc.save_world("slot1", &serde_json::json!({ "entities": [5], "allow": ["game::Health"], "resources": ["game::Score"] }));
+        enc.save_world("slot2", &serde_json::json!({}));
+        enc.load_world("slot1", Some(parent));
+        enc.load_world("slot2", None);
+        let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
+        let options = crate::saves::SaveOptions {
+            entities: Some(vec![5]),
+            allow: Some(vec!["game::Health".into()]),
+            deny: vec![],
+            resources: vec!["game::Score".into()],
+        };
+        assert_eq!(
+            ops,
+            vec![
+                Op::SaveWorld { name: "slot1".into(), options },
+                Op::SaveWorld { name: "slot2".into(), options: Default::default() },
+                Op::LoadWorld { name: "slot1".into(), parent: Some(parent) },
+                Op::LoadWorld { name: "slot2".into(), parent: None },
+            ]
+        );
+        let mut bad = Encoder::default();
+        bad.save_world("slot1", &serde_json::json!({ "allow": 3 }));
+        let e = decode(&bad.bytes, &HashMap::new(), &CommandKinds::default()).unwrap_err();
+        assert!(e.contains("saveWorld(slot1) options"), "{e}");
     }
 
     #[test]
