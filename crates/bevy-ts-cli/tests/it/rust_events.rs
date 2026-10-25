@@ -297,7 +297,7 @@ app.addSystems(Update, rumble);
     );
     updates(&mut app, 3);
     let seen = &app.world().resource::<Seen<GamepadRumbleRequest>>().0;
-    let [GamepadRumbleRequest::Add { duration, intensity, gamepad }] = seen.as_slice() else { panic!("one Add, got {seen:?}: {:?}", messages(&app)) };
+    let [GamepadRumbleRequest::Add { duration, intensity, gamepad }] = seen.as_slice() else { panic!("one Add, got {}: {:?}", seen.len(), messages(&app)) };
     assert_eq!(*duration, Duration::from_millis(500));
     assert_eq!(*intensity, GamepadRumbleIntensity { strong_motor: 1.0, weak_motor: 0.25 });
     assert!(app.world().get::<TsSpawned>(*gamepad).is_some(), "the pad TS spawned");
