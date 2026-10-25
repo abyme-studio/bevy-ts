@@ -93,6 +93,36 @@ export const Meshes = () => (
   </entity>
 );
 
+// One of each 2D shape as a `<mesh2d>`, and a `<material2d>`.
+export const Meshes2d = () => (
+  <entity>
+    <entity><mesh2d shape="circle" radius={1} resolution={64} color="#c33" /></entity>
+    <entity><mesh2d shape="circularSector" radius={1} angle={Math.PI / 2} /></entity>
+    <entity><mesh2d shape="circularSegment" radius={1} halfAngle={1} /></entity>
+    <entity><mesh2d shape="ellipse" halfSize={[2, 1]} /></entity>
+    <entity><mesh2d shape="annulus" innerRadius={0.5} outerRadius={1} /></entity>
+    <entity><mesh2d shape="rectangle" size={[2, 1]} /></entity>
+    <entity><mesh2d shape="rhombus" horizontalDiagonal={2} verticalDiagonal={1} /></entity>
+    <entity><mesh2d shape="regularPolygon" circumradius={1} sides={5} /></entity>
+    <entity><mesh2d shape="triangle2d" vertices={[[0, 1], [-1, 0], [1, 0]]} /></entity>
+    <entity><mesh2d shape="capsule2d" radius={0.5} length={1} /></entity>
+    <entity>
+      <mesh2d shape="convexPolygon" vertices={[[0, 0], [1, 0], [1, 1], [0, 1]]} />
+      <material2d color="#fff" alpha={0.5} alphaMode={{ mask: 0.5 }} texture="hero.png" uvTransform={{ scale: [2, 2] }} />
+    </entity>
+    <entity>
+      {/* @ts-expect-error a 3D shape */}
+      <mesh2d shape="cuboid" />
+      {/* @ts-expect-error <mesh2d> is flat */}
+      <mesh2d shape="circle" depth={1} />
+      {/* @ts-expect-error a StandardMaterial prop */}
+      <material2d metallic={1} />
+      {/* @ts-expect-error a 3D alpha mode */}
+      <material2d alphaMode="add" />
+    </entity>
+  </entity>
+);
+
 // @ts-expect-error entity props are name and children only
 export const AlsoBad = () => <entity colour="red" />;
 

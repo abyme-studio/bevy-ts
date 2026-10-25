@@ -71,7 +71,7 @@
     "vitest": "^3.2.7"
   },
   "scripts": {
-    "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p ../../examples/ui-gallery && tsc -p ../../examples/arena && tsc -p test && tsc -p test/types-node",
+    "check": "node scripts/sync-runtime.mjs --check && tsc -p ../../examples/cube && tsc -p ../../examples/ui-gallery && tsc -p ../../examples/arena && tsc -p ../../examples/shapes-2d && tsc -p test && tsc -p test/types-node",
     "prepack": "node scripts/sync-examples.mjs",
     "test": "node scripts/sync-examples.mjs && vitest run --config test/vitest/vitest.config.mjs"
   },

@@ -1,18 +1,20 @@
-//! 2D in TSX (change script-2d): sprites, `Camera2d` and sprite picking, through Bevy's own
-//! plugins in a headless app that renders to an offscreen image. macOS (Metal).
+//! 2D in TSX (change script-2d): `<mesh2d>`, `<material2d>`, sprites, `Camera2d` and sprite
+//! picking, through Bevy's own plugins in a headless app that renders to an offscreen image. macOS (Metal).
 #![cfg(target_os = "macos")]
 
 use crate::common;
 
 use bevy::camera::{ImageRenderTarget, NormalizedRenderTarget};
+use bevy::mesh::VertexAttributeValues;
 use bevy::picking::pointer::{Location, PointerAction, PointerButton, PointerId, PointerInput};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::sprite::{SpritePickingMode, SpritePickingSettings};
+use bevy::sprite_render::{AlphaMode2d, ColorMaterial, MeshMaterial2d};
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
 use bevy_ts::BevyTsPlugin;
-use bevy_ts::generation::{DevSource, ReloadStatus};
+use bevy_ts::generation::{DevSource, ReloadReport, ReloadStatus};
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_cli::headless::{Offscreen, SIZE};
 use bevy_ts_tsx::TsxNode;
@@ -20,11 +22,12 @@ use common::*;
 use std::sync::{Arc, Mutex};
 
 fn scene(body: &str) -> String {
-    format!("import {{ app }} from \"bevy-ts\";\nimport {{ Camera2d, Sprite }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
+    format!("import {{ app }} from \"bevy-ts\";\nimport {{ Camera2d, Projection, Sprite }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
 }
 
-/// Bevy's default plugins with no window, every camera drawing into [`Offscreen`].
-fn setup(name: &str, body: &str) -> App {
+/// Bevy's default plugins with no window, every camera drawing into [`Offscreen`], and the first
+/// load's report.
+fn load(name: &str, body: &str) -> (App, ReloadReport) {
     let dir = project(name, &[("game.tsx", &scene(body))]);
     let mut app = App::new();
     app.add_plugins(
@@ -40,9 +43,146 @@ fn setup(name: &str, body: &str) -> App {
     app.finish();
     app.cleanup();
     let r = reload(&mut app, false);
+    (app, r)
+}
+
+fn setup(name: &str, body: &str) -> App {
+    let (mut app, r) = load(name, body);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     app.update();
     app
+}
+
+/// The one error a scene fails its load with.
+fn refused(name: &str, body: &str) -> String {
+    let (_, r) = load(name, body);
+    assert_ne!(r.status, ReloadStatus::Applied, "{body} loaded");
+    assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+    r.errors[0].to_string()
+}
+
+fn shot(app: &App) -> impl FnMut(&mut App) -> Option<[u8; 3]> + use<> {
+    let target = app.world().resource::<Offscreen>().0.clone();
+    let shot: Arc<Mutex<Option<Image>>> = Arc::default();
+    let mut frame = 0;
+    move |app: &mut App| {
+        app.update();
+        frame += 1;
+        if frame % 20 == 10 {
+            let s = shot.clone();
+            app.world_mut().spawn(Screenshot::image(target.clone())).observe(move |e: On<ScreenshotCaptured>| {
+                *s.lock().unwrap() = Some(e.image.clone());
+            });
+        }
+        let img = shot.lock().unwrap().take()?;
+        let i = ((SIZE.1 / 2 * SIZE.0 + SIZE.0 / 2) * 4) as usize;
+        let d = img.data.as_ref().unwrap();
+        Some([d[i], d[i + 1], d[i + 2]])
+    }
+}
+
+/// Renders until the centre pixel is `want`, or fails with the last one seen.
+fn centre_becomes(app: &mut App, want: [u8; 3], what: &str) {
+    let mut next = shot(app);
+    let mut last = None;
+    for _ in 0..600 {
+        if let Some(px) = next(app) {
+            last = Some(px);
+            if px == want {
+                return;
+            }
+        }
+    }
+    panic!("the centre pixel never became {what}: {last:?}");
+}
+
+/// Every 2D shape, as `<mesh2d>` props.
+const SHAPES_2D: &[&str] = &[
+    "shape=\"circle\" radius={1}",
+    "shape=\"circularSector\" radius={1} angle={1}",
+    "shape=\"circularSegment\" radius={1} halfAngle={1}",
+    "shape=\"ellipse\" halfSize={[2, 1]}",
+    "shape=\"annulus\" innerRadius={0.5} outerRadius={1}",
+    "shape=\"rectangle\" size={[2, 1]}",
+    "shape=\"rhombus\" horizontalDiagonal={2} verticalDiagonal={1}",
+    "shape=\"regularPolygon\" circumradius={1} sides={5}",
+    "shape=\"triangle2d\" vertices={[[0, 1], [-1, 0], [1, 0]]}",
+    "shape=\"capsule2d\" radius={0.5} length={1}",
+    "shape=\"convexPolygon\" vertices={[[0, 0], [1, 0], [1, 1], [0, 1]]}",
+];
+
+#[test]
+fn every_2d_shape_builds_a_flat_mesh2d() {
+    let body: String = SHAPES_2D.iter().enumerate().map(|(i, p)| format!("    <entity key=\"m{i}\"><mesh2d {p} /></entity>\n")).collect();
+    let mut app = setup("2d-shapes", &body);
+    for (i, p) in SHAPES_2D.iter().enumerate() {
+        let e = node(&mut app, &format!("m{i}"));
+        assert!(app.world().get::<Mesh3d>(e).is_none(), "{p}: a Mesh3d");
+        let h = app.world().get::<Mesh2d>(e).unwrap_or_else(|| panic!("{p}: no Mesh2d")).0.clone();
+        let mesh = app.world().resource::<Assets<Mesh>>().get(&h).unwrap_or_else(|| panic!("{p}: no mesh"));
+        let Some(VertexAttributeValues::Float32x3(normals)) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL) else { panic!("{p}: no normals") };
+        assert!(normals.iter().all(|n| *n == [0.0, 0.0, 1.0]), "{p}: a normal off +Z");
+    }
+}
+
+#[test]
+fn a_material2d_builds_its_color_material_and_equal_props_share_handles() {
+    let body = concat!(
+        "    <entity key=\"a\"><mesh2d shape=\"circle\" /><material2d color=\"#ff0000\" alpha={0.5} alphaMode={{ mask: 0.25 }} texture=\"hero.png\" uvTransform={{ scale: [2, 2] }} /></entity>\n",
+        "    <entity key=\"b\"><mesh2d shape=\"circle\" /><material2d color=\"#ff0000\" alpha={0.5} alphaMode={{ mask: 0.25 }} texture=\"hero.png\" uvTransform={{ scale: [2, 2] }} /></entity>\n",
+        "    <entity key=\"faded\"><mesh2d shape=\"circle\" /><material2d color=\"#00ff0080\" /></entity>\n",
+        "    <entity key=\"tinted\"><mesh2d shape=\"circle\" color=\"#0000ff\" /></entity>\n",
+        "    <entity key=\"solid\"><mesh shape=\"circle\" /></entity>\n",
+    );
+    let mut app = setup("2d-material", body);
+    let [a, b, faded, tinted, solid] = ["a", "b", "faded", "tinted", "solid"].map(|k| node(&mut app, k));
+    let w = app.world();
+    let material = |e: Entity| w.get::<MeshMaterial2d<ColorMaterial>>(e).expect("a MeshMaterial2d").0.clone();
+    assert_eq!(material(a), material(b), "equal props share a material");
+    assert_eq!(w.get::<Mesh2d>(a).unwrap().0, w.get::<Mesh2d>(b).unwrap().0, "equal props share a mesh");
+    assert_eq!(w.get::<Mesh2d>(a).unwrap().0, w.get::<Mesh3d>(solid).unwrap().0, "a Mesh2d and a Mesh3d of one shape share the mesh");
+
+    let materials = w.resource::<Assets<ColorMaterial>>();
+    let m = materials.get(&material(a)).unwrap();
+    assert_eq!(m.color, Color::srgba(1.0, 0.0, 0.0, 0.5));
+    assert_eq!(m.alpha_mode, AlphaMode2d::Mask(0.25));
+    assert_eq!(m.uv_transform.matrix2.x_axis.x, 2.0);
+    assert_eq!(m.texture.as_ref().and_then(|t| t.path()).and_then(|p| p.path().to_str().map(String::from)).as_deref(), Some("hero.png"));
+    assert_eq!(materials.get(&material(faded)).unwrap().alpha_mode, AlphaMode2d::Blend, "alpha below 1 blends");
+    let tint = materials.get(&material(tinted)).unwrap();
+    assert_eq!((tint.color, tint.alpha_mode), (Color::srgb(0.0, 0.0, 1.0), AlphaMode2d::Opaque), "<mesh2d color>");
+}
+
+#[test]
+fn mesh2d_and_material2d_refuse_what_2d_does_not_have_naming_the_line() {
+    for (name, body, want) in [
+        ("2d-no-depth", "<mesh2d shape=\"circle\" depth={1} />", "circle: depth: <mesh2d> is flat"),
+        ("2d-no-segments", "<mesh2d shape=\"rectangle\" segments={2} />", "rectangle: segments: <mesh2d> is flat"),
+        ("2d-no-3d-shape", "<mesh2d shape=\"cuboid\" />", "shape: cuboid is a 3D shape"),
+        ("2d-bad-shape-prop", "<mesh2d shape=\"circle\" radius={-1} />", "<mesh2d>: circle: radius"),
+        ("2d-no-metallic", "<material2d metallic={1} />", "metallic"),
+        ("2d-no-add", "<material2d alphaMode=\"add\" />", "<material2d> takes \"opaque\", \"blend\" or { mask }"),
+        ("2d-no-3d-pair", "<mesh shape=\"circle\" /><material2d />", "pair <mesh> with <material>, <mesh2d> with <material2d>"),
+        ("2d-no-2d-pair", "<mesh2d shape=\"circle\" /><material />", "pair <mesh> with <material>, <mesh2d> with <material2d>"),
+        ("2d-no-two-colours", "<mesh2d shape=\"circle\" color=\"#f00\" /><material2d />", "not both"),
+    ] {
+        let e = refused(name, &format!("    <entity>\n      {body}\n    </entity>\n"));
+        assert!(e.contains(want), "{body}: {e}");
+        assert!(e.contains("game.tsx:7:"), "{body}: names its line: {e}");
+    }
+}
+
+#[test]
+fn a_camera2d_draws_a_red_mesh2d_and_takes_a_projection() {
+    let body = concat!(
+        "    <entity key=\"cam\"><Camera2d /><Projection value={{ Orthographic: { scale: 2 } }} /></entity>\n",
+        "    <entity key=\"r\"><mesh2d shape=\"rectangle\" size={[4000, 4000]} color=\"#ff0000\" /></entity>\n",
+    );
+    let mut app = setup("2d-camera-mesh", body);
+    let cam = node(&mut app, "cam");
+    let Some(Projection::Orthographic(o)) = app.world().get::<Projection>(cam) else { panic!("an orthographic Projection") };
+    assert_eq!(o.scale, 2.0);
+    centre_becomes(&mut app, [255, 0, 0], "the red rectangle");
 }
 
 fn node(app: &mut App, key: &str) -> Entity {
@@ -70,27 +210,7 @@ fn a_camera2d_is_orthographic_and_draws_a_sprite() {
     assert!(app.world().get::<Camera>(cam).is_some(), "Camera2d requires Camera");
     assert!(matches!(app.world().get::<Projection>(cam), Some(Projection::Orthographic(_))), "an orthographic Projection");
 
-    let target = app.world().resource::<Offscreen>().0.clone();
-    let shot: Arc<Mutex<Option<Image>>> = Arc::default();
-    let mut last = None;
-    for frame in 0..600 {
-        app.update();
-        if frame % 20 == 10 {
-            let s = shot.clone();
-            app.world_mut().spawn(Screenshot::image(target.clone())).observe(move |e: On<ScreenshotCaptured>| {
-                *s.lock().unwrap() = Some(e.image.clone());
-            });
-        }
-        if let Some(img) = shot.lock().unwrap().take() {
-            let i = ((SIZE.1 / 2 * SIZE.0 + SIZE.0 / 2) * 4) as usize;
-            let d = img.data.as_ref().unwrap();
-            last = Some([d[i], d[i + 1], d[i + 2]]);
-            if last == Some([255, 255, 255]) {
-                return;
-            }
-        }
-    }
-    panic!("the centre pixel never became the white sprite: {last:?}");
+    centre_becomes(&mut app, [255, 255, 255], "the white sprite");
 }
 
 /// A mouse at `at` on the offscreen image, then `action`, then a frame.

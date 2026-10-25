@@ -16,7 +16,7 @@ export const Fragment = Symbol.for("bevy-ts.fragment");
 const ELEMENT = Symbol.for("bevy-ts.element");
 
 /** Intrinsics that describe components of the enclosing entity. */
-const COMPONENT_INTRINSICS = new Set(["mesh", "material"]);
+const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d"]);
 /** bevy_ui intrinsics: entities of their own, with one intrinsic component named after the tag. */
 const UI_INTRINSICS = new Set(["node", "text", "image", "button", "span", "viewport", "input"]);
 /** Rich text: `<text>` and `<span>` hold strings, bindings and `<span>`s. */

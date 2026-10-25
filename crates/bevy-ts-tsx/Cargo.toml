@@ -11,7 +11,7 @@ name = "bevy_ts_tsx"
 [dependencies]
 # Not Bevy's four PBR texture features: with them the StandardMaterial pipeline binds 18
 # textures per fragment stage, past wgpu's default 16 (bench/standard-material-features).
-bevy = { workspace = true, features = ["std", "bevy_ui", "bevy_ui_widgets", "bevy_picking", "bevy_input_focus", "bevy_clipboard"] }
+bevy = { workspace = true, features = ["std", "bevy_ui", "bevy_ui_widgets", "bevy_sprite_render", "bevy_picking", "bevy_input_focus", "bevy_clipboard"] }
 bevy-ts = { workspace = true, features = ["pbr"] }
 bevy-ts-remote.workspace = true
 bevy-ts-material.workspace = true

@@ -51,8 +51,8 @@ pub fn mount(world: &mut World, bytes: &[u8]) -> Result<(), String> {
     if let Some(e) = errors.into_iter().next() {
         return Err(e.to_string());
     }
-    if !crate::intrinsics::available(world) && crate::uses_assets(&op.nodes).is_some() {
-        return Err("<mesh> and <material> need the render plugins (no Assets<Mesh>)".into());
+    if let Some(e) = crate::no_render(world, &op.nodes) {
+        return Err(e.message);
     }
     if !world.contains_resource::<AssetServer>() {
         let mut errors = Vec::new();

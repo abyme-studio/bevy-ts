@@ -3,6 +3,8 @@
 //! asset value `StandardMaterial.of` of its props, mapped by [`MATERIAL_PROPS`], so it also shares
 //! with a `Handle<StandardMaterial>` slot given that value. `<material kind={K}>` is a script
 //! material (bevy-ts-material), shared the same way.
+//! `<mesh2d>` and `<material2d>` are their 2D pair: a `Mesh2d` from the same shapes and mesh
+//! cache, and a `ColorMaterial`.
 
 use bevy::asset::AssetLoadFailedEvent;
 use bevy::ecs::message::{MessageCursor, Messages};
@@ -14,6 +16,7 @@ use bevy::pbr::ParallaxMappingMethod;
 use bevy::prelude::*;
 use bevy_ts_material::kinds::AlphaDecl;
 use bevy::render::render_resource::Face;
+use bevy::sprite_render::{AlphaMode2d, ColorMaterial, MeshMaterial2d};
 use bevy_ts::backend::SourceLocation;
 use bevy_ts_material::{GltfMaterialFilter, ScriptMaterial3d};
 use crate::shapes::MeshShape;
@@ -64,6 +67,77 @@ impl MeshProps {
 
     fn cache_key(&self) -> String {
         format!("{:?}", self.shape)
+    }
+}
+
+/// `<mesh2d shape .../>`: one of `<mesh>`'s 2D shapes, flat in the XY plane, and an optional color.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mesh2dProps(pub MeshProps);
+
+impl<'de> Deserialize<'de> for Mesh2dProps {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let props = Map::<String, Value>::deserialize(d)?;
+        let shape = props.get("shape").and_then(Value::as_str).unwrap_or("shape");
+        if let Some(k) = ["depth", "segments"].into_iter().find(|k| props.contains_key(*k)) {
+            return Err(D::Error::custom(format!("{shape}: {k}: <mesh2d> is flat; extrude with <mesh depth>")));
+        }
+        let p = MeshProps::deserialize(Value::Object(props)).map_err(D::Error::custom)?;
+        if !p.shape.is_2d() {
+            return Err(D::Error::custom(format!("shape: {} is a 3D shape; <mesh2d> takes a 2D one", p.shape.name())));
+        }
+        Ok(Mesh2dProps(p))
+    }
+}
+
+/// `<material2d .../>`: a `ColorMaterial`.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct Material2dProps {
+    pub color: Option<Value>,
+    /// Replaces `color`'s alpha, 0 to 1.
+    pub alpha: Option<f32>,
+    /// `"opaque"`, `"blend"` or `{ mask }`; unset, `Blend` below alpha 1 and `Opaque` otherwise.
+    #[serde(rename = "alphaMode")]
+    pub alpha_mode: Option<AlphaDecl>,
+    pub texture: Option<String>,
+    pub uv_transform: Option<UvTransform>,
+}
+
+impl Material2dProps {
+    pub fn check(&self) -> Result<(), String> {
+        MaterialProps { color: self.color.clone(), alpha: self.alpha, uv_transform: self.uv_transform, ..default() }.check()?;
+        if let Some(m) = &self.alpha_mode {
+            alpha_2d(m)?;
+        }
+        if self.texture.as_deref() == Some("") {
+            return Err("texture is an empty path".into());
+        }
+        Ok(())
+    }
+
+    fn material(&self, texture: Option<Handle<Image>>) -> ColorMaterial {
+        let mut color = self.color.as_ref().map_or(Color::WHITE, |c| bevy_ts::color::parse(c).expect("checked"));
+        if let Some(a) = self.alpha {
+            color.set_alpha(a);
+        }
+        // Bevy's own rule in `ColorMaterial::from(Color)`.
+        let alpha_mode = match &self.alpha_mode {
+            Some(d) => alpha_2d(d).expect("checked"),
+            None if color.alpha() < 1.0 => AlphaMode2d::Blend,
+            None => AlphaMode2d::Opaque,
+        };
+        ColorMaterial { color, alpha_mode, uv_transform: self.uv_transform.unwrap_or_default().affine(), texture }
+    }
+}
+
+/// The `AlphaMode2d` an `alphaMode` names: the modes of `AlphaDecl`'s that Bevy's 2D has.
+fn alpha_2d(d: &AlphaDecl) -> Result<AlphaMode2d, String> {
+    match d.parse()? {
+        AlphaMode::Opaque => Ok(AlphaMode2d::Opaque),
+        AlphaMode::Blend => Ok(AlphaMode2d::Blend),
+        AlphaMode::Mask(t) => Ok(AlphaMode2d::Mask(t)),
+        _ => Err(format!("alphaMode {d:?}: <material2d> takes \"opaque\", \"blend\" or {{ mask }}")),
     }
 }
 
@@ -459,6 +533,7 @@ pub struct IntrinsicAssets {
     meshes: HashMap<String, Handle<Mesh>>,
     /// The same shapes with vertex tangents, for materials that need them.
     tangent_meshes: HashMap<String, Handle<Mesh>>,
+    materials2d: HashMap<String, Handle<ColorMaterial>>,
     /// Each texture's path and the element that first asked for it, to report a failed load.
     textures: HashMap<AssetId<Image>, (String, Option<SourceLocation>)>,
     /// Assets built, for tests: a repeat of known props builds nothing.
@@ -553,6 +628,61 @@ fn material_handle(world: &mut World, p: &MaterialProps, at: Option<SourceLocati
         cache.textures.entry(id).or_insert((path, at.clone()));
     }
     h
+}
+
+fn material2d_handle(world: &mut World, p: &Material2dProps, at: Option<SourceLocation>) -> Handle<ColorMaterial> {
+    let key = format!("{p:?}");
+    if let Some(h) = world.resource::<IntrinsicAssets>().materials2d.get(&key) {
+        return h.clone();
+    }
+    let texture = p.texture.as_ref().map(|path| match world.get_resource::<AssetServer>() {
+        Some(server) => server.load::<Image>(path.clone()),
+        None => {
+            crate::reconcile::log_error(world, "<material2d>: texture needs an AssetServer to load".into(), at.clone());
+            Handle::default()
+        }
+    });
+    let h = world.resource_mut::<Assets<ColorMaterial>>().add(p.material(texture.clone()));
+    let mut cache = world.resource_mut::<IntrinsicAssets>();
+    cache.built += 1;
+    cache.materials2d.insert(key, h.clone());
+    if let (Some(t), Some(path)) = (texture, &p.texture) {
+        cache.textures.entry(t.id()).or_insert((path.clone(), at));
+    }
+    h
+}
+
+/// True when the app can build `<mesh2d>` and `<material2d>`.
+pub fn available_2d(world: &World) -> bool {
+    world.contains_resource::<Assets<Mesh>>() && world.contains_resource::<Assets<ColorMaterial>>()
+}
+
+/// Inserts (or replaces) what a `<mesh2d>` owns: the shared mesh, flat, and its color's material.
+pub fn insert_mesh2d(world: &mut World, e: Entity, p: &Mesh2dProps) {
+    let material = p.0.color.as_ref().map(|c| material2d_handle(world, &Material2dProps { color: Some(c.clone()), ..default() }, None));
+    let mesh = mesh_handle(world, &p.0);
+    let mut em = world.entity_mut(e);
+    em.insert(Mesh2d(mesh));
+    if let Some(m) = material {
+        em.insert(MeshMaterial2d(m));
+    }
+}
+
+pub fn remove_mesh2d(world: &mut World, e: Entity, p: &Mesh2dProps) {
+    let mut em = world.entity_mut(e);
+    em.remove::<Mesh2d>();
+    if p.0.color.is_some() {
+        em.remove::<MeshMaterial2d<ColorMaterial>>();
+    }
+}
+
+pub fn insert_material2d(world: &mut World, e: Entity, p: &Material2dProps, at: Option<SourceLocation>) {
+    let m = material2d_handle(world, p, at);
+    world.entity_mut(e).insert(MeshMaterial2d(m));
+}
+
+pub fn remove_material2d(world: &mut World, e: Entity) {
+    world.entity_mut(e).remove::<MeshMaterial2d<ColorMaterial>>();
 }
 
 /// The entity's `<mesh>` props, so its material can pick the plain or the tangent mesh.

@@ -57,12 +57,28 @@ fn parse(bytes: &[u8]) -> Result<SceneSection, ScriptError> {
     Ok(s)
 }
 
-pub(crate) fn uses_assets(nodes: &[desc::NodeDesc]) -> Option<Option<bevy_ts::backend::SourceLocation>> {
+/// An asset intrinsic in `nodes` the app cannot build, without the render plugins.
+pub(crate) fn no_render(world: &World, nodes: &[desc::NodeDesc]) -> Option<ScriptError> {
+    if !intrinsics::available(world)
+        && let Some(at) = uses_assets(nodes, &[resolve::MESH, resolve::MATERIAL])
+    {
+        return Some(ScriptError::at("<mesh> and <material> need the render plugins (no Assets<Mesh>)", at));
+    }
+    if !intrinsics::available_2d(world)
+        && let Some(at) = uses_assets(nodes, &[resolve::MESH2D, resolve::MATERIAL2D])
+    {
+        return Some(ScriptError::at("<mesh2d> and <material2d> need the render plugins (no Assets<ColorMaterial>)", at));
+    }
+    None
+}
+
+/// The first element of `tags`' intrinsics in `nodes`, by its location.
+pub(crate) fn uses_assets(nodes: &[desc::NodeDesc], tags: &[&str]) -> Option<Option<bevy_ts::backend::SourceLocation>> {
     for n in nodes {
-        if let Some(c) = n.components.iter().find(|c| c.kind == desc::ComponentKind::Intrinsic && (c.ty == resolve::MESH || c.ty == resolve::MATERIAL)) {
+        if let Some(c) = n.components.iter().find(|c| c.kind == desc::ComponentKind::Intrinsic && tags.contains(&c.ty.as_str())) {
             return Some(c.source.clone());
         }
-        if let Some(l) = uses_assets(&n.children) {
+        if let Some(l) = uses_assets(&n.children, tags) {
             return Some(l);
         }
     }
@@ -120,10 +136,8 @@ fn check_inner(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> 
     }
     let registry = world.resource::<AppTypeRegistry>().clone();
     let mut errors = resolve::check_roots(&overlaid.roots, input.components, world.resource::<NativeLayouts>(), &registry.read());
-    if !intrinsics::available(world)
-        && let Some(at) = section.roots.iter().find_map(|r| uses_assets(&r.nodes))
-    {
-        errors.push(ScriptError::at("<mesh> and <material> need the render plugins (no Assets<Mesh>)", at));
+    if let Some(e) = section.roots.iter().find_map(|r| no_render(world, &r.nodes)) {
+        errors.push(e);
     }
     if !world.contains_resource::<bevy::asset::AssetServer>() {
         for r in &overlaid.roots {

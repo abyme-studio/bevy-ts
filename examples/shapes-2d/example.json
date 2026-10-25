@@ -1,0 +1,6 @@
+{
+  "id": "shapes-2d",
+  "title": "Shapes 2D",
+  "description": "A Camera2d and every 2D mesh shape in a grid, each its own colour. 2D shows in play, not in the editor's 3D view.",
+  "entry": "src/game.tsx"
+}

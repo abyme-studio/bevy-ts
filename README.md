@@ -22,6 +22,8 @@ without recompiling Rust.
   reads its progress from a system ([docs/animation.md](docs/animation.md)).
 - **Bevy's mesh primitives in TSX**: `<mesh shape="torus" />` and every other Bevy 0.20 shape,
   with Bevy's props and builder settings, typed per shape ([docs/meshes.md](docs/meshes.md)).
+- **2D**: `<Camera2d />`, `<mesh2d>` and `<material2d>`, sprites from an image path, and sprite
+  picking, each with a test ([docs/2d.md](docs/2d.md)).
 - **Custom materials without Rust**: a params schema in TS and the shader in a `.wgsl` file,
   hot reloaded ([docs/materials.md](docs/materials.md)).
 - **Bevy's time**: `Res<Time<Real>>`, `Res<Time<Virtual>>`, `Res<Time<Fixed>>`, and `Timer` and

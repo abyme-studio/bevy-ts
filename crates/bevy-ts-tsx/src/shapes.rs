@@ -327,6 +327,24 @@ impl MeshShape {
         }
     }
 
+    /// A shape in the XY plane: the ones `<mesh2d>` takes.
+    pub fn is_2d(&self) -> bool {
+        matches!(
+            self,
+            Self::Circle(_)
+                | Self::CircularSector(_)
+                | Self::CircularSegment(_)
+                | Self::Ellipse(_)
+                | Self::Annulus(_)
+                | Self::Rectangle(_)
+                | Self::Rhombus(_)
+                | Self::RegularPolygon(_)
+                | Self::Triangle2d(_)
+                | Self::Capsule2d(_)
+                | Self::ConvexPolygon(_)
+        )
+    }
+
     /// Refuses every value Bevy would panic or error on; the error names the shape and the prop.
     pub fn check(&self) -> Result<(), String> {
         let r = match self {

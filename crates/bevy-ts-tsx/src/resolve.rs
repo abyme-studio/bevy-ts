@@ -3,7 +3,7 @@
 
 use crate::desc::{ComponentDesc, ComponentKind, NodeDesc, RootDesc, binding_id};
 use crate::ui::{self, UiKind};
-use crate::intrinsics::{MaterialProps, MeshProps};
+use crate::intrinsics::{Material2dProps, MaterialProps, Mesh2dProps, MeshProps};
 use bevy::ecs::component::ComponentId;
 use bevy::reflect::TypeRegistry;
 use bevy_ts::backend::{ScriptError, SourceLocation};
@@ -18,6 +18,13 @@ use std::collections::{BTreeMap, HashSet};
 pub const NAME: &str = "Name";
 pub const MESH: &str = "mesh";
 pub const MATERIAL: &str = "material";
+pub const MESH2D: &str = "mesh2d";
+pub const MATERIAL2D: &str = "material2d";
+
+/// The asset intrinsics, whose props are rebuilt as a whole and cannot be bound.
+pub fn asset_intrinsic(tag: &str) -> bool {
+    [MESH, MATERIAL, MESH2D, MATERIAL2D].contains(&tag)
+}
 
 /// Where TS components come from: the pending generation while checking, the live registry
 /// while applying.
@@ -48,6 +55,8 @@ pub enum Target {
     Name,
     Mesh(MeshProps),
     Material(Box<MaterialProps>),
+    Mesh2d(Mesh2dProps),
+    Material2d(Material2dProps),
     /// `<material kind={K} ...params />`: a script material instance of kind `kind`. On a glTF
     /// scene root, `gltfMaterial` limits it to the scene's meshes with that material name.
     ScriptMaterial { kind: String, props: Map<String, Value>, gltf_material: Option<String> },
@@ -385,6 +394,18 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(resolved(Target::Material(Box::new(props)), (controlled, BTreeMap::new(), BTreeMap::new())))
         }
+        ComponentKind::Intrinsic if c.ty == MESH2D => {
+            let props: Mesh2dProps = parse_props(c)?;
+            props.0.check().map_err(|m| err(format!("<mesh2d>: {m}"), &c.source))?;
+            let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Ok(resolved(Target::Mesh2d(props), (controlled, BTreeMap::new(), BTreeMap::new())))
+        }
+        ComponentKind::Intrinsic if c.ty == MATERIAL2D => {
+            let props: Material2dProps = parse_props(c)?;
+            props.check().map_err(|m| err(format!("<material2d>: {m}"), &c.source))?;
+            let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Ok(resolved(Target::Material2d(props), (controlled, BTreeMap::new(), BTreeMap::new())))
+        }
         ComponentKind::Intrinsic => {
             let kind = UiKind::from_tag(&c.ty).ok_or_else(|| err(format!("unknown intrinsic <{}>", c.ty), &c.source))?;
             ui::check(kind, &c.props).map_err(|m| err(format!("<{}> {m}", c.ty), &c.source))?;
@@ -432,6 +453,16 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts, 
     let mesh_color = out.iter().any(|r| matches!(&r.target, Target::Mesh(MeshProps { color: Some(_), .. })));
     if mesh_color && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Material(_) | Target::ScriptMaterial { .. })) {
         return Err(err("give the colour on <material> or on <mesh color>, not both", &m.source));
+    }
+    let mesh2d_color = out.iter().any(|r| matches!(&r.target, Target::Mesh2d(Mesh2dProps(MeshProps { color: Some(_), .. }))));
+    if mesh2d_color && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Material2d(_))) {
+        return Err(err("give the colour on <material2d> or on <mesh2d color>, not both", &m.source));
+    }
+    // Bevy keeps 2D and 3D apart: a `Mesh2d` draws only with a 2D material, a `Mesh3d` with a 3D one.
+    let is_3d = |r: &&Resolved| matches!(r.target, Target::Mesh(_) | Target::Material(_) | Target::ScriptMaterial { .. });
+    let is_2d = |r: &&Resolved| matches!(r.target, Target::Mesh2d(_) | Target::Material2d(_));
+    if let (Some(a), Some(b)) = (out.iter().find(is_3d), out.iter().find(is_2d)) {
+        return Err(err(format!("<{}> and <{}> on one entity: pair <mesh> with <material>, <mesh2d> with <material2d>", a.key, b.key), &b.source));
     }
     Ok(out)
 }

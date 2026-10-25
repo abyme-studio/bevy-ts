@@ -5,7 +5,7 @@
 //! systems added) is never touched.
 
 use crate::desc::{NodeDesc, node_id};
-use crate::intrinsics::{self, MeshProps};
+use crate::intrinsics::{self, Mesh2dProps, MeshProps};
 use crate::resolve::{self, NAME, Resolved, Target};
 use crate::tree::{BindTarget, FieldState, Later, OwnedComponent, Provenance, ReconcileStats, SlotState, Tombstone, TsxNode, TsxTree};
 use crate::ui;
@@ -521,6 +521,8 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
         }
         Target::Mesh(p) => intrinsics::insert_mesh(world, e, p),
         Target::Material(p) => intrinsics::insert_material(world, e, p, r.source.clone()),
+        Target::Mesh2d(p) => intrinsics::insert_mesh2d(world, e, p),
+        Target::Material2d(p) => intrinsics::insert_material2d(world, e, p, r.source.clone()),
         Target::ScriptMaterial { kind, props, gltf_material } => intrinsics::insert_script_material(world, e, kind, props, gltf_material.as_deref(), r.source.clone()),
         Target::Ui(kind) => {
             let props: Map<String, Value> = r.controlled.clone().into_iter().collect();
@@ -711,6 +713,12 @@ fn remove(world: &mut World, e: Entity, key: &str, prev: &OwnedComponent) {
             }
         }
         resolve::MATERIAL => intrinsics::remove_material(world, e),
+        resolve::MESH2D => {
+            if let Ok(p) = serde_json::from_value::<Mesh2dProps>(Value::Object(props_of(prev))) {
+                intrinsics::remove_mesh2d(world, e, &p);
+            }
+        }
+        resolve::MATERIAL2D => intrinsics::remove_material2d(world, e),
         tag if ui::UiKind::from_tag(tag).is_some() => ui::remove(world, e, ui::UiKind::from_tag(tag).expect("checked")),
         scoped if bevy_ts::states::scoped_kind(scoped).is_some() => {
             bevy_ts::states::remove_scoped(world, e, bevy_ts::states::scoped_kind(scoped).expect("checked"));
@@ -825,7 +833,7 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
                 // Name and asset intrinsics: their props as a whole, rebuilt when they change.
                 if props_of(prev) != r.controlled.clone().into_iter().collect::<Map<_, _>>() {
                     // A scoped component may move to another machine's slot: its old type goes first.
-                    if matches!(target, Target::Mesh(_) | Target::StateScoped { .. }) {
+                    if matches!(target, Target::Mesh(_) | Target::Mesh2d(_) | Target::StateScoped { .. }) {
                         remove(world, e, &r.key, prev);
                     }
                     insert(world, e, r);

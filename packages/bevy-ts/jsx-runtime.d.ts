@@ -563,6 +563,20 @@ export interface ConvexPolygonMesh extends Extrude {
   vertices: Vec2[];
 }
 
+/** The shapes in the XY plane, which `<mesh2d>` also takes. */
+export type Shape2dMesh =
+  | CircleMesh
+  | CircularSectorMesh
+  | CircularSegmentMesh
+  | EllipseMesh
+  | AnnulusMesh
+  | RectangleMesh
+  | RhombusMesh
+  | RegularPolygonMesh
+  | Triangle2dMesh
+  | Capsule2dMesh
+  | ConvexPolygonMesh;
+
 export type MeshProps = (
   | CuboidMesh
   | SphereMesh
@@ -574,19 +588,18 @@ export type MeshProps = (
   | TorusMesh
   | TetrahedronMesh
   | Triangle3dMesh
-  | CircleMesh
-  | CircularSectorMesh
-  | CircularSegmentMesh
-  | EllipseMesh
-  | AnnulusMesh
-  | RectangleMesh
-  | RhombusMesh
-  | RegularPolygonMesh
-  | Triangle2dMesh
-  | Capsule2dMesh
-  | ConvexPolygonMesh
+  | Shape2dMesh
 ) & {
   /** Shorthand for `<material color>`. */
+  color?: ColorValue;
+};
+
+/** A 2D shape without its extrusion: `<mesh2d>` is flat. */
+type Flat<T> = T extends unknown ? Omit<T, keyof Extrude> & { depth?: never; segments?: never } : never;
+
+/** `<mesh2d shape>`: a `Mesh2d` of one of `<mesh>`'s 2D shapes, sharing its mesh asset. */
+export type Mesh2dProps = Flat<Shape2dMesh> & {
+  /** Shorthand for `<material2d color>`. */
   color?: ColorValue;
 };
 
@@ -667,6 +680,17 @@ export interface MaterialProps {
   kind?: never;
 }
 
+/** `<material2d>`: a `ColorMaterial`. The texture is an asset path, loaded as sRGB. */
+export interface Material2dProps {
+  color?: ColorValue;
+  /** Replaces `color`'s alpha, 0 to 1. */
+  alpha?: number;
+  /** `AlphaMode2d`. Unset: `"blend"` when the alpha is below 1, `"opaque"` otherwise. */
+  alphaMode?: "opaque" | "blend" | { mask: number };
+  texture?: string;
+  uvTransform?: UvTransform;
+}
+
 /**
  * `<material kind={Glow} color="#f80" pulse={2} />`: a script material from `material()` in
  * `bevy-ts/material`, with its params by name and its textures as asset paths. Checked against
@@ -721,6 +745,8 @@ export declare namespace JSX {
     entity: EntityProps & KeyAttribute;
     mesh: MeshProps;
     material: MaterialProps | ScriptMaterialProps;
+    mesh2d: Mesh2dProps;
+    material2d: Material2dProps;
     node: NodeProps & KeyAttribute;
     button: ButtonProps & KeyAttribute;
     text: TextProps & KeyAttribute;
