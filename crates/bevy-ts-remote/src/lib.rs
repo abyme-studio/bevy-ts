@@ -202,10 +202,10 @@ impl Subscribers {
 
     /// Sets the cursor of the subscriber the last [`Subscribers::turn`] served.
     pub fn set(&mut self, method: &str, params: &Option<Value>, cursor: u64) {
-        if let Some(s) = self.streams.get_mut(&key(method, params)) {
-            if let Some(c) = s.served.checked_sub(1).and_then(|i| s.cursors.get_mut(i)) {
-                *c = cursor;
-            }
+        if let Some(s) = self.streams.get_mut(&key(method, params))
+            && let Some(c) = s.served.checked_sub(1).and_then(|i| s.cursors.get_mut(i))
+        {
+            *c = cursor;
         }
     }
 
