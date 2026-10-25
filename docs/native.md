@@ -288,9 +288,10 @@ declares them; a test fails when Bevy has one the list leaves out. `StateTransit
 `AssetLoadFailedEvent<A>` and `bevy_scene::Ready` stay out: Bevy 0.20 gives them no `Reflect`.
 
 TS names a type by its reflect type path. Bevy's come from `bevy-ts/bevy`; a project's type is
-declared in TS as a port's component is, `export const Scored = rustMessage("game_native::Scored")`
+a class extending its factory, so its name is a type and a value, with its fields declared:
+`export class Scored extends rustMessage("game_native::Scored") { declare points: u32 }`
 (`rustEvent`, `rustEntityEvent` for events). The project's `native.d.ts` does not declare its
-messages and events yet, so that line is written by hand, and its value is typed `unknown`. A generic type is one name whose instance the type
+messages and events yet, so that class is written by hand. A generic type is one name whose instance the type
 argument picks: `MessageReader<AssetEvent<Image>>` and `MessageReader<AssetEvent<Mesh>>` read two
 queues.
 
@@ -316,7 +317,9 @@ fails with the type and the field.
 An observer of a Rust event (`app.addObserver(fn)` or `entity(e).observe(fn)`) runs at the next
 drain of the observer queue, as for any event Rust triggers. The Bevy observer only serializes the
 event at each hop and queues it; each bubbling hop is its own TS call, and `propagate(false)`
-drops the trigger's remaining TS hops (Rust observers have run already). `On<E>.event` is the
+drops the trigger's remaining TS hops (Rust observers have run already). An event registered
+only with Bevy's `#[reflect(Event)]` has no first target to group its hops by, so there
+`propagate(false)` drops nothing; register it with `ts_entity_event`. `On<E>.event` is the
 whole value as Bevy's `On::event()` gives it at that hop, its target rewritten to the current one,
 so a field named like one of `On`'s own members (`entity`, `original`, `propagate`, `toJSON`,
 `event`) is read there: `click.event.entity` is `click.entity`, and `click.original` is the

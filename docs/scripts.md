@@ -283,13 +283,15 @@ app.addSystems(Update, typed, resized).addObserver(clicked);
   `commands.trigger(E.of(value))`. An enum's `of` takes its value whole:
   `GamepadRumbleRequest.of({ Stop: { gamepad } })`.
 - A Rust event's observer runs at the next drain, once per bubbling hop. `propagate(false)` drops
-  the rest of the hops TS would see; Rust observers have run already.
+  the rest of the hops TS would see; Rust observers have run already. For an event registered
+  only with Bevy's `#[reflect(Event)]` it drops nothing.
 - A Rust event field named `entity`, `original`, `propagate`, `toJSON` or `event` is read as
   `on.event.<name>`: `On` keeps its own. As Bevy's `On::event()`, `on.event`'s target is the
   current one at each hop: `click.event.entity` is `click.entity`, and `click.original` is the
   entity first clicked.
 - A project's own message or event is registered in Rust (`app.ts_message::<Scored>()`,
-  docs/native.md) and declared in TS by path: `export const Scored = rustMessage("game_native::Scored")`.
+  docs/native.md) and declared in TS by path, as a class with its fields:
+  `export class Scored extends rustMessage("game_native::Scored") { declare points: u32 }`.
 
 ## Session bytes
 
