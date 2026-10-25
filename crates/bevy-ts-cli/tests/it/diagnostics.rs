@@ -136,7 +136,7 @@ fn engine(diagnostics: &[&str]) -> App {
     use bevy_ts_cli::cli::{Display, Engine, base_app};
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
     let names: Vec<String> = diagnostics.iter().map(|s| s.to_string()).collect();
-    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, false, &names);
+    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, Default::default(), &names);
     app.finish();
     app.cleanup();
     app

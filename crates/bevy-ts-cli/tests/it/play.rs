@@ -47,7 +47,7 @@ fn cube_game(name: &str, version: &str) -> PathBuf {
     std::fs::create_dir_all(game.join("assets")).unwrap();
     // Finder litters folders; a shipped game ignores what is not a script.
     std::fs::write(game.join("scripts/src/.DS_Store"), [0xff, 0xfe, 0x00, 0x01]).unwrap();
-    let file = GameFile { name: "cube".into(), entry: "src/game.ts".into(), bevy_ts: version.into(), engine: "prebuilt".into(), mesh_picking: false, diagnostics: vec![], net: Default::default(), env: vec![] };
+    let file = GameFile { name: "cube".into(), entry: "src/game.ts".into(), bevy_ts: version.into(), engine: "prebuilt".into(), switches: Default::default(), diagnostics: vec![], net: Default::default(), env: vec![] };
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
     game
 }
@@ -122,23 +122,34 @@ fn a_bare_start_with_no_game_prints_the_usage() {
 }
 
 #[test]
-fn game_json_switches_mesh_picking() {
+fn game_json_switches_mesh_picking_and_navigation() {
+    use bevy::input_focus::directional_navigation::DirectionalNavigationPlugin;
+    use bevy::input_focus::tab_navigation::TabNavigationPlugin;
     use bevy::picking::mesh_picking::MeshPickingSettings;
     use bevy_ts_cli::cli::{Display, Engine, Prebuilt};
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    // A game.json written before the switch has no `meshPicking`, as one built without it.
+    // A game.json written before the switches has none of them, as one built without them.
     let game = cube_game("play-picking", env!("CARGO_PKG_VERSION"));
     let text = std::fs::read_to_string(game.join("game.json")).unwrap();
-    assert!(!text.contains("meshPicking"), "{text}");
+    for key in ["meshPicking", "tabNavigation", "directionalNavigation"] {
+        assert!(!text.contains(key), "{text}");
+    }
     let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
     assert!(!app.world().contains_resource::<MeshPickingSettings>());
+    assert!(!app.is_plugin_added::<TabNavigationPlugin>() && !app.is_plugin_added::<DirectionalNavigationPlugin>());
 
     let mut file = bevy_ts_cli::play::read_game(&game).unwrap();
-    file.mesh_picking = true;
+    file.switches.mesh_picking = true;
+    file.switches.tab_navigation = true;
+    file.switches.directional_navigation = true;
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
-    assert!(std::fs::read_to_string(game.join("game.json")).unwrap().contains(r#""meshPicking":true"#));
+    let text = std::fs::read_to_string(game.join("game.json")).unwrap();
+    for key in [r#""meshPicking":true"#, r#""tabNavigation":true"#, r#""directionalNavigation":true"#] {
+        assert!(text.contains(key), "{text}");
+    }
     let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
     assert!(app.world().contains_resource::<MeshPickingSettings>());
+    assert!(app.is_plugin_added::<TabNavigationPlugin>() && app.is_plugin_added::<DirectionalNavigationPlugin>());
 }
 
 /// A test that panics with an engine up leaves none behind, nor anything the engine started; and

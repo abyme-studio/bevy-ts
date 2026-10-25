@@ -1,6 +1,7 @@
 //! `bevy-ts/input`, a built-in module every engine ships: exported params over Bevy's own input
-//! state (`Keys`, `InputFocus`, `MouseButtons`, `Cursor`, `Gamepads`, `Touches`), and the enums
-//! `KeyCode`, `MouseButton`, `GamepadButton` and `GamepadAxis`, generated from `bevy_ts::keys`.
+//! state (`Keys`, `InputFocus`, `InputFocusVisible`, `DirectionalNavigation`, `MouseButtons`,
+//! `Cursor`, `Gamepads`, `Touches`), and the enums `KeyCode`, `MouseButton`, `GamepadButton` and
+//! `GamepadAxis`, generated from `bevy_ts::keys`, and `CompassOctant`.
 //! A TS system reads input as a Rust one does:
 //! `keys.justPressed(KeyCode.KeyN) && focus.get() === undefined`.
 
@@ -8,7 +9,9 @@ use bevy::ecs::schedule::BoxedCondition;
 use bevy::ecs::system::SystemParam;
 use bevy::input::gamepad::{Gamepad, GamepadInput};
 use bevy::input::touch::{Touch, Touches};
-use bevy::input_focus::InputFocus;
+use bevy::input_focus::{InputFocus, InputFocusVisible};
+use bevy::math::CompassOctant;
+use bevy::ui::auto_directional_navigation::AutoDirectionalNavigator;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_ts::keys::{
@@ -27,6 +30,8 @@ impl Plugin for ScriptInputPlugin {
     fn build(&self, app: &mut App) {
         app.ts_param::<KeysParam<'static>>()
             .ts_param::<FocusParam<'static>>()
+            .ts_param::<FocusVisibleParam<'static>>()
+            .ts_param::<NavigationParam<'static, 'static>>()
             .ts_param::<MouseButtonsParam<'static>>()
             .ts_param::<CursorParam<'static, 'static>>()
             .ts_param::<GamepadsParam<'static, 'static>>()
@@ -84,6 +89,59 @@ impl FocusParam<'_> {
     /// The focused entity, or `undefined` while nothing has focus.
     pub fn get(&self) -> Option<Entity> {
         self.focus.as_ref().and_then(|f| f.get())
+    }
+}
+
+/// `InputFocusVisible`: `Res<InputFocusVisible>`, whether to draw a focus ring (Bevy sets it when
+/// Tab moves focus, and clears it on a press).
+#[derive(SystemParam)]
+pub struct FocusVisibleParam<'w> {
+    visible: Option<Res<'w, InputFocusVisible>>,
+}
+
+#[export(ts = "InputFocusVisible", module = "bevy-ts/input")]
+impl FocusVisibleParam<'_> {
+    /// Whether the focused entity should show that it has focus.
+    pub fn get(&self) -> bool {
+        self.visible.as_ref().is_some_and(|v| v.0)
+    }
+}
+
+/// `DirectionalNavigation`: bevy_ui's `AutoDirectionalNavigator`, manual edges of the
+/// `DirectionalNavigationMap` first, then the nearest `AutoDirectionalNavigation` node. `None`
+/// without the map, which only `"directionalNavigation": true` adds.
+#[derive(SystemParam)]
+pub struct NavigationParam<'w, 's> {
+    nav: Option<AutoDirectionalNavigator<'w, 's>>,
+}
+
+/// Bevy's eight `CompassOctant`s, in its order: the TS enum's members.
+const OCTANTS: [(&str, CompassOctant); 8] = [
+    ("North", CompassOctant::North),
+    ("NorthEast", CompassOctant::NorthEast),
+    ("East", CompassOctant::East),
+    ("SouthEast", CompassOctant::SouthEast),
+    ("South", CompassOctant::South),
+    ("SouthWest", CompassOctant::SouthWest),
+    ("West", CompassOctant::West),
+    ("NorthWest", CompassOctant::NorthWest),
+];
+
+/// `CompassOctant`'s numbers follow the input enums', so no number means two things.
+const OCTANT_BASE: u32 = GAMEPAD_AXIS_BASE + GAMEPAD_AXES.len() as u32;
+
+fn octant(n: u32) -> Result<CompassOctant, String> {
+    n.checked_sub(OCTANT_BASE).and_then(|i| OCTANTS.get(i as usize)).map(|(_, o)| *o).ok_or_else(|| not_a(n, "CompassOctant", "CompassOctant.South"))
+}
+
+#[export(ts = "DirectionalNavigation", module = "bevy-ts/input")]
+impl NavigationParam<'_, '_> {
+    /// Moves `InputFocus` to the neighbour in `direction` and returns it; `undefined` when nothing
+    /// has focus or there is no neighbour that way.
+    pub fn navigate(&mut self, direction: u32) -> Result<Option<Entity>, String> {
+        let d = octant(direction)?;
+        let nav = self.nav.as_mut().ok_or("DirectionalNavigation has no map: set \"directionalNavigation\": true in bevy-ts.json")?;
+        Ok(nav.navigate(d).ok())
     }
 }
 
@@ -410,12 +468,13 @@ impl TouchesParam<'_> {
 }
 
 /// Each input enum: its TS name, doc, variant names and first number.
-fn enums() -> [(&'static str, &'static str, Vec<&'static str>, u32); 4] {
+fn enums() -> [(&'static str, &'static str, Vec<&'static str>, u32); 5] {
     [
         ("KeyCode", "Bevy's `KeyCode`, the physical key, by its Rust name.", names(KEY_CODES), 0),
         ("MouseButton", "Bevy's `MouseButton`, by its Rust name; `Other(n)` has no member.", names(MOUSE_BUTTONS), MOUSE_BUTTON_BASE),
         ("GamepadButton", "Bevy's `GamepadButton`, by its Rust name; `Other(n)` has no member.", names(GAMEPAD_BUTTONS), GAMEPAD_BUTTON_BASE),
         ("GamepadAxis", "Bevy's `GamepadAxis`, by its Rust name; `Other(n)` has no member.", names(GAMEPAD_AXES), GAMEPAD_AXIS_BASE),
+        ("CompassOctant", "Bevy's `CompassOctant`: a direction for `DirectionalNavigation.navigate`.", names(&OCTANTS), OCTANT_BASE),
     ]
 }
 
@@ -467,6 +526,17 @@ fn dts() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compass_octants_follow_the_input_enums_and_decode() {
+        for (i, (name, o)) in OCTANTS.iter().enumerate() {
+            let n = OCTANT_BASE + i as u32;
+            assert!(input_code_of(n).is_none(), "{n} is also an input code");
+            assert!(js().contains(&format!("  {name}: {n},\n")) && dts().contains(&format!("  {name} = {n},\n")));
+            assert_eq!(octant(n).unwrap(), *o);
+        }
+        assert!(octant(0).unwrap_err().contains("a KeyCode"));
+    }
 
     /// Each TS enum is its Rust list: same names, same numbers, decoded back to the variant.
     #[test]

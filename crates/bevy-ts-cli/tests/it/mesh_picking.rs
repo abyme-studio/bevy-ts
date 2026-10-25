@@ -9,7 +9,7 @@ use bevy_ts_tsx::events::TsxHandlers;
 
 fn engine(extra: impl Plugin, mesh_picking: bool) -> App {
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    let mut app = base_app(&engine, extra, Display::Headless, Default::default(), None, true, mesh_picking, &[]);
+    let mut app = base_app(&engine, extra, Display::Headless, Default::default(), None, true, bevy_ts_cli::project::Switches { mesh_picking, ..Default::default() }, &[]);
     app.finish();
     app.cleanup();
     app
@@ -75,7 +75,7 @@ fn pointer_scene() -> App {
     use bevy::picking::events::{PointerClick, PointerOut, PointerOver};
     use bevy_ts_viewport::offscreen::OffscreenPointerPlugin;
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, true, &[]);
+    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, bevy_ts_cli::project::Switches { mesh_picking: true, ..Default::default() }, &[]);
     let image = app.world().resource::<bevy_ts_cli::headless::Offscreen>().0.clone();
     app.add_plugins(OffscreenPointerPlugin { image });
     app.finish();

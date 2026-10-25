@@ -31,7 +31,10 @@ fn the_gallery_mounts_every_intrinsic() {
         .init_asset::<StandardMaterial>()
         .init_asset::<Image>()
         .init_asset::<bevy::image::TextureAtlasLayout>()
-        .init_resource::<bevy::picking::pointer::PointerMap>();
+        .init_resource::<bevy::picking::pointer::PointerMap>()
+        // The Focus panel's system reads `bevy-ts/input`, with the gallery's two switches on.
+        .add_plugins((bevy::input::InputPlugin, bevy::input_focus::InputFocusPlugin, bevy_ts_cli::input::ScriptInputPlugin))
+        .add_plugins((bevy::input_focus::tab_navigation::TabNavigationPlugin, bevy::input_focus::directional_navigation::DirectionalNavigationPlugin));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     updates(&mut app, 2);

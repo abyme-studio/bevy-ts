@@ -4,6 +4,7 @@
 //! `TextColor` and `Node` alone.
 
 use bevy::input_focus::AutoFocus;
+use bevy::input_focus::tab_navigation::{TabGroup, TabIndex};
 use bevy::ui::InteractionDisabled;
 use bevy::ui_widgets::ActivateOnPress;
 use bevy::prelude::*;
@@ -33,8 +34,9 @@ pub enum UiKind {
     Input,
 }
 
-/// What every UI intrinsic but `<span>` takes: its `Node`'s look and placement, and `disabled`.
-const NODE_PROPS: &[&str] = &["style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "disabled"];
+/// What every UI intrinsic but `<span>` takes: its `Node`'s look and placement, `disabled`, and
+/// focus (`tabIndex`, `tabGroup`, `autoFocus`).
+const NODE_PROPS: &[&str] = &["style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "disabled", "tabIndex", "tabGroup", "autoFocus"];
 
 /// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak` and `textShadow`.
 const SPAN_PROPS: &[&str] = &["text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough"];
@@ -64,7 +66,7 @@ impl UiKind {
                 "textShadow",
             ],
             UiKind::Image => &["src", "color", "flipX", "flipY", "rect", "atlas", "mode"],
-            UiKind::Input => &["size", "color", "initialValue", "maxCharacters", "autoFocus"],
+            UiKind::Input => &["size", "color", "initialValue", "maxCharacters"],
         };
         NODE_PROPS.iter().chain(own).copied().collect()
     }
@@ -105,7 +107,16 @@ enum Part {
     Disabled,
     /// `activateOnPress` on `<button>`: `ActivateOnPress`, activate on press, not release.
     ActivateOnPress,
+    /// `tabIndex`: `TabIndex`; an `<input>` without one has `TabIndex(0)`, as a browser's does.
+    TabIndex,
+    /// `tabGroup`: `TabGroup`, `{ order, modal }`.
+    TabGroup,
 }
+
+/// On an entity whose `tabIndex` or `tabGroup` is a prop, so the engine can name one mounted
+/// while tab navigation is off. Not on a `TabIndex` written otherwise (`<input>`'s default).
+#[derive(Component, Default)]
+pub struct TabProp;
 
 fn part(kind: UiKind, prop: &str) -> Part {
     match prop {
@@ -130,6 +141,8 @@ fn part(kind: UiKind, prop: &str) -> Part {
         "autoFocus" => Part::Focus,
         "disabled" => Part::Disabled,
         "activateOnPress" => Part::ActivateOnPress,
+        "tabIndex" => Part::TabIndex,
+        "tabGroup" => Part::TabGroup,
         "color" if kind == UiKind::Image => Part::Image,
         "camera" if kind == UiKind::Viewport => Part::Viewport,
         "camera" => Part::Camera,
@@ -1092,6 +1105,8 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::Focus => props["autoFocus"].as_bool().map(|_| ()).ok_or_else(|| "autoFocus takes a boolean".into()),
         Part::Disabled => props["disabled"].as_bool().map(|_| ()).ok_or_else(|| "disabled takes a boolean".into()),
         Part::ActivateOnPress => props["activateOnPress"].as_bool().map(|_| ()).ok_or_else(|| "activateOnPress takes a boolean".into()),
+        Part::TabIndex => tab_index(&props["tabIndex"]).map(|_| ()),
+        Part::TabGroup => tab_group(&props["tabGroup"]).map(|_| ()),
     }
 }
 
@@ -1288,8 +1303,58 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         }
         Part::Disabled => marker::<InteractionDisabled>(world, e, props, "disabled"),
         Part::ActivateOnPress => marker::<ActivateOnPress>(world, e, props, "activateOnPress"),
+        Part::TabIndex => match props.get("tabIndex") {
+            Some(v) => {
+                world.entity_mut(e).insert((TabIndex(tab_index(v)?), TabProp));
+            }
+            None if kind == UiKind::Input => {
+                world.entity_mut(e).insert(TabIndex(0));
+                tab_prop_gone(world, e, props);
+            }
+            None => {
+                world.entity_mut(e).remove::<TabIndex>();
+                tab_prop_gone(world, e, props);
+            }
+        },
+        Part::TabGroup => match props.get("tabGroup") {
+            Some(v) => {
+                world.entity_mut(e).insert((tab_group(v)?, TabProp));
+            }
+            None => {
+                world.entity_mut(e).remove::<TabGroup>();
+                tab_prop_gone(world, e, props);
+            }
+        },
     }
     Ok(())
+}
+
+/// Removes `TabProp` once neither `tabIndex` nor `tabGroup` is a prop.
+fn tab_prop_gone(world: &mut World, e: Entity, props: &Map<String, Value>) {
+    if !props.contains_key("tabIndex") && !props.contains_key("tabGroup") {
+        world.entity_mut(e).remove::<TabProp>();
+    }
+}
+
+fn tab_index(v: &Value) -> Result<i32, String> {
+    v.as_i64().and_then(|n| i32::try_from(n).ok()).ok_or_else(|| format!("tabIndex takes a whole number, not {v}"))
+}
+
+/// `{ order?, modal? }`: Bevy's `TabGroup` fields, `0` and `false` when left out.
+fn tab_group(v: &Value) -> Result<TabGroup, String> {
+    let o = v.as_object().ok_or_else(|| format!("tabGroup takes {{ order, modal }}, not {v}"))?;
+    if let Some(k) = o.keys().find(|k| *k != "order" && *k != "modal") {
+        return Err(format!("tabGroup has no field {k}; it takes order and modal"));
+    }
+    let order = match o.get("order") {
+        None => 0,
+        Some(n) => n.as_i64().and_then(|n| i32::try_from(n).ok()).ok_or_else(|| format!("tabGroup order takes a whole number, not {n}"))?,
+    };
+    let modal = match o.get("modal") {
+        None => false,
+        Some(b) => b.as_bool().ok_or_else(|| format!("tabGroup modal takes a boolean, not {b}"))?,
+    };
+    Ok(TabGroup { order, modal })
 }
 
 /// A boolean prop that is a marker component: present while the prop is `true`.
@@ -1322,7 +1387,7 @@ pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             // no wrapping, so text wider than the field scrolls, focused or not.
             world.entity_mut(e).insert((text, TextLayout::no_wrap())).insert(TextInput);
             cursor(world, e, kind, props)?;
-            parts.push(Part::Font);
+            parts.extend([Part::Font, Part::TabIndex]);
         }
         _ => {}
     }
@@ -1373,11 +1438,11 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
             em.remove::<ViewportNode>();
         }
         UiKind::Input => {
-            em.remove::<(TextInput, EditableText, TextFont, TextColor, TextLayout, TextCursorStyle, AutoFocus)>();
+            em.remove::<(TextInput, EditableText, TextFont, TextColor, TextLayout, TextCursorStyle)>();
         }
         UiKind::Node => {}
     }
-    em.remove::<(UiTargetCamera, InteractionDisabled, ActivateOnPress)>();
+    em.remove::<(UiTargetCamera, InteractionDisabled, ActivateOnPress, AutoFocus, TabIndex, TabGroup, TabProp)>();
 }
 
 #[cfg(test)]

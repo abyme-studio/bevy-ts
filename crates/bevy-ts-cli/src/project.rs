@@ -1,6 +1,7 @@
 //! `bevy-ts.json`: the project file. Found by walking up from the entry (or the working
 //! directory). Only `native`, `features` and `engineCache` concern the engine build; `name` and
-//! `entry` concern `bevy-ts build`; `levels`, `meshPicking` and `diagnostics` are read when the game runs.
+//! `entry` concern `bevy-ts build`; `levels` and the switches (`meshPicking`, `tabNavigation`,
+//! `directionalNavigation`) and `diagnostics` are read when the game runs.
 //!
 //! ```jsonc
 //! {
@@ -16,6 +17,8 @@
 //!   "engineCache": "/mnt/team/engines",        // a shared directory of built engines
 //!   "levels": { "prefabEdits": "override" },   // where an edit inside a placed prefab goes
 //!   "meshPicking": true,                       // Bevy's MeshPickingPlugin; baked into a build
+//!   "tabNavigation": true,                     // Bevy's TabNavigationPlugin: Tab moves focus
+//!   "directionalNavigation": true,             // Bevy's DirectionalNavigationPlugin
 //!   "diagnostics": ["FrameTimeDiagnosticsPlugin"], // Bevy's diagnostics plugins; baked into a build
 //!   "net": { "allow": ["127.0.0.1:4477", "${ABYME_URL}"] }, // hosts scripts may connect to
 //!   "env": ["ABYME_URL", "ABYME_KEY"]          // the only variables `process.env` shows
@@ -77,9 +80,9 @@ pub struct ProjectConfig {
     pub engine_cache: Option<String>,
     #[serde(default)]
     pub levels: LevelsConfig,
-    /// Adds Bevy's `MeshPickingPlugin`: 3D meshes take pointer events. Off by default, as in Bevy.
-    #[serde(default, rename = "meshPicking", deserialize_with = "mesh_picking")]
-    pub mesh_picking: bool,
+    /// The Bevy plugins a project opts into.
+    #[serde(flatten)]
+    pub switches: Switches,
     /// Bevy's diagnostics plugins to add, by Bevy's names (docs/diagnostics.md). None by default.
     #[serde(default, deserialize_with = "diagnostics")]
     pub diagnostics: Vec<String>,
@@ -91,12 +94,45 @@ pub struct ProjectConfig {
     pub env: Vec<String>,
 }
 
-/// `meshPicking` as a bool, its error naming the field (serde's names only the type).
-fn mesh_picking<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+/// Bevy plugins a project opts into, each off by default as Bevy keeps it out of
+/// `DefaultPlugins`: read from `bevy-ts.json` under `dev` and from `game.json` when playing, where
+/// `bevy-ts build` writes each that is on. None is an engine hash input: the prebuilt engine has
+/// every plugin, and `base_app` adds the ones switched on.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Switches {
+    /// `MeshPickingPlugin`: 3D meshes take pointer events.
+    #[serde(default, rename = "meshPicking", deserialize_with = "mesh_picking", skip_serializing_if = "is_false")]
+    pub mesh_picking: bool,
+    /// `TabNavigationPlugin`: Tab and Shift-Tab move focus in tab order.
+    #[serde(default, rename = "tabNavigation", deserialize_with = "tab_navigation", skip_serializing_if = "is_false")]
+    pub tab_navigation: bool,
+    /// `DirectionalNavigationPlugin`: the map `DirectionalNavigation` navigates.
+    #[serde(default, rename = "directionalNavigation", deserialize_with = "directional_navigation", skip_serializing_if = "is_false")]
+    pub directional_navigation: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
+}
+
+/// A switch as a bool, its error naming the field (serde's names only the type).
+fn switch<'de, D: serde::Deserializer<'de>>(d: D, field: &str) -> Result<bool, D::Error> {
     match serde_json::Value::deserialize(d)? {
         serde_json::Value::Bool(b) => Ok(b),
-        v => Err(serde::de::Error::custom(format!("meshPicking must be true or false, not {v}"))),
+        v => Err(serde::de::Error::custom(format!("{field} must be true or false, not {v}"))),
     }
+}
+
+fn mesh_picking<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    switch(d, "meshPicking")
+}
+
+fn tab_navigation<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    switch(d, "tabNavigation")
+}
+
+fn directional_navigation<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    switch(d, "directionalNavigation")
 }
 
 /// `diagnostics` as a list of plugin names bevy-ts adds, its error naming the bad one.
@@ -261,11 +297,14 @@ mod tests {
     }
 
     #[test]
-    fn mesh_picking_is_a_bool_off_by_default() {
-        assert!(!parse("{}").unwrap().mesh_picking);
-        assert!(parse(r#"{ "meshPicking": true }"#).unwrap().mesh_picking);
-        assert!(!parse(r#"{ "meshPicking": false }"#).unwrap().mesh_picking);
-        let e = parse(r#"{ "meshPicking": "yes" }"#).unwrap_err();
-        assert!(e.contains("meshPicking") && e.contains("\"yes\""), "{e}");
+    fn switches_are_bools_off_by_default() {
+        assert_eq!(parse("{}").unwrap().switches, Switches::default());
+        let on = parse(r#"{ "meshPicking": true, "tabNavigation": true, "directionalNavigation": true }"#).unwrap().switches;
+        assert_eq!(on, Switches { mesh_picking: true, tab_navigation: true, directional_navigation: true });
+        assert!(!parse(r#"{ "meshPicking": false }"#).unwrap().switches.mesh_picking);
+        for field in ["meshPicking", "tabNavigation", "directionalNavigation"] {
+            let e = parse(&format!(r#"{{ "{field}": "yes" }}"#)).unwrap_err();
+            assert!(e.contains(field) && e.contains("\"yes\""), "{e}");
+        }
     }
 }
