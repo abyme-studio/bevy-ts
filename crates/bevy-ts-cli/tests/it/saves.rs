@@ -112,3 +112,51 @@ fn a_played_game_saves_in_the_players_data_folder() {
         assert_eq!(bevy_ts_cli::play::save_dir(bad), None, "{bad}");
     }
 }
+
+/// Every entity of the arena, on a rendering engine, saves whole: what Bevy computes or cannot
+/// serialise is in the always-denied list, and every path in that list names a registered type.
+/// A Bevy upgrade that adds an unserialisable component fails here, naming it. macOS (Metal).
+#[cfg(target_os = "macos")]
+#[test]
+fn the_whole_arena_saves() {
+    use bevy_ts::generation::{DevSource, ReloadStatus};
+    use bevy_ts_cli::compile::Compiler;
+    use bevy_ts_cli::headless;
+    use std::path::Path;
+    use std::sync::Arc;
+
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena");
+    let mut files: Vec<(String, String)> = Vec::new();
+    for f in ["src/enemy.tsx", "src/player.tsx", "src/hud.tsx", "src/game.tsx", "assets/levels/arena.bsn", "assets/levels/room.bsn"] {
+        files.push((f.to_string(), std::fs::read_to_string(src.join(f)).unwrap()));
+    }
+    files.push(("package.json".into(), "{}".into()));
+    let list: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+    let dir = project("saves-arena", &list);
+    let mut app = App::new();
+    app.add_plugins(headless::default_plugins(true).set(sync_pipelines()).set(headless::asset_plugin_unwatched(&dir.join("assets"))))
+        .add_plugins(headless::HeadlessPlugin)
+        .add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
+        .add_plugins(bevy_ts_tsx::TsxPlugin)
+        .add_plugins(bevy_ts_levels::engine::LevelsPlugin);
+    app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("src/game.tsx"), true).unwrap())));
+    app.insert_resource(SaveDir(dir.join("saves"))).init_resource::<Got>().add_systems(Last, collect);
+    app.finish();
+    app.cleanup();
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    {
+        let registry = app.world().resource::<AppTypeRegistry>().read();
+        for p in bevy_ts::saves::ALWAYS_DENIED {
+            assert!(registry.get_with_type_path(p).is_some(), "{p} is not a registered type");
+        }
+    }
+    // The level and the HUD are in: every camera, light, mesh and UI node.
+    settle_levels(&mut app);
+    updates(&mut app, 10);
+    let all: Vec<u64> = app.world().archetypes().iter().flat_map(|a| a.entities().iter().map(|e| e.id().to_bits())).collect();
+    assert!(all.len() > 100, "{} entities", all.len());
+    bevy_ts::saves::save(app.world_mut(), "all", serde_json::from_value(json!({ "entities": all })).unwrap());
+    until(&mut app, "the save", |a| !a.world().resource::<Got>().0.is_empty());
+    assert_eq!(app.world().resource::<Got>().0, ["saved all None"]);
+}

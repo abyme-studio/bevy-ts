@@ -69,12 +69,37 @@ pub struct WorldLoaded {
 #[derive(Resource, Clone, Debug, PartialEq)]
 pub struct SaveDir(pub PathBuf);
 
-/// Components never saved: bevy-ts's bookkeeping, and ones Bevy computes from others (task 3.2
-/// measured which reflected components of a played scene fail or need not be saved).
-const ALWAYS_DENIED: &[&str] = &[
+/// Components never saved, beside bevy-ts's own bookkeeping. Measured over every entity of
+/// `examples/arena` (openspec world-saves task 3.2): ones Bevy computes from others, which come
+/// back by themselves, and ones with no serde form in Bevy 0.20, which fail any save.
+pub const ALWAYS_DENIED: &[&str] = &[
+    // Computed.
     "bevy_transform::components::global_transform::GlobalTransform",
+    "bevy_transform::components::transform::TransformTreeChanged",
     "bevy_camera::visibility::InheritedVisibility",
     "bevy_camera::visibility::ViewVisibility",
+    "bevy_camera::visibility::VisibleEntities",
+    "bevy_camera::visibility::CascadesVisibleEntities",
+    "bevy_camera::primitives::Frustum",
+    "bevy_camera::primitives::CascadesFrusta",
+    "bevy_light::cascade::Cascades",
+    "bevy_ui::ui_node::ComputedNode",
+    "bevy_ui::ui_node::ComputedUiTargetCamera",
+    "bevy_ui::ui_node::ComputedUiRenderTargetInfo",
+    "bevy_ui::stack::ComputedStackIndex",
+    "bevy_ui::ui_transform::UiGlobalTransform",
+    "bevy_ui::measurement::ContentSize",
+    "bevy_ui::widget::text::TextNodeFlags",
+    "bevy_text::pipeline::TextLayoutInfo",
+    "bevy_text::text::ComputedTextBlock",
+    // Names observer entities, which a save never holds.
+    "bevy_ecs::observer::distributed_storage::ObservedBy",
+    // No serde form in Bevy 0.20.
+    "bevy_camera::visibility::VisibilityClass",
+    "bevy_camera::camera::CameraMainTextureUsages",
+    "bevy_render::camera::CameraRenderGraph",
+    "bevy_camera::camera::Exposure",
+    "bevy_render::view::ColorGrading",
 ];
 
 /// `saveWorld`'s options, as JS sends them: classes by TS name or Rust type path.
