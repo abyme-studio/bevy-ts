@@ -1,6 +1,6 @@
 // Type tests for the UI intrinsics' props: `tsc -p test` must pass, and every `@ts-expect-error`
 // must be an error.
-import { app, conicGradient, deg, fr, linearGradient, minmax, percent, px, radialGradient, ref, repeat, sliced, span, tiled } from "bevy-ts";
+import { app, conicGradient, deg, fr, linearGradient, minmax, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
 import { ZIndex } from "bevy-ts/bevy";
 
 app.scene("ui", () => (
@@ -60,5 +60,37 @@ export const Media = () => (
     <viewport />
     {/* @ts-expect-error  not a mode */}
     <image src="a.png" mode="cover" />
+  </node>
+);
+
+const [vol, setVol] = signal(0);
+const scrolled = ref();
+export const Widgets = () => (
+  <node scrollArea ref={scrolled} style={{ overflow: { y: "scroll" } }}>
+    <checkbox checked={() => vol() > 0} onValueChange={({ value, isFinal }) => setVol(value && isFinal ? 1 : 0)} />
+    <checkbox initialChecked />
+    <radioGroup onValueChange={({ key, value }) => key === null || value}>
+      <radio key="a" />
+    </radioGroup>
+    <slider value={() => vol()} min={0} max={10} step={1} precision={0} orientation="horizontal" trackClick="snap" onValueChange={({ value }) => setVol(value)}>
+      <sliderThumb />
+    </slider>
+    <scrollbar target={scrolled} orientation="vertical" minThumbLength={8}>
+      <scrollbarThumb background="#888" radius={4} style={{ border: 1 }} />
+    </scrollbar>
+    <tabList initialSelected="a" activation="automatic" onValueChange={({ key }) => key}>
+      <tab key="a" />
+    </tabList>
+    <listBox multiSelect onValueChange={({ key }) => key}>
+      <listItem selected={() => true} />
+    </listBox>
+    {/* @ts-expect-error  controlled and initial: give one */}
+    <slider value={() => vol()} initialValue={0} />
+    {/* @ts-expect-error  initial props are written at mount: not bound */}
+    <checkbox initialChecked={() => true} />
+    {/* @ts-expect-error  a thumb has no width: its scrollbar sizes it */}
+    <scrollbarThumb style={{ width: 4 }} />
+    {/* @ts-expect-error  a scrollbar needs its target */}
+    <scrollbar />
   </node>
 );

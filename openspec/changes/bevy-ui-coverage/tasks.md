@@ -68,13 +68,13 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 5. Value widgets
 
-- [ ] 5.1 `UiKind`s `checkbox`, `radioGroup`, `radio`, `slider`, `sliderThumb`, `scrollbar`, `scrollbarThumb` (no `Node`; design 11), `tabList`, `tab`, `listBox`, `listItem`; `scrollArea` on `<node>`
-- [ ] 5.2 Controlled and `initial*` per ui-widgets: bindings write `Checked`, `SliderValue`, `SelectedTab` (by key), `Selected`; `initial*` writes on mount and attaches Bevy's self-update; the radio-group mix is a load error
-- [ ] 5.3 `onValueChange` observers for `ValueChange<bool>`, `<f32>`, `<Entity>`, `<Option<Entity>>`, entity-local; `key` from the tree for entity values
-- [ ] 5.4 `jsx-runtime.d.ts`: props per widget, `onValueChange` payload typed per widget, controlled/initial conflicts as type errors
-- [ ] 5.5 Tests per widget headless (pointer by triggered events): controlled checkbox with and without a handler, initial checkbox kept across reload, radio group gives `key`, a child checkbox not heard by the group, slider drag `isFinal` false then true, scrollbar drag writes `ScrollPosition`, `scrollArea` wheel scroll, tab list by key, list box selection; keyboard on each in viewport mode
-- [ ] 5.6 Gallery panel and `docs/ui.md` "Widgets" section
-- [ ] 5.7 `scripts/gen-bevy-types.sh` writes `packages/bevy-ts/input.d.ts` (the `bevy-ts/input` module's declarations), with the same staleness check as `bevy.d.ts`; the gallery's arrow demo, keyboard-only focus ring and `"directionalNavigation": true` come back
+- [x] 5.1 `UiKind`s `checkbox`, `radioGroup`, `radio`, `slider`, `sliderThumb`, `scrollbar`, `scrollbarThumb` (no `Node`; design 11), `tabList`, `tab`, `listBox`, `listItem`; `scrollArea` on `<node>`
+- [x] 5.2 Controlled and `initial*` per ui-widgets: bindings write `Checked`, `SliderValue`, `SelectedTab` (by key), `Selected`; `initial*` writes on mount and attaches Bevy's self-update; the radio-group mix is a load error
+- [x] 5.3 `onValueChange` observers for `ValueChange<bool>`, `<f32>`, `<Entity>`, `<Option<Entity>>`, entity-local; `key` from the tree for entity values
+- [x] 5.4 `jsx-runtime.d.ts`: props per widget, `onValueChange` payload typed per widget, controlled/initial conflicts as type errors
+- [x] 5.5 Tests per widget headless (pointer by triggered events): controlled checkbox with and without a handler, initial checkbox kept across reload, radio group gives `key`, a child checkbox not heard by the group, slider drag `isFinal` false then true, scrollbar drag writes `ScrollPosition`, `scrollArea` wheel scroll, tab list by key, list box selection; keyboard on each in viewport mode
+- [x] 5.6 Gallery panel and `docs/ui.md` "Widgets" section
+- [x] 5.7 `scripts/gen-bevy-types.sh` writes `packages/bevy-ts/input.d.ts` (the `bevy-ts/input` module's declarations), with the same staleness check as `bevy.d.ts`; the gallery's arrow demo, keyboard-only focus ring and `"directionalNavigation": true` come back
 
 ## 6. Overlays
 

@@ -1,7 +1,8 @@
 //! Event props, each `on` plus a Bevy 0.20 event's name and an entity-local observer of it
 //! (operator ruling 2026-10-20): every picking event (`onPointerClick` ... `onPointerScroll`) on
 //! any `<entity>` or UI element; `onActivate` on a `<button>`; `onFocusGained` and `onFocusLost`
-//! on any UI element, its own focus only; `onTextEditChange` and
+//! on any UI element, its own focus only; `onValueChange` on the value widgets, each its own
+//! `ValueChange<T>` (design 5); `onTextEditChange` and
 //! `onKeyboardInput` on an `<input>`, with `onSubmit` (Enter) and `onCancel` (Escape), which Bevy
 //! lacks, read from the same `KeyboardInput` (operator ruling 2026-10-22). The observer queues the event with the handler's id; the
 //! queue goes to JS in the frame's one host call, in arrival order. Picking events bubble up
@@ -22,7 +23,8 @@ use bevy::picking::events::{
     PointerCancel, PointerClick, PointerDrag, PointerDragDrop, PointerDragEnd, PointerDragEnter, PointerDragLeave, PointerDragOver, PointerDragStart, PointerEnter,
     PointerLeave, PointerMove, PointerOut, PointerOver, PointerPress, PointerRelease, PointerScroll,
 };
-use bevy::ui_widgets::Activate;
+use bevy::ui_widgets::{Activate, ValueChange};
+use crate::tree::TsxNode;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 use bevy::text::{EditableText, EditableTextFilter, FontCx, LayoutCx, TextEditChange};
@@ -110,6 +112,50 @@ fn on_activate(on: On<Activate>, handlers: Query<&TsxHandlers>, mut tree: ResMut
     let Ok(h) = handlers.get(entity) else { return };
     let Some(id) = h.ids.get("Activate") else { return };
     tree.reactive.events.push((*id, json!({ "kind": "Activate", "entity": entity.to_bits() })));
+}
+
+/// `ValueChange<T>` on the widget it is triggered on (Bevy does not propagate it), as
+/// `{ value, isFinal }`; `value` is the JSON of `T`, and an entity value adds the chosen child's
+/// TSX `key` (design 8).
+fn value_change(tree: &mut TsxTree, handlers: &TsxHandlers, entity: Entity, value: Value, key: Option<Value>, is_final: bool) {
+    let Some(id) = handlers.ids.get("ValueChange") else { return };
+    let mut ev = json!({ "kind": "ValueChange", "entity": entity.to_bits(), "value": value, "isFinal": is_final });
+    if let Some(k) = key {
+        ev["key"] = k;
+    }
+    tree.reactive.events.push((*id, ev));
+}
+
+/// The TSX key of an entity tsx made (its explicit key or `type#n`), or `null`.
+fn key(nodes: &Query<&TsxNode>, e: Entity) -> Value {
+    nodes.get(e).ok().and_then(|n| n.key_path.last().cloned()).map_or(Value::Null, Value::from)
+}
+
+fn on_value_bool(on: On<ValueChange<bool>>, handlers: Query<&TsxHandlers>, mut tree: ResMut<TsxTree>) {
+    let e = on.event_target();
+    let Ok(h) = handlers.get(e) else { return };
+    value_change(&mut tree, h, e, json!(on.event().value), None, on.event().is_final);
+}
+
+fn on_value_f32(on: On<ValueChange<f32>>, handlers: Query<&TsxHandlers>, mut tree: ResMut<TsxTree>) {
+    let e = on.event_target();
+    let Ok(h) = handlers.get(e) else { return };
+    value_change(&mut tree, h, e, json!(on.event().value), None, on.event().is_final);
+}
+
+fn on_value_entity(on: On<ValueChange<Entity>>, handlers: Query<&TsxHandlers>, nodes: Query<&TsxNode>, mut tree: ResMut<TsxTree>) {
+    let e = on.event_target();
+    let Ok(h) = handlers.get(e) else { return };
+    let v = on.event().value;
+    value_change(&mut tree, h, e, json!(v.to_bits()), Some(key(&nodes, v)), on.event().is_final);
+}
+
+fn on_value_option(on: On<ValueChange<Option<Entity>>>, handlers: Query<&TsxHandlers>, nodes: Query<&TsxNode>, mut tree: ResMut<TsxTree>) {
+    let e = on.event_target();
+    let Ok(h) = handlers.get(e) else { return };
+    let v = on.event().value;
+    let (value, k) = v.map_or((Value::Null, Value::Null), |v| (json!(v.to_bits()), key(&nodes, v)));
+    value_change(&mut tree, h, e, value, Some(k), on.event().is_final);
 }
 
 /// `FocusGained` on the entity itself: Bevy bubbles it to ancestors, and a handler hears only its
@@ -250,6 +296,8 @@ pub fn set(world: &mut World, e: Entity, ids: &BTreeMap<String, u32>) {
                 "FocusGained" => em.observe(on_focus_gained),
                 "FocusLost" => em.observe(on_focus_lost),
                 "TextEditChange" => em.observe(on_text_edit_change),
+                // One per `T`: only the one the widget triggers ever runs.
+                "ValueChange" => em.observe(on_value_bool).observe(on_value_f32).observe(on_value_entity).observe(on_value_option),
                 _ => em.observe(on_keyboard_input),
             };
         }

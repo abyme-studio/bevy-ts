@@ -23,6 +23,11 @@ app.scene("hud", () => (
 | `<viewport camera>` | `Node`, `ViewportNode` |
 | `<button>` | `Node`, `Button`, picking |
 | `<input>` | `Node`, `TextInput` (with `EditableText`) |
+| `<checkbox>`, `<radioGroup>`, `<radio>` | `Node`, `Checkbox`, `RadioGroup`, `RadioButton` ([Widgets](#widgets)) |
+| `<slider>`, `<sliderThumb>` | `Node`, `Slider`, `SliderThumb` |
+| `<scrollbar target>`, `<scrollbarThumb>` | `Node`, `Scrollbar`; `ScrollbarThumb` (no `Node`) |
+| `<tabList>`, `<tab>` | `Node`, `TabList`, `Tab` |
+| `<listBox>`, `<listItem>` | `Node`, `ListBox`, `ListItem` |
 
 An unknown prop, style key or word fails the load and names it with the accepted ones.
 
@@ -309,3 +314,52 @@ Keys reach a field only with a primary window: in a game window or in viewport m
 `--headless` ([viewport.md](viewport.md#typing)). A key typed into a field still shows in
 `Keys` from `bevy-ts/input`; check `InputFocus` for single-key shortcuts
 ([native.md](native.md#ports-and-built-in-modules)).
+
+## Widgets
+
+Bevy's value widgets, from `bevy_ui_widgets`. Pointer and keys are Bevy's: a click, a drag, Space
+or Enter, and the arrows on a focused widget (`tabIndex`, [Focus](#focus)). Each draws nothing of
+its own; the game styles it, and reads its state with `has` ([Reading markers](#reading-markers)).
+
+```tsx
+const [volume, setVolume] = signal(50);
+
+<slider value={() => volume()} min={0} max={100} onValueChange={({ value }) => setVolume(value)}>
+  <sliderThumb style={{ position: "absolute", width: px(12), height: px(12) }}
+    transform={() => ({ translation: [px(volume() * 1.88), 0] })} />
+</slider>
+```
+
+A widget's state is controlled or initial, never both (a type error, and a load error):
+
+- Controlled: `checked`, `value`, `selected`. The game's binding writes it; the widget changes
+  nothing and only raises `onValueChange`. A handler that does not write the binding back leaves
+  the widget as it was.
+- Initial: `initialChecked`, `initialValue`, `initialSelected`. Written at mount, then the widget
+  keeps its own, through Bevy's self-update observer. A reload does not reset it.
+
+With neither, a widget is uncontrolled from Bevy's default.
+
+| Widget | State | Props | `onValueChange` |
+|---|---|---|---|
+| `<checkbox>` | `checked`: `Checked` | | `value: boolean` |
+| `<radioGroup>` with `<radio>` | `checked` on each radio | | `value`, the radio, and its `key` |
+| `<slider>` | `value`: `SliderValue` | `min`, `max` (0 to 1), `step` (1), `precision`, `orientation`, `trackClick` | `value: number`; `isFinal` false while dragged |
+| `<tabList>` with `<tab>` | `selected`: a tab's `key`, or `null` | `orientation`, `activation` | `value`, the tab, and its `key` |
+| `<listBox>` with `<listItem>` | `selected` on each item | `multiSelect` | `value`, the item, and its `key` |
+| `<scrollbar target>` with `<scrollbarThumb>` | the target's `ScrollPosition` | `orientation`, `minThumbLength` (8) | none |
+
+Every event has `entity`, `value` and `isFinal`. A radio group's radios are all controlled or all
+initial: a group mixing `checked` and `initialChecked` fails the load, naming the group and
+both radios, wherever the radios come from (a `<For>` included). The group
+hears its radios only: a checkbox inside it does not raise the group's `onValueChange`. A list
+box is always the game's: Bevy moves the active row on the arrows and selects on Space, Enter or
+a click, by `onValueChange`, and `selected` is what shows. A tab list's `selected` key that no
+`<tab>` under it has selects nothing and warns once, naming the key.
+
+Bevy places a scrollbar's thumb, so `<scrollbarThumb>` has no `Node`: it takes `background`,
+`border`, `radius` and `style.border` only. Bevy does not place a slider's thumb: the game moves
+it, by `transform` as above or by `style`. `scrollArea` on a `<node>` (`ScrollArea`) scrolls it by
+the wheel; give it `style.overflow` `"scroll"` on that axis. `<scrollbar target={ref}>` follows
+the same node's `ScrollPosition`, and a thumb drag writes it.
+

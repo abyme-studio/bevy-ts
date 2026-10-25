@@ -433,6 +433,96 @@ export interface InputProps extends Omit<NodeProps, "children"> {
   value?: never;
 }
 
+/** `onValueChange`: Bevy's `ValueChange<T>` on this widget; `isFinal` is false while a slider is dragged. */
+export interface ValueChangeEvent<T> {
+  readonly kind: "ValueChange";
+  readonly entity: Entity;
+  readonly value: T;
+  readonly isFinal: boolean;
+  readonly commands: Commands;
+  readonly frame: number;
+}
+
+/** `onValueChange` choosing a child: `value` its entity, `key` its TSX key (`null` for one TSX did not make). */
+export interface ChoiceChangeEvent<T extends Entity | null> extends ValueChangeEvent<T> {
+  readonly key: string | null;
+}
+
+/**
+ * A widget's state: controlled (`checked`, the game's, written from its binding; the widget only
+ * raises `onValueChange`) or initial (`initialChecked`, written at mount; the widget keeps its own).
+ * Never both.
+ */
+type StateProp<S extends string, T> =
+  | ({ [K in S]?: Bindable<T> } & { [K in `initial${Capitalize<S>}`]?: never })
+  | ({ [K in S]?: never } & { [K in `initial${Capitalize<S>}`]?: T });
+
+/** `<node>`: a bevy_ui `Node`. */
+export interface PlainNodeProps extends NodeProps {
+  /** `ScrollArea`: the wheel scrolls it; give it `style.overflow` `"scroll"` on the axis. */
+  scrollArea?: Bindable<boolean>;
+}
+
+/** `<checkbox>` and `<radio>`: Bevy's `Checkbox` or `RadioButton`; `Checked` while checked. */
+export type CheckboxProps = NodeProps & StateProp<"checked", boolean> & {
+  onValueChange?: (event: ValueChangeEvent<boolean>) => void;
+};
+
+/** `<radioGroup>`: Bevy's `RadioGroup`. Its radios are uncontrolled unless they have `checked`. */
+export interface RadioGroupProps extends NodeProps {
+  onValueChange?: (event: ChoiceChangeEvent<Entity>) => void;
+}
+
+/** `<slider>`: Bevy's `Slider` with `SliderValue`, `SliderRange` (`min` to `max`, 0 to 1), `SliderStep` and `SliderPrecision`. */
+export type SliderProps = NodeProps & StateProp<"value", number> & {
+  min?: Bindable<number>;
+  max?: Bindable<number>;
+  /** Arrow keys move it this much (default 1). */
+  step?: Bindable<number>;
+  /** Decimal places a drag rounds to. */
+  precision?: Bindable<number>;
+  orientation?: Bindable<"auto" | "horizontal" | "vertical">;
+  /** A click on the track: start a drag there, step towards it, or snap to it. */
+  trackClick?: Bindable<"drag" | "step" | "snap">;
+  onValueChange?: (event: ValueChangeEvent<number>) => void;
+};
+
+/** `<scrollbar target={ref}>`: Bevy's `Scrollbar`, scrolling the target's `ScrollPosition`. */
+export interface ScrollbarProps extends NodeProps {
+  target: NodeRef | Entity;
+  orientation?: Bindable<"horizontal" | "vertical">;
+  /** The thumb's shortest length, in pixels (default 8). */
+  minThumbLength?: Bindable<number>;
+}
+
+/** `<scrollbarThumb>`: Bevy's `ScrollbarThumb`, with no `Node`: its scrollbar places and sizes it. */
+export interface ScrollbarThumbProps extends EntityProps {
+  background?: Bindable<ColorValue>;
+  border?: Bindable<ColorValue>;
+  radius?: Bindable<Corners>;
+  /** Only `border`, its widths. */
+  style?: Bindable<{ border?: Sides }>;
+}
+
+/** `<tabList>`: Bevy's `TabList`; `selected` is a `<tab>`'s key, or `null` for none. */
+export type TabListProps = NodeProps & StateProp<"selected", string | null> & {
+  orientation?: Bindable<"horizontal" | "vertical">;
+  /** Arrow keys select the tab they move to (`"automatic"`), or only focus it (`"manual"`). */
+  activation?: Bindable<"manual" | "automatic">;
+  onValueChange?: (event: ChoiceChangeEvent<Entity | null>) => void;
+};
+
+/** `<listBox>`: Bevy's `ListBox`. Its items' `selected` is the game's: Bevy changes none itself. */
+export interface ListBoxProps extends NodeProps {
+  multiSelect?: Bindable<boolean>;
+  onValueChange?: (event: ChoiceChangeEvent<Entity>) => void;
+}
+
+/** `<listItem>`: Bevy's `ListItem`; `Selected` while `selected`. */
+export interface ListItemProps extends NodeProps {
+  selected?: Bindable<boolean>;
+}
+
 type Vec2 = [number, number];
 
 // `<mesh shape>`: Bevy 0.20's mesh primitives (docs/meshes.md). Props are the Bevy constructor's
@@ -875,12 +965,23 @@ export declare namespace JSX {
     mesh2d: Mesh2dProps;
     material2d: Material2dProps;
     worldText: WorldTextProps;
-    node: NodeProps & KeyAttribute;
+    node: PlainNodeProps & KeyAttribute;
     button: ButtonProps & KeyAttribute;
     text: TextProps & KeyAttribute;
     span: SpanProps & KeyAttribute;
     image: ImageProps & KeyAttribute;
     viewport: ViewportProps & KeyAttribute;
     input: InputProps & KeyAttribute;
+    checkbox: CheckboxProps & KeyAttribute;
+    radioGroup: RadioGroupProps & KeyAttribute;
+    radio: CheckboxProps & KeyAttribute;
+    slider: SliderProps & KeyAttribute;
+    sliderThumb: NodeProps & KeyAttribute;
+    scrollbar: ScrollbarProps & KeyAttribute;
+    scrollbarThumb: ScrollbarThumbProps & KeyAttribute;
+    tabList: TabListProps & KeyAttribute;
+    tab: NodeProps & KeyAttribute;
+    listBox: ListBoxProps & KeyAttribute;
+    listItem: ListItemProps & KeyAttribute;
   }
 }

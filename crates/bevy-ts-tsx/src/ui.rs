@@ -1,4 +1,5 @@
-//! bevy_ui intrinsics: `<node>`, `<text>`, `<image>`, `<button>`, `<input>`. Each prop maps to
+//! bevy_ui intrinsics: `<node>`, `<text>`, `<image>`, `<button>`, `<input>`, and Bevy's value
+//! widgets (`widgets.rs`). Each prop maps to
 //! one component (`background` and `border` to a colour or a gradient), so a changed prop writes
 //! that component and no other: a bound `<text>` writes `Text` and leaves `TextFont`,
 //! `TextColor` and `Node` alone. `<worldText>` shares `<text>`'s font props and parsers, but is a
@@ -6,8 +7,12 @@
 
 use bevy::input_focus::AutoFocus;
 use bevy::input_focus::tab_navigation::{TabGroup, TabIndex};
-use bevy::ui::InteractionDisabled;
-use bevy::ui_widgets::ActivateOnPress;
+use bevy::ui::{Checked, InteractionDisabled, Selected};
+use bevy::ui_widgets::{
+    ActivateOnPress, Checkbox, ListBox, ListBoxMultiSelect, ListItem, RadioButton, RadioGroup, ScrollArea, Scrollbar, ScrollbarThumb, Slider, SliderPrecision, SliderRange,
+    SliderStep, SliderThumb, SliderValue, Tab, TabList,
+};
+use crate::widgets::{self, TabKey};
 use bevy::prelude::*;
 use bevy::text::{EditableText, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, TextCursorStyle, Underline, UnderlineColor};
 use bevy::camera::RenderTarget;
@@ -37,6 +42,18 @@ pub enum UiKind {
     Input,
     /// `<worldText>`: text in the 3D world, a component of its entity. No `Node`.
     WorldText,
+    Checkbox,
+    RadioGroup,
+    Radio,
+    Slider,
+    SliderThumb,
+    Scrollbar,
+    /// No `Node`: the scrollbar places it (design 11).
+    ScrollbarThumb,
+    TabList,
+    Tab,
+    ListBox,
+    ListItem,
 }
 
 /// What every UI intrinsic but `<span>` and `<worldText>` takes: its `Node`'s look and placement, `disabled`, and
@@ -64,6 +81,17 @@ impl UiKind {
             "viewport" => UiKind::Viewport,
             "input" => UiKind::Input,
             "worldText" => UiKind::WorldText,
+            "checkbox" => UiKind::Checkbox,
+            "radioGroup" => UiKind::RadioGroup,
+            "radio" => UiKind::Radio,
+            "slider" => UiKind::Slider,
+            "sliderThumb" => UiKind::SliderThumb,
+            "scrollbar" => UiKind::Scrollbar,
+            "scrollbarThumb" => UiKind::ScrollbarThumb,
+            "tabList" => UiKind::TabList,
+            "tab" => UiKind::Tab,
+            "listBox" => UiKind::ListBox,
+            "listItem" => UiKind::ListItem,
             _ => return None,
         })
     }
@@ -74,7 +102,10 @@ impl UiKind {
             UiKind::Span => return SPAN_PROPS.to_vec(),
             // A label in the world, not a node: no node props (its `outline` is its own).
             UiKind::WorldText => return WORLD_TEXT_PROPS.to_vec(),
-            UiKind::Node | UiKind::Viewport => &[],
+            // Its widths and corners are `ScrollbarThumb`'s fields; the scrollbar places it.
+            UiKind::ScrollbarThumb => return vec!["style", "background", "border", "radius"],
+            UiKind::Node => &["scrollArea"],
+            UiKind::Viewport | UiKind::SliderThumb | UiKind::Tab => &[],
             UiKind::Button => &["activateOnPress"],
             UiKind::Text => &[
                 "text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough", "justify", "linebreak",
@@ -82,6 +113,16 @@ impl UiKind {
             ],
             UiKind::Image => &["src", "color", "flipX", "flipY", "rect", "atlas", "mode"],
             UiKind::Input => &["size", "color", "initialValue", "maxCharacters"],
+            // `selfUpdate` is the runtime's, never written in TSX: no controlled prop was given.
+            UiKind::Checkbox => &["checked", "initialChecked", "selfUpdate"],
+            UiKind::Radio => &["checked", "initialChecked"],
+            // A group's self-update is settled from its mounted radios (`widgets::radio_form`).
+            UiKind::RadioGroup => &[],
+            UiKind::Slider => &["value", "initialValue", "min", "max", "step", "precision", "orientation", "trackClick", "selfUpdate"],
+            UiKind::Scrollbar => &["target", "orientation", "minThumbLength"],
+            UiKind::TabList => &["selected", "initialSelected", "orientation", "activation", "selfUpdate"],
+            UiKind::ListBox => &["multiSelect"],
+            UiKind::ListItem => &["selected"],
         };
         NODE_PROPS.iter().chain(own).copied().collect()
     }
@@ -130,6 +171,32 @@ enum Part {
     TabIndex,
     /// `tabGroup`: `TabGroup`, `{ order, modal }`.
     TabGroup,
+    /// `checked` or `initialChecked` on `<checkbox>` and `<radio>`: `Checked`.
+    Checked,
+    /// `selected` on `<listItem>`: `Selected`.
+    Selected,
+    /// `selected` or `initialSelected` on `<tabList>`: a tab's key, then `SelectedTab`.
+    SelectedTab,
+    /// `value` or `initialValue` on `<slider>`: `SliderValue`.
+    SliderValue,
+    /// `min` and `max`: `SliderRange`.
+    SliderRange,
+    SliderStep,
+    SliderPrecision,
+    /// `orientation` and `trackClick`: `Slider`.
+    Slider,
+    /// `target`, `orientation` and `minThumbLength`: `Scrollbar`.
+    Scrollbar,
+    /// `<scrollbarThumb>`'s `radius` and `style.border`: `ScrollbarThumb`.
+    Thumb,
+    /// `orientation` and `activation`: `TabList`.
+    TabList,
+    /// `multiSelect`: `ListBoxMultiSelect`.
+    MultiSelect,
+    /// `scrollArea` on `<node>`: `ScrollArea`, wheel scrolling.
+    ScrollArea,
+    /// Bevy's `*_self_update` observer, while the widget is uncontrolled.
+    SelfUpdate,
 }
 
 /// On an entity whose `tabIndex` or `tabGroup` is a prop, so the engine can name one mounted
@@ -142,6 +209,20 @@ fn part(kind: UiKind, prop: &str) -> Part {
         return Part::WorldStyle;
     }
     match prop {
+        "style" | "radius" if kind == UiKind::ScrollbarThumb => Part::Thumb,
+        "checked" | "initialChecked" => Part::Checked,
+        "selected" if kind == UiKind::ListItem => Part::Selected,
+        "selected" | "initialSelected" => Part::SelectedTab,
+        "value" | "initialValue" if kind == UiKind::Slider => Part::SliderValue,
+        "min" | "max" => Part::SliderRange,
+        "step" => Part::SliderStep,
+        "precision" => Part::SliderPrecision,
+        "orientation" | "trackClick" if kind == UiKind::Slider => Part::Slider,
+        "orientation" | "activation" if kind == UiKind::TabList => Part::TabList,
+        "target" | "orientation" | "minThumbLength" => Part::Scrollbar,
+        "multiSelect" => Part::MultiSelect,
+        "scrollArea" => Part::ScrollArea,
+        "selfUpdate" => Part::SelfUpdate,
         "style" | "radius" => Part::Node,
         "background" => Part::Background,
         "border" => Part::Border,
@@ -1166,6 +1247,11 @@ pub fn check(kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
             return Err(format!("has no prop {k} (props: {})", kind.props().join(", ")));
         }
     }
+    for (controlled, initial) in [("checked", "initialChecked"), ("value", "initialValue"), ("selected", "initialSelected")] {
+        if props.contains_key(controlled) && props.contains_key(initial) {
+            return Err(format!("takes {controlled} or {initial}, not both: {controlled} is the game's state, {initial} lets the widget keep its own"));
+        }
+    }
     let mut parts: Vec<Part> = props.keys().map(|k| part(kind, k)).collect();
     parts.sort();
     parts.dedup();
@@ -1173,6 +1259,80 @@ pub fn check(kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
         check_part(kind, props, p)?;
     }
     Ok(())
+}
+
+/// The first of `props` given, for a part two props share.
+fn either<'a>(props: &'a Map<String, Value>, names: &[&str]) -> Option<(&'a Value, String)> {
+    names.iter().find_map(|n| props.get(*n).map(|v| (v, n.to_string())))
+}
+
+fn flag_prop(props: &Map<String, Value>, names: &[&str]) -> Result<bool, String> {
+    match either(props, names) {
+        Some((v, n)) => flag(v, &n),
+        None => Ok(false),
+    }
+}
+
+/// `target` on `<scrollbar>`: an entity (a ref's, as bits), or `null` while the ref is not mounted.
+fn entity_prop(v: &Value, prop: &str) -> Result<Option<Entity>, String> {
+    if v.is_null() {
+        return Ok(None);
+    }
+    let bits = v.as_u64().ok_or_else(|| format!("{prop} takes a ref (or an entity)"))?;
+    Entity::try_from_bits(bits).map(Some).ok_or_else(|| format!("{prop}: {bits} is not an entity"))
+}
+
+fn slider_range(props: &Map<String, Value>) -> Result<SliderRange, String> {
+    let min = props.get("min").map(|v| widgets::number(v, "min")).transpose()?.unwrap_or(0.0);
+    let max = props.get("max").map(|v| widgets::number(v, "max")).transpose()?.unwrap_or(1.0);
+    if max < min {
+        return Err(format!("min {min} is above max {max}"));
+    }
+    Ok(SliderRange::new(min, max))
+}
+
+fn slider(props: &Map<String, Value>) -> Result<Slider, String> {
+    Ok(Slider {
+        orientation: props.get("orientation").map(widgets::slider_orientation).transpose()?.unwrap_or_default(),
+        track_click: props.get("trackClick").map(widgets::track_click).transpose()?.unwrap_or_default(),
+    })
+}
+
+/// Bevy's examples' thumb floor, 8 px, when `minThumbLength` is left out.
+fn scrollbar(props: &Map<String, Value>) -> Result<Scrollbar, String> {
+    let target = props.get("target").map(|v| entity_prop(v, "target")).transpose()?.flatten();
+    let orientation = props.get("orientation").map(widgets::control_orientation).transpose()?.unwrap_or_default();
+    let min = props.get("minThumbLength").map(|v| widgets::number(v, "minThumbLength")).transpose()?.unwrap_or(8.0);
+    Ok(Scrollbar::new(target.unwrap_or(Entity::PLACEHOLDER), orientation, min))
+}
+
+/// `<scrollbarThumb>`'s `radius` and `style.border`, its only style key (design 11).
+fn thumb(props: &Map<String, Value>) -> Result<ScrollbarThumb, String> {
+    let mut t = ScrollbarThumb::default();
+    if let Some(st) = props.get("style") {
+        let o = st.as_object().ok_or("style takes an object")?;
+        for (k, v) in o {
+            match k.as_str() {
+                "border" => t.border = rect(v)?,
+                other => return Err(format!("style.{other}: a scrollbar thumb takes only style.border; its scrollbar places and sizes it")),
+            }
+        }
+    }
+    if let Some(r) = props.get("radius") {
+        t.border_radius = radius(r)?;
+    }
+    Ok(t)
+}
+
+fn tab_list(props: &Map<String, Value>) -> Result<TabList, String> {
+    let mut t = TabList::default();
+    if let Some(v) = props.get("orientation") {
+        t.orientation = widgets::control_orientation(v)?;
+    }
+    if let Some(v) = props.get("activation") {
+        t.activation = widgets::activation(v)?;
+    }
+    Ok(t)
 }
 
 fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), String> {
@@ -1213,6 +1373,20 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::WorldStyle => world_style(props).map(|_| ()),
         Part::TabIndex => tab_index(&props["tabIndex"]).map(|_| ()),
         Part::TabGroup => tab_group(&props["tabGroup"]).map(|_| ()),
+        Part::Checked => flag_prop(props, &["checked", "initialChecked"]).map(|_| ()),
+        Part::Selected => flag(&props["selected"], "selected").map(|_| ()),
+        Part::SelectedTab => either(props, &["selected", "initialSelected"]).map_or(Ok(()), |(v, n)| widgets::tab_key(v, &n).map(|_| ())),
+        Part::SliderValue => either(props, &["value", "initialValue"]).map_or(Ok(()), |(v, n)| widgets::number(v, &n).map(|_| ())),
+        Part::SliderRange => slider_range(props).map(|_| ()),
+        Part::SliderStep => widgets::number(&props["step"], "step").map(|_| ()),
+        Part::SliderPrecision => props["precision"].as_i64().map(|_| ()).ok_or_else(|| "precision takes a whole number of decimal places".into()),
+        Part::Slider => slider(props).map(|_| ()),
+        Part::Scrollbar => scrollbar(props).map(|_| ()),
+        Part::Thumb => thumb(props).map(|_| ()),
+        Part::TabList => tab_list(props).map(|_| ()),
+        Part::MultiSelect => flag(&props["multiSelect"], "multiSelect").map(|_| ()),
+        Part::ScrollArea => flag(&props["scrollArea"], "scrollArea").map(|_| ()),
+        Part::SelfUpdate => flag(&props["selfUpdate"], "selfUpdate").map(|_| ()),
     }
 }
 
@@ -1450,6 +1624,75 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
                 tab_prop_gone(world, e, props);
             }
         },
+        Part::Checked => {
+            if flag_prop(props, &["checked", "initialChecked"])? {
+                world.entity_mut(e).insert(Checked);
+            } else {
+                world.entity_mut(e).remove::<Checked>();
+            }
+            if kind == UiKind::Radio {
+                let form = match either(props, &["checked", "initialChecked"]) {
+                    Some((_, n)) if n == "checked" => Some(widgets::RadioForm::Controlled),
+                    Some(_) => Some(widgets::RadioForm::Initial),
+                    None => None,
+                };
+                widgets::radio_form(world, e, form)?;
+            }
+        }
+        Part::Selected => marker::<Selected>(world, e, props, "selected"),
+        Part::SelectedTab => match either(props, &["selected", "initialSelected"]) {
+            Some((v, n)) => {
+                world.entity_mut(e).insert(TabKey::new(widgets::tab_key(v, &n)?));
+            }
+            // A bound key gone null arrives as the prop removed: no tab, as `null` asks.
+            None => {
+                if world.entity_mut(e).take::<TabKey>().is_some() {
+                    world.entity_mut(e).insert(bevy::ui_widgets::SelectedTab(None));
+                }
+            }
+        },
+        // `SliderValue`, `SliderRange` and `SliderStep` are immutable and `Slider` requires them:
+        // an absent prop writes Bevy's default rather than removing.
+        Part::SliderValue => {
+            if let Some((v, n)) = either(props, &["value", "initialValue"]) {
+                world.entity_mut(e).insert(SliderValue(widgets::number(v, &n)?));
+            }
+        }
+        Part::SliderRange => {
+            let r = slider_range(props)?;
+            world.entity_mut(e).insert(r);
+        }
+        Part::SliderStep => {
+            let s = props.get("step").map(|v| widgets::number(v, "step")).transpose()?.map_or_else(SliderStep::default, SliderStep);
+            world.entity_mut(e).insert(s);
+        }
+        Part::SliderPrecision => match props.get("precision").and_then(Value::as_i64) {
+            Some(n) => {
+                world.entity_mut(e).insert(SliderPrecision(n as i32));
+            }
+            None => {
+                world.entity_mut(e).remove::<SliderPrecision>();
+            }
+        },
+        Part::Slider => {
+            let s = slider(props)?;
+            world.entity_mut(e).insert(s);
+        }
+        Part::Scrollbar => {
+            let s = scrollbar(props)?;
+            world.entity_mut(e).insert(s);
+        }
+        Part::Thumb => {
+            let t = thumb(props)?;
+            world.entity_mut(e).insert(t);
+        }
+        Part::TabList => {
+            let t = tab_list(props)?;
+            world.entity_mut(e).insert(t);
+        }
+        Part::MultiSelect => marker::<ListBoxMultiSelect>(world, e, props, "multiSelect"),
+        Part::ScrollArea => marker::<ScrollArea>(world, e, props, "scrollArea"),
+        Part::SelfUpdate => widgets::self_update(world, e, kind, props.get("selfUpdate").and_then(Value::as_bool) == Some(true)),
     }
     Ok(())
 }
@@ -1497,7 +1740,7 @@ fn props_of(kind: UiKind, props: &Map<String, Value>, p: Part) -> bool {
 
 /// Inserts everything a UI intrinsic owns, from its current props.
 pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
-    if !matches!(kind, UiKind::Span | UiKind::WorldText) {
+    if !matches!(kind, UiKind::Span | UiKind::WorldText | UiKind::ScrollbarThumb) {
         write_part(world, e, kind, props, Part::Node)?;
     }
     let mut parts: Vec<Part> = props.keys().map(|k| part(kind, k)).filter(|p| *p != Part::Node).collect();
@@ -1515,6 +1758,11 @@ pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             cursor(world, e, kind, props)?;
             parts.extend([Part::Font, Part::TabIndex]);
         }
+        // The widget's own component, from its props or Bevy's defaults.
+        UiKind::Slider => parts.push(Part::Slider),
+        UiKind::Scrollbar => parts.push(Part::Scrollbar),
+        UiKind::ScrollbarThumb => parts.push(Part::Thumb),
+        UiKind::TabList => parts.push(Part::TabList),
         _ => {}
     }
     parts.sort();
@@ -1522,8 +1770,34 @@ pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
     for p in parts {
         write_part(world, e, kind, props, p)?;
     }
-    if kind == UiKind::Button {
-        world.entity_mut(e).insert(bevy::ui_widgets::Button);
+    match kind {
+        UiKind::Button => {
+            world.entity_mut(e).insert(bevy::ui_widgets::Button);
+        }
+        UiKind::Checkbox => {
+            world.entity_mut(e).insert(Checkbox);
+        }
+        // Uncontrolled until a radio with `checked` mounts under it.
+        UiKind::RadioGroup => {
+            world.entity_mut(e).insert(RadioGroup);
+            widgets::self_update(world, e, kind, true);
+        }
+        UiKind::Radio => {
+            world.entity_mut(e).insert(RadioButton);
+        }
+        UiKind::SliderThumb => {
+            world.entity_mut(e).insert(SliderThumb);
+        }
+        UiKind::Tab => {
+            world.entity_mut(e).insert(Tab);
+        }
+        UiKind::ListBox => {
+            world.entity_mut(e).insert(ListBox);
+        }
+        UiKind::ListItem => {
+            world.entity_mut(e).insert(ListItem);
+        }
+        _ => {}
     }
     Ok(())
 }
@@ -1534,9 +1808,9 @@ pub fn update(world: &mut World, e: Entity, kind: UiKind, old: &Map<String, Valu
         .keys()
         .chain(new.keys())
         .filter(|k| old.get(*k) != new.get(*k))
+        // Every `initial*` prop is written on insert only.
+        .filter(|k| !k.starts_with("initial"))
         .map(|k| part(kind, k))
-        // `initialValue` is written on insert only, like every `initial*` prop.
-        .filter(|p| *p != Part::Value)
         .collect();
     parts.sort();
     parts.dedup();
@@ -1547,6 +1821,11 @@ pub fn update(world: &mut World, e: Entity, kind: UiKind, old: &Map<String, Valu
 }
 
 pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
+    widgets::self_update(world, e, kind, false);
+    if kind == UiKind::Radio {
+        // Its group settles without it; a mix it leaves behind was already reported.
+        let _ = widgets::radio_form(world, e, None);
+    }
     let mut em = world.entity_mut(e);
     em.remove::<(Node, BackgroundColor, BackgroundGradient, BorderColor, BorderGradient, Outline, BoxShadow, UiTransform)>();
     match kind {
@@ -1571,7 +1850,39 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
         UiKind::WorldText => {
             em.remove::<(WorldText, WorldTextStyle, TextFont, TextColor, TextLayout, LineHeight, bevy::light::NotShadowCaster)>();
         }
-        UiKind::Node => {}
+        UiKind::Node => {
+            em.remove::<ScrollArea>();
+        }
+        UiKind::Checkbox | UiKind::Radio => {
+            em.remove::<(Checkbox, RadioButton, Checked)>();
+        }
+        UiKind::RadioGroup => {
+            em.remove::<RadioGroup>();
+        }
+        UiKind::Slider => {
+            em.remove::<(Slider, SliderValue, SliderRange, SliderStep, SliderPrecision)>();
+        }
+        UiKind::SliderThumb => {
+            em.remove::<SliderThumb>();
+        }
+        UiKind::Scrollbar => {
+            em.remove::<Scrollbar>();
+        }
+        UiKind::ScrollbarThumb => {
+            em.remove::<ScrollbarThumb>();
+        }
+        UiKind::TabList => {
+            em.remove::<(TabList, TabKey, bevy::ui_widgets::SelectedTab)>();
+        }
+        UiKind::Tab => {
+            em.remove::<Tab>();
+        }
+        UiKind::ListBox => {
+            em.remove::<(ListBox, ListBoxMultiSelect)>();
+        }
+        UiKind::ListItem => {
+            em.remove::<(ListItem, Selected)>();
+        }
     }
     em.remove::<(UiTargetCamera, InteractionDisabled, ActivateOnPress, AutoFocus, TabIndex, TabGroup, TabProp)>();
 }

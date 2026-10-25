@@ -1,4 +1,5 @@
 {
-  // Tab moves focus in the Focus panel. It is off by default.
-  "tabNavigation": true
+  // Tab and the arrow keys move focus in the Focus panel. Both are off by default.
+  "tabNavigation": true,
+  "directionalNavigation": true
 }

@@ -2,7 +2,8 @@
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
 import { app, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled, vec2 } from "bevy-ts";
-import { Camera3d, Pressed, ScrollPosition, Transform, ZIndex } from "bevy-ts/bevy";
+import { AutoDirectionalNavigation, Camera3d, Checked, Pressed, ScrollPosition, Transform, ZIndex } from "bevy-ts/bevy";
+import { CompassOctant, KeyCode, type DirectionalNavigation, type InputFocusVisible, type Keys } from "bevy-ts/input";
 import type { Child } from "bevy-ts/jsx-runtime";
 
 /** A titled panel in the gallery's grid of panels. */
@@ -146,19 +147,29 @@ const Events = () => (
 );
 
 const [focused, setFocused] = signal("");
+const [ring, setRing] = signal(false);
 const [lastCause, setLastCause] = signal("");
 
-/** A focusable button: blue and outlined while focused. */
+/** The arrows move focus between the Focus panel's buttons; Tab is Bevy's own. */
+export function focusKeys(keys: Keys, nav: DirectionalNavigation, visible: InputFocusVisible) {
+  if (keys.justPressed(KeyCode.ArrowRight)) nav.navigate(CompassOctant.East);
+  if (keys.justPressed(KeyCode.ArrowLeft)) nav.navigate(CompassOctant.West);
+  if (visible.get() !== ring()) setRing(visible.get());
+}
+app.addSystems(Update, focusKeys);
+
+/** A focusable button: blue while focused, outlined only when focus came from the keyboard. */
 const Focusable = ({ name }: { name: string }) => (
   <button key={name} tabIndex={0} style={{ padding: px(6), border: px(2) }} radius={px(4)}
     background={() => (focused() === name ? "#2f5fa8" : "#3a4150")}
-    border={() => (focused() === name ? "#ffd060" : "#00000000")}
+    border={() => (focused() === name && ring() ? "#ffd060" : "#00000000")}
     onFocusGained={({ cause }) => { setFocused(name); setLastCause(cause); }}
     onFocusLost={() => setFocused((f) => (f === name ? "" : f))}>
+    <AutoDirectionalNavigation />
     <text size={14}>{name}</text>
   </button>
 );
-/** Stage 4: Tab and Shift-Tab (tabNavigation) and focus events. The arrows come back with a typed `bevy-ts/input`. */
+/** Stage 4: Tab and Shift-Tab (tabNavigation), the arrows (directionalNavigation), focus events. */
 const Focus = () => (
   <Panel title="Focus">
     <node key="row" tabGroup={{}} style={{ columnGap: px(8) }}>
@@ -167,6 +178,60 @@ const Focus = () => (
       <Focusable name="three" />
     </node>
     <text key="state" size={13} color="#d0d6e0">{() => (focused() ? `${focused()} (${lastCause()})` : "Tab or click a button")}</text>
+  </Panel>
+);
+
+const [sound, setSound] = signal(true);
+const [volume, setVolume] = signal(40);
+const [page, setPage] = signal<string | null>("audio");
+const [pick, setPick] = signal<string | null>("b");
+const longList = ref();
+const box = { width: px(16), height: px(16), border: px(2) };
+const radios = { easy: ref(), hard: ref() };
+
+/** Stage 5: checkbox, radio group, slider, tabs, list box, and a scroll area with its scrollbar. */
+const Widgets = () => (
+  <Panel title="Widgets">
+    <node key="row" style={{ columnGap: px(10), alignItems: "center" }}>
+      <checkbox key="sound" style={box} border="#9fb3d1" background={() => (sound() ? "#2f5fa8" : "#3a4150")} checked={() => sound()} onValueChange={({ value }) => setSound(value)} />
+      <text key="label" size={13}>{() => (sound() ? "Sound on" : "Sound off")}</text>
+      <radioGroup key="level" style={{ columnGap: px(4) }}>
+        {/* Uncontrolled: Bevy moves `Checked` itself; the look reads it. */}
+        {(["easy", "hard"] as const).map((k) => (
+          <radio key={k} ref={radios[k]} style={{ columnGap: px(4), alignItems: "center" }} initialChecked={k === "easy"}>
+            <node key="dot" style={box} border="#9fb3d1" radius={percent(50)} background={() => (radios[k].has(Checked) ? "#2f5fa8" : "#3a4150")} />
+            <text key="label" size={13}>{k}</text>
+          </radio>
+        ))}
+      </radioGroup>
+    </node>
+    <slider key="volume" style={{ width: px(200), height: px(12) }} background="#2c3444" radius={px(6)} value={() => volume()} min={0} max={100} onValueChange={({ value }) => setVolume(Math.round(value))}>
+      {/* Bevy leaves the thumb to the game: moved by transform (stage 3b), 188 px of track. */}
+      <sliderThumb key="thumb" style={{ position: "absolute", width: px(12), height: px(12) }} background="#ffd060" radius={percent(50)}
+        transform={() => ({ translation: [px(volume() * 1.88), 0] })} />
+    </slider>
+    <tabList key="tabs" style={{ columnGap: px(4) }} selected={() => page()} onValueChange={({ key }) => setPage(key)}>
+      {["audio", "video"].map((k) => (
+        <tab key={k} tabIndex={0} style={{ padding: px(4) }} background={() => (page() === k ? "#2f5fa8" : "#3a4150")}>
+          <text size={12}>{k}</text>
+        </tab>
+      ))}
+    </tabList>
+    <node key="lists" style={{ columnGap: px(8) }}>
+      <listBox key="list" style={{ flexDirection: "column", width: px(80) }} onValueChange={({ key }) => setPick(key)}>
+        {["a", "b", "c"].map((k) => (
+          <listItem key={k} selected={() => pick() === k} style={{ padding: px(2) }} background={() => (pick() === k ? "#2f5fa8" : "#00000000")}>
+            <text size={12}>{`Item ${k}`}</text>
+          </listItem>
+        ))}
+      </listBox>
+      <node key="scroller" ref={longList} scrollArea style={{ width: px(100), height: px(60), flexDirection: "column", overflow: { y: "scroll" } }} background="#11151c">
+        {Array.from({ length: 8 }, (_, i) => <text key={`line${i}`} size={12} style={{ flexShrink: 0 }}>{`Line ${i + 1}`}</text>)}
+      </node>
+      <scrollbar key="bar" target={longList} style={{ width: px(8), height: px(60) }} background="#2c3444">
+        <scrollbarThumb key="thumb" background="#9fb3d1" radius={px(4)} />
+      </scrollbar>
+    </node>
   </Panel>
 );
 
@@ -227,6 +292,7 @@ app.scene("gallery", () => (
       <Events />
       <Focus />
       <Placement />
+      <Widgets />
       <Media />
       <TextInput />
     </node>

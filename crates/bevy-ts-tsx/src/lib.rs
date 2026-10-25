@@ -23,6 +23,7 @@ pub mod shapes;
 pub mod tree;
 pub mod ui;
 pub mod vertex_mesh;
+pub mod widgets;
 
 use crate::desc::SceneSection;
 use crate::reconcile::{apply_root, resolve_tree, unmount_root};
@@ -506,6 +507,8 @@ impl Plugin for TsxPlugin {
         );
         app.add_ts_command_kind(mount::UNMOUNT, mount::unmount);
         app.add_systems(PostUpdate, intrinsics::report_texture_failures);
+        // After the frame's bindings, so a `selected` key written this frame finds its tab.
+        app.add_systems(PostUpdate, widgets::select_tabs.after(host::frame).before(bevy::ui::UiSystems::Prepare));
         halo::plugin(app);
     }
 }

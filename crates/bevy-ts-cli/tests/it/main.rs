@@ -95,6 +95,7 @@ mod ui_placement;
 mod ui_style;
 mod ui_text;
 mod ui_viewport;
+mod ui_widgets;
 mod viewport_edit;
 mod viewport_level;
 mod viewport_pacing;

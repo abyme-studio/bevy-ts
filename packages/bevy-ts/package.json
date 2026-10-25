@@ -34,6 +34,9 @@
       "types": "./material.d.ts",
       "default": "./runtime/material.js"
     },
+    "./input": {
+      "types": "./input.d.ts"
+    },
     "./protocol": {
       "types": "./protocol.d.ts"
     },

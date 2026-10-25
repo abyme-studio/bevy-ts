@@ -17,7 +17,10 @@ const ELEMENT = Symbol.for("bevy-ts.element");
 /** Intrinsics that describe components of the enclosing entity. */
 const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d", "worldText"]);
 /** bevy_ui intrinsics: entities of their own, with one intrinsic component named after the tag. */
-const UI_INTRINSICS = new Set(["node", "text", "image", "button", "span", "viewport", "input"]);
+const UI_INTRINSICS = new Set([
+  "node", "text", "image", "button", "span", "viewport", "input",
+  "checkbox", "radioGroup", "radio", "slider", "sliderThumb", "scrollbar", "scrollbarThumb", "tabList", "tab", "listBox", "listItem",
+]);
 /** Rich text: `<text>` and `<span>` hold strings, bindings and `<span>`s. */
 const RICH = new Set(["text", "span"]);
 /** What a `<span>` takes from its parent unless it sets its own: Bevy gives a span no inheritance. */
@@ -33,7 +36,14 @@ const POINTER_EVENTS = new Set([
 /** `<input>`'s own events: Bevy's `TextEditChange` and `KeyboardInput`, and `Submit` (Enter) and `Cancel` (Escape). */
 const INPUT_EVENTS = new Set(["TextEditChange", "KeyboardInput", "Submit", "Cancel"]);
 /** Events only some elements raise, beside the pointer events every one takes: Bevy triggers each on that widget. */
-const ELEMENT_EVENTS = { input: INPUT_EVENTS, button: new Set(["Activate"]) };
+const VALUE_EVENTS = new Set(["ValueChange"]);
+const ELEMENT_EVENTS = {
+  input: INPUT_EVENTS,
+  button: new Set(["Activate"]),
+  checkbox: VALUE_EVENTS, radio: VALUE_EVENTS, slider: VALUE_EVENTS, radioGroup: VALUE_EVENTS, tabList: VALUE_EVENTS, listBox: VALUE_EVENTS,
+};
+/** A value widget's state prop: controlled (the game's) or `initial*` (the widget keeps its own). */
+const STATE_PROPS = { checkbox: "checked", radio: "checked", slider: "value", tabList: "selected" };
 /** Every UI intrinsic's but `<span>`'s: its own `FocusGained` and `FocusLost`, not a descendant's. */
 const FOCUS_EVENTS = ["FocusGained", "FocusLost"];
 
@@ -1515,6 +1525,33 @@ function cameraProp(el, parentType) {
   throw located(`<${el.type} camera>: takes a ref (or an entity)`, el.source);
 }
 
+/** `target={ref}` on `<scrollbar>`: the ref's entity, bound, as `camera`. */
+function targetProp(el) {
+  const v = el.props.target;
+  if (v instanceof NodeRef) return Describing.ctx.bind(() => v.entity, Describing.owner, el.source);
+  if (typeof v === "number" || v === null) return v;
+  throw located(`<${el.type} target>: takes a ref (or an entity)`, el.source);
+}
+
+
+/**
+ * A value widget is uncontrolled, and gets Bevy's self-update, when it has no controlled prop
+ * (design 7). Giving both forms fails here, naming the prop. A `<radioGroup>` is settled in Rust
+ * from the radios mounted under it, which a `<For>` or a bound child hides from this description.
+ */
+function selfUpdate(el) {
+  if (el.props.selfUpdate !== undefined) throw located(`<${el.type}> has no prop selfUpdate`, el.source);
+  const state = STATE_PROPS[el.type];
+  if (state) {
+    const initial = "initial" + state[0].toUpperCase() + state.slice(1);
+    if (el.props[state] !== undefined && el.props[initial] !== undefined) {
+      throw located(`<${el.type}> takes ${state} or ${initial}, not both: ${state} is the game's state, ${initial} lets the widget keep its own`, el.source);
+    }
+    return el.type !== "radio" && el.props[state] === undefined;
+  }
+  return false;
+}
+
 function describeEntity(el, key, type, parentType) {
   const ui = UI_INTRINSICS.has(el.type);
   const node = { key, type, components: [], children: [] };
@@ -1548,9 +1585,12 @@ function describeEntity(el, key, type, parentType) {
   const rich = RICH.has(el.type) ? richText(el) : null;
   if (ui) {
     if (el.props.camera !== undefined) skip.add("camera");
+    if (el.type === "scrollbar" && el.props.target !== undefined) skip.add("target");
     const props = plainProps(el, skip);
     const cam = cameraProp(el, parentType);
     if (cam !== undefined) props.camera = cam;
+    if (el.type === "scrollbar" && el.props.target !== undefined) props.target = targetProp(el);
+    if (selfUpdate(el)) props.selfUpdate = true;
     if (rich) {
       const t = rich.text;
       props.text = typeof t === "function" ? Describing.ctx.bind(t, Describing.owner, el.source) : t;
