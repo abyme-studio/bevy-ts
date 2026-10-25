@@ -1,13 +1,13 @@
 ## 1. Stage 1: meshes, materials, Camera2d (after mesh-primitives lands)
 
-- [ ] 1.1 `crates/bevy-ts-tsx/src/intrinsics.rs`: `Mesh2dProps` on mesh-primitives' `MeshShape`, 2D variants only, refusing `depth`/`segments`; `insert_mesh2d`/`remove_mesh2d` sharing the mesh cache (design 1)
-- [ ] 1.2 `Material2dProps` (`color`, `alpha`, `alphaMode`, `texture`, `uvTransform`) with `deny_unknown_fields`; `ColorMaterial` built through `bevy_ts::color` (or today's hex parser until reflect-enums-color lands); `materials2d` cache in `IntrinsicAssets`; `<mesh2d color>` shorthand
-- [ ] 1.3 `resolve.rs`, `reconcile.rs`: the `mesh2d` and `material2d` kinds; `<mesh2d>` with `<mesh>`, or `<material2d>` with `<material>`, on one entity fails naming the source location
-- [ ] 1.4 `packages/bevy-ts/jsx-runtime.d.ts`: `Mesh2dProps`, `Material2dProps`, both in `IntrinsicElements`; `packages/bevy-ts/test/tsx/elements.tsx`: one valid element per 2D shape, `@ts-expect-error` for `shape="cuboid"`, `depth`, and `<material2d metallic>`; mirror into `bench/dx/bevy-ts/jsx-runtime.ts` if it copies `MeshProps`
-- [ ] 1.5 `crates/bevy-ts-cli/tests/it/two_d.rs` (TSX needs V8, so the cli tests own it): every 2D shape builds a `Mesh2d` (no `Mesh3d`) with +Z normals; a `<material2d>` with colour, alpha, texture builds the expected `ColorMaterial` and `AlphaMode2d`; equal props share handles; refusals name shape, prop and line
-- [ ] 1.6 `Camera2d` test: `<Camera2d />` plus a red full-view rectangle rendered to an image target gives a red centre pixel; `<Projection value={{ Orthographic: { scale: 2 } }} />` sets scale 2 (needs reflect-enums-color for the enum; skip that case until it lands)
-- [ ] 1.7 New `examples/shapes-2d` (`example.json`, `src/game.tsx`): a `Camera2d` and every 2D shape in a grid, each its own colour
-- [ ] 1.8 New `docs/2d.md`: the coverage table (every row of design's surface, TS form, test or owner); link from `README.md`; a test reads the table and fails when a row marked working names a test that does not exist (the CI hole check)
+- [x] 1.1 `crates/bevy-ts-tsx/src/intrinsics.rs`: `Mesh2dProps` on mesh-primitives' `MeshShape`, 2D variants only, refusing `depth`/`segments`; `insert_mesh2d`/`remove_mesh2d` sharing the mesh cache (design 1)
+- [x] 1.2 `Material2dProps` (`color`, `alpha`, `alphaMode`, `texture`, `uvTransform`) with `deny_unknown_fields`; `ColorMaterial` built through `bevy_ts::color` (or today's hex parser until reflect-enums-color lands); `materials2d` cache in `IntrinsicAssets`; `<mesh2d color>` shorthand
+- [x] 1.3 `resolve.rs`, `reconcile.rs`: the `mesh2d` and `material2d` kinds; `<mesh2d>` with `<mesh>`, or `<material2d>` with `<material>`, on one entity fails naming the source location
+- [x] 1.4 `packages/bevy-ts/jsx-runtime.d.ts`: `Mesh2dProps`, `Material2dProps`, both in `IntrinsicElements`; `packages/bevy-ts/test/tsx/elements.tsx`: one valid element per 2D shape, `@ts-expect-error` for `shape="cuboid"`, `depth`, and `<material2d metallic>`; mirror into `bench/dx/bevy-ts/jsx-runtime.ts` if it copies `MeshProps`
+- [x] 1.5 `crates/bevy-ts-cli/tests/it/two_d.rs` (TSX needs V8, so the cli tests own it): every 2D shape builds a `Mesh2d` (no `Mesh3d`) with +Z normals; a `<material2d>` with colour, alpha, texture builds the expected `ColorMaterial` and `AlphaMode2d`; equal props share handles; refusals name shape, prop and line
+- [x] 1.6 `Camera2d` test: `<Camera2d />` plus a red full-view rectangle rendered to an image target gives a red centre pixel; `<Projection value={{ Orthographic: { scale: 2 } }} />` sets scale 2 (needs reflect-enums-color for the enum; skip that case until it lands)
+- [x] 1.7 New `examples/shapes-2d` (`example.json`, `src/game.tsx`): a `Camera2d` and every 2D shape in a grid, each its own colour
+- [x] 1.8 New `docs/2d.md`: the coverage table (every row of design's surface, TS form, test or owner); link from `README.md`; a test reads the table and fails when a row marked working names a test that does not exist (the CI hole check)
 - [ ] 1.9 Gate: `cargo test -p bevy-ts-tsx`, the TS type tests, `protocol/bevy-ts.openrpc.json` unchanged
 
 ## 2. Stage 2: sprites (after reflect-enums-color lands)

@@ -137,7 +137,14 @@ fn alpha_2d(d: &AlphaDecl) -> Result<AlphaMode2d, String> {
         AlphaMode::Opaque => Ok(AlphaMode2d::Opaque),
         AlphaMode::Blend => Ok(AlphaMode2d::Blend),
         AlphaMode::Mask(t) => Ok(AlphaMode2d::Mask(t)),
-        _ => Err(format!("alphaMode {d:?}: <material2d> takes \"opaque\", \"blend\" or {{ mask }}")),
+        // A mask always maps, so what is left is a name.
+        _ => {
+            let name = match d {
+                AlphaDecl::Named(n) => n.as_str(),
+                AlphaDecl::Mask { .. } => "mask",
+            };
+            Err(format!("alphaMode {name:?}: <material2d> takes \"opaque\", \"blend\" or {{ mask }}"))
+        }
     }
 }
 
