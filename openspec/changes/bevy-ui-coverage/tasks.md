@@ -1,4 +1,4 @@
-Each stage lands on its own: its code, its tests (every new element tested headless, keyboard paths in viewport mode offscreen), its `examples/ui-gallery` panel, its `docs/ui.md` section, and `bevy.d.ts` regenerated. Stages 3 and 4 start only after text-input lands; stage 4 also after mesh-picking. The operator's go for stages 3 and 4 is given (proposal, Impact).
+Each stage lands on its own: its code, its tests (every new element tested headless, keyboard paths in viewport mode offscreen), its `examples/ui-gallery` panel, its `docs/ui.md` section, and `bevy.d.ts` regenerated. Stages 3 and 4 start only after text-input lands; stage 4 also after mesh-picking. The operator's go for stages 3 and 4 is given (proposal, Impact); stage 3a waits for its own go.
 
 ## 0. Gallery
 
@@ -34,6 +34,23 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 - [x] 3.5 `tsx_scale`: a row with 1,000 `has` pairs on a quiet frame against 1,000 `get` pairs; the one-HUD quiet frame stays at today's 0.8 µs; record in `docs/research/tsx-scale.md`
 - [x] 3.6 Tests: each pointer event headless by triggering Bevy's event; a child's scroll heard by its parent with the child as target; a drag on a UI node, a mesh and a glTF scene root (`ui_drag`); `Enter` on a focused button runs `onActivate` (viewport mode); a disabled button does not; `has(Pressed)` styles a button with one host call per change and none on quiet frames
 - [x] 3.7 Gallery panel and `docs/ui.md` "Events" and "Reading markers" sections
+
+## 3a. Text halo (design 15; needs the operator's go: per-frame quads)
+
+- [ ] 3a.1 `TextHalo { width, color }` in `bevy-ts-tsx`, reflected and registered; `textHalo` on `<text>` is `Part::TextHalo` (width default 1, more than 0 and at most 4, colour default black; errors name `textHalo`); on `<span>` a load error naming its location; regenerate `bevy.d.ts`
+- [ ] 3a.2 `bevy-ts-tsx` turns on Bevy's `bevy_ui_render`; `extract_text_halos` in `RenderUiSystems::ExtractTextShadows`, only when a `RenderApp` exists: the node's `TextLayoutInfo` glyphs at 8 offsets (16 above 2 px), z stack index + 0.058; a `PostUpdate` system calls `TextColor::set_changed()` when `TextHalo` changes or is removed
+- [ ] 3a.3 `jsx-runtime.d.ts`: `textHalo?: Bindable<{ width?: number; color?: ColorValue }>` on `<text>` only; a type test that `<span textHalo>` fails
+- [ ] 3a.4 Tests: the component written, changed and removed; `<span textHalo>` fails naming its location; a headless screenshot (`headless_ui.rs`'s way, macOS Metal) of white text with a 1.5 px black halo on a pale ground (`#e8e4d8`) and on a dark one (`#0b1a2e`): pixels just outside the glyph edges are the halo colour and the glyph pixels stay white; a changed `color` shows on the next frame, and a removed halo is gone with `TextLayoutInfo` unchanged
+- [ ] 3a.5 Bench in `tsx_scale.rs`: frame time with 40 and 1,000 12-glyph labels, with no halo, at 8 offsets and at 16; record it in `docs/research/tsx-scale.md`
+- [ ] 3a.6 A halo entry in the gallery's Text panel; a `textHalo` row in `docs/ui.md` "Text" saying it outlines spans too and what it costs
+
+## 3b. Placement (design 16; low priority)
+
+- [ ] 3b.1 Test headless: 1,000 `<node>`s moved each frame by a bound `transform`: no `Node` change tick moves, `ComputedNode` sizes are unchanged and `UiGlobalTransform` follows; a `<button>` moved by `transform` gets `onPointerClick` at its drawn place (triggered pointer event)
+- [ ] 3b.2 `tsx_scale.rs`: 1,000 nodes moved each frame by `style` `left`/`top` against `transform.translation`; frame time in `docs/research/tsx-scale.md`
+- [ ] 3b.3 agent town's bench, `openspec/research/heimdall-labels/bench.mjs` in agent town (`~/dev/agent-town`, branch `heimdall-labels`, commit 75154d9): arm `ui` at `BENCH_N=1000`, `BEVY_TS_BINARY` set to this branch's build, before (`bench/game.tsx` placing by `style` `left`/`top`) and after (the same plates placed by `transform`); record frame ms and CPU of both, with agent town's commit, in `docs/research/tsx-scale.md`
+- [ ] 3b.4 If `transform`'s write still shows in the profile, set an existing `UiTransform` in place instead of inserting it; a batched setter is out of this change (it needs a go)
+- [ ] 3b.5 `docs/ui.md` "Placing many nodes": a static `style`, a bound `transform`; a gallery entry that moves nodes by `transform`
 
 ## 4. Focus and navigation (after text-input and mesh-picking)
 

@@ -66,6 +66,32 @@ Every UI intrinsic SHALL take `outline` (`{ width, offset, color }` to `Outline`
 - **WHEN** `<node><span>x</span></node>` is loaded
 - **THEN** the load fails naming `<span>` and its location
 
+### Requirement: Text halo
+`<text>` SHALL take `textHalo` (`{ width, color }`), written as bevy-ts's `TextHalo`: `width` in logical pixels, default 1, more than 0 and at most 4; `color` default black. The halo SHALL draw the text's laid-out glyphs, spans included, in `color` at 8 offsets `width` around them (16 when `width` is above 2), under the glyphs, with no extra text layout and no extra entity. Changing or removing `textHalo` SHALL redraw the text without laying it out again. `<span>` SHALL NOT take `textHalo`: a `textHalo` on a span fails the load naming its location.
+
+#### Scenario: A label on pale and dark ground
+- **WHEN** `<text color="#fff" textHalo={{ width: 1.5, color: "#000" }}>Harbour</text>` is drawn headless over a pale ground and over a dark one
+- **THEN** in both screenshots the pixels just outside each glyph's edge are the halo's colour and the glyphs stay white
+
+#### Scenario: A halo removed
+- **WHEN** a bound `textHalo` goes from a value to `undefined`
+- **THEN** the entity has no `TextHalo`, the next frame draws no halo, and the text's `TextLayoutInfo` is not recomputed
+
+#### Scenario: A halo on a span
+- **WHEN** `<text>a <span textHalo={{ width: 1 }}>b</span></text>` is loaded
+- **THEN** the load fails naming `textHalo`, `<span>` and its location
+
+### Requirement: Placement without layout
+`transform` SHALL write only `UiTransform` and never `Node`, so a binding that moves a node each frame through `transform.translation` SHALL cause no taffy layout. The moved node SHALL be drawn, clipped and picked at its transformed place.
+
+#### Scenario: A thousand labels moved each frame
+- **WHEN** 1,000 `<node>`s with a static `style` bind `transform={() => ({ translation: [px(x()), px(y())] })}` and `x` changes every frame
+- **THEN** no `Node` change tick moves, each `ComputedNode` keeps its size, and each `UiGlobalTransform` follows `x`
+
+#### Scenario: A moved node is picked where it is drawn
+- **WHEN** a `<button>` moved 200 px right by `transform` is clicked at its drawn place
+- **THEN** its `onPointerClick` runs
+
 ### Requirement: Image modes and atlases
 `<image>` SHALL take `flipX`, `flipY`, `rect` (`[x, y, w, h]`), `atlas` (`{ layout, index }`) and `mode`, written to `ImageNode`: `mode` is `"auto"`, `"stretch"`, `sliced({ border, center, sides })` or `tiled({ x, y, stretch })`, Bevy's `NodeImageMode` variants.
 
