@@ -46,11 +46,12 @@ let frame = 0;
 let t0 = 0;
 const emptyFrames: number[] = [];
 const fullFrames: number[] = [];
-const tenK: Record<string, number[]> = { put10k: [], read10k: [], get10k: [] };
+const tenK: Record<string, number[]> = { put10k: [], read10k: [], get10k: [], count10k: [] };
 // Frames: warm, empty store measured, the 64 KB arms, the 10k arms, warm, full store measured.
 const EMPTY_END = WARM + WINDOW;
 const ARMS_10K = EMPTY_END + 2;
-const FULL_START = ARMS_10K + 3 * FRAMES_10K + WARM;
+const ARMS = 4;
+const FULL_START = ARMS_10K + ARMS * FRAMES_10K + WARM;
 const FULL_END = FULL_START + WINDOW;
 
 export function start() {
@@ -66,14 +67,17 @@ export function arms(session: SessionBytes) {
     session.delete("big");
   }
   const k = frame - ARMS_10K;
-  if (k >= 0 && k < 3 * FRAMES_10K) {
-    const arm = ["put10k", "read10k", "get10k"][k % 3];
-    tenK[arm].push(
-      perFrame(
-        arm === "put10k" ? (key) => session.put(key, small) : arm === "read10k" ? (key) => session.read(key, smallInto) : (key) => get(session, key),
-      ),
-    );
-    if (k === 3 * FRAMES_10K - 1) {
+  if (k >= 0 && k < ARMS * FRAMES_10K) {
+    const arm = ["put10k", "read10k", "get10k", "count10k"][k % ARMS];
+    const each: Record<string, (key: string) => unknown> = {
+      put10k: (key) => session.put(key, small),
+      read10k: (key) => session.read(key, smallInto),
+      get10k: (key) => get(session, key),
+      // A numeric export, no argument: what the call itself costs.
+      count10k: () => session.count(),
+    };
+    tenK[arm].push(perFrame(each[arm]));
+    if (k === ARMS * FRAMES_10K - 1) {
       for (const [a, xs] of Object.entries(tenK)) report(a, "ms", xs, { keys: session.count(), bytes: session.bytes() });
     }
   }

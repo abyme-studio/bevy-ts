@@ -6,7 +6,8 @@ What a `SessionBytes` call costs (change `session-bytes`), on a release engine u
 - `put64k`, `get64k`, `read64k`: one 64 KB value, 1,000 calls each, each timed (µs). `loop mean`
   is the whole loop over 1,000, for a timer coarser than a call.
 - `put10k`, `read10k`, `get10k`: 10k keys `"id/<n>"` of 64 B, every key once in one frame (ms),
-  10 frames each.
+  10 frames each. `count10k` is 10k calls of `count()`, a numeric export with no argument: the
+  call alone.
 - `frame-empty`, `frame-10k`: `First` to `Last` with an empty store, then with the 10k keys stored
   and nothing called (ms).
 
