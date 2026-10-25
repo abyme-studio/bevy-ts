@@ -40,7 +40,7 @@ const processes = {
   },
   // rust-events: the gate's GPU render tests alone, to tell load from a regression.
   "rust-events-gpu": {
-    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts-cli --test it -- --exact materials::drawn::a_textured_cube_draws_the_image standard_material_limits::every_texture_fits_wgpus_default_limits && cargo test -p bevy-ts-material --test it -- --exact alpha_render::faded_shapes_and_scenes_dither_and_their_twins_do_not\" 2>&1 | grep -v ld64 | tee target/rust-events-gpu.log | grep -E \"test result|FAILED|panicked\"'",
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts-cli --test it -- --exact materials::drawn::a_textured_cube_draws_the_image materials::drawn::a_script_material_with_alpha_mode_add_adds materials::drawn::a_two_sided_plane_draws_its_back standard_material_limits::every_texture_fits_wgpus_default_limits && cargo test -p bevy-ts-material --test it -- --exact alpha_render::faded_shapes_and_scenes_dither_and_their_twins_do_not\" 2>&1 | grep -v ld64 | tee target/rust-events-gpu.log | grep -E \"test result|FAILED|panicked\"'",
   },
   // rust-events: bevy-ts/bevy regenerated, the crates it changes, their unit tests, its CLI tests and tsc, in the gate slot.
   "rust-events-test": {
