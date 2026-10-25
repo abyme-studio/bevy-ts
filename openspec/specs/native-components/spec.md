@@ -36,6 +36,10 @@ A registered Rust component or resource with `ReflectComponent` SHALL be usable 
 - **WHEN** a scene sets `<ScreenSpaceTransmission steps={4} />`
 - **THEN** the scene fails to load with an error naming `steps` as opaque to reflection
 
+#### Scenario: Two types with one short name
+- **WHEN** a project registers `game::a::Health { hp }` and `game::b::Health { regen, max }`, and one TS system queries both by type path while another queries `Health`
+- **THEN** each type has its own layout and the first system writes each under its path, and the second fails the load: `Health names more than one Rust type (game::a::Health, game::b::Health); use its type path`
+
 ### Requirement: Layout-tier writes stay valid Rust values
 `bool`, fieldless-enum and `Entity` fields of a layout-tier Rust type SHALL be written only through accessor setters, which write `0`/`1`, a variant byte read from this build at startup, or a validated entity id; `q.tables` SHALL NOT expose them as raw arrays. A component declared immutable SHALL NOT be writable from TS. Fields marked `#[reflect(ignore)]` SHALL never be read or written.
 
