@@ -48,13 +48,14 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `spawnNative` recipes `camera3d`, `directionalLight`, `cuboid` | hack | `bevy-ts/src/recipes.rs:79-109`; example `ui-gallery` uses `camera3d` | reflect-coverage stage 2 removes them |
 | `custom(kind, payload)` | hack, kept for plugin opcodes | `bevy-ts/tests/it/plugin_api.rs` | — (a plugin seam, not a gameplay path) |
 | TS messages | idiomatic (TS queues, not Bevy `Messages<T>`) | `surface.rs` `two_readers_see_the_same_messages_once_and_they_expire` | — |
-| Reading Rust messages (`KeyboardInput`, `AssetEvent`, `WindowResized`, `CollisionEvent`) | missing; ports forward by hand (`plugin_api::write_message`) | `bevy-ts/src/systems.rs:470` | new: `rust-events` |
-| Writing Rust messages (`GamepadRumbleRequest`, `RequestRedraw`) | missing | — | new: `rust-events` |
+| Reading Rust messages (`KeyboardInput`, `AssetEvent`, `WindowResized`, `CollisionEvent`) | idiomatic (`MessageReader<M>`, JSON per message read); `CollisionEvent` has no `Reflect` and stays forwarded by `plugin_api::write_message` | `rust_events.rs` `a_ts_reader_sees_keyboard_input_once`, `a_project_message_is_read_and_written_from_ts` | — |
+| Writing Rust messages (`GamepadRumbleRequest`, `RequestRedraw`) | idiomatic (`MessageWriter<M>`, `commands.write`) | `rust_events.rs` `a_ts_writer_sends_a_rumble_request_a_rust_reader_sees`, `an_unlisted_reflect_message_is_writable` | — |
+| A project's own Rust message or event types in TS | partial: reachable, declared by hand (`rustMessage("game_native::Scored")`); the project's `native.d.ts` does not emit them, so the value is untyped | `rust_events.rs` `a_project_message_is_read_and_written_from_ts` | open |
 | Observers: TS `Event`, `EntityEvent` | idiomatic; bubbling itself untested | `surface.rs` `an_observer_triggered_from_ts_runs_before_the_next_system` | new: `ecs-queries` (bubble test) |
 | Lifecycle `Add`, `Insert`, `Remove` | idiomatic, deferred to the next stage boundary | `surface.rs` `a_lifecycle_observer_on_a_rust_insert_runs_at_the_next_stage`; Insert/Remove: no test | — |
 | Lifecycle `Discard`, `Despawn` | missing | `bevy-ts/src/observers.rs:56` | new: `ecs-queries` |
-| Entity-scoped observers from code (`entity(e).observe`) | missing; TSX `onPointer*` only | `core.js:760` | new: `rust-events` |
-| Observers on Rust events (`Pointer*`, `WorldInstanceReady`, `FocusGained`) | partial: picking via TSX props only | `tsx_reactive.rs` `three_clicks_in_one_frame…` | bevy-ui-coverage (UI picking and focus props); new: `rust-events` (from code, any Rust event) |
+| Entity-scoped observers from code (`entity(e).observe`) | idiomatic, TS and Rust entity events | `rust_events.rs` `an_entity_observer_runs_for_its_entity_only_and_dies_with_it`, `an_entity_observer_of_a_rust_event_runs_for_its_entity_only` | — |
+| Observers on Rust events (`Pointer*`, `WorldInstanceReady`, `FocusGained`) | idiomatic from code (`On<E>`, deferred to the next drain); TSX props for UI | `rust_events.rs` `a_global_observer_sees_a_bubbling_pointer_click`, `propagate_false_drops_the_rest_of_a_rust_triggers_hops` | bevy-ui-coverage (UI picking and focus props) |
 | Component hooks | missing; observers cover the TS need | — | new: `ecs-queries` (decide: hooks or immediate observers) |
 | Required components on TS components | missing | — | new: `ecs-queries` |
 | States, `NextState`, `OnEnter`/`OnExit`, `inState` | idiomatic (TS state machines) | `surface.rs` `entering_playing_runs_exit_then_enter_and_unlocks_systems` | — |
@@ -93,7 +94,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | Actions and bindings | not core Bevy (0.20 has none); a leafwing port is planned | `docs/research/native-ports.md` | — (port, not core) |
 | Tab and directional navigation, focus events | missing | — | bevy-ui-coverage stage 4 |
 | `Window`, `CursorOptions` | partial: flags and enums are columns; size, title, position are holes | `bevy.d.ts` | reflect-coverage |
-| Window messages (`WindowResized`, `CursorMoved`, `FileDragAndDrop`) | missing | — | new: `rust-events` |
+| Window messages (`WindowResized`, `CursorMoved`, `FileDragAndDrop`) | idiomatic (`MessageReader`) | `rust_events.rs` `window_messages_reach_a_ts_reader` | — |
 | `CursorIcon` | missing (reflect, custom cursor needs an image handle) | — | reflect-coverage |
 
 ## Assets and scenes
@@ -103,7 +104,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | Handles as asset paths in TSX and levels | idiomatic | `bevy-ts-tsx/src/reflected.rs:19` | — |
 | Hot reload of files | idiomatic (dev only, by design) | levels: `bevy-ts-levels/tests/it/levels.rs` `an_included_file_reloads_every_includer_copy`; textures and glTF: no test | — |
 | `AssetServer.load`, load state, `isLoadedWithDependencies` in systems | missing | — | new: `script-assets` |
-| `AssetEvent`, `AssetLoadFailedEvent` | missing | — | new: `rust-events` |
+| `AssetEvent`, `AssetLoadFailedEvent` | `AssetEvent<A>` idiomatic (`MessageReader<AssetEvent<Image>>`); `AssetLoadFailedEvent` missing: no `Reflect` in Bevy 0.20 | `rust_events.rs` `asset_event_image_reaches_a_ts_reader` | — (`AssetLoadFailedEvent`: upstream) |
 | `Assets<T>` add and mutate (meshes, images, materials, atlas layouts) from TS | missing | — | new: `script-assets` |
 | Processing, meta files, custom loaders | Rust-side by nature | — | — (stays Rust) |
 | `.bsn` levels, TSX scenes, `SceneComponent` prefabs | idiomatic (bevy-ts's own `.bsn` loader; Bevy 0.20 has none) | `bevy-ts-levels/tests/it/levels.rs` | — |

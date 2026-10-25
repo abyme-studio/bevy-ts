@@ -271,6 +271,67 @@ What reaches TS, by resource (tiers from `bevy-ts types` on the prebuilt engine)
 | `Assets<T>`, method APIs (`Time<Virtual>::pause`) | not plain data | exported params | writable-native-params |
 | Project and port resources | any | `Res`/`ResMut` once layout tier | here |
 
+## Rust messages and events
+
+A Rust message or event reaches TS once it is registered, one line per type:
+
+```rust
+app.ts_message::<Scored>()        // #[derive(Message, Reflect)]: MessageReader, MessageWriter
+    .ts_event::<RoundOver>()      // #[derive(Event, Reflect)]: On<E>, commands.trigger
+    .ts_entity_event::<Poked>();  // #[derive(EntityEvent, Reflect)]: also entity(e).observe
+```
+
+The prebuilt engine registers Bevy's own in `bevy_ts_cli::rust_events::register_bevy`: window,
+input (gamepad events and `GamepadRumbleRequest` included), picking, focus, UI widget, scene and
+screenshot events, `RequestRedraw`, and `AssetEvent<A>` for each engine asset type. `bevy-ts/bevy`
+declares them; a test fails when Bevy has one the list leaves out. `StateTransitionEvent<S>`,
+`AssetLoadFailedEvent<A>` and `bevy_scene::Ready` stay out: Bevy 0.20 gives them no `Reflect`.
+
+TS names a type by its reflect type path. Bevy's come from `bevy-ts/bevy`; a project's type is
+declared in TS as a port's component is, `export const Scored = rustMessage("game_native::Scored")`
+(`rustEvent`, `rustEntityEvent` for events). The project's `native.d.ts` does not declare its
+messages and events yet, so that line is written by hand, and its value is typed `unknown`. A generic type is one name whose instance the type
+argument picks: `MessageReader<AssetEvent<Image>>` and `MessageReader<AssetEvent<Mesh>>` read two
+queues.
+
+```ts
+import { Gamepad, GamepadRumbleRequest, KeyboardInput, PointerClick } from "bevy-ts/bevy";
+
+export function keys(r: MessageReader<KeyboardInput>) {
+  r.each((k) => { if (k.key_code === "Space" && k.state === "Pressed") console.log("jump"); });
+}
+export function calm(pads: Query<[Entity], With<Gamepad>>, rumble: MessageWriter<GamepadRumbleRequest>) {
+  pads.each((pad) => rumble.write(GamepadRumbleRequest.of({ Stop: { gamepad: pad } })));
+}
+export function clicked(click: On<PointerClick>) { /* click.entity, click.original, click.event */ }
+```
+
+Values cross as JSON in reflect-coverage's shape (docs/reflection.md), the shape TSX and the
+protocol use. A reader hands plain values, messages it has not read yet, oldest first; its cursor
+is kept per system, Bevy's update owns expiry, and a restart puts every cursor at the queue's end.
+`onMessage(M)` works for a Rust message. A write or trigger is a command, applied with the system's
+other commands, so a Rust system later in the frame sees it; a value that does not deserialize
+fails with the type and the field.
+
+An observer of a Rust event (`app.addObserver(fn)` or `entity(e).observe(fn)`) runs at the next
+drain of the observer queue, as for any event Rust triggers. The Bevy observer only serializes the
+event at each hop and queues it; each bubbling hop is its own TS call, and `propagate(false)`
+drops the trigger's remaining TS hops (Rust observers have run already). `On<E>.event` is the
+whole value as Bevy's `On::event()` gives it at that hop, its target rewritten to the current one,
+so a field named like one of `On`'s own members (`entity`, `original`, `propagate`, `toJSON`,
+`event`) is read there: `click.event.entity` is `click.entity`, and `click.original` is the
+entity first clicked.
+
+A type with only Bevy's `#[reflect(Message)]` or `#[reflect(Event)]` can still be written,
+triggered and observed; reading it fails the load, saying to register it with `ts_message`.
+
+The cost is paid per message read: each message a TS reader sees is serialized once in Rust and
+parsed once in JS. A system that does not run pays nothing. Filter in Rust, or read fewer types,
+where many messages arrive a frame. 1,000 `CursorMoved` a frame cost BENCH (bench/rust-events).
+
+`plugin_api::write_message` stays for a type without `Reflect` (Rapier's `CollisionEvent`): a port
+forwards it into a TS message of the same name.
+
 ## Ordering against Rust
 
 A crate exposes a Bevy set under a stable name, `app.ts_set("rapier:step", FixedUpdate,
@@ -487,8 +548,10 @@ claim as the param's `standsFor`.
 A port is a crate `bevy-ts-<name>` whose `PortPlugin` adds the third-party plugin the way TS
 gameplay needs it and supplies what reflection cannot: exported params, exposed sets, and a
 built-in TS module registered with `app.ts_module("bevy-ts/<name>", js, dts)`. The module's
-classes declare themselves with `__bevyts.data` and are declared by every generation;
-`plugin_api::write_message` forwards Rust messages into a TS message type of the same name.
+classes declare themselves with `__bevyts.data` and are declared by every generation. A port
+registers a reflected message or event with `ts_message`/`ts_event` (above);
+`plugin_api::write_message` forwards a message without `Reflect` into a TS message type of the
+same name.
 `bevy-ts types` writes the modules' declarations to `native-modules.d.ts` beside `native.d.ts`.
 
 `rapier3d` adds `RapierPhysicsPlugin` in `FixedUpdate`, exposes `rapier:sync-backend`,

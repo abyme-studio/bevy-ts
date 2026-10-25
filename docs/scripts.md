@@ -249,7 +249,47 @@ export function spawnDoor(commands: Commands) {
 - It follows its function across a reload: edit `onHit` and the next hit runs the new body. If
   `onHit` is removed or renamed, its observers are removed with a warning. If its first param
   stops being an entity event, the reload fails, naming it.
-- A function whose first param is not an entity event fails the run that observes it.
+- A function whose first param is not an entity event fails the run that observes it, and
+  `tsc` refuses it.
+- A reload that fails keeps the observers attached since the last drain; they run under the live
+  generation.
+- `on.event` is the event's whole value, as Bevy's `On::event()`: its fields, and for an entity
+  event `entity`, the current target at each hop (the first is `original`).
+
+## Rust messages and events
+
+Bevy's messages and events come from `bevy-ts/bevy` and are used as TS ones are:
+
+```ts
+import { KeyboardInput, PointerClick, WindowResized } from "bevy-ts/bevy";
+
+export function typed(keys: MessageReader<KeyboardInput>) {
+  keys.each((k) => console.log(k.key_code, k.state, k.logical_key));
+}
+export function resized(r: MessageReader<WindowResized>) {
+  for (const w of r) console.log(w.width, w.height);
+}
+export function clicked(click: On<PointerClick>) {
+  console.log(click.entity, click.original, click.count);
+}
+app.addSystems(Update, typed, resized).addObserver(clicked);
+```
+
+- A message is a plain value in Bevy's reflected shape: enums as Bevy writes them
+  (`"KeyA"`, `{ Character: "a" }`), vectors as arrays, a `Duration` in seconds.
+- Each message is serialized for each reader that reads it, so the cost grows with the messages
+  read (docs/native.md has the numbers). Read the types you need.
+- Writing is `MessageWriter<M>.write(M.of(value))` or `commands.write(...)`; triggering is
+  `commands.trigger(E.of(value))`. An enum's `of` takes its value whole:
+  `GamepadRumbleRequest.of({ Stop: { gamepad } })`.
+- A Rust event's observer runs at the next drain, once per bubbling hop. `propagate(false)` drops
+  the rest of the hops TS would see; Rust observers have run already.
+- A Rust event field named `entity`, `original`, `propagate`, `toJSON` or `event` is read as
+  `on.event.<name>`: `On` keeps its own. As Bevy's `On::event()`, `on.event`'s target is the
+  current one at each hop: `click.event.entity` is `click.entity`, and `click.original` is the
+  entity first clicked.
+- A project's own message or event is registered in Rust (`app.ts_message::<Scored>()`,
+  docs/native.md) and declared in TS by path: `export const Scored = rustMessage("game_native::Scored")`.
 
 ## Session bytes
 
