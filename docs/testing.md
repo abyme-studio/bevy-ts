@@ -26,6 +26,8 @@ How a new test is written here. Where tests live and what they cost to build is
 2. Never wait a fixed time. Wait for the condition, with a deadline (`common::wait_for`, an
    `until` loop). The deadline must hold on a machine at load 30: a settle check counts quiet frames
    and time, as `levels_protocol`'s does.
+   A test that saves through `bevy-ts dev`'s watcher waits for the reload report before it saves:
+   a report (`applied` or `failed`) means that compile's files are watched. Never sleep first.
 3. Find things by what they mean: an entity by its component, `Name` or key path; a protocol answer
    by its method and fields. Never by an entity's index or spawn order.
 4. A golden output holds a contract, not a migration. A protocol answer is checked against the

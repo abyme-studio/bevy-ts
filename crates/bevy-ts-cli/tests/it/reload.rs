@@ -169,8 +169,8 @@ fn a_save_applies() -> Duration {
     app.insert_resource(channel);
     bevy_ts_cli::dev::spawn_watcher(compiler, tx);
     let wait_for = |app: &mut App, generation: u64| until(app, &format!("generation {generation} never applied"), |app| app.world().resource::<Generations>().live >= generation);
+    // Applied means watched, and a late report of the project's own writes reloads nothing.
     wait_for(&mut app, 1);
-    std::thread::sleep(Duration::from_millis(100));
     write(&dir, "game.ts", &game("t.translation.y = 2;", FIELDS, ""));
     let took = wait_for(&mut app, 2);
     app.update();

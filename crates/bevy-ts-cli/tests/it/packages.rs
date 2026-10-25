@@ -8,7 +8,6 @@ use bevy_ts::generation::{DevChannel, Generations, ReloadLog, ReloadStatus};
 use bevy_ts_cli::compile::Compiler;
 use common::*;
 use std::sync::Arc;
-use std::time::Duration;
 
 /// An app whose dev watcher compiles `game.ts` in `dir`.
 fn watched(dir: &std::path::Path) -> App {
@@ -27,8 +26,8 @@ fn statuses(app: &App) -> Vec<ReloadStatus> {
 fn installing_a_missing_package_reloads() {
     let dir = project("install", &[("package.json", r#"{"name": "game", "type": "module"}"#), ("game.ts", "import { pad } from \"lodash-es\";\nconsole.log(pad(\"installed\"));\n")]);
     let mut app = watched(&dir);
+    // A reload's report means its files are watched.
     until(&mut app, "a failed load", |app| statuses(app).contains(&ReloadStatus::Failed));
-    std::thread::sleep(Duration::from_millis(100));
     // `pnpm add lodash-es`, by hand.
     write(&dir, "node_modules/lodash-es/package.json", r#"{"name": "lodash-es", "type": "module", "exports": "./lodash.js"}"#);
     write(&dir, "node_modules/lodash-es/lodash.js", "export const pad = (s) => `[${s}]`;\n");
@@ -50,7 +49,6 @@ fn editing_a_watched_package_json_reloads() {
     );
     let mut app = watched(&dir);
     until(&mut app, "dep a", |app| messages(app).iter().any(|m| m == "dep a"));
-    std::thread::sleep(Duration::from_millis(100));
     write(&dir, "node_modules/dep/package.json", r#"{"name": "dep", "type": "module", "exports": "./b.js"}"#);
     until(&mut app, "dep b", |app| messages(app).iter().any(|m| m == "dep b"));
 }

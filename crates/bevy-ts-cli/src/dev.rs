@@ -1,10 +1,10 @@
 //! `bevy-ts dev`: compile on a background thread, watch every loaded file and every path the
 //! resolver missed, and send each compiled module set to the engine as the next generation.
 
-use crate::compile::{Compiler, SHADER_EXT};
+use crate::compile::{Compiler, SHADER_EXT, content_hash};
 use bevy_ts::generation::DevEvent;
 use notify::{RecursiveMode, Watcher};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel};
@@ -22,19 +22,10 @@ pub fn spawn_watcher(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
         .expect("spawn the bevy-ts-dev thread");
 }
 
-fn compile(compiler: &Compiler, tx: &Sender<DevEvent>) -> bool {
+fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
     let started = Instant::now();
     let _ = tx.send(DevEvent::Compiling);
     let result = compiler.compile_graph();
-    tx.send(DevEvent::Compiled(result, started.elapsed())).is_ok()
-}
-
-fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
-    // The first set is sent once its files are watched: an edit made as soon as the game has
-    // loaded is never missed.
-    let started = Instant::now();
-    let _ = tx.send(DevEvent::Compiling);
-    let first = compiler.compile_graph();
     let took = started.elapsed();
     let (events_tx, events) = channel();
     let mut watcher = match notify::recommended_watcher(move |e| {
@@ -43,7 +34,7 @@ fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("bevy-ts: cannot watch files ({e}); reload with bevy-ts/reload instead");
-            let _ = tx.send(DevEvent::Compiled(first, took));
+            let _ = tx.send(DevEvent::Compiled(result, took));
             return;
         }
     };
@@ -51,49 +42,107 @@ fn watch(compiler: Arc<Compiler>, tx: Sender<DevEvent>) {
     // A missing path is watched at its nearest folder that exists, so an install that creates it
     // reloads (hot-reload: "Installing a package reloads").
     let mut dirs: BTreeSet<PathBuf> = BTreeSet::new();
-    let mut files = compiler.files();
-    let mut missing = compiler.missing();
-    let mut rewatch = |files: &BTreeSet<PathBuf>, missing: &BTreeSet<PathBuf>, dirs: &mut BTreeSet<PathBuf>| {
-        let parents = files.iter().filter_map(|f| f.parent().map(Path::to_path_buf));
-        let nearest = missing.iter().filter_map(|m| nearest_folder(m, &compiler.root));
+    // True when a change may have come before its folder was watched: a file in a folder newly
+    // watched no longer has the text compiled, or a missing path moved. Then it compiles again.
+    let mut rewatch = |seen: &Seen, dirs: &mut BTreeSet<PathBuf>| {
+        let parents = seen.files.keys().filter_map(|f| f.parent().map(Path::to_path_buf));
+        let nearest = seen.missing.values().filter_map(|(_, n)| n.clone());
+        let mut new = BTreeSet::new();
         for d in parents.chain(nearest) {
-            if dirs.insert(d.clone())
-                && let Err(e) = watcher.watch(&d, RecursiveMode::NonRecursive)
-            {
-                eprintln!("bevy-ts: cannot watch {}: {e}", d.display());
+            if dirs.insert(d.clone()) {
+                if let Err(e) = watcher.watch(&d, RecursiveMode::NonRecursive) {
+                    eprintln!("bevy-ts: cannot watch {}: {e}", d.display());
+                }
+                new.insert(d);
             }
         }
+        let files = seen.files.keys().filter(|f| f.parent().is_some_and(|d| new.contains(d)));
+        files.chain(seen.missing.keys()).any(|p| seen.changed(p))
     };
-    rewatch(&files, &missing, &mut dirs);
-    if tx.send(DevEvent::Compiled(first, took)).is_err() {
+    // Each set is sent once its files are watched: an edit made as soon as its report arrives is
+    // never missed (hot-reload: "A reload report means its files are watched").
+    let mut seen = Seen::of(&compiler);
+    let mut again = rewatch(&seen, &mut dirs);
+    if tx.send(DevEvent::Compiled(result, took)).is_err() {
         return;
     }
     loop {
-        let Ok(first) = events.recv() else { return };
-        let mut touched = BTreeSet::new();
-        touches(&first, &files, &missing, &mut touched);
-        let deadline = Instant::now() + SETTLE;
-        while let Ok(e) = events.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-            touches(&e, &files, &missing, &mut touched);
-        }
-        if touched.is_empty() {
-            continue;
-        }
-        // Shader files are not modules: a save of only those changes no JS, so it starts no
-        // generation (script-materials design decision 3).
-        if touched.iter().all(|p| p.to_string_lossy().ends_with(SHADER_EXT)) {
-            if tx.send(DevEvent::FilesChanged(touched.into_iter().collect())).is_err() {
-                return;
+        if !again {
+            let Ok(first) = events.recv() else { return };
+            let mut touched = BTreeSet::new();
+            touches(&first, &seen, &mut touched);
+            let deadline = Instant::now() + SETTLE;
+            while let Ok(e) = events.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                touches(&e, &seen, &mut touched);
             }
-            continue;
+            // A late report of a write from before the watch, or of one already compiled,
+            // changes nothing: macOS reports writes made just before a watch starts.
+            touched.retain(|p| seen.changed(p));
+            if touched.is_empty() {
+                continue;
+            }
+            // Shader files are not modules: a save of only those changes no JS, so it starts no
+            // generation (script-materials design decision 3).
+            if touched.iter().all(|p| p.to_string_lossy().ends_with(SHADER_EXT)) {
+                for p in &touched {
+                    seen.files.insert(p.clone(), hash_of(p));
+                }
+                if tx.send(DevEvent::FilesChanged(touched.into_iter().collect())).is_err() {
+                    return;
+                }
+                continue;
+            }
         }
-        if !compile(&compiler, &tx) {
+        let started = Instant::now();
+        if tx.send(DevEvent::Compiling).is_err() {
             return;
         }
-        files = compiler.files();
-        missing = compiler.missing();
-        rewatch(&files, &missing, &mut dirs);
+        let result = compiler.compile_graph();
+        let took = started.elapsed();
+        seen = Seen::of(&compiler);
+        again = rewatch(&seen, &mut dirs);
+        if tx.send(DevEvent::Compiled(result, took)).is_err() {
+            return;
+        }
     }
+}
+
+/// What the last compile saw: each file's content hash (`None` when unreadable), and for each
+/// missing path, whether something is there (the resolver may have looked for a file where a
+/// folder is) and its nearest watched folder.
+struct Seen {
+    files: BTreeMap<PathBuf, Option<u64>>,
+    missing: BTreeMap<PathBuf, (bool, Option<PathBuf>)>,
+    root: PathBuf,
+}
+
+impl Seen {
+    fn of(compiler: &Compiler) -> Seen {
+        let hashes = compiler.hashes();
+        let files = compiler.files().into_iter().map(|f| {
+            let h = hashes.get(&f).copied().or_else(|| hash_of(&f));
+            (f, h)
+        });
+        let missing = compiler.missing().into_iter().map(|m| {
+            let n = (m.exists(), nearest_folder(&m, &compiler.root));
+            (m, n)
+        });
+        Seen { files: files.collect(), missing: missing.collect(), root: compiler.root.clone() }
+    }
+
+    /// Whether `path` differs from what the compile saw: a file's bytes, or a missing path that
+    /// appeared or whose nearest folder moved.
+    fn changed(&self, path: &Path) -> bool {
+        if let Some(h) = self.files.get(path) {
+            return hash_of(path) != *h;
+        }
+        let moved = |(m, seen): (&PathBuf, &(bool, Option<PathBuf>))| (m.exists(), nearest_folder(m, &self.root)) != *seen;
+        self.missing.iter().filter(|(m, _)| m.starts_with(path)).any(moved)
+    }
+}
+
+fn hash_of(path: &Path) -> Option<u64> {
+    std::fs::read(path).ok().map(|b| content_hash(&b))
 }
 
 /// The nearest folder of `missing` that exists, unless it is above the project root: an install
@@ -106,10 +155,54 @@ fn nearest_folder(missing: &Path, root: &Path) -> Option<PathBuf> {
 
 /// Adds the graph's files, and the missing paths, an event touched to `out`: a missing path is
 /// touched when it or a folder above it appears.
-fn touches(e: &notify::Result<notify::Event>, files: &BTreeSet<PathBuf>, missing: &BTreeSet<PathBuf>, out: &mut BTreeSet<PathBuf>) {
+fn touches(e: &notify::Result<notify::Event>, seen: &Seen, out: &mut BTreeSet<PathBuf>) {
     let Ok(e) = e else { return };
     if e.kind.is_access() {
         return;
     }
-    out.extend(e.paths.iter().filter(|p| files.contains(*p) || missing.iter().any(|m| m.starts_with(p))).cloned());
+    out.extend(e.paths.iter().filter(|p| seen.files.contains_key(*p) || seen.missing.keys().any(|m| m.starts_with(p))).cloned());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("bevy-ts-dev-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (f, src) in [("package.json", "{\"name\": \"game\", \"type\": \"module\"}")].iter().chain(files) {
+            let p = dir.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, src).unwrap();
+        }
+        dir.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn a_late_report_of_the_compiled_text_is_no_change() {
+        let dir = project("late", &[("game.ts", "export const a = 1;\n")]);
+        let compiler = Compiler::new(dir.join("game.ts"), true).unwrap();
+        compiler.compile_graph().unwrap();
+        let seen = Seen::of(&compiler);
+        let game = dir.join("game.ts");
+        assert!(!seen.changed(&game), "the text it compiled");
+        std::fs::write(&game, "export const a = 1;\n").unwrap();
+        assert!(!seen.changed(&game), "saved again unchanged");
+        std::fs::write(&game, "export const a = 2;\n").unwrap();
+        assert!(seen.changed(&game), "new text of the same length");
+        assert!(!seen.changed(&dir.join("other.ts")), "not of the graph");
+    }
+
+    #[test]
+    fn an_install_is_a_change_of_its_missing_path() {
+        let dir = project("install", &[("game.ts", "import { pad } from \"lodash-es\";\nconsole.log(pad);\n")]);
+        let compiler = Compiler::new(dir.join("game.ts"), true).unwrap();
+        compiler.compile_graph().unwrap_err();
+        let seen = Seen::of(&compiler);
+        let modules = dir.join("node_modules");
+        // The resolver missed `node_modules`, watched at the project folder.
+        assert!(!seen.changed(&modules), "nothing installed yet");
+        std::fs::create_dir_all(modules.join("lodash-es")).unwrap();
+        assert!(seen.changed(&modules), "the install's folder appeared");
+    }
 }

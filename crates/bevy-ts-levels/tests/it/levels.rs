@@ -678,15 +678,26 @@ mod hot_reload {
     use super::*;
     use bevy_ts_levels::engine::content_hash;
 
-    /// Saves `file` and waits until every level including it has applied the new text.
+    /// Saves `file` and waits until every level including it has applied the new text, or it
+    /// logged an error.
     fn save(f: &mut Fixture, file: &str, text: &str) {
+        save_then(f, file, text, true);
+    }
+
+    /// As [`save`], waiting for the new text alone: late errors of an earlier bad save do not
+    /// end the wait.
+    fn save_good(f: &mut Fixture, file: &str, text: &str) {
+        save_then(f, file, text, false);
+    }
+
+    fn save_then(f: &mut Fixture, file: &str, text: &str, or_error: bool) {
         write(&f.dir, file, text);
         let hash = content_hash(text.as_bytes());
         let errors = f.errors().len();
         f.app.world().resource::<AssetServer>().reload(file.to_string());
         f.until(&format!("{file} never reloaded"), |f| {
             let levels = f.app.world().resource::<Levels>();
-            f.errors().len() > errors || levels.affected(file).iter().all(|l| levels.roots[l].applied.get(file) == Some(&hash))
+            (or_error && f.errors().len() > errors) || levels.affected(file).iter().all(|l| levels.roots[l].applied.get(file) == Some(&hash))
         });
     }
 
@@ -763,12 +774,8 @@ mod hot_reload {
         assert_eq!(f.hp(b).1, 250.0);
         let errors = f.errors();
         assert!(errors.iter().any(|e| e.starts_with("levels/arena.bsn:8:15 levels: expressions are not supported")), "{errors:?}");
-        // Fixed, it applies. Late reports of the bad file come first, so `save` does not take
-        // them for the fixed file's.
-        for _ in 0..20 {
-            f.app.update();
-        }
-        save(&mut f, "levels/arena.bsn", &ARENA.replace("max: 250.0", "max: 270.0"));
+        // Fixed, it applies.
+        save_good(&mut f, "levels/arena.bsn", &ARENA.replace("max: 250.0", "max: 270.0"));
         assert_eq!(f.hp(b).1, 270.0);
     }
 

@@ -418,6 +418,10 @@ const processes = {
   // Change reflect-assets: stage 2's crates, while it is built.
   "reflect-assets-materials": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:reflect-assets-materials -- bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib reflect_asset && cargo test -p bevy-ts-tsx && cargo test -p bevy-ts-material && cargo test -p bevy-ts-cli --test it -- reflect_assets:: materials:: scene_material:: standard_material_limits::) 2>&1 | grep -v ld64 | tee target/reflect-assets-materials.log | grep -E \"^test result|FAILED|panicked|^error|^warning|left|right\" -A3'" },
   "reflect-assets-test": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:reflect-assets-test -- bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib reflect_asset && cargo test -p bevy-ts-tsx --lib) 2>&1 | grep -v ld64 | tee target/reflect-assets-test.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning\" -A3'" },
+  // watcher-ready: the dev watcher's unit tests, the cli tests that save through it, bevy-ts-levels.
+  "watcher-ready-test": { cmd: "set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-cli --lib dev:: && cargo test --no-fail-fast -p bevy-ts-cli --test it -- packages:: reload:: viewport_preview:: && cargo test -p bevy-ts-levels) 2>&1 | grep -v ld64 | tee target/watcher-ready-test.log | grep -E \"^error|^warning|-->|^test |test result|panicked\"" },
+  // watcher-ready: the dev watcher's tests under load, main's watcher (before) and this tree's (after).
+  "watcher-ready-soak": { cmd: "scripts/watcher-ready-soak.sh 8 5 2>&1 | grep -v ld64 | tee target/watcher-ready-soak.log" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

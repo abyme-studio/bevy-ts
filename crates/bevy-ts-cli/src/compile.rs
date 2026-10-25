@@ -382,6 +382,14 @@ fn resolve_error(spec: &str, e: ResolveError, at: &SourceLocation) -> ScriptErro
 
 /// A `.wgsl` import's synthetic module: its default export is an opaque shader-file value naming
 /// the file. The WGSL stays on the host; script materials read it there.
+/// The hash [`Compiler::hashes`] keeps of a file's bytes.
+pub fn content_hash(bytes: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut h);
+    h.finish()
+}
+
 pub fn shader_module(path: &Path) -> String {
     let p = serde_json::to_string(&path.to_string_lossy()).expect("a string");
     format!("export default Object.freeze({{ kind: \"shaderFile\", path: {p} }});\n")
@@ -430,6 +438,8 @@ pub struct Compiler {
     files: Mutex<BTreeSet<PathBuf>>,
     /// Every path the last compile looked for and did not find.
     missing: Mutex<BTreeSet<PathBuf>>,
+    /// A hash of each source the last compile read, as it read it.
+    hashes: Mutex<HashMap<PathBuf, u64>>,
 }
 
 impl Compiler {
@@ -457,6 +467,7 @@ impl Compiler {
             resolver: resolver(dev),
             files: Mutex::new(BTreeSet::new()),
             missing: Mutex::new(BTreeSet::new()),
+            hashes: Mutex::new(HashMap::new()),
         })
     }
 
@@ -476,6 +487,13 @@ impl Compiler {
         self.missing.lock().unwrap().clone()
     }
 
+    /// A hash of each source the last compile read, of the text it compiled: the watcher tells a
+    /// change from a late report of an older write by it. Files it did not read itself (each
+    /// `package.json`, shaders) have none.
+    pub fn hashes(&self) -> HashMap<PathBuf, u64> {
+        self.hashes.lock().unwrap().clone()
+    }
+
     pub fn compile_graph(&self) -> Result<ModuleSet, Vec<ScriptError>> {
         // Its cache would hide an install or an edited `package.json`.
         self.resolver.clear_cache();
@@ -485,6 +503,7 @@ impl Compiler {
         let mut modules = Vec::new();
         let mut errors = Vec::new();
         let mut files = BTreeSet::new();
+        let mut hashes = HashMap::new();
         let mut context = ResolveContext::default();
         // Shipped paths, so two files never ship at one.
         let mut shipped: HashMap<PathBuf, PathBuf> = HashMap::new();
@@ -525,6 +544,7 @@ impl Compiler {
                     continue;
                 }
             };
+            hashes.insert(path.clone(), content_hash(source.as_bytes()));
             let package = is_package(&self.root, &path).then(|| package_of(&path).map_or_else(|| bevy_ts::backend::display_path(&path), |(_, n, _)| n));
             let options = Options {
                 dev: self.dev,
@@ -571,6 +591,7 @@ impl Compiler {
         }
         files.extend(context.file_dependencies.iter().filter(|p| p.ends_with("package.json")).cloned());
         *self.files.lock().unwrap() = files;
+        *self.hashes.lock().unwrap() = hashes;
         *self.missing.lock().unwrap() = context.missing_dependencies.into_iter().collect();
         if errors.is_empty() { Ok(ModuleSet { entry: self.entry.clone(), modules }) } else { Err(errors) }
     }
