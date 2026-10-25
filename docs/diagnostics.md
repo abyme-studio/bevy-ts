@@ -59,6 +59,11 @@ the engine renders.
 bevy-ts's own work in the stage (column views, commands). `performance.now()` times anything else:
 milliseconds since the engine started, finer than `Date.now`, not reset by a reload.
 
+Measured (`bench/diagnostics`, a release engine headless, 8 runs, medians): no plugin adds main-world
+time above the noise, about 1.5 ms on a loaded Mac, at 10k or 100k entities.
+`EntityCountDiagnosticsPlugin` reads 0.1 ms or less; `RenderDiagnosticsPlugin` about 0.5 ms. The
+table per plugin is in the change's design (`openspec/changes/archive/*-script-diagnostics/design.md`).
+
 ## Headless pacing
 
 Under `--headless` the frame is paced near 21 ms whatever runs, so `frame_time` and `fps` say
