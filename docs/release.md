@@ -2,7 +2,8 @@
 
 Seven packages: `bevy-ts` (the TS API, types and launcher) and one engine package per platform,
 `@bevy-ts/<platform>` (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-x64`),
-installed as `bevy-ts`'s optional dependencies the way esbuild and Biome ship. Pre-releases go out
+installed as `bevy-ts`'s optional dependencies the way esbuild and Biome ship. An eighth,
+`@bevy-ts/android-arm64`, is the engine as a library for Android apps (below). Pre-releases go out
 under the `next` dist-tag and, until a stable release exists, under `latest` too.
 
 Only `@bevy-ts/darwin-arm64` ships for now. The other platforms keep their package folders, but
@@ -55,6 +56,28 @@ or on npmjs.com: the package > Settings > Trusted publishing > GitHub Actions, r
 
 `bevy-ts` and `@bevy-ts/darwin-arm64` were first published by hand from the operator's Mac at
 `0.1.0-alpha.0`; npm made that `latest` as well as `next`.
+
+## The Android library
+
+`@bevy-ts/android-arm64` holds the engine as a library for an Android app (docs/android.md):
+`lib/libbevy_ts_android.so`, `lib/dev/bevyts/Engine.java` and `lib/bevy_ts_embed.h`. It is not one
+of `bevy-ts`'s optional dependencies, and `bevy-ts` never waits for it: an app that embeds the
+engine fetches the library at `bevy-ts`'s version itself.
+
+The release workflow's `android` job builds it at every release on a Linux runner with
+`scripts/android`. V8 has no Android prebuilt, so it builds from source once per `v8` version
+(about an hour) and is cached under `~/.cache/bevy-ts/v8-android`. `android-publish` then publishes
+it, but only once `ANDROID_PUBLISH` in the first job's Platforms step is `true`; until then its
+publish is a dry run. That waits on its first version by hand, as below, on the operator's go:
+
+```sh
+scripts/android
+mkdir -p packages/platforms/android-arm64/lib
+cp -R dist/aarch64-linux-android/. packages/platforms/android-arm64/lib/
+cd packages/platforms/android-arm64 && npm publish --access public --tag next
+```
+
+then its trusted publisher, then `ANDROID_PUBLISH: true`.
 
 ## The packed examples
 

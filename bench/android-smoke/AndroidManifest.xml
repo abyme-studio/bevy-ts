@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The smoke host: one activity drawing the engine into a SurfaceView, the library loaded by path
+     from filesDir as abyme's app will. Debuggable, so run.sh can copy files in with run-as. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.bevyts.smoke">
+  <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="34" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <application android:label="bevy-ts smoke" android:debuggable="true" android:hasCode="true">
+    <activity android:name=".SmokeActivity" android:exported="true" android:launchMode="singleTop"
+        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

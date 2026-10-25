@@ -1,0 +1,19 @@
+[package]
+name = "bevy-ts-android"
+description = "libbevy_ts_android.so: bevy-ts's embedding API over JNI for dev.bevyts.Engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "bevy_ts_android"
+crate-type = ["cdylib"]
+
+# Android only: on any other target the library is empty, so the workspace's build stays cheap.
+[target.'cfg(target_os = "android")'.dependencies]
+bevy-ts-embed.workspace = true
+bevy = { workspace = true, features = ["android-native-activity"] }
+jni = "0.21"
+
+[lints]
+workspace = true

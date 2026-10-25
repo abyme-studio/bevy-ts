@@ -284,6 +284,11 @@ const processes = {
   "stage2-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --no-fail-fast; scripts/dylib-check.sh) 2>&1 | grep -v ld64 | tee target/stage2-gate.log | grep -E \"^test result|FAILED|panicked|^error|should be|NOT|refused|dylib-check\"'" },
   // The workspace doctests in this checkout (a doctest that runs cannot find the Bevy dylib).
   "doctests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --workspace --doc 2>&1 | grep -v ld64 | tee target/doctests.log | grep -E \"^test result|FAILED|dyld|^error\"'" },
+  // Change android-native: the Android library (scripts/android takes its own check slot; a V8
+  // build from source when its cache is cold, about 47 min at -j4).
+  android: { cmd: "bash -c 'set -o pipefail; mkdir -p target; scripts/android 2>&1 | grep --line-buffered -v ld64 | tee target/android.log | tail -40'" },
+  // Task 4.6: the library on a headless emulator, from bench/android-smoke (no window on screen).
+  "android-smoke": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/android-smoke/run.sh 2>&1 | tee target/android-smoke.log | tail -40'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

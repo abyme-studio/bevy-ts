@@ -1,0 +1,19 @@
+{
+  "name": "@bevy-ts/android-arm64",
+  "version": "0.1.0-alpha.0",
+  "description": "The bevy-ts engine library for Android on arm64: libbevy_ts_android.so, its Java class and C header",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abyme-studio/bevy-ts.git",
+    "directory": "packages/platforms/android-arm64"
+  },
+  "files": [
+    "lib",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  }
+}

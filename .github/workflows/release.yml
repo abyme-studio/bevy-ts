@@ -44,6 +44,7 @@ jobs:
       publish: ${{ steps.release.outputs.publish }}
       matrix: ${{ steps.platforms.outputs.matrix }}
       platforms: ${{ steps.platforms.outputs.platforms }}
+      android: ${{ steps.platforms.outputs.android }}
     steps:
       # The platforms released, one line each: `<platform> <runner>`. Only darwin-arm64 ships for
       # now; uncomment a line to release that platform again (docs/release.md).
@@ -56,7 +57,12 @@ jobs:
             # linux-x64 ubuntu-24.04
             # linux-arm64 ubuntu-24.04-arm
             # win32-x64 windows-2025
+          # @bevy-ts/android-arm64 is built at every release, and published only once its first
+          # version is on npm by hand and has its trusted publisher (docs/release.md); until then
+          # its publish is a dry run.
+          ANDROID_PUBLISH: false
         run: |
+          echo "android=$ANDROID_PUBLISH" >> "$GITHUB_OUTPUT"
           rows=$(printf '%s\n' "$PLATFORMS" | sed -e 's/#.*//' | awk 'NF')
           echo "matrix=$(printf '%s\n' "$rows" | jq -Rnc '[inputs | split(" ") | {platform: .[0], runner: .[1]}]')" >> "$GITHUB_OUTPUT"
           echo "platforms=$(printf '%s\n' "$rows" | awk '{print $1}' | paste -sd, -)" >> "$GITHUB_OUTPUT"
@@ -162,6 +168,68 @@ jobs:
       - name: No engine built
         if: ${{ steps.engine.outcome != 'success' }}
         run: echo "::warning::engine $P did not build; nothing to publish"
+
+  # The Android library: its own package at every version, not one of bevy-ts's optional
+  # dependencies, so bevy-ts never waits for it. V8 has no Android prebuilt and builds from source,
+  # cached per `v8` version.
+  android:
+    name: engine android-arm64
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-linux-android }
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with: { ndk-version: r28c }
+      - run: cargo install cargo-ndk --locked
+      - name: V8 version
+        id: v8
+        run: echo "v8=$(awk '$0 == "name = \"v8\"" { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/bevy-ts/v8-android/v${{ steps.v8.outputs.v8 }}
+          key: v8-android-${{ steps.v8.outputs.v8 }}
+      - name: Build the library
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          BEVY_TS_V8_JOBS: 4
+        run: scripts/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64
+          path: dist/aarch64-linux-android/
+          retention-days: 7
+
+  android-publish:
+    name: publish android-arm64
+    needs: [release, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+      TAG: ${{ needs.release.outputs.tag }}
+      PUBLISH: ${{ needs.release.outputs.publish == 'true' && needs.release.outputs.android == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: npm with trusted publishing over OIDC (>= 11.21)
+        run: npm install -g npm@^11.21.0 && npm --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-arm64
+          path: packages/platforms/android-arm64/lib
+      - name: Publish @bevy-ts/android-arm64
+        run: |
+          (cd packages/platforms/android-arm64 && npm pkg set version="$VERSION")
+          flags=(--provenance --access public --tag "$TAG")
+          [ "$PUBLISH" = true ] || flags+=(--dry-run)
+          scripts/npm-publish.sh packages/platforms/android-arm64 @bevy-ts/android-arm64 "$VERSION" "${flags[@]}"
 
   bevy-ts:
     name: publish bevy-ts
