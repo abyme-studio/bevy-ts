@@ -146,8 +146,16 @@ pub struct Compile<'a> {
     pub natives: &'a mut HashSet<String>,
 }
 
-fn resource_id(world: &World, name: &str, ts: &TsLookup) -> Option<ComponentId> {
-    ts(name).map(|(id, _)| id).or_else(|| world.resource::<NativeLayouts>().get(name).map(|n| n.id)).or_else(|| rust_component_by_name(world, name).ok())
+/// A resource condition's resource: `None` when no type has the name (the condition is never
+/// true), and an error, under the condition's name, when a short name names several Rust types.
+fn resource_id(world: &World, name: &str, ts: &TsLookup, condition: &str) -> Result<Option<ComponentId>, String> {
+    if let Some((id, _)) = ts(name) {
+        return Ok(Some(id));
+    }
+    if let Some(n) = world.resource::<NativeLayouts>().get(name) {
+        return Ok(Some(n.id));
+    }
+    rust_component_by_name(world, name).map_err(|e| format!("{condition}({name}): {e}"))
 }
 
 fn component_id(world: &World, r: &ComponentRef, ts: &TsLookup) -> Result<ComponentId, String> {
@@ -157,7 +165,8 @@ fn component_id(world: &World, r: &ComponentRef, ts: &TsLookup) -> Result<Compon
             .resource::<NativeLayouts>()
             .get(&r.name)
             .map(|n| n.id)
-            .map_or_else(|| rust_component_by_name(world, &r.name), Ok),
+            .map_or_else(|| rust_component_by_name(world, &r.name), |id| Ok(Some(id)))?
+            .ok_or_else(|| format!("no Rust component named {}", r.name)),
     }
 }
 
@@ -213,31 +222,25 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             Condition::OnMessage { index, slot: slot() }
         }
         ConditionDecl::RunOnce => Condition::RunOnce { slot: slot() },
-        ConditionDecl::ResourceExists { resource } => {
-            // A short name several Rust types share refuses, as `Res<R>` does.
-            if (c.ts)(resource).is_none()
-                && let Some(paths) = world.resource::<NativeLayouts>().ambiguous(resource)
-            {
-                return Err(format!("resourceExists({resource}): {resource} names more than one Rust type ({}); use its type path", paths.join(", ")).into());
-            }
-            Condition::ResourceExists { id: resource_id(world, resource, c.ts) }
-        }
+        ConditionDecl::ResourceExists { resource } => Condition::ResourceExists { id: resource_id(world, resource, c.ts, "resourceExists")? },
         ConditionDecl::ResourceAdded { resource }
         | ConditionDecl::ResourceChanged { resource }
         | ConditionDecl::ResourceExistsAndChanged { resource }
         | ConditionDecl::ResourceRemoved { resource }
         | ConditionDecl::ResourceChangedOrRemoved { resource } => {
-            let kind = match d {
-                ConditionDecl::ResourceAdded { .. } => ResourceKind::Added,
-                ConditionDecl::ResourceRemoved { .. } => ResourceKind::Removed,
-                ConditionDecl::ResourceChangedOrRemoved { .. } => ResourceKind::ChangedOrRemoved,
-                _ => ResourceKind::Changed,
+            let (kind, condition) = match d {
+                ConditionDecl::ResourceAdded { .. } => (ResourceKind::Added, "resourceAdded"),
+                ConditionDecl::ResourceRemoved { .. } => (ResourceKind::Removed, "resourceRemoved"),
+                ConditionDecl::ResourceChangedOrRemoved { .. } => (ResourceKind::ChangedOrRemoved, "resourceChangedOrRemoved"),
+                ConditionDecl::ResourceExistsAndChanged { .. } => (ResourceKind::Changed, "resourceExistsAndChanged"),
+                _ => (ResourceKind::Changed, "resourceChanged"),
             };
-            Condition::Resource { kind, id: resource_id(world, resource, c.ts), slot: slot() }
+            Condition::Resource { kind, id: resource_id(world, resource, c.ts, condition)?, slot: slot() }
         }
         ConditionDecl::ResourceEquals { resource, value } | ConditionDecl::ResourceExistsAndEquals { resource, value } => {
+            let id = resource_id(world, resource, c.ts, "resourceEquals")?;
             let (bytes, fields) = encode_resource(world, resource, value, c)?;
-            Condition::ResourceEquals { id: resource_id(world, resource, c.ts), bytes, fields }
+            Condition::ResourceEquals { id, bytes, fields }
         }
         ConditionDecl::AnyWithComponent { component } => {
             let id = component_id(world, component, c.ts)?;
