@@ -99,7 +99,8 @@ fn graph_write(slots: &Slots, _: Option<&dyn PartialReflect>, json: &Value) -> R
             let p = pair.as_array().filter(|a| a.len() == 2).ok_or_else(|| format!("AnimationGraph mask_groups {i} is [target, mask], not {pair}"))?;
             let target = target(&p[0]).map_err(|e| format!("AnimationGraph mask_groups {i}: {e}"))?;
             let mask = p[1].as_u64().ok_or_else(|| format!("AnimationGraph mask_groups {i}: a mask is a whole number, not {}", p[1]))?;
-            g.mask_groups.insert(target, mask);
+            // The same bone named twice (by names and by UUID) keeps both masks' groups.
+            *g.mask_groups.entry(target).or_default() |= mask;
         }
     }
     Ok(Box::new(g))
@@ -243,6 +244,16 @@ mod tests {
         assert!(app.world().resource::<AssetServer>().get_handle::<AnimationClip>("models/Fox.glb#Animation0").is_none(), "no clip loads");
         let e = with_slots(&app, true, |s| graph_write(s, None, &json!({ "graph": { "nodes": [{ "node_type": "Lerp" }] } }))).unwrap_err();
         assert!(e.contains("node 0") && e.contains("Lerp"), "{e}");
+    }
+
+    #[test]
+    fn a_bone_named_twice_keeps_both_masks() {
+        let app = app();
+        let hip = AnimationTargetId::from_names([Name::new("root"), Name::new("b_Hip_01")].iter());
+        let j = json!({ "mask_groups": [[{ "names": ["root", "b_Hip_01"] }, 1], [hip.0.to_string(), 4]] });
+        let g = with_slots(&app, true, |s| graph_write(s, None, &j)).unwrap();
+        let g = g.as_partial_reflect().try_downcast_ref::<AnimationGraph>().unwrap();
+        assert_eq!(g.mask_groups.get(&hip), Some(&5));
     }
 
     #[test]

@@ -237,3 +237,34 @@ fn a_parked_graph_root_wakes_with_its_graph() {
     steps(&mut app, 2);
     assert_eq!(handle(&app, root), Some(graph), "it wakes with its own graph, not the shared one");
 }
+
+#[test]
+fn a_paused_ron_graph_root_stays_paused_when_its_graph_loads() {
+    let mut app = app();
+    let graph: Handle<AnimationGraph> = load(&app, "anims/fox_blend.animgraph.ron");
+    let scene = load(&app, SCENE);
+    let root = app.world_mut().spawn((WorldAssetRoot(scene), PlayAnimation { graph, paused: true, ..default() })).id();
+    plays(&mut app, root, 2);
+    assert!(player(&app, root).all_paused(), "the clips the late graph starts are paused");
+}
+
+#[test]
+fn a_node_added_to_a_paused_graph_root_is_paused() {
+    let mut app = app();
+    let graph = one(&mut app, RUN);
+    let root = graph_fox(&mut app, graph.clone());
+    plays(&mut app, root, 1);
+    app.world_mut().get_mut::<PlayAnimation>(root).unwrap().paused = true;
+    steps(&mut app, 2);
+    let survey = clip(&app, SURVEY);
+    {
+        let mut graphs = app.world_mut().resource_mut::<Assets<AnimationGraph>>();
+        let mut g = graphs.get_mut(&graph).unwrap();
+        let root = g.root;
+        g.add_clip(survey, 1.0, root);
+    }
+    steps(&mut app, 2);
+    let p = player(&app, root);
+    assert_eq!(p.playing_animations().count(), 2, "the new node starts");
+    assert!(p.all_paused(), "and is paused with the rest");
+}
