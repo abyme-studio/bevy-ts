@@ -87,8 +87,9 @@ fn insert(state: &mut ParamState, world: UnsafeWorldCell<'_>, ticks: RunTicks, r
     let mut ext = ext.reflect_clone().map_err(|e| format!("{name}: {e}"))?;
     bevy_ts::reflect_value::write(&r, None, ext.as_partial_reflect_mut(), None, &ext_json).map_err(|e| format!("{name} ext: {e}"))?;
     let (config_slot, ext_slot) = p.store.get_config_mut_dyn(&id).expect("read above");
-    *config_slot = config;
+    // The value first: if it refuses, the config is left as it was too.
     ext_slot.try_apply(ext.as_partial_reflect()).map_err(|e| format!("{name} ext: {e}"))?;
+    *config_slot = config;
     Ok(())
 }
 

@@ -2898,6 +2898,24 @@ const HOST = {
     }
     return core.ops.op_bevyts_host(id, HOST.slotBytes, HOST.resultBytes, s0, s1, s2, s3);
   },
+  /**
+   * The builder a builder call returns: the param's methods, with the builder's name and a serial
+   * the param's next builder call moves past (design 5).
+   */
+  open(param, builder) {
+    const p = param.$param ?? param;
+    const b = Object.create(p);
+    b.$param = p;
+    b.$builder = builder;
+    b.$serial = p.$serial = (p.$serial ?? 0) + 1;
+    return b;
+  },
+  /** Throws when `b`, a builder, is not the param's latest. */
+  live(b, setting) {
+    if (b.$param !== undefined && b.$serial !== b.$param.$serial) {
+      throw new Error(`${b.$builder}.${setting}: call it right after the call that returned the builder`);
+    }
+  },
   fail(param, method) {
     const msg = core ? core.ops.op_bevyts_host_error() : "";
     throw new Error(msg || `${param}.${method} failed`);

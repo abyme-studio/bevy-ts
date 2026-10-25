@@ -149,6 +149,42 @@ app.addSystems(Update, draw);
 }
 
 #[test]
+fn a_builder_kept_past_another_builder_throws() {
+    let body = r##"
+export function draw(gizmos: Gizmos) {
+  const c = gizmos.circle([0, 0, 0], 1, "#fff");
+  gizmos.sphere([0, 0, 0], 1, "#f00");
+  try { c.resolution(64); } catch (e) { console.log(`threw ${(e as Error).message}`); }
+  const a = gizmos.arrow([0, 0, 0], [1, 0, 0], "#0f0");
+  gizmos.circle([0, 0, 0], 2, "#fff");
+  try { a.withTipLength(0.5); } catch (e) { console.log(`threw ${(e as Error).message}`); }
+}
+app.addSystems(Update, draw);
+"##;
+    let mut app = gizmo_app("gizmos-kept-builder", body, |_| {});
+    app.update();
+    let threw = logged(&mut app, "threw ");
+    assert_eq!(
+        threw,
+        [
+            "EllipseBuilder.resolution: call it right after the call that returned the builder",
+            "ArrowBuilder.withTipLength: call it right after the call that returned the builder"
+        ],
+        "{:?}",
+        messages(&app)
+    );
+    // Every shape as drawn, the sphere and the second circle at their defaults.
+    let mut want = bevy::gizmos::gizmos::GizmoBuffer::<DefaultGizmoConfigGroup, ()>::default();
+    want.circle(Vec3::ZERO, 1.0, Color::WHITE);
+    want.sphere(Vec3::ZERO, 1.0, Color::srgb(1.0, 0.0, 0.0));
+    want.arrow(Vec3::ZERO, Vec3::X, Color::srgb(0.0, 1.0, 0.0));
+    want.circle(Vec3::ZERO, 2.0, Color::WHITE);
+    let d = drawn::<DefaultGizmoConfigGroup>(&app);
+    assert_eq!(d.lines, want.list_positions);
+    assert_close(&d.strips, &want.strip_positions);
+}
+
+#[test]
 fn a_long_strip_crosses_as_a_slice() {
     let body = r##"
 const points = new Float32Array(3000);

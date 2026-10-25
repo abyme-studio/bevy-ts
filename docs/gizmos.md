@@ -52,7 +52,8 @@ fails the app at start, naming it; a `Gizmos<Nope>` param fails the load, naming
 
 A Bevy method that returns a builder draws at once and returns its settings:
 `gizmos.arrow(a, b, "#fff").withTipLength(0.2).withDoubleEnd()`. A setting redraws the shape, so
-call it right after the call that returned the builder; later, it throws
+call it right after the call that returned the builder; after any other drawing call, even on a
+builder kept in a variable, it throws
 `ArrowBuilder.withTipLength: call it right after the call that returned the builder`.
 
 ## Primitives and curves
@@ -145,7 +146,7 @@ each call from TS and in Rust and compares the two buffers vertex for vertex.
 | `cube(transform, color)` (`gizmos.rs:632`) | `cube(transform, color)`; a `Transform`-shaped value or a `GlobalTransform` | works | same-buffer |
 | `aabb_3d(aabb, transform, color)` (`gizmos.rs:672`) | `aabb3d({ min, max }, transform, color)` | works | same-buffer |
 | `cross`, `cross_2d` (`cross.rs:32,65`) | `cross`, `cross2d` | works | same-buffer |
-| `circle`, `circle_2d`, `ellipse`, `ellipse_2d` (`circles.rs:50-167`) + `.resolution(n)` (`circles.rs:242,283`) | same names, `.resolution(n)` chained | works | same-buffer, `a_builder_setting_redraws_the_shape` |
+| `circle`, `circle_2d`, `ellipse`, `ellipse_2d` (`circles.rs:50-167`) + `.resolution(n)` (`circles.rs:242,283`) | same names, `.resolution(n)` chained | works | same-buffer, `a_builder_setting_redraws_the_shape`, `a_late_setting_throws`, `a_builder_kept_past_another_builder_throws` |
 | `sphere` (`circles.rs:207`) + `.resolution` (`circles.rs:331`) | `sphere(...).resolution(n)` | works | same-buffer |
 | `arc_2d`, `arc_3d`, `short_arc_3d_between`, `long_arc_3d_between`, `short_arc_2d_between`, `long_arc_2d_between` (`arcs.rs:46-402`) + `.resolution` (`arcs.rs:84,472`) | `arc2d`, `arc3d`, `shortArc3dBetween`, `longArc3dBetween`, `shortArc2dBetween`, `longArc2dBetween` | works | same-buffer |
 | `arrow`, `arrow_2d` (`arrows.rs:129,158`) + `.with_tip_length`, `.with_double_end` (`arrows.rs:48,55`) | `arrow(...).withTipLength(l).withDoubleEnd()` | works | same-buffer |

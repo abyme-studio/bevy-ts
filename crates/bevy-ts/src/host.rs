@@ -1418,6 +1418,11 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
             })
             .collect();
         let _ = writeln!(s, "  {}({}) {{", method.name, names.join(", "));
+        // A setting on a builder a later builder call replaced throws (design 5); the buffer
+        // check in Rust cannot tell two builders apart.
+        if method.of.is_some() {
+            let _ = writeln!(s, "    H.live(this, {:?});", method.name);
+        }
         s.push_str("    const a = H.slots; let i = 0;\n    ");
         let mut slices = Vec::new();
         for arg in &method.args {
@@ -1436,7 +1441,9 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
         }
         let _ = writeln!(s, "\n    const n = H.call({id}, i, {});", slices.join(", "));
         let _ = writeln!(s, "    if (n < 0) H.fail(NAME, {:?});", method.name);
-        if method.chain.is_some() || method.of.is_some() {
+        if let Some(builder) = method.chain {
+            let _ = writeln!(s, "    return H.open(this, {builder:?});\n  }}");
+        } else if method.of.is_some() {
             s.push_str("    return this;\n  }\n");
         } else {
             let _ = writeln!(s, "    i = 0; const r = H.result;\n    {{ const a = r; return {}; }}\n  }}", read_js(&method.ret));
@@ -1748,7 +1755,7 @@ mod tests {
     }
 
     #[test]
-    fn builder_glue_returns_this() {
+    fn builder_glue_returns_a_builder() {
         let mut spec = probe(vec![ArgSpec::Value("radius", Kind::Num("f32"))], Some("CircleBuilder"), None);
         let setting = |name: &str, args, of| MethodSpec { name: name.into(), args, ret: Kind::Unit, call: |_, _, _, _, _, _| Ok(()), chain: None, of: Some(of) };
         spec.methods.push(setting("resolution", vec![ArgSpec::Value("resolution", Kind::Num("u32"))], "CircleBuilder"));
@@ -1756,7 +1763,11 @@ mod tests {
         // A second builder's setting of the same name shares the first one's JS method.
         spec.methods.push(setting("skew", vec![ArgSpec::Value("skew", Kind::Vec2)], "OtherBuilder"));
         let js = glue(&spec, 10);
-        assert_eq!(js.matches("return this;").count(), 3, "{js}");
+        // The entry returns a builder of its own; each setting checks it is the latest, then
+        // returns it.
+        assert!(js.contains("return H.open(this, \"CircleBuilder\");"), "{js}");
+        assert_eq!(js.matches("return this;").count(), 2, "{js}");
+        assert_eq!(js.matches("H.live(this, ").count(), 2, "{js}");
         assert_eq!(js.matches("  skew($skew) {").count(), 1, "{js}");
         assert!(js.contains("H.call(12, i,"), "the shared method calls the first one's id: {js}");
         assert!(!js.contains("H.call(13,"), "{js}");

@@ -113,8 +113,11 @@ the call throws and says to split the strip.
 ### 5. Builders: draw now, redraw on a setting
 
 A method that returns a builder in Bevy draws at once with Bevy's defaults (the entry builds Bevy's
-builder and drops it) and returns the param object itself, typed in TS as the builder
-(`EllipseBuilder`, `ArrowBuilder`, ...). Before drawing, the entry records in `OpenBuilder` (the
+builder and drops it) and returns a builder object of its own (`H.open`: the param's methods by
+prototype, the builder's name, and a serial the param's next builder call moves past), typed in TS
+as the builder (`EllipseBuilder`, `ArrowBuilder`, ...). A setting on a builder that is not the
+param's latest throws in JS before any call: Rust's buffer check alone cannot tell a circle's
+builder from a sphere's drawn after it. Before drawing, the entry records in `OpenBuilder` (the
 `Local`) the buffer's four lengths, the arguments and the builder kind; after, the lengths again.
 A setting (`resolution`, `withTipLength`, `outerEdges`, `skew`, `cornerRadius`, ...) checks the
 buffer still ends where the builder left it and is of its kind, truncates the four vectors back to
@@ -123,7 +126,8 @@ drawn, or by another system, throws `EllipseBuilder.resolution: call it right af
 returned the builder`.
 
 `MethodSpec` gains `chain: Option<&'static str>` (the builder it returns) and `of: Option<&'static
-str>` (the builder a setting belongs to). The glue returns `this` for both; declarations list each
+str>` (the builder a setting belongs to). The glue returns `H.open(this, builder)` for the first
+and `this` for the second, after `H.live` checks it; declarations list each
 builder as an interface of its settings, and leave settings off the param's interface. A chain of
 k settings draws k + 1 times; settings are rare and shapes are small.
 
