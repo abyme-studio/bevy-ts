@@ -301,6 +301,9 @@ app.scene("foxes", () => (
 fn animations_seek_rewind_replay() {
     let dir = fox_project("animation-seek", &[("package.json", "{}"), ("src/game.tsx", DRIVE_GAME)]);
     let mut app = anim_app(&dir, "src/game.tsx");
+    // Frames of 1/60 s, not of wall time: a loaded machine's long frames would carry the run past
+    // where two frames take it.
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f32(1.0 / 60.0)));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     until(&mut app, "the rewind line", |app| messages(app).iter().any(|l| l.starts_with("after rewind")));
@@ -311,7 +314,7 @@ fn animations_seek_rewind_replay() {
     let field = |l: &str, tag: &str| -> f32 { l.split(' ').skip_while(|w| *w != tag).nth(1).unwrap().parse().unwrap() };
     let after = line("after seek");
     let run = field(&after, "run");
-    assert!((0.7..1.0).contains(&run), "the run plays on from 0.7: {after}");
+    assert!((0.7..0.8).contains(&run), "the run plays on from 0.7: {after}");
     assert_eq!(field(&after, "held"), 0.3, "a parked root's clip moved and stands still: {after}");
     let back = line("after rewind");
     assert!(field(&back, "run") < 0.2, "rewound to 0 and playing: {back}");
