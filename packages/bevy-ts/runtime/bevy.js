@@ -87,7 +87,7 @@ export const VisibleEntities = rustComponent("VisibleEntities");
 
 export const VisibleMeshEntities = rustComponent("VisibleMeshEntities");
 
-export const VisibilityRange = rustComponent("VisibilityRange");
+export class VisibilityRange extends nativeComponent("VisibilityRange", { use_aabb: bool }) {}
 
 export const RenderLayers = rustComponent("RenderLayers");
 
@@ -521,7 +521,7 @@ export class UiAntiAlias extends nativeComponent("UiAntiAlias", { value: enumOf(
 
 export class GlobalUiDebugOptions extends nativeResource("GlobalUiDebugOptions", { enabled: bool, outline_border_box: bool, outline_padding_box: bool, outline_content_box: bool, outline_scrollbars: bool, line_width: f32, show_hidden: bool, show_clipped: bool, ignore_border_radius: bool }) {}
 
-export const UiDebugOptions = rustComponent("UiDebugOptions");
+export class UiDebugOptions extends nativeComponent("UiDebugOptions", { enabled: bool, outline_border_box: bool, outline_padding_box: bool, outline_content_box: bool, outline_scrollbars: bool, line_width: f32, show_hidden: bool, show_clipped: bool, ignore_border_radius: bool }) {}
 
 export const ImageNodeTextureAtlasLayout = rustComponent("ImageNodeTextureAtlasLayout");
 
@@ -547,13 +547,13 @@ export const MenuFocusState = rustComponent("MenuFocusState");
 
 export const MenuItem = rustComponent("MenuItem");
 
-export const MenuPopup = rustComponent("MenuPopup");
+export class MenuPopup extends nativeComponent("MenuPopup", { layout: enumOf("Column", "Row", "Grid") }) {}
 
 export const ModalDialog = rustComponent("ModalDialog");
 
 export const ModalDialogBarrier = rustComponent("ModalDialogBarrier");
 
-export const Popover = rustComponent("Popover");
+export class Popover extends nativeComponent("Popover", { window_margin: f32 }) {}
 
 export const RadioButton = rustComponent("RadioButton");
 
@@ -567,19 +567,19 @@ export class ScrollbarDragState extends nativeComponent("ScrollbarDragState", { 
 
 export const ScrollbarThumb = rustComponent("ScrollbarThumb");
 
-export const Slider = rustComponent("Slider");
+export class Slider extends nativeComponent("Slider", { track_click: enumOf("Drag", "Step", "Snap"), orientation: enumOf("Auto", "Horizontal", "Vertical") }) {}
 
 export const SliderDragState = rustComponent("SliderDragState");
 
 export class SliderPrecision extends nativeComponent("SliderPrecision", { value: i32 }) {}
 
-export const SliderRange = rustComponent("SliderRange");
+export class SliderRange extends nativeComponent("SliderRange", { start: f32, end: f32 }) {}
 
-export const SliderStep = rustComponent("SliderStep");
+export class SliderStep extends nativeComponent("SliderStep", { value: f32 }) {}
 
 export const SliderThumb = rustComponent("SliderThumb");
 
-export const SliderValue = rustComponent("SliderValue");
+export class SliderValue extends nativeComponent("SliderValue", { value: f32 }) {}
 
 export const SelectedTab = rustComponent("SelectedTab");
 

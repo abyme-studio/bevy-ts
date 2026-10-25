@@ -27,6 +27,7 @@ pub fn register(app: &mut App) {
 }
 
 /// `ReflectDefault` for components that implement `Default` but do not reflect it.
+#[cfg_attr(not(feature = "pbr"), allow(unused_variables))]
 fn defaults(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
     #[cfg(feature = "pbr")]
     {
@@ -98,6 +99,7 @@ fn ranges(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
     each!(f32, f64, i8, i16, i32, i64, u8, u16, u32, u64, usize, isize);
 }
 
+#[cfg_attr(not(feature = "pbr"), allow(dead_code))]
 fn with_default<T: Reflect + TypePath + GetTypeRegistration + Default>(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
     r.register::<T>();
     add::<T, ReflectDefault>(r, redundant);

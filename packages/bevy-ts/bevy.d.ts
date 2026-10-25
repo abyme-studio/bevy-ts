@@ -197,8 +197,13 @@ export type VisibleEntities = InstanceType<typeof VisibleEntities>;
 export declare const VisibleMeshEntities: Reflected;
 export type VisibleMeshEntities = InstanceType<typeof VisibleMeshEntities>;
 
-export declare const VisibilityRange: Reflected<{ start_margin: { start: number; end: number }; end_margin: { start: number; end: number }; use_aabb: boolean }>;
-export type VisibilityRange = InstanceType<typeof VisibilityRange>;
+/** Holes, never visible: start_margin: opaque to reflection (core::ops::Range<f32>); end_margin: opaque to reflection (core::ops::Range<f32>). */
+export declare class VisibilityRange extends Component {
+  static readonly path: "bevy_camera::visibility::range::VisibilityRange";
+  static readonly native: true;
+  static readonly tsxProps: { start_margin?: { start: number; end: number }; end_margin?: { start: number; end: number } };
+  declare use_aabb: bool;
+}
 
 export declare const RenderLayers: Reflected<{ value: readonly (number | string)[] }>;
 export type RenderLayers = InstanceType<typeof RenderLayers>;
@@ -1402,8 +1407,21 @@ export declare class GlobalUiDebugOptions extends Resource {
   declare ignore_border_radius: bool;
 }
 
-export declare const UiDebugOptions: Reflected<{ enabled: boolean; outline_border_box: boolean; outline_padding_box: boolean; outline_content_box: boolean; outline_scrollbars: boolean; line_width: number; line_color_override: { red?: number; green?: number; blue?: number; alpha?: number } | null; show_hidden: boolean; show_clipped: boolean; ignore_border_radius: boolean }>;
-export type UiDebugOptions = InstanceType<typeof UiDebugOptions>;
+/** Holes, never visible: line_color_override: an enum with data (core::option::Option<bevy_color::linear_rgba::LinearRgba>). */
+export declare class UiDebugOptions extends Component {
+  static readonly path: "bevy_ui_render::debug_overlay::UiDebugOptions";
+  static readonly native: true;
+  static readonly tsxProps: { line_color_override?: { red?: number; green?: number; blue?: number; alpha?: number } | null };
+  declare enabled: bool;
+  declare outline_border_box: bool;
+  declare outline_padding_box: bool;
+  declare outline_content_box: bool;
+  declare outline_scrollbars: bool;
+  declare line_width: f32;
+  declare show_hidden: bool;
+  declare show_clipped: bool;
+  declare ignore_border_radius: bool;
+}
 
 export declare const ImageNodeTextureAtlasLayout: Reflected<{ value: string | null }>;
 export type ImageNodeTextureAtlasLayout = InstanceType<typeof ImageNodeTextureAtlasLayout>;
@@ -1443,8 +1461,11 @@ export type MenuFocusState = InstanceType<typeof MenuFocusState>;
 export declare const MenuItem: Reflected;
 export type MenuItem = InstanceType<typeof MenuItem>;
 
-export declare const MenuPopup: Reflected<{ layout: "Column" | "Row" | "Grid" }>;
-export type MenuPopup = InstanceType<typeof MenuPopup>;
+export declare class MenuPopup extends Component {
+  static readonly path: "bevy_ui_widgets::menu::MenuPopup";
+  static readonly native: true;
+  declare layout: "Column" | "Row" | "Grid";
+}
 
 export declare const ModalDialog: Reflected;
 export type ModalDialog = InstanceType<typeof ModalDialog>;
@@ -1452,8 +1473,14 @@ export type ModalDialog = InstanceType<typeof ModalDialog>;
 export declare const ModalDialogBarrier: Reflected;
 export type ModalDialogBarrier = InstanceType<typeof ModalDialogBarrier>;
 
-export declare const Popover: Reflected<{ positions: readonly ({ side?: "Top" | "Bottom" | "Left" | "Right"; align?: "Start" | "Center" | "End"; gap?: number })[]; window_margin: number }>;
-export type Popover = InstanceType<typeof Popover>;
+/** Holes, never visible: positions: not plain data (alloc::vec::Vec<bevy_ui_widgets::popover::PopoverPlacement>). */
+export declare class Popover extends Component {
+  static readonly path: "bevy_ui_widgets::popover::Popover";
+  static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { positions: readonly ({ side?: "Top" | "Bottom" | "Left" | "Right"; align?: "Start" | "Center" | "End"; gap?: number })[]; window_margin: number };
+  declare window_margin: f32;
+}
 
 export declare const RadioButton: Reflected;
 export type RadioButton = InstanceType<typeof RadioButton>;
@@ -1477,8 +1504,12 @@ export declare class ScrollbarDragState extends Component {
 export declare const ScrollbarThumb: Reflected<{ border_radius: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; border: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }>;
 export type ScrollbarThumb = InstanceType<typeof ScrollbarThumb>;
 
-export declare const Slider: Reflected<{ track_click: "Drag" | "Step" | "Snap"; orientation: "Auto" | "Horizontal" | "Vertical" }>;
-export type Slider = InstanceType<typeof Slider>;
+export declare class Slider extends Component {
+  static readonly path: "bevy_ui_widgets::slider::Slider";
+  static readonly native: true;
+  declare track_click: "Drag" | "Step" | "Snap";
+  declare orientation: "Auto" | "Horizontal" | "Vertical";
+}
 
 export declare const SliderDragState: Reflected<{ dragging: boolean; offset: number }>;
 export type SliderDragState = InstanceType<typeof SliderDragState>;
@@ -1489,17 +1520,30 @@ export declare class SliderPrecision extends Component {
   declare value: i32;
 }
 
-export declare const SliderRange: Reflected<{ start: number; end: number }>;
-export type SliderRange = InstanceType<typeof SliderRange>;
+/** Immutable: read-only in TS. */
+export declare class SliderRange extends Component {
+  static readonly path: "bevy_ui_widgets::slider::SliderRange";
+  static readonly native: true;
+  declare readonly start: f32;
+  declare readonly end: f32;
+}
 
-export declare const SliderStep: Reflected<{ value: number }>;
-export type SliderStep = InstanceType<typeof SliderStep>;
+/** Immutable: read-only in TS. */
+export declare class SliderStep extends Component {
+  static readonly path: "bevy_ui_widgets::slider::SliderStep";
+  static readonly native: true;
+  declare readonly value: f32;
+}
 
 export declare const SliderThumb: Reflected;
 export type SliderThumb = InstanceType<typeof SliderThumb>;
 
-export declare const SliderValue: Reflected<{ value: number }>;
-export type SliderValue = InstanceType<typeof SliderValue>;
+/** Immutable: read-only in TS. */
+export declare class SliderValue extends Component {
+  static readonly path: "bevy_ui_widgets::slider::SliderValue";
+  static readonly native: true;
+  declare readonly value: f32;
+}
 
 export declare const SelectedTab: Reflected<{ value: Entity | null }>;
 export type SelectedTab = InstanceType<typeof SelectedTab>;
