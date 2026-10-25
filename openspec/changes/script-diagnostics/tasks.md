@@ -17,19 +17,19 @@ All cargo runs through gate-slot. New tests are modules of their crate's one tes
 
 ## 3. bevy-ts/diagnostics
 
-- [ ] 3.1 `crates/bevy-ts-cli/src/diagnostics.rs`: `DiagnosticsStore`, `Diagnostics` (wrapping Bevy's `Diagnostics` param) and `FrameCount` exports; module JS with `Diagnostic` and the path constants; d.ts with the `App` augmentation for `registerDiagnostic`; registered in every engine as `Cameras` is
-- [ ] 3.2 `registerDiagnostic`: manifest section `diagnostics`; on load add, keep, replace or disable script-owned paths; fail the load naming a path a Rust plugin owns
-- [ ] 3.3 `bevy-ts.json` `diagnostics`: parse, refuse unknown names listing the accepted ones; `base_app` adds each listed plugin unless added; render plugins only when rendering, none under `bevy-ts types`
-- [ ] 3.4 `RenderAssetDiagnosticPlugin<T>`: the table of render asset types the engine prepares, named as Bevy prints them
-- [ ] 3.5 `SystemInformationDiagnosticsPlugin`: with the operator's go, enable `sysinfo_plugin` on the engine's `bevy`; without it, refuse the name saying the engine was built without `sysinfo_plugin`
-- [ ] 3.6 `crates/bevy-ts-cli/src/build.rs`: write `diagnostics` into `game.json`; playing adds them
-- [ ] 3.7 Test module `crates/bevy-ts-cli/tests/it/diagnostics.rs`, a headless engine on `common::free_port()`: frame time read from TS equals the Rust read; unknown path reads `undefined`; `FrameCount` 0 in `Startup` and 2 on the third update; sorted paths; a script diagnostic registered, measured, read from TS and Rust; reload keeps history, changed settings reset it, dropped path disabled; registering a Rust-owned path fails the load; measuring an unregistered path records nothing; off by default; a misspelt plugin exits 1 naming it; built and played keeps the list. Waits are on conditions with deadlines, never fixed times
+- [x] 3.1 `crates/bevy-ts-cli/src/diagnostics.rs`: `DiagnosticsStore`, `Diagnostics` (wrapping Bevy's `Diagnostics` param) and `FrameCount` exports; module JS with `Diagnostic` and the path constants; d.ts with the `App` augmentation for `registerDiagnostic`; registered in every engine as `Cameras` is
+- [x] 3.2 `registerDiagnostic`: manifest section `diagnostics`; on load add, keep, replace or disable script-owned paths; fail the load naming a path a Rust plugin owns
+- [x] 3.3 `bevy-ts.json` `diagnostics`: parse, refuse unknown names listing the accepted ones; `base_app` adds each listed plugin unless added; render plugins only when rendering, none under `bevy-ts types`
+- [x] 3.4 `RenderAssetDiagnosticPlugin<T>`: the table of render asset types the engine prepares, named as Bevy prints them
+- [x] 3.5 `SystemInformationDiagnosticsPlugin`: with the operator's go, enable `sysinfo_plugin` on the engine's `bevy`; without it, refuse the name saying the engine was built without `sysinfo_plugin`
+- [x] 3.6 `crates/bevy-ts-cli/src/build.rs`: write `diagnostics` into `game.json`; playing adds them
+- [x] 3.7 Test module `crates/bevy-ts-cli/tests/it/diagnostics.rs`, a headless engine on `common::free_port()`: frame time read from TS equals the Rust read; unknown path reads `undefined`; `FrameCount` 0 in `Startup` and 2 on the third update; sorted paths; a script diagnostic registered, measured, read from TS and Rust; reload keeps history, changed settings reset it, dropped path disabled; registering a Rust-owned path fails the load; measuring an unregistered path records nothing; off by default; a misspelt plugin exits 1 naming it; built and played keeps the list. Waits are on conditions with deadlines, never fixed times
 
 ## 4. Stage timing, bench, docs
 
-- [ ] 4.1 `crates/bevy-ts/src/systems.rs` `run_stage`: when `ScriptStageDiagnosticsPlugin` is present, time the stage and add `bevy_ts/<stage>/elapsed_cpu`; no clock read otherwise
-- [ ] 4.2 Test in `diagnostics.rs`: a 2 ms busy `Update` system gives an average of at least 2 ms; a stage with no TS systems records nothing
-- [ ] 4.3 `bench/diagnostics`: frame and main-world time at 10k and 100k entities with no plugin and with each plugin alone, 3 runs per arm; numbers into design.md's cost table and the report to lead@bevy-ts
-- [ ] 4.4 `docs/diagnostics.md`: the coverage table (every Bevy 0.20 diagnostic source, what TS reaches, its test; draw, batch and visible-entity counts as "Bevy lacks it"), the switch, the costs, headless pacing, an example of a budget reading counts and `elapsed_cpu`
-- [ ] 4.5 `docs/research/bevy-coverage.md`: the `DiagnosticsStore`/`FrameCount` row moves to covered, naming `docs/diagnostics.md` and the tests; plan item 11 marked done
-- [ ] 4.6 `bevy-ts types` output includes the module's declarations; regenerate checked-in types if any change
+- [x] 4.1 `crates/bevy-ts/src/systems.rs` `run_stage`: when `ScriptStageDiagnosticsPlugin` is present, time the stage and add `bevy_ts/<stage>/elapsed_cpu`; no clock read otherwise
+- [x] 4.2 Test in `diagnostics.rs`: a 2 ms busy `Update` system gives an average of at least 2 ms; a stage with no TS systems records nothing
+- [x] 4.3 `bench/diagnostics`: frame and main-world time at 10k and 100k entities with no plugin and with each plugin alone, 3 runs per arm (8 when within noise); numbers into design.md's cost table and the report to lead@scale-walls
+- [x] 4.4 `docs/diagnostics.md`: the coverage table (every Bevy 0.20 diagnostic source, what TS reaches, its test; draw, batch and visible-entity counts as "Bevy lacks it"), the switch, the costs, headless pacing, an example of a budget reading counts and `elapsed_cpu`
+- [x] 4.5 `docs/research/bevy-coverage.md`: the `DiagnosticsStore`/`FrameCount` row moves to covered, naming `docs/diagnostics.md` and the tests; plan item 11 marked done
+- [x] 4.6 `bevy-ts types` output includes the module's declarations; regenerate checked-in types if any change
