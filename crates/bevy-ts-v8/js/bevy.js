@@ -2,7 +2,7 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components and resources TS can name. Column classes have a native
 // layout read from reflection; the rest are handles for With/Without filters and TSX.
-import { array, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, rustComponent, u16, u32, u8, vec2, vec3, vec4 } from "bevy-ts";
+import { array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, rustComponent, u16, u32, u8, vec2, vec3, vec4 } from "bevy-ts";
 
 export { Time, Transform } from "bevy-ts";
 
@@ -605,3 +605,21 @@ export class Window extends nativeComponent("Window", { present_mode: enumOf("Au
 export const DynamicWorldRoot = rustComponent("DynamicWorldRoot");
 
 export const WorldAssetRoot = rustComponent("WorldAssetRoot");
+
+export const AnimationClip = asset("bevy_animation::AnimationClip");
+
+export const AnimationGraph = asset("bevy_animation::graph::AnimationGraph", { of: false });
+
+export const Image = asset("bevy_image::image::Image");
+
+export const TextureAtlasLayout = asset("bevy_image::texture_atlas::TextureAtlasLayout", { of: false });
+
+export const Mesh = asset("bevy_mesh::mesh::Mesh", { of: false });
+
+export const StandardMaterial = asset("bevy_pbr::pbr_material::StandardMaterial");
+
+export const ShaderBuffer = asset("bevy_render::storage::ShaderBuffer");
+
+export const ColorMaterial = asset("bevy_sprite_render::mesh2d::color_material::ColorMaterial");
+
+export const SpriteMeshMaterial = asset("bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial", { of: false });

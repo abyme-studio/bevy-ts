@@ -2,7 +2,7 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components and resources TS can name.
 import { Component, ReflectComponent, Resource } from "bevy-ts";
-import type { bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 type Reflected<F = {}> = abstract new () => ReflectComponent & F;
 
@@ -23,7 +23,7 @@ export type AnimationPlayer = InstanceType<typeof AnimationPlayer>;
 export declare const AnimationTargetId: Reflected<{ value: string }>;
 export type AnimationTargetId = InstanceType<typeof AnimationTargetId>;
 
-export declare const AnimationGraphHandle: Reflected<{ value: string | null }>;
+export declare const AnimationGraphHandle: Reflected<{ value: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null }>;
 export type AnimationGraphHandle = InstanceType<typeof AnimationGraphHandle>;
 
 export declare const AnimationTransitions: Reflected<{ main_animation: number | null; transitions: readonly ({ current_weight?: number; weight_decline_per_sec?: number; animation?: number })[] }>;
@@ -109,7 +109,7 @@ export declare class ManualTextureViewHandle extends Component {
 
 /** As an element, `<RenderTarget value={...} />`: the whole value, in Bevy's shape. */
 export declare const RenderTarget: Reflected & { readonly tsxProps: { value?: RenderTargetValue } };
-export type RenderTargetValue = { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
+export type RenderTargetValue = { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 export type RenderTarget = InstanceType<typeof RenderTarget>;
 
 export declare const ShadowLodOrigin: Reflected;
@@ -446,7 +446,7 @@ export declare class ClusteredDecal extends Component {
   static readonly path: "bevy_light::cluster::ClusteredDecal";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { base_color_texture: string | null | null; normal_map_texture: string | null | null; metallic_roughness_texture: string | null | null; emissive_texture: string | null | null; tag: number };
+  static readonly __element: { base_color_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; tag: number };
   declare tag: u32;
 }
 
@@ -463,7 +463,7 @@ export declare class DirectionalLight extends Component {
   declare shadow_normal_bias: f32;
 }
 
-export declare const DirectionalLightTexture: Reflected<{ image: string | null; tiled: boolean }>;
+export declare const DirectionalLightTexture: Reflected<{ image: string | AssetRef<Image> | AssetValue<Image> | null; tiled: boolean }>;
 export type DirectionalLightTexture = InstanceType<typeof DirectionalLightTexture>;
 
 export declare const ShowLightGizmo: Reflected<{ color: { Manual: ColorValue } | "Varied" | "MatchLightColor" | "ByLightType" | null }>;
@@ -486,7 +486,7 @@ export declare class PointLight extends Component {
   declare shadow_map_near_z: f32;
 }
 
-export declare const PointLightTexture: Reflected<{ image: string | null; cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }>;
+export declare const PointLightTexture: Reflected<{ image: string | AssetRef<Image> | AssetValue<Image> | null; cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }>;
 export type PointLightTexture = InstanceType<typeof PointLightTexture>;
 
 /** Holes, never visible: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
@@ -494,7 +494,7 @@ export declare class EnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::EnvironmentMapLight";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { diffuse_map: string | null; specular_map: string | null; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
+  static readonly __element: { diffuse_map: string | AssetRef<Image> | AssetValue<Image> | null; specular_map: string | AssetRef<Image> | AssetValue<Image> | null; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
@@ -505,7 +505,7 @@ export declare class GeneratedEnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::GeneratedEnvironmentMapLight";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { environment_map: string | null; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
+  static readonly __element: { environment_map: string | AssetRef<Image> | AssetValue<Image> | null; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
@@ -516,7 +516,7 @@ export declare class IrradianceVolume extends Component {
   static readonly path: "bevy_light::probe::IrradianceVolume";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { voxels: string | null; intensity: number; affects_lightmapped_meshes: boolean };
+  static readonly __element: { voxels: string | AssetRef<Image> | AssetValue<Image> | null; intensity: number; affects_lightmapped_meshes: boolean };
   declare intensity: f32;
   declare affects_lightmapped_meshes: bool;
 }
@@ -537,7 +537,7 @@ export declare class Skybox extends Component {
   static readonly path: "bevy_light::probe::Skybox";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { image: string | null | null; brightness: number; rotation: readonly [number, number, number, number] };
+  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | null | null; brightness: number; rotation: readonly [number, number, number, number] };
   declare brightness: f32;
   declare readonly rotation: Quat;
 }
@@ -572,7 +572,7 @@ export declare class SpotLight extends Component {
   declare inner_angle: f32;
 }
 
-export declare const SpotLightTexture: Reflected<{ image: string | null }>;
+export declare const SpotLightTexture: Reflected<{ image: string | AssetRef<Image> | AssetValue<Image> | null }>;
 export type SpotLightTexture = InstanceType<typeof SpotLightTexture>;
 
 /** Holes, never visible: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
@@ -580,7 +580,7 @@ export declare class FogVolume extends Component {
   static readonly path: "bevy_light::volumetric::FogVolume";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { fog_color: ColorValue; density_factor: number; density_texture: string | null | null; density_texture_offset: readonly [number, number, number]; absorption: number; scattering: number; scattering_asymmetry: number; light_tint: ColorValue; light_intensity: number };
+  static readonly __element: { fog_color: ColorValue; density_factor: number; density_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; density_texture_offset: readonly [number, number, number]; absorption: number; scattering: number; scattering_asymmetry: number; light_tint: ColorValue; light_intensity: number };
   declare density_factor: f32;
   declare readonly density_texture_offset: Vec3;
   declare absorption: f32;
@@ -602,10 +602,10 @@ export declare class VolumetricFog extends Component {
 export declare const VolumetricLight: Reflected;
 export type VolumetricLight = InstanceType<typeof VolumetricLight>;
 
-export declare const Mesh2d: Reflected<{ value: string | null }>;
+export declare const Mesh2d: Reflected<{ value: string | AssetRef<Mesh> | AssetValue<Mesh> | null }>;
 export type Mesh2d = InstanceType<typeof Mesh2d>;
 
-export declare const Mesh3d: Reflected<{ value: string | null }>;
+export declare const Mesh3d: Reflected<{ value: string | AssetRef<Mesh> | AssetValue<Mesh> | null }>;
 export type Mesh3d = InstanceType<typeof Mesh3d>;
 
 /** Holes, never visible: type_id: an enum with data (core::option::Option<core::any::TypeId>). */
@@ -621,7 +621,7 @@ export declare const MeshMorphWeights: Reflected & { readonly tsxProps: { value?
 export type MeshMorphWeightsValue = { Value: { weights?: readonly number[] } } | { Reference: Entity };
 export type MeshMorphWeights = InstanceType<typeof MeshMorphWeights>;
 
-export declare const MorphWeights: Reflected<{ weights: readonly number[]; first_mesh: string | null | null }>;
+export declare const MorphWeights: Reflected<{ weights: readonly number[]; first_mesh: string | AssetRef<Mesh> | AssetValue<Mesh> | null | null }>;
 export type MorphWeights = InstanceType<typeof MorphWeights>;
 
 export declare const SkinnedMesh: Reflected<{ inverse_bindposes: string | null; joints: readonly Entity[] }>;
@@ -648,7 +648,7 @@ export declare class Lightmap extends Component {
   static readonly path: "bevy_pbr::lightmap::Lightmap";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { image: string | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] }; bicubic_sampling: boolean };
+  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] }; bicubic_sampling: boolean };
   declare bicubic_sampling: bool;
 }
 
@@ -664,7 +664,7 @@ export type MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialEx
 export declare const MeshMaterial3dExtendedMaterialStandardMaterialFade: Reflected<{ value: string | null }>;
 export type MeshMaterial3dExtendedMaterialStandardMaterialFade = InstanceType<typeof MeshMaterial3dExtendedMaterialStandardMaterialFade>;
 
-export declare const MeshMaterial3dStandardMaterial: Reflected<{ value: string | null }>;
+export declare const MeshMaterial3dStandardMaterial: Reflected<{ value: string | AssetRef<StandardMaterial> | AssetValue<StandardMaterial> | null }>;
 export type MeshMaterial3dStandardMaterial = InstanceType<typeof MeshMaterial3dStandardMaterial>;
 
 /** Holes, never visible: quality_level: an enum with data (bevy_pbr::ssao::ScreenSpaceAmbientOcclusionQualityLevel). */
@@ -757,7 +757,7 @@ export declare class PickingSettings extends Resource {
 
 /** As an element, `<EntityCursor value={...} />`: the whole value, in Bevy's shape. */
 export declare const EntityCursor: Reflected & { readonly tsxProps: { value?: EntityCursorValue } };
-export type EntityCursorValue = { Custom: { Image: { handle?: string | null; texture_atlas?: { layout?: string | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+export type EntityCursorValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type EntityCursor = InstanceType<typeof EntityCursor>;
 
 /** Immutable: read-only in TS. */
@@ -800,7 +800,7 @@ export declare class MeshPickingSettings extends Resource {
 export declare const RayCastBackfaces: Reflected;
 export type RayCastBackfaces = InstanceType<typeof RayCastBackfaces>;
 
-export declare const SimplifiedMesh: Reflected<{ value: string | null }>;
+export declare const SimplifiedMesh: Reflected<{ value: string | AssetRef<Mesh> | AssetValue<Mesh> | null }>;
 export type SimplifiedMesh = InstanceType<typeof SimplifiedMesh>;
 
 /** As an element, `<PointerId value={...} />`: the whole value, in Bevy's shape. */
@@ -827,7 +827,7 @@ export declare class AutoExposure extends Component {
   static readonly path: "bevy_post_process::auto_exposure::settings::AutoExposure";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { range: { start: number; end: number }; filter: { start: number; end: number }; speed_brighten: number; speed_darken: number; exponential_transition_distance: number; metering_mask: string | null; compensation_curve: string | null };
+  static readonly __element: { range: { start: number; end: number }; filter: { start: number; end: number }; speed_brighten: number; speed_darken: number; exponential_transition_distance: number; metering_mask: string | AssetRef<Image> | AssetValue<Image> | null; compensation_curve: string | null };
   declare speed_brighten: f32;
   declare speed_darken: f32;
   declare exponential_transition_distance: f32;
@@ -863,7 +863,7 @@ export declare class ChromaticAberration extends Component {
   static readonly path: "bevy_post_process::effect_stack::chromatic_aberration::ChromaticAberration";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { color_lut: string | null | null; intensity: number; max_samples: number };
+  static readonly __element: { color_lut: string | AssetRef<Image> | AssetValue<Image> | null | null; intensity: number; max_samples: number };
   declare intensity: f32;
   declare max_samples: u32;
 }
@@ -938,7 +938,7 @@ export declare class Tonemapping extends Component {
 export declare const RenderShadowMapVisibleEntities: Reflected;
 export type RenderShadowMapVisibleEntities = InstanceType<typeof RenderShadowMapVisibleEntities>;
 
-export declare const Screenshot: Reflected<{ value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } } }>;
+export declare const Screenshot: Reflected<{ value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } } }>;
 export type Screenshot = InstanceType<typeof Screenshot>;
 
 export declare const SceneComponentInfo: Reflected<{ spawned_from_scene: boolean; component_name: string }>;
@@ -966,7 +966,7 @@ export declare class Sprite extends Component {
   static readonly path: "bevy_sprite::sprite::Sprite";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { image: string | null; texture_atlas: { layout?: string | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" };
+  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" };
   declare flip_x: bool;
   declare flip_y: bool;
 }
@@ -982,10 +982,10 @@ export declare class Text2dShadow extends Component {
   declare readonly offset: Vec2;
 }
 
-export declare const MeshMaterial2dColorMaterial: Reflected<{ value: string | null }>;
+export declare const MeshMaterial2dColorMaterial: Reflected<{ value: string | AssetRef<ColorMaterial> | AssetValue<ColorMaterial> | null }>;
 export type MeshMaterial2dColorMaterial = InstanceType<typeof MeshMaterial2dColorMaterial>;
 
-export declare const MeshMaterial2dSpriteMeshMaterial: Reflected<{ value: string | null }>;
+export declare const MeshMaterial2dSpriteMeshMaterial: Reflected<{ value: string | AssetRef<SpriteMeshMaterial> | AssetValue<SpriteMeshMaterial> | null }>;
 export type MeshMaterial2dSpriteMeshMaterial = InstanceType<typeof MeshMaterial2dSpriteMeshMaterial>;
 
 export declare const MeshMaterial2dTilemapChunkMaterial: Reflected<{ value: string | null }>;
@@ -1011,7 +1011,7 @@ export declare class Wireframe2dConfig extends Resource {
   declare global: bool;
 }
 
-export declare const TilemapChunk: Reflected<{ chunk_size: readonly [number, number]; tile_display_size: readonly [number, number]; tileset: string | null; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
+export declare const TilemapChunk: Reflected<{ chunk_size: readonly [number, number]; tile_display_size: readonly [number, number]; tileset: string | AssetRef<Image> | AssetValue<Image> | null; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
 export type TilemapChunk = InstanceType<typeof TilemapChunk>;
 
 export declare const TilemapChunkTileData: Reflected<{ value: readonly ({ tileset_index?: number; color?: ColorValue; visible?: boolean; orientation?: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[] }>;
@@ -1114,7 +1114,7 @@ export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { clip: string | null; repeat: "Never" | { Count: number } | "Forever"; speed: number; transition_secs: number; paused: boolean; cull: boolean };
+  static readonly __element: { clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; repeat: "Never" | { Count: number } | "Forever"; speed: number; transition_secs: number; paused: boolean; cull: boolean };
   declare speed: f32;
   declare transition_secs: f32;
   declare paused: bool;
@@ -1329,7 +1329,7 @@ export declare class ImageNode extends Component {
   static readonly path: "bevy_ui::widget::image::ImageNode";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { color: ColorValue; image: string | null; texture_atlas: { layout?: string | null; index?: number | string } | null; flip_x: boolean; flip_y: boolean; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; visual_box: "ContentBox" | "PaddingBox" | "BorderBox" };
+  static readonly __element: { color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x: boolean; flip_y: boolean; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; visual_box: "ContentBox" | "PaddingBox" | "BorderBox" };
   declare flip_x: bool;
   declare flip_y: bool;
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
@@ -1343,7 +1343,7 @@ export declare class InlineImage extends Component {
   static readonly path: "bevy_ui::widget::inline_image::InlineImage";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { color: ColorValue; image: string | null; width: number | null; height: number | null; flip_x: boolean; flip_y: boolean };
+  static readonly __element: { color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | null; width: number | null; height: number | null; flip_x: boolean; flip_y: boolean };
   declare flip_x: bool;
   declare flip_y: bool;
 }
@@ -1405,7 +1405,7 @@ export declare class GlobalUiDebugOptions extends Resource {
 export declare const UiDebugOptions: Reflected<{ enabled: boolean; outline_border_box: boolean; outline_padding_box: boolean; outline_content_box: boolean; outline_scrollbars: boolean; line_width: number; line_color_override: { red?: number; green?: number; blue?: number; alpha?: number } | null; show_hidden: boolean; show_clipped: boolean; ignore_border_radius: boolean }>;
 export type UiDebugOptions = InstanceType<typeof UiDebugOptions>;
 
-export declare const ImageNodeTextureAtlasLayout: Reflected<{ value: string | null }>;
+export declare const ImageNodeTextureAtlasLayout: Reflected<{ value: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null }>;
 export type ImageNodeTextureAtlasLayout = InstanceType<typeof ImageNodeTextureAtlasLayout>;
 
 export declare const ActivateOnPress: Reflected;
@@ -1522,7 +1522,7 @@ export type TextInput = InstanceType<typeof TextInput>;
 
 /** As an element, `<CursorIcon value={...} />`: the whole value, in Bevy's shape. */
 export declare const CursorIcon: Reflected & { readonly tsxProps: { value?: CursorIconValue } };
-export type CursorIconValue = { Custom: { Image: { handle?: string | null; texture_atlas?: { layout?: string | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+export type CursorIconValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type CursorIcon = InstanceType<typeof CursorIcon>;
 
 export declare const Monitor: Reflected<{ name: string | null; physical_height: number; physical_width: number; physical_position: readonly [number, number]; refresh_rate_millihertz: number | null; scale_factor: number; video_modes: readonly ({ physical_size?: readonly [number, number]; bit_depth?: number; refresh_rate_millihertz?: number })[] }>;
@@ -1583,3 +1583,30 @@ export type DynamicWorldRoot = InstanceType<typeof DynamicWorldRoot>;
 
 export declare const WorldAssetRoot: Reflected<{ value: string | null }>;
 export type WorldAssetRoot = InstanceType<typeof WorldAssetRoot>;
+
+export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { events: readonly (readonly ["Root" | { Node: string }, readonly ({ time?: number; event?: {  } })[]])[]; duration: number }>;
+export declare const AnimationClip: AssetClass<AnimationClip>;
+
+export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", {  }>;
+export declare const AnimationGraph: AssetType<AnimationGraph>;
+
+export type Image = AssetFields<"bevy_image::image::Image", {  }>;
+export declare const Image: AssetClass<Image>;
+
+export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { size: readonly [number, number]; textures: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] }>;
+export declare const TextureAtlasLayout: AssetType<TextureAtlasLayout>;
+
+export type Mesh = AssetFields<"bevy_mesh::mesh::Mesh", {  }>;
+export declare const Mesh: AssetType<Mesh>;
+
+export type StandardMaterial = AssetFields<"bevy_pbr::pbr_material::StandardMaterial", { base_color: ColorValue; base_color_channel: "Uv0" | "Uv1"; base_color_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive: { red?: number; green?: number; blue?: number; alpha?: number }; emissive_exposure_weight: number; emissive_channel: "Uv0" | "Uv1"; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; perceptual_roughness: number; metallic: number; metallic_roughness_channel: "Uv0" | "Uv1"; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; reflectance: number; specular_tint: ColorValue; diffuse_transmission: number; specular_transmission: number; thickness: number; ior: number; attenuation_distance: number; attenuation_color: ColorValue; normal_map_channel: "Uv0" | "Uv1"; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; flip_normal_map_y: boolean; occlusion_channel: "Uv0" | "Uv1"; occlusion_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; clearcoat: number; clearcoat_perceptual_roughness: number; anisotropy_strength: number; anisotropy_rotation: number; double_sided: boolean; unlit: boolean; fog_enabled: boolean; alpha_mode: "Opaque" | { Mask: number } | "Blend" | "Premultiplied" | "AlphaToCoverage" | "Add" | "Multiply"; depth_bias: number; depth_map: string | AssetRef<Image> | AssetValue<Image> | null | null; parallax_depth_scale: number; parallax_mapping_method: "Occlusion" | { Relief: { max_steps?: number } }; max_parallax_layer_count: number; lightmap_exposure: number; opaque_render_method: "Forward" | "Deferred" | "Auto"; deferred_lighting_pass_id: number; uv_transform: readonly [number, number, number, number, number, number] }>;
+export declare const StandardMaterial: AssetClass<StandardMaterial>;
+
+export type ShaderBuffer = AssetFields<"bevy_render::storage::ShaderBuffer", {  }>;
+export declare const ShaderBuffer: AssetClass<ShaderBuffer>;
+
+export type ColorMaterial = AssetFields<"bevy_sprite_render::mesh2d::color_material::ColorMaterial", { color: ColorValue; alpha_mode: "Opaque" | { Mask: number } | "Blend"; uv_transform: readonly [number, number, number, number, number, number]; texture: string | AssetRef<Image> | AssetValue<Image> | null | null }>;
+export declare const ColorMaterial: AssetClass<ColorMaterial>;
+
+export type SpriteMeshMaterial = AssetFields<"bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial", { image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend"; anchor: readonly [number, number]; texture_atlas_layout: { size?: readonly [number, number]; textures?: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] } | null; texture_atlas_index: number | string }>;
+export declare const SpriteMeshMaterial: AssetType<SpriteMeshMaterial>;
