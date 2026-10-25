@@ -27,7 +27,10 @@ export type EaseFunction =
   | "BackIn" | "BackOut" | "BackInOut" | "BounceIn" | "BounceOut" | "BounceInOut"
   | { readonly Steps: readonly [number, "Start" | "End" | "None" | "Both"] }
   | { readonly Elastic: number };
-/** A curve of values `T`: Bevy's constructor or adaptor, as the JSON Rust builds it from. */
+/**
+ * A curve of values `T`: Bevy's constructor or adaptor, as the JSON Rust builds it from. Each
+ * constructor infers `T` as written (`[0, 2, 0]` a 3-tuple), so it fits the field it animates.
+ */
 export declare class Curve<T> {
   protected constructor();
   readonly json: unknown;
@@ -46,25 +49,25 @@ export declare class Curve<T> {
   /** This curve, then `other` offset to start where this one ends (vector values). */
   chainContinue(other: Curve<T>): Curve<T>;
 }
-export declare class EasingCurve<T> extends Curve<T> {
+export declare class EasingCurve<const T> extends Curve<T> {
   constructor(start: T, end: T, ease: EaseFunction);
 }
-export declare class ConstantCurve<T> extends Curve<T> {
+export declare class ConstantCurve<const T> extends Curve<T> {
   constructor(domain: CurveInterval, value: T);
 }
-export declare class SampleAutoCurve<T> extends Curve<T> {
+export declare class SampleAutoCurve<const T> extends Curve<T> {
   constructor(domain: CurveInterval, samples: Iterable<T>);
 }
-export declare class UnevenSampleAutoCurve<T> extends Curve<T> {
+export declare class UnevenSampleAutoCurve<const T> extends Curve<T> {
   constructor(keyframes: Iterable<readonly [number, T]>);
 }
-export declare class AnimatableKeyframeCurve<T> extends Curve<T> {
+export declare class AnimatableKeyframeCurve<const T> extends Curve<T> {
   constructor(keyframes: Iterable<readonly [number, T]>);
 }
-export declare class SteppedKeyframeCurve<T> extends Curve<T> {
+export declare class SteppedKeyframeCurve<const T> extends Curve<T> {
   constructor(keyframes: Iterable<readonly [number, T]>);
 }
-export declare class CubicKeyframeCurve<T> extends Curve<T> {
+export declare class CubicKeyframeCurve<const T> extends Curve<T> {
   /** `values` holds three per time: in-tangent, value, out-tangent. */
   constructor(times: Iterable<number>, values: Iterable<T>);
 }
@@ -77,24 +80,24 @@ export declare class Spline<T> {
   toCurve(): Curve<T>;
   toCurveCyclic(): Curve<T>;
 }
-export declare class CubicBezier<T> extends Spline<T> {
+export declare class CubicBezier<const T> extends Spline<T> {
   /** Each segment is four control points. */
   constructor(controlPoints: Iterable<readonly [T, T, T, T]>);
 }
-export declare class CubicHermite<T> extends Spline<T> {
+export declare class CubicHermite<const T> extends Spline<T> {
   constructor(controlPoints: Iterable<T>, tangents: Iterable<T>);
 }
-export declare class CubicCardinalSpline<T> extends Spline<T> {
+export declare class CubicCardinalSpline<const T> extends Spline<T> {
   constructor(tension: number, controlPoints: Iterable<T>);
-  static newCatmullRom<T>(controlPoints: Iterable<T>): CubicCardinalSpline<T>;
+  static newCatmullRom<const T>(controlPoints: Iterable<T>): CubicCardinalSpline<T>;
 }
-export declare class CubicBSpline<T> extends Spline<T> {
+export declare class CubicBSpline<const T> extends Spline<T> {
   constructor(controlPoints: Iterable<T>);
 }
-export declare class CubicNurbs<T> extends Spline<T> {
+export declare class CubicNurbs<const T> extends Spline<T> {
   constructor(controlPoints: Iterable<T>, weights?: Iterable<number> | null, knots?: Iterable<number> | null);
 }
-export declare class LinearSpline<T> extends Spline<T> {
+export declare class LinearSpline<const T> extends Spline<T> {
   constructor(points: Iterable<T>);
 }
 /** Bevy's `AnimatableCurve::new(animated_field!(...), curve)`: the curve's values are the field's type. */

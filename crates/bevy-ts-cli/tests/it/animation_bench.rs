@@ -15,6 +15,12 @@
 //! - `K`: the camera turned away with `cull`, so parked;
 //! - `G`: the floor, B with every player's `AnimationGraphHandle` removed by the engine once all play.
 //!
+//! Tweens (stage 2), N cubes each bobbing on a child named `box` (a ping-pong `CubicInOut` ease, 1 s
+//! each way), no foxes:
+//!
+//! - `T`: one TS-built `AnimationClip`, played by `PlayAnimation` on every cube;
+//! - `S`: a TS system writing every box's `Transform` each frame.
+//!
 //! `scripts/animation-bench.sh` builds the engine and runs the arms; one run is
 //! `ANIMATION_BENCH_ENGINE=target/release/examples/animation_bench_engine ARM=B N=100 cargo static test --release -p bevy-ts-cli --test it animation_bench:: -- --ignored --nocapture`.
 //! Each run appends a row to `target/animation-bench.md`: the probe's main-world update time
@@ -100,8 +106,69 @@ fn ps(pid: u32) -> (u64, f64) {
     (rss, secs)
 }
 
+/// Arms T and S: N cubes on the foxes' grid, each a root with a child `box` that bobs.
+fn tweens(arm: &str, n: usize) -> String {
+    let (play, system) = match arm {
+        "T" => ("\n    <PlayAnimation clip={bobbing} repeat=\"Forever\" />", ""),
+        _ => (
+            "",
+            r#"
+/** `CubicInOut` up and back, as Bevy's ease and ping-pong compute it. */
+const cubicInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+export function bob(time: Res<Time>, boxes: Query<[Mut<Transform>], With<Bobs>>) {
+  const t = time.elapsed_secs % 2;
+  const y = cubicInOut(t < 1 ? t : 2 - t) * 2;
+  boxes.each((b) => {
+    b.translation.y = y;
+  });
+}
+app.addSystems(Update, bob);
+"#,
+        ),
+    };
+    format!(
+        r##"import {{ app, assets, type Commands, Component, type Mut, type Query, type Res, Startup, Time, Transform, Update, type With }} from "bevy-ts";
+import {{ AnimatableCurve, animatedField, AnimationClip, AnimationTargetId, DirectionalLight, EasingCurve, interval, PlayAnimation }} from "bevy-ts/bevy";
+const N = {n};
+const side = Math.ceil(Math.sqrt(N));
+const offset = ((side - 1) * 2.5) / 2;
+const at = (i: number): [number, number, number] => [(i % side) * 2.5 - offset, 0, Math.floor(i / side) * 2.5 - offset];
+export class Bobs extends Component {{}}
+const up = new EasingCurve([0, 0, 0], [0, 2, 0], "CubicInOut").reparametrizeLinear(interval(0, 1)).pingPong();
+const bobbing = assets.add(new AnimationClip().addCurveToTarget(AnimationTargetId.fromName("box"), new AnimatableCurve(animatedField(Transform, "translation"), up)));
+export function stage(commands: Commands) {{
+  commands.spawnNative("camera3d", {{ position: [0, side * 2, side * 3], lookAt: [0, 0, 0] }});
+}}
+const Cube = ({{ i }}: {{ i: number }}) => (
+  <entity name="cube">
+    <Transform translation={{at(i)}} />{play}
+    <entity name="box">
+      <Transform />
+      <Bobs />
+      <mesh shape="cuboid" size={{[1, 1, 1]}} color="#ff8800" />
+    </entity>
+  </entity>
+);
+app.scene("cubes", () => (
+  <>
+    <entity name="sun">
+      <DirectionalLight shadow_maps_enabled />
+      <Transform translation={{[3, 6, 2]}} rotation={{[-0.4341, 0.4107, 0.2323, 0.7674]}} />
+    </entity>
+    <entity name="ground"><mesh shape="plane" size={{[side * 3, side * 3]}} color="#4a6b3a" /></entity>
+    {{Array.from({{ length: N }}, (_, i) => <Cube key={{`cube${{i}}`}} i={{i}} />)}}
+  </>
+));
+app.addSystems(Startup, stage);{system}
+"##
+    )
+}
+
 /// The TSX scene: the camera, a light, a ground, and for arms B and C the foxes.
 fn game(arm: &str, n: usize) -> String {
+    if arm == "T" || arm == "S" {
+        return tweens(arm, n);
+    }
     let play = match arm {
         "B" | "H" | "G" => "\n    <PlayAnimation clip=\"models/Fox.glb#Animation2\" />",
         "P" => "\n    <PlayAnimation clip=\"models/Fox.glb#Animation2\" paused />",

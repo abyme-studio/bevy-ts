@@ -420,12 +420,11 @@ fn a_ts_graph_reweights_live() {
 }
 
 const TWEEN_GAME: &str = r#"import { app, Transform } from "bevy-ts";
-import { AnimatableCurve, animatedField, AnimationClip, AnimationTargetId, EasingCurve, interval, Name, PlayAnimation } from "bevy-ts/bevy";
+import { AnimatableCurve, animatedField, AnimationClip, AnimationTargetId, EasingCurve, interval, PlayAnimation } from "bevy-ts/bevy";
 const rise = new EasingCurve([0, 0, 0], [0, 2, 0], "CubicOut").reparametrizeLinear(interval(0, 1)).pingPong();
 const clip = new AnimationClip().addCurveToTarget(AnimationTargetId.root, new AnimatableCurve(animatedField(Transform, "translation"), rise));
 app.scene("signs", () => (
-  <entity key="sign">
-    <Name value="sign" />
+  <entity name="sign">
     <Transform translation={[0, 0, 0]} />
     <PlayAnimation clip={clip} repeat="Forever" />
   </entity>
