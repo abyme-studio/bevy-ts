@@ -30,7 +30,8 @@ assets.get(mat)?.perceptual_roughness; // 0.3
 - `assets.set(ref, patch)` writes `patch` over the asset's current value. A patch that changes
   nothing marks nothing changed: no `AssetEvent::Modified`, no re-prepare.
 
-They work inside a system's run and during a TSX render, and throw anywhere else.
+They work inside a system's run, during a TSX render and while the script loads, and throw
+anywhere else (a timer callback).
 
 `add` and `set` are visible to the script at once: `get` in the same run reads them, and a ref
 works in a slot in the same run. The asset reaches `Assets<T>`, and `AssetEvent::Added` or

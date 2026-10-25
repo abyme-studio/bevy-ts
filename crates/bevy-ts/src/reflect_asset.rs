@@ -189,12 +189,20 @@ pub fn flush(world: &mut World) {
         queued.into_iter().filter_map(|(n, q)| t.refs.get(&n).map(|m| (q, m.handle.clone(), m.reflect.clone()))).collect()
     };
     for (q, handle, reflect) in queued {
-        if q.added {
-            if let Err(e) = reflect.insert(world, handle.id(), q.value.as_partial_reflect()) {
-                warn!("bevy-ts: a script-made asset was not added: {e}");
-            }
-        } else if let Some(asset) = reflect.get_mut(world, handle.id()) {
-            asset.apply(q.value.as_partial_reflect());
+        if q.added
+            && let Err(e) = reflect.insert(world, handle.id(), q.value.as_partial_reflect())
+        {
+            warn!("bevy-ts: a script-made asset was not added: {e}");
+            continue;
+        }
+        // The whole value replaces the asset: `insert` and `apply` go field by field, and miss a
+        // hand-mapped type's fields that reflection cannot reach. A reflected add is whole
+        // already, and a second write would send it a `Modified`.
+        if (!q.added || hand_map(handle.type_id()).is_some())
+            && let Some(asset) = reflect.get_mut(world, handle.id())
+            && let Err(v) = asset.set(q.value)
+        {
+            asset.apply(v.as_partial_reflect());
         }
     }
 }
