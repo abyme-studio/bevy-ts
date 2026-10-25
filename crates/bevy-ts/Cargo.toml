@@ -15,6 +15,8 @@ pbr = ["reflect", "bevy/3d_api", "bevy/bevy_pbr", "bevy/bevy_core_pipeline"]
 # `reflect_value`: every reflected value's JSON shape (handles need bevy_asset).
 reflect = ["bevy/bevy_asset"]
 track_location = ["bevy/track_location"]
+# `type_data` entries for crates the prebuilt engine has: glTF names, UI debug options and the UI widgets.
+engine_type_data = ["pbr", "bevy/bevy_gltf", "bevy/bevy_ui_widgets", "bevy/bevy_ui_render"]
 
 [dependencies]
 # The real `WebSocket` transport: async-io on `IoTaskPool`. 0.33 shares the locked tungstenite 0.28.

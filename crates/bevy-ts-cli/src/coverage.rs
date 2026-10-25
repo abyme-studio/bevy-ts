@@ -2,17 +2,20 @@
 //! type registry, walked through every field type. For each type it takes a value (its default,
 //! else one shaped from its type info), and checks that `reflect_value::read` gives JSON, that
 //! writing that JSON over a fresh value gives an equal one, and that its TS type is not `unknown`.
+//! A component (not a resource) with neither `ReflectDefault` nor `ReflectFromWorld` is a `no default`
+//! gap unless `reflect_value::NO_DEFAULT` lists it: TSX, levels and the editor cannot insert it
+//! (visibility-range).
 //! A type on `reflect_value::UNCOVERED` is not checked and not walked into. `tests/it/reflect_coverage.rs`
 //! runs it on the prebuilt engine, and `bevy-ts types --coverage <file>` on a project engine (the
 //! Rapier port's).
 
 use crate::types::reflect_ts;
 use bevy::asset::ReflectAsset;
-use bevy::ecs::reflect::{ReflectComponent, ReflectResource};
+use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld, ReflectResource};
 use bevy::prelude::*;
 use bevy::reflect::enums::VariantInfo;
 use bevy::reflect::{PartialReflect, TypeInfo, TypeRegistry};
-use bevy_ts::reflect_value::{self, uncovered};
+use bevy_ts::reflect_value::{self, no_default, uncovered};
 use serde::Serialize;
 use serde_json::json;
 use std::any::TypeId;
@@ -23,7 +26,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct Gap {
     /// The type that fails.
     pub type_path: String,
-    /// What fails: `read`, `round trip`, `TS type`, `no value`, `not registered`.
+    /// What fails: `read`, `round trip`, `TS type`, `no value`, `not registered`, `no default`.
     pub kind: String,
     pub error: String,
     /// Where the walk first met it: the component, resource or asset, and the field path in it.
@@ -36,7 +39,7 @@ pub struct Report {
     pub gaps: Vec<Gap>,
     /// Every type path the walk met, uncovered ones included.
     pub met: BTreeSet<String>,
-    /// The `UNCOVERED` entries the walk met.
+    /// The `UNCOVERED` and `NO_DEFAULT` entries the walk met.
     pub listed: BTreeSet<String>,
 }
 
@@ -52,6 +55,15 @@ pub fn walk(world: &World) -> Report {
     let mut w = Walk { registry: &registry, done: BTreeMap::new(), report: Report::default() };
     for (path, id) in roots {
         w.visit(id, &path, &path, "");
+        let reg = registry.get(id).expect("a root is registered");
+        let insertable = reg.data::<ReflectDefault>().is_some() || reg.data::<ReflectFromWorld>().is_some();
+        let component = reg.data::<ReflectComponent>().is_some() && reg.data::<ReflectResource>().is_none();
+        if component && !insertable && uncovered(&path).is_none() {
+            match no_default(&path) {
+                Some(_) => _ = w.report.listed.insert(path.clone()),
+                None => w.gap(&path, "no default", "a component with neither ReflectDefault nor ReflectFromWorld cannot be inserted from TSX".into(), &path, ""),
+            }
+        }
     }
     w.report
 }

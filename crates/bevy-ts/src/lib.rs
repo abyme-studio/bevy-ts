@@ -36,6 +36,7 @@ pub mod schedules;
 pub mod sets;
 pub mod systems;
 pub mod time_conditions;
+pub mod type_data;
 pub mod value;
 
 use crate::backend::ScriptBackend;
@@ -141,6 +142,7 @@ impl Plugin for BevyTsPlugin {
         app.insert_non_send(runtime::ScriptRuntime::new(backend, self.dev));
         app.insert_non_send(net::NetRegistry::new(Box::new(net::SocketTransport::default())));
         app.register_type::<commands::TsSpawned>().register_type::<ScriptHidden>();
+        type_data::register(app);
         app.init_resource::<components::TsComponents>()
             .init_resource::<systems::TsSystems>()
             .init_resource::<commands::CommandKinds>()

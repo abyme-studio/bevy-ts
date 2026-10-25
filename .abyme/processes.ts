@@ -309,6 +309,8 @@ const processes = {
   "stage2-gate": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --no-fail-fast; scripts/dylib-check.sh) 2>&1 | grep --line-buffered -v ld64 | tee target/stage2-gate.log | grep -E \"^test result|FAILED|panicked|^error|should be|NOT|refused|dylib-check\"'" },
   // The workspace doctests in this checkout (a doctest that runs cannot find the Bevy dylib).
   "doctests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --workspace --doc 2>&1 | grep --line-buffered -v ld64 | tee target/doctests.log | grep -E \"^test result|FAILED|dyld|^error\"'" },
+  // Change visibility-range: one cargo step, target/vr-step.sh, written before each start; its log is target/vr.log.
+  "vr-step": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:visibility-range -- bash -c 'set -o pipefail; mkdir -p target; bash target/vr-step.sh 2>&1 | grep --line-buffered -v ld64 > target/vr.log; echo step exit $? >> target/vr.log; grep -E \"^test result|FAILED|panicked|^error|-->|step exit\" target/vr.log | tail -20'" },
   // Change reflect-coverage stages 1 and 2 (build-shapes): one cargo step at a time in the shared check
   // slot. The step is target/shapes-step.sh, written before each start; its log is target/shapes.log.
   "shapes-step": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:reflect-enums-color -- bash -c 'set -o pipefail; mkdir -p target; bash target/shapes-step.sh 2>&1 | grep --line-buffered -v ld64 > target/shapes.log; echo step exit $? >> target/shapes.log; tail -3 target/shapes.log'" },

@@ -12,7 +12,7 @@ bevy-ts SHALL register, with `App::register_type_data` in one module, the type d
 - **THEN** the call succeeds and `world.get_components` returns the same margins
 
 ### Requirement: Every reflected component can be inserted or says why not
-The hole check SHALL report a `no default` gap for any registered component with neither `ReflectDefault` nor `ReflectFromWorld`, unless it is on `reflect_value::UNCOVERED` with a reason. CI SHALL fail on such a gap.
+The hole check SHALL report a `no default` gap for any registered component (not a resource) with neither `ReflectDefault` nor `ReflectFromWorld`, unless `reflect_value::NO_DEFAULT` or `reflect_value::UNCOVERED` lists it with a reason. A component on `NO_DEFAULT` is still read and written. CI SHALL fail on such a gap, and on a `NO_DEFAULT` entry no registered component uses.
 
 #### Scenario: A Bevy upgrade adds a component without a reflected default
 - **WHEN** the prebuilt engine registers a component with no `ReflectDefault` and no `ReflectFromWorld` that is not listed
