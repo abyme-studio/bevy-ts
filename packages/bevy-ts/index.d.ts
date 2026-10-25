@@ -178,10 +178,18 @@ export type Init<T> = {
 
 /**
  * `layout`: a column a TS system may read and write (TS components, ported Rust components).
- * `reflect`: typed in TSX and the protocol, usable in `With`/`Without`, never as query data.
+ * `reflect`: read and written through reflection: typed in TSX and the protocol, and query data
+ * whose row's `value` is the whole value.
  */
 export type Tier = "layout" | "reflect";
 declare const tierBrand: unique symbol;
+declare const valueBrand: unique symbol;
+declare const holesBrand: unique symbol;
+/** A reflect-tier class's whole value as its row's `value` sees it (an enum's, `Name`'s). */
+export type ReflectValue<V> = { readonly [valueBrand]?: V };
+/** A layout-tier class's holes: fields read and written through reflection, beside its columns. */
+export type Holes<H> = { readonly [holesBrand]?: H };
+type HolesOf<T> = T extends { readonly [holesBrand]?: infer H } ? NonNullable<H> : {};
 declare const resourceBrand: unique symbol;
 declare const messageBrand: unique symbol;
 declare const eventBrand: unique symbol;
@@ -414,17 +422,22 @@ export interface RefTicks {
 
 // A reflect-tier class's row reads through reflection: `value` is the whole value, and a
 // struct's fields are on the row too (`weapon.name`). Unchanged rows are cached across runs.
-type ReflectRow<T> = T & { value: T extends { value: infer V } ? V : Omit<T, typeof tierBrand> };
+// A layout-tier class's row has its holes beside its columns.
+type ReflectRow<T> = T & {
+  value: T extends { readonly [valueBrand]?: infer V } ? (unknown extends V ? FieldsOf<T> : V) : FieldsOf<T>;
+};
+type FieldsOf<T> = T extends { value: infer V } ? V : Omit<T, typeof tierBrand>;
+type LayoutRow<T> = ReadView<T> & Readonly<HolesOf<T>>;
 type Item<D> =
   D extends Entity ? Entity
   : D extends OptionData<infer X> ? Item<X> | undefined
   : D extends Has<unknown> ? boolean
-  : D extends Ref<infer T> ? (T extends ReflectComponent ? ReadView<ReflectRow<T>> : ReadView<T>) & RefTicks
+  : D extends Ref<infer T> ? (T extends ReflectComponent ? ReadView<ReflectRow<T>> : LayoutRow<T>) & RefTicks
   : D extends AnyOf<infer Ts> ? { -readonly [I in keyof Ts]: Item<Ts[I]> | undefined }
-  : D extends Mut<infer T> ? (T extends ReflectComponent ? ReflectRow<T> : T)
-  : D extends abstract new (...a: never) => infer I ? (I extends ReflectComponent ? ReadView<ReflectRow<I>> : ReadView<I>) // value form: Mut(C) / C
+  : D extends Mut<infer T> ? (T extends ReflectComponent ? ReflectRow<T> : T & HolesOf<T>)
+  : D extends abstract new (...a: never) => infer I ? (I extends ReflectComponent ? ReadView<ReflectRow<I>> : LayoutRow<I>) // value form: Mut(C) / C
   : D extends ReflectComponent ? ReadView<ReflectRow<D>>
-  : ReadView<D>;
+  : LayoutRow<D>;
 export type Row<Ds extends readonly unknown[]> = { -readonly [I in keyof Ds]: Item<Ds[I]> };
 
 /** A component's typed arrays over one table's column; only the views its fields need exist. */
@@ -969,7 +982,7 @@ type AtMost12<U, N extends unknown[] = []> = [U] extends [never] ? true : N["len
 // directly, and the read is the subscription.
 
 /** A component's value as a binding sees it. */
-export type ReadValue<C> = ReadView<C>;
+export type ReadValue<C> = ReadView<C> & Readonly<HolesOf<C>>;
 
 /** An entity a scene made (`ref={player}`), or `ref(entity)`. */
 export interface NodeRef {

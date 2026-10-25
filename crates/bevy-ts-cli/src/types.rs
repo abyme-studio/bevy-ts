@@ -378,6 +378,22 @@ fn hole_props(registry: &TypeRegistry, n: &bevy_ts::layout::NativeComponent) -> 
     Some(format!("  static readonly tsxProps: {{ {} }};", props.join("; ")))
 }
 
+/// A layout-tier class's holes as members (`color: ColorValue`), as TS systems and `ref.get` read
+/// them: every field that is not a column and not of an uncovered type. `None` without any.
+fn hole_members(registry: &TypeRegistry, reg: &TypeRegistration, n: &bevy_ts::layout::NativeComponent) -> Option<String> {
+    let fields: Vec<(String, &str)> = match reg.type_info() {
+        TypeInfo::Struct(st) => st.iter().map(|f| (f.name().to_string(), f.type_path())).collect(),
+        TypeInfo::TupleStruct(t) if t.field_len() > 1 => t.iter().map(|f| (f.index().to_string(), f.type_path())).collect(),
+        _ => vec![],
+    };
+    let members: Vec<String> = fields
+        .into_iter()
+        .filter(|(f, path)| !n.layout.fields.iter().any(|c| &c.name == f) && bevy_ts::reflect_value::uncovered(path).is_none())
+        .map(|(f, path)| format!("{}: {}", prop(&f), ts_type(registry, path, 1)))
+        .collect();
+    (!members.is_empty()).then(|| members.join("; "))
+}
+
 fn paren(t: String) -> String {
     if t.contains(' ') { format!("({t})") } else { t }
 }
@@ -563,7 +579,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name.\n\
          import {{ Component, Resource }} from \"bevy-ts\";\n\
-         import type {{ AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, ReflectClass, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
+         import type {{ AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, ReflectClass, ReflectValue, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
     for (path, name, reg) in named(&registry, native) {
@@ -584,7 +600,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                         notes.push("Immutable: read-only in TS.".to_string());
                     }
                     if !n.holes.is_empty() {
-                        notes.push(format!("Holes, never visible: {}.", n.holes.join("; ")));
+                        notes.push(format!("Holes, not columns: {}.", n.holes.join("; ")));
                     }
                     let _ = writeln!(dts, "/** {} */", notes.join(" ").replace("*/", "* /"));
                 }
@@ -613,6 +629,10 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                     let _ = writeln!(dts, "  declare {ro}{}: {};", prop(&f.name), field_ts(&f.ty));
                 }
                 dts.push_str("}\n");
+                // Its holes, on its rows in TS systems and in `ref.get`.
+                if let Some(h) = hole_members(&registry, reg, n) {
+                    let _ = writeln!(dts, "export interface {name} extends Holes<{{ {h} }}> {{}}");
+                }
             }
             None => {
                 let handle = native.reflect_tier(&path).and_then(|_| {
@@ -626,11 +646,11 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                 let _ = writeln!(js, "export const {name} = reflectClass({handle:?});");
                 if name == "Name" {
                     let _ = writeln!(dts, "/** `Name`; as an element, `<Name value=\"...\" />` (or `<entity name=\"...\">`); `Name.of(\"...\")` in commands. */");
-                    let _ = writeln!(dts, "export declare const Name: ReflectClass<string> & {{ readonly __nameElement: true }};");
+                    let _ = writeln!(dts, "export declare const Name: ReflectClass<string, ReflectValue<string>> & {{ readonly __nameElement: true }};");
                 } else if let TypeInfo::Enum(_) = reg.type_info() {
                     // An enum component takes its whole value as `value`.
                     let _ = writeln!(dts, "/** As an element, `<{name} value={{...}} />`: the whole value, in Bevy's shape; `{name}.of(...)` in commands. */");
-                    let _ = writeln!(dts, "export declare const {name}: ReflectClass<{name}Value> & {{ readonly tsxProps: {{ value?: {name}Value }} }};");
+                    let _ = writeln!(dts, "export declare const {name}: ReflectClass<{name}Value, ReflectValue<{name}Value>> & {{ readonly tsxProps: {{ value?: {name}Value }} }};");
                     let _ = writeln!(dts, "export type {name}Value = {};", ts_type(&registry, &path, 0));
                 } else {
                     let _ = writeln!(dts, "/** `{name}.of(...)` in commands: the value written over its default. */");
@@ -664,7 +684,7 @@ pub fn emit(world: &World) -> String {
          // Component and Resource classes are columns in TS systems; ReflectComponent classes are\n\
          // typed values for TSX, the protocol and With/Without filters.\n\n\
          import { Component, ReflectComponent, Resource } from \"bevy-ts\";\n\
-         import type { AssetFields, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
+         import type { AssetFields, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
     );
     // The `T` of every `Handle<T>` a field names; the asset classes are `bevy-ts/bevy`'s.
     for (path, name, reg) in assets_named(&registry) {
@@ -700,7 +720,7 @@ pub fn emit(world: &World) -> String {
                 notes.push("Immutable: read-only in TS.".to_string());
             }
             if !n.holes.is_empty() {
-                notes.push(format!("Holes, never visible: {}.", n.holes.join("; ")));
+                notes.push(format!("Holes, not columns: {}.", n.holes.join("; ")));
             }
             if !notes.is_empty() {
                 let _ = writeln!(s, "/** {} */", notes.join(" ").replace("*/", "* /"));
@@ -732,6 +752,9 @@ pub fn emit(world: &World) -> String {
             let _ = writeln!(s, "  {f}");
         }
         s.push_str("}\n");
+        if let Some(h) = layout.and_then(|n| hole_members(&registry, reg, n)) {
+            let _ = writeln!(s, "export interface {name} extends Holes<{{ {h} }}> {{}}");
+        }
     }
     s
 }
