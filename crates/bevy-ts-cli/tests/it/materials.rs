@@ -348,7 +348,7 @@ mod drawn {
     /// As `draw`, with `header` after the imports, `files` beside the game, and a `clear` colour.
     fn draw_with(name: &str, header: &str, stage: &str, scene: &str, files: &[(&str, &str)], textures: &[(&str, [u8; 4])], clear: Color) -> Image {
         let game = format!(
-            "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ Transform }} from \"bevy-ts/bevy\";\n{header}\n\nexport function stage(commands: Commands) {{\n{stage}\n}}\napp.addSystems(Startup, stage);\n\napp.scene(\"s\", () => (\n  <>\n{scene}\n  </>\n));\n"
+            "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ Camera3d, DirectionalLight, Transform }} from \"bevy-ts/bevy\";\n{header}\n\nexport function stage(commands: Commands) {{\n{stage}\n}}\napp.addSystems(Startup, stage);\n\napp.scene(\"s\", () => (\n  <>\n{scene}\n  </>\n));\n"
         );
         let mut all = vec![("game.tsx", game.as_str()), ("package.json", "{}")];
         all.extend_from_slice(files);
@@ -397,7 +397,7 @@ mod drawn {
         image.get_color_at(px, py).unwrap().to_linear()
     }
 
-    const CAMERA: &str = "  commands.spawnNative(\"camera3d\", { position: [0, 0, 3], lookAt: [0, 0, 0] });";
+    const CAMERA: &str = "  commands.spawn(Camera3d, Transform.lookingAt([0, 0, 3], [0, 0, 0]));";
 
     #[test]
     fn a_textured_cube_draws_the_image() {
@@ -411,7 +411,7 @@ mod drawn {
     #[test]
     fn a_two_sided_plane_draws_its_back() {
         // Two planes facing up, seen from below and lit from below: only the two-sided one shows.
-        let stage = "  commands.spawnNative(\"camera3d\", { position: [0, -3, 0.5], lookAt: [0, 0, 0] });\n  commands.spawnNative(\"directionalLight\", { position: [0, -5, 0], lookAt: [0, 0, 0], shadows: false });";
+        let stage = "  commands.spawn(Camera3d, Transform.lookingAt([0, -3, 0.5], [0, 0, 0]));\n  commands.spawn(DirectionalLight.of({ shadow_maps_enabled: false }), Transform.lookingAt([0, -5, 0], [0, 0, 0]));";
         let scene = "    <entity>\n      <Transform translation={[-0.75, 0, 0]} />\n      <mesh shape=\"plane\" />\n      <material color=\"#ffffff\" />\n    </entity>\n    <entity>\n      <Transform translation={[0.75, 0, 0]} />\n      <mesh shape=\"plane\" />\n      <material color=\"#ffffff\" doubleSided cullMode={null} />\n    </entity>";
         let image = draw("standard-two-sided", stage, scene, &[]);
         let (one, two) = (at(&image, 0.3, 0.5), at(&image, 0.7, 0.5));
@@ -422,7 +422,7 @@ mod drawn {
     #[test]
     fn a_normal_map_shades_a_cube() {
         // Two white cubes in one light; the right one's normal map tilts every normal.
-        let stage = format!("{CAMERA}\n  commands.spawnNative(\"directionalLight\", {{ position: [2, 3, 4], lookAt: [0, 0, 0], shadows: false }});");
+        let stage = format!("{CAMERA}\n  commands.spawn(DirectionalLight.of({{ shadow_maps_enabled: false }}), Transform.lookingAt([2, 3, 4], [0, 0, 0]));");
         let cube = |x: f32, extra: &str| format!("    <entity>\n      <Transform translation={{[{x}, 0, 0]}} />\n      <mesh shape=\"cuboid\" size={{[0.8, 0.8, 0.8]}} />\n      <material color=\"#ffffff\" {extra}/>\n    </entity>");
         let scene = format!("{}\n{}", cube(-0.6, ""), cube(0.6, "normalMapTexture=\"textures/tilt.png\" "));
         let image = draw("standard-normal-map", &stage, &scene, &[("textures/tilt.png", [240, 128, 160, 255])]);
