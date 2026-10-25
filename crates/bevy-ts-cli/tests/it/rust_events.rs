@@ -206,7 +206,7 @@ impl<T: Send + Sync + 'static> Default for Seen<T> {
 }
 
 const RUST_HEAD: &str = r#"import { app, chain, Component, onMessage, PostUpdate, rustEntityEvent, rustMessage, Startup, systems, Update } from "bevy-ts";
-import type { Commands, Entity, MessageReader, MessageWriter, On, Query } from "bevy-ts";
+import type { Commands, Entity, MessageReader, MessageWriter, On, Query, u32 } from "bevy-ts";
 export class Pad extends Component { static path = "game::Pad" }
 "#;
 
@@ -436,7 +436,7 @@ app.addObserver(onClick);
 fn a_rust_event_field_named_like_ons_own_is_read_on_event() {
     let mut app = rust_app(
         "rust-nudge",
-        r#"export const Nudge = rustEntityEvent("it::rust_events::Nudge");
+        r#"export class Nudge extends rustEntityEvent("it::rust_events::Nudge") { declare original: u32 }
 export function onNudge(n: On<Nudge>) {
   console.log(`nudge ${n.entity} ${n.event.entity} ${n.event.propagate} ${n.event.original} ${typeof n.propagate} ${n.original}`);
   n.propagate(false);
@@ -459,7 +459,7 @@ app.addObserver(onNudge);
 fn an_entity_observer_of_a_rust_event_runs_for_its_entity_only() {
     let mut app = rust_app(
         "rust-nudge-entity",
-        r#"export const Nudge = rustEntityEvent("it::rust_events::Nudge");
+        r#"export class Nudge extends rustEntityEvent("it::rust_events::Nudge") { declare original: u32 }
 let done = false;
 export function attach(q: Query<[Entity, Pad]>, c: Commands) { if (!done) q.each((e) => c.entity(e).observe(onNudge)); done = true; }
 export function onNudge(n: On<Nudge>) { console.log(`nudge ${n.entity} ${n.original}`); }
@@ -486,7 +486,7 @@ app.addSystems(Update, attach);
 fn an_unlisted_reflect_message_is_writable() {
     let mut app = rust_app(
         "rust-unlisted",
-        r#"export const Ping = rustMessage("it::rust_events::ThirdPartyPing");
+        r#"export class Ping extends rustMessage("it::rust_events::ThirdPartyPing") { declare n: u32 }
 let sent = false;
 export function send(w: MessageWriter<Ping>) { if (!sent) { w.write({ n: 3 }); sent = true; } }
 app.addSystems(Update, send);
@@ -503,7 +503,7 @@ app.addSystems(Update, send);
 
     let (_, r) = try_rust_app(
         "rust-unlisted-reader",
-        r#"export const Ping = rustMessage("it::rust_events::ThirdPartyPing");
+        r#"export class Ping extends rustMessage("it::rust_events::ThirdPartyPing") { declare n: u32 }
 export function read(r: MessageReader<Ping>) {}
 app.addSystems(Update, read);
 "#,
@@ -518,7 +518,7 @@ app.addSystems(Update, read);
 fn a_project_message_is_read_and_written_from_ts() {
     let mut app = rust_app(
         "rust-scored",
-        r#"export const Scored = rustMessage("it::rust_events::Scored");
+        r#"export class Scored extends rustMessage("it::rust_events::Scored") { declare points: u32 }
 let sent = false;
 export function send(w: MessageWriter<Scored>) { if (!sent) { w.write(Scored.of({ points: 5 })); sent = true; } }
 export function read(r: MessageReader<Scored>) { r.each((s) => console.log(`scored ${s.points}`)); }

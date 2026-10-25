@@ -2794,12 +2794,12 @@ function makeOn(cls) {
   let value;
   Object.defineProperty(o, "event", {
     get() {
-      if (rust || !cls) return value;
-      // A TS event's fields, copied out of the row, and its current target, as Bevy rewrites it
-      // at each hop.
-      const v = JSON.parse(JSON.stringify(o.toJSON()));
-      if (cls.decl && cls.decl.entity) v.entity = o.entity;
-      return v;
+      if (rust || !cls || value !== undefined) return value;
+      // A TS event's fields, copied out of the row once per bind, and its current target, as
+      // Bevy rewrites it at each hop.
+      value = JSON.parse(JSON.stringify(o.toJSON()));
+      if (cls.decl && cls.decl.entity) value.entity = o.entity;
+      return value;
     },
   });
   o[BIND] = (frame) => {
@@ -2810,7 +2810,10 @@ function makeOn(cls) {
       const keys = value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).filter((k) => !ON_OWN.has(k)) : [];
       for (const k of keys) o[k] = value[k];
       o[ON_KEYS] = keys;
-    } else if (cls) bindRow(o, cls, frame[0], null, 0);
+    } else if (cls) {
+      bindRow(o, cls, frame[0], null, 0);
+      value = undefined;
+    }
     o.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
     o.original = frame[2] === 18446744073709552000 ? undefined : frame[2];
     o[STOPPED] = false;
