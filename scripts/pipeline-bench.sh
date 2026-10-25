@@ -5,6 +5,7 @@
 # A run ends 15 s after its last "pipelines ready" line (240 s at most) and prints that line with
 # the load average. `cold` runs under a sandbox that cannot read or write the user's Metal shader
 # cache, so every shader compiles afresh without clearing the cache other processes share.
+source "$(dirname "$0")/slot.sh"
 set -uo pipefail
 cd "$(dirname "$0")/.."
 dir=target/pipelines-$2
