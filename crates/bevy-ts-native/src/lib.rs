@@ -199,6 +199,10 @@ pub trait BevyTsNativeExt {
         factory: impl Fn(&bevy_ts::conditions::ConditionArgs) -> Result<bevy::ecs::schedule::BoxedCondition, String> + Send + Sync + 'static,
     ) -> &mut Self;
 
+    /// Makes Rust state `S` reachable from TS: its unit variants are its values, named from
+    /// `bevy-ts/states` (`inState(GamePhase.Combat)`, `OnEnter(...)`, `State<S>`, `NextState<S>`).
+    fn ts_state<S: bevy::state::state::FreelyMutableState + Reflect + FromReflect + bevy::reflect::Typed + bevy::reflect::TypePath>(&mut self) -> &mut Self;
+
     /// Exports a param TS systems can take (`rapier: ReadRapierContext`) and call. Its methods
     /// come from `#[export]` on its `impl`.
     fn ts_param<P: ExportParam>(&mut self) -> &mut Self;
@@ -267,6 +271,11 @@ impl BevyTsNativeExt for App {
         factory: impl Fn(&bevy_ts::conditions::ConditionArgs) -> Result<bevy::ecs::schedule::BoxedCondition, String> + Send + Sync + 'static,
     ) -> &mut Self {
         bevy_ts::conditions::expose(self, name, factory);
+        self
+    }
+
+    fn ts_state<S: bevy::state::state::FreelyMutableState + Reflect + FromReflect + bevy::reflect::Typed + bevy::reflect::TypePath>(&mut self) -> &mut Self {
+        bevy_ts::states::expose_rust::<S>(self);
         self
     }
 

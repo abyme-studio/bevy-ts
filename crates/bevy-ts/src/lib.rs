@@ -70,7 +70,7 @@ pub struct WindowImage(pub Handle<Image>);
 /// Whether the game runs (`Play`) or the engine is an editor over a still world (`Edit`, from
 /// `bevy-ts dev --edit` or the viewport's edit mode). A shipped game is always `Play`. Native
 /// systems that must not run in edit mode gate with `run_if(in_state(EngineMode::Play))`.
-#[derive(States, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(States, Reflect, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EngineMode {
     #[default]
     Play,
@@ -200,6 +200,8 @@ impl Plugin for BevyTsPlugin {
             app.add_plugins(bevy::state::app::StatesPlugin);
         }
         app.init_state::<EngineMode>();
+        // TS names it from `bevy-ts/states` (`inState(EngineMode.Play)`).
+        states::expose_rust::<EngineMode>(app);
         app.add_systems(OnEnter(EngineMode::Edit), net::close_for_edit);
         // The state changes after `First`: deliver on entering play too, so what waited (the closes
         // edit mode made, due timers) arrives in the first frame of play.
@@ -247,5 +249,6 @@ impl Plugin for BevyTsPlugin {
             panic!("{e}");
         }
         layout_reflect::fill_once(app.world_mut());
+        states::register_module(app.world());
     }
 }

@@ -34,6 +34,12 @@ pub fn register(specifier: &str, js: &str, dts: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Registers or replaces a module bevy-ts itself builds from what the app registered
+/// (`bevy-ts/states`).
+pub fn replace(specifier: &str, js: &str, dts: &str) {
+    modules().lock().unwrap().insert(specifier.to_string(), TsModule { js: js.to_string(), dts: dts.to_string() });
+}
+
 /// A registered module's JS.
 pub fn js(specifier: &str) -> Option<String> {
     modules().lock().unwrap().get(specifier).map(|m| m.js.clone())

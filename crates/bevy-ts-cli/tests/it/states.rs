@@ -238,3 +238,41 @@ fn a_sub_state_takes_no_init_state() {
     let errors = load_errors("states-sub-init", &src(&format!("{SUB}app.initState(Game.Menu).initState(Pause.Running);\n")));
     assert!(errors.iter().any(|e| e.message.contains("game::Pause") && e.message.contains("takes no initState")), "{errors:?}");
 }
+
+#[test]
+fn a_ts_system_gates_on_a_rust_state() {
+    let body = r#"import { EngineMode } from "bevy-ts/states";
+export function play() { console.log("play"); }
+export function edit() { console.log("edit"); }
+app.addSystems(Update, systems(play).runIf(inState(EngineMode.Play)), systems(edit).runIf(inState(EngineMode.Edit)));
+"#;
+    let (_, mut app) = load("states-rust-state", &src(body));
+    updates(&mut app, 2);
+    assert_eq!(said(&mut app), ["play", "play"]);
+    app.world_mut().resource_mut::<NextState<bevy_ts::EngineMode>>().set(bevy_ts::EngineMode::Edit);
+    updates(&mut app, 2);
+    assert!(said(&mut app).ends_with(&["edit".to_string(), "edit".to_string()]));
+}
+
+#[test]
+fn state_scoped_components_despawn_on_exit() {
+    let body = r#"import { DespawnOnExit, Component } from "bevy-ts";
+import type { Commands } from "bevy-ts";
+export class Enemy extends Component { static path = "game::Enemy" }
+export class Game extends States("Menu", "Playing") { static path = "game::Game" }
+export function spawn(c: Commands) { c.spawn(Enemy, DespawnOnExit.of(Game.Playing)); }
+export function go(next: NextState<Game>, s: State<Game>) { if (s.current === Game.Menu) next.set(Game.Playing); else next.set(Game.Menu); }
+app.initState(Game.Menu).addSystems(OnEnter(Game.Playing), spawn).addSystems(Update, go);
+"#;
+    let (_, mut app) = load("states-scoped", &src(body));
+    let enemies = |app: &mut App| {
+        let id = bevy_ts::plugin_api::component_by_name(app.world(), "game::Enemy").unwrap().0;
+        let world = app.world_mut();
+        QueryBuilder::<Entity>::new(world).with_id(id).build().iter(world).count()
+    };
+    // Frame 1: Menu → Playing queued. Frame 2: enters Playing, spawns. Frame 3: back to Menu.
+    updates(&mut app, 2);
+    assert_eq!(enemies(&mut app), 1);
+    app.update();
+    assert_eq!(enemies(&mut app), 0, "despawned on leaving Playing");
+}

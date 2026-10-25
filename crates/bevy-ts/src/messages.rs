@@ -178,6 +178,26 @@ impl TsPayloads {
         }
     }
 
+    /// Rust states TS names (crate::states::RustStates), after the generation's own: each
+    /// `(type path, values)` takes slot `SLOTS + n`.
+    pub fn declare_rust(&mut self, states: &[(String, Vec<String>)]) {
+        for (n, (path, values)) in states.iter().enumerate() {
+            let machine = StateMachine {
+                name: path.clone(),
+                values: values.clone(),
+                syms: values.iter().map(|v| crate::states::sym(v)).collect(),
+                slot: (crate::states::SLOTS + n) as u8,
+                initial: None,
+                source: None,
+                computed: Vec::new(),
+            };
+            match self.state(path) {
+                Some(i) => self.states[i] = machine,
+                None => self.states.push(machine),
+            }
+        }
+    }
+
     /// Forgets every message, as a restart does (states lose their values in crate::states).
     pub fn reset(&mut self) {
         self.messages.iter_mut().for_each(|m| *m = MessageQueue::new(&m.name.clone(), m.layout.clone()));

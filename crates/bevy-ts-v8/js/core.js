@@ -836,6 +836,18 @@ export const EnableOnEnter = stateScoped("EnableOnEnter");
 
 const isScoped = (p) => p && typeof p === "object" && p.constructor && p.constructor[SCOPED] !== undefined;
 
+/** A Rust state TS names (`app.ts_state::<S>()`), from the generated `bevy-ts/states`. */
+export function rustState(path, values) {
+  const C = class {};
+  Object.defineProperty(C, "name", { value: path.split("::").pop() });
+  C.componentName = path;
+  C.source = "rust";
+  C[KIND] = "state";
+  C.values = values;
+  for (const v of values) C[v] = Object.freeze({ state: path, value: v, machine: C });
+  return C;
+}
+
 /** A Rust component by type path or short name: usable in `With`/`Without` only. */
 export function rustComponent(name) {
   const C = class {};

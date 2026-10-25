@@ -419,6 +419,9 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     let old_payloads = world.remove_resource::<crate::messages::TsPayloads>().unwrap_or_default();
     let mut payloads = old_payloads.clone();
     payloads.declare(&manifest.messages, &manifest.events, &manifest.states, &mut |name| assigned[name]);
+    if let Some(rust) = world.get_resource::<crate::states::RustStates>() {
+        payloads.declare_rust(&rust.0.iter().map(|s| (s.path.clone(), s.values.clone())).collect::<Vec<_>>());
+    }
     world.insert_resource(payloads);
     let restore = |world: &mut World, old: crate::messages::TsPayloads| {
         world.insert_resource(old);

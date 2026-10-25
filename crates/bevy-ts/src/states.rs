@@ -69,7 +69,8 @@ pub enum RunKind {
     Transition,
 }
 
-/// What bevy-ts does to one slot, whatever its `N`.
+/// What bevy-ts does to one slot, whatever its `N`, or to a Rust state TS names.
+#[derive(Clone, Copy)]
 pub struct SlotOps {
     register: fn(&mut World, u32),
     unregister: fn(&mut World),
@@ -78,7 +79,7 @@ pub struct SlotOps {
     set_next: fn(&mut World, u32),
     take_next: fn(&mut World) -> Option<u32>,
     state_id: fn(&World) -> Option<ComponentId>,
-    add_runner: fn(&mut World, RunKind, u32, u32),
+    add_runner: fn(&mut World, u8, RunKind, u32, u32),
     insert_scoped: fn(&mut World, Entity, u8, u32),
     remove_scoped: fn(&mut World, Entity, u8),
     make: fn(&mut World),
@@ -252,7 +253,7 @@ fn state_id<const N: u8>(world: &World) -> Option<ComponentId> {
     world.components().component_id::<State<TsState<N>>>()
 }
 
-fn add_runner<const N: u8>(world: &mut World, kind: RunKind, a: u32, b: u32) {
+fn add_runner<const N: u8>(world: &mut World, _slot: u8, kind: RunKind, a: u32, b: u32) {
     let slot = N as usize;
     let mut schedules = world.resource_mut::<Schedules>();
     match kind {
@@ -291,6 +292,147 @@ macro_rules! ops {
 }
 
 static OPS: [SlotOps; SLOTS] = ops!(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
+
+/// The ops of a slot: the pool's, or a Rust state's (slots from [`SLOTS`] up).
+fn ops_of(world: &World, slot: u8) -> SlotOps {
+    match (slot as usize).checked_sub(SLOTS) {
+        None => OPS[slot as usize],
+        Some(i) => world.resource::<RustStates>().0[i].ops,
+    }
+}
+
+/// A Rust state TS names (`app.ts_state::<S>()`): its type path, short name and unit variants.
+#[derive(Clone)]
+pub struct RustState {
+    pub path: String,
+    pub short: String,
+    pub values: Vec<String>,
+    ops: SlotOps,
+}
+
+/// Rust states TS can name, in registration order: the `n`th takes slot `SLOTS + n`.
+#[derive(Resource, Default, Clone)]
+pub struct RustStates(pub Vec<RustState>);
+
+fn variant<S: Reflect>(s: &S) -> Option<&str> {
+    match s.reflect_ref() {
+        bevy::reflect::ReflectRef::Enum(e) => Some(e.variant_name()),
+        _ => None,
+    }
+}
+
+fn from_sym<S: FromReflect>(sym: u32) -> Option<S> {
+    let value = bevy::reflect::DynamicEnum::new(name(sym), bevy::reflect::DynamicVariant::Unit);
+    S::from_reflect(&value)
+}
+
+fn r_none(_: &mut World) {}
+fn r_none_value(_: &mut World, _: u32) {}
+fn r_none_depth(_: &mut World, _: u8) {}
+fn r_none_derived(_: &mut World, _: Option<u32>) {}
+fn r_take_next(_: &mut World) -> Option<u32> {
+    None
+}
+fn r_current<S: FreelyMutableState + Reflect>(world: &World) -> Option<u32> {
+    world.get_resource::<State<S>>().and_then(|s| variant(s.get())).map(sym)
+}
+fn r_previous<S: FreelyMutableState + Reflect>(world: &World) -> Option<u32> {
+    world.get_resource::<PreviousState<S>>().and_then(|s| variant(s.get())).map(sym)
+}
+fn r_set_next<S: FreelyMutableState + FromReflect>(world: &mut World, value: u32) {
+    if let (Some(v), Some(mut next)) = (from_sym::<S>(value), world.get_resource_mut::<NextState<S>>()) {
+        next.set(v);
+    }
+}
+fn r_state_id<S: FreelyMutableState>(world: &World) -> Option<ComponentId> {
+    world.components().component_id::<State<S>>()
+}
+fn r_add_runner<S: FreelyMutableState + FromReflect>(world: &mut World, slot: u8, kind: RunKind, a: u32, b: u32) {
+    let (Some(va), vb) = (from_sym::<S>(a), from_sym::<S>(b)) else { return };
+    let slot_i = slot as usize;
+    let mut schedules = world.resource_mut::<Schedules>();
+    match kind {
+        RunKind::Enter => drop(schedules.add_systems(OnEnter(va), move |w: &mut World| crate::systems::run_state_list(w, ListKey::OnEnter(slot_i, a)))),
+        RunKind::Exit => drop(schedules.add_systems(OnExit(va), move |w: &mut World| crate::systems::run_state_list(w, ListKey::OnExit(slot_i, a)))),
+        RunKind::Transition => {
+            if let Some(vb) = vb {
+                schedules.add_systems(OnTransition { exited: va, entered: vb }, move |w: &mut World| {
+                    crate::systems::run_state_list(w, ListKey::OnTransition(slot_i, a, b))
+                });
+            }
+        }
+    }
+}
+fn r_insert_scoped<S: FreelyMutableState + FromReflect>(world: &mut World, e: Entity, kind: u8, value: u32) {
+    let (Some(s), Ok(mut e)) = (from_sym::<S>(value), world.get_entity_mut(e)) else { return };
+    match kind {
+        0 => drop(e.insert(DespawnOnExit(s))),
+        1 => drop(e.insert(DespawnOnEnter(s))),
+        2 => drop(e.insert(DisableOnExit(s))),
+        3 => drop(e.insert(DisableOnEnter(s))),
+        4 => drop(e.insert(EnableOnExit(s))),
+        _ => drop(e.insert(EnableOnEnter(s))),
+    }
+}
+fn r_remove_scoped<S: FreelyMutableState>(world: &mut World, e: Entity, kind: u8) {
+    let Ok(mut e) = world.get_entity_mut(e) else { return };
+    match kind {
+        0 => drop(e.remove::<DespawnOnExit<S>>()),
+        1 => drop(e.remove::<DespawnOnEnter<S>>()),
+        2 => drop(e.remove::<DisableOnExit<S>>()),
+        3 => drop(e.remove::<DisableOnEnter<S>>()),
+        4 => drop(e.remove::<EnableOnExit<S>>()),
+        _ => drop(e.remove::<EnableOnEnter<S>>()),
+    }
+}
+
+/// Makes Rust state `S` reachable from TS (`app.ts_state::<S>()`): its unit variants are its
+/// values, by name, in `bevy-ts/states`. Bevy keeps owning it; TS reads it, sets it (`NextState`),
+/// gates on it and runs systems on its transitions. Costs nothing per frame.
+pub fn expose_rust<S: FreelyMutableState + Reflect + FromReflect + bevy::reflect::Typed + bevy::reflect::TypePath>(app: &mut App) {
+    let values: Vec<String> = match S::type_info() {
+        bevy::reflect::TypeInfo::Enum(info) => {
+            info.iter().filter(|v| matches!(v, bevy::reflect::VariantInfo::Unit(_))).map(|v| v.name().to_string()).collect()
+        }
+        _ => Vec::new(),
+    };
+    assert!(!values.is_empty(), "bevy-ts: ts_state::<{}>() needs an enum with unit variants", S::type_path());
+    let ops = SlotOps {
+        register: r_none_value,
+        unregister: r_none,
+        current: r_current::<S>,
+        previous: r_previous::<S>,
+        set_next: r_set_next::<S>,
+        take_next: r_take_next,
+        state_id: r_state_id::<S>,
+        add_runner: r_add_runner::<S>,
+        insert_scoped: r_insert_scoped::<S>,
+        remove_scoped: r_remove_scoped::<S>,
+        make: r_none,
+        set_depth: r_none_depth,
+        set_derived: r_none_derived,
+    };
+    let state = RustState { path: S::type_path().to_string(), short: S::short_type_path().to_string(), values, ops };
+    let mut states = app.world_mut().get_resource_or_init::<RustStates>();
+    if states.0.iter().all(|s| s.path != state.path) {
+        states.0.push(state);
+    }
+    // The compile step resolves `bevy-ts/states` as soon as a module imports it.
+    register_module(app.world());
+}
+
+/// The `bevy-ts/states` module: one class per Rust state TS names, rebuilt as each is exposed.
+pub(crate) fn register_module(world: &World) {
+    let Some(states) = world.get_resource::<RustStates>() else { return };
+    let mut js = String::from("// Rust states TS names (app.ts_state). Generated when the engine starts.\nimport { rustState } from \"bevy-ts\";\n");
+    let mut dts = String::from("import type { RustState } from \"bevy-ts\";\n");
+    for s in &states.0 {
+        let values: Vec<String> = s.values.iter().map(|v| format!("{v:?}")).collect();
+        js.push_str(&format!("export const {} = rustState({:?}, [{}]);\n", s.short, s.path, values.join(", ")));
+        dts.push_str(&format!("/** Rust's `{}`. */\nexport declare const {}: RustState<{}>;\n", s.path, s.short, values.join(" | ")));
+    }
+    crate::modules::replace("bevy-ts/states", &js, &dts);
+}
 
 /// Slots by machine path, and what bevy-ts registered for them. Slots are kept for the life of
 /// the app; a restart only takes their values away.
@@ -339,12 +481,12 @@ impl TsStates {
 
 /// A machine's current value, if it has one.
 pub fn current_of(world: &World, slot: u8) -> Option<u32> {
-    (OPS[slot as usize].current)(world)
+    (ops_of(world, slot).current)(world)
 }
 
 /// A machine's value before its last transition.
 pub fn previous_of(world: &World, slot: u8) -> Option<u32> {
-    (OPS[slot as usize].previous)(world)
+    (ops_of(world, slot).previous)(world)
 }
 
 /// Queues a transition, as `NextState::set`. Returns false when the machine has no value yet.
@@ -352,19 +494,19 @@ pub fn set_next_of(world: &mut World, slot: u8, value: u32) -> bool {
     if current_of(world, slot).is_none() {
         return false;
     }
-    (OPS[slot as usize].set_next)(world, value);
+    (ops_of(world, slot).set_next)(world, value);
     true
 }
 
 /// The resource id of `State<TsState<N>>`, once registered: for `stateChanged`.
 pub fn state_id_of(world: &World, slot: u8) -> Option<ComponentId> {
-    (OPS[slot as usize].state_id)(world)
+    (ops_of(world, slot).state_id)(world)
 }
 
 /// Inserts state-scoped component `kind` (crate::states::SCOPED) of machine `slot`'s `value`:
 /// Bevy's own `DespawnOnExit<TsState<N>>` and kin, run by Bevy's systems.
 pub fn insert_scoped_at(world: &mut World, e: Entity, kind: u8, slot: u8, value: u32) {
-    (OPS[slot as usize].insert_scoped)(world, e, kind, value);
+    (ops_of(world, slot).insert_scoped)(world, e, kind, value);
 }
 
 /// [`insert_scoped_at`] for a machine by path and a value by name, as TSX and levels give them.
@@ -381,7 +523,7 @@ pub fn insert_scoped(world: &mut World, e: Entity, kind: u8, state: &str, value:
 pub fn remove_scoped(world: &mut World, e: Entity, kind: u8) {
     let slots: Vec<u8> = world.get_resource::<TsStates>().map(|s| s.by_path.values().copied().collect()).unwrap_or_default();
     for slot in slots {
-        (OPS[slot as usize].remove_scoped)(world, e, kind);
+        (ops_of(world, slot).remove_scoped)(world, e, kind);
     }
 }
 
@@ -404,18 +546,18 @@ pub(crate) fn sync(world: &mut World) {
     }
     for ((slot, syms, initial, derived, _), depth) in machines.into_iter().zip(depths) {
         if world.resource::<TsStates>().depth.get(&slot) != Some(&depth) {
-            (OPS[slot as usize].make)(world);
-            (OPS[slot as usize].set_depth)(world, depth);
+            (ops_of(world, slot).make)(world);
+            (ops_of(world, slot).set_depth)(world, depth);
             world.resource_mut::<TsStates>().depth.insert(slot, depth);
         }
         if derived {
-            (OPS[slot as usize].make)(world);
+            (ops_of(world, slot).make)(world);
             continue;
         }
         match (current_of(world, slot), initial) {
-            (None, Some(init)) if started => (OPS[slot as usize].register)(world, init),
+            (None, Some(init)) if started => (ops_of(world, slot).register)(world, init),
             // A reload removed the current value: back to the initial one, as a transition.
-            (Some(v), Some(init)) if !syms.contains(&v) => (OPS[slot as usize].set_next)(world, init),
+            (Some(v), Some(init)) if !syms.contains(&v) => (ops_of(world, slot).set_next)(world, init),
             _ => {}
         }
     }
@@ -431,7 +573,7 @@ pub(crate) fn sync(world: &mut World) {
     };
     for r in wanted {
         if world.get_resource_or_init::<TsStates>().runners.insert(r) {
-            (OPS[r.0 as usize].add_runner)(world, r.1, r.2, r.3);
+            (ops_of(world, r.0).add_runner)(world, r.0, r.1, r.2, r.3);
         }
     }
 }
@@ -441,7 +583,7 @@ pub(crate) fn sync(world: &mut World) {
 pub(crate) fn restart(world: &mut World) {
     let made: Vec<u8> = world.get_resource::<TsStates>().map(|s| s.made.iter().copied().collect()).unwrap_or_default();
     for slot in made {
-        (OPS[slot as usize].unregister)(world);
+        (ops_of(world, slot).unregister)(world);
     }
     if let Some(mut s) = world.get_resource_mut::<TsStates>() {
         s.held.clear();
@@ -461,12 +603,12 @@ pub(crate) fn hold_while_paused(world: &mut World) {
         let held = std::mem::take(&mut world.resource_mut::<TsStates>().held);
         for (slot, v) in held {
             if current_of(world, slot).is_some() {
-                (OPS[slot as usize].set_next)(world, v);
+                (ops_of(world, slot).set_next)(world, v);
             }
         }
     } else {
         for slot in made {
-            if let Some(v) = (OPS[slot as usize].take_next)(world) {
+            if let Some(v) = (ops_of(world, slot).take_next)(world) {
                 world.resource_mut::<TsStates>().held.insert(slot, v);
             }
         }
@@ -514,7 +656,7 @@ pub(crate) fn derive(world: &mut World) {
                 Err(_) => current_of(world, slot),
             }
         };
-        (OPS[slot as usize].set_derived)(world, value);
+        (ops_of(world, slot).set_derived)(world, value);
     }
 }
 

@@ -348,6 +348,10 @@ export declare function ComputedStates<const V extends string>(
   compute: (...sources: (StateValue | undefined)[]) => StateValue | undefined,
   ...values: V[]
 ): & { new (): { readonly [stateBrand]: { values: V } }; readonly path?: string } & { readonly [K in V]: StateValue<string, K> };
+/** A Rust state TS names (`app.ts_state::<S>()`), imported from `bevy-ts/states`: `EngineMode.Play`. */
+export type RustState<V extends string> = (abstract new () => { readonly [stateBrand]: { values: V } }) & { readonly [K in V]: StateValue<string, K> };
+/** Builds a `bevy-ts/states` class; the generated module calls it. */
+export declare function rustState<const V extends string>(path: string, values: readonly V[]): RustState<V>;
 type StateValueOf<G> = G extends { readonly [stateBrand]: { values: infer V extends string } }
   ? { [K in V]: StateValue<string, K> }[V]
   : never;
