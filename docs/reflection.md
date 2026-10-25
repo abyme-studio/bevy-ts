@@ -60,6 +60,11 @@ one, and that its TS type is not `unknown`. A failure fails the test with the ty
 component and field it was met in, and what failed, unless `reflect_value::UNCOVERED` lists the
 type with a reason. An entry the walk never meets fails the test too, so the list cannot rot.
 
+A component (not a resource) with neither `ReflectDefault` nor `ReflectFromWorld` is a `no
+default` gap: TSX, levels and the editor build a component from its default, so they cannot insert
+it. It fails the test unless `bevy_ts::type_data` gives it a default or `reflect_value::NO_DEFAULT`
+lists it with a reason. A `type_data` entry Bevy already reflects fails the test too.
+
 ## Uncovered
 
 `reflect_value::UNCOVERED`, each with its reason. A field of an uncovered type reads as absent and
@@ -81,3 +86,63 @@ fails to write with the reason; a hole of one fails the load.
 | `bevy_mesh::mesh::Mesh` | script-assets: no default; attributes and indices are reflect(ignore); engine-core builds meshes |
 
 `reflect-assets` marks an asset type that change covers; its landing removes the entry.
+
+## Type data Bevy omits
+
+`bevy_ts::type_data`, registered by `BevyTsPlugin`, adds what Bevy 0.20 leaves out of the types
+bevy-ts exposes. TSX, levels, stock BRP and scenes read it through Bevy's registry, with no special
+case of their own.
+
+| Type data | For | Why |
+|---|---|---|
+| `ReflectDefault` | `VisibilityRange`, `RenderTarget`, `LineHeight`, `ObservedBy` | they implement `Default` but do not reflect it |
+| `ReflectDefault` | glTF names, `UiDebugOptions` and every `bevy_ui_widgets` component (feature `engine_type_data`, on in the prebuilt engine) | the same |
+| `ReflectSerialize`, `ReflectDeserialize` | `Range<N>` and `RangeInclusive<N>` of every numeric `N` | bevy_reflect makes them opaque with `Clone` only; serde's `{ start, end }` is the JSON shape `reflect_value` uses |
+
+To add an entry: when the hole check names a `no default` component that implements `Default`, add
+`with_default::<T>(r, redundant)` to `type_data::defaults`, with the upstream file and line above
+it. A type from a crate `bevy-ts` does not depend on goes under `engine_type_data`, with the Bevy
+feature added to it. When Bevy reflects it itself, the test fails; delete the entry.
+
+An HLOD in TSX: the detail mesh fades out over 8..12 m as its impostor fades in.
+
+```tsx
+<entity name="tower">
+  <mesh shape="cuboid" size={[1, 4, 1]} /><material color="#c0a080" />
+  <VisibilityRange end_margin={{ start: 8, end: 12 }} />
+</entity>
+<entity name="tower-impostor">
+  <mesh shape="cuboid" size={[1, 4, 1]} /><material color="#c0a080" unlit />
+  <VisibilityRange start_margin={{ start: 8, end: 12 }} end_margin={{ start: 1000, end: 1001 }} />
+</entity>
+```
+
+## No default
+
+`reflect_value::NO_DEFAULT`: components with no Rust `Default`, each with its reason. They read and
+write like any other; TSX and levels cannot insert them.
+
+| Component | Reason |
+|---|---|
+| `bevy_animation::AnimatedBy` | the Entity of its AnimationPlayer |
+| `bevy_animation::AnimationTargetId` | a Uuid hashed from the target's name path |
+| `bevy_camera::camera::MainPassResolutionOverride` | a resolution an upscaler sets |
+| `bevy_core_pipeline::schedule::RootNonCameraView` | an interned schedule label bevy_core_pipeline makes |
+| `bevy_dev_tools::picking_debug::PointerDebugOverlay` | a relationship to an Entity |
+| `bevy_dev_tools::picking_debug::PointerDebugOverlayOf` | a relationship to an Entity |
+| `bevy_ecs::resource::IsResource` | marks a resource's entity; made by the World |
+| `bevy_extract::sync_world::MainEntity` | the render world's link to a main-world Entity |
+| `bevy_input_focus::FocusedInput<` | an input event with its target Entity |
+| `bevy_light::directional_light::DirectionalLightTexture` | needs an image Handle |
+| `bevy_light::point_light::PointLightTexture` | needs an image Handle |
+| `bevy_light::spot_light::SpotLightTexture` | needs an image Handle |
+| `bevy_mesh::morph::MeshMorphWeights` | an enum with no default; set from the mesh's morph targets |
+| `bevy_picking::mesh_picking::ray_cast::SimplifiedMesh` | needs a mesh Handle |
+| `bevy_render::view::window::screenshot::Screenshot` | a one-shot request for a RenderTarget, spawned by code |
+| `bevy_time::delayed_commands::DelayedCommandQueue` | holds a CommandQueue; made by delayed commands |
+| `bevy_ui::ui_node::UiTargetCamera` | needs a camera Entity |
+| `bevy_ui::widget::viewport::ViewportNode` | needs a camera Entity |
+| `bevy_ui_render::image::ImageNodeTextureAtlasLayout` | private to bevy_ui_render |
+| `bevy_ui_widgets::scrollbar::Scrollbar` | needs a target Entity |
+| `bevy_window::monitor::Monitor` | made by the window backend for each display |
+| `bevy_window::monitor::PrimaryMonitor` | made by the window backend for the primary display |

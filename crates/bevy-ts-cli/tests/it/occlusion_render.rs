@@ -27,7 +27,7 @@ const H: u32 = 180;
 struct Target(Handle<Image>);
 
 fn app(entry: &Path) -> App {
-    let mut app = App::new();
+    let mut app = common::render_app();
     app.add_plugins(
         DefaultPlugins
             .build()

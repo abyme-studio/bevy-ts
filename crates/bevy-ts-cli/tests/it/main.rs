@@ -82,3 +82,4 @@ mod viewport_pacing;
 mod viewport_preview;
 mod viewport_thumbnail;
 mod viewport_walk;
+mod visibility_range;

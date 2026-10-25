@@ -25,6 +25,18 @@ pub fn sync_pipelines() -> bevy::render::RenderPlugin {
     bevy::render::RenderPlugin { synchronous_pipeline_compilation: true, ..Default::default() }
 }
 
+/// Held by an app that renders, until it drops: several render apps at once starve each other on a
+/// loaded machine, so they run one at a time while the rest run in parallel (docs/testing.md).
+pub struct OneRenderer(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+/// A new app holding the render lock. Every test app that renders starts here.
+pub fn render_app() -> App {
+    static RENDERER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let mut app = App::new();
+    app.insert_non_send(OneRenderer(RENDERER.lock().unwrap_or_else(|e| e.into_inner())));
+    app
+}
+
 pub fn free_port() -> u16 {
     std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
 }
