@@ -37,8 +37,6 @@ fn defaults(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
         // bevy_text 0.20 src/text.rs:1349 (Default at :1366)
         with_default::<bevy::text::LineHeight>(r, redundant);
     }
-    // bevy_ecs 0.20 src/observer/distributed_storage.rs:500
-    with_default::<bevy::ecs::observer::ObservedBy>(r, redundant);
     #[cfg(feature = "engine_type_data")]
     {
         use bevy::ui_widgets::*;
@@ -53,17 +51,15 @@ fn defaults(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
         with_default::<ActivateOnPress>(r, redundant);
         // src/checkbox.rs:44
         with_default::<Checkbox>(r, redundant);
-        // src/dialog.rs:36, 58, 64
+        // src/dialog.rs:36, 58
         with_default::<Dialog>(r, redundant);
         with_default::<DialogDragHandle>(r, redundant);
-        with_default::<DialogDragState>(r, redundant);
         // src/list.rs:49, 60
         with_default::<ListItem>(r, redundant);
         with_default::<ActiveDescendant>(r, redundant);
-        // src/menu.rs:128, 138, 144, 427
+        // src/menu.rs:128, 138, 427
         with_default::<MenuPopup>(r, redundant);
         with_default::<MenuItem>(r, redundant);
-        with_default::<MenuFocusState>(r, redundant);
         with_default::<MenuButton>(r, redundant);
         // src/modal.rs:32, 37
         with_default::<ModalDialog>(r, redundant);
@@ -77,13 +73,12 @@ fn defaults(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
         with_default::<ScrollArea>(r, redundant);
         // src/scrollbar.rs:104
         with_default::<ScrollbarThumb>(r, redundant);
-        // src/slider.rs:115, 125, 132, 139, 226, 257
+        // src/slider.rs:115, 125, 132, 139, 226
         with_default::<Slider>(r, redundant);
         with_default::<SliderThumb>(r, redundant);
         with_default::<SliderValue>(r, redundant);
         with_default::<SliderRange>(r, redundant);
         with_default::<SliderStep>(r, redundant);
-        with_default::<SliderDragState>(r, redundant);
         // src/text_input.rs:73, 685
         with_default::<TextInput>(r, redundant);
         with_default::<SelectAllOnFocus>(r, redundant);

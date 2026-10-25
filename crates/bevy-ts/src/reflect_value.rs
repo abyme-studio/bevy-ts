@@ -68,11 +68,15 @@ pub const COMPUTED: &[&str] = &[
     "bevy_text::pipeline::TextLayoutInfo",
 ];
 
-/// Components with no Rust `Default`, so TSX, levels and the editor cannot insert them: read and
-/// written like any other, each with its reason. A component that has one gets `ReflectDefault`
+/// Components with no Rust `Default`, or whose default is bookkeeping Bevy owns, so TSX, levels and
+/// the editor cannot insert them: read and written like any other, each with its reason. A component that has one gets `ReflectDefault`
 /// in `type_data` instead. The hole check fails on a component on neither list (`no default`)
 /// and on an entry no registered type uses. An entry ending in `<` names every instance.
 pub const NO_DEFAULT: &[(&str, &str)] = &[
+    ("bevy_ecs::observer::distributed_storage::ObservedBy", "the observers watching an entity: bookkeeping Bevy owns; an empty one inserted from TSX would replace it"),
+    ("bevy_ui_widgets::dialog::DialogDragState", "a drag in progress: bookkeeping Bevy owns; an empty one inserted from TSX would replace it"),
+    ("bevy_ui_widgets::menu::MenuFocusState", "a menu's open state: bookkeeping Bevy owns; an empty one inserted from TSX would replace it"),
+    ("bevy_ui_widgets::slider::SliderDragState", "a drag in progress: bookkeeping Bevy owns; an empty one inserted from TSX would replace it"),
     ("bevy_animation::AnimatedBy", "the Entity of its AnimationPlayer"),
     ("bevy_animation::AnimationTargetId", "a Uuid hashed from the target's name path"),
     ("bevy_camera::camera::MainPassResolutionOverride", "a resolution an upscaler sets"),
@@ -87,6 +91,7 @@ pub const NO_DEFAULT: &[(&str, &str)] = &[
     ("bevy_light::spot_light::SpotLightTexture", "needs an image Handle"),
     ("bevy_mesh::morph::MeshMorphWeights", "an enum with no default; set from the mesh's morph targets"),
     ("bevy_picking::mesh_picking::ray_cast::SimplifiedMesh", "needs a mesh Handle"),
+    ("bevy_rapier3d::dynamics::soft_body::SoftBodyCluster", "needs its soft body Entity (Rapier port)"),
     ("bevy_render::view::window::screenshot::Screenshot", "a one-shot request for a RenderTarget, spawned by code"),
     ("bevy_time::delayed_commands::DelayedCommandQueue", "holds a CommandQueue; made by delayed commands"),
     ("bevy_ui::ui_node::UiTargetCamera", "needs a camera Entity"),

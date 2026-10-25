@@ -95,7 +95,7 @@ case of their own.
 
 | Type data | For | Why |
 |---|---|---|
-| `ReflectDefault` | `VisibilityRange`, `RenderTarget`, `LineHeight`, `ObservedBy` | they implement `Default` but do not reflect it |
+| `ReflectDefault` | `VisibilityRange`, `RenderTarget`, `LineHeight` | they implement `Default` but do not reflect it |
 | `ReflectDefault` | glTF names, `UiDebugOptions` and every `bevy_ui_widgets` component (feature `engine_type_data`, on in the prebuilt engine) | the same |
 | `ReflectSerialize`, `ReflectDeserialize` | `Range<N>` and `RangeInclusive<N>` of every numeric `N` | bevy_reflect makes them opaque with `Clone` only; serde's `{ start, end }` is the JSON shape `reflect_value` uses |
 
@@ -104,7 +104,8 @@ To add an entry: when the hole check names a `no default` component that impleme
 it. A type from a crate `bevy-ts` does not depend on goes under `engine_type_data`, with the Bevy
 feature added to it. When Bevy reflects it itself, the test fails; delete the entry.
 
-An HLOD in TSX: the detail mesh fades out over 8..12 m as its impostor fades in.
+An HLOD in TSX: the detail mesh fades out over 8..12 m as its impostor fades in. A margin left
+out is `0..0` (the derived default), so the impostor sets an `end_margin` past any view distance.
 
 ```tsx
 <entity name="tower">
@@ -119,11 +120,16 @@ An HLOD in TSX: the detail mesh fades out over 8..12 m as its impostor fades in.
 
 ## No default
 
-`reflect_value::NO_DEFAULT`: components with no Rust `Default`, each with its reason. They read and
+`reflect_value::NO_DEFAULT`: components with no Rust `Default`, or whose default is bookkeeping
+Bevy owns, each with its reason. They read and
 write like any other; TSX and levels cannot insert them.
 
 | Component | Reason |
 |---|---|
+| `bevy_ecs::observer::distributed_storage::ObservedBy` | the observers watching an entity: bookkeeping Bevy owns; an empty one inserted from TSX would replace it |
+| `bevy_ui_widgets::dialog::DialogDragState` | a drag in progress: bookkeeping Bevy owns; an empty one inserted from TSX would replace it |
+| `bevy_ui_widgets::menu::MenuFocusState` | a menu's open state: bookkeeping Bevy owns; an empty one inserted from TSX would replace it |
+| `bevy_ui_widgets::slider::SliderDragState` | a drag in progress: bookkeeping Bevy owns; an empty one inserted from TSX would replace it |
 | `bevy_animation::AnimatedBy` | the Entity of its AnimationPlayer |
 | `bevy_animation::AnimationTargetId` | a Uuid hashed from the target's name path |
 | `bevy_camera::camera::MainPassResolutionOverride` | a resolution an upscaler sets |
@@ -138,6 +144,7 @@ write like any other; TSX and levels cannot insert them.
 | `bevy_light::spot_light::SpotLightTexture` | needs an image Handle |
 | `bevy_mesh::morph::MeshMorphWeights` | an enum with no default; set from the mesh's morph targets |
 | `bevy_picking::mesh_picking::ray_cast::SimplifiedMesh` | needs a mesh Handle |
+| `bevy_rapier3d::dynamics::soft_body::SoftBodyCluster` | needs its soft body Entity (Rapier port) |
 | `bevy_render::view::window::screenshot::Screenshot` | a one-shot request for a RenderTarget, spawned by code |
 | `bevy_time::delayed_commands::DelayedCommandQueue` | holds a CommandQueue; made by delayed commands |
 | `bevy_ui::ui_node::UiTargetCamera` | needs a camera Entity |
