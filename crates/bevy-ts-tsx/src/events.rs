@@ -1,6 +1,7 @@
 //! Event props, each `on` plus a Bevy 0.20 event's name and an entity-local observer of it
 //! (operator ruling 2026-10-20): every picking event (`onPointerClick` ... `onPointerScroll`) on
-//! any `<entity>` or UI element; `onActivate` on a `<button>`; `onTextEditChange` and
+//! any `<entity>` or UI element; `onActivate` on a `<button>`; `onFocusGained` and `onFocusLost`
+//! on any UI element, its own focus only; `onTextEditChange` and
 //! `onKeyboardInput` on an `<input>`, with `onSubmit` (Enter) and `onCancel` (Escape), which Bevy
 //! lacks, read from the same `KeyboardInput` (operator ruling 2026-10-22). The observer queues the event with the handler's id; the
 //! queue goes to JS in the frame's one host call, in arrival order. Picking events bubble up
@@ -15,7 +16,7 @@ use crate::tree::TsxTree;
 use bevy::clipboard::Clipboard;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
-use bevy::input_focus::FocusedInput;
+use bevy::input_focus::{FocusCause, FocusGained, FocusLost, FocusedInput};
 use bevy::input::mouse::MouseScrollUnit;
 use bevy::picking::events::{
     PointerCancel, PointerClick, PointerDrag, PointerDragDrop, PointerDragEnd, PointerDragEnter, PointerDragLeave, PointerDragOver, PointerDragStart, PointerEnter,
@@ -109,6 +110,34 @@ fn on_activate(on: On<Activate>, handlers: Query<&TsxHandlers>, mut tree: ResMut
     let Ok(h) = handlers.get(entity) else { return };
     let Some(id) = h.ids.get("Activate") else { return };
     tree.reactive.events.push((*id, json!({ "kind": "Activate", "entity": entity.to_bits() })));
+}
+
+/// `FocusGained` on the entity itself: Bevy bubbles it to ancestors, and a handler hears only its
+/// own entity's (design 5).
+fn on_focus_gained(on: On<FocusGained>, handlers: Query<&TsxHandlers>, mut tree: ResMut<TsxTree>) {
+    let entity = on.event_target();
+    if on.original_event_target() != entity {
+        return;
+    }
+    let Ok(h) = handlers.get(entity) else { return };
+    let Some(id) = h.ids.get("FocusGained") else { return };
+    let cause = match on.event().cause {
+        FocusCause::Navigated => "navigated",
+        FocusCause::Pressed => "pressed",
+        FocusCause::Auto => "auto",
+    };
+    tree.reactive.events.push((*id, json!({ "kind": "FocusGained", "entity": entity.to_bits(), "cause": cause })));
+}
+
+/// `FocusLost` on the entity itself, as `on_focus_gained`.
+fn on_focus_lost(on: On<FocusLost>, handlers: Query<&TsxHandlers>, mut tree: ResMut<TsxTree>) {
+    let entity = on.event_target();
+    if on.original_event_target() != entity {
+        return;
+    }
+    let Ok(h) = handlers.get(entity) else { return };
+    let Some(id) = h.ids.get("FocusLost") else { return };
+    tree.reactive.events.push((*id, json!({ "kind": "FocusLost", "entity": entity.to_bits() })));
 }
 
 /// `TextEditChange`: Bevy applied a field's edits (cursor moves included).
@@ -218,6 +247,8 @@ pub fn set(world: &mut World, e: Entity, ids: &BTreeMap<String, u32>) {
                 "PointerDragDrop" => em.observe(on_drag_drop),
                 "PointerScroll" => em.observe(on_scroll),
                 "Activate" => em.observe(on_activate),
+                "FocusGained" => em.observe(on_focus_gained),
+                "FocusLost" => em.observe(on_focus_lost),
                 "TextEditChange" => em.observe(on_text_edit_change),
                 _ => em.observe(on_keyboard_input),
             };

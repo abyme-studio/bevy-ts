@@ -37,16 +37,16 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 4. Focus and navigation (after text-input and mesh-picking)
 
-- [ ] 4.1 Widen mesh-picking's switch, not copy it (design 6): `base_app`'s `mesh_picking: bool` becomes one `Switches` (`mesh_picking`, `tab_navigation`, `directional_navigation`); `project.rs` reads `tabNavigation` and `directionalNavigation` with the same named-error bool deserializer; `build.rs` writes each `true` one into `game.json` and `play.rs` reads them; `base_app` adds `TabNavigationPlugin` and `DirectionalNavigationPlugin` after the project's plugins unless already added; not engine hash inputs; the `bevy-ts.json` comment in `project.rs` lists them
-- [ ] 4.1a The once-per-process warning when a `tabIndex` or `tabGroup` prop mounts with tab navigation off (not for a `<tab>`'s own `TabIndex`), beside mesh-picking's, added only when `TabNavigationPlugin` is not added after the project's plugins
-- [ ] 4.1b `examples/ui-gallery/bevy-ts.json`: `"tabNavigation": true`, `"directionalNavigation": true`
-- [ ] 4.2 `tabIndex`, `tabGroup`, `autoFocus` on every UI intrinsic
-- [ ] 4.3 `onFocusGained` and `onFocusLost`, entity-local
-- [ ] 4.4 text-input's `input.rs`: `InputFocusVisible` (`get`) and `DirectionalNavigation` (`navigate`, throwing naming `"directionalNavigation": true` when there is no `DirectionalNavigationMap`), `CompassOctant` TS enum, `.d.ts` and `.js`
-- [ ] 4.5 Tests in viewport mode, switches on: Tab through three buttons with focus events; a modal tab group traps focus; arrow keys with `DirectionalNavigation` over `AutoDirectionalNavigation` buttons; play, stop, play then one Tab moves one step; Tab while editing does not move game focus
-- [ ] 4.6 Test headless: with both switches the plugins load and Tab does nothing with no primary window
-- [ ] 4.6a Switch tests, mirroring mesh-picking's: off by default (no plugin, no `DirectionalNavigationMap`, Tab moves nothing in viewport mode); a non-bool fails `dev` naming the field and `bevy-ts.json`; build writes each `true` switch into `game.json` and the played app has its plugin; an old `game.json` plays with both off; one warning for two `tabIndex` buttons with tab navigation off, none when a native plugin added it; `navigate` throws with directional navigation off
-- [ ] 4.7 Gallery panel and `docs/ui.md` "Focus" section (the switches, and that Tab is off by default); `docs/native.md` for the two params; mesh-picking's `docs/picking.md` lists the two switches beside `meshPicking`
+- [x] 4.1 Widen mesh-picking's switch, not copy it (design 6): `base_app`'s `mesh_picking: bool` becomes one `Switches` (`mesh_picking`, `tab_navigation`, `directional_navigation`); `project.rs` reads `tabNavigation` and `directionalNavigation` with the same named-error bool deserializer; `build.rs` writes each `true` one into `game.json` and `play.rs` reads them; `base_app` adds `TabNavigationPlugin` and `DirectionalNavigationPlugin` after the project's plugins unless already added; not engine hash inputs; the `bevy-ts.json` comment in `project.rs` lists them
+- [x] 4.1a The once-per-process warning when a `tabIndex` or `tabGroup` prop mounts with tab navigation off (not for a `<tab>`'s own `TabIndex`), beside mesh-picking's, added only when `TabNavigationPlugin` is not added after the project's plugins
+- [x] 4.1b `examples/ui-gallery/bevy-ts.json`: `"tabNavigation": true`, `"directionalNavigation": true`
+- [x] 4.2 `tabIndex`, `tabGroup`, `autoFocus` on every UI intrinsic
+- [x] 4.3 `onFocusGained` and `onFocusLost`, entity-local
+- [x] 4.4 text-input's `input.rs`: `InputFocusVisible` (`get`) and `DirectionalNavigation` (`navigate`, throwing naming `"directionalNavigation": true` when there is no `DirectionalNavigationMap`), `CompassOctant` TS enum, `.d.ts` and `.js`
+- [x] 4.5 Tests in viewport mode, switches on: Tab through three buttons with focus events; a modal tab group traps focus; arrow keys with `DirectionalNavigation` over `AutoDirectionalNavigation` buttons; play, stop, play then one Tab moves one step; Tab while editing does not move game focus, nor does a key pressed in edit mode reach a field after Play (`edit.rs` gates Bevy's focused-input dispatch in edit mode and clears it on Play)
+- [x] 4.6 Test headless: with both switches the plugins load and Tab does nothing with no primary window
+- [x] 4.6a Switch tests, mirroring mesh-picking's: off by default (no plugin, no `DirectionalNavigationMap`, Tab moves nothing in viewport mode); a non-bool fails `dev` naming the field and `bevy-ts.json`; build writes each `true` switch into `game.json` and the played app has its plugin; an old `game.json` plays with both off; one warning for two `tabIndex` buttons with tab navigation off, none when a native plugin added it; `navigate` throws with directional navigation off
+- [x] 4.7 Gallery panel and `docs/ui.md` "Focus" section (the switches, and that Tab is off by default); `docs/native.md` for the two params; mesh-picking's `docs/picking.md` lists the two switches beside `meshPicking`
 
 ## 5. Value widgets
 

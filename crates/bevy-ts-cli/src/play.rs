@@ -28,19 +28,15 @@ pub struct GameFile {
     pub bevy_ts: String,
     /// `prebuilt`, or the project engine's hash.
     pub engine: String,
-    /// `bevy-ts.json`'s `meshPicking`, absent when off.
-    #[serde(default, rename = "meshPicking", skip_serializing_if = "is_false")]
-    pub mesh_picking: bool,
+    /// `bevy-ts.json`'s switches, each absent when off: a `game.json` from before has none.
+    #[serde(flatten)]
+    pub switches: crate::project::Switches,
     /// `net` and `env` from `bevy-ts.json`, unexpanded: `${NAME}` reads this machine's
     /// environment when the game starts. A `game.json` from before has neither: no network.
     #[serde(default)]
     pub net: crate::project::NetConfig,
     #[serde(default)]
     pub env: Vec<String>,
-}
-
-fn is_false(b: &bool) -> bool {
-    !b
 }
 
 /// The game folder beside the running executable, when it holds a `game.json`.
@@ -142,7 +138,7 @@ pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display)
     let (tx, channel) = DevChannel::new();
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).expect("the channel is open");
     let assets = folder.join("assets");
-    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.mesh_picking);
+    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.switches);
     app.insert_resource(channel);
     crate::cli::insert_net_policy(&mut app, &game.net.allow, &game.env);
     app.world_mut().resource_mut::<RuntimeInfo>().entry = Some(entry);
@@ -179,7 +175,7 @@ mod tests {
             entry: "src/game.ts".into(),
             bevy_ts: crate::engine::VERSION.into(),
             engine: "prebuilt".into(),
-            mesh_picking: false,
+            switches: Default::default(),
             net: config.net,
             env: config.env,
         };

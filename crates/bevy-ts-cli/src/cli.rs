@@ -3,6 +3,9 @@
 //! `bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]]`,
 //! `bevy-ts build`, `bevy-ts play`, and a bare start that plays the `game/` beside the binary.
 
+use crate::project::Switches;
+use bevy::input_focus::directional_navigation::DirectionalNavigationPlugin;
+use bevy::input_focus::tab_navigation::TabNavigationPlugin;
 use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
 use bevy::prelude::*;
 use bevy_ts_tsx::events::TsxHandlers;
@@ -195,10 +198,10 @@ pub enum Display {
 /// Bevy's default plugins, bevy-ts and tsx, then `extra` (the project's plugins), so they can
 /// order against `BevyTsSet` and see bevy-ts's resources. `assets` is Bevy's asset root, the
 /// project's `assets/` under `bevy-ts dev`; `None` keeps Bevy's default. `dev` runs bevy-ts in dev
-/// mode and watches the assets; a shipped game runs with neither. `mesh_picking` adds Bevy's
-/// `MeshPickingPlugin` (`bevy-ts.json`'s, or `game.json`'s, `meshPicking`): the one place it is
-/// added, so dev and play cannot differ.
-pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, mesh_picking: bool) -> App {
+/// mode and watches the assets; a shipped game runs with neither. `switches` adds the Bevy plugins
+/// a project opts into (`bevy-ts.json`'s, or `game.json`'s, `meshPicking`, `tabNavigation` and
+/// `directionalNavigation`): the one place each is added, so dev and play cannot differ.
+pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, switches: Switches) -> App {
     let mut app = App::new();
     let plugins = headless::default_plugins(display != Display::Window);
     // The compute pool runs the frame's systems: its threads are raised with the main thread's
@@ -245,9 +248,19 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     headless::pipeline_trace(&mut app);
-    // After `extra`: a native crate that adds it itself keeps its own settings.
-    if mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
+    // After `extra`: a native crate that adds one itself keeps its own settings.
+    if switches.mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
         app.add_plugins(MeshPickingPlugin);
+    }
+    if switches.tab_navigation && !app.is_plugin_added::<TabNavigationPlugin>() {
+        app.add_plugins(TabNavigationPlugin);
+    }
+    if switches.directional_navigation && !app.is_plugin_added::<DirectionalNavigationPlugin>() {
+        app.add_plugins(DirectionalNavigationPlugin);
+    }
+    // Checked once the plugins are in, so a native crate that added it is not warned.
+    if !app.is_plugin_added::<TabNavigationPlugin>() {
+        app.add_systems(PostUpdate, warn_tab_props);
     }
     if let Some(root) = assets {
         app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
@@ -281,6 +294,24 @@ fn warn_mesh_handlers(
     let message = format!(
         "entity {e}{name} has a pointer handler on a mesh, but mesh picking is off: it never fires. Set \"meshPicking\": true in bevy-ts.json"
     );
+    log.push(bevy_ts::log::LogLevel::Warn, message, None, generations.map_or(0, |g| g.live));
+}
+
+/// Names, once per process, an entity whose `tabIndex` or `tabGroup` prop mounted while nothing
+/// moves focus by Tab. Keys on the prop's marker, not `TabIndex`: a `<tab>` writes its own.
+fn warn_tab_props(
+    added: Query<(Entity, Option<&Name>), Added<bevy_ts_tsx::ui::TabProp>>,
+    log: Option<ResMut<bevy_ts::log::ScriptLog>>,
+    generations: Option<Res<bevy_ts::generation::Generations>>,
+    mut warned: Local<bool>,
+) {
+    if *warned {
+        return;
+    }
+    let (Some((e, name)), Some(mut log)) = (added.iter().next(), log) else { return };
+    *warned = true;
+    let name = name.map(|n| format!(" \"{n}\"")).unwrap_or_default();
+    let message = format!("entity {e}{name} has a tabIndex or tabGroup, but tab navigation is off: Tab does not move focus. Set \"tabNavigation\": true in bevy-ts.json");
     log.push(bevy_ts::log::LogLevel::Warn, message, None, generations.map_or(0, |g| g.live));
 }
 
@@ -329,9 +360,9 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
             std::process::exit(1);
         }
     };
-    let mesh_picking = project.as_ref().is_some_and(|p| p.config.mesh_picking);
+    let switches = project.as_ref().map(|p| p.config.switches).unwrap_or_default();
     let assets = headless::asset_root(&compiler.root);
-    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, mesh_picking);
+    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, switches);
     // Compile only once the plugins have exported their params: the compile step reads them as
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);
@@ -398,7 +429,7 @@ fn skeleton(engine: &Engine, extra: impl Plugin, headless_mode: bool) {
     let set = ModuleSet { entry: path.clone(), modules: vec![CompiledModule { path, code: SKELETON_JS.into(), source_map: None }] };
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).unwrap();
     let display = if headless_mode { Display::Headless } else { Display::Window };
-    let mut app = base_app(engine, extra, display, V8Options::default(), None, true, false);
+    let mut app = base_app(engine, extra, display, V8Options::default(), None, true, Switches::default());
     app.insert_resource(channel)
         .add_systems(Startup, scene)
         .add_systems(PostUpdate, report_changed.after(bevy_ts::BevyTsSet::PostUpdate))

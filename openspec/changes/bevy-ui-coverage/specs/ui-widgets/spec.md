@@ -57,10 +57,10 @@ A stateful widget's state prop SHALL have a controlled form and an `initial*` fo
 - **THEN** `c` runs once with `source` the barrier's entity
 
 ### Requirement: Focus props and focus events
-Every UI intrinsic SHALL take `tabIndex` (`TabIndex`), `tabGroup` (`{ order, modal }` to `TabGroup`) and `autoFocus` (`AutoFocus`), and `onFocusGained` (`FocusGained`, `{ entity, cause }`) and `onFocusLost` (`FocusLost`, `{ entity }`), entity-local. With `tabNavigation` on (script-input), and focus on a widget, Tab and Shift-Tab SHALL move focus in tab order within the innermost modal group, as Bevy's `TabNavigation` does.
+Every UI intrinsic SHALL take `tabIndex` (`TabIndex`), `tabGroup` (`{ order, modal }` to `TabGroup`) and `autoFocus` (`AutoFocus`), and `onFocusGained` (`FocusGained`, `{ entity, cause }`) and `onFocusLost` (`FocusLost`, `{ entity }`), entity-local. With `tabNavigation` on (script-input), and focus on a widget, Tab and Shift-Tab SHALL move focus in tab order within the innermost modal group, as Bevy's `TabNavigation` does; as in Bevy, only a `tabIndex` element inside a `tabGroup` is reached.
 
 #### Scenario: Tab through a form
-- **WHEN** a project with `"tabNavigation": true` mounts three `<button tabIndex={0}>`s and `Tab` is pressed three times in viewport mode
+- **WHEN** a project with `"tabNavigation": true` mounts three `<button tabIndex={0}>`s in a `<node tabGroup={{}}>` and `Tab` is pressed three times in viewport mode
 - **THEN** `InputFocus` holds the first, second and third in turn, and each gets `onFocusGained` once
 
 #### Scenario: A modal traps focus

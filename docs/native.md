@@ -480,6 +480,26 @@ export function aim(mouse: MouseButtons, cursor: Cursor, gamepads: Gamepads, pad
 }
 ```
 
+Focus has two more, for UI ([ui.md](ui.md#focus)):
+
+- `InputFocusVisible` (`get()`) over Bevy's `InputFocusVisible`: Bevy sets it when Tab moves focus,
+  so a game can draw a focus ring only for keyboard players.
+- `DirectionalNavigation` (`navigate(direction)`) over Bevy's `AutoDirectionalNavigator`: it moves
+  `InputFocus` to the nearest `AutoDirectionalNavigation` entity that way, or along an edge of
+  `DirectionalNavigationMap`, and returns the entity, or `undefined` when nothing has focus or
+  there is no neighbour. `direction` is a `CompassOctant`, an enum like `KeyCode`
+  (`CompassOctant.South`), numbered after `GamepadAxis`. It needs `"directionalNavigation": true`
+  in `bevy-ts.json`; without it the call throws, naming the switch.
+
+```ts
+import { CompassOctant, KeyCode, type DirectionalNavigation, type Keys } from "bevy-ts/input";
+
+export function menuArrows(keys: Keys, nav: DirectionalNavigation) {
+  if (keys.justPressed(KeyCode.ArrowDown)) nav.navigate(CompassOctant.South);
+  if (keys.justPressed(KeyCode.ArrowUp)) nav.navigate(CompassOctant.North);
+}
+```
+
 Bevy's input conditions come from `bevy-ts/input` too, taking a `KeyCode` or a `MouseButton`:
 `inputPressed`, `inputJustPressed`, `inputJustReleased` and `inputToggleActive(initial, code)`.
 Each is Bevy's own condition, exposed with `app.ts_condition("input:just-pressed", ..)` and
@@ -503,6 +523,8 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 |---|---|---|
 | `ButtonInput<KeyCode>`, `KeyCode` | `Keys`, `KeyCode` | text-input |
 | `InputFocus` | `InputFocus` | text-input |
+| `InputFocusVisible` | `InputFocusVisible` | bevy-ui-coverage |
+| `DirectionalNavigation`, `AutoDirectionalNavigator`, `CompassOctant` | `DirectionalNavigation`, `CompassOctant` | bevy-ui-coverage |
 | `ButtonInput<Key>`, `Key` (logical keys) | beside `Keys` | text-input, a later stage |
 | `KeyboardInput`, `KeyboardFocusLost` | `MessageReader` | rust-events |
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` | script-input-devices |

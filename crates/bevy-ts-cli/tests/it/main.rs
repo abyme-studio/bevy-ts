@@ -67,6 +67,7 @@ mod two_d;
 mod typescript;
 mod ui_drag;
 mod ui_events;
+mod ui_focus;
 mod ui_gallery;
 mod ui_media;
 mod ui_style;

@@ -331,7 +331,10 @@ pub(crate) fn build(app: &mut App) {
                 .chain(),
         )
         .add_systems(Update, apply_tools.after(edit_keys))
-        .add_systems(Last, watch_mode);
+        .add_systems(Last, watch_mode)
+        // Edit mode's keys are the editor's: none reaches the game's `InputFocus`, so Tab moves no
+        // game focus and a game `<input>` types nothing until Play.
+        .configure_sets(PreUpdate, bevy::input_focus::InputFocusSystems::Dispatch.run_if(|s: Res<EditState>| s.mode != Mode::Edit));
 }
 
 /// Bevy's transform gizmo spawns its handles and an overlay camera at startup: they are the
@@ -626,6 +629,12 @@ fn apply_view(world: &mut World) {
     }
 }
 
+fn clear_messages<M: Message>(world: &mut World) {
+    if let Some(mut m) = world.get_resource_mut::<Messages<M>>() {
+        m.clear();
+    }
+}
+
 fn enter_play(world: &mut World) {
     let (cameras, was_paused, mouse) = {
         let mut s = world.resource_mut::<EditState>();
@@ -651,6 +660,10 @@ fn enter_play(world: &mut World) {
     if let Some(mut q) = world.get_resource_mut::<bevy_ts::observers::ObserverQueue>() {
         q.0.clear();
     }
+    // Nor do keys pressed in edit mode: focused-input dispatch was off, and would read them now.
+    clear_messages::<bevy::input::keyboard::KeyboardInput>(world);
+    clear_messages::<bevy::input::gamepad::GamepadButtonChangedEvent>(world);
+    clear_messages::<bevy::input::mouse::MouseWheel>(world);
     if world.contains_resource::<bevy_ts_levels::engine::Levels>() {
         let set = bevy_ts_levels::engine::open_set(world);
         world.resource_mut::<EditState>().open_levels = Some(set);
