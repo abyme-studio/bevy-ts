@@ -204,11 +204,14 @@ the shadow drops the same pixels.
 prop, under its Bevy name in camelCase, two of them under shorter names: `color` is `base_color` and
 `roughness` is `perceptual_roughness`. An unset prop keeps `StandardMaterial::default()`. The
 element is the asset value `StandardMaterial.of` of its props, mapped onto Bevy's fields by one
-table (`MATERIAL_PROPS` in `bevy-ts-tsx`): equal props share one material, with every other
-`<material>` and every `Handle<StandardMaterial>` slot given the same value (docs/assets.md).
+table (`MATERIAL_PROPS` in `bevy-ts-tsx`): equal props share one material with every other
+`<material>`, and with a `Handle<StandardMaterial>` slot given the same value (docs/assets.md).
 `<material color="#fff" roughness={0.3} />` and
-`StandardMaterial.of({ base_color: "#fff", perceptual_roughness: 0.3 })` are one material. A
-material with a texture or `cullMode` shares only with other elements: those are set in Rust after
+`StandardMaterial.of({ base_color: "#fff", perceptual_roughness: 0.3 })` are one material. Only
+props the table passes through as they are share with a script value: `emissive`, the UV channels,
+`parallaxMappingMethod`, `opaqueRenderMethod`, `uvTransform`, `alpha` and `alphaMode` are written in
+Bevy's read shape, so `<material emissive="#f00" />` is not `StandardMaterial.of({ emissive: "#f00" })`.
+A material with a texture or `cullMode` shares only with other elements: those are set in Rust after
 the reflected write.
 
 ```tsx

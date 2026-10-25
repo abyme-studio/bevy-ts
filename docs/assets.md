@@ -59,7 +59,8 @@ slot is written (an insert or a changed prop), never per frame.
 ```
 
 `<material>` is a `StandardMaterial.of` of its props (docs/materials.md), so
-`<material color="#f80" />` shares with the value above minus `unlit`. A value whose slot
+`<material color="#f80" />` shares with the value above minus `unlit`. Only props `<material>`
+passes through as they are share this way; docs/materials.md names the rest. A value whose slot
 re-renders with other props takes the asset of those props; the old one stays for any slot still
 using it.
 

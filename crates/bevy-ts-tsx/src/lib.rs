@@ -431,8 +431,10 @@ fn restart(world: &mut World) {
 
 impl Plugin for TsxPlugin {
     fn build(&self, app: &mut App) {
-        // `<material>` is a `StandardMaterial.of` value, which needs its reflected asset type.
-        app.register_asset_reflect::<StandardMaterial>();
+        // `<material>` is a `StandardMaterial.of` value: it needs the reflected asset type and
+        // the value cache.
+        app.register_asset_reflect::<StandardMaterial>()
+            .init_resource::<bevy_ts::reflect_asset::ScriptAssets>();
         app.init_resource::<TsxTree>()
             .init_resource::<intrinsics::IntrinsicAssets>()
             .init_resource::<reconcile::TemplateCache>();

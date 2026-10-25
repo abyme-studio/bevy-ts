@@ -28,7 +28,7 @@
 
 - [x] 2.1 material-alpha and standard-material-fields have landed; rebase on main
 - [x] 2.2 `.of(props)` on asset classes; `{ $of }` in `HandleSlots` with the canonical-JSON cache feeding `ScriptAssets`
-- [x] 2.3 `intrinsics.rs`: replace `MaterialProps`' serde fields with the prop table (design decision 8), `alpha` and `alphaMode` included; `<material>` and `<mesh color>` build through `StandardMaterial.of`; texture loading, colour space and the tangent swap kept
+- [x] 2.3 `intrinsics.rs`: keep `MaterialProps`' serde fields as the parsed props and map them onto Bevy's fields by the prop table (design decision 8), `alpha` and `alphaMode` included; `<material>` and `<mesh color>` build through `StandardMaterial.of`; texture loading, colour space and the tangent swap kept
 - [x] 2.4 Test that `jsx-runtime.d.ts`' `MaterialProps` matches the prop table
 - [x] 2.5 `standard_material.rs`, `standard_material_limits.rs`, `materials.rs` and material-alpha's tests pass with no edit; add the element-and-value sharing and value re-render scenarios
 - [x] 2.6 Delete stage 2's `reflect-assets:` `UNCOVERED` entries, if any; hole check passes (none: the only one, `Image`'s, is stage 3's)

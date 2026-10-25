@@ -504,7 +504,7 @@ fn tangent_mesh_handle(world: &mut World, p: &MeshProps) -> Handle<Mesh> {
 fn material_handle(world: &mut World, p: &MaterialProps, at: Option<SourceLocation>) -> Handle<StandardMaterial> {
     let registry = world.resource::<AppTypeRegistry>().clone();
     let server = world.get_resource::<AssetServer>().cloned();
-    let assets = world.get_resource::<ScriptAssets>().cloned().unwrap_or_default();
+    let assets = world.resource::<ScriptAssets>().clone();
     let mut loaded = Vec::new();
     let made = {
         let registry = registry.read();
