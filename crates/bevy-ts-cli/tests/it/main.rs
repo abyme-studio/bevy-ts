@@ -15,6 +15,7 @@ mod build;
 mod cameras;
 mod classes;
 mod conditions;
+mod diagnostics;
 mod dev_edit;
 mod exported;
 mod headless_pointer;

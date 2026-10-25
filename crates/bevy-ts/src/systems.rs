@@ -830,10 +830,49 @@ pub fn run_stage(world: &mut World, stage: Stage) {
     if !runtime::stage_should_run(world) {
         return;
     }
-    if !stage.eager() && world.get_resource::<TsSystems>().is_none_or(|s| s.stages.get(&stage).is_none_or(|l| l.is_empty())) {
+    let empty = world.get_resource::<TsSystems>().is_none_or(|s| s.stages.get(&stage).is_none_or(|l| l.is_empty()));
+    if !stage.eager() && empty {
         return;
     }
+    // Two clock reads, only when the plugin is listed and the stage has TS systems to time.
+    let timed = !empty && world.contains_resource::<StageTiming>();
+    let started = timed.then(Instant::now);
     drive(world, &ListKey::Stage(stage), None);
+    if let Some(t) = started {
+        record_stage(world, stage, t.elapsed().as_secs_f64() * 1000.0);
+    }
+}
+
+/// bevy-ts's own diagnostics plugin, shaped as Bevy's render diagnostics are: each TS stage that
+/// runs systems records its CPU time as `bevy_ts/<stage>/elapsed_cpu`, in milliseconds,
+/// bevy-ts's own work in the stage (column views, commands) included.
+pub struct ScriptStageDiagnosticsPlugin;
+
+#[derive(Resource)]
+struct StageTiming;
+
+impl Plugin for ScriptStageDiagnosticsPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<bevy::diagnostic::DiagnosticsStore>().insert_resource(StageTiming);
+    }
+}
+
+/// The diagnostic path of a stage's CPU time.
+pub fn stage_path(stage: Stage) -> bevy::diagnostic::DiagnosticPath {
+    bevy::diagnostic::DiagnosticPath::new(format!("bevy_ts/{stage:?}/elapsed_cpu"))
+}
+
+/// Adds one measurement, registering the stage's path the first time it runs.
+fn record_stage(world: &mut World, stage: Stage, ms: f64) {
+    use bevy::diagnostic::{Diagnostic, DiagnosticMeasurement, DiagnosticsStore};
+    let Some(mut store) = world.get_resource_mut::<DiagnosticsStore>() else { return };
+    let path = stage_path(stage);
+    if store.get(&path).is_none() {
+        store.add(Diagnostic::new(path.clone()).with_suffix("ms"));
+    }
+    if let Some(d) = store.get_mut(&path).filter(|d| d.is_enabled) {
+        d.add_measurement(DiagnosticMeasurement { time: bevy::platform::time::Instant::now(), value: ms });
+    }
 }
 
 /// Runs a custom schedule's TS systems. Called from its stage's exclusive system.
