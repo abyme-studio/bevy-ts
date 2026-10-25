@@ -11,7 +11,7 @@ When a level file changes on disk, bevy-ts SHALL:
 2. expand its prefab instances in one host call
 3. reconcile, at one frame boundary, the file's own level and every level that includes it
 
-No frame SHALL show part of the old file and part of the new. A change the writer made itself SHALL be recognised by its content hash and SHALL write nothing further to the world.
+No frame SHALL show part of the old file and part of the new. A change the writer made itself SHALL be recognised by its content hash and SHALL write nothing further to the world. A reload whose text is not the file's on disk, because it read the file before a later write, SHALL change nothing in the world: the disk's text SHALL be loaded instead, on every asset event of that reload.
 
 #### Scenario: An agent changes a light
 - **WHEN** an agent edits `illuminance: 10000.0` to `20000.0` in `arena.bsn` and saves
@@ -20,6 +20,10 @@ No frame SHALL show part of the old file and part of the new. A change the write
 #### Scenario: The viewport's own write
 - **WHEN** the writer saves enemy `b`'s new position and the file watcher reports the change
 - **THEN** the reconcile writes nothing, and `Changed<Transform>` does not fire for enemy `b` a second time
+
+#### Scenario: A reload older than the writer's write
+- **WHEN** the watcher's reload of `arena.bsn` read the file, then the writer moved enemy `a` and saved, then the reload finishes
+- **THEN** no frame shows enemy `a` back where the reload's text puts it, and `tsx_tree+watch` sends nothing for it
 
 ### Requirement: Overrides follow tsx's controlled-field rules
 An override value SHALL be written when it differs from the last value applied for that field. It SHALL NOT be written when it is unchanged, even if a system changed the field since. Removing an override SHALL write the value the field would otherwise have: the inner file's override, or the prefab's declaration. A changed prefab prop SHALL re-expand that instance, reconciled with tsx's rules, so `initial*` fields keep their running values.
