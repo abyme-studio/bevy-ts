@@ -503,6 +503,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     #[cfg(feature = "reflect")]
     {
         (resolution.reflect, resolution.holes) = crate::reflect_codec::resolve(world, &systems);
+        resolution.rust_messages = crate::rust_events::codecs(&world.resource::<AppTypeRegistry>().read());
     }
     for clock in systems::Clock::ALL {
         let layout = systems::time_layout(clock).clone();

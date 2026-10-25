@@ -2710,20 +2710,38 @@ class RemovedParam {
   }
 }
 
-/** `MessageReader<M>` of a Rust message: one JSON array per run, parsed on first use. */
+/** Decoders of Rust message runs, by codec JSON: kept across generations. */
+const RUST_DECODERS = new Map();
+
+/**
+ * `MessageReader<M>` of a Rust message, decoded on first use per run: with a codec (the
+ * resolution's `rustMessages`), a count then each message along it (`reflect_codec.rs`); without
+ * (an engine without `reflect`), one JSON array.
+ */
 class RustMessageReaderParam {
-  constructor(cls) {
+  constructor(cls, codec) {
     this.cls = cls;
-    this.bytes = null;
+    this.decode = null;
+    if (codec) {
+      const key = JSON.stringify(codec);
+      if (!RUST_DECODERS.has(key)) RUST_DECODERS.set(key, reflectDecoder(codec, false));
+      this.decode = RUST_DECODERS.get(key);
+    }
+    this.frame = null;
     this.items = null;
   }
   bind(frame) {
-    // [buffer, its length, -, -, 1]: the array's UTF-8 text.
-    this.bytes = frame[1] > 2 ? new Uint8Array(frame[0], 0, frame[1]) : null;
+    // [buffer, its length, -, -, 1]: the run's bytes. Four of a codec's are its count.
+    this.frame = frame[1] > (this.decode ? 4 : 2) ? frame : null;
     this.items = null;
   }
   get list() {
-    if (!this.items) this.items = this.bytes ? JSON.parse(decoder.decode(this.bytes)) : [];
+    if (!this.items) {
+      const f = this.frame;
+      if (!f) this.items = [];
+      else if (this.decode) this.items = this.decode(new DataView(f[0], 0, f[1]), new Uint8Array(f[0], 0, f[1]));
+      else this.items = JSON.parse(decoder.decode(new Uint8Array(f[0], 0, f[1])));
+    }
     return this.items;
   }
   get len() {
@@ -3370,7 +3388,7 @@ function buildSystem(g, s) {
         consumers.push(() => {});
         return ctx.commands;
       case "messageReader": {
-        const r = p.cls.native ? new RustMessageReaderParam(p.cls) : new MessageReaderParam(p.cls);
+        const r = p.cls.native ? new RustMessageReaderParam(p.cls, g.res?.rustMessages?.[p.cls.path]) : new MessageReaderParam(p.cls);
         consumers.push((frame) => r.bind(frame));
         return r;
       }

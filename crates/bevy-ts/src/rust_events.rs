@@ -197,6 +197,21 @@ fn short(path: &str) -> &str {
     path.split('<').next().unwrap_or(path).rsplit("::").next().unwrap_or(path)
 }
 
+/// The codec of a reader's run, per readable message type: a `List` of the message
+/// (`reflect_codec`), as JSON for the resolution.
+#[cfg(feature = "reflect")]
+pub fn codecs(registry: &TypeRegistry) -> std::collections::BTreeMap<String, serde_json::Value> {
+    use crate::reflect_codec::{compile, Codec, Node};
+    registry
+        .iter()
+        .filter(|r| r.data::<ReflectTsMessage>().is_some())
+        .map(|r| {
+            let codec = Codec { wrap: false, node: Node::List { of: Box::new(compile(registry, r.type_info(), 0)) } };
+            (r.type_info().type_path().to_string(), serde_json::to_value(codec).expect("a codec is JSON"))
+        })
+        .collect()
+}
+
 /// The reader of the Rust message at `path`, or why TS cannot read it.
 pub fn reader(registry: &TypeRegistry, path: &str) -> Result<(TypeId, ReflectTsMessage), String> {
     let reg = registry.get_with_type_path(path).ok_or_else(|| format!("no message type {path}; a Rust message needs app.ts_message"))?;

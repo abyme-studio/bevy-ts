@@ -1,15 +1,16 @@
 //! What reading Rust messages from TS costs (openspec rust-events, task 2.4). Each frame Rust
 //! writes 1,000 `CursorMoved`; one TS system reads them all through `MessageReader<CursorMoved>`
 //! and sums a field. The same app with a system that takes no reader is the base. The difference
-//! is the cost of the reads: serialization in Rust, the JSON crossing, `JSON.parse` and the loop
-//! in JS. Serialization alone is timed in Rust on the same messages.
+//! is the cost of the reads: encoding in Rust along the message's codec (`reflect_codec`), the
+//! crossing, decoding and the loop in JS. Encoding alone is timed in Rust on the same messages.
 
 use bevy::input::InputPlugin;
 use bevy::prelude::*;
+use bevy::reflect::Typed;
 use bevy::window::{CursorMoved, ExitCondition, WindowPlugin};
 use bevy_ts::BevyTsPlugin;
 use bevy_ts::generation::DevSource;
-use bevy_ts::reflect_value;
+use bevy_ts::reflect_codec;
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_v8::V8Options;
 use std::sync::Arc;
@@ -74,24 +75,20 @@ fn frames(app: &mut App) -> f64 {
     median((0..FRAMES).map(|_| frame()).collect())
 }
 
-/// Microseconds to serialize `MESSAGES` messages into one JSON array, as the reader does
-/// (`reflect_value::write_json`).
-fn serialization(app: &App) -> f64 {
+/// Microseconds to encode `MESSAGES` messages along their codec, as the reader does.
+fn encoding(app: &App) -> f64 {
     let registry = app.world().resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
     let messages: Vec<CursorMoved> = (0..MESSAGES).map(|i| cursor(Entity::PLACEHOLDER, i)).collect();
+    let node = reflect_codec::compile(&registry, CursorMoved::type_info(), 0);
     let mut buf = Vec::new();
     let mut once = || {
         let t = Instant::now();
         buf.clear();
-        buf.push(b'[');
+        buf.extend_from_slice(&(messages.len() as u32).to_le_bytes());
         for m in &messages {
-            if buf.len() > 1 {
-                buf.push(b',');
-            }
-            reflect_value::write_json(&registry, m, &mut buf).unwrap();
+            reflect_codec::put(&registry, &node, m, &mut buf).unwrap();
         }
-        buf.push(b']');
         t.elapsed().as_secs_f64() * 1e6
     };
     for _ in 0..WARMUP {
@@ -109,10 +106,10 @@ fn main() {
     let base = frames(&mut app("base", BASE));
     let reading_app = &mut app("reading", READING);
     let with = frames(reading_app);
-    let ser = serialization(reading_app);
+    let ser = encoding(reading_app);
     let reads = with - base;
     println!(
-        "{MESSAGES} CursorMoved a frame: frame without a reader {base:.0} us, with {with:.0} us: {:.3} ms for the reads, {:.0} ns per message ({:.0} ns serialization, {:.0} ns crossing, parse and loop)",
+        "{MESSAGES} CursorMoved a frame: frame without a reader {base:.0} us, with {with:.0} us: {:.3} ms for the reads, {:.0} ns per message ({:.0} ns encoding, {:.0} ns crossing, decode and loop)",
         reads / 1e3,
         reads * 1e3 / MESSAGES as f64,
         ser * 1e3 / MESSAGES as f64,
