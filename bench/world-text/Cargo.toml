@@ -1,0 +1,18 @@
+[package]
+name = "world-text-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# 1,000 world-text labels (openspec change `world-text`, task 4.1): first mount, frame time, labels
+# laid out per frame. Out of the workspace, so the gate never builds it (docs/testing.md, rule 8).
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false, features = ["3d"] }
+bevy-ts-material = { path = "../../crates/bevy-ts-material" }
+
+# As the engine builds Bevy (the workspace's patch).
+[patch.crates-io]
+bevy_render = { path = "../../vendor/bevy_render" }
+
+[profile.release]
+debug = false
