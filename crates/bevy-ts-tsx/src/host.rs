@@ -150,7 +150,7 @@ fn read(world: &World, e: Entity, name: &str) -> Value {
     let Some(em) = world.get_entity(e).ok() else { return Value::Null };
     let Some((id, layout)) = component(world, name) else {
         let Some(id) = pair_component(world, name) else { return Value::Null };
-        return reflected(world, em, id, |registry, v| bevy_ts::reflect_value::read_component(registry, v)).unwrap_or(Value::Null);
+        return reflected(world, em, id, bevy_ts::reflect_value::read_component).unwrap_or(Value::Null);
     };
     let Ok(ptr) = em.get_by_id(id) else { return Value::Null };
     // SAFETY: the component was registered with `layout`, so it holds `layout.size` bytes.

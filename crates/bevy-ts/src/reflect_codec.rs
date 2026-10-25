@@ -523,7 +523,7 @@ impl ReflectTargets {
         let reg = registry.get(type_id).ok_or("not registered for reflection")?;
         let info = reg.type_info();
         let (index, field) = match info {
-            TypeInfo::Struct(s) => (None, s.field(name).and_then(|f| Some((f.type_id(), f.type_info())))),
+            TypeInfo::Struct(s) => (None, s.field(name).map(|f| (f.type_id(), f.type_info()))),
             TypeInfo::TupleStruct(t) => {
                 let i = if t.field_len() == 1 && name == "value" { Some(0) } else { name.parse().ok() };
                 (i, i.and_then(|i| t.field_at(i)).map(|f| (f.type_id(), f.type_info())))
