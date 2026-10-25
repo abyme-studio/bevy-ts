@@ -276,6 +276,17 @@ WebSocket to 127.0.0.1:4477 closed with 1009: a message of 20971520 bytes is ove
 No message is dropped without that close. Outbound data has no limit; `bufferedAmount` counts it
 and falls as it is written. A fetch's response has its own 16 MiB bound (fetch, above).
 
+## What it costs the engine
+
+TLS and the HTTP client make the release prebuilt engine 1.31 MiB larger: 159,004,432 bytes
+stripped before them, 160,375,168 after (+1,370,736 bytes, +0.86%), the same in every build. The
+build gains 20 crates, about 40 s of CPU in a clean release build of some 4,500: about 36 s for
+TLS (`ring`, `rustls`, `rustls-webpki`, the platform verifier and `security-framework`), about
+4 s for the HTTP client (`want`, `try-lock`; `hyper`, `http` and `url` were built before). They
+build early, alongside Bevy, and are done long before `bevy-ts` starts, so they are not on the
+path that sets the build's length. `bench/networking/size.sh` measures it;
+`bench/networking/results/size.md` has the runs.
+
 ## Testing
 
 Tests need no network. `bevy_ts::net::install_fake(&mut app)` swaps the socket transport for a

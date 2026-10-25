@@ -246,8 +246,7 @@ const processes = {
   // Change script-networking-2, task 6.2: @abyme/client's held fetch against a test abymed on 4593.
   "net2-held": { cmd: "bench/networking/held/run.sh 2>&1 | tee target/net2-held.log" },
   // Change script-networking-2: the release engine's stripped size and clean build time (tasks 1.1, 1.3).
-  "net2-size-before": { cmd: "~/dev/abyme/scripts/gate-slot run bevy-ts:$(basename $PWD) -- bench/networking/size.sh before 194293d3 2>&1 | grep --line-buffered -v ld64 | tee target/net2-size-before.log | tail -5" },
-  "net2-size-after": { cmd: "~/dev/abyme/scripts/gate-slot run bevy-ts:$(basename $PWD) -- bench/networking/size.sh after 2>&1 | grep --line-buffered -v ld64 | tee target/net2-size-after.log | tail -5" },
+  "net2-size-arms": { cmd: "~/dev/abyme/scripts/gate-slot run bevy-ts:$(basename $PWD) -- bash -c 'set -e; for i in 1 2 3; do bench/networking/size.sh before 194293d3; bench/networking/size.sh after; done' 2>&1 | grep --line-buffered -v ld64 | tee target/net2-size-arms.log | grep --line-buffered -E \"(before|after) .*[0-9] [|]|rror\"" },
   // Change script-networking-2: the crates it touches, while it is built.
   "net2-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib net:: && cargo test -p bevy-ts --test it -- net:: socket:: http:: && cargo test -p bevy-ts-v8 --test it -- net:: web:: && cargo test -p bevy-ts-cli --lib -- cli:: play::) 2>&1 | grep --line-buffered -v ld64 | tee target/net2-tests.log | grep -E \"^test |^test result|FAILED|panicked|^error|left|right\"'" },
   "net2-lint": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo clippy -p bevy-ts -p bevy-ts-v8 -p bevy-ts-cli --all-targets -- -D warnings && (cd packages/bevy-ts && pnpm check) && openspec validate script-networking-2 --strict) 2>&1 | grep --line-buffered -v ld64 | tee target/net2-lint.log | grep -E \"^(warning|error)|-->|valid|rror\" | head -60'" },

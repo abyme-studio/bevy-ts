@@ -2,7 +2,7 @@
 
 - [x] 1.1 Before any dependency change: build the release prebuilt engine (`cargo static build --release -p bevy-ts-cli`) and record its stripped size and a clean-build time of `bevy-ts` in `bench/networking/results/size.md`.
 - [x] 1.2 `crates/bevy-ts/Cargo.toml`: `rustls` 0.23 (`default-features = false`, `ring`, `std`, `tls12`, `logging`), `rustls-platform-verifier` 0.7, `futures-rustls` 0.26 (`default-features = false`, `ring`, `tls12`). After the operator's go on design §4: `hyper` 1.12 with `client` and `http1`. Confirm `Cargo.lock` gains no `aws-lc-rs`, `aws-lc-sys` or `openssl`, keeps one `hyper` and one `tungstenite`, and list every crate it gains in the commit message.
-- [ ] 1.3 Measure again as in 1.1 after sections 2-4 land: stripped size delta of the release engine and the clean-build time delta, split by TLS and by the HTTP client where the build allows. Record both in `bench/networking/results/size.md` and in `docs/networking.md`.
+- [x] 1.3 Measure again as in 1.1 after sections 2-4 land: stripped size delta of the release engine and the clean-build time delta, split by TLS and by the HTTP client where the build allows. Record both in `bench/networking/results/size.md` and in `docs/networking.md`.
 
 ## 2. TLS
 
@@ -32,7 +32,7 @@
 ## 5. Types and docs
 
 - [x] 5.1 `packages/bevy-ts/globals.d.ts`: `Headers`, `Request`, `Response` (no `body`), `fetch`, `Blob`, the init types, `process.argv`. `test/types-node` checks the scenario "A project that also has @types/node" with `pnpm check`.
-- [ ] 5.2 `docs/networking.md`: the globals list, `wss:` and the verifier, `headers` over `wss:`, `fetch` (shape, what is missing, resolving at the end of the body, no reuse), redirects and `net.allow`, the 16 MiB body bound, `Blob`, `process.argv`, the refusal table, the fake transport's fetch handle, and the binary-size delta from 1.3. `docs/build.md`: a shipped game passes its arguments. README feature list.
+- [x] 5.2 `docs/networking.md`: the globals list, `wss:` and the verifier, `headers` over `wss:`, `fetch` (shape, what is missing, resolving at the end of the body, no reuse), redirects and `net.allow`, the 16 MiB body bound, `Blob`, `process.argv`, the refusal table, the fake transport's fetch handle, and the binary-size delta from 1.3. `docs/build.md`: a shipped game passes its arguments. README feature list.
 
 ## 6. Coverage
 

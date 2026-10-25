@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # The release prebuilt engine's stripped size and its clean build time, for script-networking-2's
 # size delta (docs/networking.md). `bench/networking/size.sh <label> [rev]` builds from nothing in
-# target/size (the tree as it is, or `rev`'s, exported to target/size-src), appends a row to bench/networking/results/size-runs.md, and keeps the cargo timings
+# target/size (the tree as it is, or `rev`'s, exported to target/size-src), with no sccache (the
+# machine's config sets it, and a cache other worktrees warm is no clean build), appends a row to
+# bench/networking/results/size-runs.md, and keeps the cargo timings
 # report as target/size-timings/<label>.html (per-crate times: ring, rustls, hyper), the last run's.
 set -euo pipefail
 label=${1:?label}
@@ -16,7 +18,7 @@ if [ -n "$rev" ]; then
   git archive "$rev" | tar -x -C "$src"
 fi
 start=$(date +%s)
-(cd "$src" && CARGO_TARGET_DIR=$dir cargo static build --release -p bevy-ts-cli --timings)
+(cd "$src" && RUSTC_WRAPPER= CARGO_BUILD_RUSTC_WRAPPER= CARGO_TARGET_DIR=$dir cargo static build --release -p bevy-ts-cli --timings)
 secs=$(( $(date +%s) - start ))
 cp "$dir/release/bevy-ts" "$dir/bevy-ts-stripped"
 strip "$dir/bevy-ts-stripped"
