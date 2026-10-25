@@ -147,7 +147,7 @@ pub struct Compile<'a> {
 }
 
 fn resource_id(world: &World, name: &str, ts: &TsLookup) -> Option<ComponentId> {
-    ts(name).map(|(id, _)| id).or_else(|| world.resource::<NativeLayouts>().get(name).map(|n| n.id)).or_else(|| rust_component_by_name(world, name))
+    ts(name).map(|(id, _)| id).or_else(|| world.resource::<NativeLayouts>().get(name).map(|n| n.id)).or_else(|| rust_component_by_name(world, name).ok())
 }
 
 fn component_id(world: &World, r: &ComponentRef, ts: &TsLookup) -> Result<ComponentId, String> {
@@ -157,8 +157,7 @@ fn component_id(world: &World, r: &ComponentRef, ts: &TsLookup) -> Result<Compon
             .resource::<NativeLayouts>()
             .get(&r.name)
             .map(|n| n.id)
-            .or_else(|| rust_component_by_name(world, &r.name))
-            .ok_or_else(|| format!("no Rust component named {}", r.name)),
+            .map_or_else(|| rust_component_by_name(world, &r.name), Ok),
     }
 }
 
