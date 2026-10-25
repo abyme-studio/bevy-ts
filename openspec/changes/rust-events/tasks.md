@@ -8,7 +8,7 @@
 - [x] 2.1 `crates/bevy-ts/src/rust_events.rs`: `ReflectTsMessage` (`read` from a cursor, `write` from JSON) and `ReflectTsEvent` (`observe(target)`, `trigger`), with unit tests on a test message and event
 - [x] 2.2 `BevyTsNativeExt::ts_message::<M>()` and `ts_event::<E>()` in `crates/bevy-ts-native/src/lib.rs`
 - [x] 2.3 Rust `MessageReader` run param: per-system cursor, one JSON array per run, restart moves cursors to the end; `onMessage` on a Rust message
-- [ ] 2.4 Bench `crates/bevy-ts-cli/tests/rust_events_bench.rs`: 1,000 `CursorMoved` reads a frame; record the numbers in `docs/native.md`. Stop and report to the lead if the frame cost passes 1 ms
+- [ ] 2.4 Bench `bench/rust-events` (`rust-events-bench` process): 1,000 `CursorMoved` reads a frame; record the numbers in `docs/native.md`. Stop and report to the lead if the frame cost passes 1 ms
 
 ## 3. Writing and triggering
 
@@ -45,7 +45,7 @@
 - [x] 6.7 `an_entity_observer_runs_for_its_entity_only_and_dies_with_it`, plus a TS `EntityEvent` and reload cases
 - [x] 6.8 `an_unlisted_reflect_message_is_writable` and the unlisted-reader load error
 - [x] 6.9 A project `ts_message::<Scored>()` read and written from TS
-- [ ] 6.10 Rapier's `write_message` forwarding still passes
+- [x] 6.10 Rapier's `write_message` forwarding still passes (`plugin_api.rs` is unchanged; the crate is outside the workspace, and `exported.rs` forwards through `plugin_api::write_message` in the gate)
 
 ## 7. Docs and land
 
