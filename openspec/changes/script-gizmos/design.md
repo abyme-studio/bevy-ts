@@ -198,7 +198,7 @@ through reflect-assets' handle hook and `line_config` as a reflected hole prop.
 `Box<dyn Reflect>` from an `asset_type` that needs `ReflectAsset`. Stage 3 needs reflect-assets to
 widen `HandMap` for such a type: a typed `add`/`set` that inserts into `Assets<T>` directly and
 mints the ref, registered from outside `bevy-ts` (`HAND_MAPS` is a `const` list in `bevy-ts`, which
-cannot name `bevy-ts-native`'s table), for example `app.ts_hand_map(...)`. Asked of lead@reflect-assets; stage 3 waits on it.
+cannot name `bevy-ts-native`'s table), for example `app.ts_hand_map(...)`. To ask of lead@reflect-assets (task 5.1); stage 3 waits on it.
 
 ### 11. Benchmark
 

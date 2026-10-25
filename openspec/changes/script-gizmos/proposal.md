@@ -52,8 +52,8 @@ item with its TS form, status and test.
   `cli.rs` (the plugin, declarations); stage 3 registers a hand-map entry with reflect-assets.
 - Depends on: writable-native-params (landed); reflect-enums-color's `reflect_value` writer
   (landed); stage 3 on reflect-assets stage 1 and on reflect-assets widening `HandMap` to an asset
-  type with no `Reflect` (`GizmoAsset` is `TypePath` only, `bevy_gizmos/src/lib.rs:325`), asked of
-  lead@reflect-assets.
+  type with no `Reflect` (`GizmoAsset` is `TypePath` only, `bevy_gizmos/src/lib.rs:325`), to ask of
+  lead@reflect-assets (task 5.1).
 - Protocol: the handshake's `ExportedParam` lists the new exports; `standsFor` carries `Gizmos<..>`
   spellings. No schema change expected; if one shows, the next free minor.
 - Performance: a new path only. Each drawing call is one host call (about 113 ns today,
