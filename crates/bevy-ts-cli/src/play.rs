@@ -147,7 +147,7 @@ pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display,
     let (tx, channel) = DevChannel::new();
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).expect("the channel is open");
     let assets = folder.join("assets");
-    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.mesh_picking, &game.diagnostics);
+    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.mesh_picking, &game.diagnostics, false);
     app.insert_resource(channel);
     if let Some(dir) = save_dir(&game.name) {
         app.insert_resource(bevy_ts::saves::SaveDir(dir));

@@ -56,9 +56,10 @@ fn component<'r>(registry: &'r TypeRegistry, type_path: &str) -> Result<(&'r Ref
     Ok((rc, reg))
 }
 
-/// A fresh default of the component, the base every write is over.
-fn default(reg: &bevy::reflect::TypeRegistration) -> Option<Box<dyn Reflect>> {
-    reg.data::<ReflectDefault>().map(|d| d.default())
+/// A fresh default of the component, the base every write is over: its `ReflectDefault`, else
+/// its `ReflectFromWorld` (`reflect_value::default_of`).
+fn default(registry: &TypeRegistry, reg: &bevy::reflect::TypeRegistration) -> Option<Box<dyn PartialReflect>> {
+    reflect_value::default_of(registry, reg.type_id())
 }
 
 /// Checks `props` against a default of the component without touching the world: the errors a
@@ -67,11 +68,11 @@ fn default(reg: &bevy::reflect::TypeRegistration) -> Option<Box<dyn Reflect>> {
 pub fn check(registry: &TypeRegistry, type_path: &str, props: &Map<String, Value>) -> Result<(), String> {
     reflect_value::refuse_computed(type_path)?;
     let (_, reg) = component(registry, type_path)?;
-    let Some(mut value) = default(reg) else { return Ok(()) };
+    let Some(mut value) = default(registry, reg) else { return Ok(()) };
     let assets = ScriptAssets::default();
     let slots = Slots { registry, server: None, assets: &assets, check: true };
     for (f, v) in props {
-        set(&slots, value.as_partial_reflect_mut(), None, type_path, f, v)?;
+        set(&slots, value.as_mut(), None, type_path, f, v)?;
     }
     Ok(())
 }
@@ -83,13 +84,13 @@ pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String,
     let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();
     let (rc, reg) = component(&registry, type_path)?;
-    let mut value = default(reg).ok_or_else(|| format!("{type_path} has no reflected Default, so a level cannot insert it"))?;
+    let mut value = default(&registry, reg).ok_or_else(|| format!("{type_path} has no reflected Default, so a level cannot insert it"))?;
     let assets = slots_of(world);
     let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
     for (f, v) in props {
-        set(&slots, value.as_partial_reflect_mut(), None, type_path, f, v)?;
+        set(&slots, value.as_mut(), None, type_path, f, v)?;
     }
-    rc.insert(&mut world.entity_mut(e), value.as_partial_reflect(), &registry);
+    rc.insert(&mut world.entity_mut(e), value.as_ref(), &registry);
     // Asset values the props made go in now: no run ends after a TSX write.
     bevy_ts::reflect_asset::flush(world);
     Ok(())
@@ -103,13 +104,13 @@ pub fn write(world: &mut World, e: Entity, type_path: &str, field: &str, v: &Val
     let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();
     let (rc, reg) = component(&registry, type_path)?;
-    let base = default(reg);
+    let base = default(&registry, reg);
     let assets = slots_of(world);
     let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
     {
         let mut em = world.entity_mut(e);
         let Some(mut m) = rc.reflect_mut(&mut em) else { return Ok(false) };
-        set(&slots, m.as_partial_reflect_mut(), base.as_deref().map(|b| b.as_partial_reflect()), type_path, field, v)?;
+        set(&slots, m.as_partial_reflect_mut(), base.as_deref(), type_path, field, v)?;
     }
     bevy_ts::reflect_asset::flush(world);
     Ok(true)

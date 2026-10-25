@@ -25,6 +25,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         ..default()
     };
     app.add_plugins(headless::default_plugins(true).set(render));
+    crate::audio::asset_half(&mut app);
     let fake = bevy_ts::fake::FakeHandle::default();
     app.add_plugins(BevyTsPlugin::new(move || Box::new(fake.backend())))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
@@ -32,6 +33,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
         .add_plugins(crate::input::ScriptInputPlugin)
+        .add_plugins(crate::audio::ScriptAudioPlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
         .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
         .add_plugins(crate::session::ScriptSessionPlugin)
@@ -468,6 +470,10 @@ pub fn emit_modules(world: &World) -> String {
     s
 }
 
+/// Bevy generics registered at their default type argument, named as Bevy code writes them:
+/// `AudioPlayer`, not `AudioPlayerAudioSource`.
+const DEFAULT_ARGUMENTS: &[(&str, &str)] = &[("AudioPlayer<AudioSource>", "AudioPlayer")];
+
 /// Every reflected component (and layout-tier resource) with a TS identifier: its short name,
 /// prefixed by its crate when two types share one. Sorted by type path.
 fn named<'r>(registry: &'r bevy::reflect::TypeRegistry, native: &NativeLayouts) -> Vec<(String, String, &'r TypeRegistration)> {
@@ -478,7 +484,8 @@ fn named<'r>(registry: &'r bevy::reflect::TypeRegistry, native: &NativeLayouts) 
             // A resource TS cannot read in place has no TS handle yet.
             continue;
         }
-        entries.insert(path, (ident(reg.type_info().type_path_table().short_path()), reg));
+        let short = reg.type_info().type_path_table().short_path();
+        entries.insert(path, (ident(DEFAULT_ARGUMENTS.iter().find(|(full, _)| *full == short).map_or(short, |(_, bare)| bare)), reg));
     }
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
     for (name, _) in entries.values() {

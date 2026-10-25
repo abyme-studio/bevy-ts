@@ -9,6 +9,8 @@ const processes = {
   },
   // Change script-audio: what each Bevy audio decoder adds to a release binary (bench/audio-size), in a check slot.
   "audio-size": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:script-audio -- bench/audio-size/sizes.sh 2>&1 | tee target/audio-size.log'" },
+  // Change script-audio: bevy-ts-cli's build, `bevy-ts/bevy` regenerated, its unit tests and audio tests, in a check slot.
+  "script-audio-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:script-audio -- bash -c \"cargo build -p bevy-ts-cli && scripts/gen-bevy-types.sh && cargo test -p bevy-ts-tsx && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- audio:: mesh_picking:: diagnostics:: protocol:: tsx levels_scene:: reflect_values:: && cargo clippy -p bevy-ts-tsx -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/script-audio-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked\" | tail -60'" },
   "bench-bindings-js": {
     cmd: "deno run --v8-flags=--expose-gc bench/bindings/fire-paths.js | tee bench/bindings/results/v8-jit.md",
   },

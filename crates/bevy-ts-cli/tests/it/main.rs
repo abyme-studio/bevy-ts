@@ -11,6 +11,7 @@ mod ambient_light;
 mod animation;
 mod animation_bench;
 mod argv;
+mod audio;
 mod arena_walk;
 mod build;
 mod cameras;

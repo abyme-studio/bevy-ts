@@ -63,6 +63,9 @@ export declare class TemporalAntiAliasing extends Component {
   declare reset: bool;
 }
 
+export declare const AudioPlayer: Reflected<{ value: string | null }>;
+export type AudioPlayer = InstanceType<typeof AudioPlayer>;
+
 /** Holes, never visible: volume: an enum with data (bevy_audio::volume::Volume); spatial_scale: an enum with data (core::option::Option<bevy_audio::audio::SpatialScale>); start_position: an enum with data (core::option::Option<core::time::Duration>); duration: an enum with data (core::option::Option<core::time::Duration>). */
 export declare class PlaybackSettings extends Component {
   static readonly path: "bevy_audio::audio::PlaybackSettings";

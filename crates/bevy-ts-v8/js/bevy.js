@@ -28,6 +28,8 @@ export class Smaa extends nativeComponent("Smaa", { preset: enumOf("Low", "Mediu
 
 export class TemporalAntiAliasing extends nativeComponent("TemporalAntiAliasing", { reset: bool }) {}
 
+export const AudioPlayer = rustComponent("bevy_audio::audio::AudioPlayer<bevy_audio::audio_source::AudioSource>");
+
 export class PlaybackSettings extends nativeComponent("PlaybackSettings", { mode: enumOf("Once", "Loop", "Despawn", "Remove"), speed: f32, paused: bool, muted: bool, spatial: bool }) {}
 
 export class SpatialListener extends nativeComponent("SpatialListener", { left_ear_offset: vec3, right_ear_offset: vec3 }) {}

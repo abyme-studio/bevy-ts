@@ -156,8 +156,8 @@ path, and a writable exported param, which most of them need, is refused by desi
 | Gizmo config, retained `GizmoAsset`, `Show*Gizmo` markers | partial: markers via TSX | — | new: `script-gizmos` |
 | Play a glTF clip with transitions | missing on main | — | script-gltf (`PlayAnimation`) |
 | `AnimationPlayer` control from systems (seek, pause, speed, weights, `is_finished`), graphs, animation events, TS-built clips | missing; script-gltf scopes it out | — | new: `animation-control` |
-| `AudioPlayer`, `PlaybackSettings`, `SpatialListener` | partial: `PlaybackSettings` is a column; `AudioPlayer` absent from the types; no decoder crate in `Cargo.lock` (no `lewton`), so likely nothing plays | `bevy.d.ts`; `Cargo.lock` | new: `script-audio` |
-| `AudioSink` control, `GlobalVolume` | missing | — | new: `script-audio` |
+| `AudioPlayer`, `PlaybackSettings`, `SpatialListener` | idiomatic: `<AudioPlayer value=..>` and `PlaybackSettings` in TSX, Ogg and WAV decode; script spawns wait on reflect-coverage stage 2 ([docs/audio.md](../audio.md)) | `crates/bevy-ts-cli/tests/it/audio.rs` | `script-audio` |
+| `AudioSink` control, `GlobalVolume` | `AudioSinks` in `bevy-ts/audio` is idiomatic; `GlobalVolume` waits on reflect-coverage stage 3 ([docs/audio.md](../audio.md)) | `crates/bevy-ts-cli/tests/it/audio.rs` | `script-audio` (stage 2: `GlobalVolume`) |
 | glTF asset (`Gltf`: named scenes, nodes, animations), extras | partial: extras are reflect components | — | script-gltf; new: `script-assets` (the `Gltf` asset) |
 | `DiagnosticsStore` (every diagnostic by path), `Diagnostics`, `RegisterDiagnostic`, `FrameCount`, the diagnostics plugins | idiomatic: `bevy-ts/diagnostics` and `bevy-ts.json`'s `diagnostics` (docs/diagnostics.md) | `crates/bevy-ts-cli/tests/it/diagnostics.rs` | `script-diagnostics` |
 | BRP (studio, protocol) | idiomatic for tools; scripts need none | `bevy-ts-remote` | — |

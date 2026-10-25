@@ -16,15 +16,15 @@ The engine SHALL add Bevy's `AudioPlugin` in window mode, and in viewport mode o
 - **THEN** the engine has Bevy's `AudioPlugin`, and an `AudioPlayer` whose asset has loaded gets an `AudioSink` when an output device exists
 
 ### Requirement: Ogg and WAV decode
-The engine SHALL decode Ogg Vorbis (`ogg`, `oga`, `spx`) and WAV (`wav`) through Bevy's `vorbis` and `wav` features. mp3 and flac SHALL NOT be compiled in.
+The engine SHALL decode Ogg Vorbis (`ogg`, `oga`, `spx`) and WAV (`wav`) through Bevy's `vorbis` and `wav` features. mp3 and flac SHALL NOT be compiled in. Since an `AudioPlayer`'s asset loads by type whatever its extension, an `AudioSource` Bevy's decoder cannot take (its extension is not one `AudioLoader` lists, or an Ogg or WAV path whose bytes are not that container) SHALL be removed when it loads and named in the script log, so Bevy never panics decoding it.
 
 #### Scenario: Decode headless
 - **WHEN** a headless engine loads `tone.ogg` and `tone.wav`
 - **THEN** each is an `AudioSource` whose decoder yields samples at the file's sample rate and channel count
 
 #### Scenario: An mp3
-- **WHEN** a level or TSX names `music.mp3`
-- **THEN** the load fails with Bevy's no-loader error naming the extension
+- **WHEN** a headless engine loads `music.mp3` as an `AudioSource`
+- **THEN** its bytes load, the engine removes the source, and the script log has one error naming `music.mp3`, "Ogg Vorbis or WAV" and `docs/audio.md`
 
 ### Requirement: AudioPlayer and PlaybackSettings from TSX
 `bevy-ts/bevy` SHALL declare `AudioPlayer` as a reflect-tier component whose one field is `value`, an asset path, so `<AudioPlayer value="sounds/hit.ogg" />` plays that asset and `With<AudioPlayer>` filters a query. `PlaybackSettings` SHALL stay a column (`mode`, `speed`, `paused`, `muted`, `spatial`), with `volume` (`{ Linear: n }` or `{ Decibels: n }`), `spatial_scale`, `start_position` and `duration` (seconds, or `null`) as TSX props written through reflection.

@@ -35,6 +35,10 @@ serde_json.workspace = true
 serde.workspace = true
 sha2 = "0.10"
 toml = "1"
+# Bevy's audio as a crate, not Bevy's `audio` feature: the feature puts `AudioPlugin` in every
+# `DefaultPlugins`, a test's too, and it opens the audio device when built. `base_app` is the one
+# place it is added (src/audio.rs). `vorbis` and `wav` only: mp3 and flac are docs/audio.md's.
+bevy_audio = { version = "=0.20.0", default-features = false, features = ["vorbis", "wav"] }
 
 [lib]
 name = "bevy_ts_cli"
@@ -48,6 +52,8 @@ jsonschema = { version = "0.33", default-features = false }
 png = "0.18"
 tungstenite = "0.28"
 async-channel = "2"
+# Sinks with no device for the audio tests (`rodio::Player::new()`); the version Bevy pins.
+rodio = { version = "=0.22.2", default-features = false }
 
 # sha2 0.10 hashes with the CPU's SHA instructions on aarch64 only with `asm`: an engine's checksum
 # takes seconds, not tens of seconds (docs/research/engine-cache-link.md).

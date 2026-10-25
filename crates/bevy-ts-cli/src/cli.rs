@@ -1,6 +1,6 @@
 //! The engine binary's command line, shared by the prebuilt binary and every project engine.
 //!
-//! `bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]] [-- <args>…]`,
+//! `bevy-ts dev <entry.ts> [--headless | --viewport [--audio]] [--edit] [--remote-port <port>] [--inspect[=<port>]] [-- <args>…]`,
 //! `bevy-ts build`, `bevy-ts play`, and an engine with a `game/` beside it, which plays that game
 //! with every argument it was started with.
 
@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const USAGE: &str = "usage:
-  bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]] [-- <args>…]
+  bevy-ts dev <entry.ts> [--headless | --viewport [--audio]] [--edit] [--remote-port <port>] [--inspect[=<port>]] [-- <args>…]
   bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--json]
   bevy-ts build --targets [--json]
   bevy-ts play <game folder> [--headless] [-- <args>…]
@@ -40,6 +40,8 @@ pub struct DevArgs {
     pub headless: bool,
     /// No window of its own: render for a viewer that attaches over the protocol (macOS).
     pub viewport: bool,
+    /// Play sound in viewport mode (a window always does; headless never).
+    pub audio: bool,
     /// Start in edit mode: no TS game code runs until a client sets `play`.
     pub edit: bool,
     pub remote_port: u16,
@@ -50,7 +52,7 @@ pub struct DevArgs {
 
 fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
     let mut entry = None;
-    let mut out = DevArgs { entry: String::new(), headless: false, viewport: false, edit: false, remote_port: 15702, inspect: None, game_args: vec![] };
+    let mut out = DevArgs { entry: String::new(), headless: false, viewport: false, audio: false, edit: false, remote_port: 15702, inspect: None, game_args: vec![] };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -61,6 +63,7 @@ fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
             "--headless" => out.headless = true,
             "--viewport" => out.viewport = true,
             "--edit" => out.edit = true,
+            "--audio" => out.audio = true,
             "--remote-port" => {
                 out.remote_port = it.next().and_then(|p| p.parse().ok()).ok_or("--remote-port takes a port")?;
             }
@@ -80,6 +83,9 @@ fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
     out.entry = entry.ok_or("missing <entry.ts>")?;
     if out.headless && out.viewport {
         return Err("--headless and --viewport cannot be combined".into());
+    }
+    if out.audio && !out.viewport {
+        return Err("--audio is for --viewport: a window always plays sound, and --headless never does".into());
     }
     if out.edit && out.headless {
         return Err("--edit and --headless cannot be combined".into());
@@ -217,9 +223,10 @@ pub enum Display {
 /// mode and watches the assets; a shipped game runs with neither. `mesh_picking` adds Bevy's
 /// `MeshPickingPlugin` (`bevy-ts.json`'s, or `game.json`'s, `meshPicking`), and `diagnostics` the
 /// Bevy diagnostics plugins listed there: the one place they are added, so dev and play cannot
-/// differ.
+/// differ. `audio` plays sound in a viewport (`--audio`); a window always does, headless never
+/// (`crate::audio::plays`).
 #[allow(clippy::too_many_arguments)]
-pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, mesh_picking: bool, diagnostics: &[String]) -> App {
+pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, mesh_picking: bool, diagnostics: &[String], audio: bool) -> App {
     let mut app = App::new();
     let plugins = headless::default_plugins(display != Display::Window);
     // The compute pool runs the frame's systems: its threads are raised with the main thread's
@@ -253,11 +260,13 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         }
         _ => {}
     }
+    crate::audio::audio_output(&mut app, display, audio);
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(dev))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .add_plugins(crate::input::ScriptInputPlugin)
+        .add_plugins(crate::audio::ScriptAudioPlugin)
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
@@ -361,7 +370,7 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     let mesh_picking = project.as_ref().is_some_and(|p| p.config.mesh_picking);
     let diagnostics = project.as_ref().map(|p| p.config.diagnostics.clone()).unwrap_or_default();
     let assets = headless::asset_root(&compiler.root);
-    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, mesh_picking, &diagnostics);
+    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, mesh_picking, &diagnostics, args.audio);
     // Compile only once the plugins have exported their params: the compile step reads them as
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);
@@ -430,7 +439,7 @@ fn skeleton(engine: &Engine, extra: impl Plugin, headless_mode: bool) {
     let set = ModuleSet { entry: path.clone(), modules: vec![CompiledModule { path, code: SKELETON_JS.into(), source_map: None }] };
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).unwrap();
     let display = if headless_mode { Display::Headless } else { Display::Window };
-    let mut app = base_app(engine, extra, display, V8Options::default(), None, true, false, &[]);
+    let mut app = base_app(engine, extra, display, V8Options::default(), None, true, false, &[], false);
     app.insert_resource(channel)
         .add_systems(Startup, scene)
         .add_systems(PostUpdate, report_changed.after(bevy_ts::BevyTsSet::PostUpdate))
