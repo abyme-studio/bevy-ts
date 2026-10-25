@@ -1959,6 +1959,7 @@ function resolveClass(C, r) {
   C.layout = r.layout;
   C.defaults = r.defaults ? Uint8Array.from(r.defaults) : null;
   C.rawWrites = r.rawWrites !== false;
+  C.reflected = r.reflected === true;
   C.views = viewsFor(r.layout);
   C.offsets = Object.fromEntries(r.layout.fields.map((f) => [f.name, f.offset]));
   C.size = r.layout.size;
@@ -2808,6 +2809,12 @@ function encodeComponentsOps(op, e, parts) {
     if (!C || !C.componentName || (C[KIND] && C[KIND] !== "component")) throw new TypeError(`spawn/insert: ${String(part)} is not a component (Health.of({ hp: 3 }))`);
     if (C.reflect) {
       reflected.push(encodeReflectOp(e, C, REFLECT_INSERT, typeof part === "function" ? undefined : part[REFLECT_JSON]));
+      continue;
+    }
+    // A layout value whose holes may own heap data (`Skybox`'s image) is never bytes: it is
+    // written whole through reflection, columns and holes alike.
+    if (C.reflected) {
+      reflected.push(encodeReflectOp(e, C, REFLECT_INSERT, typeof part === "function" ? undefined : { ...values }));
       continue;
     }
     let own = values;

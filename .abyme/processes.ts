@@ -42,6 +42,8 @@ const processes = {
   // Change script-time stage 3: the time conditions' crates, their unit and integration tests.
   "script-time-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib time_conditions && cargo test -p bevy-ts-cli --test it -- time::) 2>&1 | grep --line-buffered -v ld64 | tee target/script-time-test.log | grep -E \"^error|^warning|-->|^test |test result|panicked\"'" },
   // reflect-coverage stage 2: bevy-ts/bevy regenerated, the command checks, the script-writes and reflected-values tests, clippy.
+  // The Skybox handle case alone, with its output.
+  "skybox-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test -p bevy-ts-cli --test it -- reflect_values::an_asset_path --nocapture 2>&1 | grep -v ld64 | tee target/skybox-test.log | grep -E \"^error|panicked|one Skybox|assert|left|right|test result\"'" },
   "scripts-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (scripts/gen-bevy-types.sh && cargo test -p bevy-ts --lib commands:: && cargo test -p bevy-ts-cli --test it -- reflect_scripts:: reflect_values:: cameras:: animation_bench:: && cargo clippy -p bevy-ts -p bevy-ts-cli --all-targets -- -D warnings) 2>&1 | grep -v ld64 | tee target/scripts-test.log | grep -E \"^error|^warning|-->|^Diff|FAILED|panicked|test result\"'" },
   "cli-test": { cmd: "cargo test -p bevy-ts-cli 2>&1 | tee target/cli-test.log | grep -E \"^test result|FAILED|panicked|^error\"" },
   // The npm package's vitest suite (examples, `new`), against the debug engine for the TS transform.
