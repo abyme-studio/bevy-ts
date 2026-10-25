@@ -339,6 +339,33 @@ mod writes {
         assert_eq!(f.app.world().resource::<bevy_ts_levels::edit::WriteResults>().0.len(), 1);
     }
 
+    /// A reload that read the file before the writer's write lands after it: Bevy sends its
+    /// `LoadedWithDependencies` in PreUpdate and its `Modified` in PostUpdate. No frame shows the
+    /// text it read.
+    #[test]
+    fn a_reload_older_than_a_write_changes_nothing() {
+        use bevy_ts_levels::engine::BsnLevel;
+        let mut f = arena();
+        let a = f.by_name("EnemyA");
+        let r = write(&mut f, ARENA, vec![set_x("EnemyA", 7.0)]);
+        assert_eq!(r.status, "written", "{r:?}");
+        let written = content_hash(file(&f).as_bytes());
+        let world = f.app.world_mut();
+        let handle = world.resource::<AssetServer>().get_handle::<BsnLevel>("levels/arena.bsn").unwrap();
+        let includes = world.resource::<Assets<BsnLevel>>().get(&handle).unwrap().includes.clone();
+        let old = BsnLevel { includes, parsed: std::sync::Arc::new(bevy_ts_levels::syntax::parse(ARENA).unwrap()), hash: content_hash(ARENA.as_bytes()) };
+        *world.resource_mut::<Assets<BsnLevel>>().get_mut(&handle).unwrap() = old;
+        world.resource_mut::<Messages<AssetEvent<BsnLevel>>>().write(AssetEvent::LoadedWithDependencies { id: handle.id() });
+        f.until("the disk's text never came back", |f| {
+            assert_eq!(f.translation(a).x, 7.0, "a frame reconciled the reload's older text");
+            let w = f.app.world();
+            w.resource::<Assets<BsnLevel>>().get(&handle).unwrap().hash == written && w.resource::<Levels>().roots["levels/arena.bsn"].applied["levels/arena.bsn"] == written
+        });
+        // The next frame reads the `Modified`s, the reload's and the disk's.
+        f.app.update();
+        assert_eq!(f.translation(a).x, 7.0);
+    }
+
     #[test]
     fn a_rename_keeps_the_entity() {
         let mut f = arena();

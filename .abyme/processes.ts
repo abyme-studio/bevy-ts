@@ -372,6 +372,10 @@ const processes = {
   "pipelines-materials": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do cargo test -p bevy-ts-cli --test it -- materials standard_material_limits 2>&1 | grep -v ld64 | grep -E \"^test |^test result|panicked|^error\"; done' 2>&1 | tee target/pipelines-materials.log" },
   // Change viewport-watch: the crates it touches and the tests that open a watch.
   "viewport-watch-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test --no-fail-fast -p bevy-ts-remote -p bevy-ts-tsx -p bevy-ts-levels && cargo test --no-fail-fast -p bevy-ts-viewport -- --test-threads=1 && cargo test --no-fail-fast -p bevy-ts-cli --test it -- levels_protocol:: play_stop:: protocol:: tsx_protocol:: viewport_edit:: viewport_level:: viewport_preview:: viewport_thumbnail:: viewport_walk::) 2>&1 | grep -v ld64 | tee target/viewport-watch-tests.log | grep -E \"^test result|FAILED|panicked|^error|-->\"'" },
+  // levels-watch-flake: bevy-ts-levels, its unit and integration tests.
+  "levels-watch-test": { cmd: "set -o pipefail; mkdir -p target; cargo test -p bevy-ts-levels 2>&1 | grep -v ld64 | tee target/levels-watch-test.log | grep -E \"^error|^warning|-->|^test |test result|panicked\"" },
+  // levels-watch-flake: the watch-order test, 16 copies at once for 10 rounds.
+  "levels-watch-soak": { cmd: "scripts/levels-watch-soak.sh 16 10 2>&1 | tee target/levels-watch-soak.log" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

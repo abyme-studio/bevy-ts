@@ -589,9 +589,10 @@ fn watch(
             {
                 let file = p.path().to_string_lossy().replace('\\', "/");
                 let hash = assets.get(*id).map(|a| a.hash);
-                // A reload that read the file before a later write: the disk wins.
-                if matches!(ev, AssetEvent::Modified { .. })
-                    && let Ok(disk) = std::fs::read_to_string(levels.asset_root.join(&file))
+                // A reload that read the file before a later write: the disk wins. Its
+                // `LoadedWithDependencies` comes in PreUpdate, before the `Modified` Bevy sends in
+                // PostUpdate, so both are checked: else that frame reconciles the old text.
+                if let Ok(disk) = std::fs::read_to_string(levels.asset_root.join(&file))
                     && Some(content_hash(disk.as_bytes())) != hash
                 {
                     stale.push((file, disk));
