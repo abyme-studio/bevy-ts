@@ -80,7 +80,7 @@ The file SHALL also hold methods owned by other bevy-ts crates. They follow the 
 - **THEN** the call fails with "the game has not started; switch to play" and no TS system runs
 
 ### Requirement: Entity and scene change events
-`bevy-ts/entities` SHALL return a snapshot: each entity's id, `Name` if any, parent, and the names of all its components (TS and Rust). `bevy-ts/entities+watch` SHALL first send that snapshot with a sequence number, then at most one message per frame with what changed that frame: spawned (with the snapshot fields), despawned, reparented, renamed, components added and components removed. Each message SHALL carry the next sequence number; a client that sees a gap SHALL resubscribe. Field values are not part of this stream.
+`bevy-ts/entities` SHALL return a snapshot of every entity but bookkeeping (observers, resource entities, `ScriptHidden` entities, and the engine's windows and picking pointers): each entity's id, `Name` if any, parent, and the names of all its components (TS and Rust). `bevy-ts/entities+watch` SHALL first send that snapshot with a sequence number, then at most one message per frame with what changed that frame: spawned (with the snapshot fields), despawned, reparented, renamed, components added and components removed. Each message SHALL carry the next sequence number; a client that sees a gap SHALL resubscribe. Field values are not part of this stream.
 
 #### Scenario: Spawning from TS shows in the scene tree
 - **WHEN** a TS system spawns an entity named `bullet` as a child of the cube
@@ -89,6 +89,10 @@ The file SHALL also hold methods owned by other bevy-ts crates. They follow the 
 #### Scenario: A quiet frame
 - **WHEN** nothing structural changes in a frame
 - **THEN** no message is sent for that frame
+
+#### Scenario: The engine's own entities after a Stop
+- **WHEN** a viewport engine stops a played game and a client calls `bevy-ts/entities`
+- **THEN** neither the virtual window's entity nor any `PointerId` entity is listed, nor in the `bevy-ts/entities+watch` snapshot
 
 ### Requirement: Systems and logs
 `bevy-ts/systems` SHALL list TS systems with name, stage, read, write, generation, last run time in microseconds and last error. `bevy-ts/log+watch` SHALL stream `console.*` output and bevy-ts errors and warnings with level, TS location and generation.
@@ -130,3 +134,14 @@ Every entry `bevy-ts/schema` returns, TS and Rust alike, SHALL carry an `x-bevy-
 #### Scenario: The project's native crate is the game's
 - **WHEN** a project's native crate `native` registers a reflected component `native::Fuel`
 - **THEN** its entry has `origin: "game"` and `category: "game"`
+
+### Requirement: Each subscriber of a watch is served on its own
+Every `+watch` method SHALL serve each open request on its own, even when several have the same params: each SHALL get the method's opening message when it opens, then every message owed to it after. A request that was not served for an update SHALL count as closed, so the same params opened again get the opening message again. When a request closes, another with the same params SHALL NOT miss a message, and `bevy-ts/level+watch`, which sends one event per update, MAY send one again; a request that opens in the update another with the same params closes MAY get no opening message. A Stop SHALL NOT restart open watches.
+
+#### Scenario: A second studio window opens the same watch
+- **WHEN** a client has `bevy-ts/viewport_tools+watch` open and a second request with the same params opens later
+- **THEN** the second is sent the tools on open, and on the next change both are sent it
+
+#### Scenario: A second window opens the asset watch as a file lands
+- **WHEN** a client has `bevy-ts/assets+watch` open, a file is added, and a second request with the same params opens before the first is sent the change
+- **THEN** the second's list has the file, and the first is still sent it as `added`
