@@ -158,7 +158,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `AudioPlayer`, `PlaybackSettings`, `SpatialListener` | partial: `PlaybackSettings` is a column; `AudioPlayer` absent from the types; no decoder crate in `Cargo.lock` (no `lewton`), so likely nothing plays | `bevy.d.ts`; `Cargo.lock` | new: `script-audio` |
 | `AudioSink` control, `GlobalVolume` | missing | — | new: `script-audio` |
 | glTF asset (`Gltf`: named scenes, nodes, animations), extras | partial: extras are reflect components | — | script-gltf; new: `script-assets` (the `Gltf` asset) |
-| `DiagnosticsStore` (FPS, frame time, entity count), `FrameCount` | missing | — | new: `script-diagnostics` |
+| `DiagnosticsStore` (every diagnostic by path), `Diagnostics`, `RegisterDiagnostic`, `FrameCount`, the diagnostics plugins | idiomatic: `bevy-ts/diagnostics` and `bevy-ts.json`'s `diagnostics` (docs/diagnostics.md) | `crates/bevy-ts-cli/tests/it/diagnostics.rs` | `script-diagnostics` |
 | BRP (studio, protocol) | idiomatic for tools; scripts need none | `bevy-ts-remote` | — |
 | Custom BRP methods from TS | missing; low demand | — | — (decline for now) |
 | Reflect shapes (enums, colour, lists, maps, `Duration`), hole CI walker | partial | — | reflect-enums-color, reflect-coverage |
@@ -225,7 +225,7 @@ Recommended order: the enabler, then ECS (everything else uses it), then the res
    retained `GizmoAsset`.
 10. `script-audio`: the decoder features, `<AudioPlayer>`, `AudioSink` control from systems,
     spatial audio, `GlobalVolume`.
-11. `script-diagnostics`: `DiagnosticsStore` reads (FPS, frame time, entity count) and
+11. `script-diagnostics` (done): `DiagnosticsStore` reads (FPS, frame time, entity count) and
     `FrameCount`.
 12. `script-2d`: `Camera2d` example, `Mesh2d` + `ColorMaterial` (`<mesh>` 2D shapes,
     `<material2d>` or `<material>` on a 2D mesh), sprite sheets, `Text2d`, tilemap chunks.
