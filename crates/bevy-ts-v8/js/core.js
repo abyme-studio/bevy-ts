@@ -2418,13 +2418,17 @@ const HOST = {
    * here: `view` is the typed array class the argument must be.
    */
   bytes(v, view, param, method, name) {
-    if (v instanceof view) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+    if (v instanceof view) return view === Uint8Array ? v : new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
     const an = (t) => (/^[AEIO]/.test(t) ? `an ${t}` : `a ${t}`);
     const given = ArrayBuffer.isView(v) || v instanceof ArrayBuffer ? an(v.constructor.name) : Array.isArray(v) ? "an Array" : v === null ? "null" : typeof v;
     throw new TypeError(`${param}.${method}: ${name} must be ${an(view.name)}, not ${given}`);
   },
   call(id, _n, s0, s1, s2, s3) {
     if (!core) throw new Error("Rust params need the engine");
+    // Most calls pass one slice or none: only two or more can share memory.
+    if ((s0.byteLength ? 1 : 0) + (s1.byteLength ? 1 : 0) + (s2.byteLength ? 1 : 0) + (s3.byteLength ? 1 : 0) < 2) {
+      return core.ops.op_bevyts_host(id, HOST.slotBytes, HOST.resultBytes, s0, s1, s2, s3);
+    }
     const ss = [s0, s1, s2, s3];
     for (let i = 0; i < 4; i++) {
       for (let j = i + 1; j < 4; j++) {
@@ -2442,12 +2446,27 @@ const HOST = {
   },
   /** Writes a string argument at slot `i`: its UTF-8 length, then its bytes in the slots after. Returns the next slot. */
   str(v, i) {
-    const b = encoder.encode(String(v));
+    const t = String(v);
+    const at = (i + 1) * 8;
     const room = (HOST_SLOTS - i - 1) * 8;
-    if (b.length > room) throw new RangeError(`a string argument of ${b.length} bytes does not fit in one call (${room} left)`);
-    HOST.slots[i] = b.length;
-    HOST.slotBytes.set(b, (i + 1) * 8);
-    return i + 1 + Math.ceil(b.length / 8);
+    // ASCII, the usual key, is its own UTF-8: written in place, nothing allocated.
+    let n = 0;
+    if (t.length <= room) {
+      const out = HOST.slotBytes;
+      for (; n < t.length; n++) {
+        const c = t.charCodeAt(n);
+        if (c > 0x7f) break;
+        out[at + n] = c;
+      }
+    }
+    if (n < t.length) {
+      const b = encoder.encode(t);
+      if (b.length > room) throw new RangeError(`a string argument of ${b.length} bytes does not fit in one call (${room} left)`);
+      HOST.slotBytes.set(b, at);
+      n = b.length;
+    }
+    HOST.slots[i] = n;
+    return i + 1 + Math.ceil(n / 8);
   },
   /** Reads a string result at slot `i`: `[string, next slot]`. */
   text(i) {
