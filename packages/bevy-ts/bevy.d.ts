@@ -1587,7 +1587,7 @@ export type WorldAssetRoot = InstanceType<typeof WorldAssetRoot>;
 export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { events: readonly (readonly ["Root" | { Node: string }, readonly ({ time?: number; event?: {  } })[]])[]; duration: number }>;
 export declare const AnimationClip: AssetClass<AnimationClip>;
 
-export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", {  }>;
+export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", { graph: unknown; root: number; mask_groups: readonly (readonly [string, number | string])[] }>;
 export declare const AnimationGraph: AssetType<AnimationGraph>;
 
 export type Image = AssetFields<"bevy_image::image::Image", {  }>;

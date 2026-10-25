@@ -60,6 +60,11 @@ one, and that its TS type is not `unknown`. A failure fails the test with the ty
 component and field it was met in, and what failed, unless `reflect_value::UNCOVERED` lists the
 type with a reason. An entry the walk never meets fails the test too, so the list cannot rot.
 
+A hand-mapped asset (`reflect_asset::HAND_MAPS`: `AnimationGraph`) is not walked into: its entry
+reads and writes it whole, so the check writes `{}` through the entry, reads it, writes that back
+and reads again, and fails when the two reads differ. Its TS type is hand-written
+([animation](animation.md)).
+
 ## Uncovered
 
 `reflect_value::UNCOVERED`, each with its reason. A field of an uncovered type reads as absent and
@@ -75,7 +80,6 @@ fails to write with the reason; a hole of one fails the load.
 | `bevy_picking::events::PointerState` | press and click times are Instants, opaque with no reflected serde |
 | `bevy_time::time::Time<bevy_time::real::Real>` | its clock readings are Instants, opaque with no reflected serde |
 | `bevy_scene::scene_component::SceneComponentInfo` | computed by bevy_scene; holds a &'static str |
-| `bevy_animation::graph::AnimationGraph` | its graph is a petgraph DiGraph, opaque with no default or reflected serde (building graphs is animation-control's) |
 | `bevy_image::image::Image` | reflect-assets: its wgpu texture and view descriptors are opaque with no reflected serde |
 | `bevy_render::storage::ShaderBuffer` | opaque with no reflected serde |
 | `bevy_mesh::mesh::Mesh` | script-assets: no default; attributes and indices are reflect(ignore); engine-core builds meshes |

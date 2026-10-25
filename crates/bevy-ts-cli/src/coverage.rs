@@ -2,7 +2,8 @@
 //! type registry, walked through every field type. For each type it takes a value (its default,
 //! else one shaped from its type info), and checks that `reflect_value::read` gives JSON, that
 //! writing that JSON over a fresh value gives an equal one, and that its TS type is not `unknown`.
-//! A type on `reflect_value::UNCOVERED` is not checked and not walked into. `tests/it/reflect_coverage.rs`
+//! A type on `reflect_value::UNCOVERED` is not checked and not walked into; a hand-mapped asset
+//! (`reflect_asset::HAND_MAPS`) is checked by its entry's round trip and not walked into. `tests/it/reflect_coverage.rs`
 //! runs it on the prebuilt engine, and `bevy-ts types --coverage <file>` on a project engine (the
 //! Rapier port's).
 
@@ -12,6 +13,7 @@ use bevy::ecs::reflect::{ReflectComponent, ReflectResource};
 use bevy::prelude::*;
 use bevy::reflect::enums::VariantInfo;
 use bevy::reflect::{PartialReflect, TypeInfo, TypeRegistry};
+use bevy_ts::reflect_asset;
 use bevy_ts::reflect_value::{self, uncovered};
 use serde::Serialize;
 use serde_json::json;
@@ -151,6 +153,15 @@ impl Walk<'_> {
             self.done.insert(id, true);
             return true;
         };
+        // A hand-mapped asset is read and written by its entry, not by reflection.
+        if let Some(trip) = reflect_asset::hand_round_trip(self.registry, id) {
+            let bad = trip.is_err();
+            if let Err(e) = trip {
+                self.gap(path, "round trip", e, root, field);
+            }
+            self.done.insert(id, bad);
+            return bad;
+        }
         let mut inner_bad = false;
         if !leaf(path) {
             for (step, child, child_path) in children(reg.type_info()) {
