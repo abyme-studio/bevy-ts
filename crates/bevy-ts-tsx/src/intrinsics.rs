@@ -792,6 +792,7 @@ pub fn report_texture_failures(world: &mut World, mut cursor: Local<MessageCurso
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::collections::BTreeSet;
 
     fn table() -> BTreeSet<String> {
@@ -817,5 +818,27 @@ mod tests {
             .filter(|k| k != "kind")
             .collect();
         assert_eq!(typed, table(), "jsx-runtime.d.ts' MaterialProps against MATERIAL_PROPS");
+    }
+
+    /// `Mesh2dProps` takes exactly the shapes `jsx-runtime.d.ts`'s `Shape2dMesh` lists.
+    #[test]
+    fn mesh2d_takes_the_shapes_the_types_call_2d() {
+        let dts = include_str!("../../../packages/bevy-ts/jsx-runtime.d.ts");
+        // Each `*Mesh` interface's name and its `shape`.
+        let mut shapes = HashMap::new();
+        let mut lines = dts.lines();
+        while let Some(l) = lines.next() {
+            let Some(name) = l.strip_prefix("export interface ").and_then(|r| r.split_whitespace().next()).filter(|n| n.ends_with("Mesh")) else { continue };
+            let shape = lines.next().and_then(|l| l.trim().strip_prefix("shape: \"")).and_then(|r| r.split('"').next()).expect("shape first");
+            shapes.insert(name.to_string(), shape.to_string());
+        }
+        assert_eq!(shapes.len(), 21, "{shapes:?}");
+        let union = dts.split("export type Shape2dMesh =").nth(1).and_then(|r| r.split(';').next()).expect("Shape2dMesh");
+        let flat: Vec<&str> = union.split('|').map(str::trim).filter(|n| !n.is_empty()).collect();
+        for (name, shape) in &shapes {
+            let e = serde_json::from_value::<Mesh2dProps>(json!({ "shape": shape })).err().map(|e| e.to_string());
+            let is_2d = !e.as_deref().is_some_and(|e| e.contains("is a 3D shape"));
+            assert_eq!(is_2d, flat.contains(&name.as_str()), "{shape}: {e:?}");
+        }
     }
 }

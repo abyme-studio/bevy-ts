@@ -154,6 +154,42 @@ fn a_material2d_builds_its_color_material_and_equal_props_share_handles() {
 }
 
 #[test]
+fn a_changed_mesh2d_or_material2d_rebuilds_and_a_dropped_color_takes_its_material() {
+    let ent = |props: &str| format!("    <entity key=\"m\">{props}</entity>\n");
+    let mut app = setup("2d-reload", &ent("<mesh2d shape=\"circle\" color=\"#ff0000\" />"));
+    let dir = project("2d-reload", &[]);
+    let e = node(&mut app, "m");
+    let color = |app: &App| {
+        let h = &app.world().get::<MeshMaterial2d<ColorMaterial>>(e)?.0;
+        Some(app.world().resource::<Assets<ColorMaterial>>().get(h)?.color)
+    };
+    let mesh = |app: &App| app.world().get::<Mesh2d>(e).map(|m| m.0.clone());
+    assert_eq!(color(&app), Some(Color::srgb(1.0, 0.0, 0.0)));
+    let circle = mesh(&app).expect("a Mesh2d");
+
+    let save = |app: &mut App, props: &str| {
+        common::write(&dir, "game.tsx", &scene(&ent(props)));
+        let r = reload(app, false);
+        assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+        app.update();
+    };
+    save(&mut app, "<mesh2d shape=\"rectangle\" color=\"#0000ff\" />");
+    assert_ne!(mesh(&app).as_ref(), Some(&circle), "a new shape builds a new mesh");
+    assert_eq!(color(&app), Some(Color::srgb(0.0, 0.0, 1.0)));
+
+    save(&mut app, "<mesh2d shape=\"rectangle\" />");
+    assert!(mesh(&app).is_some());
+    assert_eq!(color(&app), None, "the colour's material goes with it");
+
+    save(&mut app, "<mesh2d shape=\"rectangle\" /><material2d color=\"#00ff00\" />");
+    assert_eq!(color(&app), Some(Color::srgb(0.0, 1.0, 0.0)));
+    save(&mut app, "<mesh2d shape=\"rectangle\" /><material2d color=\"#ffffff\" />");
+    assert_eq!(color(&app), Some(Color::srgb(1.0, 1.0, 1.0)), "a changed prop rebuilds the material");
+    save(&mut app, "<mesh2d shape=\"rectangle\" />");
+    assert_eq!(color(&app), None, "a removed <material2d> takes its material");
+}
+
+#[test]
 fn mesh2d_and_material2d_refuse_what_2d_does_not_have_naming_the_line() {
     for (name, body, want) in [
         ("2d-no-depth", "<mesh2d shape=\"circle\" depth={1} />", "circle: depth: <mesh2d> is flat"),

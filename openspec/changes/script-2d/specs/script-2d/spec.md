@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: `<mesh2d>` builds a `Mesh2d` from Bevy's 2D primitives
-`<mesh2d shape>` SHALL insert Bevy's `Mesh2d` on its entity, built from one of the 2D shapes `<mesh>` takes (`circle`, `circularSector`, `circularSegment`, `ellipse`, `annulus`, `rectangle`, `rhombus`, `regularPolygon`, `triangle2d`, `capsule2d`, `convexPolygon`), with the same props, defaults and load checks as that shape on `<mesh>`. It SHALL NOT take `depth` or `segments`. The mesh SHALL lie in the XY plane facing +Z. `color` SHALL be a shorthand for `<material2d color>`. Elements with equal shape and props SHALL share one mesh asset. `<mesh2d>` and `<mesh>` on one entity SHALL fail the load naming the element's source location.
+`<mesh2d shape>` SHALL insert Bevy's `Mesh2d` on its entity, built from one of the 2D shapes `<mesh>` takes (`circle`, `circularSector`, `circularSegment`, `ellipse`, `annulus`, `rectangle`, `rhombus`, `regularPolygon`, `triangle2d`, `capsule2d`, `convexPolygon`), with the same props, defaults and load checks as that shape on `<mesh>`. It SHALL NOT take `depth` or `segments`. The mesh SHALL lie in the XY plane facing +Z. `color` SHALL be a shorthand for `<material2d color>`. Elements with equal shape and props SHALL share one mesh asset. Bevy draws a `Mesh2d` only with a 2D material and a `Mesh3d` only with a 3D one, so `<mesh2d>` or `<material2d>` on one entity with `<mesh>` or `<material>` SHALL fail the load naming the 2D element's source location. `<mesh2d color>` with a `<material2d>` on one entity SHALL fail the load naming the `<material2d>`, as `<mesh color>` with `<material>` does.
 
 #### Scenario: Every 2D shape builds a Mesh2d
 - **WHEN** a headless app spawns one `<mesh2d>` of each 2D shape with its default props
@@ -10,6 +10,10 @@
 #### Scenario: A 3D shape is refused
 - **WHEN** a scene writes `<mesh2d shape="cuboid" />` or `<mesh2d shape="circle" depth={1} />`
 - **THEN** `tsc` reports it, and loading fails with an error naming the shape or prop and the element's file and line
+
+#### Scenario: 2D and 3D do not mix on one entity
+- **WHEN** an entity has `<mesh shape="circle" /><material2d />`, or `<mesh2d shape="circle" /><material />`, or `<mesh2d shape="circle" color="#f00" /><material2d />`
+- **THEN** loading fails at that element's file and line, saying to pair `<mesh>` with `<material>` and `<mesh2d>` with `<material2d>`, or to give the colour once
 
 ### Requirement: `<material2d>` is a `ColorMaterial`
 `<material2d>` SHALL insert `MeshMaterial2d<ColorMaterial>`. It SHALL take `color` (every colour form bevy-ts parses), `alpha` (0 to 1, applied with `Color::with_alpha`), `alphaMode` (`"opaque"`, `"blend"` or `{ mask: n }`, Bevy's `AlphaMode2d`), `texture` (an asset path, loaded as an `Image`) and `uvTransform` (`{ translation?, rotation?, scale? }`, built into an `Affine2`). Unset, `alphaMode` SHALL follow Bevy's `ColorMaterial::from(Color)` rule: `"blend"` when the final alpha is below 1, else `"opaque"`. An unknown prop SHALL fail the load naming it. Equal props SHALL share one material asset. Props SHALL NOT be bindable, as on `<material>`.
