@@ -56,21 +56,21 @@ Transitions SHALL follow Bevy's `StateTransitionSystems`: in `DependentTransitio
 - **THEN** `updateHud` runs on frame 5 only
 
 ### Requirement: State-scoped entities
-`DespawnOnExit`, `DespawnOnEnter`, `DisableOnExit`, `DisableOnEnter`, `EnableOnExit` and `EnableOnEnter` SHALL be components taking a state value, written in TSX (`<Entity DespawnOnExit={Game.Playing}>`), inserted with commands (`DespawnOnExit.of(Game.Playing)`) and in levels, and SHALL be Bevy's own components of `TsState<N>`, run by Bevy's systems: despawn, insert `Disabled`, or remove `Disabled` on the named exit or enter.
+`DespawnOnExit`, `DespawnOnEnter`, `DisableOnExit`, `DisableOnEnter`, `EnableOnExit` and `EnableOnEnter` SHALL be components taking a state value, written in TSX as a component element (`<DespawnOnExit value={Game.Playing} />`), inserted with commands (`DespawnOnExit.of(Game.Playing)`) and in levels (`DespawnOnExit { value: "game::Game.Playing" }`), and SHALL be Bevy's own components of `TsState<N>`, run by Bevy's systems: despawn, insert `Disabled`, or remove `Disabled` on the named exit or enter.
 
 #### Scenario: Leaving Playing
 - **WHEN** an enemy is spawned with `DespawnOnExit.of(Game.Playing)` and the state goes to `Menu`
 - **THEN** the enemy is despawned in that `StateTransition`, before `OnEnter(Game.Menu)` systems run
 
 ### Requirement: Sub and computed states
-`class Pause extends SubStates(Game.Playing, "Running", "Paused") {}` SHALL declare a machine that exists only while its source is in that value, entered at its first value, as Bevy's `SubStates`. `class InGame extends ComputedStates(Game, (g) => g === Game.Playing || g === Game.Paused ? InGame.Yes : undefined, "Yes") {}` SHALL declare a machine whose value is computed from its sources, `undefined` meaning absent, as Bevy's `ComputedStates`; several sources SHALL be passed as an array. The compute function SHALL be a JS call only when a source transitions. A sub state's `NextState` SHALL be ignored while it does not exist. Each counts against the pool.
+`class Pause extends SubStates(Game.Playing, "Running", "Paused") {}` SHALL declare a machine that exists only while its source is in that value, entered at its first value, as Bevy's `SubStates`. `class InGame extends ComputedStates(Game, (g) => g === Game.Playing || g === Game.Paused ? InGame.Yes : undefined, "Yes") {}` SHALL declare a machine whose value is computed from its sources, `undefined` meaning absent, as Bevy's `ComputedStates`; several sources SHALL be passed as an array. The compute function SHALL be a JS call only when a source transitions. A sub state's `NextState` SHALL be ignored while it does not exist. Each counts against the pool. `PreviousState` of a sub or computed state SHALL read `undefined`: Bevy gives no way to keep it for states it does not derive itself.
 
 #### Scenario: A pause sub state
 - **WHEN** the state is `Menu` and a system sets `NextState<Pause>` to `Paused`
 - **THEN** nothing happens; after `Game` becomes `Playing`, `Pause` exists at `Running`
 
 ### Requirement: Rust states in TS
-A crate SHALL be able to make a Rust `States` type reachable from TS with `app.ts_state::<S>()`, for a type that reflects its values as unit variants. TS SHALL name it by its type path through the generated `native.d.ts` (`EngineMode.Play`), and use it in `inState`, `stateChanged`, `stateExists`, `OnEnter`, `OnExit`, `OnTransition`, `State<S>`, `NextState<S>` (for a `FreelyMutableState`), `PreviousState<S>` and the state-scoped components. bevy-ts SHALL register `EngineMode` this way.
+A crate SHALL be able to make a Rust `States` type reachable from TS with `app.ts_state::<S>()`, for a `FreelyMutableState` enum that reflects its values as unit variants. TS SHALL import it from the generated built-in module `bevy-ts/states` (`import { EngineMode } from "bevy-ts/states"`, then `EngineMode.Play`), typed in the generated `native.d.ts`, and use it in `inState`, `stateChanged`, `stateExists`, `OnEnter`, `OnExit`, `OnTransition`, `State<S>`, `NextState<S>`, `PreviousState<S>` and the state-scoped components. bevy-ts SHALL register `EngineMode` this way.
 
 #### Scenario: Gating on EngineMode
 - **WHEN** a TS system is gated by `inState(EngineMode.Play)`
