@@ -248,3 +248,33 @@ export function spawnDoor(commands: Commands) {
   `onHit` is removed or renamed, its observers are removed with a warning. If its first param
   stops being an entity event, the reload fails, naming it.
 - A function whose first param is not an entity event fails the run that observes it.
+
+## Session bytes
+
+A reload keeps the world and starts every module again, so a `let` at module level is lost on
+each save. State that must outlive a save, and is keyed by id or too big for a component, goes in
+session bytes: string keys to `Uint8Array` values, held in Rust (`bevy_ts::SessionBytes`, a
+resource), not in the JS heap.
+
+```ts
+import { get, type SessionBytes } from "bevy-ts/session";
+
+const buf = new Uint8Array(64);
+
+export function remember(session: SessionBytes) {
+  session.put("heimdall/camera", new Uint8Array(new Float32Array([x, y, z, yaw]).buffer));
+  const camera = get(session, "heimdall/camera"); // a new Uint8Array, or undefined
+  const n = session.read(`heimdall/agent/${id}`, buf); // into buf, no allocation
+}
+```
+
+- `put(key, value)` stores a copy. `get(session, key)` returns a copy. `read(key, out)` copies into
+  `out` when it fits and returns the value's length; when `out` is shorter, it copies nothing and
+  still returns the length. `size`, `has`, `delete`, `clear`, `count` and `bytes` do what they say.
+  For many keys a frame, `read` into one buffer.
+- It survives every reload, failed ones too. A `restart: true` reload and a Stop empty it, as
+  they reset `Local`s. It is never written to disk.
+- One store for each app, shared by every module: prefix keys with your module (`"heimdall/..."`).
+- A key is 1 to 1,024 bytes of UTF-8. The store holds at most 64 MiB, keys included. A `put` past
+  either limit throws and changes nothing.
+- Rust reads and writes the same store as `Res<SessionBytes>` / `ResMut<SessionBytes>`.
