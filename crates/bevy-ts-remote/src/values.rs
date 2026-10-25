@@ -10,6 +10,7 @@ use bevy::remote::builtin_methods::export_registry_types;
 use bevy::remote::{BrpError, BrpResult, error_codes};
 use bevy_ts::components::{ComponentState, TsComponent, TsComponents};
 use bevy_ts::layout::FieldType;
+use bevy_ts::reflect_asset::{ScriptAssets, Slots};
 use bevy_ts::value::{check_hints, decode_component, encode_field, resolve_path};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
@@ -202,7 +203,10 @@ fn read_reflected(world: &World, entity: Entity, name: &str) -> Result<Value, St
     let (_, rc) = reflected(&registry, name)?;
     let e = world.get_entity(entity).map_err(|_| format!("{entity} is not an entity"))?;
     let value = rc.reflect(e).ok_or_else(|| format!("entity {entity} has no {name}"))?;
-    bevy_ts::reflect_value::read_component(&registry, value.as_partial_reflect())
+    // A handle a script made reads as its asset ref.
+    let assets = world.get_resource::<ScriptAssets>().cloned().unwrap_or_default();
+    let slots = Slots { registry: &registry, server: world.get_resource::<AssetServer>(), assets: &assets, check: false };
+    bevy_ts::reflect_value::read_component_with(&registry, Some(&slots), value.as_partial_reflect())
 }
 
 /// Writes `v` at the reflection path `path` of the entity's component, over the default's value
@@ -215,17 +219,23 @@ fn write_reflected(world: &mut World, entity: Entity, name: &str, path: &str, v:
     let (reg, rc) = reflected(&registry, name).map_err(invalid)?;
     let base = bevy_ts::reflect_value::default_of(&registry, reg.type_id());
     let parsed = (!path.is_empty()).then(|| ParsedPath::parse(path).map_err(|e| invalid(format!("{name}: path {path}: {e}")))).transpose()?;
-    let mut e = world.get_entity_mut(entity).map_err(|_| BrpError::entity_not_found(entity))?;
-    let mut m = rc.reflect_mut(&mut e).ok_or_else(|| invalid(format!("entity {entity} has no {name}")))?;
-    let target = m.as_partial_reflect_mut();
-    let wrote = match &parsed {
-        None => bevy_ts::reflect_value::write_component(&registry, server.as_ref(), target, base.as_deref(), v),
-        Some(at) => {
-            let slot = at.reflect_element_mut(target).map_err(|e| invalid(format!("{name}: path {path}: {e}")))?;
-            let b = base.as_deref().and_then(|b| at.reflect_element(b).ok());
-            bevy_ts::reflect_value::write(&registry, server.as_ref(), slot, b, v)
+    // Asset refs and values go in handle slots; a value's new asset goes in after the write.
+    let assets = world.get_resource::<ScriptAssets>().cloned().unwrap_or_default();
+    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
+    let wrote = {
+        let mut e = world.get_entity_mut(entity).map_err(|_| BrpError::entity_not_found(entity))?;
+        let mut m = rc.reflect_mut(&mut e).ok_or_else(|| invalid(format!("entity {entity} has no {name}")))?;
+        let target = m.as_partial_reflect_mut();
+        match &parsed {
+            None => bevy_ts::reflect_value::write_component_with(slots.cx(), target, base.as_deref(), v),
+            Some(at) => {
+                let slot = at.reflect_element_mut(target).map_err(|e| invalid(format!("{name}: path {path}: {e}")))?;
+                let b = base.as_deref().and_then(|b| at.reflect_element(b).ok());
+                bevy_ts::reflect_value::write_with(slots.cx(), slot, b, v)
+            }
         }
     };
+    bevy_ts::reflect_asset::flush(world);
     wrote.map_err(|e| BrpError { code: error_codes::INVALID_PARAMS, message: format!("{name}{path}: {e}"), data: Some(json!({ "path": path })) })
 }
 

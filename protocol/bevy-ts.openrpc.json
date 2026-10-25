@@ -128,7 +128,7 @@
     {
       "name": "bevy-ts/mutate_components",
       "summary": "Writes one field of a TS or reflected component and marks it changed.",
-      "description": "For a reflected component, path is a reflection path (empty for the whole component) and the value is written by bevy_ts::reflect_value::write over the default's value at that path, in every form TSX takes; what get_components reads can be sent back as is. A component Bevy computes (GlobalTransform, ComputedNode, TextLayoutInfo) refuses writes. Since 1.29.0.",
+      "description": "For a reflected component, path is a reflection path (empty for the whole component) and the value is written by bevy_ts::reflect_value::write over the default's value at that path, in every form TSX takes; what get_components reads can be sent back as is. A Handle<T> slot also takes a script-made asset's ref { $asset, type } or an asset value { $of, props } (since 1.30.0). A component Bevy computes (GlobalTransform, ComputedNode, TextLayoutInfo) refuses writes. Since 1.29.0.",
       "x-bevy-ts-crate": "bevy-ts-remote",
       "params": [
         {

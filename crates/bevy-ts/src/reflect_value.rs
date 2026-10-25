@@ -221,17 +221,27 @@ pub fn read_with(registry: &TypeRegistry, handles: Option<&dyn HandleSlots>, val
 
 /// A whole component's JSON: [`read`], with a newtype as `{ value }`, the field TSX names.
 pub fn read_component(registry: &TypeRegistry, value: &dyn PartialReflect) -> Result<Value, String> {
-    let v = read(registry, value)?;
+    read_component_with(registry, None, value)
+}
+
+/// [`read_component`] with a [`HandleSlots`] hook.
+pub fn read_component_with(registry: &TypeRegistry, handles: Option<&dyn HandleSlots>, value: &dyn PartialReflect) -> Result<Value, String> {
+    let v = read_with(registry, handles, value)?;
     Ok(if newtype(value) { json!({ "value": v }) } else { v })
 }
 
 /// [`write`] for a whole component: a newtype takes `{ value }` as [`read_component`] gives it.
 pub fn write_component(registry: &TypeRegistry, server: Option<&AssetServer>, slot: &mut dyn PartialReflect, base: Option<&dyn PartialReflect>, json: &Value) -> Result<(), String> {
+    write_component_with(Cx { registry, server, handles: None }, slot, base, json)
+}
+
+/// [`write_component`] with everything a [`Cx`] carries.
+pub fn write_component_with(cx: Cx, slot: &mut dyn PartialReflect, base: Option<&dyn PartialReflect>, json: &Value) -> Result<(), String> {
     let json = match json {
         Value::Object(o) if newtype(slot) && o.len() == 1 && o.contains_key("value") => &o["value"],
         _ => json,
     };
-    write(registry, server, slot, base, json)
+    write_with(cx, slot, base, json)
 }
 
 fn newtype(v: &dyn PartialReflect) -> bool {
