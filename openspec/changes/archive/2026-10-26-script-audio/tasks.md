@@ -15,8 +15,6 @@
 - [x] 1.13 An `AudioSource` Bevy cannot decode (`music.mp3`) is removed on load and named in the script log, instead of Bevy panicking when it plays; tests `an_mp3_is_refused_by_name`, and `a_reloaded_source_is_checked_again` (a hot reload keeps the id and replaces the bytes, so the check runs again on new bytes)
 - [x] 1.14 `AudioPlayer` has no `Default`: the engine registers a `ReflectFromWorld` for it, and TSX starts a component from `ReflectDefault`, else `ReflectFromWorld` (`reflect_value::default_of`); test `tsx_writes_audio_player_and_playback_settings`
 
-## 2. Stage 2: scripts and resources (after reflect-coverage stages 2 and 3)
+## 2. Stage 2: scripts and resources
 
-- [ ] 2.1 Test `commands.spawn(AudioPlayer.of("tone.ogg"), PlaybackSettings.of({ mode: "Despawn", volume: { Linear: 0.5 } }))` from a TS system
-- [ ] 2.2 Test `ResMut<GlobalVolume>` and `Res<DefaultSpatialScale>` from TS; document that `GlobalVolume` applies to sinks made after it changes
-- [ ] 2.3 Mark their table rows done in `docs/audio.md`
+Moved to the change `script-audio-stage-2`: it starts after reflect-coverage stages 2 and 3.

@@ -117,7 +117,7 @@ Every public item of `bevy_audio` 0.20, its TS form, and the test or owner. Test
 | Bevy item | TS form | Status | Test / owner |
 |---|---|---|---|
 | `AudioPlugin { global_volume, default_spatial_scale }` | added by the engine where it plays; elsewhere its asset half | done | `only_a_window_or_a_viewport_given_audio_plays`, `a_headless_engine_loads_audio_and_names_audio_player` |
-| `AudioPlayer<AudioSource>(Handle)` | `<AudioPlayer value="sounds/hit.ogg" />`; `With<AudioPlayer>` | done in TSX | `tsx_writes_audio_player_and_playback_settings`; `commands.spawn` of it: reflect-coverage stage 2, then this change's stage 2 |
+| `AudioPlayer<AudioSource>(Handle)` | `<AudioPlayer value="sounds/hit.ogg" />`; `With<AudioPlayer>` | done in TSX | `tsx_writes_audio_player_and_playback_settings`; `commands.spawn` of it: reflect-coverage stage 2, then script-audio-stage-2 |
 | `AudioSource { bytes }`, `AudioLoader` | an asset path | done | `ogg_and_wav_decode_headless`, `an_mp3_is_refused_by_name`, `a_reloaded_source_is_checked_again` |
 | `Decodable`, `AddAudioSource`, `Source`, `Sample`, `SampleRate`, `ChannelCount`, `CpalSample` | none: Rust extension points | — | — |
 | `Pitch { frequency, duration }`, `AudioPlayer<Pitch>` | needs `Assets<Pitch>.add` from TS | missing | script-assets |
@@ -127,8 +127,8 @@ Every public item of `bevy_audio` 0.20, its TS form, and the test or owner. Test
 | `PlaybackMode` | `"Once" \| "Loop" \| "Despawn" \| "Remove"` | done | `tsx_writes_audio_player_and_playback_settings` |
 | `SpatialListener { left_ear_offset, right_ear_offset }`, `new(gap)` | column; `new(gap)` is the two offsets | done (column) | registered by reflection; behaviour is Bevy's, with a device |
 | `SpatialScale`, `new`, `new_2d` | a value in `PlaybackSettings.spatial_scale` and `DefaultSpatialScale` | — | with those |
-| `DefaultSpatialScale` | `Res<DefaultSpatialScale>` | missing | reflect-coverage stage 3, then this change's stage 2 |
-| `GlobalVolume { volume }`, `new` | `ResMut<GlobalVolume>`; applies to sinks made after it changes | missing | reflect-coverage stage 3, then this change's stage 2 |
+| `DefaultSpatialScale` | `Res<DefaultSpatialScale>` | missing | reflect-coverage stage 3, then script-audio-stage-2 |
+| `GlobalVolume { volume }`, `new` | `ResMut<GlobalVolume>`; applies to sinks made after it changes | missing | reflect-coverage stage 3, then script-audio-stage-2 |
 | `Volume::{Linear, Decibels}` | `{ Linear: n } \| { Decibels: n }`; params take linear `number`s | done | `tsx_writes_audio_player_and_playback_settings`, `audio_sinks_control_sinks_with_no_device` |
 | `Volume::to_linear`, `to_decibels`, `increase_by_percentage`, `decrease_by_percentage`, `scale_to_factor`, `fade_towards`, `*`, `/`, `SILENT` | TS math on numbers | declined | — |
 | `AudioSink`, `SpatialAudioSink` (no `Reflect`) | `AudioSinks`, entity first | done | `audio_sinks_control_sinks_with_no_device` |

@@ -100,7 +100,7 @@ A TSX prop whose reflected type is an enum SHALL take Bevy's own shape: a unit v
 - **THEN** the scene fails to load with an error naming the type and its variants
 
 ### Requirement: A written reflected value is the JSON over the default
-When TSX writes a reflected value, keys the JSON leaves out SHALL take their default: the field's value in the component's `ReflectDefault`, or for a newly chosen variant, the variant's default (a newtype variant's inner `ReflectDefault`). A key left out SHALL NOT keep the previous value. A struct or tuple variant with no default SHALL be given whole. An unknown key SHALL fail with an error naming it. A component with no `ReflectDefault` SHALL merge over its current value instead.
+When TSX writes a reflected value, keys the JSON leaves out SHALL take their default: the field's value in the component's `ReflectDefault`, else in a value its `ReflectFromWorld` makes, or for a newly chosen variant, the variant's default (a newtype variant's inner `ReflectDefault`). A key left out SHALL NOT keep the previous value. A struct or tuple variant with no default SHALL be given whole. An unknown key SHALL fail with an error naming it. A component with neither SHALL merge over its current value instead, and TSX SHALL NOT insert it.
 
 #### Scenario: A field dropped from a prop
 - **WHEN** `<Projection value={{ Orthographic: { scale: 2 } }} />` is edited to `<Projection value={{ Orthographic: {} }} />` and reloaded
@@ -109,6 +109,10 @@ When TSX writes a reflected value, keys the JSON leaves out SHALL take their def
 #### Scenario: A typo
 - **WHEN** a prop is `{ Orthographic: { scael: 2 } }`
 - **THEN** the scene fails to load with an error naming `scael` and `OrthographicProjection`
+
+#### Scenario: A component with only FromWorld
+- **WHEN** a scene has `<AudioPlayer value="tone.ogg" />`, whose type has no `Default` and a `ReflectFromWorld` the engine registers
+- **THEN** the entity gets an `AudioPlayer` whose handle is `tone.ogg`
 
 ### Requirement: Colours have one parser that takes every form
 bevy-ts SHALL parse every colour it takes (TSX props, intrinsic and UI colours, script-material `color` params, recipe params) with one parser, `bevy_ts::color`. It SHALL take a hex string (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`), an sRGB array `[r, g, b, a?]`, and Bevy's reflected `Color` shape for every variant (`{ Srgba: {...} }`, `{ LinearRgba: {...} }`, `{ Hsla: {...} }`, ...), with `alpha` 1 when left out and every other channel required. `bevy-ts` SHALL export `srgb(r, g, b, a?)`, `linear(r, g, b, a?)`, `hsl(h, s, l, a?)` and `hex(s)`, which build these values, and the type `ColorValue`.
