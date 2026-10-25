@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Connections only to allowed hosts
-The engine SHALL check every `WebSocket` URL against the allowlist before any DNS lookup or socket. An allowlist entry SHALL be `host` (any port), `host:port`, or a URL whose host and port are taken; host names compare case-insensitively and literally (`localhost` does not allow `127.0.0.1`). A refused URL SHALL open no socket: the constructor SHALL succeed, then `error` and `close` (1006) SHALL fire on the next delivery, and the log SHALL name the origin and say to add it to `net.allow` in `bevy-ts.json`. A `wss:` URL to an allowed host SHALL open over TLS, verifying the server's certificate against the webpki root store and the URL's host name; a failed verification SHALL fail the open as a dropped connection does (`error`, then `close` with 1006), the log naming the TLS error. An `https:` URL SHALL be read as `wss:`, as `http:` is read as `ws:`. A URL with a `headers` option SHALL be refused the same way as a host not allowed unless its host is loopback (`localhost`, `127.0.0.0/8`, `::1`) or its scheme is `wss:`, the log saying headers are sent only over loopback or `wss:`. An empty allowlist SHALL refuse everything.
+The engine SHALL check every `WebSocket` URL against the allowlist before any DNS lookup or socket. An allowlist entry SHALL be `host` (any port), `host:port`, or a URL whose host and port are taken; host names compare case-insensitively and literally (`localhost` does not allow `127.0.0.1`). A refused URL SHALL open no socket: the constructor SHALL succeed, then `error` and `close` (1006) SHALL fire on the next delivery, and the log SHALL name the origin and say to add it to `net.allow` in `bevy-ts.json`. A `wss:` URL to an allowed host SHALL open over TLS, verifying the server's certificate against the webpki root store and the URL's host name; a failed verification SHALL fail the open as a dropped connection does (`error`, then `close` with 1006), the log naming the TLS error. An `https:` URL SHALL be read as `wss:`, as `http:` is read as `ws:`. A URL with a `headers` option SHALL be refused the same way as a host not allowed unless its host is loopback (`localhost`, `127.0.0.0/8`, `::1`), or its scheme is `wss:` and its host and port are the origin the embedding host named in `headersOrigin` (engine-embedding), the log saying headers are sent only to loopback or the host's named origin over `wss:`. An engine with no named origin (the CLI, an embedding without `headersOrigin`) SHALL send headers to loopback only. An empty allowlist SHALL refuse everything.
 
 #### Scenario: Not allowed
 - **WHEN** `net.allow` is `["127.0.0.1:4477"]` and a script opens `ws://example.com/`
@@ -9,11 +9,15 @@ The engine SHALL check every `WebSocket` URL against the allowlist before any DN
 
 #### Scenario: A key to another machine
 - **WHEN** `net.allow` has `10.0.0.5:4477` and a script opens `ws://10.0.0.5:4477/` with `{ headers: { authorization: "Bearer k" } }`
-- **THEN** no connection is attempted, `close` fires with 1006, and the log says headers are sent only over loopback or `wss:`
+- **THEN** no connection is attempted, `close` fires with 1006, and the log says headers are sent only to loopback or the host's named origin over `wss:`
 
 #### Scenario: TLS
-- **WHEN** `net.allow` has `mac.tail.ts.net:8443` and a script opens `wss://mac.tail.ts.net:8443/api/stream` with `{ headers: { authorization: "Bearer k" } }`
+- **WHEN** `net.allow` has `mac.tail.ts.net:8443`, the embedding host named `headersOrigin` `https://mac.tail.ts.net:8443`, and a script opens `wss://mac.tail.ts.net:8443/api/stream` with `{ headers: { authorization: "Bearer k" } }`
 - **THEN** the connection opens over TLS and the handshake request carries the `authorization` header
+
+#### Scenario: A key to another allowed TLS host
+- **WHEN** `net.allow` has `mac.tail.ts.net:8443` and `other.example.com`, `headersOrigin` is `https://mac.tail.ts.net:8443`, and a script opens `wss://other.example.com/` with headers
+- **THEN** no connection is attempted, `close` fires with 1006, and the log says headers are sent only to loopback or the host's named origin over `wss:`
 
 #### Scenario: A certificate that does not verify
 - **WHEN** a script opens an allowed `wss:` URL whose server presents a self-signed certificate

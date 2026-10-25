@@ -58,7 +58,8 @@ void bevy_ts_destroy(BevyTsEngine *e);
 void bevy_ts_free_string(char *s);
 ```
 
-- `config_json`: `{ "game": "<abs path>", "env": { "NAME": "value" }, "headless": false }`.
+- `config_json`: `{ "game": "<abs path>", "env": { "NAME": "value" }, "headersOrigin":
+  "https://host:port", "headless": false }`.
   JSON keeps the ABI stable as options grow.
 - `window`: the platform's native window (Android `ANativeWindow *`), or null.
 - `width`, `height`: physical pixels. `scale`: pixels per point (Android's `density`), so the
@@ -188,17 +189,18 @@ TLS features are stale or tokio-only, so the transport wraps the TCP stream in T
 Let's Encrypt certificates, which webpki roots trust, and a platform verifier on Android needs JNI
 setup. Tests add a root through a Rust-only API, never from a script.
 
-The header rule becomes: headers go to loopback, or over `wss:`, and only ever to a host in the
-allowlist (`net/policy.rs`'s check order is unchanged). A key still never crosses the network in
-clear text. `Refusal::Wss` goes; `Refusal::HeadersNotLoopback`'s message changes.
+The header rule becomes: headers go to loopback, or over `wss:` to the one origin the embedding
+host names in `headersOrigin`, and only ever to a host in the allowlist (`net/policy.rs`'s check
+order is unchanged). The origin compares by host (case-insensitively) and port, the port defaulting
+to 443 for `https:`/`wss:`. A key still never crosses the network in clear text, and a game whose
+allowlist is wider than its author meant can't send the key elsewhere. `Refusal::Wss` goes;
+`Refusal::HeadersNotLoopback` becomes `Refusal::HeadersOrigin`, with a new message. The CLI names
+no origin, so on the desktop headers go to loopback only, as today.
 
-Headers go to any allowlisted `wss:` host, not only to an origin the host names. The allowlist is
-already the game author's list of where it may connect, and a second list would split one rule in
-two. The alternative, headers only to an origin the embedding host passes, protects a key from a
-game whose allowlist is wider than its author meant; the operator decides (proposal, Impact).
+Decided by lead@abyme for the operator (2026-10-24), over headers to any allowlisted `wss:` host.
 
 On the phone: the host passes `ABYME_URL=https://mac.<tailnet>.ts.net:<port>` and
-`ABYME_KEY=<device key>` in `env`; the game's `net.allow` holds `${ABYME_URL}`; `connect()` sends
+`ABYME_KEY=<device key>` in `env`, and the same URL as `headersOrigin`; the game's `net.allow` holds `${ABYME_URL}`; `connect()` sends
 `authorization: Bearer <key>` over `wss:`. abymed accepts a device key that way, as it does a
 CLI's `ABYME_KEY` (abyme `docs/abymed.md`, Devices); the cookie is only for browsers.
 

@@ -31,8 +31,9 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
 - **`wss:`.** The `WebSocket` client gains TLS (rustls with webpki roots). `wss:` URLs to allowed
   hosts open on every target.
 - **The header rule.** A `headers` option is allowed to a loopback host, as now, or over `wss:`
-  to an allowed host. A key still never crosses the network in clear text. **BREAKING** only for
-  the refusal message, which changes.
+  to the one origin the embedding host names (`headersOrigin`), never to any other allowed host.
+  A key still never crosses the network in clear text. **BREAKING** only for the refusal message,
+  which changes.
 - **Input moves out of the viewport crate.** The `ViewportInput` to Bevy-message mapping becomes
   platform-neutral, so the macOS viewport and the Android engine apply the same events one way.
 - **Shipped play becomes a library.** The play app (game folder, scripts, net policy, plugin set)
@@ -53,7 +54,7 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
 
 ### Modified Capabilities
 
-- `script-networking`: `wss:` is supported; headers are allowed over `wss:`; the environment can
+- `script-networking`: `wss:` is supported; headers are allowed over `wss:` to the host's named origin; the environment can
   come from the host.
 - `shipped-game`: a game folder can be given by an embedding host, not only found beside the
   executable or named to `bevy-ts play`.
@@ -78,8 +79,8 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
     patched deno_core until upstream takes the fix. The alternative is QuickJS-ng (no JIT, 1 MB).
   - **A TLS crate.** `futures-rustls` with `ring` and `webpki-roots`, in `bevy-ts` on every
     target. New dependencies.
-  - **The header rule.** Headers allowed over `wss:` to any allowlisted host, not only loopback.
-    The alternative is headers only to an origin the embedding host names.
+  - **The header rule.** Decided (lead@abyme for the operator, 2026-10-24): headers go over `wss:`
+    only to the origin the embedding host names, not to any allowlisted host.
   - **The engine as a per-version download, loaded by path.** The `.so` is not in abyme's APK: the
     host downloads one per bevy-ts version into `filesDir/engines/<version>/` and loads it with
     `Engine.load(path)` (`System.load`). The APK stays at 8.6 MB, but it is native code

@@ -1,7 +1,7 @@
 ## 0. Gate on the spike
 
 - [x] 0.1 Read `android-native/spike`'s report: V8 from source on the phone, deno_core 0.412's hello world (deno_core#738), Bevy 0.20 drawing into a window from a raw handle. Update design.md decisions 3 and 7, the android-engine spec's JS requirement and these tasks if any fails
-- [ ] 0.2 Get the operator's go on the ask-first items in proposal.md's Impact before group 2
+- [x] 0.2 Get the operator's go on the ask-first items in proposal.md's Impact before group 2
 
 ## 1. Move play and input into `bevy-ts-embed` (no behaviour change)
 
@@ -15,9 +15,9 @@
 ## 2. `wss:` and the header rule
 
 - [ ] 2.1 Add `futures-rustls` (ring) with `webpki-roots` to the async-io transport, `async-tungstenite` kept on `handshake`, in `crates/bevy-ts/src/net/`; `wss:` and `https:` open over TLS with host-name verification
-- [ ] 2.2 Remove `Refusal::Wss`; headers allowed to loopback or over `wss:`, with the new message
+- [ ] 2.2 Remove `Refusal::Wss`; headers allowed to loopback or over `wss:` to the host's `headersOrigin` only, with the new message
 - [ ] 2.3 A Rust-only API to add a trusted root, for tests
-- [ ] 2.4 Tests in `crates/bevy-ts/tests/it/`: a local TLS server on `common::free_port()` with a test root (open, headers carried), a self-signed server without it (1006, TLS error logged), `ws:` plus headers to a non-loopback host still refused
+- [ ] 2.4 Tests in `crates/bevy-ts/tests/it/`: a local TLS server on `common::free_port()` with a test root (open, headers carried), a self-signed server without it (1006, TLS error logged), `ws:` plus headers to a non-loopback host still refused, `wss:` plus headers to an allowed host that is not `headersOrigin` refused
 - [ ] 2.5 `docs/networking.md`: `wss:`, the header rule, the refusal table
 
 ## 3. The embedding runner, window and C ABI
