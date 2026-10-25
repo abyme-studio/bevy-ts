@@ -90,22 +90,20 @@ fn refused_opens_never_reach_the_transport() {
         handle.request(NetRequest::Open { id: ConnId(id), generation: g, request: OpenRequest { url: url.into(), protocols: vec![], headers } });
     };
     req(1, "ws://example.com/", &[]);
-    req(2, "wss://127.0.0.1:4477/", &[]);
-    req(3, "ws://127.0.0.1:4477/", &[("Origin", "http://evil")]);
-    req(4, "ws://127.0.0.1:5000/", &[("authorization", "Bearer k")]);
+    req(2, "ws://127.0.0.1:4477/", &[("Origin", "http://evil")]);
+    req(3, "ws://127.0.0.1:5000/", &[("authorization", "Bearer k")]);
     app.update(); // the requests reach core
     app.update(); // their events reach the script
     let conns = fake.conns();
     assert_eq!(conns.len(), 1, "only the loopback open with an allowed header goes out: {conns:?}");
     let events = delivered(&handle);
-    for id in 1..=3 {
+    for id in 1..=2 {
         let id = ConnId(id);
         let at = events.iter().position(|e| *e == NetEvent::Error { id }).unwrap_or_else(|| panic!("no error for {id:?}: {events:?}"));
         assert_eq!(events[at + 1], NetEvent::Close { id, code: 1006, reason: String::new(), clean: false });
     }
     let log = logs(&app).join("\n");
     assert!(log.contains("example.com:80 is not in net.allow; add it to net.allow in bevy-ts.json"), "{log}");
-    assert!(log.contains("wss: is not supported yet"), "{log}");
     assert!(log.contains("the engine sends no Origin"), "{log}");
 }
 

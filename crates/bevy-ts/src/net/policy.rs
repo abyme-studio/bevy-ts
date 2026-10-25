@@ -13,12 +13,37 @@ struct Allowed {
     port: Option<u16>,
 }
 
+/// The one origin an embedding host lets scripts send `headers` to over `wss:` (its
+/// `headersOrigin`): a host, compared case-insensitively, and a port.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HeadersOrigin {
+    /// Lower-case; an IPv6 address without brackets.
+    pub host: String,
+    pub port: u16,
+}
+
+impl HeadersOrigin {
+    /// Parses an `https:` or `wss:` URL (`https://mac.tail.ts.net:8443`); the port defaults to
+    /// 443, and a path is ignored. An error says what is wrong with it.
+    pub fn parse(url: &str) -> Result<Self, String> {
+        let (scheme, authority) = split_url(url.trim()).ok_or_else(|| format!("headersOrigin {url:?} is not a URL"))?;
+        if scheme != "https" && scheme != "wss" {
+            return Err(format!("headersOrigin {url:?} is not an https: or wss: URL"));
+        }
+        let (host, port) = host_port(authority).map_err(|e| format!("headersOrigin {url:?}: {e}"))?;
+        Ok(HeadersOrigin { host, port: port.unwrap_or(443) })
+    }
+}
+
 /// The network allowlist and the visible environment, fixed when the engine starts.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct NetPolicy {
     allow: Vec<Allowed>,
     /// What `process.env` shows.
     pub env: BTreeMap<String, String>,
+    /// Where `headers` may go besides loopback: this origin, over `wss:` only. `None` (the CLI)
+    /// sends headers to loopback only.
+    pub headers_origin: Option<HeadersOrigin>,
 }
 
 /// Why an open was refused; its `Display` is the log line's reason.
@@ -26,10 +51,11 @@ pub struct NetPolicy {
 pub enum Refusal {
     EditMode,
     BadUrl(String),
-    Wss,
     NotAllowed { origin: String },
-    HeadersNotLoopback,
+    /// `headers` to a host that is neither loopback nor the host's named origin over `wss:`.
     HeadersOrigin,
+    /// `headers` naming `Origin`.
+    OriginHeader,
 }
 
 impl fmt::Display for Refusal {
@@ -37,10 +63,9 @@ impl fmt::Display for Refusal {
         match self {
             Refusal::EditMode => f.write_str("networking runs only in play; open it from a system or once the game plays"),
             Refusal::BadUrl(why) => write!(f, "not a WebSocket URL: {why}"),
-            Refusal::Wss => f.write_str("wss: is not supported yet; use ws: to a loopback host"),
             Refusal::NotAllowed { origin } => write!(f, "{origin} is not in net.allow; add it to net.allow in bevy-ts.json"),
-            Refusal::HeadersNotLoopback => f.write_str("headers are sent only over loopback until wss: is supported"),
-            Refusal::HeadersOrigin => f.write_str("the engine sends no Origin header; remove it from headers"),
+            Refusal::HeadersOrigin => f.write_str("headers are sent only to loopback or the host's named origin over wss:"),
+            Refusal::OriginHeader => f.write_str("the engine sends no Origin header; remove it from headers"),
         }
     }
 }
@@ -101,12 +126,12 @@ fn default_port(scheme: &str) -> Option<u16> {
     }
 }
 
-/// Parses a `ws:` or `wss:` URL.
+/// Parses a `ws:` or `wss:` URL; `http:` reads as `ws:` and `https:` as `wss:`.
 pub fn parse_target(url: &str) -> Result<Target, String> {
     let (scheme, authority) = split_url(url).ok_or("no scheme")?;
     let secure = match scheme.as_str() {
-        "ws" => false,
-        "wss" => true,
+        "ws" | "http" => false,
+        "wss" | "https" => true,
         other => return Err(format!("the scheme is {other}:, not ws:")),
     };
     let (host, port) = host_port(authority)?;
@@ -182,24 +207,27 @@ impl NetPolicy {
         self.allow.iter().any(|a| a.host == t.host && a.port.is_none_or(|p| p == t.port))
     }
 
-    /// Checks an open before any DNS lookup or socket, in order: edit mode, the URL, `wss:`, the
-    /// allowlist, then headers (loopback only, never `Origin`). Returns the origin to log by.
+    /// Whether `headers` may go to `t`: loopback, or the named origin over `wss:`.
+    fn headers_may_go(&self, t: &Target) -> bool {
+        is_loopback(&t.host) || (t.secure && self.headers_origin.as_ref().is_some_and(|o| o.host == t.host && o.port == t.port))
+    }
+
+    /// Checks an open before any DNS lookup or socket, in order: edit mode, the URL, the
+    /// allowlist, then headers (never `Origin`; to loopback, or over `wss:` to the named origin).
+    /// Returns the origin to log by.
     pub fn check(&self, url: &str, headers: &[(String, String)], edit: bool) -> Result<String, Refusal> {
         if edit {
             return Err(Refusal::EditMode);
         }
         let t = parse_target(url).map_err(Refusal::BadUrl)?;
-        if t.secure {
-            return Err(Refusal::Wss);
-        }
         if !self.allows(&t) {
             return Err(Refusal::NotAllowed { origin: t.origin() });
         }
         if headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("origin")) {
-            return Err(Refusal::HeadersOrigin);
+            return Err(Refusal::OriginHeader);
         }
-        if !headers.is_empty() && !is_loopback(&t.host) {
-            return Err(Refusal::HeadersNotLoopback);
+        if !headers.is_empty() && !self.headers_may_go(&t) {
+            return Err(Refusal::HeadersOrigin);
         }
         Ok(t.origin())
     }
@@ -267,20 +295,44 @@ mod tests {
         let p = policy(&["127.0.0.1:4477", "10.0.0.5:4477"], &[], &[]);
         let h = |k: &str| vec![(k.to_string(), "x".to_string())];
         assert_eq!(p.check("ws://127.0.0.1:4477/", &[], true), Err(Refusal::EditMode));
-        assert_eq!(p.check("wss://127.0.0.1:4477/", &[], false), Err(Refusal::Wss));
+        assert!(ok(&p, "wss://127.0.0.1:4477/"), "wss: to an allowed host opens");
         assert!(matches!(p.check("ftp://127.0.0.1:4477/", &[], false), Err(Refusal::BadUrl(_))));
         assert_eq!(p.check("ws://example.com/", &[], false), Err(Refusal::NotAllowed { origin: "example.com:80".into() }));
-        assert_eq!(p.check("ws://10.0.0.5:4477/", &h("authorization"), false), Err(Refusal::HeadersNotLoopback));
-        assert_eq!(p.check("ws://127.0.0.1:4477/", &h("Origin"), false), Err(Refusal::HeadersOrigin));
+        assert_eq!(p.check("ws://10.0.0.5:4477/", &h("authorization"), false), Err(Refusal::HeadersOrigin));
+        assert_eq!(p.check("wss://10.0.0.5:4477/", &h("authorization"), false), Err(Refusal::HeadersOrigin), "no named origin: loopback only");
+        assert_eq!(p.check("ws://127.0.0.1:4477/", &h("Origin"), false), Err(Refusal::OriginHeader));
         assert_eq!(p.check("ws://127.0.0.1:4477/", &h("authorization"), false), Ok("127.0.0.1:4477".into()));
         assert!(p.check("ws://10.0.0.5:4477/", &[], false).is_ok());
         assert!(NetPolicy::default().check("ws://127.0.0.1/", &[], false).is_err(), "an empty allowlist refuses everything");
         // The log lines say what to do.
         assert!(Refusal::NotAllowed { origin: "example.com:80".into() }.to_string().contains("net.allow in bevy-ts.json"));
-        assert!(Refusal::Wss.to_string().contains("wss: is not supported yet"));
-        assert!(Refusal::HeadersNotLoopback.to_string().contains("only over loopback"));
-        assert!(Refusal::HeadersOrigin.to_string().contains("sends no Origin"));
+        assert!(Refusal::HeadersOrigin.to_string().contains("only to loopback or the host's named origin over wss:"));
+        assert!(Refusal::OriginHeader.to_string().contains("sends no Origin"));
         assert!(Refusal::EditMode.to_string().contains("only in play"));
+    }
+
+    #[test]
+    fn headers_go_over_wss_only_to_the_named_origin() {
+        let mut p = policy(&["mac.tail.ts.net:8443", "other.example.com", "10.0.0.5"], &[], &[]);
+        p.headers_origin = Some(HeadersOrigin::parse("https://Mac.Tail.ts.net:8443").unwrap());
+        let h = vec![("authorization".to_string(), "Bearer k".to_string())];
+        assert_eq!(p.check("wss://mac.tail.ts.net:8443/api/stream", &h, false), Ok("mac.tail.ts.net:8443".into()));
+        assert!(p.check("https://MAC.tail.ts.net:8443/", &h, false).is_ok(), "https: reads as wss:");
+        assert_eq!(p.check("ws://mac.tail.ts.net:8443/", &h, false), Err(Refusal::HeadersOrigin), "never in clear text");
+        assert_eq!(p.check("wss://other.example.com/", &h, false), Err(Refusal::HeadersOrigin), "another allowed host");
+        assert_eq!(p.check("wss://10.0.0.5:8443/", &h, false), Err(Refusal::HeadersOrigin), "another port");
+        assert_eq!(p.check("wss://mac.tail.ts.net:9000/", &h, false), Err(Refusal::NotAllowed { origin: "mac.tail.ts.net:9000".into() }), "the allowlist runs first");
+        assert!(p.check("wss://other.example.com/", &[], false).is_ok(), "no headers, no rule");
+    }
+
+    #[test]
+    fn headers_origin_parses() {
+        assert_eq!(HeadersOrigin::parse("https://mac.tail.ts.net:8443"), Ok(HeadersOrigin { host: "mac.tail.ts.net".into(), port: 8443 }));
+        assert_eq!(HeadersOrigin::parse("wss://Host.Test/api"), Ok(HeadersOrigin { host: "host.test".into(), port: 443 }));
+        assert_eq!(HeadersOrigin::parse("https://[::1]:9"), Ok(HeadersOrigin { host: "::1".into(), port: 9 }));
+        for junk in ["", "mac.tail.ts.net", "http://mac:8443", "ws://mac", "https://", "https://mac:x", "https://mac:99999"] {
+            assert!(HeadersOrigin::parse(junk).is_err(), "{junk:?}");
+        }
     }
 
     #[test]

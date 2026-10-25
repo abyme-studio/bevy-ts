@@ -16,8 +16,7 @@ has Node's.
 - `AbortController`, `AbortSignal` (with `abort()`, `timeout()` and `any()`)
 - `process`, with `env` only
 
-Missing: `fetch`, `wss:`, `Blob`, `process.argv` and Node modules. `typeof fetch` is
-`"undefined"`. `wss:` needs a TLS crate and comes later; until then the only target is loopback.
+Missing: `fetch`, `Blob`, `process.argv` and Node modules. `typeof fetch` is `"undefined"`.
 
 Types come from `bevy-ts/globals`:
 
@@ -65,17 +64,31 @@ its own environment when it starts ([build.md](build.md)).
 A refused open never touches the network. The constructor still succeeds. At the next delivery
 `error` fires, then `close` with 1006, and the log gets a warning:
 
-| case | log line |
-| --- | --- |
-| host not allowed | `WebSocket ws://example.com/: example.com:80 is not in net.allow; add it to net.allow in bevy-ts.json` |
-| `wss:` | `WebSocket wss://…: wss: is not supported yet; use ws: to a loopback host` |
-| `headers` to a host that is not loopback | `WebSocket …: headers are sent only over loopback until wss: is supported` |
-| `headers` naming `Origin` | `WebSocket …: the engine sends no Origin header; remove it from headers` |
-| edit mode | `WebSocket …: networking runs only in play; open it from a system or once the game plays` |
-| not a `ws:` URL | `WebSocket …: not a WebSocket URL: …` |
+| case | `Refusal` | log line |
+| --- | --- | --- |
+| host not allowed | `NotAllowed` | `WebSocket ws://example.com/: example.com:80 is not in net.allow; add it to net.allow in bevy-ts.json` |
+| `headers` to a host that is not loopback or the named origin over `wss:` | `HeadersOrigin` | `WebSocket …: headers are sent only to loopback or the host's named origin over wss:` |
+| `headers` naming `Origin` | `OriginHeader` | `WebSocket …: the engine sends no Origin header; remove it from headers` |
+| edit mode | `EditMode` | `WebSocket …: networking runs only in play; open it from a system or once the game plays` |
+| not a `ws:` URL | `BadUrl` | `WebSocket …: not a WebSocket URL: …` |
 
-Plain bad input (a relative URL, a fragment, repeated protocols) throws `SyntaxError` from the
-constructor, as the web does. An `http:` URL is read as `ws:`.
+The checks run in that order: edit mode, the URL, the allowlist, then headers. Plain bad input (a
+relative URL, a fragment, repeated protocols) throws `SyntaxError` from the constructor, as the
+web does. An `http:` URL is read as `ws:`, and `https:` as `wss:`.
+
+## `wss:`
+
+A `wss:` URL to an allowed host opens over TLS: rustls on ring, `futures-rustls` around the TCP
+stream, the certificate checked against the webpki roots (`webpki-roots`, Mozilla's set) and the
+URL's host name. There is no platform verifier: `tailscale serve`'s Let's Encrypt certificates
+chain to a webpki root. It is the same on every target, Android included.
+
+A certificate that does not verify fails the open as a dropped connection does: `error`, then
+`close` with 1006. The log names the TLS error:
+
+```
+WebSocket wss://mac.tail.ts.net:8443/api/stream: TLS failed: invalid peer certificate: UnknownIssuer
+```
 
 ## The WebSocket
 
@@ -99,9 +112,17 @@ Non-standard, as Deno has it: the second argument may be `{ protocols, headers }
 new WebSocket("ws://127.0.0.1:4477/api/stream", { headers: { authorization: `Bearer ${key}` } });
 ```
 
-It is refused unless the host is loopback (`localhost`, `127.0.0.0/8`, `::1`), so a key never
-crosses the network in clear text. Nothing in bevy-ts depends on it; a browser has no such
-option.
+It is refused unless the host is loopback (`localhost`, `127.0.0.0/8`, `::1`), or the URL is
+`wss:` to the one origin the embedding host names (`headersOrigin`). So a key never crosses the
+network in clear text, and a game whose `net.allow` is wider than its author meant can't send it
+to another host, even over `wss:`. The allowlist still runs first: the named origin must be in
+`net.allow` too. Nothing in bevy-ts depends on the option; a browser has no such thing.
+
+The named origin is a host and a port (`https://mac.tail.ts.net:8443`; the port defaults to 443),
+the host compared case-insensitively. In Rust it is `NetPolicy::headers_origin`, a
+`HeadersOrigin` from `HeadersOrigin::parse(url)`, which returns an error for anything but an
+`https:` or `wss:` URL with a host. `bevy-ts dev` and a desktop game name none, so there headers go
+to loopback only.
 
 The handshake sends no `Origin` header, as Deno does: a script has no page origin, and abymed
 answers `403` to a foreign one. A `headers` option naming `Origin` is refused.
@@ -190,3 +211,11 @@ The handle can also `refuse` an open, `push_binary`, `server_close(id, Some(code
 `written` bytes, and read each connection's handshake (`request.headers`, `request.protocols`),
 sent frames and the close the script or engine asked for. At 16 ms a frame, `setTimeout(f, 50)`
 fires in the fourth frame after it was set.
+
+A test of `wss:` uses the real `SocketTransport` with a root of its own and a host resolved to its
+local server, both from Rust only: no script or project file reaches them.
+
+```rust
+let transport = SocketTransport::default().with_root(ca_der).with_resolve("mac.tail.ts.net", addr);
+let mut net = NetRegistry::new(Box::new(transport));
+```

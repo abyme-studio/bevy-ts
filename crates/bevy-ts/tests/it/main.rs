@@ -10,3 +10,4 @@ mod plugin_api;
 mod restart;
 mod slots;
 mod socket;
+mod tls;

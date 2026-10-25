@@ -11,7 +11,7 @@ pub mod policy;
 mod socket;
 
 pub use fake::{FakeConn, FakeTransport};
-pub use policy::{NetPolicy, Refusal};
+pub use policy::{HeadersOrigin, NetPolicy, Refusal};
 pub use socket::SocketTransport;
 
 use crate::log::{LogLevel, ScriptLog};
@@ -49,7 +49,8 @@ pub struct OpenRequest {
     /// A `ws:` or `wss:` URL, as the script side normalised it.
     pub url: String,
     pub protocols: Vec<String>,
-    /// The non-standard, Deno-shaped `headers` option; loopback only.
+    /// The non-standard, Deno-shaped `headers` option: to loopback, or over `wss:` to the
+    /// host's named origin.
     pub headers: Vec<(String, String)>,
 }
 
@@ -106,6 +107,9 @@ pub trait Transport {
     fn close(&mut self, id: ConnId, code: Option<u16>, reason: &str);
     /// Appends every event received since the last poll, each connection's in order.
     fn poll(&mut self, out: &mut Vec<NetEvent>);
+    /// Appends warnings for the log (a TLS error that failed an open), each a whole line. Called
+    /// after [`Transport::poll`]: a warning is ready by the time its connection's `close` is.
+    fn take_log(&mut self, _out: &mut Vec<String>) {}
 }
 
 /// Messages a connection may hold undelivered.
@@ -317,6 +321,7 @@ impl NetRegistry {
             }
         }
         self.polled = polled;
+        self.transport.take_log(&mut log);
         (batch, log)
     }
 

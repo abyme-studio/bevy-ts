@@ -1,4 +1,5 @@
-//! The real transport: one `IoTaskPool` task per connection over `async-tungstenite`.
+//! The real transport: one `IoTaskPool` task per connection over `async-tungstenite`, with
+//! `wss:` over rustls (ring, webpki roots).
 //!
 //! A task connects, reads into a bounded channel the main thread drains on [`Transport::poll`],
 //! and writes what an unbounded channel brings it. When the inbound channel is full the task
@@ -15,10 +16,19 @@ use async_tungstenite::tungstenite::http::{HeaderName, HeaderValue};
 use async_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use async_tungstenite::tungstenite::protocol::{CloseFrame, WebSocketConfig};
 use async_tungstenite::tungstenite::{Message, Utf8Bytes};
+use bevy::tasks::futures_lite::io::{AsyncRead, AsyncWrite};
 use bevy::tasks::futures_lite::{StreamExt, future};
 use bevy::tasks::{IoTaskPool, TaskPool};
+use futures_rustls::TlsConnector;
+use futures_rustls::client::TlsStream;
+use futures_rustls::rustls::pki_types::{CertificateDer, ServerName};
+use futures_rustls::rustls::{ClientConfig, RootCertStore, crypto};
 use std::collections::HashMap;
+use std::io;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 /// How long a closing connection waits for the other side's close before dropping the socket.
@@ -27,7 +37,45 @@ const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Headers the handshake writes itself; a script's `headers` may not repeat them.
 const OWN_HEADERS: [&str; 7] = ["host", "connection", "upgrade", "sec-websocket-version", "sec-websocket-key", "sec-websocket-protocol", "origin"];
 
-type Socket = WebSocketStream<Async<TcpStream>>;
+type Socket = WebSocketStream<Stream>;
+
+/// A connection's bytes: plain for `ws:`, TLS for `wss:`.
+enum Stream {
+    Plain(Async<TcpStream>),
+    Tls(Box<TlsStream<Async<TcpStream>>>),
+}
+
+impl AsyncRead for Stream {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        match self.get_mut() {
+            Stream::Plain(s) => Pin::new(s).poll_read(cx, buf),
+            Stream::Tls(s) => Pin::new(s.as_mut()).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for Stream {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        match self.get_mut() {
+            Stream::Plain(s) => Pin::new(s).poll_write(cx, buf),
+            Stream::Tls(s) => Pin::new(s.as_mut()).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Stream::Plain(s) => Pin::new(s).poll_flush(cx),
+            Stream::Tls(s) => Pin::new(s.as_mut()).poll_flush(cx),
+        }
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Stream::Plain(s) => Pin::new(s).poll_close(cx),
+            Stream::Tls(s) => Pin::new(s.as_mut()).poll_close(cx),
+        }
+    }
+}
 
 /// What the main thread asks of a connection's task.
 enum Out {
@@ -40,10 +88,71 @@ struct Conn {
     events: Receiver<NetEvent>,
 }
 
-/// Connections over TCP sockets, `ws:` only.
-#[derive(Default)]
+/// What a connection's task needs besides its request.
+#[derive(Clone)]
+struct Dial {
+    tls: Arc<ClientConfig>,
+    /// Hosts that connect to an address without DNS.
+    resolve: Arc<HashMap<String, SocketAddr>>,
+    log: Sender<String>,
+}
+
+/// Connections over TCP sockets: `ws:`, and `wss:` verified against the webpki roots and the
+/// URL's host name.
 pub struct SocketTransport {
     conns: HashMap<ConnId, Conn>,
+    /// Roots trusted besides webpki's: tests' only.
+    roots: Vec<CertificateDer<'static>>,
+    resolve: HashMap<String, SocketAddr>,
+    /// Built at the first open, from the roots.
+    dial: Option<Dial>,
+    log_tx: Sender<String>,
+    log: Receiver<String>,
+}
+
+impl Default for SocketTransport {
+    fn default() -> Self {
+        let (log_tx, log) = async_channel::unbounded();
+        SocketTransport { conns: HashMap::new(), roots: Vec::new(), resolve: HashMap::new(), dial: None, log_tx, log }
+    }
+}
+
+impl SocketTransport {
+    /// Trusts `der`, a DER certificate, as a root besides webpki's. For tests, from Rust only:
+    /// nothing a script or a project file names reaches it.
+    pub fn with_root(mut self, der: impl Into<Vec<u8>>) -> Self {
+        self.roots.push(CertificateDer::from(der.into()));
+        self.dial = None;
+        self
+    }
+
+    /// Connects `host` to `addr` without a DNS lookup, as curl's `--resolve` does; the TLS name
+    /// and the `Host` header stay `host`. For tests, from Rust only.
+    pub fn with_resolve(mut self, host: &str, addr: SocketAddr) -> Self {
+        self.resolve.insert(host.to_ascii_lowercase(), addr);
+        self.dial = None;
+        self
+    }
+
+    fn dial(&mut self) -> Dial {
+        if let Some(d) = &self.dial {
+            return d.clone();
+        }
+        let mut roots = RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
+        for der in &self.roots {
+            if let Err(e) = roots.add(der.clone()) {
+                bevy::log::warn!("a test root is skipped: {e}");
+            }
+        }
+        let tls = ClientConfig::builder_with_provider(Arc::new(crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()
+            .expect("ring supports the default protocol versions")
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        let d = Dial { tls: Arc::new(tls), resolve: Arc::new(self.resolve.clone()), log: self.log_tx.clone() };
+        self.dial = Some(d.clone());
+        d
+    }
 }
 
 impl Transport for SocketTransport {
@@ -51,7 +160,8 @@ impl Transport for SocketTransport {
         let (out, out_rx) = async_channel::unbounded();
         let (events_tx, events) = async_channel::bounded(MAX_QUEUED_MESSAGES + 1);
         let request = request.clone();
-        IoTaskPool::get_or_init(TaskPool::new).spawn(run(id, request, events_tx, out_rx)).detach();
+        let dial = self.dial();
+        IoTaskPool::get_or_init(TaskPool::new).spawn(run(id, request, dial, events_tx, out_rx)).detach();
         self.conns.insert(id, Conn { out, events });
     }
 
@@ -76,6 +186,12 @@ impl Transport for SocketTransport {
             }
         });
     }
+
+    fn take_log(&mut self, out: &mut Vec<String>) {
+        while let Ok(line) = self.log.try_recv() {
+            out.push(line);
+        }
+    }
 }
 
 fn close_event(id: ConnId, code: u16, reason: String, clean: bool) -> NetEvent {
@@ -83,10 +199,10 @@ fn close_event(id: ConnId, code: u16, reason: String, clean: bool) -> NetEvent {
 }
 
 /// One connection, from DNS to its last event.
-async fn run(id: ConnId, request: OpenRequest, events: Sender<NetEvent>, out: Receiver<Out>) {
+async fn run(id: ConnId, request: OpenRequest, dial: Dial, events: Sender<NetEvent>, out: Receiver<Out>) {
     // Connecting: a close abandons it with 1006 (core drops it if it forgot the id); a dropped
     // transport abandons it with nothing.
-    let connected = future::or(async { Some(connect(&request).await) }, async {
+    let connected = future::or(async { Some(connect(&request, &dial).await) }, async {
         while let Ok(Out::Send(_)) = out.recv().await {}
         None
     })
@@ -98,7 +214,11 @@ async fn run(id: ConnId, request: OpenRequest, events: Sender<NetEvent>, out: Re
             }
             return;
         }
-        Some(Err(())) => {
+        Some(Err(why)) => {
+            if let Some(line) = why {
+                // Before the close, so the registry has the line when it takes the close.
+                let _ = dial.log.send(line).await;
+            }
             let _ = events.send(close_event(id, ABNORMAL, String::new(), false)).await;
             return;
         }
@@ -199,27 +319,42 @@ fn peer_close(id: ConnId, frame: Option<CloseFrame>) -> NetEvent {
     }
 }
 
-/// Resolves, connects and handshakes; returns the socket and the protocol the server chose.
-async fn connect(request: &OpenRequest) -> Result<(Socket, String), ()> {
-    let mut req = request.url.as_str().into_client_request().map_err(|_| ())?;
-    if req.uri().scheme_str() != Some("ws") {
-        return Err(());
-    }
-    let host = req.uri().host().ok_or(())?.trim_start_matches('[').trim_end_matches(']').to_string();
-    let port = req.uri().port_u16().unwrap_or(80);
+/// Resolves, connects, then TLS for `wss:`, and handshakes; returns the socket and the protocol
+/// the server chose. A failure worth a log line (TLS) carries it.
+async fn connect(request: &OpenRequest, dial: &Dial) -> Result<(Socket, String), Option<String>> {
+    // `http:` reads as `ws:` and `https:` as `wss:`.
+    let url = match request.url.split_once("://") {
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("http") => format!("ws://{rest}"),
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("https") => format!("wss://{rest}"),
+        _ => request.url.clone(),
+    };
+    let mut req = url.as_str().into_client_request().map_err(|_| None)?;
+    let secure = match req.uri().scheme_str() {
+        Some("ws") => false,
+        Some("wss") => true,
+        _ => return Err(None),
+    };
+    let host = req.uri().host().ok_or(None)?.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    let port = req.uri().port_u16().unwrap_or(if secure { 443 } else { 80 });
     let headers = req.headers_mut();
     if !request.protocols.is_empty() {
-        headers.insert("sec-websocket-protocol", HeaderValue::from_str(&request.protocols.join(", ")).map_err(|_| ())?);
+        headers.insert("sec-websocket-protocol", HeaderValue::from_str(&request.protocols.join(", ")).map_err(|_| None)?);
     }
     for (name, value) in &request.headers {
         if OWN_HEADERS.iter().any(|h| h.eq_ignore_ascii_case(name)) {
             continue;
         }
-        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| ())?;
-        headers.append(name, HeaderValue::from_str(value).map_err(|_| ())?);
+        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| None)?;
+        headers.append(name, HeaderValue::from_str(value).map_err(|_| None)?);
     }
 
-    let addrs: Vec<SocketAddr> = blocking::unblock(move || (host.as_str(), port).to_socket_addrs().map(Iterator::collect)).await.map_err(|_| ())?;
+    let addrs: Vec<SocketAddr> = match dial.resolve.get(&host) {
+        Some(addr) => vec![*addr],
+        None => {
+            let h = host.clone();
+            blocking::unblock(move || (h.as_str(), port).to_socket_addrs().map(Iterator::collect)).await.map_err(|_| None)?
+        }
+    };
     let mut stream = None;
     for addr in addrs {
         if let Ok(s) = Async::<TcpStream>::connect(addr).await {
@@ -227,10 +362,17 @@ async fn connect(request: &OpenRequest) -> Result<(Socket, String), ()> {
             break;
         }
     }
-    let stream = stream.ok_or(())?;
+    let tcp = stream.ok_or(None)?;
+    let stream = if secure {
+        let name = ServerName::try_from(host).map_err(|_| None)?;
+        let tls = TlsConnector::from(dial.tls.clone()).connect(name, tcp).await.map_err(|e| Some(format!("WebSocket {}: TLS failed: {e}", request.url)))?;
+        Stream::Tls(Box::new(tls))
+    } else {
+        Stream::Plain(tcp)
+    };
 
     let config = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE_BYTES)).max_frame_size(Some(MAX_MESSAGE_BYTES));
-    let (ws, response) = async_tungstenite::client_async_with_config(req, stream, Some(config)).await.map_err(|_| ())?;
+    let (ws, response) = async_tungstenite::client_async_with_config(req, stream, Some(config)).await.map_err(|_| None)?;
     let protocol = response.headers().get("sec-websocket-protocol").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
     Ok((ws, protocol))
 }

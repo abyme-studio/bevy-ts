@@ -14,11 +14,11 @@
 
 ## 2. `wss:` and the header rule
 
-- [ ] 2.1 Add `futures-rustls` (ring) with `webpki-roots` to the async-io transport, `async-tungstenite` kept on `handshake`, in `crates/bevy-ts/src/net/`; `wss:` and `https:` open over TLS with host-name verification
-- [ ] 2.2 Remove `Refusal::Wss`; headers allowed to loopback or over `wss:` to the host's `headersOrigin` only, with the new message
-- [ ] 2.3 A Rust-only API to add a trusted root, for tests
-- [ ] 2.4 Tests in `crates/bevy-ts/tests/it/`: a local TLS server on `common::free_port()` with a test root (open, headers carried), a self-signed server without it (1006, TLS error logged), `ws:` plus headers to a non-loopback host still refused, `wss:` plus headers to an allowed host that is not `headersOrigin` refused
-- [ ] 2.5 `docs/networking.md`: `wss:`, the header rule, the refusal table
+- [x] 2.1 Add `futures-rustls` (ring) with `webpki-roots` to the async-io transport, `async-tungstenite` kept on `handshake`, in `crates/bevy-ts/src/net/`; `wss:` and `https:` open over TLS with host-name verification
+- [x] 2.2 Remove `Refusal::Wss`; headers allowed to loopback or over `wss:` to the host's `headersOrigin` only, with the new message
+- [x] 2.3 A Rust-only API to add a trusted root, for tests
+- [x] 2.4 Tests in `crates/bevy-ts/tests/it/`: a local TLS server on `common::free_port()` with a test root (open, headers carried), a self-signed server without it (1006, TLS error logged), `ws:` plus headers to a non-loopback host still refused, `wss:` plus headers to an allowed host that is not `headersOrigin` refused
+- [x] 2.5 `docs/networking.md`: `wss:`, the header rule, the refusal table
 
 ## 3. The embedding runner, window and C ABI
 
