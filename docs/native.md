@@ -122,6 +122,8 @@ the field's address minus the value's. No `repr(C)` and no code per type.
 - A Rust component is named by its type path, or by its short name when only one registered type
   has it. Two types with one short name (`game::a::Health`, `game::b::Health`) each keep their
   layout under their path; the bare short name fails the load, naming both paths.
+- A world save (docs/saves.md) holds a Rust component only through `#[reflect(Component)]`: a
+  native `#[export]` component without it is not saved.
 - Components without `Reflect` can derive `bevy_ts_native::NativeLayout` (public fields, offsets
   from `offset_of!`) and register with `app.ts_layout::<T>()`.
 - A tuple struct with one field (`ZIndex(i32)`, `TabIndex(i32)`, `Hovered(bool)`) names that

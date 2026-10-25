@@ -115,6 +115,51 @@ Restart despawns `TsSpawned` entities and TS resources (`generation.rs:165-187`)
 
 Additive: no existing call or file changes. Rollback is removing the two ops.
 
+## Measured (task 3.2)
+
+A save of all 155 entities of `examples/arena` on a rendering engine, no deny list. Serialising each
+reflected component alone, five fail with no serde form in Bevy 0.20: `VisibilityClass`
+(`TypeId`), `CameraMainTextureUsages`, `CameraRenderGraph`, `Exposure`, `ColorGrading`
+(`Range<f32>`). Handles (`Mesh3d`, `MeshMaterial3d`, `RenderTarget`) fail alone but not in a
+save: the save's serializer writes them as paths. Computed and denied too: `GlobalTransform`,
+`TransformTreeChanged`, `InheritedVisibility`, `ViewVisibility`, `VisibleEntities`,
+`CascadesVisibleEntities`, `Frustum`, `CascadesFrusta`, `Cascades`, the UI and text layout
+components, and `ObservedBy` (it names observer entities). With that list
+(`saves::ALWAYS_DENIED`) the whole arena saves; `the_whole_arena_saves` (bevy-ts-cli) keeps it so.
+`Exposure` and `ColorGrading` are user data: a saved camera loads with their defaults
+(docs/saves.md says so).
+
+## As built
+
+- Migration (decision 5) compares each saved value's JSON shape with the live field type's (a
+  float, an integer, a bool, a string, a list of its length, an object of its keys) instead of
+  building a layout from the JSON and calling `components::plan`: JSON cannot tell `u32` from
+  `i32`, but the shape tells a retyped field, which is what the rules need. It fills the same
+  `Migration` and logs it as reload does.
+- `Save` is a unit struct, which reflection gives no layout, so TS could not spawn it.
+  `saves::register` gives it an empty native layout (as `ts_layout` does), so `spawn(Save, ...)`
+  works.
+- The dev folder is set in `run_dev`, which knows the project, not `base_app`, which does not.
+- The two messages are registered with `ReflectTsMessage`; a script reads them once rust-events
+  (TS readers of Rust messages) lands. Until then the CLI test reads them in Rust.
+
+## Measured (task 5.3)
+
+`bench/world-saves`, release, 10k `Save`-marked entities each with `Transform` and two TS
+components, 3 runs under a load average of 130 (the arms are one, so no second arm to be within
+noise of):
+
+| | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| save, main thread (walk and RON) | 146.5 ms | 120.8 ms | 184.0 ms |
+| save, end to end (with the write) | 381.1 ms | 291.7 ms | 295.8 ms |
+| file | 4606 KB | 4606 KB | 4606 KB |
+| load, the one frame that writes the world | 225.0 ms | 214.5 ms | 136.9 ms |
+| load, end to end (with read and parse) | 505.6 ms | 467.6 ms | 223.9 ms |
+
+About 13 to 22 µs an entity on the main thread: a save or load of 10k stalls 8 to 14 frames, so
+games save at a pause; up to about a thousand entities fit a 16 ms frame.
+
 ## Open Questions
 
-None blocking. The always-denied list is measured in task 3.2.
+None blocking.

@@ -108,7 +108,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | Processing, meta files, custom loaders | Rust-side by nature | — | — (stays Rust) |
 | `.bsn` levels, TSX scenes, `SceneComponent` prefabs | idiomatic (bevy-ts's own `.bsn` loader; Bevy 0.20 has none) | `bevy-ts-levels/tests/it/levels.rs` | — |
 | glTF scenes (`WorldAssetRoot`) | partial: TSX cannot place a newtype component today | — | script-gltf |
-| `DynamicWorld` save and load (save games) | missing | — | new: `world-saves` |
+| `DynamicWorld` save and load (save games) | covered: `commands.saveWorld` / `loadWorld`, Rust and TS components, docs/saves.md (its coverage table) | `crates/bevy-ts/tests/it/saves.rs`, `crates/bevy-ts-cli/tests/it/saves.rs` | world-saves |
 
 ## Render, PBR, core pipeline
 
@@ -236,7 +236,7 @@ Recommended order: the enabler, then ECS (everything else uses it), then the res
     TS-built clips. A follow-up for the script-gltf team.
 15. `camera-rays`: `viewportToWorld` and `MeshRayCast` on world-to-screen's `Cameras` param. A
     follow-up for the world-to-screen team.
-16. `world-saves`: `DynamicWorld` save and load of TS and Rust components. Lowest demand.
+16. `world-saves` (done): `DynamicWorld` save and load of TS and Rust components (docs/saves.md).
 
 Declined: exclusive world access from TS (it breaks the batched bridge), custom BRP methods from
 TS, Bevy action bindings (not core; the leafwing port plan covers them), asset processing and
