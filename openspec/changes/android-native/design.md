@@ -257,7 +257,7 @@ keep. Not needed now that V8 runs.
   raises `minSdk`; abyme's decision.
 - [A 27 MB gzipped engine download per bevy-ts version, 73 MB on disk] → served gzipped; the Android size profile (decision 7).
 - [`bevy_asset` pulls in `android-activity` on Android, which won't compile without an activity
-  backend] → turn on `android-native-activity`, never used.
+  backend] → turn on android-activity's `native-activity` backend directly, never used (Bevy's `android-native-activity` would link winit).
 - [Skinned meshes break on Adreno (bevy#24926), open in 0.20.0, a GPU-path bug that hits agent
   town] → on Adreno only (`get_adreno_model`), set
   `WgpuSettings.constrained_limits.max_storage_buffers_per_shader_stage = 0`, which moves skinning

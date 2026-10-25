@@ -108,8 +108,12 @@ cp "$so" "$out/"
 cp crates/bevy-ts-android/java/dev/bevyts/Engine.java "$out/dev/bevyts/"
 cp crates/bevy-ts-embed/include/bevy_ts_embed.h "$out/"
 readelf=$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/"$host"/bin/llvm-readelf)
-"$readelf" --dyn-syms "$out/libbevy_ts_android.so" | grep -q Java_dev_bevyts_Engine_nativeCreate \
-  || { echo "scripts/android: $out/libbevy_ts_android.so does not export Java_dev_bevyts_Engine_nativeCreate" >&2; exit 1; }
+# Every native Engine.java declares, and the C ABI (a grep -q on the pipe would SIGPIPE readelf).
+syms=$("$readelf" --dyn-syms "$out/libbevy_ts_android.so")
+for f in Abi Version Create Surface Pause Resume Input Destroy; do
+  grep -q "Java_dev_bevyts_Engine_native$f\$" <<<"$syms" || { echo "scripts/android: $out/libbevy_ts_android.so does not export Java_dev_bevyts_Engine_native$f" >&2; exit 1; }
+done
+grep -q " bevy_ts_create\$" <<<"$syms" || { echo "scripts/android: no bevy_ts_create export" >&2; exit 1; }
 size=$(wc -c < "$out/libbevy_ts_android.so")
 gz=$(gzip -9c "$out/libbevy_ts_android.so" | wc -c)
 echo "scripts/android: $out/libbevy_ts_android.so, $((size / 1000000)) MB, $((gz / 1000000)) MB gzipped"

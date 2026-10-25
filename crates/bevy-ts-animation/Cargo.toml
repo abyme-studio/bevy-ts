@@ -9,7 +9,9 @@ license.workspace = true
 name = "bevy_ts_animation"
 
 [dependencies]
-bevy = { workspace = true, features = ["3d"] }
+# Bevy's renderer and 3D, not its platform half (winit, gilrs, clipboard): the embedding links this
+# on Android, where the host owns the window.
+bevy = { workspace = true, features = ["3d_bevy_render"] }
 
 [dev-dependencies]
 bevy = { workspace = true, features = ["3d"] }
