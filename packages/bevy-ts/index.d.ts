@@ -511,6 +511,27 @@ export interface Commands {
   runSystem(target: SystemId | SystemFn): void;
   /** As `runSystem`, with its `In<E>` input. */
   runSystemWith<E extends Event>(target: SystemId | ((input: In<E>, ...params: never[]) => void), input: E): void;
+  /**
+   * Saves the world to `<name>.scn.ron` in the save folder (docs/saves.md). `name` is 1 to 64 of
+   * `A-Z a-z 0-9 _ -`; anything else throws. A `WorldSaved` message says when it is written.
+   */
+  saveWorld(name: string, options?: SaveWorldOptions): void;
+  /** Loads a save: its entities are spawned fresh, under `parent` if given. A `WorldLoaded` message says when. */
+  loadWorld(name: string, options?: LoadWorldOptions): void;
+}
+export interface SaveWorldOptions {
+  /** The entities to save: every match of a query, or a list. By default, those with `Save`. */
+  entities?: QueryOf<unknown[]> | readonly Entity[];
+  /** Only these components (`Save` always goes too). */
+  allow?: readonly ComponentClass[];
+  /** Not these components, after `allow`. */
+  deny?: readonly ComponentClass[];
+  /** The resources to save, Rust or TS. None by default. */
+  resources?: readonly (abstract new (...a: never) => unknown)[];
+}
+export interface LoadWorldOptions {
+  /** Makes each loaded entity without a parent a child of this one. */
+  parent?: Entity | null;
 }
 export interface EntityCommands {
   insert(...parts: readonly (Component | ReflectComponent | ComponentClass | Element | StateScopedValue)[]): EntityCommands;
@@ -701,6 +722,11 @@ export declare class Transform extends Component {
   declare readonly translation: Vec3;
   declare readonly rotation: Quat;
   declare readonly scale: Vec3;
+}
+/** Marks an entity `commands.saveWorld` saves by default; saved itself, so a loaded entity has it again. */
+export declare class Save extends Component {
+  static readonly path: "bevy_ts::saves::Save";
+  static readonly native: true;
 }
 /** Bevy's clock markers: `Res<Time<Real>>`, `Res<Time<Virtual>>`, `Res<Time<Fixed>>`. */
 export declare class Real { private readonly clock: "Real" }

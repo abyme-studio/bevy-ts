@@ -149,10 +149,20 @@ pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display,
     let assets = folder.join("assets");
     let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.mesh_picking, &game.diagnostics);
     app.insert_resource(channel);
+    if let Some(dir) = save_dir(&game.name) {
+        app.insert_resource(bevy_ts::saves::SaveDir(dir));
+    }
     crate::cli::insert_net_policy(&mut app, &game.net.allow, &game.env);
     app.insert_resource(bevy_ts::backend::ScriptArgs::new(&entry, args));
     app.world_mut().resource_mut::<RuntimeInfo>().entry = Some(entry);
     Ok(app)
+}
+
+/// A played game's saves: `<data>/<game name>/saves`, the player's own data folder, never the game
+/// folder (read-only once shipped). None for a name that is not one folder.
+pub fn save_dir(game: &str) -> Option<PathBuf> {
+    let one_folder = !game.is_empty() && game != "." && game != ".." && !game.contains(['/', '\\', ':']);
+    one_folder.then(|| bevy_ts::saves::game_save_dir(game)).flatten()
 }
 
 /// Plays the game in `folder` with the game's arguments `args`. Returns the exit code when it cannot.

@@ -135,6 +135,12 @@ impl Default for SaveIo {
 /// Registers the types and messages and the system that finishes IO.
 pub(crate) fn register(app: &mut App) {
     app.register_type::<Save>().register_type::<TsSaved>().register_type::<TsSavedResources>();
+    // A unit marker has no reflected fields, so reflection gives it no layout; an empty one lets TS
+    // spawn and insert it (`spawn(Save, ...)`).
+    let world = app.world_mut();
+    let mut native = world.remove_resource::<crate::layout::NativeLayouts>().unwrap_or_default();
+    native.register::<Save>(world, ComponentLayout { size: 0, align: 1, fields: vec![] }, None);
+    world.insert_resource(native);
     crate::rust_events::register_message::<WorldSaved>(app);
     crate::rust_events::register_message::<WorldLoaded>(app);
     app.init_resource::<SaveIo>();

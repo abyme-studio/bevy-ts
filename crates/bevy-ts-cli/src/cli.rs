@@ -16,7 +16,7 @@ use crate::{dev, headless};
 use bevy_ts::engine::EngineIdentity;
 use bevy_ts_v8::V8Options;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -317,6 +317,11 @@ pub fn insert_net_policy(app: &mut App, allow: &[String], env: &[String]) {
     }
 }
 
+/// Where a dev engine on the project at `root` keeps saves: in `.bevy-ts/`, already git-ignored.
+pub fn dev_save_dir(root: &Path) -> PathBuf {
+    root.join(".bevy-ts").join("saves")
+}
+
 fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     let compiler = match Compiler::new(&args.entry, true) {
         Ok(c) => Arc::new(c),
@@ -353,6 +358,7 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);
     app.insert_resource(channel).insert_resource(DevSource(compiler.clone()));
+    app.insert_resource(bevy_ts::saves::SaveDir(dev_save_dir(&compiler.root)));
     if let Some(project) = &project {
         if project.config.levels.prefab_edits.as_deref() == Some("source") {
             app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().prefab_edits = bevy_ts_levels::PrefabEdits::Source;

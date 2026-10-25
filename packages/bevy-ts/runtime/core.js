@@ -868,6 +868,9 @@ export const Transform = nativeClass("Transform", "bevy_transform::components::t
   scale: vec3.default([1, 1, 1]),
 });
 
+/** Marks an entity `commands.saveWorld` saves by default (docs/saves.md). */
+export const Save = nativeType("bevy_ts::saves::Save", {}, "component", undefined);
+
 // Bevy's clocks, read-only views built per run (docs/time.md). Every clock's fields first, then
 // its own; Rust lays them out and fills them.
 const CLOCK = { delta_secs: f32, elapsed_secs: f32, delta_secs_f64: f64, elapsed_secs_f64: f64, elapsed_secs_wrapped_f64: f64, wrap_period: f64, elapsed_secs_wrapped: f32 };
@@ -2606,6 +2609,40 @@ function makeCtx() {
 
 const OP_SPAWN = 1, OP_INSERT = 2, OP_DESPAWN = 3, OP_REMOVE = 4, OP_SET_PARENT = 5, OP_SPAWN_NATIVE = 6, OP_PLUGIN = 7;
 const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12, OP_OBSERVE = 13, OP_STATE_SCOPED = 14;
+const OP_SAVE_WORLD = 15, OP_LOAD_WORLD = 16;
+
+// A save's name never leaves the save folder: no separator, no dot, no drive (docs/saves.md).
+const SAVE_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+function checkSaveName(call, name) {
+  if (typeof name !== "string" || !SAVE_NAME.test(name)) {
+    throw new Error(`${call}(${JSON.stringify(name)}): a save name is 1 to 64 of A-Z, a-z, 0-9, _ and -`);
+  }
+}
+
+/** A class as a save names it: a Rust class by its type path, a TS one by its name. */
+function saveClass(call, C) {
+  if (typeof C !== "function" || !C.componentName) throw new TypeError(`${call}: ${String(C)} is not a component or resource class`);
+  return C.typePath || C.componentName;
+}
+
+/** `entities:` as entity numbers: an array of entities, or every entity a query matches. */
+function saveEntities(x) {
+  if (x instanceof QueryParam) {
+    const out = [];
+    for (const tb of x.raw) {
+      const ents = tb[1];
+      const rows = tb[4];
+      const n = rows ? rows.length : tb[0];
+      for (let k = 0; k < n; k++) {
+        const r = rows ? rows[k] : k;
+        out.push(ents[r * 2] + ents[r * 2 + 1] * 4294967296);
+      }
+    }
+    return out;
+  }
+  if (!Array.isArray(x) || x.some((e) => typeof e !== "number")) throw new TypeError("saveWorld: entities is a query or an array of entities");
+  return x;
+}
 
 class EntityCommands {
   constructor(commands, id) {
@@ -2841,6 +2878,40 @@ class Commands {
     w.u8(OP_SET_STATE);
     w.u32(index);
     w.u32((St.values.indexOf(value) | (ifNeq ? 0x80000000 : 0)) >>> 0);
+    this.op(w.bytes());
+  }
+  /**
+   * Saves the world to `<name>.scn.ron` in the save folder: the `Save`-marked entities, or
+   * `entities` (a query or an array); `allow`/`deny` component classes; `resources` to save. A
+   * `WorldSaved` message says when it is written.
+   */
+  saveWorld(name, options) {
+    checkSaveName("saveWorld", name);
+    const o = options || {};
+    const json = {};
+    if (o.entities !== undefined) json.entities = saveEntities(o.entities);
+    if (o.allow !== undefined) json.allow = o.allow.map((C) => saveClass("saveWorld allow", C));
+    if (o.deny !== undefined) json.deny = o.deny.map((C) => saveClass("saveWorld deny", C));
+    if (o.resources !== undefined) json.resources = o.resources.map((C) => saveClass("saveWorld resources", C));
+    const bytes = encoder.encode(JSON.stringify(json));
+    const w = new Writer();
+    w.u8(OP_SAVE_WORLD);
+    w.str16(name);
+    w.u32(bytes.length);
+    w.raw(bytes);
+    this.op(w.bytes());
+  }
+  /** Loads a save: its entities are spawned fresh (`parent`: under that entity). A `WorldLoaded` message says when. */
+  loadWorld(name, options) {
+    checkSaveName("loadWorld", name);
+    const parent = options && options.parent !== undefined && options.parent !== null ? options.parent : null;
+    const w = new Writer();
+    w.u8(OP_LOAD_WORLD);
+    w.str16(name);
+    if (parent === null) {
+      w.u32(0xffffffff);
+      w.u32(0xffffffff);
+    } else w.entity(parent);
     this.op(w.bytes());
   }
   /** Spawns through a native Rust recipe (`camera3d`, `directionalLight`, `cuboid`). */
