@@ -286,7 +286,8 @@ mod tests {
     /// A tween of the root's translation and a forever spin of a named bone.
     fn tween() -> Value {
         let ease = json!({ "EasingCurve": { "start": [0, 0, 0], "end": [0, 2, 0], "ease": "CubicOut" } });
-        let spin = json!({ "Forever": { "EasingCurve": { "start": [0, 0, 0, 1], "end": [0, 0.7071068, 0, 0.7071068], "ease": "Linear" } } });
+        let h = std::f64::consts::FRAC_1_SQRT_2;
+        let spin = json!({ "Forever": { "EasingCurve": { "start": [0, 0, 0, 1], "end": [0, h, 0, h], "ease": "Linear" } } });
         json!({
             "curves": [
                 [{ "names": [] }, { "property": { "component": "Transform", "field": "translation" }, "curve": { "ReparametrizeLinear": [ease, [0, 0.5]] } }],

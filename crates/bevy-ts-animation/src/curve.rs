@@ -501,7 +501,7 @@ pub struct ReflectedField<A> {
 
 impl<A> Clone for ReflectedField<A> {
     fn clone(&self) -> Self {
-        Self { field: self.field.clone(), id: self.id.clone(), marker: std::marker::PhantomData }
+        Self { field: self.field.clone(), id: self.id, marker: std::marker::PhantomData }
     }
 }
 
