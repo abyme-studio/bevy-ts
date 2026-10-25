@@ -46,11 +46,11 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 3b. Placement (design 16; low priority)
 
-- [ ] 3b.1 Test headless: 1,000 `<node>`s moved each frame by a bound `transform`: no `Node` change tick moves, `ComputedNode` sizes are unchanged and `UiGlobalTransform` follows; a `<button>` moved by `transform` gets `onPointerClick` at its drawn place (triggered pointer event)
-- [ ] 3b.2 `tsx_scale.rs`: 1,000 nodes moved each frame by `style` `left`/`top` against `transform.translation`; frame time in `docs/research/tsx-scale.md`
-- [ ] 3b.3 agent town's bench, `openspec/research/heimdall-labels/bench.mjs` in agent town (`~/dev/agent-town`, branch `heimdall-labels`, commit 75154d9): arm `ui` at `BENCH_N=1000`, `BEVY_TS_BINARY` set to this branch's build, before (`bench/game.tsx` placing by `style` `left`/`top`) and after (the same plates placed by `transform`); record frame ms and CPU of both, with agent town's commit, in `docs/research/tsx-scale.md`
-- [ ] 3b.4 If `transform`'s write still shows in the profile, set an existing `UiTransform` in place instead of inserting it; a batched setter is out of this change (it needs a go)
-- [ ] 3b.5 `docs/ui.md` "Placing many nodes": a static `style`, a bound `transform`; a gallery entry that moves nodes by `transform`
+- [x] 3b.1 Test headless: 1,000 `<node>`s moved each frame by a bound `transform`: no `Node` change tick moves, `ComputedNode` sizes are unchanged and `UiGlobalTransform` follows; a `<button>` moved by `transform` gets `onPointerClick` at its drawn place (triggered pointer event)
+- [x] 3b.2 `tsx_scale.rs`: 1,000 nodes moved each frame by `style` `left`/`top` against `transform.translation`; frame time in `docs/research/tsx-scale.md`
+- [x] 3b.3 agent town's bench, `openspec/research/heimdall-labels/bench.mjs` in agent town (`~/dev/agent-town`, branch `heimdall-labels`, commit 75154d9): arm `ui` at `BENCH_N=1000`, `BEVY_TS_BINARY` set to this branch's build, before (`bench/game.tsx` placing by `style` `left`/`top`) and after (the same plates placed by `transform`); record frame ms and CPU of both, with agent town's commit, in `docs/research/tsx-scale.md`
+- [x] 3b.4 (Not needed: neither bench shows `transform`'s write as a cost; docs/research/tsx-scale.md.) If `transform`'s write still shows in the profile, set an existing `UiTransform` in place instead of inserting it; a batched setter is out of this change (it needs a go)
+- [x] 3b.5 `docs/ui.md` "Placing many nodes": a static `style`, a bound `transform`; a gallery entry that moves nodes by `transform`
 
 ## 4. Focus and navigation (after text-input and mesh-picking)
 

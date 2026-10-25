@@ -86,6 +86,20 @@ gradient, a gradient removes the colour, and removing the prop removes both. `bo
 A Rust tuple struct with one field names it `value` in TS, so a UI component reads as
 `<ZIndex value={2} />` and `ref.get(Hovered).value` (see [native](native.md)).
 
+## Placing many nodes
+
+A node that moves every frame keeps a static `style` and binds `transform`:
+
+```tsx
+<node style={{ position: "absolute", left: 0, top: 0 }}
+  transform={() => ({ translation: [px(at().x), px(at().y)] })} />
+```
+
+A `style` binding rebuilds the node's `Node`, and Bevy then lays out its tree again in taffy.
+`transform` writes only `UiTransform`, which Bevy applies after layout, so nothing is laid out
+again. Picking and clipping read the drawn place: a moved button is clicked where it is drawn.
+Bind `style` for what changes the layout (a size, a gap); place by `transform`.
+
 ## Text
 
 `<text>` holds strings, bindings and `<span>`s. Text before the first `<span>` is the `Text`
