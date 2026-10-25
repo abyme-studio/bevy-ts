@@ -457,7 +457,7 @@ export type In<E> = ReadView<E>;
 /**
  * Bevy's `NextState<S>`. `set` always transitions, even to the current value: `OnExit` and
  * `OnEnter` run again and `DespawnOnExit` entities go. `setIfNeq` does nothing when `v` is the
- * current value (Bevy's `set_if_neq`).
+ * current value (Bevy's `set_if_different`).
  */
 export interface NextState<G> {
   set(v: StateValueOf<G>): void;

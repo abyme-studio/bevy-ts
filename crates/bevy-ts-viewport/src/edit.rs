@@ -477,6 +477,10 @@ pub fn set_mode(world: &mut World, mode: Mode, ui: Option<bool>, gamepad_unfocus
             if let (Mode::Play, Some(mut clock)) = (mode, world.get_resource_mut::<bevy_ts::runtime::ScriptClock>()) {
                 clock.running_this_frame = true;
             }
+            // Triggers raised in edit mode never reach the game, nor its `OnEnter(Play)`.
+            if let (Mode::Play, Some(mut q)) = (mode, world.get_resource_mut::<bevy_ts::observers::ObserverQueue>()) {
+                q.0.clear();
+            }
             let _ = world.try_run_schedule(bevy::state::state::StateTransition);
             if let (Some(was), Some(mut clock)) = (was, world.get_resource_mut::<bevy_ts::runtime::ScriptClock>()) {
                 clock.running_this_frame = was;

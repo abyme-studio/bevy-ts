@@ -182,7 +182,7 @@ Bevy runs the transitions in `StateTransition`, after `PreUpdate`: `OnExit(old)`
 game is paused (and in edit mode), pending transitions wait, and so does a new machine's first
 `OnEnter`. `State<S>` reads the value. `NextState<S>` sets it: `next.set(v)` always transitions,
 even to the current value, so `OnExit` and `OnEnter` run again and `DespawnOnExit` entities go;
-`next.setIfNeq(v)` does nothing when `v` is the current value, as Bevy's `set_if_neq`.
+`next.setIfNeq(v)` does nothing when `v` is the current value, as Bevy's `set_if_different`.
 `PreviousState<S>` reads the value before the last transition. `stateChanged(S)` is true in the
 frame a machine transitioned, `stateExists(S)` while it has a value.
 

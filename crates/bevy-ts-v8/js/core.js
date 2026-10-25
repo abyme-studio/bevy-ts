@@ -2830,7 +2830,7 @@ class Commands {
     } else w.u8(0);
     this.op(w.bytes());
   }
-  /** `ifNeq`: Bevy's `set_if_neq`, no transition when `value` is the current one. */
+  /** `ifNeq`: Bevy's `set_if_different`, no transition when `value` is the current one. */
   setState(St, value, ifNeq) {
     const index = this.res && this.res.states[St.componentName];
     if (index === undefined) throw new Error(`${St.componentName} is not a declared state`);

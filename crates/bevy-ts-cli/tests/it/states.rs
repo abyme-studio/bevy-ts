@@ -368,7 +368,7 @@ app.addSystems(Update, step);
 
 #[test]
 fn a_reload_rederives_sub_and_computed_states() {
-    let gen = |values: &str, tag: &str| {
+    let program = |values: &str, tag: &str| {
         format!(
             r#"import {{ SubStates, ComputedStates }} from "bevy-ts";
 export class Game extends States("Menu", "Playing") {{ static path = "game::Game" }}
@@ -383,11 +383,11 @@ app.initState(Game.Menu).addSystems(Update, step);
 "#
         )
     };
-    let (dir, mut app) = load("states-rederive", &src(&gen(r#""Running", "Paused""#, "compute1")));
+    let (dir, mut app) = load("states-rederive", &src(&program(r#""Running", "Paused""#, "compute1")));
     updates(&mut app, 4);
     assert_eq!(said(&mut app).iter().rev().find(|l| l.starts_with('p')).map(String::as_str), Some("pPaused"));
     // Paused is gone, and the compute function changed.
-    write(&dir, "game.ts", &src(&gen(r#""Running""#, "compute2")));
+    write(&dir, "game.ts", &src(&program(r#""Running""#, "compute2")));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     updates(&mut app, 2);

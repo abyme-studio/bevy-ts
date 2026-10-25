@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: State machines
-`class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (a Rust-style path from its module, such as `game::Game`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. As Bevy's `set`, it SHALL transition even to the current value, running its exit and enter work again. `NextState<S>.setIfNeq(S.Value)` SHALL queue it only when the value differs from the current one, as Bevy's `set_if_neq`. `inState(S.Value)` SHALL be a Rust-evaluated run condition (ts-conditions).
+`class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (a Rust-style path from its module, such as `game::Game`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. As Bevy's `set`, it SHALL transition even to the current value, running its exit and enter work again. `NextState<S>.setIfNeq(S.Value)` SHALL queue it only when the value differs from the current one, as Bevy's `set_if_different`. `inState(S.Value)` SHALL be a Rust-evaluated run condition (ts-conditions).
 
 #### Scenario: Entering Playing
 - **WHEN** a system calls `next.set(Game.Playing)` from `Menu`

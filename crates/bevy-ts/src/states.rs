@@ -246,11 +246,11 @@ fn previous<const N: u8>(world: &World) -> Option<u32> {
 
 fn set_next<const N: u8>(world: &mut World, value: u32, if_neq: bool) {
     if let Some(mut next) = world.get_resource_mut::<NextState<TsState<N>>>() {
-        if if_neq { next.set_if_neq(TsState(value)) } else { next.set(TsState(value)) }
+        if if_neq { next.set_if_different(TsState(value)) } else { next.set(TsState(value)) }
     }
 }
 
-/// The pending value, and whether it was set with `set_if_neq`, taken.
+/// The pending value, and whether it was set with `set_if_different`, taken.
 fn take_next<const N: u8>(world: &mut World) -> Option<(u32, bool)> {
     let mut next = world.get_resource_mut::<NextState<TsState<N>>>()?;
     let v = match &*next {
@@ -357,7 +357,7 @@ fn r_previous<S: FreelyMutableState + Reflect>(world: &World) -> Option<u32> {
 }
 fn r_set_next<S: FreelyMutableState + FromReflect>(world: &mut World, value: u32, if_neq: bool) {
     if let (Some(v), Some(mut next)) = (from_sym::<S>(value), world.get_resource_mut::<NextState<S>>()) {
-        if if_neq { next.set_if_neq(v) } else { next.set(v) }
+        if if_neq { next.set_if_different(v) } else { next.set(v) }
     }
 }
 fn r_state_id<S: FreelyMutableState>(world: &World) -> Option<ComponentId> {
@@ -468,7 +468,7 @@ pub struct TsStates {
     configured: HashSet<u8>,
     /// TS runner systems added to Bevy's `OnEnter`/`OnExit`/`OnTransition` schedules.
     runners: HashSet<(u8, RunKind, u32, u32)>,
-    /// Values set while the bevy-ts stages were paused (and whether by `set_if_neq`), applied on
+    /// Values set while the bevy-ts stages were paused (and whether by `set_if_different`), applied on
     /// the next running frame.
     held: BTreeMap<u8, (u32, bool)>,
     /// Slots given a first value whose `OnEnter` waits for a running frame.
@@ -575,7 +575,7 @@ pub fn previous_of(world: &World, slot: u8) -> Option<u32> {
     (ops_of(world, slot).previous)(world)
 }
 
-/// Queues a transition, as `NextState::set` (`set_if_neq` with `if_neq`). Returns false when the
+/// Queues a transition, as `NextState::set` (`set_if_different` with `if_neq`). Returns false when the
 /// machine has no value yet.
 pub fn set_next_of(world: &mut World, slot: u8, value: u32, if_neq: bool) -> bool {
     if current_of(world, slot).is_none() {
