@@ -203,6 +203,20 @@ fn option_of(t: &Type) -> Option<&Type> {
     }
 }
 
+/// `T` when `t` is written `HostPoints<T>` (or `HostPoints<'_, T>`).
+fn points_of(t: &Type) -> Option<&Type> {
+    let Type::Path(p) = t else { return None };
+    let seg = p.path.segments.last()?;
+    if seg.ident != "HostPoints" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(a) = &seg.arguments else { return None };
+    a.args.iter().find_map(|g| match g {
+        syn::GenericArgument::Type(t) => Some(t),
+        _ => None,
+    })
+}
+
 /// `T` when `t` is written `Result<T, E>`.
 fn result_ok(t: &Type) -> Option<&Type> {
     let Type::Path(p) = t else { return None };
@@ -244,6 +258,11 @@ fn normalise_spelling(s: &str) -> String {
     out
 }
 
+/// Whether a normalised spelling is one an export may stand for.
+fn stands_for_spelling(n: &str) -> bool {
+    n == "Gizmos" || ((n.starts_with("Res<") || n.starts_with("ResMut<") || n.starts_with("Gizmos<")) && n.ends_with('>'))
+}
+
 /// `#[export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` of a `SystemParam`: every
 /// `pub fn(&self, ...)` or `pub fn(&mut self, ...)` becomes a method of the TS type `Name`,
 /// called synchronously from TS systems as one host call. Register it with
@@ -262,8 +281,8 @@ pub fn export(attr: TokenStream, item: TokenStream) -> TokenStream {
             module = Some(v);
         } else if meta.path.is_ident("stands_for") {
             let n = normalise_spelling(&v.value());
-            if !(n.starts_with("Res<") || n.starts_with("ResMut<")) || !n.ends_with('>') {
-                return Err(syn::Error::new(v.span(), "stands_for names one Res<..> or ResMut<..> spelling"));
+            if !(stands_for_spelling(&n)) {
+                return Err(syn::Error::new(v.span(), "stands_for names one Res<..>, ResMut<..>, Gizmos or Gizmos<..> spelling"));
             }
             stands_for = Some(syn::LitStr::new(&n, v.span()));
         } else {
@@ -353,8 +372,20 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
                 Type::Reference(r) => {
                     return Err(syn::Error::new(r.span(), format!("argument {name}: only &str, &[T] and &mut [T] references cross to TS")));
                 }
+                // `HostPoints<T>`: an array of points or a `Float32Array`, as a slice.
+                ty if points_of(ty).is_some() => {
+                    let point = points_of(ty).unwrap();
+                    slices += 1;
+                    if slices > 4 {
+                        return Err(syn::Error::new(pt.span(), "an exported method takes at most 4 slice arguments"));
+                    }
+                    let n = name.to_string();
+                    decls.push(quote_spanned!(ty.span()=> let #local: #h::HostPoints<'_, #point> = #h::HostPoints::new(&**__sl.next().ok_or("missing slice")?, #n)?;));
+                    specs.push(quote_spanned!(ty.span()=> #h::ArgSpec::Points(#h::SliceSpec { name: #ts_arg, view: "Float32Array", mutable: false }, <#point as #h::PointLanes>::LANES as u8)));
+                }
                 ty => {
-                    decls.push(quote_spanned!(ty.span()=> let #local: #ty = <#ty as #h::HostValue>::read(__r)?;));
+                    let n = ts_arg.clone();
+                    decls.push(quote_spanned!(ty.span()=> let #local: #ty = <#ty as #h::HostValue>::read(__r).map_err(|e| ::std::format!("{}: {e}", #n))?;));
                     specs.push(quote_spanned!(ty.span()=> #h::ArgSpec::Value(#ts_arg, <#ty as #h::HostValue>::kind())));
                 }
             }
@@ -402,6 +433,8 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
                 args: ::std::vec![#(#specs),*],
                 ret: <#ret as #h::HostValue>::kind(),
                 call: __call,
+                chain: ::core::option::Option::None,
+                of: ::core::option::Option::None,
             }
         }});
     }
@@ -415,6 +448,7 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
                     stands_for: #stands_for,
                     init: #h::init::<#st>,
                     methods: ::std::vec![#(#methods),*],
+                    module_declares: false,
                 }
             }
         }

@@ -12,7 +12,8 @@ use serde::de::DeserializeSeed;
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
-const FORMS: &str = "a colour is \"#rrggbb[aa]\", [r, g, b, a?] or { Srgba: { red, green, blue, alpha? } } (any Color variant)";
+/// The forms a colour takes, for errors.
+pub const FORMS: &str = "a colour is \"#rrggbb[aa]\", [r, g, b, a?] or { Srgba: { red, green, blue, alpha? } } (any Color variant)";
 
 /// `Color` and its variants' types, registered once for reading the reflected shape.
 fn registry() -> &'static TypeRegistry {

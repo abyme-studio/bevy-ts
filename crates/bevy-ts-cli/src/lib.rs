@@ -10,6 +10,7 @@ pub mod coverage;
 pub mod dev;
 pub mod diagnostics;
 pub mod engine;
+pub mod gizmos;
 pub mod headless;
 pub mod input;
 pub mod play;

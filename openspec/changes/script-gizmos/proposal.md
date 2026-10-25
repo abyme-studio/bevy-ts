@@ -63,6 +63,6 @@ item with its TS form, status and test.
 - No new dependency; `bevy_gizmos` and `bevy_gizmos_render` are already in the engine's `3d`
   feature.
 - Tests: new `crates/bevy-ts-cli/tests/it/gizmos.rs`; unit tests in `host.rs`; cases in
-  `crates/bevy-ts-cli/tests/it/typescript.rs`. Frames: `~/dev/bevy-ts-frames/script-gizmos/`.
+  `packages/bevy-ts/test/gizmos.ts`. Frames: `~/dev/bevy-ts-frames/script-gizmos/`.
 - Docs: new `docs/gizmos.md`; `docs/native.md` (argument kinds, chaining, `ts_gizmo_group`);
   `docs/research/bevy-coverage.md` rows; `README.md` link.

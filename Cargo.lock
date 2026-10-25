@@ -577,6 +577,7 @@ dependencies = [
  "bevy",
  "bevy-ts",
  "bevy-ts-native-derive",
+ "serde_json",
 ]
 
 [[package]]

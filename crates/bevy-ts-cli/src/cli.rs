@@ -269,6 +269,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(crate::audio::ScriptAudioPlugin)
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
+        .add_plugins(crate::gizmos::GizmosPlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
         .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
         .add_plugins(crate::session::ScriptSessionPlugin)

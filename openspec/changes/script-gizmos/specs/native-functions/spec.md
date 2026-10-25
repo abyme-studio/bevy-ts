@@ -17,7 +17,7 @@ A Rust crate (the project's own or a port) SHALL be able to export a Bevy `Syste
 
 #### Scenario: A colour in each form
 - **WHEN** a method takes `color: Color` and TS passes `"#ff0000"`, `[1, 0, 0]`, `srgb(1, 0, 0)` and `{ LinearRgba: { red: 1, green: 0, blue: 0 } }`
-- **THEN** Rust receives the colour `bevy_ts::color` gives for each form, and `"#ff00"` (no such form) throws naming the method, the argument and the forms taken
+- **THEN** Rust receives the colour `bevy_ts::color` gives for each form, and `"#ff000"` (no such form) throws naming the method, the argument and the forms taken
 
 #### Scenario: An isometry from a translation
 - **WHEN** a method takes `isometry: Isometry3d` and TS passes `[1, 2, 3]`

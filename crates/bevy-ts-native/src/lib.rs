@@ -13,6 +13,9 @@
 //! by name at exactly the Bevy version this release was built with (`bevy = "=0.20.0"`): Bevy's
 //! derives find it by that name, and bevy-ts checks `Cargo.lock` for the version.
 
+// `#[derive(HostRecord)]` names this crate by path, here too.
+extern crate self as bevy_ts_native;
+
 pub use bevy;
 pub use bevy_ts;
 pub use bevy_ts::layout;
@@ -25,6 +28,10 @@ use bevy::prelude::*;
 use bevy_ts::layout::{ComponentLayout, FieldType, NativeLayouts};
 
 pub use bevy_ts::sets::BevyTsSlot;
+
+/// Bevy's `Gizmos` for TS, one export per config group (`ts_gizmo_group`).
+#[cfg(feature = "gizmos")]
+pub mod gizmos;
 
 pub mod prelude {
     pub use crate::{BevyTsNativeExt, BevyTsSlot, HostRecord, NativeLayout, export};
@@ -207,6 +214,12 @@ pub trait BevyTsNativeExt {
     /// come from `#[export]` on its `impl`.
     fn ts_param<P: ExportParam>(&mut self) -> &mut Self;
 
+    /// Exposes the gizmo config group `G` to TS: a TS system takes `gizmos: Gizmos<G>` and draws
+    /// into `G`'s storage. Register `G` with Bevy's `init_gizmo_group` too; an exposed group
+    /// Bevy does not know fails the app at `finish`, naming it.
+    #[cfg(feature = "gizmos")]
+    fn ts_gizmo_group<G: bevy::gizmos::config::GizmoConfigGroup>(&mut self) -> &mut Self;
+
     /// Ships a built-in TS module (`bevy-ts/rapier`): `js` is served to TS under the specifier,
     /// `dts` declares it in `native.d.ts`. Classes it defines with `__bevyts.data` are declared
     /// by every generation.
@@ -307,6 +320,12 @@ impl BevyTsNativeExt for App {
         for<'a> E::Trigger<'a>: bevy_ts::rust_events::OriginalTarget + Default,
     {
         bevy_ts::rust_events::register_entity_event::<E>(self);
+        self
+    }
+
+    #[cfg(feature = "gizmos")]
+    fn ts_gizmo_group<G: bevy::gizmos::config::GizmoConfigGroup>(&mut self) -> &mut Self {
+        gizmos::expose::<G>(self);
         self
     }
 

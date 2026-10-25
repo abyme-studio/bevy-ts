@@ -153,8 +153,8 @@ path, and a writable exported param, which most of them need, is refused by desi
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
-| Immediate `Gizmos` (lines, shapes, text) | missing | — | new: `script-gizmos` |
-| Gizmo config, retained `GizmoAsset`, `Show*Gizmo` markers | partial: markers via TSX | — | new: `script-gizmos` |
+| Immediate `Gizmos` (lines, shapes, text, primitives, curves) | works | [docs/gizmos.md](../gizmos.md) | `script-gizmos` |
+| Gizmo config, retained `GizmoAsset`, `Show*Gizmo` markers | config and markers work; `GizmoAsset` planned (stage 3) | [docs/gizmos.md](../gizmos.md) | `script-gizmos` |
 | Play a glTF clip with transitions | missing on main | — | script-gltf (`PlayAnimation`) |
 | `AnimationPlayer` control from systems (seek, pause, speed, weights, `is_finished`), graphs, animation events, TS-built clips | missing; script-gltf scopes it out | — | new: `animation-control` |
 | `AudioPlayer`, `PlaybackSettings`, `SpatialListener` | idiomatic: `<AudioPlayer value=..>` and `PlaybackSettings` in TSX, Ogg and WAV decode; script spawns wait on reflect-coverage stage 2 ([docs/audio.md](../audio.md)) | `crates/bevy-ts-cli/tests/it/audio.rs` | `script-audio` |

@@ -2846,6 +2846,27 @@ function makeOn(cls) {
 // slots in two scratch arrays, slices passed in place.
 
 const HOST_SLOTS = 512;
+// Bevy's `Color` variants: tag and channels, as `host::COLOR_VARIANTS` lists them.
+const COLOR_VARIANTS = Object.fromEntries(
+  [
+    ["Srgba", "red", "green", "blue"],
+    ["LinearRgba", "red", "green", "blue"],
+    ["Hsla", "hue", "saturation", "lightness"],
+    ["Hsva", "hue", "saturation", "value"],
+    ["Hwba", "hue", "whiteness", "blackness"],
+    ["Laba", "lightness", "a", "b"],
+    ["Lcha", "lightness", "chroma", "hue"],
+    ["Oklaba", "lightness", "a", "b"],
+    ["Oklcha", "lightness", "chroma", "hue"],
+    ["Xyza", "x", "y", "z"],
+    ["Okhsla", "hue", "saturation", "lightness"],
+    ["Okhsva", "hue", "saturation", "value"],
+    ["Okhwba", "hue", "whiteness", "blackness"],
+  ].map(([name, ...channels], tag) => [name, [tag, [...channels, "alpha"]]]),
+);
+const ZERO4 = [0, 0, 0, 0];
+const ONE3 = [1, 1, 1];
+const QUAT_ID = [0, 0, 0, 1];
 const HOST = {
   slots: new Float64Array(HOST_SLOTS),
   result: new Float64Array(HOST_SLOTS),
@@ -2904,6 +2925,155 @@ const HOST = {
     }
     HOST.slots[i] = n;
     return i + 1 + Math.ceil(n / 8);
+  },
+  /**
+   * A colour argument at slot `i`: a tag, then four channels (Bevy's `Color` variants, in
+   * `host::COLOR_VARIANTS`' order), or a string. A hex string and every form not read here go
+   * to Rust as text, parsed by `bevy_ts::color`: colour text is never parsed in JS.
+   */
+  color(c, i) {
+    const a = HOST.slots;
+    if (typeof c === "string") {
+      a[i] = 13;
+      return HOST.str(c, i + 1);
+    }
+    if (Array.isArray(c)) {
+      const n = c.length;
+      if ((n === 3 || n === 4) && typeof c[0] === "number" && typeof c[1] === "number" && typeof c[2] === "number" && (n === 3 || typeof c[3] === "number")) {
+        a[i] = 0;
+        a[i + 1] = c[0];
+        a[i + 2] = c[1];
+        a[i + 3] = c[2];
+        a[i + 4] = n === 4 ? c[3] : 1;
+        return i + 5;
+      }
+    } else if (c !== null && typeof c === "object") {
+      for (const variant in c) {
+        const v = COLOR_VARIANTS[variant];
+        const ch = c[variant];
+        if (!v || ch === null || typeof ch !== "object") break;
+        let fast = true;
+        for (const k in ch) if (!v[1].includes(k)) fast = false;
+        const x = ch[v[1][0]], y = ch[v[1][1]], z = ch[v[1][2]], w = ch.alpha ?? 1;
+        if (!fast || typeof x !== "number" || typeof y !== "number" || typeof z !== "number" || typeof w !== "number") break;
+        // One key only: a second sends the whole value to Rust, which refuses it.
+        let keys = 0;
+        for (const _ in c) keys++;
+        if (keys !== 1) break;
+        a[i] = v[0];
+        a[i + 1] = x;
+        a[i + 2] = y;
+        a[i + 3] = z;
+        a[i + 4] = w;
+        return i + 5;
+      }
+    }
+    a[i] = 14;
+    return HOST.str(JSON.stringify(c === undefined ? null : c), i + 1);
+  },
+  /** Writes `n` lanes of `v` (an array, an object with `x`..`w`, or absent: `dflt`) at slot `i`. */
+  lanes(v, n, dflt, i) {
+    const a = HOST.slots;
+    if (v === undefined || v === null) {
+      for (let k = 0; k < n; k++) a[i + k] = dflt[k];
+    } else if (Array.isArray(v) || ArrayBuffer.isView(v)) {
+      for (let k = 0; k < n; k++) a[i + k] = v[k];
+    } else {
+      a[i] = v.x;
+      a[i + 1] = v.y;
+      if (n > 2) a[i + 2] = v.z;
+      if (n > 3) a[i + 3] = v.w;
+    }
+    return i + n;
+  },
+  /** An `Isometry3d` at slot `i`: translation, then rotation. Bevy's `From<Vec3>` and `From<Quat>`. */
+  iso3(v, i) {
+    let t = null, r = null;
+    if (Array.isArray(v)) {
+      if (v.length === 4) r = v;
+      else if (v.length === 3) t = v;
+      else throw new TypeError(`an isometry is a Vec3, a Quat or { rotation, translation }, not an array of ${v.length}`);
+    } else if (v !== null && typeof v === "object") {
+      if ("rotation" in v || "translation" in v) {
+        t = v.translation;
+        r = v.rotation;
+      } else if ("w" in v) r = v;
+      else t = v;
+    } else throw new TypeError(`an isometry is a Vec3, a Quat or { rotation, translation }, not ${v}`);
+    i = HOST.lanes(t, 3, ZERO4, i);
+    return HOST.lanes(r, 4, QUAT_ID, i);
+  },
+  /** An `Isometry2d` at slot `i`: translation, then the rotation's `cos` and `sin`. */
+  iso2(v, i) {
+    const a = HOST.slots;
+    let t = null, r = null;
+    if (Array.isArray(v)) t = v;
+    else if (v !== null && typeof v === "object") {
+      if ("rotation" in v || "translation" in v) {
+        t = v.translation;
+        r = v.rotation;
+      } else if ("cos" in v) r = v;
+      else t = v;
+    } else throw new TypeError(`a 2D isometry is a Vec2, a Rot2 ({ cos, sin }) or { rotation, translation }, not ${v}`);
+    if (r !== null && r !== undefined && (typeof r !== "object" || !("cos" in r))) {
+      throw new TypeError(`a Rot2 is { cos, sin }, not ${typeof r === "number" ? "a number" : JSON.stringify(r)}`);
+    }
+    i = HOST.lanes(t, 2, ZERO4, i);
+    a[i] = r ? r.cos : 1;
+    a[i + 1] = r ? r.sin : 0;
+    return i + 2;
+  },
+  /** A `Transform` (tag 0) or a `GlobalTransform` value (tag 1, its 12 affine floats) at slot `i`. */
+  transform(v, i) {
+    const a = HOST.slots;
+    if (v !== null && typeof v === "object" && v.value && v.value.length === 12) {
+      a[i] = 1;
+      for (let k = 0; k < 12; k++) a[i + 1 + k] = v.value[k];
+      return i + 13;
+    }
+    if (v === null || typeof v !== "object") throw new TypeError(`a transform is a Transform or a GlobalTransform, not ${v}`);
+    a[i] = 0;
+    let j = HOST.lanes(v.translation, 3, ZERO4, i + 1);
+    j = HOST.lanes(v.rotation, 4, QUAT_ID, j);
+    j = HOST.lanes(v.scale, 3, ONE3, j);
+    a[j] = 0;
+    a[j + 1] = 0;
+    return j + 2;
+  },
+  /** Scratch for point arrays: grown, never shrunk. */
+  scratch: new Float32Array(1024),
+  /**
+   * A point-list argument's bytes: a `Float32Array` as is, an array of points packed into the
+   * scratch. `lanes` floats per point.
+   */
+  points(v, lanes, param, method, name) {
+    if (v instanceof Float32Array) {
+      if (v.length % lanes) throw new TypeError(`${param}.${method}: ${name} holds ${v.length} floats, not a whole number of ${lanes}-float points`);
+      return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+    }
+    if (!Array.isArray(v)) {
+      throw new TypeError(`${param}.${method}: ${name} must be an Array of points or a Float32Array, not ${v === null ? "null" : ArrayBuffer.isView(v) ? v.constructor.name : typeof v}`);
+    }
+    const n = v.length * lanes;
+    if (HOST.scratch.length < n) HOST.scratch = new Float32Array(Math.max(n, HOST.scratch.length * 2));
+    const f = HOST.scratch;
+    if (lanes === 1) {
+      for (let k = 0; k < n; k++) f[k] = v[k];
+    } else {
+      for (let k = 0, j = 0; k < v.length; k++, j += lanes) HOST.pointAt(f, j, v[k], lanes);
+    }
+    return new Uint8Array(f.buffer, 0, n * 4);
+  },
+  pointAt(f, j, p, lanes) {
+    if (Array.isArray(p)) {
+      f[j] = p[0];
+      f[j + 1] = p[1];
+      if (lanes === 3) f[j + 2] = p[2];
+    } else {
+      f[j] = p.x;
+      f[j + 1] = p.y;
+      if (lanes === 3) f[j + 2] = p.z;
+    }
   },
   /** Reads a string result at slot `i`: `[string, next slot]`. */
   text(i) {

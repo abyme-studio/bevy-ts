@@ -32,6 +32,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
+        .add_plugins(crate::gizmos::GizmosPlugin)
         .add_plugins(crate::input::ScriptInputPlugin)
         .add_plugins(crate::audio::ScriptAudioPlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
@@ -258,7 +259,7 @@ thread_local! {
     static INSIDE: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
+pub(crate) fn ts_type(registry: &TypeRegistry, path: &str, depth: usize) -> String {
     if INSIDE.with(|s| s.borrow().iter().any(|p| p == path)) {
         // A recursive type (`FontSource::List(Vec<FontSource>)`) refers to itself.
         return "any".into();
@@ -419,10 +420,12 @@ pub struct Claim<'a> {
 }
 
 /// `ResClaims` and `ResMutClaims` entries for exports with `stands_for`, so `ResMut<T>` types a
-/// claimed spelling as its export. An entry needs its inner type declared in TS (`declared`): a
-/// class this file declares, or a clock bevy-ts declares (`Time<Virtual>`). Any other claim is
-/// listed in a comment only, so `native.d.ts` always type-checks. Empty without claims.
-pub fn claims_ts(claims: &[Claim], declared: &dyn Fn(&str) -> bool) -> String {
+/// claimed spelling as its export. An entry needs its inner type declared in TS (`declared`, which
+/// gives the TS type to name): a class this file declares, a clock bevy-ts declares
+/// (`Time<Virtual>`), or a class a built-in module declares (`import("bevy-ts/gizmos").GizmoConfigStore`).
+/// Any other claim is listed in a comment only, so `native.d.ts` always type-checks. Empty without
+/// claims.
+pub fn claims_ts(claims: &[Claim], declared: &dyn Fn(&str) -> Option<String>) -> String {
     let mut res = String::new();
     let mut res_mut = String::new();
     let mut untyped = Vec::new();
@@ -432,8 +435,8 @@ pub fn claims_ts(claims: &[Claim], declared: &dyn Fn(&str) -> bool) -> String {
             None => (&mut res, c.spelling.strip_prefix("Res<").unwrap_or(c.spelling)),
         };
         let inner = inner.strip_suffix('>').unwrap_or(inner);
-        if declared(inner) {
-            let _ = writeln!(out, "    {:?}: [{inner}, import({:?}).{}];", c.spelling, c.module, c.ts);
+        if let Some(t) = declared(inner) {
+            let _ = writeln!(out, "    {:?}: [{t}, import({:?}).{}];", c.spelling, c.module, c.ts);
         } else {
             untyped.push(format!("{} ({})", c.spelling, c.ts));
         }
@@ -468,6 +471,9 @@ pub fn emit_modules(world: &World) -> String {
         for (module, decls) in host.declarations() {
             modules.entry(module.to_string()).or_default().push_str(&decls);
         }
+    }
+    if let Some(types) = crate::gizmos::module_types(world) {
+        modules.entry(bevy_ts_native::gizmos::MODULE.to_string()).or_default().push_str(&types);
     }
     for (module, decls) in modules {
         let _ = writeln!(s, "declare module {module:?} {{");
@@ -877,7 +883,14 @@ pub fn emit(world: &World) -> String {
     let classes = named(&registry, native);
     if let Some(host) = world.get_resource::<bevy_ts::host::HostParams>() {
         let claims: Vec<Claim> = host.specs().filter_map(|p| Some(Claim { spelling: p.stands_for?, module: p.module, ts: p.ts })).collect();
-        s.push_str(&claims_ts(&claims, &|t| CLOCKS.contains(&t) || classes.iter().any(|(_, name, _)| name == t)));
+        let modules = bevy_ts::modules::all();
+        let declared = |t: &str| {
+            if CLOCKS.contains(&t) || classes.iter().any(|(_, name, _)| name == t) {
+                return Some(t.to_string());
+            }
+            modules.iter().find(|(_, m)| m.dts.contains(&format!("export declare class {t} "))).map(|(spec, _)| format!("import({spec:?}).{t}"))
+        };
+        s.push_str(&claims_ts(&claims, &declared));
     }
 
     for (path, name, reg) in classes {
@@ -942,7 +955,7 @@ mod tests {
             Claim { spelling: "ResMut<Time<Virtual>>", module: "bevy-ts/claims-test", ts: "VirtualTime" },
             Claim { spelling: "ResMut<NavMesh>", module: "bevy-ts/claims-test", ts: "NavEdit" },
         ];
-        let out = claims_ts(&claims, &|t| t == "Wind" || CLOCKS.contains(&t));
+        let out = claims_ts(&claims, &|t| (t == "Wind" || CLOCKS.contains(&t)).then(|| t.to_string()));
         assert!(out.contains("not typed here: ResMut<NavMesh> (NavEdit)"), "{out}");
         assert!(!out.contains("[NavMesh"), "{out}");
         // packages/bevy-ts/test/claims.ts holds this block verbatim, and `tsc -p test` checks it.

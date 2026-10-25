@@ -21,6 +21,7 @@ mod diagnostics;
 mod dev_edit;
 mod ecs_queries;
 mod exported;
+mod gizmos;
 mod headless_pointer;
 mod headless_ui;
 mod input_devices;

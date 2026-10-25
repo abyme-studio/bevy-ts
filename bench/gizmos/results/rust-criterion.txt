@@ -1,0 +1,6 @@
+Benchmarking frame/empty
+frame/empty             time:   [8.3905 µs 9.0940 µs 9.9338 µs]
+Found 13 outliers among 100 measurements (13.00%)
+Benchmarking frame/lines_1000
+frame/lines_1000        time:   [33.573 µs 40.004 µs 47.331 µs]
+Found 13 outliers among 100 measurements (13.00%)

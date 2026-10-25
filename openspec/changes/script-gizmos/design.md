@@ -57,7 +57,10 @@ retained replay (decision 10). The JS glue and TS declarations come from the `Pa
 any export.
 
 Each registered group gets one export: TS name `Gizmos_<Short>` (never written by a game),
-`stands_for = "Gizmos<Short>"`, and the default group also claims bare `Gizmos`. The names are
+`stands_for = "Gizmos<Short>"`. The default group's export is named `Gizmos`, so its errors read
+`Gizmos.line: ...`, and the reader takes bare `Gizmos` as it. Every group's export has the same
+methods, so `ParamSpec.module_declares` keeps them out of the shared declarations and
+`bevy-ts/gizmos` declares the one generic `interface Gizmos<G>` (`host::declaration_as`). The names are
 leaked `&'static str`s, once per group at registration. *Alternative:* teach `#[export]` generic
 impls. Rejected: the replay needs the table anyway, and generics in the macro serve only this.
 
@@ -86,7 +89,7 @@ Added to `host::Kind` with a `HostValue` impl each, so every export can use them
 
 | Kind | Rust | TS | Crossing |
 |---|---|---|---|
-| `Color` | `Color` | `ColorValue` | a tag slot then four channels: tags 0 to 9 are Bevy's `Color` variants in declaration order, channels in reflected field order; an array is `Srgba`. A string is tag 10 then the string's slots, parsed in Rust by `bevy_ts::color`. No colour text is parsed in JS. |
+| `Color` | `Color` | `ColorValue` | a tag slot then four channels: tags 0 to 12 are Bevy 0.20's 13 `Color` variants in declaration order, channels in reflected field order; an array is `Srgba`. A string is tag 13 then the string's slots, parsed in Rust by `bevy_ts::color`; any other object is tag 14, its JSON text, parsed there too. No colour text is parsed in JS. |
 | `Isometry3d` | `Isometry3d` | `Vec3 \| Quat \| { rotation?, translation? }` | 7 slots. An array of 3 or an object with `z` and no `w` is a translation, of 4 or with `w` a rotation; Bevy's `From` impls. |
 | `Isometry2d` | `Isometry2d` | `Vec2 \| Rot2 \| { rotation?, translation? }`, `Rot2` as `{ cos, sin }` | 4 slots; a number is not a `Rot2`. |
 | `TransformPoint` | `Transform` | a `Transform` (`{ translation?, rotation?, scale? }`) or a `GlobalTransform` column value | 10 slots; a `GlobalTransform` is decomposed in Rust (`to_scale_rotation_translation`). |
@@ -151,7 +154,9 @@ objects, `{ Cuboid: { half_size: Vec3 } } | { Sphere: { radius } } | ...`, one p
 Rust type from a table in `crates/bevy-ts-native/src/gizmos/primitives.rs`; the value is written over
 the type's default with `reflect_value::write` and taken with `FromReflect`; then the entry calls
 `primitive_2d`/`primitive_3d`. Builder settings (`resolution`, `drawArrow`, `cellCount`, ...)
-chain as in decision 5. An unknown key throws naming the supported ones. The TS union is generated
+chain as in decision 5. TS types every 2D primitive's builder as one `Primitive2dBuilder` (and
+3D as `Primitive3dBuilder`) with every setting any of them has, since the shape is only known from
+the value; a setting the shape's builder lacks throws `Cuboid has no setting resolution`. An unknown key throws naming the supported ones. The TS union is generated
 from the table and the types' reflected shapes.
 
 ### 8. Curves as reflected values
@@ -177,8 +182,11 @@ through `reflect_value`; `GizmosPlugin` registers these eight generic types. `ti
   `Camera2d` image target gives red pixels on the line and none off it. Rule 5: a render bug is
   tested where it renders.
 - `host.rs` unit tests: each new kind's codec, and glue for each input form.
-- `typescript.rs` cases: `Gizmos<LightGizmoConfigGroup>` types `configExt()`, a builder setting
-  on the wrong builder is a type error, `Gizmos<Nope>` is a type error.
+- Type cases in `packages/bevy-ts/test/gizmos.ts` (tsc via `pnpm check`, as the claims' type
+  tests), over a fixture of the generated `bevy-ts/gizmos` declaration that a Rust test keeps
+  equal to the engine's: `Gizmos<LightGizmoConfigGroup>` types `configExt()`, a builder setting
+  on the wrong builder is a type error, `Gizmos<Nope>` is a type error. `typescript.rs` runs no
+  tsc, so the cases cannot live there.
 
 ### 10. Retained gizmos on reflect-assets' path
 
@@ -219,6 +227,10 @@ cannot name `bevy-ts-native`'s table), for example `app.ts_hand_map(...)`. To as
 
 `examples/gizmos` ports Bevy's `examples/gizmos/3d_gizmos.rs` and `light_gizmos.rs` call for call:
 the same shapes, colours and config toggles (keys to cycle line style and joints, as Bevy's).
+Three departures: a TS project cannot declare a group, so the "round" gizmos draw into
+`FrustumGizmoConfigGroup`; a `FunctionCurve` is a closure, so its points are sampled into a
+`linestripGradient`; and the example has no `example.json`, since a shipped example is
+type-checked in a fresh project, which has `bevy-ts/gizmos` only after `bevy-ts types`.
 Frames come from `bevy-ts play --headless` with `BEVY_TS_SCREENSHOT`
 (`openspec/specs/headless-run/spec.md:9`): `before.png` is the example's scene with its gizmo
 systems removed (main has no `Gizmos`, so the systems do not load), `after.png` the full example,
@@ -226,10 +238,11 @@ both in `~/dev/bevy-ts-frames/script-gizmos/`. Nothing opens on the operator's s
 
 ## Risks / Trade-offs
 
-- [1,000 host calls a frame cost about 0.1 to 0.2 ms in TS against tens of µs in Rust] → The bench
-  states it; `linestrip` with a `Float32Array` draws many segments in one call; the doc says so.
-- [Colour objects cost more to encode than hex strings, or the reverse] → The bench has both arms;
-  the doc names the cheaper one.
+- [1,000 host calls a frame cost 0.15 to 0.26 ms in TS against 0.03 ms in Rust (measured)] → The
+  bench states it; `linestrip` with a `Float32Array` draws many segments in one call at Rust's cost;
+  the doc says so.
+- [Colour objects cost more to encode than hex strings, or the reverse] → Measured: `[r, g, b]` is
+  cheapest, a hex string and `srgb()` about 100 ns more; the doc names it.
 - [List kinds are bounded by 4 KB of slots] → Only gradients and text sections use them; the throw
   names the room.
 - [Builder redraw truncates the buffer] → Guarded by the length check; `ts_draws_what_rust_draws`

@@ -1,0 +1,24 @@
+[package]
+name = "gizmos-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# The Rust baseline for TS gizmos (change script-gizmos, design 11): a frame of a MinimalPlugins +
+# AssetPlugin + GizmoPlugin app with no drawing, and with 1,000 `line` calls. The TS arms are
+# bench/gizmos/bench.mjs.
+
+[dependencies]
+bevy = { version = "0.20", default-features = false, features = ["std", "bevy_gizmos", "bevy_asset"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "lines"
+harness = false
+
+[profile.bench]
+debug = false
+lto = "thin"
+codegen-units = 1

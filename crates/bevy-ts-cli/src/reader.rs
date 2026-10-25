@@ -42,7 +42,7 @@ pub fn port_claims() -> Vec<(String, String)> {
 const KINDS: &[&str] = &[
     "Query", "Res", "ResMut", "Local", "Commands", "MessageReader", "MessageWriter", "State", "NextState", "PreviousState", "On", "In", "App", "Mut", "Option",
     "Entity", "With", "Without", "Changed", "Added", "Add", "Insert", "Remove", "Discard", "Despawn", "Single", "Populated",
-    "RemovedComponents", "SystemChangeTick", "Has", "AnyOf", "Ref", "Or", "Spawned",
+    "RemovedComponents", "SystemChangeTick", "Has", "AnyOf", "Ref", "Or", "Spawned", "Gizmos",
     // Bevy items bevy-ts declines as query data (ecs-coverage); named so the error says so.
     "SpawnDetails", "Allow",
 ];
@@ -1248,6 +1248,21 @@ impl Reader<'_> {
                 Head::Value(e) => Ok(json!({ "kind": "on", "event": e })),
                 _ => Err(self.fail(s, span, "On takes an event or Add/Insert/Discard/Remove/Despawn<Component>")),
             },
+            // `Gizmos` is `Gizmos<DefaultGizmoConfigGroup>`; each spelling is claimed by the export
+            // of its group (`ts_gizmo_group`).
+            "Gizmos" => {
+                let spelling = if args.is_empty() { name.clone() } else { format!("Gizmos<{}>", args.iter().map(spell).collect::<Vec<_>>().join(",")) };
+                let found = |c: &str| self.claims.iter().find(|(claim, _)| claim == c).map(|(_, port)| port.clone());
+                let port = found(&spelling).or_else(|| if args.is_empty() { found("Gizmos<DefaultGizmoConfigGroup>") } else { None });
+                match port {
+                    Some(port) => Ok(json!({ "kind": "port", "name": port, "args": [] })),
+                    None => {
+                        let claimed: Vec<&str> = self.claims.iter().map(|(c, _)| c.as_str()).filter(|c| *c == "Gizmos" || c.starts_with("Gizmos<")).collect();
+                        let known = if claimed.is_empty() { "none: this engine exports no gizmo group".to_string() } else { claimed.join(", ") };
+                        Err(self.fail(s, span, format!("{spelling} is not a gizmo group this engine exports; claimed Gizmos spellings: {known}. A Rust crate exposes its group with app.ts_gizmo_group::<G>()")))
+                    }
+                }
+            }
             port if self.ports.iter().any(|p| p == port) => {
                 let refs = args.iter().map(|a| self.reference(a, s, "a value")).collect::<Result<Vec<_>, _>>()?;
                 Ok(json!({ "kind": "port", "name": port, "args": refs }))
@@ -1654,6 +1669,27 @@ export function wrong(p: Option<Query<[Pos]>>) {}
         assert!(none["pause"]["error"].is_string());
         assert_eq!(d["fixed"], none["fixed"]);
         assert_eq!(d["read"], none["read"]);
+    }
+
+    #[test]
+    fn a_gizmos_param_reads_as_its_groups_export() {
+        let src = "import type { Gizmos, LightGizmoConfigGroup } from \"bevy-ts/gizmos\";\nexport function plain(g: Gizmos) {}\nexport function light(g: Gizmos<LightGizmoConfigGroup>) {}\nexport function nope(g: Gizmos<NoSuchGroup>) {}\n";
+        let path = Path::new("/p/src/game.ts");
+        let allocator = Allocator::default();
+        let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
+        let read = |claims: Vec<(String, String)>| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), vec!["Gizmos".into(), "Gizmos_LightGizmoConfigGroup".into()], claims).ok().unwrap().code);
+        let claims = vec![
+            ("Gizmos<DefaultGizmoConfigGroup>".to_string(), "Gizmos".to_string()),
+            ("Gizmos<LightGizmoConfigGroup>".to_string(), "Gizmos_LightGizmoConfigGroup".to_string()),
+        ];
+        let d = read(claims);
+        assert_eq!(d["plain"]["params"], json!([{ "kind": "port", "name": "Gizmos", "args": [] }]));
+        assert_eq!(d["light"]["params"], json!([{ "kind": "port", "name": "Gizmos_LightGizmoConfigGroup", "args": [] }]));
+        let err = d["nope"]["error"].as_str().unwrap();
+        assert!(err.contains("Gizmos<NoSuchGroup> is not a gizmo group this engine exports; claimed Gizmos spellings: Gizmos<DefaultGizmoConfigGroup>, Gizmos<LightGizmoConfigGroup>"), "{err}");
+        // An engine with no gizmo groups names none.
+        let err = read(Vec::new())["plain"]["error"].as_str().unwrap().to_string();
+        assert!(err.contains("Gizmos is not a gizmo group this engine exports; claimed Gizmos spellings: none"), "{err}");
     }
 
     #[test]

@@ -477,6 +477,27 @@ throws before the call crosses, as `Cameras.worldsToViewport: points must be a F
 Float64Array`. A `Result` error, a param that fails validation, or a panic throws in JS, naming
 the param and method.
 
+Bevy's own argument shapes cross too, as Bevy's `impl Into<..>` takes them:
+
+| Rust argument | TS forms | Crossing |
+|---|---|---|
+| `Color` | any colour form (`"#f00"`, `[1, 0, 0]`, `srgb(1, 0, 0)`, `{ LinearRgba: {...} }`) | a tag and four channels; a string (or any form JS does not read) as text, parsed by `bevy_ts::color` in Rust, never in JS. A bad form throws naming the method, the argument and the forms taken |
+| `Isometry3d` | a `Vec3` (a translation), a `Quat` (a rotation) or `{ rotation?, translation? }` | 7 slots |
+| `Isometry2d` | a `Vec2`, a `Rot2` (`{ cos, sin }`) or `{ rotation?, translation? }`; a number is not a `Rot2` | 4 slots |
+| `Transform`, `HostTransform` | a `Transform` (`{ translation?, rotation?, scale? }`) or a `GlobalTransform` value (`{ value: [12 floats] }`) | 13 slots; `HostTransform` keeps a `GlobalTransform` as given (Bevy's `impl TransformPoint`), `Transform` decomposes it |
+| `UVec2`, `UVec3` | `[x, y]`, `[x, y, z]` or lane objects | a negative or fractional lane throws |
+| `HostPoints<T>` of `f32`, `Vec2`, `Vec3` | an array of points, or a `Float32Array` of 1, 2 or 3 floats per point | a slice, no length limit: a `Float32Array` as is, an array packed into a reused scratch array; a length that is not whole points throws |
+| `HostList<(A, B)>` | `[a, b][]`, each a kind above | in the call's 4 KB of slots; past them the call throws, naming the method and the room |
+| `HostJson` | any JSON value (`unknown` in TS) | its text |
+
+A method may return a builder, as Bevy's `gizmos.circle(..)` does: a hand-written `ExportParam`
+sets `MethodSpec::chain` to the builder's TS name, and the builder's settings are methods with
+`MethodSpec::of`. JS returns the param object itself, which TS types as the builder, whose methods
+are the settings: `gizmos.circle(at, 1, "#fff").resolution(64)`. Settings of one name on several
+builders share one JS method, so they take the same slots. `bevy_ts_native::gizmos` is the one
+export that does (docs/gizmos.md); `app.ts_gizmo_group::<G>()` exposes a crate's own gizmo config
+group to TS as `Gizmos<G>`.
+
 ### Params that write
 
 A param may write, and its methods may take `&mut self`:
@@ -527,8 +548,8 @@ ignores columns an exported param of the system may write.
 
 ### Standing for a Bevy spelling
 
-An export may claim the `Res<..>` or `ResMut<..>` spelling it stands for, so TS writes Bevy's name
-and never the export's:
+An export may claim the `Res<..>`, `ResMut<..>`, `Gizmos` or `Gizmos<..>` spelling it stands for,
+so TS writes Bevy's name and never the export's:
 
 ```rust
 #[bevy_ts_native::export(ts = "WindEdit", module = "bevy-ts/weather", stands_for = "ResMut<Wind>")]
@@ -547,7 +568,8 @@ spellings read as before. `bevy-ts types` adds each claim to `ResClaims`/`ResMut
 `native.d.ts`, or a clock: `ResMut<Time<Virtual>>` can be claimed by a `VirtualTime` export). A
 claim whose inner type TS does not declare is listed in a comment there and not typed. Every
 `Res<Time<..>>` stays the clock read docs/time.md describes, never a claim. The handshake lists the
-claim as the param's `standsFor`.
+claim as the param's `standsFor`. A `Gizmos<G>` spelling no export claims fails the load, naming it
+and the claimed `Gizmos` spellings; `Gizmos` alone is `Gizmos<DefaultGizmoConfigGroup>`.
 
 ## Ports and built-in modules
 
