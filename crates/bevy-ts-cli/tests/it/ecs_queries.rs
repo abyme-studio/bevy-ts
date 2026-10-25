@@ -619,6 +619,37 @@ app.addSystems(Update, put);
 }
 
 #[test]
+fn layout_only_commands_refuse_a_reflected_value() {
+    let (_, mut app, _) = staged(
+        "ecsq-layout-only",
+        |app| vec![app.world_mut().spawn_empty().id()],
+        r#"import { DirectionalLight } from "bevy-ts/bevy";
+import { srgb } from "bevy-ts";
+let done = false;
+export function put(c: Commands) {
+  if (done) return;
+  done = true;
+  const sun = () => DirectionalLight.of({ illuminance: 1, color: srgb(1, 0, 0) });
+  const tries: [string, () => void][] = [
+    ["insertIfNew", () => c.entity($0).insertIfNew(sun())],
+    ["tryInsert", () => c.entity($0).tryInsert(sun())],
+    ["insertRecursive", () => c.entity($0).insertRecursive(sun())],
+    ["spawnBatch", () => c.spawnBatch([[sun()]])],
+    ["insertBatch", () => c.insertBatch([[$0, sun()]])],
+  ];
+  for (const [name, f] of tries) {
+    try { f(); console.log(`refused ${name} no`); } catch (e) { console.log(`refused ${name} ${String(e).includes(`${name} takes layout values only`)}`); }
+  }
+}
+app.addSystems(Update, put);
+"#,
+    );
+    app.update();
+    let want: Vec<String> = ["insertIfNew", "tryInsert", "insertRecursive", "spawnBatch", "insertBatch"].iter().map(|n| format!("refused {n} true")).collect();
+    assert_eq!(lines(&mut app, "refused"), want);
+}
+
+#[test]
 fn retain_and_clear() {
     let (_, mut app, es) = staged(
         "ecsq-retain",
