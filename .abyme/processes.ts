@@ -28,9 +28,17 @@ const processes = {
   // The gate's steps after the workspace tests, for a rerun that stopped in bevy-ts-viewport.
   "mesh-picking-gate-rest": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo test -p bevy-ts-cli --test it -- mesh_picking:: headless_pointer:: && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep --line-buffered -v ld64 | tee target/mesh-picking-gate-rest.log | grep -E \"^test result|FAILED|panicked|^error|stale|^warning\"'" },
   "mesh-picking-test": { cmd: "bash -c 'set -o pipefail; (cargo test --no-fail-fast -p bevy-ts-viewport -p bevy-ts-cli --lib; cargo test --no-fail-fast -p bevy-ts-cli --test it -- headless_pointer:: mesh_picking:: play:: build::) 2>&1 | grep --line-buffered -v ld64 | tee target/mesh-picking-test.log | grep -E \"^error|^warning: unused|^test |test result|panicked\"'" },
-  // rust-events: the crates it changes, their unit tests and its CLI tests, in the gate slot.
   // land's check, run here on rust-events against main.
   "rust-events-affected": { cmd: "bash -c 'set -o pipefail; mkdir -p target; LAND_BASE=origin/main scripts/affected-gate.sh 2>&1 | tee target/rust-events-affected.log | tail -60'" },
+  // rust-events: bevy-ts alone and with reflect, and the CLI, checked in the gate slot.
+  "rust-events-check": {
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo check -p bevy-ts --all-targets && cargo check -p bevy-ts --features reflect --all-targets && cargo check -p bevy-ts-cli --all-targets\" 2>&1 | grep -v ld64 | tee target/rust-events-check.log | grep -E \"^error|^warning|-->|Finished\" | tail -80'",
+  },
+  // rust-events task 2.4: 1,000 CursorMoved reads a frame, 3 release runs (8 with RUNS=8), on a quiet machine.
+  "rust-events-bench": {
+    cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bench/rust-events/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tail -40'",
+  },
+  // rust-events: the crates it changes, their unit tests and its CLI tests, in the gate slot.
   "rust-events-test": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- rust_events:: rust_events_coverage:: surface:: reload::\" 2>&1 | grep -v ld64 | tee target/rust-events-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked|holes\" | tail -60'",
   },
