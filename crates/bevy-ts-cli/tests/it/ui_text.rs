@@ -54,6 +54,7 @@ fn rgb(hex: &str) -> Color {
 
 #[test]
 fn each_text_prop_writes_its_component() {
+    let _hang = common::watchdog("each_text_prop_writes_its_component", common::BOUND);
     let (_dir, mut app) = setup("ui-text-props", GAME);
     let e = node(&mut app, &["styled"]);
     let w = app.world();
@@ -74,6 +75,7 @@ fn each_text_prop_writes_its_component() {
 
 #[test]
 fn spans_are_child_entities_and_a_bound_span_writes_only_itself() {
+    let _hang = common::watchdog("spans_are_child_entities_and_a_bound_span_writes_only_itself", common::BOUND);
     let (_dir, mut app) = setup("ui-text-spans", GAME);
     let root = node(&mut app, &["hp"]);
     assert_eq!(app.world().get::<Text>(root).unwrap().0, "HP ");
@@ -117,6 +119,7 @@ fn spans_are_child_entities_and_a_bound_span_writes_only_itself() {
 
 #[test]
 fn a_span_outside_text_fails_naming_its_location() {
+    let _hang = common::watchdog("a_span_outside_text_fails_naming_its_location", common::BOUND);
     let dir = project("ui-text-outside", &[("game.tsx", "import { app } from \"bevy-ts\";\napp.scene(\"ui\", () => (\n  <node>\n    <span>x</span>\n  </node>\n));\n")]);
     let mut app = app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
@@ -127,6 +130,7 @@ fn a_span_outside_text_fails_naming_its_location() {
 
 #[test]
 fn a_misspelt_text_word_names_the_accepted_ones() {
+    let _hang = common::watchdog("a_misspelt_text_word_names_the_accepted_ones", common::BOUND);
     let dir = project("ui-text-word", &[("game.tsx", "import { app } from \"bevy-ts\";\napp.scene(\"ui\", () => <text justify={\"middle\" as never}>x</text>);\n")]);
     let mut app = app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
@@ -136,6 +140,7 @@ fn a_misspelt_text_word_names_the_accepted_ones() {
 
 #[test]
 fn font_is_an_asset_path() {
+    let _hang = common::watchdog("font_is_an_asset_path", common::BOUND);
     let dir = project("ui-text-font", &[("game.tsx", "import { app } from \"bevy-ts\";\napp.scene(\"ui\", () => <text key=\"t\" font=\"fonts/Inter.ttf\">x</text>);\n")]);
     let mut app = app(&dir.join("game.tsx"));
     app.add_plugins(AssetPlugin::default()).init_asset::<bevy::text::Font>();

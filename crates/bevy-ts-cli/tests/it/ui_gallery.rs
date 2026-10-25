@@ -23,6 +23,7 @@ fn intrinsics() -> BTreeSet<String> {
 
 #[test]
 fn the_gallery_mounts_every_intrinsic() {
+    let _hang = common::watchdog("the_gallery_mounts_every_intrinsic", common::BOUND);
     let dir = repo().join("examples/ui-gallery");
     let mut app = app(&dir.join("src/gallery.tsx"));
     app.add_plugins(AssetPlugin { file_path: dir.join("assets").to_string_lossy().into_owned(), ..default() })
@@ -45,4 +46,8 @@ fn the_gallery_mounts_every_intrinsic() {
     }
     let missing: Vec<_> = intrinsics().into_iter().filter(|t| !mounted.contains(t)).collect();
     assert!(missing.is_empty(), "examples/ui-gallery does not mount {missing:?}; add each to a panel");
+
+    // The game's camera is the scene's, not a startup system's, so edit mode's Game tab shows it.
+    let cameras: Vec<Vec<String>> = world.query_filtered::<&TsxNode, With<Camera3d>>().iter(world).map(|n| n.key_path.clone()).collect();
+    assert!(cameras.contains(&vec!["camera".to_string()]), "the scene mounts the game camera: {cameras:?}");
 }

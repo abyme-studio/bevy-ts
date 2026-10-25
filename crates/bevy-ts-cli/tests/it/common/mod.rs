@@ -29,6 +29,27 @@ pub fn free_port() -> u16 {
     std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
 }
 
+/// Fails the whole test binary if `test` is still running after `within`: a hang inside one frame
+/// (an endless loop in Rust or JS) otherwise holds the run, and its slot, forever. Drop disarms it.
+pub fn watchdog(test: &'static str, within: Duration) -> Watchdog {
+    let (tx, rx) = channel::<()>();
+    std::thread::spawn(move || {
+        if rx.recv_timeout(within) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+            eprintln!("{test} hung: still running after {within:?}");
+            std::process::exit(101);
+        }
+    });
+    Watchdog(tx)
+}
+
+pub struct Watchdog(std::sync::mpsc::Sender<()>);
+
+impl Drop for Watchdog {
+    fn drop(&mut self) {
+        let _ = self.0.send(());
+    }
+}
+
 /// A fresh directory of TS files under the temp dir.
 pub fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
     // Per process: another worktree's run of the same test must not share, or delete, its files.

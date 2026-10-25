@@ -27,13 +27,13 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 3. Events and state reads (after text-input; operator go for 3.4)
 
-- [ ] 3.1 `events.rs`: observers for `PointerEnter`, `PointerLeave`, `PointerMove`, `PointerCancel`, the seven drag events and `PointerScroll`, entity-local; payload fields per reactive-ui
-- [ ] 3.2 `<button onActivate>` (`Activate`, entity-local), `activateOnPress`
-- [ ] 3.3 `disabled` on every UI intrinsic: insert or remove `InteractionDisabled`
-- [ ] 3.4 `NodeRef.has(C)`: JS registers a `has` pair; `Subscription` gains presence; `frame_inner` compares `contains_id` with it; resolve any registered component by type path; never drop a `has` pair on absence (design 4)
-- [ ] 3.5 `tsx_scale`: a row with 1,000 `has` pairs on a quiet frame against 1,000 `get` pairs; the one-HUD quiet frame stays at today's 0.8 µs; record in `docs/research/tsx-scale.md`
-- [ ] 3.6 Tests: each pointer event headless by triggering Bevy's event; a child's click not heard by its parent; `Enter` on a focused button runs `onActivate` (viewport mode); a disabled button does not; `has(Pressed)` styles a button with one host call per change and none on quiet frames
-- [ ] 3.7 Gallery panel and `docs/ui.md` "Events" and "Reading markers" sections
+- [x] 3.1 `events.rs`: observers for `PointerEnter`, `PointerLeave`, `PointerMove`, `PointerCancel`, the seven drag events and `PointerScroll`, bubbling as main's picking events do (design 5); payload fields per reactive-ui; drags on any picked entity, with no threshold (Bevy's)
+- [x] 3.2 `<button onActivate>` (`Activate`, entity-local), `activateOnPress`
+- [x] 3.3 `disabled` on every UI intrinsic: insert or remove `InteractionDisabled`
+- [x] 3.4 `NodeRef.has(C)`: JS registers a `has` pair; `Subscription` gains presence; `frame_inner` compares `contains_id` with it; resolve any registered component by type path; never drop a `has` pair on absence (design 4)
+- [x] 3.5 `tsx_scale`: a row with 1,000 `has` pairs on a quiet frame against 1,000 `get` pairs; the one-HUD quiet frame stays at today's 0.8 µs; record in `docs/research/tsx-scale.md`
+- [x] 3.6 Tests: each pointer event headless by triggering Bevy's event; a child's scroll heard by its parent with the child as target; a drag on a UI node, a mesh and a glTF scene root (`ui_drag`); `Enter` on a focused button runs `onActivate` (viewport mode); a disabled button does not; `has(Pressed)` styles a button with one host call per change and none on quiet frames
+- [x] 3.7 Gallery panel and `docs/ui.md` "Events" and "Reading markers" sections
 
 ## 4. Focus and navigation (after text-input and mesh-picking)
 

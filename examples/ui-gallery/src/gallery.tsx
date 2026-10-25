@@ -1,13 +1,9 @@
 // Every bevy_ui element bevy-ts reaches from TSX, one panel per stage of the bevy-ui-coverage change.
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
-import { app, type Commands, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, Startup, tiled } from "bevy-ts";
-import { Camera3d, Transform, ZIndex } from "bevy-ts/bevy";
+import { app, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
+import { Camera3d, Pressed, Transform, ZIndex } from "bevy-ts/bevy";
 import type { Child } from "bevy-ts/jsx-runtime";
-
-export function stage(commands: Commands) {
-  commands.spawnNative("camera3d", { position: [-3, 3, 6], lookAt: [0, 0, 0] });
-}
 
 /** A titled panel in the gallery's grid of panels. */
 const Panel = ({ title, children }: { title: string; children?: Child }) => (
@@ -114,9 +110,44 @@ const TextInput = () => (
   </Panel>
 );
 
+const [events, setEvents] = signal<string[]>([]);
+const note = (s: string) => setEvents((l) => [s, ...l].slice(0, 4));
+const [locked, setLocked] = signal(false);
+const held = ref();
+
+/** Stage 3: the picking events with Bevy's fields, `onActivate`, `disabled` and `has(Pressed)`. */
+const Events = () => (
+  <Panel title="Events">
+    <node key="row" style={{ columnGap: px(10), alignItems: "center" }}>
+      <node key="pad" style={{ width: px(90), height: px(48), justifyContent: "center", alignItems: "center" }} background="#2c3444" radius={px(4)}
+        onPointerEnter={() => note("enter")}
+        onPointerLeave={() => note("leave")}
+        onPointerDrag={({ distance }) => note(`drag ${Math.round(distance[0])},${Math.round(distance[1])}`)}
+        onPointerScroll={({ unit, y }) => note(`scroll ${y} ${unit}`)}>
+        <text size={12} color="#9fb3d1">hover, drag, scroll</text>
+      </node>
+      <button key="press" ref={held} style={{ padding: px(6) }} radius={px(4)}
+        background={() => (held.has(Pressed) ? "#1d5c36" : "#2a7a4b")}
+        disabled={() => locked()}
+        onActivate={() => note("activate")}>
+        <text size={14}>{() => (locked() ? "Locked" : "Press")}</text>
+      </button>
+      <button key="lock" style={{ padding: px(6) }} radius={px(4)} background="#555d6e" onActivate={() => setLocked(!locked())}>
+        <text size={14}>{() => (locked() ? "Unlock" : "Lock")}</text>
+      </button>
+    </node>
+    <text key="log" size={13} color="#d0d6e0">{() => events().join(" · ") || "no events yet"}</text>
+  </Panel>
+);
+
 app.scene("gallery", () => (
   <>
     {/* Not UI: a cube behind the panels, so <entity>, <mesh> and <material> appear too. */}
+    {/* The game's camera, in the scene so edit mode's Game tab shows the gallery. At (-3, 3, 6), looking at the origin. */}
+    <entity key="camera">
+      <Camera3d />
+      <Transform translation={[-3, 3, 6]} rotation={[-0.2031, -0.2247, -0.048, 0.9518]} />
+    </entity>
     <entity key="cube">
       <mesh shape="cuboid" size={[1, 1, 1]} />
       <material color="#c33" roughness={0.6} />
@@ -130,9 +161,9 @@ app.scene("gallery", () => (
       <Basics />
       <Style />
       <Text />
+      <Events />
       <Media />
       <TextInput />
     </node>
   </>
 ));
-app.addSystems(Startup, stage);
