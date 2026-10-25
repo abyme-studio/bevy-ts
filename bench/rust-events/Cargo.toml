@@ -1,0 +1,18 @@
+[package]
+name = "rust-events-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# What reading Rust messages from TS costs (openspec rust-events, task 2.4): 1,000 `CursorMoved`
+# a frame through one TS system, end to end through V8. `run.sh` runs it in release.
+
+[dependencies]
+bevy = { version = "0.20", default-features = false, features = ["bevy_window", "bevy_input"] }
+bevy-ts = { path = "../../crates/bevy-ts", features = ["reflect"] }
+bevy-ts-cli = { path = "../../crates/bevy-ts-cli" }
+bevy-ts-v8 = { path = "../../crates/bevy-ts-v8" }
+serde_json = "1"
+
+[profile.release]
+debug = false
