@@ -403,7 +403,7 @@ impl MeshShape {
             }
             Self::CircularSector(s) => {
                 let d = Arc2d::default();
-                let c = CircularSector::new(s.radius.unwrap_or(d.radius), s.angle.unwrap_or(2.0 * d.half_angle));
+                let c = CircularSector::from_radians(s.radius.unwrap_or(d.radius), s.angle.unwrap_or(2.0 * d.half_angle));
                 flat(c, s.depth, s.segments, |mut b| {
                     if let Some(r) = s.resolution {
                         b = b.resolution(r);
@@ -911,6 +911,22 @@ mod tests {
             let e = parse(props.clone()).expect_err(&props.to_string());
             assert!(e.starts_with(want), "{props}: {e}");
         }
+    }
+
+    /// `angle` is the whole angle: the mesh spans `angle` about its centre, and the default 4π/3.
+    #[test]
+    fn a_sector_spans_its_whole_angle() {
+        let span = |v| {
+            let ps = positions(&parse(v).unwrap().mesh());
+            let angles: Vec<f32> =
+                ps.iter().filter(|p| p[0].hypot(p[1]) > 1e-3).map(|p| p[0].atan2(p[1])).collect();
+            let hi = angles.iter().cloned().fold(f32::MIN, f32::max);
+            let lo = angles.iter().cloned().fold(f32::MAX, f32::min);
+            hi - lo
+        };
+        let near = |a: f32, b: f32| assert!((a - b).abs() < 1e-3, "{a} vs {b}");
+        near(span(json!({ "shape": "circularSector", "angle": PI / 2.0 })), PI / 2.0);
+        near(span(json!({ "shape": "circularSector" })), 4.0 * PI / 3.0);
     }
 
     /// The smallest settings that pass the check build without a panic.
