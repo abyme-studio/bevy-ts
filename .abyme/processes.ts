@@ -25,6 +25,8 @@ const processes = {
   "mesh-picking-gate-rest": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-viewport -- --test-threads=1 && cargo test -p bevy-ts-cli --test it -- mesh_picking:: headless_pointer:: && cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep --line-buffered -v ld64 | tee target/mesh-picking-gate-rest.log | grep -E \"^test result|FAILED|panicked|^error|stale|^warning\"'" },
   "mesh-picking-test": { cmd: "bash -c 'set -o pipefail; (cargo test --no-fail-fast -p bevy-ts-viewport -p bevy-ts-cli --lib; cargo test --no-fail-fast -p bevy-ts-cli --test it -- headless_pointer:: mesh_picking:: play:: build::) 2>&1 | grep --line-buffered -v ld64 | tee target/mesh-picking-test.log | grep -E \"^error|^warning: unused|^test |test result|panicked\"'" },
   // rust-events: the crates it changes, their unit tests and its CLI tests, in the gate slot.
+  // land's check, run here on rust-events against main.
+  "rust-events-affected": { cmd: "bash -c 'set -o pipefail; mkdir -p target; LAND_BASE=origin/main scripts/affected-gate.sh 2>&1 | tee target/rust-events-affected.log | tail -60'" },
   "rust-events-test": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- rust_events:: rust_events_coverage:: surface:: reload::\" 2>&1 | grep -v ld64 | tee target/rust-events-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked|holes\" | tail -60'",
   },
