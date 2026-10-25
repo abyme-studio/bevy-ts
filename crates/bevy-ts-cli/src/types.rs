@@ -222,9 +222,46 @@ fn assets_named(registry: &TypeRegistry) -> Vec<(String, String, &TypeRegistrati
     out
 }
 
+/// A `bevy-ts/bevy` class written by hand in place of the generated one (change
+/// `animation-control`): a builder TS holds as JSON for a hand-mapped asset
+/// (`reflect_asset::HAND_MAPS`), or statics on a component. Its JS and d.ts replace the generated
+/// lines; an asset's `fields` is the JSON its hand-map reads and writes.
+struct Hand {
+    path: &'static str,
+    js: &'static str,
+    dts: &'static str,
+    fields: Option<&'static str>,
+}
+
+const HAND: &[Hand] = &[
+    Hand {
+        path: "bevy_animation::AnimationTargetId",
+        js: include_str!("hand_ts/animation_target_id.js"),
+        dts: include_str!("hand_ts/animation_target_id.d.ts"),
+        fields: None,
+    },
+    Hand {
+        path: "bevy_animation::graph::AnimationGraph",
+        js: include_str!("hand_ts/animation_graph.js"),
+        dts: include_str!("hand_ts/animation_graph.d.ts"),
+        fields: Some(
+            "graph: { nodes: { node_type: \"Blend\" | \"Add\" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; \
+             node_holes: never[]; edge_property: \"directed\"; edges: [number, number, null][] }; root: number; \
+             mask_groups: [string | { readonly names: readonly string[] }, number][]",
+        ),
+    },
+];
+
+fn hand(path: &str) -> Option<&'static Hand> {
+    HAND.iter().find(|h| h.path == path)
+}
+
 /// An asset's fields as `bevy-ts/bevy` types them: as the writer takes them, tagged with its type
 /// path so refs of two assets never type as each other.
 fn asset_fields(registry: &TypeRegistry, path: &str, reg: &TypeRegistration) -> String {
+    if let Some(fields) = hand(path).and_then(|h| h.fields) {
+        return format!("AssetFields<{path:?}, {{ {fields} }}>");
+    }
     let fields: Vec<String> = match reg.type_info() {
         TypeInfo::Struct(st) if bevy_ts::reflect_value::uncovered(path).is_none() => {
             st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(registry, f.type_path(), 1))).collect()
@@ -549,6 +586,11 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         let (factory, base) = if is_resource(reg) { ("nativeResource", "Resource") } else { ("nativeComponent", "Component") };
         js.push('\n');
         dts.push('\n');
+        if let Some(h) = hand(&path) {
+            js.push_str(h.js);
+            dts.push_str(h.dts);
+            continue;
+        }
         match native.get(&path).filter(|n| n.type_path == path) {
             Some(n) => {
                 let fields: Vec<String> = n.layout.fields.iter().map(|f| format!("{}: {}", prop(&f.name), field_js(&f.ty))).collect();
@@ -619,6 +661,12 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         let default = reg.data::<ReflectDefault>().is_some();
         js.push('\n');
         dts.push('\n');
+        if let Some(h) = hand(&path) {
+            js.push_str(h.js);
+            let _ = writeln!(dts, "export type {name} = {};", asset_fields(&registry, &path, reg));
+            dts.push_str(h.dts);
+            continue;
+        }
         let _ = writeln!(js, "export const {name} = asset({path:?}{});", if default { "" } else { ", { of: false }" });
         let _ = writeln!(dts, "export type {name} = {};", asset_fields(&registry, &path, reg));
         let class = if default { "AssetClass" } else { "AssetType" };

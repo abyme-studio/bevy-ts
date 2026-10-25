@@ -2,7 +2,7 @@
 // `@ts-expect-error` must be an error.
 import { app, Component, SceneComponent, Startup } from "bevy-ts";
 import type { Commands, f32, u8, Vec3 } from "bevy-ts";
-import { Transform, Name, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
+import { AnimationGraph, Transform, Name, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
 
 class Health extends Component { hp: f32 = 100; max: f32 = 100 }
 class Mover extends Component { declare velocity: Vec3; declare maxSpeed: f32 }
@@ -237,3 +237,9 @@ export const Counted = () => <entity><PlayAnimation clip="models/Fox.glb#Animati
 export const Once = () => <entity><PlayAnimation clip="models/Fox.glb#Animation2" repeat="Never" paused /></entity>;
 // @ts-expect-error  `repeat` is Bevy's RepeatAnimation, not a bool
 export const BoolRepeat = () => <entity><PlayAnimation repeat={true} /></entity>;
+// A graph root: a built graph, or a .animgraph.ron path.
+const blended = AnimationGraph.fromClips(["models/Fox.glb#Animation0", "models/Fox.glb#Animation2"])[0];
+export const Blended = () => <entity><PlayAnimation graph={blended} /></entity>;
+export const GraphFile = () => <entity><PlayAnimation graph="anims/fox_blend.animgraph.ron" /></entity>;
+// @ts-expect-error  graph is a graph, not a number
+export const BadGraph = () => <entity><PlayAnimation graph={3} /></entity>;

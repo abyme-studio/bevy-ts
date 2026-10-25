@@ -20,7 +20,17 @@ export type AnimatedBy = InstanceType<typeof AnimatedBy>;
 export declare const AnimationPlayer: Reflected<{ active_animations: readonly (readonly [number, { weight?: number; repeat?: "Never" | { Count: number } | "Forever"; speed?: number; elapsed?: number; seek_time?: number; last_seek_time?: number | null; completions?: number; just_completed?: boolean; paused?: boolean }])[] }>;
 export type AnimationPlayer = InstanceType<typeof AnimationPlayer>;
 
-export declare const AnimationTargetId: Reflected<{ value: string }>;
+/** A target: `{ names }`, the names from the animation root down to it (Bevy's `from_names`), or a UUID string. */
+export type AnimationTarget = string | { readonly names: readonly string[] };
+/** Bevy's `AnimationTargetId`; its statics name a target for a graph's mask groups or a clip's curves. */
+export declare const AnimationTargetId: Reflected<{ value: string }> & {
+  /** The target at `names`, from the animation root down (`["root", "b_Hip_01"]`). */
+  fromNames(names: readonly string[]): AnimationTarget;
+  /** `fromNames([name])`. */
+  fromName(name: string): AnimationTarget;
+  /** The animation root itself: `fromNames([])`. */
+  readonly root: AnimationTarget;
+};
 export type AnimationTargetId = InstanceType<typeof AnimationTargetId>;
 
 export declare const AnimationGraphHandle: Reflected<{ value: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null }>;
@@ -1587,8 +1597,63 @@ export type WorldAssetRoot = InstanceType<typeof WorldAssetRoot>;
 export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { events: readonly (readonly ["Root" | { Node: string }, readonly ({ time?: number; event?: {  } })[]])[]; duration: number }>;
 export declare const AnimationClip: AssetClass<AnimationClip>;
 
-export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", { graph: unknown; root: number; mask_groups: readonly (readonly [string, number | string])[] }>;
-export declare const AnimationGraph: AssetType<AnimationGraph>;
+export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", { graph: { nodes: { node_type: "Blend" | "Add" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; node_holes: never[]; edge_property: "directed"; edges: [number, number, null][] }; root: number; mask_groups: [string | { readonly names: readonly string[] }, number][] }>;
+/** A clip in a graph: an asset path with a label, or an `AnimationClip` ref or value. */
+export type ClipSource = string | AssetRef<AnimationClip> | AssetValue<AnimationClip>;
+/** One node of a graph's JSON. */
+export type AnimationGraphNodeJson = AnimationGraph["graph"]["nodes"][number];
+/**
+ * `new AnimationGraph()`: Bevy's `AnimationGraph` as a builder, Bevy's methods camelCased, holding
+ * the JSON (`AnimationGraph`, the type) Rust reads and writes. An asset value: a
+ * `Handle<AnimationGraph>` slot (`<PlayAnimation graph={g} />`), `assets.add(g)` and
+ * `assets.set(ref, g)` take it. Node numbers are this graph's own.
+ */
+export interface AnimationGraphBuilder extends AssetValue<AnimationGraph> {
+  readonly $of: "bevy_animation::graph::AnimationGraph";
+  readonly props: AnimationGraph;
+  root: number;
+  readonly graph: AnimationGraph["graph"];
+  readonly mask_groups: AnimationGraph["mask_groups"];
+  addClip(clip: ClipSource, weight: number, parent: number): number;
+  addClipWithMask(clip: ClipSource, mask: number, weight: number, parent: number): number;
+  addClips(clips: Iterable<ClipSource>, weight: number, parent: number): number[];
+  /** A blend node: its children's weights are normalized to 1. */
+  addBlend(weight: number, parent: number): number;
+  addBlendWithMask(mask: number, weight: number, parent: number): number;
+  /** An additive node: each child is added, scaled by its weight. */
+  addAdditiveBlend(weight: number, parent: number): number;
+  addAdditiveBlendWithMask(mask: number, weight: number, parent: number): number;
+  /** Makes `to` a child of `from` too. */
+  addEdge(from: number, to: number): void;
+  /** Removes the edge from `from` to `to`; false when there was none. */
+  removeEdge(from: number, to: number): boolean;
+  /** A live view of node `n`: `weight` and `mask` write through. */
+  get(n: number): AnimationGraphNode | undefined;
+  /** Every node number, in order. */
+  nodes(): number[];
+  /** Puts `target` in mask group `group` (0 to 52). */
+  addTargetToMaskGroup(target: AnimationTarget, group: number): void;
+}
+export declare const AnimationGraph: AssetType<AnimationGraph> & {
+  readonly typePath: "bevy_animation::graph::AnimationGraph";
+  /** A graph with one blend node, its root. */
+  new (): AnimationGraphBuilder;
+  /** A graph playing one clip under its root, and the clip's node. */
+  fromClip(clip: ClipSource): [AnimationGraphBuilder, number];
+  /** A graph playing each clip under its root, and their nodes. */
+  fromClips(clips: Iterable<ClipSource>): [AnimationGraphBuilder, number[]];
+};
+/** One node of a graph, as `AnimationGraph.get(n)` gives it. */
+export interface AnimationGraphNode {
+  readonly node_type: AnimationGraphNodeJson["node_type"];
+  weight: number;
+  /** The mask groups this node and its descendants do not animate, one bit each. */
+  mask: number;
+  addMask(mask: number): this;
+  removeMask(mask: number): this;
+  addMaskGroup(group: number): this;
+  removeMaskGroup(group: number): this;
+}
 
 export type Image = AssetFields<"bevy_image::image::Image", {  }>;
 export declare const Image: AssetClass<Image>;

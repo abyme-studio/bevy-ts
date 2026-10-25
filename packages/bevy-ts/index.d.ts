@@ -323,10 +323,12 @@ export declare function asset<F = {}>(typePath: string): AssetClass<F>;
 export declare const assets: {
   /** The asset from its type's default with `props` written over it. Visible to `get` at once, in `Assets<T>` when the run ends. */
   add<F>(type: AssetClass<F>, props?: AssetProps<F>): AssetRef<F>;
+  /** An asset value (`T.of(...)`, a built `AnimationGraph`) made its own asset. */
+  add<F>(value: AssetValue<F>): AssetRef<F>;
   /** The asset as JSON, or `undefined` when it is gone. One host call and a full read: keep values in JS rather than reading per frame. */
   get<F>(ref: AssetRef<F>): F | undefined;
   /** Writes `patch` over the asset's current value; a patch that changes nothing marks nothing changed. */
-  set<F>(ref: AssetRef<F>, patch: AssetProps<F>): void;
+  set<F>(ref: AssetRef<F>, patch: AssetProps<F> | AssetValue<F>): void;
 };
 
 /** The scene component a level names (`enemies::Grunt` or `src/enemies.tsx#Grunt`), for tsx's expand entry. */
