@@ -85,6 +85,8 @@ function logger(level) {
 }
 
 if (core) globalThis.console = { debug: logger(0), log: logger(1), info: logger(1), warn: logger(2), error: logger(3), trace: logger(0) };
+// The web's `performance`, clock only: milliseconds since the engine started, finer than `Date.now`.
+if (core) globalThis.performance = Object.freeze({ now: () => core.ops.op_bevyts_performance_now(), timeOrigin: core.ops.op_bevyts_time_origin() });
 
 // ---------------------------------------------------------------------------------------------
 // Field types: each is a value (for schemas) and, in the types package, a TS type
@@ -2265,6 +2267,21 @@ const HOST = {
   fail(param, method) {
     const msg = core ? core.ops.op_bevyts_host_error() : "";
     throw new Error(msg || `${param}.${method} failed`);
+  },
+  /** Writes a string argument at slot `i`: its UTF-8 length, then its bytes in the slots after. Returns the next slot. */
+  str(v, i) {
+    const b = encoder.encode(String(v));
+    const room = (HOST_SLOTS - i - 1) * 8;
+    if (b.length > room) throw new RangeError(`a string argument of ${b.length} bytes does not fit in one call (${room} left)`);
+    HOST.slots[i] = b.length;
+    HOST.slotBytes.set(b, (i + 1) * 8);
+    return i + 1 + Math.ceil(b.length / 8);
+  },
+  /** Reads a string result at slot `i`: `[string, next slot]`. */
+  text(i) {
+    const n = HOST.result[i];
+    const at = (i + 1) * 8;
+    return [decoder.decode(HOST.resultBytes.subarray(at, at + n)), i + 1 + Math.ceil(n / 8)];
   },
 };
 HOST.slotBytes = new Uint8Array(HOST.slots.buffer);
