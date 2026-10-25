@@ -565,6 +565,12 @@ fn hands() -> Vec<Arc<HandMap>> {
     HANDS.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
+/// Whether asset type `asset` is hand-mapped: a check that walks reflected fields round-trips
+/// it through `assets.add` and `assets.get` instead.
+pub fn is_hand_mapped(asset: TypeId) -> bool {
+    hand_map(asset).is_some()
+}
+
 fn hand_map(asset: TypeId) -> Option<Arc<HandMap>> {
     HANDS.read().unwrap_or_else(|e| e.into_inner()).iter().find(|h| h.id == asset).cloned()
 }
@@ -951,6 +957,7 @@ mod tests {
     fn a_hand_mapped_type_needs_no_reflect_and_goes_in_its_assets_at_the_refs_id() {
         let mut app = note_app();
         assert!(app.world().resource::<AppTypeRegistry>().read().get(TypeId::of::<Note>()).is_none(), "Note is not registered");
+        assert!(is_hand_mapped(TypeId::of::<Note>()) && !is_hand_mapped(TypeId::of::<Image>()));
         call(&app, "assets.add", serde_json::json!([NOTE, { "text": "a" }])).unwrap();
         assert!(note(&app, 1).is_none(), "queued until the run ends");
         flush(app.world_mut());
