@@ -4093,7 +4093,7 @@ pub struct SourceLocation {
     pub file: ::std::string::String,
     pub line: u32,
 }
-///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule.
+///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition.
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
@@ -4141,6 +4141,8 @@ pub enum Stage {
     OnEnter,
     #[serde(rename = "onExit")]
     OnExit,
+    #[serde(rename = "onTransition")]
+    OnTransition,
     #[serde(rename = "observer")]
     Observer,
     #[serde(rename = "oneShot")]
@@ -4168,6 +4170,7 @@ impl ::std::fmt::Display for Stage {
             Self::FixedLast => f.write_str("fixedLast"),
             Self::OnEnter => f.write_str("onEnter"),
             Self::OnExit => f.write_str("onExit"),
+            Self::OnTransition => f.write_str("onTransition"),
             Self::Observer => f.write_str("observer"),
             Self::OneShot => f.write_str("oneShot"),
             Self::Schedule => f.write_str("schedule"),
@@ -4197,6 +4200,7 @@ impl ::std::str::FromStr for Stage {
             "fixedLast" => Ok(Self::FixedLast),
             "onEnter" => Ok(Self::OnEnter),
             "onExit" => Ok(Self::OnExit),
+            "onTransition" => Ok(Self::OnTransition),
             "observer" => Ok(Self::Observer),
             "oneShot" => Ok(Self::OneShot),
             "schedule" => Ok(Self::Schedule),

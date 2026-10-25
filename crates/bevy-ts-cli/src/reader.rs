@@ -1051,7 +1051,8 @@ impl Reader<'_> {
             let (t, s) = (t.clone(), s.clone());
             return self.head(&t, &s, depth + 1);
         }
-        if KINDS.contains(&name.as_str()) || self.ports.iter().any(|p| p == name) {
+        // A value this module declares wins over a port of the same name.
+        if KINDS.contains(&name.as_str()) || (self.ports.iter().any(|p| p == name) && !scope.file.values.contains(name)) {
             return Ok(Head::Kind { name: name.clone(), args: args.clone(), span, scope: scope.clone() });
         }
         if let Some((file, there)) = self.lookup(&scope.file, name, 0) {
@@ -1577,6 +1578,16 @@ export function wrong(p: Option<Query<[Pos]>>) {}
         let read = |ports: &[&str]| declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), ports.iter().map(|s| s.to_string()).collect(), Vec::new()).ok().unwrap().code);
         assert_eq!(read(&["ReadRapierContext"])["cast"]["params"], json!([{ "kind": "port", "name": "ReadRapierContext", "args": [["src/game.ts", "Collider"]] }]));
         assert!(read(&[])["cast"]["error"].as_str().unwrap().contains("ReadRapierContext is not a system param kind"));
+    }
+
+    #[test]
+    fn a_value_the_module_declares_wins_over_a_port_of_its_name() {
+        let src = "import { States } from \"bevy-ts\";\nimport type { State } from \"bevy-ts\";\nexport class Pause extends States(\"Running\", \"Paused\") {}\nexport function look(p: State<Pause>) {}\n";
+        let path = Path::new("/p/src/game.ts");
+        let allocator = Allocator::default();
+        let program = Parser::new(&allocator, src, SourceType::ts()).parse().program;
+        let d = declared(&read_with(extract(&program, path, src, Path::new("/p")), Path::new("/p"), &crate::compile::resolver(false), vec!["Pause".into()], Vec::new()).ok().unwrap().code);
+        assert_eq!(d["look"]["params"][0]["kind"], "state", "{}", d["look"]);
     }
 
     #[test]

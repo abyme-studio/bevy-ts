@@ -156,7 +156,7 @@ pub fn scoped_kind(name: &str) -> Option<u8> {
     SCOPED.iter().position(|n| *n == name).map(|i| i as u8)
 }
 
-fn insert_scoped<const N: u8>(world: &mut World, e: Entity, kind: u8, value: u32) {
+fn p_insert_scoped<const N: u8>(world: &mut World, e: Entity, kind: u8, value: u32) {
     let Ok(mut e) = world.get_entity_mut(e) else { return };
     let s = TsState::<N>(value);
     match kind {
@@ -169,7 +169,7 @@ fn insert_scoped<const N: u8>(world: &mut World, e: Entity, kind: u8, value: u32
     }
 }
 
-fn remove_scoped<const N: u8>(world: &mut World, e: Entity, kind: u8) {
+fn p_remove_scoped<const N: u8>(world: &mut World, e: Entity, kind: u8) {
     let Ok(mut e) = world.get_entity_mut(e) else { return };
     match kind {
         0 => drop(e.remove::<DespawnOnExit<TsState<N>>>()),
@@ -282,8 +282,8 @@ macro_rules! ops {
             take_next: take_next::<$n>,
             state_id: state_id::<$n>,
             add_runner: add_runner::<$n>,
-            insert_scoped: insert_scoped::<$n>,
-            remove_scoped: remove_scoped::<$n>,
+            insert_scoped: p_insert_scoped::<$n>,
+            remove_scoped: p_remove_scoped::<$n>,
             make: make::<$n>,
             set_depth: set_depth::<$n>,
             set_derived: set_derived::<$n>,
@@ -322,7 +322,7 @@ fn variant<S: Reflect>(s: &S) -> Option<&str> {
 }
 
 fn from_sym<S: FromReflect>(sym: u32) -> Option<S> {
-    let value = bevy::reflect::DynamicEnum::new(name(sym), bevy::reflect::DynamicVariant::Unit);
+    let value = bevy::reflect::enums::DynamicEnum::new(name(sym), bevy::reflect::enums::DynamicVariant::Unit);
     S::from_reflect(&value)
 }
 
@@ -392,7 +392,7 @@ fn r_remove_scoped<S: FreelyMutableState>(world: &mut World, e: Entity, kind: u8
 pub fn expose_rust<S: FreelyMutableState + Reflect + FromReflect + bevy::reflect::Typed + bevy::reflect::TypePath>(app: &mut App) {
     let values: Vec<String> = match S::type_info() {
         bevy::reflect::TypeInfo::Enum(info) => {
-            info.iter().filter(|v| matches!(v, bevy::reflect::VariantInfo::Unit(_))).map(|v| v.name().to_string()).collect()
+            info.iter().filter(|v| matches!(v, bevy::reflect::enums::VariantInfo::Unit(_))).map(|v| v.name().to_string()).collect()
         }
         _ => Vec::new(),
     };
