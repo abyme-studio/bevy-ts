@@ -43,3 +43,25 @@ OVER BUDGET: the reads cost more than 1 ms a frame
 20:45  up 1 day, 47 mins, 2 users, load averages: 23.56 59.42 65.16
 1000 CursorMoved a frame: frame without a reader 423 us, with 2156 us: 1.733 ms for the reads, 1733 ns per message (647 ns serialization, 1086 ns crossing, parse and loop)
 OVER BUDGET: the reads cost more than 1 ms a frame
+ 5:31  up 1 day,  9:33, 2 users, load averages: 160.50 92.10 76.20
+1000 CursorMoved a frame: frame without a reader 272 us, with 443 us: 0.171 ms for the reads, 171 ns per message (28 ns encoding, 143 ns crossing, decode and loop)
+ 5:31  up 1 day,  9:33, 2 users, load averages: 160.50 92.10 76.20
+1000 CursorMoved a frame: frame without a reader 159 us, with 456 us: 0.297 ms for the reads, 297 ns per message (33 ns encoding, 263 ns crossing, decode and loop)
+ 5:31  up 1 day,  9:33, 2 users, load averages: 154.62 92.01 76.26
+1000 CursorMoved a frame: frame without a reader 442 us, with 449 us: 0.006 ms for the reads, 6 ns per message (28 ns encoding, -22 ns crossing, decode and loop)
+ 5:32  up 1 day,  9:35, 2 users, load averages: 93.90 89.24 76.67
+1000 CursorMoved a frame: frame without a reader 211 us, with 293 us: 0.082 ms for the reads, 82 ns per message (38 ns encoding, 44 ns crossing, decode and loop)
+ 5:32  up 1 day,  9:35, 2 users, load averages: 93.90 89.24 76.67
+1000 CursorMoved a frame: frame without a reader 380 us, with 431 us: 0.052 ms for the reads, 52 ns per message (41 ns encoding, 11 ns crossing, decode and loop)
+ 5:33  up 1 day,  9:35, 2 users, load averages: 93.90 89.24 76.67
+1000 CursorMoved a frame: frame without a reader 384 us, with 450 us: 0.066 ms for the reads, 66 ns per message (40 ns encoding, 26 ns crossing, decode and loop)
+ 5:33  up 1 day,  9:35, 2 users, load averages: 93.90 89.24 76.67
+1000 CursorMoved a frame: frame without a reader 319 us, with 371 us: 0.052 ms for the reads, 52 ns per message (42 ns encoding, 10 ns crossing, decode and loop)
+ 5:33  up 1 day,  9:35, 2 users, load averages: 91.11 88.74 76.57
+1000 CursorMoved a frame: frame without a reader 293 us, with 463 us: 0.170 ms for the reads, 170 ns per message (38 ns encoding, 132 ns crossing, decode and loop)
+ 5:33  up 1 day,  9:35, 2 users, load averages: 91.11 88.74 76.57
+1000 CursorMoved a frame: frame without a reader 197 us, with 335 us: 0.138 ms for the reads, 138 ns per message (38 ns encoding, 100 ns crossing, decode and loop)
+ 5:33  up 1 day,  9:35, 2 users, load averages: 91.11 88.74 76.57
+1000 CursorMoved a frame: frame without a reader 234 us, with 321 us: 0.087 ms for the reads, 87 ns per message (34 ns encoding, 53 ns crossing, decode and loop)
+ 5:33  up 1 day,  9:35, 2 users, load averages: 91.11 88.74 76.57
+1000 CursorMoved a frame: frame without a reader 220 us, with 337 us: 0.116 ms for the reads, 116 ns per message (33 ns encoding, 84 ns crossing, decode and loop)
