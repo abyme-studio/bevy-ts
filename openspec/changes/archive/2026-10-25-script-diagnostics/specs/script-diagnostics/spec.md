@@ -67,7 +67,7 @@ The module SHALL export Bevy's path constants for every plugin the `diagnostics`
 - **THEN** `game.json` lists it, and the played app's store holds `entity_count`
 
 ### Requirement: Script stages record their CPU time
-`ScriptStageDiagnosticsPlugin`, when listed, SHALL register one Bevy diagnostic per TS stage that runs, at `bevy_ts/<stage>/elapsed_cpu` with the stage in kebab case (`bevy_ts/update/elapsed_cpu`) and suffix `ms`, and SHALL add one measurement each time the stage's exclusive system runs: the wall time of the whole stage, JS and host work together. A stage with no TS systems SHALL record nothing. Unlisted, no stage SHALL read a clock for it.
+`ScriptStageDiagnosticsPlugin`, when listed, SHALL register one Bevy diagnostic per TS stage that runs, at `bevy_ts/<stage>/elapsed_cpu` with the stage in snake case, as Bevy's paths are (`bevy_ts/update/elapsed_cpu`, `bevy_ts/post_update/elapsed_cpu`), and `ScriptStageDiagnosticsPlugin.elapsedCpu(stage)` SHALL give that path from the stage's name, typed as the stage names and suffix `ms`, and SHALL add one measurement each time the stage's exclusive system runs: the wall time of the whole stage, JS and host work together. A stage with no TS systems SHALL record nothing. Unlisted, no stage SHALL read a clock for it.
 
 #### Scenario: Update's cost
 - **WHEN** a headless project lists `ScriptStageDiagnosticsPlugin` and has an `Update` TS system that busy-loops for 2 ms by `performance.now()`

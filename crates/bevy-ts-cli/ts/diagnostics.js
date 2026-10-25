@@ -67,5 +67,7 @@ export const MeshAllocatorDiagnosticPlugin = Object.freeze({
   SLABS_SIZE: "mesh_allocator_slabs_size",
   ALLOCATIONS: "mesh_allocator_allocations",
 });
-/** bevy-ts's own: each TS stage's CPU time, `bevy_ts/<stage>/elapsed_cpu`, in ms. */
-export const ScriptStageDiagnosticsPlugin = Object.freeze({ elapsedCpu: (stage) => `bevy_ts/${stage}/elapsed_cpu` });
+/** bevy-ts's own: each TS stage's CPU time, `bevy_ts/<stage in snake case>/elapsed_cpu`, in ms. */
+export const ScriptStageDiagnosticsPlugin = Object.freeze({
+  elapsedCpu: (stage) => `bevy_ts/${String(stage).replace(/(?<=[a-z])([A-Z])/g, "_$1").toLowerCase()}/elapsed_cpu`,
+});

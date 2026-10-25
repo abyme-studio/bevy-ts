@@ -6,7 +6,7 @@ How TS calls Rust: Bevy system params exported with `#[export]`, read or write, 
 ## Requirements
 
 ### Requirement: Rust exports system params to TS
-A Rust crate (the project's own or a port) SHALL be able to export a Bevy `SystemParam` to TS by putting `#[bevy_ts::export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` block of the param and calling `app.ts_param::<P>()`. Every `pub fn` in that block SHALL become a method of the TS type `Name`. The macro SHALL generate the host function per method, the argument and result codecs, the TS declaration and the JS glue. Method signatures SHALL be restricted to `&self` or `&mut self` plus scalars, `bool`, `Vec2`, `Vec3`, `Quat`, `Entity`, `NativeLayout` records, fieldless enums (crossing as their variant names, a record that leaves one out getting its first variant), `&[T]` and `&mut [T]` of those, and `Option` of those; any other type SHALL be a compile error naming the parameter. The param MAY write: `ResMut`, `Query<&mut T>` and the other shapes the coverage table supports. A type that is not a `SystemParam`, such as `&mut World`, SHALL fail to compile.
+A Rust crate (the project's own or a port) SHALL be able to export a Bevy `SystemParam` to TS by putting `#[bevy_ts::export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` block of the param and calling `app.ts_param::<P>()`. Every `pub fn` in that block SHALL become a method of the TS type `Name`. The macro SHALL generate the host function per method, the argument and result codecs, the TS declaration and the JS glue. Method signatures SHALL be restricted to `&self` or `&mut self` plus scalars, `bool`, `Vec2`, `Vec3`, `Quat`, `Entity`, `NativeLayout` records, fieldless enums (crossing as their variant names, a record that leaves one out getting its first variant), `&str` arguments and `String` results, `&[T]` and `&mut [T]` of those numeric kinds, and `Option` of those; any other type SHALL be a compile error naming the parameter. The param MAY write: `ResMut`, `Query<&mut T>` and the other shapes the coverage table supports. A type that is not a `SystemParam`, such as `&mut World`, SHALL fail to compile.
 
 #### Scenario: Rapier's raycast
 - **WHEN** the Rapier port exports `impl ReadRapierContext { pub fn cast_ray(&self, origin: Vec3, dir: Vec3, max_toi: f32, solid: bool, f: RayFilter) -> Option<RayHit> }`
@@ -233,3 +233,22 @@ Every engine (`bevy-ts dev`, `bevy-ts play`, a shipped game, `bevy-ts types`) SH
 #### Scenario: Declared for TS
 - **WHEN** `bevy-ts types` runs
 - **THEN** module `bevy-ts/camera` declares `MeshRayCast`, `Ray3d`, `RayCastSettings` and `RayMeshHit`
+
+### Requirement: Strings cross as UTF-8
+An exported method SHALL be able to take `&str` and `Option<&str>` arguments and return `String` or `Option<String>`, typed `string` (and `string | undefined`) in TS. The JS glue SHALL encode a string argument as UTF-8 into the call's argument slots (its byte length, then its bytes), and Rust SHALL read and check it there; a string argument SHALL NOT take one of the method's slice arguments. A string result SHALL come back the same way in the result slots and be decoded by the glue into a JS string. A string too long for the call's slots SHALL throw, naming its length. A `String` SHALL NOT be a field of a `HostRecord` or a slice element. A string argument SHALL NOT be checked against the run's columns for overlap: it never views one.
+
+#### Scenario: A path in, a name out
+- **WHEN** a crate exports `pub fn suffix(&self, path: &str) -> Option<String>` and a TS system calls `p.suffix("frame_time")`
+- **THEN** Rust receives `"frame_time"` and the system reads `"ms"`
+
+#### Scenario: Not ASCII
+- **WHEN** a TS system passes `"bâtiment/面"` to a `&str` argument whose method returns it unchanged
+- **THEN** the system reads `"bâtiment/面"`
+
+#### Scenario: Too long for one call
+- **WHEN** a TS system passes a string of 5,000 bytes to a `&str` argument
+- **THEN** the call throws, naming the string's length, and Rust is not called
+
+#### Scenario: A string in a record
+- **WHEN** a crate derives `HostRecord` on a struct with a `String` field
+- **THEN** it fails to compile, naming the field

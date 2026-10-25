@@ -160,21 +160,32 @@ fn an_engine_adds_only_the_plugins_listed() {
 
 #[test]
 fn script_stage_diagnostics_time_stages_with_systems_only() {
-    let src = r#"import { app, Update } from "bevy-ts";
+    let src = r#"import { app, Last, Update } from "bevy-ts";
+import type { DiagnosticsStore } from "bevy-ts/diagnostics";
+import { ScriptStageDiagnosticsPlugin } from "bevy-ts/diagnostics";
 export function busy() {
   const t = performance.now();
   while (performance.now() - t < 2) {}
 }
 app.addSystems(Update, busy);
+export function read(store: DiagnosticsStore) {
+  console.log(`stage ${ScriptStageDiagnosticsPlugin.elapsedCpu("FixedPostUpdate")} ${store.historyLen(ScriptStageDiagnosticsPlugin.elapsedCpu("Update"))}`);
+}
+app.addSystems(Last, read);
 "#;
     let dir = project("diagnostics-stages", &[("game.ts", src)]);
     let mut app = diag_app(&dir);
     app.add_plugins(bevy_ts::systems::ScriptStageDiagnosticsPlugin);
     assert!(reload(&mut app, false).errors.is_empty());
     updates(&mut app, 3);
-    let update = store(&app).get(&bevy_ts::systems::stage_path(bevy_ts::manifest::Stage::Update)).expect("Update is timed");
+    let path = bevy_ts::systems::stage_path(bevy_ts::manifest::Stage::Update);
+    assert_eq!(path.as_str(), "bevy_ts/update/elapsed_cpu");
+    assert_eq!(bevy_ts::systems::stage_path(bevy_ts::manifest::Stage::FixedPostUpdate).as_str(), "bevy_ts/fixed_post_update/elapsed_cpu");
+    let update = store(&app).get(&path).expect("Update is timed");
     assert!(update.average().unwrap() >= 2.0, "a 2 ms system: {:?}", update.average());
     assert_eq!(update.suffix, "ms");
     let post = bevy_ts::systems::stage_path(bevy_ts::manifest::Stage::PostUpdate);
     assert!(store(&app).get(&post).is_none(), "a stage with no TS systems records nothing");
+    let read = tagged(&app, "stage ").last().cloned().unwrap();
+    assert!(read.starts_with("bevy_ts/fixed_post_update/elapsed_cpu ") && !read.ends_with("undefined"), "TS names the path Rust records: {read}");
 }
