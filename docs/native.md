@@ -535,6 +535,20 @@ app.addSystems(Update,
   systems(debugOverlay).runIf(inputToggleActive(false, KeyCode.F1)));
 ```
 
+Mouse motion and scroll need no param: they are Bevy's own resources, read with `Res` as any
+Rust resource is (Rust resources, above). Each holds the frame's messages summed, and is zero
+again the next frame:
+
+```ts
+import type { Res } from "bevy-ts";
+import { AccumulatedMouseMotion, AccumulatedMouseScroll } from "bevy-ts/bevy";
+
+export function orbit(motion: Res<AccumulatedMouseMotion>, scroll: Res<AccumulatedMouseScroll>) {
+  turn(motion.delta.x, motion.delta.y);
+  zoom(scroll.unit === "Line" ? scroll.delta.y * 16 : scroll.delta.y);
+}
+```
+
 Every public Bevy 0.20 input type, and where TS reaches it:
 
 | Bevy type | TS | Owner |
@@ -544,7 +558,8 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 | `ButtonInput<Key>`, `Key` (logical keys) | beside `Keys` | text-input, a later stage |
 | `KeyboardInput`, `KeyboardFocusLost` | `MessageReader` | rust-events |
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` | script-input-devices |
-| `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollPixelsPerLine`, `MouseScrollUnit` | `Res<T>` | rust-resources; script-input-devices stage 2 |
+| `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollUnit` | `Res<T>`; the unit as `"Line" \| "Pixel"` | rust-resources; script-input-devices |
+| `MouseScrollPixelsPerLine` | none: Bevy 0.20 reflects it without `reflect(Resource)` | Bevy |
 | `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events; script-input-devices stage 3 |
 | `Window::cursor_position`, `physical_cursor_position` | `Cursor` | script-input-devices |
 | `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events; stage 3 |

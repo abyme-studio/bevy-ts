@@ -63,7 +63,7 @@
 - **THEN** the load fails at the `inputPressed` call, pointing at `Gamepads`
 
 ### Requirement: Mouse motion and scroll as resources
-Mouse motion and scroll SHALL be read through `Res<T>` of Bevy's own resources, with no param of `bevy-ts/input`: `Res<AccumulatedMouseMotion>` (`delta`), `Res<AccumulatedMouseScroll>` (`unit`, `delta`) and `Res<MouseScrollPixelsPerLine>`, through the `Res<T>` path of Rust resources.
+Mouse motion and scroll SHALL be read through `Res<T>` of Bevy's own resources, with no param of `bevy-ts/input`: `Res<AccumulatedMouseMotion>` (`delta`), and `Res<AccumulatedMouseScroll>` (`unit`, `delta`), through the `Res<T>` path of Rust resources. `MouseScrollPixelsPerLine` SHALL be listed in the coverage table as unreachable, because Bevy 0.20 reflects it without `reflect(Resource)`.
 
 #### Scenario: Mouse look
 - **WHEN** Bevy receives `MouseMotion { delta: (3, -2) }` and a system reads `motion: Res<AccumulatedMouseMotion>`

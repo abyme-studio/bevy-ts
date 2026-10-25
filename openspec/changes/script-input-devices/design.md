@@ -37,7 +37,8 @@ Every public Bevy 0.20 input type, its TS path and its owner. Stage 1.11 copies 
 | `ButtonInput<Key>`, `Key` (logical keys) | `bevy-ts/input`, beside `Keys` | text-input, a follow-up stage |
 | `KeyboardInput`, `KeyboardFocusLost` | `MessageReader` | rust-events |
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` enum | this change |
-| `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollPixelsPerLine`, `MouseScrollUnit` | `Res<T>` | rust-resources (path); this change, stage 2 (docs, test) |
+| `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollUnit` | `Res<T>` | rust-resources (path); this change, stage 2 (docs, test) |
+| `MouseScrollPixelsPerLine` | none: Bevy 0.20 reflects it without `reflect(Resource)` | Bevy |
 | `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events; this change, stage 3 (docs, test) |
 | `Window::cursor_position`, `physical_cursor_position` | `Cursor` | this change |
 | `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events; stage 3 |
