@@ -18,8 +18,9 @@ use std::sync::Arc;
 
 const N: usize = 1000;
 
-/// 1,000 4-px nodes, each a static `style` and a `transform` bound to the frame count, and a
-/// button drawn 400 px right and 200 px down of its layout place.
+/// 1,000 4-px nodes, each a static `style` and a `transform` bound to the frame count; a button
+/// drawn 400 px right and 200 px down of its layout place; and, below the nodes, a 100-px clipping
+/// field with a button moved 50 px right (inside it) and one moved 150 px right (past its edge).
 const GAME: &str = r#"import { app, signal, px, Update } from "bevy-ts";
 export const [frame, setFrame] = signal(0);
 export function tick() { setFrame(frame() + 1); }
@@ -32,6 +33,12 @@ app.scene("ui", () => (
     ))}
     <button key="moved" style={{ position: "absolute", left: 0, top: 0, width: px(40), height: px(40) }}
       transform={{ translation: [px(400), px(200)] }} onPointerClick={() => console.log("click moved")} />
+    <node key="field" style={{ position: "absolute", left: 0, top: px(510), width: px(100), height: px(30), overflow: "clip" }}>
+      <button key="inside" style={{ position: "absolute", left: 0, top: 0, width: px(20), height: px(20) }}
+        transform={{ translation: [px(50), px(0)] }} onPointerClick={() => console.log("click inside")} />
+      <button key="outside" style={{ position: "absolute", left: 0, top: 0, width: px(20), height: px(20) }}
+        transform={{ translation: [px(150), px(0)] }} onPointerClick={() => console.log("click outside")} />
+    </node>
   </>
 ));
 "#;
@@ -86,31 +93,43 @@ fn a_thousand_nodes_moved_by_transform_never_change_node() {
     }
 }
 
-#[test]
-fn a_button_moved_by_transform_is_clicked_where_it_is_drawn() {
+/// Clicks at `(x, y)` and counts the `said` messages.
+fn click(app: &mut App, x: f64, y: f64, said: &str) -> usize {
     use bevy_ts_remote::protocol::PointerEventKind::{Down, Move, Up};
     use bevy_ts_remote::protocol::{PointerEvent, PointerEventButton, PointerEventType};
+    let events = [Move, Down, Up].map(|kind| PointerEvent {
+        button: Some(PointerEventButton::Left),
+        buttons: vec![],
+        clicks: None,
+        dx: None,
+        dy: None,
+        kind,
+        mods: None,
+        type_: PointerEventType::Pointer,
+        x,
+        y,
+    });
+    app.world_mut().resource_mut::<Pending>().0.extend(events);
+    common::updates(app, 6);
+    messages(app).into_iter().filter(|m| m == said).count()
+}
+
+#[test]
+fn a_button_moved_by_transform_is_clicked_where_it_is_drawn() {
     let _hang = common::watchdog("a_button_moved_by_transform_is_clicked_where_it_is_drawn", common::BOUND);
     let mut app = scene("ui-placement-click");
     let moved = node(&mut app, "moved");
     assert_eq!(app.world().get::<UiGlobalTransform>(moved).unwrap().translation, Vec2::new(420.0, 220.0));
-    let click = |app: &mut App, x: f64, y: f64| {
-        let events = [Move, Down, Up].map(|kind| PointerEvent {
-            button: Some(PointerEventButton::Left),
-            buttons: vec![],
-            clicks: None,
-            dx: None,
-            dy: None,
-            kind,
-            mods: None,
-            type_: PointerEventType::Pointer,
-            x,
-            y,
-        });
-        app.world_mut().resource_mut::<Pending>().0.extend(events);
-        common::updates(app, 6);
-        messages(app).into_iter().filter(|m| m == "click moved").count()
-    };
-    assert_eq!(click(&mut app, 20.0, 20.0), 0, "its layout place is empty");
-    assert_eq!(click(&mut app, 420.0, 220.0), 1, "its drawn place takes the click");
+    assert_eq!(click(&mut app, 20.0, 20.0, "click moved"), 0, "its layout place is empty");
+    assert_eq!(click(&mut app, 420.0, 220.0, "click moved"), 1, "its drawn place takes the click");
+}
+
+#[test]
+fn a_button_moved_past_its_clip_is_clipped_where_it_is_drawn() {
+    let _hang = common::watchdog("a_button_moved_past_its_clip_is_clipped_where_it_is_drawn", common::BOUND);
+    let mut app = scene("ui-placement-clip");
+    let outside = app.world_mut().query::<(Entity, &TsxNode)>().iter(app.world()).find(|(_, n)| n.key_path == ["field", "outside"]).map(|(e, _)| e).unwrap();
+    assert_eq!(app.world().get::<UiGlobalTransform>(outside).unwrap().translation, Vec2::new(160.0, 520.0), "drawn past the edge");
+    assert_eq!(click(&mut app, 60.0, 520.0, "click inside"), 1, "moved inside the field: hit");
+    assert_eq!(click(&mut app, 160.0, 520.0, "click outside"), 0, "moved past the field's edge: clipped");
 }

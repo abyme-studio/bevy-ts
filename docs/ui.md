@@ -133,6 +133,12 @@ span, bind its text (`<span>{() => (low() ? "!" : "")}</span>`).
 | `justify` | `<text>` | `TextLayout.justify` | `left`, `center`, `right`, `justified`, `start`, `end` |
 | `linebreak` | `<text>` | `TextLayout.linebreak` | `word`, `char`, `word-or-char`, `none` |
 | `textShadow` | `<text>` | `TextShadow` | `{ x, y, color }`; a missing field is Bevy's default |
+| `textHalo` | `<text>` | bevy-ts's `TextHalo` | `{ width, color }`: an outline `width` pixels wide (more than 0, at most 4; default 1) in `color` (default black), round the whole text, spans too |
+
+`textHalo` keeps text readable on any ground: the glyphs are drawn again in its colour at 8 offsets
+round them (16 above 2 px), under the text, with no extra layout or entity. Each copy is a glyph to
+draw: 40 labels moving every frame add about 1 ms; 1,000 take twice the frame time at 8 offsets
+and three times at 16 (`docs/research/tsx-scale.md`). Text without a halo pays nothing.
 
 ## Cameras and images
 
@@ -256,7 +262,7 @@ may bind Tab or the arrows itself. Turn them on in `bevy-ts.json`, as `meshPicki
 
 Keys need a primary window: they work in a game window and in viewport mode, not under
 `--headless`. In edit mode the keys are the editor's: Tab moves no game focus and a field types nothing until
-Play.
+Play. `autoFocus` still takes `InputFocus` at mount in edit mode; the keys stay the editor's.
 
 ## `<input>`
 

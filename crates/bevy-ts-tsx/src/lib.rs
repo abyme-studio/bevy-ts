@@ -13,6 +13,7 @@ pub mod intrinsics;
 pub mod mount;
 pub mod overlay;
 pub mod events;
+pub mod halo;
 pub mod protocol;
 pub mod reconcile;
 pub mod reflected;
@@ -505,5 +506,6 @@ impl Plugin for TsxPlugin {
         );
         app.add_ts_command_kind(mount::UNMOUNT, mount::unmount);
         app.add_systems(PostUpdate, intrinsics::report_texture_failures);
+        halo::plugin(app);
     }
 }

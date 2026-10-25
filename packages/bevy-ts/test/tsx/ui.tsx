@@ -40,6 +40,13 @@ export const RichText = () => (
     <span justify="center">x</span>
   </text>
 );
+export const Haloed = () => (
+  <text color="#fff" textHalo={{ width: 1.5, color: "#000" }}>
+    Harbour <span color="#ff0">quay</span>
+    {/* @ts-expect-error  textHalo is <text>'s: it outlines every span already */}
+    <span textHalo={{ width: 1 }}>x</span>
+  </text>
+);
 // @ts-expect-error  not a justify word
 export const BadJustify = () => <text justify="middle">x</text>;
 

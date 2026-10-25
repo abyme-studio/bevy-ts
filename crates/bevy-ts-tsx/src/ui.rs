@@ -15,6 +15,7 @@ use bevy::image::{TextureAtlas, TextureAtlasLayout};
 use bevy::render::render_resource::TextureFormat;
 use bevy::sprite::{BorderRect, SliceScaleMode, TextureSlicer};
 use bevy::ui::widget::{NodeImageMode, TextShadow, ViewportNode};
+use crate::halo::TextHalo;
 use bevy::ui::{
     AngularColorStop, BackgroundGradient, BorderGradient, BoxShadow, ColorStop, ConicGradient, CornerRadius, Gradient, InlineDirection, LinearGradient, OverflowAxis,
     OverflowClipMargin, RadialGradient, RadialGradientShape, ShadowStyle, UiPosition, UiTransform, Val2, VisualBox,
@@ -42,7 +43,8 @@ pub enum UiKind {
 /// focus (`tabIndex`, `tabGroup`, `autoFocus`).
 const NODE_PROPS: &[&str] = &["style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "disabled", "tabIndex", "tabGroup", "autoFocus"];
 
-/// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak` and `textShadow`.
+/// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak`, `textShadow` and
+/// `textHalo`.
 const SPAN_PROPS: &[&str] = &["text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough"];
 
 /// `<worldText>`'s props: `<text>`'s font props, and world text's own (`WorldTextStyle`).
@@ -76,7 +78,7 @@ impl UiKind {
             UiKind::Button => &["activateOnPress"],
             UiKind::Text => &[
                 "text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough", "justify", "linebreak",
-                "textShadow",
+                "textShadow", "textHalo",
             ],
             UiKind::Image => &["src", "color", "flipX", "flipY", "rect", "atlas", "mode"],
             UiKind::Input => &["size", "color", "initialValue", "maxCharacters"],
@@ -102,6 +104,8 @@ enum Part {
     LineHeight,
     LetterSpacing,
     TextShadow,
+    /// `textHalo` on `<text>`: bevy-ts's `TextHalo`.
+    TextHalo,
     TextBackground,
     Underline,
     Strikethrough,
@@ -150,6 +154,7 @@ fn part(kind: UiKind, prop: &str) -> Part {
         "lineHeight" => Part::LineHeight,
         "letterSpacing" => Part::LetterSpacing,
         "textShadow" => Part::TextShadow,
+        "textHalo" => Part::TextHalo,
         "textBackground" => Part::TextBackground,
         "underline" => Part::Underline,
         "strikethrough" => Part::Strikethrough,
@@ -959,6 +964,23 @@ fn world_line_height(v: &Value) -> Result<LineHeight, String> {
     v.as_f64().map(|n| LineHeight::RelativeToFont(n as f32)).ok_or_else(|| format!("lineHeight: {v} is not a multiple of size (a number)"))
 }
 
+/// `{ width, color }`: `width` logical pixels, more than 0 and at most 4 (default 1); `color`
+/// default black.
+fn text_halo(v: &Value) -> Result<TextHalo, String> {
+    let o = fields(v, "textHalo", &["width", "color"])?;
+    let mut h = TextHalo::default();
+    if let Some(w) = o.get("width") {
+        h.width = w.as_f64().ok_or("textHalo.width takes a number of pixels")? as f32;
+        if !(h.width > 0.0 && h.width <= 4.0) {
+            return Err(format!("textHalo.width is {}: it takes more than 0 and at most 4 pixels", h.width));
+        }
+    }
+    if let Some(c) = o.get("color") {
+        h.color = color(c).map_err(|e| format!("textHalo.color: {e}"))?;
+    }
+    Ok(h)
+}
+
 /// `underline` and `strikethrough`: `true` (Bevy's colour), a colour, or `false` (none).
 fn decoration(v: &Value, prop: &str) -> Result<Option<Option<Color>>, String> {
     match v {
@@ -1171,6 +1193,7 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::LineHeight => line_height(&props["lineHeight"]).map(|_| ()),
         Part::LetterSpacing => letter_spacing(&props["letterSpacing"]).map(|_| ()),
         Part::TextShadow => text_shadow(&props["textShadow"]).map(|_| ()),
+        Part::TextHalo => text_halo(&props["textHalo"]).map(|_| ()),
         Part::TextBackground => color(&props["textBackground"]).map(|_| ()),
         Part::Underline => decoration(&props["underline"], "underline").map(|_| ()),
         Part::Strikethrough => decoration(&props["strikethrough"], "strikethrough").map(|_| ()),
@@ -1300,6 +1323,12 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         }
         Part::TextShadow => {
             world.entity_mut(e).remove::<TextShadow>();
+        }
+        Part::TextHalo if present => {
+            world.entity_mut(e).insert(text_halo(&props["textHalo"])?);
+        }
+        Part::TextHalo => {
+            world.entity_mut(e).remove::<TextHalo>();
         }
         Part::TextBackground if present => {
             world.entity_mut(e).insert(TextBackgroundColor(color(&props["textBackground"])?));
@@ -1522,7 +1551,7 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
     em.remove::<(Node, BackgroundColor, BackgroundGradient, BorderColor, BorderGradient, Outline, BoxShadow, UiTransform)>();
     match kind {
         UiKind::Text | UiKind::Span => {
-            em.remove::<(Text, TextSpan, TextFont, TextColor, TextLayout, LineHeight, LetterSpacing, TextShadow, TextBackgroundColor)>();
+            em.remove::<(Text, TextSpan, TextFont, TextColor, TextLayout, LineHeight, LetterSpacing, TextShadow, TextHalo, TextBackgroundColor)>();
             em.remove::<(Underline, UnderlineColor, Strikethrough, StrikethroughColor)>();
         }
         UiKind::Image => {

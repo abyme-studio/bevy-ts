@@ -37,12 +37,12 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 3a. Text halo (design 15; needs the operator's go: per-frame quads)
 
-- [ ] 3a.1 `TextHalo { width, color }` in `bevy-ts-tsx`, reflected and registered; `textHalo` on `<text>` is `Part::TextHalo` (width default 1, more than 0 and at most 4, colour default black; errors name `textHalo`); on `<span>` a load error naming its location; regenerate `bevy.d.ts`
-- [ ] 3a.2 `bevy-ts-tsx` turns on Bevy's `bevy_ui_render`; `extract_text_halos` in `RenderUiSystems::ExtractTextShadows`, only when a `RenderApp` exists: the node's `TextLayoutInfo` glyphs at 8 offsets (16 above 2 px), z stack index + 0.058; a `PostUpdate` system calls `TextColor::set_changed()` when `TextHalo` changes or is removed
-- [ ] 3a.3 `jsx-runtime.d.ts`: `textHalo?: Bindable<{ width?: number; color?: ColorValue }>` on `<text>` only; a type test that `<span textHalo>` fails
-- [ ] 3a.4 Tests: the component written, changed and removed; `<span textHalo>` fails naming its location; a headless screenshot (`headless_ui.rs`'s way, macOS Metal) of white text with a 1.5 px black halo on a pale ground (`#e8e4d8`) and on a dark one (`#0b1a2e`): pixels just outside the glyph edges are the halo colour and the glyph pixels stay white; a changed `color` shows on the next frame, and a removed halo is gone with `TextLayoutInfo` unchanged
-- [ ] 3a.5 Bench in `tsx_scale.rs`: frame time with 40 and 1,000 12-glyph labels, with no halo, at 8 offsets and at 16; record it in `docs/research/tsx-scale.md`
-- [ ] 3a.6 A halo entry in the gallery's Text panel; a `textHalo` row in `docs/ui.md` "Text" saying it outlines spans too and what it costs
+- [x] 3a.1 `TextHalo { width, color }` in `bevy-ts-tsx`, reflected and registered; `textHalo` on `<text>` is `Part::TextHalo` (width default 1, more than 0 and at most 4, colour default black; errors name `textHalo`); on `<span>` a load error naming its location; regenerate `bevy.d.ts`
+- [x] 3a.2 `bevy-ts-tsx` turns on Bevy's `bevy_ui_render`; `extract_text_halos` in `RenderUiSystems::ExtractTextShadows`, only when a `RenderApp` exists: the node's `TextLayoutInfo` glyphs at 8 offsets (16 above 2 px), z stack index + 0.058; a `Last` system calls `TextColor::set_changed()` when `TextHalo` changes or is removed
+- [x] 3a.3 `jsx-runtime.d.ts`: `textHalo?: Bindable<{ width?: number; color?: ColorValue }>` on `<text>` only; a type test that `<span textHalo>` fails
+- [x] 3a.4 Tests: the component written, changed and removed; `<span textHalo>` fails naming its location; a headless screenshot (`headless_ui.rs`'s way, macOS Metal) of white text with a 1.5 px black halo on a pale ground (`#e8e4d8`) and on a dark one (`#0b1a2e`): pixels just outside the glyph edges are the halo colour and the glyph pixels stay white; a changed `color` shows on the next frame, and a removed halo is gone with `TextLayoutInfo` unchanged
+- [x] 3a.5 Bench in `tsx_scale.rs`: frame time with 40 and 1,000 12-glyph labels, with no halo, at 8 offsets and at 16; record it in `docs/research/tsx-scale.md`
+- [x] 3a.6 A halo entry in the gallery's Text panel; a `textHalo` row in `docs/ui.md` "Text" saying it outlines spans too and what it costs
 
 ## 3b. Placement (design 16; low priority)
 

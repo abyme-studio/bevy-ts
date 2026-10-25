@@ -329,6 +329,11 @@ export interface TextProps extends Omit<NodeProps, "children">, SpanStyle {
   linebreak?: Bindable<"word" | "char" | "word-or-char" | "none">;
   /** `TextShadow`; a missing field is Bevy's default. */
   textShadow?: Bindable<{ x?: number; y?: number; color?: ColorValue }>;
+  /**
+   * bevy-ts's `TextHalo`: the glyphs, spans included, drawn again in `color` (default black)
+   * `width` logical pixels around them (default 1, more than 0 and at most 4), under the text.
+   */
+  textHalo?: Bindable<{ width?: number; color?: ColorValue }>;
   children?: TextChild | readonly TextChild[];
 }
 
@@ -419,7 +424,7 @@ export interface InputProps extends Omit<NodeProps, "children"> {
   /** The text at mount; a reload does not reset it. */
   initialValue?: string;
   maxCharacters?: Bindable<number>;
-  /** `TabIndex`; a field without one has `TabIndex(0)`, so Tab visits it. */
+  /** `TabIndex`; a field without one has `TabIndex(0)`, so Tab visits it inside a `tabGroup`. */
   tabIndex?: Bindable<number>;
   onTextEditChange?: (event: TextEditChangeEvent) => void;
   onKeyboardInput?: (event: KeyboardInputEvent) => void;

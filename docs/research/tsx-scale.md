@@ -75,7 +75,7 @@ Measured 2026-10-25 on the shared M5 Max under heavy load (load average 29 to 82
 
 A `style` binding rebuilds `Node`, so `ui_layout_system` sends each node to taffy again; `transform` writes only `UiTransform`, applied after layout. `ui_placement.rs` shows the `Node` change tick never moves and `ComputedNode` stays put.
 
-Agent town's label bench (`openspec/research/heimdall-labels/bench.mjs` at 75154d9, arm `ui`, `BENCH_N=1000`, this branch's release engine at 2c7817b3; `openspec/changes/bevy-ui-coverage/bench-town.sh`), 8 runs by turns:
+Agent town's label bench (`openspec/research/heimdall-labels/bench.mjs` at 75154d9, arm `ui`, `BENCH_N=1000`, this branch's release engine at 2c7817b3; `openspec/changes/bevy-ui-coverage/bench-town.sh` with `BENCH_RUNS=8`), 8 runs by turns:
 
 | plates placed by | frame ms | CPU % |
 |---|---|---|
@@ -83,3 +83,27 @@ Agent town's label bench (`openspec/research/heimdall-labels/bench.mjs` at 75154
 | `transform` (after) | 21.0 ± 1.3 | 56 ± 7 |
 
 Within noise: the `ui` arm shows at most 48 plates (its budget), and 48 nodes laid out again cost too little to show under this load. The +37-point CPU rise agent town saw came from many more moved nodes; the 1,000-node rows above are that case. `transform`'s own write (an insert per change) did not show as a cost in either bench, so 3b.4's in-place set was not made.
+
+## Text halo (bevy-ui-coverage 3a)
+
+Measured 2026-10-25 on the shared M5 Max under heavy load (load average 75 to 96), release.
+
+40 and 1,000 12-glyph labels, each moved every frame by `transform`, so Bevy extracts every label again every frame: the halo's worst case (`tsx_scale::labels_with_and_without_a_halo`, frame ms, median of 200 frames; `openspec/changes/bevy-ui-coverage/bench-halo.sh`). "Before" is 7669fe7e, the engine without the halo, with the same bench.
+
+No halo, before and after, 8 runs by turns:
+
+| labels | before, ms | after, ms | runs where after was faster |
+|---|---|---|---|
+| 40 | 6.2 (3.7 to 10.3) | 6.9 (4.7 to 9.4) | 3 of 8 |
+| 1,000 | 16.8 (11.3 to 23.5) | 17.5 (12.3 to 22.5) | 4 of 8 |
+
+Within noise: text without a halo pays nothing. The halo's two systems visit only entities with `TextHalo`.
+
+With a halo, 3 runs by turns (median of runs):
+
+| labels | none, ms | 1.5 px (8 offsets), ms | 3 px (16 offsets), ms |
+|---|---|---|---|
+| 40 | 5.7 | 6.7 | 7.1 |
+| 1,000 | 14.2 | 27.9 | 50.1 |
+
+A halo draws the glyphs 8 or 16 more times, and each copy is extracted and batched as a glyph. 40 moving labels cost about 1 ms; 1,000 moving labels (12,000 glyphs) double the frame at 8 offsets and more than triple it at 16. A label that does not change is not extracted again, but Bevy builds every UI vertex every frame, so a still halo's quads are still built and drawn; still labels were not measured apart. Prefer 2 px or less for many labels.

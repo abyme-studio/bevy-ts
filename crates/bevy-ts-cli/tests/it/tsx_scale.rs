@@ -208,3 +208,62 @@ fn a_thousand_nodes_moved_by_style_or_transform() {
         println!("| `{arm}` | {:.2} |", moved_frames(arm));
     }
 }
+
+/// Stage 3a: `n` 12-glyph labels moved every frame by `transform`, so Bevy extracts each again
+/// every frame, the halo's worst case. `arm` "none" has no `textHalo`; "8" a 1.5 px one (8
+/// offsets); "16" a 3 px one (16 offsets). Frame ms, median of 200, with the headless engine.
+#[cfg(target_os = "macos")]
+fn halo_frames(n: usize, arm: &str) -> f64 {
+    use bevy_ts::generation::DevSource;
+    use bevy_ts_cli::cli::{Display, Engine, base_app};
+    use std::sync::Arc;
+    let halo = match arm {
+        "none" => "",
+        "8" => r##"textHalo={{ width: 1.5, color: "#000000" }}"##,
+        _ => r##"textHalo={{ width: 3, color: "#000000" }}"##,
+    };
+    let src = format!(
+        r#"import {{ app, signal, px, Update }} from "bevy-ts";
+export const [frame, setFrame] = signal(0);
+export function tick() {{ setFrame(frame() + 1); }}
+app.addSystems(Update, tick);
+app.scene("ui", () => <>{{Array.from({{ length: {n} }}, (_, i) => (
+  <text key={{`l${{i}}`}} size={{14}} {halo} style={{{{ position: "absolute", left: 0, top: 0 }}}}
+    transform={{() => ({{ translation: [px((i * 7 + frame()) % 860), px((i * 13) % 520)] }})}}>{{`Label-${{String(i).padStart(6, "0")}}`}}</text>
+))}}</>);
+"#
+    );
+    let dir = project(&format!("scale-halo-{n}-{arm}"), &[("game.tsx", &src)]);
+    let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
+    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, Default::default(), &[]);
+    app.insert_resource(DevSource(Arc::new(bevy_ts_cli::compile::Compiler::new(dir.join("game.tsx"), true).unwrap())));
+    app.finish();
+    app.cleanup();
+    app.world_mut().spawn(Camera2d);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 30);
+    let mut frames = Vec::new();
+    for _ in 0..200 {
+        let t = Instant::now();
+        app.update();
+        frames.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    median(frames)
+}
+
+/// `HALO_ARMS` picks the arms (default `none,8,16`): `bench-halo.sh` runs only `none` on the
+/// engine before 3a.
+#[test]
+#[ignore = "timing: run in release"]
+#[cfg(target_os = "macos")]
+fn labels_with_and_without_a_halo() {
+    let arms = std::env::var("HALO_ARMS").unwrap_or_else(|_| "none,8,16".into());
+    println!("| labels | halo | frame, ms (median of 200) |");
+    println!("|---|---|---|");
+    for n in [40, 1000] {
+        for arm in arms.split(',') {
+            println!("| {n} | {arm} | {:.2} |", halo_frames(n, arm));
+        }
+    }
+}

@@ -1,8 +1,8 @@
 // Every bevy_ui element bevy-ts reaches from TSX, one panel per stage of the bevy-ui-coverage change.
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
-import { app, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
-import { Camera3d, Pressed, Transform, ZIndex } from "bevy-ts/bevy";
+import { app, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled, vec2 } from "bevy-ts";
+import { Camera3d, Pressed, ScrollPosition, Transform, ZIndex } from "bevy-ts/bevy";
 import type { Child } from "bevy-ts/jsx-runtime";
 
 /** A titled panel in the gallery's grid of panels. */
@@ -58,7 +58,7 @@ const Style = () => (
   </Panel>
 );
 
-/** Stage 2: rich text with `<span>`, font, layout and decorations. */
+/** Stages 2 and 3a: rich text with `<span>`, font, layout, decorations and a halo. */
 const Text = () => (
   <Panel title="Text">
     <text key="rich" size={16}>
@@ -70,6 +70,11 @@ const Text = () => (
     <text key="decorated" size={16} underline="#ffd060" textShadow={{ x: 1, y: 1, color: "#000000" }}>
       Underlined, with a shadow, and <span key="struck" strikethrough textBackground="#553333">struck through</span>
     </text>
+    <node key="pale" style={{ padding: px(6) }} background="#e8e4d8">
+      <text key="haloed" size={18} color="#ffffff" textHalo={{ width: 1.5, color: "#000000" }}>
+        White on pale, with a halo
+      </text>
+    </node>
   </Panel>
 );
 
@@ -183,6 +188,9 @@ const Placement = () => (
   </Panel>
 );
 
+/** The panels scroll by the wheel: there are more than a 960×540 window shows. */
+const [scrollY, setScrollY] = signal(0);
+
 app.scene("gallery", () => (
   <>
     {/* Not UI: a cube behind the panels, so <entity>, <mesh> and <material> appear too. */}
@@ -210,7 +218,9 @@ app.scene("gallery", () => (
       <Camera3d />
       <Transform translation={[0, 4, 0]} rotation={[-0.7071, 0, 0, 0.7071]} />
     </entity>
-    <node key="gallery" style={{ position: "absolute", top: px(12), left: px(12), right: px(12), flexWrap: "wrap", columnGap: px(12), rowGap: px(12) }}>
+    <node key="gallery" style={{ position: "absolute", top: px(12), left: px(12), right: px(12), bottom: px(12), flexWrap: "wrap", alignContent: "flex-start", columnGap: px(12), rowGap: px(12), overflow: { x: "clip", y: "scroll" } }}
+      onPointerScroll={({ unit, y }) => setScrollY(Math.max(0, scrollY() - y * (unit === "line" ? 24 : 1)))}>
+      <ScrollPosition value={() => vec2(0, scrollY())} />
       <Basics />
       <Style />
       <Text />
