@@ -62,6 +62,10 @@ commands.spawn(Camera3d, Transform.lookingAt([10, 10, 10], [0, 0, 0]), Projectio
 commands.spawn(DirectionalLight.of({ illuminance: 8000, color: hex("#ffd7a8") }), Transform.lookingAt([3, 5, 2], [0, 0, 0]));
 ```
 
+A layout class whose holes may own heap data (`Skybox`, for its image handle) is never inserted
+from bytes: `Skybox.of({ image: "sky.ktx2", brightness: 1000 })` is written whole through
+reflection, as its TSX element is, and a string at any `Handle<T>` loads that path.
+
 A value that fails to write fails its whole command, logged with the type and field: a spawn
 with a bad value spawns nothing, an insert inserts nothing. A type whose only default is
 `FromWorld` is checked the same way, over a value built from the world, so its `FromWorld` runs

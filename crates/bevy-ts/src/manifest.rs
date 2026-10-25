@@ -583,6 +583,10 @@ pub struct ResolvedComponent {
     /// fields it leaves out and holes keep their `Default`. Empty for TS components.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub defaults: Vec<u8>,
+    /// True for a Rust component never inserted from bytes, since its holes may own heap data
+    /// (`Skybox`'s image handle): a script spawn or insert writes it whole through reflection.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reflected: bool,
 }
 
 fn yes() -> bool {
