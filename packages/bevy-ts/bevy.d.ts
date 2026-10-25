@@ -450,11 +450,11 @@ export declare class ClusteredDecal extends Component {
   declare tag: u32;
 }
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, never visible: color: an enum with data (bevy_color::color::Color); soft_shadow_size: an enum with data (core::option::Option<f32>). */
 export declare class DirectionalLight extends Component {
   static readonly path: "bevy_light::directional_light::DirectionalLight";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue; soft_shadow_size?: number | null };
   declare illuminance: f32;
   declare shadow_maps_enabled: bool;
   declare contact_shadows_enabled: bool;
@@ -479,6 +479,7 @@ export declare class PointLight extends Component {
   declare radius: f32;
   declare shadow_maps_enabled: bool;
   declare contact_shadows_enabled: bool;
+  declare soft_shadows_enabled: bool;
   declare affects_lightmapped_mesh_diffuse: bool;
   declare shadow_depth_bias: f32;
   declare shadow_normal_bias: f32;
@@ -562,6 +563,7 @@ export declare class SpotLight extends Component {
   declare radius: f32;
   declare shadow_maps_enabled: bool;
   declare contact_shadows_enabled: bool;
+  declare soft_shadows_enabled: bool;
   declare affects_lightmapped_mesh_diffuse: bool;
   declare shadow_depth_bias: f32;
   declare shadow_normal_bias: f32;

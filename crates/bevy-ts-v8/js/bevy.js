@@ -204,7 +204,7 @@ export const DirectionalLightTexture = rustComponent("DirectionalLightTexture");
 
 export const ShowLightGizmo = rustComponent("ShowLightGizmo");
 
-export class PointLight extends nativeComponent("PointLight", { intensity: f32, range: f32, radius: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32, shadow_map_near_z: f32 }) {}
+export class PointLight extends nativeComponent("PointLight", { intensity: f32, range: f32, radius: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, soft_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32, shadow_map_near_z: f32 }) {}
 
 export const PointLightTexture = rustComponent("PointLightTexture");
 
@@ -222,7 +222,7 @@ export class Skybox extends nativeComponent("Skybox", { brightness: f32, rotatio
 
 export class RectLight extends nativeComponent("RectLight", { intensity: f32, range: f32, width: f32, height: f32 }) {}
 
-export class SpotLight extends nativeComponent("SpotLight", { intensity: f32, range: f32, radius: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32, shadow_map_near_z: f32, outer_angle: f32, inner_angle: f32 }) {}
+export class SpotLight extends nativeComponent("SpotLight", { intensity: f32, range: f32, radius: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, soft_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32, shadow_map_near_z: f32, outer_angle: f32, inner_angle: f32 }) {}
 
 export const SpotLightTexture = rustComponent("SpotLightTexture");
 
