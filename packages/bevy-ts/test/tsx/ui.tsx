@@ -94,3 +94,25 @@ export const Widgets = () => (
     <scrollbar />
   </node>
 );
+
+export const Overlays = () => (
+  <node onMenuEvent={({ action, source, entity }) => action === "close-all" && source !== entity}>
+    <menuButton />
+    <popover positions={[{ side: "bottom", align: "center", gap: 2 }, {}]} windowMargin={8}>
+      <menuPopup layout="row">
+        <menuItem onActivate={({ entity }) => entity} />
+      </menuPopup>
+    </popover>
+    <modalDialogBarrier onRequestClose={({ source }) => source}>
+      <dialog modal={() => vol() > 0}>
+        <dialogDragHandle />
+      </dialog>
+    </modalDialogBarrier>
+    {/* @ts-expect-error  Bevy's sides are top, bottom, left and right */}
+    <popover positions={[{ side: "above" }]} />
+    {/* @ts-expect-error  a menu event's actions are Bevy's */}
+    <node onMenuEvent={({ action }) => action === "open"} />
+    {/* @ts-expect-error  layout is column, row or grid */}
+    <menuPopup layout="ring" />
+  </node>
+);

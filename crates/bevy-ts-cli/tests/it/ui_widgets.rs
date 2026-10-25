@@ -19,18 +19,18 @@ use common::{logs, messages, project, reload, write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-fn engine() -> Engine {
+pub(crate) fn engine() -> Engine {
     Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") }
 }
 
-fn unfinished(display: Display, switches: Switches, entry: &Path) -> App {
+pub(crate) fn unfinished(display: Display, switches: Switches, entry: &Path) -> App {
     let mut app = base_app(&engine(), bevy_ts_cli::Prebuilt, display, Default::default(), None, true, switches, &[]);
     app.insert_resource(DevSource(Arc::new(Compiler::new(entry, true).unwrap())));
     app
 }
 
 /// `game` loaded headless, a few frames run.
-fn headless(name: &str, game: &str) -> (PathBuf, App) {
+pub(crate) fn headless(name: &str, game: &str) -> (PathBuf, App) {
     let dir = project(name, &[("game.tsx", game)]);
     let mut app = unfinished(Display::Headless, Switches::default(), &dir.join("game.tsx"));
     app.finish();
@@ -55,12 +55,12 @@ fn load_error(name: &str, game: &str) -> String {
     all.join("\n")
 }
 
-fn node(app: &mut App, path: &[&str]) -> Entity {
+pub(crate) fn node(app: &mut App, path: &[&str]) -> Entity {
     let world = app.world_mut();
     world.query::<(Entity, &TsxNode)>().iter(world).find(|(_, n)| n.key_path == path).map(|(e, _)| e).unwrap_or_else(|| panic!("no node {path:?}"))
 }
 
-fn said(app: &App, prefix: &str) -> Vec<String> {
+pub(crate) fn said(app: &App, prefix: &str) -> Vec<String> {
     messages(app).into_iter().filter(|m| m.starts_with(prefix)).collect()
 }
 
@@ -428,7 +428,7 @@ app.scene("ui", () => (
 
 /// Keys in viewport mode, as `bevy-ts dev --viewport` builds the app.
 #[cfg(target_os = "macos")]
-mod keys {
+pub(crate) mod keys {
     use super::*;
     use bevy::remote::{RemoteMethodSystemId, RemoteMethods, RemotePlugin};
     use serde_json::{Value, json};
@@ -436,7 +436,7 @@ mod keys {
 
     const TAB: Switches = Switches { mesh_picking: false, tab_navigation: true, directional_navigation: false };
 
-    fn call(app: &mut App, method: &str, params: Value) -> Value {
+    pub(crate) fn call(app: &mut App, method: &str, params: Value) -> Value {
         let id = match app.world().resource::<RemoteMethods>().get(method) {
             Some(RemoteMethodSystemId::Instant(id)) => *id,
             _ => panic!("{method} not served"),
@@ -444,14 +444,14 @@ mod keys {
         app.world_mut().run_system_with(id, (!params.is_null()).then_some(params)).unwrap().unwrap_or_else(|e| panic!("{method}: {}", e.message))
     }
 
-    fn updates(app: &mut App, n: usize) {
+    pub(crate) fn updates(app: &mut App, n: usize) {
         for _ in 0..n {
             std::thread::sleep(Duration::from_millis(5));
             app.update();
         }
     }
 
-    fn start(name: &str, game: &str) -> App {
+    pub(crate) fn start(name: &str, game: &str) -> App {
         let dir = project(name, &[("game.tsx", game)]);
         let mut app = unfinished(Display::Viewport, TAB, &dir.join("game.tsx"));
         app.add_plugins(RemotePlugin::default());
@@ -466,7 +466,7 @@ mod keys {
         app
     }
 
-    fn press(app: &mut App, code: &str) {
+    pub(crate) fn press(app: &mut App, code: &str) {
         let key = if code == "Space" { " " } else { code };
         call(app, "bevy-ts/viewport_input", json!({ "events": [{ "type": "key", "state": "down", "code": code, "key": key }] }));
         updates(app, 2);

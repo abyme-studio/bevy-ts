@@ -78,10 +78,10 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 6. Overlays
 
-- [ ] 6.1 `UiKind`s `menuButton`, `menuPopup` (inserts `MenuFocusState::Opening(First)` on mount), `menuItem`, `popover`, `dialog` (`modal`), `modalDialogBarrier`, `dialogDragHandle`
-- [ ] 6.2 `onMenuEvent` and `onRequestClose`: observers that take the event from the entity or a descendant, nearest handler wins, stop propagation (design 5); `onActivate` on `<menuItem>`
-- [ ] 6.3 Tests: menu open, navigate, activate, close-all (viewport mode for keys); popover placement against its parent; modal barrier click and `Escape` raise `onRequestClose` with the barrier as `source` (advance time past Bevy's 0.1 s modal focus); a dialog dragged by its handle
-- [ ] 6.4 Gallery panel and `docs/ui.md` "Overlays" section
+- [x] 6.1 `UiKind`s `menuButton`, `menuPopup` (inserts `MenuFocusState::Opening(First)` on mount), `menuItem`, `popover`, `dialog` (`modal`), `modalDialogBarrier`, `dialogDragHandle`
+- [x] 6.2 `onMenuEvent` and `onRequestClose`: observers that take the event from the entity or a descendant, nearest handler wins, stop propagation (design 5); `onActivate` on `<menuItem>`
+- [x] 6.3 Tests: menu open, navigate, activate, close-all (viewport mode for keys); popover placement against its parent; modal barrier click and `Escape` raise `onRequestClose` with the barrier as `source` (the focused element takes `autoFocus`: a slow first test frame passes Bevy's 0.1 s modal focus before layout); a dialog dragged by its handle
+- [x] 6.4 Gallery panel and `docs/ui.md` "Overlays" section
 
 ## 7. Cameras and images
 

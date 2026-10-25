@@ -20,6 +20,7 @@ const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d"
 const UI_INTRINSICS = new Set([
   "node", "text", "image", "button", "span", "viewport", "input",
   "checkbox", "radioGroup", "radio", "slider", "sliderThumb", "scrollbar", "scrollbarThumb", "tabList", "tab", "listBox", "listItem",
+  "menuButton", "menuPopup", "menuItem", "popover", "dialog", "modalDialogBarrier", "dialogDragHandle",
 ]);
 /** Rich text: `<text>` and `<span>` hold strings, bindings and `<span>`s. */
 const RICH = new Set(["text", "span"]);
@@ -40,12 +41,16 @@ const VALUE_EVENTS = new Set(["ValueChange"]);
 const ELEMENT_EVENTS = {
   input: INPUT_EVENTS,
   button: new Set(["Activate"]),
+  menuItem: new Set(["Activate"]),
   checkbox: VALUE_EVENTS, radio: VALUE_EVENTS, slider: VALUE_EVENTS, radioGroup: VALUE_EVENTS, tabList: VALUE_EVENTS, listBox: VALUE_EVENTS,
 };
 /** A value widget's state prop: controlled (the game's) or `initial*` (the widget keeps its own). */
 const STATE_PROPS = { checkbox: "checked", radio: "checked", slider: "value", tabList: "selected" };
-/** Every UI intrinsic's but `<span>`'s: its own `FocusGained` and `FocusLost`, not a descendant's. */
-const FOCUS_EVENTS = ["FocusGained", "FocusLost"];
+/**
+ * Every UI intrinsic's but `<span>`'s: its own `FocusGained` and `FocusLost`, not a descendant's;
+ * and `MenuEvent` and `RequestClose`, which Bevy sends up to an owner (design 5).
+ */
+const UI_EVENTS = ["FocusGained", "FocusLost", "MenuEvent", "RequestClose"];
 
 /** Marks `Show` and `For`: control flow, described as slots rather than called as prefabs. */
 const CONTROL = Symbol.for("bevy-ts.control");
@@ -1565,7 +1570,7 @@ function describeEntity(el, key, type, parentType) {
     const v = el.props[k];
     if (v === undefined || !PICKING.test(k)) continue;
     const event = k.slice(2);
-    const own = [...(ELEMENT_EVENTS[el.type] || []), ...(ui && el.type !== "span" ? FOCUS_EVENTS : [])];
+    const own = [...(ELEMENT_EVENTS[el.type] || []), ...(ui && el.type !== "span" ? UI_EVENTS : [])];
     if (!POINTER_EVENTS.has(event) && !own.includes(event)) {
       const known = [...POINTER_EVENTS, ...own];
       throw located(`<${typeName(el.type)} ${k}>: no such event; use ${known.map((e) => `on${e}`).join(", ")}`, el.source);

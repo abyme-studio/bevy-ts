@@ -1,17 +1,19 @@
-//! bevy_ui intrinsics: `<node>`, `<text>`, `<image>`, `<button>`, `<input>`, and Bevy's value
-//! widgets (`widgets.rs`). Each prop maps to
+//! bevy_ui intrinsics: `<node>`, `<text>`, `<image>`, `<button>`, `<input>`, Bevy's value
+//! widgets (`widgets.rs`), and its overlays: menus, popovers and dialogs. Each prop maps to
 //! one component (`background` and `border` to a colour or a gradient), so a changed prop writes
 //! that component and no other: a bound `<text>` writes `Text` and leaves `TextFont`,
 //! `TextColor` and `Node` alone. `<worldText>` shares `<text>`'s font props and parsers, but is a
 //! component of its entity (world text, `bevy_ts_material::world_text`), not a UI node.
 
 use bevy::input_focus::AutoFocus;
-use bevy::input_focus::tab_navigation::{TabGroup, TabIndex};
+use bevy::input_focus::tab_navigation::{NavAction, TabGroup, TabIndex};
 use bevy::ui::{Checked, InteractionDisabled, Selected};
 use bevy::ui_widgets::{
-    ActivateOnPress, Checkbox, ListBox, ListBoxMultiSelect, ListItem, RadioButton, RadioGroup, ScrollArea, Scrollbar, ScrollbarThumb, Slider, SliderPrecision, SliderRange,
-    SliderStep, SliderThumb, SliderValue, Tab, TabList,
+    ActivateOnPress, Checkbox, Dialog, DialogDragHandle, ListBox, ListBoxMultiSelect, ListItem, MenuButton, MenuFocusState, MenuItem, MenuLayout, MenuPopup, ModalDialog,
+    ModalDialogBarrier, RadioButton, RadioGroup, ScrollArea, Scrollbar, ScrollbarThumb, Slider, SliderPrecision, SliderRange, SliderStep, SliderThumb, SliderValue, Tab,
+    TabList,
 };
+use bevy::ui_widgets::popover::{Popover, PopoverAlign, PopoverPlacement, PopoverSide};
 use crate::widgets::{self, TabKey};
 use bevy::prelude::*;
 use bevy::text::{EditableText, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, TextCursorStyle, Underline, UnderlineColor};
@@ -54,6 +56,14 @@ pub enum UiKind {
     Tab,
     ListBox,
     ListItem,
+    MenuButton,
+    /// Opens with focus on its first item, which keeps it open (design 10).
+    MenuPopup,
+    MenuItem,
+    Popover,
+    Dialog,
+    ModalDialogBarrier,
+    DialogDragHandle,
 }
 
 /// What every UI intrinsic but `<span>` and `<worldText>` takes: its `Node`'s look and placement, `disabled`, and
@@ -92,6 +102,13 @@ impl UiKind {
             "tab" => UiKind::Tab,
             "listBox" => UiKind::ListBox,
             "listItem" => UiKind::ListItem,
+            "menuButton" => UiKind::MenuButton,
+            "menuPopup" => UiKind::MenuPopup,
+            "menuItem" => UiKind::MenuItem,
+            "popover" => UiKind::Popover,
+            "dialog" => UiKind::Dialog,
+            "modalDialogBarrier" => UiKind::ModalDialogBarrier,
+            "dialogDragHandle" => UiKind::DialogDragHandle,
             _ => return None,
         })
     }
@@ -123,6 +140,10 @@ impl UiKind {
             UiKind::TabList => &["selected", "initialSelected", "orientation", "activation", "selfUpdate"],
             UiKind::ListBox => &["multiSelect"],
             UiKind::ListItem => &["selected"],
+            UiKind::MenuButton | UiKind::MenuItem | UiKind::ModalDialogBarrier | UiKind::DialogDragHandle => &[],
+            UiKind::MenuPopup => &["layout"],
+            UiKind::Popover => &["positions", "windowMargin"],
+            UiKind::Dialog => &["modal"],
         };
         NODE_PROPS.iter().chain(own).copied().collect()
     }
@@ -197,6 +218,12 @@ enum Part {
     ScrollArea,
     /// Bevy's `*_self_update` observer, while the widget is uncontrolled.
     SelfUpdate,
+    /// `layout` on `<menuPopup>`: `MenuPopup`.
+    MenuPopup,
+    /// `positions` and `windowMargin` on `<popover>`: `Popover`.
+    Popover,
+    /// `modal` on `<dialog>`: `ModalDialog`.
+    Modal,
 }
 
 /// On an entity whose `tabIndex` or `tabGroup` is a prop, so the engine can name one mounted
@@ -223,6 +250,9 @@ fn part(kind: UiKind, prop: &str) -> Part {
         "multiSelect" => Part::MultiSelect,
         "scrollArea" => Part::ScrollArea,
         "selfUpdate" => Part::SelfUpdate,
+        "layout" => Part::MenuPopup,
+        "positions" | "windowMargin" => Part::Popover,
+        "modal" => Part::Modal,
         "style" | "radius" => Part::Node,
         "background" => Part::Background,
         "border" => Part::Border,
@@ -1335,6 +1365,60 @@ fn tab_list(props: &Map<String, Value>) -> Result<TabList, String> {
     Ok(t)
 }
 
+fn menu_popup(props: &Map<String, Value>) -> Result<MenuPopup, String> {
+    const O: &str = "column, row, grid";
+    let layout = match props.get("layout") {
+        None => MenuLayout::Column,
+        Some(v) => match v.as_str() {
+            Some("column") => MenuLayout::Column,
+            Some("row") => MenuLayout::Row,
+            Some("grid") => MenuLayout::Grid,
+            _ => return Err(format!("layout takes one of {O}, not {v}")),
+        },
+    };
+    Ok(MenuPopup { layout })
+}
+
+/// `positions`: `[{ side, align, gap }]`, Bevy's `PopoverPlacement`s, tried in order;
+/// `windowMargin`: how near the window's edge it may go. Both default as Bevy's.
+fn popover(props: &Map<String, Value>) -> Result<Popover, String> {
+    let mut p = Popover::default();
+    if let Some(v) = props.get("windowMargin") {
+        p.window_margin = widgets::number(v, "windowMargin")?;
+    }
+    let Some(v) = props.get("positions") else { return Ok(p) };
+    let list = v.as_array().ok_or_else(|| format!("positions takes a list of {{ side, align, gap }}, not {v}"))?;
+    for (i, o) in list.iter().enumerate() {
+        let o = o.as_object().ok_or_else(|| format!("positions[{i}] takes {{ side, align, gap }}, not {o}"))?;
+        if let Some(k) = o.keys().find(|k| !["side", "align", "gap"].contains(&k.as_str())) {
+            return Err(format!("positions[{i}] has no field {k}; it takes side, align and gap"));
+        }
+        let mut at = PopoverPlacement::default();
+        if let Some(s) = o.get("side") {
+            at.side = match s.as_str() {
+                Some("top") => PopoverSide::Top,
+                Some("bottom") => PopoverSide::Bottom,
+                Some("left") => PopoverSide::Left,
+                Some("right") => PopoverSide::Right,
+                _ => return Err(format!("positions[{i}].side takes one of top, bottom, left, right, not {s}")),
+            };
+        }
+        if let Some(a) = o.get("align") {
+            at.align = match a.as_str() {
+                Some("start") => PopoverAlign::Start,
+                Some("center") => PopoverAlign::Center,
+                Some("end") => PopoverAlign::End,
+                _ => return Err(format!("positions[{i}].align takes one of start, center, end, not {a}")),
+            };
+        }
+        if let Some(g) = o.get("gap") {
+            at.gap = widgets::number(g, &format!("positions[{i}].gap"))?;
+        }
+        p.positions.push(at);
+    }
+    Ok(p)
+}
+
 fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), String> {
     match p {
         Part::Node => build_node(props).map(|_| ()),
@@ -1386,6 +1470,9 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::TabList => tab_list(props).map(|_| ()),
         Part::MultiSelect => flag(&props["multiSelect"], "multiSelect").map(|_| ()),
         Part::ScrollArea => flag(&props["scrollArea"], "scrollArea").map(|_| ()),
+        Part::MenuPopup => menu_popup(props).map(|_| ()),
+        Part::Popover => popover(props).map(|_| ()),
+        Part::Modal => flag(&props["modal"], "modal").map(|_| ()),
         Part::SelfUpdate => flag(&props["selfUpdate"], "selfUpdate").map(|_| ()),
     }
 }
@@ -1606,7 +1693,7 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             Some(v) => {
                 world.entity_mut(e).insert((TabIndex(tab_index(v)?), TabProp));
             }
-            None if kind == UiKind::Input => {
+            None if kind == UiKind::Input || kind == UiKind::MenuItem => {
                 world.entity_mut(e).insert(TabIndex(0));
                 tab_prop_gone(world, e, props);
             }
@@ -1693,6 +1780,22 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         Part::MultiSelect => marker::<ListBoxMultiSelect>(world, e, props, "multiSelect"),
         Part::ScrollArea => marker::<ScrollArea>(world, e, props, "scrollArea"),
         Part::SelfUpdate => widgets::self_update(world, e, kind, props.get("selfUpdate").and_then(Value::as_bool) == Some(true)),
+        Part::MenuPopup => {
+            let m = menu_popup(props)?;
+            world.entity_mut(e).insert(m);
+        }
+        Part::Popover => {
+            let p = popover(props)?;
+            world.entity_mut(e).insert(p);
+        }
+        Part::Modal => {
+            if props.get("modal").and_then(Value::as_bool) == Some(true) {
+                world.entity_mut(e).insert(ModalDialog);
+            } else if world.entity_mut(e).take::<ModalDialog>().is_some() && !props.contains_key("tabGroup") {
+                // Bevy made the dialog's `TabGroup` modal when `ModalDialog` came; undo it.
+                world.entity_mut(e).insert(TabGroup::default());
+            }
+        }
     }
     Ok(())
 }
@@ -1763,6 +1866,10 @@ pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         UiKind::Scrollbar => parts.push(Part::Scrollbar),
         UiKind::ScrollbarThumb => parts.push(Part::Thumb),
         UiKind::TabList => parts.push(Part::TabList),
+        UiKind::MenuPopup => parts.push(Part::MenuPopup),
+        UiKind::Popover => parts.push(Part::Popover),
+        // A menu's arrows and its opening focus reach only a `TabIndex` item.
+        UiKind::MenuItem => parts.push(Part::TabIndex),
         _ => {}
     }
     parts.sort();
@@ -1796,6 +1903,24 @@ pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         }
         UiKind::ListItem => {
             world.entity_mut(e).insert(ListItem);
+        }
+        UiKind::MenuButton => {
+            world.entity_mut(e).insert(MenuButton);
+        }
+        UiKind::MenuPopup => {
+            world.entity_mut(e).insert(MenuFocusState::Opening(NavAction::First));
+        }
+        UiKind::MenuItem => {
+            world.entity_mut(e).insert(MenuItem);
+        }
+        UiKind::Dialog => {
+            world.entity_mut(e).insert(Dialog);
+        }
+        UiKind::ModalDialogBarrier => {
+            world.entity_mut(e).insert(ModalDialogBarrier);
+        }
+        UiKind::DialogDragHandle => {
+            world.entity_mut(e).insert(DialogDragHandle);
         }
         _ => {}
     }
@@ -1883,6 +2008,27 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
         UiKind::ListItem => {
             em.remove::<(ListItem, Selected)>();
         }
+        UiKind::MenuButton => {
+            em.remove::<(MenuButton, bevy::ui_widgets::Button)>();
+        }
+        UiKind::MenuPopup => {
+            em.remove::<(MenuPopup, MenuFocusState)>();
+        }
+        UiKind::MenuItem => {
+            em.remove::<MenuItem>();
+        }
+        UiKind::Popover => {
+            em.remove::<Popover>();
+        }
+        UiKind::Dialog => {
+            em.remove::<(ModalDialog, Dialog)>();
+        }
+        UiKind::ModalDialogBarrier => {
+            em.remove::<ModalDialogBarrier>();
+        }
+        UiKind::DialogDragHandle => {
+            em.remove::<DialogDragHandle>();
+        }
     }
     em.remove::<(UiTargetCamera, InteractionDisabled, ActivateOnPress, AutoFocus, TabIndex, TabGroup, TabProp)>();
 }
@@ -1967,5 +2113,19 @@ mod tests {
             assert!(e.contains(prop), "{props}: {e} names {prop}");
         }
         assert!(world(json!({ "outline": { "width": 0.3, "color": "#000" } })).unwrap_err().contains("0 to 0.125"));
+    }
+
+    #[test]
+    fn overlay_props_are_bevys_fields() {
+        let p = popover(json!({ "positions": [{ "side": "right", "align": "center", "gap": 4 }, {}], "windowMargin": 8 }).as_object().unwrap()).unwrap();
+        assert_eq!(p.positions, vec![PopoverPlacement { side: PopoverSide::Right, align: PopoverAlign::Center, gap: 4.0 }, PopoverPlacement::default()]);
+        assert_eq!(p.window_margin, 8.0);
+        let e = popover(json!({ "positions": [{ "side": "up" }] }).as_object().unwrap()).err().expect("an unknown side");
+        assert!(e.contains("positions[0].side takes one of top, bottom, left, right"), "{e}");
+        assert!(popover(json!({ "positions": [{ "gpa": 1 }] }).as_object().unwrap()).err().expect("an unknown field").contains("no field gpa"));
+        assert_eq!(menu_popup(json!({ "layout": "row" }).as_object().unwrap()).unwrap().layout, MenuLayout::Row);
+        assert!(menu_popup(json!({ "layout": "ring" }).as_object().unwrap()).is_err());
+        assert!(check(UiKind::Dialog, json!({ "modal": true }).as_object().unwrap()).is_ok());
+        assert!(check(UiKind::MenuItem, json!({ "layout": "row" }).as_object().unwrap()).is_err());
     }
 }

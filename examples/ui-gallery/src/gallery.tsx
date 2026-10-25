@@ -1,7 +1,7 @@
 // Every bevy_ui element bevy-ts reaches from TSX, one panel per stage of the bevy-ui-coverage change.
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
-import { app, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled, vec2 } from "bevy-ts";
+import { app, Show, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled, vec2 } from "bevy-ts";
 import { AutoDirectionalNavigation, Camera3d, Checked, Pressed, ScrollPosition, Transform, ZIndex } from "bevy-ts/bevy";
 import { CompassOctant, KeyCode, type DirectionalNavigation, type InputFocusVisible, type Keys } from "bevy-ts/input";
 import type { Child } from "bevy-ts/jsx-runtime";
@@ -235,6 +235,63 @@ const Widgets = () => (
   </Panel>
 );
 
+const [menuOpen, setMenuOpen] = signal(true);
+const [picked, setPicked] = signal("normal");
+const [modalShown, setModalShown] = signal(false);
+
+/** The menu's owner: Bevy asks, by `MenuEvent`, and the game opens or closes the popup. */
+function onMenu({ action }: { action: string }) {
+  if (action === "toggle") setMenuOpen(!menuOpen());
+  else if (action.startsWith("open")) setMenuOpen(true);
+  else if (action === "close-all") setMenuOpen(false);
+}
+
+const itemLook = { padding: px(4), minWidth: px(90) };
+
+/** Stage 6: a menu whose popup is a popover under its button, a floating dialog dragged by its title, and a modal. */
+const Overlays = () => (
+  <Panel title="Overlays">
+    {/* Open at load, so the gallery mounts every intrinsic; focus leaving it closes it, as in Bevy. */}
+    <node key="menu" onMenuEvent={onMenu}>
+      <menuButton key="button" style={{ padding: px(4) }} background="#3a4150" radius={px(4)}>
+        <text key="label" size={13}>{() => `Difficulty: ${picked()}`}</text>
+      </menuButton>
+      <Show when={menuOpen}>
+        <popover key="pop" positions={[{ side: "bottom", align: "start", gap: 2 }, { side: "top", align: "start", gap: 2 }]}>
+          <menuPopup key="popup" style={{ flexDirection: "column", padding: px(2), border: px(1) }} background="#11151c" border="#3a4150">
+            {["easy", "normal", "hard"].map((k) => (
+              <menuItem key={k} style={itemLook} background={() => (picked() === k ? "#2f5fa8" : "#00000000")} onActivate={() => setPicked(k)}>
+                <text key="label" size={12}>{k}</text>
+              </menuItem>
+            ))}
+          </menuPopup>
+        </popover>
+      </Show>
+    </node>
+    <dialog key="note" style={{ flexDirection: "column", width: px(180), border: px(1) }} background="#1b2433" border="#3a4150" radius={px(4)}>
+      <dialogDragHandle key="title" style={{ padding: px(4) }} background="#2f5fa8"><text key="t" size={12}>Drag me</text></dialogDragHandle>
+      <text key="body" size={12} style={{ padding: px(4) }}>A dialog that is not modal</text>
+    </dialog>
+    <button key="open" style={{ padding: px(4) }} background="#3a4150" radius={px(4)} onActivate={() => setModalShown(true)}>
+      <text key="t" size={13}>Open the modal</text>
+    </button>
+  </Panel>
+);
+
+/** Over everything while shown; `modal` follows it, so it traps focus only then. Escape or a click outside closes it. */
+const Modal = () => (
+  <modalDialogBarrier key="modal" style={() => ({ display: modalShown() ? "flex" : "none", position: "absolute", width: percent(100), height: percent(100), justifyContent: "center", alignItems: "center" })}
+    background="#000000aa" onRequestClose={() => setModalShown(false)}>
+    <dialog key="d" modal={() => modalShown()} style={{ flexDirection: "column", padding: px(12), rowGap: px(8), border: px(1) }} background="#1b1f27" border="#3a4150" radius={px(6)}>
+      <dialogDragHandle key="title"><text key="t" size={16}>A modal dialog</text></dialogDragHandle>
+      <text key="body" size={13}>Tab stays inside. Escape or a click outside closes it.</text>
+      <button key="ok" tabIndex={0} style={{ padding: px(4) }} background="#2f5fa8" radius={px(4)} onActivate={() => setModalShown(false)}>
+        <text key="t" size={13}>OK</text>
+      </button>
+    </dialog>
+  </modalDialogBarrier>
+);
+
 const [tick, setTick] = signal(0);
 export function drift() {
   setTick(tick() + 1);
@@ -293,8 +350,10 @@ app.scene("gallery", () => (
       <Focus />
       <Placement />
       <Widgets />
+      <Overlays />
       <Media />
       <TextInput />
     </node>
+    <Modal />
   </>
 ));

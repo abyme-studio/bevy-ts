@@ -163,6 +163,28 @@ export interface FocusLostEvent {
   readonly frame: number;
 }
 
+/** `MenuEvent`: a menu's button, popup or item asks its owner to open or close it. */
+export interface MenuEventEvent {
+  readonly kind: "MenuEvent";
+  /** The owner: the element whose `onMenuEvent` took it. */
+  readonly entity: Entity;
+  /** The menu button, popup or item that raised it. */
+  readonly source: Entity;
+  readonly action: "toggle" | "open-first" | "open-last" | "close-all" | "focus-root";
+  readonly commands: Commands;
+  readonly frame: number;
+}
+
+/** `RequestClose`: a modal's barrier was clicked, or Escape pressed in it. */
+export interface RequestCloseEvent {
+  readonly kind: "RequestClose";
+  readonly entity: Entity;
+  /** The `<modalDialogBarrier>` that raised it. */
+  readonly source: Entity;
+  readonly commands: Commands;
+  readonly frame: number;
+}
+
 /** `<button>`: a `<node>` with Bevy's `Button`. */
 export interface ButtonProps extends NodeProps {
   /** Entity-local observer of Bevy's `Activate`, raised on click and on Enter or Space while focused; not while `disabled`. */
@@ -288,6 +310,10 @@ export interface NodeProps extends EntityProps {
   onFocusGained?: (event: FocusGainedEvent) => void;
   /** Entity-local observer of Bevy's `FocusLost`. */
   onFocusLost?: (event: FocusLostEvent) => void;
+  /** Bevy's `MenuEvent` from this element or a descendant; the nearest `onMenuEvent` takes it and stops it. */
+  onMenuEvent?: (event: MenuEventEvent) => void;
+  /** Bevy's `RequestClose` from this element or a descendant (a `<modalDialogBarrier>`); the nearest `onRequestClose` takes it and stops it. */
+  onRequestClose?: (event: RequestCloseEvent) => void;
 }
 
 /** The text props Bevy applies per span (`TextFont`, `TextColor`, decorations). */
@@ -521,6 +547,38 @@ export interface ListBoxProps extends NodeProps {
 /** `<listItem>`: Bevy's `ListItem`; `Selected` while `selected`. */
 export interface ListItemProps extends NodeProps {
   selected?: Bindable<boolean>;
+}
+
+/** `<menuItem>`: Bevy's `MenuItem`, with `TabIndex(0)` unless `tabIndex` says otherwise, so the menu can focus it. */
+export interface MenuItemProps extends NodeProps {
+  /** Entity-local observer of Bevy's `Activate`: a click, or Enter or Space while focused. */
+  onActivate?: (event: ActivateEvent) => void;
+}
+
+/** `<menuPopup>`: Bevy's `MenuPopup`. It opens with focus on its first item and closes when focus leaves it. */
+export interface MenuPopupProps extends NodeProps {
+  /** Which arrows move between items: up and down (`"column"`), left and right (`"row"`), or none (`"grid"`). */
+  layout?: Bindable<"column" | "row" | "grid">;
+}
+
+/** One place a `<popover>` may go against its parent: Bevy's `PopoverPlacement`. */
+export interface PopoverPlacement {
+  side?: "top" | "bottom" | "left" | "right";
+  align?: "start" | "center" | "end";
+  /** Logical pixels between the parent and the popover. */
+  gap?: number;
+}
+
+/** `<popover>`: Bevy's `Popover`, placed against its parent at the first of `positions` that fits the window. */
+export interface PopoverProps extends NodeProps {
+  positions?: Bindable<PopoverPlacement[]>;
+  /** How near the window's edge it may go, in logical pixels. */
+  windowMargin?: Bindable<number>;
+}
+
+/** `<dialog>`: Bevy's `Dialog`, a tab group; `modal` adds `ModalDialog`, which traps focus. */
+export interface DialogProps extends NodeProps {
+  modal?: Bindable<boolean>;
 }
 
 type Vec2 = [number, number];
@@ -983,5 +1041,12 @@ export declare namespace JSX {
     tab: NodeProps & KeyAttribute;
     listBox: ListBoxProps & KeyAttribute;
     listItem: ListItemProps & KeyAttribute;
+    menuButton: NodeProps & KeyAttribute;
+    menuPopup: MenuPopupProps & KeyAttribute;
+    menuItem: MenuItemProps & KeyAttribute;
+    popover: PopoverProps & KeyAttribute;
+    dialog: DialogProps & KeyAttribute;
+    modalDialogBarrier: NodeProps & KeyAttribute;
+    dialogDragHandle: NodeProps & KeyAttribute;
   }
 }

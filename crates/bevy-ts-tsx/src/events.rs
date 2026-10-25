@@ -1,8 +1,9 @@
 //! Event props, each `on` plus a Bevy 0.20 event's name and an entity-local observer of it
 //! (operator ruling 2026-10-20): every picking event (`onPointerClick` ... `onPointerScroll`) on
-//! any `<entity>` or UI element; `onActivate` on a `<button>`; `onFocusGained` and `onFocusLost`
+//! any `<entity>` or UI element; `onActivate` on a `<button>` or `<menuItem>`; `onFocusGained` and `onFocusLost`
 //! on any UI element, its own focus only; `onValueChange` on the value widgets, each its own
-//! `ValueChange<T>` (design 5); `onTextEditChange` and
+//! `ValueChange<T>` (design 5); `onMenuEvent` and `onRequestClose` on any UI element, taken by the
+//! nearest one on the event's way up, which stops it (design 5); `onTextEditChange` and
 //! `onKeyboardInput` on an `<input>`, with `onSubmit` (Enter) and `onCancel` (Escape), which Bevy
 //! lacks, read from the same `KeyboardInput` (operator ruling 2026-10-22). The observer queues the event with the handler's id; the
 //! queue goes to JS in the frame's one host call, in arrival order. Picking events bubble up
@@ -23,7 +24,8 @@ use bevy::picking::events::{
     PointerCancel, PointerClick, PointerDrag, PointerDragDrop, PointerDragEnd, PointerDragEnter, PointerDragLeave, PointerDragOver, PointerDragStart, PointerEnter,
     PointerLeave, PointerMove, PointerOut, PointerOver, PointerPress, PointerRelease, PointerScroll,
 };
-use bevy::ui_widgets::{Activate, ValueChange};
+use bevy::input_focus::tab_navigation::NavAction;
+use bevy::ui_widgets::{Activate, MenuAction, MenuEvent, RequestClose, ValueChange};
 use crate::tree::TsxNode;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
@@ -112,6 +114,33 @@ fn on_activate(on: On<Activate>, handlers: Query<&TsxHandlers>, mut tree: ResMut
     let Ok(h) = handlers.get(entity) else { return };
     let Some(id) = h.ids.get("Activate") else { return };
     tree.reactive.events.push((*id, json!({ "kind": "Activate", "entity": entity.to_bits() })));
+}
+
+/// `MenuEvent` from a menu's button, popup or items, on its way up to the owner: the nearest
+/// entity with `onMenuEvent` takes it and stops it, as a Bevy owner observer does.
+fn on_menu_event(mut on: On<MenuEvent>, handlers: Query<&TsxHandlers>, mut tree: ResMut<TsxTree>) {
+    let entity = on.event_target();
+    let Some(id) = handlers.get(entity).ok().and_then(|h| h.ids.get("MenuEvent")).copied() else { return };
+    on.propagate(false);
+    let action = match on.event().action {
+        MenuAction::Toggle => "toggle",
+        MenuAction::Open(NavAction::Last | NavAction::Previous) => "open-last",
+        MenuAction::Open(_) => "open-first",
+        MenuAction::CloseAll => "close-all",
+        MenuAction::FocusRoot => "focus-root",
+    };
+    let source = on.original_event_target();
+    tree.reactive.events.push((id, json!({ "kind": "MenuEvent", "entity": entity.to_bits(), "source": source.to_bits(), "action": action })));
+}
+
+/// `RequestClose` from a modal's barrier (a click on it, or Escape), on its way up: taken as
+/// `MenuEvent` is.
+fn on_request_close(mut on: On<RequestClose>, handlers: Query<&TsxHandlers>, mut tree: ResMut<TsxTree>) {
+    let entity = on.event_target();
+    let Some(id) = handlers.get(entity).ok().and_then(|h| h.ids.get("RequestClose")).copied() else { return };
+    on.propagate(false);
+    let source = on.original_event_target();
+    tree.reactive.events.push((id, json!({ "kind": "RequestClose", "entity": entity.to_bits(), "source": source.to_bits() })));
 }
 
 /// `ValueChange<T>` on the widget it is triggered on (Bevy does not propagate it), as
@@ -296,6 +325,8 @@ pub fn set(world: &mut World, e: Entity, ids: &BTreeMap<String, u32>) {
                 "FocusGained" => em.observe(on_focus_gained),
                 "FocusLost" => em.observe(on_focus_lost),
                 "TextEditChange" => em.observe(on_text_edit_change),
+                "MenuEvent" => em.observe(on_menu_event),
+                "RequestClose" => em.observe(on_request_close),
                 // One per `T`: only the one the widget triggers ever runs.
                 "ValueChange" => em.observe(on_value_bool).observe(on_value_f32).observe(on_value_entity).observe(on_value_option),
                 _ => em.observe(on_keyboard_input),

@@ -28,6 +28,9 @@ app.scene("hud", () => (
 | `<scrollbar target>`, `<scrollbarThumb>` | `Node`, `Scrollbar`; `ScrollbarThumb` (no `Node`) |
 | `<tabList>`, `<tab>` | `Node`, `TabList`, `Tab` |
 | `<listBox>`, `<listItem>` | `Node`, `ListBox`, `ListItem` |
+| `<menuButton>`, `<menuPopup>`, `<menuItem>` | `Node`, `MenuButton`, `MenuPopup`, `MenuItem` ([Overlays](#overlays)) |
+| `<popover>` | `Node`, `Popover` |
+| `<dialog>`, `<modalDialogBarrier>`, `<dialogDragHandle>` | `Node`, `Dialog` (`ModalDialog` with `modal`), `ModalDialogBarrier`, `DialogDragHandle` |
 
 An unknown prop, style key or word fails the load and names it with the accepted ones.
 
@@ -362,4 +365,62 @@ Bevy places a scrollbar's thumb, so `<scrollbarThumb>` has no `Node`: it takes `
 it, by `transform` as above or by `style`. `scrollArea` on a `<node>` (`ScrollArea`) scrolls it by
 the wheel; give it `style.overflow` `"scroll"` on that axis. `<scrollbar target={ref}>` follows
 the same node's `ScrollPosition`, and a thumb drag writes it.
+
+## Overlays
+
+Bevy's menus, popovers and dialogs. As in Bevy, a menu or a modal does not open or close itself:
+it asks its owner, by an event that goes up the tree, and the game mounts or unmounts it.
+
+`onMenuEvent` and `onRequestClose` go on any UI element and hear the event from the element itself
+or a descendant. The nearest element on the way up with the prop takes it and stops it, as a Bevy
+owner observer does; no element above it hears it.
+
+- `onMenuEvent({ entity, source, action })`: `source` is the menu button, popup or item that asked;
+  `action` is `"toggle"` (the button), `"open-first"` or `"open-last"` (an arrow on the button),
+  `"close-all"` (an item chosen, or focus left the popup) or `"focus-root"` (Escape, or an item
+  chosen).
+- `onRequestClose({ entity, source })`: a click on a `<modalDialogBarrier>`, or Escape inside it;
+  `source` is the barrier.
+
+```tsx
+const [open, setOpen] = signal(false);
+
+<node onMenuEvent={({ action }) => {
+  if (action === "toggle") setOpen(!open());
+  else if (action.startsWith("open")) setOpen(true);
+  else if (action === "close-all") setOpen(false);
+}}>
+  <menuButton><text>Difficulty</text></menuButton>
+  <Show when={open}>
+    <popover positions={[{ side: "bottom", align: "start", gap: 2 }]}>
+      <menuPopup>
+        <menuItem onActivate={() => setLevel("easy")}><text>Easy</text></menuItem>
+        <menuItem onActivate={() => setLevel("hard")}><text>Hard</text></menuItem>
+      </menuPopup>
+    </popover>
+  </Show>
+</node>
+```
+
+- `<menuButton>` is a button (`MenuButton`): a press, Enter or Space toggles, and the down or up
+  arrow opens with the first or last item focused.
+- `<menuPopup layout>` (`MenuPopup`) takes focus on its first item when it mounts, and stays open
+  while focus is inside it. `layout` is which arrows move between items: `"column"` (the default),
+  `"row"` or `"grid"` (none). A click elsewhere moves focus out, and Bevy asks to close it.
+- `<menuItem>` (`MenuItem`) has `TabIndex(0)` unless `tabIndex` says otherwise, so the popup can
+  focus it. `onActivate` hears a click, or Enter or Space while it has focus.
+- `<popover positions windowMargin>` (`Popover`) is placed against its parent, at the first of
+  `positions` (`{ side, align, gap }`: `"top"`, `"bottom"`, `"left"` or `"right"`; `"start"`,
+  `"center"` or `"end"`; pixels) that fits the window, keeping `windowMargin` pixels from its
+  edge. Bevy writes its `Node`'s place and its transform each frame, so its own `style` gives it
+  only its size and look.
+- `<dialog>` (`Dialog`) is a tab group. `modal` adds `ModalDialog`: Tab stays inside it, and 0.1 s
+  after it comes Bevy focuses its last focusable element. Bound, `modal` going `false` gives the
+  group back its plain `TabGroup`.
+- `<modalDialogBarrier>` (`ModalDialogBarrier`) is the cover around a modal dialog: a click on it,
+  not on the dialog, or Escape asks to close. Bevy 0.20 asks on Escape's release as well as its
+  press, so a handler that toggles hears it twice: set closed, do not flip.
+- `<dialogDragHandle>` (`DialogDragHandle`) inside a dialog drags it: Bevy writes the dialog's
+  transform, so a dialog with a handle takes no `transform` prop. Dragging needs a window: it
+  works in a game window and in viewport mode, not under `--headless`.
 
