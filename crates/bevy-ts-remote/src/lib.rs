@@ -160,7 +160,8 @@ pub fn frame(world: &World) -> u64 {
 /// therefore served the lowest cursor among it and the slots after it: a subscriber can be sent a
 /// message again, never miss one. Streams that send everything since the cursor catch every
 /// subscriber up each update, so their cursors are equal and a swap changes nothing; `level+watch`,
-/// which sends one event per update, is the exception and can repeat events after a close. One
+/// which sends one event per update, is the exception and can repeat events after a close, and a
+/// new one served an older one's cursor misses the rest of its opening `loaded`s. One
 /// that opens in the update another with the same params closes is taken for the old one, and
 /// gets no opening message.
 #[derive(Resource, Default)]

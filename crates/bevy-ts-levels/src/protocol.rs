@@ -489,21 +489,33 @@ fn apply_prop(world: &mut World, e: Entity, component: &str, prop: &str, id: u64
     }
 }
 
+/// What a `level+watch` cursor holds beside the journal's seq: how far through the opening
+/// `loaded`s it is. All sent is the highest, so a subscriber still owed some is served first after a
+/// close (see `Subscribers`).
+const OPENED: u64 = 0xFFFF;
+
 pub(crate) fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>> {
     const METHOD: &str = "bevy-ts/level+watch";
     let seq = world.resource::<Levels>().seq;
-    let mut subs = world.resource_mut::<bevy_ts_remote::Subscribers>();
-    let Some(sent) = subs.cursor(METHOD, &p) else {
-        // A new subscriber: one `loaded` per open level.
-        subs.set(METHOD, &p, seq);
+    let cursor = world.resource_mut::<bevy_ts_remote::Subscribers>().cursor(METHOD, &p);
+    // A new subscriber: one `loaded` per open level, one per update, then the journal since.
+    let (sent, opening) = cursor.map_or((seq, 0), |c| (c >> 16, c & OPENED));
+    if opening != OPENED {
         let levels = world.resource::<Levels>();
-        let first = levels.roots.keys().next().map(|p| loaded_event(levels, p));
-        return Ok(first);
-    };
+        // Counted over the open levels and those closed since: a close shifts none still open.
+        let closed = levels.events.iter().filter(|(s, m)| *s > sent && m["event"] == "closed").filter_map(|(_, m)| m["level"].as_str());
+        let order: std::collections::BTreeSet<&str> = levels.roots.keys().map(String::as_str).chain(closed).collect();
+        let next = order.iter().enumerate().skip(opening as usize).find(|(_, p)| levels.roots.contains_key(**p));
+        let (message, opening) = next.map_or((None, OPENED), |(i, p)| (Some(loaded_event(levels, p)), i as u64 + 1));
+        world.resource_mut::<bevy_ts_remote::Subscribers>().set(METHOD, &p, sent << 16 | opening);
+        if message.is_some() || cursor.is_none() {
+            return Ok(message);
+        }
+    }
     let next = world.resource::<Levels>().events.iter().find(|(s, _)| *s > sent).cloned();
     match next {
         Some((s, m)) => {
-            world.resource_mut::<bevy_ts_remote::Subscribers>().set(METHOD, &p, s);
+            world.resource_mut::<bevy_ts_remote::Subscribers>().set(METHOD, &p, s << 16 | OPENED);
             Ok(Some(m))
         }
         None => Ok(None),

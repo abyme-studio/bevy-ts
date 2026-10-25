@@ -39,7 +39,8 @@ opener is who opened it: a level open already keeps its opener when the editor o
 one `level_open` opens is `editor`, an `app.level` level or a sidecar it reopens included. A level `level_close` closed stays
 closed for the process until `level_open` names it again, whoever opened it: neither a TS save
 nor a scene's sidecar check reopens it. `level+watch` streams `opened` (with `opener`) and
-`closed`, whoever opens or closes the level, and `tsx_tree+watch` sends an opened level's nodes
+`closed`, whoever opens or closes the level (a new watch first gets one `loaded` per open level,
+one per update), and `tsx_tree+watch` sends an opened level's nodes
 as `added` and a closed one's as `removed`.
 
 Under `bevy-ts dev --edit` the engine remembers the editor's levels across restarts, in

@@ -261,7 +261,8 @@ subscribes again after it reconnects.
 Every `+watch` stream serves each open request on its own: a second studio window that opens one
 with the same params gets the opening message, then every change, as the first does
 (`bevy_ts_remote::Subscribers`). After one closes, the others with the same params can be sent a
-message again, never miss one; only `level+watch`, one event per update, can actually repeat. `bevy-ts/entities` and `entities+watch` also leave out the engine's
+message again, never miss one; only `level+watch`, one event per update, can actually repeat, and
+a new `level+watch` that takes the slot of an older one can miss the rest of its opening `loaded`s. `bevy-ts/entities` and `entities+watch` also leave out the engine's
 own entities (windows, monitors, gamepads and bevy_picking's pointers) without hiding them from TS
 queries.
 

@@ -164,6 +164,29 @@ fn a_level_opens_and_closes_over_the_wire() {
 }
 
 
+/// A watch that opens after three levels did: one `loaded` for each, one per update, even when a
+/// level it was sent closes before the rest are.
+#[test]
+fn a_late_subscriber_gets_a_loaded_per_open_level() {
+    let dir = project("levels-late-subscriber", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", ARENA), ("assets/levels/hall.bsn", ROOM), ("assets/levels/room.bsn", ROOM)]);
+    let mut app = level_app(&dir);
+    assert!(reload(&mut app, false).errors.is_empty());
+    settle_levels(&mut app);
+    for file in ["levels/hall.bsn", "levels/room.bsn"] {
+        let o = ok(&mut app, "bevy-ts/level_open", Some(json!({ "file": file })));
+        assert_eq!(o["status"], "opened", "{o}");
+    }
+    let mut events = Vec::new();
+    for _ in 0..2 {
+        app.update();
+        events.push(ok(&mut app, "bevy-ts/level+watch", None));
+    }
+    assert_eq!(ok(&mut app, "bevy-ts/level_close", Some(json!({ "file": "levels/hall.bsn" }))), json!({ "closed": true }));
+    events.extend(level_events(&mut app));
+    let events: Vec<String> = events.iter().map(|m| format!("{} {}", m["event"].as_str().unwrap(), m["level"].as_str().unwrap())).collect();
+    assert_eq!(events, ["loaded levels/arena.bsn", "loaded levels/hall.bsn", "loaded levels/room.bsn", "closed levels/hall.bsn"]);
+}
+
 #[test]
 fn every_level_method_answers_on_contract() {
     let dir = project("levels-protocol", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", ARENA), ("assets/levels/room.bsn", ROOM)]);

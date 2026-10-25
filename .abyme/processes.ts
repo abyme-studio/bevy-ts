@@ -426,6 +426,8 @@ const processes = {
   "watcher-ready-test": { cmd: "set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-cli --lib dev:: && cargo test --no-fail-fast -p bevy-ts-cli --test it -- packages:: reload:: viewport_preview:: && cargo test -p bevy-ts-levels) 2>&1 | grep -v ld64 | tee target/watcher-ready-test.log | grep -E \"^error|^warning|-->|^test |test result|panicked\"" },
   // watcher-ready: the dev watcher's tests under load, main's watcher (before) and this tree's (after).
   "watcher-ready-soak": { cmd: "scripts/watcher-ready-soak.sh 8 5 2>&1 | grep -v ld64 | tee target/watcher-ready-soak.log" },
+  // late-subscriber: bevy-ts-levels, the levels protocol tests, and clippy on both.
+  "levels-late-subscriber-test": { cmd: "set -o pipefail; mkdir -p target; (cargo test --no-fail-fast -p bevy-ts-levels && cargo test -p bevy-ts-cli --test it -- levels_protocol:: && cargo clippy -p bevy-ts-levels -p bevy-ts-cli --all-targets -- -D warnings) 2>&1 | grep -v ld64 | tee target/levels-late-subscriber-test.log | grep -E \"^error|^warning|-->|^test result|FAILED|panicked\"" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
