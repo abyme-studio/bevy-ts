@@ -4,32 +4,40 @@ Option B of the Android target (`~/.local/state/abyme/documents/bevy-ts/android-
 engine as a `.so` in abyme's APK, drawing into its `SurfaceView`. This spike checks V8 and deno_core on
 aarch64 Android, the sizes, Bevy without winit, and TLS.
 
-Researched 2026-10-24 against bevy-ts `1cebc81e`: Bevy 0.20.0, wgpu 30, deno_core 0.412.0, and
+Researched 2026-10-24 and 2026-10-25 against bevy-ts `1cebc81e`: Bevy 0.20.0, wgpu 30, deno_core 0.412.0, and
 `v8` 150.4.0 (the version in `Cargo.lock`; older notes say 152.2). NDK r28c (28.2.13676358), API 29,
 built on the Mac (Apple silicon), run on a headless arm64 emulator (API 34, `-no-window`).
 
 ## V8 and deno_core
 
-V8 RESULT PENDING: the builds are queued in a check slot.
+**V8 works.** deno_core 0.412's `hello_world` runs on the arm64 emulator (Android 14): `JsRuntime::new`
+returns, the script runs, and `1+2+3` comes back as 6. The `TypeError` it prints after that is part of the
+example, which passes a number on purpose to show the error path. No crash, nothing in the crash log.
 
-### Why deno_core#738 crashes
+### deno_core#738 is fixed upstream
 
-Sure from the code; the run below confirms or refutes it.
+- The cause was relative vtables. V8's GN turns them on for arm64 Android
+  (`build/config/compiler/compiler.gni:254`, when `use_custom_libcxx` is on, which is rusty_v8's default).
+  rusty_v8's `OneByteConst` (`src/string.rs:270`) lays out a C++ vtable by hand, with absolute pointers.
+  deno_core makes its static strings with it in `JsRuntime::new`, so V8 jumped to a misaligned address.
+  That gave #738's SIGBUS `BUS_ADRALN`.
+- rusty_v8 turned them off in its own `.gn` (`use_relative_vtables_abi = false`, `.gn:79`):
+  PR #1581, "Disable relative vtable on Android", 2024-08-26. Every `v8` crate since then has it.
+- So the stock build and one with `GN_ARGS=use_relative_vtables_abi=false` are the same: the two
+  `librusty_v8.a` files and the two `hello` binaries are byte for byte equal, and both run.
+- QuickJS-ng is not needed. It is measured below only for comparison.
 
-- V8's GN turns on relative vtables for arm64 Android:
-  `use_relative_vtables_abi = is_fuchsia || (is_android && current_cpu == "arm64" && use_custom_libcxx && !is_component_build)`
-  (`build/config/compiler/compiler.gni:254`). rusty_v8 builds with `use_custom_libcxx` by default.
-- With that flag, a C++ vtable holds 32-bit offsets, not pointers.
-- rusty_v8's `OneByteConst` (`src/string.rs:270`) is a C++ `ExternalOneByteStringResource` laid out by
-  hand in Rust, with a vtable of absolute function pointers.
-- deno_core makes every static string with it (`FastStaticString`, through `v8::String::new_from_onebyte_const`)
-  while it sets up `Deno.core` in `JsRuntime::new`. V8 reads the pointers as offsets and jumps to a
-  misaligned address.
-- That matches #738's tombstone: SIGBUS `BUS_ADRALN` with `pc` equal to the fault address, under
-  `String::NewExternalOneByte` from `initialize_deno_core_namespace`. rusty_v8's own hello world works
-  because it never uses `OneByteConst`.
-- The fix to test: `GN_ARGS=use_relative_vtables_abi=false`. The other fix is a rusty_v8 patch that
-  lays the vtable out as offsets on Android.
+### deno_core 0.412 on Android
+
+- It does not compile for Android as published: `uv_compat/tty.rs` has `errno_location` for Linux and
+  macOS only, and hits `compile_error!` on Android. The fix is 3 lines, bionic's `__errno`:
+  ```rust
+  #[cfg(target_os = "android")]
+  fn errno_location() -> *mut c_int { unsafe extern "C" { fn __errno() -> *mut c_int; } unsafe { __errno() } }
+  ```
+  Carry it as a `[patch.crates-io]` and send it upstream.
+- Linking needs compiler-rt's builtins: V8's `cpu-arm64.cc` calls `__clear_cache`. Pass
+  `-C link-arg=$NDK/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/19/lib/linux/libclang_rt.builtins-aarch64-android.a`.
 
 ### Building V8 for Android from a Mac
 
@@ -48,21 +56,30 @@ needs all of this:
    `libclang_rt.builtins-aarch64-android.a`. Copy the NDK's `lib/clang/19/lib/linux/` into
    that clang's `lib/clang/23/lib/linux/`, and pass its folder as `clang_base_path` in `GN_ARGS`.
 
-With these, `gn gen` makes 1117 targets.
+With these, `gn gen` makes 1117 targets. The build took 47 min at `-j4` on the Mac. Cap ninja with a
+wrapper set in `NINJA` that drops `build.rs`'s `-j` and passes `-j4`: without it ninja runs a job per core
+and the load went past 90.
 
 ## Sizes
 
-Stripped `.so` for aarch64-linux-android, release (`lto = "thin"`, `codegen-units = 1`, `strip = true`).
+Stripped, for aarch64-linux-android. "release" is `lto = "thin"`, `codegen-units = 1`, `strip = true`;
+"size" adds `opt-level = "z"`, `lto = "fat"`, `panic = "abort"`.
 
-| Library | Stripped | gzip -9 |
-|---|---|---|
-| Bevy, the shipped-game set without winit, audio or remote (`3d_bevy_render`, `scene`, `picking`, `bevy_ui_render`) | 66.9 MB | 22.3 MB |
-| QuickJS-ng (`rquickjs` 0.14) | 1.46 MB | 0.68 MB |
-| V8 + deno_core | pending | pending |
+| Library | release | release gzip -9 | size | size gzip -9 |
+|---|---|---|---|---|
+| Bevy, the shipped-game set without winit, audio or remote (`3d_bevy_render`, `scene`, `picking`, `bevy_ui_render`) | 66.9 MB | 22.3 MB | 30.7 MB | 12.1 MB |
+| V8 + deno_core (`hello`) | 42.2 MB | 15.2 MB | not built | |
+| QuickJS-ng (`rquickjs` 0.14) | 1.46 MB | 0.68 MB | 1.01 MB | 0.52 MB |
 
 - In the Bevy probe, `.text` is 44.6 MB, `.eh_frame` 6.2 MB and `.rela.dyn` 6.2 MB.
+- In `hello`, `.text` is 26.3 MB, `.rodata` 11.6 MB (most of it ICU data, built in) and `.eh_frame` 3.6 MB.
+  Nearly all of it is V8's C++, which the Rust profile does not touch, so a size build would save little.
+  The size build was skipped: it rebuilds V8 (47 min) for that.
 - abyme's APK stores `.so` files uncompressed: `libabyme_phone.so` is "Stored" at 6.3 MB of the 8.5 MB APK.
-  So the APK grows by the stripped size, not the gzipped one. With Bevy alone, 8.6 MB becomes about 75 MB.
+  So the APK grows by the stripped size, not the gzipped one.
+- Bevy (size) plus V8 in the APK: 8.6 + 30.7 + 42.2 = about 82 MB. Release Bevy: about 118 MB.
+- As a per-version download (gzip): 12.1 + 15.2 = about 27 MB, on top of the 8.6 MB APK.
+- With QuickJS-ng in place of V8: 8.6 + 30.7 + 1.0 = about 40 MB in the APK, or a 12.6 MB download.
 - `jniLibs.useLegacyPackaging = true` would compress them in the APK, at the cost of Android extracting
   them on install.
 
