@@ -205,7 +205,9 @@ When the resource is absent at run time, `Res<R>` and `ResMut<R>` SHALL fail the
 - **THEN** each reader sees the same 3 messages once
 
 ### Requirement: Observers
-`class E extends Event { ...fields }` and `class E extends EntityEvent { ...fields }` (with `static propagate = true` to bubble up `ChildOf`) SHALL declare events, with the same field rules as components. An observer SHALL be an exported function whose first param is `On<E>`, `On<Add<C>>`, `On<Insert<C>>` or `On<Remove<C>>` and whose other params are system params, registered with `app.addObserver(fn)`. `On<E>` SHALL give the event's fields directly (`explode.radius`, as Rust's `On` derefs to the event), the target as `entity` (an entity event's own field; for a lifecycle event the entity it happened to) and `propagate(on)`. An entity event SHALL carry its target as its `entity` field, and `commands.trigger(Explode.of({ entity: e, radius: 3 }))` SHALL trigger it on `e`, as Rust's `commands.trigger(Explode { entity: e, radius: 3.0 })`. An observer triggered from a TS system's commands SHALL run when those commands are applied, after that system. An observer triggered from Rust (a lifecycle event of a Rust insert, a picking event) SHALL run at the next bevy-ts stage boundary in the same frame, in trigger order, with its propagation path computed in Rust at trigger time. `entity`, `propagate` and `toJSON` are `On<E>`'s own, so a TS event field by one of those names SHALL fail the load at the field with "field X shadows On<E>.X; rename it" (an `EntityEvent`'s `entity` is its target and stays allowed).
+`class E extends Event { ...fields }` and `class E extends EntityEvent { ...fields }` (with `static propagate = true` to bubble up `ChildOf`) SHALL declare events, with the same field rules as components. An observer SHALL be an exported function whose first param is `On<E>`, `On<Add<C>>`, `On<Insert<C>>` or `On<Remove<C>>` and whose other params are system params, registered with `app.addObserver(fn)`. `On<E>` SHALL give the event's fields directly (`explode.radius`, as Rust's `On` derefs to the event), the current target as `entity` (an entity event's own field; for a lifecycle event the entity it happened to), the first target of a bubbling event as `original` (Bevy's `original_event_target`; for a lifecycle event the entity it happened to; undefined for a global event), `propagate(on)`, and the event's whole value as `event` (Bevy's `On::event()`: its fields, and for an entity event `entity`, the current target at each hop as Bevy rewrites it when the event propagates; the first target is `original`). An entity event SHALL carry its target as its `entity` field, and `commands.trigger(Explode.of({ entity: e, radius: 3 }))` SHALL trigger it on `e`, as Rust's `commands.trigger(Explode { entity: e, radius: 3.0 })`. An observer triggered from a TS system's commands SHALL run when those commands are applied, after that system. An observer triggered from Rust (a lifecycle event of a Rust insert, a picking event) SHALL run at the next bevy-ts stage boundary in the same frame, in trigger order, with its propagation path computed in Rust at trigger time. `entity`, `original`, `propagate`, `toJSON` and `event` are `On<E>`'s own, so a TS event field by one of those names SHALL fail the load at the field with "field X shadows On<E>.X; rename it" (an `EntityEvent`'s `entity` is its target and stays allowed).
+
+`commands.entity(e).observe(fn)`, as Bevy's `EntityCommands::observe`, SHALL attach an observer to `e` alone, for a TS or Rust entity event. `fn` SHALL be an exported function whose first param is `On<E>`; it need not be passed to `addObserver`. The observer SHALL be built on first use, keyed by the function's declaration (`file#name`), and SHALL follow that declaration across a reload. It SHALL run only for triggers whose current target is `e`, bubbling hops included, and SHALL be removed when `e` is despawned. A function whose first param is not an entity event SHALL fail that run's commands with an error naming it.
 
 #### Scenario: Triggered from TS
 - **WHEN** system `a` calls `commands.trigger(Explode.of({ entity: e, radius: 3 }))` and an observer on `On<Explode>` despawns `e`
@@ -214,6 +216,18 @@ When the resource is absent at run time, `Res<R>` and `ResMut<R>` SHALL fail the
 #### Scenario: A field named like On's own
 - **WHEN** `class Hit extends Event` declares a field `propagate`
 - **THEN** the load fails at that field with "field propagate shadows On<Hit>.propagate; rename it"
+
+#### Scenario: An observer on one entity
+- **WHEN** a system calls `commands.entity(a).observe(onHit)` where `onHit` takes `On<Hit>`, and later `Hit` is triggered on `a` and on `b`
+- **THEN** `onHit` runs once, for `a`; after `a` is despawned a `Hit` on a new entity does not run it
+
+#### Scenario: An entity observer on a Rust event
+- **WHEN** a system calls `commands.entity(button).observe(clicked)` where `clicked` takes `On<PointerClick>`, and the user clicks `button`
+- **THEN** `clicked` runs at the next bevy-ts stage start with `entity` the button
+
+#### Scenario: Reload keeps entity observers
+- **WHEN** `clicked`'s body changes and the module reloads while `button` lives
+- **THEN** the next click on `button` runs the new body, once
 
 ### Requirement: States
 `class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (a Rust-style path from its module, such as `game::Game`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule by one bevy-ts exclusive system, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. `inState(S.Value)` SHALL be a Rust-evaluated run condition.
