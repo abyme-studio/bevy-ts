@@ -16,4 +16,4 @@ Every cargo job runs through `~/dev/abyme/scripts/gate-slot`.
 - [x] 3.1 `packages.rs`, `reload.rs`: no sleep before a save
 - [x] 3.2 `levels.rs` `a_bad_file_changes_nothing_and_names_its_place`: `save_good` waits for the fixed text, not 20 frames
 - [x] 3.3 `docs/testing.md`: how a test waits for the watcher
-- [ ] 3.4 Under load (`watcher-ready-soak`, 8 copies at once, 5 rounds): main's watcher without the sleeps, then this one
+- [x] 3.4 Under load (`watcher-ready-soak`, 8 copies at once, 5 rounds): main's watcher without the sleeps 0 of 40 failed, this one 0 of 40. Weak alone: at this load the engine's start outlasts the late reports, so main's watcher passes too; the probe (1.2) and `dev::tests` are the proof

@@ -14,13 +14,15 @@ for l in sys.stdin:
     if m.get('reason')=='compiler-artifact' and m.get('executable') and m['target']['name']=='it': print(m['executable'])" | tail -1
 }
 src=crates/bevy-ts-cli/src
-cp "$(it)" "$out/after"
+# Beside the original, where its rpath finds Bevy's dylib.
+bins=target/debug/deps
+cp "$(it)" "$bins/watch-soak-after"
 cp "$src/dev.rs" "$src/compile.rs" "$out/"
 git show main:$src/dev.rs > "$src/dev.rs"
 git show main:$src/compile.rs > "$src/compile.rs"
-cp "$(it)" "$out/before"
+cp "$(it)" "$bins/watch-soak-before"
 cp "$out/dev.rs" "$out/compile.rs" "$src/"
 for arm in before after; do
   echo "== $arm"
-  SOAK_BIN=$out/$arm scripts/levels-watch-soak.sh "${1:-8}" "${2:-5}" packages:: reload::a_saved_file_applies_as
+  SOAK_BIN=$bins/watch-soak-$arm scripts/levels-watch-soak.sh "${1:-8}" "${2:-5}" packages:: reload::a_saved_file_applies_as
 done
