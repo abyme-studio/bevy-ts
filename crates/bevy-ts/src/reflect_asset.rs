@@ -440,11 +440,16 @@ pub struct HandMap {
     pub asset: fn() -> TypeId,
     /// The asset as JSON; the second argument is the JSON a script last wrote it from, `None` for
     /// an asset no script wrote (a loaded file).
-    pub read: fn(&Slots, Option<&Value>, &dyn PartialReflect) -> Result<Value, String>,
+    pub read: HandRead,
     /// The asset from JSON: over `base` when given, else whole (a type with no default builds
     /// from the JSON alone). The asset server loads; nothing else changes.
-    pub write: fn(&Slots, Option<&dyn PartialReflect>, &Value) -> Result<Box<dyn Reflect>, String>,
+    pub write: HandWrite,
 }
+
+/// [`HandMap::read`]: slots, the source JSON, the asset.
+pub type HandRead = fn(&Slots, Option<&Value>, &dyn PartialReflect) -> Result<Value, String>;
+/// [`HandMap::write`]: slots, the base, the JSON.
+pub type HandWrite = fn(&Slots, Option<&dyn PartialReflect>, &Value) -> Result<Box<dyn Reflect>, String>;
 
 /// The hand-mapped asset types. `assets.set` on one merges its patch over the current read at the
 /// top level: a key given replaces that key whole.
