@@ -8,7 +8,7 @@
 - [x] 1.6 `Camera2d` test: `<Camera2d />` plus a red full-view rectangle rendered to an image target gives a red centre pixel; `<Projection value={{ Orthographic: { scale: 2 } }} />` sets scale 2 (needs reflect-enums-color for the enum; skip that case until it lands)
 - [x] 1.7 New `examples/shapes-2d` (`example.json`, `src/game.tsx`): a `Camera2d` and every 2D shape in a grid, each its own colour
 - [x] 1.8 New `docs/2d.md`: the coverage table (every row of design's surface, TS form, test or owner); link from `README.md`; a test reads the table and fails when a row marked working names a test that does not exist (the CI hole check)
-- [ ] 1.9 Gate: `cargo test -p bevy-ts-tsx`, the TS type tests, `protocol/bevy-ts.openrpc.json` unchanged
+- [x] 1.9 Gate: `cargo test -p bevy-ts-tsx`, the TS type tests, `protocol/bevy-ts.openrpc.json` unchanged
 
 ## 2. Stage 2: sprites (after reflect-enums-color lands)
 
