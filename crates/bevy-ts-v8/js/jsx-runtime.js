@@ -34,6 +34,8 @@ const POINTER_EVENTS = new Set([
 const INPUT_EVENTS = new Set(["TextEditChange", "KeyboardInput", "Submit", "Cancel"]);
 /** Events only some elements raise, beside the pointer events every one takes: Bevy triggers each on that widget. */
 const ELEMENT_EVENTS = { input: INPUT_EVENTS, button: new Set(["Activate"]) };
+/** Every UI intrinsic's but `<span>`'s: its own `FocusGained` and `FocusLost`, not a descendant's. */
+const FOCUS_EVENTS = ["FocusGained", "FocusLost"];
 
 /** Marks `Show` and `For`: control flow, described as slots rather than called as prefabs. */
 const CONTROL = Symbol.for("bevy-ts.control");
@@ -1526,9 +1528,9 @@ function describeEntity(el, key, type, parentType) {
     const v = el.props[k];
     if (v === undefined || !PICKING.test(k)) continue;
     const event = k.slice(2);
-    const own = ELEMENT_EVENTS[el.type];
-    if (!POINTER_EVENTS.has(event) && !(own && own.has(event))) {
-      const known = [...POINTER_EVENTS, ...(own || [])];
+    const own = [...(ELEMENT_EVENTS[el.type] || []), ...(ui && el.type !== "span" ? FOCUS_EVENTS : [])];
+    if (!POINTER_EVENTS.has(event) && !own.includes(event)) {
+      const known = [...POINTER_EVENTS, ...own];
       throw located(`<${typeName(el.type)} ${k}>: no such event; use ${known.map((e) => `on${e}`).join(", ")}`, el.source);
     }
     if (typeof v !== "function") throw located(`<${typeName(el.type)} ${k}> takes a function`, el.source);

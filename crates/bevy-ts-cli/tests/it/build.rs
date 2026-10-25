@@ -208,20 +208,28 @@ fn a_linked_package_ships_and_plays_without_node_modules() {
 }
 
 #[test]
-fn mesh_picking_is_baked_into_game_json_and_played() {
+fn switches_are_baked_into_game_json_and_played() {
+    use bevy::input_focus::directional_navigation::{DirectionalNavigationMap, DirectionalNavigationPlugin};
+    use bevy::input_focus::tab_navigation::TabNavigationPlugin;
     use bevy::picking::mesh_picking::MeshPickingSettings;
     use bevy_ts_cli::cli::{Display, Engine, Prebuilt};
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    for (name, config, on) in [("build-picking-on", r#"{ "entry": "src/game.ts", "meshPicking": true }"#, true), ("build-picking-off", r#"{ "entry": "src/game.ts" }"#, false)] {
+    let all = r#"{ "entry": "src/game.ts", "meshPicking": true, "tabNavigation": true, "directionalNavigation": true }"#;
+    for (name, config, on) in [("build-switches-on", all, true), ("build-switches-off", r#"{ "entry": "src/game.ts" }"#, false)] {
         let project = common::project(name, &[("bevy-ts.json", config), ("tsconfig.json", "{}"), ("src/game.ts", "export const a = 1;\n")]);
         let out = project.join("dist/here");
         let (code, events) = build(&[project.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
         assert_eq!(code, Some(0), "{events:#?}");
         let game = out.join("game");
         let file: Value = serde_json::from_str(&std::fs::read_to_string(game.join("game.json")).unwrap()).unwrap();
-        assert_eq!(file.get("meshPicking"), on.then_some(&Value::Bool(true)), "{file}");
+        for key in ["meshPicking", "tabNavigation", "directionalNavigation"] {
+            assert_eq!(file.get(key), on.then_some(&Value::Bool(true)), "{key} in {file}");
+        }
         let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless, &[]).unwrap();
         assert_eq!(app.world().contains_resource::<MeshPickingSettings>(), on, "{name}");
+        assert_eq!(app.is_plugin_added::<TabNavigationPlugin>(), on, "{name}");
+        assert_eq!(app.is_plugin_added::<DirectionalNavigationPlugin>(), on, "{name}");
+        assert_eq!(app.world().contains_resource::<DirectionalNavigationMap>(), on, "{name}");
     }
 }
 

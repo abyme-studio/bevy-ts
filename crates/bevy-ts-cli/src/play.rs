@@ -28,9 +28,9 @@ pub struct GameFile {
     pub bevy_ts: String,
     /// `prebuilt`, or the project engine's hash.
     pub engine: String,
-    /// `bevy-ts.json`'s `meshPicking`, absent when off.
-    #[serde(default, rename = "meshPicking", skip_serializing_if = "is_false")]
-    pub mesh_picking: bool,
+    /// `bevy-ts.json`'s switches, each absent when off: a `game.json` from before has none.
+    #[serde(flatten)]
+    pub switches: crate::project::Switches,
     /// `bevy-ts.json`'s `diagnostics`, absent when none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagnostics: Vec<String>,
@@ -40,10 +40,6 @@ pub struct GameFile {
     pub net: crate::project::NetConfig,
     #[serde(default)]
     pub env: Vec<String>,
-}
-
-fn is_false(b: &bool) -> bool {
-    !b
 }
 
 /// The game folder beside the running executable, when it holds a `game.json`.
@@ -147,7 +143,7 @@ pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display,
     let (tx, channel) = DevChannel::new();
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).expect("the channel is open");
     let assets = folder.join("assets");
-    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.mesh_picking, &game.diagnostics, false);
+    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.switches, &game.diagnostics, false);
     app.insert_resource(channel);
     if let Some(dir) = save_dir(&game.name) {
         app.insert_resource(bevy_ts::saves::SaveDir(dir));
@@ -195,7 +191,7 @@ mod tests {
             entry: "src/game.ts".into(),
             bevy_ts: crate::engine::VERSION.into(),
             engine: "prebuilt".into(),
-            mesh_picking: false,
+            switches: Default::default(),
             diagnostics: vec![],
             net: config.net,
             env: config.env,
@@ -227,7 +223,7 @@ mod tests {
             entry: "src/game.ts".into(),
             bevy_ts: crate::engine::VERSION.into(),
             engine: "prebuilt".into(),
-            mesh_picking: false,
+            switches: Default::default(),
             diagnostics: config.diagnostics,
             net: Default::default(),
             env: vec![],

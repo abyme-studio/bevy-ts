@@ -146,6 +146,23 @@ export interface ActivateEvent {
   readonly frame: number;
 }
 
+/** `FocusGained`: this element took `InputFocus`; `cause` is Bevy's `FocusCause`. */
+export interface FocusGainedEvent {
+  readonly kind: "FocusGained";
+  readonly entity: Entity;
+  readonly cause: "navigated" | "pressed" | "auto";
+  readonly commands: Commands;
+  readonly frame: number;
+}
+
+/** `FocusLost`: this element gave up `InputFocus`. */
+export interface FocusLostEvent {
+  readonly kind: "FocusLost";
+  readonly entity: Entity;
+  readonly commands: Commands;
+  readonly frame: number;
+}
+
 /** `<button>`: a `<node>` with Bevy's `Button`. */
 export interface ButtonProps extends NodeProps {
   /** Entity-local observer of Bevy's `Activate`, raised on click and on Enter or Space while focused; not while `disabled`. */
@@ -261,6 +278,16 @@ export interface NodeProps extends EntityProps {
   camera?: NodeRef | Entity;
   /** `InteractionDisabled` while true: Bevy's widgets ignore pointer and keyboard input. */
   disabled?: Bindable<boolean>;
+  /** `TabIndex`: Tab visits it in this order (`0` in tree order, negative never); needs `"tabNavigation": true`. */
+  tabIndex?: Bindable<number>;
+  /** `TabGroup`: Tab cycles inside a `modal` group; groups are visited by `order`. Needs `"tabNavigation": true`. */
+  tabGroup?: Bindable<{ order?: number; modal?: boolean }>;
+  /** `AutoFocus`: take focus when it mounts. */
+  autoFocus?: Bindable<boolean>;
+  /** Entity-local observer of Bevy's `FocusGained`: this element's own, not a descendant's. */
+  onFocusGained?: (event: FocusGainedEvent) => void;
+  /** Entity-local observer of Bevy's `FocusLost`. */
+  onFocusLost?: (event: FocusLostEvent) => void;
 }
 
 /** The text props Bevy applies per span (`TextFont`, `TextColor`, decorations). */
@@ -392,8 +419,8 @@ export interface InputProps extends Omit<NodeProps, "children"> {
   /** The text at mount; a reload does not reset it. */
   initialValue?: string;
   maxCharacters?: Bindable<number>;
-  /** Focus the field when it mounts. */
-  autoFocus?: Bindable<boolean>;
+  /** `TabIndex`; a field without one has `TabIndex(0)`, so Tab visits it. */
+  tabIndex?: Bindable<number>;
   onTextEditChange?: (event: TextEditChangeEvent) => void;
   onKeyboardInput?: (event: KeyboardInputEvent) => void;
   onSubmit?: (event: SubmitEvent) => void;

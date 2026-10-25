@@ -200,6 +200,50 @@ const b = ref();
 A `has` read stays watched while the component is absent: absence is its value. It works in UI
 prop bindings, not in a bound component field.
 
+## Focus
+
+Every UI element takes Bevy's focus components as props:
+
+- `tabIndex`: `TabIndex(n)`, a whole number. Tab visits lower numbers first, then tree order.
+- `tabGroup`: `TabGroup`, `{ order, modal }` (defaults 0 and `false`). As in Bevy, Tab reaches
+  only a `tabIndex` element inside a `tabGroup`. In a `modal` group, Tab stays inside it.
+- `autoFocus`: `AutoFocus`; the element takes `InputFocus` when it mounts.
+
+An `<input>` has `TabIndex(0)` without the prop; its `tabIndex` replaces it, and removing the prop
+puts `TabIndex(0)` back.
+
+```tsx
+<node tabGroup={{}}>
+  <button tabIndex={0} autoFocus onFocusGained={({ cause }) => ring(cause)}><text>Play</text></button>
+  <button tabIndex={0}><text>Quit</text></button>
+</node>
+```
+
+`onFocusGained({ entity, cause })` and `onFocusLost({ entity })` are the element's own focus,
+Bevy's `FocusGained` and `FocusLost`: a descendant's focus does not reach them. `cause` is Bevy's:
+`"navigated"` (Tab, the arrows, or a click on a `tabIndex` element), `"pressed"` (a widget that
+focuses itself on press, as a checkbox) or `"auto"` (`autoFocus`).
+
+Tab and the arrow keys are off by default: Bevy keeps both plugins out of its defaults, and a game
+may bind Tab or the arrows itself. Turn them on in `bevy-ts.json`, as `meshPicking`
+([picking.md](picking.md#what-picks)):
+
+```json
+{ "tabNavigation": true, "directionalNavigation": true }
+```
+
+- `tabNavigation` adds `TabNavigationPlugin`: Tab and Shift-Tab move focus, and a click focuses a
+  `tabIndex` element. With it off, a `tabIndex` or `tabGroup` prop logs one warning per process
+  naming `"tabNavigation": true`; an `<input>`'s own `TabIndex(0)` does not.
+- `directionalNavigation` adds `DirectionalNavigationPlugin`. Bevy moves nothing on its own: a
+  system calls `DirectionalNavigation.navigate` from `bevy-ts/input` on the keys it chooses, over
+  elements with an `<AutoDirectionalNavigation />` child
+  ([native.md](native.md#ports-and-built-in-modules)).
+
+Keys need a primary window: they work in a game window and in viewport mode, not under
+`--headless`. In edit mode the keys are the editor's: Tab moves no game focus and a field types nothing until
+Play.
+
 ## `<input>`
 
 A one-line text field: Bevy 0.20's `TextInput`. Focus, typing, selection, paste and Escape are
@@ -220,7 +264,7 @@ game that wants one styles it.
 - `initialValue`: the text at mount. Like every `initial*` prop, a reload does not reset it, and
   what the player typed survives a reload.
 - `maxCharacters`: edits past it are dropped, as Bevy does.
-- `autoFocus`: the field takes `InputFocus` when it mounts.
+- `autoFocus`: the field takes `InputFocus` when it mounts ([Focus](#focus)).
 
 There is no `value` prop. The text is Bevy's editor's; writing it from TS would fight the cursor
 and IME state. To clear a field, remount it with a new `key`.
