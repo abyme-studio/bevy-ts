@@ -15,8 +15,8 @@
 
 ## 2. Stage 2: mouse motion and scroll (after rust-resources lands `Res<T>` of Rust resources)
 
-- [ ] 2.1 Test `Res<AccumulatedMouseMotion>`, `Res<AccumulatedMouseScroll>` and `Res<MouseScrollPixelsPerLine>` from TS, fed by `MouseMotion` / `MouseWheel`
-- [ ] 2.2 Document them in the input section; mark their table rows done
+- [x] 2.1 Test `Res<AccumulatedMouseMotion>` and `Res<AccumulatedMouseScroll>` from TS, fed by `MouseMotion` / `MouseWheel`; `MouseScrollPixelsPerLine` is unreachable (Bevy 0.20 reflects it without `reflect(Resource)`)
+- [x] 2.2 Document them in the input section; mark their table rows done
 
 ## 3. Stage 3: messages, gestures and rumble (after rust-events and reflect-coverage stage 1)
 

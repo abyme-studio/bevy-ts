@@ -11,7 +11,7 @@ use bevy::input::gamepad::{
     RawGamepadEvent,
 };
 use bevy::input::keyboard::{Key, KeyboardInput, NativeKey};
-use bevy::input::mouse::MouseButtonInput;
+use bevy::input::mouse::{MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::input::touch::{TouchInput, TouchPhase};
 use bevy::prelude::*;
 use bevy::window::{ExitCondition, PrimaryWindow};
@@ -313,4 +313,29 @@ fn a_gamepad_condition_fails_the_load_pointing_at_gamepads() {
     assert!(e.message.contains("Gamepads") && e.message.contains("8192"), "{e:?}");
     let at = e.location.as_ref().unwrap();
     assert!(at.file.ends_with("game.ts") && at.line == 4, "the call's location, not the module's: {at:?}");
+}
+
+const MOTION: &str = r#"import { app, Update } from "bevy-ts";
+import type { Res } from "bevy-ts";
+import { AccumulatedMouseMotion, AccumulatedMouseScroll } from "bevy-ts/bevy";
+
+export function look(motion: Res<AccumulatedMouseMotion>, scroll: Res<AccumulatedMouseScroll>) {
+  console.log(`motion ${motion.delta.x},${motion.delta.y} scroll ${scroll.unit} ${scroll.delta.x},${scroll.delta.y}`);
+}
+app.addSystems(Update, look);
+"#;
+
+/// Mouse motion and scroll are Bevy's own resources, read with `Res` (stage 2): a frame's
+/// messages summed, and zero again the next frame.
+#[test]
+fn mouse_motion_and_scroll_read_as_bevys_resources() {
+    let mut app = input_app("input-motion", MOTION, true);
+    let w = window(&mut app);
+    assert_eq!(frame(&mut app, "motion"), "motion 0,0 scroll Line 0,0");
+    app.world_mut().write_message(MouseMotion { delta: Vec2::new(3.0, -2.0) });
+    app.world_mut().write_message(MouseMotion { delta: Vec2::new(1.0, 0.0) });
+    let wheel = MouseWheel { unit: MouseScrollUnit::Pixel, x: 0.0, y: 24.0, window: w, phase: TouchPhase::Moved };
+    app.world_mut().write_message(wheel);
+    assert_eq!(frame(&mut app, "motion"), "motion 4,-2 scroll Pixel 0,24", "one frame's messages, summed");
+    assert_eq!(frame(&mut app, "motion"), "motion 0,0 scroll Line 0,0", "and cleared the next, back to Bevy's Line");
 }
