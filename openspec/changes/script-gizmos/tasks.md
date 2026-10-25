@@ -1,0 +1,59 @@
+Cargo runs through `~/dev/abyme/scripts/gate-slot`. Tests follow `docs/testing.md`: every new
+test is in `crates/bevy-ts-cli/tests/it/gizmos.rs` (with `mod gizmos;` in `tests/it/main.rs`) or a
+unit test in the file it tests. "Design N" is `design.md`'s decision N.
+
+## 1. Stage 1: argument kinds and chaining in the host
+
+- [ ] 1.1 `crates/bevy-ts/src/host.rs`: `Kind::{Color, Isometry2d, Isometry3d, TransformPoint, UVec2, UVec3, List(Vec<Kind>), Json(&'static str)}` with `slots()`, `ts_in`, `ts_out`, `declare`, `write_js` and `read_js` arms, and `HostValue` impls for `Color`, `Isometry2d`, `Isometry3d`, `Transform`, `UVec2`, `UVec3`, `HostList<T>`, `HostJson` (design 3). `Color` decodes tags 0 to 9 into Bevy's variants with no parsing and tag 10 through `bevy_ts::color`; a bad form throws naming method, argument and the forms taken
+- [ ] 1.2 `host.rs`: `ArgSpec::Points(SliceSpec, lanes)` and `HostPoints<T>` for `f32`, `Vec2`, `Vec3`: the glue passes a `Float32Array` as is and packs an array into a scratch `Float32Array` held by `H` (grown, never shrunk); a length that is not a whole number of points throws; the slice-overlap check applies as for any slice
+- [ ] 1.3 `host.rs`: `MethodSpec.chain: Option<&'static str>` and `MethodSpec.of: Option<&'static str>`; `glue` returns `this` for both; `declaration` emits one interface per builder with its settings, and leaves settings off the param's interface (design 5). Existing exports set both to `None`
+- [ ] 1.4 `crates/bevy-ts-native-derive/src/lib.rs`: accept the new kinds in `expand_export` (they are `HostValue`s; `HostPoints<T>` maps to `ArgSpec::Points`); `stands_for` accepts `Gizmos` and `Gizmos<..>` spellings beside `Res<..>`/`ResMut<..>`; fill `chain`/`of` with `None`
+- [ ] 1.5 `host.rs` unit tests: `colors_cross_in_every_form` (hex, array, each of the ten variants, a bad string), `isometries_take_bevys_into_forms`, `transforms_take_transform_and_global_transform`, `uvecs_refuse_negative_lanes`, `lists_cross_in_slots_and_refuse_past_the_room`, `json_round_trips`, `points_from_arrays_and_float32arrays`, `builder_glue_returns_this`
+- [ ] 1.6 `crates/bevy-ts-cli/src/reader.rs` (the `"Res" | "ResMut"` arm at :1174 and a new `"Gizmos"` arm): a `Gizmos` or `Gizmos<X>` param resolves through `port_claims()`; an unclaimed one fails naming it and the claimed `Gizmos` spellings. Reader unit test in the same file
+- [ ] 1.7 `docs/native.md` "Calling Rust from TS": the new argument kinds and their TS forms, builder returns, `ts_gizmo_group`; `openspec/specs/native-functions` scenarios hold via 1.5
+
+## 2. Stage 1: the Gizmos param
+
+- [ ] 2.0 `crates/bevy-ts-native/Cargo.toml`: a default feature `gizmos = ["bevy/bevy_gizmos", "bevy/bevy_light"]`, so a project crate can name `TsGizmos` and call `ts_gizmo_group`; the param, its table and primitives live in `crates/bevy-ts-native/src/gizmos/` behind it, and `bevy-ts-cli` keeps the plugin and the module (no dependency cycle: the CLI already depends on `bevy-ts-native`)
+- [ ] 2.1 New `crates/bevy-ts-native/src/gizmos/draw.rs`: `OpenBuilder` (four start and end lengths, builder kind, arguments, settings so far); the `macro_rules!` table of design 1 with one line per Bevy method of `gizmos.rs`, `arrows.rs`, `circles.rs`, `arcs.rs`, `grid.rs`, `cross.rs`, `rounded_box.rs`, `stroke_text.rs` (the coverage table's "Lines, rays, strips", "Shapes" and text rows) and each builder setting, generic over `C: GizmoConfigGroup`; the `Aabb3d` `HostRecord`; the redraw rule of design 5 with its throw message
+- [ ] 2.2 New `crates/bevy-ts-native/src/gizmos/mod.rs`: `TsGizmos<'w, 's, C>` (`Gizmos<C>` + `Local<OpenBuilder>`), its hand-written `ExportParam` from the table (TS name `Gizmos_<Short>`, `stands_for = "Gizmos<Short>"`, plus bare `Gizmos` for the default group), `config()`/`configExt()` as `Json` through `reflect_value::read`. New `crates/bevy-ts-cli/src/gizmos.rs`: `GizmosPlugin` registering Bevy's five groups (design 2); the `bevy-ts/gizmos` module (`app.ts_module`): group constants, `GizmoGroup<N, V>`, `interface Gizmos<G>`, builder interfaces
+- [ ] 2.3 `crates/bevy-ts-native/src/lib.rs`: `BevyTsNativeExt::ts_gizmo_group::<G>()` (behind `gizmos`) registering `TsGizmos<G>` and the group's name for `bevy-ts/gizmos`, and a `finish` check that fails the app for a group missing from `GizmoConfigStore`, naming it
+- [ ] 2.4 Add `GizmosPlugin` in `crates/bevy-ts-cli/src/cli.rs:243`, `types.rs:33` and `types.rs:754`, beside `CamerasPlugin`; `types.rs` `claims_ts` treats names `bevy-ts/gizmos` declares as declared
+- [ ] 2.5 `gizmos.rs` tests: `a_system_draws_lines`, `a_throw_drops_the_drawing`, `each_group_draws_into_its_own_storage`, `fixed_update_gizmos_last_until_the_next_fixed_step`, `a_gizmos_kept_from_another_system_throws`, `a_builder_setting_redraws_the_shape`, `a_late_setting_throws`, `a_long_strip_crosses_as_a_slice`, `isometry_takes_bevys_into_forms`, `config_reads_through_reflection`, `a_project_group_reaches_ts`, `an_unregistered_group_fails_the_app`, `the_editor_groups_are_not_exposed`
+- [ ] 2.6 `gizmos.rs`: `ts_draws_what_rust_draws`, the table of design 9 with one row per table entry and builder setting from 2.1, comparing `GizmoStorage<DefaultGizmoConfigGroup, ()>`'s four vectors; it fails for an entry with no row
+- [ ] 2.7 `gizmos.rs`: `show_aabb_gizmo_draws_its_box`, `show_frustum_gizmo_draws`, `show_light_gizmo_draws` (TSX markers, the group storage has lines after a frame), `draw_all_draws_every_aabb`
+- [ ] 2.8 `gizmos.rs`: `gizmos_render_headless` with `common::render_app()`: a `Camera2d` with an image target and a red `line2d` across it; red pixels on the line, none a few pixels off
+- [ ] 2.9 `crates/bevy-ts-cli/tests/it/typescript.rs`: `Gizmos<LightGizmoConfigGroup>` types `configExt()` as the group's shape; `.resolution` on an `ArrowBuilder` is a type error; `Gizmos<Nope>` is a type error; `linestrip` takes `Vec3[]` and `Float32Array`
+- [ ] 2.10 New `examples/gizmos` (`example.json`, `tsconfig.json`, `src/game.tsx`, `src/gizmos.ts`): Bevy's `examples/gizmos/3d_gizmos.rs` and `light_gizmos.rs` call for call, with their key toggles on `bevy-ts/input`; the toggles that change config wait for stage 2 and are left out until then (2.10 lands without them; 4.6 adds them)
+- [ ] 2.11 Frames: build main's `bevy-ts` and run `examples/gizmos` without `src/gizmos.ts` (`bevy-ts play --headless`, `BEVY_TS_SCREENSHOT=~/dev/bevy-ts-frames/script-gizmos/before.png`), then this branch's with it (`after.png`); look at both
+- [ ] 2.12 New `docs/gizmos.md`: what `Gizmos` is in TS, groups, builders, argument forms, the cost (from 3.x), and the coverage table moved from `docs/research/script-gizmos.md` with statuses updated; `docs_rows_name_real_tests` in `gizmos.rs` reads it and fails for a row marked works whose test is missing; link from `README.md`; `docs/research/bevy-coverage.md:154-155` rows point at `docs/gizmos.md`
+
+## 3. Stage 1: benchmark
+
+- [ ] 3.1 New `bench/gizmos/rust/` (`Cargo.toml` outside the workspace, `benches/lines.rs`): criterion arms `empty` and `lines_1000` on a `MinimalPlugins` + `AssetPlugin` + `GizmoPlugin` app (design 11)
+- [ ] 3.2 New `bench/gizmos/src/game.ts`, `bench/gizmos/bench.mjs`, `summary.mjs`, `README.md`: headless release engine, arms `none`, `lines_hex` (1,000 `line` calls, `"#f00"`), `lines_srgb` (`srgb(1, 0, 0)`), `strip_f32` (one `linestrip` of 1,000 points from a `Float32Array`); 60 warm-up frames, 300 measured, three runs; `main` time from diagnostics
+- [ ] 3.3 `.abyme/processes.ts`: `bench-gizmos` running 3.1 and 3.2 through `gate-slot`, output to `bench/gizmos/results/`
+- [ ] 3.4 `docs/gizmos.md` "Cost": ns per line in TS for each arm against Rust's, and the advice that follows (which colour form is cheaper; `linestrip` for many segments)
+
+## 4. Stage 2: config, primitives, curves
+
+- [ ] 4.1 `crates/bevy-ts-native/src/gizmos/config.rs` (registered by `GizmosPlugin`): `TsGizmoConfigStore` (`stands_for = "ResMut<GizmoConfigStore>"`: `config`, `insert`, `groups`) and `TsGizmoConfigStoreRead` (`Res<GizmoConfigStore>`: `config`, `groups`), through `get_config_dyn`/`get_config_mut_dyn` and `reflect_value::read`/`write` + `FromReflect` (design 6); `bevy-ts/gizmos` declares `class GizmoConfigStore`
+- [ ] 4.2 Tests: `config_round_trips_through_the_store` (every `GizmoConfig` field and each of the five groups' fields), `insert_merges_over_the_current_config`, `a_bad_field_throws_and_changes_nothing`, `disabled_group_draws_nothing`, `res_store_cannot_insert` (a type error and no `insert` method)
+- [ ] 4.3 New `crates/bevy-ts-native/src/gizmos/primitives.rs`: the key → type table for all 17 `GizmoPrimitive2d` and 14 `GizmoPrimitive3d` impls, decoding through `reflect_value::write` + `FromReflect`; `primitive2d`/`primitive3d` entries and their builder settings in `draw.rs`; the generated TS union in `bevy-ts/gizmos` (design 7)
+- [ ] 4.4 `crates/bevy-ts-native/src/gizmos/draw.rs`: `curve2d`, `curve3d`, `curveGradient2d`, `curveGradient3d` over the four curve types of design 8; `GizmosPlugin` registers `EasingCurve`, `SampleAutoCurve`, `UnevenSampleAutoCurve`, `ConstantCurve` of `Vec2` and `Vec3`
+- [ ] 4.5 Tests: `ts_draws_what_rust_draws` rows for every primitive and setting and each curve type; `an_unknown_primitive_throws_naming_the_set`, `a_curve_outside_the_set_throws_naming_it`; `typescript.rs`: a primitive with a wrong field is a type error
+- [ ] 4.6 `examples/gizmos`: Bevy's config toggles (line width, style, joints, perspective, `draw_all` for lights) through `ResMut<GizmoConfigStore>`; a render test `line_width_and_style_render` in `gizmos.rs` (a 10 px wide line covers more pixels than a 2 px one); `docs/gizmos.md` rows
+
+## 5. Stage 3: retained gizmos (after reflect-assets stage 1 and its HandMap widening)
+
+- [ ] 5.1 Confirm with lead@reflect-assets the `HandMap` form for an asset type with no `Reflect`, registered from outside `bevy-ts` (design 10); if refused, amend this change to an export claiming `ResMut<Assets<GizmoAsset>>` before building
+- [ ] 5.2 `crates/bevy-ts/src/host.rs`: `recorder_glue(spec)`: a JS class whose methods write the method index and encoded arguments into a growable `Float64Array`, points inline, settings as calls
+- [ ] 5.3 `crates/bevy-ts-cli/src/gizmos.rs`: `GizmoAsset` in `bevy-ts/gizmos` from 5.2 over the default group's table; `crates/bevy-ts-native/src/gizmos/retained.rs`: the `HandMap` entry, registered through 5.1's API, replaying the record onto a fresh `GizmoAsset` through `draw.rs`'s entries, read giving `{ calls }`
+- [ ] 5.4 Tests: `a_gizmo_asset_holds_what_gizmos_would_draw`, `set_replaces_a_gizmo_assets_calls`, `a_retained_gizmo_renders` (a `<Gizmo handle line_config={{ width: 4 }} />` gives pixels under `render_app()`)
+- [ ] 5.5 `examples/gizmos`: one retained grid; `docs/gizmos.md` rows; frame `after-retained.png`
+
+## 6. Landing (each stage)
+
+- [ ] 6.1 Before `land add`: `cargo test -p bevy-ts --lib host`, `cargo test -p bevy-ts-cli --test it gizmos:: typescript::`, `cargo clippy --workspace --all-targets -- -D warnings`, `scripts/gen-protocol.sh --check`, `(cd packages/bevy-ts && pnpm check)`, all through `gate-slot`
+- [ ] 6.2 Protocol: the handshake lists the new exports and `standsFor`; if `protocol/bevy-ts.openrpc.json` changes, take the next free minor
+- [ ] 6.3 `docs/gizmos.md`: no row marked works without an existing test; this change's proposal, design and specs land with the stage's code, never alone
