@@ -229,13 +229,17 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         rt.entries.clear();
     }
 
-    // Attachments made under the old generation are rebuilt from their names.
-    world.remove_resource::<crate::observers::NewTargeted>();
+    // Attachments made under the old generation are rebuilt from their names; a failed load keeps
+    // those the old generation has not built yet, for its next drain.
+    let unbuilt = world.remove_resource::<crate::observers::NewTargeted>();
     let observed = crate::observers::observed(world);
     let env = world.get_resource::<crate::net::NetPolicy>().map(|p| p.env.clone()).unwrap_or_default();
     let argv = world.get_resource::<crate::backend::ScriptArgs>().map(|a| a.0.clone()).unwrap_or_default();
     let generation = Generation { number, set, env, argv, now_ms: crate::net::now_ms(world), observed };
     let result = load_and_apply(world, &mut rt, &generation);
+    if let (Err(_), Some(unbuilt)) = (&result, unbuilt) {
+        world.insert_resource(unbuilt);
+    }
     let report = match result {
         Ok((migrations, sections, requests)) => {
             #[cfg(feature = "reflect")]
@@ -529,6 +533,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     let migrations = components::commit(world, pending);
     insert_resources(world, &manifest);
     let watched = systems.watched_lifecycles();
+    let rust = systems.watched_rust();
     crate::conditions::prune_natives(world, &systems.natives);
     let stale: Vec<String> = generation.observed.iter().filter(|n| !systems.targeted.contains_key(*n)).cloned().collect();
     world.insert_resource(systems);
@@ -543,6 +548,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     crate::schedules::ensure_stages(world, &manifest.init_schedules);
     crate::states::sync(world);
     crate::observers::install(world, &watched);
+    crate::observers::install_rust(world, &rust);
     rt.entries = manifest.entries.iter().map(|e| e.name.clone()).collect();
     Ok((migrations, sections, requests))
 }

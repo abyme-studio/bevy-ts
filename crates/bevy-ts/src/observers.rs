@@ -1,5 +1,5 @@
-//! The observer queue. TS triggers (`commands.trigger`) and Bevy lifecycle events on watched
-//! components push here; the queue drains after each TS system's commands and at each stage
+//! The observer queue. TS triggers (`commands.trigger`), Bevy lifecycle events on watched
+//! components and Rust events TS observes push here; the queue drains after each TS system's commands and at each stage
 //! start, one JS call per event and target.
 //!
 //! `commands.entity(e).observe(fn)` attaches a TS observer to `e` alone. Each attachment is a Bevy
@@ -11,6 +11,7 @@ use bevy::ecs::observer::ObservedBy;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
+use std::any::TypeId;
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -18,12 +19,17 @@ pub enum Trigger {
     /// A TS event type, by index in `TsPayloads::events`.
     Event(usize),
     Lifecycle(Lifecycle, ComponentId),
+    /// A Rust event, by type id; its bytes are its JSON.
+    Rust(TypeId),
 }
 
 #[derive(Clone, Debug)]
 pub struct Pending {
     pub trigger: Trigger,
     pub bytes: Vec<u8>,
+    /// A Rust event's value at each later hop of `path`, as Bevy rewrote its target for that hop
+    /// (`On::event()`); empty when the value is the same at every hop.
+    pub hops: Vec<Vec<u8>>,
     /// The target and, for a bubbling entity event, its `ChildOf` ancestors. Empty for a global
     /// event.
     pub path: Vec<Entity>,
@@ -40,6 +46,10 @@ pub struct ObserverQueue(pub VecDeque<Pending>);
 /// The Bevy observers feeding lifecycle triggers for the live generation.
 #[derive(Resource, Default, Debug)]
 pub struct LifecycleObservers(pub Vec<Entity>);
+
+/// The Bevy observers feeding Rust event triggers for the live generation.
+#[derive(Resource, Default, Debug)]
+pub struct RustObservers(pub Vec<Entity>);
 
 /// A Bevy observer entity standing for a TS observer attached to the entity it watches.
 #[derive(Component, Clone, Debug)]
@@ -145,7 +155,7 @@ pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
                     _ => vec![],
                 };
                 let attached = vec![attached(&world, entity)];
-                world.resource_mut::<ObserverQueue>().0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes, path: vec![entity], original: Some(entity), attached });
+                world.resource_mut::<ObserverQueue>().0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes, hops: vec![], path: vec![entity], original: Some(entity), attached });
             }
         };
         let observer = match kind {
@@ -158,4 +168,56 @@ pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
         spawned.push(world.spawn(observer.with_components(ids)).id());
     }
     world.resource_mut::<LifecycleObservers>().0 = spawned;
+}
+
+/// Replaces the Rust event observers with one per type in `types`. Each serializes the event once
+/// and queues it; a later hop of the same bubbling trigger joins the queued one, so
+/// `propagate(false)` drops the rest of its TS hops.
+pub fn install_rust(world: &mut World, types: &[TypeId]) {
+    let old = std::mem::take(&mut world.get_resource_or_init::<RustObservers>().0);
+    for o in old {
+        let _ = world.try_despawn(o);
+    }
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let observers: Vec<Observer> = {
+        let registry = registry.read();
+        types.iter().filter_map(|id| crate::rust_events::observer(&registry, *id, sink(*id))).collect()
+    };
+    let spawned = observers.into_iter().map(|o| world.spawn(o).id()).collect();
+    world.resource_mut::<RustObservers>().0 = spawned;
+}
+
+fn sink(id: TypeId) -> crate::rust_events::TsEventSink {
+    Box::new(move |value: &dyn Reflect, current: Option<Entity>, original: Option<Entity>, mut world: DeferredWorld| {
+        if world.get_resource::<ObserverQueue>().is_none() {
+            return;
+        }
+        let attached = current.map(|e| attached(&world, e));
+        // Serialized at every hop: Bevy rewrites the target in the value as the event bubbles.
+        let json = {
+            let registry = world.resource::<AppTypeRegistry>().read();
+            crate::rust_events::to_json(&registry, value.as_partial_reflect())
+        };
+        let bytes = match json.and_then(|v| serde_json::to_vec(&v).map_err(|e| e.to_string())) {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(target: "bevy_ts", "{}: {e}; TS observers do not see it", value.reflect_type_path());
+                return;
+            }
+        };
+        let mut queue = world.resource_mut::<ObserverQueue>();
+        if let (Some(c), Some(o)) = (current, original)
+            && c != o
+            && let Some(back) = queue.0.back_mut()
+            && back.trigger == Trigger::Rust(id)
+            && back.original == Some(o)
+        {
+            back.path.push(c);
+            back.hops.push(bytes);
+            back.attached.push(attached.unwrap_or_default());
+            return;
+        }
+        let pending = Pending { trigger: Trigger::Rust(id), bytes, hops: vec![], path: current.into_iter().collect(), original, attached: attached.into_iter().collect() };
+        world.resource_mut::<ObserverQueue>().0.push_back(pending);
+    })
 }

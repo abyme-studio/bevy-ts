@@ -287,6 +287,8 @@ pub enum RunParam {
     Removed { id: ComponentId, key: String },
     /// `SystemChangeTick`.
     ChangeTick,
+    /// A Rust message, read as one JSON array per run from the system's cursor.
+    RustMessageReader { path: String, reader: crate::rust_events::ReflectTsMessage },
     /// `State<S>` (`previous: false`) or `PreviousState<S>`: a machine by index in `TsPayloads`.
     State { index: usize, previous: bool },
     /// An observer's trigger.
@@ -409,6 +411,22 @@ impl TsSystems {
             ListKey::OnExit(i, v) => drop(self.on_exit.insert((*i, *v), list)),
             ListKey::OnTransition(i, a, b) => drop(self.on_transition.insert((*i, *a, *b), list)),
         }
+    }
+
+    /// The Rust events the generation's observers name, for Bevy observers to feed.
+    pub fn watched_rust(&self) -> Vec<std::any::TypeId> {
+        let mut ids: Vec<std::any::TypeId> = self
+            .observers
+            .iter()
+            .chain(self.targeted.values())
+            .filter_map(|o| match &o.observes {
+                Some(ObserverOf(Trigger::Rust(id))) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
     }
 
     /// The observers a lifecycle trigger needs Bevy to watch.
@@ -776,6 +794,10 @@ fn build_targeted(world: &mut World, generation: u64, index: usize, d: &SystemDe
     let entity_event = match &s.observes {
         Some(ObserverOf(Trigger::Event(i))) => world.resource::<TsPayloads>().events[*i].entity,
         Some(ObserverOf(Trigger::Lifecycle(..))) => true,
+        // An event with only Bevy's type data may be either; its observer reads an `entity` field.
+        Some(ObserverOf(Trigger::Rust(id))) => {
+            world.resource::<AppTypeRegistry>().read().get(*id).and_then(|r| r.data::<crate::rust_events::ReflectTsEvent>()).is_none_or(|t| t.entity)
+        }
         None => false,
     };
     if !entity_event {
@@ -791,7 +813,7 @@ fn adopt_targeted(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSys
     if new.is_empty() {
         return;
     }
-    let before = systems.watched_lifecycles();
+    let before = (systems.watched_lifecycles(), systems.watched_rust());
     for (index, decl) in new {
         if systems.targeted.contains_key(&decl.name) {
             continue;
@@ -816,8 +838,12 @@ fn adopt_targeted(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSys
         }
     }
     let watched = systems.watched_lifecycles();
-    if watched != before {
+    if watched != before.0 {
         crate::observers::install(world, &watched);
+    }
+    let rust = systems.watched_rust();
+    if rust != before.1 {
+        crate::observers::install_rust(world, &rust);
     }
 }
 
@@ -1006,6 +1032,8 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
     let mut params = Vec::new();
     let mut locals = Vec::new();
     let mut observes = None;
+    // Rust readers new to this system start at their queue's end, so a restart replays nothing.
+    let mut rust_cursors: Vec<(String, u64)> = Vec::new();
     for (i, p) in flat.iter().enumerate() {
         let rp = match p {
             ParamDecl::Query { data, filter } => RunParam::Query(Box::new(build_query(world, data, filter, Need::Any, ts).map_err(err)?)),
@@ -1042,15 +1070,32 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 locals.push(fields.clone());
                 RunParam::Local(locals.len() - 1)
             }
-            ParamDecl::Commands | ParamDecl::MessageWriter { .. } | ParamDecl::NextState { .. } => RunParam::None,
+            ParamDecl::MessageWriter { message } => {
+                if world.resource::<TsPayloads>().message(message).is_none() {
+                    let registry = world.resource::<AppTypeRegistry>().read();
+                    let known = registry.get_with_type_path(message).is_some_and(|r| {
+                        r.data::<crate::rust_events::ReflectTsMessage>().is_some() || r.data::<bevy::ecs::reflect::ReflectMessage>().is_some()
+                    });
+                    if !known {
+                        return Err(err(format!("no message type {message}; call app.addMessage")));
+                    }
+                }
+                RunParam::None
+            }
+            ParamDecl::Commands | ParamDecl::NextState { .. } => RunParam::None,
             ParamDecl::Port { name } => match world.get_resource::<crate::host::HostParams>().and_then(|h| h.index(name)) {
                 Some(index) => RunParam::Port(index),
                 None => return Err(err(format!("{name} is not a system param any loaded crate exports"))),
             },
-            ParamDecl::MessageReader { message } => {
-                let index = world.resource::<TsPayloads>().message(message).ok_or_else(|| err(format!("no message type {message}; call app.addMessage")))?;
-                RunParam::MessageReader { index }
-            }
+            ParamDecl::MessageReader { message } => match world.resource::<TsPayloads>().message(message) {
+                Some(index) => RunParam::MessageReader { index },
+                None if message.contains("::") => {
+                    let (_, reader) = crate::rust_events::reader(&world.resource::<AppTypeRegistry>().read(), message).map_err(|e| err(format!("MessageReader<{message}>: {e}")))?;
+                    rust_cursors.push((message.clone(), reader.end(world) as u64));
+                    RunParam::RustMessageReader { path: message.clone(), reader }
+                }
+                None => return Err(err(format!("no message type {message}; call app.addMessage"))),
+            },
             ParamDecl::State { state } | ParamDecl::PreviousState { state } => {
                 let index = world.resource::<TsPayloads>().state(state).ok_or_else(|| err(format!("no state {state}")))?;
                 RunParam::State { index, previous: matches!(p, ParamDecl::PreviousState { .. }) }
@@ -1070,7 +1115,11 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                     return Err(err("On<...> must be the first param of an observer".into()));
                 }
                 let trigger = match (event, lifecycle, component) {
-                    (Some(e), _, _) => Trigger::Event(world.resource::<TsPayloads>().event(e).ok_or_else(|| err(format!("no event type {e}")))?),
+                    (Some(e), _, _) => match world.resource::<TsPayloads>().event(e) {
+                        Some(i) => Trigger::Event(i),
+                        None if e.contains("::") => Trigger::Rust(crate::rust_events::event(&world.resource::<AppTypeRegistry>().read(), e).map_err(|m| err(format!("On<{e}>: {m}")))?),
+                        None => return Err(err(format!("no event type {e}"))),
+                    },
                     (None, Some(k), Some(c)) => {
                         let native = world.resource::<NativeLayouts>().clone();
                         Trigger::Lifecycle(*k, resolve_ref(world, c, ts, &native, false).map_err(err)?.0)
@@ -1098,7 +1147,10 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
         None => None,
     };
     let local_refs: Vec<&[crate::manifest::FieldDecl]> = locals.iter().map(|l| l.as_slice()).collect();
-    world.get_resource_or_init::<SystemMemory>().declare(&d.name, &local_refs);
+    let mem = world.get_resource_or_init::<SystemMemory>().into_inner().declare(&d.name, &local_refs);
+    for (path, end) in rust_cursors {
+        mem.cursors.entry(path).or_insert(end);
+    }
     Ok(TsSystem {
         key: ScriptKey { generation, index: index as u32 },
         decl: d.clone(),
@@ -1131,6 +1183,7 @@ pub(crate) struct Scratch {
     entities: Vec<Vec<u32>>,
     rows: Vec<Vec<u32>>,
     time: Vec<u64>,
+    json: Vec<Vec<u8>>,
 }
 
 /// Runs every system of a stage. Called from the stage's exclusive system.
@@ -1373,10 +1426,11 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
         'path: for (hop, target) in targets.into_iter().enumerate() {
             let mut stop = false;
             let bits = (target.map_or(u64::MAX, Entity::to_bits), p.original.map_or(u64::MAX, Entity::to_bits));
+            let bytes = hop.checked_sub(1).and_then(|h| p.hops.get(h)).unwrap_or(&p.bytes);
             // Bevy's order: global observers, then the target's own.
             for o in systems.observers.iter_mut() {
                 if o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger) {
-                    stop |= run_one(world, rt, o, Some((&p.bytes, bits)));
+                    stop |= run_one(world, rt, o, Some((bytes, bits)));
                 }
             }
             // Attachments as they stood when the trigger was queued.
@@ -1384,7 +1438,7 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
                 if let Some(o) = systems.targeted.get_mut(name)
                     && o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger)
                 {
-                    stop |= run_one(world, rt, o, Some((&p.bytes, bits)));
+                    stop |= run_one(world, rt, o, Some((bytes, bits)));
                 }
             }
             if stop {
@@ -1412,7 +1466,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     let mut read_cols: Vec<(usize, usize, usize, ComponentId)> = Vec::new();
     let mut written_ids: HashSet<ComponentId> = HashSet::new();
     let mut reader_cursors: Vec<(String, u64)> = Vec::new();
-    let (mut ents_used, mut rows_used) = (0usize, 0usize);
+    let (mut ents_used, mut rows_used, mut json_used) = (0usize, 0usize, 0usize);
     let mut failure: Option<ScriptError> = None;
     // A `Single` or `Populated` that does not match skips the run, as Bevy's param validation does.
     let mut skip = false;
@@ -1610,6 +1664,39 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     ParamFrame::Entities { data: ents.as_ptr(), len: ents.len() / 2 }
                 }
                 RunParam::ChangeTick => ParamFrame::Ticks { this_run: tick.get(), last_run: last_run.get() },
+                RunParam::RustMessageReader { path, reader } => {
+                    let cursor = mem.cursors.get(path.as_str()).copied().unwrap_or(0) as usize;
+                    if scratch.json.len() <= json_used {
+                        scratch.json.push(Vec::new());
+                    }
+                    let buf = &mut scratch.json[json_used];
+                    json_used += 1;
+                    buf.clear();
+                    buf.push(b'[');
+                    let registry = world.resource::<AppTypeRegistry>().read();
+                    let mut bad = None;
+                    let next = reader.read(world, cursor, &mut |m: &dyn bevy::reflect::PartialReflect| {
+                        if bad.is_some() {
+                            return;
+                        }
+                        match crate::rust_events::to_json(&registry, m).and_then(|v| {
+                            if buf.len() > 1 {
+                                buf.push(b',');
+                            }
+                            serde_json::to_writer(&mut *buf, &v).map_err(|e| e.to_string())
+                        }) {
+                            Ok(()) => {}
+                            Err(e) => bad = Some(e),
+                        }
+                    });
+                    buf.push(b']');
+                    if let Some(e) = bad {
+                        failure = Some(ScriptError::new(format!("MessageReader<{path}>: {e}")));
+                    }
+                    reader_cursors.push((path.clone(), next as u64));
+                    // One JSON array, as a single run of one-byte records.
+                    ParamFrame::Messages { parts: [(buf.as_ptr(), buf.len()), (std::ptr::null(), 0)], stride: 1 }
+                }
                 RunParam::State { index, previous } => {
                     // JS numbers a machine's values in its declared order.
                     let m = &world.resource::<TsPayloads>().states[*index];

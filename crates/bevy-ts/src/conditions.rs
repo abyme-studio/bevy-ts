@@ -28,6 +28,8 @@ pub enum Condition {
     StateExists { slot: u8 },
     /// Messages written since this condition last ran: its own cursor, as Bevy's `on_message`.
     OnMessage { index: usize, slot: String },
+    /// `onMessage` of a Rust message, with its own cursor into Bevy's `Messages<M>`.
+    OnRustMessage { reader: crate::rust_events::ReflectTsMessage, slot: String },
     RunOnce { slot: String },
     ResourceExists { id: Option<ComponentId> },
     Resource { kind: ResourceKind, id: Option<ComponentId>, slot: String },
@@ -226,10 +228,20 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             let slot = payloads.states[payloads.state(state).ok_or_else(|| format!("no state {state}"))?].slot;
             if matches!(d, ConditionDecl::StateChanged { .. }) { Condition::StateChanged { slot, key: slot_key.clone() } } else { Condition::StateExists { slot } }
         }
-        ConditionDecl::OnMessage { message } => {
-            let index = world.resource::<TsPayloads>().message(message).ok_or_else(|| format!("no message {message}"))?;
-            Condition::OnMessage { index, slot: slot() }
-        }
+        ConditionDecl::OnMessage { message } => match world.resource::<TsPayloads>().message(message) {
+            Some(index) => Condition::OnMessage { index, slot: slot() },
+            None if message.contains("::") => {
+                let (_, reader) = crate::rust_events::reader(&world.resource::<AppTypeRegistry>().read(), message).map_err(|e| format!("onMessage({message}): {e}"))?;
+                // A new cursor starts at the queue's end, so a restart does not replay old messages.
+                let end = reader.end(world) as u64;
+                let st = state(world, &slot());
+                if st.messages == 0 {
+                    st.messages = end;
+                }
+                Condition::OnRustMessage { reader, slot: slot() }
+            }
+            None => return Err(format!("no message {message}").into()),
+        },
         ConditionDecl::RunOnce => Condition::RunOnce { slot: slot() },
         ConditionDecl::ResourceExists { resource } => Condition::ResourceExists { id: resource_id(world, resource, c.ts, "resourceExists")? },
         ConditionDecl::ResourceAdded { resource }
@@ -329,6 +341,11 @@ pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
             let Some(next) = world.resource::<TsPayloads>().messages.get(*index).map(|q| q.next_seq) else { return false };
             let cursor = std::mem::replace(&mut state(world, slot).messages, next);
             world.resource::<TsPayloads>().messages[*index].has_unread(cursor)
+        }
+        Condition::OnRustMessage { reader, slot } => {
+            let end = reader.end(world) as u64;
+            let cursor = std::mem::replace(&mut state(world, slot).messages, end);
+            reader.unread(world, cursor as usize)
         }
         Condition::RunOnce { slot } => !std::mem::replace(&mut state(world, slot).flag, true),
         Condition::ResourceExists { id } => id.is_some_and(|id| world.resource_entities().get(id).is_some()),
