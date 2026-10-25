@@ -32,6 +32,7 @@ fn app_with(f: impl FnOnce(bevy::app::PluginGroupBuilder) -> bevy::app::PluginGr
     let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
     app.add_plugins(
         f(DefaultPlugins.build())
+            .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>()
             .disable::<WinitPlugin>()
             .disable::<bevy::log::LogPlugin>()
             .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
@@ -64,12 +65,40 @@ fn camera(world: &mut World, at: Transform) -> (Handle<Image>, Entity) {
     (target, cam)
 }
 
-/// Screenshots of `target` until `check` passes on one. Pipelines and assets finish on other
-/// threads, which a loaded machine slows by any amount, so the bound is a long wall-clock one that
-/// names what never came.
-fn until_drawn(app: &mut App, target: &Handle<Image>, mut check: impl FnMut(&World, &Image) -> Result<(), String>) {
-    let bound = Duration::from_secs(180);
-    let start = Instant::now();
+/// Waits, then screenshots `target` until `check` passes on one. First `loaded` must pass (the
+/// scenes spawned, their targets set), then the render world's pipeline cache must hold some
+/// pipelines and none queued or compiling, unchanged in count since the frame before. Each wait has
+/// its own deadline and names what never came: pipelines and assets finish on other threads, which
+/// a loaded machine slows by any amount. The render world is reachable because `app()` does not
+/// pipeline rendering.
+fn until_drawn(app: &mut App, target: &Handle<Image>, loaded: impl Fn(&World) -> Result<(), String>, mut check: impl FnMut(&World, &Image) -> Result<(), String>) {
+    use bevy::render::RenderApp;
+    use bevy::render::render_resource::{CachedPipelineState, PipelineCache};
+    const BOUND: Duration = Duration::from_secs(300);
+    let mut start = Instant::now();
+    loop {
+        app.update();
+        match loaded(app.world()) {
+            Ok(()) => break,
+            Err(e) => assert!(start.elapsed() < BOUND, "not loaded within {BOUND:?}: {e}"),
+        }
+    }
+    start = Instant::now();
+    let mut held = 0;
+    loop {
+        app.update();
+        let cache = app.sub_app(RenderApp).world().resource::<PipelineCache>();
+        let (count, waiting) = (cache.pipelines().count(), cache.waiting_pipelines().count());
+        if let Some(p) = cache.pipelines().find(|p| matches!(p.state, CachedPipelineState::Err(_))) {
+            panic!("a pipeline failed: {:?}", p.state);
+        }
+        if count > 0 && waiting == 0 && count == held {
+            break;
+        }
+        held = count;
+        assert!(start.elapsed() < BOUND, "pipelines not ready within {BOUND:?}: {count} held, {waiting} queued or compiling");
+    }
+    start = Instant::now();
     let shot: Arc<Mutex<Option<Image>>> = Arc::default();
     let mut pending = false;
     let mut last = String::from("no screenshot");
@@ -89,8 +118,28 @@ fn until_drawn(app: &mut App, target: &Handle<Image>, mut check: impl FnMut(&Wor
                 Err(e) => last = e,
             }
         }
-        assert!(start.elapsed() < bound, "never within {bound:?}: {last}");
+        assert!(start.elapsed() < BOUND, "never drawn within {BOUND:?} once ready: {last}");
     }
+}
+
+/// `root`'s descendants (and itself) that hold a mesh whose asset has loaded.
+fn loaded_meshes(world: &World, root: Entity) -> usize {
+    let meshes = world.resource::<Assets<Mesh>>();
+    let mut stack = vec![root];
+    let mut n = 0;
+    while let Some(e) = stack.pop() {
+        n += world.get::<Mesh3d>(e).is_some_and(|m| meshes.contains(&m.0)) as usize;
+        if let Some(c) = world.get::<Children>(e) {
+            stack.extend(c.iter());
+        }
+    }
+    n
+}
+
+/// `root` has `n` fade targets.
+fn has_targets(world: &World, root: Entity, n: usize) -> Result<(), String> {
+    let got = world.get::<MaterialAlphaTargets>(root).map_or(0, |t| t.targets.len());
+    if got == n { Ok(()) } else { Err(format!("{got} of {n} fade targets set")) }
 }
 
 /// A screen rectangle, `min` inclusive, `max` exclusive.
@@ -163,11 +212,16 @@ fn faded_shapes_and_scenes_dither_and_their_twins_do_not() {
     world.spawn((Mesh3d(cube), MeshMaterial3d(solid), at(2)));
     let ship = world.resource::<AssetServer>().load("models/ship.gltf#Scene0");
     let faded_ship = world.spawn((WorldAssetRoot(ship.clone()), MaterialAlpha { alpha: 0.5 }, at(3), Visibility::default())).id();
-    world.spawn((WorldAssetRoot(ship), at(4), Visibility::default()));
+    let twin_ship = world.spawn((WorldAssetRoot(ship), at(4), Visibility::default())).id();
 
     // Red at half alpha over white: full red, green and blue halfway in linear light.
     let pink = |p: [u8; 3]| p[0] > 240 && (150..230).contains(&p[1]) && (150..230).contains(&p[2]);
-    until_drawn(&mut app, &target, |w, img| {
+    let loaded = |w: &World| {
+        has_targets(w, faded_ship, 3)?;
+        let twin = loaded_meshes(w, twin_ship);
+        if twin == 3 { Ok(()) } else { Err(format!("{twin} of 3 meshes of the unfaded ship loaded")) }
+    };
+    until_drawn(&mut app, &target, loaded, |w, img| {
         let face = |i: usize| project(w, cam, Vec3::new(XS[i] - 0.75, -0.75, 0.75), Vec3::new(XS[i] + 0.75, 0.75, 0.75), 2);
         let ship = |i: usize| project(w, cam, Vec3::new(XS[i] - 1.0, -1.0, 0.5), Vec3::new(XS[i] + 1.0, 2.0, 0.5), 0);
         let blended = fraction(img, face(0)?, pink);
@@ -197,7 +251,7 @@ fn a_faded_model_draws_as_one_solid() {
     let model = world.resource::<AssetServer>().load("models/nested.gltf#Scene0");
     let root = world.spawn((WorldAssetRoot(model), MaterialAlpha { alpha: 0.5 }, Transform::default(), Visibility::default())).id();
 
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |w| has_targets(w, root, 2), |w, img| {
         let face = project(w, cam, Vec3::new(-0.5, -0.5, 0.5), Vec3::new(0.5, 0.5, 0.5), 3)?;
         let targets = w.get::<MaterialAlphaTargets>(root).map_or(0, |t| t.targets.len());
         let black = fraction(img, face, |p| p.iter().map(|c| *c as u32).sum::<u32>() < 150);
@@ -237,7 +291,7 @@ fn a_faded_targets_shadow_follows_its_alpha() {
     let ship = world.spawn((WorldAssetRoot(ship), MaterialAlpha { alpha: 0.0 }, at(3), Visibility::default())).id();
     world.spawn((Mesh3d(cube), MeshMaterial3d(solid), NotShadowCaster, MaterialAlpha { alpha: 1.0 }, at(4)));
 
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |w| has_targets(w, ship, 3), |w, img| {
         // The ground where the body of each would cast, and a bare patch beside them.
         let under = |x: f32| project(w, cam, Vec3::new(x - 0.25, 0.0, -UP - 0.25), Vec3::new(x + 0.25, 0.0, -UP + 0.25), 0).map(|r| mean(img, r));
         let s: Vec<f32> = XS.iter().map(|x| under(*x)).collect::<Result<_, _>>()?;
@@ -258,8 +312,7 @@ fn a_faded_shape_under_prepasses_compiles_and_dithers() {
     use bevy::render::render_resource::{CachedPipelineState, PipelineCache, PipelineDescriptor};
     use bevy::shader::ShaderDefVal;
     let _gpu = GPU.lock().unwrap_or_else(|e| e.into_inner());
-    // Not pipelined, so the render world stays reachable for its pipeline cache.
-    let mut app = app_with(|p| p.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>());
+    let mut app = app();
     let world = app.world_mut();
     let (target, cam) = camera(world, Transform::from_xyz(0.0, 0.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y));
     world.entity_mut(cam).insert((DepthPrepass, NormalPrepass, MotionVectorPrepass));
@@ -267,7 +320,7 @@ fn a_faded_shape_under_prepasses_compiles_and_dithers() {
     let solid = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial { base_color: Color::srgb(1.0, 0.0, 0.0), unlit: true, ..default() });
     world.spawn((Mesh3d(cube), MeshMaterial3d(solid), MaterialAlpha { alpha: 0.5 }));
 
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
         let face = project(w, cam, Vec3::new(-0.5, -0.5, 0.5), Vec3::new(0.5, 0.5, 0.5), 3)?;
         let r = fraction(img, face, red);
         if (r - 0.5).abs() <= 1.0 / 16.0 { Ok(()) } else { Err(format!("red {r}")) }
