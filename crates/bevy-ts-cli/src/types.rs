@@ -787,6 +787,8 @@ fn emit_rust_events(registry: &TypeRegistry, taken: &mut BTreeSet<String>, js: &
             }
         }
     }
+    // Asset markers by type path, made once whichever generic names them first.
+    let mut markers: BTreeMap<String, String> = BTreeMap::new();
     for (base, instances) in generics {
         let short = base.rsplit("::").next().unwrap_or(&base);
         let krate = base.split("::").next().unwrap_or("");
@@ -800,18 +802,23 @@ fn emit_rust_events(registry: &TypeRegistry, taken: &mut BTreeSet<String>, js: &
             let short_path = d.reg.type_info().type_path_table().short_path();
             let mut arg = short_path.split_once('<').map_or("", |(_, a)| a).strip_suffix('>').unwrap_or("").to_string();
             let generic_args: Vec<_> = d.reg.type_info().generics().iter().collect();
+            // `AssetEvent`'s argument is an asset whether or not its type registers `ReflectAsset`
+            // (`Gltf`, `Shader` and `Font` do not).
             if let [g] = generic_args.as_slice()
-                && let Some(reg) = registry.get(g.type_id())
-                && reg.data::<bevy::asset::ReflectAsset>().is_some()
+                && (base == "bevy_asset::event::AssetEvent" || registry.get(g.type_id()).is_some_and(|r| r.data::<bevy::asset::ReflectAsset>().is_some()))
             {
-                let t = reg.type_info().type_path_table();
-                let marker = ident(t.short_path());
-                if taken.insert(marker.clone()) {
-                    let _ = writeln!(js, "export const {marker} = rustAsset({:?});", t.path());
-                    let _ = writeln!(dts, "/** The asset type `{}`, for a generic's argument (`AssetEvent<{marker}>`). */", t.path());
-                    let _ = writeln!(dts, "export declare abstract class {marker} {{\n  static readonly path: {:?};\n  private readonly __asset: {:?};\n}}", t.path(), t.path());
-                }
-                arg = marker;
+                let t = g.type_path_table();
+                arg = match markers.get(t.path()) {
+                    Some(marker) => marker.clone(),
+                    None => {
+                        let marker = unique(taken, t.short_path(), t.crate_name().unwrap_or(""));
+                        let _ = writeln!(js, "export const {marker} = rustAsset({:?});", t.path());
+                        let _ = writeln!(dts, "/** The asset type `{}`, for a generic's argument (`AssetEvent<{marker}>`). */", t.path());
+                        let _ = writeln!(dts, "export declare abstract class {marker} {{\n  static readonly path: {:?};\n  private readonly __asset: {:?};\n}}", t.path(), t.path());
+                        markers.insert(t.path().to_string(), marker.clone());
+                        marker
+                    }
+                };
             }
             js_items.push(format!("{arg:?}: {}", d.factory()));
             let ty = d.instance_ts(registry);
@@ -822,7 +829,14 @@ fn emit_rust_events(registry: &TypeRegistry, taken: &mut BTreeSet<String>, js: &
         let _ = writeln!(js, "export const {name} = rustGeneric({name:?}, {{ {} }});", js_items.join(", "));
         let _ = writeln!(dts, "/** Generic: each registered instance by its type argument. */");
         let _ = writeln!(dts, "export declare const {name}: RustGeneric<{{\n{}\n}}>;", dts_items.join("\n"));
-        let _ = writeln!(dts, "export type {name}<A extends {}> = A extends unknown ? {} : never;", args.join(" | "), types.join(" | "));
+        // Each argument picks its instance's value; instances of one shape (`AssetEvent<A>`) share it.
+        let shapes: BTreeSet<&String> = types.iter().collect();
+        let value = if shapes.len() == 1 {
+            types[0].clone()
+        } else {
+            args.iter().zip(&types).rev().fold("never".to_string(), |rest, (a, t)| format!("A extends {a} ? {t} : {rest}"))
+        };
+        let _ = writeln!(dts, "export type {name}<A extends {}> = {value};", args.join(" | "));
     }
 }
 
