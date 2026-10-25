@@ -35,7 +35,8 @@ const S = {
 const core = globalThis.Deno && globalThis.Deno.core && globalThis.Deno.core.ops && globalThis.Deno.core.ops.op_bevyts_log ? globalThis.Deno.core : null;
 
 // The web globals' hooks (web.js, evaluated first): the ambient generation every timer and
-// socket records, `process.env`, delivery, and dropping a generation's timers and sockets.
+// socket and fetch records, `process.env` and `process.argv`, delivery, and dropping a
+// generation's timers, sockets and fetches.
 const web = globalThis.__bevytsWeb || null;
 delete globalThis.__bevytsWeb;
 const encoder = core ? { encode: (s) => core.encode(s) } : new TextEncoder();
@@ -1739,10 +1740,11 @@ function scheduleDecl(s) {
   }
 }
 
-function begin(gen, envJson, observed) {
+function begin(gen, envJson, observed, argvJson) {
   S.loading = newGeneration(gen);
   if (web) {
     if (envJson) web.setEnv(JSON.parse(envJson));
+    if (argvJson) web.setArgv(JSON.parse(argvJson));
     web.generation = gen;
   }
   if (observed) S.loading.observed = JSON.parse(observed);

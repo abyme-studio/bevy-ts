@@ -81,7 +81,7 @@ fn a_played_game_carries_no_studio_tools_or_protocol() {
     assert!(studio_tools(Display::Window, true));
     let game = cube_game("play-tools", env!("CARGO_PKG_VERSION"));
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
+    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless, &[]).unwrap();
     let world = app.world();
     assert!(!world.contains_resource::<bevy::remote::RemoteMethods>(), "the protocol is served");
     assert!(!world.resource::<bevy_ts::runtime::RuntimeInfo>().dev);
@@ -130,14 +130,14 @@ fn game_json_switches_mesh_picking() {
     let game = cube_game("play-picking", env!("CARGO_PKG_VERSION"));
     let text = std::fs::read_to_string(game.join("game.json")).unwrap();
     assert!(!text.contains("meshPicking"), "{text}");
-    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
+    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless, &[]).unwrap();
     assert!(!app.world().contains_resource::<MeshPickingSettings>());
 
     let mut file = bevy_ts_cli::play::read_game(&game).unwrap();
     file.mesh_picking = true;
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
     assert!(std::fs::read_to_string(game.join("game.json")).unwrap().contains(r#""meshPicking":true"#));
-    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
+    let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless, &[]).unwrap();
     assert!(app.world().contains_resource::<MeshPickingSettings>());
 }
 

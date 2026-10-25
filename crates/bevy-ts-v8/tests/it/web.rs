@@ -1,6 +1,7 @@
-//! The web globals web.js installs: URL (WPT cases), AbortSignal, timers on real time, and the
-//! WebSocket constructor's validation and refusal. End-to-end socket tests live with the net
-//! layer's (FakeTransport accepting opens and pushing messages).
+//! The web globals web.js installs: URL (WPT cases), AbortSignal, timers on real time, the
+//! WebSocket constructor's validation and refusal, Blob, Headers, Request, Response and
+//! `process.argv`. End-to-end socket and fetch tests live with the net layer's (FakeTransport
+//! accepting opens, answering fetches and pushing messages).
 
 use crate::common;
 
@@ -260,14 +261,17 @@ fn globals_shape_and_what_is_missing() {
         &[(
             "g.js",
             r#"
-            const names = ["WebSocket", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "URL", "URLSearchParams",
-              "AbortController", "AbortSignal", "EventTarget", "Event", "CloseEvent", "MessageEvent", "DOMException", "process"];
+            const names = ["WebSocket", "fetch", "Request", "Response", "Headers", "Blob", "setTimeout", "clearTimeout", "setInterval",
+              "clearInterval", "URL", "URLSearchParams", "AbortController", "AbortSignal", "EventTarget", "Event", "CloseEvent",
+              "MessageEvent", "DOMException", "process"];
+            const missing = ["ReadableStream", "FormData", "File", "TextEncoder", "TextDecoder", "require"];
             const out = {
               present: names.filter((n) => typeof globalThis[n] !== "undefined"),
               enumerable: names.filter((n) => Object.keys(globalThis).includes(n)),
+              missing: missing.filter((n) => typeof globalThis[n] !== "undefined"),
               fetch: typeof fetch,
               blob: typeof Blob,
-              argv: typeof process.argv,
+              argv: Array.isArray(process.argv),
               hooks: typeof globalThis.__bevytsWeb,
               envFrozen: Object.isFrozen(process.env),
               envSame: process.env === globalThis.process.env,
@@ -293,11 +297,13 @@ fn globals_shape_and_what_is_missing() {
         )],
     );
     let got: serde_json::Value = serde_json::from_str(&tagged(&app, "g ")[0]).unwrap();
-    assert_eq!(got["present"].as_array().unwrap().len(), 15, "{got}");
+    assert_eq!(got["present"].as_array().unwrap().len(), 20, "{got}");
     assert_eq!(got["enumerable"], serde_json::json!([]));
-    assert_eq!(got["fetch"], "undefined");
-    assert_eq!(got["blob"], "undefined");
-    assert_eq!(got["argv"], "undefined");
+    assert_eq!(got["missing"], serde_json::json!([]));
+    // "Fetch is there".
+    assert_eq!(got["fetch"], "function");
+    assert_eq!(got["blob"], "function");
+    assert_eq!(got["argv"], true);
     assert_eq!(got["hooks"], "undefined", "core.js takes the hooks off globalThis");
     assert_eq!(got["envFrozen"], true);
     assert_eq!(got["envSame"], true);
@@ -480,7 +486,11 @@ fn websocket_constructor_send_and_close_rules() {
             out.consts = [WebSocket.CONNECTING, WebSocket.OPEN, WebSocket.CLOSING, WebSocket.CLOSED, ws.OPEN, ws.CLOSED];
             out.initial = [ws.readyState, ws.protocol, ws.extensions, ws.bufferedAmount, ws.binaryType];
             ws.binaryType = "blob";
-            out.binaryType = ws.binaryType;
+            out.binaryType = [ws.binaryType];
+            ws.binaryType = "text";
+            out.binaryType.push(ws.binaryType);
+            ws.binaryType = "arraybuffer";
+            out.binaryType.push(ws.binaryType);
             out.sendConnecting = err(() => ws.send("x"));
             out.badCodes = [1001, 999, 2999, 5000, 0, 1005].map((code) => err(() => ws.close(code)));
             out.stillConnecting = ws.readyState;
@@ -508,7 +518,7 @@ fn websocket_constructor_send_and_close_rules() {
     assert_eq!(got["deno"], "ws://127.0.0.1:4477/");
     assert_eq!(got["consts"], serde_json::json!([0, 1, 2, 3, 1, 3]));
     assert_eq!(got["initial"], serde_json::json!([0, "", "", 0, "arraybuffer"]));
-    assert_eq!(got["binaryType"], "arraybuffer");
+    assert_eq!(got["binaryType"], serde_json::json!(["blob", "blob", "arraybuffer"]), "another value is ignored");
     assert_eq!(got["sendConnecting"], "InvalidStateError");
     assert_eq!(got["badCodes"], serde_json::json!(vec!["InvalidAccessError"; 6]));
     assert_eq!(got["stillConnecting"], 0);
@@ -517,8 +527,6 @@ fn websocket_constructor_send_and_close_rules() {
     assert_eq!(got["okReason"], "ok");
     assert_eq!(got["closing"], 2);
     assert_eq!(got["again"], serde_json::json!(["ok", "ok"]));
-    let warns: Vec<_> = logs(&app).into_iter().filter(|e| e.level == LogLevel::Warn).map(|e| e.message).collect();
-    assert!(warns.iter().any(|m| m.contains("blob")), "{warns:?}");
 
     updates(&mut app, 3);
     assert_eq!(
@@ -582,4 +590,124 @@ console.log(`perf ${a} ${b} ${performance.timeOrigin}`);
     let again: Vec<f64> = tagged(&app, "again ").last().expect("logged").split(' ').map(|v| v.parse().unwrap()).collect();
     assert!(again[0] > b, "not reset by a reload: {} after {b}", again[0]);
     assert_eq!(again[2], origin, "same origin");
+}
+
+#[test]
+fn building_and_slicing_a_blob() {
+    let mut app = app();
+    load_run(
+        &mut app,
+        &[(
+            "blob.js",
+            r#"
+            (async () => {
+              const out = {};
+              const b = new Blob(["héllo", new Uint8Array([33])], { type: "Text/Plain" });
+              const s = b.slice(-2);
+              out.scenario = [b.size, b.type, await s.text(), s.type, s.size];
+              const part = new Uint8Array([1, 2, 3]);
+              const copied = new Blob([part, part.buffer, new Blob(["x"])]);
+              part[0] = 9;
+              out.copied = [...(await copied.bytes())];
+              out.types = [new Blob([], { type: "a/é" }).type, new Blob().type, new Blob([], { type: "X/Y; Q=1" }).type];
+              out.slices = [await b.slice(1, 3).text(), await b.slice(5, 2).text(), b.slice(0, 1, "A/B").type, b.slice(-100).size, b.slice(2, -1).size];
+              out.buffer = new Uint8Array(await new Blob(["ab"]).arrayBuffer()).join(",");
+              out.tag = [String(b), b instanceof Blob, typeof b.stream];
+              let bad;
+              try { new Blob("abc"); bad = "ok"; } catch (e) { bad = e.constructor.name; }
+              out.bad = bad;
+              console.log("blob " + JSON.stringify(out));
+            })();
+            "#,
+        )],
+    );
+    let got: serde_json::Value = serde_json::from_str(&tagged(&app, "blob ")[0]).unwrap();
+    assert_eq!(got["scenario"], serde_json::json!([7, "text/plain", "o!", "", 2]));
+    assert_eq!(got["copied"], serde_json::json!([1, 2, 3, 1, 2, 3, 120]));
+    assert_eq!(got["types"], serde_json::json!(["", "", "x/y; q=1"]));
+    assert_eq!(got["slices"], serde_json::json!(["\u{e9}", "", "a/b", 7, 4]));
+    assert_eq!(got["buffer"], "97,98");
+    assert_eq!(got["tag"], serde_json::json!(["[object Blob]", true, "undefined"]));
+    assert_eq!(got["bad"], "TypeError");
+}
+
+#[test]
+fn headers_request_and_response_shapes() {
+    let mut app = app();
+    load_run(
+        &mut app,
+        &[(
+            "shapes.js",
+            r#"
+            (async () => {
+              const out = {};
+              const err = (f) => { try { f(); return "ok"; } catch (e) { return e.constructor.name; } };
+              const h = new Headers([["X-B", " 2 "], ["x-a", "1"], ["Set-Cookie", "a=1"], ["set-cookie", "b=2"], ["x-b", "3"]]);
+              out.headers = [[...h], h.get("X-B"), h.get("set-cookie"), h.getSetCookie(), h.has("X-A"), h.get("nope")];
+              h.set("x-b", "only");
+              h.delete("x-a");
+              out.edited = [...h.keys()];
+              out.badHeaders = [err(() => new Headers({ "bad name": "x" })), err(() => new Headers({ a: "x\r\ny" }))];
+
+              const r = new Request("http://127.0.0.1:4477/a#frag", { method: "post", body: "hi", headers: { "x-k": "v" } });
+              out.request = [r.url, r.method, r.headers.get("content-type"), r.redirect, r.signal instanceof AbortSignal, r.bodyUsed];
+              out.requestBody = [await r.clone().text(), await r.text(), r.bodyUsed, err(() => r.clone())];
+              out.badRequests = [
+                err(() => new Request("http://h/", { method: "GET", body: "x" })),
+                err(() => new Request("http://h/", { method: "HEAD", body: "x" })),
+                err(() => new Request("/relative")),
+                err(() => new Request("http://h/", { method: "CONNECT" })),
+                err(() => new Request("http://h/", { redirect: "sometimes" })),
+              ];
+              out.methods = ["get", "patch", "Delete"].map((m) => new Request("http://h/", { method: m }).method);
+              out.urlEncoded = new Request("http://h/", { method: "POST", body: new URLSearchParams({ a: "1 2" }) }).headers.get("content-type");
+
+              const j = Response.json({ a: 1 }, { status: 201 });
+              out.json = [j.status, j.ok, j.type, j.headers.get("content-type"), await j.json()];
+              const e = Response.error();
+              out.error = [e.status, e.type, e.ok, err(() => e.headers.set("a", "b"))];
+              const rd = Response.redirect("http://h/next", 307);
+              out.redirect = [rd.status, rd.headers.get("location"), err(() => Response.redirect("http://h/", 200))];
+              const plain = new Response(new Blob(["xyz"], { type: "text/x" }), { statusText: "Fine" });
+              const copy = plain.clone();
+              out.response = [plain.status, plain.statusText, plain.headers.get("content-type"), plain.url, plain.redirected, typeof plain.body];
+              out.reads = [await plain.text(), plain.bodyUsed, await copy.blob().then((b) => b.type + ":" + b.size)];
+              out.readTwice = await plain.text().then(() => "resolved", (x) => x.constructor.name);
+              out.badResponses = [err(() => new Response("x", { status: 204 })), err(() => new Response(null, { status: 99 }))];
+              out.empty = await new Response().text();
+              console.log("shapes " + JSON.stringify(out));
+            })();
+            "#,
+        )],
+    );
+    let got: serde_json::Value = serde_json::from_str(&tagged(&app, "shapes ")[0]).unwrap();
+    assert_eq!(
+        got["headers"],
+        serde_json::json!([[["set-cookie", "a=1"], ["set-cookie", "b=2"], ["x-a", "1"], ["x-b", "2, 3"]], "2, 3", "a=1, b=2", ["a=1", "b=2"], true, null])
+    );
+    assert_eq!(got["edited"], serde_json::json!(["set-cookie", "set-cookie", "x-b"]));
+    assert_eq!(got["badHeaders"], serde_json::json!(["TypeError", "TypeError"]));
+    assert_eq!(got["request"], serde_json::json!(["http://127.0.0.1:4477/a", "POST", "text/plain;charset=UTF-8", "follow", true, false]));
+    assert_eq!(got["requestBody"], serde_json::json!(["hi", "hi", true, "TypeError"]));
+    assert_eq!(got["badRequests"], serde_json::json!(vec!["TypeError"; 5]));
+    assert_eq!(got["methods"], serde_json::json!(["GET", "patch", "DELETE"]));
+    assert_eq!(got["urlEncoded"], "application/x-www-form-urlencoded;charset=UTF-8");
+    assert_eq!(got["json"], serde_json::json!([201, true, "default", "application/json", { "a": 1 }]));
+    assert_eq!(got["error"], serde_json::json!([0, "error", false, "TypeError"]));
+    assert_eq!(got["redirect"], serde_json::json!([307, "http://h/next", "RangeError"]));
+    assert_eq!(got["response"], serde_json::json!([200, "Fine", "text/x", "", false, "undefined"]));
+    assert_eq!(got["reads"], serde_json::json!(["xyz", true, "text/x:3"]));
+    assert_eq!(got["readTwice"], "TypeError");
+    assert_eq!(got["badResponses"], serde_json::json!(["TypeError", "RangeError"]));
+    assert_eq!(got["empty"], "");
+}
+
+#[test]
+fn process_argv_is_set_before_any_module() {
+    let mut app = app();
+    app.insert_resource(bevy_ts::backend::ScriptArgs(vec!["/bin/arena".into(), "/game/scripts/src/main.ts".into(), "--level".into(), "arena".into()]));
+    load_run(&mut app, &[("argv.js", r#"console.log("argv " + JSON.stringify(process.argv)); globalThis.firstArgv = process.argv;"#)]);
+    assert_eq!(tagged(&app, "argv "), vec![r#"["/bin/arena","/game/scripts/src/main.ts","--level","arena"]"#]);
+    load_run(&mut app, &[("argv2.js", r#"console.log("same " + (process.argv === globalThis.firstArgv) + " " + process.argv.length);"#)]);
+    assert_eq!(tagged(&app, "same "), vec!["true 4"], "a reload keeps it");
 }

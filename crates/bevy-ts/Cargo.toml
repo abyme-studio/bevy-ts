@@ -22,6 +22,18 @@ async-channel = "2"
 async-io = "2"
 async-tungstenite = { version = "0.33", default-features = false, features = ["handshake"] }
 blocking = "1"
+# `wss:` and `https:`: rustls with the `ring` provider (no aws-lc), verified by the platform's roots;
+# futures-rustls is its adapter over futures-io, as async-tungstenite's rustls features are tokio-only.
+futures-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-platform-verifier = "0.7"
+# `fetch`: hyper's HTTP/1.1 client, a feature on the hyper every engine already has through bevy_remote.
+http-body-util = "0.1"
+hyper = { version = "1.12", features = ["client", "http1"] }
+# Its `FuturesIo` adapts our futures-io stream to hyper; already locked through bevy_remote.
+smol-hyper = { version = "0.1", default-features = false }
+# Resolving a redirect's `location`; already in every engine through deno_core.
+url = "2"
 # keyboard, mouse and gamepad: `keys` names their inputs; bevy_image: `WindowImage` holds a `Handle<Image>`.
 bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log", "async_executor", "bevy_state", "bevy_color", "keyboard", "mouse", "gamepad", "bevy_image"] }
 serde.workspace = true
@@ -29,6 +41,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 bevy = { workspace = true, features = ["bevy_ui"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 tungstenite = "0.28"
 
 # Tests link Bevy as one dylib, except a release bench (`cargo static test --release` sets bevy_ts_static):

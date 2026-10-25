@@ -220,7 +220,7 @@ fn mesh_picking_is_baked_into_game_json_and_played() {
         let game = out.join("game");
         let file: Value = serde_json::from_str(&std::fs::read_to_string(game.join("game.json")).unwrap()).unwrap();
         assert_eq!(file.get("meshPicking"), on.then_some(&Value::Bool(true)), "{file}");
-        let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless).unwrap();
+        let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless, &[]).unwrap();
         assert_eq!(app.world().contains_resource::<MeshPickingSettings>(), on, "{name}");
     }
 }

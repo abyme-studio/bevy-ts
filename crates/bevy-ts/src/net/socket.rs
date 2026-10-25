@@ -1,13 +1,15 @@
-//! The real transport: one `IoTaskPool` task per connection over `async-tungstenite`.
+//! The real transport: one `IoTaskPool` task per connection over `async-tungstenite`, and one per
+//! fetch (`http.rs`). `wss:` runs over the [`Stream`] `tls.rs` connects.
 //!
 //! A task connects, reads into a bounded channel the main thread drains on [`Transport::poll`],
 //! and writes what an unbounded channel brings it. When the inbound channel is full the task
 //! waits, so core sees the overflow and closes with 1009. Dropping the transport closes both
 //! channels, which ends every task.
 
-use super::{ABNORMAL, ConnId, Frame, MAX_MESSAGE_BYTES, MAX_QUEUED_MESSAGES, NetEvent, OpenRequest, TOO_BIG, Transport};
+use super::tls::{self, NetTls, Stream};
+use super::{ABNORMAL, ConnId, FetchId, Frame, HttpRequest, MAX_MESSAGE_BYTES, MAX_QUEUED_MESSAGES, NetEvent, OpenRequest, TOO_BIG, Transport};
 use async_channel::{Receiver, Sender, TryRecvError};
-use async_io::{Async, Timer};
+use async_io::Timer;
 use async_tungstenite::WebSocketStream;
 use async_tungstenite::tungstenite::client::IntoClientRequest;
 use async_tungstenite::tungstenite::error::{CapacityError, Error as WsError};
@@ -16,9 +18,8 @@ use async_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use async_tungstenite::tungstenite::protocol::{CloseFrame, WebSocketConfig};
 use async_tungstenite::tungstenite::{Message, Utf8Bytes};
 use bevy::tasks::futures_lite::{StreamExt, future};
-use bevy::tasks::{IoTaskPool, TaskPool};
+use bevy::tasks::{IoTaskPool, Task, TaskPool};
 use std::collections::HashMap;
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 /// How long a closing connection waits for the other side's close before dropping the socket.
@@ -27,7 +28,7 @@ const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Headers the handshake writes itself; a script's `headers` may not repeat them.
 const OWN_HEADERS: [&str; 7] = ["host", "connection", "upgrade", "sec-websocket-version", "sec-websocket-key", "sec-websocket-protocol", "origin"];
 
-type Socket = WebSocketStream<Async<TcpStream>>;
+type Socket = WebSocketStream<Stream>;
 
 /// What the main thread asks of a connection's task.
 enum Out {
@@ -40,10 +41,27 @@ struct Conn {
     events: Receiver<NetEvent>,
 }
 
-/// Connections over TCP sockets, `ws:` only.
-#[derive(Default)]
+/// Connections and fetches over TCP sockets, with TLS for `wss:` and `https:`.
 pub struct SocketTransport {
+    tls: NetTls,
     conns: HashMap<ConnId, Conn>,
+    /// Fetches in flight: dropping one's task cancels it, closing its connection.
+    fetches: HashMap<FetchId, Task<()>>,
+    /// Every fetch's one event.
+    fetched: (Sender<NetEvent>, Receiver<NetEvent>),
+}
+
+impl Default for SocketTransport {
+    /// TLS verified by the platform.
+    fn default() -> Self {
+        Self::new(NetTls::default())
+    }
+}
+
+impl SocketTransport {
+    pub fn new(tls: NetTls) -> Self {
+        SocketTransport { tls, conns: HashMap::new(), fetches: HashMap::new(), fetched: async_channel::unbounded() }
+    }
 }
 
 impl Transport for SocketTransport {
@@ -51,8 +69,19 @@ impl Transport for SocketTransport {
         let (out, out_rx) = async_channel::unbounded();
         let (events_tx, events) = async_channel::bounded(MAX_QUEUED_MESSAGES + 1);
         let request = request.clone();
-        IoTaskPool::get_or_init(TaskPool::new).spawn(run(id, request, events_tx, out_rx)).detach();
+        let tls = self.tls.clone();
+        IoTaskPool::get_or_init(TaskPool::new).spawn(run(id, request, tls, events_tx, out_rx)).detach();
         self.conns.insert(id, Conn { out, events });
+    }
+
+    fn fetch(&mut self, id: FetchId, request: &HttpRequest) {
+        let events = self.fetched.0.clone();
+        let task = IoTaskPool::get_or_init(TaskPool::new).spawn(super::http::exchange(id, request.clone(), self.tls.clone(), events));
+        self.fetches.insert(id, task);
+    }
+
+    fn cancel(&mut self, id: FetchId) {
+        self.fetches.remove(&id);
     }
 
     fn send(&mut self, id: ConnId, frame: Frame) {
@@ -75,6 +104,12 @@ impl Transport for SocketTransport {
                 Err(TryRecvError::Closed) => break false,
             }
         });
+        while let Ok(event) = self.fetched.1.try_recv() {
+            if let NetEvent::Response { id, .. } | NetEvent::FetchFailed { id, .. } = &event {
+                self.fetches.remove(id);
+            }
+            out.push(event);
+        }
     }
 }
 
@@ -83,10 +118,10 @@ fn close_event(id: ConnId, code: u16, reason: String, clean: bool) -> NetEvent {
 }
 
 /// One connection, from DNS to its last event.
-async fn run(id: ConnId, request: OpenRequest, events: Sender<NetEvent>, out: Receiver<Out>) {
+async fn run(id: ConnId, request: OpenRequest, tls: NetTls, events: Sender<NetEvent>, out: Receiver<Out>) {
     // Connecting: a close abandons it with 1006 (core drops it if it forgot the id); a dropped
-    // transport abandons it with nothing.
-    let connected = future::or(async { Some(connect(&request).await) }, async {
+    // transport abandons it with nothing. A failure's reason rides on the close for core to log.
+    let connected = future::or(async { Some(connect(&request, &tls).await) }, async {
         while let Ok(Out::Send(_)) = out.recv().await {}
         None
     })
@@ -98,8 +133,8 @@ async fn run(id: ConnId, request: OpenRequest, events: Sender<NetEvent>, out: Re
             }
             return;
         }
-        Some(Err(())) => {
-            let _ = events.send(close_event(id, ABNORMAL, String::new(), false)).await;
+        Some(Err(why)) => {
+            let _ = events.send(close_event(id, ABNORMAL, why, false)).await;
             return;
         }
         Some(Ok((ws, protocol))) => {
@@ -199,38 +234,33 @@ fn peer_close(id: ConnId, frame: Option<CloseFrame>) -> NetEvent {
     }
 }
 
-/// Resolves, connects and handshakes; returns the socket and the protocol the server chose.
-async fn connect(request: &OpenRequest) -> Result<(Socket, String), ()> {
-    let mut req = request.url.as_str().into_client_request().map_err(|_| ())?;
-    if req.uri().scheme_str() != Some("ws") {
-        return Err(());
-    }
-    let host = req.uri().host().ok_or(())?.trim_start_matches('[').trim_end_matches(']').to_string();
-    let port = req.uri().port_u16().unwrap_or(80);
+/// Resolves, connects, handshakes TLS for `wss:`, then the WebSocket; returns the socket and the
+/// protocol the server chose, or the reason it failed.
+async fn connect(request: &OpenRequest, tls: &NetTls) -> Result<(Socket, String), String> {
+    let bad = |e: &dyn std::fmt::Display| format!("a request the engine cannot send: {e}");
+    let mut req = request.url.as_str().into_client_request().map_err(|e| bad(&e))?;
+    let secure = match req.uri().scheme_str() {
+        Some("ws") => false,
+        Some("wss") => true,
+        _ => return Err("not a ws: or wss: URL".into()),
+    };
+    let host = req.uri().host().ok_or("no host")?.to_string();
+    let port = req.uri().port_u16().unwrap_or(if secure { 443 } else { 80 });
     let headers = req.headers_mut();
     if !request.protocols.is_empty() {
-        headers.insert("sec-websocket-protocol", HeaderValue::from_str(&request.protocols.join(", ")).map_err(|_| ())?);
+        headers.insert("sec-websocket-protocol", HeaderValue::from_str(&request.protocols.join(", ")).map_err(|e| bad(&e))?);
     }
     for (name, value) in &request.headers {
         if OWN_HEADERS.iter().any(|h| h.eq_ignore_ascii_case(name)) {
             continue;
         }
-        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| ())?;
-        headers.append(name, HeaderValue::from_str(value).map_err(|_| ())?);
+        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|e| bad(&e))?;
+        headers.append(name, HeaderValue::from_str(value).map_err(|e| bad(&e))?);
     }
 
-    let addrs: Vec<SocketAddr> = blocking::unblock(move || (host.as_str(), port).to_socket_addrs().map(Iterator::collect)).await.map_err(|_| ())?;
-    let mut stream = None;
-    for addr in addrs {
-        if let Ok(s) = Async::<TcpStream>::connect(addr).await {
-            stream = Some(s);
-            break;
-        }
-    }
-    let stream = stream.ok_or(())?;
-
+    let stream = tls::connect(&host, port, secure.then_some(tls)).await?;
     let config = WebSocketConfig::default().max_message_size(Some(MAX_MESSAGE_BYTES)).max_frame_size(Some(MAX_MESSAGE_BYTES));
-    let (ws, response) = async_tungstenite::client_async_with_config(req, stream, Some(config)).await.map_err(|_| ())?;
+    let (ws, response) = async_tungstenite::client_async_with_config(req, stream, Some(config)).await.map_err(|e| format!("the WebSocket handshake failed: {e}"))?;
     let protocol = response.headers().get("sec-websocket-protocol").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
     Ok((ws, protocol))
 }

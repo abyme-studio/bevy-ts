@@ -1,0 +1,13 @@
+import { connect } from "@CONNECT@";
+const real = fetch;
+(globalThis as any).fetch = async (input: string, init?: RequestInit) => {
+  const r = await real(input, init);
+  const plugins = await r.clone().json();
+  console.log(`held-fetch ${input} ${r.status} plugins=${Array.isArray(plugins) ? plugins.length : typeof plugins}`);
+  return r;
+};
+connect("http://127.0.0.1:4593", { held: true, name: "sn2-held" }).then(
+  () => console.log("held-connected"),
+  (e) => console.log("held-failed " + e),
+);
+export {};

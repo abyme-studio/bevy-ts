@@ -26,29 +26,45 @@ pub struct NetPolicy {
 pub enum Refusal {
     EditMode,
     BadUrl(String),
-    Wss,
     NotAllowed { origin: String },
     HeadersNotLoopback,
     HeadersOrigin,
+    /// A redirect from `https:` to `http:`.
+    Downgrade,
 }
 
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Refusal::EditMode => f.write_str("networking runs only in play; open it from a system or once the game plays"),
-            Refusal::BadUrl(why) => write!(f, "not a WebSocket URL: {why}"),
-            Refusal::Wss => f.write_str("wss: is not supported yet; use ws: to a loopback host"),
+            Refusal::BadUrl(why) => write!(f, "not a URL the engine connects to: {why}"),
             Refusal::NotAllowed { origin } => write!(f, "{origin} is not in net.allow; add it to net.allow in bevy-ts.json"),
-            Refusal::HeadersNotLoopback => f.write_str("headers are sent only over loopback until wss: is supported"),
+            Refusal::HeadersNotLoopback => f.write_str("headers are sent in clear only over loopback; use wss:"),
             Refusal::HeadersOrigin => f.write_str("the engine sends no Origin header; remove it from headers"),
+            Refusal::Downgrade => f.write_str("a redirect may not leave TLS"),
         }
     }
 }
 
-/// A `ws:`/`wss:` URL's parts the policy reads.
+/// What a target speaks: a WebSocket or HTTP, each in clear or over TLS.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scheme {
+    Ws,
+    Wss,
+    Http,
+    Https,
+}
+
+impl Scheme {
+    pub fn secure(self) -> bool {
+        matches!(self, Scheme::Wss | Scheme::Https)
+    }
+}
+
+/// A `ws:`, `wss:`, `http:` or `https:` URL's parts the policy reads.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
-    pub secure: bool,
+    pub scheme: Scheme,
     /// Lower-case; an IPv6 address without brackets.
     pub host: String,
     pub port: u16,
@@ -101,16 +117,18 @@ fn default_port(scheme: &str) -> Option<u16> {
     }
 }
 
-/// Parses a `ws:` or `wss:` URL.
+/// Parses a `ws:`, `wss:`, `http:` or `https:` URL.
 pub fn parse_target(url: &str) -> Result<Target, String> {
-    let (scheme, authority) = split_url(url).ok_or("no scheme")?;
-    let secure = match scheme.as_str() {
-        "ws" => false,
-        "wss" => true,
-        other => return Err(format!("the scheme is {other}:, not ws:")),
+    let (scheme_name, authority) = split_url(url).ok_or("no scheme")?;
+    let scheme = match scheme_name.as_str() {
+        "ws" => Scheme::Ws,
+        "wss" => Scheme::Wss,
+        "http" => Scheme::Http,
+        "https" => Scheme::Https,
+        other => return Err(format!("the scheme is {other}:")),
     };
     let (host, port) = host_port(authority)?;
-    Ok(Target { secure, port: port.or(default_port(&scheme)).unwrap_or(80), host })
+    Ok(Target { scheme, port: port.or(default_port(&scheme_name)).unwrap_or(80), host })
 }
 
 /// `localhost`, `127.0.0.0/8` or `::1`.
@@ -182,26 +200,43 @@ impl NetPolicy {
         self.allow.iter().any(|a| a.host == t.host && a.port.is_none_or(|p| p == t.port))
     }
 
-    /// Checks an open before any DNS lookup or socket, in order: edit mode, the URL, `wss:`, the
-    /// allowlist, then headers (loopback only, never `Origin`). Returns the origin to log by.
+    /// Checks a WebSocket open before any DNS lookup or socket, in order: edit mode, the URL, the
+    /// allowlist, then headers (never `Origin`; over `ws:`, loopback only). Returns the origin to
+    /// log by.
     pub fn check(&self, url: &str, headers: &[(String, String)], edit: bool) -> Result<String, Refusal> {
-        if edit {
-            return Err(Refusal::EditMode);
-        }
-        let t = parse_target(url).map_err(Refusal::BadUrl)?;
-        if t.secure {
-            return Err(Refusal::Wss);
-        }
-        if !self.allows(&t) {
-            return Err(Refusal::NotAllowed { origin: t.origin() });
+        let t = self.check_target(url, edit)?;
+        if !matches!(t.scheme, Scheme::Ws | Scheme::Wss) {
+            return Err(Refusal::BadUrl("a WebSocket URL is ws: or wss:".into()));
         }
         if headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("origin")) {
             return Err(Refusal::HeadersOrigin);
         }
-        if !headers.is_empty() && !is_loopback(&t.host) {
+        if t.scheme == Scheme::Ws && !headers.is_empty() && !is_loopback(&t.host) {
             return Err(Refusal::HeadersNotLoopback);
         }
         Ok(t.origin())
+    }
+
+    /// Checks a fetch, or one hop of its redirects, before any DNS lookup: edit mode, the URL
+    /// (`http:` or `https:`), the allowlist. Returns the target.
+    pub fn check_fetch(&self, url: &str, edit: bool) -> Result<Target, Refusal> {
+        let t = self.check_target(url, edit)?;
+        if !matches!(t.scheme, Scheme::Http | Scheme::Https) {
+            return Err(Refusal::BadUrl("a fetch URL is http: or https:".into()));
+        }
+        Ok(t)
+    }
+
+    /// Edit mode, the URL, then the allowlist: host and port, whatever the scheme.
+    fn check_target(&self, url: &str, edit: bool) -> Result<Target, Refusal> {
+        if edit {
+            return Err(Refusal::EditMode);
+        }
+        let t = parse_target(url).map_err(Refusal::BadUrl)?;
+        if !self.allows(&t) {
+            return Err(Refusal::NotAllowed { origin: t.origin() });
+        }
+        Ok(t)
     }
 }
 
@@ -267,7 +302,9 @@ mod tests {
         let p = policy(&["127.0.0.1:4477", "10.0.0.5:4477"], &[], &[]);
         let h = |k: &str| vec![(k.to_string(), "x".to_string())];
         assert_eq!(p.check("ws://127.0.0.1:4477/", &[], true), Err(Refusal::EditMode));
-        assert_eq!(p.check("wss://127.0.0.1:4477/", &[], false), Err(Refusal::Wss));
+        assert!(p.check("wss://127.0.0.1:4477/", &[], false).is_ok(), "wss: is allowed");
+        assert!(matches!(p.check("http://127.0.0.1:4477/", &[], false), Err(Refusal::BadUrl(_))), "a WebSocket is ws: or wss:");
+        assert!(matches!(p.check_fetch("ws://127.0.0.1:4477/", false), Err(Refusal::BadUrl(_))), "a fetch is http: or https:");
         assert!(matches!(p.check("ftp://127.0.0.1:4477/", &[], false), Err(Refusal::BadUrl(_))));
         assert_eq!(p.check("ws://example.com/", &[], false), Err(Refusal::NotAllowed { origin: "example.com:80".into() }));
         assert_eq!(p.check("ws://10.0.0.5:4477/", &h("authorization"), false), Err(Refusal::HeadersNotLoopback));
@@ -277,10 +314,24 @@ mod tests {
         assert!(NetPolicy::default().check("ws://127.0.0.1/", &[], false).is_err(), "an empty allowlist refuses everything");
         // The log lines say what to do.
         assert!(Refusal::NotAllowed { origin: "example.com:80".into() }.to_string().contains("net.allow in bevy-ts.json"));
-        assert!(Refusal::Wss.to_string().contains("wss: is not supported yet"));
-        assert!(Refusal::HeadersNotLoopback.to_string().contains("only over loopback"));
+        assert!(Refusal::HeadersNotLoopback.to_string().contains("in clear only over loopback; use wss:"));
+        assert!(Refusal::Downgrade.to_string().contains("may not leave TLS"));
         assert!(Refusal::HeadersOrigin.to_string().contains("sends no Origin"));
         assert!(Refusal::EditMode.to_string().contains("only in play"));
+    }
+
+    #[test]
+    fn tls_and_http() {
+        let p = policy(&["10.0.0.5:4477", "abyme.example:443", "ws://plain.example"], &[], &[]);
+        let auth = vec![("authorization".to_string(), "Bearer k".to_string())];
+        assert_eq!(p.check("wss://abyme.example/api/stream", &auth, false), Ok("abyme.example:443".into()), "headers over wss: to any allowed host");
+        assert_eq!(p.check("wss://10.0.0.5:4477/", &auth, false), Ok("10.0.0.5:4477".into()));
+        assert_eq!(p.check("ws://10.0.0.5:4477/", &auth, false), Err(Refusal::HeadersNotLoopback), "over ws: loopback only");
+        assert_eq!(p.check_fetch("https://abyme.example/x", false).map(|t| t.port), Ok(443), "https: defaults to 443");
+        assert_eq!(p.check_fetch("https://example.com/", false), Err(Refusal::NotAllowed { origin: "example.com:443".into() }));
+        assert!(p.check_fetch("http://plain.example/", false).is_ok(), "an entry's scheme does not limit schemes");
+        assert!(p.check("wss://plain.example:80/", &[], false).is_ok());
+        assert_eq!(p.check_fetch("http://abyme.example:443/", true), Err(Refusal::EditMode));
     }
 
     #[test]

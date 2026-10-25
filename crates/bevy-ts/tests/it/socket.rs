@@ -1,9 +1,13 @@
-//! `SocketTransport` against a local sync `tungstenite` server on an ephemeral port.
+//! `SocketTransport` against a local sync `tungstenite` server on an ephemeral port, in clear and,
+//! for `wss:`, over rustls with the test authority in `fixtures/tls` (README.md there).
 
 use bevy::tasks::{IoTaskPool, TaskPool};
-use bevy_ts::net::{ConnId, Frame, NetEvent, OpenRequest, SocketTransport, Transport};
+use bevy_ts::net::{ConnId, Frame, NetEvent, NetTls, OpenRequest, SocketTransport, Transport};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::net::{TcpListener, TcpStream};
-use std::sync::mpsc;
+use std::path::PathBuf;
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 use tungstenite::handshake::server::{Request, Response};
@@ -64,6 +68,61 @@ fn close_with(frame: Option<CloseFrame>) -> impl FnOnce(&mut WebSocket<TcpStream
 fn transport() -> SocketTransport {
     IoTaskPool::get_or_init(TaskPool::new);
     SocketTransport::default()
+}
+
+pub fn fixture(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/it/fixtures/tls").join(name)
+}
+
+/// The transport's TLS trusting only the test authority.
+pub fn test_tls() -> NetTls {
+    NetTls::with_roots(&std::fs::read(fixture("ca.pem")).unwrap()).unwrap()
+}
+
+/// A server config presenting the `leaf` fixture (`ip` or `localhost`).
+pub fn server_tls(leaf: &str) -> Arc<rustls::ServerConfig> {
+    let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_file_iter(fixture(&format!("{leaf}.pem"))).unwrap().map(Result::unwrap).collect();
+    let key = PrivateKeyDer::from_pem_file(fixture(&format!("{leaf}.key"))).unwrap();
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .unwrap();
+    Arc::new(config)
+}
+
+/// Accepts one TLS connection on `listener` as `leaf`; `None` when the handshake fails.
+pub fn accept_tls(listener: &TcpListener, leaf: &str) -> Option<rustls::StreamOwned<rustls::ServerConnection, TcpStream>> {
+    let (tcp, _) = listener.accept().unwrap();
+    let mut tls = rustls::StreamOwned::new(rustls::ServerConnection::new(server_tls(leaf)).unwrap(), tcp);
+    while tls.conn.is_handshaking() {
+        tls.conn.complete_io(&mut tls.sock).ok()?;
+    }
+    Some(tls)
+}
+
+/// A `wss:` echo server for one connection, presenting the `ip` leaf; records the handshake.
+#[allow(clippy::result_large_err)]
+fn wss_echo() -> (String, mpsc::Receiver<Seen>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("wss://{}/stream", listener.local_addr().unwrap());
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let Some(stream) = accept_tls(&listener, "ip") else { return };
+        let callback = |req: &Request, res: Response| {
+            let headers = req.headers().iter().map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap().to_string())).collect();
+            let _ = tx.send(Seen { headers });
+            Ok(res)
+        };
+        let Ok(mut ws) = tungstenite::accept_hdr(stream, callback) else { return };
+        while let Ok(msg) = ws.read() {
+            if msg.is_text() || msg.is_binary() {
+                ws.send(msg).unwrap();
+            }
+        }
+    });
+    (url, rx)
 }
 
 fn open(t: &mut SocketTransport, url: &str, protocols: &[&str]) {
@@ -167,7 +226,43 @@ fn a_refused_connection_is_1006() {
     let mut events = Vec::new();
     open(&mut t, &url, &[]);
     until(&mut t, &mut events, is_close);
-    assert_eq!(events, vec![NetEvent::Close { id: ID, code: 1006, reason: String::new(), clean: false }]);
+    let (code, reason, clean) = last_close(&events);
+    assert_eq!((code, clean, events.len()), (1006, false, 1), "{events:?}");
+    assert!(reason.contains("the connection failed"), "the reason core logs: {reason}");
+}
+
+#[test]
+fn a_trusted_local_server() {
+    let (url, seen) = wss_echo();
+    IoTaskPool::get_or_init(TaskPool::new);
+    let mut t = SocketTransport::new(test_tls());
+    let mut events = Vec::new();
+    // The `TLS` scenario: a key over wss: reaches the server in the handshake.
+    let request = OpenRequest { url, protocols: Vec::new(), headers: vec![("authorization".into(), "Bearer k".into())] };
+    t.open(ID, &request);
+    until(&mut t, &mut events, is_open);
+    t.send(ID, Frame::Text("hi".into()));
+    until(&mut t, &mut events, |e| matches!(e, NetEvent::Message { .. }));
+    assert!(events.contains(&NetEvent::Message { id: ID, frame: Frame::Text("hi".into()) }), "{events:?}");
+    let seen = seen.recv().unwrap();
+    assert!(seen.headers.iter().any(|(k, v)| k == "authorization" && v == "Bearer k"), "{:?}", seen.headers);
+    t.close(ID, Some(1000), "");
+    until(&mut t, &mut events, is_close);
+    assert_eq!(last_close(&events).0, 1000);
+}
+
+#[test]
+fn an_untrusted_certificate() {
+    let (url, _) = wss_echo();
+    // The platform's trust store: the test authority is not in it.
+    let mut t = transport();
+    let mut events = Vec::new();
+    open(&mut t, &url, &[]);
+    until(&mut t, &mut events, is_close);
+    let (code, reason, clean) = last_close(&events);
+    assert_eq!((code, clean), (1006, false), "{events:?}");
+    assert!(reason.contains("not trusted"), "{reason}");
+    assert!(!events.iter().any(is_open));
 }
 
 #[test]

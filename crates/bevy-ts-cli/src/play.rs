@@ -137,7 +137,8 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
 
 /// The app that plays the game in `folder` (the one holding `game.json`), its one generation
 /// queued: bevy-ts in non-dev mode, assets unwatched, no protocol, inspector or studio tools.
-pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display) -> Result<App, String> {
+/// `args` are the game's: `process.argv.slice(2)`.
+pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display, args: &[String]) -> Result<App, String> {
     let folder = std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf());
     let game = read_game(&folder)?;
     check_engine(&game, &folder, &engine.identity)?;
@@ -149,14 +150,15 @@ pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display)
     let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.mesh_picking, &game.diagnostics);
     app.insert_resource(channel);
     crate::cli::insert_net_policy(&mut app, &game.net.allow, &game.env);
+    app.insert_resource(bevy_ts::backend::ScriptArgs::new(&entry, args));
     app.world_mut().resource_mut::<RuntimeInfo>().entry = Some(entry);
     Ok(app)
 }
 
-/// Plays the game in `folder`. Returns the exit code when it cannot.
-pub fn run(engine: &Engine, extra: impl Plugin, folder: &Path, headless: bool) -> i32 {
+/// Plays the game in `folder` with the game's arguments `args`. Returns the exit code when it cannot.
+pub fn run(engine: &Engine, extra: impl Plugin, folder: &Path, headless: bool, args: &[String]) -> i32 {
     let display = if headless { Display::Headless } else { Display::Window };
-    match app(engine, extra, folder, display) {
+    match app(engine, extra, folder, display, args) {
         Ok(mut app) => {
             app.run();
             0

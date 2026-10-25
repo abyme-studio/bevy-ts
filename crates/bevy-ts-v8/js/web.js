@@ -2,15 +2,16 @@
 //
 // Evaluated once per isolate, before core.js and any user module. It installs `EventTarget`,
 // `Event`, `CloseEvent`, `MessageEvent`, `DOMException`, `AbortController`/`AbortSignal`,
-// `URL`/`URLSearchParams`, the four timer functions, `WebSocket` and `process` (with `env` only).
-// `fetch`, `Blob` and `process.argv` stay undefined.
+// `URL`/`URLSearchParams`, the four timer functions, `WebSocket`, `Blob`, `fetch` with `Headers`,
+// `Request` and `Response`, and `process` (with `env` and `argv`) (openspec/changes/script-networking-2).
 //
-// Timers live here in a min-heap keyed by deadline, then creation; sockets are ids that Rust
-// drives through ops. Rust calls `deliver(now, events)` (through core.js) once a frame with the
-// socket events received since the last one; it dispatches them, fires the due timers and answers
-// the next deadline, so Rust calls in only when there is something to do. Every timer and socket
-// belongs to the generation that was ambient when it was made; core.js sets that generation and
-// drops other generations' timers and sockets on commit, discard and restart.
+// Timers live here in a min-heap keyed by deadline, then creation; sockets and fetches are ids
+// that Rust drives through ops. Rust calls `deliver(now, events)` (through core.js) once a frame
+// with the socket and fetch events received since the last one; it dispatches them, fires the due
+// timers and answers the next deadline, so Rust calls in only when there is something to do. Every
+// timer, socket and fetch belongs to the generation that was ambient when it was made; core.js sets
+// that generation and drops other generations' timers, sockets and fetches on commit, discard and
+// restart (a dropped fetch's promise never settles).
 //
 // Outside the engine (Node, vitest) this module does nothing.
 
@@ -1503,6 +1504,7 @@ const hooks = {
   /** The ambient generation: timers and sockets made now belong to it. */
   generation: 0,
   setEnv,
+  setArgv,
   deliver,
   dropExcept: (gen) => drop((g) => g !== gen),
   dropOnly: (gen) => drop((g) => g === gen),
@@ -1635,6 +1637,93 @@ function fire(t) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Blob: bytes in memory, copied when it is made
+
+const encode = (s) => (core ? core.encode(usv(s)) : new Uint8Array(utf8Encode(usv(s))));
+const decode = (bytes) => (core ? core.decode(bytes) : utf8Decode(bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? bytes.subarray(3) : bytes));
+
+/** A copy of an `ArrayBuffer`'s or a view's bytes. */
+function copyBytes(data) {
+  if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(0));
+  return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+}
+
+/** A `type` as the File API keeps it: lower-case, or `""` with a character outside printable ASCII. */
+const blobType = (t) => {
+  t = t === undefined ? "" : String(t);
+  return /^[\x20-\x7e]*$/.test(t) ? t.toLowerCase() : "";
+};
+
+let blobBytes;
+
+class Blob {
+  #bytes;
+  #type;
+
+  constructor(parts = [], options = {}) {
+    if (parts === null || (typeof parts !== "object" && typeof parts !== "function") || typeof parts[Symbol.iterator] !== "function") {
+      if (parts !== undefined) throw new TypeError("Blob: the parts must be a sequence");
+      parts = [];
+    }
+    options = options == null ? {} : options;
+    const chunks = [];
+    let size = 0;
+    for (const part of parts) {
+      let bytes;
+      if (part instanceof Blob) bytes = part.#bytes;
+      else if (part instanceof ArrayBuffer || ArrayBuffer.isView(part)) bytes = copyBytes(part);
+      else bytes = encode(String(part));
+      chunks.push(bytes);
+      size += bytes.byteLength;
+    }
+    const all = new Uint8Array(size);
+    let at = 0;
+    for (const c of chunks) {
+      all.set(c, at);
+      at += c.byteLength;
+    }
+    this.#bytes = all;
+    this.#type = blobType(options.type);
+  }
+
+  get size() {
+    return this.#bytes.byteLength;
+  }
+  get type() {
+    return this.#type;
+  }
+
+  slice(start, end, contentType) {
+    const n = this.#bytes.byteLength;
+    const at = (v, d) => {
+      if (v === undefined) return d;
+      v = Math.trunc(Number(v)) || 0;
+      return v < 0 ? Math.max(n + v, 0) : Math.min(v, n);
+    };
+    const from = at(start, 0);
+    const to = Math.max(at(end, n), from);
+    const b = new Blob([], { type: contentType });
+    b.#bytes = this.#bytes.slice(from, to);
+    return b;
+  }
+
+  text() {
+    return Promise.resolve(decode(this.#bytes));
+  }
+  arrayBuffer() {
+    return Promise.resolve(this.#bytes.slice().buffer);
+  }
+  bytes() {
+    return Promise.resolve(this.#bytes.slice());
+  }
+
+  static {
+    blobBytes = (b) => b.#bytes;
+  }
+}
+Object.defineProperty(Blob.prototype, Symbol.toStringTag, { value: "Blob", configurable: true });
+
+// ---------------------------------------------------------------------------------------------
 // WebSocket
 
 const TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
@@ -1654,6 +1743,7 @@ class WebSocket extends EventTarget {
   #protocol = "";
   #extensions = "";
   #buffered = 0;
+  #binaryType = "arraybuffer";
 
   constructor(url, protocols = []) {
     super();
@@ -1702,22 +1792,20 @@ class WebSocket extends EventTarget {
   get bufferedAmount() {
     return this.#buffered;
   }
+  /** `"arraybuffer"` by default, unlike the web's `"blob"`, so stage 1's scripts keep working. */
   get binaryType() {
-    return "arraybuffer";
+    return this.#binaryType;
   }
   set binaryType(value) {
-    if (value === "blob") {
-      const c = globalThis.console;
-      if (c && c.warn) c.warn('WebSocket.binaryType "blob" is not supported (there is no Blob); binary messages stay ArrayBuffer');
-    }
+    if (value === "blob" || value === "arraybuffer") this.#binaryType = value;
   }
 
   send(data) {
     if (arguments.length === 0) throw new TypeError("WebSocket.send: the data argument is required");
     if (this.#state === 0) throw new DOMException("Still in CONNECTING state.", "InvalidStateError");
     if (this.#state !== 1) return;
-    if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
-      const bytes = data instanceof ArrayBuffer ? new Uint8Array(data.slice(0)) : new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+    if (data instanceof ArrayBuffer || ArrayBuffer.isView(data) || data instanceof Blob) {
+      const bytes = data instanceof Blob ? blobBytes(data) : copyBytes(data);
       this.#buffered += bytes.byteLength;
       core.ops.op_bevyts_ws_send_binary(this.#id, this.#gen, bytes);
     } else {
@@ -1755,7 +1843,7 @@ class WebSocket extends EventTarget {
         case 1:
         case 2:
           if (ws.#state !== 1) return;
-          ws.dispatchEvent(new MessageEvent("message", { data: ev[2], origin: ws.#origin }));
+          ws.dispatchEvent(new MessageEvent("message", { data: ev[0] === 2 && ws.#binaryType === "blob" ? new Blob([ev[2]]) : ev[2], origin: ws.#origin }));
           return;
         case 3:
           ws.dispatchEvent(new Event("error"));
@@ -1799,6 +1887,438 @@ function headerPairs(h) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// fetch: Headers, Request, Response, and requests Rust carries out whole
+
+/** HTTP whitespace off both ends of a header value, which must hold no NUL, CR or LF. */
+function headerValue(v) {
+  v = String(v).replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, "");
+  if (/[\0\r\n]/.test(v)) throw new TypeError(`Headers: ${JSON.stringify(v)} is not a valid header value`);
+  return v;
+}
+
+function headerName(n) {
+  n = String(n);
+  if (!TOKEN.test(n)) throw new TypeError(`Headers: '${n}' is not a valid header name`);
+  return n.toLowerCase();
+}
+
+let headersList;
+let headersLock;
+
+class Headers {
+  /** `[lower-case name, value]` pairs, in the order they were added. */
+  #list = [];
+  #immutable = false;
+
+  constructor(init) {
+    if (init === undefined || init === null) return;
+    if (init instanceof Headers) {
+      for (const [n, v] of init.#list) this.#list.push([n, v]);
+      return;
+    }
+    if (typeof init !== "object" && typeof init !== "function") throw new TypeError("Headers: init must be an object");
+    if (typeof init[Symbol.iterator] === "function") {
+      for (const pair of init) {
+        const p = [...pair];
+        if (p.length !== 2) throw new TypeError("Headers: each header must be a [name, value] pair");
+        this.append(p[0], p[1]);
+      }
+    } else for (const k of Object.keys(init)) this.append(k, init[k]);
+  }
+
+  #check() {
+    if (this.#immutable) throw new TypeError("Headers are immutable");
+  }
+
+  append(name, value) {
+    this.#check();
+    this.#list.push([headerName(name), headerValue(value)]);
+  }
+  delete(name) {
+    this.#check();
+    const n = headerName(name);
+    this.#list = this.#list.filter((p) => p[0] !== n);
+  }
+  get(name) {
+    const n = headerName(name);
+    const values = this.#list.filter((p) => p[0] === n).map((p) => p[1]);
+    return values.length === 0 ? null : values.join(", ");
+  }
+  getSetCookie() {
+    return this.#list.filter((p) => p[0] === "set-cookie").map((p) => p[1]);
+  }
+  has(name) {
+    const n = headerName(name);
+    return this.#list.some((p) => p[0] === n);
+  }
+  set(name, value) {
+    this.#check();
+    const n = headerName(name);
+    const v = headerValue(value);
+    const i = this.#list.findIndex((p) => p[0] === n);
+    if (i < 0) {
+      this.#list.push([n, v]);
+      return;
+    }
+    this.#list[i][1] = v;
+    this.#list = this.#list.filter((p, j) => j <= i || p[0] !== n);
+  }
+  forEach(callback, thisArg) {
+    for (const [n, v] of this.entries()) callback.call(thisArg, v, n, this);
+  }
+
+  /** Sorted by name, repeated names combined, each `set-cookie` apart. */
+  *entries() {
+    const names = [...new Set(this.#list.map((p) => p[0]))].sort();
+    for (const n of names) {
+      if (n === "set-cookie") for (const v of this.getSetCookie()) yield [n, v];
+      else yield [n, this.get(n)];
+    }
+  }
+  *keys() {
+    for (const [n] of this.entries()) yield n;
+  }
+  *values() {
+    for (const [, v] of this.entries()) yield v;
+  }
+  [Symbol.iterator]() {
+    return this.entries();
+  }
+
+  static {
+    headersList = (h) => h.#list;
+    headersLock = (h) => {
+      h.#immutable = true;
+      return h;
+    };
+  }
+}
+Object.defineProperty(Headers.prototype, Symbol.toStringTag, { value: "Headers", configurable: true });
+
+/** A body init as bytes and its default `content-type` (`null` for none). */
+function extractBody(body) {
+  if (body instanceof Blob) return { bytes: blobBytes(body), type: body.type || null };
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return { bytes: copyBytes(body), type: null };
+  if (body instanceof URLSearchParams) return { bytes: encode(body.toString()), type: "application/x-www-form-urlencoded;charset=UTF-8" };
+  return { bytes: encode(String(body)), type: "text/plain;charset=UTF-8" };
+}
+
+/** The web's body readers, on `proto`, over a `{ bytes, used }` state each instance holds. */
+function bodyMixin(proto, state, what) {
+  const take = (self) => {
+    const s = state(self);
+    if (s.used) return Promise.reject(new TypeError(`${what}: the body has already been read`));
+    s.used = true;
+    return Promise.resolve(s.bytes || new Uint8Array(0));
+  };
+  Object.defineProperties(proto, {
+    bodyUsed: {
+      get() {
+        return state(this).used;
+      },
+      configurable: true,
+      enumerable: true,
+    },
+    text: {
+      value() {
+        return take(this).then(decode);
+      },
+      writable: true,
+      configurable: true,
+    },
+    json: {
+      value() {
+        return take(this).then((b) => JSON.parse(decode(b)));
+      },
+      writable: true,
+      configurable: true,
+    },
+    arrayBuffer: {
+      value() {
+        return take(this).then((b) => b.slice().buffer);
+      },
+      writable: true,
+      configurable: true,
+    },
+    bytes: {
+      value() {
+        return take(this).then((b) => b.slice());
+      },
+      writable: true,
+      configurable: true,
+    },
+    blob: {
+      value() {
+        const type = this.headers.get("content-type") || "";
+        return take(this).then((b) => new Blob([b], { type }));
+      },
+      writable: true,
+      configurable: true,
+    },
+  });
+}
+
+const METHODS = ["DELETE", "GET", "HEAD", "OPTIONS", "POST", "PUT"];
+const FORBIDDEN_METHODS = ["CONNECT", "TRACE", "TRACK"];
+
+let requestState;
+let requestRedirect;
+
+class Request {
+  #url;
+  #method = "GET";
+  #headers;
+  #signal;
+  #redirect = "follow";
+  #body = { bytes: null, used: false };
+
+  constructor(input, init = {}) {
+    if (arguments.length === 0) throw new TypeError("Request: the input argument is required");
+    init = init == null ? {} : init;
+    let from = null;
+    if (input instanceof Request) {
+      from = input;
+      this.#url = input.#url;
+      this.#method = input.#method;
+      this.#redirect = input.#redirect;
+    } else {
+      let u;
+      try {
+        u = new URL(String(input));
+      } catch {
+        throw new TypeError(`Request: '${input}' is not an absolute URL`);
+      }
+      if (u.username || u.password) throw new TypeError("Request: a URL with credentials is not allowed");
+      u.hash = "";
+      this.#url = u.href;
+    }
+    if (init.method !== undefined) {
+      const m = String(init.method);
+      if (!TOKEN.test(m)) throw new TypeError(`Request: '${m}' is not a valid method`);
+      const upper = m.toUpperCase();
+      if (FORBIDDEN_METHODS.includes(upper)) throw new TypeError(`Request: the method ${upper} is forbidden`);
+      this.#method = METHODS.includes(upper) ? upper : m;
+    }
+    if (init.redirect !== undefined) {
+      const r = String(init.redirect);
+      if (r !== "follow" && r !== "error" && r !== "manual") throw new TypeError(`Request: '${r}' is not a valid redirect mode`);
+      this.#redirect = r;
+    }
+    const signal = init.signal !== undefined ? init.signal : from ? from.#signal : null;
+    if (signal !== null && signal !== undefined && !(signal instanceof AbortSignal)) throw new TypeError("Request: signal is not an AbortSignal");
+    this.#signal = signal ? AbortSignal.any([signal]) : new AbortSignal(ILLEGAL);
+    this.#headers = new Headers(init.headers !== undefined ? init.headers : from ? from.#headers : undefined);
+
+    let body = null;
+    if (init.body !== undefined && init.body !== null) {
+      const { bytes, type } = extractBody(init.body);
+      body = bytes;
+      if (type !== null && !this.#headers.has("content-type")) this.#headers.append("content-type", type);
+    } else if (from && from.#body.bytes !== null) {
+      if (from.#body.used) throw new TypeError("Request: the input's body has already been read");
+      body = from.#body.bytes;
+      from.#body.used = true;
+    }
+    if (body !== null && (this.#method === "GET" || this.#method === "HEAD")) throw new TypeError(`Request: a ${this.#method} request cannot have a body`);
+    this.#body.bytes = body;
+  }
+
+  get url() {
+    return this.#url;
+  }
+  get method() {
+    return this.#method;
+  }
+  get headers() {
+    return this.#headers;
+  }
+  get signal() {
+    return this.#signal;
+  }
+  get redirect() {
+    return this.#redirect;
+  }
+
+  clone() {
+    if (this.#body.used) throw new TypeError("Request.clone: the body has already been read");
+    const r = new Request(this.#url, { method: this.#method, headers: this.#headers, signal: this.#signal, redirect: this.#redirect });
+    r.#body.bytes = this.#body.bytes;
+    return r;
+  }
+
+  static {
+    requestState = (r) => r.#body;
+    requestRedirect = (r) => r.#redirect;
+  }
+}
+bodyMixin(Request.prototype, (r) => requestState(r), "Request");
+Object.defineProperty(Request.prototype, Symbol.toStringTag, { value: "Request", configurable: true });
+
+const NULL_BODY_STATUS = [101, 103, 204, 205, 304];
+const REDIRECT_STATUS = [301, 302, 303, 307, 308];
+
+let responseState;
+let makeResponse;
+
+class Response {
+  #status = 200;
+  #statusText = "";
+  #headers = new Headers();
+  #type = "default";
+  #url = "";
+  #redirected = false;
+  #body = { bytes: null, used: false };
+
+  constructor(body = null, init = {}) {
+    init = init == null ? {} : init;
+    if (init.status !== undefined) {
+      const s = Number(init.status);
+      if (!(s >= 200 && s <= 599) || !Number.isInteger(s)) throw new RangeError(`Response: the status ${init.status} is not in the range 200 to 599`);
+      this.#status = s;
+    }
+    if (init.statusText !== undefined) {
+      const t = String(init.statusText);
+      if (!/^[\t\x20-\x7e\x80-\xff]*$/.test(t)) throw new TypeError("Response: the statusText is not a valid reason phrase");
+      this.#statusText = t;
+    }
+    if (init.headers !== undefined) this.#headers = new Headers(init.headers);
+    if (body !== null && body !== undefined) {
+      if (NULL_BODY_STATUS.includes(this.#status)) throw new TypeError(`Response: a ${this.#status} response cannot have a body`);
+      const { bytes, type } = extractBody(body);
+      this.#body.bytes = bytes;
+      if (type !== null && !this.#headers.has("content-type")) this.#headers.append("content-type", type);
+    }
+  }
+
+  get type() {
+    return this.#type;
+  }
+  get url() {
+    return this.#url;
+  }
+  get redirected() {
+    return this.#redirected;
+  }
+  get status() {
+    return this.#status;
+  }
+  get ok() {
+    return this.#status >= 200 && this.#status <= 299;
+  }
+  get statusText() {
+    return this.#statusText;
+  }
+  get headers() {
+    return this.#headers;
+  }
+
+  clone() {
+    if (this.#body.used) throw new TypeError("Response.clone: the body has already been read");
+    const r = new Response();
+    r.#status = this.#status;
+    r.#statusText = this.#statusText;
+    r.#headers = new Headers(this.#headers);
+    if (this.#type === "basic" || this.#type === "error") headersLock(r.#headers);
+    r.#type = this.#type;
+    r.#url = this.#url;
+    r.#redirected = this.#redirected;
+    r.#body.bytes = this.#body.bytes;
+    return r;
+  }
+
+  static error() {
+    const r = new Response();
+    r.#status = 0;
+    r.#type = "error";
+    headersLock(r.#headers);
+    return r;
+  }
+
+  static redirect(url, status = 302) {
+    let u;
+    try {
+      u = new URL(String(url));
+    } catch {
+      throw new TypeError(`Response.redirect: '${url}' is not an absolute URL`);
+    }
+    status = Number(status);
+    if (!REDIRECT_STATUS.includes(status)) throw new RangeError(`Response.redirect: ${status} is not a redirect status`);
+    const r = new Response(null, { status, headers: { location: u.href } });
+    headersLock(r.#headers);
+    return r;
+  }
+
+  static json(data, init = {}) {
+    const text = JSON.stringify(data);
+    if (text === undefined) throw new TypeError("Response.json: the data is not JSON-serializable");
+    const r = new Response(text, init);
+    if (!(init && init.headers && new Headers(init.headers).has("content-type"))) r.#headers.set("content-type", "application/json");
+    return r;
+  }
+
+  static {
+    responseState = (r) => r.#body;
+    makeResponse = (status, statusText, pairs, bytes, url, redirected) => {
+      const r = new Response();
+      r.#status = status;
+      r.#statusText = statusText;
+      for (const [n, v] of pairs) headersList(r.#headers).push([String(n).toLowerCase(), String(v)]);
+      headersLock(r.#headers);
+      r.#type = "basic";
+      r.#url = url;
+      r.#redirected = redirected;
+      r.#body.bytes = NULL_BODY_STATUS.includes(status) ? null : bytes;
+      return r;
+    };
+  }
+}
+bodyMixin(Response.prototype, (r) => responseState(r), "Response");
+Object.defineProperty(Response.prototype, Symbol.toStringTag, { value: "Response", configurable: true });
+
+/** Fetches Rust carries out, by id: `{ resolve, reject, gen, signal, onAbort }`. */
+const fetches = new Map();
+let nextFetchId = 1;
+const REDIRECT_MODES = { follow: 0, error: 1, manual: 2 };
+
+function forgetFetch(id) {
+  const f = fetches.get(id);
+  if (!f) return null;
+  fetches.delete(id);
+  f.signal.removeEventListener("abort", f.onAbort);
+  return f;
+}
+
+function fetch(input, init = undefined) {
+  return new Promise((resolve, reject) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new TypeError(`fetch: the scheme ${url.protocol} is not supported; use http: or https:`);
+    const signal = request.signal;
+    if (signal.aborted) throw signal.reason;
+    const id = nextFetchId++;
+    const gen = hooks.generation;
+    const onAbort = () => {
+      if (!forgetFetch(id)) return;
+      reject(signal.reason);
+      core.ops.op_bevyts_fetch_abort(id, gen);
+    };
+    fetches.set(id, { resolve, reject, gen, signal, onAbort });
+    signal.addEventListener("abort", onAbort);
+    const body = requestState(request).bytes;
+    const headers = headersList(request.headers).map(([n, v]) => [n, v]);
+    core.ops.op_bevyts_fetch(id, gen, request.method, request.url, JSON.stringify(headers), body || new Uint8Array(0), REDIRECT_MODES[requestRedirect(request)]);
+  });
+}
+
+/** A fetch event: `[6, id, status, statusText, headersJson, ArrayBuffer, url, redirected]` or `[7, id, reason]`. */
+function fetchEvent(ev) {
+  const f = forgetFetch(ev[1]);
+  if (!f) return;
+  if (ev[0] === 6) f.resolve(makeResponse(ev[2], ev[3], JSON.parse(ev[4]), new Uint8Array(ev[5]), ev[6], ev[7]));
+  else f.reject(new TypeError(ev[2]));
+}
+
+// ---------------------------------------------------------------------------------------------
 // Delivery and generations
 
 /** Dispatches `events` in order, then fires the timers due at `now`; answers the next deadline. */
@@ -1806,6 +2326,10 @@ function deliver(now, events) {
   delivering = true;
   try {
     for (const ev of events) {
+      if (ev[0] >= 6) {
+        fetchEvent(ev);
+        continue;
+      }
       const ws = sockets.get(ev[1]);
       if (ws) withGeneration(socketGen(ws), () => socketEvent(ws, ev));
     }
@@ -1826,6 +2350,7 @@ function deliver(now, events) {
 
 function drop(test) {
   for (const [id, ws] of sockets) if (socketForget(ws, test)) sockets.delete(id);
+  for (const [id, f] of fetches) if (test(f.gen)) forgetFetch(id);
   for (const [id, t] of timers) {
     if (!test(t.gen)) continue;
     timers.delete(id);
@@ -1838,7 +2363,8 @@ function drop(test) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// process: `env` only, filled once from the variables the project names, then frozen
+// process: `env`, filled once from the variables the project names, then frozen; `argv`, filled
+// once in Node's shape (the engine, the entry, then the game's arguments)
 
 const env = {};
 let envSet = false;
@@ -1850,8 +2376,18 @@ function setEnv(obj) {
   Object.freeze(env);
 }
 
+const argv = [];
+let argvSet = false;
+
+function setArgv(list) {
+  if (argvSet) return;
+  argvSet = true;
+  if (Array.isArray(list)) for (const a of list) argv.push(String(a));
+}
+
 const process = {};
 Object.defineProperty(process, "env", { value: env, enumerable: true });
+Object.defineProperty(process, "argv", { value: argv, enumerable: true });
 Object.defineProperty(process, Symbol.toStringTag, { value: "process", configurable: true });
 
 // ---------------------------------------------------------------------------------------------
@@ -1873,6 +2409,11 @@ if (core) {
     setInterval,
     clearInterval,
     WebSocket,
+    Blob,
+    Headers,
+    Request,
+    Response,
+    fetch,
     process,
   };
   for (const [name, value] of Object.entries(globals)) Object.defineProperty(globalThis, name, { value, writable: true, configurable: true, enumerable: false });

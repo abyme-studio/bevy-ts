@@ -52,9 +52,13 @@ dist/aarch64-apple-darwin/
 
 ## Playing it
 
-Start the executable. With `game/game.json` beside it, an engine started with no arguments plays
-that game, wherever it was started from (a double-click works). `bevy-ts play <folder>
-[--headless]` plays the game folder named (the one holding `game.json`), for trying a build.
+Start the executable. With `game/game.json` beside it, an engine plays that game, wherever it was
+started from (a double-click works), and passes every argument it was started with to the game as
+`process.argv.slice(2)` ([networking.md](networking.md)): `arena --server 10.0.0.5 dev` hands the
+game `["--server", "10.0.0.5", "dev"]` and reads none of them as a command, so `dev`, `build` and
+the other commands are not reachable from a shipped game. `bevy-ts play <folder> [--headless]
+[-- <args>…]` plays the game folder named (the one holding `game.json`), for trying a build, with
+the arguments after `--` as the game's.
 
 Headless (`play --headless`, `dev --headless`) has no window: every camera renders into one 960x540
 offscreen image, and `BEVY_TS_SCREENSHOT=<path>` saves it at frames 60 and 75. Game UI draws into

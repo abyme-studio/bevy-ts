@@ -1,5 +1,6 @@
-//! Change script-networking: the registry, policy, limits, generations and edit mode above the
-//! transport seam, against the fake backend and the fake transport. No V8, no socket.
+//! Changes script-networking and script-networking-2: the registry, policy, limits, redirects,
+//! generations and edit mode above the transport seam, for connections and fetches, against the
+//! fake backend and the fake transport. No V8, no socket.
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
@@ -7,7 +8,7 @@ use bevy_ts::backend::{ModuleSet, ScriptError};
 use bevy_ts::fake::{FakeHandle, FakeProgram};
 use bevy_ts::generation::{self, ReloadStatus};
 use bevy_ts::log::ScriptLog;
-use bevy_ts::net::{self, ConnId, FakeTransport, Frame, NetEvent, NetPolicy, NetRequest, OpenRequest};
+use bevy_ts::net::{self, ConnId, FakeTransport, FetchId, Frame, HttpRequest, HttpResponse, NetEvent, NetPolicy, NetRequest, OpenRequest, Redirect};
 use bevy_ts::{BevyTsPlugin, EngineMode};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -96,16 +97,15 @@ fn refused_opens_never_reach_the_transport() {
     app.update(); // the requests reach core
     app.update(); // their events reach the script
     let conns = fake.conns();
-    assert_eq!(conns.len(), 1, "only the loopback open with an allowed header goes out: {conns:?}");
+    assert_eq!(conns.len(), 2, "wss: and the loopback open with an allowed header go out: {conns:?}");
     let events = delivered(&handle);
-    for id in 1..=3 {
+    for id in [1, 3] {
         let id = ConnId(id);
         let at = events.iter().position(|e| *e == NetEvent::Error { id }).unwrap_or_else(|| panic!("no error for {id:?}: {events:?}"));
         assert_eq!(events[at + 1], NetEvent::Close { id, code: 1006, reason: String::new(), clean: false });
     }
     let log = logs(&app).join("\n");
     assert!(log.contains("example.com:80 is not in net.allow; add it to net.allow in bevy-ts.json"), "{log}");
-    assert!(log.contains("wss: is not supported yet"), "{log}");
     assert!(log.contains("the engine sends no Origin"), "{log}");
 }
 
@@ -300,4 +300,255 @@ fn a_paused_game_still_delivers() {
         app.update();
     }
     assert!(handle.deliveries().last().unwrap().0 >= now + 50.0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// fetch
+
+fn get(id: u64, generation: u64, url: &str) -> NetRequest {
+    let request = HttpRequest { method: "GET".into(), url: url.into(), ..Default::default() };
+    NetRequest::Fetch { id: FetchId(id), generation, request, redirect: Redirect::Follow }
+}
+
+/// Starts fetch `request` from a loaded generation; returns the wire id of its first hop, or
+/// `None` when nothing reached the transport.
+fn fetch(app: &mut App, handle: &FakeHandle, fake: &FakeTransport, request: NetRequest) -> Option<FetchId> {
+    let before = fake.fetches().len();
+    handle.request(request);
+    app.update();
+    (fake.fetches().len() > before).then(|| fake.last_fetch().unwrap().0)
+}
+
+fn loaded() -> (App, FakeHandle, FakeTransport) {
+    let (mut app, handle, fake) = app();
+    assert_eq!(load(&mut app, &handle, FakeProgram::default()).status, ReloadStatus::Applied);
+    (app, handle, fake)
+}
+
+/// The fetch events delivered so far.
+fn fetch_events(handle: &FakeHandle) -> Vec<NetEvent> {
+    delivered(handle).into_iter().filter(|e| matches!(e, NetEvent::Response { .. } | NetEvent::FetchFailed { .. })).collect()
+}
+
+fn failed(handle: &FakeHandle, id: u64) -> String {
+    match fetch_events(handle).into_iter().find(|e| matches!(e, NetEvent::FetchFailed { id: i, .. } | NetEvent::Response { id: i, .. } if i.0 == id)) {
+        Some(NetEvent::FetchFailed { reason, .. }) => reason,
+        other => panic!("fetch {id} did not fail: {other:?}"),
+    }
+}
+
+fn response(handle: &FakeHandle, id: u64) -> HttpResponse {
+    match fetch_events(handle).into_iter().find(|e| matches!(e, NetEvent::FetchFailed { id: i, .. } | NetEvent::Response { id: i, .. } if i.0 == id)) {
+        Some(NetEvent::Response { response, .. }) => response,
+        other => panic!("fetch {id} has no response: {other:?}"),
+    }
+}
+
+#[test]
+fn a_fetch_not_allowed() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    assert_eq!(fetch(&mut app, &handle, &fake, get(1, g, "https://example.com/")), None, "no connection is attempted");
+    app.update();
+    let reason = failed(&handle, 1);
+    assert!(reason.contains("example.com:443 is not in net.allow"), "{reason}");
+    assert!(logs(&app).iter().any(|l| l.starts_with("fetch https://example.com/: example.com:443 is not in net.allow")), "{:?}", logs(&app));
+}
+
+#[test]
+fn a_headless_test_of_a_fetch() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let wire = fetch(&mut app, &handle, &fake, get(1, g, "http://127.0.0.1:4477/api/held")).unwrap();
+    let seen = fake.fetch(wire).unwrap().request;
+    assert_eq!((seen.method.as_str(), seen.url.as_str()), ("GET", "http://127.0.0.1:4477/api/held"));
+    fake.respond(wire, 200, &[("Content-Type", "application/json")], br#"{"held":[]}"#);
+    app.update();
+    let r = response(&handle, 1);
+    assert_eq!((r.status, r.body.as_slice(), r.url.as_str(), r.redirected), (200, &br#"{"held":[]}"#[..], "http://127.0.0.1:4477/api/held", false));
+    assert_eq!(r.header("content-type"), Some("application/json"));
+    assert!(app.world().non_send::<net::NetRegistry>().is_empty(), "an answered fetch is forgotten");
+}
+
+#[test]
+fn a_redirect_to_a_host_not_allowed() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let wire = fetch(&mut app, &handle, &fake, get(1, g, "http://127.0.0.1:4477/a")).unwrap();
+    fake.respond(wire, 302, &[("location", "http://10.0.0.9/b")], b"");
+    app.update();
+    assert_eq!(fake.fetches().len(), 1, "nothing connects to 10.0.0.9");
+    app.update();
+    assert!(failed(&handle, 1).contains("10.0.0.9:80 is not in net.allow"));
+    assert!(logs(&app).iter().any(|l| l.starts_with("fetch http://10.0.0.9/b: 10.0.0.9:80 is not in net.allow")), "{:?}", logs(&app));
+}
+
+#[test]
+fn a_redirect_that_keeps_its_key() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let headers = vec![("authorization".to_string(), "Bearer k".to_string()), ("cookie".to_string(), "a=1".to_string()), ("x-trace".to_string(), "t".to_string())];
+    let request = HttpRequest { method: "POST".into(), url: "http://127.0.0.1:4477/a".into(), headers, body: b"{}".to_vec() };
+    let first = fetch(&mut app, &handle, &fake, NetRequest::Fetch { id: FetchId(1), generation: g, request, redirect: Redirect::Follow }).unwrap();
+    fake.respond(first, 307, &[("location", "/b")], b"");
+    app.update();
+    let (second, hop) = fake.last_fetch().unwrap();
+    assert_eq!((hop.request.url.as_str(), hop.request.method.as_str(), hop.request.body.as_slice()), ("http://127.0.0.1:4477/b", "POST", &b"{}"[..]), "307 resends the method and body");
+    assert_eq!(hop.request.header("authorization"), Some("Bearer k"), "the same host keeps its key");
+    fake.respond(second, 307, &[("location", "http://127.0.0.1:5000/c")], b"");
+    app.update();
+    let (third, hop) = fake.last_fetch().unwrap();
+    assert_eq!(hop.request.url, "http://127.0.0.1:5000/c");
+    assert_eq!((hop.request.header("authorization"), hop.request.header("cookie")), (None, None), "another port drops the key and cookie");
+    assert_eq!(hop.request.header("x-trace"), Some("t"));
+    fake.respond(third, 200, &[], b"done");
+    app.update();
+    let r = response(&handle, 1);
+    assert_eq!((r.url.as_str(), r.redirected, r.body.as_slice()), ("http://127.0.0.1:5000/c", true, &b"done"[..]));
+    assert_eq!(fetch_events(&handle).len(), 1, "no event reaches the script before the last hop");
+}
+
+#[test]
+fn leaving_tls() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let wire = fetch(&mut app, &handle, &fake, get(1, g, "https://127.0.0.1:4477/")).unwrap();
+    fake.respond(wire, 301, &[("location", "http://127.0.0.1:4477/")], b"");
+    app.update();
+    app.update();
+    assert_eq!(fake.fetches().len(), 1);
+    assert!(failed(&handle, 1).contains("a redirect may not leave TLS"));
+    assert!(logs(&app).iter().any(|l| l.contains("may not leave TLS")), "{:?}", logs(&app));
+}
+
+#[test]
+fn redirects_rewrite_the_method_as_the_web_does() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    for (n, status, method, after) in [(1, 303, "POST", "GET"), (2, 301, "POST", "GET"), (3, 302, "POST", "GET"), (4, 302, "PUT", "PUT"), (5, 303, "HEAD", "HEAD"), (6, 308, "POST", "POST")] {
+        let headers = vec![("content-type".to_string(), "text/plain".to_string())];
+        let request = HttpRequest { method: method.into(), url: "http://127.0.0.1:4477/a".into(), headers, body: b"x".to_vec() };
+        let wire = fetch(&mut app, &handle, &fake, NetRequest::Fetch { id: FetchId(n), generation: g, request, redirect: Redirect::Follow }).unwrap();
+        fake.respond(wire, status, &[("location", "/b")], b"");
+        app.update();
+        let hop = fake.last_fetch().unwrap().1.request;
+        assert_eq!(hop.method, after, "{status} {method}");
+        assert_eq!(hop.body.is_empty(), after == "GET", "{status} {method}");
+        assert_eq!(hop.header("content-type").is_none(), after == "GET", "{status} {method}: a GET drops the body's headers");
+    }
+}
+
+#[test]
+fn twenty_redirects_and_no_more() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let mut wire = fetch(&mut app, &handle, &fake, get(1, g, "http://127.0.0.1:4477/0")).unwrap();
+    for hop in 1..=20 {
+        fake.respond(wire, 302, &[("location", &format!("/{hop}"))], b"");
+        app.update();
+        wire = fake.last_fetch().unwrap().0;
+    }
+    assert_eq!(fake.fetches().len(), 21);
+    fake.respond(wire, 302, &[("location", "/21")], b"");
+    app.update();
+    app.update();
+    assert_eq!(fake.fetches().len(), 21, "the twenty-first redirect is not followed");
+    assert!(failed(&handle, 1).contains("more than 20 redirects"));
+}
+
+#[test]
+fn redirect_error_and_manual() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let mode = |id, redirect| NetRequest::Fetch { id: FetchId(id), generation: g, request: HttpRequest { method: "GET".into(), url: "http://127.0.0.1:4477/a".into(), ..Default::default() }, redirect };
+    let error = fetch(&mut app, &handle, &fake, mode(1, Redirect::Error)).unwrap();
+    let manual = fetch(&mut app, &handle, &fake, mode(2, Redirect::Manual)).unwrap();
+    fake.respond(error, 302, &[("location", "/b")], b"");
+    fake.respond(manual, 302, &[("location", "/b")], b"");
+    app.update();
+    app.update();
+    assert_eq!(fake.fetches().len(), 2, "neither follows");
+    assert!(failed(&handle, 1).contains("redirect is \"error\""));
+    let r = response(&handle, 2);
+    assert_eq!((r.status, r.header("location"), r.redirected), (302, Some("/b"), false));
+}
+
+#[test]
+fn a_huge_download() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let wire = fetch(&mut app, &handle, &fake, get(1, g, "http://127.0.0.1:4477/big")).unwrap();
+    fake.respond(wire, 200, &[], &vec![0u8; 20 << 20]);
+    app.update();
+    assert!(failed(&handle, 1).contains("over the 16 MiB limit"));
+    assert!(logs(&app).iter().any(|l| l.contains("over the 16 MiB limit")), "{:?}", logs(&app));
+}
+
+#[test]
+fn saving_during_a_fetch() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let wire = fetch(&mut app, &handle, &fake, get(1, g, "http://127.0.0.1:4477/slow")).unwrap();
+    assert_eq!(load(&mut app, &handle, FakeProgram::default()).status, ReloadStatus::Applied);
+    assert!(fake.cancelled(wire), "the request is cancelled");
+    fake.respond(wire, 200, &[], b"late");
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(fetch_events(&handle).is_empty(), "the old generation's promise never settles: {:?}", fetch_events(&handle));
+}
+
+#[test]
+fn a_restart_and_an_abort_cancel_fetches() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let aborted = fetch(&mut app, &handle, &fake, get(1, g, "http://127.0.0.1:4477/a")).unwrap();
+    handle.request(NetRequest::Abort { id: FetchId(1), generation: g });
+    app.update();
+    assert!(fake.cancelled(aborted));
+    let held = fetch(&mut app, &handle, &fake, get(2, g, "http://127.0.0.1:4477/b")).unwrap();
+    handle.push(FakeProgram::default());
+    generation::apply(app.world_mut(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, true);
+    assert!(fake.cancelled(held));
+    assert!(app.world().non_send::<net::NetRegistry>().is_empty());
+    app.update();
+    assert!(fetch_events(&handle).is_empty());
+}
+
+#[test]
+fn a_fetch_across_edit() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let wire = fetch(&mut app, &handle, &fake, get(1, g, "http://127.0.0.1:4477/slow")).unwrap();
+    set_mode(&mut app, EngineMode::Edit);
+    assert!(fake.cancelled(wire));
+    app.update();
+    assert!(fetch_events(&handle).is_empty(), "nothing is delivered in edit mode");
+    set_mode(&mut app, EngineMode::Play);
+    assert_eq!(failed(&handle, 1), net::LEFT_PLAY, "the promise rejects at the first frame of play");
+}
+
+#[test]
+fn a_fetch_in_edit_mode_is_refused() {
+    let (mut app, handle, fake) = app();
+    app.insert_state(EngineMode::Edit);
+    app.update();
+    handle.request(get(1, 0, "http://127.0.0.1:4477/api/held"));
+    load(&mut app, &handle, FakeProgram::default());
+    app.update();
+    assert!(fake.fetches().is_empty());
+    assert!(logs(&app).iter().any(|l| l.starts_with("fetch http://127.0.0.1:4477/api/held: networking runs only in play")), "{:?}", logs(&app));
+    set_mode(&mut app, EngineMode::Play);
+    assert!(failed(&handle, 1).contains("networking runs only in play"));
+}
+
+#[test]
+fn a_transport_failure_names_the_origin() {
+    let (mut app, handle, fake) = loaded();
+    let g = live(&app);
+    let wire = fetch(&mut app, &handle, &fake, get(1, g, "http://127.0.0.1:4477/x")).unwrap();
+    fake.fail(wire, "the connection failed: refused");
+    app.update();
+    assert_eq!(failed(&handle, 1), "fetch 127.0.0.1:4477: the connection failed: refused");
+    assert!(logs(&app).iter().any(|l| l == "fetch http://127.0.0.1:4477/x: the connection failed: refused"), "{:?}", logs(&app));
 }

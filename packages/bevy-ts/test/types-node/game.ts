@@ -39,3 +39,15 @@ void connect(url.href, { signal });
 
 const elapsed: number = performance.now() - performance.timeOrigin;
 console.log(elapsed);
+
+// fetch, Blob and process.argv.
+const res = await fetch(new URL("/api/held", base), { headers: { authorization: `Bearer ${key ?? ""}` }, signal: AbortSignal.timeout(5000) });
+const held = (await res.json()) as { held: unknown[] };
+console.log(held.held.length, res.ok, res.status, res.headers.get("content-type"), res.headers.getSetCookie());
+await fetch("http://127.0.0.1:4477/api/x", { method: "POST", body: JSON.stringify({ a: 1 }), redirect: "error" });
+const blob = new Blob(["x", new Uint8Array([1])], { type: "text/plain" });
+console.log(blob.size, await blob.slice(-1).text(), (await res.clone().bytes()).length, await new Response(blob).text());
+ws.send(blob);
+const level: string | undefined = process.argv[2];
+console.log(level, new Request("http://127.0.0.1/", { method: "PUT", body: blob }).method, Response.json({ ok: true }).status);
+for (const [k, v] of new Headers({ a: "1" })) console.log(k, v);

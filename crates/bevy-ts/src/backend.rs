@@ -32,11 +32,31 @@ pub struct Generation {
     pub set: ModuleSet,
     /// What `process.env` shows: the same for every load of one engine run.
     pub env: std::collections::BTreeMap<String, String>,
+    /// What `process.argv` shows (the engine, the entry, the game's arguments): the same for
+    /// every load of one engine run.
+    pub argv: Vec<String>,
     /// Real time now, in the milliseconds `deliver` takes: timers a module sets while it
     /// evaluates measure from it, in a fresh engine instance or after edit mode too.
     pub now_ms: f64,
     /// The declarations (`file#name`) that live entity observers name, so the load rebuilds them.
     pub observed: Vec<String>,
+}
+
+/// `process.argv` in Node's shape: the engine executable's absolute path, the entry's absolute
+/// path, then the game's arguments. The CLI sets it once when the engine starts; without it,
+/// `process.argv` is empty.
+#[derive(bevy::prelude::Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct ScriptArgs(pub Vec<String>);
+
+impl ScriptArgs {
+    /// The running executable, `entry` (made absolute against the working directory), then `args`.
+    pub fn new(entry: &std::path::Path, args: &[String]) -> Self {
+        let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let entry = std::path::absolute(entry).unwrap_or_else(|_| entry.to_path_buf());
+        let mut argv = vec![exe, entry.to_string_lossy().into_owned()];
+        argv.extend(args.iter().cloned());
+        ScriptArgs(argv)
+    }
 }
 
 /// What a delivery hands back to core.

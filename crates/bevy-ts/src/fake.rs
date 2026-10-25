@@ -395,6 +395,10 @@ impl ScriptBackend for FakeBackend {
 fn set_generation(r: &mut crate::net::NetRequest, number: u64) {
     use crate::net::NetRequest;
     match r {
-        NetRequest::Open { generation, .. } | NetRequest::Send { generation, .. } | NetRequest::Close { generation, .. } => *generation = number,
+        NetRequest::Open { generation, .. }
+        | NetRequest::Send { generation, .. }
+        | NetRequest::Close { generation, .. }
+        | NetRequest::Fetch { generation, .. }
+        | NetRequest::Abort { generation, .. } => *generation = number,
     }
 }

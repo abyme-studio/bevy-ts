@@ -1,18 +1,22 @@
-//! Script networking: the `WebSocket` connections scripts open, owned here, above any JS engine.
+//! Script networking: the `WebSocket` connections and `fetch`es scripts make, owned here, above
+//! any JS engine.
 //!
-//! A backend holds no socket. Scripts' requests (open, send, close) cross the seam as plain data
-//! tagged with a connection id and a generation; [`net_deliver`] applies them through
+//! A backend holds no socket. Scripts' requests (open, send, close, fetch, abort) cross the seam
+//! as plain data tagged with an id and a generation; [`net_deliver`] applies them through
 //! [`NetPolicy`] to a [`Transport`] (sockets, or [`FakeTransport`] in tests) and hands what the
-//! transport received back to the backend in one call a frame. The allowlist, the limits and
-//! the generation rules live here, so the fake transport is held to them too.
+//! transport received back to the backend in one call a frame. The allowlist, the limits, the
+//! redirect rules and the generation rules live here, so the fake transport is held to them too.
 
 mod fake;
+mod http;
 pub mod policy;
 mod socket;
+mod tls;
 
-pub use fake::{FakeConn, FakeTransport};
-pub use policy::{NetPolicy, Refusal};
+pub use fake::{FakeConn, FakeFetch, FakeTransport};
+pub use policy::{NetPolicy, Refusal, Scheme};
 pub use socket::SocketTransport;
+pub use tls::NetTls;
 
 use crate::log::{LogLevel, ScriptLog};
 use crate::runtime::{ScriptRuntime, current_generation};
@@ -53,6 +57,57 @@ pub struct OpenRequest {
     pub headers: Vec<(String, String)>,
 }
 
+/// A fetch, numbered by the script side apart from connections; unique within one engine instance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FetchId(pub u64);
+
+/// One HTTP request: what the script asked for, or one hop of its redirects.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HttpRequest {
+    /// Upper-case for the standard methods, as the script side normalised it.
+    pub method: String,
+    /// An `http:` or `https:` URL.
+    pub url: String,
+    /// Lower-case names, in the order the script gave them; the transport adds its own.
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl HttpRequest {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+    }
+}
+
+/// One HTTP response, its body whole.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HttpResponse {
+    pub status: u16,
+    pub reason: String,
+    /// Lower-case names, in the order they arrived.
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+    /// The last URL, after redirects; core sets it.
+    pub url: String,
+    /// Whether a redirect was followed; core sets it.
+    pub redirected: bool,
+}
+
+impl HttpResponse {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+    }
+}
+
+/// What a fetch does with a redirect: `init.redirect`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Redirect {
+    #[default]
+    Follow,
+    Error,
+    Manual,
+}
+
 /// A request a script made, in the order it made them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NetRequest {
@@ -60,12 +115,19 @@ pub enum NetRequest {
     Send { id: ConnId, generation: u64, frame: Frame },
     /// `code` is `None` for `close()` without one: the close frame carries no status.
     Close { id: ConnId, generation: u64, code: Option<u16>, reason: String },
+    Fetch { id: FetchId, generation: u64, request: HttpRequest, redirect: Redirect },
+    /// The script's signal aborted it; its promise has already rejected.
+    Abort { id: FetchId, generation: u64 },
 }
 
 impl NetRequest {
     pub fn generation(&self) -> u64 {
         match self {
-            NetRequest::Open { generation, .. } | NetRequest::Send { generation, .. } | NetRequest::Close { generation, .. } => *generation,
+            NetRequest::Open { generation, .. }
+            | NetRequest::Send { generation, .. }
+            | NetRequest::Close { generation, .. }
+            | NetRequest::Fetch { generation, .. }
+            | NetRequest::Abort { generation, .. } => *generation,
         }
     }
 }
@@ -81,16 +143,27 @@ pub enum NetEvent {
     Close { id: ConnId, code: u16, reason: String, clean: bool },
     /// The I/O side wrote this many bytes of the connection's sends (`bufferedAmount` falls).
     Written { id: ConnId, bytes: usize },
+    /// A fetch's whole response: from the transport, one exchange; to scripts, after redirects.
+    Response { id: FetchId, response: HttpResponse },
+    /// A fetch failed: its promise rejects with a `TypeError` of `reason`.
+    FetchFailed { id: FetchId, reason: String },
+}
+
+/// A connection's event or a fetch's, by the id it is about.
+enum EventId {
+    Conn(ConnId),
+    Fetch(FetchId),
 }
 
 impl NetEvent {
-    pub fn id(&self) -> ConnId {
+    fn event_id(&self) -> EventId {
         match self {
             NetEvent::Open { id, .. }
             | NetEvent::Message { id, .. }
             | NetEvent::Error { id }
             | NetEvent::Close { id, .. }
-            | NetEvent::Written { id, .. } => *id,
+            | NetEvent::Written { id, .. } => EventId::Conn(*id),
+            NetEvent::Response { id, .. } | NetEvent::FetchFailed { id, .. } => EventId::Fetch(*id),
         }
     }
 }
@@ -104,6 +177,12 @@ pub trait Transport {
     /// Closes with a close frame (`code` `None`: one without a status), or drops a connection
     /// still connecting. Its `close` event, if any, is no longer wanted once core forgot the id.
     fn close(&mut self, id: ConnId, code: Option<u16>, reason: &str);
+    /// Starts one HTTP exchange on a connection of its own: no redirect is followed, as core
+    /// follows them. The policy has already allowed the URL. One `Response` or `FetchFailed`
+    /// event ends it.
+    fn fetch(&mut self, id: FetchId, request: &HttpRequest);
+    /// Cancels a fetch in flight, closing its connection; no event of it is wanted.
+    fn cancel(&mut self, id: FetchId);
     /// Appends every event received since the last poll, each connection's in order.
     fn poll(&mut self, out: &mut Vec<NetEvent>);
 }
@@ -112,8 +191,12 @@ pub trait Transport {
 pub const MAX_QUEUED_MESSAGES: usize = 4096;
 /// Bytes a connection may hold undelivered.
 pub const MAX_QUEUED_BYTES: usize = 64 << 20;
-/// The largest message a connection receives.
+/// The largest message a connection receives, and the largest body a fetch reads.
 pub const MAX_MESSAGE_BYTES: usize = 16 << 20;
+/// Redirects a fetch follows before it fails.
+pub const MAX_REDIRECTS: u32 = 20;
+/// The reason a fetch cancelled by edit mode rejects with.
+pub const LEFT_PLAY: &str = "the game left play";
 
 /// Close codes the engine itself uses.
 pub const GOING_AWAY: u16 = 1001;
@@ -138,13 +221,28 @@ pub struct Conn {
     pub origin: String,
 }
 
-/// The connections scripts hold, and the transport they go through. Non-send: it lives with
-/// the runtime on the main thread.
+/// A fetch core knows of: the hop in flight and what the next hop needs.
+#[derive(Clone, Debug)]
+pub struct Fetch {
+    /// The id the transport knows the hop in flight by; a new one each hop.
+    pub wire: FetchId,
+    pub generation: u64,
+    /// The hop in flight.
+    pub request: HttpRequest,
+    pub redirect: Redirect,
+    /// Redirects followed so far.
+    pub hops: u32,
+}
+
+/// The connections and fetches scripts hold, and the transport they go through. Non-send: it
+/// lives with the runtime on the main thread.
 pub struct NetRegistry {
     transport: Box<dyn Transport>,
     conns: HashMap<ConnId, Conn>,
     /// Transport ids to script ids.
     wires: HashMap<ConnId, ConnId>,
+    fetches: HashMap<FetchId, Fetch>,
+    fetch_wires: HashMap<FetchId, FetchId>,
     next_wire: u64,
     /// Events core made itself (refusals, edit mode's closes), delivered first next time.
     pending: Vec<NetEvent>,
@@ -155,19 +253,67 @@ pub struct NetRegistry {
 
 impl NetRegistry {
     pub fn new(transport: Box<dyn Transport>) -> Self {
-        NetRegistry { transport, conns: HashMap::new(), wires: HashMap::new(), next_wire: 1, pending: Vec::new(), batch: Vec::new(), polled: Vec::new() }
+        NetRegistry {
+            transport,
+            conns: HashMap::new(),
+            wires: HashMap::new(),
+            fetches: HashMap::new(),
+            fetch_wires: HashMap::new(),
+            next_wire: 1,
+            pending: Vec::new(),
+            batch: Vec::new(),
+            polled: Vec::new(),
+        }
+    }
+
+    /// The fetches in flight, by script id.
+    pub fn fetches(&self) -> impl Iterator<Item = (FetchId, &Fetch)> {
+        self.fetches.iter().map(|(id, f)| (*id, f))
     }
 
     pub fn conns(&self) -> impl Iterator<Item = (ConnId, &Conn)> {
         self.conns.iter().map(|(id, c)| (*id, c))
     }
 
+    /// Connections and fetches held.
     pub fn len(&self) -> usize {
-        self.conns.len()
+        self.conns.len() + self.fetches.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.conns.is_empty()
+        self.conns.is_empty() && self.fetches.is_empty()
+    }
+
+    fn next_wire(&mut self) -> u64 {
+        let wire = self.next_wire;
+        self.next_wire += 1;
+        wire
+    }
+
+    /// Starts a hop of fetch `id` on a fresh wire id.
+    fn start_hop(&mut self, id: FetchId, mut fetch: Fetch) {
+        let wire = FetchId(self.next_wire());
+        fetch.wire = wire;
+        self.transport.fetch(wire, &fetch.request);
+        self.fetch_wires.insert(wire, id);
+        self.fetches.insert(id, fetch);
+    }
+
+    /// Cancels fetch `id` and forgets it: scripts hear nothing more of it.
+    fn cancel_quietly(&mut self, id: FetchId) {
+        if let Some(f) = self.fetches.remove(&id) {
+            self.fetch_wires.remove(&f.wire);
+            self.transport.cancel(f.wire);
+        }
+    }
+
+    fn cancel_where(&mut self, pred: impl Fn(&Fetch) -> bool) -> Vec<FetchId> {
+        let mut ids: Vec<FetchId> = self.fetches.iter().filter(|(_, f)| pred(f)).map(|(id, _)| *id).collect();
+        ids.sort();
+        for id in &ids {
+            self.cancel_quietly(*id);
+        }
+        ids
     }
 
     /// Closes the connection with `code` and forgets it: scripts hear nothing more of it.
@@ -190,27 +336,32 @@ impl NetRegistry {
         for id in old {
             self.close_quietly(id, GOING_AWAY, "going away");
         }
+        self.cancel_where(|f| f.generation != keep);
         self.pending.clear();
     }
 
-    /// Closes every connection with 1001 and forgets every pending event: a fresh engine
-    /// instance knows none of them.
+    /// Closes every connection with 1001, cancels every fetch and forgets every pending event: a
+    /// fresh engine instance knows none of them.
     pub fn close_all(&mut self) {
         let all: Vec<ConnId> = self.conns.keys().copied().collect();
         for id in all {
             self.close_quietly(id, GOING_AWAY, "going away");
         }
+        self.cancel_where(|_| true);
         self.pending.clear();
     }
 
-    /// Closes every connection with 1001 and queues its `close` for the next delivery: the
-    /// game left play.
+    /// Closes every connection with 1001 and cancels every fetch, queueing each one's `close` or
+    /// rejection for the next delivery: the game left play.
     pub fn close_for_edit(&mut self) {
         let mut all: Vec<ConnId> = self.conns.keys().copied().collect();
         all.sort();
         for id in all {
             self.close_quietly(id, GOING_AWAY, "going away");
             self.pending.push(NetEvent::Close { id, code: GOING_AWAY, reason: "going away".into(), clean: true });
+        }
+        for id in self.cancel_where(|_| true) {
+            self.pending.push(NetEvent::FetchFailed { id, reason: LEFT_PLAY.into() });
         }
     }
 
@@ -232,8 +383,7 @@ impl NetRegistry {
             match r {
                 NetRequest::Open { id, generation, request } => match policy.check(&request.url, &request.headers, edit) {
                     Ok(origin) => {
-                        let wire = ConnId(self.next_wire);
-                        self.next_wire += 1;
+                        let wire = ConnId(self.next_wire());
                         self.conns.insert(id, Conn { wire, generation, state: ConnState::Connecting, origin });
                         self.wires.insert(wire, id);
                         self.transport.open(wire, &request);
@@ -253,14 +403,79 @@ impl NetRegistry {
                         self.transport.close(c.wire, code, &reason);
                     }
                 }
+                NetRequest::Fetch { id, generation, request, redirect } => match policy.check_fetch(&request.url, edit) {
+                    Ok(_) => self.start_hop(id, Fetch { wire: FetchId(0), generation, request, redirect, hops: 0 }),
+                    Err(refusal) => {
+                        log.push(format!("fetch {}: {refusal}", request.url));
+                        self.pending.push(NetEvent::FetchFailed { id, reason: format!("fetch {}: {refusal}", request.url) });
+                    }
+                },
+                NetRequest::Abort { id, .. } => self.cancel_quietly(id),
             }
         }
         log
     }
 
+    /// A hop's response: the next hop, or what scripts receive (`None` while a hop is in flight).
+    fn on_response(&mut self, id: FetchId, mut response: HttpResponse, policy: &NetPolicy, log: &mut Vec<String>) -> Option<NetEvent> {
+        let mut fetch = self.fetches.remove(&id)?;
+        self.fetch_wires.remove(&fetch.wire);
+        let url = fetch.request.url.clone();
+        let fail = |log: &mut Vec<String>, why: String| {
+            log.push(format!("fetch {url}: {why}"));
+            Some(NetEvent::FetchFailed { id, reason: format!("fetch {url}: {why}") })
+        };
+        if response.body.len() > MAX_MESSAGE_BYTES {
+            return fail(log, http::TOO_BIG.into());
+        }
+        let location = response.header("location").map(str::to_string);
+        let redirect = matches!(response.status, 301 | 302 | 303 | 307 | 308) && location.is_some();
+        if !redirect || fetch.redirect == Redirect::Manual {
+            response.url = url;
+            response.redirected = fetch.hops > 0;
+            return Some(NetEvent::Response { id, response });
+        }
+        if fetch.redirect == Redirect::Error {
+            return fail(log, format!("redirected with {} and redirect is \"error\"", response.status));
+        }
+        if fetch.hops >= MAX_REDIRECTS {
+            return fail(log, format!("more than {MAX_REDIRECTS} redirects"));
+        }
+        let Some(next) = resolve(&url, location.as_deref().unwrap_or_default()) else {
+            return fail(log, format!("a redirect to a location that is not a URL: {:?}", location.unwrap_or_default()));
+        };
+        let refused = |log: &mut Vec<String>, refusal: Refusal| {
+            log.push(format!("fetch {next}: {refusal}"));
+            Some(NetEvent::FetchFailed { id, reason: format!("fetch {next}: {refusal}") })
+        };
+        let target = match policy.check_fetch(&next, false) {
+            Ok(t) => t,
+            Err(refusal) => return refused(log, refusal),
+        };
+        let from = policy::parse_target(&url).ok();
+        if from.as_ref().is_some_and(|f| f.scheme == Scheme::Https) && target.scheme == Scheme::Http {
+            return refused(log, Refusal::Downgrade);
+        }
+        let request = &mut fetch.request;
+        let to_get = response.status == 303 && request.method != "HEAD" || matches!(response.status, 301 | 302) && request.method == "POST";
+        if to_get {
+            request.method = "GET".into();
+            request.body.clear();
+            request.headers.retain(|(k, _)| !matches!(k.to_ascii_lowercase().as_str(), "content-type" | "content-encoding" | "content-language" | "content-location"));
+        }
+        if from.is_none_or(|f| f.host != target.host || f.port != target.port) {
+            request.headers.retain(|(k, _)| !k.eq_ignore_ascii_case("authorization") && !k.eq_ignore_ascii_case("cookie"));
+        }
+        request.url = next;
+        fetch.hops += 1;
+        self.start_hop(id, fetch);
+        None
+    }
+
     /// What to deliver this frame: core's own events, then what the transport received, with
-    /// the queue bounds applied. Returns the batch and log lines for crossed bounds.
-    pub fn take_batch(&mut self) -> (Vec<NetEvent>, Vec<String>) {
+    /// the queue bounds applied and redirects followed through `policy`. Returns the batch and
+    /// log lines for crossed bounds, refused hops and failures.
+    pub fn take_batch(&mut self, policy: &NetPolicy) -> (Vec<NetEvent>, Vec<String>) {
         let mut log = Vec::new();
         self.polled.clear();
         self.transport.poll(&mut self.polled);
@@ -270,7 +485,25 @@ impl NetRegistry {
         let mut queued: HashMap<ConnId, (usize, usize)> = HashMap::new();
         let polled = std::mem::take(&mut self.polled);
         for event in polled.iter() {
-            let Some(&id) = self.wires.get(&event.id()) else { continue };
+            let wire = match event.event_id() {
+                EventId::Conn(wire) => wire,
+                EventId::Fetch(wire) => {
+                    let Some(&id) = self.fetch_wires.get(&wire) else { continue };
+                    let out = match event.clone() {
+                        NetEvent::Response { response, .. } => self.on_response(id, response, policy, &mut log),
+                        NetEvent::FetchFailed { reason, .. } => self.fetches.remove(&id).map(|f| {
+                            self.fetch_wires.remove(&f.wire);
+                            let origin = policy::parse_target(&f.request.url).map(|t| t.origin()).unwrap_or_default();
+                            log.push(format!("fetch {}: {reason}", f.request.url));
+                            NetEvent::FetchFailed { id, reason: format!("fetch {origin}: {reason}") }
+                        }),
+                        _ => None,
+                    };
+                    batch.extend(out);
+                    continue;
+                }
+            };
+            let Some(&id) = self.wires.get(&wire) else { continue };
             let Some(conn) = self.conns.get_mut(&id) else { continue };
             let event = &with_id(event, id);
             match event {
@@ -303,17 +536,24 @@ impl NetRegistry {
                         }
                     }
                 }
-                NetEvent::Close { code, clean, .. } => {
+                NetEvent::Close { code, clean, reason, .. } => {
                     if *code == TOO_BIG && !clean {
                         log.push(format!("WebSocket to {} closed with 1009: a message was over the 16 MiB limit", conn.origin));
+                    }
+                    let mut event = event.clone();
+                    if *code == ABNORMAL && !clean && !reason.is_empty() {
+                        // Why it failed (a certificate, a refused connection) is for the log; a
+                        // 1006 close carries no reason on the web.
+                        log.push(format!("WebSocket to {}: {reason}", conn.origin));
+                        event = NetEvent::Close { id, code: ABNORMAL, reason: String::new(), clean: false };
                     }
                     self.forget(id);
                     if !clean {
                         batch.push(NetEvent::Error { id });
                     }
-                    batch.push(event.clone());
+                    batch.push(event);
                 }
-                NetEvent::Error { .. } | NetEvent::Written { .. } => batch.push(event.clone()),
+                NetEvent::Error { .. } | NetEvent::Written { .. } | NetEvent::Response { .. } | NetEvent::FetchFailed { .. } => batch.push(event.clone()),
             }
         }
         self.polled = polled;
@@ -336,8 +576,17 @@ fn with_id(event: &NetEvent, id: ConnId) -> NetEvent {
         | NetEvent::Error { id: i }
         | NetEvent::Close { id: i, .. }
         | NetEvent::Written { id: i, .. } => *i = id,
+        NetEvent::Response { .. } | NetEvent::FetchFailed { .. } => {}
     }
     e
+}
+
+/// A redirect's `location` resolved against the URL it answered.
+fn resolve(base: &str, location: &str) -> Option<String> {
+    let base = url::Url::parse(base).ok()?;
+    let mut next = base.join(location).ok()?;
+    next.set_fragment(None);
+    Some(next.into())
 }
 
 /// Whether the engine is in edit mode.
@@ -384,7 +633,8 @@ pub fn net_deliver(world: &mut World) {
         world.insert_non_send(net);
         return;
     };
-    let (batch, lines) = net.take_batch();
+    let policy = world.get_resource::<NetPolicy>().cloned().unwrap_or_default();
+    let (batch, lines) = net.take_batch(&policy);
     let now = now_ms(world);
     let result = rt.backend.deliver(now, &batch);
     net.recycle(batch);
@@ -428,4 +678,10 @@ pub fn install_fake(app: &mut App) -> FakeTransport {
     let fake = FakeTransport::default();
     app.insert_non_send(NetRegistry::new(Box::new(fake.clone())));
     fake
+}
+
+/// Replaces the transport with sockets trusting `tls`, for tests of a local TLS server: nothing
+/// in `bevy-ts.json` sets it.
+pub fn install_socket(app: &mut App, tls: NetTls) {
+    app.insert_non_send(NetRegistry::new(Box::new(SocketTransport::new(tls))));
 }

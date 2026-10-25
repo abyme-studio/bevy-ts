@@ -17,7 +17,7 @@ use bevy_ts::backend::{
     CallContext, ConsoleMessage, Delivered, Generation, HostCalls, ParamFrame, RunOutput, ScriptBackend, ScriptError, ScriptKey, SourceLocation,
     SystemRun,
 };
-use bevy_ts::net::{ConnId, Frame, NetEvent, NetRequest, OpenRequest};
+use bevy_ts::net::{ConnId, FetchId, Frame, HttpRequest, NetEvent, NetRequest, OpenRequest, Redirect};
 use bevy_ts::log::LogLevel;
 use bevy_ts::manifest::{LoadedGeneration, Manifest, Resolution, Section};
 use deno_core::error::{CoreError, CoreErrorKind, JsError};
@@ -193,6 +193,33 @@ fn op_bevyts_ws_close(state: &mut OpState, #[smi] id: u32, #[smi] generation: u3
     });
 }
 
+/// `redirect` is 0 follow, 1 error, 2 manual; `headers` a JSON array of `[name, value]` pairs.
+#[op2(fast)]
+fn op_bevyts_fetch(
+    state: &mut OpState,
+    #[smi] id: u32,
+    #[smi] generation: u32,
+    #[string] method: &str,
+    #[string] url: &str,
+    #[string] headers: &str,
+    #[buffer] body: &[u8],
+    #[smi] redirect: u32,
+) {
+    let headers = serde_json::from_str(headers).unwrap_or_default();
+    let request = HttpRequest { method: method.to_string(), url: url.to_string(), headers, body: body.to_vec() };
+    let redirect = match redirect {
+        1 => Redirect::Error,
+        2 => Redirect::Manual,
+        _ => Redirect::Follow,
+    };
+    state.borrow_mut::<Outbox>().0.push(NetRequest::Fetch { id: FetchId(id as u64), generation: generation as u64, request, redirect });
+}
+
+#[op2(fast)]
+fn op_bevyts_fetch_abort(state: &mut OpState, #[smi] id: u32, #[smi] generation: u32) {
+    state.borrow_mut::<Outbox>().0.push(NetRequest::Abort { id: FetchId(id as u64), generation: generation as u64 });
+}
+
 deno_core::extension!(
     bevy_ts_v8,
     ops = [
@@ -207,7 +234,9 @@ deno_core::extension!(
         op_bevyts_ws_open,
         op_bevyts_ws_send_text,
         op_bevyts_ws_send_binary,
-        op_bevyts_ws_close
+        op_bevyts_ws_close,
+        op_bevyts_fetch,
+        op_bevyts_fetch_abort
     ],
     state = |state| {
         state.put(ConsoleBuffer::default());
@@ -585,7 +614,17 @@ impl ScriptBackend for V8Backend {
         let number = generation.number as f64;
         let observed = serde_json::to_string(&generation.observed).expect("names serialize");
         let env = serde_json::to_string(&generation.env).expect("env serializes");
-        let begun = self.call(|f| &f.begin, |s, _| vec![num(s, number), v8::String::new(s, &env).unwrap().into(), v8::String::new(s, &observed).unwrap().into()], |_, _| ());
+        let argv = serde_json::to_string(&generation.argv).expect("argv serializes");
+        let begun = self.call(
+            |f| &f.begin,
+            |s, _| {
+                let env = v8::String::new(s, &env).unwrap().into();
+                let observed = v8::String::new(s, &observed).unwrap().into();
+                let argv = v8::String::new(s, &argv).unwrap().into();
+                vec![num(s, number), env, observed, argv]
+            },
+            |_, _| (),
+        );
         let result = begun.and_then(|_| self.evaluate(&entry));
         if let Err(e) = result {
             let _ = self.call(|f| &f.abort, |_, _| vec![], |_, _| ());
@@ -851,14 +890,20 @@ pub fn factory(options: V8Options) -> impl Fn() -> Box<dyn ScriptBackend> + Send
 
 /// One delivery's events as JS reads them (web.js `deliver`): `[0, id, protocol, extensions]`
 /// open, `[1, id, text]` and `[2, id, ArrayBuffer]` messages, `[3, id]` error,
-/// `[4, id, code, reason, clean]` close, `[5, id, bytes]` written.
+/// `[4, id, code, reason, clean]` close, `[5, id, bytes]` written; for fetches,
+/// `[6, id, status, statusText, headersJson, ArrayBuffer, url, redirected]` a response and
+/// `[7, id, reason]` a failure.
 fn event_batch<'s>(s: &mut v8::PinScope<'s, '_>, events: &[NetEvent]) -> v8::Local<'s, v8::Value> {
     let str = |s: &mut v8::PinScope<'s, '_>, t: &str| -> v8::Local<'s, v8::Value> {
         v8::String::new(s, t).map_or_else(|| v8::String::empty(s).into(), Into::into)
     };
     let arr = v8::Array::new(s, events.len() as i32);
     for (i, e) in events.iter().enumerate() {
-        let id = num(s, e.id().0 as f64);
+        let id = match e {
+            NetEvent::Open { id, .. } | NetEvent::Message { id, .. } | NetEvent::Error { id } | NetEvent::Close { id, .. } | NetEvent::Written { id, .. } => id.0,
+            NetEvent::Response { id, .. } | NetEvent::FetchFailed { id, .. } => id.0,
+        };
+        let id = num(s, id as f64);
         let items: Vec<v8::Local<v8::Value>> = match e {
             NetEvent::Open { protocol, extensions, .. } => vec![num(s, 0.0), id, str(s, protocol), str(s, extensions)],
             NetEvent::Message { frame: Frame::Text(t), .. } => vec![num(s, 1.0), id, str(s, t)],
@@ -871,6 +916,21 @@ fn event_batch<'s>(s: &mut v8::PinScope<'s, '_>, events: &[NetEvent]) -> v8::Loc
                 vec![num(s, 4.0), id, num(s, *code as f64), str(s, reason), v8::Boolean::new(s, *clean).into()]
             }
             NetEvent::Written { bytes, .. } => vec![num(s, 5.0), id, num(s, *bytes as f64)],
+            NetEvent::Response { response, .. } => {
+                let headers = serde_json::to_string(&response.headers).expect("headers serialize");
+                let store = v8::ArrayBuffer::new_backing_store_from_vec(response.body.clone()).make_shared();
+                vec![
+                    num(s, 6.0),
+                    id,
+                    num(s, response.status as f64),
+                    str(s, &response.reason),
+                    str(s, &headers),
+                    v8::ArrayBuffer::with_backing_store(s, &store).into(),
+                    str(s, &response.url),
+                    v8::Boolean::new(s, response.redirected).into(),
+                ]
+            }
+            NetEvent::FetchFailed { reason, .. } => vec![num(s, 7.0), id, str(s, reason)],
         };
         let item = v8::Array::new_with_elements(s, &items);
         arr.set_index(s, i as u32, item.into());

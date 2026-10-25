@@ -1,7 +1,8 @@
 //! The engine binary's command line, shared by the prebuilt binary and every project engine.
 //!
-//! `bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]]`,
-//! `bevy-ts build`, `bevy-ts play`, and a bare start that plays the `game/` beside the binary.
+//! `bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]] [-- <args>…]`,
+//! `bevy-ts build`, `bevy-ts play`, and an engine with a `game/` beside it, which plays that game
+//! with every argument it was started with.
 
 use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
 use bevy::prelude::*;
@@ -20,10 +21,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const USAGE: &str = "usage:
-  bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]]
+  bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]] [-- <args>…]
   bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--json]
   bevy-ts build --targets [--json]
-  bevy-ts play <game folder> [--headless]
+  bevy-ts play <game folder> [--headless] [-- <args>…]
   bevy-ts types [--out <file>]
   bevy-ts transform <file.ts> [--dev]
   bevy-ts skeleton [--headless]
@@ -43,14 +44,20 @@ pub struct DevArgs {
     pub edit: bool,
     pub remote_port: u16,
     pub inspect: Option<SocketAddr>,
+    /// The game's arguments, after `--`: `process.argv.slice(2)`.
+    pub game_args: Vec<String>,
 }
 
 fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
     let mut entry = None;
-    let mut out = DevArgs { entry: String::new(), headless: false, viewport: false, edit: false, remote_port: 15702, inspect: None };
+    let mut out = DevArgs { entry: String::new(), headless: false, viewport: false, edit: false, remote_port: 15702, inspect: None, game_args: vec![] };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--" => {
+                out.game_args = it.by_ref().cloned().collect();
+                break;
+            }
             "--headless" => out.headless = true,
             "--viewport" => out.viewport = true,
             "--edit" => out.edit = true,
@@ -80,6 +87,22 @@ fn parse_dev(args: &[String]) -> Result<DevArgs, String> {
     Ok(out)
 }
 
+/// `bevy-ts play <game folder> [--headless] [-- <args>…]`: the folder, headless, the game's arguments.
+fn parse_play(args: &[String]) -> Result<(String, bool, Vec<String>), String> {
+    let (own, game_args) = match args.iter().position(|a| a == "--") {
+        Some(i) => (&args[..i], args[i + 1..].to_vec()),
+        None => (args, vec![]),
+    };
+    let headless = own.iter().any(|a| a == "--headless");
+    if let Some(bad) = own.iter().find(|a| a.starts_with("--") && *a != "--headless") {
+        return Err(format!("unknown option {bad}"));
+    }
+    match own.iter().filter(|a| !a.starts_with("--")).collect::<Vec<_>>().as_slice() {
+        [folder] => Ok((folder.to_string(), headless, game_args)),
+        _ => Err("name one game folder".into()),
+    }
+}
+
 /// No extra plugins: what the prebuilt binary passes to [`run`].
 pub struct Prebuilt;
 
@@ -98,6 +121,11 @@ pub fn run(extra: impl Plugin) {
 pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let engine = Engine { identity };
+    // A built game: the engine plays the `game/` beside it, wherever it was started from, and its
+    // arguments are the game's, never a command.
+    if let Some(folder) = crate::play::beside_exe() {
+        std::process::exit(crate::play::run(&engine, extra, &folder, false, &args));
+    }
     match args.first().map(String::as_str) {
         Some("dev") => match parse_dev(&args[1..]) {
             Ok(a) => {
@@ -114,21 +142,13 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
             }
         },
         Some("build") => std::process::exit(crate::build::run(&args[1..])),
-        Some("play") => {
-            let headless = args[1..].iter().any(|a| a == "--headless");
-            let folders: Vec<&String> = args[1..].iter().filter(|a| !a.starts_with("--")).collect();
-            match (folders.as_slice(), args[1..].iter().find(|a| a.starts_with("--") && *a != "--headless")) {
-                ([folder], None) => std::process::exit(crate::play::run(&engine, extra, Path::new(folder), headless)),
-                (_, Some(bad)) => {
-                    eprintln!("bevy-ts play: unknown option {bad}\n{USAGE}");
-                    std::process::exit(2);
-                }
-                _ => {
-                    eprintln!("bevy-ts play: name one game folder\n{USAGE}");
-                    std::process::exit(2);
-                }
+        Some("play") => match parse_play(&args[1..]) {
+            Ok((folder, headless, game_args)) => std::process::exit(crate::play::run(&engine, extra, Path::new(&folder), headless, &game_args)),
+            Err(e) => {
+                eprintln!("bevy-ts play: {e}\n{USAGE}");
+                std::process::exit(2);
             }
-        }
+        },
         Some("types") => {
             if engine.identity.kind == bevy_ts::engine::EngineKind::Prebuilt
                 && let Some(code) = crate::supervise::types_in_project(&args[1..])
@@ -161,14 +181,6 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
             std::process::exit(2);
         }
         Some("skeleton") => skeleton(&engine, extra, args.iter().any(|a| a == "--headless")),
-        None => {
-            // A built game: the engine plays the `game/` beside it, wherever it was started from.
-            if let Some(folder) = crate::play::beside_exe() {
-                std::process::exit(crate::play::run(&engine, extra, &folder, false));
-            }
-            eprintln!("{USAGE}");
-            std::process::exit(2);
-        }
         _ => {
             eprintln!("{USAGE}");
             std::process::exit(2);
@@ -359,6 +371,7 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
         let mut info = app.world_mut().resource_mut::<RuntimeInfo>();
         info.entry = Some(compiler.entry.clone());
     }
+    app.insert_resource(bevy_ts::backend::ScriptArgs::new(&compiler.entry, &args.game_args));
     if args.edit {
         // Edit before the first frame: the viewport's `Startup` enters edit mode, and nothing of
         // the game runs until the first play.
@@ -425,5 +438,36 @@ fn report_changed(q: Query<(Entity, &Transform), Changed<Transform>>, time: Res<
         *last = time.elapsed_secs();
         let changed: Vec<_> = q.iter().map(|(e, t)| format!("{e} y={:.2}", t.translation.y)).collect();
         info!("Changed<Transform> this frame: {} entities {changed:?}", changed.len());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn dev_keeps_the_arguments_after_a_double_dash() {
+        let a = parse_dev(&strings(&["src/main.ts", "--headless", "--", "--level", "arena"])).unwrap();
+        assert_eq!(a.entry, "src/main.ts");
+        assert!(a.headless);
+        assert_eq!(a.game_args, ["--level", "arena"]);
+        let a = parse_dev(&strings(&["src/main.ts", "--", "--headless", "--"])).unwrap();
+        assert!(!a.headless, "after --, every argument is the game's");
+        assert_eq!(a.game_args, ["--headless", "--"]);
+        assert!(parse_dev(&strings(&["src/main.ts"])).unwrap().game_args.is_empty());
+        assert!(parse_dev(&strings(&["src/main.ts", "--level"])).is_err(), "before --, an unknown option is refused");
+    }
+
+    #[test]
+    fn play_takes_the_game_arguments_after_a_double_dash() {
+        assert_eq!(parse_play(&strings(&["dist/arena/game", "--headless", "--", "--seed", "7"])), Ok(("dist/arena/game".into(), true, strings(&["--seed", "7"]))));
+        assert_eq!(parse_play(&strings(&["dist/arena/game"])), Ok(("dist/arena/game".into(), false, vec![])));
+        assert_eq!(parse_play(&strings(&["game", "--", "other"])), Ok(("game".into(), false, strings(&["other"]))));
+        assert!(parse_play(&strings(&["game", "--seed"])).unwrap_err().contains("unknown option --seed"));
+        assert!(parse_play(&strings(&["--", "game"])).unwrap_err().contains("one game folder"));
     }
 }

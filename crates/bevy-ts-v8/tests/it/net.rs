@@ -1,12 +1,13 @@
-//! Change script-networking, end to end in V8 and headless: scripts' `WebSocket`s and timers
-//! through the fake transport, with `Time<Real>` advanced 16 ms a frame.
+//! Changes script-networking and script-networking-2, end to end in V8 and headless: scripts'
+//! `WebSocket`s, fetches and timers through the fake transport, with `Time<Real>` advanced 16 ms a
+//! frame. The redirect and bound rules are core's (bevy-ts `tests/it/net.rs`).
 
 use crate::common;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use bevy_ts::generation::{self, ReloadStatus};
-use bevy_ts::net::{self, ConnId, FakeTransport, Frame, NetPolicy};
+use bevy_ts::net::{self, ConnId, FakeTransport, FetchId, Frame, NetPolicy};
 use bevy_ts::runtime::{ScriptClock, ScriptRuntime};
 use bevy_ts::EngineMode;
 use common::*;
@@ -233,6 +234,168 @@ fn a_dropped_connection_reports_1006() {
     let m = messages(&app);
     let e = m.iter().position(|l| l == "error").expect("error fired");
     assert!(m[e + 1..].iter().any(|l| l == "close 1006 false"), "{m:?}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// fetch and Blob
+
+/// Loads `src` and runs a frame, so its fetches reach the transport; returns the last fetch's id.
+fn fetching(app: &mut App, fake: &FakeTransport, src: &str) -> FetchId {
+    load(app, &[("fetch.js", src)]);
+    app.update();
+    fake.last_fetch().expect("the fetch reached the transport").0
+}
+
+#[test]
+fn a_headless_test_of_a_fetch() {
+    let (mut app, fake) = net_app();
+    let wire = fetching(
+        &mut app,
+        &fake,
+        r#"fetch("http://127.0.0.1:4477/api/held", { headers: { authorization: "Bearer k" } }).then((r) => r.json()).then((v) => console.log("held " + JSON.stringify(v)));"#,
+    );
+    let seen = fake.fetch(wire).unwrap().request;
+    assert_eq!((seen.method.as_str(), seen.url.as_str()), ("GET", "http://127.0.0.1:4477/api/held"));
+    assert_eq!(seen.header("authorization"), Some("Bearer k"));
+    app.update();
+    assert!(!has(&app, "held"), "nothing settles before the answer");
+    fake.respond(wire, 200, &[("content-type", "application/json")], br#"{"held":[]}"#);
+    app.update();
+    assert!(has(&app, r#"held {"held":[]}"#), "the continuation runs in the frame after the answer: {:?}", messages(&app));
+}
+
+#[test]
+fn a_fetch_not_allowed_rejects_with_a_type_error() {
+    let (mut app, fake) = net_app();
+    load(&mut app, &[("f.js", r#"fetch("https://example.com/").catch((e) => console.log(`rejected ${e.constructor.name} ${e.message}`)); fetch("ftp://127.0.0.1:4477/").catch((e) => console.log(`scheme ${e.constructor.name}`));"#)]);
+    updates(&mut app, 2);
+    assert!(fake.fetches().is_empty(), "no connection is attempted");
+    assert!(has(&app, "rejected TypeError fetch https://example.com/: example.com:443 is not in net.allow"), "{:?}", messages(&app));
+    assert!(has(&app, "scheme TypeError"), "{:?}", messages(&app));
+}
+
+#[test]
+fn a_post_with_a_json_body_and_the_web_shape_of_a_response() {
+    let (mut app, fake) = net_app();
+    let wire = fetching(
+        &mut app,
+        &fake,
+        r#"
+        fetch(new URL("/a", "http://127.0.0.1:4477"), { method: "POST", body: JSON.stringify({ a: 1 }), headers: [["x-one", "1"]], cache: "no-store" }).then(async (r) => {
+          console.log(`res ${r.status} ${r.statusText} ${r.ok} ${r.type} ${r.url} ${r.redirected} ${JSON.stringify([...r.headers])} ${JSON.stringify(r.headers.getSetCookie())}`);
+          console.log(`body ${await r.text()} ${r.bodyUsed}`);
+          await r.text().catch((e) => console.log(`again ${e.constructor.name}`));
+        });
+        "#,
+    );
+    let seen = fake.fetch(wire).unwrap().request;
+    assert_eq!(seen.method, "POST");
+    assert_eq!(seen.header("content-type"), Some("text/plain;charset=UTF-8"));
+    assert_eq!(seen.header("x-one"), Some("1"));
+    assert_eq!(seen.body, br#"{"a":1}"#);
+    fake.respond(wire, 201, &[("X-Z", "z"), ("Set-Cookie", "a=1"), ("set-cookie", "b=2"), ("x-a", "1")], b"made");
+    updates(&mut app, 2);
+    assert!(
+        has(&app, r#"res 201  true basic http://127.0.0.1:4477/a false [["set-cookie","a=1"],["set-cookie","b=2"],["x-a","1"],["x-z","z"]] ["a=1","b=2"]"#),
+        "{:?}",
+        messages(&app)
+    );
+    // "The body is read once".
+    assert!(has(&app, "body made true"), "{:?}", messages(&app));
+    assert!(has(&app, "again TypeError"), "{:?}", messages(&app));
+}
+
+#[test]
+fn a_redirect_reaches_the_script_as_its_last_url() {
+    let (mut app, fake) = net_app();
+    let first = fetching(&mut app, &fake, r#"fetch("http://127.0.0.1:4477/a").then((r) => console.log(`end ${r.url} ${r.redirected} ${r.status}`));"#);
+    fake.respond(first, 302, &[("location", "http://127.0.0.1:5000/b")], b"");
+    app.update();
+    let (second, hop) = fake.last_fetch().unwrap();
+    assert_eq!(hop.request.url, "http://127.0.0.1:5000/b");
+    fake.respond(second, 200, &[], b"");
+    app.update();
+    assert!(has(&app, "end http://127.0.0.1:5000/b true 200"), "{:?}", messages(&app));
+}
+
+#[test]
+fn a_timeout() {
+    let (mut app, fake) = net_app();
+    let wire = fetching(
+        &mut app,
+        &fake,
+        r#"fetch("http://127.0.0.1:4477/never", { signal: AbortSignal.timeout(50) }).catch((e) => console.log(`timeout ${e.constructor.name} ${e.name}`));"#,
+    );
+    let mut frame = 0;
+    while !has(&app, "timeout") {
+        frame += 1;
+        assert!(frame <= 4, "not rejected within the fourth frame: {:?}", messages(&app));
+        app.update();
+    }
+    assert!(has(&app, "timeout DOMException TimeoutError"), "{:?}", messages(&app));
+    app.update();
+    assert!(fake.cancelled(wire), "the engine cancels the request by the next delivery");
+}
+
+#[test]
+fn aborted_before_it_starts() {
+    let (mut app, fake) = net_app();
+    load(&mut app, &[("f.js", r#"const c = new AbortController(); c.abort(); fetch("http://127.0.0.1:4477/", { signal: c.signal }).catch((e) => console.log(`aborted ${e.name}`));"#)]);
+    updates(&mut app, 2);
+    assert!(fake.fetches().is_empty(), "no connection is attempted");
+    assert!(has(&app, "aborted AbortError"), "{:?}", messages(&app));
+}
+
+#[test]
+fn saving_during_a_fetch_settles_nothing() {
+    let (mut app, fake) = net_app();
+    let wire = fetching(&mut app, &fake, r#"fetch("http://127.0.0.1:4477/slow").then(() => console.log("settled resolved"), () => console.log("settled rejected"));"#);
+    load(&mut app, &[("other.js", "")]);
+    assert!(fake.cancelled(wire));
+    fake.respond(wire, 200, &[], b"late");
+    updates(&mut app, 3);
+    assert!(!has(&app, "settled"), "{:?}", messages(&app));
+}
+
+#[test]
+fn a_fetch_across_edit_rejects_at_the_first_frame_of_play() {
+    let (mut app, fake) = net_app();
+    let wire = fetching(&mut app, &fake, r#"fetch("http://127.0.0.1:4477/slow").catch((e) => console.log(`left ${e.constructor.name} ${e.message}`));"#);
+    set_mode(&mut app, EngineMode::Edit);
+    assert!(fake.cancelled(wire));
+    updates(&mut app, 3);
+    assert!(!has(&app, "left"));
+    set_mode(&mut app, EngineMode::Play);
+    assert!(has(&app, "left TypeError the game left play"), "{:?}", messages(&app));
+}
+
+#[test]
+fn binary_as_a_blob() {
+    let (mut app, fake) = net_app();
+    load(
+        &mut app,
+        &[(
+            "blob.js",
+            r#"
+            const ws = new WebSocket("ws://127.0.0.1:4477/echo");
+            ws.onopen = () => {
+              ws.binaryType = "blob";
+              ws.send(new Blob(["ab"]));
+              console.log(`buffered ${ws.bufferedAmount}`);
+            };
+            ws.onmessage = async (e) => console.log(`blob ${e.data instanceof Blob} ${e.data.size} ${e.data.type === ""} ${await e.data.text()}`);
+            "#,
+        )],
+    );
+    let (wire, _) = fake.last().unwrap();
+    fake.accept(wire, "");
+    app.update();
+    app.update();
+    assert_eq!(fake.conn(wire).unwrap().sent, vec![Frame::Binary(b"ab".to_vec())], "one binary frame");
+    assert!(has(&app, "buffered 2"), "{:?}", messages(&app));
+    fake.push_binary(wire, b"ab");
+    updates(&mut app, 2);
+    assert!(has(&app, "blob true 2 true ab"), "{:?}", messages(&app));
 }
 
 /// Task 5.4: a burst of 2,000 1 KiB messages in one frame, each parsed by the script. Writes the

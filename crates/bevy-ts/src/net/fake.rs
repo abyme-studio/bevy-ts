@@ -1,7 +1,8 @@
 //! A transport with no socket and no thread: tests accept or refuse opens, push messages, close
-//! or drop from the server side, and read what scripts sent.
+//! or drop from the server side, read what scripts sent, and answer or fail each fetch (each hop
+//! of a redirect is a fetch of its own, as core follows them).
 
-use super::{ConnId, Frame, NetEvent, OpenRequest, Transport};
+use super::{ConnId, FetchId, Frame, HttpRequest, HttpResponse, NetEvent, OpenRequest, Transport};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -16,9 +17,20 @@ pub struct FakeConn {
     pub accepted: bool,
 }
 
+/// One fetch, or one hop of one, as the fake server sees it.
+#[derive(Clone, Debug, Default)]
+pub struct FakeFetch {
+    pub request: HttpRequest,
+    /// Whether core cancelled it (an abort, a generation replaced, edit mode).
+    pub cancelled: bool,
+    /// Whether the test answered or failed it.
+    pub answered: bool,
+}
+
 #[derive(Default)]
 struct State {
     conns: BTreeMap<ConnId, FakeConn>,
+    fetches: BTreeMap<FetchId, FakeFetch>,
     events: Vec<NetEvent>,
 }
 
@@ -78,6 +90,44 @@ impl FakeTransport {
     pub fn written(&self, id: ConnId, bytes: usize) {
         self.0.lock().unwrap().events.push(NetEvent::Written { id, bytes });
     }
+
+    /// Every fetch so far, each hop its own, by id.
+    pub fn fetches(&self) -> BTreeMap<FetchId, FakeFetch> {
+        self.0.lock().unwrap().fetches.clone()
+    }
+
+    /// The fetch last started.
+    pub fn last_fetch(&self) -> Option<(FetchId, FakeFetch)> {
+        self.0.lock().unwrap().fetches.iter().next_back().map(|(id, f)| (*id, f.clone()))
+    }
+
+    pub fn fetch(&self, id: FetchId) -> Option<FakeFetch> {
+        self.0.lock().unwrap().fetches.get(&id).cloned()
+    }
+
+    /// Answers a fetch with a whole response; names are lower-cased as the wire's would be.
+    pub fn respond(&self, id: FetchId, status: u16, headers: &[(&str, &str)], body: &[u8]) {
+        let mut s = self.0.lock().unwrap();
+        if let Some(f) = s.fetches.get_mut(&id) {
+            f.answered = true;
+        }
+        let headers = headers.iter().map(|(k, v)| (k.to_ascii_lowercase(), v.to_string())).collect();
+        let response = HttpResponse { status, reason: String::new(), headers, body: body.to_vec(), ..Default::default() };
+        s.events.push(NetEvent::Response { id, response });
+    }
+
+    /// Fails a fetch, as a refused connection or a reset would; `reason` is the log's.
+    pub fn fail(&self, id: FetchId, reason: &str) {
+        let mut s = self.0.lock().unwrap();
+        if let Some(f) = s.fetches.get_mut(&id) {
+            f.answered = true;
+        }
+        s.events.push(NetEvent::FetchFailed { id, reason: reason.into() });
+    }
+
+    pub fn cancelled(&self, id: FetchId) -> bool {
+        self.0.lock().unwrap().fetches.get(&id).is_some_and(|f| f.cancelled)
+    }
 }
 
 impl Transport for FakeTransport {
@@ -106,6 +156,16 @@ impl Transport for FakeTransport {
             NetEvent::Close { id, code: super::ABNORMAL, reason: String::new(), clean: false }
         };
         s.events.push(event);
+    }
+
+    fn fetch(&mut self, id: FetchId, request: &HttpRequest) {
+        self.0.lock().unwrap().fetches.insert(id, FakeFetch { request: request.clone(), ..Default::default() });
+    }
+
+    fn cancel(&mut self, id: FetchId) {
+        if let Some(f) = self.0.lock().unwrap().fetches.get_mut(&id) {
+            f.cancelled = true;
+        }
     }
 
     fn poll(&mut self, out: &mut Vec<NetEvent>) {

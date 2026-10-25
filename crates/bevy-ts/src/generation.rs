@@ -215,7 +215,8 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     world.remove_resource::<crate::observers::NewTargeted>();
     let observed = crate::observers::observed(world);
     let env = world.get_resource::<crate::net::NetPolicy>().map(|p| p.env.clone()).unwrap_or_default();
-    let generation = Generation { number, set, env, now_ms: crate::net::now_ms(world), observed };
+    let argv = world.get_resource::<crate::backend::ScriptArgs>().map(|a| a.0.clone()).unwrap_or_default();
+    let generation = Generation { number, set, env, argv, now_ms: crate::net::now_ms(world), observed };
     let result = load_and_apply(world, &mut rt, &generation);
     let report = match result {
         Ok((migrations, sections, requests)) => {
