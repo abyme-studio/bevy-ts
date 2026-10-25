@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Rust exports system params to TS
-A Rust crate (the project's own or a port) SHALL be able to export a Bevy `SystemParam` to TS by putting `#[bevy_ts::export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` block of the param and calling `app.ts_param::<P>()`. Every `pub fn` in that block SHALL become a method of the TS type `Name`. The macro SHALL generate the host function per method, the argument and result codecs, the TS declaration and the JS glue. Method signatures SHALL be restricted to `&self` or `&mut self` plus scalars, `bool`, `Vec2`, `Vec3`, `Quat`, `Entity`, `NativeLayout` records, `&str` arguments and `String` results, `&[T]` and `&mut [T]` of those numeric kinds, and `Option` of those; any other type SHALL be a compile error naming the parameter. The param MAY write: `ResMut`, `Query<&mut T>` and the other shapes the coverage table supports. A type that is not a `SystemParam`, such as `&mut World`, SHALL fail to compile.
+A Rust crate (the project's own or a port) SHALL be able to export a Bevy `SystemParam` to TS by putting `#[bevy_ts::export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` block of the param and calling `app.ts_param::<P>()`. Every `pub fn` in that block SHALL become a method of the TS type `Name`. The macro SHALL generate the host function per method, the argument and result codecs, the TS declaration and the JS glue. Method signatures SHALL be restricted to `&self` or `&mut self` plus scalars, `bool`, `Vec2`, `Vec3`, `Quat`, `Entity`, `NativeLayout` records, fieldless enums (crossing as their variant names, a record that leaves one out getting its first variant), `&str` arguments and `String` results, `&[T]` and `&mut [T]` of those numeric kinds, and `Option` of those; any other type SHALL be a compile error naming the parameter. The param MAY write: `ResMut`, `Query<&mut T>` and the other shapes the coverage table supports. A type that is not a `SystemParam`, such as `&mut World`, SHALL fail to compile.
 
 #### Scenario: Rapier's raycast
 - **WHEN** the Rapier port exports `impl ReadRapierContext { pub fn cast_ray(&self, origin: Vec3, dir: Vec3, max_toi: f32, solid: bool, f: RayFilter) -> Option<RayHit> }`
@@ -10,6 +10,10 @@ A Rust crate (the project's own or a port) SHALL be able to export a Bevy `Syste
 #### Scenario: A mutable param
 - **WHEN** a crate exports `impl NavEdit { pub fn block(&mut self, cell: u32) }` on a param holding `ResMut<NavMesh>`
 - **THEN** the crate compiles, and a TS system calling `nav.block(7)` finds cell 7 blocked in `NavMesh` when the call returns
+
+#### Scenario: A fieldless enum
+- **WHEN** a crate exports a method taking a `#[derive(HostRecord)]` record whose field is a fieldless enum `RayCastVisibility { VisibleInView, Visible, Any }`
+- **THEN** TS declares `type RayCastVisibility = "VisibleInView" | "Visible" | "Any"`, a call passing `"Any"` reaches Rust as `Any`, one leaving the field out reaches it as `VisibleInView`, and any other string throws
 
 ## ADDED Requirements
 
