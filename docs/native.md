@@ -180,7 +180,7 @@ export function ortho(q: Query<[Mut<Projection>], With<Camera3d>>) {
   ops. A kind the ops cannot express (sets, maps with other keys, handles, opaque serde types) is
   embedded JSON. The cache is dropped on every reload.
 - A read value is shared with the cache: treat it as read-only on a read row. On a `Mut` row,
-  `value` (or a hole) gives a copy; changing it in place (`p.value.Orthographic.scale = 2`) writes
+  `value` (or a hole) gives a copy; changing it in place (`if ("Orthographic" in p.value) p.value.Orthographic.near = 0`) writes
   it back at the end of the run.
 - An assignment (`p.value = ...`, `weapon.name = "laser"`, `light.color = "#ffd7a8"`) writes at
   once, through the same writer as TSX: over the default, every form TSX takes. It marks the
@@ -221,10 +221,12 @@ export function dim(ambient: ResMut<GlobalAmbientLight>, scale: Res<UiScale>) {
 
 `Res<R>` reads the resource's own row in place; `ResMut<R>` writes it in place and marks its
 change tick, so a Rust system's `Res<R>::is_changed()` sees the write that frame. Holes (such as
-`GlobalAmbientLight.color`) are never visible. A name resolves to a TS resource first, then to a
-Rust resource by type path or unambiguous short name. A Rust resource is never query data. The
-load fails, naming the system, the param and the resource, for a reflect-tier resource (with its reason), a component that is not a
-resource, `ResMut` of an immutable type, a short name several types share (with their paths), or
+`GlobalAmbientLight.color`) are read and written through reflection, as on query rows. A
+reflect-tier resource is taken through its reflected class (`rustComponent("DirectionalLightShadowMap")`,
+see below). A name resolves to a TS resource first, then to a Rust resource by type path or
+unambiguous short name. A Rust resource is never query data. The load fails, naming the system,
+the param and the resource, for a layout class of a reflect-tier resource (with its reason), a
+component that is not a resource, `ResMut` of an immutable type, a short name several types share (with their paths), or
 an unknown name.
 
 An absent resource fails the run with its name, as Bevy's `Res<T>` fails validation. Take

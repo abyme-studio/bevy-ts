@@ -3,7 +3,7 @@
 
 use crate::common;
 
-use bevy::camera::{PerspectiveProjection, Projection};
+use bevy::camera::{OrthographicProjection, PerspectiveProjection, Projection};
 use bevy::prelude::*;
 use bevy_ts::reflect_codec::CALLS;
 use common::*;
@@ -141,7 +141,12 @@ fn a_struct_row_has_its_fields_and_writes_them() {
 export function rename(q: Query<[Mut<Badge>]>) {
   q.each((b: any) => {
     if (b.name === "old") b.name = "new";
-    else if (b.name === "new") b.value.tags.push("again");
+    else if (b.name === "new" && b.value.tags.length === 0) b.value.tags.push("again");
+    else if (b.name === "new") {
+      // An in-place change, then a field assign in the same run: both are written.
+      b.value.tags.push("both");
+      b.name = "last";
+    }
   });
 }
 app.addSystems(Update, rename);
@@ -156,6 +161,9 @@ app.addSystems(Update, rename);
     // A `Mut` value changed in place is written back at the end of the run.
     app.update();
     assert_eq!(app.world().get::<Badge>(e).unwrap().tags, vec!["again".to_string()]);
+    app.update();
+    let b = app.world().get::<Badge>(e).unwrap();
+    assert_eq!((b.name.as_str(), b.tags.clone()), ("last", vec!["again".to_string(), "both".to_string()]));
     assert!(messages(&app).iter().all(|m| !m.contains("threw")), "{:?}", messages(&app));
 }
 
@@ -173,6 +181,75 @@ app.addSystems(Update, raw);
     reload(&mut app, false);
     updates(&mut app, 3);
     assert!(messages(&app).iter().any(|m| m.contains("never a column")), "{:?}", messages(&app));
+}
+
+#[test]
+fn an_optional_reflect_tier_term_is_its_row_or_undefined() {
+    let body = r#"
+import type { Entity, Option } from "bevy-ts";
+export function look(q: Query<[Entity, Lamp, Option<Projection>]>) {
+  const seen: string[] = [];
+  for (const [, , p] of q) seen.push(p === undefined ? "none" : JSON.stringify((p as any).value).includes("Perspective") ? "persp" : "other");
+  console.log(`rows ${seen.sort().join(",")}`);
+}
+app.addSystems(Update, look);
+"#;
+    let mut app = with_types("reflect-option", body);
+    app.world_mut().spawn((Lamp::default(), Projection::Perspective(PerspectiveProjection::default())));
+    app.world_mut().spawn(Lamp::default());
+    app.update();
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    updates(&mut app, 3);
+    assert!(messages(&app).iter().any(|m| m == "rows none,persp"), "{:?}", messages(&app));
+}
+
+/// `ref.get` in TSX reads a reflect-tier component and a layout-tier hole, and re-runs its
+/// binding when Rust changes either.
+#[test]
+fn ref_get_reads_reflected_values_and_reruns_on_change() {
+    use bevy::light::DirectionalLight;
+    use bevy_ts_tsx::TsxNode;
+    let src = r##"import { app, ref, rustComponent } from "bevy-ts";
+import { DirectionalLight } from "bevy-ts/bevy";
+export const Projection = rustComponent("Projection");
+const sun = ref();
+app.scene("main", () => (
+  <>
+    <entity key="sun" ref={sun}><DirectionalLight /></entity>
+    <node key="hud">
+      <text key="cam">{() => { const p = sun.get(Projection); return p ? (JSON.stringify(p).includes("Orthographic") ? "ortho" : "persp") : "none"; }}</text>
+      <text key="color">{() => JSON.stringify(sun.get(DirectionalLight).color)}</text>
+    </node>
+  </>
+));
+"##;
+    let dir = project("reflect-ref-get", &[("game.tsx", src)]);
+    let mut app = app(&dir.join("game.tsx"));
+    app.register_type::<Projection>().register_type::<DirectionalLight>();
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    let find = |app: &mut App, path: &[&str]| {
+        let world = app.world_mut();
+        world.query::<(Entity, &TsxNode)>().iter(world).find(|(_, n)| n.key_path == path).map(|(e, _)| e).unwrap()
+    };
+    let text = |app: &mut App, path: &[&str]| {
+        let e = find(app, path);
+        app.world().get::<Text>(e).map(|t| t.0.clone()).unwrap_or_default()
+    };
+    let sun = find(&mut app, &["sun"]);
+    assert_eq!(text(&mut app, &["hud", "cam"]), "none");
+    app.world_mut().entity_mut(sun).insert(Projection::Perspective(PerspectiveProjection::default()));
+    updates(&mut app, 2);
+    assert_eq!(text(&mut app, &["hud", "cam"]), "persp");
+    *app.world_mut().get_mut::<Projection>(sun).unwrap() = Projection::Orthographic(OrthographicProjection::default_3d());
+    updates(&mut app, 2);
+    assert_eq!(text(&mut app, &["hud", "cam"]), "ortho");
+    app.world_mut().get_mut::<DirectionalLight>(sun).unwrap().color = Color::srgb(0.25, 0.5, 0.75);
+    updates(&mut app, 2);
+    let color = text(&mut app, &["hud", "color"]);
+    assert!(color.contains("Srgba") && color.contains("0.25"), "{color}");
 }
 
 #[test]
