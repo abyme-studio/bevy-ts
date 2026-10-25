@@ -4,7 +4,7 @@
 
 use crate::socket::{accept_tls, test_tls};
 use bevy::tasks::{IoTaskPool, TaskPool};
-use bevy_ts::net::{FetchId, HttpRequest, HttpResponse, NetEvent, SocketTransport, Transport};
+use bevy_ts::net::{FetchId, HttpRequest, HttpResponse, NetEvent, NetTls, SocketTransport, Transport};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc;
@@ -179,12 +179,36 @@ fn the_wrong_name() {
 }
 
 #[test]
+fn a_tls_config_that_cannot_be_built() {
+    // As the platform's on a Linux machine with no certificates: that fetch fails with the
+    // reason, opens no socket, and a fetch in clear still works.
+    IoTaskPool::get_or_init(TaskPool::new);
+    let mut t = SocketTransport::new(NetTls::built_by(|| Err("no certificates here".into())));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    t.fetch(ID, &request("GET", &format!("https://{}/", listener.local_addr().unwrap()), &[], b""));
+    let e = outcome(&mut t).unwrap_err();
+    assert!(e.contains("no certificates here"), "{e}");
+    assert!(listener.accept().is_err(), "no connection was made");
+    let (base, _) = server(None, b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok".to_vec());
+    t.fetch(FetchId(2), &request("GET", &base, &[], b""));
+    assert_eq!(outcome(&mut t).unwrap().body, b"ok");
+}
+
+#[test]
 fn a_huge_download_stops_at_the_bound() {
     let mut answer = b"HTTP/1.1 200 OK\r\ncontent-length: 20971520\r\n\r\n".to_vec();
     answer.resize(answer.len() + (20 << 20), b'x');
     let (base, _) = server(None, answer);
     let mut t = transport();
     t.fetch(ID, &request("GET", &base, &[], b""));
+    let e = outcome(&mut t).unwrap_err();
+    assert!(e.contains("over the 16 MiB limit"), "{e}");
+    // With no length, the bound stops the read.
+    let mut answer = b"HTTP/1.1 200 OK\r\n\r\n".to_vec();
+    answer.resize(answer.len() + (20 << 20), b'x');
+    let (base, _) = server(None, answer);
+    t.fetch(FetchId(2), &request("GET", &base, &[], b""));
     let e = outcome(&mut t).unwrap_err();
     assert!(e.contains("over the 16 MiB limit"), "{e}");
 }

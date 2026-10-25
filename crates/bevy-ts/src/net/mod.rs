@@ -16,7 +16,7 @@ mod tls;
 pub use fake::{FakeConn, FakeFetch, FakeTransport};
 pub use policy::{NetPolicy, Refusal, Scheme};
 pub use socket::SocketTransport;
-pub use tls::NetTls;
+pub use tls::{BuildConfig, NetTls};
 
 use crate::log::{LogLevel, ScriptLog};
 use crate::runtime::{ScriptRuntime, current_generation};
@@ -633,8 +633,11 @@ pub fn net_deliver(world: &mut World) {
         world.insert_non_send(net);
         return;
     };
-    let policy = world.get_resource::<NetPolicy>().cloned().unwrap_or_default();
-    let (batch, lines) = net.take_batch(&policy);
+    // Borrowed, not cloned: this runs every frame.
+    let (batch, lines) = match world.get_resource::<NetPolicy>() {
+        Some(policy) => net.take_batch(policy),
+        None => net.take_batch(&NetPolicy::default()),
+    };
     let now = now_ms(world);
     let result = rt.backend.deliver(now, &batch);
     net.recycle(batch);

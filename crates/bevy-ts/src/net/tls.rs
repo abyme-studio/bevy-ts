@@ -2,6 +2,11 @@
 //! as the process default, so a native crate's own provider is left alone) and ALPN `http/1.1`.
 //! The engine's config verifies through the platform (`rustls-platform-verifier`); a test hands
 //! its own authority with [`NetTls::with_roots`]. Nothing turns verification off.
+//!
+//! The platform's config is built at the first `wss:` or `https:` connection, not when the engine
+//! starts: on Linux it reads every system certificate file, and fails on a machine with none. A
+//! failure fails that connection and the ones after it, with the reason in the log; a game that
+//! makes none never builds it.
 
 use async_io::Async;
 use bevy::tasks::futures_lite::{AsyncRead, AsyncWrite};
@@ -12,40 +17,56 @@ use rustls::{CertificateError, ClientConfig, Error, RootCertStore};
 use std::io;
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll};
 
-/// The TLS config every `wss:` connection and `https:` fetch uses.
+/// How a [`NetTls`] makes its config, the first time a connection needs it.
+pub type BuildConfig = fn() -> Result<ClientConfig, String>;
+
+/// The TLS config every `wss:` connection and `https:` fetch uses, built once, when the first
+/// one needs it. Clones share it.
 #[derive(Clone)]
 pub struct NetTls {
-    config: Arc<ClientConfig>,
+    config: Arc<OnceLock<Result<Arc<ClientConfig>, String>>>,
+    build: BuildConfig,
 }
 
 fn provider() -> Arc<rustls::crypto::CryptoProvider> {
     Arc::new(rustls::crypto::ring::default_provider())
 }
 
-fn finish(mut config: ClientConfig) -> NetTls {
+fn finish(mut config: ClientConfig) -> Arc<ClientConfig> {
     config.alpn_protocols = vec![b"http/1.1".to_vec()];
-    NetTls { config: Arc::new(config) }
+    Arc::new(config)
+}
+
+/// The platform's verifier: the system trust store (and its revocation checks on macOS and
+/// Windows), the system's certificate files on Linux.
+fn platform() -> Result<ClientConfig, String> {
+    let verifier = rustls_platform_verifier::Verifier::new(provider()).map_err(|e| format!("the system's certificates could not be loaded: {e}"))?;
+    let config = ClientConfig::builder_with_provider(provider())
+        .with_safe_default_protocol_versions()
+        .map_err(|e| format!("no TLS version to offer: {e}"))?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(verifier))
+        .with_no_client_auth();
+    Ok(config)
 }
 
 impl Default for NetTls {
-    /// The platform's verifier: the system trust store (and its revocation checks on macOS and
-    /// Windows), the system's certificate files on Linux.
+    /// The platform's verifier, built at the first connection that needs it.
     fn default() -> Self {
-        let verifier = rustls_platform_verifier::Verifier::new(provider()).expect("the platform certificate verifier");
-        let config = ClientConfig::builder_with_provider(provider())
-            .with_safe_default_protocol_versions()
-            .expect("ring supports TLS 1.2 and 1.3")
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(verifier))
-            .with_no_client_auth();
-        finish(config)
+        NetTls::built_by(platform)
     }
 }
 
 impl NetTls {
+    /// A config `build` makes at the first connection that needs it; its error fails that
+    /// connection and every later one. For tests of what a failure does.
+    pub fn built_by(build: BuildConfig) -> Self {
+        NetTls { config: Arc::new(OnceLock::new()), build }
+    }
+
     /// Trusts only the authorities in `pem`, for tests: the platform's store is not read.
     pub fn with_roots(pem: &[u8]) -> Result<Self, String> {
         let mut roots = RootCertStore::empty();
@@ -58,14 +79,18 @@ impl NetTls {
         }
         let config = ClientConfig::builder_with_provider(provider())
             .with_safe_default_protocol_versions()
-            .expect("ring supports TLS 1.2 and 1.3")
+            .map_err(|e| format!("no TLS version to offer: {e}"))?
             .with_root_certificates(roots)
             .with_no_client_auth();
-        Ok(finish(config))
+        let tls = NetTls::built_by(platform);
+        let _ = tls.config.set(Ok(finish(config)));
+        Ok(tls)
     }
 
-    pub fn connector(&self) -> TlsConnector {
-        TlsConnector::from(self.config.clone())
+    /// The connector, building the config the first time; the build's error otherwise.
+    pub fn connector(&self) -> Result<TlsConnector, String> {
+        let config = self.config.get_or_init(|| (self.build)().map(finish));
+        config.clone().map(TlsConnector::from)
     }
 }
 
@@ -106,6 +131,8 @@ pub enum Stream {
 /// Resolves `host` (off the main thread), connects to the first address that answers and, when
 /// `tls` is given, handshakes with the host as server name. The error is the log's reason.
 pub async fn connect(host: &str, port: u16, tls: Option<&NetTls>) -> Result<Stream, String> {
+    // The config first: when it cannot be built, no socket opens.
+    let connector = tls.map(NetTls::connector).transpose()?;
     let bare = host.trim_start_matches('[').trim_end_matches(']').to_string();
     let lookup = bare.clone();
     let addrs: Vec<SocketAddr> = blocking::unblock(move || (lookup.as_str(), port).to_socket_addrs().map(Iterator::collect))
@@ -126,9 +153,9 @@ pub async fn connect(host: &str, port: u16, tls: Option<&NetTls>) -> Result<Stre
         Some(e) => format!("the connection failed: {e}"),
         None => "the name resolved to no address".into(),
     })?;
-    let Some(tls) = tls else { return Ok(Stream::Plain(stream)) };
+    let Some(connector) = connector else { return Ok(Stream::Plain(stream)) };
     let name = server_name(&bare)?;
-    let tls_stream = tls.connector().connect(name, stream).await.map_err(|e| reason(&e, &bare))?;
+    let tls_stream = connector.connect(name, stream).await.map_err(|e| reason(&e, &bare))?;
     Ok(Stream::Tls(Box::new(tls_stream)))
 }
 

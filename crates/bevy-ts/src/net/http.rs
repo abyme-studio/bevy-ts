@@ -17,6 +17,9 @@ const OWN_HEADERS: [&str; 7] = ["host", "content-length", "connection", "transfe
 /// The over-the-bound reason core and this module share.
 pub const TOO_BIG: &str = "the body was over the 16 MiB limit";
 
+/// The most hyper buffers from the connection at once (its floor is 8 KiB).
+const READ_BUFFER: usize = 16 * 1024;
+
 pub async fn exchange(id: FetchId, request: HttpRequest, tls: NetTls, events: Sender<NetEvent>) {
     let event = match run(request, &tls).await {
         Ok(response) => NetEvent::Response { id, response },
@@ -67,10 +70,21 @@ async fn run(request: HttpRequest, tls: &NetTls) -> Result<HttpResponse, String>
     let req = req.body(Full::new(Bytes::from(request.body))).map_err(|e| bad(&e))?;
 
     let stream = tls::connect(&host, port, secure.then_some(tls)).await?;
-    let (mut sender, conn) = hyper::client::conn::http1::handshake(FuturesIo::new(stream)).await.map_err(|e| format!("the HTTP exchange failed: {e}"))?;
+    // hyper's read buffer grows to about 400 KiB unless capped: capped, the body read past the
+    // bound is at most this much.
+    let (mut sender, conn) = hyper::client::conn::http1::Builder::new()
+        .max_buf_size(READ_BUFFER)
+        .handshake(FuturesIo::new(stream))
+        .await
+        .map_err(|e| format!("the HTTP exchange failed: {e}"))?;
     let read = async move {
         let response = sender.send_request(req).await.map_err(|e| format!("the HTTP exchange failed: {e}"))?;
         let (parts, mut body) = response.into_parts();
+        // A length over the bound fails before any of the body is read.
+        let length = parts.headers.get("content-length").and_then(|v| v.to_str().ok()?.parse::<u64>().ok());
+        if length.is_some_and(|n| n > MAX_MESSAGE_BYTES as u64) {
+            return Err(TOO_BIG.to_string());
+        }
         let mut bytes = Vec::new();
         while let Some(frame) = body.frame().await {
             let frame = frame.map_err(|e| format!("the body was cut off: {e}"))?;

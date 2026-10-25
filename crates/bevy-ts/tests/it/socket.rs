@@ -266,6 +266,23 @@ fn an_untrusted_certificate() {
 }
 
 #[test]
+fn a_tls_config_that_cannot_be_built() {
+    // As the platform's on a Linux machine with no certificates: the wss: open closes 1006 with
+    // the reason core logs, and opens no socket.
+    IoTaskPool::get_or_init(TaskPool::new);
+    let mut t = SocketTransport::new(NetTls::built_by(|| Err("no certificates here".into())));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let mut events = Vec::new();
+    open(&mut t, &format!("wss://{}/", listener.local_addr().unwrap()), &[]);
+    until(&mut t, &mut events, is_close);
+    let (code, reason, clean) = last_close(&events);
+    assert_eq!((code, clean), (1006, false), "{events:?}");
+    assert!(reason.contains("no certificates here"), "{reason}");
+    assert!(listener.accept().is_err(), "no connection was made");
+}
+
+#[test]
 fn open_reports_the_protocol_the_server_chose() {
     let (url, seen) = server(Some("v2"), echo);
     let mut t = transport();

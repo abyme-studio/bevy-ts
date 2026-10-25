@@ -98,6 +98,11 @@ there). So a CA the player's machine trusts, a corporate or school one, works, a
 with the OS for the life of a shipped game. The server name is the URL's host; an IP host is
 checked against the certificate's IP names. ALPN offers `http/1.1` only.
 
+The platform's verifier is set up at the game's first `wss:` or `https:` connection, not when the
+engine starts, so a game that makes none never reads the system's certificates. When it cannot be
+set up (a Linux machine with no certificate files), that connection and every later TLS one fail,
+the log saying why; connections in clear are not touched.
+
 There is no option to turn verification off. A refused certificate fails the connection
 (`error`, then `close` 1006) or the fetch (a `TypeError`), and the log says why: not trusted,
 does not match the host, expired.
@@ -172,7 +177,7 @@ What it does not do:
 | | why |
 | --- | --- |
 | no connection reuse | each fetch opens its own connection (and TLS handshake) and closes it when the response is in; fine for a game's occasional calls |
-| bodies are buffered whole, at most 16 MiB | a response over 16 MiB rejects with a `TypeError`, cancels the request, and logs `fetch …: the body was over the 16 MiB limit`; the engine reads at most 16 MiB and a few kilobytes of it. A request body has no limit |
+| bodies are buffered whole, at most 16 MiB | a response over 16 MiB rejects with a `TypeError`, cancels the request, and logs `fetch …: the body was over the 16 MiB limit`; the engine reads at most 16 MiB and 16 KiB of it, and none of it when `content-length` is over the bound. A request body has no limit |
 | no cap on fetches in flight | each is bounded by its 16 MiB; a cap waits for a need |
 | proxies are ignored | `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` are not read |
 | no HTTP/2, no compression, no streaming | `accept-encoding: identity`; `ReadableStream` is not installed |
