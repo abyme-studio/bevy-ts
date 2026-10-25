@@ -2250,8 +2250,8 @@ const HOST = {
    */
   bytes(v, view, param, method, name) {
     if (v instanceof view) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
-    const an = (t) => (/^[AEIOU]/.test(t) ? `an ${t}` : `a ${t}`);
-    const given = ArrayBuffer.isView(v) || v instanceof ArrayBuffer ? an(v.constructor.name) : v === null ? "null" : typeof v;
+    const an = (t) => (/^[AEIO]/.test(t) ? `an ${t}` : `a ${t}`);
+    const given = ArrayBuffer.isView(v) || v instanceof ArrayBuffer ? an(v.constructor.name) : Array.isArray(v) ? "an Array" : v === null ? "null" : typeof v;
     throw new TypeError(`${param}.${method}: ${name} must be ${an(view.name)}, not ${given}`);
   },
   call(id, _n, s0, s1, s2, s3) {
