@@ -103,9 +103,9 @@ app.scene("s", () => (
     /// Red and blue pixel counts in a picture.
     fn counts(img: &Image) -> (usize, usize) {
         let d = img.data.as_ref().unwrap();
-        let px = d.chunks_exact(4);
-        let red = px.clone().filter(|p| p[0] > 128 && p[2] < 64).count();
-        let blue = px.filter(|p| p[2] > 128 && p[0] < 64).count();
+        let (px, _) = d.as_chunks::<4>();
+        let red = px.iter().filter(|p| p[0] > 128 && p[2] < 64).count();
+        let blue = px.iter().filter(|p| p[2] > 128 && p[0] < 64).count();
         (red, blue)
     }
 
