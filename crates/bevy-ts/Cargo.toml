@@ -12,8 +12,9 @@ name = "bevy_ts"
 default = ["pbr"]
 # Native spawn recipes that need rendering (camera3d, directionalLight, cuboid).
 pbr = ["reflect", "bevy/3d_api", "bevy/bevy_pbr", "bevy/bevy_core_pipeline"]
-# `reflect_value`: every reflected value's JSON shape (handles need bevy_asset).
-reflect = ["bevy/bevy_asset"]
+# `reflect_value`: every reflected value's JSON shape (handles need bevy_asset); `reflect_asset`'s
+# hand-maps build animation graphs and clips.
+reflect = ["bevy/bevy_asset", "bevy/bevy_animation"]
 track_location = ["bevy/track_location"]
 
 [dependencies]

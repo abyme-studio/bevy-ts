@@ -56,12 +56,12 @@
 
 ## 9. Stage 2: AnimationClip from TS, on any entity
 
-- [ ] 9.1 Plain roots (design 19): `PlayAnimation` with no `WorldAssetRoot` starts in `apply_changed`; `start` inserts `AnimationPlayer` on the root when `players` finds none and there is no scene; target ids from name paths below the root (root: empty path) and `AnimatedBy(root)` on the root and named descendants without an id
-- [ ] 9.2 `ScriptCurve<A>` (design 17) for every constructor and adaptor in design 16, over every `Animatable` value type, delegating to Bevy's curves
-- [ ] 9.3 `ReflectedField<A>` (design 18): `AnimatableProperty` by type path and top-level field, `get_mut_by_id` + `ReflectFromPtr`, `ComponentField` evaluator id as `animated_field!` hashes it
+- [x] 9.1 Plain roots (design 19): `PlayAnimation` with no `WorldAssetRoot` starts in `apply_changed`; `start` inserts `AnimationPlayer` on the root when `players` finds none and there is no scene; target ids from name paths below the root (root: empty path) and `AnimatedBy(root)` on the root and named descendants without an id
+- [x] 9.2 `ScriptCurve<A>` (design 17) for every constructor and adaptor in design 16, over every `Animatable` value type, delegating to Bevy's curves
+- [x] 9.3 `ReflectedField<A>` (design 18): `AnimatableProperty` by type path and top-level field, `get_mut_by_id` + `ReflectFromPtr`, `ComponentField` evaluator id as `animated_field!` hashes it
 - [ ] 9.4 The `AnimationClip` hand-map entry on `&Slots` (design 20), agreed with build@reflect-assets: write with `add_curve_to_target`, check mode validates only, errors name the curve; read gives the written JSON, `curves: null` for a file clip; `reflect_asset.rs::animation_clip_round_trips`
 - [x] 9.5 `bevy-ts-material`: `alpha::changed` `.after(AnimationSystems)`: material-fade's, in its change (never edit alpha.rs here); the alpha tween test waits on it landing
-- [ ] 9.6 `tests/clip.rs`: `a_tween_translates_with_an_ease`, `a_tween_rotates`, `scale_ping_pongs`, `a_fade_draws_the_frame_it_samples`, `a_named_child_moves_alone`, `a_wrong_field_fails`, `a_paused_tween_parks`, `a_script_rotation_blends_with_a_gltf_clip`, `every_ease_samples_as_bevy`, `every_curve_samples_as_bevy` (each against Bevy's own curve sampled at the same times)
+- [x] 9.6 `tests/it/clip.rs`: `a_tween_translates_with_an_ease`, `a_tween_rotates`, `scale_ping_pongs`, `a_fade_draws_the_frame_it_samples`, `a_named_child_moves_alone`, `a_wrong_field_fails`, `a_paused_tween_parks`, `a_script_rotation_blends_with_a_gltf_clip`, `every_ease_samples_as_bevy`, `every_curve_samples_as_bevy` (each against Bevy's own curve sampled at the same times)
 - [ ] 9.7 `packages/bevy-ts`: `AnimationClip`, `AnimatableCurve`, `animatedField` (typed so an unknown field or non-animatable type fails `tsc`), every curve class and adaptor, `EaseFunction`, `interval`, `AnimationTargetId.root`, emitted into `bevy-ts/bevy`; `test/animation-clip.test.ts` (JSON of each, the type errors)
 - [ ] 9.8 `crates/bevy-ts-cli/tests/animation.rs`: `a_tsx_tween_moves_with_no_ts_per_frame` (a TSX entity tweens; the TS system run count does not grow with frames)
 - [ ] 9.9 Bench: 400 cubes tweening `translation`, a clip arm against a TS-system arm writing `Transform`; numbers in `docs/animation.md`

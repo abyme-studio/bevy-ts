@@ -41,6 +41,11 @@ pub fn assets() -> PathBuf {
 
 /// The engine's plugins with `PlayAnimation`, and nothing loaded.
 pub fn bare_app() -> App {
+    bare_app_with(|_| {})
+}
+
+/// [`bare_app`] with more plugins, added before `finish`.
+pub fn bare_app_with(more: impl FnOnce(&mut App)) -> App {
     let mut app = App::new();
     let render = RenderPlugin { render_creation: RenderCreation::Automatic(Box::new(WgpuSettings { backends: None, ..default() })), ..default() };
     app.add_plugins(
@@ -54,6 +59,7 @@ pub fn bare_app() -> App {
     )
     .add_plugins(PlayAnimationPlugin)
     .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(DT)));
+    more(&mut app);
     // The glTF loader registers in `finish`, which `update` alone never runs.
     app.finish();
     app.cleanup();

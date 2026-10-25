@@ -14,6 +14,10 @@ bevy-ts-native.workspace = true
 
 [dev-dependencies]
 bevy = { workspace = true, features = ["3d"] }
+# The clip tests build curves through bevy-ts's reflect_asset and fade through bevy-ts-material.
+bevy-ts = { workspace = true, features = ["reflect"] }
+bevy-ts-material.workspace = true
+serde_json.workspace = true
 
 # Tests link Bevy as one dylib, except a release bench (`cargo static test --release` sets bevy_ts_static):
 # a release build links Bevy statically, as what ships does (docs/build-cache.md, Bevy as a dylib).

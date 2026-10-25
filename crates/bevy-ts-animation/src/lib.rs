@@ -9,11 +9,13 @@
 //! from TS.
 //!
 //! A root with a `graph` plays that `AnimationGraph` in place of the shared one: every clip node
-//! in it, blended by its weights and masks (stage 2 of `animation-control`).
+//! in it, blended by its weights and masks (stage 2 of `animation-control`). A root with no scene
+//! is its own player: it plays the frame it gets `PlayAnimation`, its named descendants its
+//! targets, so a script-built clip tweens any entity.
 
 use bevy::animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex, AnimationNodeType};
 use bevy::animation::transition::AnimationTransitions;
-use bevy::animation::{ActiveAnimation, AnimationClip, AnimationPlayer, RepeatAnimation};
+use bevy::animation::{ActiveAnimation, AnimatedBy, AnimationClip, AnimationPlayer, AnimationTargetId, RepeatAnimation};
 use bevy::app::AnimationSystems;
 use bevy::asset::{AssetLoadFailedEvent, AssetPath};
 use bevy::gltf::Gltf;
@@ -25,7 +27,8 @@ use bevy::world_serialization::{WorldAssetRoot, WorldInstance, WorldInstanceRead
 use bevy_ts_native::{BevyTsNativeExt, HostRecord, export};
 use std::time::Duration;
 
-/// Plays a glTF clip on the scene under this entity, which carries `WorldAssetRoot`. A changed
+/// Plays a glTF clip on the scene under this entity, which carries `WorldAssetRoot`, or on the
+/// entity itself when it has no scene (a script-built clip on `Transform`). A changed
 /// `clip` cross-fades over `transition_secs`; a changed `speed` or `repeat` applies to the clip
 /// already playing. With a `graph`, plays every clip node of that graph instead. Removing it
 /// stops the players.
@@ -205,10 +208,15 @@ fn on_ready(ready: On<WorldInstanceReady>, roots: Query<(), With<PlayAnimation>>
 }
 
 /// Finds the root's players, gives each the shared graph and fresh transitions, plays the clip
-/// and records the players and meshes on the root. A paused root then pauses and parks.
+/// and records the players and meshes on the root. A root with no scene and no player under it
+/// becomes its own player ([`own_player`]). A paused root then pauses and parks.
 fn start(world: &mut World, root: Entity) {
     let Some(play) = world.get::<PlayAnimation>(root).cloned() else { return };
-    let found = players(world, root);
+    let mut found = players(world, root);
+    if found.is_empty() && world.get::<WorldAssetRoot>(root).is_none() {
+        own_player(world, root);
+        found = vec![root];
+    }
     if found.is_empty() {
         let mut reports = world.resource_mut::<AnimationReports>();
         if reports.roots.insert(root) {
@@ -259,6 +267,30 @@ fn start(world: &mut World, root: Entity) {
     });
 }
 
+/// A root with no scene becomes its own player: `AnimationPlayer` on it, and a target id on it
+/// (the empty path) and on every descendant reached through `Name`s that has none (the names
+/// below the root, Bevy's glTF convention), each `AnimatedBy` the root.
+fn own_player(world: &mut World, root: Entity) {
+    world.entity_mut(root).insert(AnimationPlayer::default());
+    let mut give = vec![];
+    let mut stack = vec![(root, Vec::<Name>::new())];
+    while let Some((e, path)) = stack.pop() {
+        if world.get::<AnimationTargetId>(e).is_none() {
+            give.push((e, AnimationTargetId::from_names(path.iter())));
+        }
+        for &c in world.get::<Children>(e).map(|c| c.to_vec()).unwrap_or_default().iter() {
+            if let Some(name) = world.get::<Name>(c) {
+                let mut p = path.clone();
+                p.push(name.clone());
+                stack.push((c, p));
+            }
+        }
+    }
+    for (e, id) in give {
+        world.entity_mut(e).insert((id, AnimatedBy(root)));
+    }
+}
+
 /// Brings one player to what `play` asks: a new clip cross-fades in, the same clip takes the
 /// speed and repeat in place, no clip stops it.
 fn apply(play: &PlayAnimation, node: Option<AnimationNodeIndex>, player: &mut AnimationPlayer, transitions: &mut AnimationTransitions) {
@@ -281,7 +313,8 @@ fn apply(play: &PlayAnimation, node: Option<AnimationNodeIndex>, player: &mut An
 }
 
 /// Brings one player to a graph root's `play`: every clip node in `graph` playing with its speed
-/// and repeat, and nothing else.
+/// and repeat (paused on a paused root, so Bevy's pause state matches when the graph arrives or
+/// gains a node after start), and nothing else.
 fn play_graph(play: &PlayAnimation, graph: &AnimationGraph, player: &mut AnimationPlayer) {
     let nodes: Vec<AnimationNodeIndex> = clip_nodes(graph).map(|(n, _)| n).collect();
     let gone: Vec<AnimationNodeIndex> = player.playing_animations().map(|(n, _)| *n).filter(|n| !nodes.contains(n)).collect();
@@ -289,7 +322,10 @@ fn play_graph(play: &PlayAnimation, graph: &AnimationGraph, player: &mut Animati
         player.stop(n);
     }
     for n in nodes {
-        player.play(n).set_speed(play.speed).set_repeat(play.repeat);
+        let a = player.play(n).set_speed(play.speed).set_repeat(play.repeat);
+        if play.paused {
+            a.pause();
+        }
     }
 }
 
@@ -310,7 +346,7 @@ fn warn_both(world: &mut World, root: Entity, play: &PlayAnimation) {
 /// whose scene was already ready. A root whose scene is not ready waits for [`on_ready`].
 #[allow(clippy::type_complexity)]
 fn apply_changed(
-    mut roots: Query<(Entity, &PlayAnimation, Option<&mut AnimationTargets>, Option<&WorldInstance>), Changed<PlayAnimation>>,
+    mut roots: Query<(Entity, &PlayAnimation, Option<&mut AnimationTargets>, Option<&WorldInstance>, Has<WorldAssetRoot>), Changed<PlayAnimation>>,
     mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
     spawner: Option<Res<WorldInstanceSpawner>>,
     server: Res<AssetServer>,
@@ -318,7 +354,7 @@ fn apply_changed(
     mut graphs: ResMut<Assets<AnimationGraph>>,
     mut commands: Commands,
 ) {
-    for (root, play, targets, instance) in &mut roots {
+    for (root, play, targets, instance, scene) in &mut roots {
         if is_graph_root(play) && play.clip != Handle::default() {
             let play = play.clone();
             commands.queue(move |world: &mut World| warn_both(world, root, &play));
@@ -349,7 +385,8 @@ fn apply_changed(
                     }
                 }
             }
-            None if instance.is_some_and(|i| spawner.as_ref().is_some_and(|s| s.instance_is_ready(**i))) => {
+            // A root with no scene has nothing to wait for.
+            None if !scene || instance.is_some_and(|i| spawner.as_ref().is_some_and(|s| s.instance_is_ready(**i))) => {
                 commands.queue(move |world: &mut World| start(world, root));
             }
             None => {}
