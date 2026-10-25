@@ -17,10 +17,10 @@ use crate::log::{LogLevel, ScriptLog};
 use crate::manifest::ComponentDecl;
 use crate::value;
 use bevy::ecs::component::ComponentId;
-use bevy::ecs::entity::{EntityHashMap, EntityMapper, SceneEntityMapper};
+use bevy::ecs::entity::{EntityHashMap, EntityHashSet, EntityMapper, SceneEntityMapper};
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
-use bevy::reflect::TypeRegistry;
+use bevy::reflect::{ReflectMut, TypeRegistry};
 use bevy::tasks::IoTaskPool;
 use bevy::world_serialization::serde::WorldDeserializer;
 use bevy::world_serialization::{DynamicWorld, DynamicWorldBuilder, WorldFilter};
@@ -31,6 +31,7 @@ use std::any::TypeId;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 /// Marks an entity a save holds by default. Saved itself, so a loaded entity has it again.
@@ -259,6 +260,7 @@ fn build(world: &mut World, name: &str, options: &SaveOptions) -> Result<(String
         Some(bits) => bits
             .iter()
             .map(|b| Entity::try_from_bits(*b).filter(|e| world.get_entity(*e).is_ok()).ok_or_else(|| format!("entity {b} does not exist")))
+            .filter(|e| e.as_ref().map_or(true, |e| !world.entity(*e).contains::<IsResource>()))
             .collect::<Result<_, _>>()?,
         // Every archetype with `Save`, so disabled entities are saved too, as Bevy's own walk does.
         None => world.archetypes().iter().filter(|a| a.contains(save_id)).flat_map(|a| a.entities().iter().map(|e| e.id())).collect(),
@@ -294,6 +296,7 @@ fn build(world: &mut World, name: &str, options: &SaveOptions) -> Result<(String
         builder = builder.extract_resources();
     }
     let mut dynamic = builder.build();
+    cut_hierarchy(&mut dynamic);
 
     // TS components: live and undeclared, merged over what an earlier load kept.
     let ts = world.resource::<TsComponents>();
@@ -313,7 +316,8 @@ fn build(world: &mut World, name: &str, options: &SaveOptions) -> Result<(String
             d.components.push(Box::new(TsSaved(map)));
         }
     }
-    let mut res = BTreeMap::new();
+    // Kept resources of a class that is gone, saved again as kept entities are.
+    let mut res = world.get_resource::<TsSavedResources>().map(|r| r.0.clone()).unwrap_or_default();
     for n in &ts_resources {
         let Some(c) = ts.get(n) else { continue };
         if let Some(json) = world.resource_entities().get(c.id).and_then(|e| read_ts(world, e, c.id, &c.layout)) {
@@ -327,16 +331,48 @@ fn build(world: &mut World, name: &str, options: &SaveOptions) -> Result<(String
     Ok((text, dir))
 }
 
+/// Drops a `ChildOf` whose parent is not in the save, and `Children` entries not in it, so an
+/// entity saved without its parent loads as a root instead of under an entity that is never alive.
+fn cut_hierarchy(dynamic: &mut DynamicWorld) {
+    let saved: EntityHashSet = dynamic.entities.iter().map(|d| d.entity).collect();
+    let inside = |v: &dyn PartialReflect| Entity::from_reflect(v).is_some_and(|e| saved.contains(&e));
+    for d in &mut dynamic.entities {
+        d.components.retain(|c| ChildOf::from_reflect(c.as_partial_reflect()).is_none_or(|p| saved.contains(&p.parent())));
+        d.components.retain_mut(|c| {
+            if !c.represents::<Children>() {
+                return true;
+            }
+            let ReflectMut::TupleStruct(t) = c.reflect_mut() else { return true };
+            let Some(ReflectMut::List(list)) = t.field_mut(0).map(|f| f.reflect_mut()) else { return true };
+            for i in (0..list.len()).rev() {
+                if !list.get(i).is_some_and(inside) {
+                    list.remove(i);
+                }
+            }
+            !list.is_empty()
+        });
+    }
+}
+
+/// Each write's own temporary name, so two saves of one name never share a file.
+static WRITES: AtomicU64 = AtomicU64::new(0);
+
 /// Writes `<name>.scn.ron` by a temporary file in the same folder renamed over it, so a failed or
-/// cut-off write leaves the old save whole.
+/// cut-off write leaves the old save whole. Two writes of one name each rename a whole file: the
+/// last rename wins.
 fn write(dir: &Path, name: &str, text: &str) -> Result<(), String> {
     use std::io::Write;
     let path = dir.join(format!("{name}.scn.ron"));
-    let tmp = dir.join(format!("{name}.scn.ron.tmp"));
+    let tmp = dir.join(format!("{name}.scn.ron.{}.tmp", WRITES.fetch_add(1, Ordering::Relaxed)));
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let mut f = std::fs::File::create(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    f.write_all(text.as_bytes()).and_then(|_| f.sync_all()).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
+    let written = std::fs::File::create(&tmp)
+        .and_then(|mut f| f.write_all(text.as_bytes()).and_then(|_| f.sync_all()))
+        .map_err(|e| format!("{}: {e}", tmp.display()));
+    let renamed = written.and_then(|_| std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display())));
+    if renamed.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    renamed
 }
 
 /// `commands.loadWorld(name, { parent })`: starts the read; [`finish_io`] writes the world.
@@ -394,10 +430,14 @@ pub fn finish_io(world: &mut World) {
 
 /// Writes a read save into the world: fresh entities, then their TS components and resources.
 fn apply(world: &mut World, dynamic: &DynamicWorld, parent: Option<Entity>) -> (Vec<Entity>, Option<String>) {
+    let kept = world.remove_resource::<TsSavedResources>().map(|r| r.0).unwrap_or_default();
     let mut map = EntityHashMap::default();
     let written = dynamic.write_to_world(world, &mut map);
     let entities: Vec<Entity> = dynamic.entities.iter().filter_map(|d| map.get(&d.entity).copied()).collect();
     if let Err(e) = written {
+        if !kept.is_empty() {
+            world.insert_resource(TsSavedResources(kept));
+        }
         return (entities, Some(e.to_string()));
     }
     let parent = parent.filter(|p| world.get_entity(*p).is_ok());
@@ -413,19 +453,25 @@ fn apply(world: &mut World, dynamic: &DynamicWorld, parent: Option<Entity>) -> (
 
     let mut migrations: BTreeMap<String, Migration> = BTreeMap::new();
     let mut unknown = BTreeSet::new();
+    let mut failed = Vec::new();
     for e in &entities {
         let Some(TsSaved(entries)) = world.entity_mut(*e).take::<TsSaved>() else { continue };
         let mut left = BTreeMap::new();
         for (name, json) in entries {
             match restore(world, &mut map, &name, &json) {
-                Some((bytes, id, m)) => {
+                Ok((bytes, id, m)) => {
                     let mut em = world.entity_mut(*e);
                     // SAFETY: `restore` encoded the bytes with this live component's layout.
                     unsafe { insert_bytes(&mut em, id, &bytes) };
                     count(&mut migrations, m);
                 }
-                None => {
-                    unknown.insert(name.clone());
+                Err(e) => {
+                    match e {
+                        Some(e) => failed.push(format!("load: {name}: {e}; its saved data stays in TsSaved")),
+                        None => {
+                            unknown.insert(name.clone());
+                        }
+                    }
                     left.insert(name, json);
                 }
             }
@@ -434,11 +480,12 @@ fn apply(world: &mut World, dynamic: &DynamicWorld, parent: Option<Entity>) -> (
             world.entity_mut(*e).insert(TsSaved(left));
         }
     }
+    let mut left_resources = kept;
     if let Some(TsSavedResources(entries)) = world.remove_resource::<TsSavedResources>() {
-        let mut left = BTreeMap::new();
+        let left = &mut left_resources;
         for (name, json) in entries {
             match restore(world, &mut map, &name, &json) {
-                Some((bytes, id, m)) => {
+                Ok((bytes, id, m)) => {
                     let mut em = match world.resource_entities().get(id) {
                         Some(e) => world.entity_mut(e),
                         None => world.spawn(IsResource::new(id)),
@@ -447,18 +494,26 @@ fn apply(world: &mut World, dynamic: &DynamicWorld, parent: Option<Entity>) -> (
                     unsafe { insert_bytes(&mut em, id, &bytes) };
                     count(&mut migrations, m);
                 }
-                None => {
-                    unknown.insert(name.clone());
+                Err(e) => {
+                    match e {
+                        Some(e) => failed.push(format!("load: {name}: {e}; its saved data stays in TsSaved")),
+                        None => {
+                            unknown.insert(name.clone());
+                        }
+                    }
                     left.insert(name, json);
                 }
             }
         }
-        if !left.is_empty() {
-            world.insert_resource(TsSavedResources(left));
-        }
+    }
+    if !left_resources.is_empty() {
+        world.insert_resource(TsSavedResources(left_resources));
     }
     for m in migrations.into_values() {
         warn(world, format!("load: {m}"));
+    }
+    for f in failed {
+        warn(world, f);
     }
     for n in unknown {
         warn(world, format!("load: no TS class is named {n}; its saved data stays in TsSaved"));
@@ -473,10 +528,10 @@ fn count(migrations: &mut BTreeMap<String, Migration>, m: Option<Migration>) {
 }
 
 /// One saved TS component or resource, migrated to its live layout and its `Entity` fields
-/// remapped: its bytes, its id, and the migration if its fields changed. `None` when no live class
-/// has the name.
-fn restore(world: &mut World, map: &mut EntityHashMap<Entity>, name: &str, json: &str) -> Option<(Vec<u8>, ComponentId, Option<Migration>)> {
-    let c = world.resource::<TsComponents>().live(name)?.clone();
+/// remapped: its bytes, its id, and the migration if its fields changed. `Err(None)` when no live
+/// class has the name, `Err(Some(why))` when its value does not encode.
+fn restore(world: &mut World, map: &mut EntityHashMap<Entity>, name: &str, json: &str) -> Result<(Vec<u8>, ComponentId, Option<Migration>), Option<String>> {
+    let c = world.resource::<TsComponents>().live(name).ok_or(None)?.clone();
     let saved: Map<String, Value> = match serde_json::from_str(json) {
         Ok(Value::Object(o)) => o,
         _ => Map::new(),
@@ -489,8 +544,8 @@ fn restore(world: &mut World, map: &mut EntityHashMap<Entity>, name: &str, json:
             }
         }
     });
-    let bytes = world.resource::<TsComponents>().encode(name, &values).ok()?;
-    Some((bytes, c.id, m))
+    let bytes = world.resource::<TsComponents>().encode(name, &values).map_err(|e| Some(e.to_string()))?;
+    Ok((bytes, c.id, m))
 }
 
 /// A JSON value's shape: what a field type's values look like, to tell a field whose type

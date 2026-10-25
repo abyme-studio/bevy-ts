@@ -374,11 +374,45 @@ fn a_missing_slot_and_a_failed_write() {
     g.spawn("a", &[("game::Health", json!({ "hp": 3 }))], Save);
     let first = g.save_ok("slot1", json!({}));
     g.spawn("b", &[], Save);
-    // The temporary file's path is a folder: the write fails before the rename.
-    std::fs::create_dir_all(g.dir.join("saves/slot1.scn.ron.tmp")).unwrap();
+    // The folder is read-only: the temporary file cannot be made, so nothing is renamed.
+    use std::os::unix::fs::PermissionsExt;
+    let saves = g.dir.join("saves");
+    std::fs::set_permissions(&saves, std::fs::Permissions::from_mode(0o555)).unwrap();
     let s = g.save("slot1", json!({}));
-    assert!(s.error.as_deref().unwrap().contains("slot1.scn.ron.tmp"), "{s:?}");
+    std::fs::set_permissions(&saves, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let error = s.error.unwrap();
+    assert!(error.contains("slot1.scn.ron.") && error.contains(".tmp"), "{error}");
     assert_eq!(std::fs::read_to_string(g.file("slot1")).unwrap(), first, "the old save is whole");
+    assert_eq!(files(&saves), ["slot1.scn.ron"], "no temporary file is left");
+}
+
+fn files(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir).unwrap().map(|f| f.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    names.sort();
+    names
+}
+
+/// Two saves of one slot at once each write their own temporary file: the slot ends up whole,
+/// one save or the other, never their bytes mixed.
+#[test]
+fn two_saves_of_one_slot_at_once() {
+    let mut g = Game::new("saves-race", declarations());
+    for i in 0..3000 {
+        g.spawn(&format!("big{i}"), &[("game::Health", json!({ "hp": i }))], (Save, Transform::from_xyz(i as f32, 0.0, 0.0)));
+    }
+    bevy_ts::saves::save(g.world(), "slot1", SaveOptions::default());
+    g.despawn_saved();
+    g.spawn("small", &[], Save);
+    bevy_ts::saves::save(g.world(), "slot1", SaveOptions::default());
+    g.until(|g| g.app.world().resource::<Got>().saved.len() == 2);
+    for s in &g.app.world().resource::<Got>().saved {
+        assert_eq!(s.error, None);
+    }
+    assert_eq!(files(&g.dir.join("saves")), ["slot1.scn.ron"], "no temporary file is left");
+
+    g.despawn_saved();
+    let loaded = g.load_ok("slot1");
+    assert!(loaded.len() == 3000 || loaded.len() == 1, "{} entities: one save whole", loaded.len());
 }
 
 #[test]
@@ -422,6 +456,37 @@ fn bevy_reads_a_rust_only_save_and_handles_are_paths() {
     let mut map = Default::default();
     dynamic.write_to_world(world, &mut map).unwrap();
     assert_eq!(world.query_filtered::<&Name, With<Save>>().iter(world).count(), 2);
+}
+
+/// An entity saved without its parent loads as a root, and `parent` takes it; a saved parent loses
+/// the children the save does not hold.
+#[test]
+fn a_parent_outside_the_save_is_cut() {
+    let mut g = Game::new("saves-cut", declarations());
+    g.app.add_plugins(bevy::transform::TransformPlugin);
+    let level = g.spawn("level", &[], Transform::from_xyz(10.0, 0.0, 0.0));
+    g.spawn("enemy", &[], (Save, ChildOf(level), Transform::from_xyz(1.0, 0.0, 0.0)));
+    let held = g.spawn("held", &[], (Save, Transform::default()));
+    g.spawn("prop", &[], (ChildOf(held), Transform::default()));
+    g.app.update();
+    let text = g.save_ok("cut", json!({}));
+    assert!(!text.contains("ChildOf") && !text.contains("Children"), "{text}");
+
+    g.despawn_saved();
+    g.load_ok("cut");
+    g.app.update();
+    let (enemy, held) = (g.one("enemy"), g.one("held"));
+    assert!(g.app.world().get::<ChildOf>(enemy).is_none(), "a root");
+    assert_eq!(g.app.world().get::<GlobalTransform>(enemy).unwrap().translation(), Vec3::new(1.0, 0.0, 0.0));
+    assert!(g.app.world().get::<Children>(held).is_none(), "the prop was not saved");
+
+    g.despawn_saved();
+    let l = g.load("cut", Some(level));
+    assert_eq!(l.error, None);
+    g.app.update();
+    let enemy = g.one("enemy");
+    assert_eq!(g.app.world().get::<ChildOf>(enemy).unwrap().parent(), level);
+    assert_eq!(g.app.world().get::<GlobalTransform>(enemy).unwrap().translation(), Vec3::new(11.0, 0.0, 0.0));
 }
 
 /// `parent` makes each loaded root a child of the entity.
