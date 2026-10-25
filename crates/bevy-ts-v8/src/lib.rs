@@ -110,11 +110,11 @@ fn op_bevyts_now(state: &mut OpState) -> f64 {
 
 /// When the engine's first runtime started: `performance`'s origin, kept across reloads and
 /// restarts, as an `Instant` and as Unix milliseconds.
-fn origin() -> &'static (bevy::platform::time::Instant, f64) {
-    static ORIGIN: std::sync::OnceLock<(bevy::platform::time::Instant, f64)> = std::sync::OnceLock::new();
+fn origin() -> &'static (std::time::Instant, f64) {
+    static ORIGIN: std::sync::OnceLock<(std::time::Instant, f64)> = std::sync::OnceLock::new();
     ORIGIN.get_or_init(|| {
         let unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0);
-        (bevy::platform::time::Instant::now(), unix)
+        (std::time::Instant::now(), unix)
     })
 }
 

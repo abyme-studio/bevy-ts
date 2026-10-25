@@ -92,8 +92,9 @@ writable-native-params landed: an export may hold `Deferred<T>` params, every ex
    timing itself. *Alternative:* scripts time themselves with `performance.now()`. Kept as well,
    but it misses bevy-ts's own work in the stage (column views, commands).
 
-8. **`performance.now()` from `bevy_platform::time::Instant`.** One host function returning
-   `f64` milliseconds since the runtime's `Instant` was taken; `timeOrigin` from `SystemTime` at
+8. **`performance.now()` from `std::time::Instant`.** Two host functions: `f64`
+   milliseconds since the first runtime's `Instant` (held once per process, so a reload or a
+   restart does not reset it), as the rest of bevy-ts times itself; `timeOrigin` from `SystemTime` at
    the same moment. Defined in `core.js` beside `console`. Not a Bevy feature, a web one every TS
    author expects; `Date.now` stays.
 
