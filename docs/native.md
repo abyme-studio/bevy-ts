@@ -543,9 +543,12 @@ again the next frame:
 import type { Res } from "bevy-ts";
 import { AccumulatedMouseMotion, AccumulatedMouseScroll } from "bevy-ts/bevy";
 
+// 100 is the default of Bevy's MouseScrollPixelsPerLine, which TS cannot read (table below).
+const PIXELS_PER_LINE = 100;
+
 export function orbit(motion: Res<AccumulatedMouseMotion>, scroll: Res<AccumulatedMouseScroll>) {
   turn(motion.delta.x, motion.delta.y);
-  zoom(scroll.unit === "Line" ? scroll.delta.y * 16 : scroll.delta.y);
+  zoom(scroll.unit === "Line" ? scroll.delta.y * PIXELS_PER_LINE : scroll.delta.y);
 }
 ```
 
@@ -559,7 +562,7 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 | `KeyboardInput`, `KeyboardFocusLost` | `MessageReader` | rust-events |
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` | script-input-devices |
 | `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollUnit` | `Res<T>`; the unit as `"Line" \| "Pixel"` | rust-resources; script-input-devices |
-| `MouseScrollPixelsPerLine` | none: Bevy 0.20 reflects it without `reflect(Resource)` | Bevy |
+| `MouseScrollPixelsPerLine` | none: Bevy 0.20 reflects it without `reflect(Resource)`; `register_type_data::<_, ReflectResource>()` would reach it | follow-up, lead@script-input-devices |
 | `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events; script-input-devices stage 3 |
 | `Window::cursor_position`, `physical_cursor_position` | `Cursor` | script-input-devices |
 | `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events; stage 3 |
