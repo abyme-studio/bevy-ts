@@ -97,6 +97,11 @@ The code is `crates/bevy-ts-material/src/world_text/`.
   by 4096 (16 MB, about 4,600 glyphs). Growing rebuilds no mesh. Past 16 MB a new glyph logs one
   error naming the limit and draws nothing; the rest of its label, and every other label, still
   draws. Glyphs already made stay; nothing is evicted.
+- **New glyphs**: a frame that makes a glyph uploads the whole atlas again (1 MB at first, up to
+  16 MB). A game that keeps meeting new glyphs, say a stream of CJK names, pays that on each such
+  frame; text made of glyphs already seen pays nothing.
+- **Script types**: `bevy-ts/bevy`'s `WorldTextStyle` has no `width` or `outline` (its generator
+  skips optional fields); set them through `<worldText>`'s props.
 - **Outline width**: at most 0.125 of `size`, the distance field's spread.
 - **Corners**: a single-channel distance field rounds a glyph's sharp corners when a label is
   magnified far past 48 px an em on screen.

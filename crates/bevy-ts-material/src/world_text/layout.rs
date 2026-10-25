@@ -10,7 +10,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::math::Affine3A;
 use bevy::prelude::*;
 use bevy::text::{
-    ComputedTextBlock, FontAtlasSet, FontCx, FontHinting, FontSize, LayoutCx, LetterSpacing, LineBreak, LineHeight, RemSize, ScaleCx, TextBounds, TextColor, TextElement, TextError, TextFont, TextLayout,
+    ComputedTextBlock, FontAtlasSet, FontCx, FontSource, FontHinting, FontSize, LayoutCx, LetterSpacing, LineBreak, LineHeight, RemSize, ScaleCx, TextBounds, TextColor, TextElement, TextError, TextFont, TextLayout,
     TextLayoutInfo, TextPipeline,
 };
 
@@ -29,6 +29,7 @@ pub struct TextContexts<'w> {
     scale_cx: ResMut<'w, ScaleCx>,
     font_atlases: ResMut<'w, FontAtlasSet>,
     rem: Res<'w, RemSize>,
+    server: Option<Res<'w, AssetServer>>,
 }
 
 /// Where a label's quads and material go.
@@ -100,9 +101,17 @@ pub fn lay_out(
             .and_then(|()| pipeline.update_text_layout_info(info, &mut text.font_atlases, &mut out.images, &mut block, &mut text.scale_cx, bounds, layout.justify, FontHinting::Disabled));
         match laid_out {
             Ok(()) => {}
-            // A font still loading: again next frame, until it draws.
+            // A font still loading: again next frame, until it draws, or until its load fails.
             Err(TextError::NoSuchFont | TextError::NoSuchFontFamily(_)) => {
-                retry.insert(e);
+                let failed = match (&font.font, &text.server) {
+                    (FontSource::Handle(h), Some(server)) => server.load_state(h).is_failed(),
+                    _ => false,
+                };
+                if failed {
+                    error!("world text {e}: its font failed to load; the label draws nothing until its font changes");
+                } else {
+                    retry.insert(e);
+                }
                 continue;
             }
             Err(err) => {

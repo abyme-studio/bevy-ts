@@ -1472,9 +1472,10 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
         UiKind::Input => {
             em.remove::<(TextInput, EditableText, TextFont, TextColor, TextLayout, TextCursorStyle, AutoFocus)>();
         }
-        // The label's mesh, material and bounds go with `WorldText` (world text's own observer).
+        // The label's mesh, material and bounds go with `WorldText` (world text's own observer);
+        // `NotShadowCaster` came with it, so a `<mesh>` in its place casts a shadow again.
         UiKind::WorldText => {
-            em.remove::<(WorldText, WorldTextStyle, TextFont, TextColor, TextLayout, LineHeight)>();
+            em.remove::<(WorldText, WorldTextStyle, TextFont, TextColor, TextLayout, LineHeight, bevy::light::NotShadowCaster)>();
         }
         UiKind::Node => {}
     }

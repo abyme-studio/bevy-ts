@@ -116,19 +116,19 @@ impl WorldTextAtlas {
         if let Some(c) = self.cells.get(&(texture, rect)) {
             return *c;
         }
-        let made = self.make(images, texture, rect);
+        // Bevy's glyph atlas is RGBA8, the coverage in alpha. Without its CPU copy the glyph is
+        // not cached: the next layout of its label tries again.
+        let Some(alpha) = raster(images, texture, rect) else {
+            warn!("world text: Bevy's raster of a glyph ({texture:?}, {rect:?}) has no CPU data; it draws nothing this time");
+            return None;
+        };
+        let made = self.make(images, &alpha, rect);
         self.cells.insert((texture, rect), made);
         made
     }
 
-    fn make(&mut self, images: &mut Assets<Image>, texture: AssetId<Image>, rect: URect) -> Option<Cell> {
+    fn make(&mut self, images: &mut Assets<Image>, alpha: &[u8], rect: URect) -> Option<Cell> {
         let (w, h) = (rect.width() as usize, rect.height() as usize);
-        // Bevy's glyph atlas is RGBA8, the coverage in alpha.
-        let alpha: Vec<u8> = {
-            let src = images.get(texture)?;
-            let (sw, data) = (src.width() as usize, src.data.as_ref()?);
-            (0..h).flat_map(|y| (0..w).map(move |x| ((rect.min.y as usize + y) * sw + rect.min.x as usize + x) * 4 + 3)).map(|i| data[i]).collect()
-        };
         let s = SPREAD as usize;
         let size = UVec2::new((w + 2 * s) as u32, (h + 2 * s) as u32);
         let Some(min) = self.packer.place(size.x, size.y) else {
@@ -140,7 +140,7 @@ impl WorldTextAtlas {
             );
             return None;
         };
-        let field = sdf(&alpha, w, h, s);
+        let field = sdf(alpha, w, h, s);
         let mut image = images.get_mut(&self.image)?;
         if image.height() < self.packer.height {
             image.resize(Extent3d { width: WIDTH, height: self.packer.height, depth_or_array_layers: 1 });
@@ -154,4 +154,12 @@ impl WorldTextAtlas {
         self.dirty = true;
         Some(Cell { min, size })
     }
+}
+
+/// The coverage of the glyph raster at `rect` in Bevy's RGBA8 atlas `texture`, from its alpha.
+fn raster(images: &Assets<Image>, texture: AssetId<Image>, rect: URect) -> Option<Vec<u8>> {
+    let src = images.get(texture)?;
+    let (sw, data) = (src.width() as usize, src.data.as_ref()?);
+    let (w, h) = (rect.width() as usize, rect.height() as usize);
+    Some((0..h).flat_map(|y| (0..w).map(move |x| ((rect.min.y as usize + y) * sw + rect.min.x as usize + x) * 4 + 3)).map(|i| data[i]).collect())
 }

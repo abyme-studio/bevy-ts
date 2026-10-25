@@ -1,6 +1,7 @@
 //! The world-text material (design 8): a `StandardMaterial` base (white, alpha-to-coverage, back
 //! faces culled, unlit unless `lit`) and an extension that reads the shared SDF atlas, so 1,000
-//! labels of one style draw with one instance. Instances are cached by `lit` and outline.
+//! labels of one style draw with one instance. Instances are cached by `lit` and outline, and a
+//! style no label holds is dropped when a new one is made.
 
 use bevy::asset::uuid_handle;
 use bevy::mesh::MeshVertexBufferLayoutRef;
@@ -9,6 +10,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, FragmentState, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError};
 use bevy::shader::ShaderRef;
+use std::sync::Arc;
 
 /// What a label draws with.
 pub type WorldTextMaterial = ExtendedMaterial<StandardMaterial, WorldTextExt>;
@@ -81,6 +83,14 @@ impl WorldTextMaterials {
     /// The instance for `lit` and `outline` (width in raster pixels, colour), made on first use.
     pub(crate) fn get(&mut self, materials: &mut Assets<WorldTextMaterial>, atlas: &Handle<Image>, lit: bool, outline: Option<(f32, Color)>, spread: f32) -> Handle<WorldTextMaterial> {
         let key = (lit, outline.map(|(w, c)| (w.to_bits(), c.to_linear().to_f32_array().map(f32::to_bits))));
+        if !self.0.contains_key(&key) {
+            // A new style: drop the styles no label holds any more, so a bound outline that
+            // changes every frame keeps one or two instances, not one for every value it showed.
+            self.0.retain(|_, h| match h {
+                Handle::Strong(a) => Arc::strong_count(a) > 1,
+                Handle::Uuid(..) => true,
+            });
+        }
         self.0
             .entry(key)
             .or_insert_with(|| {

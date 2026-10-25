@@ -219,6 +219,43 @@ fn a_label_whose_font_loads_late_draws_then() {
 }
 
 #[test]
+fn a_font_that_fails_to_load_stops_being_retried() {
+    let mut app = app();
+    let font: Handle<Font> = app.world().resource::<AssetServer>().load("no-such-font.ttf");
+    let e = app.world_mut().spawn((WorldText::new("Lost"), TextFont { font: FontSource::Handle(font.clone()), ..default() })).id();
+    // The load fails on the IO threads, in its own time: wait for it, not for a number of frames.
+    let start = std::time::Instant::now();
+    while !app.world().resource::<AssetServer>().load_state(&font).is_failed() {
+        assert!(start.elapsed().as_secs() < 30, "the missing font never failed to load");
+        app.update();
+    }
+    app.update();
+    app.update();
+    for _ in 0..3 {
+        app.update();
+        assert_eq!(app.world().resource::<LaidOut>().0, 0, "not laid out again");
+    }
+    assert!(!drawn(app.world_mut(), e));
+}
+
+#[test]
+fn an_outline_bound_through_50_values_keeps_at_most_two_materials() {
+    let mut app = app();
+    let e = label(&mut app, "Glow", WorldTextStyle { outline: Some((0.01, Color::BLACK)), ..default() });
+    until(&mut app, "Glow drawn", |w| drawn(w, e));
+    for i in 1..50 {
+        app.world_mut().get_mut::<WorldTextStyle>(e).unwrap().outline = Some((0.01 + i as f32 * 0.002, Color::srgb(i as f32 / 50.0, 0.0, 0.0)));
+        app.update();
+    }
+    // Bevy frees an asset in a later frame than its last handle goes.
+    app.update();
+    app.update();
+    let world = app.world();
+    assert!(world.resource::<Assets<WorldTextMaterial>>().len() <= 2, "{} materials", world.resource::<Assets<WorldTextMaterial>>().len());
+    assert!(world.resource::<WorldTextMaterials>().len() <= 2, "{} cached styles", world.resource::<WorldTextMaterials>().len());
+}
+
+#[test]
 fn removing_world_text_drops_its_mesh_and_material() {
     let mut app = app();
     let e = label(&mut app, "A", WorldTextStyle::default());
