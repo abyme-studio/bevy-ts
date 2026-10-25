@@ -7,6 +7,8 @@ const processes = {
   "bench-bindings-rust": {
     cmd: "cd bench/bindings/rust && cargo bench 2>&1 | tee ../results/rust-criterion.txt",
   },
+  // Change script-audio: what each Bevy audio decoder adds to a release binary (bench/audio-size), in a check slot.
+  "audio-size": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:script-audio -- bench/audio-size/sizes.sh 2>&1 | tee target/audio-size.log'" },
   "bench-bindings-js": {
     cmd: "deno run --v8-flags=--expose-gc bench/bindings/fire-paths.js | tee bench/bindings/results/v8-jit.md",
   },

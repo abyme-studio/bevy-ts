@@ -1,0 +1,23 @@
+[package]
+name = "audio-size"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# What each Bevy audio decoder adds to a release binary (docs/research/script-audio.md): `sizes.sh`
+# builds this once per feature and prints each binary's size.
+
+[workspace]
+
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false, features = ["std", "bevy_asset", "multi_threaded"] }
+bevy_audio = { version = "=0.20.0", default-features = false }
+
+[features]
+vorbis = ["bevy_audio/vorbis"]
+wav = ["bevy_audio/wav"]
+flac = ["bevy_audio/flac"]
+mp3 = ["bevy_audio/mp3"]
+symphonia-vorbis = ["bevy_audio/symphonia-vorbis"]
+symphonia-wav = ["bevy_audio/symphonia-wav"]
+symphonia-flac = ["bevy_audio/symphonia-flac"]
