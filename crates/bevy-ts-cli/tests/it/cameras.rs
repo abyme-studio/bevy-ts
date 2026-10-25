@@ -59,6 +59,16 @@ export function project(cameras: Cameras, fresh: Query<[Entity], Added<Camera>>)
     } catch (e) {
       console.log(`${tag} short ${(e as Error).message}`);
     }
+    try {
+      cameras.worldsToViewport(cam, new Float64Array(3) as unknown as Float32Array, new Float32Array(2));
+    } catch (e) {
+      console.log(`${tag} f64 points ${(e as Error).message}`);
+    }
+    try {
+      cameras.worldsToViewport(cam, new Float32Array(3), new Float64Array(2) as unknown as Float32Array);
+    } catch (e) {
+      console.log(`${tag} f64 out ${(e as Error).message}`);
+    }
   }
   if (seen === 3) {
     const n = cameras.worldsToViewport(cam, new Float32Array([0, 0, 0, 0, 0, 20]), out);
@@ -222,6 +232,12 @@ fn world_points_project_to_logical_pixels() {
     // A batch whose `out` cannot hold every point throws rather than drop the rest.
     let short = line(&m, "later short");
     assert!(short.contains("Cameras.worldsToViewport: points holds 6 floats and out 2"), "{short}");
+
+    // A typed array of another element type throws, naming method, argument and both types.
+    let points = line(&m, "later f64 points");
+    assert!(points.contains("Cameras.worldsToViewport: points must be a Float32Array, not a Float64Array"), "{points}");
+    let out = line(&m, "later f64 out");
+    assert!(out.contains("Cameras.worldsToViewport: out must be a Float32Array, not a Float64Array"), "{out}");
 
     // The batch: one projected, `NaN, NaN` for the point behind.
     app.update();

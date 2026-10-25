@@ -75,6 +75,16 @@ export function cast(probe: Probe) {
     caught = e.message;
   }
   console.log(`caught ${caught}`);
+  try {
+    probe.castRays(new Float64Array(4) as unknown as Float32Array, toi);
+  } catch (e) {
+    console.log(`refused ${e.message}`);
+  }
+  try {
+    probe.castRays(ys.buffer as unknown as Float32Array, toi);
+  } catch (e) {
+    console.log(`refused ${e.message}`);
+  }
   console.log(`height ${probe.height()}`);
 }
 
@@ -97,7 +107,8 @@ fn a_batch_is_one_crossing_and_results_arrive_in_the_same_run() {
     let before = app.world().resource::<HostParams>().calls;
     app.update();
     let calls = app.world().resource::<HostParams>().calls - before;
-    // castRay, castRays (1,000 rays in one crossing), boom and height.
+    // castRay, castRays (1,000 rays in one crossing), boom and height; the refused castRays
+    // calls never cross.
     assert_eq!(calls, 4);
     // console output is collected at the next frame's pump.
     app.update();
@@ -105,6 +116,8 @@ fn a_batch_is_one_crossing_and_results_arrive_in_the_same_run() {
     assert!(m.iter().any(|l| l == "hit 3 1 7 rays 998 997"), "{m:?}");
     assert!(m.iter().any(|l| l.starts_with("caught Probe.boom panicked: boom")), "{m:?}");
     assert!(m.iter().any(|l| l == "height 2"), "{m:?}");
+    assert!(m.iter().any(|l| l == "refused Probe.castRays: ys must be a Float32Array, not a Float64Array"), "{m:?}");
+    assert!(m.iter().any(|l| l == "refused Probe.castRays: ys must be a Float32Array, not an ArrayBuffer"), "{m:?}");
 
     // Without the resource the method throws, naming param and method; the run's commands go.
     app.world_mut().remove_resource::<Ground>();

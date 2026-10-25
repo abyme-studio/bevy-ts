@@ -30,6 +30,8 @@ const processes = {
   "rust-events-test": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- rust_events:: rust_events_coverage:: surface:: reload::\" 2>&1 | grep -v ld64 | tee target/rust-events-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked|holes\" | tail -60'",
   },
+  // Change typed-array-kind: bevy-ts' unit tests and the typed-array param tests, in a check slot.
+  "typed-array-kind-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:typed-array-kind -- bash -c \"cargo build -p bevy-ts-cli && cargo test -p bevy-ts --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- exported:: cameras::\" 2>&1 | grep -v ld64 | tee target/typed-array-kind-test.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked\" | tail -60'" },
   // Every cli test binary, past the first failure, for a change that moves what several assert.
   "cli-test-all": { cmd: "bash -c 'cargo test -p bevy-ts-cli --no-fail-fast 2>&1 | grep --line-buffered -v ld64 | tee target/cli-test-all.log | grep -E \"^     Running|FAILED|panicked\"'" },
   // The whole gate (build, tests past failures, clippy) in one of the machine's two check slots:

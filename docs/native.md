@@ -334,8 +334,11 @@ that leaves one out gets its first variant), strings, `Option`s of these, and `&
 of numbers; anything else is a compile error naming the type. A string argument is `&str`,
 `Option<&str>` or `String`, and a result `String` or `Option<String>`, typed `string` in TS. Each
 call copies it as UTF-8 through the call's 4 KB of slots, so a string argument or result too long
-for them throws; pass long text through a slice. A record field cannot be a string. A `Result`
-error, a param that fails validation, or a panic throws in JS, naming
+for them throws; pass long text through a slice. A record field cannot be a string. A slice
+argument must be the typed array its declaration names (`Float32Array` for `&[f32]` and
+`&[Vec3]`, `Float64Array` for `&[f64]`): another element type, an `ArrayBuffer` or a `DataView`
+throws before the call crosses, as `Cameras.worldsToViewport: points must be a Float32Array, not a
+Float64Array`. A `Result` error, a param that fails validation, or a panic throws in JS, naming
 the param and method.
 
 ### Params that write

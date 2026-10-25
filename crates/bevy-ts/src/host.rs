@@ -863,7 +863,7 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
         for arg in &method.args {
             match arg {
                 ArgSpec::Value(n, k) => write_js(k, &format!("${n}"), &mut s),
-                ArgSpec::Slice(sl) => slices.push(format!("H.bytes(${}, {:?})", sl.name, sl.name)),
+                ArgSpec::Slice(sl) => slices.push(format!("H.bytes(${}, {}, NAME, {:?}, {:?})", sl.name, sl.view, method.name, sl.name)),
             }
         }
         while slices.len() < MAX_SLICES {
