@@ -25,7 +25,10 @@ use std::sync::Mutex;
 /// How many TS state machines an app can have: the pool's size.
 pub const SLOTS: usize = 32;
 
-static NAMES: Mutex<(Vec<&'static str>, Option<HashMap<&'static str, u32>>)> = Mutex::new((Vec::new(), None));
+/// Value names by symbol, and symbols by name.
+type Names = (Vec<&'static str>, Option<HashMap<&'static str, u32>>);
+
+static NAMES: Mutex<Names> = Mutex::new((Vec::new(), None));
 
 /// The symbol of a value name, interned for the life of the process.
 pub fn sym(name: &str) -> u32 {
@@ -532,7 +535,9 @@ pub fn remove_scoped(world: &mut World, e: Entity, kind: u8) {
 /// to its initial value, and adds the TS runners its systems need.
 pub(crate) fn sync(world: &mut World) {
     let started = crate::generation::started(world);
-    let machines: Vec<(u8, Vec<u32>, Option<u32>, bool, Vec<usize>)> = world
+    // Slot, value symbols, initial value, derived, and the machines it derives from.
+    type Machine = (u8, Vec<u32>, Option<u32>, bool, Vec<usize>);
+    let machines: Vec<Machine> = world
         .resource::<TsPayloads>()
         .states
         .iter()
@@ -644,7 +649,7 @@ pub(crate) fn derive(world: &mut World) {
                 continue;
             }
             world.resource_mut::<TsStates>().computed_from.insert(slot, sources.clone());
-            let names: Vec<serde_json::Value> = sources.iter().map(|v| v.map_or(serde_json::Value::Null, |v| name_value(v))).collect();
+            let names: Vec<serde_json::Value> = sources.iter().map(|v| v.map_or(serde_json::Value::Null, name_value)).collect();
             let payload = serde_json::json!({ "state": name, "sources": names }).to_string();
             match crate::runtime::ScriptRuntime::call_entry(world, COMPUTE_ENTRY, payload.as_bytes()) {
                 Ok(bytes) => {
