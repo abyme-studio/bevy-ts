@@ -493,8 +493,21 @@ pub struct StateDecl {
     /// The value `initState` gave.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial: Option<String>,
+    /// A sub state's source value (`SubStates(Game.Playing, ...)`): it exists only there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<StateValueDecl>,
+    /// A computed state's sources (`ComputedStates(Game, compute, ...)`), by name; JS computes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub computed: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<SourceLocation>,
+}
+
+/// A state value: its machine and value by name.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StateValueDecl {
+    pub state: String,
+    pub value: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

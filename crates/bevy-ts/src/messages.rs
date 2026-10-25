@@ -85,6 +85,17 @@ pub struct StateMachine {
     pub slot: u8,
     /// The `initState` value's symbol.
     pub initial: Option<u32>,
+    /// A sub state's source: the machine's index here and the value's symbol.
+    pub source: Option<(usize, u32)>,
+    /// A computed state's sources, by index here; empty for others.
+    pub computed: Vec<usize>,
+}
+
+impl StateMachine {
+    /// A sub or computed state: its value follows its sources.
+    pub fn derived(&self) -> bool {
+        self.source.is_some() || !self.computed.is_empty()
+    }
 }
 
 impl StateMachine {
@@ -148,11 +159,22 @@ impl TsPayloads {
                 syms: st.values.iter().map(|v| crate::states::sym(v)).collect(),
                 slot: slot(&st.name),
                 initial: st.initial.as_deref().map(crate::states::sym),
+                source: None,
+                computed: Vec::new(),
             };
             match self.state(&st.name) {
                 Some(i) => self.states[i] = machine,
                 None => self.states.push(machine),
             }
+        }
+        // Sources by index, once every machine of the generation is in.
+        for st in states {
+            let i = self.state(&st.name).expect("declared above");
+            let source = st.source.as_ref().and_then(|s| self.state(&s.state).map(|p| (p, crate::states::sym(&s.value))));
+            let computed = st.computed.iter().flatten().filter_map(|n| self.state(n)).collect();
+            let m = &mut self.states[i];
+            m.source = source;
+            m.computed = computed;
         }
     }
 

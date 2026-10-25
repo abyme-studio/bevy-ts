@@ -365,7 +365,7 @@ fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
         }
         Expression::CallExpression(call) => {
             let Expression::Identifier(callee) = &call.callee else { return None };
-            if bevy_ts_name(f, callee.name.as_str()) != Some("States") {
+            if !matches!(bevy_ts_name(f, callee.name.as_str()), Some("States" | "SubStates" | "ComputedStates")) {
                 return None;
             }
             let values = call.arguments.iter().filter_map(|a| match a.as_expression() {

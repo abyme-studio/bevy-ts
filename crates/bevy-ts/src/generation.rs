@@ -375,6 +375,25 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
         {
             errors.push(ScriptError::at(format!("{} has no value {v}", st.name), st.location.clone()));
         }
+        let derived = st.source.is_some() || st.computed.is_some();
+        if derived && st.initial.is_some() {
+            errors.push(ScriptError::at(format!("{} is a sub or computed state: its value follows its sources, so it takes no initState", st.name), st.location.clone()));
+        }
+        let known = |name: &str| manifest.states.iter().find(|o| o.name == name);
+        if let Some(src) = &st.source {
+            match known(&src.state) {
+                None => errors.push(ScriptError::at(format!("{}: its source {} is no state machine", st.name, src.state), st.location.clone())),
+                Some(o) if !o.values.contains(&src.value) => {
+                    errors.push(ScriptError::at(format!("{}: its source {} has no value {}", st.name, src.state, src.value), st.location.clone()))
+                }
+                _ => {}
+            }
+        }
+        for name in st.computed.iter().flatten() {
+            if known(name).is_none() {
+                errors.push(ScriptError::at(format!("{}: its source {name} is no state machine", st.name), st.location.clone()));
+            }
+        }
     }
     errors.extend(crate::schedules::check_order(world, &manifest.schedule_order));
     if !errors.is_empty() {

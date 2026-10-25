@@ -213,9 +213,15 @@ impl Plugin for BevyTsPlugin {
         app.edit_schedule(bevy::state::state::StateTransition, |s| {
             s.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
         });
+        app.edit_schedule(bevy::state::state::StateTransition, states::configure_depths);
         app.add_systems(
             bevy::state::state::StateTransition,
-            states::hold_while_paused.before(bevy::state::state::StateTransitionSystems::DependentTransitions),
+            (
+                states::hold_while_paused.before(bevy::state::state::StateTransitionSystems::DependentTransitions),
+                states::derive
+                    .after(bevy::state::state::StateTransitionSystems::DependentTransitions)
+                    .before(bevy::state::state::StateTransitionSystems::ExitSchedules),
+            ),
         );
         // A stage made while its schedule runs (`First`, by the generation applied in it) is added
         // when that schedule ends.

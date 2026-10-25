@@ -606,6 +606,37 @@ export function States(...values) {
   return B;
 }
 
+const STATE_SOURCE = Symbol("bevy-ts.stateSource");
+const STATE_COMPUTED = Symbol("bevy-ts.stateComputed");
+
+/** `class Pause extends SubStates(Game.Playing, "Running", "Paused") {}`: exists only while its source is in that value, entered at its first value, as Bevy's `SubStates`. */
+export function SubStates(source, ...values) {
+  const at = callerLocation();
+  if (!source || !source.machine) throw declError("SubStates(source, ...values): the source is a state value (Game.Playing)", at);
+  if (values.length === 0 || values.some((v) => typeof v !== "string")) throw declError("SubStates(source, ...values): values are strings", at);
+  const B = class {};
+  B[STATE_VALUES] = values;
+  B[STATE_SOURCE] = { state: source.state, value: source.value };
+  return B;
+}
+
+/**
+ * `class InGame extends ComputedStates(Game, (g) => (g === Game.Playing ? InGame.Yes : undefined), "Yes") {}`:
+ * its value computed from its sources (an array for several), `undefined` meaning it does not
+ * exist, as Bevy's `ComputedStates`. `compute` runs only when a source transitions.
+ */
+export function ComputedStates(sources, compute, ...values) {
+  const at = callerLocation();
+  const list = Array.isArray(sources) ? sources : [sources];
+  if (!list.length || list.some((S) => !S || S[KIND] !== "state")) throw declError("ComputedStates(sources, compute, ...values): sources are States classes", at);
+  if (typeof compute !== "function") throw declError("ComputedStates(sources, compute, ...values): compute is a function of the sources' values", at);
+  if (values.length === 0 || values.some((v) => typeof v !== "string")) throw declError("ComputedStates(sources, compute, ...values): values are strings", at);
+  const B = class {};
+  B[STATE_VALUES] = values;
+  B[STATE_COMPUTED] = { sources: list, compute };
+  return B;
+}
+
 const DATA_KIND = {
   component: "component",
   sceneComponent: "component",
@@ -658,7 +689,10 @@ function dataFn(C, d) {
   } else if (kind === "state") {
     const values = d.values;
     own("values", values);
-    own("decl", { name: d.name, values: [...values], location: at });
+    const decl = { name: d.name, values: [...values], location: at };
+    if (C[STATE_SOURCE]) decl.source = C[STATE_SOURCE];
+    if (C[STATE_COMPUTED]) decl.computed = C[STATE_COMPUTED].sources.map((S) => S.componentName);
+    own("decl", decl);
     for (const v of values) own(v, Object.freeze({ state: d.name, value: v, machine: C }));
   } else {
     // Defaults: the class's own initialisers (any expression), else the literal the compiler read.
@@ -1736,6 +1770,21 @@ function end() {
   }
   S.gens.set(g.number, g);
   const byKind = (k) => g.classes.filter((C) => C[KIND] === k);
+  // A computed state's function, called by Rust when a source transitions.
+  const computedStates = byKind("state").filter((C) => C[STATE_COMPUTED]);
+  if (computedStates.length && !g.entryFns.has("bevy-ts:computed")) {
+    g.entries.push({ name: "bevy-ts:computed" });
+    g.entryFns.set("bevy-ts:computed", (payload) => {
+      const { state, sources } = JSON.parse(text(payload));
+      const C = computedStates.find((X) => X.componentName === state);
+      if (!C) return "";
+      const { sources: classes, compute } = C[STATE_COMPUTED];
+      const r = compute(...sources.map((v, i) => (v === null ? undefined : classes[i][v])));
+      if (r === undefined || r === null) return "";
+      if (!r.machine || r.state !== C.componentName) throw new TypeError(`${C.name}: compute returns one of its own values or undefined`);
+      return r.value;
+    });
+  }
   // A group is named after its first member and an index, so its condition's state survives a reload.
   const idOf = new Map(g.systems.map((s) => [s.r, s.id]));
   const groupIds = new Map();

@@ -396,10 +396,14 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                 });
             }
             Op::SetState { index, value } => {
-                let target = world.get_resource::<crate::messages::TsPayloads>().and_then(|p| p.states.get(index as usize)).and_then(|m| m.syms.get(value as usize).map(|s| (m.slot, *s, m.name.clone())));
+                let target = world
+                    .get_resource::<crate::messages::TsPayloads>()
+                    .and_then(|p| p.states.get(index as usize))
+                    .and_then(|m| m.syms.get(value as usize).map(|s| (m.slot, *s, m.name.clone(), m.derived())));
                 match target {
-                    Some((slot, sym, name)) => {
-                        if !crate::states::set_next_of(world, slot, sym) {
+                    Some((slot, sym, name, derived)) => {
+                        // A sub state's NextState is ignored while it does not exist, as in Bevy.
+                        if !crate::states::set_next_of(world, slot, sym) && !derived {
                             warnings.push(format!("setState: {name} has no value yet; give it one with app.initState"));
                         }
                     }

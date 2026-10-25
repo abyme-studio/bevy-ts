@@ -338,6 +338,16 @@ export interface StateValue<N extends string = string, V extends string = string
 export declare function States<const V extends string>(...values: V[]):
   & { new (): { readonly [stateBrand]: { values: V } }; readonly path?: string }
   & { readonly [K in V]: StateValue<string, K> };
+/** `class Pause extends SubStates(Game.Playing, "Running", "Paused") {}`, as Bevy's `SubStates`: exists only while its source is in that value, at its first value on entering. */
+export declare function SubStates<const V extends string>(source: StateValue, ...values: V[]):
+  & { new (): { readonly [stateBrand]: { values: V } }; readonly path?: string }
+  & { readonly [K in V]: StateValue<string, K> };
+/** `class InGame extends ComputedStates(Game, (g) => ..., "Yes") {}`, as Bevy's `ComputedStates`: computed from its sources (an array for several), `undefined` when it does not exist. */
+export declare function ComputedStates<const V extends string>(
+  sources: (abstract new () => unknown) | readonly (abstract new () => unknown)[],
+  compute: (...sources: (StateValue | undefined)[]) => StateValue | undefined,
+  ...values: V[]
+): & { new (): { readonly [stateBrand]: { values: V } }; readonly path?: string } & { readonly [K in V]: StateValue<string, K> };
 type StateValueOf<G> = G extends { readonly [stateBrand]: { values: infer V extends string } }
   ? { [K in V]: StateValue<string, K> }[V]
   : never;

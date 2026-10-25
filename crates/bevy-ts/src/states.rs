@@ -81,6 +81,70 @@ pub struct SlotOps {
     add_runner: fn(&mut World, RunKind, u32, u32),
     insert_scoped: fn(&mut World, Entity, u8, u32),
     remove_scoped: fn(&mut World, Entity, u8),
+    make: fn(&mut World),
+    set_depth: fn(&mut World, u8),
+    set_derived: fn(&mut World, Option<u32>),
+}
+
+/// Where a machine's exit, transition and enter work runs, by its depth (a root is 1, a sub or
+/// computed state one more than its deepest source): exits deepest first, the rest shallowest
+/// first, as Bevy orders a state by its `DEPENDENCY_DEPTH`.
+#[derive(bevy::ecs::schedule::SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TsDepth {
+    Exit(u8),
+    Transition(u8),
+    Enter(u8),
+}
+
+/// The deepest chain of sub and computed states the depth sets order.
+pub const MAX_DEPTH: u8 = 8;
+
+/// Orders the depth sets inside Bevy's transition sets; called once by the plugin.
+pub(crate) fn configure_depths(schedule: &mut Schedule) {
+    for d in 1..=MAX_DEPTH {
+        schedule.configure_sets((
+            TsDepth::Exit(d).in_set(StateTransitionSystems::ExitSchedules),
+            TsDepth::Transition(d).in_set(StateTransitionSystems::TransitionSchedules),
+            TsDepth::Enter(d).in_set(StateTransitionSystems::EnterSchedules),
+        ));
+        if d > 1 {
+            schedule.configure_sets((
+                TsDepth::Exit(d).before(TsDepth::Exit(d - 1)),
+                TsDepth::Transition(d - 1).before(TsDepth::Transition(d)),
+                TsDepth::Enter(d - 1).before(TsDepth::Enter(d)),
+            ));
+        }
+    }
+}
+
+fn set_depth<const N: u8>(world: &mut World, depth: u8) {
+    let d = depth.clamp(1, MAX_DEPTH);
+    world.resource_mut::<Schedules>().entry(StateTransition).configure_sets((
+        bevy::state::state::ExitSchedules::<TsState<N>>::default().in_set(TsDepth::Exit(d)),
+        bevy::state::state::TransitionSchedules::<TsState<N>>::default().in_set(TsDepth::Transition(d)),
+        bevy::state::state::EnterSchedules::<TsState<N>>::default().in_set(TsDepth::Enter(d)),
+    ));
+}
+
+/// Sets a sub or computed state's value (`None`: it does not exist), as Bevy applies one: the
+/// `State` resource and a `StateTransitionEvent`, which Bevy's exit and enter systems then run.
+/// `PreviousState` is not kept for these: Bevy offers no way to write it.
+fn set_derived<const N: u8>(world: &mut World, value: Option<u32>) {
+    let old = current::<N>(world);
+    if old == value {
+        return;
+    }
+    match value {
+        Some(v) => {
+            world.insert_resource(State::new(TsState::<N>(v)));
+            if !world.contains_resource::<NextState<TsState<N>>>() {
+                world.insert_resource(NextState::<TsState<N>>::Unchanged);
+            }
+        }
+        None => drop(world.remove_resource::<State<TsState<N>>>()),
+    }
+    world.remove_resource::<PreviousState<TsState<N>>>();
+    world.write_message(StateTransitionEvent { exited: old.map(TsState::<N>), entered: value.map(TsState::<N>), allow_same_state_transitions: false });
 }
 
 /// Bevy's six state-scoped components, by name, in the order of their kind number.
@@ -116,7 +180,9 @@ fn remove_scoped<const N: u8>(world: &mut World, e: Entity, kind: u8) {
     }
 }
 
-fn register<const N: u8>(world: &mut World, initial: u32) {
+/// Registers slot `N` with Bevy's state machinery, once: its message, its transition systems and
+/// the state-scoped systems. It has no value yet.
+fn make<const N: u8>(world: &mut World) {
     if world.get_resource_or_init::<TsStates>().made.insert(N) {
         MessageRegistry::register_message::<StateTransitionEvent<TsState<N>>>(world);
         let mut schedules = world.resource_mut::<Schedules>();
@@ -140,6 +206,10 @@ fn register<const N: u8>(world: &mut World, initial: u32) {
                     .in_set(StateTransitionSystems::TransitionSchedules),
             );
     }
+}
+
+fn register<const N: u8>(world: &mut World, initial: u32) {
+    make::<N>(world);
     world.insert_resource(State::new(TsState::<N>(initial)));
     world.insert_resource(NextState::<TsState<N>>::Unchanged);
     // As `init_state` does: the first `StateTransition` runs `OnEnter(initial)`.
@@ -213,6 +283,9 @@ macro_rules! ops {
             add_runner: add_runner::<$n>,
             insert_scoped: insert_scoped::<$n>,
             remove_scoped: remove_scoped::<$n>,
+            make: make::<$n>,
+            set_depth: set_depth::<$n>,
+            set_derived: set_derived::<$n>,
         }),*]
     };
 }
@@ -230,6 +303,10 @@ pub struct TsStates {
     runners: HashSet<(u8, RunKind, u32, u32)>,
     /// Values set while the bevy-ts stages were paused, applied on the next running frame.
     held: BTreeMap<u8, u32>,
+    /// Each slot's depth set, once placed.
+    depth: HashMap<u8, u8>,
+    /// A computed state's sources' values when it was last computed.
+    computed_from: HashMap<u8, Vec<Option<u32>>>,
 }
 
 impl TsStates {
@@ -313,9 +390,28 @@ pub fn remove_scoped(world: &mut World, e: Entity, kind: u8) {
 /// to its initial value, and adds the TS runners its systems need.
 pub(crate) fn sync(world: &mut World) {
     let started = crate::generation::started(world);
-    let machines: Vec<(u8, Vec<u32>, Option<u32>)> =
-        world.resource::<TsPayloads>().states.iter().map(|m| (m.slot, m.syms.clone(), m.initial)).collect();
-    for (slot, syms, initial) in machines {
+    let machines: Vec<(u8, Vec<u32>, Option<u32>, bool, Vec<usize>)> = world
+        .resource::<TsPayloads>()
+        .states
+        .iter()
+        .map(|m| (m.slot, m.syms.clone(), m.initial, m.derived(), m.source.iter().map(|s| s.0).chain(m.computed.iter().copied()).collect()))
+        .collect();
+    // Depth by declaration order: a source is declared before what it derives.
+    let mut depths: Vec<u8> = Vec::with_capacity(machines.len());
+    for (_, _, _, _, sources) in &machines {
+        let d = sources.iter().filter_map(|i| depths.get(*i)).max().map_or(1, |d| d + 1);
+        depths.push(d);
+    }
+    for ((slot, syms, initial, derived, _), depth) in machines.into_iter().zip(depths) {
+        if world.resource::<TsStates>().depth.get(&slot) != Some(&depth) {
+            (OPS[slot as usize].make)(world);
+            (OPS[slot as usize].set_depth)(world, depth);
+            world.resource_mut::<TsStates>().depth.insert(slot, depth);
+        }
+        if derived {
+            (OPS[slot as usize].make)(world);
+            continue;
+        }
         match (current_of(world, slot), initial) {
             (None, Some(init)) if started => (OPS[slot as usize].register)(world, init),
             // A reload removed the current value: back to the initial one, as a transition.
@@ -349,6 +445,7 @@ pub(crate) fn restart(world: &mut World) {
     }
     if let Some(mut s) = world.get_resource_mut::<TsStates>() {
         s.held.clear();
+        s.computed_from.clear();
     }
 }
 
@@ -375,3 +472,55 @@ pub(crate) fn hold_while_paused(world: &mut World) {
         }
     }
 }
+
+/// `StateTransition`, after `DependentTransitions` and before `ExitSchedules`: sub and computed
+/// states follow their sources, in declaration order. A sub state exists at its first value while
+/// its source is in its value; a computed state's function is a JS call only when a source changed.
+pub(crate) fn derive(world: &mut World) {
+    let derived: Vec<(usize, u8)> =
+        world.resource::<TsPayloads>().states.iter().enumerate().filter(|(_, m)| m.derived()).map(|(i, m)| (i, m.slot)).collect();
+    if derived.is_empty() {
+        return;
+    }
+    for (i, slot) in derived {
+        // Sources as slots, read before anything is written.
+        let (source, computed, first, name) = {
+            let p = world.resource::<TsPayloads>();
+            let m = &p.states[i];
+            let source = m.source.map(|(src, value)| (p.states[src].slot, value));
+            let computed: Vec<u8> = m.computed.iter().map(|j| p.states[*j].slot).collect();
+            (source, computed, m.syms.first().copied(), m.name.clone())
+        };
+        let value = if let Some((src_slot, value)) = source {
+            match current_of(world, src_slot) == Some(value) {
+                true => current_of(world, slot).or(first),
+                false => None,
+            }
+        } else {
+            let sources: Vec<Option<u32>> = computed.iter().map(|j| current_of(world, *j)).collect();
+            if world.resource::<TsStates>().computed_from.get(&slot) == Some(&sources) {
+                continue;
+            }
+            world.resource_mut::<TsStates>().computed_from.insert(slot, sources.clone());
+            let names: Vec<serde_json::Value> = sources.iter().map(|v| v.map_or(serde_json::Value::Null, |v| name_value(v))).collect();
+            let payload = serde_json::json!({ "state": name, "sources": names }).to_string();
+            match crate::runtime::ScriptRuntime::call_entry(world, COMPUTE_ENTRY, payload.as_bytes()) {
+                Ok(bytes) => {
+                    let v = String::from_utf8_lossy(&bytes).to_string();
+                    let m = &world.resource::<TsPayloads>().states[i];
+                    if v.is_empty() { None } else { m.sym(&v) }
+                }
+                // The entry logged the throw; the state keeps its value.
+                Err(_) => current_of(world, slot),
+            }
+        };
+        (OPS[slot as usize].set_derived)(world, value);
+    }
+}
+
+fn name_value(sym: u32) -> serde_json::Value {
+    serde_json::Value::String(name(sym).to_string())
+}
+
+/// The JS entry that runs a computed state's function.
+pub const COMPUTE_ENTRY: &str = "bevy-ts:computed";

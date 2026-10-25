@@ -180,3 +180,61 @@ app.initState(Game.Menu).addSystems(Update, go, systems(play).runIf(inState(Game
     // Frame 1 sets Playing; frames 2 to 4 are in Playing.
     assert_eq!(said(&mut app), ["play", "play", "play"]);
 }
+
+const SUB: &str = r#"import { SubStates, ComputedStates } from "bevy-ts";
+export class Game extends States("Menu", "Playing") { static path = "game::Game" }
+export class Pause extends SubStates(Game.Playing, "Running", "Paused") { static path = "game::Pause" }
+export class InGame extends ComputedStates(Game, (g) => { console.log("compute"); return g === Game.Playing ? InGame.Yes : undefined; }, "Yes") { static path = "game::InGame" }
+"#;
+
+#[test]
+fn a_sub_state_exists_only_in_its_source_value_and_ignores_next_state_otherwise() {
+    let body = r#"export function early(next: NextState<Pause>, g: State<Game>, p: State<Pause>) { if (g.current === Game.Menu) next.set(Pause.Paused); }
+export function go(next: NextState<Game>, g: State<Game>, p: State<Pause>) { console.log(`pause${p.current ? p.current.value : "-"}`); if (g.current === Game.Menu) next.set(Game.Playing); }
+app.initState(Game.Menu).addSystems(Update, early, go);
+"#;
+    let (_, mut app) = load("states-sub", &src(&format!("{SUB}{body}")));
+    updates(&mut app, 3);
+    let m = said(&mut app);
+    // Frame 1: Menu, no Pause (its NextState ignored). Frame 2: Playing, Pause at its first value.
+    assert_eq!(m[..2], ["pause-", "pauseRunning"], "{m:?}");
+}
+
+#[test]
+fn leaving_a_parent_exits_the_sub_state_first() {
+    let body = r#"export function step(ng: NextState<Game>, np: NextState<Pause>, g: State<Game>, p: State<Pause>) {
+  if (g.current === Game.Menu) ng.set(Game.Playing);
+  else if (p.current === Pause.Running) np.set(Pause.Paused);
+  else if (p.current === Pause.Paused) ng.set(Game.Menu);
+}
+export function exitPaused() { console.log("exitPaused"); }
+export function exitPlaying() { console.log("exitPlaying"); }
+export function enterMenu() { console.log("enterMenu"); }
+app.initState(Game.Menu).addSystems(Update, step)
+  .addSystems(OnExit(Pause.Paused), exitPaused).addSystems(OnExit(Game.Playing), exitPlaying).addSystems(OnEnter(Game.Menu), enterMenu);
+"#;
+    let (_, mut app) = load("states-sub-order", &src(&format!("{SUB}{body}")));
+    updates(&mut app, 6);
+    let m: Vec<String> = said(&mut app).into_iter().filter(|l| l != "compute").collect();
+    // The first enterMenu is the initial one.
+    let tail: Vec<&str> = m.iter().skip_while(|l| *l == "enterMenu").map(String::as_str).take(3).collect();
+    assert_eq!(tail, ["exitPaused", "exitPlaying", "enterMenu"], "{m:?}");
+}
+
+#[test]
+fn a_computed_state_is_computed_only_when_a_source_transitions() {
+    let body = r#"export function go(next: NextState<Game>, g: State<Game>, i: State<InGame>) { console.log(`in${i.current ? "Yes" : "-"}`); if (g.current === Game.Menu) next.set(Game.Playing); }
+app.initState(Game.Menu).addSystems(Update, go);
+"#;
+    let (_, mut app) = load("states-computed", &src(&format!("{SUB}{body}")));
+    updates(&mut app, 5);
+    let m = said(&mut app);
+    assert_eq!(m.iter().filter(|l| *l == "compute").count(), 2, "Menu once, Playing once: {m:?}");
+    assert!(m.contains(&"in-".to_string()) && m.contains(&"inYes".to_string()), "{m:?}");
+}
+
+#[test]
+fn a_sub_state_takes_no_init_state() {
+    let errors = load_errors("states-sub-init", &src(&format!("{SUB}app.initState(Game.Menu).initState(Pause.Running);\n")));
+    assert!(errors.iter().any(|e| e.message.contains("game::Pause") && e.message.contains("takes no initState")), "{errors:?}");
+}
