@@ -288,11 +288,16 @@ pub enum ParamDecl {
         /// `Option<Res<R>>`: absent gives `undefined` instead of failing the run.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         optional: bool,
+        /// A reflected class (no layout): read through the reflect codec.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        reflect: bool,
     },
     ResMut {
         resource: String,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         optional: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        reflect: bool,
     },
     Local {
         fields: Vec<FieldDecl>,
