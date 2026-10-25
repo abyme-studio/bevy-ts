@@ -11,7 +11,7 @@ All cargo runs through gate-slot. New tests are modules of their crate's one tes
 
 ## 2. performance.now
 
-- [ ] 2.1 `crates/bevy-ts-v8`: a host function reading `bevy_platform::time::Instant` since the runtime started; `performance.now` and `performance.timeOrigin` in `js/core.js`
+- [ ] 2.1 `crates/bevy-ts-v8`: host functions reading a `std::time::Instant` taken once per process; `performance.now` and `performance.timeOrigin` in `js/core.js`
 - [ ] 2.2 `packages/bevy-ts` declarations: `performance` with `now()` and `timeOrigin` only
 - [ ] 2.3 Test in `crates/bevy-ts-v8/tests/it`: monotonic, sub-millisecond, not reset by a reload
 
