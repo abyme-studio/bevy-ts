@@ -206,11 +206,11 @@ fn sink(id: TypeId) -> crate::rust_events::TsEventSink {
             }
         };
         let mut queue = world.resource_mut::<ObserverQueue>();
+        // A later hop joins its trigger's entry even when another trigger was queued between the
+        // hops, so `propagate(false)` still drops it.
         if let (Some(c), Some(o)) = (current, original)
             && c != o
-            && let Some(back) = queue.0.back_mut()
-            && back.trigger == Trigger::Rust(id)
-            && back.original == Some(o)
+            && let Some(back) = queue.0.iter_mut().rev().find(|p| p.trigger == Trigger::Rust(id) && p.original == Some(o))
         {
             back.path.push(c);
             back.hops.push(bytes);
