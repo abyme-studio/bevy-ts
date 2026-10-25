@@ -104,6 +104,8 @@ feature added to it. When Bevy reflects it itself, the test fails; delete the en
 
 An HLOD in TSX: the detail mesh fades out over 8..12 m as its impostor fades in. A margin left
 out is `0..0` (the derived default), so the impostor sets an `end_margin` past any view distance.
+The first frames of a scene with `VisibilityRange` may be blank: Bevy compiles a mesh pipeline for
+it in the background. A pixel test sets `synchronous_pipeline_compilation` (`common::sync_pipelines`).
 
 ```tsx
 <entity name="tower">
