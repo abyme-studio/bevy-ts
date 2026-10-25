@@ -57,7 +57,6 @@ pub const UNCOVERED: &[(&str, &str)] = &[
     ("bevy_scene::scene_component::SceneComponentInfo", "computed by bevy_scene; holds a &'static str"),
     ("bevy_image::image::Image", "reflect-assets: its wgpu texture and view descriptors are opaque with no reflected serde"),
     ("bevy_render::storage::ShaderBuffer", "opaque with no reflected serde"),
-    ("bevy_mesh::mesh::Mesh", "script-assets: no default; attributes and indices are reflect(ignore); engine-core builds meshes"),
 ];
 
 /// Components Bevy computes: read like any other, never written from TSX or scripts.

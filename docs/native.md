@@ -466,8 +466,8 @@ A TS system takes it as a parameter and calls it: `rapier.castRay(origin, [0, -1
 system's run; slices are read and written in place, so `castRays` over 1,000 rays is one call.
 Arguments and results are numbers, `bool`, `Entity`, `Vec2`, `Vec3`, `Quat`, `#[derive(HostRecord)]`
 records and fieldless enums (an enum crosses as its variant names, `"Any" | "Visible"`; a record
-that leaves one out gets its first variant), strings, `Option`s of these, and `&[T]` / `&mut [T]`
-of numbers; anything else is a compile error naming the type. A string argument is `&str`,
+that leaves one out gets its first variant), strings, asset refs, `Option`s of these, and
+`&[T]` / `&mut [T]` of numbers; anything else is a compile error naming the type. A string argument is `&str`,
 `Option<&str>` or `String`, and a result `String` or `Option<String>`, typed `string` in TS. Each
 call copies it as UTF-8 through the call's 4 KB of slots, so a string argument or result too long
 for them throws; pass long text through a slice. A record field cannot be a string. A slice
@@ -497,6 +497,26 @@ are the settings: `gizmos.circle(at, 1, "#fff").resolution(64)`. Settings of one
 builders share one JS method, so they take the same slots. `bevy_ts_native::gizmos` is the one
 export that does (docs/gizmos.md); `app.ts_gizmo_group::<G>()` exposes a crate's own gizmo config
 group to TS as `Gizmos<G>`.
+
+### Asset refs
+
+A method takes or returns `ScriptRef<A>` (`bevy_ts::host::ScriptRef`) for a script's handle to an
+asset of type `A`, and `UntypedScriptRef` for one of any type. JS passes and receives the same
+frozen `AssetRef<A>` object `assets` and `meshes.add` give (`{ $asset, type }`); a ref of another
+asset type throws naming the method and both types. In Rust, `r.handle(&script_assets)` is the
+strong `Handle<A>`, and `ScriptRef::new(script_assets.insert_strong(handle.untyped()))` hands one
+out: the script holds it until `assets.drop`, a hot reload or stop (docs/assets.md). `bevy-ts types`
+declares it `AssetRef<A>`.
+
+```rust
+#[bevy_ts_native::export(ts = "Terrain", module = "bevy-ts/terrain")]
+impl Terrain<'_> {
+    pub fn chunk(&mut self, x: i32, z: i32) -> ScriptRef<Mesh> {
+        let h = self.meshes.add(build_chunk(x, z));
+        ScriptRef::new(self.refs.insert_strong(h.untyped()))
+    }
+}
+```
 
 ### Params that write
 

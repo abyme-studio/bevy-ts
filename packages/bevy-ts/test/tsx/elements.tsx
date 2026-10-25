@@ -60,8 +60,24 @@ export const Bad = () => (
     <mesh shape="sphere" sides={6} />
     {/* @ts-expect-error a wrong-length vector */}
     <mesh shape="cuboid" size={[1, 2]} />
+    {/* @ts-expect-error a shape and vertex data */}
+    <mesh shape="cuboid" positions={[[0, 0, 0]]} />
+    {/* @ts-expect-error a vertex prop on a shape */}
+    <mesh shape="plane" uvs={[[0, 0]]} />
+    {/* @ts-expect-error vertex data needs positions */}
+    <mesh uvs={[[0, 0]]} />
+    {/* @ts-expect-error a normals computation Bevy does not have */}
+    <mesh positions={[[0, 0, 0]]} normals="sharp" />
     {/* @ts-expect-error a prefab's required prop */}
     <Enemy />
+  </entity>
+);
+
+// A quad from vertex data.
+export const Quad = () => (
+  <entity>
+    <mesh positions={[[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]} uvs={[[0, 0], [1, 0], [1, 1], [0, 1]]} indices={[0, 1, 2, 0, 2, 3]} normals="computed" tangents="generated" color="#c33" />
+    <mesh positions={[[0, 0, 0], [1, 0, 0]]} topology="LineList" indices={{ U16: [0, 1] }} />
   </entity>
 );
 

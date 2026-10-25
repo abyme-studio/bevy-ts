@@ -1380,6 +1380,21 @@ function isAssetValue(v) {
   return v !== null && typeof v === "object" && typeof v.$of === "string";
 }
 
+/** What every `AssetRef` shares: `ref.id`, the asset's `AssetId<A>` as `AssetEvent<A>` carries it. */
+const REF_PROTO = Object.freeze({
+  get id() {
+    return assetCall("id", [this]);
+  },
+});
+
+/** An `AssetRef`: own `$asset` and `type`, so it reads and serializes as `{ $asset, type }`. */
+function assetRef(n, type) {
+  const r = Object.create(REF_PROTO);
+  r.$asset = n;
+  r.type = type;
+  return Object.freeze(r);
+}
+
 function assetPath(T) {
   if (!T || typeof T.typePath !== "string" || T[KIND] !== "asset") throw new TypeError("assets.add(Type, props): Type is an asset class from bevy-ts/bevy (StandardMaterial)");
   return T.typePath;
@@ -1396,8 +1411,8 @@ export const assets = {
    * written over it. `assets.add(value)` makes an asset value (`T.of(...)`, a built graph) its own asset.
    */
   add(T, props = {}) {
-    if (isAssetValue(T)) return Object.freeze(assetCall("add", [T.$of, T.props]));
-    return Object.freeze(assetCall("add", [assetPath(T), props]));
+    const r = isAssetValue(T) ? assetCall("add", [T.$of, T.props]) : assetCall("add", [assetPath(T), props]);
+    return assetRef(r.$asset, r.type);
   },
   /** The asset as JSON, or `undefined` when it is gone. One host call and a full read: keep the value in JS rather than reading per frame. */
   get(ref) {
@@ -1408,7 +1423,336 @@ export const assets = {
   set(ref, patch) {
     assetCall("set", [ref, isAssetValue(patch) ? patch.props : patch]);
   },
+  /** Drops the script's handle: the ref goes stale, and Bevy frees the asset once nothing else holds it. A UUID asset (`assets.add`) stays until restart or stop. */
+  drop(ref) {
+    assetCall("drop", [ref]);
+  },
+  /** Bevy's `Assets::remove`: the asset goes when the run ends, even while a component holds it, and the ref goes stale. */
+  remove(ref) {
+    assetCall("remove", [ref]);
+  },
 };
+
+// ---------------------------------------------------------------------------------------------
+// Meshes (docs/assets.md): Bevy's `Mesh` API over `ResMut<Assets<Mesh>>`, the engine's `Meshes`
+// export (crates/bevy-ts-cli/src/assets.rs). Vertex data crosses as typed arrays, one host call
+// per attribute; a `Mesh.new` mesh records in JS until `meshes.add`.
+
+const MESH_TYPE = "bevy_mesh::mesh::Mesh";
+/** The mesh `meshes.add` is building, in Rust: ref 0. */
+const BUILDING = Object.freeze({ $asset: 0, type: MESH_TYPE });
+
+/** Bevy's `PrimitiveTopology`. */
+export const PrimitiveTopology = Object.freeze({ PointList: 0, LineList: 1, LineStrip: 2, TriangleList: 3, TriangleStrip: 4 });
+const TOPOLOGY_NAMES = Object.keys(PrimitiveTopology);
+
+/** Bevy's `RenderAssetUsages` bits; combine with `|`. `default()` is both. */
+export const RenderAssetUsages = Object.freeze({ MAIN_WORLD: 1, RENDER_WORLD: 2, default: () => 3, all: () => 3 });
+
+function meshAttribute(name, id, format, components, array) {
+  return Object.freeze({ name, id, format, components, array });
+}
+const MESH_ATTRIBUTES = [
+  meshAttribute("Vertex_Position", 0, "Float32x3", 3, Float32Array),
+  meshAttribute("Vertex_Normal", 1, "Float32x3", 3, Float32Array),
+  meshAttribute("Vertex_Uv", 2, "Float32x2", 2, Float32Array),
+  meshAttribute("Vertex_Uv_1", 3, "Float32x2", 2, Float32Array),
+  meshAttribute("Vertex_Tangent", 4, "Float32x4", 4, Float32Array),
+  meshAttribute("Vertex_Color", 5, "Float32x4", 4, Float32Array),
+  meshAttribute("Vertex_JointWeight", 6, "Float32x4", 4, Float32Array),
+  meshAttribute("Vertex_JointIndex", 7, "Uint16x4", 4, Uint16Array),
+];
+const ATTRIBUTE_KEYS = ["POSITION", "NORMAL", "UV_0", "UV_1", "TANGENT", "COLOR", "JOINT_WEIGHT", "JOINT_INDEX"];
+
+/** Bevy's `Indices`: `Indices.U16(new Uint16Array(...))` or `Indices.U32(new Uint32Array(...))`. */
+export const Indices = Object.freeze({
+  U16(data) {
+    if (!(data instanceof Uint16Array)) throw new TypeError("Indices.U16 takes a Uint16Array");
+    return Object.freeze({ U16: data });
+  },
+  U32(data) {
+    if (!(data instanceof Uint32Array)) throw new TypeError("Indices.U32 takes a Uint32Array");
+    return Object.freeze({ U32: data });
+  },
+});
+
+// Mesh operation codes, as `Op` in assets.rs.
+const MESH_OPS = { computeNormals: 0, computeFlatNormals: 1, computeSmoothNormals: 2, computeAreaWeightedNormals: 3, generateTangents: 4, duplicateVertices: 5, removeIndices: 6 };
+
+function checkAttribute(attr, data) {
+  const a = attr && MESH_ATTRIBUTES[attr.id];
+  if (!a || a !== attr) throw new TypeError("insertAttribute: the attribute is one of Mesh.ATTRIBUTE_*");
+  if (!(data instanceof a.array)) {
+    throw new TypeError(`insertAttribute: Mesh.ATTRIBUTE_${ATTRIBUTE_KEYS[a.id]} takes a ${a.array.name} of ${a.components} per vertex, not ${data && data.constructor ? data.constructor.name : typeof data}`);
+  }
+  if (data.length % a.components !== 0) {
+    throw new TypeError(`insertAttribute: Mesh.ATTRIBUTE_${ATTRIBUTE_KEYS[a.id]} takes a ${a.array.name} of ${a.components} per vertex; ${data.length} is not a whole number of vertices`);
+  }
+  return a;
+}
+
+function checkIndices(indices) {
+  if (indices && indices.U16 instanceof Uint16Array) return indices;
+  if (indices && indices.U32 instanceof Uint32Array) return indices;
+  throw new TypeError("insertIndices takes Indices.U16(Uint16Array) or Indices.U32(Uint32Array)");
+}
+
+/**
+ * Bevy's `Mesh`. `Mesh.new(topology, usage)` makes one that records its calls in JS; `meshes.add`
+ * builds it in Rust. `meshes.get` and `meshes.getMut` give a live mesh whose calls go to the asset.
+ */
+export class Mesh {
+  static typePath = MESH_TYPE;
+  static {
+    for (let i = 0; i < ATTRIBUTE_KEYS.length; i++) Mesh[`ATTRIBUTE_${ATTRIBUTE_KEYS[i]}`] = MESH_ATTRIBUTES[i];
+    this[KIND] = "asset";
+  }
+  /** A mesh value from Bevy-named JSON (`assets.get` of a mesh): written into a `Handle<Mesh>` slot it becomes one asset shared by every slot given equal props. */
+  static of(props = {}) {
+    return Object.freeze({ $of: MESH_TYPE, props });
+  }
+  #topology;
+  #usage;
+  /** Recorded calls, replayed in order by `meshes.add`: [kind, ...args]. */
+  #calls = [];
+  #attributes = new Map();
+  #indices = undefined;
+  #computed = false;
+
+  static new(topology, usage = 3) {
+    if (TOPOLOGY_NAMES[topology] === undefined) throw new TypeError(`Mesh.new: ${topology} is not a PrimitiveTopology`);
+    if (!(usage === 1 || usage === 2 || usage === 3)) throw new TypeError(`Mesh.new: ${usage} is not a RenderAssetUsages`);
+    const m = new Mesh();
+    m.#topology = topology;
+    m.#usage = usage;
+    return m;
+  }
+  get primitiveTopology() {
+    return TOPOLOGY_NAMES[this.#topology];
+  }
+  insertAttribute(attr, data) {
+    const a = checkAttribute(attr, data);
+    this.#calls.push(["attribute", a, data]);
+    this.#attributes.set(a.id, data);
+    return this;
+  }
+  removeAttribute(attr) {
+    this.#calls.push(["removeAttribute", attr.id]);
+    this.#attributes.delete(attr.id);
+    return this;
+  }
+  insertIndices(indices) {
+    this.#indices = checkIndices(indices);
+    this.#calls.push(["indices", this.#indices]);
+    return this;
+  }
+  removeIndices() {
+    this.#indices = undefined;
+    this.#calls.push(["op", MESH_OPS.removeIndices]);
+    return this;
+  }
+  computeNormals() { return this.#op("computeNormals"); }
+  computeFlatNormals() { return this.#op("computeFlatNormals"); }
+  computeSmoothNormals() { return this.#op("computeSmoothNormals"); }
+  computeAreaWeightedNormals() { return this.#op("computeAreaWeightedNormals"); }
+  generateTangents() { return this.#op("generateTangents"); }
+  duplicateVertices() { return this.#op("duplicateVertices"); }
+  #op(name) {
+    this.#calls.push(["op", MESH_OPS[name]]);
+    this.#computed = true;
+    return this;
+  }
+  #recorded(method) {
+    if (this.#computed) throw new Error(`${method}: this mesh has computed data; Rust makes it at meshes.add, so read it from meshes.get(ref)`);
+  }
+  /** Bevy's `count_vertices`: the shortest attribute's vertex count. */
+  countVertices() {
+    this.#recorded("countVertices");
+    let n;
+    for (const [id, data] of this.#attributes) {
+      const c = data.length / MESH_ATTRIBUTES[id].components;
+      n = n === undefined ? c : Math.min(n, c);
+    }
+    return n ?? 0;
+  }
+  /** A copy of `attr`'s data, or `undefined` when unset. */
+  attribute(attr) {
+    this.#recorded("attribute");
+    const d = this.#attributes.get(attr.id);
+    return d && d.slice();
+  }
+  indices() {
+    this.#recorded("indices");
+    const i = this.#indices;
+    return i && (i.U16 ? Indices.U16(i.U16.slice()) : Indices.U32(i.U32.slice()));
+  }
+  /** Replays the recorded calls on the mesh `p` is building. */
+  static build(m, p) {
+    p.begin(m.#topology, m.#usage);
+    const calls = m.#calls;
+    for (let i = 0; i < calls.length; i++) {
+      const c = calls[i];
+      if (c[0] === "attribute") {
+        if (c[1].array === Uint16Array) p.insertAttributeU16(BUILDING, c[1].id, c[2]);
+        else p.insertAttributeF32(BUILDING, c[1].id, c[2]);
+      } else if (c[0] === "removeAttribute") p.removeAttribute(BUILDING, c[1]);
+      else if (c[0] === "indices") {
+        if (c[1].U16) p.insertIndicesU16(BUILDING, c[1].U16);
+        else p.insertIndicesU32(BUILDING, c[1].U32);
+      } else {
+        // A run of operations is one call.
+        const ops = [];
+        while (i < calls.length && calls[i][0] === "op") ops.push(calls[i++][1]);
+        i--;
+        p.apply(BUILDING, new Uint8Array(ops));
+      }
+    }
+    return p.finish();
+  }
+}
+
+/** A mesh in `Assets<Mesh>`: each call is one host call on the asset. */
+class LiveMesh {
+  #p;
+  #ref;
+  #writable;
+  constructor(p, ref, writable) {
+    this.#p = p;
+    this.#ref = ref;
+    this.#writable = writable;
+  }
+  #w(method) {
+    if (!this.#writable) throw new Error(`${method}: meshes.get gives a read-only mesh; use meshes.getMut`);
+    return this.#p;
+  }
+  get primitiveTopology() {
+    return TOPOLOGY_NAMES[this.#p.topology(this.#ref)];
+  }
+  get assetUsage() {
+    return this.#p.usage(this.#ref);
+  }
+  insertAttribute(attr, data) {
+    const a = checkAttribute(attr, data);
+    const p = this.#w("insertAttribute");
+    if (a.array === Uint16Array) p.insertAttributeU16(this.#ref, a.id, data);
+    else p.insertAttributeF32(this.#ref, a.id, data);
+    return this;
+  }
+  removeAttribute(attr) {
+    this.#w("removeAttribute").removeAttribute(this.#ref, attr.id);
+    return this;
+  }
+  insertIndices(indices) {
+    const i = checkIndices(indices);
+    const p = this.#w("insertIndices");
+    if (i.U16) p.insertIndicesU16(this.#ref, i.U16);
+    else p.insertIndicesU32(this.#ref, i.U32);
+    return this;
+  }
+  removeIndices() { return this.#op("removeIndices"); }
+  computeNormals() { return this.#op("computeNormals"); }
+  computeFlatNormals() { return this.#op("computeFlatNormals"); }
+  computeSmoothNormals() { return this.#op("computeSmoothNormals"); }
+  computeAreaWeightedNormals() { return this.#op("computeAreaWeightedNormals"); }
+  generateTangents() { return this.#op("generateTangents"); }
+  duplicateVertices() { return this.#op("duplicateVertices"); }
+  #op(name) {
+    this.#w(name).apply(this.#ref, new Uint8Array([MESH_OPS[name]]));
+    return this;
+  }
+  countVertices() {
+    return this.#p.countVertices(this.#ref);
+  }
+  attribute(attr) {
+    const a = MESH_ATTRIBUTES[attr && attr.id];
+    if (!a) throw new TypeError("attribute: the attribute is one of Mesh.ATTRIBUTE_*");
+    const n = this.#p.attributeLen(this.#ref, a.id);
+    if (n === undefined) return undefined;
+    const out = new a.array(n);
+    if (a.array === Uint16Array) this.#p.readAttributeU16(this.#ref, a.id, out);
+    else this.#p.readAttributeF32(this.#ref, a.id, out);
+    return out;
+  }
+  indices() {
+    const w = this.#p.indicesWidth(this.#ref);
+    if (w === undefined) return undefined;
+    const n = this.#p.indicesLen(this.#ref);
+    if (w === 16) {
+      const out = new Uint16Array(n);
+      this.#p.readIndicesU16(this.#ref, out);
+      return Indices.U16(out);
+    }
+    const out = new Uint32Array(n);
+    this.#p.readIndicesU32(this.#ref, out);
+    return Indices.U32(out);
+  }
+}
+
+/** `Meshes` with Bevy's `Assets<Mesh>` names over its host calls. */
+function meshesClass(Base) {
+  return class Meshes extends Base {
+    /** Adds a `Mesh.new` mesh; returns a strong ref. A failed step adds nothing. */
+    add(mesh) {
+      if (!(mesh instanceof Mesh)) throw new TypeError("meshes.add takes a Mesh from Mesh.new");
+      try {
+        return Mesh.build(mesh, this);
+      } catch (e) {
+        super.abandon();
+        throw e;
+      }
+    }
+    /** The mesh, read-only, or `undefined` when it is gone. */
+    get(ref) {
+      return super.contains(ref) ? new LiveMesh(this, ref, false) : undefined;
+    }
+    /** The live mesh: its writes go into the asset in place; Bevy sends one `Modified` per frame. */
+    getMut(ref) {
+      return super.contains(ref) ? new LiveMesh(this, ref, true) : undefined;
+    }
+  };
+}
+
+// Load states (docs/assets.md): the export returns a code, and the failed text in a second call.
+const LOAD_STATES = ["NotLoaded", "Loading", "Loaded"];
+const TEXT = new Uint8Array(4096);
+
+/** `ScriptAssetServer` with Bevy's `AssetServer` names over its host calls. */
+function serverClass(Base) {
+  return class ScriptAssetServer extends Base {
+    #text(r, which) {
+      let n = super.failedText(r, which, TEXT);
+      if (n <= TEXT.length) return decoder.decode(TEXT.subarray(0, n));
+      const big = new Uint8Array(n);
+      n = super.failedText(r, which, big);
+      return decoder.decode(big.subarray(0, n));
+    }
+    #state(code, r, which) {
+      return code === 3 ? Object.freeze({ Failed: this.#text(r, which) }) : LOAD_STATES[code];
+    }
+    /** `AssetServer::load`: a strong ref, typed by `T` (an asset class) or by the path's extension. A labelled path needs `T`. */
+    load(path, T) {
+      if (typeof path !== "string") throw new TypeError("server.load takes an asset path string");
+      const type = T === undefined ? "" : T && typeof T.typePath === "string" ? T.typePath : undefined;
+      if (type === undefined) throw new TypeError("server.load(path, T): T is an asset class (Mesh, Image)");
+      const r = super.loadPath(encoder.encode(path), encoder.encode(type));
+      if (type) return HOST.asRef(r.$asset, type);
+      const len = super.typePath(r, TEXT);
+      return HOST.asRef(r.$asset, decoder.decode(TEXT.subarray(0, len)));
+    }
+    loadState(r) {
+      return this.#state(super.loadStateCode(r), r, 0);
+    }
+    dependencyLoadState(r) {
+      return this.#state(super.dependencyLoadStateCode(r), r, 1);
+    }
+    recursiveDependencyLoadState(r) {
+      return this.#state(super.recursiveDependencyLoadStateCode(r), r, 2);
+    }
+  };
+}
+
+/** JS wrappers of engine exports, by TS name: Bevy's names over the raw host calls. */
+const PORT_WRAPS = { Meshes: meshesClass, ScriptAssetServer: serverClass };
 
 const FIELD_BY_TYPE = { f32, f64, i8, u8, i16, u16, i32, u32, bool, vec2, vec3, vec4, quat, entity, timer: Timer, stopwatch: Stopwatch };
 
@@ -2967,6 +3311,17 @@ const HOST = {
       throw new Error(`${b.$builder}.${setting}: call it right after the call that returned the builder`);
     }
   },
+  /** An `AssetRef` argument's ref number; a ref of another asset type throws naming both. */
+  ref(v, type, param, method) {
+    const n = v && v.$asset;
+    if (typeof n !== "number") throw new TypeError(`${param}.${method}: expected an AssetRef${type ? `<${type}>` : ""}, got ${v === undefined ? "undefined" : JSON.stringify(v)}`);
+    if (type !== "" && v.type !== type) throw new TypeError(`${param}.${method}: expected an AssetRef<${type}>, got an AssetRef<${v.type}>`);
+    return n;
+  },
+  /** An `AssetRef` result: the frozen ref `assets` returns. */
+  asRef(n, type) {
+    return assetRef(n, type);
+  },
   fail(param, method) {
     const msg = core ? core.ops.op_bevyts_host_error() : "";
     throw new Error(msg || `${param}.${method} failed`);
@@ -3661,6 +4016,7 @@ function portClass(res, name) {
   let P = PORT_CLASSES.get(src);
   if (!P) {
     P = new Function("H", src)(HOST);
+    if (PORT_WRAPS[name]) P = PORT_WRAPS[name](P);
     PORT_CLASSES.set(src, P);
   }
   return P;

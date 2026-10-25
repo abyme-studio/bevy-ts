@@ -12,7 +12,7 @@ use bevy_ts_tsx::{TsxNode, TsxPlugin};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
-fn app() -> (App, FakeHandle) {
+pub(crate) fn app() -> (App, FakeHandle) {
     let handle = FakeHandle::default();
     let h = handle.clone();
     let mut app = App::new();
@@ -25,7 +25,7 @@ fn app() -> (App, FakeHandle) {
 }
 
 /// One entity, keyed `key`, with `<mesh {props} />` on line `line` of shapes.tsx.
-fn node(key: &str, line: u32, props: Value) -> Value {
+pub(crate) fn node(key: &str, line: u32, props: Value) -> Value {
     json!({
         "key": key,
         "type": "entity",
@@ -37,7 +37,7 @@ fn node(key: &str, line: u32, props: Value) -> Value {
     })
 }
 
-fn load(app: &mut App, fake: &FakeHandle, nodes: Vec<Value>) -> ReloadReport {
+pub(crate) fn load(app: &mut App, fake: &FakeHandle, nodes: Vec<Value>) -> ReloadReport {
     let section = json!({ "roots": [{ "name": "shapes", "nodes": nodes }] });
     fake.push(FakeProgram {
         sections: vec![Section { name: "tsx".into(), bytes: serde_json::to_vec(&section).unwrap(), location: None }],
@@ -46,7 +46,7 @@ fn load(app: &mut App, fake: &FakeHandle, nodes: Vec<Value>) -> ReloadReport {
     generation::apply(app.world_mut(), ModuleSet { entry: PathBuf::from("/game.tsx"), modules: vec![] }, false)
 }
 
-fn mesh_of(app: &mut App, key: &str) -> Mesh {
+pub(crate) fn mesh_of(app: &mut App, key: &str) -> Mesh {
     let world = app.world_mut();
     let e = world
         .query::<(Entity, &TsxNode)>()

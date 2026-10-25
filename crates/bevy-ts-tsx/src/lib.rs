@@ -21,6 +21,7 @@ pub mod restore;
 pub mod shapes;
 pub mod tree;
 pub mod ui;
+pub mod vertex_mesh;
 
 use crate::desc::SceneSection;
 use crate::reconcile::{apply_root, resolve_tree, unmount_root};

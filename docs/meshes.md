@@ -10,7 +10,7 @@ settings, in camelCase. An unset prop is Bevy's default. Angles are radians.
 </entity>
 ```
 
-`color` works on every shape: a shorthand for `<material color>`. Equal props share one mesh
+`color` works on every shape and on vertex data (below): a shorthand for `<material color>`. Equal props share one mesh
 asset, so a thousand identical enemies make one mesh. Props cannot be bindings. The code is
 `crates/bevy-ts-tsx/src/shapes.rs`; the types are `MeshProps` and one interface per shape
 (`CylinderMesh`, ...) in `bevy-ts/jsx-runtime`, so a prop the shape does not take is a `tsc` error.
@@ -67,6 +67,37 @@ line; the engine keeps running the last good generation:
   `angle` over 2π or a segment's `halfAngle` over π, a `plane` normal of zero;
 - a setting for the other kind (`subdivisions` on a uv sphere, `sectors` or `stacks` on an ico
   one), and `segments` on a 2D shape without `depth`.
+
+## Vertex data
+
+`<mesh positions>` builds a mesh from vertex data, as `Mesh.of` does (docs/assets.md). Each prop is
+one of Bevy's `Mesh` calls; `shape` and `positions` do not go together, and a vertex prop on a
+shape is a `tsc` error. The code is `crates/bevy-ts-tsx/src/vertex_mesh.rs`; the type is
+`VertexDataMesh`.
+
+```tsx
+<mesh positions={[[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]} uvs={[[0, 0], [1, 0], [1, 1], [0, 1]]}
+      indices={[0, 1, 2, 0, 2, 3]} normals="computed" color="#c33" />
+```
+
+| prop | Bevy |
+|---|---|
+| `positions` (required) | `Mesh::ATTRIBUTE_POSITION`, `Vec3` per vertex |
+| `normals` | `ATTRIBUTE_NORMAL`; or `"computed"`, `"flat"`, `"smooth"`, `"areaWeighted"`: `compute_normals`, `compute_flat_normals`, `compute_smooth_normals`, `compute_area_weighted_normals` |
+| `uvs`, `uvs1` | `ATTRIBUTE_UV_0`, `ATTRIBUTE_UV_1`, `Vec2` per vertex |
+| `tangents` | `ATTRIBUTE_TANGENT`, `Vec4` per vertex; or `"generated"`: `generate_tangents`, after the normals |
+| `colors` | `ATTRIBUTE_COLOR`, linear RGBA per vertex |
+| `jointIndices`, `jointWeights` | `ATTRIBUTE_JOINT_INDEX` (4 `u16`), `ATTRIBUTE_JOINT_WEIGHT` |
+| `indices` | a list is `Indices::U32`; `{ U16: [...] }` or `{ U32: [...] }` |
+| `topology` | `PrimitiveTopology` by name (`"TriangleList"`) |
+| `assetUsage` | `RenderAssetUsages`: `"MAIN_WORLD"`, `"RENDER_WORLD"` or both (both) |
+
+The load fails at the element, naming the prop, when an attribute's length differs from
+`positions`', an index is past the last vertex, the topology is not Bevy's, or Bevy refuses a
+computation (flat normals on indexed data, smooth normals without indices, normals on a topology
+other than `TriangleList`, tangents without normals or UVs). Equal props share one mesh. Props are
+hashed whenever they change: a mesh that changes every frame belongs in a system with
+`ResMut<Assets<Mesh>>` (docs/assets.md, Meshes).
 
 Not here yet: line shapes (`Segment2d`, `Polyline3d`, ...), rings of shapes other than the circle,
 and 2D meshes for a 2D camera.

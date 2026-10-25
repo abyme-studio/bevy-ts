@@ -12,4 +12,5 @@ mod reconcile;
 mod restore;
 mod standard_material;
 mod slot;
+mod vertex_mesh;
 mod visibility_range;

@@ -1,6 +1,7 @@
 //! The `bevy-ts` binary's library half: host-side TS compilation, the dev watcher and headless
 //! runs.
 
+pub mod assets;
 pub mod audio;
 pub mod build;
 pub mod camera;

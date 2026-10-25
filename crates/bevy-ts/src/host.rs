@@ -69,6 +69,9 @@ pub enum Kind {
     List(Vec<Kind>),
     /// A JSON value with its TS type, crossing as its text.
     Json(&'static str),
+    /// An asset ref (`ScriptRef<A>`), by the asset's type path; `""` for any asset type
+    /// (`UntypedScriptRef`). One slot, the ref number.
+    AssetRef(&'static str),
     Unit,
 }
 
@@ -98,7 +101,7 @@ impl Kind {
     /// Slots the value takes; a string's are its length slot, as an empty string's.
     pub fn slots(&self) -> usize {
         match self {
-            Kind::Num(_) | Kind::Bool | Kind::Entity | Kind::Enum(..) | Kind::Str | Kind::List(_) | Kind::Json(_) => 1,
+            Kind::Num(_) | Kind::Bool | Kind::Entity | Kind::Enum(..) | Kind::Str | Kind::List(_) | Kind::Json(_) | Kind::AssetRef(_) => 1,
             Kind::Vec2 | Kind::UVec2 => 2,
             Kind::Vec3 | Kind::UVec3 => 3,
             Kind::Quat | Kind::Isometry2d => 4,
@@ -136,6 +139,7 @@ impl Kind {
             Kind::UVec3 => Kind::Vec3.ts_in(),
             Kind::List(ks) => format!("readonly (readonly [{}])[]", ks.iter().map(Kind::ts_in).collect::<Vec<_>>().join(", ")),
             Kind::Json(t) => t.to_string(),
+            Kind::AssetRef(path) => format!("import(\"bevy-ts\").AssetRefOf<{path:?}>"),
             Kind::Unit => "void".into(),
         }
     }
@@ -156,6 +160,7 @@ impl Kind {
             Kind::UVec3 => Kind::Vec3.ts_out(),
             // Arguments only: their `HostValue`s refuse to be written as results.
             Kind::Color | Kind::Isometry2d | Kind::Isometry3d | Kind::TransformPoint | Kind::List(_) => "never".into(),
+            Kind::AssetRef(path) => format!("import(\"bevy-ts\").AssetRefOf<{path:?}>"),
             Kind::Unit => "void".into(),
         }
     }
@@ -745,6 +750,73 @@ impl<'a, P: PointLanes> HostArg<'a> for HostPoints<'a, P> {
     }
     fn take(_: &mut SlotReader, slices: &mut dyn Iterator<Item = &'a [u8]>, name: &str) -> Result<Self, String> {
         HostPoints::new(slices.next().ok_or("missing slice")?, name)
+    }
+}
+
+/// An asset ref crossing an exported method: the ref number of an entry in [`ScriptAssets`]. JS
+/// passes and receives the frozen `{ $asset, type }` object `assets` uses; the glue checks the type.
+/// The table, `reflect_asset::ScriptAssets`, is behind the `pbr` feature.
+pub struct ScriptRef<A: Asset>(pub u64, std::marker::PhantomData<fn() -> A>);
+
+impl<A: Asset> ScriptRef<A> {
+    pub fn new(n: u64) -> Self {
+        ScriptRef(n, std::marker::PhantomData)
+    }
+
+    /// The handle the ref holds; a stale ref or one of another asset type fails naming it.
+    #[cfg(feature = "reflect")]
+    pub fn handle(&self, assets: &crate::reflect_asset::ScriptAssets) -> Result<Handle<A>, String> {
+        assets.handle(self.0)?.try_typed::<A>().map_err(|_| format!("asset ref {} is not a {}", self.0, A::type_path()))
+    }
+}
+
+impl<A: Asset> Clone for ScriptRef<A> {
+    fn clone(&self) -> Self {
+        ScriptRef::new(self.0)
+    }
+}
+
+impl<A: Asset> Copy for ScriptRef<A> {}
+
+impl<A: Asset> std::fmt::Debug for ScriptRef<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ScriptRef<{}>({})", A::short_type_path(), self.0)
+    }
+}
+
+impl<A: Asset> HostValue for ScriptRef<A> {
+    fn kind() -> Kind {
+        Kind::AssetRef(A::type_path())
+    }
+    fn read(r: &mut SlotReader) -> Result<Self, String> {
+        Ok(ScriptRef::new(r.slot()? as u64))
+    }
+    fn write(&self, w: &mut SlotWriter) {
+        w.push(self.0 as f64);
+    }
+}
+
+/// An asset ref of any asset type, for a method that takes every type (`server.loadState`).
+#[derive(Clone, Copy, Debug)]
+pub struct UntypedScriptRef(pub u64);
+
+impl UntypedScriptRef {
+    /// The handle the ref holds; a stale ref fails naming it.
+    #[cfg(feature = "reflect")]
+    pub fn handle(&self, assets: &crate::reflect_asset::ScriptAssets) -> Result<bevy::asset::UntypedHandle, String> {
+        assets.handle(self.0)
+    }
+}
+
+impl HostValue for UntypedScriptRef {
+    fn kind() -> Kind {
+        Kind::AssetRef("")
+    }
+    fn read(r: &mut SlotReader) -> Result<Self, String> {
+        Ok(UntypedScriptRef(r.slot()? as u64))
+    }
+    fn write(&self, w: &mut SlotWriter) {
+        w.push(self.0 as f64);
     }
 }
 
@@ -1360,6 +1432,9 @@ fn write_js(kind: &Kind, expr: &str, out: &mut String) {
         Kind::Json(_) => {
             let _ = write!(out, "i = H.str(JSON.stringify({expr}), i);");
         }
+        Kind::AssetRef(path) => {
+            let _ = write!(out, "a[i++] = H.ref({expr}, {path:?}, NAME, M);");
+        }
         Kind::Unit => {}
     }
 }
@@ -1394,6 +1469,7 @@ fn read_js(kind: &Kind) -> String {
         Kind::UVec2 => read_js(&Kind::Vec2),
         Kind::UVec3 => read_js(&Kind::Vec3),
         Kind::Color | Kind::Isometry2d | Kind::Isometry3d | Kind::TransformPoint | Kind::List(_) => "undefined".into(),
+        Kind::AssetRef(path) => format!("H.asRef(a[i++], {path:?})"),
         Kind::Unit => "undefined".into(),
     }
 }
@@ -1441,7 +1517,8 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
 /// JS that writes `method`'s arguments into `H.slots` from slot 0, leaving `i` past them; returns
 /// the slice arguments' expressions, padded to [`MAX_SLICES`].
 fn write_args(method: &MethodSpec, s: &mut String) -> Vec<String> {
-    s.push_str("    const a = H.slots; let i = 0;\n    ");
+    // `M` names the method for the errors `H.ref` throws.
+    let _ = write!(s, "    const M = {:?}; const a = H.slots; let i = 0;\n    ", method.name);
     let mut slices = Vec::new();
     for arg in &method.args {
         match arg {

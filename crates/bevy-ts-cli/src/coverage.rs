@@ -52,6 +52,9 @@ pub fn walk(world: &World) -> Report {
     let mut roots: Vec<(String, TypeId)> = registry
         .iter()
         .filter(|r| r.data::<ReflectComponent>().is_some() || r.data::<ReflectResource>().is_some() || r.data::<ReflectAsset>().is_some())
+        // A hand-mapped asset (`Mesh`) is read and written whole by its entry, so its fields are not
+        // holes; one still on `UNCOVERED` (`Image`, until its entry round-trips) is walked to it.
+        .filter(|r| !bevy_ts::reflect_asset::is_hand_mapped(r.type_id()) || uncovered(r.type_info().type_path()).is_some())
         .map(|r| (r.type_info().type_path().to_string(), r.type_id()))
         .collect();
     roots.sort();

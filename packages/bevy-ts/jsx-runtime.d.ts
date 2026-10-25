@@ -606,6 +606,36 @@ export interface ConvexPolygonMesh extends Extrude {
   /** At least 3 points of a convex polygon, either winding. */
   vertices: Vec2[];
 }
+/**
+ * A mesh from vertex data, as `Mesh.of` builds one: each prop is one of Bevy's `Mesh` calls.
+ * Every attribute has one entry per position. For a mesh that changes each frame, use
+ * `ResMut<Assets<Mesh>>` instead: props are hashed whenever they change.
+ */
+export interface VertexDataMesh {
+  shape?: never;
+  /** `Mesh::ATTRIBUTE_POSITION`. */
+  positions: Vec3[];
+  /** `Mesh::ATTRIBUTE_NORMAL`, or Bevy's `compute_normals`, `compute_flat_normals`, `compute_smooth_normals` or `compute_area_weighted_normals`. */
+  normals?: Vec3[] | "computed" | "flat" | "smooth" | "areaWeighted";
+  /** `Mesh::ATTRIBUTE_UV_0`. */
+  uvs?: Vec2[];
+  /** `Mesh::ATTRIBUTE_UV_1`. */
+  uvs1?: Vec2[];
+  /** `Mesh::ATTRIBUTE_TANGENT`, or `"generated"`: Bevy's `generate_tangents`, after the normals. */
+  tangents?: [number, number, number, number][] | "generated";
+  /** `Mesh::ATTRIBUTE_COLOR`: linear RGBA. */
+  colors?: [number, number, number, number][];
+  /** `Mesh::ATTRIBUTE_JOINT_INDEX`. */
+  jointIndices?: [number, number, number, number][];
+  /** `Mesh::ATTRIBUTE_JOINT_WEIGHT`. */
+  jointWeights?: [number, number, number, number][];
+  /** A plain list is `Indices::U32`. */
+  indices?: number[] | { U16: number[] } | { U32: number[] };
+  /** Default `"TriangleList"`. */
+  topology?: "PointList" | "LineList" | "LineStrip" | "TriangleList" | "TriangleStrip";
+  /** Default both worlds. */
+  assetUsage?: "MAIN_WORLD" | "RENDER_WORLD" | "MAIN_WORLD | RENDER_WORLD";
+}
 
 /** The shapes in the XY plane, which `<mesh2d>` also takes. */
 export type Shape2dMesh =
@@ -633,6 +663,7 @@ export type MeshProps = (
   | TetrahedronMesh
   | Triangle3dMesh
   | Shape2dMesh
+  | VertexDataMesh
 ) & {
   /** Shorthand for `<material color>`. */
   color?: ColorValue;

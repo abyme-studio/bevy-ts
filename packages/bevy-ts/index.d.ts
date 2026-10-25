@@ -404,8 +404,12 @@ export type AssetProps<F> = {
 export interface AssetRef<F = unknown> {
   readonly $asset: number;
   readonly type: string;
+  /** The asset's `AssetId<A>`, as an `AssetEvent<A>` carries it: one host call. Read it before `assets.drop`; the value stays valid after. */
+  readonly id: AssetId<F>;
   readonly [assetBrand]?: F;
 }
+/** Bevy's `AssetId<A>` as JSON: compare two with `JSON.stringify`, not `===`. */
+export type AssetId<F = unknown> = ({ readonly Index: { readonly index: unknown } } | { readonly Uuid: { readonly uuid: string } }) & { readonly [assetBrand]?: F };
 /** `T.of(props)`: a plain description of an asset, built when a `Handle<T>` slot is written with it. */
 export interface AssetValue<F = unknown> {
   readonly $of: string;
@@ -435,7 +439,132 @@ export declare const assets: {
   get<F>(ref: AssetRef<F>): F | undefined;
   /** Writes `patch` over the asset's current value; a patch that changes nothing marks nothing changed. */
   set<F>(ref: AssetRef<F>, patch: AssetProps<F> | AssetValue<F>): void;
+  /** Drops the script's handle: the ref goes stale, and Bevy frees the asset once nothing else holds it. A UUID asset (`assets.add`) stays until restart or stop. */
+  drop(ref: AssetRef<unknown>): void;
+  /** Bevy's `Assets::remove`: the asset goes when the run ends, even while a component holds it, and the ref goes stale. */
+  remove(ref: AssetRef<unknown>): void;
 };
+/** Bevy's `AssetServer` resource, for `Res<AssetServer>`: an export stands for it (`ScriptAssetServer`). */
+export interface AssetServer {
+  readonly [assetsBrand]?: "AssetServer";
+}
+/** Bevy's `LoadState` (and its dependency forms), by variant name. */
+export type LoadState = "NotLoaded" | "Loading" | "Loaded" | { readonly Failed: string };
+declare const assetsBrand: unique symbol;
+/** Bevy's `Assets<A>` resource, for `ResMut<Assets<Mesh>>`: an export stands for it (`Meshes`). */
+export interface Assets<A> {
+  readonly [assetsBrand]?: A;
+}
+/** Asset fields by Rust type path, for refs an exported method takes or returns. */
+export interface AssetTypes {
+  "bevy_mesh::mesh::Mesh": MeshData;
+}
+/** The ref type of the asset at type path `P`. */
+export type AssetRefOf<P extends string> = AssetRef<P extends keyof AssetTypes ? AssetTypes[P] : unknown>;
+
+/** Bevy's `PrimitiveTopology`. */
+export declare const PrimitiveTopology: {
+  readonly PointList: 0;
+  readonly LineList: 1;
+  readonly LineStrip: 2;
+  readonly TriangleList: 3;
+  readonly TriangleStrip: 4;
+};
+export type PrimitiveTopology = (typeof PrimitiveTopology)[keyof typeof PrimitiveTopology];
+/** Bevy's `RenderAssetUsages` bits, combined with `|`. */
+export declare const RenderAssetUsages: {
+  readonly MAIN_WORLD: 1;
+  readonly RENDER_WORLD: 2;
+  /** Both worlds, Bevy's default. */
+  default(): 3;
+  all(): 3;
+};
+export type RenderAssetUsages = 1 | 2 | 3;
+/** One of Bevy's built-in vertex attributes, `Mesh.ATTRIBUTE_*`. */
+export interface MeshVertexAttribute<A extends Float32Array | Uint16Array = Float32Array | Uint16Array> {
+  /** Bevy's name (`Vertex_Position`). */
+  readonly name: string;
+  readonly id: number;
+  /** Bevy's `VertexFormat` (`Float32x3`). */
+  readonly format: string;
+  /** Numbers per vertex. */
+  readonly components: number;
+  readonly array: { new (n: number): A };
+}
+/** Bevy's `Indices`. */
+export type Indices = { readonly U16: Uint16Array } | { readonly U32: Uint32Array };
+export declare const Indices: {
+  U16(data: Uint16Array): Indices;
+  U32(data: Uint32Array): Indices;
+};
+/** A mesh as asset data: Bevy's names. */
+export type MeshData = AssetFields<"bevy_mesh::mesh::Mesh", {
+  readonly primitive_topology: keyof typeof PrimitiveTopology;
+  readonly attributes: { readonly [name: string]: readonly (readonly number[])[] };
+  readonly indices: { readonly U16: readonly number[] } | { readonly U32: readonly number[] } | null;
+}>;
+/** Bevy's `Mesh` API, on a `Mesh.new` mesh (recorded in JS until `meshes.add`) or a live one from `meshes.get`/`getMut`. Each method is one host call on a live mesh. */
+export interface MeshApi {
+  readonly primitiveTopology: keyof typeof PrimitiveTopology;
+  /** The data, a `Float32Array` (a `Uint16Array` for `ATTRIBUTE_JOINT_INDEX`) of `attr.components` per vertex, copied once into Bevy's own buffer. */
+  insertAttribute<A extends Float32Array | Uint16Array>(attr: MeshVertexAttribute<A>, data: A): this;
+  removeAttribute(attr: MeshVertexAttribute): this;
+  insertIndices(indices: Indices): this;
+  removeIndices(): this;
+  /** Smooth normals when indexed, flat otherwise; `TriangleList` only. */
+  computeNormals(): this;
+  /** Needs a `TriangleList` without indices. */
+  computeFlatNormals(): this;
+  /** Needs an indexed `TriangleList`. */
+  computeSmoothNormals(): this;
+  computeAreaWeightedNormals(): this;
+  /** MikkTSpace tangents; needs positions, normals, `UV_0` and an indexed `TriangleList`. */
+  generateTangents(): this;
+  duplicateVertices(): this;
+  countVertices(): number;
+  /** A copy of the attribute's data, or `undefined` when unset. */
+  attribute<A extends Float32Array | Uint16Array>(attr: MeshVertexAttribute<A>): A | undefined;
+  /** A copy of the indices, or `undefined` when there are none. */
+  indices(): Indices | undefined;
+}
+/** Bevy's `Mesh`. Add one with `meshes: ResMut<Assets<Mesh>>` (docs/assets.md). */
+export declare class Mesh implements MeshApi {
+  private constructor();
+  static readonly typePath: "bevy_mesh::mesh::Mesh";
+  static readonly [assetBrand]?: MeshData;
+  /** A mesh value from Bevy-named JSON (the shape `assets.get` reads): in a `Handle<Mesh>` slot it is one asset shared by every slot given equal props. */
+  static of(props?: AssetProps<MeshData>): AssetValue<MeshData>;
+  /** `Mesh::new(topology, usage)`: records its calls in JS until `meshes.add`. */
+  static new(topology: PrimitiveTopology, usage?: RenderAssetUsages): Mesh;
+  static readonly ATTRIBUTE_POSITION: MeshVertexAttribute<Float32Array>;
+  static readonly ATTRIBUTE_NORMAL: MeshVertexAttribute<Float32Array>;
+  static readonly ATTRIBUTE_UV_0: MeshVertexAttribute<Float32Array>;
+  static readonly ATTRIBUTE_UV_1: MeshVertexAttribute<Float32Array>;
+  static readonly ATTRIBUTE_TANGENT: MeshVertexAttribute<Float32Array>;
+  static readonly ATTRIBUTE_COLOR: MeshVertexAttribute<Float32Array>;
+  static readonly ATTRIBUTE_JOINT_WEIGHT: MeshVertexAttribute<Float32Array>;
+  static readonly ATTRIBUTE_JOINT_INDEX: MeshVertexAttribute<Uint16Array>;
+  readonly primitiveTopology: keyof typeof PrimitiveTopology;
+  insertAttribute<A extends Float32Array | Uint16Array>(attr: MeshVertexAttribute<A>, data: A): this;
+  removeAttribute(attr: MeshVertexAttribute): this;
+  insertIndices(indices: Indices): this;
+  removeIndices(): this;
+  computeNormals(): this;
+  computeFlatNormals(): this;
+  computeSmoothNormals(): this;
+  computeAreaWeightedNormals(): this;
+  generateTangents(): this;
+  duplicateVertices(): this;
+  /** Throws after a compute call: Rust makes computed data at `meshes.add`. */
+  countVertices(): number;
+  attribute<A extends Float32Array | Uint16Array>(attr: MeshVertexAttribute<A>): A | undefined;
+  indices(): Indices | undefined;
+}
+/** A mesh in `Assets<Mesh>`, from `meshes.get` (read-only) or `meshes.getMut`. */
+export interface LiveMesh extends MeshApi {
+  /** The `RenderAssetUsages` bits. */
+  readonly assetUsage: RenderAssetUsages;
+}
 
 /** The scene component a level names (`enemies::Grunt` or `src/enemies.tsx#Grunt`), for tsx's expand entry. */
 export declare function sceneComponent(nameOrId: string): (abstract new () => SceneComponent) & typeof SceneComponent | undefined;

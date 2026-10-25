@@ -19,6 +19,7 @@ use bevy::sprite_render::{AlphaMode2d, ColorMaterial, MeshMaterial2d};
 use bevy_ts::backend::SourceLocation;
 use bevy_ts_material::{GltfMaterialFilter, ScriptMaterial3d};
 use crate::shapes::MeshShape;
+use crate::vertex_mesh::VertexMesh;
 use bevy::reflect::structs::Struct;
 use bevy::reflect::{PartialReflect, TypeRegistry};
 use bevy_ts::reflect_asset::{ScriptAssets, Slots};
@@ -27,12 +28,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 
-/// `<mesh shape .../>`: a Bevy mesh primitive (see `shapes`) and an optional color.
+/// `<mesh shape .../>` or `<mesh positions .../>`: a Bevy mesh primitive (see `shapes`) or vertex
+/// data (see `vertex_mesh`), and an optional color.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MeshProps {
-    pub shape: MeshShape,
+    pub source: MeshSource,
     /// Shorthand for a `<material color>` on the same entity.
     pub color: Option<Value>,
+}
+
+/// What a `<mesh>` builds from: picked by `positions` before the `shape` tag.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MeshSource {
+    Shape(MeshShape),
+    Vertex(Box<VertexMesh>),
 }
 
 // By hand: `color` comes out first, and the rest is the shape's (`flatten` and
@@ -46,26 +55,40 @@ impl<'de> Deserialize<'de> for MeshProps {
             // Any colour form; checked by `check`.
             Some(v) => Some(v),
         };
-        let shape = MeshShape::from_props(props).map_err(D::Error::custom)?;
-        Ok(MeshProps { shape, color })
+        let source = if props.contains_key("positions") {
+            if props.contains_key("shape") {
+                return Err(D::Error::custom("shape and positions: a <mesh> is a shape or vertex data, not both"));
+            }
+            MeshSource::Vertex(Box::new(VertexMesh::from_props(props).map_err(D::Error::custom)?))
+        } else {
+            MeshSource::Shape(MeshShape::from_props(props).map_err(D::Error::custom)?)
+        };
+        Ok(MeshProps { source, color })
     }
 }
 
 impl MeshProps {
     pub fn check(&self) -> Result<(), String> {
-        self.shape.check()?;
+        match &self.source {
+            MeshSource::Shape(s) => s.check()?,
+            MeshSource::Vertex(v) => drop(v.build()?),
+        }
         if let Some(c) = &self.color {
             color(c)?;
         }
         Ok(())
     }
 
+    /// Call `check` first: vertex data `check` refused builds an empty mesh here.
     fn mesh(&self) -> Mesh {
-        self.shape.mesh()
+        match &self.source {
+            MeshSource::Shape(s) => s.mesh(),
+            MeshSource::Vertex(v) => v.build().unwrap_or_else(|_| Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, default())),
+        }
     }
 
     fn cache_key(&self) -> String {
-        format!("{:?}", self.shape)
+        format!("{:?}", self.source)
     }
 }
 
@@ -82,8 +105,10 @@ impl<'de> Deserialize<'de> for Mesh2dProps {
             return Err(D::Error::custom(format!("{shape}: {k}: <mesh2d> is flat; extrude with <mesh depth>")));
         }
         let p = MeshProps::deserialize(Value::Object(props)).map_err(D::Error::custom)?;
-        if !p.shape.is_2d() {
-            return Err(D::Error::custom(format!("shape: {} is a 3D shape; <mesh2d> takes a 2D one", p.shape.name())));
+        match &p.source {
+            MeshSource::Shape(s) if !s.is_2d() => return Err(D::Error::custom(format!("shape: {} is a 3D shape; <mesh2d> takes a 2D one", s.name()))),
+            MeshSource::Vertex(_) => return Err(D::Error::custom("positions: <mesh2d> takes a 2D shape; vertex data is <mesh>'s")),
+            MeshSource::Shape(_) => {}
         }
         Ok(Mesh2dProps(p))
     }
@@ -889,11 +914,11 @@ mod tests {
     #[test]
     fn mesh2d_takes_the_shapes_the_types_call_2d() {
         let dts = include_str!("../../../packages/bevy-ts/jsx-runtime.d.ts");
-        // Each `*Mesh` interface's name and its `shape`.
+        // Each `*Mesh` interface's name and its `shape`; `VertexDataMesh` has none (checked below).
         let mut shapes = HashMap::new();
         let mut lines = dts.lines();
         while let Some(l) = lines.next() {
-            let Some(name) = l.strip_prefix("export interface ").and_then(|r| r.split_whitespace().next()).filter(|n| n.ends_with("Mesh")) else { continue };
+            let Some(name) = l.strip_prefix("export interface ").and_then(|r| r.split_whitespace().next()).filter(|n| n.ends_with("Mesh") && *n != "VertexDataMesh") else { continue };
             let shape = lines.next().and_then(|l| l.trim().strip_prefix("shape: \"")).and_then(|r| r.split('"').next()).expect("shape first");
             shapes.insert(name.to_string(), shape.to_string());
         }
@@ -905,5 +930,8 @@ mod tests {
             let is_2d = !e.as_deref().is_some_and(|e| e.contains("is a 3D shape"));
             assert_eq!(is_2d, flat.contains(&name.as_str()), "{shape}: {e:?}");
         }
+        // Vertex data is `<mesh>`'s alone.
+        let e = serde_json::from_value::<Mesh2dProps>(json!({ "positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] })).err().map(|e| e.to_string());
+        assert!(e.as_deref().is_some_and(|e| e.contains("vertex data is <mesh>'s")), "{e:?}");
     }
 }

@@ -112,3 +112,11 @@ fn codec_output_equals_read_for_every_covered_type() {
     let lines: Vec<String> = bad.iter().map(|b| format!("{}:\n  codec: {}\n  read:  {}", b["type"], b["got"], b["want"])).collect();
     assert!(bad.is_empty(), "{} of {n} types decode differently from read:\n{}", bad.len(), lines.join("\n"));
 }
+
+/// `Mesh` is covered by its hand-map entry, not the list: the walk skips it, and
+/// `script_assets::a_mesh_reads_back_as_bevy_named_json` proves the entry reads and writes it.
+#[test]
+fn a_hand_mapped_mesh_is_covered_without_a_list_entry() {
+    assert!(bevy_ts::reflect_asset::is_hand_mapped(std::any::TypeId::of::<bevy::mesh::Mesh>()));
+    assert_eq!(bevy_ts::reflect_value::uncovered("bevy_mesh::mesh::Mesh"), None);
+}

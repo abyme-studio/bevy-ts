@@ -1,7 +1,7 @@
 {
   "extends": "../../../examples/cube/tsconfig.json",
   "compilerOptions": {
-    "paths": { "bevy-ts": ["../index.d.ts"], "bevy-ts/*": ["../*.d.ts"] }
+    "paths": { "bevy-ts": ["../index.d.ts"], "bevy-ts/assets": ["../../../crates/bevy-ts-cli/ts/assets.d.ts"], "bevy-ts/*": ["../*.d.ts"] }
   },
   "include": ["."],
   "exclude": ["vitest", "types-node"]

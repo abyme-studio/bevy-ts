@@ -23,11 +23,11 @@ assets.get(mat)?.perceptual_roughness; // 0.3
 
 - `assets.add(Type, props)` builds the asset from its type's default with `props` written over it
   and returns its ref, an `AssetRef<Type>`. A bad field or value throws naming the type and field,
-  and adds nothing. A type with no default (`Mesh`) is refused: `bevy-ts/bevy` gives it no `of`,
-  and `add` rejects it at the type level.
+  and adds nothing. A type with no default and no entry of its own is refused: `bevy-ts/bevy` gives
+  it no `of`, and `add` rejects it at the type level. `Mesh` has an entry (below).
 - `assets.add(value)` makes an asset value (`T.of(props)`, a built `AnimationGraph` or
-  `AnimationClip`) its own
-  asset; `assets.set(ref, value)` writes the value's props.
+  `AnimationClip`) its own asset;
+  `assets.set(ref, value)` writes the value's props.
 - `assets.get(ref)` reads the asset as JSON, or `undefined` once it is gone. Each call is one host
   call and a full read: keep values in JS rather than reading every frame.
 - `assets.set(ref, patch)` writes `patch` over the asset's current value. A patch that changes
@@ -44,6 +44,28 @@ anywhere else (a timer callback).
 works in a slot in the same run. The asset reaches `Assets<T>`, and `AssetEvent::Added` or
 `Modified` is sent, when the run ends, before the run's commands apply. A run that throws still
 adds its assets: their refs were handed out.
+
+## A mesh as JSON
+
+Bevy does not reflect a mesh's data, so `Mesh` has its own entry (`crates/bevy-ts/src/mesh_data.rs`):
+`assets.get`, `assets.set`, `assets.add(Mesh, data)` and `Mesh.of(data)` take Bevy-named JSON.
+
+```json
+{ "primitive_topology": "TriangleList", "asset_usage": "MAIN_WORLD | RENDER_WORLD",
+  "attributes": { "Vertex_Position": [[0, 0, 0], [1, 0, 0], [0, 1, 0]], "Vertex_Uv": [[0, 0], [1, 0], [0, 1]] },
+  "indices": { "U32": [0, 1, 2] } }
+```
+
+- An attribute is keyed by Bevy's name (`Mesh::ATTRIBUTE_POSITION.name`); its values are a number
+  per vertex for a one-number format, else an array per vertex. `indices` is `{ U16 }`, `{ U32 }`
+  or `null`. A new mesh is an empty `TriangleList` in both worlds under the keys given.
+- `set` replaces each top-level key it gives whole: `{ attributes: { Vertex_Position } }` leaves a
+  mesh with positions only. Read, change and set the whole `attributes` to keep the others.
+- Attributes of different lengths, and an index past the last vertex, throw and change nothing.
+- `Float16` attributes read but cannot be written. Morph targets are kept by a `set` that keeps the
+  topology and dropped by one that changes it.
+- For a mesh that changes each frame, `ResMut<Assets<Mesh>>` (below) is cheaper: JSON costs a full
+  read or write per call.
 
 ## Refs in slots
 
@@ -102,21 +124,57 @@ assets.add(StandardMaterial, { base_color_texture: atlas, normal_map_texture: no
 - `Image.load` is a value like `T.of`: it loads when its slot is written, and reads back as its
   path.
 
+## Loading and load state
+
+A system that takes `server: Res<AssetServer>` gets Bevy's `AssetServer` (the engine's
+`ScriptAssetServer` export, `crates/bevy-ts-cli/src/assets.rs`):
+
+```ts
+import type { AssetRef, AssetServer, Res } from "bevy-ts";
+import { Mesh } from "bevy-ts/assets";
+
+let fox: AssetRef<unknown> | undefined;
+export function watch(server: Res<AssetServer>) {
+  fox ??= server.load("models/fox.glb");
+  if (server.isLoadedWithDependencies(fox)) { /* ... */ }
+}
+```
+
+- `server.load(path)` is Bevy's load: a strong ref, typed by the loader of the path's extension.
+  `server.load(path, Mesh)` names the type; a labelled path (`"fox.glb#Mesh0/Primitive0"`) needs
+  it and throws without. Loading a path again gives the same ref.
+- `loadState`, `dependencyLoadState` and `recursiveDependencyLoadState` give Bevy's variants by
+  name: `"NotLoaded"`, `"Loading"`, `"Loaded"`, or `{ Failed: <Bevy's error text> }`.
+  `isLoaded`, `isLoadedWithDirectDependencies` and `isLoadedWithDependencies` are Bevy's.
+- Each is one host call; a failed state makes one more for its text.
+
 ## Lifetime
 
-A ref is `{ $asset: n, type }`; `n` counts up from 1 and is never reused in a session. A ref
-works until the script reloads or stops; the asset can outlive it:
+A ref is `{ $asset: n, type }`; `n` counts up from 1 and is never reused in a session. A ref goes
+stale when the script drops it, removes it, or a hot reload applies; using a stale ref throws "stale asset ref".
 
-- Once a hot reload applies, every ref the old generation gave is stale: using one throws "stale
-  asset ref". A reload that fails leaves the running generation's refs working, and drops what
-  the failed one made. The assets stay for
-  the entities the reload kept, until the next restart. The reloaded script adds its assets again,
-  so under `bevy-ts dev` each hot reload keeps one more copy of them until a restart or Stop; a
-  shipped game never hot reloads.
-- A restart or a Stop removes every script-made asset.
+- A ref from `server.load` or `meshes.add` holds Bevy's strong handle, so the asset stays while the
+  script holds it, used or not. `assets.drop(ref)` lets go: Bevy sends `AssetEvent::Unused` and
+  frees the asset once no component holds it either. Once a hot reload applies, it drops every
+  strong ref the old script held; a reload that fails keeps them working and drops what it made. A
+  restart or Stop drops them all; what an entity still uses stays.
+  `commands.spawn` is deferred, so dropping a ref in the same system that spawns with it makes
+  the spawn fail with "stale asset ref": drop it in a later system or frame.
+- `assets.remove(ref)` (and `meshes.remove(ref)`) is Bevy's `Assets::remove`: the asset goes when
+  the run ends (`meshes.remove`: at once), even while a component holds it, which then draws
+  nothing.
+- A script-made asset from `assets.add` or `T.of` is a UUID handle, as Bevy's are, and lives until
+  restart or Stop: `drop` forgets the ref and keeps the asset. After a hot reload the reloaded
+  script adds its assets again, so under `bevy-ts dev` each hot reload keeps one more copy of them
+  until a restart or Stop; a shipped game never hot reloads.
 
-Adding an asset every frame grows memory until a restart or Stop, and a warning is logged past 10,000 assets:
-add once and `set` after. Freeing an asset sooner is script-assets' handle lifecycle, not here.
+`ref.id` is the asset's `AssetId<A>` as JSON, the value an `AssetEvent<A>` carries; it is one host
+call, and the value stays valid after the ref is dropped. Compare two with `JSON.stringify`.
+A system reads them with `MessageReader<AssetEvent<A>>`. Bevy's `isAdded`, `isModified`,
+`isRemoved`, `isUnused` and `isLoadedWithDependencies` on it are not here yet.
+
+Adding an asset every frame grows memory, and a warning is logged past 10,000 refs: add once and
+`set` or `getMut` after, or `drop` what you replace.
 
 ## Hand-mapped types
 
@@ -157,3 +215,65 @@ import { asset, assets } from "bevy-ts";
 const Note = asset<{ text: string }>("my_crate::Note");
 const note = assets.add(Note, { text: "hi" });
 ```
+
+## Meshes
+
+A system that takes `meshes: ResMut<Assets<Mesh>>` builds and updates meshes with Bevy's `Mesh`
+API under Bevy's names. The param is the engine's `Meshes` export (`bevy-ts/assets`,
+`crates/bevy-ts-cli/src/assets.rs`).
+
+```ts
+import type { Assets, AssetRef, MeshData, ResMut } from "bevy-ts";
+import { Indices, Mesh, PrimitiveTopology, RenderAssetUsages } from "bevy-ts/assets";
+
+let chunk: AssetRef<MeshData> | undefined;
+
+export function remesh(meshes: ResMut<Assets<Mesh>>) {
+  const { positions, normals, uvs, indices } = buildSurface(); // Float32Array, Float32Array, Float32Array, Uint32Array
+  if (!chunk) {
+    chunk = meshes.add(
+      Mesh.new(PrimitiveTopology.TriangleList, RenderAssetUsages.default())
+        .insertAttribute(Mesh.ATTRIBUTE_POSITION, positions)
+        .insertAttribute(Mesh.ATTRIBUTE_NORMAL, normals)
+        .insertAttribute(Mesh.ATTRIBUTE_UV_0, uvs)
+        .insertIndices(Indices.U32(indices)),
+    );
+    return;
+  }
+  meshes.getMut(chunk)!
+    .insertAttribute(Mesh.ATTRIBUTE_POSITION, positions)
+    .insertAttribute(Mesh.ATTRIBUTE_NORMAL, normals)
+    .insertAttribute(Mesh.ATTRIBUTE_UV_0, uvs)
+    .insertIndices(Indices.U32(indices));
+}
+```
+
+- `Mesh.new(topology, usage)` makes a mesh that records its calls in JS; nothing crosses until
+  `meshes.add(mesh)`, which builds it in Rust and adds it in one go, returning a strong ref. A
+  failed step adds nothing. The recorded calls hold your typed arrays, not copies: change an
+  array before `meshes.add` and the mesh gets the change (Bevy copies at `insert_attribute`).
+- `insertAttribute` takes the eight built-in `Mesh.ATTRIBUTE_*`: a `Float32Array` of the
+  attribute's `components` per vertex (3, 3, 2, 2, 4, 4, 4), and a `Uint16Array` of 4 for
+  `ATTRIBUTE_JOINT_INDEX`. `insertIndices` takes `Indices.U16(Uint16Array)` or
+  `Indices.U32(Uint32Array)`. Also `removeAttribute`, `removeIndices`, `computeNormals`,
+  `computeFlatNormals`, `computeSmoothNormals`, `computeAreaWeightedNormals`, `generateTangents`,
+  `duplicateVertices`, `countVertices`, and `attribute(attr)` and `indices()`, which return copies.
+- `meshes.getMut(ref)` is the live mesh: each call is one host call into the asset. Data of the
+  same length and format as what is there is copied into the mesh's own buffer, with no
+  allocation. However many calls one system makes on a mesh in a frame, Bevy
+  sends one `AssetEvent::Modified` and re-uploads the whole mesh once; a second system that
+  changes it sends another, as a second `get_mut` does in Rust. `meshes.get(ref)` is the same mesh,
+  read-only; both are `undefined` once the mesh is gone. `meshes.remove(ref)` is Bevy's
+  `Assets::remove`.
+- What Bevy refuses throws with Bevy's text and the method's name, and leaves the mesh as it was:
+  a wrong array or length, normals on a topology other than `TriangleList`, flat normals on an
+  indexed mesh, smooth normals without indices, an index past the last vertex, tangents without
+  normals or UVs, and data of a `RENDER_WORLD`-only mesh once it has gone to the render world.
+
+### Cost
+
+A 24,000-vertex chunk (positions, normals, UVs, colours, 36,000 `U32` indices) remeshed with
+`getMut` costs 45 µs median from TS against 29 µs for the same copies in Rust (Apple M5 Max;
+`docs/research/script-assets.md`). Remeshing an edited chunk every frame from TS is fine. Keep
+one mesh per chunk and `getMut` it: a changed vertex count costs a little more (allocation), and
+adding a new mesh per edit makes a new asset every time; if you do, `assets.drop` the old ref.

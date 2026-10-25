@@ -338,7 +338,8 @@ fn expand_export(item: &ItemImpl, ts: Option<syn::LitStr>, module: Option<syn::L
             };
             let name = &pi.ident;
             let ts_arg = camel(&name.to_string());
-            let local = format_ident!("__{}", name);
+            // `__arg_` keeps an argument named `r`, `w` or `p` off the generated `__r`, `__w` and `__p`.
+            let local = format_ident!("__arg_{}", name);
             match &*pt.ty {
                 Type::Reference(r) if matches!(&*r.elem, Type::Slice(_)) => {
                     let Type::Slice(sl) = &*r.elem else { unreachable!() };

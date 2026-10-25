@@ -104,9 +104,9 @@ path, and a writable exported param, which most of them need, is refused by desi
 |---|---|---|---|
 | Handles as asset paths in TSX and levels | idiomatic | `bevy-ts-tsx/src/reflected.rs:19` | — |
 | Hot reload of files | idiomatic (dev only, by design) | levels: `bevy-ts-levels/tests/it/levels.rs` `an_included_file_reloads_every_includer_copy`; textures and glTF: no test | — |
-| `AssetServer.load`, load state, `isLoadedWithDependencies` in systems | missing | — | new: `script-assets` |
+| `AssetServer.load`, load state, `isLoadedWithDependencies` in systems | idiomatic: `Res<AssetServer>` (`bevy-ts/assets`) | `bevy-ts-cli/tests/it/script_assets.rs` `a_texture_loads_and_reaches_loaded`, `a_missing_file_fails_with_bevys_error`, `a_gltf_waits_for_its_dependencies` | script-assets |
 | `AssetEvent`, `AssetLoadFailedEvent` | `AssetEvent<A>` idiomatic (`MessageReader<AssetEvent<Image>>`); `AssetLoadFailedEvent` missing: no `Reflect` in Bevy 0.20 | `rust_events.rs` `asset_event_image_reaches_a_ts_reader` | — (`AssetLoadFailedEvent`: upstream) |
-| `Assets<T>` add and mutate (meshes, images, materials, atlas layouts) from TS | missing | — | new: `script-assets` |
+| `Assets<T>` add and mutate (meshes, images, materials, atlas layouts) from TS | partial: meshes (`ResMut<Assets<Mesh>>`, and `assets.add`/`get`/`set` as Bevy-named JSON) and reflected assets such as materials; strong refs dropped and removed. `Image` is on reflect-value's uncovered list | `script_assets.rs` `a_quad_matches_the_same_rust_calls`, `a_mesh_reads_back_as_bevy_named_json`, `a_dropped_mesh_nothing_holds_is_freed`, `remove_frees_at_once`; `reflect_assets.rs` | script-assets; images: reflect-coverage |
 | Processing, meta files, custom loaders | Rust-side by nature | — | — (stays Rust) |
 | `.bsn` levels, TSX scenes, `SceneComponent` prefabs | idiomatic (bevy-ts's own `.bsn` loader; Bevy 0.20 has none) | `bevy-ts-levels/tests/it/levels.rs` | — |
 | glTF scenes (`WorldAssetRoot`) | partial: TSX cannot place a newtype component today | — | script-gltf |
@@ -132,7 +132,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `RenderLayers`, `Visibility`, `NoFrustumCulling`, shadows markers | partial: `Visibility` a column (no test); `RenderLayers` reflect tier | — | reflect-coverage |
 | `OcclusionCulling` | idiomatic: brings its `DepthPrepass` (bevy-ts requires it), MSAA may stay on. Removing `DepthPrepass` alone from a camera that keeps `OcclusionCulling` still crashes (bevyengine/bevy#22747); Bevy leaves deferred unsupported | `crates/bevy-ts-cli/tests/it/occlusion_render.rs` | occlusion-culling-prereqs |
 | `<mesh>` primitives | partial: cuboid, sphere, plane | `intrinsics.rs:27` | mesh-primitives |
-| Custom meshes from TS (`Mesh::new`, attributes, indices) | missing | — | new: `script-assets` |
+| Custom meshes from TS (`Mesh::new`, attributes, indices) | idiomatic: `Mesh.new` and Bevy's `Mesh` API in systems, `<mesh positions>` in TSX | `script_assets.rs` `every_attribute_round_trips`, `computed_normals_match_rust`, `a_chunk_remesh_is_six_host_calls`; `bevy-ts-tsx/tests/it/vertex_mesh.rs` | script-assets |
 | Wireframes | partial: markers via TSX | — | reflect-coverage |
 
 ## 2D, text, UI, picking
@@ -160,7 +160,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | `AnimationPlayer` control from systems (seek, pause, speed, weights, `is_finished`), graphs, animation events, TS-built clips | missing; script-gltf scopes it out | — | new: `animation-control` |
 | `AudioPlayer`, `PlaybackSettings`, `SpatialListener` | idiomatic: `<AudioPlayer value=..>` and `PlaybackSettings` in TSX, Ogg and WAV decode; script spawns wait on reflect-coverage stage 2 ([docs/audio.md](../audio.md)) | `crates/bevy-ts-cli/tests/it/audio.rs` | `script-audio` |
 | `AudioSink` control, `GlobalVolume` | `AudioSinks` in `bevy-ts/audio` is idiomatic; `GlobalVolume` waits on reflect-coverage stage 3 ([docs/audio.md](../audio.md)) | `crates/bevy-ts-cli/tests/it/audio.rs` | `script-audio` (stage 2: `GlobalVolume`) |
-| glTF asset (`Gltf`: named scenes, nodes, animations), extras | partial: extras are reflect components | — | script-gltf; new: `script-assets` (the `Gltf` asset) |
+| glTF asset (`Gltf`: named scenes, nodes, animations), extras | partial: extras are reflect components; `server.load("x.gltf")` loads a `Gltf` and its load state, but `Gltf` has no reflection, so its fields are not readable | `script_assets.rs` `a_gltf_waits_for_its_dependencies` | script-gltf (the `Gltf` fields) |
 | `DiagnosticsStore` (every diagnostic by path), `Diagnostics`, `RegisterDiagnostic`, `FrameCount`, the diagnostics plugins | idiomatic: `bevy-ts/diagnostics` and `bevy-ts.json`'s `diagnostics` (docs/diagnostics.md) | `crates/bevy-ts-cli/tests/it/diagnostics.rs` | `script-diagnostics` |
 | BRP (studio, protocol) | idiomatic for tools; scripts need none | `bevy-ts-remote` | — |
 | Custom BRP methods from TS | missing; low demand | — | — (decline for now) |

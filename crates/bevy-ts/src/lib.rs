@@ -31,6 +31,8 @@ pub mod plugin_api;
 pub mod reflect_codec;
 #[cfg(feature = "reflect")]
 pub mod reflect_value;
+#[cfg(feature = "pbr")]
+pub mod mesh_data;
 #[cfg(feature = "reflect")]
 pub mod reflect_asset;
 pub mod runtime;

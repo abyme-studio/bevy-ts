@@ -87,11 +87,20 @@ fn path_of(registry: &TypeRegistry, id: TypeId) -> String {
     registry.get(id).map_or_else(|| format!("{id:?}"), |r| r.type_info().type_path().to_string())
 }
 
-/// One script-made asset.
+/// One ref's entry.
 struct Made {
     handle: UntypedHandle,
-    /// Its asset type, to remove it on a restart or stop.
-    kind: Kind,
+    hold: Hold,
+}
+
+/// How an entry holds its asset.
+enum Hold {
+    /// A script-made asset at a UUID handle, kept until restart or stop; its asset type, to
+    /// remove it then.
+    Uuid(Kind),
+    /// A strong handle (`server.load`, `meshes.add`): dropping the entry drops the handle, and Bevy
+    /// frees the asset once nothing else holds it. Never queued.
+    Strong,
 }
 
 /// A built asset value: reflected, or a hand-mapped type's own value.
@@ -129,9 +138,11 @@ struct Table {
     /// Each path loaded with settings, and the settings it was first loaded with: the asset server
     /// ignores the settings of a later load of the same path.
     loads: HashMap<String, String>,
-    /// Assets of refs a reload made stale, kept for the entities that still use them until the
-    /// next restart or stop.
+    /// UUID assets of refs a reload or `drop` made stale, kept for the entities that still use
+    /// them until the next restart or stop.
     retired: Vec<Made>,
+    /// Handles `assets.remove` took, removed from their `Assets<T>` at [`flush`].
+    removing: Vec<UntypedHandle>,
     warned: bool,
 }
 
@@ -161,7 +172,7 @@ impl ScriptAssets {
         let n = t.last;
         let handle = UntypedHandle::Uuid { type_id: ty.id, uuid: Uuid::from_u64_pair(UUID_TAG, n) };
         t.by_id.insert(handle.id(), n);
-        t.refs.insert(n, Made { handle: handle.clone(), kind: ty.kind.clone() });
+        t.refs.insert(n, Made { handle: handle.clone(), hold: Hold::Uuid(ty.kind.clone()) });
         if t.refs.len() > REFS_WARN && !t.warned {
             t.warned = true;
             warn!("bevy-ts: scripts hold {} assets this session; add an asset once and assets.set it after", t.refs.len());
@@ -169,13 +180,63 @@ impl ScriptAssets {
         (n, handle)
     }
 
+    /// A new ref holding the strong `handle`. The same handle twice gives the same ref.
+    pub fn insert_strong(&self, handle: UntypedHandle) -> u64 {
+        let mut t = self.table();
+        if let Some(&n) = t.by_id.get(&handle.id()) {
+            return n;
+        }
+        t.last += 1;
+        let n = t.last;
+        t.by_id.insert(handle.id(), n);
+        t.refs.insert(n, Made { handle, hold: Hold::Strong });
+        if t.refs.len() > REFS_WARN && !t.warned {
+            t.warned = true;
+            warn!("bevy-ts: scripts hold {} asset refs this session; assets.drop the ones you replace", t.refs.len());
+        }
+        n
+    }
+
+    /// `assets.drop(ref)`: forgets ref `n`. A strong handle drops with it, so Bevy frees the asset
+    /// once nothing else holds it; a UUID asset stays, as Bevy's UUID handles keep theirs, until
+    /// restart or stop.
+    pub fn drop(&self, n: u64) -> Result<(), String> {
+        let mut t = self.table();
+        let m = t.refs.remove(&n).ok_or_else(|| Self::missing(&t, n))?;
+        t.by_id.remove(&m.handle.id());
+        // A queued add or set of a UUID asset still goes in: a slot may hold its handle.
+        if matches!(m.hold, Hold::Uuid(_)) {
+            t.retired.push(m);
+        }
+        Ok(())
+    }
+
+    /// `assets.remove(ref)`: forgets ref `n` and removes its asset (Bevy's `Assets::remove`) when
+    /// the run ends, at [`flush`]. The asset goes even while a component holds it.
+    pub fn remove(&self, n: u64) -> Result<(), String> {
+        let mut t = self.table();
+        let m = t.refs.remove(&n).ok_or_else(|| Self::missing(&t, n))?;
+        t.by_id.remove(&m.handle.id());
+        t.queued.remove(&n);
+        t.sources.remove(&m.handle.id());
+        t.removing.push(m.handle);
+        Ok(())
+    }
+
     /// The handle of ref `n`.
     pub fn handle(&self, n: u64) -> Result<UntypedHandle, String> {
         let t = self.table();
         match t.refs.get(&n) {
             Some(m) => Ok(m.handle.clone()),
-            None if n >= 1 && n <= t.last => Err(format!("stale asset ref {n}: refs go stale when the script reloads or stops")),
-            None => Err(format!("unknown asset ref {n}")),
+            None => Err(Self::missing(&t, n)),
+        }
+    }
+
+    fn missing(t: &Table, n: u64) -> String {
+        if n >= 1 && n <= t.last {
+            format!("stale asset ref {n}: dropped, removed, or made before a reload applied")
+        } else {
+            format!("unknown asset ref {n}")
         }
     }
 
@@ -240,12 +301,37 @@ impl ScriptAssets {
 /// Runs after each system run and entry call, before its commands apply.
 pub fn flush(world: &mut World) {
     let Some(assets) = world.get_resource::<ScriptAssets>() else { return };
-    let queued: Vec<(Queued, UntypedHandle, Kind)> = {
+    let (queued, removing): (Vec<(Queued, UntypedHandle, Option<Kind>)>, Vec<UntypedHandle>) = {
         let mut t = assets.table();
         let queued = std::mem::take(&mut t.queued);
-        queued.into_iter().filter_map(|(n, q)| t.refs.get(&n).map(|m| (q, m.handle.clone(), m.kind.clone()))).collect()
+        let queued = queued
+            .into_iter()
+            .filter_map(|(n, q)| {
+                let made = t.refs.get(&n).or_else(|| {
+                    let uuid = Uuid::from_u64_pair(UUID_TAG, n);
+                    t.retired.iter().find(|m| matches!(m.handle, UntypedHandle::Uuid { uuid: u, .. } if u == uuid))
+                });
+                match made {
+                    Some(Made { handle, hold: Hold::Uuid(k) }) => Some((q, handle.clone(), Some(k.clone()))),
+                    // A strong ref's set (`meshes.add`, `server.load`): its type's kind is looked up below.
+                    Some(Made { handle, hold: Hold::Strong }) => Some((q, handle.clone(), None)),
+                    None => None,
+                }
+            })
+            .collect();
+        (queued, std::mem::take(&mut t.removing))
     };
+    let kind_of = |world: &World, id: TypeId| asset_type_of(&world.resource::<AppTypeRegistry>().read(), id).map(|t| t.kind);
+    for handle in removing {
+        match kind_of(world, handle.type_id()) {
+            Some(k) => k.remove(world, handle.id()),
+            None => warn!("bevy-ts: assets.remove: {:?} is not an asset type scripts reach; the asset stays", handle.type_id()),
+        }
+    }
     for (q, handle, kind) in queued {
+        let Some(kind) = kind.or_else(|| kind_of(world, handle.type_id())) else {
+            continue;
+        };
         let failed = match (kind, q.value) {
             (Kind::Hand(h), Built::Hand(v)) => (h.put)(world, handle.id(), v).err(),
             (Kind::Reflected(reflect), Built::Reflected(v)) if q.added => reflect.insert(world, handle.id(), v.as_partial_reflect()).err().map(|e| e.to_string()),
@@ -272,9 +358,10 @@ pub struct Reloading {
     values: HashMap<(TypeId, String), u64>,
 }
 
-/// Starts a reload. A restart or Stop ends the live generation now: its refs go stale and every
-/// script-made asset is removed. A hot reload keeps the live generation's refs working until the
-/// new one applies ([`applied`]); if it fails ([`failed`]) the live one carries on.
+/// Starts a reload. A restart or Stop ends the live generation now: its refs go stale, its strong
+/// handles drop and every script-made asset is removed. A hot reload keeps the live generation's
+/// refs working until the new one applies ([`applied`]); if it fails ([`failed`]) the live one
+/// carries on.
 pub fn reloading(world: &mut World, restart: bool) -> Reloading {
     let Some(assets) = world.get_resource::<ScriptAssets>().cloned() else { return Reloading { last: 0, values: HashMap::new() } };
     if restart {
@@ -285,8 +372,9 @@ pub fn reloading(world: &mut World, restart: bool) -> Reloading {
     Reloading { last: t.last, values: std::mem::take(&mut t.values) }
 }
 
-/// The new generation applied: the refs the old one gave are stale from now on. Their assets
-/// stay for the entities the reload kept, until the next restart or stop.
+/// The new generation applied: the refs the old one gave are stale from now on, and their strong
+/// handles drop. Their UUID assets stay for the entities the reload kept, until the next restart
+/// or stop.
 pub fn applied(world: &mut World, r: Reloading) {
     let Some(assets) = world.get_resource::<ScriptAssets>().cloned() else { return };
     retire(world, &assets, r.last, false);
@@ -312,37 +400,50 @@ pub fn failed(world: &mut World, r: Reloading) {
         t.values = r.values;
         gone
     };
+    // Strong entries drop here, outside the lock; Bevy frees what nothing else holds.
     for m in gone {
-        m.kind.remove(world, m.handle.id());
+        if let Hold::Uuid(k) = m.hold {
+            k.remove(world, m.handle.id());
+        }
     }
 }
 
-/// Makes refs up to `last` stale. `remove` also removes every script-made asset, those of refs
-/// made stale before included.
+/// Makes refs up to `last` stale: strong handles drop, UUID assets are kept for the entities that
+/// use them. `remove` also removes every script-made asset, those of refs made stale before
+/// included.
 fn retire(world: &mut World, assets: &ScriptAssets, last: u64, remove: bool) {
-    let gone: Vec<Made> = {
+    let (gone, _strong): (Vec<Made>, Vec<Made>) = {
         let mut guard = assets.table();
         let t = &mut *guard;
         let old: Vec<u64> = t.refs.keys().copied().filter(|n| *n <= last).collect();
+        let mut strong = Vec::new();
         for n in old {
             t.queued.remove(&n);
             if let Some(m) = t.refs.remove(&n) {
                 t.by_id.remove(&m.handle.id());
                 t.sources.remove(&m.handle.id());
-                t.retired.push(m);
+                match m.hold {
+                    Hold::Uuid(_) => t.retired.push(m),
+                    Hold::Strong => strong.push(m),
+                }
             }
         }
         let refs = &t.refs;
         t.values.retain(|_, n| refs.contains_key(n));
+        if remove {
+            t.removing.clear();
+        }
         t.warned = false;
-        if remove { std::mem::take(&mut t.retired) } else { Vec::new() }
+        (if remove { std::mem::take(&mut t.retired) } else { Vec::new() }, strong)
     };
     for m in gone {
-        m.kind.remove(world, m.handle.id());
+        if let Hold::Uuid(k) = m.hold {
+            k.remove(world, m.handle.id());
+        }
     }
 }
 
-/// A JSON host call from a script: `assets.add`, `assets.get` or `assets.set`, `args` a JSON array.
+/// A JSON host call from a script: `assets.add`, `get`, `set`, `drop`, `remove` or `id`, `args` a JSON array.
 pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String> {
     let args: Vec<Value> = serde_json::from_str(args).map_err(|e| format!("{name}: {e}"))?;
     let arg = |i: usize| args.get(i).unwrap_or(&Value::Null);
@@ -358,6 +459,15 @@ pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String
         "assets.set" => {
             set(world, &slots, arg(0), arg(1))?;
             Value::Null
+        }
+        "assets.drop" | "assets.remove" => {
+            let n = parse_ref(arg(0)).unwrap_or_else(|| Err(format!("{name} takes an asset ref, not {}", arg(0))))?;
+            if name == "assets.drop" { assets.drop(n)? } else { assets.remove(n)? }
+            Value::Null
+        }
+        "assets.id" => {
+            let n = parse_ref(arg(0)).unwrap_or_else(|| Err(format!("ref.id: not an asset ref: {}", arg(0))))?;
+            id_json(&registry, assets.handle(n)?.id())?
         }
         _ => return Err(format!("no host service {name}")),
     };
@@ -707,7 +817,17 @@ struct HandMap {
 static HANDS: RwLock<Vec<Arc<HandMap>>> = RwLock::new(Vec::new());
 
 fn hands() -> Vec<Arc<HandMap>> {
+    builtins();
     HANDS.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// bevy-ts' own hand maps, registered before the first lookup: `Mesh` under `pbr`.
+fn builtins() {
+    #[cfg(feature = "pbr")]
+    {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| register::<Mesh>(crate::mesh_data::read, crate::mesh_data::write));
+    }
 }
 
 /// Whether asset type `asset` is hand-mapped: a check that walks reflected fields round-trips
@@ -717,6 +837,7 @@ pub fn is_hand_mapped(asset: TypeId) -> bool {
 }
 
 fn hand_map(asset: TypeId) -> Option<Arc<HandMap>> {
+    builtins();
     HANDS.read().unwrap_or_else(|e| e.into_inner()).iter().find(|h| h.id == asset).cloned()
 }
 
@@ -771,6 +892,13 @@ fn default_value(registry: &TypeRegistry, ty: &AssetType) -> Result<Box<dyn Part
 /// A ref as JSON: `{ "$asset": n, "type": path }`.
 pub fn ref_json(n: u64, type_path: &str) -> Value {
     serde_json::json!({ "$asset": n, "type": type_path })
+}
+
+/// `ref.id`: the asset's `AssetId<A>` read as `reflect_value` reads it in an `AssetEvent<A>`. Its
+/// shape does not depend on `A`, so it is read through one fixed type.
+pub fn id_json(registry: &TypeRegistry, id: UntypedAssetId) -> Result<Value, String> {
+    let typed: bevy::asset::AssetId<bevy::asset::LoadedFolder> = id.typed_unchecked();
+    crate::reflect_value::read(registry, &typed)
 }
 
 /// The ref number of `{ "$asset": n, ... }`; `None` for any other JSON.
@@ -948,10 +1076,13 @@ mod tests {
     }
 
     #[test]
-    fn mesh_has_no_default() {
+    fn a_mesh_builds_by_its_hand_map_from_an_empty_triangle_list() {
         let app = app();
-        let e = call(&app, "assets.add", serde_json::json!(["bevy_mesh::mesh::Mesh", {}])).unwrap_err();
-        assert!(e.contains("Mesh") && e.contains("no default"), "{e}");
+        let r = call(&app, "assets.add", serde_json::json!(["bevy_mesh::mesh::Mesh", {}])).unwrap();
+        let read = call(&app, "assets.get", serde_json::json!([r])).unwrap();
+        assert_eq!(read["primitive_topology"], "TriangleList");
+        assert_eq!(read["attributes"], serde_json::json!({}));
+        assert_eq!(read["indices"], serde_json::Value::Null);
     }
 
     #[test]
@@ -1109,7 +1240,7 @@ mod tests {
     fn a_hand_mapped_type_needs_no_reflect_and_goes_in_its_assets_at_the_refs_id() {
         let mut app = note_app();
         assert!(app.world().resource::<AppTypeRegistry>().read().get(TypeId::of::<Note>()).is_none(), "Note is not registered");
-        assert!(is_hand_mapped(TypeId::of::<Note>()) && !is_hand_mapped(TypeId::of::<Mesh>()));
+        assert!(is_hand_mapped(TypeId::of::<Note>()) && !is_hand_mapped(TypeId::of::<StandardMaterial>()));
         call(&app, "assets.add", serde_json::json!([NOTE, { "text": "a" }])).unwrap();
         assert!(note(&app, 1).is_none(), "queued until the run ends");
         flush(app.world_mut());
