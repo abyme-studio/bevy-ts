@@ -263,6 +263,20 @@ app.ts_condition("time:on-timer", |args| {
 });
 ```
 
+A TS state machine is a Bevy state of the type `bevy_ts::TsState<N>`, one of 32 slots;
+`world.resource::<TsStates>().slot("game::Game")` gives its `N`. Read it with
+`Res<State<TsState<N>>>`, set it with `NextState<TsState<N>>`, and name a value with
+`TsState(bevy_ts::states::sym("Playing"))`. `bevy_ts::states::name` turns a value back into its
+name.
+
+A crate makes its own state reachable from TS with `app.ts_state::<S>()`, for an enum whose
+unit variants are its values and that reflects (`#[derive(States, Reflect)]`). TS imports it from
+`bevy-ts/states`. bevy-ts exposes `EngineMode` this way.
+
+`StateTransition` runs on Bevy's single-threaded executor (`docs/scripts.md`, States); a crate that
+needs parallel transition systems sets it back with `app.edit_schedule(StateTransition, ...)` after
+adding `BevyTsPlugin`.
+
 Rust runs a TS one-shot system with `commands.queue(RunTsSystem::new("src/waves.ts#spawnWave"))`,
 or with an `In<E>` input as `RunTsSystem::with(identity, bytes)`, the event's bytes in its layout.
 

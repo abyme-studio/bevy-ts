@@ -157,6 +157,59 @@ resets it.
 stage, before the group's first member, and holds for every member in that run.
 `distributiveRunIf(c)` gives each member its own `c`.
 
+### States
+
+```ts
+export class Game extends States("Menu", "Playing", "Paused") {}
+app.initState(Game.Menu)
+  .addSystems(OnEnter(Game.Playing), spawnLevel)
+  .addSystems(OnTransition({ exited: Game.Paused, entered: Game.Playing }), resume)
+  .addSystems(Update, systems(hud).runIf(stateChanged(Game)));
+```
+
+A TS state machine is a Bevy state. Each one takes a slot of the type `bevy_ts::TsState<N>`
+the first time a generation declares it, so Rust reads `State<TsState<N>>`, writes
+`NextState<TsState<N>>` and sees `StateTransitionEvent`s as for any state. An app has at most 32
+state machines, sub and computed states included; a 33rd fails the load with "at most 32 state
+machines". A value is its name, so reordering or adding values keeps the current one; a reload
+that removes the current value moves the machine back to its `initState` value.
+
+Bevy runs the transitions in `StateTransition`, after `PreUpdate`: `OnExit(old)`, then
+`OnTransition({ exited, entered })`, then `OnEnter(new)`, deepest machine first on exit. While the
+game is paused, pending transitions wait. `State<S>` reads the value, `NextState<S>` sets it,
+`PreviousState<S>` reads the value before the last transition. `stateChanged(S)` is true in the
+frame a machine transitioned, `stateExists(S)` while it has a value.
+
+`StateTransition` runs on Bevy's single-threaded executor: its many small systems cost far less
+on one thread. That holds for Rust states too, so a heavy `OnEnter` system no longer runs beside
+its siblings. A game that wants them in parallel opts back in after adding the plugin:
+
+```rust
+app.edit_schedule(StateTransition, |s| {
+    s.set_executor(MultiThreadedExecutor::new());
+});
+```
+
+State-scoped components are Bevy's own, run by Bevy's systems: `DespawnOnExit`, `DespawnOnEnter`,
+`DisableOnExit`, `DisableOnEnter`, `EnableOnExit`, `EnableOnEnter`. Use them in commands
+(`commands.spawn(Enemy, DespawnOnExit.of(Game.Playing))`), in TSX
+(`<DespawnOnExit value={Game.Playing} />`) and in levels (`DespawnOnExit { value: "game::Game.Playing" }`).
+
+```ts
+export class Pause extends SubStates(Game.Playing, "Running", "Paused") {}
+export class InGame extends ComputedStates(Game, (g) => (g === Game.Playing || g === Game.Paused ? InGame.Yes : undefined), "Yes") {}
+```
+
+A sub state exists only while its source is in that value, and enters at its first value; its
+`NextState` is ignored while it does not exist. A computed state's value comes from its sources
+(an array for several), `undefined` meaning it does not exist; its function is a JS call only when
+a source transitions. `PreviousState` reads `undefined` for sub and computed states: Bevy gives no
+way to keep it for states it does not derive itself.
+
+A Rust state a crate exposes with `app.ts_state::<S>()` is a class in `bevy-ts/states`, its unit
+variants its values: `import { EngineMode } from "bevy-ts/states"`, then `inState(EngineMode.Play)`,
+`OnEnter(EngineMode.Edit)` or `NextState<EngineMode>`.
+
 ## Observers on one entity
 
 `commands.entity(e).observe(fn)` attaches an observer to `e` alone, as Bevy's
