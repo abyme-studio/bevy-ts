@@ -28,7 +28,7 @@ None.
 ## Impact
 
 - `crates/bevy-ts-animation`: `PlayAnimation` fields, a park system, mesh records on `AnimationTargets`, the `Animations` export; stage 2: `graph`, `graph_of`, graph-asset edits, `tests/graph.rs`.
-- `crates/bevy-ts-animation` (stage 2, clips): `ScriptCurve`, `ReflectedField`, plain-entity players and target ids, `tests/clip.rs`.
+- `crates/bevy-ts-animation` (stage 2, clips): plain-entity players and target ids, `tests/clip.rs`. `ScriptCurve` and `ReflectedField` live beside the clip hand-map in `bevy_ts::reflect_asset::curve`.
 - `crates/bevy-ts-material`: `MaterialAlpha`'s sync runs after `AnimationSystems` (one ordering line).
 - `crates/bevy-ts` (stage 2): `AnimationGraph` and `AnimationClip` entries in reflect-assets' hand-map list in `reflect_asset`, and deleting the `UNCOVERED` entry for `AnimationGraph`. Coordinated with lead@reflect-assets, who owns the list.
 - `crates/bevy-ts-cli`: registers the export in every engine (as `Cameras`); `tests/animation.rs`; `examples/animation_bench_engine.rs` arms.
