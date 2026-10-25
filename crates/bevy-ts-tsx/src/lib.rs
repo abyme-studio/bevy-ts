@@ -496,8 +496,8 @@ impl Plugin for TsxPlugin {
         }
         app.add_systems(
             PostUpdate,
-            // The sweep frees instances no entity holds once the reconcile has set this frame's.
-            host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare).before(bevy_ts_material::kinds::sweep),
+            // The sweep frees instances no entity holds once the reconcile has set this frame's; world text lays out after, so a bound label draws the frame its binding changes.
+            host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare).before(bevy_ts_material::kinds::sweep).before(bevy_ts_material::WorldTextSystems),
         );
         app.add_ts_command_kind(mount::UNMOUNT, mount::unmount);
         app.add_systems(PostUpdate, intrinsics::report_texture_failures);

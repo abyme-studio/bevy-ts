@@ -124,8 +124,10 @@ What exists:
 - [`update_text_layout_info` lays out for UI semantics (logical pixels, hinting)] → pass
   `FontHinting::Disabled` and scale 1; the layout test compares a label's width with the same
   string's `<text>` width at 48 px.
-- [Far labels shimmer with no mipmaps on the atlas] → the far scenario is the check; if it fails,
-  `atlas.rs` adds a CPU box-filtered mip chain for dirty rows.
+- [Far labels shimmer with no mipmaps on the atlas] → the far scenario is the check. It failed with
+  one sample a pixel (16% over 10 sub-pixel moves at a 6 px em): a stroke thinner than a pixel is
+  misjudged by one sample, which a mip chain does not fix. The main pass takes four samples a pixel
+  on a rotated grid, each ramping over half a pixel (4%); no mip chain, so the atlas stays 16 MB.
 - [`AlphaToCoverage` without MSAA aliases edges] → acceptable; Bevy's cameras default to MSAA 4.
   The render tests run both.
 - [A label far bigger than 48 px on screen rounds its corners] → the trade research named. MSDF is

@@ -267,3 +267,21 @@ export const Counted = () => <entity><PlayAnimation clip="models/Fox.glb#Animati
 export const Once = () => <entity><PlayAnimation clip="models/Fox.glb#Animation2" repeat="Never" paused /></entity>;
 // @ts-expect-error  `repeat` is Bevy's RepeatAnimation, not a bool
 export const BoolRepeat = () => <entity><PlayAnimation repeat={true} /></entity>;
+const hp = () => 9;
+export const Label = () => (
+  <entity>
+    <Transform translation={[0, 2, 0]} />
+    <worldText size={0.5} color="#fff" anchor="bottom-left" outline={{ width: 0.1, color: "#000" }} lit={() => false} width={4} lineHeight={1.2}>
+      HP {() => hp()}
+    </worldText>
+  </entity>
+);
+export const PairAnchor = () => <entity><worldText anchor={[0.5, -0.5]}>A</worldText></entity>;
+// @ts-expect-error  world text holds strings and bindings, not <span>
+export const SpanLabel = () => <entity><worldText>A<span>B</span></worldText></entity>;
+// @ts-expect-error  world text has no text shadow
+export const ShadowLabel = () => <entity><worldText textShadow={{ x: 1 }}>A</worldText></entity>;
+// @ts-expect-error  outline is { width, color }
+export const NumberOutline = () => <entity><worldText outline={0.1}>A</worldText></entity>;
+// @ts-expect-error  "middle" is not an anchor
+export const MiddleLabel = () => <entity><worldText anchor="middle">A</worldText></entity>;

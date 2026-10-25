@@ -310,6 +310,49 @@ export interface SpanProps extends SpanStyle {
   children?: TextChild | readonly TextChild[];
 }
 
+/** `<worldText>`'s children: strings, numbers and bindings, no element. */
+export type WorldTextChild = string | number | (() => string | number) | null | undefined | false;
+
+/** Where a label's box sits at its entity's origin: a side, a corner, or `[x, y]` from -0.5 to 0.5. */
+export type WorldTextAnchor =
+  | "center" | "top" | "bottom" | "left" | "right" | "top-left" | "top-right" | "bottom-left" | "bottom-right"
+  | readonly [number, number];
+
+/**
+ * `<worldText>`: text in the 3D world (`WorldText`, `WorldTextStyle`), a component of its
+ * `<entity>`. It lies in the entity's XY plane facing +Z, placed by its `Transform`; unlit,
+ * culled from behind, no shadow. docs/world-text.md.
+ */
+export interface WorldTextProps {
+  /** The em size in world units (default 1). */
+  size?: Bindable<number>;
+  /** The fill colour (default white). */
+  color?: Bindable<ColorValue>;
+  /** `TextFont.font`: a font asset path (`"fonts/Inter.ttf"`). */
+  font?: Bindable<string>;
+  /** `TextFont.weight`: 1 to 1000, 400 normal, 700 bold. */
+  weight?: Bindable<number>;
+  /** `TextFont.style` italic. */
+  italic?: Bindable<boolean>;
+  /** `TextLayout.justify`. */
+  justify?: Bindable<"left" | "center" | "right" | "justified" | "start" | "end">;
+  /** `TextLayout.linebreak`. */
+  linebreak?: Bindable<"word" | "char" | "word-or-char" | "none">;
+  /** A multiple of `size` (default 1.2). */
+  lineHeight?: Bindable<number>;
+  /** Extra space between letters, a fraction of `size` (default 0). */
+  letterSpacing?: Bindable<number>;
+  /** The wrap width in world units (default: no wrap). */
+  width?: Bindable<number>;
+  /** The point of the layout box at the entity's origin (default `"center"`). */
+  anchor?: Bindable<WorldTextAnchor>;
+  /** A band around every glyph: `width` a fraction of `size`, 0 to 0.125; `color` default black. */
+  outline?: Bindable<{ width: number; color?: ColorValue }>;
+  /** Shaded by the scene's lights (default false: unlit). */
+  lit?: Bindable<boolean>;
+  children?: WorldTextChild | readonly WorldTextChild[];
+}
+
 /** What `sliced(...)` and `tiled(...)` return. */
 export interface ImageMode {
   readonly mode: "sliced" | "tiled";
@@ -766,6 +809,7 @@ export declare namespace JSX {
     material: MaterialProps | ScriptMaterialProps | OwnedMaterialProps;
     mesh2d: Mesh2dProps;
     material2d: Material2dProps;
+    worldText: WorldTextProps;
     node: NodeProps & KeyAttribute;
     button: ButtonProps & KeyAttribute;
     text: TextProps & KeyAttribute;

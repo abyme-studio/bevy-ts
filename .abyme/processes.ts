@@ -493,6 +493,10 @@ const processes = {
   "ecs-queries-bench": { cmd: "bash -c 'set -eo pipefail; cd $HOME/.cache/bevy-ts-ecsq-bench; for i in 1 2 3 4 5 6 7 8; do for a in before after; do uptime | tee $a-$i.md; ./$a >> $a-$i.md; done; done; tail -n +1 *.md'" },
   // The gate's three render failures (shader not loaded), rerun alone in a check slot.
   "ecs-queries-render-recheck": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:ecs-queries -- bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-cli --test it -- standard_material_limits:: && cargo test -p bevy-ts-material --test it -- alpha_render) 2>&1 | grep -v ld64 | tee target/ecs-queries-render-recheck.log | grep -E \"^test result|FAILED|panicked|^error\"'" },
+  // Change world-text: the crates it touches. WT_ONLY narrows the material tests (default world_text).
+  "world-text-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-material --test it -- ${WT_ONLY:-world_text} && cargo test -p bevy-ts-tsx --lib && cargo test -p bevy-ts-cli --test it -- world_text:: text_fonts:: && cargo clippy -p bevy-ts-material -p bevy-ts-tsx -p bevy-ts-cli --all-targets -- -D warnings && scripts/gen-bevy-types.sh && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep --line-buffered -v ld64 | tee target/world-text-tests.log | grep -E \"^test |^test result|FAILED|panicked|^error|^warning|-->|error TS\"'" },
+  // The 1,000-label bench, WT_RUNS rounds of its three arms (default 3); run.sh takes its own slot.
+  "world-text-bench": { cmd: "bash -c 'set -o pipefail; bench/world-text/run.sh ${WT_RUNS:-3} 2>&1 | grep --line-buffered -v ld64 | tee bench/world-text/results/runs.txt | grep -E \"^arm=|load average|^error|panicked\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

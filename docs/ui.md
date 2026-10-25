@@ -88,6 +88,7 @@ A Rust tuple struct with one field names it `value` in TS, so a UI component rea
 
 ## Text
 
+`<text>` is screen UI; text in the 3D world is `<worldText>` ([world-text.md](world-text.md)).
 `<text>` holds strings, bindings and `<span>`s. Text before the first `<span>` is the `Text`
 entity's own; each `<span>`, and each run of text after one, is a child entity with `TextSpan`, as
 Bevy builds rich text. A bound span writes its own `TextSpan` and nothing else.

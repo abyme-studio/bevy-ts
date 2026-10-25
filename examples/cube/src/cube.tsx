@@ -1,7 +1,7 @@
 // The cube's scene: the cube, the sun and the camera, so edit mode shows them before any system runs.
 // game.ts mounts it once `Mover` is defined.
 import { Camera3d, DirectionalLight, Transform } from "bevy-ts/bevy";
-import { Mover } from "./game.ts";
+import { Mover, seconds } from "./game.ts";
 
 export const Cube = () => (
   <>
@@ -19,6 +19,11 @@ export const Cube = () => (
       <Transform />
       <mesh shape="cuboid" size={[1, 1, 1]} color="#ff8800" />
       <Mover />
+      {/* A label over the cube, bobbing with it, its count bound. */}
+      <entity name="label">
+        <Transform translation={[0, 1, 0]} />
+        <worldText size={0.3} anchor="bottom" outline={{ width: 0.08, color: "#000" }}>{() => `cube ${seconds()} s`}</worldText>
+      </entity>
     </entity>
   </>
 );

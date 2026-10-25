@@ -20,14 +20,14 @@ const W: u32 = 320;
 const H: u32 = 180;
 
 /// One render app at a time: each holds a GPU device and compiles pipelines.
-static GPU: Mutex<()> = Mutex::new(());
+pub(crate) static GPU: Mutex<()> = Mutex::new(());
 
 fn app() -> App {
     app_with(|p| p)
 }
 
 /// `app()`, its plugins changed by `f`.
-fn app_with(f: impl FnOnce(bevy::app::PluginGroupBuilder) -> bevy::app::PluginGroupBuilder) -> App {
+pub(crate) fn app_with(f: impl FnOnce(bevy::app::PluginGroupBuilder) -> bevy::app::PluginGroupBuilder) -> App {
     let mut app = App::new();
     let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
     app.add_plugins(
@@ -71,7 +71,7 @@ fn camera(world: &mut World, at: Transform) -> (Handle<Image>, Entity) {
 /// its own deadline and names what never came: pipelines and assets finish on other threads, which
 /// a loaded machine slows by any amount. The render world is reachable because `app()` does not
 /// pipeline rendering.
-fn until_drawn(app: &mut App, target: &Handle<Image>, loaded: impl Fn(&World) -> Result<(), String>, mut check: impl FnMut(&World, &Image) -> Result<(), String>) {
+pub(crate) fn until_drawn(app: &mut App, target: &Handle<Image>, loaded: impl Fn(&World) -> Result<(), String>, mut check: impl FnMut(&World, &Image) -> Result<(), String>) {
     use bevy::render::RenderApp;
     use bevy::render::render_resource::{CachedPipeline, CachedPipelineState, PipelineCache};
     use bevy::shader::ShaderCacheError;

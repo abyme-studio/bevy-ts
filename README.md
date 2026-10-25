@@ -16,6 +16,9 @@ without recompiling Rust.
 - **`bevy-ts dev src/game.ts`** launches the engine, loads the TypeScript and hot reloads it.
 - **Game UI is bevy_ui in TSX**: `<node>`, `<text>`, `<image>`, `<button>` with Bevy's layout,
   grid, gradients and shadows, each prop writing one component ([docs/ui.md](docs/ui.md)).
+- **Text in the 3D world**: `<worldText size={0.5}>{() => name()}</worldText>` on an entity draws a
+  crisp, outlined label under a `Camera3d`, hidden by what stands in front, a thousand of them with
+  one material ([docs/world-text.md](docs/world-text.md)).
 - **Animated glTF models without Rust**: `<PlayAnimation clip="models/Fox.glb#Animation2" />`
   beside a `WorldAssetRoot` plays a clip, cross-fading when it changes; `paused` and `cull`
   park it at no cost per frame, `repeat="Never"` or `{ Count: 3 }` bounds it, and `Animations`

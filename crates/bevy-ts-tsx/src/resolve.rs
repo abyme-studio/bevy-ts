@@ -499,6 +499,11 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts, 
     if let (Some(a), Some(b)) = (out.iter().find(is_3d), out.iter().find(is_2d)) {
         return Err(err(format!("<{}> and <{}> on one entity: pair <mesh> with <material>, <mesh2d> with <material2d>", a.key, b.key), &b.source));
     }
+    // World text owns its entity's mesh and material.
+    let world_text = out.iter().any(|r| matches!(r.target, Target::Ui(UiKind::WorldText)));
+    if world_text && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Mesh(_) | Target::Material(_) | Target::ScriptMaterial { .. } | Target::OwnedMaterial { .. })) {
+        return Err(err(format!("<worldText> and <{}> on one entity: a label draws its own mesh and material; give it an entity of its own", m.key), &node.location()));
+    }
     Ok(out)
 }
 
@@ -531,6 +536,36 @@ pub fn check_nodes(nodes: &[NodeDesc], ts: &dyn TsLookup, native: &NativeLayouts
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct NoTs;
+
+    impl TsLookup for NoTs {
+        fn ts(&self, _: &str) -> Option<(ComponentId, ComponentLayout, ComponentDecl)> {
+            None
+        }
+    }
+
+    fn node(components: Value) -> NodeDesc {
+        serde_json::from_value(serde_json::json!({ "key": "e", "type": "entity", "source": [{ "file": "game.tsx", "line": 7, "column": 3 }], "components": components })).unwrap()
+    }
+
+    #[test]
+    fn world_text_beside_a_mesh_or_material_names_both() {
+        let owned = <bevy_ts_material::ScriptMaterial as bevy::reflect::TypePath>::type_path();
+        for other in [
+            serde_json::json!({ "type": "mesh", "kind": "intrinsic", "props": { "shape": "cuboid" } }),
+            serde_json::json!({ "type": "material", "kind": "intrinsic", "props": {} }),
+            serde_json::json!({ "type": "material", "kind": "intrinsic", "props": { "asset": { "$asset": 1, "type": owned } } }),
+        ] {
+            let n = node(serde_json::json!([other, { "type": "worldText", "kind": "intrinsic", "props": { "text": "A" } }]));
+            let e = resolve_node(&n, &NoTs, &NativeLayouts::default(), &TypeRegistry::default()).unwrap_err();
+            let ty = other["type"].as_str().unwrap();
+            assert!(e.message.contains("<worldText>") && e.message.contains(&format!("<{ty}>")), "{}", e.message);
+            assert_eq!(e.location.as_ref().map(|l| l.line), Some(7));
+        }
+        let alone = node(serde_json::json!([{ "type": "worldText", "kind": "intrinsic", "props": { "text": "A", "size": 0.5 } }]));
+        assert!(resolve_node(&alone, &NoTs, &NativeLayouts::default(), &TypeRegistry::default()).is_ok());
+    }
 
     #[test]
     fn initial_props_name_their_field() {

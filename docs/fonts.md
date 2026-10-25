@@ -3,7 +3,8 @@
 `<text>` draws with Bevy's default font, FiraMono (about ASCII), and falls back to the OS's fonts
 for every character FiraMono lacks: punctuation, arrows, symbols, CJK, emoji. The engine bundles no
 font for this. The engine's Bevy features hold `default_font` and `system_font_discovery`
-(`crates/bevy-ts-cli/Cargo.toml`). Research: `docs/research/text-fonts.md`.
+(`crates/bevy-ts-cli/Cargo.toml`). Research: `docs/research/text-fonts.md`. `<worldText>` lays out
+with the same fonts and fallback ([world-text.md](world-text.md)).
 
 ## How fallback picks a font
 

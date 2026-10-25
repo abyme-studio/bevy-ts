@@ -27,7 +27,7 @@ World text SHALL be laid out by Bevy's `TextPipeline`, with the fonts, weights a
 
 #### Scenario: Size and anchor in world units
 - **WHEN** a label `<worldText size={2} anchor="bottom-left">AB</worldText>` is laid out
-- **THEN** its mesh's bounds start at x 0 and y 0 in the entity's space, and its height is within 10% of the font's ascent plus descent at 2 world units
+- **THEN** its layout box (`ComputedWorldText.rect`) starts at x 0 and y 0 in the entity's space, its height is within 10% of the font's ascent plus descent at 2 world units, and its glyph quads lie in the box but for the distance field's spread
 
 #### Scenario: Bound text rewrites the same mesh
 - **WHEN** a label's text is `{() => "HP " + hp()}` and `hp` changes from 10 to 9
@@ -82,11 +82,15 @@ Glyphs SHALL be drawn from a signed distance field, antialiased by screen-space 
 - **THEN** the unlit one draws white and the lit one draws darker than 10% grey
 
 ### Requirement: Labels share their atlas and materials
-All world text SHALL share one SDF atlas texture. Each distinct glyph (font, glyph id, weight, style) SHALL be rasterised and turned into a distance field once, however many labels use it. Labels with equal `lit` and `outline` SHALL share one material instance; fill colour SHALL be per vertex. The atlas SHALL grow as glyphs are added, up to 4096 by 4096 texels, without rebuilding any label's mesh. A glyph that does not fit SHALL log one error naming the atlas limit, and SHALL draw nothing while the rest of the text draws.
+All world text SHALL share one SDF atlas texture. Each distinct glyph (font, glyph id, weight, style) SHALL be rasterised and turned into a distance field once, however many labels use it. Labels with equal `lit` and `outline` SHALL share one material instance; fill colour SHALL be per vertex. The atlas SHALL grow as glyphs are added, up to 4096 by 4096 texels, without rebuilding any label's mesh. A glyph that does not fit SHALL log one error naming the atlas limit, and SHALL draw nothing while the rest of the text, and every other label, draws; glyphs already in the atlas stay.
 
 #### Scenario: A thousand labels
 - **WHEN** 1,000 labels with distinct names, two colours and one outline style mount
 - **THEN** there is one atlas image and one world-text material instance, and each distinct glyph was rasterised once
+
+#### Scenario: The atlas is full
+- **WHEN** a label asks for a glyph that does not fit in an atlas at its limit
+- **THEN** one error names the limit, the label draws its other glyphs, and asking for that glyph again logs nothing more
 
 #### Scenario: The atlas grows
 - **WHEN** a label adds enough new glyphs to grow the atlas

@@ -30,6 +30,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
     app.add_plugins(BevyTsPlugin::new(move || Box::new(fake.backend())))
         .add_plugins(bevy_ts_tsx::TsxPlugin)
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
+        .add_plugins(bevy_ts_material::WorldTextPlugin)
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
         .add_plugins(crate::gizmos::GizmosPlugin)

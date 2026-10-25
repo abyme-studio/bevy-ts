@@ -9,11 +9,13 @@ pub mod owned;
 pub mod render;
 pub mod scene;
 pub mod wgsl;
+pub mod world_text;
 
 pub use alpha::{Fade, FadeMaterial, MaterialAlpha, MaterialAlphaTargets, standard_of};
 pub use kinds::MaterialKinds;
 pub use render::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
 pub use scene::{GltfMaterialFilter, SceneMaterialSet, SceneMaterialTargets, scene_entities};
+pub use world_text::{ComputedWorldText, LaidOut, WorldText, WorldTextMaterial, WorldTextPlugin, WorldTextStyle, WorldTextSystems};
 
 use bevy::prelude::*;
 use bevy_ts::plugin_api::BevyTsAppExt;

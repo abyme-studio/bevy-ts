@@ -1,7 +1,8 @@
 //! bevy_ui intrinsics: `<node>`, `<text>`, `<image>`, `<button>`, `<input>`. Each prop maps to
 //! one component (`background` and `border` to a colour or a gradient), so a changed prop writes
 //! that component and no other: a bound `<text>` writes `Text` and leaves `TextFont`,
-//! `TextColor` and `Node` alone.
+//! `TextColor` and `Node` alone. `<worldText>` shares `<text>`'s font props and parsers, but is a
+//! component of its entity (world text, `bevy_ts_material::world_text`), not a UI node.
 
 use bevy::input_focus::AutoFocus;
 use bevy::ui::InteractionDisabled;
@@ -18,6 +19,7 @@ use bevy::ui::{
     OverflowClipMargin, RadialGradient, RadialGradientShape, ShadowStyle, UiPosition, UiTransform, Val2, VisualBox,
 };
 use bevy::ui_widgets::TextInput;
+use bevy_ts_material::world_text::{MAX_OUTLINE, WorldText, WorldTextStyle};
 use serde_json::{Map, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +33,8 @@ pub enum UiKind {
     /// A `<node>` showing a camera's output: `ViewportNode`.
     Viewport,
     Input,
+    /// `<worldText>`: text in the 3D world, a component of its entity. No `Node`.
+    WorldText,
 }
 
 /// What every UI intrinsic but `<span>` takes: its `Node`'s look and placement, and `disabled`.
@@ -38,6 +42,12 @@ const NODE_PROPS: &[&str] = &["style", "background", "border", "radius", "outlin
 
 /// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak` and `textShadow`.
 const SPAN_PROPS: &[&str] = &["text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough"];
+
+/// `<worldText>`'s props: `<text>`'s font props, and world text's own (`WorldTextStyle`).
+const WORLD_TEXT_PROPS: &[&str] = &["text", "font", "weight", "italic", "justify", "linebreak", "lineHeight", "color", "size", "letterSpacing", "width", "anchor", "outline", "lit"];
+
+/// The `<worldText>` props `WorldTextStyle` holds.
+const WORLD_STYLE_PROPS: &[&str] = &["size", "letterSpacing", "width", "anchor", "outline", "lit"];
 
 impl UiKind {
     pub fn from_tag(tag: &str) -> Option<UiKind> {
@@ -49,14 +59,17 @@ impl UiKind {
             "span" => UiKind::Span,
             "viewport" => UiKind::Viewport,
             "input" => UiKind::Input,
+            "worldText" => UiKind::WorldText,
             _ => return None,
         })
     }
 
-    /// The props every UI intrinsic but `<span>` takes, then this kind's own.
+    /// The props every UI intrinsic but `<span>` and `<worldText>` takes, then this kind's own.
     fn props(self) -> Vec<&'static str> {
         let own: &[&str] = match self {
             UiKind::Span => return SPAN_PROPS.to_vec(),
+            // A label in the world, not a node: no node props (its `outline` is its own).
+            UiKind::WorldText => return WORLD_TEXT_PROPS.to_vec(),
             UiKind::Node | UiKind::Viewport => &[],
             UiKind::Button => &["activateOnPress"],
             UiKind::Text => &[
@@ -105,9 +118,14 @@ enum Part {
     Disabled,
     /// `activateOnPress` on `<button>`: `ActivateOnPress`, activate on press, not release.
     ActivateOnPress,
+    /// `<worldText>`'s size, spacing, wrap width, anchor, outline and lighting: `WorldTextStyle`.
+    WorldStyle,
 }
 
 fn part(kind: UiKind, prop: &str) -> Part {
+    if kind == UiKind::WorldText && WORLD_STYLE_PROPS.contains(&prop) {
+        return Part::WorldStyle;
+    }
     match prop {
         "style" | "radius" => Part::Node,
         "background" => Part::Background,
@@ -865,6 +883,69 @@ fn text_shadow(v: &Value) -> Result<TextShadow, String> {
     Ok(s)
 }
 
+/// A positive, finite number of world units.
+fn positive(v: &Value, prop: &str) -> Result<f32, String> {
+    v.as_f64().map(|n| n as f32).filter(|n| n.is_finite() && *n > 0.0).ok_or_else(|| format!("{prop}: {v} is not a positive number of world units"))
+}
+
+/// `"center"`, a side or a corner, or `[x, y]` from -0.5 to 0.5, `[-0.5, -0.5]` the bottom left.
+fn anchor(v: &Value) -> Result<Vec2, String> {
+    const NAMES: &str = "center, top, bottom, left, right, top-left, top-right, bottom-left, bottom-right, or [x, y] from -0.5 to 0.5";
+    if let Some(name) = v.as_str() {
+        let (x, y) = match name {
+            "center" => (0.0, 0.0),
+            "top" => (0.0, 0.5),
+            "bottom" => (0.0, -0.5),
+            "left" => (-0.5, 0.0),
+            "right" => (0.5, 0.0),
+            "top-left" => (-0.5, 0.5),
+            "top-right" => (0.5, 0.5),
+            "bottom-left" => (-0.5, -0.5),
+            "bottom-right" => (0.5, -0.5),
+            _ => return Err(format!("anchor: {v} is not one of {NAMES}")),
+        };
+        return Ok(Vec2::new(x, y));
+    }
+    let n: Option<Vec<f32>> = v.as_array().and_then(|a| a.iter().map(|x| x.as_f64().map(|n| n as f32)).collect());
+    match n.as_deref() {
+        Some([x, y]) if (-0.5..=0.5).contains(x) && (-0.5..=0.5).contains(y) => Ok(Vec2::new(*x, *y)),
+        _ => Err(format!("anchor: {v} is not one of {NAMES}")),
+    }
+}
+
+/// `<worldText>`'s `WorldTextStyle` from its props; a missing prop is the default.
+fn world_style(props: &Map<String, Value>) -> Result<WorldTextStyle, String> {
+    let mut s = WorldTextStyle::default();
+    if let Some(v) = props.get("size") {
+        s.size = positive(v, "size")?;
+    }
+    if let Some(v) = props.get("letterSpacing") {
+        s.letter_spacing = v.as_f64().map(|n| n as f32).filter(|n| n.is_finite()).ok_or_else(|| format!("letterSpacing: {v} is not a number (a fraction of size)"))?;
+    }
+    if let Some(v) = props.get("width") {
+        s.width = Some(positive(v, "width")?);
+    }
+    if let Some(v) = props.get("anchor") {
+        s.anchor = anchor(v)?;
+    }
+    if let Some(v) = props.get("outline") {
+        let o = fields(v, "outline", &["width", "color"])?;
+        let w = o.get("width").ok_or("outline takes { width, color }")?;
+        let width = w.as_f64().map(|n| n as f32).filter(|n| (0.0..=MAX_OUTLINE).contains(n)).ok_or_else(|| format!("outline.width: {w} is outside 0 to {MAX_OUTLINE} (a fraction of size)"))?;
+        let c = o.get("color").map(|c| color(c).map_err(|e| format!("outline.color: {e}"))).transpose()?.unwrap_or(Color::BLACK);
+        s.outline = Some((width, c));
+    }
+    if let Some(v) = props.get("lit") {
+        s.lit = flag(v, "lit")?;
+    }
+    Ok(s)
+}
+
+/// `<worldText>`'s `lineHeight`: a multiple of `size` only.
+fn world_line_height(v: &Value) -> Result<LineHeight, String> {
+    v.as_f64().map(|n| LineHeight::RelativeToFont(n as f32)).ok_or_else(|| format!("lineHeight: {v} is not a multiple of size (a number)"))
+}
+
 /// `underline` and `strikethrough`: `true` (Bevy's colour), a colour, or `false` (none).
 fn decoration(v: &Value, prop: &str) -> Result<Option<Option<Color>>, String> {
     match v {
@@ -1071,8 +1152,9 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::Transform => transform(&props["transform"]).map(|_| ()),
         Part::Text => props["text"].as_str().map(|_| ()).ok_or_else(|| "text takes a string".into()),
         Part::Font => font_fields(props).map(|_| ()),
-        Part::Color => color(&props["color"]).map(|_| ()),
+        Part::Color => color(&props["color"]).map(|_| ()).map_err(|e| format!("color: {e}")),
         Part::Layout => layout(props).map(|_| ()),
+        Part::LineHeight if kind == UiKind::WorldText => world_line_height(&props["lineHeight"]).map(|_| ()),
         Part::LineHeight => line_height(&props["lineHeight"]).map(|_| ()),
         Part::LetterSpacing => letter_spacing(&props["letterSpacing"]).map(|_| ()),
         Part::TextShadow => text_shadow(&props["textShadow"]).map(|_| ()),
@@ -1092,6 +1174,7 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::Focus => props["autoFocus"].as_bool().map(|_| ()).ok_or_else(|| "autoFocus takes a boolean".into()),
         Part::Disabled => props["disabled"].as_bool().map(|_| ()).ok_or_else(|| "disabled takes a boolean".into()),
         Part::ActivateOnPress => props["activateOnPress"].as_bool().map(|_| ()).ok_or_else(|| "activateOnPress takes a boolean".into()),
+        Part::WorldStyle => world_style(props).map(|_| ()),
     }
 }
 
@@ -1163,12 +1246,16 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             let s = props.get("text").and_then(Value::as_str).unwrap_or_default();
             if kind == UiKind::Span {
                 world.entity_mut(e).insert(TextSpan::new(s));
+            } else if kind == UiKind::WorldText {
+                world.entity_mut(e).insert(WorldText::new(s));
             } else {
                 world.entity_mut(e).insert(Text::new(s));
             }
         }
         Part::Font => {
             let f = font_fields(props)?;
+            // World text's em size is `WorldTextStyle::size`; `font_size` is not read.
+            let f = if kind == UiKind::WorldText { FontFields { size: None, ..f } } else { f };
             let mut font = TextFont { font_size: FontSize::Px(f.size.unwrap_or(20.0)), weight: FontWeight(f.weight.unwrap_or(400)), ..default() };
             if f.italic {
                 font.style = FontStyle::Italic;
@@ -1185,7 +1272,8 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         }
         // `TextSpan` requires these two, so an absent prop writes Bevy's default rather than removing.
         Part::LineHeight => {
-            let h = props.get("lineHeight").map(line_height).transpose()?.unwrap_or_default();
+            let parse = if kind == UiKind::WorldText { world_line_height } else { line_height };
+            let h = props.get("lineHeight").map(parse).transpose()?.unwrap_or_default();
             world.entity_mut(e).insert(h);
         }
         Part::LetterSpacing => {
@@ -1232,6 +1320,10 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         Part::Color if present => {
             world.entity_mut(e).insert(TextColor(color(&props["color"])?));
             cursor(world, e, kind, props)?;
+        }
+        // A label always has a colour: white unless given.
+        Part::Color if kind == UiKind::WorldText => {
+            world.entity_mut(e).insert(TextColor::default());
         }
         Part::Color => {
             world.entity_mut(e).remove::<TextColor>();
@@ -1288,6 +1380,10 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
         }
         Part::Disabled => marker::<InteractionDisabled>(world, e, props, "disabled"),
         Part::ActivateOnPress => marker::<ActivateOnPress>(world, e, props, "activateOnPress"),
+        Part::WorldStyle => {
+            let s = world_style(props)?;
+            world.entity_mut(e).insert(s);
+        }
     }
     Ok(())
 }
@@ -1307,12 +1403,13 @@ fn props_of(kind: UiKind, props: &Map<String, Value>, p: Part) -> bool {
 
 /// Inserts everything a UI intrinsic owns, from its current props.
 pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
-    if kind != UiKind::Span {
+    if !matches!(kind, UiKind::Span | UiKind::WorldText) {
         write_part(world, e, kind, props, Part::Node)?;
     }
     let mut parts: Vec<Part> = props.keys().map(|k| part(kind, k)).filter(|p| *p != Part::Node).collect();
     match kind {
         UiKind::Text | UiKind::Span => parts.extend([Part::Text, Part::Font]),
+        UiKind::WorldText => parts.extend([Part::Text, Part::Font, Part::Color, Part::Layout, Part::LineHeight, Part::WorldStyle]),
         UiKind::Input => {
             if props.contains_key("initialValue") {
                 check_part(kind, props, Part::Value)?;
@@ -1375,6 +1472,10 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
         UiKind::Input => {
             em.remove::<(TextInput, EditableText, TextFont, TextColor, TextLayout, TextCursorStyle, AutoFocus)>();
         }
+        // The label's mesh, material and bounds go with `WorldText` (world text's own observer).
+        UiKind::WorldText => {
+            em.remove::<(WorldText, WorldTextStyle, TextFont, TextColor, TextLayout, LineHeight)>();
+        }
         UiKind::Node => {}
     }
     em.remove::<(UiTargetCamera, InteractionDisabled, ActivateOnPress)>();
@@ -1402,5 +1503,63 @@ mod tests {
         assert!(check(UiKind::Node, json!({ "colour": "#fff" }).as_object().unwrap()).is_err());
         assert!(check(UiKind::Node, json!({ "style": { "widht": 3 } }).as_object().unwrap()).is_err());
         assert!(check(UiKind::Text, json!({ "text": "a", "size": 3, "color": "#fff" }).as_object().unwrap()).is_ok());
+    }
+
+    fn world(props: Value) -> Result<(), String> {
+        check(UiKind::WorldText, props.as_object().unwrap())
+    }
+
+    #[test]
+    fn world_text_takes_its_props() {
+        let all = json!({
+            "text": "Paris", "font": "fonts/Inter.ttf", "weight": 700, "italic": true, "justify": "center", "linebreak": "word",
+            "lineHeight": 1.4, "color": "#ffcc00", "size": 0.5, "letterSpacing": 0.05, "width": 4, "anchor": [0.25, -0.5],
+            "outline": { "width": 0.1, "color": "#000" }, "lit": true,
+        });
+        world(all.clone()).unwrap();
+        let s = world_style(all.as_object().unwrap()).unwrap();
+        assert_eq!((s.size, s.width, s.anchor, s.lit), (0.5, Some(4.0), Vec2::new(0.25, -0.5), true));
+        assert_eq!(s.outline.map(|(w, _)| w), Some(0.1));
+        assert_eq!(anchor(&json!("bottom-left")).unwrap(), Vec2::new(-0.5, -0.5));
+        assert_eq!(anchor(&json!("top")).unwrap(), Vec2::new(0.0, 0.5));
+        assert_eq!(world_style(&Map::new()).unwrap(), WorldTextStyle::default());
+    }
+
+    /// Every refusal names the prop it refuses.
+    #[test]
+    fn world_text_refusals_name_the_prop() {
+        let cases = [
+            (json!({ "style": { "width": 3 } }), "style"),
+            (json!({ "textShadow": { "x": 1 } }), "textShadow"),
+            (json!({ "underline": true }), "underline"),
+            (json!({ "strikethrough": true }), "strikethrough"),
+            (json!({ "textBackground": "#000" }), "textBackground"),
+            (json!({ "path": [[0, 0, 0], [1, 0, 0]] }), "path"),
+            (json!({ "size": 0 }), "size"),
+            (json!({ "size": -1 }), "size"),
+            (json!({ "size": "big" }), "size"),
+            (json!({ "width": 0 }), "width"),
+            (json!({ "width": "4" }), "width"),
+            (json!({ "outline": { "width": 0.3, "color": "#000" } }), "outline.width"),
+            (json!({ "outline": { "width": -0.1, "color": "#000" } }), "outline.width"),
+            (json!({ "outline": { "color": "#000" } }), "outline"),
+            (json!({ "outline": 0.1 }), "outline"),
+            (json!({ "outline": { "width": 0.1, "color": "nope" } }), "outline.color"),
+            (json!({ "anchor": "middle" }), "anchor"),
+            (json!({ "anchor": [1, 0] }), "anchor"),
+            (json!({ "anchor": [0] }), "anchor"),
+            (json!({ "lineHeight": "12px" }), "lineHeight"),
+            (json!({ "letterSpacing": "1px" }), "letterSpacing"),
+            (json!({ "lit": "yes" }), "lit"),
+            (json!({ "color": 3 }), "color"),
+            (json!({ "justify": "middle" }), "justify"),
+            (json!({ "weight": 0 }), "weight"),
+            (json!({ "text": 3 }), "text"),
+        ];
+        for (props, prop) in cases {
+            let e = world(props.clone()).expect_err(&format!("{props} is refused"));
+            assert!(e.contains(prop), "{props}: {e} names {prop}");
+        }
+        assert!(world(json!({ "outline": { "width": 0.3, "color": "#000" } })).unwrap_err().contains("0 to 0.125"));
     }
 }

@@ -261,6 +261,8 @@ export const MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialE
 
 export const MeshMaterial3dExtendedMaterialStandardMaterialFade = reflectClass("MeshMaterial3d<ExtendedMaterial<StandardMaterial, Fade>>");
 
+export const MeshMaterial3dExtendedMaterialStandardMaterialWorldTextExt = reflectClass("MeshMaterial3d<ExtendedMaterial<StandardMaterial, WorldTextExt>>");
+
 export const MeshMaterial3dStandardMaterial = reflectClass("MeshMaterial3d<StandardMaterial>");
 
 export class ScreenSpaceAmbientOcclusion extends nativeComponent("ScreenSpaceAmbientOcclusion", { radius: f32, constant_object_thickness: f32 }) {}
@@ -430,6 +432,12 @@ export class PlayAnimation extends nativeComponent("PlayAnimation", { speed: f32
 export const MissingComponents = reflectClass("MissingComponents");
 
 export class MaterialAlpha extends nativeComponent("MaterialAlpha", { alpha: f32 }) {}
+
+export class ComputedWorldText extends nativeComponent("ComputedWorldText", { quads: u32 }) {}
+
+export const WorldText = rustComponent("WorldText");
+
+export class WorldTextStyle extends nativeComponent("WorldTextStyle", { size: f32, letter_spacing: f32, anchor: vec2, lit: bool }) {}
 
 export class UiScale extends nativeResource("UiScale", { value: f32 }) {}
 

@@ -9,3 +9,5 @@ mod alpha;
 mod alpha_render;
 mod scene;
 mod spike;
+mod world_text;
+mod world_text_render;

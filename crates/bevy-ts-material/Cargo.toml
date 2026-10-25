@@ -9,7 +9,8 @@ license.workspace = true
 name = "bevy_ts_material"
 
 [dependencies]
-bevy = { workspace = true, features = ["3d"] }
+# `bevy_text` for world text's layout; "3d" builds it already.
+bevy = { workspace = true, features = ["3d", "bevy_text"] }
 bevy-ts.workspace = true
 serde.workspace = true
 serde_json.workspace = true

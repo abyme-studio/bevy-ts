@@ -96,3 +96,4 @@ mod viewport_preview;
 mod viewport_thumbnail;
 mod viewport_walk;
 mod visibility_range;
+mod world_text;

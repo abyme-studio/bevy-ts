@@ -189,3 +189,21 @@ Deno.test("a scene component whose field and scene prop share a name fails", () 
   Bad.sceneProps = ["speed"];
   throws(() => jsx(Bad, {}), /speed is both a field and a scene prop/);
 });
+
+Deno.test("worldText is a component of its entity, its children its text", () => {
+  const [e] = describe(
+    jsx("entity", { children: [jsx(Transform, { translation: [0, 2, 0] }), jsxs("worldText", { size: 0.5, children: ["Par", "is"] })] }),
+  );
+  eq(e.components.map((c) => [c.type, c.kind]), [["Transform", "rust"], ["worldText", "intrinsic"]]);
+  eq(e.components[1].props, { size: 0.5, text: "Paris" });
+  eq(e.children, []);
+  const [b] = describe(jsx("entity", { children: jsxs("worldText", { children: ["HP ", () => 9] }) }));
+  if (!b.components[0].props.text.$b) throw new Error("a bound child makes text a binding");
+});
+
+Deno.test("worldText refuses an element child and a place outside an entity", () => {
+  const inside = throws(() => describe(jsx("entity", { children: dev("worldText", { children: dev("span", { children: "x" }, undefined, at("game.tsx", 9)) }, undefined, at("game.tsx", 8)) })), /<worldText> takes strings.*not <span>/);
+  eq(inside.bevyTsLocation.line, 9);
+  const outside = throws(() => describe(dev("worldText", { children: "A" }, undefined, at("game.tsx", 4))), /<worldText> is a component element outside an <entity>/);
+  eq(outside.bevyTsLocation.line, 4);
+});
