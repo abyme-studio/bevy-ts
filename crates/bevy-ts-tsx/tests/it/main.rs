@@ -11,3 +11,4 @@ mod primitives;
 mod reconcile;
 mod standard_material;
 mod slot;
+mod visibility_range;
