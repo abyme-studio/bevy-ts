@@ -175,6 +175,26 @@ app.addSystems(Update, raw);
     assert!(messages(&app).iter().any(|m| m.contains("never a column")), "{:?}", messages(&app));
 }
 
+#[test]
+fn a_computed_component_refuses_a_write() {
+    let body = r#"
+export const GlobalTransform = rustComponent("GlobalTransform");
+export function nudge(q: Query<[Mut<GlobalTransform>]>) {
+  q.each((g: any) => { g.value = 0; });
+}
+app.addSystems(Update, nudge);
+"#;
+    let mut app = with_types("reflect-computed", body);
+    let e = app.world_mut().spawn((Transform::from_xyz(1.0, 2.0, 3.0), GlobalTransform::from_xyz(1.0, 2.0, 3.0))).id();
+    app.update();
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    let err = app.world().resource::<bevy_ts::systems::TsSystems>().iter().find_map(|s| s.last_error.as_ref().map(|e| e.message.clone()));
+    assert!(err.as_deref().is_some_and(|m| m.contains("GlobalTransform is computed by Bevy, so it cannot be written")), "{err:?}");
+    assert_eq!(app.world().get::<GlobalTransform>(e).unwrap().translation(), Vec3::new(1.0, 2.0, 3.0));
+}
+
 /// Agent town's civ kit: `ResMut` of Bevy's reflect-tier shadow-map resources (`size: usize` has
 /// no native layout) writes back, and Bevy sees the change.
 #[test]

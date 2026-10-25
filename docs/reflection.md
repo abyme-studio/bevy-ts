@@ -79,3 +79,31 @@ fails to write with the reason; a hole of one fails the load.
 | `bevy_mesh::mesh::Mesh` | script-assets: no default; attributes and indices are reflect(ignore); engine-core builds meshes |
 
 `reflect-assets` marks an asset type that change covers; its landing removes the entry.
+
+## What a reflected read costs in a TS system
+
+`crates/bevy-ts-cli/tests/it/reflect_bench.rs` (ignored; `BENCH_RUNS=8 cargo static test --release
+-p bevy-ts-cli --test it reflect_bench:: -- --ignored --nocapture`) times one system over 1,000 rows.
+A round runs every arm in turn, so load drift hits them all. An arm's time is the median of 200
+frames, less an empty system over the same rows. The table gives the median of 8 rounds and their
+range, in ns a row. It was measured on 2026-10-25 under load: the load average was 71 at the start
+and 31 at the end.
+
+| Arm | ns a row | Range |
+|---|---|---|
+| layout column (`Transform.translation.x`) | 10 | 7–13 |
+| hit, `DirectionalLight.color` (a hole) | 45 | 35–50 |
+| hit, `Projection` (reflect tier) | 42 | 30–47 |
+| miss through the codec, `DirectionalLight.color` | 176 | 115–261 |
+| miss through the codec, `Projection` | 180 | 137–240 |
+| JSON baseline (`read`'s JSON parsed), `DirectionalLight.color` | 1478 | 1148–1716 |
+| JSON baseline, `Projection` | 3127 | 2827–3504 |
+| write, `DirectionalLight.color` | 3236 | 2646–3381 |
+| write, `Projection` | 2945 | 2199–3679 |
+| one `Mut<Projection>` write a frame, in ns a frame | 30000 | 15000–44000 |
+
+A hit costs about 4 times a column read. A miss is 8 to 17 times faster than the JSON path. Writes
+cross as JSON (design decision 7), so they cost what the JSON path costs. The research's targets,
+about 10 ns a hit and 0.1 µs a miss, were not met at this load. One write a frame costs about
+30 µs, far more than a row's write; that looks like a fixed cost per run of the flush, and is a
+follow-up.
