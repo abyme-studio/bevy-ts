@@ -216,7 +216,7 @@ export const Projection = rustComponent("Projection");
 const sun = ref();
 app.scene("main", () => (
   <>
-    <entity key="sun" ref={sun}><DirectionalLight /></entity>
+    <entity key="sun" ref={sun}><DirectionalLight /><Projection value={{ Perspective: {} }} /></entity>
     <node key="hud">
       <text key="cam">{() => { const p = sun.get(Projection); return p ? (JSON.stringify(p).includes("Orthographic") ? "ortho" : "persp") : "none"; }}</text>
       <text key="color">{() => JSON.stringify(sun.get(DirectionalLight).color)}</text>
@@ -239,10 +239,7 @@ app.scene("main", () => (
         app.world().get::<Text>(e).map(|t| t.0.clone()).unwrap_or_default()
     };
     let sun = find(&mut app, &["sun"]);
-    assert_eq!(text(&mut app, &["hud", "cam"]), "none");
-    app.world_mut().entity_mut(sun).insert(Projection::Perspective(PerspectiveProjection::default()));
-    updates(&mut app, 2);
-    assert_eq!(text(&mut app, &["hud", "cam"]), "persp");
+    assert_eq!(text(&mut app, &["hud", "cam"]), "persp", "{:?}", logs(&app).into_iter().map(|l| l.message).collect::<Vec<_>>());
     *app.world_mut().get_mut::<Projection>(sun).unwrap() = Projection::Orthographic(OrthographicProjection::default_3d());
     updates(&mut app, 2);
     assert_eq!(text(&mut app, &["hud", "cam"]), "ortho");

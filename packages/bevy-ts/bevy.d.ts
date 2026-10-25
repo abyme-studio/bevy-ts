@@ -2,7 +2,7 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components and resources TS can name.
 import { Component, ReflectComponent, Resource } from "bevy-ts";
-import type { bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, ReflectValue, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 type Reflected<F = {}> = abstract new () => ReflectComponent & F;
 
@@ -63,7 +63,7 @@ export declare class TemporalAntiAliasing extends Component {
   declare reset: bool;
 }
 
-/** Holes, never visible: volume: an enum with data (bevy_audio::volume::Volume); spatial_scale: an enum with data (core::option::Option<bevy_audio::audio::SpatialScale>); start_position: an enum with data (core::option::Option<core::time::Duration>); duration: an enum with data (core::option::Option<core::time::Duration>). */
+/** Holes, not columns: volume: an enum with data (bevy_audio::volume::Volume); spatial_scale: an enum with data (core::option::Option<bevy_audio::audio::SpatialScale>); start_position: an enum with data (core::option::Option<core::time::Duration>); duration: an enum with data (core::option::Option<core::time::Duration>). */
 export declare class PlaybackSettings extends Component {
   static readonly path: "bevy_audio::audio::PlaybackSettings";
   static readonly native: true;
@@ -74,6 +74,7 @@ export declare class PlaybackSettings extends Component {
   declare muted: bool;
   declare spatial: bool;
 }
+export interface PlaybackSettings extends Holes<{ volume: { Linear: number } | { Decibels: number }; spatial_scale: readonly [number, number, number] | null; start_position: number | null; duration: number | null }> {}
 
 export declare class SpatialListener extends Component {
   static readonly path: "bevy_audio::audio::SpatialListener";
@@ -82,7 +83,7 @@ export declare class SpatialListener extends Component {
   declare readonly right_ear_offset: Vec3;
 }
 
-/** Holes, never visible: viewport: an enum with data (core::option::Option<bevy_camera::camera::Viewport>); order: opaque to reflection (isize); computed: not plain data (bevy_camera::camera::ComputedCameraValues); output_mode: an enum with data (bevy_camera::camera::CameraOutputMode); clear_color: an enum with data (bevy_camera::clear_color::ClearColorConfig); sub_camera_view: an enum with data (core::option::Option<bevy_camera::camera::SubCameraView>). */
+/** Holes, not columns: viewport: an enum with data (core::option::Option<bevy_camera::camera::Viewport>); order: opaque to reflection (isize); computed: not plain data (bevy_camera::camera::ComputedCameraValues); output_mode: an enum with data (bevy_camera::camera::CameraOutputMode); clear_color: an enum with data (bevy_camera::clear_color::ClearColorConfig); sub_camera_view: an enum with data (core::option::Option<bevy_camera::camera::SubCameraView>). */
 export declare class Camera extends Component {
   static readonly path: "bevy_camera::camera::Camera";
   static readonly native: true;
@@ -91,6 +92,7 @@ export declare class Camera extends Component {
   declare msaa_writeback: "Off" | "Auto" | "Always";
   declare invert_culling: bool;
 }
+export interface Camera extends Holes<{ viewport: { physical_position?: readonly [number, number]; physical_size?: readonly [number, number]; depth?: { start: number; end: number } } | null; order: number | string; computed: { clip_from_view?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; target_info?: { physical_size?: readonly [number, number]; scale_factor?: number } | null; old_viewport_size?: readonly [number, number] | null; old_sub_camera_view?: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null }; output_mode: { Write: { blend_state?: never | null; clear_color?: "Default" | { Custom: ColorValue } | "None" } } | "Skip"; clear_color: "Default" | { Custom: ColorValue } | "None"; sub_camera_view: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null }> {}
 
 export declare const CameraMainTextureUsages: Reflected;
 export type CameraMainTextureUsages = InstanceType<typeof CameraMainTextureUsages>;
@@ -108,7 +110,7 @@ export declare class ManualTextureViewHandle extends Component {
 }
 
 /** As an element, `<RenderTarget value={...} />`: the whole value, in Bevy's shape. */
-export declare const RenderTarget: Reflected & { readonly tsxProps: { value?: RenderTargetValue } };
+export declare const RenderTarget: Reflected<ReflectValue<RenderTargetValue>> & { readonly tsxProps: { value?: RenderTargetValue } };
 export type RenderTargetValue = { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 export type RenderTarget = InstanceType<typeof RenderTarget>;
 
@@ -154,7 +156,7 @@ export declare class Sphere extends Component {
 }
 
 /** As an element, `<Projection value={...} />`: the whole value, in Bevy's shape. */
-export declare const Projection: Reflected & { readonly tsxProps: { value?: ProjectionValue } };
+export declare const Projection: Reflected<ReflectValue<ProjectionValue>> & { readonly tsxProps: { value?: ProjectionValue } };
 export type ProjectionValue = { Perspective: { fov?: number; aspect_ratio?: number; near?: number; far?: number; near_clip_plane?: readonly [number, number, number, number] } } | { Orthographic: { near?: number; far?: number; viewport_origin?: readonly [number, number]; scaling_mode?: "WindowSize" | { Fixed: { width?: number; height?: number } } | { AutoMin: { min_width?: number; min_height?: number } } | { AutoMax: { max_width?: number; max_height?: number } } | { FixedVertical: { viewport_height?: number } } | { FixedHorizontal: { viewport_width?: number } }; scale?: number; area?: { min?: readonly [number, number]; max?: readonly [number, number] } } } | { Custom: {  } };
 export type Projection = InstanceType<typeof Projection>;
 
@@ -230,7 +232,7 @@ export type RootNonCameraView = InstanceType<typeof RootNonCameraView>;
 export declare const InfiniteGrid: Reflected;
 export type InfiniteGrid = InstanceType<typeof InfiniteGrid>;
 
-/** Holes, never visible: x_axis_color: an enum with data (bevy_color::color::Color); z_axis_color: an enum with data (bevy_color::color::Color); minor_line_color: an enum with data (bevy_color::color::Color); major_line_color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: x_axis_color: an enum with data (bevy_color::color::Color); z_axis_color: an enum with data (bevy_color::color::Color); minor_line_color: an enum with data (bevy_color::color::Color); major_line_color: an enum with data (bevy_color::color::Color). */
 export declare class InfiniteGridSettings extends Component {
   static readonly path: "bevy_dev_tools::infinite_grid::InfiniteGridSettings";
   static readonly native: true;
@@ -240,6 +242,7 @@ export declare class InfiniteGridSettings extends Component {
   declare scale: f32;
   declare major_line_interval: u32;
 }
+export interface InfiniteGridSettings extends Holes<{ x_axis_color: ColorValue; z_axis_color: ColorValue; minor_line_color: ColorValue; major_line_color: ColorValue }> {}
 
 export declare const PointerDebugOverlay: Reflected<{ overlay: Entity }>;
 export type PointerDebugOverlay = InstanceType<typeof PointerDebugOverlay>;
@@ -247,7 +250,7 @@ export type PointerDebugOverlay = InstanceType<typeof PointerDebugOverlay>;
 export declare const PointerDebugOverlayOf: Reflected<{ pointer: Entity }>;
 export type PointerDebugOverlayOf = InstanceType<typeof PointerDebugOverlayOf>;
 
-/** Holes, never visible: mode: an enum with data (bevy_dev_tools::render_debug::RenderDebugMode). */
+/** Holes, not columns: mode: an enum with data (bevy_dev_tools::render_debug::RenderDebugMode). */
 export declare class GlobalRenderDebugOverlay extends Resource {
   static readonly path: "bevy_dev_tools::render_debug::GlobalRenderDebugOverlay";
   static readonly native: true;
@@ -255,8 +258,9 @@ export declare class GlobalRenderDebugOverlay extends Resource {
   declare enabled: bool;
   declare opacity: f32;
 }
+export interface GlobalRenderDebugOverlay extends Holes<{ mode: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } }> {}
 
-/** Holes, never visible: mode: an enum with data (bevy_dev_tools::render_debug::RenderDebugMode). */
+/** Holes, not columns: mode: an enum with data (bevy_dev_tools::render_debug::RenderDebugMode). */
 export declare class RenderDebugOverlay extends Component {
   static readonly path: "bevy_dev_tools::render_debug::RenderDebugOverlay";
   static readonly native: true;
@@ -264,6 +268,7 @@ export declare class RenderDebugOverlay extends Component {
   declare enabled: bool;
   declare opacity: f32;
 }
+export interface RenderDebugOverlay extends Holes<{ mode: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } }> {}
 
 export declare const Disabled: Reflected;
 export type Disabled = InstanceType<typeof Disabled>;
@@ -279,7 +284,7 @@ export declare const Children: Reflected<{ value: readonly Entity[] }>;
 export type Children = InstanceType<typeof Children>;
 
 /** `Name`; as an element, `<Name value="..." />` (or `<entity name="...">`). */
-export declare const Name: Reflected & { readonly __nameElement: true };
+export declare const Name: Reflected<ReflectValue<string>> & { readonly __nameElement: true };
 export type Name = InstanceType<typeof Name>;
 
 export declare const ObservedBy: Reflected<{ value: readonly Entity[] }>;
@@ -297,7 +302,7 @@ export type ShowAabbGizmo = InstanceType<typeof ShowAabbGizmo>;
 export declare const ShowFrustumGizmo: Reflected<{ color: ColorValue | null }>;
 export type ShowFrustumGizmo = InstanceType<typeof ShowFrustumGizmo>;
 
-/** Holes, never visible: handle: an enum with data (bevy_asset::handle::Handle<bevy_gizmos::GizmoAsset>); line_config: not plain data (bevy_gizmos::config::GizmoLineConfig). */
+/** Holes, not columns: handle: an enum with data (bevy_asset::handle::Handle<bevy_gizmos::GizmoAsset>); line_config: not plain data (bevy_gizmos::config::GizmoLineConfig). */
 export declare class Gizmo extends Component {
   static readonly path: "bevy_gizmos::retained::Gizmo";
   static readonly native: true;
@@ -305,6 +310,7 @@ export declare class Gizmo extends Component {
   static readonly __element: { handle: string | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number }; depth_bias: number };
   declare depth_bias: f32;
 }
+export interface Gizmo extends Holes<{ handle: string | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } }> {}
 
 export declare const ShowSkinnedMeshBoundsGizmo: Reflected<{ color: ColorValue | null }>;
 export type ShowSkinnedMeshBoundsGizmo = InstanceType<typeof ShowSkinnedMeshBoundsGizmo>;
@@ -315,7 +321,7 @@ export type TransformGizmoCamera = InstanceType<typeof TransformGizmoCamera>;
 export declare const TransformGizmoFocus: Reflected;
 export type TransformGizmoFocus = InstanceType<typeof TransformGizmoFocus>;
 
-/** Holes, never visible: hovered_axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); start_transform: not plain data (bevy_transform::components::transform::Transform); entity: an enum with data (core::option::Option<bevy_ecs::entity::Entity>). */
+/** Holes, not columns: hovered_axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); start_transform: not plain data (bevy_transform::components::transform::Transform); entity: an enum with data (core::option::Option<bevy_ecs::entity::Entity>). */
 export declare class TransformGizmoState extends Resource {
   static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoState";
   static readonly native: true;
@@ -324,6 +330,7 @@ export declare class TransformGizmoState extends Resource {
   declare readonly drag_start_world: Vec3;
   declare readonly gizmo_origin: Vec3;
 }
+export interface TransformGizmoState extends Holes<{ hovered_axis: "X" | "Y" | "Z" | "View" | null; axis: "X" | "Y" | "Z" | "View" | null; start_transform: { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] }; entity: Entity | null }> {}
 
 export declare const GltfExtras: Reflected<{ value: string }>;
 export type GltfExtras = InstanceType<typeof GltfExtras>;
@@ -405,7 +412,7 @@ export declare class ShadowFilteringMethod extends Component {
 export declare const TransmittedShadowReceiver: Reflected;
 export type TransmittedShadowReceiver = InstanceType<typeof TransmittedShadowReceiver>;
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class AmbientLight extends Component {
   static readonly path: "bevy_light::ambient_light::AmbientLight";
   static readonly native: true;
@@ -413,8 +420,9 @@ export declare class AmbientLight extends Component {
   declare brightness: f32;
   declare affects_lightmapped_meshes: bool;
 }
+export interface AmbientLight extends Holes<{ color: ColorValue }> {}
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class GlobalAmbientLight extends Resource {
   static readonly path: "bevy_light::ambient_light::GlobalAmbientLight";
   static readonly native: true;
@@ -422,8 +430,9 @@ export declare class GlobalAmbientLight extends Resource {
   declare brightness: f32;
   declare affects_lightmapped_meshes: bool;
 }
+export interface GlobalAmbientLight extends Holes<{ color: ColorValue }> {}
 
-/** Holes, never visible: bounds: not plain data (alloc::vec::Vec<f32>). */
+/** Holes, not columns: bounds: not plain data (alloc::vec::Vec<f32>). */
 export declare class CascadeShadowConfig extends Component {
   static readonly path: "bevy_light::cascade::CascadeShadowConfig";
   static readonly native: true;
@@ -432,16 +441,17 @@ export declare class CascadeShadowConfig extends Component {
   declare overlap_proportion: f32;
   declare minimum_distance: f32;
 }
+export interface CascadeShadowConfig extends Holes<{ bounds: readonly number[] }> {}
 
 export declare const Cascades: Reflected<{ cascades: readonly (readonly [Entity, readonly ({ world_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_world?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; texel_size?: number })[]])[] }>;
 export type Cascades = InstanceType<typeof Cascades>;
 
 /** As an element, `<ClusterConfig value={...} />`: the whole value, in Bevy's shape. */
-export declare const ClusterConfig: Reflected & { readonly tsxProps: { value?: ClusterConfigValue } };
+export declare const ClusterConfig: Reflected<ReflectValue<ClusterConfigValue>> & { readonly tsxProps: { value?: ClusterConfigValue } };
 export type ClusterConfigValue = "None" | "Single" | { XYZ: { dimensions?: readonly [number, number, number]; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } } | { FixedZ: { total?: number; z_slices?: number; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } };
 export type ClusterConfig = InstanceType<typeof ClusterConfig>;
 
-/** Holes, never visible: base_color_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); normal_map_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); metallic_roughness_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); emissive_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
+/** Holes, not columns: base_color_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); normal_map_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); metallic_roughness_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); emissive_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class ClusteredDecal extends Component {
   static readonly path: "bevy_light::cluster::ClusteredDecal";
   static readonly native: true;
@@ -449,8 +459,9 @@ export declare class ClusteredDecal extends Component {
   static readonly __element: { base_color_texture: string | null | null; normal_map_texture: string | null | null; metallic_roughness_texture: string | null | null; emissive_texture: string | null | null; tag: number };
   declare tag: u32;
 }
+export interface ClusteredDecal extends Holes<{ base_color_texture: string | null | null; normal_map_texture: string | null | null; metallic_roughness_texture: string | null | null; emissive_texture: string | null | null }> {}
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color); soft_shadow_size: an enum with data (core::option::Option<f32>). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color); soft_shadow_size: an enum with data (core::option::Option<f32>). */
 export declare class DirectionalLight extends Component {
   static readonly path: "bevy_light::directional_light::DirectionalLight";
   static readonly native: true;
@@ -462,6 +473,7 @@ export declare class DirectionalLight extends Component {
   declare shadow_depth_bias: f32;
   declare shadow_normal_bias: f32;
 }
+export interface DirectionalLight extends Holes<{ color: ColorValue; soft_shadow_size: number | null }> {}
 
 export declare const DirectionalLightTexture: Reflected<{ image: string | null; tiled: boolean }>;
 export type DirectionalLightTexture = InstanceType<typeof DirectionalLightTexture>;
@@ -469,7 +481,7 @@ export type DirectionalLightTexture = InstanceType<typeof DirectionalLightTextur
 export declare const ShowLightGizmo: Reflected<{ color: { Manual: ColorValue } | "Varied" | "MatchLightColor" | "ByLightType" | null }>;
 export type ShowLightGizmo = InstanceType<typeof ShowLightGizmo>;
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class PointLight extends Component {
   static readonly path: "bevy_light::point_light::PointLight";
   static readonly native: true;
@@ -485,11 +497,12 @@ export declare class PointLight extends Component {
   declare shadow_normal_bias: f32;
   declare shadow_map_near_z: f32;
 }
+export interface PointLight extends Holes<{ color: ColorValue }> {}
 
 export declare const PointLightTexture: Reflected<{ image: string | null; cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }>;
 export type PointLightTexture = InstanceType<typeof PointLightTexture>;
 
-/** Holes, never visible: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
+/** Holes, not columns: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class EnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::EnvironmentMapLight";
   static readonly native: true;
@@ -499,8 +512,9 @@ export declare class EnvironmentMapLight extends Component {
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
 }
+export interface EnvironmentMapLight extends Holes<{ diffuse_map: string | null; specular_map: string | null }> {}
 
-/** Holes, never visible: environment_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
+/** Holes, not columns: environment_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class GeneratedEnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::GeneratedEnvironmentMapLight";
   static readonly native: true;
@@ -510,8 +524,9 @@ export declare class GeneratedEnvironmentMapLight extends Component {
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
 }
+export interface GeneratedEnvironmentMapLight extends Holes<{ environment_map: string | null }> {}
 
-/** Holes, never visible: voxels: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
+/** Holes, not columns: voxels: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class IrradianceVolume extends Component {
   static readonly path: "bevy_light::probe::IrradianceVolume";
   static readonly native: true;
@@ -520,6 +535,7 @@ export declare class IrradianceVolume extends Component {
   declare intensity: f32;
   declare affects_lightmapped_meshes: bool;
 }
+export interface IrradianceVolume extends Holes<{ voxels: string | null }> {}
 
 export declare class LightProbe extends Component {
   static readonly path: "bevy_light::probe::LightProbe";
@@ -528,11 +544,11 @@ export declare class LightProbe extends Component {
 }
 
 /** As an element, `<ParallaxCorrection value={...} />`: the whole value, in Bevy's shape. */
-export declare const ParallaxCorrection: Reflected & { readonly tsxProps: { value?: ParallaxCorrectionValue } };
+export declare const ParallaxCorrection: Reflected<ReflectValue<ParallaxCorrectionValue>> & { readonly tsxProps: { value?: ParallaxCorrectionValue } };
 export type ParallaxCorrectionValue = "None" | "Auto" | { Custom: readonly [number, number, number] };
 export type ParallaxCorrection = InstanceType<typeof ParallaxCorrection>;
 
-/** Holes, never visible: image: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
+/** Holes, not columns: image: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class Skybox extends Component {
   static readonly path: "bevy_light::probe::Skybox";
   static readonly native: true;
@@ -541,8 +557,9 @@ export declare class Skybox extends Component {
   declare brightness: f32;
   declare readonly rotation: Quat;
 }
+export interface Skybox extends Holes<{ image: string | null | null }> {}
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class RectLight extends Component {
   static readonly path: "bevy_light::rect_light::RectLight";
   static readonly native: true;
@@ -552,8 +569,9 @@ export declare class RectLight extends Component {
   declare width: f32;
   declare height: f32;
 }
+export interface RectLight extends Holes<{ color: ColorValue }> {}
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class SpotLight extends Component {
   static readonly path: "bevy_light::spot_light::SpotLight";
   static readonly native: true;
@@ -571,11 +589,12 @@ export declare class SpotLight extends Component {
   declare outer_angle: f32;
   declare inner_angle: f32;
 }
+export interface SpotLight extends Holes<{ color: ColorValue }> {}
 
 export declare const SpotLightTexture: Reflected<{ image: string | null }>;
 export type SpotLightTexture = InstanceType<typeof SpotLightTexture>;
 
-/** Holes, never visible: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
 export declare class FogVolume extends Component {
   static readonly path: "bevy_light::volumetric::FogVolume";
   static readonly native: true;
@@ -588,8 +607,9 @@ export declare class FogVolume extends Component {
   declare scattering_asymmetry: f32;
   declare light_intensity: f32;
 }
+export interface FogVolume extends Holes<{ fog_color: ColorValue; density_texture: string | null | null; light_tint: ColorValue }> {}
 
-/** Holes, never visible: ambient_color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: ambient_color: an enum with data (bevy_color::color::Color). */
 export declare class VolumetricFog extends Component {
   static readonly path: "bevy_light::volumetric::VolumetricFog";
   static readonly native: true;
@@ -598,6 +618,7 @@ export declare class VolumetricFog extends Component {
   declare jitter: f32;
   declare step_count: u32;
 }
+export interface VolumetricFog extends Holes<{ ambient_color: ColorValue }> {}
 
 export declare const VolumetricLight: Reflected;
 export type VolumetricLight = InstanceType<typeof VolumetricLight>;
@@ -608,16 +629,17 @@ export type Mesh2d = InstanceType<typeof Mesh2d>;
 export declare const Mesh3d: Reflected<{ value: string | null }>;
 export type Mesh3d = InstanceType<typeof Mesh3d>;
 
-/** Holes, never visible: type_id: an enum with data (core::option::Option<core::any::TypeId>). */
+/** Holes, not columns: type_id: an enum with data (core::option::Option<core::any::TypeId>). */
 export declare class MeshTag extends Component {
   static readonly path: "bevy_mesh::components::MeshTag";
   static readonly native: true;
   static readonly tsxProps: { type_id?: never | null };
   declare value: u32;
 }
+export interface MeshTag extends Holes<{ type_id: never | null }> {}
 
 /** As an element, `<MeshMorphWeights value={...} />`: the whole value, in Bevy's shape. */
-export declare const MeshMorphWeights: Reflected & { readonly tsxProps: { value?: MeshMorphWeightsValue } };
+export declare const MeshMorphWeights: Reflected<ReflectValue<MeshMorphWeightsValue>> & { readonly tsxProps: { value?: MeshMorphWeightsValue } };
 export type MeshMorphWeightsValue = { Value: { weights?: readonly number[] } } | { Reference: Entity };
 export type MeshMorphWeights = InstanceType<typeof MeshMorphWeights>;
 
@@ -635,15 +657,16 @@ export declare class ContactShadows extends Component {
   declare length: f32;
 }
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color); directional_light_color: an enum with data (bevy_color::color::Color); falloff: an enum with data (bevy_pbr::fog::FogFalloff). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color); directional_light_color: an enum with data (bevy_color::color::Color); falloff: an enum with data (bevy_pbr::fog::FogFalloff). */
 export declare class DistanceFog extends Component {
   static readonly path: "bevy_pbr::fog::DistanceFog";
   static readonly native: true;
   static readonly tsxProps: { color?: ColorValue; directional_light_color?: ColorValue; falloff?: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } } };
   declare directional_light_exponent: f32;
 }
+export interface DistanceFog extends Holes<{ color: ColorValue; directional_light_color: ColorValue; falloff: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } } }> {}
 
-/** Holes, never visible: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); uv_rect: not plain data (bevy_math::rects::rect::Rect). */
+/** Holes, not columns: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); uv_rect: not plain data (bevy_math::rects::rect::Rect). */
 export declare class Lightmap extends Component {
   static readonly path: "bevy_pbr::lightmap::Lightmap";
   static readonly native: true;
@@ -651,6 +674,7 @@ export declare class Lightmap extends Component {
   static readonly __element: { image: string | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] }; bicubic_sampling: boolean };
   declare bicubic_sampling: bool;
 }
+export interface Lightmap extends Holes<{ image: string | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] } }> {}
 
 export declare class DefaultOpaqueRendererMethod extends Resource {
   static readonly path: "bevy_pbr::material::DefaultOpaqueRendererMethod";
@@ -667,7 +691,7 @@ export type MeshMaterial3dExtendedMaterialStandardMaterialFade = InstanceType<ty
 export declare const MeshMaterial3dStandardMaterial: Reflected<{ value: string | null }>;
 export type MeshMaterial3dStandardMaterial = InstanceType<typeof MeshMaterial3dStandardMaterial>;
 
-/** Holes, never visible: quality_level: an enum with data (bevy_pbr::ssao::ScreenSpaceAmbientOcclusionQualityLevel). */
+/** Holes, not columns: quality_level: an enum with data (bevy_pbr::ssao::ScreenSpaceAmbientOcclusionQualityLevel). */
 export declare class ScreenSpaceAmbientOcclusion extends Component {
   static readonly path: "bevy_pbr::ssao::ScreenSpaceAmbientOcclusion";
   static readonly native: true;
@@ -675,8 +699,9 @@ export declare class ScreenSpaceAmbientOcclusion extends Component {
   declare radius: f32;
   declare constant_object_thickness: f32;
 }
+export interface ScreenSpaceAmbientOcclusion extends Holes<{ quality_level: "Low" | "Medium" | "High" | "Ultra" | { Custom: { slice_count?: number; samples_per_slice_side?: number } } }> {}
 
-/** Holes, never visible: min_perceptual_roughness: opaque to reflection (core::ops::Range<f32>); max_perceptual_roughness: opaque to reflection (core::ops::Range<f32>); edge_fadeout: opaque to reflection (core::ops::Range<f32>). */
+/** Holes, not columns: min_perceptual_roughness: opaque to reflection (core::ops::Range<f32>); max_perceptual_roughness: opaque to reflection (core::ops::Range<f32>); edge_fadeout: opaque to reflection (core::ops::Range<f32>). */
 export declare class ScreenSpaceReflections extends Component {
   static readonly path: "bevy_pbr::ssr::ScreenSpaceReflections";
   static readonly native: true;
@@ -687,14 +712,16 @@ export declare class ScreenSpaceReflections extends Component {
   declare bisection_steps: u32;
   declare use_secant: bool;
 }
+export interface ScreenSpaceReflections extends Holes<{ min_perceptual_roughness: { start: number; end: number }; max_perceptual_roughness: { start: number; end: number }; edge_fadeout: { start: number; end: number } }> {}
 
-/** Holes, never visible: steps: opaque to reflection (usize). */
+/** Holes, not columns: steps: opaque to reflection (usize). */
 export declare class ScreenSpaceTransmission extends Component {
   static readonly path: "bevy_pbr::transmission::ScreenSpaceTransmission";
   static readonly native: true;
   static readonly tsxProps: { steps?: number | string };
   declare quality: "Low" | "Medium" | "High" | "Ultra";
 }
+export interface ScreenSpaceTransmission extends Holes<{ steps: number | string }> {}
 
 export declare const Mesh3dWireframe: Reflected<{ value: string | null }>;
 export type Mesh3dWireframe = InstanceType<typeof Mesh3dWireframe>;
@@ -708,7 +735,7 @@ export type Wireframe = InstanceType<typeof Wireframe>;
 export declare const WireframeColor: Reflected<{ color: ColorValue }>;
 export type WireframeColor = InstanceType<typeof WireframeColor>;
 
-/** Holes, never visible: default_color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: default_color: an enum with data (bevy_color::color::Color). */
 export declare class WireframeConfig extends Resource {
   static readonly path: "bevy_pbr::wireframe::WireframeConfig";
   static readonly native: true;
@@ -718,6 +745,7 @@ export declare class WireframeConfig extends Resource {
   declare default_topology: "Triangles" | "Quads";
   declare xray_mode: bool;
 }
+export interface WireframeConfig extends Holes<{ default_color: ColorValue }> {}
 
 export declare class WireframeLineWidth extends Component {
   static readonly path: "bevy_pbr::wireframe::WireframeLineWidth";
@@ -744,7 +772,7 @@ export declare class Pickable extends Component {
   declare is_hoverable: bool;
 }
 
-/** Holes, never visible: multi_click_interval: opaque to reflection (core::time::Duration). */
+/** Holes, not columns: multi_click_interval: opaque to reflection (core::time::Duration). */
 export declare class PickingSettings extends Resource {
   static readonly path: "bevy_picking::PickingSettings";
   static readonly native: true;
@@ -754,9 +782,10 @@ export declare class PickingSettings extends Resource {
   declare is_hover_enabled: bool;
   declare is_window_picking_enabled: bool;
 }
+export interface PickingSettings extends Holes<{ multi_click_interval: number }> {}
 
 /** As an element, `<EntityCursor value={...} />`: the whole value, in Bevy's shape. */
-export declare const EntityCursor: Reflected & { readonly tsxProps: { value?: EntityCursorValue } };
+export declare const EntityCursor: Reflected<ReflectValue<EntityCursorValue>> & { readonly tsxProps: { value?: EntityCursorValue } };
 export type EntityCursorValue = { Custom: { Image: { handle?: string | null; texture_atlas?: { layout?: string | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type EntityCursor = InstanceType<typeof EntityCursor>;
 
@@ -804,7 +833,7 @@ export declare const SimplifiedMesh: Reflected<{ value: string | null }>;
 export type SimplifiedMesh = InstanceType<typeof SimplifiedMesh>;
 
 /** As an element, `<PointerId value={...} />`: the whole value, in Bevy's shape. */
-export declare const PointerId: Reflected & { readonly tsxProps: { value?: PointerIdValue } };
+export declare const PointerId: Reflected<ReflectValue<PointerIdValue>> & { readonly tsxProps: { value?: PointerIdValue } };
 export type PointerIdValue = "Mouse" | { Touch: number | string } | { Custom: string };
 export type PointerId = InstanceType<typeof PointerId>;
 
@@ -822,7 +851,7 @@ export declare class PointerPressState extends Component {
   declare middle: bool;
 }
 
-/** Holes, never visible: range: opaque to reflection (core::ops::RangeInclusive<f32>); filter: opaque to reflection (core::ops::RangeInclusive<f32>); metering_mask: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); compensation_curve: an enum with data (bevy_asset::handle::Handle<bevy_post_process::auto_exposure::compensation_curve::AutoExposureCompensationCurve>). */
+/** Holes, not columns: range: opaque to reflection (core::ops::RangeInclusive<f32>); filter: opaque to reflection (core::ops::RangeInclusive<f32>); metering_mask: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); compensation_curve: an enum with data (bevy_asset::handle::Handle<bevy_post_process::auto_exposure::compensation_curve::AutoExposureCompensationCurve>). */
 export declare class AutoExposure extends Component {
   static readonly path: "bevy_post_process::auto_exposure::settings::AutoExposure";
   static readonly native: true;
@@ -832,8 +861,9 @@ export declare class AutoExposure extends Component {
   declare speed_darken: f32;
   declare exponential_transition_distance: f32;
 }
+export interface AutoExposure extends Holes<{ range: { start: number; end: number }; filter: { start: number; end: number }; metering_mask: string | null; compensation_curve: string | null }> {}
 
-/** Holes, never visible: prefilter: not plain data (bevy_post_process::bloom::settings::BloomPrefilter). */
+/** Holes, not columns: prefilter: not plain data (bevy_post_process::bloom::settings::BloomPrefilter). */
 export declare class Bloom extends Component {
   static readonly path: "bevy_post_process::bloom::settings::Bloom";
   static readonly native: true;
@@ -846,6 +876,7 @@ export declare class Bloom extends Component {
   declare max_mip_dimension: u32;
   declare readonly scale: Vec2;
 }
+export interface Bloom extends Holes<{ prefilter: { threshold?: number; threshold_softness?: number } }> {}
 
 export declare class DepthOfField extends Component {
   static readonly path: "bevy_post_process::dof::DepthOfField";
@@ -858,7 +889,7 @@ export declare class DepthOfField extends Component {
   declare max_depth: f32;
 }
 
-/** Holes, never visible: color_lut: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
+/** Holes, not columns: color_lut: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class ChromaticAberration extends Component {
   static readonly path: "bevy_post_process::effect_stack::chromatic_aberration::ChromaticAberration";
   static readonly native: true;
@@ -867,8 +898,9 @@ export declare class ChromaticAberration extends Component {
   declare intensity: f32;
   declare max_samples: u32;
 }
+export interface ChromaticAberration extends Holes<{ color_lut: string | null | null }> {}
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class Vignette extends Component {
   static readonly path: "bevy_post_process::effect_stack::vignette::Vignette";
   static readonly native: true;
@@ -880,6 +912,7 @@ export declare class Vignette extends Component {
   declare readonly center: Vec2;
   declare edge_compensation: f32;
 }
+export interface Vignette extends Holes<{ color: ColorValue }> {}
 
 export declare class MotionBlur extends Component {
   static readonly path: "bevy_post_process::motion_blur::MotionBlur";
@@ -947,13 +980,14 @@ export type SceneComponentInfo = InstanceType<typeof SceneComponentInfo>;
 export declare const SpritePickingCamera: Reflected;
 export type SpritePickingCamera = InstanceType<typeof SpritePickingCamera>;
 
-/** Holes, never visible: picking_mode: an enum with data (bevy_sprite::picking_backend::SpritePickingMode). */
+/** Holes, not columns: picking_mode: an enum with data (bevy_sprite::picking_backend::SpritePickingMode). */
 export declare class SpritePickingSettings extends Resource {
   static readonly path: "bevy_sprite::picking_backend::SpritePickingSettings";
   static readonly native: true;
   static readonly tsxProps: { picking_mode?: "BoundingBox" | { AlphaThreshold: number } };
   declare require_markers: bool;
 }
+export interface SpritePickingSettings extends Holes<{ picking_mode: "BoundingBox" | { AlphaThreshold: number } }> {}
 
 export declare class Anchor extends Component {
   static readonly path: "bevy_sprite::sprite::Anchor";
@@ -961,7 +995,7 @@ export declare class Anchor extends Component {
   declare readonly value: Vec2;
 }
 
-/** Holes, never visible: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); color: an enum with data (bevy_color::color::Color); custom_size: an enum with data (core::option::Option<glam::Vec2>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_sprite::sprite::SpriteImageMode); alpha_mode: an enum with data (bevy_sprite::sprite::SpriteAlphaMode). */
+/** Holes, not columns: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); color: an enum with data (bevy_color::color::Color); custom_size: an enum with data (core::option::Option<glam::Vec2>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_sprite::sprite::SpriteImageMode); alpha_mode: an enum with data (bevy_sprite::sprite::SpriteAlphaMode). */
 export declare class Sprite extends Component {
   static readonly path: "bevy_sprite::sprite::Sprite";
   static readonly native: true;
@@ -970,17 +1004,19 @@ export declare class Sprite extends Component {
   declare flip_x: bool;
   declare flip_y: bool;
 }
+export interface Sprite extends Holes<{ image: string | null; texture_atlas: { layout?: string | null; index?: number | string } | null; color: ColorValue; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" }> {}
 
 export declare const Text2d: Reflected<{ value: string }>;
 export type Text2d = InstanceType<typeof Text2d>;
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class Text2dShadow extends Component {
   static readonly path: "bevy_sprite::text2d::Text2dShadow";
   static readonly native: true;
   static readonly tsxProps: { color?: ColorValue };
   declare readonly offset: Vec2;
 }
+export interface Text2dShadow extends Holes<{ color: ColorValue }> {}
 
 export declare const MeshMaterial2dColorMaterial: Reflected<{ value: string | null }>;
 export type MeshMaterial2dColorMaterial = InstanceType<typeof MeshMaterial2dColorMaterial>;
@@ -1003,13 +1039,14 @@ export type Wireframe2d = InstanceType<typeof Wireframe2d>;
 export declare const Wireframe2dColor: Reflected<{ color: ColorValue }>;
 export type Wireframe2dColor = InstanceType<typeof Wireframe2dColor>;
 
-/** Holes, never visible: default_color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: default_color: an enum with data (bevy_color::color::Color). */
 export declare class Wireframe2dConfig extends Resource {
   static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dConfig";
   static readonly native: true;
   static readonly tsxProps: { default_color?: ColorValue };
   declare global: bool;
 }
+export interface Wireframe2dConfig extends Holes<{ default_color: ColorValue }> {}
 
 export declare const TilemapChunk: Reflected<{ chunk_size: readonly [number, number]; tile_display_size: readonly [number, number]; tileset: string | null; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
 export type TilemapChunk = InstanceType<typeof TilemapChunk>;
@@ -1020,7 +1057,7 @@ export type TilemapChunkTileData = InstanceType<typeof TilemapChunkTileData>;
 export declare const TextBounds: Reflected<{ width: number | null; height: number | null }>;
 export type TextBounds = InstanceType<typeof TextBounds>;
 
-/** Holes, never visible: glyphs: not plain data (alloc::vec::Vec<bevy_text::glyph::PositionedGlyph>); run_geometry: not plain data (alloc::vec::Vec<bevy_text::pipeline::RunGeometry>); cursor: an enum with data (core::option::Option<(bool, bevy_math::rects::rect::Rect)>); selection_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); preedit_underline_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); inline_boxes: not plain data (alloc::vec::Vec<(bevy_ecs::entity::Entity, bevy_text::inline_box::InlineBoxKind, bevy_math::rects::rect::Rect)>). */
+/** Holes, not columns: glyphs: not plain data (alloc::vec::Vec<bevy_text::glyph::PositionedGlyph>); run_geometry: not plain data (alloc::vec::Vec<bevy_text::pipeline::RunGeometry>); cursor: an enum with data (core::option::Option<(bool, bevy_math::rects::rect::Rect)>); selection_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); preedit_underline_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); inline_boxes: not plain data (alloc::vec::Vec<(bevy_ecs::entity::Entity, bevy_text::inline_box::InlineBoxKind, bevy_math::rects::rect::Rect)>). */
 export declare class TextLayoutInfo extends Component {
   static readonly path: "bevy_text::pipeline::TextLayoutInfo";
   static readonly native: true;
@@ -1029,8 +1066,9 @@ export declare class TextLayoutInfo extends Component {
   declare scale_factor: f32;
   declare readonly size: Vec2;
 }
+export interface TextLayoutInfo extends Holes<{ glyphs: readonly ({ position?: readonly [number, number]; atlas_info?: { texture?: { Index: { index?: { generation?: number; index?: number } } } | { Uuid: { uuid?: string } }; rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; offset?: readonly [number, number]; is_alpha_mask?: boolean }; section_index?: number; line_index?: number })[]; run_geometry: readonly ({ section_index?: number; bounds?: { min?: readonly [number, number]; max?: readonly [number, number] }; strikethrough_y?: number; strikethrough_thickness?: number; underline_y?: number; underline_thickness?: number })[]; cursor: readonly [boolean, { min?: readonly [number, number]; max?: readonly [number, number] }] | null; selection_rects: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[]; preedit_underline_rects: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[]; inline_boxes: readonly (readonly [Entity, "InFlow" | "OutOfFlow", { min?: readonly [number, number]; max?: readonly [number, number] }])[] }> {}
 
-/** Holes, never visible: entities: not plain data (smallvec::SmallVec<[bevy_text::text::TextEntity; 1]>). */
+/** Holes, not columns: entities: not plain data (smallvec::SmallVec<[bevy_text::text::TextEntity; 1]>). */
 export declare class ComputedTextBlock extends Component {
   static readonly path: "bevy_text::text::ComputedTextBlock";
   static readonly native: true;
@@ -1040,6 +1078,7 @@ export declare class ComputedTextBlock extends Component {
   declare uses_viewport_sizes: bool;
   declare uses_rem_sizes: bool;
 }
+export interface ComputedTextBlock extends Holes<{ entities: readonly ({ entity?: Entity; depth?: number | string; font_smoothing?: "None" | "AntiAliased" })[] }> {}
 
 export declare class EmSize extends Component {
   static readonly path: "bevy_text::text::EmSize";
@@ -1054,12 +1093,12 @@ export declare class FontHinting extends Component {
 }
 
 /** As an element, `<LetterSpacing value={...} />`: the whole value, in Bevy's shape. */
-export declare const LetterSpacing: Reflected & { readonly tsxProps: { value?: LetterSpacingValue } };
+export declare const LetterSpacing: Reflected<ReflectValue<LetterSpacingValue>> & { readonly tsxProps: { value?: LetterSpacingValue } };
 export type LetterSpacingValue = { Px: number } | { Rem: number };
 export type LetterSpacing = InstanceType<typeof LetterSpacing>;
 
 /** As an element, `<LineHeight value={...} />`: the whole value, in Bevy's shape. */
-export declare const LineHeight: Reflected & { readonly tsxProps: { value?: LineHeightValue } };
+export declare const LineHeight: Reflected<ReflectValue<LineHeightValue>> & { readonly tsxProps: { value?: LineHeightValue } };
 export type LineHeightValue = { Px: number } | { RelativeToFont: number };
 export type LineHeight = InstanceType<typeof LineHeight>;
 
@@ -1072,7 +1111,7 @@ export type TextBackgroundColor = InstanceType<typeof TextBackgroundColor>;
 export declare const TextColor: Reflected<{ value: ColorValue }>;
 export type TextColor = InstanceType<typeof TextColor>;
 
-/** Holes, never visible: font: an enum with data (bevy_text::text::FontSource); font_size: an enum with data (bevy_text::text::FontSize); weight: not plain data (bevy_text::text::FontWeight); width: not plain data (bevy_text::text::FontWidth); style: an enum with data (bevy_text::text::FontStyle); font_features: not plain data (bevy_text::text::FontFeatures); font_variations: not plain data (bevy_text::text::FontVariations). */
+/** Holes, not columns: font: an enum with data (bevy_text::text::FontSource); font_size: an enum with data (bevy_text::text::FontSize); weight: not plain data (bevy_text::text::FontWeight); width: not plain data (bevy_text::text::FontWidth); style: an enum with data (bevy_text::text::FontStyle); font_features: not plain data (bevy_text::text::FontFeatures); font_variations: not plain data (bevy_text::text::FontVariations). */
 export declare class TextFont extends Component {
   static readonly path: "bevy_text::text::TextFont";
   static readonly native: true;
@@ -1080,6 +1119,7 @@ export declare class TextFont extends Component {
   static readonly __element: { font: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing: "None" | "AntiAliased"; font_features: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } };
   declare font_smoothing: "None" | "AntiAliased";
 }
+export interface TextFont extends Holes<{ font: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; font_features: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } }> {}
 
 export declare class TextLayout extends Component {
   static readonly path: "bevy_text::text::TextLayout";
@@ -1109,7 +1149,7 @@ export type ScriptHidden = InstanceType<typeof ScriptHidden>;
 export declare const TsSpawned: Reflected;
 export type TsSpawned = InstanceType<typeof TsSpawned>;
 
-/** Holes, never visible: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
+/** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
   static readonly native: true;
@@ -1120,6 +1160,7 @@ export declare class PlayAnimation extends Component {
   declare paused: bool;
   declare cull: bool;
 }
+export interface PlayAnimation extends Holes<{ clip: string | null; repeat: "Never" | { Count: number } | "Forever" }> {}
 
 export declare const MissingComponents: Reflected<{ value: readonly ({ component?: string; reason?: "Unregistered" | "Failed" | "Mismatch"; message?: string; fields?: Record<string, string>; location?: { file?: string; line?: number; column?: number }; expected?: { file?: string; line?: number; column?: number } | null; misfit?: Record<string, string>; overrides?: readonly ({ path?: readonly string[]; fields?: Record<string, string> })[]; scene?: boolean })[] }>;
 export type MissingComponents = InstanceType<typeof MissingComponents>;
@@ -1157,13 +1198,14 @@ export declare class FocusPolicy extends Component {
   declare value: "Block" | "Pass";
 }
 
-/** Holes, never visible: normalized: an enum with data (core::option::Option<glam::Vec2>). */
+/** Holes, not columns: normalized: an enum with data (core::option::Option<glam::Vec2>). */
 export declare class RelativeCursorPosition extends Component {
   static readonly path: "bevy_ui::focus::RelativeCursorPosition";
   static readonly native: true;
   static readonly tsxProps: { normalized?: readonly [number, number] | null };
   declare cursor_over: bool;
 }
+export interface RelativeCursorPosition extends Holes<{ normalized: readonly [number, number] | null }> {}
 
 export declare const BackgroundGradient: Reflected<{ value: readonly ({ Linear: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle?: number; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Radial: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; shape?: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } | { Ellipse: readonly ["Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }, "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }] }; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Conic: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start?: number; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; stops?: readonly ({ color?: ColorValue; angle?: number | null; hint?: number })[] } })[] }>;
 export type BackgroundGradient = InstanceType<typeof BackgroundGradient>;
@@ -1211,11 +1253,11 @@ export declare const BoxShadow: Reflected<{ value: readonly ({ color?: ColorValu
 export type BoxShadow = InstanceType<typeof BoxShadow>;
 
 /** As an element, `<CalculatedClip value={...} />`: the whole value, in Bevy's shape. */
-export declare const CalculatedClip: Reflected & { readonly tsxProps: { value?: CalculatedClipValue } };
+export declare const CalculatedClip: Reflected<ReflectValue<CalculatedClipValue>> & { readonly tsxProps: { value?: CalculatedClipValue } };
 export type CalculatedClipValue = { Rects: readonly ({ rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; world_to_clip_local?: readonly [number, number, number, number, number, number] })[] } | "FullyClipped";
 export type CalculatedClip = InstanceType<typeof CalculatedClip>;
 
-/** Holes, never visible: border: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); border_radius: not plain data (bevy_ui::ui_node::ResolvedBorderRadius); padding: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); em_size: not plain data (bevy_text::text::EmSize); rem_size: not plain data (bevy_text::text::RemSize). */
+/** Holes, not columns: border: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); border_radius: not plain data (bevy_ui::ui_node::ResolvedBorderRadius); padding: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); em_size: not plain data (bevy_text::text::EmSize); rem_size: not plain data (bevy_text::text::RemSize). */
 export declare class ComputedNode extends Component {
   static readonly path: "bevy_ui::ui_node::ComputedNode";
   static readonly native: true;
@@ -1229,14 +1271,16 @@ export declare class ComputedNode extends Component {
   declare readonly unrounded_size: Vec2;
   declare inverse_scale_factor: f32;
 }
+export interface ComputedNode extends Holes<{ border: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; border_radius: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }; padding: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; em_size: number; rem_size: number }> {}
 
-/** Holes, never visible: physical_size: not plain data (glam::UVec2). */
+/** Holes, not columns: physical_size: not plain data (glam::UVec2). */
 export declare class ComputedUiRenderTargetInfo extends Component {
   static readonly path: "bevy_ui::ui_node::ComputedUiRenderTargetInfo";
   static readonly native: true;
   static readonly tsxProps: { physical_size?: readonly [number, number] };
   declare scale_factor: f32;
 }
+export interface ComputedUiRenderTargetInfo extends Holes<{ physical_size: readonly [number, number] }> {}
 
 export declare const ComputedUiTargetCamera: Reflected<{ camera: Entity | null }>;
 export type ComputedUiTargetCamera = InstanceType<typeof ComputedUiTargetCamera>;
@@ -1262,7 +1306,7 @@ export declare class LayoutConfig extends Component {
   declare use_rounding: bool;
 }
 
-/** Holes, never visible: overflow: not plain data (bevy_ui::ui_node::Overflow); overflow_clip_margin: not plain data (bevy_ui::ui_node::OverflowClipMargin); left: an enum with data (bevy_ui::geometry::Val); right: an enum with data (bevy_ui::geometry::Val); top: an enum with data (bevy_ui::geometry::Val); bottom: an enum with data (bevy_ui::geometry::Val); width: an enum with data (bevy_ui::geometry::Val); height: an enum with data (bevy_ui::geometry::Val); min_width: an enum with data (bevy_ui::geometry::Val); min_height: an enum with data (bevy_ui::geometry::Val); max_width: an enum with data (bevy_ui::geometry::Val); max_height: an enum with data (bevy_ui::geometry::Val); aspect_ratio: an enum with data (core::option::Option<f32>); margin: not plain data (bevy_ui::geometry::UiRect); padding: not plain data (bevy_ui::geometry::UiRect); border: not plain data (bevy_ui::geometry::UiRect); border_radius: not plain data (bevy_ui::ui_node::BorderRadius); flex_basis: an enum with data (bevy_ui::geometry::Val); row_gap: an enum with data (bevy_ui::geometry::Val); column_gap: an enum with data (bevy_ui::geometry::Val); grid_template_rows: not plain data (alloc::vec::Vec<bevy_ui::ui_node::RepeatedGridTrack>); grid_template_columns: not plain data (alloc::vec::Vec<bevy_ui::ui_node::RepeatedGridTrack>); grid_auto_rows: not plain data (alloc::vec::Vec<bevy_ui::ui_node::GridTrack>); grid_auto_columns: not plain data (alloc::vec::Vec<bevy_ui::ui_node::GridTrack>); grid_row: not plain data (bevy_ui::ui_node::GridPlacement); grid_column: not plain data (bevy_ui::ui_node::GridPlacement). */
+/** Holes, not columns: overflow: not plain data (bevy_ui::ui_node::Overflow); overflow_clip_margin: not plain data (bevy_ui::ui_node::OverflowClipMargin); left: an enum with data (bevy_ui::geometry::Val); right: an enum with data (bevy_ui::geometry::Val); top: an enum with data (bevy_ui::geometry::Val); bottom: an enum with data (bevy_ui::geometry::Val); width: an enum with data (bevy_ui::geometry::Val); height: an enum with data (bevy_ui::geometry::Val); min_width: an enum with data (bevy_ui::geometry::Val); min_height: an enum with data (bevy_ui::geometry::Val); max_width: an enum with data (bevy_ui::geometry::Val); max_height: an enum with data (bevy_ui::geometry::Val); aspect_ratio: an enum with data (core::option::Option<f32>); margin: not plain data (bevy_ui::geometry::UiRect); padding: not plain data (bevy_ui::geometry::UiRect); border: not plain data (bevy_ui::geometry::UiRect); border_radius: not plain data (bevy_ui::ui_node::BorderRadius); flex_basis: an enum with data (bevy_ui::geometry::Val); row_gap: an enum with data (bevy_ui::geometry::Val); column_gap: an enum with data (bevy_ui::geometry::Val); grid_template_rows: not plain data (alloc::vec::Vec<bevy_ui::ui_node::RepeatedGridTrack>); grid_template_columns: not plain data (alloc::vec::Vec<bevy_ui::ui_node::RepeatedGridTrack>); grid_auto_rows: not plain data (alloc::vec::Vec<bevy_ui::ui_node::GridTrack>); grid_auto_columns: not plain data (alloc::vec::Vec<bevy_ui::ui_node::GridTrack>); grid_row: not plain data (bevy_ui::ui_node::GridPlacement); grid_column: not plain data (bevy_ui::ui_node::GridPlacement). */
 export declare class Node extends Component {
   static readonly path: "bevy_ui::ui_node::Node";
   static readonly native: true;
@@ -1285,6 +1329,7 @@ export declare class Node extends Component {
   declare flex_shrink: f32;
   declare grid_auto_flow: "Row" | "Column" | "RowDense" | "ColumnDense";
 }
+export interface Node extends Holes<{ overflow: { x?: "Visible" | "Clip" | "Hidden" | "Scroll"; y?: "Visible" | "Clip" | "Hidden" | "Scroll" }; overflow_clip_margin: { visual_box?: "ContentBox" | "PaddingBox" | "BorderBox"; margin?: number }; left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; aspect_ratio: number | null; margin: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; padding: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border_radius: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; flex_basis: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; row_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; column_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; grid_template_rows: readonly ({ repetition?: { Count: number } | "AutoFill" | "AutoFit"; tracks?: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[] })[]; grid_template_columns: readonly ({ repetition?: { Count: number } | "AutoFill" | "AutoFit"; tracks?: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[] })[]; grid_auto_rows: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_auto_columns: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_row: { start?: number | null; span?: number | null; end?: number | null }; grid_column: { start?: number | null; span?: number | null; end?: number | null } }> {}
 
 export declare const OuterColor: Reflected<{ value: ColorValue }>;
 export type OuterColor = InstanceType<typeof OuterColor>;
@@ -1313,18 +1358,19 @@ export declare class ZIndex extends Component {
 export declare const UiGlobalTransform: Reflected<{ value: readonly [number, number, number, number, number, number] }>;
 export type UiGlobalTransform = InstanceType<typeof UiGlobalTransform>;
 
-/** Holes, never visible: translation: not plain data (bevy_ui::ui_transform::Val2); rotation: not plain data (bevy_math::rotation2d::Rot2). */
+/** Holes, not columns: translation: not plain data (bevy_ui::ui_transform::Val2); rotation: not plain data (bevy_math::rotation2d::Rot2). */
 export declare class UiTransform extends Component {
   static readonly path: "bevy_ui::ui_transform::UiTransform";
   static readonly native: true;
   static readonly tsxProps: { translation?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; rotation?: { cos?: number; sin?: number } };
   declare readonly scale: Vec2;
 }
+export interface UiTransform extends Holes<{ translation: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; rotation: { cos?: number; sin?: number } }> {}
 
 export declare const DeprecatedButton: Reflected;
 export type DeprecatedButton = InstanceType<typeof DeprecatedButton>;
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_ui::widget::image::NodeImageMode). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_ui::widget::image::NodeImageMode). */
 export declare class ImageNode extends Component {
   static readonly path: "bevy_ui::widget::image::ImageNode";
   static readonly native: true;
@@ -1334,11 +1380,12 @@ export declare class ImageNode extends Component {
   declare flip_y: bool;
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
 }
+export interface ImageNode extends Holes<{ color: ColorValue; image: string | null; texture_atlas: { layout?: string | null; index?: number | string } | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } }> {}
 
 export declare const ImageNodeSize: Reflected<{ size: readonly [number, number] }>;
 export type ImageNodeSize = InstanceType<typeof ImageNodeSize>;
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>). */
 export declare class InlineImage extends Component {
   static readonly path: "bevy_ui::widget::inline_image::InlineImage";
   static readonly native: true;
@@ -1347,6 +1394,7 @@ export declare class InlineImage extends Component {
   declare flip_x: bool;
   declare flip_y: bool;
 }
+export interface InlineImage extends Holes<{ color: ColorValue; image: string | null; width: number | null; height: number | null }> {}
 
 export declare const Label: Reflected;
 export type Label = InstanceType<typeof Label>;
@@ -1354,7 +1402,7 @@ export type Label = InstanceType<typeof Label>;
 export declare const Text: Reflected<{ value: string }>;
 export type Text = InstanceType<typeof Text>;
 
-/** Holes, never visible: no_wrap_measure: an enum with data (core::option::Option<glam::Vec2>). */
+/** Holes, not columns: no_wrap_measure: an enum with data (core::option::Option<glam::Vec2>). */
 export declare class TextNodeFlags extends Component {
   static readonly path: "bevy_ui::widget::text::TextNodeFlags";
   static readonly native: true;
@@ -1362,14 +1410,16 @@ export declare class TextNodeFlags extends Component {
   declare needs_measure_fn: bool;
   declare needs_recompute: bool;
 }
+export interface TextNodeFlags extends Holes<{ no_wrap_measure: readonly [number, number] | null }> {}
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class TextShadow extends Component {
   static readonly path: "bevy_ui::widget::text::TextShadow";
   static readonly native: true;
   static readonly tsxProps: { color?: ColorValue };
   declare readonly offset: Vec2;
 }
+export interface TextShadow extends Holes<{ color: ColorValue }> {}
 
 export declare const ViewportNode: Reflected<{ camera: Entity | null }>;
 export type ViewportNode = InstanceType<typeof ViewportNode>;
@@ -1386,7 +1436,7 @@ export declare class UiAntiAlias extends Component {
   declare value: "On" | "Off";
 }
 
-/** Holes, never visible: line_color_override: an enum with data (core::option::Option<bevy_color::linear_rgba::LinearRgba>). */
+/** Holes, not columns: line_color_override: an enum with data (core::option::Option<bevy_color::linear_rgba::LinearRgba>). */
 export declare class GlobalUiDebugOptions extends Resource {
   static readonly path: "bevy_ui_render::debug_overlay::GlobalUiDebugOptions";
   static readonly native: true;
@@ -1401,6 +1451,7 @@ export declare class GlobalUiDebugOptions extends Resource {
   declare show_clipped: bool;
   declare ignore_border_radius: bool;
 }
+export interface GlobalUiDebugOptions extends Holes<{ line_color_override: { red?: number; green?: number; blue?: number; alpha?: number } | null }> {}
 
 export declare const UiDebugOptions: Reflected<{ enabled: boolean; outline_border_box: boolean; outline_padding_box: boolean; outline_content_box: boolean; outline_scrollbars: boolean; line_width: number; line_color_override: { red?: number; green?: number; blue?: number; alpha?: number } | null; show_hidden: boolean; show_clipped: boolean; ignore_border_radius: boolean }>;
 export type UiDebugOptions = InstanceType<typeof UiDebugOptions>;
@@ -1436,7 +1487,7 @@ export declare const MenuButton: Reflected;
 export type MenuButton = InstanceType<typeof MenuButton>;
 
 /** As an element, `<MenuFocusState value={...} />`: the whole value, in Bevy's shape. */
-export declare const MenuFocusState: Reflected & { readonly tsxProps: { value?: MenuFocusStateValue } };
+export declare const MenuFocusState: Reflected<ReflectValue<MenuFocusStateValue>> & { readonly tsxProps: { value?: MenuFocusStateValue } };
 export type MenuFocusStateValue = { Opening: "Next" | "Previous" | "First" | "Last" } | "Open" | "Closed";
 export type MenuFocusState = InstanceType<typeof MenuFocusState>;
 
@@ -1521,7 +1572,7 @@ export declare const TextInput: Reflected;
 export type TextInput = InstanceType<typeof TextInput>;
 
 /** As an element, `<CursorIcon value={...} />`: the whole value, in Bevy's shape. */
-export declare const CursorIcon: Reflected & { readonly tsxProps: { value?: CursorIconValue } };
+export declare const CursorIcon: Reflected<ReflectValue<CursorIconValue>> & { readonly tsxProps: { value?: CursorIconValue } };
 export type CursorIconValue = { Custom: { Image: { handle?: string | null; texture_atlas?: { layout?: string | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type CursorIcon = InstanceType<typeof CursorIcon>;
 
@@ -1542,7 +1593,7 @@ export declare class CursorOptions extends Component {
 export declare const PrimaryWindow: Reflected;
 export type PrimaryWindow = InstanceType<typeof PrimaryWindow>;
 
-/** Holes, never visible: mode: an enum with data (bevy_window::window::WindowMode); position: an enum with data (bevy_window::window::WindowPosition); resolution: not plain data (bevy_window::window::WindowResolution); title: opaque to reflection (alloc::string::String); name: an enum with data (core::option::Option<alloc::string::String>); resize_constraints: not plain data (bevy_window::window::WindowResizeConstraints); enabled_buttons: not plain data (bevy_window::window::EnabledButtons); canvas: an enum with data (core::option::Option<alloc::string::String>); internal: not plain data (bevy_window::window::InternalWindowState); window_theme: an enum with data (core::option::Option<bevy_window::window::WindowTheme>); desired_maximum_frame_latency: an enum with data (core::option::Option<core::num::NonZeroU32>); recognize_pan_gesture: an enum with data (core::option::Option<(u8, u8)>). */
+/** Holes, not columns: mode: an enum with data (bevy_window::window::WindowMode); position: an enum with data (bevy_window::window::WindowPosition); resolution: not plain data (bevy_window::window::WindowResolution); title: opaque to reflection (alloc::string::String); name: an enum with data (core::option::Option<alloc::string::String>); resize_constraints: not plain data (bevy_window::window::WindowResizeConstraints); enabled_buttons: not plain data (bevy_window::window::EnabledButtons); canvas: an enum with data (core::option::Option<alloc::string::String>); internal: not plain data (bevy_window::window::InternalWindowState); window_theme: an enum with data (core::option::Option<bevy_window::window::WindowTheme>); desired_maximum_frame_latency: an enum with data (core::option::Option<core::num::NonZeroU32>); recognize_pan_gesture: an enum with data (core::option::Option<(u8, u8)>). */
 export declare class Window extends Component {
   static readonly path: "bevy_window::window::Window";
   static readonly native: true;
@@ -1577,6 +1628,7 @@ export declare class Window extends Component {
   declare prefers_status_bar_hidden: bool;
   declare preferred_screen_edges_deferring_system_gestures: "None" | "Top" | "Left" | "Bottom" | "Right" | "All";
 }
+export interface Window extends Holes<{ mode: "Windowed" | { BorderlessFullscreen: "Current" | "Primary" | { Index: number | string } | { Entity: Entity } } | { Fullscreen: readonly ["Current" | "Primary" | { Index: number | string } | { Entity: Entity }, "Current" | { Specific: { physical_size?: readonly [number, number]; bit_depth?: number; refresh_rate_millihertz?: number } }] }; position: "Automatic" | { Centered: "Current" | "Primary" | { Index: number | string } | { Entity: Entity } } | { At: readonly [number, number] }; resolution: { physical_width?: number; physical_height?: number; scale_factor_override?: number | null; scale_factor?: number }; title: string; name: string | null; resize_constraints: { min_width?: number; min_height?: number; max_width?: number; max_height?: number }; enabled_buttons: { minimize?: boolean; maximize?: boolean; close?: boolean }; canvas: string | null; internal: { minimize_request?: boolean | null; maximize_request?: boolean | null; drag_move_request?: boolean; drag_resize_request?: "North" | "NorthEast" | "East" | "SouthEast" | "South" | "SouthWest" | "West" | "NorthWest" | null; physical_cursor_position?: readonly [number, number] | null }; window_theme: "Light" | "Dark" | null; desired_maximum_frame_latency: number | null; recognize_pan_gesture: readonly [number, number] | null }> {}
 
 export declare const DynamicWorldRoot: Reflected<{ value: string | null }>;
 export type DynamicWorldRoot = InstanceType<typeof DynamicWorldRoot>;

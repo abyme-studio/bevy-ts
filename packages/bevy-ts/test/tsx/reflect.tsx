@@ -33,12 +33,11 @@ export const Bad = () => (
   </>
 );
 
-// A hole is a TSX prop only: TS system rows do not carry it.
+// A hole is a TSX prop, and TS system rows read it through reflection (reflect-coverage stage 3).
 export function look(q: Query<[DirectionalLight]>) {
   q.each((l) => {
     const lux: number = l.illuminance;
-    // @ts-expect-error `color` is not a column
-    const c = l.color;
+    const c: ColorValue = l.color;
     void lux;
     void c;
   });
