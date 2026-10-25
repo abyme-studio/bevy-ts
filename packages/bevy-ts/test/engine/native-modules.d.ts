@@ -17,6 +17,35 @@ declare module "bevy-ts/animation" {
   /** `bevy_ts_animation::Animations<'_, '_>`, a system param exported from Rust; take it as a system parameter. */
   export interface Animations {
     status(root: Entity): AnimationStatus | undefined;
+    seek(root: Entity, secs: number): boolean;
+    rewind(root: Entity): boolean;
+    replay(root: Entity): boolean;
+  }
+}
+
+declare module "bevy-ts/audio" {
+  import type { Entity } from "bevy-ts";
+  /** `bevy_ts_cli::audio::AudioSinksParam<'_, '_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface AudioSinks {
+    volume(e: Entity): number | undefined;
+    setVolume(e: Entity, volume: number): void;
+    speed(e: Entity): number | undefined;
+    setSpeed(e: Entity, speed: number): void;
+    play(e: Entity): void;
+    pause(e: Entity): void;
+    togglePlayback(e: Entity): void;
+    isPaused(e: Entity): boolean | undefined;
+    position(e: Entity): number | undefined;
+    trySeek(e: Entity, seconds: number): void;
+    stop(e: Entity): void;
+    empty(e: Entity): boolean | undefined;
+    isMuted(e: Entity): boolean | undefined;
+    mute(e: Entity): void;
+    unmute(e: Entity): void;
+    toggleMute(e: Entity): void;
+    setEarsPosition(e: Entity, left: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number], right: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number]): void;
+    setListenerPosition(e: Entity, translation: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number], rotation: { readonly x: number; readonly y: number; readonly z: number; readonly w: number } | readonly [number, number, number, number], gap: number): void;
+    setEmitterPosition(e: Entity, position: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number]): void;
   }
 }
 
@@ -56,6 +85,70 @@ declare module "bevy-ts/camera" {
   export interface MeshRayCast {
     castRay(ray: Partial<Ray3d>, settings: Partial<RayCastSettings> | null | undefined, exclude: Float64Array): RayMeshHit | undefined;
     castRayAll(ray: Partial<Ray3d>, settings: Partial<RayCastSettings> | null | undefined, exclude: Float64Array, hits: Float32Array, entity: Float64Array): number;
+  }
+}
+
+declare module "bevy-ts/diagnostics" {
+  /** Bevy's `Diagnostic`, as a declaration: a path (components joined by `/`) and how its history is kept. */
+  export class Diagnostic {
+    constructor(path: string);
+    readonly path: string;
+    /** Shown after its value when logged (`"ms"`). Default none. */
+    withSuffix(suffix: string): this;
+    /** Measurements kept. Default 120. */
+    withMaxHistoryLength(n: number): this;
+    /** About how many seconds the smoothed value takes to follow a change. Default 2/21. */
+    withSmoothingFactor(f: number): this;
+  }
+  
+  /** Bevy's path constants, by plugin. List the plugin in bevy-ts.json's `diagnostics` to measure. */
+  export const FrameTimeDiagnosticsPlugin: { readonly FPS: "fps"; readonly FRAME_COUNT: "frame_count"; readonly FRAME_TIME: "frame_time" };
+  export const EntityCountDiagnosticsPlugin: { readonly ENTITY_COUNT: "entity_count" };
+  export const SystemInformationDiagnosticsPlugin: {
+    readonly SYSTEM_CPU_USAGE: "system/cpu_usage";
+    readonly SYSTEM_MEM_USAGE: "system/mem_usage";
+    readonly PROCESS_CPU_USAGE: "process/cpu_usage";
+    readonly PROCESS_MEM_USAGE: "process/mem_usage";
+  };
+  export const MeshAllocatorDiagnosticPlugin: {
+    readonly SLABS: "mesh_allocator_slabs";
+    readonly SLABS_SIZE: "mesh_allocator_slabs_size";
+    readonly ALLOCATIONS: "mesh_allocator_allocations";
+  };
+  /** A stage TS systems run in, by Bevy's name. */
+  export type Stage =
+    | "First" | "PreUpdate" | "RunFixedMainLoop" | "Update" | "SpawnScene" | "PostUpdate" | "Last"
+    | "FixedFirst" | "FixedPreUpdate" | "FixedUpdate" | "FixedPostUpdate" | "FixedLast";
+  /** bevy-ts's own: each TS stage's CPU time in ms, at `bevy_ts/<stage in snake case>/elapsed_cpu`. */
+  export const ScriptStageDiagnosticsPlugin: { elapsedCpu(stage: Stage): string };
+  
+  module "bevy-ts" {
+    interface App {
+      /** Bevy's `RegisterDiagnostic`: adds the path for this generation. A path a Rust plugin registered fails the load. */
+      registerDiagnostic(d: import("bevy-ts/diagnostics").Diagnostic): App;
+    }
+  }
+  /** `bevy_ts_cli::diagnostics::StoreParam<'_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface DiagnosticsStore {
+    value(path: string): number | undefined;
+    average(path: string): number | undefined;
+    smoothed(path: string): number | undefined;
+    historyLen(path: string): number | undefined;
+    maxHistoryLength(path: string): number | undefined;
+    duration(path: string): number | undefined;
+    isEnabled(path: string): boolean | undefined;
+    suffix(path: string): string | undefined;
+    history(path: string, out: Float64Array): number;
+    len(): number;
+    path(i: number): string | undefined;
+  }
+  /** `bevy_ts_cli::diagnostics::DiagnosticsParam<'_, '_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface Diagnostics {
+    addMeasurement(path: string, value: number): void;
+  }
+  /** `bevy_ts_cli::diagnostics::FrameCountParam<'_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface FrameCount {
+    value(): number;
   }
 }
 
@@ -430,5 +523,34 @@ declare module "bevy-ts/material" {
     name: string,
     decl: { params: P; textures?: T; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode },
   ): MaterialKind<P, T>;
+}
+
+declare module "bevy-ts/session" {
+  /**
+   * The value under `key` as a new `Uint8Array` (a copy), or `undefined`. Two host calls and one
+   * allocation: for many keys a frame, `session.read` into one buffer instead.
+   *
+   * The store survives every reload, failed ones too; a `restart: true` reload and a Stop empty it.
+   * It is one store for each app, never written to disk. A key is 1 to 1,024 bytes of UTF-8; the
+   * store holds at most 64 MiB, keys included.
+   */
+  export function get(session: SessionBytes, key: string): Uint8Array | undefined;
+  /** `bevy_ts_cli::session::SessionParam<'_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface SessionBytes {
+    put(key: string, value: Uint8Array): void;
+    size(key: string): number | undefined;
+    read(key: string, out: Uint8Array): number | undefined;
+    has(key: string): boolean;
+    delete(key: string): boolean;
+    clear(): void;
+    count(): number;
+    bytes(): number;
+  }
+}
+
+declare module "bevy-ts/states" {
+  import type { RustState } from "bevy-ts";
+  /** Rust's `bevy_ts::EngineMode`. */
+  export const EngineMode: RustState<"Play" | "Edit">;
 }
 

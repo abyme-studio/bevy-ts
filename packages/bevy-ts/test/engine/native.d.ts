@@ -3,8 +3,17 @@
 // typed values for TSX, the protocol and With/Without filters.
 
 import { Component, ReflectComponent, Resource } from "bevy-ts";
-import type { bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { AssetFields, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
+export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { events: readonly (readonly ["Root" | { Node: string }, readonly ({ time?: number; event?: {  } })[]])[]; duration: number }>;
+export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", {  }>;
+export type Image = AssetFields<"bevy_image::image::Image", {  }>;
+export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { size: readonly [number, number]; textures: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] }>;
+export type Mesh = AssetFields<"bevy_mesh::mesh::Mesh", {  }>;
+export type StandardMaterial = AssetFields<"bevy_pbr::pbr_material::StandardMaterial", { base_color: ColorValue; base_color_channel: "Uv0" | "Uv1"; base_color_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive: { red?: number; green?: number; blue?: number; alpha?: number }; emissive_exposure_weight: number; emissive_channel: "Uv0" | "Uv1"; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; perceptual_roughness: number; metallic: number; metallic_roughness_channel: "Uv0" | "Uv1"; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; reflectance: number; specular_tint: ColorValue; diffuse_transmission: number; specular_transmission: number; thickness: number; ior: number; attenuation_distance: number; attenuation_color: ColorValue; normal_map_channel: "Uv0" | "Uv1"; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; flip_normal_map_y: boolean; occlusion_channel: "Uv0" | "Uv1"; occlusion_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; clearcoat: number; clearcoat_perceptual_roughness: number; anisotropy_strength: number; anisotropy_rotation: number; double_sided: boolean; unlit: boolean; fog_enabled: boolean; alpha_mode: "Opaque" | { Mask: number } | "Blend" | "Premultiplied" | "AlphaToCoverage" | "Add" | "Multiply"; depth_bias: number; depth_map: string | AssetRef<Image> | AssetValue<Image> | null | null; parallax_depth_scale: number; parallax_mapping_method: "Occlusion" | { Relief: { max_steps?: number } }; max_parallax_layer_count: number; lightmap_exposure: number; opaque_render_method: "Forward" | "Deferred" | "Auto"; deferred_lighting_pass_id: number; uv_transform: readonly [number, number, number, number, number, number] }>;
+export type ShaderBuffer = AssetFields<"bevy_render::storage::ShaderBuffer", {  }>;
+export type ColorMaterial = AssetFields<"bevy_sprite_render::mesh2d::color_material::ColorMaterial", { color: ColorValue; alpha_mode: "Opaque" | { Mask: number } | "Blend"; uv_transform: readonly [number, number, number, number, number, number]; texture: string | AssetRef<Image> | AssetValue<Image> | null | null }>;
+export type SpriteMeshMaterial = AssetFields<"bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial", { image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend"; anchor: readonly [number, number]; texture_atlas_layout: { size?: readonly [number, number]; textures?: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] } | null; texture_atlas_index: number | string }>;
 /** System sets exposed with `app.ts_set`, for `.before`/`.after(systemSet(name))`. */
 export type NativeSet = "bevy-ts:first" | "bevy-ts:fixed-first" | "bevy-ts:fixed-last" | "bevy-ts:fixed-post-update" | "bevy-ts:fixed-pre-update" | "bevy-ts:fixed-update" | "bevy-ts:last" | "bevy-ts:post-update" | "bevy-ts:pre-update" | "bevy-ts:run-fixed-main-loop" | "bevy-ts:spawn-scene" | "bevy-ts:update" | "bevy:fixed-main-loop" | "bevy:transform-propagate";
 /** Schedules exposed with `app.ts_schedule`, for `schedule(name)`. */
@@ -38,7 +47,7 @@ export declare class AnimationTargetId extends ReflectComponent {
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_animation::graph::AnimationGraph>)). */
 export declare class AnimationGraphHandle extends ReflectComponent {
   static readonly path: "bevy_animation::graph::AnimationGraphHandle";
-  declare value: string | null;
+  declare value: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null;
 }
 
 /** Reflect tier: no field is plain data (main_animation: an enum with data (core::option::Option<petgraph::graph::NodeIndex>); transitions: not plain data (alloc::vec::Vec<bevy_animation::transition::AnimationTransition>)). */
@@ -75,6 +84,12 @@ export declare class Smaa extends Component {
 export declare class TemporalAntiAliasing extends Component {
   static readonly path: "bevy_anti_alias::taa::TemporalAntiAliasing";
   declare reset: bool;
+}
+
+/** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_audio::audio_source::AudioSource>)). */
+export declare class AudioPlayer extends ReflectComponent {
+  static readonly path: "bevy_audio::audio::AudioPlayer<bevy_audio::audio_source::AudioSource>";
+  declare value: string | null;
 }
 
 /** Holes, never visible: volume: an enum with data (bevy_audio::volume::Volume); spatial_scale: an enum with data (core::option::Option<bevy_audio::audio::SpatialScale>); start_position: an enum with data (core::option::Option<core::time::Duration>); duration: an enum with data (core::option::Option<core::time::Duration>). */
@@ -126,10 +141,10 @@ export declare class ManualTextureViewHandle extends Component {
   declare value: u32;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: no field is plain data (value: an enum with data (bevy_camera::camera::RenderTarget)). */
 export declare class RenderTarget extends ReflectComponent {
   static readonly path: "bevy_camera::camera::RenderTarget";
-  declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
+  declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 }
 
 /** Reflect tier: it has no reflected fields. */
@@ -246,12 +261,11 @@ export declare class VisibleMeshEntities extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::VisibleMeshEntities";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
-export declare class VisibilityRange extends ReflectComponent {
+/** Holes, never visible: start_margin: opaque to reflection (core::ops::Range<f32>); end_margin: opaque to reflection (core::ops::Range<f32>). */
+export declare class VisibilityRange extends Component {
   static readonly path: "bevy_camera::visibility::range::VisibilityRange";
-  declare start_margin: { start: number; end: number };
-  declare end_margin: { start: number; end: number };
-  declare use_aabb: boolean;
+  static readonly tsxProps: { start_margin?: { start: number; end: number }; end_margin?: { start: number; end: number } };
+  declare use_aabb: bool;
 }
 
 /** Reflect tier: no field is plain data (value: not plain data (smallvec::SmallVec<[u64; 1]>)). */
@@ -441,7 +455,7 @@ export declare class GltfMaterialExtras extends ReflectComponent {
   declare value: string;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfMaterialName extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfMaterialName";
   declare value: string;
@@ -453,7 +467,7 @@ export declare class GltfMeshExtras extends ReflectComponent {
   declare value: string;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfMeshName extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfMeshName";
   declare value: string;
@@ -465,7 +479,7 @@ export declare class GltfSceneExtras extends ReflectComponent {
   declare value: string;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfSceneName extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfSceneName";
   declare value: string;
@@ -500,6 +514,14 @@ export declare class AccumulatedMouseScroll extends Resource {
   static readonly path: "bevy_input::mouse::AccumulatedMouseScroll";
   declare unit: "Line" | "Pixel";
   declare readonly delta: Vec2;
+}
+
+/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+export declare class FocusedInputKeyboardInput extends ReflectComponent {
+  static readonly path: "bevy_input_focus::FocusedInput<bevy_input::keyboard::KeyboardInput>";
+  declare focused_entity: Entity;
+  declare input: { key_code?: { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } } | "Backquote" | "Backslash" | "BracketLeft" | "BracketRight" | "Comma" | "Digit0" | "Digit1" | "Digit2" | "Digit3" | "Digit4" | "Digit5" | "Digit6" | "Digit7" | "Digit8" | "Digit9" | "Equal" | "IntlBackslash" | "IntlRo" | "IntlYen" | "KeyA" | "KeyB" | "KeyC" | "KeyD" | "KeyE" | "KeyF" | "KeyG" | "KeyH" | "KeyI" | "KeyJ" | "KeyK" | "KeyL" | "KeyM" | "KeyN" | "KeyO" | "KeyP" | "KeyQ" | "KeyR" | "KeyS" | "KeyT" | "KeyU" | "KeyV" | "KeyW" | "KeyX" | "KeyY" | "KeyZ" | "Minus" | "Period" | "Quote" | "Semicolon" | "Slash" | "AltLeft" | "AltRight" | "Backspace" | "CapsLock" | "ContextMenu" | "ControlLeft" | "ControlRight" | "Enter" | "SuperLeft" | "SuperRight" | "ShiftLeft" | "ShiftRight" | "Space" | "Tab" | "Convert" | "KanaMode" | "Lang1" | "Lang2" | "Lang3" | "Lang4" | "Lang5" | "NonConvert" | "Delete" | "End" | "Help" | "Home" | "Insert" | "PageDown" | "PageUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "NumLock" | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4" | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9" | "NumpadAdd" | "NumpadBackspace" | "NumpadClear" | "NumpadClearEntry" | "NumpadComma" | "NumpadDecimal" | "NumpadDivide" | "NumpadEnter" | "NumpadEqual" | "NumpadHash" | "NumpadMemoryAdd" | "NumpadMemoryClear" | "NumpadMemoryRecall" | "NumpadMemoryStore" | "NumpadMemorySubtract" | "NumpadMultiply" | "NumpadParenLeft" | "NumpadParenRight" | "NumpadStar" | "NumpadSubtract" | "Escape" | "Fn" | "FnLock" | "PrintScreen" | "ScrollLock" | "Pause" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "Eject" | "LaunchApp1" | "LaunchApp2" | "LaunchMail" | "MediaPlayPause" | "MediaSelect" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "Power" | "Sleep" | "AudioVolumeDown" | "AudioVolumeMute" | "AudioVolumeUp" | "WakeUp" | "Meta" | "Hyper" | "Turbo" | "Abort" | "Resume" | "Suspend" | "Again" | "Copy" | "Cut" | "Find" | "Open" | "Paste" | "Props" | "Select" | "Undo" | "Hiragana" | "Katakana" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; logical_key?: { Character: string } | { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } | { Web: string } } | { Dead: string | null } | "Alt" | "AltGraph" | "CapsLock" | "Control" | "Fn" | "FnLock" | "NumLock" | "ScrollLock" | "Shift" | "Symbol" | "SymbolLock" | "Meta" | "Hyper" | "Super" | "Enter" | "Tab" | "Space" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "End" | "Home" | "PageDown" | "PageUp" | "Backspace" | "Clear" | "Copy" | "CrSel" | "Cut" | "Delete" | "EraseEof" | "ExSel" | "Insert" | "Paste" | "Redo" | "Undo" | "Accept" | "Again" | "Attn" | "Cancel" | "ContextMenu" | "Escape" | "Execute" | "Find" | "Help" | "Pause" | "Play" | "Props" | "Select" | "ZoomIn" | "ZoomOut" | "BrightnessDown" | "BrightnessUp" | "Eject" | "LogOff" | "Power" | "PowerOff" | "PrintScreen" | "Hibernate" | "Standby" | "WakeUp" | "AllCandidates" | "Alphanumeric" | "CodeInput" | "Compose" | "Convert" | "FinalMode" | "GroupFirst" | "GroupLast" | "GroupNext" | "GroupPrevious" | "ModeChange" | "NextCandidate" | "NonConvert" | "PreviousCandidate" | "Process" | "SingleCandidate" | "HangulMode" | "HanjaMode" | "JunjaMode" | "Eisu" | "Hankaku" | "Hiragana" | "HiraganaKatakana" | "KanaMode" | "KanjiMode" | "Katakana" | "Romaji" | "Zenkaku" | "ZenkakuHankaku" | "Soft1" | "Soft2" | "Soft3" | "Soft4" | "ChannelDown" | "ChannelUp" | "Close" | "MailForward" | "MailReply" | "MailSend" | "MediaClose" | "MediaFastForward" | "MediaPause" | "MediaPlay" | "MediaPlayPause" | "MediaRecord" | "MediaRewind" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "New" | "Open" | "Print" | "Save" | "SpellCheck" | "Key11" | "Key12" | "AudioBalanceLeft" | "AudioBalanceRight" | "AudioBassBoostDown" | "AudioBassBoostToggle" | "AudioBassBoostUp" | "AudioFaderFront" | "AudioFaderRear" | "AudioSurroundModeNext" | "AudioTrebleDown" | "AudioTrebleUp" | "AudioVolumeDown" | "AudioVolumeUp" | "AudioVolumeMute" | "MicrophoneToggle" | "MicrophoneVolumeDown" | "MicrophoneVolumeUp" | "MicrophoneVolumeMute" | "SpeechCorrectionList" | "SpeechInputToggle" | "LaunchApplication1" | "LaunchApplication2" | "LaunchCalendar" | "LaunchContacts" | "LaunchMail" | "LaunchMediaPlayer" | "LaunchMusicPlayer" | "LaunchPhone" | "LaunchScreenSaver" | "LaunchSpreadsheet" | "LaunchWebBrowser" | "LaunchWebCam" | "LaunchWordProcessor" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "AppSwitch" | "Call" | "Camera" | "CameraFocus" | "EndCall" | "GoBack" | "GoHome" | "HeadsetHook" | "LastNumberRedial" | "Notification" | "MannerMode" | "VoiceDial" | "TV" | "TV3DMode" | "TVAntennaCable" | "TVAudioDescription" | "TVAudioDescriptionMixDown" | "TVAudioDescriptionMixUp" | "TVContentsMenu" | "TVDataService" | "TVInput" | "TVInputComponent1" | "TVInputComponent2" | "TVInputComposite1" | "TVInputComposite2" | "TVInputHDMI1" | "TVInputHDMI2" | "TVInputHDMI3" | "TVInputHDMI4" | "TVInputVGA1" | "TVMediaContext" | "TVNetwork" | "TVNumberEntry" | "TVPower" | "TVRadioService" | "TVSatellite" | "TVSatelliteBS" | "TVSatelliteCS" | "TVSatelliteToggle" | "TVTerrestrialAnalog" | "TVTerrestrialDigital" | "TVTimer" | "AVRInput" | "AVRPower" | "ColorF0Red" | "ColorF1Green" | "ColorF2Yellow" | "ColorF3Blue" | "ColorF4Grey" | "ColorF5Brown" | "ClosedCaptionToggle" | "Dimmer" | "DisplaySwap" | "DVR" | "Exit" | "FavoriteClear0" | "FavoriteClear1" | "FavoriteClear2" | "FavoriteClear3" | "FavoriteRecall0" | "FavoriteRecall1" | "FavoriteRecall2" | "FavoriteRecall3" | "FavoriteStore0" | "FavoriteStore1" | "FavoriteStore2" | "FavoriteStore3" | "Guide" | "GuideNextDay" | "GuidePreviousDay" | "Info" | "InstantReplay" | "Link" | "ListProgram" | "LiveContent" | "Lock" | "MediaApps" | "MediaAudioTrack" | "MediaLast" | "MediaSkipBackward" | "MediaSkipForward" | "MediaStepBackward" | "MediaStepForward" | "MediaTopMenu" | "NavigateIn" | "NavigateNext" | "NavigateOut" | "NavigatePrevious" | "NextFavoriteChannel" | "NextUserProfile" | "OnDemand" | "Pairing" | "PinPDown" | "PinPMove" | "PinPToggle" | "PinPUp" | "PlaySpeedDown" | "PlaySpeedReset" | "PlaySpeedUp" | "RandomToggle" | "RcLowBattery" | "RecordSpeedNext" | "RfBypass" | "ScanChannelsToggle" | "ScreenModeNext" | "Settings" | "SplitScreenToggle" | "STBInput" | "STBPower" | "Subtitle" | "Teletext" | "VideoModeNext" | "Wink" | "ZoomToggle" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; state?: "Pressed" | "Released"; text?: string | null; repeat?: boolean; window?: Entity };
+  declare window: Entity;
 }
 
 export declare class InputFocusVisible extends Resource {
@@ -582,14 +604,14 @@ export declare class ClusterConfig extends ReflectComponent {
 /** Holes, never visible: base_color_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); normal_map_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); metallic_roughness_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); emissive_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class ClusteredDecal extends Component {
   static readonly path: "bevy_light::cluster::ClusteredDecal";
-  static readonly tsxProps: { base_color_texture?: string | null | null; normal_map_texture?: string | null | null; metallic_roughness_texture?: string | null | null; emissive_texture?: string | null | null };
+  static readonly tsxProps: { base_color_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null; normal_map_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null; metallic_roughness_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null };
   declare tag: u32;
 }
 
-/** Holes, never visible: color: an enum with data (bevy_color::color::Color). */
+/** Holes, never visible: color: an enum with data (bevy_color::color::Color); soft_shadow_size: an enum with data (core::option::Option<f32>). */
 export declare class DirectionalLight extends Component {
   static readonly path: "bevy_light::directional_light::DirectionalLight";
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue; soft_shadow_size?: number | null };
   declare illuminance: f32;
   declare shadow_maps_enabled: bool;
   declare contact_shadows_enabled: bool;
@@ -601,7 +623,7 @@ export declare class DirectionalLight extends Component {
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class DirectionalLightTexture extends ReflectComponent {
   static readonly path: "bevy_light::directional_light::DirectionalLightTexture";
-  declare image: string | null;
+  declare image: string | AssetRef<Image> | AssetValue<Image> | null;
   declare tiled: boolean;
 }
 
@@ -620,6 +642,7 @@ export declare class PointLight extends Component {
   declare radius: f32;
   declare shadow_maps_enabled: bool;
   declare contact_shadows_enabled: bool;
+  declare soft_shadows_enabled: bool;
   declare affects_lightmapped_mesh_diffuse: bool;
   declare shadow_depth_bias: f32;
   declare shadow_normal_bias: f32;
@@ -629,14 +652,14 @@ export declare class PointLight extends Component {
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class PointLightTexture extends ReflectComponent {
   static readonly path: "bevy_light::point_light::PointLightTexture";
-  declare image: string | null;
+  declare image: string | AssetRef<Image> | AssetValue<Image> | null;
   declare cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal";
 }
 
 /** Holes, never visible: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class EnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::EnvironmentMapLight";
-  static readonly tsxProps: { diffuse_map?: string | null; specular_map?: string | null };
+  static readonly tsxProps: { diffuse_map?: string | AssetRef<Image> | AssetValue<Image> | null; specular_map?: string | AssetRef<Image> | AssetValue<Image> | null };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
@@ -645,7 +668,7 @@ export declare class EnvironmentMapLight extends Component {
 /** Holes, never visible: environment_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class GeneratedEnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::GeneratedEnvironmentMapLight";
-  static readonly tsxProps: { environment_map?: string | null };
+  static readonly tsxProps: { environment_map?: string | AssetRef<Image> | AssetValue<Image> | null };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
@@ -654,7 +677,7 @@ export declare class GeneratedEnvironmentMapLight extends Component {
 /** Holes, never visible: voxels: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class IrradianceVolume extends Component {
   static readonly path: "bevy_light::probe::IrradianceVolume";
-  static readonly tsxProps: { voxels?: string | null };
+  static readonly tsxProps: { voxels?: string | AssetRef<Image> | AssetValue<Image> | null };
   declare intensity: f32;
   declare affects_lightmapped_meshes: bool;
 }
@@ -673,7 +696,7 @@ export declare class ParallaxCorrection extends ReflectComponent {
 /** Holes, never visible: image: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class Skybox extends Component {
   static readonly path: "bevy_light::probe::Skybox";
-  static readonly tsxProps: { image?: string | null | null };
+  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | null | null };
   declare brightness: f32;
   declare readonly rotation: Quat;
 }
@@ -697,6 +720,7 @@ export declare class SpotLight extends Component {
   declare radius: f32;
   declare shadow_maps_enabled: bool;
   declare contact_shadows_enabled: bool;
+  declare soft_shadows_enabled: bool;
   declare affects_lightmapped_mesh_diffuse: bool;
   declare shadow_depth_bias: f32;
   declare shadow_normal_bias: f32;
@@ -708,13 +732,13 @@ export declare class SpotLight extends Component {
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class SpotLightTexture extends ReflectComponent {
   static readonly path: "bevy_light::spot_light::SpotLightTexture";
-  declare image: string | null;
+  declare image: string | AssetRef<Image> | AssetValue<Image> | null;
 }
 
 /** Holes, never visible: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
 export declare class FogVolume extends Component {
   static readonly path: "bevy_light::volumetric::FogVolume";
-  static readonly tsxProps: { fog_color?: ColorValue; density_texture?: string | null | null; light_tint?: ColorValue };
+  static readonly tsxProps: { fog_color?: ColorValue; density_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null; light_tint?: ColorValue };
   declare density_factor: f32;
   declare readonly density_texture_offset: Vec3;
   declare absorption: f32;
@@ -740,13 +764,13 @@ export declare class VolumetricLight extends ReflectComponent {
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_mesh::mesh::Mesh>)). */
 export declare class Mesh2d extends ReflectComponent {
   static readonly path: "bevy_mesh::components::Mesh2d";
-  declare value: string | null;
+  declare value: string | AssetRef<Mesh> | AssetValue<Mesh> | null;
 }
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_mesh::mesh::Mesh>)). */
 export declare class Mesh3d extends ReflectComponent {
   static readonly path: "bevy_mesh::components::Mesh3d";
-  declare value: string | null;
+  declare value: string | AssetRef<Mesh> | AssetValue<Mesh> | null;
 }
 
 /** Holes, never visible: type_id: an enum with data (core::option::Option<core::any::TypeId>). */
@@ -766,7 +790,7 @@ export declare class MeshMorphWeights extends ReflectComponent {
 export declare class MorphWeights extends ReflectComponent {
   static readonly path: "bevy_mesh::morph::MorphWeights";
   declare weights: readonly number[];
-  declare first_mesh: string | null | null;
+  declare first_mesh: string | AssetRef<Mesh> | AssetValue<Mesh> | null | null;
 }
 
 /** Reflect tier: no field is plain data (inverse_bindposes: an enum with data (bevy_asset::handle::Handle<bevy_mesh::skinning::SkinnedMeshInverseBindposes>); joints: not plain data (alloc::vec::Vec<bevy_ecs::entity::Entity>)). */
@@ -793,7 +817,7 @@ export declare class DistanceFog extends Component {
 /** Holes, never visible: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); uv_rect: not plain data (bevy_math::rects::rect::Rect). */
 export declare class Lightmap extends Component {
   static readonly path: "bevy_pbr::lightmap::Lightmap";
-  static readonly tsxProps: { image?: string | null; uv_rect?: { min?: readonly [number, number]; max?: readonly [number, number] } };
+  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | null; uv_rect?: { min?: readonly [number, number]; max?: readonly [number, number] } };
   declare bicubic_sampling: bool;
 }
 
@@ -817,7 +841,7 @@ export declare class MeshMaterial3dExtendedMaterialStandardMaterialFade extends 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_pbr::pbr_material::StandardMaterial>)). */
 export declare class MeshMaterial3dStandardMaterial extends ReflectComponent {
   static readonly path: "bevy_pbr::mesh_material::MeshMaterial3d<bevy_pbr::pbr_material::StandardMaterial>";
-  declare value: string | null;
+  declare value: string | AssetRef<StandardMaterial> | AssetValue<StandardMaterial> | null;
 }
 
 /** Holes, never visible: quality_level: an enum with data (bevy_pbr::ssao::ScreenSpaceAmbientOcclusionQualityLevel). */
@@ -912,7 +936,7 @@ export declare class PickingSettings extends Resource {
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_picking::cursor::EntityCursor)). */
 export declare class EntityCursor extends ReflectComponent {
   static readonly path: "bevy_picking::cursor::EntityCursor";
-  declare value: { Custom: { Image: { handle?: string | null; texture_atlas?: { layout?: string | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+  declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 }
 
 /** Immutable: read-only in TS. */
@@ -957,7 +981,7 @@ export declare class RayCastBackfaces extends ReflectComponent {
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class SimplifiedMesh extends ReflectComponent {
   static readonly path: "bevy_picking::mesh_picking::ray_cast::SimplifiedMesh";
-  declare value: string | null;
+  declare value: string | AssetRef<Mesh> | AssetValue<Mesh> | null;
 }
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_picking::pointer::PointerId)). */
@@ -987,7 +1011,7 @@ export declare class PointerPressState extends Component {
 /** Holes, never visible: range: opaque to reflection (core::ops::RangeInclusive<f32>); filter: opaque to reflection (core::ops::RangeInclusive<f32>); metering_mask: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); compensation_curve: an enum with data (bevy_asset::handle::Handle<bevy_post_process::auto_exposure::compensation_curve::AutoExposureCompensationCurve>). */
 export declare class AutoExposure extends Component {
   static readonly path: "bevy_post_process::auto_exposure::settings::AutoExposure";
-  static readonly tsxProps: { range?: { start: number; end: number }; filter?: { start: number; end: number }; metering_mask?: string | null; compensation_curve?: string | null };
+  static readonly tsxProps: { range?: { start: number; end: number }; filter?: { start: number; end: number }; metering_mask?: string | AssetRef<Image> | AssetValue<Image> | null; compensation_curve?: string | null };
   declare speed_brighten: f32;
   declare speed_darken: f32;
   declare exponential_transition_distance: f32;
@@ -1019,7 +1043,7 @@ export declare class DepthOfField extends Component {
 /** Holes, never visible: color_lut: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class ChromaticAberration extends Component {
   static readonly path: "bevy_post_process::effect_stack::chromatic_aberration::ChromaticAberration";
-  static readonly tsxProps: { color_lut?: string | null | null };
+  static readonly tsxProps: { color_lut?: string | AssetRef<Image> | AssetValue<Image> | null | null };
   declare intensity: f32;
   declare max_samples: u32;
 }
@@ -1102,7 +1126,7 @@ export declare class RenderShadowMapVisibleEntities extends ReflectComponent {
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class Screenshot extends ReflectComponent {
   static readonly path: "bevy_render::view::window::screenshot::Screenshot";
-  declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
+  declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 }
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
@@ -1132,7 +1156,7 @@ export declare class Anchor extends Component {
 /** Holes, never visible: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); color: an enum with data (bevy_color::color::Color); custom_size: an enum with data (core::option::Option<glam::Vec2>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_sprite::sprite::SpriteImageMode); alpha_mode: an enum with data (bevy_sprite::sprite::SpriteAlphaMode). */
 export declare class Sprite extends Component {
   static readonly path: "bevy_sprite::sprite::Sprite";
-  static readonly tsxProps: { image?: string | null; texture_atlas?: { layout?: string | null; index?: number | string } | null; color?: ColorValue; custom_size?: readonly [number, number] | null; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode?: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode?: "Opaque" | { Mask: number } | "Blend" };
+  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color?: ColorValue; custom_size?: readonly [number, number] | null; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode?: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode?: "Opaque" | { Mask: number } | "Blend" };
   declare flip_x: bool;
   declare flip_y: bool;
 }
@@ -1153,13 +1177,13 @@ export declare class Text2dShadow extends Component {
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_sprite_render::mesh2d::color_material::ColorMaterial>)). */
 export declare class MeshMaterial2dColorMaterial extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::mesh2d::color_material::ColorMaterial>";
-  declare value: string | null;
+  declare value: string | AssetRef<ColorMaterial> | AssetValue<ColorMaterial> | null;
 }
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial>)). */
 export declare class MeshMaterial2dSpriteMeshMaterial extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial>";
-  declare value: string | null;
+  declare value: string | AssetRef<SpriteMeshMaterial> | AssetValue<SpriteMeshMaterial> | null;
 }
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_sprite_render::tilemap_chunk::tilemap_chunk_material::TilemapChunkMaterial>)). */
@@ -1202,7 +1226,7 @@ export declare class TilemapChunk extends ReflectComponent {
   static readonly path: "bevy_sprite_render::tilemap_chunk::TilemapChunk";
   declare chunk_size: readonly [number, number];
   declare tile_display_size: readonly [number, number];
-  declare tileset: string | null;
+  declare tileset: string | AssetRef<Image> | AssetValue<Image> | null;
   declare alpha_mode: "Opaque" | { Mask: number } | "Blend";
 }
 
@@ -1252,7 +1276,7 @@ export declare class LetterSpacing extends ReflectComponent {
   declare value: { Px: number } | { Rem: number };
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: no field is plain data (value: an enum with data (bevy_text::text::LineHeight)). */
 export declare class LineHeight extends ReflectComponent {
   static readonly path: "bevy_text::text::LineHeight";
   declare value: { Px: number } | { RelativeToFont: number };
@@ -1383,17 +1407,27 @@ export declare class TsSpawned extends ReflectComponent {
   static readonly path: "bevy_ts::commands::TsSpawned";
 }
 
+export declare class Save extends Component {
+  static readonly path: "bevy_ts::saves::Save";
+}
+
+/** Reflect tier: no field is plain data (value: not plain data (alloc::collections::BTreeMap<alloc::string::String, alloc::string::String>)). */
+export declare class TsSaved extends ReflectComponent {
+  static readonly path: "bevy_ts::saves::TsSaved";
+  declare value: Record<string, string>;
+}
+
 /** Holes, never visible: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
-  static readonly tsxProps: { clip?: string | null; repeat?: "Never" | { Count: number } | "Forever" };
+  static readonly tsxProps: { clip?: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; repeat?: "Never" | { Count: number } | "Forever" };
   declare speed: f32;
   declare transition_secs: f32;
   declare paused: bool;
   declare cull: bool;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: no field is plain data (value: not plain data (alloc::vec::Vec<bevy_ts_levels::compose::MissingComponent>)). */
 export declare class MissingComponents extends ReflectComponent {
   static readonly path: "bevy_ts_levels::engine::MissingComponents";
   declare value: readonly ({ component?: string; reason?: "Unregistered" | "Failed" | "Mismatch"; message?: string; fields?: Record<string, string>; location?: { file?: string; line?: number; column?: number }; expected?: { file?: string; line?: number; column?: number } | null; misfit?: Record<string, string>; overrides?: readonly ({ path?: readonly string[]; fields?: Record<string, string> })[]; scene?: boolean })[];
@@ -1647,7 +1681,7 @@ export declare class DeprecatedButton extends ReflectComponent {
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_ui::widget::image::NodeImageMode). */
 export declare class ImageNode extends Component {
   static readonly path: "bevy_ui::widget::image::ImageNode";
-  static readonly tsxProps: { color?: ColorValue; image?: string | null; texture_atlas?: { layout?: string | null; index?: number | string } | null; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode?: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } };
+  static readonly tsxProps: { color?: ColorValue; image?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode?: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } };
   declare flip_x: bool;
   declare flip_y: bool;
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
@@ -1662,7 +1696,7 @@ export declare class ImageNodeSize extends ReflectComponent {
 /** Holes, never visible: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>). */
 export declare class InlineImage extends Component {
   static readonly path: "bevy_ui::widget::inline_image::InlineImage";
-  static readonly tsxProps: { color?: ColorValue; image?: string | null; width?: number | null; height?: number | null };
+  static readonly tsxProps: { color?: ColorValue; image?: string | AssetRef<Image> | AssetValue<Image> | null; width?: number | null; height?: number | null };
   declare flip_x: bool;
   declare flip_y: bool;
 }
@@ -1724,48 +1758,48 @@ export declare class GlobalUiDebugOptions extends Resource {
   declare ignore_border_radius: bool;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
-export declare class UiDebugOptions extends ReflectComponent {
+/** Holes, never visible: line_color_override: an enum with data (core::option::Option<bevy_color::linear_rgba::LinearRgba>). */
+export declare class UiDebugOptions extends Component {
   static readonly path: "bevy_ui_render::debug_overlay::UiDebugOptions";
-  declare enabled: boolean;
-  declare outline_border_box: boolean;
-  declare outline_padding_box: boolean;
-  declare outline_content_box: boolean;
-  declare outline_scrollbars: boolean;
-  declare line_width: number;
-  declare line_color_override: { red?: number; green?: number; blue?: number; alpha?: number } | null;
-  declare show_hidden: boolean;
-  declare show_clipped: boolean;
-  declare ignore_border_radius: boolean;
+  static readonly tsxProps: { line_color_override?: { red?: number; green?: number; blue?: number; alpha?: number } | null };
+  declare enabled: bool;
+  declare outline_border_box: bool;
+  declare outline_padding_box: bool;
+  declare outline_content_box: bool;
+  declare outline_scrollbars: bool;
+  declare line_width: f32;
+  declare show_hidden: bool;
+  declare show_clipped: bool;
+  declare ignore_border_radius: bool;
 }
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class ImageNodeTextureAtlasLayout extends ReflectComponent {
   static readonly path: "bevy_ui_render::image::ImageNodeTextureAtlasLayout";
-  declare value: string | null;
+  declare value: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class ActivateOnPress extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::button::ActivateOnPress";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class Button extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::button::Button";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class Checkbox extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::checkbox::Checkbox";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class Dialog extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::dialog::Dialog";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class DialogDragHandle extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::dialog::DialogDragHandle";
 }
@@ -1777,18 +1811,18 @@ export declare class DialogDragState extends ReflectComponent {
   declare start_pointer_location: readonly [number, number];
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: no field is plain data (value: an enum with data (core::option::Option<bevy_ecs::entity::Entity>)). */
 export declare class ActiveDescendant extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::list::ActiveDescendant";
   declare value: Entity | null;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class ListItem extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::list::ListItem";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class MenuButton extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::menu::MenuButton";
 }
@@ -1799,45 +1833,44 @@ export declare class MenuFocusState extends ReflectComponent {
   declare value: { Opening: "Next" | "Previous" | "First" | "Last" } | "Open" | "Closed";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class MenuItem extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::menu::MenuItem";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
-export declare class MenuPopup extends ReflectComponent {
+export declare class MenuPopup extends Component {
   static readonly path: "bevy_ui_widgets::menu::MenuPopup";
   declare layout: "Column" | "Row" | "Grid";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class ModalDialog extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::modal::ModalDialog";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class ModalDialogBarrier extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::modal::ModalDialogBarrier";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
-export declare class Popover extends ReflectComponent {
+/** Holes, never visible: positions: not plain data (alloc::vec::Vec<bevy_ui_widgets::popover::PopoverPlacement>). */
+export declare class Popover extends Component {
   static readonly path: "bevy_ui_widgets::popover::Popover";
-  declare positions: readonly ({ side?: "Top" | "Bottom" | "Left" | "Right"; align?: "Start" | "Center" | "End"; gap?: number })[];
-  declare window_margin: number;
+  static readonly tsxProps: { positions?: readonly ({ side?: "Top" | "Bottom" | "Left" | "Right"; align?: "Start" | "Center" | "End"; gap?: number })[] };
+  declare window_margin: f32;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class RadioButton extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::radio::RadioButton";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class RadioGroup extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::radio::RadioGroup";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class ScrollArea extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::scrollarea::ScrollArea";
 }
@@ -1856,15 +1889,14 @@ export declare class ScrollbarDragState extends Component {
   declare drag_origin: f32;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: no field is plain data (border_radius: not plain data (bevy_ui::ui_node::BorderRadius); border: not plain data (bevy_ui::geometry::UiRect)). */
 export declare class ScrollbarThumb extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::scrollbar::ScrollbarThumb";
   declare border_radius: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } };
   declare border: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } };
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
-export declare class Slider extends ReflectComponent {
+export declare class Slider extends Component {
   static readonly path: "bevy_ui_widgets::slider::Slider";
   declare track_click: "Drag" | "Step" | "Snap";
   declare orientation: "Auto" | "Horizontal" | "Vertical";
@@ -1882,28 +1914,28 @@ export declare class SliderPrecision extends Component {
   declare value: i32;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
-export declare class SliderRange extends ReflectComponent {
+/** Immutable: read-only in TS. */
+export declare class SliderRange extends Component {
   static readonly path: "bevy_ui_widgets::slider::SliderRange";
-  declare start: number;
-  declare end: number;
+  declare readonly start: f32;
+  declare readonly end: f32;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
-export declare class SliderStep extends ReflectComponent {
+/** Immutable: read-only in TS. */
+export declare class SliderStep extends Component {
   static readonly path: "bevy_ui_widgets::slider::SliderStep";
-  declare value: number;
+  declare readonly value: f32;
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class SliderThumb extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::slider::SliderThumb";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
-export declare class SliderValue extends ReflectComponent {
+/** Immutable: read-only in TS. */
+export declare class SliderValue extends Component {
   static readonly path: "bevy_ui_widgets::slider::SliderValue";
-  declare value: number;
+  declare readonly value: f32;
 }
 
 /** Reflect tier: no field is plain data (value: an enum with data (core::option::Option<bevy_ecs::entity::Entity>)). */
@@ -1923,12 +1955,12 @@ export declare class TabList extends Component {
   declare activation: "Manual" | "Automatic";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class SelectAllOnFocus extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::text_input::SelectAllOnFocus";
 }
 
-/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+/** Reflect tier: it has no reflected fields. */
 export declare class TextInput extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::text_input::TextInput";
 }
@@ -1936,7 +1968,7 @@ export declare class TextInput extends ReflectComponent {
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_window::cursor::CursorIcon)). */
 export declare class CursorIcon extends ReflectComponent {
   static readonly path: "bevy_window::cursor::CursorIcon";
-  declare value: { Custom: { Image: { handle?: string | null; texture_atlas?: { layout?: string | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+  declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 }
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
