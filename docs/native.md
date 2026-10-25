@@ -151,9 +151,9 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
   color={hex("#ffd7a8")} />` writes `illuminance` from bytes and `color` through reflection, on
   insert and whenever it changes. TS systems still never see them. The prebuilt engine has Bevy's
   soft shadows (`experimental_pbr_pcss`), so a sun takes `soft_shadow_size={0.5}` (`null` for hard
-  shadows). An opaque hole (`usize`, `Duration`) is written by its reflected serde; a hole of a type
-  on the uncovered list fails the load with the list's reason; a hole prop takes a value, not a
-  binding.
+  shadows), and `PointLight` and `SpotLight` have the plain `bool` column `soft_shadows_enabled`. An
+  opaque hole (`usize`, `Duration`) is written by its reflected serde; a hole of a type on the
+  uncovered list fails the load with the list's reason; a hole prop takes a value, not a binding.
 
 Colours have one parser (`bevy_ts::color`), used by every colour bevy-ts takes: TSX props, `<mesh
 color>`, `<material color>`, UI colours, script-material `color` params and recipes. It takes a hex

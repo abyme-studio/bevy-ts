@@ -13,7 +13,8 @@ path = "src/main.rs"
 default = ["pcss"]
 # Bevy's percentage-closer soft shadows: `soft_shadow_size` on lights. On in the prebuilt engine: it
 # costs nothing measurable with soft shadows unset (tests/it/pcss_bench.rs; the bench's other arm is
-# `--no-default-features`).
+# `--no-default-features`). Keep it on in every supported build: `bevy-ts/bevy` ships PointLight and
+# SpotLight with `soft_shadows_enabled`, so an engine without pcss refuses their shipped layout.
 pcss = ["bevy/experimental_pbr_pcss"]
 
 [dependencies]

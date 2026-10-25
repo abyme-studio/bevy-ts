@@ -28,6 +28,10 @@ A registered Rust component or resource with `ReflectComponent` SHALL be usable 
 - **WHEN** a scene has `<DirectionalLight illuminance={8000} color={hex("#ffd7a8")} />` and a reload changes the colour to `srgb(1, 0.9, 0.8)`
 - **THEN** the light is inserted with `illuminance` written from bytes and `color` from reflection, the reload writes only `color`, and a TS system querying `DirectionalLight` still sees no `color` field
 
+#### Scenario: A soft-shadowed sun
+- **WHEN** a scene has `<DirectionalLight shadow_maps_enabled soft_shadow_size={0.5} />` and a reload changes it to `soft_shadow_size={null}`
+- **THEN** the prebuilt engine, which has Bevy's `experimental_pbr_pcss`, writes the `Option` hole through reflection: `Some(0.5)`, then `None`, and `tsc` types the prop `number | null`
+
 #### Scenario: An opaque hole
 - **WHEN** a scene sets `<ScreenSpaceTransmission steps={4} />`
 - **THEN** the scene fails to load with an error naming `steps` as opaque to reflection
