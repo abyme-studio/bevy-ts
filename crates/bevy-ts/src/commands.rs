@@ -33,6 +33,8 @@
 //! | addChildren | 28 | entity u64, n u32, n × child u64 |
 //! | detachChildren | 29 | entity u64 |
 //! | despawnChildren | 30 | entity u64 |
+//! | writeReflect | 31 | type path len u16, type path, len u32, the message's JSON |
+//! | triggerReflect | 32 | type path len u16, type path, len u32, the event's JSON |
 //!
 //! Entities are `Entity::to_bits`. Component values are native layout bytes, except
 //! `insertReflect`'s: a reflected value's JSON, written by `reflect_value` (mode 0 inserts the
@@ -79,6 +81,8 @@ pub const OP_REMOVE_RECURSIVE: u8 = 27;
 pub const OP_ADD_CHILDREN: u8 = 28;
 pub const OP_DETACH_CHILDREN: u8 = 29;
 pub const OP_DESPAWN_CHILDREN: u8 = 30;
+pub const OP_WRITE_REFLECT: u8 = 31;
+pub const OP_TRIGGER_REFLECT: u8 = 32;
 
 /// `OP_INSERT_REFLECT`'s modes.
 pub const REFLECT_INSERT: u8 = 0;
@@ -154,6 +158,10 @@ pub enum Op {
     /// `commands.loadWorld(name, { parent })`.
     LoadWorld { name: String, parent: Option<Entity> },
     InsertReflect { entity: Entity, mode: u8, type_name: String, json: Option<serde_json::Value> },
+    /// A Rust message by type path, from its JSON.
+    WriteReflect { path: String, json: serde_json::Value },
+    /// A Rust event by type path, from its JSON (an entity event's target is in it).
+    TriggerReflect { path: String, json: serde_json::Value },
 }
 
 /// How an insert treats what is there, as Bevy's `EntityCommands` methods of the same names.
@@ -419,6 +427,12 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &Command
                 let body = r.take(n)?;
                 let json = if body.is_empty() { None } else { Some(serde_json::from_slice(body).map_err(|e| format!("{type_name}: {e}"))?) };
                 Op::InsertReflect { entity, mode, type_name, json }
+            }
+            code @ (OP_WRITE_REFLECT | OP_TRIGGER_REFLECT) => {
+                let path = r.text()?;
+                let n = r.u32()? as usize;
+                let json = serde_json::from_slice(r.take(n)?).map_err(|e| format!("{path}: {e}"))?;
+                if code == OP_WRITE_REFLECT { Op::WriteReflect { path, json } } else { Op::TriggerReflect { path, json } }
             }
             other => return Err(format!("unknown command op {other} at byte {}", r.at - 1)),
         };
@@ -716,6 +730,7 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                 world.get_resource_or_init::<crate::observers::ObserverQueue>().0.push_back(crate::observers::Pending {
                     trigger: crate::observers::Trigger::Event(index as usize),
                     bytes,
+                    hops: vec![],
                     original: path.first().copied(),
                     attached,
                     path,
@@ -771,6 +786,16 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
             Op::InsertReflect { entity, mode, type_name, json } => {
                 if let Err(err) = insert_reflect(world, entity, mode, &type_name, json.as_ref()) {
                     warnings.push(format!("insert {type_name}: {err}"));
+                }
+            }
+            Op::WriteReflect { path, json } => {
+                if let Err(e) = crate::rust_events::write_message(world, &path, &json) {
+                    warnings.push(format!("write: {e}"));
+                }
+            }
+            Op::TriggerReflect { path, json } => {
+                if let Err(e) = crate::rust_events::trigger_event(world, &path, &json) {
+                    warnings.push(format!("trigger: {e}"));
                 }
             }
             Op::Plugin { opcode, bytes } => {
@@ -978,6 +1003,20 @@ impl Encoder {
         self.bytes.extend(j.as_bytes());
     }
 
+    pub fn write_reflect(&mut self, path: &str, json: &serde_json::Value) {
+        self.reflect(OP_WRITE_REFLECT, path, json);
+    }
+    pub fn trigger_reflect(&mut self, path: &str, json: &serde_json::Value) {
+        self.reflect(OP_TRIGGER_REFLECT, path, json);
+    }
+    fn reflect(&mut self, op: u8, path: &str, json: &serde_json::Value) {
+        self.bytes.push(op);
+        self.bytes.extend((path.len() as u16).to_le_bytes());
+        self.bytes.extend(path.as_bytes());
+        let j = json.to_string();
+        self.bytes.extend((j.len() as u32).to_le_bytes());
+        self.bytes.extend(j.as_bytes());
+    }
     pub fn plugin(&mut self, opcode: u16, bytes: &[u8]) {
         self.bytes.push(OP_PLUGIN);
         self.bytes.extend(opcode.to_le_bytes());

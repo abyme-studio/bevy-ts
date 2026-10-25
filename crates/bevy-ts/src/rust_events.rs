@@ -3,14 +3,19 @@
 //! Bevy's `ReflectMessage` can only write and its `ReflectEvent` cannot see an entity target, so
 //! bevy-ts registers its own type data per type: [`ReflectTsMessage`] reads `Messages<M>` from a
 //! cursor and writes into it, [`ReflectTsEvent`] builds an observer (for every trigger, or for one
-//! entity's) and triggers. Both hand over reflected values; the caller turns them into JSON.
+//! entity's) and triggers. Both hand over reflected values; [`to_json`] and [`from_json`] turn
+//! them into `reflect_value`'s JSON shape. A type with only Bevy's type data can still be written,
+//! observed and triggered from TS.
 
 use bevy::ecs::event::{EntityTrigger, GlobalTrigger, PropagateEntityTrigger};
 use bevy::ecs::message::Messages;
+use bevy::ecs::reflect::{ReflectEvent, ReflectMessage};
 use bevy::ecs::traversal::Traversal;
 use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
-use bevy::reflect::{CreateTypeData, GetTypeRegistration, PartialReflect};
+use bevy::reflect::{CreateTypeData, GetTypeRegistration, PartialReflect, TypeRegistry};
+use serde_json::Value;
+use std::any::TypeId;
 
 /// What a read hands each message to.
 pub type MessageVisitor<'a> = &'a mut dyn FnMut(&dyn PartialReflect);
@@ -20,6 +25,7 @@ pub type MessageVisitor<'a> = &'a mut dyn FnMut(&dyn PartialReflect);
 pub struct ReflectTsMessage {
     read: fn(&World, usize, MessageVisitor) -> usize,
     end: fn(&World) -> usize,
+    unread: fn(&World, usize) -> bool,
     write: fn(&mut World, &dyn PartialReflect) -> Result<(), String>,
 }
 
@@ -33,6 +39,11 @@ impl ReflectTsMessage {
     /// The cursor past every message written so far, where a restart puts a reader.
     pub fn end(&self, world: &World) -> usize {
         (self.end)(world)
+    }
+
+    /// Whether a message at or after `cursor` is still in `Messages<M>`.
+    pub fn unread(&self, world: &World, cursor: usize) -> bool {
+        (self.unread)(world, cursor)
     }
 
     /// Writes `value` as a message, for Rust readers later in the frame.
@@ -55,6 +66,7 @@ impl<M: Message + FromReflect + TypePath> CreateTypeData<M> for ReflectTsMessage
                 end.max(cursor)
             },
             end: |world| world.get_resource::<Messages<M>>().map_or(0, |m| m.oldest_message_count() + m.len()),
+            unread: |world, cursor| world.get_resource::<Messages<M>>().is_some_and(|m| m.oldest_message_count() + m.len() > cursor.max(m.oldest_message_count())),
             write: |world, value| {
                 let m = M::from_reflect(value).ok_or_else(|| format!("{} cannot be built from that value", M::type_path()))?;
                 world.write_message(m).map(|_| ()).ok_or_else(|| format!("{} is not added as a message", M::type_path()))
@@ -135,6 +147,117 @@ impl ReflectTsEvent {
             },
         }
     }
+}
+
+/// Why a Rust message or event cannot cross: bevy-ts built without `reflect_value`.
+#[cfg(not(feature = "reflect"))]
+const NO_REFLECT: &str = "Rust messages and events need bevy-ts's reflect feature";
+
+/// A Rust message's or event's value as JSON, in `reflect_value`'s shape.
+pub fn to_json(registry: &TypeRegistry, value: &dyn PartialReflect) -> Result<Value, String> {
+    #[cfg(feature = "reflect")]
+    {
+        crate::reflect_value::read(registry, value)
+    }
+    #[cfg(not(feature = "reflect"))]
+    {
+        let _ = (registry, value);
+        Err(NO_REFLECT.into())
+    }
+}
+
+/// A value of the type `id` from its JSON, in `reflect_value`'s shape.
+pub fn from_json(registry: &TypeRegistry, id: TypeId, json: &Value) -> Result<Box<dyn PartialReflect>, String> {
+    #[cfg(feature = "reflect")]
+    {
+        crate::reflect_value::value_of(registry, id, json)
+    }
+    #[cfg(not(feature = "reflect"))]
+    {
+        let _ = (registry, id, json);
+        Err(NO_REFLECT.into())
+    }
+}
+
+fn short(path: &str) -> &str {
+    path.split('<').next().unwrap_or(path).rsplit("::").next().unwrap_or(path)
+}
+
+/// The reader of the Rust message at `path`, or why TS cannot read it.
+pub fn reader(registry: &TypeRegistry, path: &str) -> Result<(TypeId, ReflectTsMessage), String> {
+    let reg = registry.get_with_type_path(path).ok_or_else(|| format!("no message type {path}; a Rust message needs app.ts_message"))?;
+    match (reg.data::<ReflectTsMessage>(), reg.data::<ReflectMessage>()) {
+        (Some(t), _) => Ok((reg.type_id(), *t)),
+        (None, Some(_)) => Err(format!("{path} has no reader for TS; register it with app.ts_message::<{}>()", short(path))),
+        (None, None) => Err(format!("{path} is not a message")),
+    }
+}
+
+/// Writes the Rust message at `path` from its JSON, through [`ReflectTsMessage`] or else Bevy's
+/// `ReflectMessage`.
+pub fn write_message(world: &mut World, path: &str, json: &Value) -> Result<(), String> {
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = registry.read();
+    let reg = registry.get_with_type_path(path).ok_or_else(|| format!("no message type {path}"))?;
+    let value = from_json(&registry, reg.type_id(), json).map_err(|e| format!("{path}: {e}"))?;
+    if let Some(t) = reg.data::<ReflectTsMessage>() {
+        return t.write(world, value.as_ref());
+    }
+    match reg.data::<ReflectMessage>() {
+        Some(m) => {
+            m.write_message(world, value.as_ref(), &registry);
+            Ok(())
+        }
+        None => Err(format!("{path} is not a message")),
+    }
+}
+
+/// The type id of the Rust event at `path`, if it has bevy-ts's or Bevy's event type data.
+pub fn event(registry: &TypeRegistry, path: &str) -> Result<TypeId, String> {
+    let reg = registry.get_with_type_path(path).ok_or_else(|| format!("no event type {path}; a Rust event needs app.ts_event or app.ts_entity_event"))?;
+    if reg.data::<ReflectTsEvent>().is_none() && reg.data::<ReflectEvent>().is_none() {
+        return Err(format!("{path} is not an event"));
+    }
+    Ok(reg.type_id())
+}
+
+/// Triggers the Rust event at `path` from its JSON, through [`ReflectTsEvent`] or else Bevy's
+/// `ReflectEvent`.
+pub fn trigger_event(world: &mut World, path: &str, json: &Value) -> Result<(), String> {
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let (value, ours, bevys) = {
+        let registry = registry.read();
+        let reg = registry.get_with_type_path(path).ok_or_else(|| format!("no event type {path}"))?;
+        let value = from_json(&registry, reg.type_id(), json).map_err(|e| format!("{path}: {e}"))?;
+        (value, reg.data::<ReflectTsEvent>().copied(), reg.data::<ReflectEvent>().cloned())
+    };
+    // The registry is not held while ours triggers: the observers it runs read it.
+    match (ours, bevys) {
+        (Some(t), _) => t.trigger(world, value.as_ref()),
+        (None, Some(e)) => {
+            e.trigger(world, value.as_ref(), &registry.read());
+            Ok(())
+        }
+        (None, None) => Err(format!("{path} is not an event")),
+    }
+}
+
+/// A Bevy observer feeding `sink` every trigger of the event `id`: [`ReflectTsEvent`]'s, or else
+/// one from Bevy's `ReflectEvent`, whose current target is the value's `entity` field if it has
+/// one, with no first target.
+pub fn observer(registry: &TypeRegistry, id: TypeId, sink: TsEventSink) -> Option<Observer> {
+    let reg = registry.get(id)?;
+    if let Some(t) = reg.data::<ReflectTsEvent>() {
+        return Some(t.observe(None, sink));
+    }
+    let e = reg.data::<ReflectEvent>()?;
+    Some(e.create_observer(Box::new(move |v: &dyn Reflect, world: DeferredWorld| {
+        let target = match v.reflect_ref() {
+            bevy::reflect::ReflectRef::Struct(s) => s.field("entity").and_then(|f| f.try_downcast_ref::<Entity>()).copied(),
+            _ => None,
+        };
+        sink(v, target, None, world)
+    })))
 }
 
 /// Adds `M` as a message, registers it for reflection and gives it [`ReflectTsMessage`].
