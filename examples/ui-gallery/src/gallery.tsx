@@ -2,8 +2,7 @@
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
 import { app, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
-import { AutoDirectionalNavigation, Camera3d, Pressed, Transform, ZIndex } from "bevy-ts/bevy";
-import { CompassOctant, KeyCode, type DirectionalNavigation, type InputFocusVisible, type Keys } from "bevy-ts/input";
+import { Camera3d, Pressed, Transform, ZIndex } from "bevy-ts/bevy";
 import type { Child } from "bevy-ts/jsx-runtime";
 
 /** A titled panel in the gallery's grid of panels. */
@@ -142,29 +141,19 @@ const Events = () => (
 );
 
 const [focused, setFocused] = signal("");
-const [ring, setRing] = signal(false);
 const [lastCause, setLastCause] = signal("");
 
-/** The arrows move focus between the Focus panel's buttons; Tab is Bevy's own. */
-export function focusKeys(keys: Keys, nav: DirectionalNavigation, visible: InputFocusVisible) {
-  if (keys.justPressed(KeyCode.ArrowRight)) nav.navigate(CompassOctant.East);
-  if (keys.justPressed(KeyCode.ArrowLeft)) nav.navigate(CompassOctant.West);
-  if (visible.get() !== ring()) setRing(visible.get());
-}
-app.addSystems(Update, focusKeys);
-
-/** A focusable button: blue while focused, outlined only when focus came from the keyboard. */
+/** A focusable button: blue and outlined while focused. */
 const Focusable = ({ name }: { name: string }) => (
   <button key={name} tabIndex={0} style={{ padding: px(6), border: px(2) }} radius={px(4)}
     background={() => (focused() === name ? "#2f5fa8" : "#3a4150")}
-    border={() => (focused() === name && ring() ? "#ffd060" : "#00000000")}
+    border={() => (focused() === name ? "#ffd060" : "#00000000")}
     onFocusGained={({ cause }) => { setFocused(name); setLastCause(cause); }}
     onFocusLost={() => setFocused((f) => (f === name ? "" : f))}>
-    <AutoDirectionalNavigation />
     <text size={14}>{name}</text>
   </button>
 );
-/** Stage 4: Tab and Shift-Tab (tabNavigation), the arrows (directionalNavigation), focus events. */
+/** Stage 4: Tab and Shift-Tab (tabNavigation) and focus events. The arrows come back with a typed `bevy-ts/input`. */
 const Focus = () => (
   <Panel title="Focus">
     <node key="row" tabGroup={{}} style={{ columnGap: px(8) }}>

@@ -64,6 +64,7 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 - [x] 4.6 Test headless: with both switches the plugins load and Tab does nothing with no primary window
 - [x] 4.6a Switch tests, mirroring mesh-picking's: off by default (no plugin, no `DirectionalNavigationMap`, Tab moves nothing in viewport mode); a non-bool fails `dev` naming the field and `bevy-ts.json`; build writes each `true` switch into `game.json` and the played app has its plugin; an old `game.json` plays with both off; one warning for two `tabIndex` buttons with tab navigation off, none when a native plugin added it; `navigate` throws with directional navigation off
 - [x] 4.7 Gallery panel and `docs/ui.md` "Focus" section (the switches, and that Tab is off by default); `docs/native.md` for the two params; mesh-picking's `docs/picking.md` lists the two switches beside `meshPicking`
+- [x] 4.8 The gallery imports nothing from `bevy-ts/input`: `pnpm check` type-checks the gallery, and a built-in module's types exist only in a project's generated `.bevy-ts/types`. The arrow demo, `InputFocusVisible` ring and `"directionalNavigation": true` come out of the gallery until 5.7
 
 ## 5. Value widgets
 
@@ -73,6 +74,7 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 - [ ] 5.4 `jsx-runtime.d.ts`: props per widget, `onValueChange` payload typed per widget, controlled/initial conflicts as type errors
 - [ ] 5.5 Tests per widget headless (pointer by triggered events): controlled checkbox with and without a handler, initial checkbox kept across reload, radio group gives `key`, a child checkbox not heard by the group, slider drag `isFinal` false then true, scrollbar drag writes `ScrollPosition`, `scrollArea` wheel scroll, tab list by key, list box selection; keyboard on each in viewport mode
 - [ ] 5.6 Gallery panel and `docs/ui.md` "Widgets" section
+- [ ] 5.7 `scripts/gen-bevy-types.sh` writes `packages/bevy-ts/input.d.ts` (the `bevy-ts/input` module's declarations), with the same staleness check as `bevy.d.ts`; the gallery's arrow demo, keyboard-only focus ring and `"directionalNavigation": true` come back
 
 ## 6. Overlays
 
