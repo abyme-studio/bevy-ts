@@ -317,3 +317,101 @@ fn animations_seek_rewind_replay() {
     assert!(field(&back, "run") < 0.2, "rewound to 0 and playing: {back}");
     assert_eq!(field(&back, "held"), 0.0, "replayed, still parked: {back}");
 }
+
+fn graph_handle(app: &App, root: Entity) -> Handle<AnimationGraph> {
+    let p = app.world().get::<AnimationTargets>(root).unwrap().players[0];
+    app.world().get::<bevy::animation::graph::AnimationGraphHandle>(p).unwrap().0.clone()
+}
+
+/// The clip nodes the root's first player plays, and each one's elapsed seconds.
+fn clips_playing(app: &App, root: Entity) -> Vec<(usize, f32)> {
+    let p = app.world().get::<AnimationTargets>(root).unwrap().players[0];
+    let mut out: Vec<(usize, f32)> = app.world().get::<AnimationPlayer>(p).unwrap().playing_animations().map(|(n, a)| (n.index(), a.elapsed())).collect();
+    out.sort_by_key(|(n, _)| *n);
+    out
+}
+
+const GRAPH_GAME: &str = r#"import { app } from "bevy-ts";
+import { AnimationGraph, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
+const g = new AnimationGraph();
+const b = g.addBlend(1, g.root);
+g.addClip("models/Fox.glb#Animation0", 0.5, b);
+g.addClip("models/Fox.glb#Animation2", 0.5, b);
+app.scene("foxes", () => (
+  <entity key="fox">
+    <WorldAssetRoot value="models/Fox.glb#Scene0" />
+    <PlayAnimation graph={g} />
+  </entity>
+));
+"#;
+
+#[test]
+fn a_ts_built_graph_blends() {
+    let dir = fox_project("animation-graph", &[("package.json", "{}"), ("src/game.tsx", GRAPH_GAME)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    until(&mut app, "the fox to play both clips", |app| {
+        let w = app.world_mut();
+        the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.players.is_empty())) && {
+            let f = the_fox(app.world_mut()).unwrap();
+            clips_playing(app, f).len() == 2
+        }
+    });
+    let fox = the_fox(app.world_mut()).unwrap();
+    let handle = graph_handle(&app, fox);
+    assert_ne!(handle, app.world().resource::<SharedGraph>().handle, "the fox has its own graph, not the shared one");
+    let graphs = app.world().resource::<Assets<AnimationGraph>>();
+    let g = graphs.get(&handle).expect("the built graph is an asset");
+    let weights: Vec<f32> = g.nodes().map(|n| g[n].weight).collect();
+    assert_eq!(weights, vec![1.0, 1.0, 0.5, 0.5]);
+    assert_eq!(clips_playing(&app, fox).iter().map(|(n, _)| *n).collect::<Vec<_>>(), vec![2, 3], "both clip nodes play");
+}
+
+const REWEIGHT_GAME: &str = r#"import { app, assets, Update } from "bevy-ts";
+import { AnimationGraph, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
+const g = new AnimationGraph();
+const b = g.addBlend(1, g.root);
+const survey = g.addClip("models/Fox.glb#Animation0", 0.5, b);
+const run = g.addClip("models/Fox.glb#Animation2", 0.5, b);
+const ref = assets.add(g);
+let frames = 0;
+export function reweight() {
+  if (++frames !== 40) return;
+  g.get(survey)!.weight = 1;
+  g.get(run)!.weight = 0;
+  assets.set(ref, g);
+  console.log("reweighted");
+}
+app.addSystems(Update, reweight);
+app.scene("foxes", () => (
+  <entity key="fox">
+    <WorldAssetRoot value="models/Fox.glb#Scene0" />
+    <PlayAnimation graph={ref} />
+  </entity>
+));
+"#;
+
+#[test]
+fn a_ts_graph_reweights_live() {
+    let dir = fox_project("animation-reweight", &[("package.json", "{}"), ("src/game.tsx", REWEIGHT_GAME)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    until(&mut app, "the reweight", |app| messages(app).iter().any(|l| l == "reweighted"));
+    let fox = the_fox(app.world_mut()).unwrap();
+    let before = clips_playing(&app, fox);
+    assert_eq!(before.len(), 2, "both clips play: {before:?}");
+    for _ in 0..3 {
+        app.update();
+    }
+    let handle = graph_handle(&app, fox);
+    let graphs = app.world().resource::<Assets<AnimationGraph>>();
+    let g = graphs.get(&handle).unwrap();
+    assert_eq!(g.nodes().map(|n| g[n].weight).collect::<Vec<_>>(), vec![1.0, 1.0, 1.0, 0.0], "the weights reached the asset");
+    let after = clips_playing(&app, fox);
+    assert_eq!(after.iter().map(|(n, _)| *n).collect::<Vec<_>>(), vec![2, 3], "no clip stopped");
+    for ((_, a), (_, b)) in before.iter().zip(&after) {
+        assert!(b > a, "no clip restarted: {before:?} then {after:?}");
+    }
+}
