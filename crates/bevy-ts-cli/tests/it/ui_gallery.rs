@@ -29,6 +29,7 @@ fn the_gallery_mounts_every_intrinsic() {
     app.add_plugins(AssetPlugin { file_path: dir.join("assets").to_string_lossy().into_owned(), ..default() })
         .init_asset::<Mesh>()
         .init_asset::<StandardMaterial>()
+        .init_asset::<bevy::sprite_render::ColorMaterial>()
         .init_asset::<Image>()
         .init_asset::<bevy::image::TextureAtlasLayout>()
         .init_resource::<bevy::picking::pointer::PointerMap>();

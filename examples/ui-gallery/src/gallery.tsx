@@ -152,6 +152,11 @@ app.scene("gallery", () => (
       <mesh shape="cuboid" size={[1, 1, 1]} />
       <material color="#c33" roughness={0.6} />
     </entity>
+    {/* Not UI either: a flat square, so <mesh2d> and <material2d> appear (it draws under a Camera2d only). */}
+    <entity key="square">
+      <mesh2d shape="rectangle" size={[1, 1]} />
+      <material2d color="#3c6" />
+    </entity>
     {/* The minimap's camera, above the cube looking down; its viewport gives it an image of its own. */}
     <entity key="mini" ref={mini}>
       <Camera3d />
