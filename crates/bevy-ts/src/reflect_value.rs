@@ -290,9 +290,26 @@ pub fn write_json(registry: &TypeRegistry, value: &dyn PartialReflect, out: &mut
         Ok(())
     };
     match value.reflect_ref() {
-        // Through `read`: its `Value` widens an `f32` lane to `f64`, which writing straight would
-        // not (`0.921061` against `0.9210609793663025`).
-        ReflectRef::Struct(_) | ReflectRef::TupleStruct(_) if path.starts_with("glam::") => whole(out),
+        // A vector or quaternion is its lanes, each as `read_scalar` gives it (an `f32` widened to
+        // `f64`, as `read`'s `Value` does). A matrix or affine is `read`'s.
+        ReflectRef::Struct(s) if path.starts_with("glam::") => {
+            let start = out.len();
+            out.push(b'[');
+            for i in 0..s.field_len() {
+                let lane = s.field_at(i).and_then(|f| f.try_as_reflect()).and_then(|f| read_scalar(f.as_any()));
+                let Some(lane) = lane else {
+                    out.truncate(start);
+                    return whole(out);
+                };
+                if i > 0 {
+                    out.push(b',');
+                }
+                json(out, &lane)?;
+            }
+            out.push(b']');
+            Ok(())
+        }
+        ReflectRef::TupleStruct(_) if path.starts_with("glam::") => whole(out),
         ReflectRef::Struct(s) => {
             out.push(b'{');
             let mut first = true;
@@ -306,7 +323,7 @@ pub fn write_json(registry: &TypeRegistry, value: &dyn PartialReflect, out: &mut
                     out.push(b',');
                 }
                 first = false;
-                json(out, &Value::from(name))?;
+                serde_json::to_writer(&mut *out, name).map_err(|e| e.to_string())?;
                 out.push(b':');
                 write_json(registry, f, out).map_err(|e| format!("{name}: {e}"))?;
             }
