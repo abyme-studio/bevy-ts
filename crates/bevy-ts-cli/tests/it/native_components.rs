@@ -166,7 +166,7 @@ pub mod a {
     use bevy::prelude::*;
     #[derive(Component, Reflect, Default)]
     #[reflect(Component, Default)]
-    pub struct Health {
+    pub struct Ward {
         pub hp: f32,
     }
 }
@@ -175,7 +175,7 @@ pub mod b {
     use bevy::prelude::*;
     #[derive(Component, Reflect, Default)]
     #[reflect(Component, Default)]
-    pub struct Health {
+    pub struct Ward {
         pub regen: f32,
         pub max: f32,
     }
@@ -185,9 +185,9 @@ pub mod b {
 fn two_types_with_one_short_name_both_get_layouts_under_their_paths() {
     let body = r#"
 import { f32 as F32, nativeComponent as native } from "bevy-ts";
-export class AHealth extends native("it::native_components::a::Health", { hp: F32 }) {}
-export class BHealth extends native("it::native_components::b::Health", { regen: F32, max: F32 }) {}
-export function heal(qa: Query<[Mut<AHealth>]>, qb: Query<[Mut<BHealth>]>) {
+export class AWard extends native("it::native_components::a::Ward", { hp: F32 }) {}
+export class BWard extends native("it::native_components::b::Ward", { regen: F32, max: F32 }) {}
+export function heal(qa: Query<[Mut<AWard>]>, qb: Query<[Mut<BWard>]>) {
   qa.each((h) => { h.hp += 1; });
   qb.each((h) => { h.regen = 2; h.max = 50; });
 }
@@ -195,18 +195,18 @@ app.addSystems(Update, heal);
 "#;
     let dir = project("native-same-short", &[("game.ts", &format!("{HEAD}{body}"))]);
     let mut app = app(&dir.join("game.ts"));
-    app.register_type::<a::Health>().register_type::<b::Health>();
-    let ea = app.world_mut().spawn(a::Health { hp: 10.0 }).id();
-    let eb = app.world_mut().spawn(b::Health::default()).id();
+    app.register_type::<a::Ward>().register_type::<b::Ward>();
+    let ea = app.world_mut().spawn(a::Ward { hp: 10.0 }).id();
+    let eb = app.world_mut().spawn(b::Ward::default()).id();
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     app.update();
     let native = app.world().resource::<bevy_ts::layout::NativeLayouts>();
-    for path in ["it::native_components::a::Health", "it::native_components::b::Health"] {
+    for path in ["it::native_components::a::Ward", "it::native_components::b::Ward"] {
         assert!(native.get(path).is_some_and(|n| n.type_path == path), "{path} has no layout");
     }
-    assert_eq!(app.world().get::<a::Health>(ea).unwrap().hp, 11.0);
-    let bh = app.world().get::<b::Health>(eb).unwrap();
+    assert_eq!(app.world().get::<a::Ward>(ea).unwrap().hp, 11.0);
+    let bh = app.world().get::<b::Ward>(eb).unwrap();
     assert_eq!((bh.regen, bh.max), (2.0, 50.0));
 }
 
@@ -214,17 +214,17 @@ app.addSystems(Update, heal);
 fn an_ambiguous_short_name_fails_the_load_naming_both_paths() {
     let body = r#"
 import { f32 as F32, nativeComponent as native } from "bevy-ts";
-export class Health extends native("Health", { hp: F32 }) {}
-export function s(q: Query<[Health]>) {}
+export class Ward extends native("Ward", { hp: F32 }) {}
+export function s(q: Query<[Ward]>) {}
 app.addSystems(Update, s);
 "#;
     let dir = project("native-same-short-ambiguous", &[("game.ts", &format!("{HEAD}{body}"))]);
     let mut app = app(&dir.join("game.ts"));
-    app.register_type::<a::Health>().register_type::<b::Health>();
+    app.register_type::<a::Ward>().register_type::<b::Ward>();
     let r = reload(&mut app, false);
-    // Every reflected `Health` in this test binary is registered, so the list may name more.
+    // A short name another test shares would make the load fail in every test that uses it, so `Ward` is only these two.
     let named = |m: &str| {
-        m.contains("Health names more than one Rust type") && ["it::native_components::a::Health", "it::native_components::b::Health"].iter().all(|p| m.contains(p))
+        m.contains("Ward names more than one Rust type") && ["it::native_components::a::Ward", "it::native_components::b::Ward"].iter().all(|p| m.contains(p))
     };
     assert!(r.errors.iter().any(|e| named(&e.message)), "{:?}", r.errors);
 }
