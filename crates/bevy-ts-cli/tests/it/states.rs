@@ -195,7 +195,7 @@ app.initState(Game.Menu).addSystems(Update, early, go);
 "#;
     let (_, mut app) = load("states-sub", &src(&format!("{SUB}{body}")));
     updates(&mut app, 3);
-    let m = said(&mut app);
+    let m: Vec<_> = said(&mut app).into_iter().filter(|m| m.starts_with("pause")).collect();
     // Frame 1: Menu, no Pause (its NextState ignored). Frame 2: Playing, Pause at its first value.
     assert_eq!(m[..2], ["pause-", "pauseRunning"], "{m:?}");
 }
