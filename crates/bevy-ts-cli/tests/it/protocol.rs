@@ -329,7 +329,7 @@ fn bare_engine(identity: bevy_ts::engine::EngineIdentity) -> App {
     let name = format!("protocol-{}", std::thread::current().name().unwrap_or("x").replace("::", "-"));
     let dir = cube_project(&name);
     let engine = bevy_ts_cli::Engine { identity };
-    let mut app = bevy_ts_cli::cli::base_app(&engine, bevy_ts_cli::Prebuilt, bevy_ts_cli::cli::Display::Headless, Default::default(), None, true, false);
+    let mut app = bevy_ts_cli::cli::base_app(&engine, bevy_ts_cli::Prebuilt, bevy_ts_cli::cli::Display::Headless, Default::default(), None, true, false, &[]);
     app.insert_resource(bevy_ts::generation::DevSource(std::sync::Arc::new(bevy_ts_cli::compile::Compiler::new(dir.join("game.ts"), true).unwrap())));
     app.add_plugins(RemotePlugin::default());
     bevy_ts_remote::add_methods(&mut app);

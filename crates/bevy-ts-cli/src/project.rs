@@ -1,6 +1,6 @@
 //! `bevy-ts.json`: the project file. Found by walking up from the entry (or the working
 //! directory). Only `native`, `features` and `engineCache` concern the engine build; `name` and
-//! `entry` concern `bevy-ts build`; `levels` and `meshPicking` are read when the game runs.
+//! `entry` concern `bevy-ts build`; `levels`, `meshPicking` and `diagnostics` are read when the game runs.
 //!
 //! ```jsonc
 //! {
@@ -16,6 +16,7 @@
 //!   "engineCache": "/mnt/team/engines",        // a shared directory of built engines
 //!   "levels": { "prefabEdits": "override" },   // where an edit inside a placed prefab goes
 //!   "meshPicking": true,                       // Bevy's MeshPickingPlugin; baked into a build
+//!   "diagnostics": ["FrameTimeDiagnosticsPlugin"], // Bevy's diagnostics plugins; baked into a build
 //!   "net": { "allow": ["127.0.0.1:4477", "${ABYME_URL}"] }, // hosts scripts may connect to
 //!   "env": ["ABYME_URL", "ABYME_KEY"]          // the only variables `process.env` shows
 //! }
@@ -79,6 +80,9 @@ pub struct ProjectConfig {
     /// Adds Bevy's `MeshPickingPlugin`: 3D meshes take pointer events. Off by default, as in Bevy.
     #[serde(default, rename = "meshPicking", deserialize_with = "mesh_picking")]
     pub mesh_picking: bool,
+    /// Bevy's diagnostics plugins to add, by Bevy's names (docs/diagnostics.md). None by default.
+    #[serde(default, deserialize_with = "diagnostics")]
+    pub diagnostics: Vec<String>,
     /// What scripts may connect to (docs/networking.md).
     #[serde(default)]
     pub net: NetConfig,
@@ -93,6 +97,13 @@ fn mesh_picking<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error
         serde_json::Value::Bool(b) => Ok(b),
         v => Err(serde::de::Error::custom(format!("meshPicking must be true or false, not {v}"))),
     }
+}
+
+/// `diagnostics` as a list of plugin names bevy-ts adds, its error naming the bad one.
+fn diagnostics<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let names = Vec::<String>::deserialize(d).map_err(|e| serde::de::Error::custom(format!("diagnostics must be a list of plugin names: {e}")))?;
+    crate::diagnostics::check_names(&names).map_err(serde::de::Error::custom)?;
+    Ok(names)
 }
 
 /// `net` in `bevy-ts.json` and `game.json`: deny by default.
@@ -236,6 +247,17 @@ mod tests {
         assert_eq!(c.entry.as_deref(), Some("src/main.ts"));
         let c = parse("{}").unwrap();
         assert!(c.name.is_none() && c.entry.is_none());
+    }
+
+    #[test]
+    fn diagnostics_is_a_list_of_bevy_plugins_none_by_default() {
+        assert!(parse("{}").unwrap().diagnostics.is_empty());
+        let c = parse(r#"{ "diagnostics": ["FrameTimeDiagnosticsPlugin", "RenderAssetDiagnosticPlugin<RenderMesh>"] }"#).unwrap();
+        assert_eq!(c.diagnostics, ["FrameTimeDiagnosticsPlugin", "RenderAssetDiagnosticPlugin<RenderMesh>"]);
+        let e = parse(r#"{ "diagnostics": ["FrameTimeDiagnosticPlugin"] }"#).unwrap_err();
+        assert!(e.contains("\"FrameTimeDiagnosticPlugin\" is not a diagnostics plugin") && e.contains("FrameTimeDiagnosticsPlugin"), "{e}");
+        let e = parse(r#"{ "diagnostics": ["LogDiagnosticsPlugin", "LogDiagnosticsPlugin"] }"#).unwrap_err();
+        assert!(e.contains("listed twice"), "{e}");
     }
 
     #[test]

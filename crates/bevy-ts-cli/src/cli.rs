@@ -196,9 +196,11 @@ pub enum Display {
 /// order against `BevyTsSet` and see bevy-ts's resources. `assets` is Bevy's asset root, the
 /// project's `assets/` under `bevy-ts dev`; `None` keeps Bevy's default. `dev` runs bevy-ts in dev
 /// mode and watches the assets; a shipped game runs with neither. `mesh_picking` adds Bevy's
-/// `MeshPickingPlugin` (`bevy-ts.json`'s, or `game.json`'s, `meshPicking`): the one place it is
-/// added, so dev and play cannot differ.
-pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, mesh_picking: bool) -> App {
+/// `MeshPickingPlugin` (`bevy-ts.json`'s, or `game.json`'s, `meshPicking`), and `diagnostics` the
+/// Bevy diagnostics plugins listed there: the one place they are added, so dev and play cannot
+/// differ.
+#[allow(clippy::too_many_arguments)]
+pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, mesh_picking: bool, diagnostics: &[String]) -> App {
     let mut app = App::new();
     let plugins = headless::default_plugins(display != Display::Window);
     // The compute pool runs the frame's systems: its threads are raised with the main thread's
@@ -240,6 +242,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
         .add_plugins(crate::camera::CamerasPlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
+        .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
         .add_systems(Update, headless::screenshot_on_request)
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
         .insert_resource(engine.identity.clone())
@@ -249,6 +252,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
     if mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
         app.add_plugins(MeshPickingPlugin);
     }
+    crate::diagnostics::add_plugins(&mut app, diagnostics);
     if let Some(root) = assets {
         app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
         // The asset list, thumbnails and previews read the project's assets, not the binary's.
@@ -330,8 +334,9 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
         }
     };
     let mesh_picking = project.as_ref().is_some_and(|p| p.config.mesh_picking);
+    let diagnostics = project.as_ref().map(|p| p.config.diagnostics.clone()).unwrap_or_default();
     let assets = headless::asset_root(&compiler.root);
-    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, mesh_picking);
+    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, mesh_picking, &diagnostics);
     // Compile only once the plugins have exported their params: the compile step reads them as
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);
@@ -398,7 +403,7 @@ fn skeleton(engine: &Engine, extra: impl Plugin, headless_mode: bool) {
     let set = ModuleSet { entry: path.clone(), modules: vec![CompiledModule { path, code: SKELETON_JS.into(), source_map: None }] };
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).unwrap();
     let display = if headless_mode { Display::Headless } else { Display::Window };
-    let mut app = base_app(engine, extra, display, V8Options::default(), None, true, false);
+    let mut app = base_app(engine, extra, display, V8Options::default(), None, true, false, &[]);
     app.insert_resource(channel)
         .add_systems(Startup, scene)
         .add_systems(PostUpdate, report_changed.after(bevy_ts::BevyTsSet::PostUpdate))
