@@ -699,9 +699,9 @@ mod tests {
     #[derive(Asset, Reflect, Default, Clone, PartialEq)]
     #[reflect(Default)]
     struct Note {
-        #[reflect(ignore)]
+        #[reflect(ignore, clone)]
         text: String,
-        #[reflect(ignore)]
+        #[reflect(ignore, clone)]
         count: u32,
     }
 
