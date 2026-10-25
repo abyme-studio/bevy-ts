@@ -34,6 +34,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         .add_plugins(crate::input::ScriptInputPlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
         .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
+        .add_plugins(crate::session::ScriptSessionPlugin)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     app
@@ -832,6 +833,17 @@ mod tests {
         assert!(out.contains("value(path: string)"), "{out}");
         assert!(out.contains("addMeasurement(path: string, value: number)"), "{out}");
         assert!(out.contains("registerDiagnostic(d: import(\"bevy-ts/diagnostics\").Diagnostic): App;"), "{out}");
+    }
+
+    #[test]
+    fn the_engine_declares_session() {
+        let mut app = App::new();
+        app.add_plugins(crate::session::ScriptSessionPlugin);
+        let out = emit_modules(app.world());
+        assert!(out.contains("declare module \"bevy-ts/session\" {"), "{out}");
+        assert!(out.contains("put(key: string, value: Uint8Array)"), "{out}");
+        assert!(out.contains("read(key: string, out: Uint8Array): number | undefined"), "{out}");
+        assert!(out.contains("get(session: SessionBytes, key: string): Uint8Array | undefined"), "{out}");
     }
 
     #[test]

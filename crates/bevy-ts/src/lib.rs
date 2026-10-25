@@ -36,12 +36,15 @@ pub mod runtime;
 pub mod rust_events;
 pub mod saves;
 pub mod schedules;
+pub mod session;
 pub mod sets;
 pub mod states;
 pub mod systems;
 pub mod time_conditions;
 pub mod type_data;
 pub mod value;
+
+pub use crate::session::SessionBytes;
 
 use crate::backend::ScriptBackend;
 use crate::manifest::Stage;
@@ -162,6 +165,7 @@ impl Plugin for BevyTsPlugin {
             .init_resource::<runtime::ScriptClock>()
             .init_resource::<runtime::ScriptFrame>()
             .init_resource::<memory::SystemMemory>()
+            .init_resource::<session::SessionBytes>()
             .init_resource::<conditions::ConditionMemory>()
             .init_resource::<schedules::MadeStages>()
             .init_resource::<schedules::DeferredEdits>()

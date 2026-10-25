@@ -192,6 +192,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
             let _ = world.try_despawn(e);
         }
         world.insert_resource(crate::memory::SystemMemory::default());
+        world.insert_resource(crate::session::SessionBytes::default());
         world.insert_resource(crate::conditions::ConditionMemory::default());
         world.insert_resource(crate::conditions::NativeConditions::default());
         world.resource_mut::<crate::messages::TsPayloads>().reset();
