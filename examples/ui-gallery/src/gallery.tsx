@@ -284,7 +284,7 @@ const Overlays = () => (
 const Modal = () => (
   <modalDialogBarrier key="modal" style={() => ({ display: modalShown() ? "flex" : "none", position: "absolute", width: percent(100), height: percent(100), justifyContent: "center", alignItems: "center" })}
     background="#000000aa" onRequestClose={() => setModalShown(false)}>
-    {/* Over floating dialogs and menus' popovers. */}
+    {/* Over floating dialogs (Bevy's 50 to 89), as feathers' barrier is; menus' popovers sit at 100. */}
     <GlobalZIndex value={99} />
     <Show when={modalShown}>
       <dialog key="d" modal style={{ flexDirection: "column", padding: px(12), rowGap: px(8), border: px(1) }} background="#1b1f27" border="#3a4150" radius={px(6)}>
