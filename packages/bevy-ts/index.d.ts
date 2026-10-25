@@ -322,12 +322,24 @@ export interface RustGeneric<I> {
 export type ValueOf<M> = M extends { readonly [rustEnumBrand]: infer V } ? V : ReadView<M>;
 /** What `MessageWriter<M>.write` takes beside an `M`. */
 export type WriteValue<M> = M extends { readonly [rustEnumBrand]: infer V } ? V : Partial<M>;
+/**
+ * A project's Rust message or event class, to extend with its fields, so its name is a type and
+ * a value: `class Scored extends rustMessage("game_native::Scored") { declare points: u32 }`.
+ */
+export interface RustBaseClass<T> {
+  new (): T;
+  readonly path: string;
+  readonly componentName: string;
+  readonly source: "rust";
+  readonly native: true;
+  of<C extends abstract new () => T>(this: C, value: WriteValue<InstanceType<C>>): InstanceType<C>;
+}
 /** A Rust message by type path. */
-export declare function rustMessage(path: string): RustClass<Message, unknown>;
+export declare function rustMessage(path: string): RustBaseClass<Message>;
 /** A global Rust event by type path; `message` when it is a message too. */
-export declare function rustEvent(path: string, message?: boolean): RustClass<Event, unknown>;
+export declare function rustEvent(path: string, message?: boolean): RustBaseClass<Event>;
 /** A Rust `EntityEvent` by type path; `message` when it is a message too. */
-export declare function rustEntityEvent(path: string, message?: boolean): RustClass<EntityEvent, unknown>;
+export declare function rustEntityEvent(path: string, message?: boolean): RustBaseClass<EntityEvent>;
 /** A Rust asset type, to spell a generic's argument (`AssetEvent<Image>`). */
 export declare function rustAsset(path: string): abstract new () => unknown;
 /** A generic Rust message or event, its instances by type argument as written. */
