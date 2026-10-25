@@ -21,12 +21,16 @@ pub const SURVEY: &str = "models/Fox.glb#Animation0";
 pub const WALK: &str = "models/Fox.glb#Animation1";
 pub const RUN: &str = "models/Fox.glb#Animation2";
 
-/// An asset root holding `Fox.glb` and `still.gltf`, a scene with no animation.
+/// An asset root holding `Fox.glb`, `still.gltf` (a scene with no animation) and the graph
+/// fixtures under `tests/assets`.
 pub fn assets() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("bevy-ts-animation-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("models")).unwrap();
     let fox = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/foxes/assets/models/Fox.glb");
     std::fs::copy(fox, dir.join("models/Fox.glb")).unwrap();
+    std::fs::create_dir_all(dir.join("anims")).unwrap();
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
+    std::fs::copy(fixtures.join("anims/fox_blend.animgraph.ron"), dir.join("anims/fox_blend.animgraph.ron")).unwrap();
     std::fs::write(
         dir.join("models/still.gltf"),
         r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"name":"still"}]}"#,

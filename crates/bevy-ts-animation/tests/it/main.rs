@@ -6,5 +6,6 @@
 compile_error!("a release build of the tests links the Bevy dylib: build it with `cargo static test --release`");
 
 mod common;
+mod graph;
 mod park;
 mod play;
