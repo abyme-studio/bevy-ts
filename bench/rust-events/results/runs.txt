@@ -16,3 +16,21 @@ OVER BUDGET: the reads cost more than 1 ms a frame
 19:36  up 23:38, 2 users, load averages: 83.60 55.55 56.96
 1000 CursorMoved a frame: frame without a reader 158 us, with 2357 us: 2.199 ms for the reads, 2199 ns per message (1021 ns serialization, 1178 ns crossing, parse and loop)
 OVER BUDGET: the reads cost more than 1 ms a frame
+19:59  up 1 day, 1 min, 2 users, load averages: 46.79 54.83 56.68
+1000 CursorMoved a frame: frame without a reader 118 us, with 1897 us: 1.779 ms for the reads, 1779 ns per message (1089 ns serialization, 690 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
+19:59  up 1 day, 1 min, 2 users, load averages: 48.49 55.05 56.74
+1000 CursorMoved a frame: frame without a reader 395 us, with 1821 us: 1.426 ms for the reads, 1426 ns per message (1131 ns serialization, 295 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
+19:59  up 1 day, 1 min, 2 users, load averages: 48.49 55.05 56.74
+1000 CursorMoved a frame: frame without a reader 268 us, with 1597 us: 1.329 ms for the reads, 1329 ns per message (1051 ns serialization, 278 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
+20:08  up 1 day, 10 mins, 2 users, load averages: 67.87 53.52 54.32
+1000 CursorMoved a frame: frame without a reader 802 us, with 2043 us: 1.241 ms for the reads, 1241 ns per message (667 ns serialization, 574 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
+20:08  up 1 day, 10 mins, 2 users, load averages: 65.00 53.16 54.19
+1000 CursorMoved a frame: frame without a reader 407 us, with 1637 us: 1.231 ms for the reads, 1231 ns per message (688 ns serialization, 543 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
+20:08  up 1 day, 10 mins, 2 users, load averages: 65.00 53.16 54.19
+1000 CursorMoved a frame: frame without a reader 493 us, with 1626 us: 1.132 ms for the reads, 1132 ns per message (703 ns serialization, 430 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
