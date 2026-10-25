@@ -287,8 +287,14 @@ pub enum RunParam {
     Removed { id: ComponentId, key: String },
     /// `SystemChangeTick`.
     ChangeTick,
-    /// A Rust message, read as one JSON array per run from the system's cursor.
-    RustMessageReader { path: String, reader: crate::rust_events::ReflectTsMessage },
+    /// A Rust message, read per run from the system's cursor: with `reflect`, a count then each
+    /// message along `node`, its codec (`reflect_codec`); without, one JSON array.
+    RustMessageReader {
+        path: String,
+        reader: crate::rust_events::ReflectTsMessage,
+        #[cfg(feature = "reflect")]
+        node: crate::reflect_codec::Node,
+    },
     /// `State<S>` (`previous: false`) or `PreviousState<S>`: a machine by index in `TsPayloads`.
     State { index: usize, previous: bool },
     /// An observer's trigger.
@@ -1090,9 +1096,21 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
             ParamDecl::MessageReader { message } => match world.resource::<TsPayloads>().message(message) {
                 Some(index) => RunParam::MessageReader { index },
                 None if message.contains("::") => {
-                    let (_, reader) = crate::rust_events::reader(&world.resource::<AppTypeRegistry>().read(), message).map_err(|e| err(format!("MessageReader<{message}>: {e}")))?;
+                    let registry = world.resource::<AppTypeRegistry>().read();
+                    let (_id, reader) = crate::rust_events::reader(&registry, message).map_err(|e| err(format!("MessageReader<{message}>: {e}")))?;
+                    #[cfg(feature = "reflect")]
+                    let node = match registry.get(_id).map(|r| r.type_info()) {
+                        Some(info) => crate::reflect_codec::compile(&registry, info, 0),
+                        None => crate::reflect_codec::Node::Json,
+                    };
+                    drop(registry);
                     rust_cursors.push((message.clone(), reader.end(world) as u64));
-                    RunParam::RustMessageReader { path: message.clone(), reader }
+                    RunParam::RustMessageReader {
+                        path: message.clone(),
+                        reader,
+                        #[cfg(feature = "reflect")]
+                        node,
+                    }
                 }
                 None => return Err(err(format!("no message type {message}; call app.addMessage"))),
             },
@@ -1664,7 +1682,12 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     ParamFrame::Entities { data: ents.as_ptr(), len: ents.len() / 2 }
                 }
                 RunParam::ChangeTick => ParamFrame::Ticks { this_run: tick.get(), last_run: last_run.get() },
-                RunParam::RustMessageReader { path, reader } => {
+                RunParam::RustMessageReader {
+                    path,
+                    reader,
+                    #[cfg(feature = "reflect")]
+                    node,
+                } => {
                     let cursor = mem.cursors.get(path.as_str()).copied().unwrap_or(0) as usize;
                     if scratch.json.len() <= json_used {
                         scratch.json.push(Vec::new());
@@ -1672,26 +1695,47 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     let buf = &mut scratch.json[json_used];
                     json_used += 1;
                     buf.clear();
-                    buf.push(b'[');
                     let registry = world.resource::<AppTypeRegistry>().read();
                     let mut bad = None;
-                    let next = reader.read(world, cursor, &mut |m: &dyn bevy::reflect::PartialReflect| {
-                        if bad.is_some() {
-                            return;
-                        }
-                        if buf.len() > 1 {
-                            buf.push(b',');
-                        }
-                        if let Err(e) = crate::rust_events::write_json(&registry, m, buf) {
-                            bad = Some(e);
-                        }
-                    });
-                    buf.push(b']');
+                    #[cfg(feature = "reflect")]
+                    let next = {
+                        // A `u32` count, then each message: the codec's `List` of the message.
+                        buf.extend_from_slice(&[0; 4]);
+                        let mut n = 0u32;
+                        let next = reader.read(world, cursor, &mut |m: &dyn bevy::reflect::PartialReflect| {
+                            if bad.is_some() {
+                                return;
+                            }
+                            n += 1;
+                            if let Err(e) = crate::reflect_codec::put(&registry, node, m, buf) {
+                                bad = Some(e);
+                            }
+                        });
+                        buf[..4].copy_from_slice(&n.to_le_bytes());
+                        next
+                    };
+                    #[cfg(not(feature = "reflect"))]
+                    let next = {
+                        buf.push(b'[');
+                        let next = reader.read(world, cursor, &mut |m: &dyn bevy::reflect::PartialReflect| {
+                            if bad.is_some() {
+                                return;
+                            }
+                            if buf.len() > 1 {
+                                buf.push(b',');
+                            }
+                            if let Err(e) = crate::rust_events::write_json(&registry, m, buf) {
+                                bad = Some(e);
+                            }
+                        });
+                        buf.push(b']');
+                        next
+                    };
                     if let Some(e) = bad {
                         failure = Some(ScriptError::new(format!("MessageReader<{path}>: {e}")));
                     }
                     reader_cursors.push((path.clone(), next as u64));
-                    // One JSON array, as a single run of one-byte records.
+                    // One run of one-byte records: the codec's bytes, or a JSON array.
                     ParamFrame::Messages { parts: [(buf.as_ptr(), buf.len()), (std::ptr::null(), 0)], stride: 1 }
                 }
                 RunParam::State { index, previous } => {

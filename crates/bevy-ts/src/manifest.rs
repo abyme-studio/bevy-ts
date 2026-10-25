@@ -685,6 +685,11 @@ pub struct Resolution {
     /// read target and the codec of the hole's type.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub holes: BTreeMap<String, Vec<ResolvedHole>>,
+    /// Every Rust message TS can read, by type path: the codec of a run's messages
+    /// (`reflect_codec::Codec` as JSON, a `List` of the message). A reader attached later by
+    /// `observe` finds its codec here too.
+    #[serde(default, rename = "rustMessages", skip_serializing_if = "BTreeMap::is_empty")]
+    pub rust_messages: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
