@@ -138,7 +138,8 @@ impl<'a> SlotReader<'a> {
 
     /// `n` bytes packed into the slots from here, advancing past every slot they touch.
     pub fn bytes(&mut self, n: usize) -> Result<&'a [u8], String> {
-        let b = self.bytes.get(self.at..self.at + n).ok_or("a string runs past the arguments")?;
+        let end = self.at.checked_add(n).ok_or("a string runs past the arguments")?;
+        let b = self.bytes.get(self.at..end).ok_or("a string runs past the arguments")?;
         self.at += n.div_ceil(8) * 8;
         Ok(b)
     }

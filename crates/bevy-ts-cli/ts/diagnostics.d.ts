@@ -24,8 +24,12 @@ export declare const MeshAllocatorDiagnosticPlugin: {
   readonly SLABS_SIZE: "mesh_allocator_slabs_size";
   readonly ALLOCATIONS: "mesh_allocator_allocations";
 };
-/** bevy-ts's own: each TS stage's CPU time in ms. */
-export declare const ScriptStageDiagnosticsPlugin: { elapsedCpu(stage: string): string };
+/** A stage TS systems run in, by Bevy's name. */
+export type Stage =
+  | "First" | "PreUpdate" | "RunFixedMainLoop" | "Update" | "SpawnScene" | "PostUpdate" | "Last"
+  | "FixedFirst" | "FixedPreUpdate" | "FixedUpdate" | "FixedPostUpdate" | "FixedLast";
+/** bevy-ts's own: each TS stage's CPU time in ms, at `bevy_ts/<stage in snake case>/elapsed_cpu`. */
+export declare const ScriptStageDiagnosticsPlugin: { elapsedCpu(stage: Stage): string };
 
 module "bevy-ts" {
   interface App {

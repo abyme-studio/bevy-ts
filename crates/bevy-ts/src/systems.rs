@@ -857,9 +857,25 @@ impl Plugin for ScriptStageDiagnosticsPlugin {
     }
 }
 
-/// The diagnostic path of a stage's CPU time.
+/// The diagnostic path of a stage's CPU time: the stage in snake case, as Bevy's paths are.
 pub fn stage_path(stage: Stage) -> bevy::diagnostic::DiagnosticPath {
-    bevy::diagnostic::DiagnosticPath::new(format!("bevy_ts/{stage:?}/elapsed_cpu"))
+    use bevy::diagnostic::DiagnosticPath as P;
+    const PATHS: [P; 12] = [
+        P::const_new("bevy_ts/first/elapsed_cpu"),
+        P::const_new("bevy_ts/pre_update/elapsed_cpu"),
+        P::const_new("bevy_ts/run_fixed_main_loop/elapsed_cpu"),
+        P::const_new("bevy_ts/update/elapsed_cpu"),
+        P::const_new("bevy_ts/spawn_scene/elapsed_cpu"),
+        P::const_new("bevy_ts/post_update/elapsed_cpu"),
+        P::const_new("bevy_ts/last/elapsed_cpu"),
+        P::const_new("bevy_ts/fixed_first/elapsed_cpu"),
+        P::const_new("bevy_ts/fixed_pre_update/elapsed_cpu"),
+        P::const_new("bevy_ts/fixed_update/elapsed_cpu"),
+        P::const_new("bevy_ts/fixed_post_update/elapsed_cpu"),
+        P::const_new("bevy_ts/fixed_last/elapsed_cpu"),
+    ];
+    let i = Stage::ALL.iter().position(|s| *s == stage).expect("every stage is in ALL");
+    PATHS[i].clone()
 }
 
 /// Adds one measurement, registering the stage's path the first time it runs.

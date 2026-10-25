@@ -67,6 +67,7 @@ pub fn read_game(folder: &Path) -> Result<GameFile, String> {
             crate::engine::VERSION
         ));
     }
+    crate::diagnostics::check_names(&game.diagnostics).map_err(|e| format!("{}: {e}", file.display()))?;
     Ok(game)
 }
 
@@ -225,5 +226,16 @@ mod tests {
         assert_eq!(back.diagnostics, ["EntityCountDiagnosticsPlugin"]);
         let none = GameFile { diagnostics: vec![], ..file };
         assert!(!serde_json::to_string(&none).unwrap().contains("diagnostics"), "absent when none");
+    }
+
+    #[test]
+    fn a_hand_edited_game_json_with_an_unknown_plugin_is_refused() {
+        let dir = std::env::temp_dir().join(format!("bevy-ts-game-json-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = format!(r#"{{ "name": "town", "entry": "src/game.ts", "bevyTs": "{}", "engine": "prebuilt", "diagnostics": ["FpsPlugin"] }}"#, crate::engine::VERSION);
+        std::fs::write(dir.join(GAME_FILE), text).unwrap();
+        let e = read_game(&dir).unwrap_err();
+        assert!(e.contains("\"FpsPlugin\" is not a diagnostics plugin"), "{e}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

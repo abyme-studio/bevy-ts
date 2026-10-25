@@ -53,7 +53,7 @@ the engine renders.
 | `RenderDiagnosticsPlugin` | `render/<pass>/elapsed_cpu` (and `elapsed_gpu` where the GPU allows) | a span per pass and a readback; on Metal CPU time only |
 | `MeshAllocatorDiagnosticPlugin` | `mesh_allocator_slabs`, `mesh_allocator_slabs_size`, `mesh_allocator_allocations` | one extract and one `PreUpdate` system |
 | `RenderAssetDiagnosticPlugin<RenderMesh>`, `<GpuImage>`, `<GpuShaderBuffer>` | `render_asset/<type>` | one extract and one `PreUpdate` system |
-| `ScriptStageDiagnosticsPlugin` (bevy-ts's) | `bevy_ts/<stage>/elapsed_cpu` (ms) | two clock reads per TS stage that runs systems |
+| `ScriptStageDiagnosticsPlugin` (bevy-ts's) | `bevy_ts/<stage>/elapsed_cpu` (ms), the stage in snake case: `bevy_ts/post_update/elapsed_cpu`; `elapsedCpu("PostUpdate")` gives it | two clock reads per TS stage that runs systems |
 
 `ScriptStageDiagnosticsPlugin` times each TS stage as Bevy times a render pass: its systems and
 bevy-ts's own work in the stage (column views, commands). `performance.now()` times anything else:
@@ -62,7 +62,7 @@ milliseconds since the engine started, finer than `Date.now`, not reset by a rel
 Measured (`bench/diagnostics`, a release engine headless, 8 runs, medians): no plugin adds main-world
 time above the noise, about 1.5 ms on a loaded Mac, at 10k or 100k entities.
 `EntityCountDiagnosticsPlugin` reads 0.1 ms or less; `RenderDiagnosticsPlugin` about 0.5 ms. The
-table per plugin is in the change's design (`openspec/changes/archive/*-script-diagnostics/design.md`).
+table per plugin is in the change's design (`openspec/changes/archive/2026-10-25-script-diagnostics/design.md`).
 
 ## Headless pacing
 
