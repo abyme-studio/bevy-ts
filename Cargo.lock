@@ -544,7 +544,7 @@ dependencies = [
 name = "bevy-ts-android"
 version = "0.1.0"
 dependencies = [
- "bevy",
+ "android-activity",
  "bevy-ts-embed",
  "jni 0.21.1",
 ]

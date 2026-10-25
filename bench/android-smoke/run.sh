@@ -27,7 +27,7 @@ serial=emulator-$port
 pkg=dev.bevyts.smoke
 so=dist/aarch64-linux-android/libbevy_ts_android.so
 [[ -f "$so" ]] || { echo "run.sh: no $so; run scripts/android first" >&2; exit 1; }
-mkdir -p "$cache" "$results"
+mkdir -p "$cache" "$results" "$ANDROID_AVD_HOME"
 
 say() { echo "smoke: $*"; }
 
