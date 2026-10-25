@@ -1679,14 +1679,11 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                         if bad.is_some() {
                             return;
                         }
-                        match crate::rust_events::to_json(&registry, m).and_then(|v| {
-                            if buf.len() > 1 {
-                                buf.push(b',');
-                            }
-                            serde_json::to_writer(&mut *buf, &v).map_err(|e| e.to_string())
-                        }) {
-                            Ok(()) => {}
-                            Err(e) => bad = Some(e),
+                        if buf.len() > 1 {
+                            buf.push(b',');
+                        }
+                        if let Err(e) = crate::rust_events::write_json(&registry, m, buf) {
+                            bad = Some(e);
                         }
                     });
                     buf.push(b']');

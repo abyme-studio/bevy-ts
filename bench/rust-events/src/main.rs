@@ -74,7 +74,8 @@ fn frames(app: &mut App) -> f64 {
     median((0..FRAMES).map(|_| frame()).collect())
 }
 
-/// Microseconds to serialize `MESSAGES` messages into one JSON array, as the reader does.
+/// Microseconds to serialize `MESSAGES` messages into one JSON array, as the reader does
+/// (`reflect_value::write_json`).
 fn serialization(app: &App) -> f64 {
     let registry = app.world().resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
@@ -88,7 +89,7 @@ fn serialization(app: &App) -> f64 {
             if buf.len() > 1 {
                 buf.push(b',');
             }
-            serde_json::to_writer(&mut buf, &reflect_value::read(&registry, m).unwrap()).unwrap();
+            reflect_value::write_json(&registry, m, &mut buf).unwrap();
         }
         buf.push(b']');
         t.elapsed().as_secs_f64() * 1e6

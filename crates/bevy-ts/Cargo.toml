@@ -48,6 +48,9 @@ serde_json.workspace = true
 bevy = { workspace = true, features = ["bevy_ui"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 tungstenite = "0.28"
+# serde_json's default float parse can land one ulp off; V8's does not. write_json's agreement test
+# parses exactly so the bytes are what it compares.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 
 # Tests link Bevy as one dylib, except a release bench (`cargo static test --release` sets bevy_ts_static):
 # a release build links Bevy statically, as what ships does (docs/build-cache.md, Bevy as a dylib).
