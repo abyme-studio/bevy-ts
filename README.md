@@ -40,6 +40,24 @@ without recompiling Rust.
   cached by hash ([docs/native.md](docs/native.md)). Every reflected kind has one JSON shape for
   TSX, scripts and the protocol ([docs/reflection.md](docs/reflection.md)).
 
+## How it grows
+
+The operator's rules for what goes into the engine (2026-10-22/23):
+
+- **Bevy's principles, code first.** No engine feature Bevy itself lacks and is not discussing:
+  primitives are Bevy's mesh shapes built in code, never an engine-shipped cube. Check Bevy
+  upstream before proposing one.
+- **All of Bevy from TypeScript.** Every reflected shape, all of bevy_ui, every mesh primitive:
+  not the part one game needed. A missing one is closed as its whole category, with a coverage
+  table and a test that fails on any hole (`crates/bevy-ts-cli/tests/it/reflect_coverage.rs`
+  for reflection). A native recipe with fixed parameters (`spawnNative("camera3d")`) is a gap,
+  not a design.
+- **No workaround for a foundational gap.** A game that needs what the engine lacks gets the
+  engine feature, state of the art: scripts reach the network through the web's own APIs
+  ([docs/networking.md](docs/networking.md)), never data tunnelled over the Bevy Remote Protocol.
+  A JS-platform feature follows the JS runtimes' standards, and a new dependency is still asked
+  first.
+
 ## Start
 
 ```sh
