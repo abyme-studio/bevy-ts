@@ -106,10 +106,11 @@ pub fn write(world: &mut World, e: Entity, type_path: &str, field: &str, v: &Val
     let base = default(reg);
     let assets = slots_of(world);
     let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
-    let mut em = world.entity_mut(e);
-    let Some(mut m) = rc.reflect_mut(&mut em) else { return Ok(false) };
-    set(&slots, m.as_partial_reflect_mut(), base.as_deref().map(|b| b.as_partial_reflect()), type_path, field, v)?;
-    drop(m);
+    {
+        let mut em = world.entity_mut(e);
+        let Some(mut m) = rc.reflect_mut(&mut em) else { return Ok(false) };
+        set(&slots, m.as_partial_reflect_mut(), base.as_deref().map(|b| b.as_partial_reflect()), type_path, field, v)?;
+    }
     bevy_ts::reflect_asset::flush(world);
     Ok(true)
 }
