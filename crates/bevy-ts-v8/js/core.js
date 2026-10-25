@@ -593,6 +593,71 @@ export class Message extends Data {}
 export class Event extends Data {}
 /** An event that targets its `entity`; `static propagate = true` bubbles it up `ChildOf`. */
 export class EntityEvent extends Data {}
+
+// Rust messages and events (rust-events), by reflect type path. Their values cross as JSON in
+// reflect-coverage's shape: a class holds its whole value, fields copied on for an object.
+const RUST_VALUE = Symbol("bevy-ts.rustValue");
+
+function rustData(path, kind, entity, message) {
+  const base = kind === "message" ? Message : entity ? EntityEvent : Event;
+  const C = class extends base {
+    /** `GamepadRumbleRequest.of({ Add: { ... } })`: the whole value, in Bevy's shape. */
+    static of(value) {
+      const v = new this();
+      v[RUST_VALUE] = value;
+      if (value && typeof value === "object" && !Array.isArray(value)) Object.assign(v, value);
+      return v;
+    }
+    toJSON() {
+      return this[RUST_VALUE] !== undefined ? this[RUST_VALUE] : { ...this };
+    }
+  };
+  Object.defineProperty(C, "name", { value: path.split("<")[0].split("::").pop() });
+  C.componentName = path;
+  C.path = path;
+  C.source = "rust";
+  C.native = true;
+  C[KIND] = kind;
+  // A pointer event is a message too: `MessageReader<PointerClick>` and `On<PointerClick>`.
+  C.message = kind === "message" || !!message;
+  C.decl = { name: path, entity: !!entity, fields: [] };
+  return C;
+}
+
+/** A Rust message by type path (`app.ts_message::<M>()`). */
+export function rustMessage(path) {
+  return rustData(path, "message", false);
+}
+
+/** A global Rust event by type path (`app.ts_event::<E>()`); `message` when it is one too. */
+export function rustEvent(path, message) {
+  return rustData(path, "event", false, message);
+}
+
+/** A Rust `EntityEvent` by type path (`app.ts_entity_event::<E>()`); its target is a field. */
+export function rustEntityEvent(path, message) {
+  return rustData(path, "event", true, message);
+}
+
+/** A Rust asset type, to spell a generic's argument: `AssetEvent<Image>`. */
+export function rustAsset(path) {
+  const A = class {};
+  Object.defineProperty(A, "name", { value: path.split("::").pop() });
+  A.path = path;
+  return A;
+}
+
+/**
+ * A generic Rust message or event, `AssetEvent<Image>`: each registered instance by its type
+ * argument as written (`instances.Image`), which the reader resolves from `AssetEvent<Image>`.
+ */
+export function rustGeneric(name, instances) {
+  const G = class {};
+  Object.defineProperty(G, "name", { value: name });
+  G.instances = instances;
+  return G;
+}
+
 /** `class EnemySet extends SystemSet {}`, Rust's `#[derive(SystemSet)] struct EnemySet;`. */
 export class SystemSet {}
 /** `class Waves extends ScheduleLabel {}`, Rust's `#[derive(ScheduleLabel)] struct Waves;`. */
@@ -1579,15 +1644,21 @@ export function text(bytes) {
 
 function refClass(g, ref, at) {
   if (typeof ref === "function" || (ref && typeof ref === "object" && !Array.isArray(ref))) return ref;
-  const [module, name, clock] = ref;
+  const [module, name, clock, args] = ref;
   const thunk = g.bindings.get(`${module}\u0000${name}`);
   if (!thunk) throw declError(`${name} is not bound in ${module}; was the module compiled by bevy-ts?`, at);
   const v = thunk();
   if (v === undefined) throw declError(`${name} has no value at run time; import it as a value, not with import type`, at);
   // `Time<Real>`: the reader names the clock beside `Time`.
-  if (clock !== undefined) {
+  if (clock !== undefined && clock !== null) {
     const c = v.clocks && v.clocks[clock];
     if (!c) throw declError(`${name}<${clock}>: ${name} has no clock ${clock}`, at);
+    return c;
+  }
+  // `AssetEvent<Image>`: the reader spells the type arguments.
+  if (args !== undefined && args !== null) {
+    const c = v.instances && v.instances[args];
+    if (!c) throw declError(`${name}<${args}>: ${v.instances ? `${name} is registered for ${Object.keys(v.instances).join(", ")}` : `${name} is not generic`}`, at);
     return c;
   }
   return v;
@@ -1653,7 +1724,7 @@ function resolveParams(g, params, at) {
       case "messageReader":
       case "messageWriter": {
         const M = refClass(g, p.message, at);
-        if (M[KIND] !== "message") throw declError(`${M.name} is not a Message class`, at);
+        if (M[KIND] !== "message" && !M.message) throw declError(`${M.name} is not a Message class`, at);
         out.push({ kind: p.kind, message: M.componentName, cls: M });
         break;
       }
@@ -2638,6 +2709,33 @@ class RemovedParam {
   }
 }
 
+/** `MessageReader<M>` of a Rust message: one JSON array per run, parsed on first use. */
+class RustMessageReaderParam {
+  constructor(cls) {
+    this.cls = cls;
+    this.bytes = null;
+    this.items = null;
+  }
+  bind(frame) {
+    // [buffer, its length, -, -, 1]: the array's UTF-8 text.
+    this.bytes = frame[1] > 2 ? new Uint8Array(frame[0], 0, frame[1]) : null;
+    this.items = null;
+  }
+  get list() {
+    if (!this.items) this.items = this.bytes ? JSON.parse(decoder.decode(this.bytes)) : [];
+    return this.items;
+  }
+  get len() {
+    return this.list.length;
+  }
+  each(fn) {
+    for (const m of this.list) fn(m);
+  }
+  [Symbol.iterator]() {
+    return this.list[Symbol.iterator]();
+  }
+}
+
 class MessageWriterParam {
   constructor(cls, ctx) {
     this.cls = cls;
@@ -2651,6 +2749,7 @@ class MessageWriterParam {
   }
   /** A writable view on a fresh slot; written when the run ends or at the next `next`/`write`. */
   next() {
+    if (this.cls.native) throw new TypeError(`${this.cls.name}: a Rust message has no layout to write in place; use write(value)`);
     this.flush();
     const bytes = new Uint8Array(this.cls.size);
     const acc = new this.cls.Write();
@@ -2670,25 +2769,48 @@ class MessageWriterParam {
 const STOPPED = Symbol("stopped");
 const BIND = Symbol("bind");
 
+/** `On<E>`'s own members: an event field by one of these names is read as `on.event.<name>`. */
+const ON_OWN = new Set(["entity", "original", "propagate", "toJSON", "event"]);
+const ON_KEYS = Symbol("onKeys");
+
 /**
  * An observer's `On<E>`: the event's fields directly (`explode.radius`, as Rust's `On` derefs to
  * the event), the current target as `entity`, the first target of a bubbling event as `original`,
- * and `propagate(on)`.
+ * `propagate(on)`, and the whole value as `event` (Bevy's `On::event()`).
  */
 function makeOn(cls) {
-  if (cls && !cls.Read) cls = undefined;
-  const o = cls ? new cls.Read() : {};
+  if (cls && !cls.native && !cls.Read) cls = undefined;
+  const rust = !!(cls && cls.native);
+  const o = cls && !rust ? new cls.Read() : {};
   Object.defineProperty(o, "entity", { value: undefined, writable: true, enumerable: true });
   Object.defineProperty(o, "original", { value: undefined, writable: true, enumerable: true });
   o[STOPPED] = false;
+  o[ON_KEYS] = [];
   Object.defineProperty(o, "propagate", {
     value(on) {
       o[STOPPED] = !on;
     },
   });
+  let value;
+  Object.defineProperty(o, "event", {
+    get() {
+      if (rust || !cls) return value;
+      // A TS event's fields, copied out of the row, and its current target, as Bevy rewrites it
+      // at each hop.
+      const v = JSON.parse(JSON.stringify(o.toJSON()));
+      if (cls.decl && cls.decl.entity) v.entity = o.entity;
+      return v;
+    },
+  });
   o[BIND] = (frame) => {
     // [ArrayBuffer, entity, original]
-    if (cls) bindRow(o, cls, frame[0], null, 0);
+    if (rust) {
+      for (const k of o[ON_KEYS]) delete o[k];
+      value = JSON.parse(decoder.decode(new Uint8Array(frame[0])));
+      const keys = value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).filter((k) => !ON_OWN.has(k)) : [];
+      for (const k of keys) o[k] = value[k];
+      o[ON_KEYS] = keys;
+    } else if (cls) bindRow(o, cls, frame[0], null, 0);
     o.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
     o.original = frame[2] === 18446744073709552000 ? undefined : frame[2];
     o[STOPPED] = false;
@@ -3244,7 +3366,7 @@ function buildSystem(g, s) {
         consumers.push(() => {});
         return ctx.commands;
       case "messageReader": {
-        const r = new MessageReaderParam(p.cls);
+        const r = p.cls.native ? new RustMessageReaderParam(p.cls) : new MessageReaderParam(p.cls);
         consumers.push((frame) => r.bind(frame));
         return r;
       }
@@ -3344,7 +3466,7 @@ function makeCtx() {
 
 const OP_SPAWN = 1, OP_INSERT = 2, OP_DESPAWN = 3, OP_REMOVE = 4, OP_SET_PARENT = 5, OP_SPAWN_NATIVE = 6, OP_PLUGIN = 7;
 const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12, OP_OBSERVE = 13, OP_STATE_SCOPED = 14;
-const OP_SAVE_WORLD = 15, OP_LOAD_WORLD = 16, OP_INSERT_REFLECT = 17;
+const OP_SAVE_WORLD = 15, OP_LOAD_WORLD = 16, OP_INSERT_REFLECT = 17, OP_WRITE_REFLECT = 18, OP_TRIGGER_REFLECT = 19;
 
 // A save's name never leaves the save folder: no separator, no dot, no drive (docs/saves.md).
 const SAVE_NAME = /^[A-Za-z0-9_-]{1,64}$/;
@@ -3682,6 +3804,7 @@ class Commands {
   trigger(event) {
     const E = event && event.constructor;
     if (!E || E[KIND] !== "event") throw new TypeError("trigger: pass an Event or EntityEvent value (Explode.of({ entity, radius: 3 }))");
+    if (E.native) return this.reflectOp(OP_TRIGGER_REFLECT, E, event);
     const r = this.res && this.res.events[E.componentName];
     if (!r) throw new Error(`${E.componentName} is not a declared event`);
     let target;
@@ -3707,10 +3830,21 @@ class Commands {
   /** Writes a message (`Damage.of({ ... })`). */
   write(message) {
     const M = message && message.constructor;
-    if (!M || M[KIND] !== "message") throw new TypeError("write: pass a Message value (Damage.of({ ... }))");
+    if (!M || (M[KIND] !== "message" && !M.message)) throw new TypeError("write: pass a Message value (Damage.of({ ... }))");
+    if (M.native) return this.reflectOp(OP_WRITE_REFLECT, M, message);
     const r = this.res && this.res.messages[M.componentName];
     if (!r) throw new Error(`${M.componentName} is not a declared message`);
     this.writeBytes(M, encodeWithLayout(M, r.layout, message));
+  }
+  /** A Rust message or event by type path, its value as JSON. */
+  reflectOp(code, C, value) {
+    const json = encoder.encode(JSON.stringify(value));
+    const w = new Writer();
+    w.u8(code);
+    w.str16(C.path);
+    w.u32(json.length);
+    w.raw(json);
+    this.op(w.bytes());
   }
   writeBytes(M, bytes) {
     const r = this.res.messages[M.componentName];

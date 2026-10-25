@@ -232,11 +232,11 @@ export declare abstract class SceneComponent extends Component {
 export declare abstract class ReflectComponent extends Data { readonly [tierBrand]?: "reflect" }
 export declare abstract class Resource extends Data { readonly [resourceBrand]?: true }
 export declare abstract class Message extends Data { readonly [messageBrand]?: true }
-/** An Event. `entity`, `propagate` and `toJSON` are `On<E>`'s own: a field by those names fails the load. */
+/** An Event. `entity`, `original`, `propagate`, `toJSON` and `event` are `On<E>`'s own: a field by those names fails the load. */
 export declare abstract class Event extends Data { readonly [eventBrand]?: "global" }
 /**
  * An EntityEvent: targets `entity`; `static propagate = true` bubbles it up `ChildOf`. A field named
- * `propagate` or `toJSON` fails the load: `On<E>` has its own.
+ * `original`, `propagate`, `toJSON` or `event` fails the load: `On<E>` has its own.
  */
 export declare abstract class EntityEvent extends Data {
   readonly [eventBrand]?: "entity";
@@ -292,6 +292,46 @@ export type ReflectClass<V = unknown, F = {}> = (abstract new () => ReflectCompo
 export declare function reflectClass<V = unknown>(name: string): ReflectClass<V>;
 /** `reflectClass` under its first name. */
 export declare function rustComponent<V = unknown>(name: string): ReflectClass<V>;
+
+// ---------- Rust messages and events (rust-events) ----------
+// Named by reflect type path; values cross as JSON in reflect-coverage's shape. `bevy-ts/bevy`
+// declares Bevy's; a project's own come from `app.ts_message`/`ts_event`/`ts_entity_event`.
+
+declare const rustEnumBrand: unique symbol;
+/** What a Rust message or event is in TS. */
+export type RustKind = "message" | "event" | "entityEvent";
+type RustBase<K extends RustKind> = K extends "message" ? Message : K extends "entityEvent" ? EntityEvent : Event;
+/** A Rust message or event whose value is an enum in Bevy's shape: `of(value)` takes the value. */
+export type RustEnum<K extends RustKind, V> = RustBase<K> & { readonly [rustEnumBrand]: V };
+/** A Rust message or event that is a struct: its fields. */
+export type RustStruct<K extends RustKind, V> = RustBase<K> & V;
+/** A Rust message or event class: `static path` its type path, `of(value)` a value of it. */
+export interface RustClass<T, V> {
+  new (): T;
+  readonly path: string;
+  readonly componentName: string;
+  readonly source: "rust";
+  readonly native: true;
+  of(value: V): T;
+}
+/** A generic Rust message or event (`AssetEvent<Image>` in a param): its classes by type argument. */
+export interface RustGeneric<I> {
+  readonly instances: I;
+}
+/** A message's or event's value as a reader or `On<E>.event` sees it. */
+export type ValueOf<M> = M extends { readonly [rustEnumBrand]: infer V } ? V : ReadView<M>;
+/** What `MessageWriter<M>.write` takes beside an `M`. */
+export type WriteValue<M> = M extends { readonly [rustEnumBrand]: infer V } ? V : Partial<M>;
+/** A Rust message by type path. */
+export declare function rustMessage(path: string): RustClass<Message, unknown>;
+/** A global Rust event by type path; `message` when it is a message too. */
+export declare function rustEvent(path: string, message?: boolean): RustClass<Event, unknown>;
+/** A Rust `EntityEvent` by type path; `message` when it is a message too. */
+export declare function rustEntityEvent(path: string, message?: boolean): RustClass<EntityEvent, unknown>;
+/** A Rust asset type, to spell a generic's argument (`AssetEvent<Image>`). */
+export declare function rustAsset(path: string): abstract new () => unknown;
+/** A generic Rust message or event, its instances by type argument as written. */
+export declare function rustGeneric<I>(name: string, instances: I): RustGeneric<I>;
 /**
  * A Rust component with a native layout registered in Rust (a port's `Velocity`):
  * `class Thrust extends nativeComponent("Thrust", { power: f32 }) {}`.
@@ -532,13 +572,14 @@ export interface SystemChangeTick {
 }
 /** Per-system state with a layout, `Local<{ timer: f32; wave: u32 }>`. Kept in Rust under the system's id; survives reloads. */
 export type Local<T> = T;
-export interface MessageReader<M> extends Iterable<ReadView<M>> {
-  each(f: (m: ReadView<M>) => void): void;
+/** A Rust message's reader hands plain values, its JSON parsed once per run. */
+export interface MessageReader<M> extends Iterable<ValueOf<M>> {
+  each(f: (m: ValueOf<M>) => void): void;
   readonly len: number;
 }
 export interface MessageWriter<M> {
-  write(value: M | Partial<M>): void;
-  /** Allocation-free: a writable view on a fresh slot. */
+  write(value: M | WriteValue<M>): void;
+  /** Allocation-free: a writable view on a fresh slot. A TS message only. */
   next(): M;
 }
 /** A one-shot system's input, first param only: an `Event` value `commands.runSystemWith` passed. */
@@ -656,7 +697,7 @@ export interface EntityCommands {
    * function whose first param is `On<E>` of an `EntityEvent`. It runs only for triggers whose
    * current target is this entity, bubbling hops included, and goes when the entity is despawned.
    */
-  observe(observer: (on: On<never>, ...params: never[]) => void): EntityCommands;
+  observe<E extends EntityEvent | { readonly [lifecycleBrand]: unknown }>(observer: (on: On<E>, ...params: never[]) => void): EntityCommands;
   /** Bevy's `add_children`. */
   addChildren(children: Iterable<Entity>): EntityCommands;
   /** `parent.spawn(...)` spawns a child of this entity (Bevy's `with_children`). */
@@ -680,20 +721,24 @@ export type Remove<C> = { readonly [lifecycleBrand]: ["remove", C] };
 export type Discard<C> = { readonly [lifecycleBrand]: ["discard", C] };
 /** An entity with `C` is despawned (Bevy's `Despawn`). */
 export type Despawn<C> = { readonly [lifecycleBrand]: ["despawn", C] };
+declare const onBrand: unique symbol;
+/** `On<E>`'s own members; a Rust event's field by one of these names is read on `event`. */
+type OnOwn = "entity" | "original" | "propagate" | "toJSON" | "event";
 /**
  * An observer's first parameter, as Bevy's `On<Explode>` / `On<Add<Health>>`: the event's fields
  * directly (`explode.radius`, as Rust's `On` derefs to the event), the current target as `entity`,
- * the first target of a bubbling event as `original` (Bevy's `original_event_target`), and
- * `propagate`. So an event's fields may not be named `entity` (bar an EntityEvent's target),
- * `original`, `propagate` or `toJSON`.
+ * the first target of a bubbling event as `original` (Bevy's `original_event_target`),
+ * `propagate`, and the whole value as `event` (Bevy's `On::event()`). A TS event's fields may not
+ * be named `entity` (bar an EntityEvent's target), `original`, `propagate`, `toJSON` or `event`;
+ * a Rust event's field by those names is read as `on.event.<name>`.
  * `Discard`, `Remove` and `Despawn` give the component's fields as they were when the event fired
  * (TS observers run later, when the value is gone).
  */
 export type On<E> =
   & (E extends { readonly [lifecycleBrand]: ["discard" | "remove" | "despawn", infer C] } ? ReadView<C> & { readonly entity: Entity; readonly original: Entity }
     : E extends { readonly [lifecycleBrand]: unknown } ? { readonly entity: Entity; readonly original: Entity }
-    : ReadView<E> & { readonly entity: Entity; readonly original: Entity })
-  & { /** Stop bubbling. */ propagate(on: boolean): void };
+    : Omit<ValueOf<E> extends object ? ValueOf<E> : {}, OnOwn> & { readonly entity: Entity; readonly original: Entity; readonly event: ValueOf<E> })
+  & { /** Stop bubbling. */ propagate(on: boolean): void; /** Never read: lets `observe` infer `E`. */ readonly [onBrand]?: E };
 // ---------- Systems, schedules, ordering ----------
 
 /** A system: an exported function whose parameter types the compile step read. */
