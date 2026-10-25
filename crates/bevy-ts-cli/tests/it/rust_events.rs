@@ -550,7 +550,8 @@ app.addSystems(Startup, setup).addObserver(onHit);
     let mut parts = line.splitn(4, ' ').skip(1);
     let event: serde_json::Value = serde_json::from_str(parts.next().unwrap()).unwrap();
     let (amount, entity) = (parts.next().unwrap(), parts.next().unwrap());
-    assert_eq!(event, serde_json::json!({ "amount": amount.parse::<f64>().unwrap(), "entity": entity.parse::<u64>().unwrap() }), "{line}");
+    let number = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+    assert_eq!(event, serde_json::json!({ "amount": number(amount), "entity": number(entity) }), "{line}");
 }
 
 #[test]
@@ -558,7 +559,7 @@ fn a_failed_reload_keeps_attachments_made_since_the_last_drain() {
     let body = |tail: &str| {
         format!(
             r#"export function setup(c: Commands) {{ c.entity(c.spawn(Tag.of({{ n: 1 }}))).observe(onHit); }}
-export function onHit(hit: On<Hit>) {{ console.log(`hit ${{hit.amount}}`); }}
+export function onHit(hit: On<Hit>) {{ console.log(`hit ${{hit.entity}}`); }}
 export function drive(q: Query<[Entity, Tag]>, c: Commands) {{ q.each((e) => c.trigger(Hit.of({{ entity: e, amount: 1 }}))); }}
 app.addSystems(Startup, setup).addSystems(Update, drive);
 {tail}"#
@@ -578,6 +579,10 @@ app.addSystems(Startup, setup).addSystems(Update, drive);
     bevy_ts::observers::observe(app.world_mut(), e, index, decl);
     write(&dir, "game.ts", &src(&body("this is not TS")));
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Failed);
-    updates(&mut app, 2);
-    assert_eq!(lines(&app, "hit ").len(), 4, "both entities' observers run, twice: {:?}", messages(&app));
+    app.update();
+    let before = lines(&app, "hit ").len();
+    app.update();
+    let hits = lines(&app, "hit ");
+    assert_eq!(hits.len() - before, 2, "both entities' observers run: {:?}", messages(&app));
+    assert!(hits.contains(&format!("hit {}", e.to_bits())), "the unbuilt attachment runs: {:?}", messages(&app));
 }
