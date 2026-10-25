@@ -418,3 +418,41 @@ fn a_ts_graph_reweights_live() {
         assert!(b > a, "no clip restarted: {before:?} then {after:?}");
     }
 }
+
+const TWEEN_GAME: &str = r#"import { app, Transform } from "bevy-ts";
+import { AnimatableCurve, animatedField, AnimationClip, AnimationTargetId, EasingCurve, interval, Name, PlayAnimation } from "bevy-ts/bevy";
+const rise = new EasingCurve([0, 0, 0], [0, 2, 0], "CubicOut").reparametrizeLinear(interval(0, 1)).pingPong();
+const clip = new AnimationClip().addCurveToTarget(AnimationTargetId.root, new AnimatableCurve(animatedField(Transform, "translation"), rise));
+app.scene("signs", () => (
+  <entity key="sign">
+    <Name value="sign" />
+    <Transform translation={[0, 0, 0]} />
+    <PlayAnimation clip={clip} repeat="Forever" />
+  </entity>
+));
+"#;
+
+#[test]
+fn a_tsx_tween_moves_with_no_ts_per_frame() {
+    let dir = fox_project("animation-tween", &[("package.json", "{}"), ("src/game.tsx", TWEEN_GAME)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f32(1.0 / 60.0)));
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let sign = |app: &mut App| {
+        let w = app.world_mut();
+        w.query::<(Entity, &Name)>().iter(w).find(|(_, n)| n.as_str() == "sign").map(|(e, _)| e)
+    };
+    until(&mut app, "the sign to rise", |app| sign(app).is_some_and(|e| app.world().get::<Transform>(e).unwrap().translation.y > 0.1));
+    let e = sign(&mut app).unwrap();
+    assert_eq!(app.world().resource::<bevy_ts::systems::TsSystems>().iter().count(), 0, "the game has no TS system");
+    let calls = app.world().resource::<bevy_ts::host::HostParams>().calls;
+    let mut ys = vec![];
+    for _ in 0..60 {
+        app.update();
+        ys.push(app.world().get::<Transform>(e).unwrap().translation.y);
+    }
+    assert!(ys.windows(2).filter(|w| w[0] != w[1]).count() > 30, "the sign moves every frame: {ys:?}");
+    assert!(ys.iter().all(|y| (-1e-4..=2.0001).contains(y)), "it stays between its ends: {ys:?}");
+    assert_eq!(app.world().resource::<bevy_ts::host::HostParams>().calls, calls, "no host call per frame");
+}

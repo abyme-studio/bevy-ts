@@ -250,6 +250,12 @@ const HAND: &[Hand] = &[
              mask_groups: [string | { readonly names: readonly string[] }, number][]",
         ),
     },
+    Hand {
+        path: "bevy_animation::AnimationClip",
+        js: include_str!("hand_ts/animation_clip.js"),
+        dts: include_str!("hand_ts/animation_clip.d.ts"),
+        fields: Some("curves: [AnimationTarget, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number"),
+    },
 ];
 
 fn hand(path: &str) -> Option<&'static Hand> {
@@ -574,7 +580,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name.\n\
          import {{ Component, ReflectComponent, Resource }} from \"bevy-ts\";\n\
-         import type {{ AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
+         import type {{ AssetClass, AssetFields, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          type Reflected<F = {{}}> = abstract new () => ReflectComponent & F;\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );

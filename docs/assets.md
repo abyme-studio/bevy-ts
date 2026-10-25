@@ -25,14 +25,16 @@ assets.get(mat)?.perceptual_roughness; // 0.3
   and returns its ref, an `AssetRef<Type>`. A bad field or value throws naming the type and field,
   and adds nothing. A type with no default (`Mesh`) is refused: `bevy-ts/bevy` gives it no `of`,
   and `add` rejects it at the type level.
-- `assets.add(value)` makes an asset value (`T.of(props)`, a built `AnimationGraph`) its own
+- `assets.add(value)` makes an asset value (`T.of(props)`, a built `AnimationGraph` or
+  `AnimationClip`) its own
   asset; `assets.set(ref, value)` writes the value's props.
 - `assets.get(ref)` reads the asset as JSON, or `undefined` once it is gone. Each call is one host
   call and a full read: keep values in JS rather than reading every frame.
 - `assets.set(ref, patch)` writes `patch` over the asset's current value. A patch that changes
   nothing marks nothing changed: no `AssetEvent::Modified`, no re-prepare.
 
-A hand-mapped type (`reflect_asset::HAND_MAPS`; `AnimationGraph`, [animation](animation.md))
+A hand-mapped type (`reflect_asset::HAND_MAPS`; `AnimationGraph` and `AnimationClip`,
+[animation](animation.md))
 is read and written whole by its entry, not field by field: a patch replaces each top-level key it
 gives.
 

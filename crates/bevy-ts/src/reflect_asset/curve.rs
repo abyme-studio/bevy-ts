@@ -186,11 +186,12 @@ macro_rules! values {
 
         /// The curve JSON as a curve on the field type `ty`, which must be one of the
         /// `Animatable` types, put on `target` in `clip`.
-        fn add_typed(registry: &TypeRegistry, clip: &mut AnimationClip, target: AnimationTargetId, field: &Field, json: &Value) -> Result<(), String> {
+        fn add_typed(registry: &TypeRegistry, clip: &mut AnimationClip, target: AnimationTargetId, field: &Field, json: &Value) -> Result<Interval, String> {
             $(if field.ty == TypeId::of::<$t>() {
                 let curve = build::<$t>(registry, json)?;
+                let domain = curve.domain();
                 clip.add_curve_to_target(target, AnimatableCurve::new(ReflectedField::<$t>::new(field.clone()), curve));
-                return Ok(());
+                return Ok(domain);
             })*
             Err(format!("{}: its type is not one Bevy can animate", field.label))
         }
@@ -461,7 +462,8 @@ pub fn field(registry: &TypeRegistry, json: &Value) -> Result<Field, String> {
             (i, f.type_id(), f.type_path())
         }
         bevy::reflect::TypeInfo::TupleStruct(s) => {
-            let i: usize = name.parse().map_err(|_| format!("{short} is a tuple struct: its fields are 0, 1, ..., not {name}"))?;
+            // TS names a newtype's one field `value`.
+            let i: usize = if name == "value" { 0 } else { name.parse().map_err(|_| format!("{short} is a tuple struct: its fields are 0, 1, ..., not {name}"))? };
             let f = s.field_at(i).ok_or_else(|| format!("{short} has no field {name}"))?;
             (i, f.type_id(), f.type_path())
         }
@@ -475,8 +477,9 @@ pub fn field(registry: &TypeRegistry, json: &Value) -> Result<Field, String> {
 }
 
 /// `{ property: { component, field }, curve }` on `target`, added to `clip` with Bevy's
-/// `add_curve_to_target`; a value of the wrong type fails naming the field and both types.
-pub fn add_curve(registry: &TypeRegistry, clip: &mut AnimationClip, target: AnimationTargetId, json: &Value) -> Result<(), String> {
+/// `add_curve_to_target`; a value of the wrong type fails naming the field and both types. Gives
+/// the curve's domain: an unbounded one adds nothing to the clip's duration.
+pub fn add_curve(registry: &TypeRegistry, clip: &mut AnimationClip, target: AnimationTargetId, json: &Value) -> Result<Interval, String> {
     let property = json.get("property").ok_or_else(|| format!("an AnimatableCurve is {{ property, curve }}, not {json}"))?;
     let curve = json.get("curve").ok_or_else(|| format!("an AnimatableCurve is {{ property, curve }}, not {json}"))?;
     let field = field(registry, property)?;

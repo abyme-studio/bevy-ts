@@ -2,7 +2,7 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components and resources TS can name.
 import { Component, ReflectComponent, Resource } from "bevy-ts";
-import type { AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { AssetClass, AssetFields, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 type Reflected<F = {}> = abstract new () => ReflectComponent & F;
 
@@ -1594,8 +1594,134 @@ export type DynamicWorldRoot = InstanceType<typeof DynamicWorldRoot>;
 export declare const WorldAssetRoot: Reflected<{ value: string | null }>;
 export type WorldAssetRoot = InstanceType<typeof WorldAssetRoot>;
 
-export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { events: readonly (readonly ["Root" | { Node: string }, readonly ({ time?: number; event?: {  } })[]])[]; duration: number }>;
-export declare const AnimationClip: AssetClass<AnimationClip>;
+export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { curves: [AnimationTarget, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number }>;
+/** Bevy's `interval(start, end)`, `[start, end]`; `null` or `Infinity` for an unbounded end. */
+export type CurveInterval = readonly [number | null, number | null];
+export declare function interval(start: number, end: number | null): CurveInterval;
+/** A value a curve holds, as its field's JSON: a number, a bool, `[x, y, z]`, `[x, y, z, w]`. */
+export type CurveValue<T> = T extends number ? number : T extends boolean ? boolean : T extends ReadonlyQuatLike ? readonly [number, number, number, number] : T extends ReadonlyVec3Like ? readonly [number, number, number] : T;
+interface ReadonlyVec3Like { readonly x: number; readonly y: number; readonly z: number }
+interface ReadonlyQuatLike extends ReadonlyVec3Like { readonly w: number }
+/** The fields of a component Bevy can animate: numbers, bools, vectors and quaternions. */
+export type AnimatableKeys<C> = { [K in keyof C & string]: C[K] extends number | boolean | ReadonlyVec3Like ? K : never }[keyof C & string];
+/** Bevy's `animated_field!(Component::field)`. */
+export interface AnimatedField<T> {
+  readonly component: string;
+  readonly field: string;
+  readonly __value?: T;
+}
+export declare function animatedField<C extends abstract new (...args: never[]) => object, K extends AnimatableKeys<InstanceType<C>>>(
+  component: C,
+  field: K,
+): AnimatedField<CurveValue<InstanceType<C>[K]>>;
+/** Bevy's `EaseFunction`, by its variant names. */
+export type EaseFunction =
+  | "Linear" | "QuadraticIn" | "QuadraticOut" | "QuadraticInOut" | "CubicIn" | "CubicOut" | "CubicInOut"
+  | "QuarticIn" | "QuarticOut" | "QuarticInOut" | "QuinticIn" | "QuinticOut" | "QuinticInOut"
+  | "SmoothStepIn" | "SmoothStepOut" | "SmoothStep" | "SmootherStepIn" | "SmootherStepOut" | "SmootherStep"
+  | "SineIn" | "SineOut" | "SineInOut" | "CircularIn" | "CircularOut" | "CircularInOut"
+  | "ExponentialIn" | "ExponentialOut" | "ExponentialInOut" | "ElasticIn" | "ElasticOut" | "ElasticInOut"
+  | "BackIn" | "BackOut" | "BackInOut" | "BounceIn" | "BounceOut" | "BounceInOut"
+  | { readonly Steps: readonly [number, "Start" | "End" | "None" | "Both"] }
+  | { readonly Elastic: number };
+/** A curve of values `T`: Bevy's constructor or adaptor, as the JSON Rust builds it from. */
+export declare class Curve<T> {
+  protected constructor();
+  readonly json: unknown;
+  private readonly __value?: T;
+  /** This curve over `domain`: how an ease over 0..1 becomes N seconds. */
+  reparametrizeLinear(domain: CurveInterval): Curve<T>;
+  reverse(): Curve<T>;
+  /** Plays the curve `count` more times after the first. */
+  repeat(count: number): Curve<T>;
+  /** Repeats without end: a clip of it needs `setDuration`. */
+  forever(): Curve<T>;
+  /** There and back. */
+  pingPong(): Curve<T>;
+  /** This curve, then `other`. */
+  chain(other: Curve<T>): Curve<T>;
+  /** This curve, then `other` offset to start where this one ends (vector values). */
+  chainContinue(other: Curve<T>): Curve<T>;
+}
+export declare class EasingCurve<T> extends Curve<T> {
+  constructor(start: T, end: T, ease: EaseFunction);
+}
+export declare class ConstantCurve<T> extends Curve<T> {
+  constructor(domain: CurveInterval, value: T);
+}
+export declare class SampleAutoCurve<T> extends Curve<T> {
+  constructor(domain: CurveInterval, samples: Iterable<T>);
+}
+export declare class UnevenSampleAutoCurve<T> extends Curve<T> {
+  constructor(keyframes: Iterable<readonly [number, T]>);
+}
+export declare class AnimatableKeyframeCurve<T> extends Curve<T> {
+  constructor(keyframes: Iterable<readonly [number, T]>);
+}
+export declare class SteppedKeyframeCurve<T> extends Curve<T> {
+  constructor(keyframes: Iterable<readonly [number, T]>);
+}
+export declare class CubicKeyframeCurve<T> extends Curve<T> {
+  /** `values` holds three per time: in-tangent, value, out-tangent. */
+  constructor(times: Iterable<number>, values: Iterable<T>);
+}
+export declare class CubicRotationCurve extends Curve<readonly [number, number, number, number]> {
+  constructor(times: Iterable<number>, values: Iterable<readonly [number, number, number, number]>);
+}
+/** A spline: `toCurve()` and `toCurveCyclic()` make its curve, as Bevy's generators do. */
+export declare class Spline<T> {
+  protected constructor();
+  toCurve(): Curve<T>;
+  toCurveCyclic(): Curve<T>;
+}
+export declare class CubicBezier<T> extends Spline<T> {
+  /** Each segment is four control points. */
+  constructor(controlPoints: Iterable<readonly [T, T, T, T]>);
+}
+export declare class CubicHermite<T> extends Spline<T> {
+  constructor(controlPoints: Iterable<T>, tangents: Iterable<T>);
+}
+export declare class CubicCardinalSpline<T> extends Spline<T> {
+  constructor(tension: number, controlPoints: Iterable<T>);
+  static newCatmullRom<T>(controlPoints: Iterable<T>): CubicCardinalSpline<T>;
+}
+export declare class CubicBSpline<T> extends Spline<T> {
+  constructor(controlPoints: Iterable<T>);
+}
+export declare class CubicNurbs<T> extends Spline<T> {
+  constructor(controlPoints: Iterable<T>, weights?: Iterable<number> | null, knots?: Iterable<number> | null);
+}
+export declare class LinearSpline<T> extends Spline<T> {
+  constructor(points: Iterable<T>);
+}
+/** Bevy's `AnimatableCurve::new(animated_field!(...), curve)`: the curve's values are the field's type. */
+export declare class AnimatableCurve<T> {
+  constructor(property: AnimatedField<T>, curve: Curve<NoInfer<T>>);
+  readonly property: AnimatedField<T>;
+  readonly curve: Curve<T>;
+}
+/**
+ * `new AnimationClip()`: Bevy's `AnimationClip` as a builder, holding the JSON (`AnimationClip`,
+ * the type) Rust builds the clip from. An asset value: `PlayAnimation.clip`, a graph's `addClip`,
+ * `assets.add(clip)` and `assets.set(ref, clip)` take it.
+ */
+export interface AnimationClipBuilder extends AssetValue<AnimationClip> {
+  readonly $of: "bevy_animation::AnimationClip";
+  readonly props: AnimationClip;
+  /** Adds `curve` on `target`; the duration grows to the curve's end. */
+  addCurveToTarget<T>(target: AnimationTarget, curve: AnimatableCurve<T>): this;
+  /** Fixes the clip's length in seconds; a clip with an unbounded curve needs one. */
+  setDuration(secs: number): this;
+  /** The length set with `setDuration`; `undefined` until then (Rust takes the longest curve). */
+  readonly duration: number | undefined;
+}
+export declare const AnimationClip: AssetType<AnimationClip> & {
+  readonly typePath: "bevy_animation::AnimationClip";
+  /** An empty clip. */
+  new (): AnimationClipBuilder;
+  /** An asset value from the clip's JSON. */
+  of(props?: AssetProps<AnimationClip>): AssetValue<AnimationClip>;
+};
 
 export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", { graph: { nodes: { node_type: "Blend" | "Add" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; node_holes: never[]; edge_property: "directed"; edges: [number, number, null][] }; root: number; mask_groups: [string | { readonly names: readonly string[] }, number][] }>;
 /** A clip in a graph: an asset path with a label, or an `AnimationClip` ref or value. */

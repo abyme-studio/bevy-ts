@@ -14,7 +14,7 @@
 //! cannot compute: a UUID string, or `{ names }`, which Bevy's `from_names` turns into the id.
 //! Reads give UUIDs. A clip is an asset path, or an asset ref or value (a script-built clip).
 
-use super::{HandMap, Slots};
+use super::{HandMap, Slots, curve};
 use crate::reflect_value::HandleSlots;
 use bevy::animation::AnimationTargetId;
 use bevy::animation::graph::{AnimationGraph, AnimationGraphNode, AnimationNodeIndex as NodeIndex, AnimationNodeType};
@@ -25,6 +25,56 @@ use serde_json::{Value, json};
 use std::any::TypeId;
 
 pub const GRAPH: HandMap = HandMap { asset: TypeId::of::<AnimationGraph>, read: graph_read, write: graph_write };
+
+/// An `AnimationClip` (design 20): `{ curves: [[target, { property, curve }], ...] | null,
+/// duration? }`, each curve as `reflect_asset::curve` builds it. Bevy keeps a clip's curves as
+/// boxed trait objects no read can turn back into JSON, so a read gives the JSON the script wrote,
+/// and a file clip reads as `{ duration, curves: null }`.
+pub const CLIP: HandMap = HandMap { asset: TypeId::of::<AnimationClip>, read: clip_read, write: clip_write };
+
+fn clip_read(_: &Slots, source: Option<&Value>, value: &dyn PartialReflect) -> Result<Value, String> {
+    if let Some(s) = source {
+        return Ok(s.clone());
+    }
+    let c = value.try_downcast_ref::<AnimationClip>().ok_or("not an AnimationClip")?;
+    Ok(json!({ "duration": c.duration(), "curves": null }))
+}
+
+/// `curves` replaces the clip's curves (`null` or absent keeps the base's); `duration` sets it,
+/// else it is the longest curve's end. A curve with no end needs a `duration`. Check mode builds
+/// the curves and keeps nothing else either way: nothing loads.
+fn clip_write(slots: &Slots, base: Option<&dyn PartialReflect>, json: &Value) -> Result<Box<dyn Reflect>, String> {
+    let o = json.as_object().ok_or_else(|| format!("an AnimationClip is an object, not {json}"))?;
+    let mut clip = base.and_then(|b| b.try_downcast_ref::<AnimationClip>()).cloned().unwrap_or_default();
+    let mut unbounded = None;
+    match o.get("curves") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(curves)) => {
+            clip = AnimationClip::default();
+            for (i, pair) in curves.iter().enumerate() {
+                let p = pair.as_array().filter(|a| a.len() == 2).ok_or_else(|| format!("AnimationClip curve {i} is [target, {{ property, curve }}], not {pair}"))?;
+                let target = curve::target(&p[0]).map_err(|e| format!("AnimationClip curve {i}: {e}"))?;
+                let domain = curve::add_curve(slots.registry, &mut clip, target, &p[1]).map_err(|e| format!("AnimationClip curve {i}: {e}"))?;
+                if !domain.end().is_finite() && unbounded.is_none() {
+                    unbounded = Some(i);
+                }
+            }
+        }
+        Some(c) => return Err(format!("AnimationClip curves is a list of [target, {{ property, curve }}] or null, not {c}")),
+    }
+    match o.get("duration") {
+        None | Some(Value::Null) => {
+            if let Some(i) = unbounded {
+                return Err(format!("AnimationClip curve {i} has no end (forever, or an unbounded domain): give the clip a duration"));
+            }
+        }
+        Some(d) => {
+            let d = d.as_f64().filter(|d| d.is_finite() && *d >= 0.0).ok_or_else(|| format!("AnimationClip duration is a number of seconds, not {d}"))?;
+            clip.set_duration(d as f32);
+        }
+    }
+    Ok(Box::new(clip))
+}
 
 /// The graph as JSON. A clip with no path reads as its ref when a script made it, and fails
 /// naming its node otherwise, as Bevy's `TryFrom<AnimationGraph>` does.
@@ -172,6 +222,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default(), bevy::animation::AnimationPlugin));
         app.register_type::<Name>();
+        app.register_type::<Transform>();
         app.init_resource::<ScriptAssets>();
         app
     }
@@ -227,6 +278,67 @@ mod tests {
         // A UUID target writes back as itself.
         let again = with_slots(&app, false, |s| graph_write(s, None, &read)).unwrap();
         assert_eq!(with_slots(&app, false, |s| graph_read(s, None, again.as_partial_reflect())).unwrap(), read);
+    }
+
+    const CLIP_PATH: &str = "bevy_animation::AnimationClip";
+
+    /// A tween of the root's translation and a forever spin of a named bone.
+    fn tween() -> Value {
+        let ease = json!({ "EasingCurve": { "start": [0, 0, 0], "end": [0, 2, 0], "ease": "CubicOut" } });
+        let spin = json!({ "Forever": { "EasingCurve": { "start": [0, 0, 0, 1], "end": [0, 0.7071068, 0, 0.7071068], "ease": "Linear" } } });
+        json!({
+            "curves": [
+                [{ "names": [] }, { "property": { "component": "Transform", "field": "translation" }, "curve": { "ReparametrizeLinear": [ease, [0, 0.5]] } }],
+                [{ "names": ["sign"] }, { "property": { "component": "bevy_transform::components::transform::Transform", "field": "rotation" }, "curve": spin }],
+            ],
+            "duration": 2,
+        })
+    }
+
+    #[test]
+    fn animation_clip_round_trips() {
+        let mut app = app();
+        let r = with_slots(&app, false, |s| add(s, CLIP_PATH, &tween())).unwrap();
+        flush(app.world_mut());
+        assert_eq!(with_slots(&app, false, |s| get(app.world(), s, &r)).unwrap(), tween(), "a read gives the JSON written");
+        let n = super::super::parse_ref(&r).unwrap().unwrap();
+        let h = app.world().resource::<ScriptAssets>().handle(n).unwrap();
+        let c = app.world().resource::<Assets<AnimationClip>>().get(h.id().typed::<AnimationClip>()).unwrap();
+        assert_eq!(c.duration(), 2.0);
+        let root = AnimationTargetId::from_names(std::iter::empty::<&Name>());
+        let sign = AnimationTargetId::from_names([Name::new("sign")].iter());
+        assert_eq!((c.curves_for_target(root).map(|v| v.len()), c.curves_for_target(sign).map(|v| v.len())), (Some(1), Some(1)));
+
+        // With no duration, the bounded curves set it.
+        let mut short = tween();
+        short["curves"].as_array_mut().unwrap().pop();
+        short.as_object_mut().unwrap().remove("duration");
+        let c = with_slots(&app, true, |s| clip_write(s, None, &short)).unwrap();
+        assert_eq!(c.as_partial_reflect().try_downcast_ref::<AnimationClip>().unwrap().duration(), 0.5);
+
+        // A clip no script wrote (a file) reads its duration and no curves; writing that back keeps its curves.
+        let file = with_slots(&app, true, |s| clip_write(s, None, &tween())).unwrap();
+        let read = with_slots(&app, true, |s| clip_read(s, None, file.as_partial_reflect())).unwrap();
+        assert_eq!(read, json!({ "duration": 2.0, "curves": null }));
+        let back = with_slots(&app, true, |s| clip_write(s, Some(file.as_partial_reflect()), &json!({ "curves": null, "duration": 3 }))).unwrap();
+        let back = back.as_partial_reflect().try_downcast_ref::<AnimationClip>().unwrap();
+        assert_eq!((back.duration(), back.curves().len()), (3.0, 2));
+    }
+
+    #[test]
+    fn bad_clips_name_the_curve() {
+        let app = app();
+        let bad = |j: Value| with_slots(&app, true, |s| clip_write(s, None, &j)).unwrap_err();
+        let mut forever = tween();
+        forever.as_object_mut().unwrap().remove("duration");
+        let e = bad(forever);
+        assert!(e.contains("curve 1") && e.contains("duration"), "{e}");
+        let e = bad(json!({ "curves": [[{ "names": [] }, { "property": { "component": "Transform", "field": "translation" }, "curve": { "ConstantCurve": { "domain": [0, 1], "value": 3 } } }]] }));
+        assert!(e.contains("curve 0") && e.contains("Transform::translation") && e.contains("Vec3"), "{e}");
+        let e = bad(json!({ "curves": [[{ "names": [] }, { "property": { "component": "Transform", "field": "nope" }, "curve": {} }]] }));
+        assert!(e.contains("curve 0") && e.contains("no field nope"), "{e}");
+        assert!(bad(json!({ "curves": 3 })).contains("curves"));
+        assert!(bad(json!({ "duration": -1 })).contains("duration"));
     }
 
     #[test]
