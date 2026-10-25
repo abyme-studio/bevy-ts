@@ -1,5 +1,6 @@
 // Every 2D shape as a `<mesh2d>`, in a grid seen by a `Camera2d` (Bevy's 2d_shapes example).
-// One world unit is one pixel. docs/2d.md lists what 2D takes.
+// One world unit is one pixel. docs/2d.md lists what 2D takes. Not shipped (no example.json):
+// `bevy-ts dev src/game.tsx`.
 import { app } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
 import { Camera2d, Transform } from "bevy-ts/bevy";
@@ -32,7 +33,7 @@ export const Shapes = () => (
       const x = (col - (COLUMNS - 1) / 2) * STEP;
       const y = (0.5 - row) * STEP;
       return (
-        <entity name={props.shape}>
+        <entity key={props.shape} name={props.shape}>
           <Transform translation={[x, y, 0]} />
           <mesh2d {...props} />
           <material2d color={{ Hsla: { hue: (360 * i) / shapes.length, saturation: 0.95, lightness: 0.7 } }} />

@@ -6,7 +6,7 @@
 - [x] 1.4 `packages/bevy-ts/jsx-runtime.d.ts`: `Mesh2dProps`, `Material2dProps`, both in `IntrinsicElements`; `packages/bevy-ts/test/tsx/elements.tsx`: one valid element per 2D shape, `@ts-expect-error` for `shape="cuboid"`, `depth`, and `<material2d metallic>`; `bench/dx/bevy-ts/jsx-runtime.ts` copies `MeshProps` only for `<mesh>`, whose type is unchanged (the 2D shapes moved into `Shape2dMesh`, the same union), and its scenes use no 2D, so it gains nothing
 - [x] 1.5 `crates/bevy-ts-cli/tests/it/two_d.rs` (TSX needs V8, so the cli tests own it): every 2D shape builds a `Mesh2d` (no `Mesh3d`) with +Z normals; a `<material2d>` with colour, alpha, texture builds the expected `ColorMaterial` and `AlphaMode2d`; equal props share handles; refusals name shape, prop and line
 - [x] 1.6 `Camera2d` test: `<Camera2d />` plus a red full-view rectangle rendered to an image target gives a red centre pixel; `<Projection value={{ Orthographic: { scale: 2 } }} />` sets scale 2 (needs reflect-enums-color for the enum; skip that case until it lands)
-- [x] 1.7 New `examples/shapes-2d` (`example.json`, `src/game.tsx`): a `Camera2d` and every 2D shape in a grid, each its own colour
+- [x] 1.7 New `examples/shapes-2d` (`src/game.tsx`; no `example.json`, so `new` does not ship it): a `Camera2d` and every 2D shape in a grid, each its own colour
 - [x] 1.8 New `docs/2d.md`: the coverage table (every row of design's surface, TS form, test or owner); link from `README.md`; a test reads the table and fails when a row marked working names a test that does not exist (the CI hole check)
 - [x] 1.9 Gate: `cargo test -p bevy-ts-tsx`, the TS type tests, `protocol/bevy-ts.openrpc.json` unchanged
 
