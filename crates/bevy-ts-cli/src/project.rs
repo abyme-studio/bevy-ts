@@ -21,7 +21,7 @@
 //! }
 //! ```
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -95,13 +95,7 @@ fn mesh_picking<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error
     }
 }
 
-/// `net` in `bevy-ts.json` and `game.json`: deny by default.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub struct NetConfig {
-    /// `host`, `host:port`, a URL, or `${NAME}` read from the environment at start.
-    #[serde(default)]
-    pub allow: Vec<String>,
-}
+pub use bevy_ts_embed::play::NetConfig;
 
 /// `levels` in `bevy-ts.json`.
 #[derive(Clone, Debug, Default, Deserialize)]

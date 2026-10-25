@@ -2,18 +2,18 @@
 //! runs.
 
 pub mod build;
-pub mod camera;
 pub mod cli;
 pub mod compile;
 pub mod dev;
 pub mod engine;
 pub mod headless;
-pub mod input;
 pub mod play;
 pub mod project;
 pub mod reader;
 pub mod supervise;
 pub mod types;
+
+pub use bevy_ts_embed::{camera, script_input as input};
 
 pub use bevy_ts::engine::{EngineIdentity, NativeIdentity};
 pub use cli::{Engine, Prebuilt, run, run_engine};

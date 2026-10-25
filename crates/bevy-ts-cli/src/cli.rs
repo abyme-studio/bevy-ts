@@ -3,13 +3,10 @@
 //! `bevy-ts dev <entry.ts> [--headless | --viewport] [--edit] [--remote-port <port>] [--inspect[=<port>]]`,
 //! `bevy-ts build`, `bevy-ts play`, and a bare start that plays the `game/` beside the binary.
 
-use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
 use bevy::prelude::*;
-use bevy_ts_tsx::events::TsxHandlers;
 use bevy_ts::backend::{CompiledModule, ModuleSet};
 use bevy_ts::generation::{DevChannel, DevEvent, DevSource};
 use bevy_ts::runtime::RuntimeInfo;
-use bevy_ts::BevyTsPlugin;
 use crate::compile::Compiler;
 use crate::{dev, headless};
 use bevy_ts::engine::EngineIdentity;
@@ -232,71 +229,22 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         }
         _ => {}
     }
-    app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(dev))
-        .add_plugins(bevy_ts_tsx::TsxPlugin)
-        .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
-        .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
-        .add_plugins(crate::input::ScriptInputPlugin)
-        .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
-        .add_plugins(crate::camera::CamerasPlugin)
-        .add_systems(Update, headless::screenshot_on_request)
-        .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
-        .insert_resource(engine.identity.clone())
-        .add_plugins(extra);
-    // After `extra`: a native crate that adds it itself keeps its own settings.
-    if mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
-        app.add_plugins(MeshPickingPlugin);
-    }
-    if let Some(root) = assets {
-        app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
-        // The asset list, thumbnails and previews read the project's assets, not the binary's.
-        #[cfg(target_os = "macos")]
-        if dev {
-            app.insert_resource(bevy_ts_viewport::assets::AssetRoot(root.to_path_buf()));
-        }
+    bevy_ts_embed::shipped::add_shipped(&mut app, engine.identity.clone(), options, dev);
+    app.add_systems(Update, headless::screenshot_on_request).add_plugins(extra);
+    // After `extra`: a native crate that adds mesh picking itself keeps its own settings.
+    bevy_ts_embed::shipped::finish_shipped(&mut app, mesh_picking, assets);
+    // The asset list, thumbnails and previews read the project's assets, not the binary's.
+    #[cfg(target_os = "macos")]
+    if dev && let Some(root) = assets {
+        app.insert_resource(bevy_ts_viewport::assets::AssetRoot(root.to_path_buf()));
     }
     app
-}
-
-/// A mesh that has a pointer handler, one of the two just added.
-type NewMeshHandler = (With<Mesh3d>, With<TsxHandlers>, Or<(Added<Mesh3d>, Added<TsxHandlers>)>);
-
-/// Names, once per process, a mesh with a pointer handler while nothing picks meshes: its
-/// `onPointer*` would never fire. Checks the resource, not the switch, so a native crate that adds
-/// `MeshPickingPlugin` itself is not warned.
-fn warn_mesh_handlers(
-    added: Query<(Entity, Option<&Name>), NewMeshHandler>,
-    log: Option<ResMut<bevy_ts::log::ScriptLog>>,
-    generations: Option<Res<bevy_ts::generation::Generations>>,
-    mut warned: Local<bool>,
-) {
-    if *warned {
-        return;
-    }
-    let (Some((e, name)), Some(mut log)) = (added.iter().next(), log) else { return };
-    *warned = true;
-    let name = name.map(|n| format!(" \"{n}\"")).unwrap_or_default();
-    let message = format!(
-        "entity {e}{name} has a pointer handler on a mesh, but mesh picking is off: it never fires. Set \"meshPicking\": true in bevy-ts.json"
-    );
-    log.push(bevy_ts::log::LogLevel::Warn, message, None, generations.map_or(0, |g| g.live));
 }
 
 /// Whether the app carries the studio's viewport tooling (edit, assets, previews): under `bevy-ts
 /// dev` with a window or a viewport, never in a shipped game.
 pub fn studio_tools(display: Display, dev: bool) -> bool {
     dev && display != Display::Headless
-}
-
-/// Sets what scripts may connect to and see of the environment, from `net.allow` and `env`,
-/// reading `${NAME}` entries and the variables now. Skipped entries are logged.
-pub fn insert_net_policy(app: &mut App, allow: &[String], env: &[String]) {
-    let (policy, warnings) = bevy_ts::net::NetPolicy::from_env(allow, env);
-    app.insert_resource(policy);
-    let mut log = app.world_mut().resource_mut::<bevy_ts::log::ScriptLog>();
-    for w in warnings {
-        log.push(bevy_ts::log::LogLevel::Warn, w, None, 0);
-    }
 }
 
 fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
@@ -338,7 +286,7 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
         if project.config.levels.prefab_edits.as_deref() == Some("source") {
             app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().prefab_edits = bevy_ts_levels::PrefabEdits::Source;
         }
-        insert_net_policy(&mut app, &project.config.net.allow, &project.config.env);
+        bevy_ts_embed::shipped::insert_net_policy(&mut app, &project.config.net.allow, &project.config.env, &|name| std::env::var(name).ok());
     }
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     if display == Display::Headless {

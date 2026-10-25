@@ -216,7 +216,7 @@ declare global {
   function setInterval<TArgs extends any[]>(handler: (...args: TArgs) => void, timeout?: number, ...args: TArgs): number;
   function clearInterval(id: number | undefined): void;
 
-  // WebSocket: ws: only; wss: is refused. The URL's host must be in net.allow in bevy-ts.json.
+  // WebSocket: ws: and wss: (TLS, webpki roots). The URL's host must be in net.allow in bevy-ts.json.
 
   type BinaryType = "arraybuffer" | "blob";
 
@@ -228,8 +228,9 @@ declare global {
     protocols?: string | string[];
     /**
      * NON-STANDARD: extra handshake headers, such as `authorization`. Refused unless the URL's host
-     * is loopback (`localhost`, `127.0.0.0/8`, `::1`), so a key never crosses the network in clear
-     * text; an `Origin` header is always refused (the engine sends none).
+     * is loopback (`localhost`, `127.0.0.0/8`, `::1`), or the URL is `wss:` to the one origin an
+     * embedding host named, so a key never crosses the network in clear text; an `Origin` header is
+     * always refused (the engine sends none).
      */
     headers?: Record<string, string> | [string, string][];
   }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen", "crates/bevy-ts-tsx", "crates/bevy-ts-native", "crates/bevy-ts-native-derive", "crates/bevy-ts-viewport", "crates/bevy-ts-levels", "crates/bevy-ts-material", "crates/bevy-ts-animation"]
+members = ["crates/bevy-ts", "crates/bevy-ts-v8", "crates/bevy-ts-remote", "crates/bevy-ts-cli", "crates/bevy-ts-protocol-gen", "crates/bevy-ts-tsx", "crates/bevy-ts-native", "crates/bevy-ts-native-derive", "crates/bevy-ts-viewport", "crates/bevy-ts-levels", "crates/bevy-ts-material", "crates/bevy-ts-animation", "crates/bevy-ts-embed", "crates/bevy-ts-android"]
 exclude = ["bench", "crates/bevy-ts-rapier3d"]
 
 [workspace.package]
@@ -26,6 +26,7 @@ bevy-ts-viewport = { path = "crates/bevy-ts-viewport" }
 bevy-ts-levels = { path = "crates/bevy-ts-levels" }
 bevy-ts-material = { path = "crates/bevy-ts-material" }
 bevy-ts-animation = { path = "crates/bevy-ts-animation" }
+bevy-ts-embed = { path = "crates/bevy-ts-embed" }
 
 # `bevy_ts_static`: set by `cargo static test --release` (.cargo/config.toml), so release benches link Bevy
 # statically; each crate's tests/it/main.rs refuses a release build without it.
@@ -44,3 +45,13 @@ rpath = true
 [profile.dev.package."*"]
 opt-level = 3
 debug = false
+
+# The Android engine library (scripts/android): built for size, since the phone downloads one per
+# version. `panic` stays `unwind`: the C ABI catches a panic and sends `exited`, where `abort` would
+# kill the host app.
+[profile.android]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true

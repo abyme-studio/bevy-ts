@@ -541,6 +541,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy-ts-android"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy-ts-embed",
+ "jni 0.21.1",
+]
+
+[[package]]
 name = "bevy-ts-animation"
 version = "0.1.0"
 dependencies = [
@@ -554,6 +563,7 @@ dependencies = [
  "bevy",
  "bevy-ts",
  "bevy-ts-animation",
+ "bevy-ts-embed",
  "bevy-ts-levels",
  "bevy-ts-material",
  "bevy-ts-native",
@@ -571,6 +581,25 @@ dependencies = [
  "sha2",
  "toml",
  "tungstenite",
+]
+
+[[package]]
+name = "bevy-ts-embed"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy-ts",
+ "bevy-ts-animation",
+ "bevy-ts-levels",
+ "bevy-ts-material",
+ "bevy-ts-native",
+ "bevy-ts-remote",
+ "bevy-ts-tsx",
+ "bevy-ts-v8",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "wgpu",
 ]
 
 [[package]]
@@ -672,6 +701,7 @@ dependencies = [
  "bevy",
  "bevy-ts",
  "bevy-ts-animation",
+ "bevy-ts-embed",
  "bevy-ts-levels",
  "bevy-ts-remote",
  "bevy-ts-tsx",
