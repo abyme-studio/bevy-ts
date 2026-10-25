@@ -160,3 +160,68 @@ app.scene("armory", () => (
     let names: Vec<String> = world.query::<&Weapon>().iter(world).map(|w| w.name.clone()).collect();
     assert_eq!(names, vec!["laser"]);
 }
+
+/// Two Rust types with one short name, in different modules.
+pub mod a {
+    use bevy::prelude::*;
+    #[derive(Component, Reflect, Default)]
+    #[reflect(Component, Default)]
+    pub struct Health {
+        pub hp: f32,
+    }
+}
+
+pub mod b {
+    use bevy::prelude::*;
+    #[derive(Component, Reflect, Default)]
+    #[reflect(Component, Default)]
+    pub struct Health {
+        pub regen: f32,
+        pub max: f32,
+    }
+}
+
+#[test]
+fn two_types_with_one_short_name_both_get_layouts_under_their_paths() {
+    let body = r#"
+import { f32 as F32, nativeComponent as native } from "bevy-ts";
+export class AHealth extends native("it::native_components::a::Health", { hp: F32 }) {}
+export class BHealth extends native("it::native_components::b::Health", { regen: F32, max: F32 }) {}
+export function heal(qa: Query<[Mut<AHealth>]>, qb: Query<[Mut<BHealth>]>) {
+  qa.each((h) => { h.hp += 1; });
+  qb.each((h) => { h.regen = 2; h.max = 50; });
+}
+app.addSystems(Update, heal);
+"#;
+    let dir = project("native-same-short", &[("game.ts", &format!("{HEAD}{body}"))]);
+    let mut app = app(&dir.join("game.ts"));
+    app.register_type::<a::Health>().register_type::<b::Health>();
+    let ea = app.world_mut().spawn(a::Health { hp: 10.0 }).id();
+    let eb = app.world_mut().spawn(b::Health::default()).id();
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    let native = app.world().resource::<bevy_ts::layout::NativeLayouts>();
+    for path in ["it::native_components::a::Health", "it::native_components::b::Health"] {
+        assert!(native.get(path).is_some_and(|n| n.type_path == path), "{path} has no layout");
+    }
+    assert_eq!(app.world().get::<a::Health>(ea).unwrap().hp, 11.0);
+    let bh = app.world().get::<b::Health>(eb).unwrap();
+    assert_eq!((bh.regen, bh.max), (2.0, 50.0));
+}
+
+#[test]
+fn an_ambiguous_short_name_fails_the_load_naming_both_paths() {
+    let body = r#"
+import { f32 as F32, nativeComponent as native } from "bevy-ts";
+export class Health extends native("Health", { hp: F32 }) {}
+export function s(q: Query<[Health]>) {}
+app.addSystems(Update, s);
+"#;
+    let dir = project("native-same-short-ambiguous", &[("game.ts", &format!("{HEAD}{body}"))]);
+    let mut app = app(&dir.join("game.ts"));
+    app.register_type::<a::Health>().register_type::<b::Health>();
+    let r = reload(&mut app, false);
+    let want = "Health names more than one Rust type (it::native_components::a::Health, it::native_components::b::Health)";
+    assert!(r.errors.iter().any(|e| e.message.contains(want)), "{:?}", r.errors);
+}
