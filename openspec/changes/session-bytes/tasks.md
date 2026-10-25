@@ -25,7 +25,7 @@
 
 - [x] 4.1 `bench/session-bytes/` (new): `project/game.ts` with the arms in design's measure plan, `bench.mjs`, `summary.mjs`, `README.md`
 - [x] 4.2 `.abyme/processes.ts`: `session-bytes-bench`, release build through `~/dev/abyme/scripts/gate-slot`, then `bench.mjs`
-- [ ] 4.3 Run it; commit `results/after.jsonl` and the summary in the README; a miss of the pass line goes to the lead
+- [x] 4.3 Run it; commit `results/after.jsonl` and the summary in the README; a miss of the pass line goes to the lead
 
 ## 5. Docs
 
