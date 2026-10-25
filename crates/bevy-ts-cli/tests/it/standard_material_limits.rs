@@ -69,7 +69,7 @@ fn every_texture_fits_wgpus_default_limits() {
     let settings = WgpuSettings { constrained_limits: Some(WgpuLimits::default()), ..default() };
     let mut app = App::new();
     app.add_plugins(
-        bevy_ts_cli::headless::default_plugins(true).set(RenderPlugin { render_creation: RenderCreation::Automatic(Box::new(settings)), ..default() }),
+        bevy_ts_cli::headless::default_plugins(true).set(RenderPlugin { render_creation: RenderCreation::Automatic(Box::new(settings)), synchronous_pipeline_compilation: true, ..default() }),
     )
     .add_plugins(bevy_ts_cli::headless::HeadlessPlugin);
     let report = Report::default();

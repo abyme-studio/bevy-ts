@@ -359,7 +359,7 @@ mod drawn {
             std::fs::write(p, png(4, 4, *rgba)).unwrap();
         }
         let mut app = App::new();
-        app.add_plugins(headless::default_plugins(true).set(headless::asset_plugin_unwatched(&dir.join("assets"))))
+        app.add_plugins(headless::default_plugins(true).set(sync_pipelines()).set(headless::asset_plugin_unwatched(&dir.join("assets"))))
             .add_plugins(headless::HeadlessPlugin)
             .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
             .add_plugins(bevy_ts_tsx::TsxPlugin)

@@ -355,6 +355,7 @@ const processes = {
   "pipelines-registry": { cmd: "bash -c 'cargo metadata --format-version 1 --manifest-path target/regpatch/Cargo.toml > target/regpatch.json 2> target/regpatch.err; echo exit $?; grep -A2 \"name = .bevy_render.\" target/regpatch/Cargo.lock'" },
   // The thumbnail tests 15 times, a hung run sampled: the walk saw an empty crate and a hang.
   "pipelines-thumb-soak": { cmd: "scripts/thumbnail-soak.sh 15 2>&1 | tee target/thumb-soak.log" },
+  "pipelines-materials": { cmd: "bash -c 'set -o pipefail; for i in 1 2 3; do cargo test -p bevy-ts-cli --test it -- materials standard_material_limits 2>&1 | grep -v ld64 | grep -E \"^test |^test result|panicked|^error\"; done' 2>&1 | tee target/pipelines-materials.log" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
