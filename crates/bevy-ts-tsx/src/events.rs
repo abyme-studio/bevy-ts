@@ -1,6 +1,6 @@
 //! Event props, each `on` plus a Bevy 0.20 event's name and an entity-local observer of it
-//! (operator ruling 2026-10-20): `onPointerClick`, `onPointerPress`, `onPointerRelease`,
-//! `onPointerOver` and `onPointerOut` on any `<entity>` or UI element; `onTextEditChange` and
+//! (operator ruling 2026-10-20): every picking event (`onPointerClick` ... `onPointerScroll`) on
+//! any `<entity>` or UI element; `onActivate` on a `<button>`; `onTextEditChange` and
 //! `onKeyboardInput` on an `<input>`, with `onSubmit` (Enter) and `onCancel` (Escape), which Bevy
 //! lacks, read from the same `KeyboardInput` (operator ruling 2026-10-22). The observer queues the event with the handler's id; the
 //! queue goes to JS in the frame's one host call, in arrival order. Picking events bubble up
@@ -16,7 +16,12 @@ use bevy::clipboard::Clipboard;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input_focus::FocusedInput;
-use bevy::picking::events::{PointerClick, PointerOut, PointerOver, PointerPress, PointerRelease};
+use bevy::input::mouse::MouseScrollUnit;
+use bevy::picking::events::{
+    PointerCancel, PointerClick, PointerDrag, PointerDragDrop, PointerDragEnd, PointerDragEnter, PointerDragLeave, PointerDragOver, PointerDragStart, PointerEnter,
+    PointerLeave, PointerMove, PointerOut, PointerOver, PointerPress, PointerRelease, PointerScroll,
+};
+use bevy::ui_widgets::Activate;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 use bevy::text::{EditableText, EditableTextFilter, FontCx, LayoutCx, TextEditChange};
@@ -41,34 +46,70 @@ fn button(b: PointerButton) -> &'static str {
     }
 }
 
-fn queue(tree: &mut TsxTree, handlers: &TsxHandlers, kind: &str, entity: Entity, target: Entity, position: Vec2, b: Option<PointerButton>) {
+#[allow(clippy::too_many_arguments)]
+fn queue(tree: &mut TsxTree, handlers: &TsxHandlers, kind: &str, entity: Entity, target: Entity, position: Vec2, b: Option<PointerButton>, extra: Value) {
     let Some(id) = handlers.ids.get(kind) else { return };
-    let ev = json!({
+    let mut ev = json!({
         "kind": kind,
         "entity": entity.to_bits(),
         "target": target.to_bits(),
         "position": [position.x, position.y],
         "button": b.map(button).map_or(Value::Null, Value::from),
     });
+    if let (Some(o), Value::Object(more)) = (ev.as_object_mut(), extra) {
+        o.extend(more);
+    }
     tree.reactive.events.push((*id, ev));
 }
 
+fn vec2(v: Vec2) -> Value {
+    json!([v.x, v.y])
+}
+
+/// One observer per picking event: its button, if it has one, and the fields Bevy adds to it
+/// (drag `delta` and `distance`, the `dragged` or `dropped` entity, scroll `unit`, `x`, `y`).
 macro_rules! observer {
-    ($name:ident, $event:ty, $kind:literal, $button:expr) => {
+    ($name:ident, $event:ty, $kind:literal, $button:expr, $extra:expr) => {
         fn $name(on: On<$event>, handlers: Query<&TsxHandlers>, mut tree: ResMut<TsxTree>) {
             let entity = on.event().entity;
             let Ok(h) = handlers.get(entity) else { return };
             let b: fn(&$event) -> Option<PointerButton> = $button;
-            queue(&mut tree, h, $kind, entity, on.original_event_target(), on.event().pointer.position, b(on.event()));
+            let x: fn(&$event) -> Value = $extra;
+            queue(&mut tree, h, $kind, entity, on.original_event_target(), on.event().pointer.position, b(on.event()), x(on.event()));
         }
     };
 }
 
-observer!(on_click, PointerClick, "PointerClick", |e| Some(e.button));
-observer!(on_press, PointerPress, "PointerPress", |e| Some(e.button));
-observer!(on_release, PointerRelease, "PointerRelease", |e| Some(e.button));
-observer!(on_over, PointerOver, "PointerOver", |_| None);
-observer!(on_out, PointerOut, "PointerOut", |_| None);
+observer!(on_click, PointerClick, "PointerClick", |e| Some(e.button), |e| json!({ "count": e.count }));
+observer!(on_press, PointerPress, "PointerPress", |e| Some(e.button), |e| json!({ "count": e.count }));
+observer!(on_release, PointerRelease, "PointerRelease", |e| Some(e.button), |_| Value::Null);
+observer!(on_over, PointerOver, "PointerOver", |_| None, |_| Value::Null);
+observer!(on_out, PointerOut, "PointerOut", |_| None, |_| Value::Null);
+observer!(on_enter, PointerEnter, "PointerEnter", |_| None, |_| Value::Null);
+observer!(on_leave, PointerLeave, "PointerLeave", |_| None, |_| Value::Null);
+observer!(on_move, PointerMove, "PointerMove", |_| None, |e| json!({ "delta": vec2(e.delta) }));
+observer!(on_cancel, PointerCancel, "PointerCancel", |_| None, |_| Value::Null);
+observer!(on_drag_start, PointerDragStart, "PointerDragStart", |e| Some(e.button), |_| Value::Null);
+observer!(on_drag, PointerDrag, "PointerDrag", |e| Some(e.button), |e| json!({ "delta": vec2(e.delta), "distance": vec2(e.distance) }));
+observer!(on_drag_end, PointerDragEnd, "PointerDragEnd", |e| Some(e.button), |e| json!({ "distance": vec2(e.distance) }));
+observer!(on_drag_enter, PointerDragEnter, "PointerDragEnter", |e| Some(e.button), |e| json!({ "dragged": e.dragged.to_bits() }));
+observer!(on_drag_over, PointerDragOver, "PointerDragOver", |e| Some(e.button), |e| json!({ "dragged": e.dragged.to_bits() }));
+observer!(on_drag_leave, PointerDragLeave, "PointerDragLeave", |e| Some(e.button), |e| json!({ "dragged": e.dragged.to_bits() }));
+observer!(on_drag_drop, PointerDragDrop, "PointerDragDrop", |e| Some(e.button), |e| json!({ "dropped": e.dropped.to_bits() }));
+observer!(on_scroll, PointerScroll, "PointerScroll", |_| None, |e| json!({
+    "unit": match e.unit { MouseScrollUnit::Line => "line", MouseScrollUnit::Pixel => "pixel" },
+    "x": e.x,
+    "y": e.y,
+}));
+
+/// `Activate` on a `<button>` (click, or Enter or Space while focused): Bevy triggers it on the
+/// widget and it does not propagate.
+fn on_activate(on: On<Activate>, handlers: Query<&TsxHandlers>, mut tree: ResMut<TsxTree>) {
+    let entity = on.event().entity;
+    let Ok(h) = handlers.get(entity) else { return };
+    let Some(id) = h.ids.get("Activate") else { return };
+    tree.reactive.events.push((*id, json!({ "kind": "Activate", "entity": entity.to_bits() })));
+}
 
 /// `TextEditChange`: Bevy applied a field's edits (cursor moves included).
 fn on_text_edit_change(on: On<TextEditChange>, fields: Query<(&TsxHandlers, &EditableText)>, mut tree: ResMut<TsxTree>) {
@@ -164,6 +205,19 @@ pub fn set(world: &mut World, e: Entity, ids: &BTreeMap<String, u32>) {
                 "PointerRelease" => em.observe(on_release),
                 "PointerOver" => em.observe(on_over),
                 "PointerOut" => em.observe(on_out),
+                "PointerEnter" => em.observe(on_enter),
+                "PointerLeave" => em.observe(on_leave),
+                "PointerMove" => em.observe(on_move),
+                "PointerCancel" => em.observe(on_cancel),
+                "PointerDragStart" => em.observe(on_drag_start),
+                "PointerDrag" => em.observe(on_drag),
+                "PointerDragEnd" => em.observe(on_drag_end),
+                "PointerDragEnter" => em.observe(on_drag_enter),
+                "PointerDragOver" => em.observe(on_drag_over),
+                "PointerDragLeave" => em.observe(on_drag_leave),
+                "PointerDragDrop" => em.observe(on_drag_drop),
+                "PointerScroll" => em.observe(on_scroll),
+                "Activate" => em.observe(on_activate),
                 "TextEditChange" => em.observe(on_text_edit_change),
                 _ => em.observe(on_keyboard_input),
             };

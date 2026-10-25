@@ -23,6 +23,17 @@ The HUD row is the per-frame tsx work in `PostUpdate` when the player's `Health`
 
 Bindings on native-layout fields, per site (decision 11), are measured separately: 10,000 bound instances with 100 changed per frame cost 170 µs a frame against 125 µs for a TS system doing the same (`crates/bevy-ts-cli/tests/it/tsx_sites.rs`, design.md decision 11).
 
+## `ref.has(C)`: presence costs no more than a field
+
+Change `bevy-ui-coverage`, stage 3. Measured 2026-10-25 on the shared M5 Max (load 26 to 78), release, with `quiet_frames_with_a_thousand_has_or_get_reads` in `tsx_scale.rs`: 1,000 `<button>`s, each with one binding, on 200 quiet frames, 3 runs.
+
+| 1,000 bindings reading | quiet frame: tsx work, µs (3 runs) | host calls in 200 quiet frames |
+|---|---|---|
+| `r.has(Pressed)` | 4.5, 4.6, 5.1 | 0 |
+| `r.get(Health).hp > 50` | 7.4, 8.3, 7.7 | 0 |
+
+A `has` pair is one archetype lookup (`contains_id`) against the presence last delivered; a `get` pair reads a change tick. Neither calls JS while nothing changes. The one-HUD quiet frame above stays where it was: 0.7, 0.6 and 1.5 µs over the same three runs (the last at load 78).
+
 ## `<For>`: one change costs what it changes
 
 Change `tsx-keyed-for-linear`. Measured 2026-10-24 on the shared M5 Max (load 18 to 43), release, with `bench/tsx-for/`: one keyed `<For>` of n rows (`<entity>`, `Transform`, a TS `Row`) under one parent, a fresh headless engine per run, 3 runs per arm. Time is from the signal set in `Update` to the end of the frame the rows are all there.

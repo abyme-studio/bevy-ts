@@ -69,6 +69,7 @@ fn image(app: &mut App, key: &str) -> ImageNode {
 
 #[test]
 fn camera_on_a_root_writes_ui_target_camera_once_the_ref_mounts() {
+    let _hang = common::watchdog("camera_on_a_root_writes_ui_target_camera_once_the_ref_mounts", common::BOUND);
     let (_dir, mut app) = setup("ui-media-camera", GAME);
     let (hud, main) = (node(&mut app, &["hud"]), node(&mut app, &["main"]));
     assert_eq!(app.world().get::<UiTargetCamera>(hud).map(|c| c.0), Some(main));
@@ -76,6 +77,7 @@ fn camera_on_a_root_writes_ui_target_camera_once_the_ref_mounts() {
 
 #[test]
 fn a_viewport_shows_its_camera_on_an_image_of_its_own() {
+    let _hang = common::watchdog("a_viewport_shows_its_camera_on_an_image_of_its_own", common::BOUND);
     let (_dir, mut app) = setup("ui-media-viewport", GAME);
     let (map, mini) = (node(&mut app, &["hud", "map"]), node(&mut app, &["mini"]));
     assert_eq!(app.world().get::<ViewportNode>(map).unwrap().camera, Some(mini));
@@ -89,6 +91,7 @@ fn a_viewport_shows_its_camera_on_an_image_of_its_own() {
 
 #[test]
 fn a_camera_already_on_an_image_keeps_it() {
+    let _hang = common::watchdog("a_camera_already_on_an_image_keeps_it", common::BOUND);
     let src = r##"import { app, ref } from "bevy-ts";
 import { Camera3d } from "bevy-ts/bevy";
 const mini = ref();
@@ -115,6 +118,7 @@ app.scene("ui", () => (
 
 #[test]
 fn a_camera_on_the_window_image_of_a_windowless_run_gets_its_own() {
+    let _hang = common::watchdog("a_camera_on_the_window_image_of_a_windowless_run_gets_its_own", common::BOUND);
     let src = r##"import { app, ref } from "bevy-ts";
 import { Camera3d } from "bevy-ts/bevy";
 const mini = ref();
@@ -145,6 +149,7 @@ app.scene("ui", () => (
 
 #[test]
 fn image_flip_rect_and_tint() {
+    let _hang = common::watchdog("image_flip_rect_and_tint", common::BOUND);
     let (_dir, mut app) = setup("ui-media-flip", GAME);
     let i = image(&mut app, "flipped");
     assert!(i.flip_x && i.flip_y);
@@ -155,6 +160,7 @@ fn image_flip_rect_and_tint() {
 
 #[test]
 fn equal_atlas_grids_share_one_layout() {
+    let _hang = common::watchdog("equal_atlas_grids_share_one_layout", common::BOUND);
     let (_dir, mut app) = setup("ui-media-atlas", GAME);
     let (a, b) = (image(&mut app, "tile0").texture_atlas.unwrap(), image(&mut app, "tile1").texture_atlas.unwrap());
     assert_eq!((a.index, b.index), (5, 6));
@@ -166,6 +172,7 @@ fn equal_atlas_grids_share_one_layout() {
 
 #[test]
 fn sliced_tiled_and_stretch_modes() {
+    let _hang = common::watchdog("sliced_tiled_and_stretch_modes", common::BOUND);
     let (_dir, mut app) = setup("ui-media-modes", GAME);
     let NodeImageMode::Sliced(s) = image(&mut app, "panel").image_mode else { panic!("not sliced") };
     assert_eq!(s.border, BorderRect::all(8.0));
@@ -180,6 +187,7 @@ fn sliced_tiled_and_stretch_modes() {
 
 #[test]
 fn camera_inside_another_ui_element_fails_naming_its_location() {
+    let _hang = common::watchdog("camera_inside_another_ui_element_fails_naming_its_location", common::BOUND);
     let src = "import { app, ref } from \"bevy-ts\";\nconst c = ref();\napp.scene(\"ui\", () => (\n  <node>\n    <node camera={c} />\n  </node>\n));\n";
     let dir = project("ui-media-nested-camera", &[("game.tsx", src)]);
     let mut app = media_app(&dir.join("game.tsx"));
@@ -191,6 +199,7 @@ fn camera_inside_another_ui_element_fails_naming_its_location() {
 
 #[test]
 fn an_atlas_index_past_its_grid_fails() {
+    let _hang = common::watchdog("an_atlas_index_past_its_grid_fails", common::BOUND);
     let src = "import { app } from \"bevy-ts\";\napp.scene(\"ui\", () => <image src=\"a.png\" atlas={{ layout: { tile: [8, 8], columns: 2, rows: 2 }, index: 4 }} />);\n";
     let dir = project("ui-media-atlas-index", &[("game.tsx", src)]);
     let mut app = media_app(&dir.join("game.tsx"));
@@ -201,6 +210,7 @@ fn an_atlas_index_past_its_grid_fails() {
 
 #[test]
 fn camera_inside_show_inside_a_ui_element_fails_too() {
+    let _hang = common::watchdog("camera_inside_show_inside_a_ui_element_fails_too", common::BOUND);
     let src = "import { app, ref, Show } from \"bevy-ts\";\nconst c = ref();\napp.scene(\"ui\", () => (\n  <node>\n    <Show when={true}>\n      <node camera={c} />\n    </Show>\n  </node>\n));\n";
     let dir = project("ui-media-show-camera", &[("game.tsx", src)]);
     let mut app = media_app(&dir.join("game.tsx"));
@@ -213,6 +223,7 @@ fn camera_inside_show_inside_a_ui_element_fails_too() {
 
 #[test]
 fn a_rect_with_a_word_in_it_fails() {
+    let _hang = common::watchdog("a_rect_with_a_word_in_it_fails", common::BOUND);
     let src = "import { app } from \"bevy-ts\";\napp.scene(\"ui\", () => <image src=\"a.png\" rect={[0, \"x\", 1, 2, 3] as never} />);\n";
     let dir = project("ui-media-rect", &[("game.tsx", src)]);
     let mut app = media_app(&dir.join("game.tsx"));

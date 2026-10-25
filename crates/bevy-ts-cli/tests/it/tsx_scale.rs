@@ -118,3 +118,44 @@ fn mount_reload_and_hud_at_scale() {
         measure(n);
     }
 }
+
+/// 1,000 bindings reading `ref.has(Pressed)` (presence pairs) or `ref.get(Health)` (tick pairs),
+/// nothing changing: the per-frame check's cost, median of 200 quiet frames, and host calls made.
+fn quiet_reads(read: &str) -> (f64, u64) {
+    let src = format!(
+        r##"import {{ app, Component, f32, ref }} from "bevy-ts";
+import {{ Pressed }} from "bevy-ts/bevy";
+export class Health extends Component {{ static path = "game::Health"; hp: f32 = 100 }}
+const Row = () => {{
+  const r = ref();
+  return <button ref={{r}} background={{() => ({read}) ? "#224466" : "#3366cc"}}><Health initialHp={{100}} /></button>;
+}};
+app.scene("ui", () => <node key="list">{{Array.from({{ length: 1000 }}, (_, i) => <Row key={{`r${{i}}`}} />)}}</node>);
+"##
+    );
+    let dir = project(&format!("scale-reads-{}", if read.contains("has") { "has" } else { "get" }), &[("game.tsx", &src)]);
+    let mut app = tsx_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 5);
+    assert_eq!(app.world().resource::<TsxTree>().reactive.subs.len(), 1000, "one pair per binding");
+    let calls = app.world().resource::<TsxTree>().reactive.calls;
+    let mut quiet = Vec::new();
+    for _ in 0..200 {
+        app.update();
+        quiet.push(app.world().resource::<TsxTree>().reactive.last_frame_us);
+    }
+    (median(quiet), app.world().resource::<TsxTree>().reactive.calls - calls)
+}
+
+#[test]
+#[ignore = "timing: run in release"]
+fn quiet_frames_with_a_thousand_has_or_get_reads() {
+    println!("| 1,000 bindings reading | quiet frame: tsx work, µs | host calls in 200 quiet frames |");
+    println!("|---|---|---|");
+    for read in ["r.has(Pressed)", "r.get(Health).hp > 50"] {
+        let (us, calls) = quiet_reads(read);
+        println!("| `{read}` | {us:.1} | {calls} |");
+        assert_eq!(calls, 0, "a quiet frame makes no host call");
+    }
+}

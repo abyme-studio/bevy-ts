@@ -166,6 +166,9 @@ pub struct Subscription {
     pub id: bevy::ecs::component::ComponentId,
     /// The tick the value was last delivered at.
     pub last: bevy::ecs::change_detection::Tick,
+    /// A `has(C)` read (named `?C`): whether the entity carried the component when last delivered.
+    /// Watched by presence, not by tick, and never dropped while the component is absent.
+    pub present: Option<bool>,
 }
 
 /// The live generation's bindings, refs, slots and subscriptions. JS holds the closures; Rust
