@@ -90,6 +90,7 @@ mod ui_events;
 mod ui_focus;
 mod ui_gallery;
 mod ui_media;
+mod ui_placement;
 mod ui_style;
 mod ui_text;
 mod ui_viewport;

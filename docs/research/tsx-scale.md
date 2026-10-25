@@ -61,3 +61,25 @@ node bench/tsx-for/summary.mjs before after
 Before, 100k timed out at 600 s in every arm but the reference; `reverse` and `clear` never finished mounting. After, a 10k grow is 1.04 times `commands.spawn` of the same rows, and 100k is 9.8 times 10k: linear. Before, `reverse` was fast because it did nothing: the entities kept their first order. Now they are sorted into item order, in one write of the parent's `Children`.
 
 The cause was in Rust. Each `<For>` item was a group applied alone, and each apply took every node of the whole root as a despawn candidate and cloned its key path to test it: group k walked the k−1 before it. Unmounting all items had the same shape. Now a host call's groups for one slot are one reconcile, its despawn candidates come from the groups it was given (`SlotState.rows`), a spawned node's `ChildOf`, `TsxNode` and native-layout components go in with one `insert_by_ids`, and JS sends a slot's key order only when its entities would be out of it.
+
+## Placement: `transform` instead of `style` (bevy-ui-coverage 3b)
+
+Measured 2026-10-25 on the shared M5 Max under heavy load (load average 29 to 82), release.
+
+1,000 4-px nodes, each moved every frame through a bound prop, laid out by the headless engine (`tsx_scale::a_thousand_nodes_moved_by_style_or_transform`, frame ms, median of 200 frames, 8 runs by turns):
+
+| moved by | median of runs, ms | runs where it was faster |
+|---|---|---|
+| `style` `left`/`top` | 9.9 (8.5 to 19.5) | 0 of 8 |
+| `transform.translation` | 9.0 (7.8 to 11.4) | 8 of 8 |
+
+A `style` binding rebuilds `Node`, so `ui_layout_system` sends each node to taffy again; `transform` writes only `UiTransform`, applied after layout. `ui_placement.rs` shows the `Node` change tick never moves and `ComputedNode` stays put.
+
+Agent town's label bench (`openspec/research/heimdall-labels/bench.mjs` at 75154d9, arm `ui`, `BENCH_N=1000`, this branch's release engine at 2c7817b3; `openspec/changes/bevy-ui-coverage/bench-town.sh`), 8 runs by turns:
+
+| plates placed by | frame ms | CPU % |
+|---|---|---|
+| `style` (before) | 21.2 ± 1.3 | 55 ± 7 |
+| `transform` (after) | 21.0 ± 1.3 | 56 ± 7 |
+
+Within noise: the `ui` arm shows at most 48 plates (its budget), and 48 nodes laid out again cost too little to show under this load. The +37-point CPU rise agent town saw came from many more moved nodes; the 1,000-node rows above are that case. `transform`'s own write (an insert per change) did not show as a cost in either bench, so 3b.4's in-place set was not made.

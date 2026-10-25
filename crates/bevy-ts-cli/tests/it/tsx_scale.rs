@@ -159,3 +159,52 @@ fn quiet_frames_with_a_thousand_has_or_get_reads() {
         assert_eq!(calls, 0, "a quiet frame makes no host call");
     }
 }
+
+/// Stage 3b: 1,000 nodes moved every frame by `style` `left`/`top` (`arm` "style") or by
+/// `transform.translation` ("transform"), laid out by the headless engine; frame ms, median of 200.
+#[cfg(target_os = "macos")]
+fn moved_frames(arm: &str) -> f64 {
+    use bevy_ts::generation::DevSource;
+    use bevy_ts_cli::cli::{Display, Engine, base_app};
+    use std::sync::Arc;
+    let place = match arm {
+        "style" => r#"style={() => ({ position: "absolute", left: px((i + frame()) % 900), top: px(i % 500), width: px(4), height: px(4) })}"#,
+        _ => r#"style={{ position: "absolute", left: 0, top: 0, width: px(4), height: px(4) }} transform={() => ({ translation: [px((i + frame()) % 900), px(i % 500)] })}"#,
+    };
+    let src = format!(
+        r#"import {{ app, signal, px, Update }} from "bevy-ts";
+export const [frame, setFrame] = signal(0);
+export function tick() {{ setFrame(frame() + 1); }}
+app.addSystems(Update, tick);
+app.scene("ui", () => <>{{Array.from({{ length: 1000 }}, (_, i) => <node key={{`n${{i}}`}} {place} />)}}</>);
+"#
+    );
+    let dir = project(&format!("scale-moved-{arm}"), &[("game.tsx", &src)]);
+    let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
+    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, Default::default(), &[]);
+    app.insert_resource(DevSource(Arc::new(bevy_ts_cli::compile::Compiler::new(dir.join("game.tsx"), true).unwrap())));
+    app.finish();
+    app.cleanup();
+    app.world_mut().spawn(Camera2d);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 30);
+    let mut frames = Vec::new();
+    for _ in 0..200 {
+        let t = Instant::now();
+        app.update();
+        frames.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    median(frames)
+}
+
+#[test]
+#[ignore = "timing: run in release"]
+#[cfg(target_os = "macos")]
+fn a_thousand_nodes_moved_by_style_or_transform() {
+    println!("| 1,000 nodes moved each frame by | frame, ms (median of 200) |");
+    println!("|---|---|");
+    for arm in ["style", "transform"] {
+        println!("| `{arm}` | {:.2} |", moved_frames(arm));
+    }
+}

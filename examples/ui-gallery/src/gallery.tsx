@@ -176,6 +176,24 @@ const Focus = () => (
   </Panel>
 );
 
+const [tick, setTick] = signal(0);
+export function drift() {
+  setTick(tick() + 1);
+}
+app.addSystems(Update, drift);
+
+/** Stage 3b: 40 dots moved every frame by `transform`; their `style` is static, so nothing lays out again. */
+const Placement = () => (
+  <Panel title="Placement">
+    <node key="field" style={{ width: px(240), height: px(60), overflow: "clip" }} background="#11151c">
+      {Array.from({ length: 40 }, (_, i) => (
+        <node key={`dot${i}`} style={{ position: "absolute", left: 0, top: 0, width: px(4), height: px(4) }} radius={percent(50)} background="#9fb3d1"
+          transform={() => ({ translation: [px((i * 37 + tick()) % 236), px((i * 13) % 56)] })} />
+      ))}
+    </node>
+  </Panel>
+);
+
 app.scene("gallery", () => (
   <>
     {/* Not UI: a cube behind the panels, so <entity>, <mesh> and <material> appear too. */}
@@ -209,6 +227,7 @@ app.scene("gallery", () => (
       <Text />
       <Events />
       <Focus />
+      <Placement />
       <Media />
       <TextInput />
     </node>
