@@ -84,7 +84,7 @@ pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String,
     let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();
     let (rc, reg) = component(&registry, type_path)?;
-    let mut value = default(&registry, reg).ok_or_else(|| format!("{type_path} has no reflected Default, so a level cannot insert it"))?;
+    let mut value = default(&registry, reg).ok_or_else(|| format!("{type_path} has neither a reflected Default nor a reflected FromWorld, so a level cannot insert it"))?;
     let assets = slots_of(world);
     let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
     for (f, v) in props {

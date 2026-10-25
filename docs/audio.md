@@ -62,8 +62,8 @@ first and acts on whichever sink it has, under Bevy's `AudioSinkPlayback` names:
 
 | Method | Does |
 |---|---|
-| `volume(e)`, `setVolume(e, linear)` | the volume, linear (`1` is the source's own); while muted, the volume `unmute` restores |
-| `speed(e)`, `setSpeed(e, speed)` | the speed, `1` normal; it moves the pitch too |
+| `volume(e)`, `setVolume(e, linear)` | the volume, linear (`1` is the source's own, `0` or more); while muted, the volume `unmute` restores |
+| `speed(e)`, `setSpeed(e, speed)` | the speed, above `0`, `1` normal; it moves the pitch too |
 | `play(e)`, `pause(e)`, `togglePlayback(e)`, `isPaused(e)` | pause and resume |
 | `position(e)` | seconds played |
 | `trySeek(e, seconds)` | seeks; throws Bevy's `SeekError` text when the source cannot |
@@ -79,7 +79,8 @@ A volume crosses as its linear `number`; Bevy's `Volume` arithmetic (`to_decibel
 - A sound whose asset is still loading has no sink yet: getters return `undefined`, setters do
   nothing. With no output device (headless, or a machine with none) every sound stays so. To start
   a sound paused, give it `PlaybackSettings paused`.
-- An entity with no `AudioPlayer` throws, naming `AudioSinks`, the method and the entity.
+- An entity with no `AudioPlayer` throws, naming `AudioSinks`, the method and the entity. So does a
+  volume below 0, a speed of 0 or less, a negative seek, or NaN.
 - The three spatial setters throw on a plain sink: play it with `PlaybackSettings spatial`. Bevy
   also moves a spatial sound's emitter to its `GlobalTransform` and the ears to the
   `SpatialListener`'s each frame.
@@ -90,7 +91,8 @@ Ogg Vorbis and WAV are compiled in: Ogg for music and effects, WAV for what tool
 flac are not: together they would add 1.4 MB to every engine (docs/research/script-audio.md §3).
 
 An `AudioPlayer`'s asset loads by its type, whatever its extension, so a `music.mp3` loads, and
-Bevy would panic when it plays it. The engine removes such a source when it loads and logs an
+Bevy would panic when it plays it. The engine removes such a source when it loads, or when a hot
+reload replaces it, and logs an
 error naming it: `sounds/music.mp3 is not Ogg Vorbis or WAV, the audio this engine decodes`. A
 `.ogg` or `.wav` whose bytes are not that format is refused the same way.
 
@@ -116,7 +118,7 @@ Every public item of `bevy_audio` 0.20, its TS form, and the test or owner. Test
 |---|---|---|---|
 | `AudioPlugin { global_volume, default_spatial_scale }` | added by the engine where it plays; elsewhere its asset half | done | `only_a_window_or_a_viewport_given_audio_plays`, `a_headless_engine_loads_audio_and_names_audio_player` |
 | `AudioPlayer<AudioSource>(Handle)` | `<AudioPlayer value="sounds/hit.ogg" />`; `With<AudioPlayer>` | done in TSX | `tsx_writes_audio_player_and_playback_settings`; `commands.spawn` of it: reflect-coverage stage 2, then this change's stage 2 |
-| `AudioSource { bytes }`, `AudioLoader` | an asset path | done | `ogg_and_wav_decode_headless`, `an_mp3_is_refused_by_name` |
+| `AudioSource { bytes }`, `AudioLoader` | an asset path | done | `ogg_and_wav_decode_headless`, `an_mp3_is_refused_by_name`, `a_reloaded_source_is_checked_again` |
 | `Decodable`, `AddAudioSource`, `Source`, `Sample`, `SampleRate`, `ChannelCount`, `CpalSample` | none: Rust extension points | — | — |
 | `Pitch { frequency, duration }`, `AudioPlayer<Pitch>` | needs `Assets<Pitch>.add` from TS | missing | script-assets |
 | `PlaybackSettings { mode, speed, paused, muted, spatial }` | column fields | done | `tsx_writes_audio_player_and_playback_settings` |

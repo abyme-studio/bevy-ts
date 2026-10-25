@@ -26,12 +26,18 @@ impl Plugin for ScriptAudioPlugin {
         // levels build it from this `FromWorld`, a default handle the `value` prop replaces.
         app.register_type::<AudioPlayer>()
             .ts_param::<AudioSinksParam<'static, 'static>>()
+            // In `Update`, before Bevy's playback in `PostUpdate`. A load's or a reload's
+            // `AssetEvent` is written in `PostUpdate`, too late to read first, and Bevy's playback
+            // set is private, so nothing in `PostUpdate` can be ordered before it.
             .add_systems(Update, refuse_undecodable);
         let from_world = ReflectFromWorld::new(ReflectFromWorldFns { from_world: |_| Box::new(AudioPlayer::new(Handle::default())) });
         let registry = app.world().resource::<AppTypeRegistry>().clone();
         registry.write().get_mut(std::any::TypeId::of::<AudioPlayer>()).expect("registered above").insert(from_world);
     }
 }
+
+/// The bytes of a source [`decodable`] reads.
+const HEADER: usize = 12;
 
 /// Whether Bevy's decoder takes a source at `path` (its extension) holding `bytes`: an Ogg one
 /// starts `OggS`, a WAV one `RIFF`..`WAVE`, and another extension decodes when Bevy's
@@ -50,28 +56,34 @@ pub fn decodable(path: Option<&std::path::Path>, bytes: &[u8]) -> bool {
 
 /// An `AudioPlayer`'s asset loads by type, whatever its extension, so `music.mp3` loads as bytes,
 /// and Bevy's `AudioSource::decoder` panics on it when it plays (`bevy_audio/src/audio_source.rs:96-103`).
-/// Before Bevy's playback (`PostUpdate`), a new source it cannot decode is removed and named in
-/// the script log: Bevy's player then waits for it, as for an asset still loading.
+/// A source that is new, or whose bytes changed (a hot reload keeps its id and replaces its
+/// bytes), and that Bevy cannot decode is removed and named in the script log: Bevy's player then
+/// waits for it, as for an asset still loading. `checked` holds each id's header when last checked,
+/// all of a source that [`decodable`] reads.
 fn refuse_undecodable(
     sources: Option<ResMut<Assets<AudioSource>>>,
     server: Res<AssetServer>,
     log: Option<ResMut<bevy_ts::log::ScriptLog>>,
     generations: Option<Res<bevy_ts::generation::Generations>>,
-    mut seen: Local<bevy::platform::collections::HashSet<AssetId<AudioSource>>>,
+    mut checked: Local<bevy::platform::collections::HashMap<AssetId<AudioSource>, Vec<u8>>>,
 ) {
     let Some(mut sources) = sources.filter(|s| s.is_changed()) else { return };
-    let refused: Vec<(AssetId<AudioSource>, String)> = sources
-        .iter()
-        .filter(|(id, _)| !seen.contains(id))
-        .filter_map(|(id, s)| {
-            let path = server.get_path(id)?;
-            (!decodable(Some(path.path()), &s.bytes)).then(|| (id, path.to_string()))
-        })
-        .collect();
-    seen.extend(sources.ids());
+    checked.retain(|id, _| sources.contains(*id));
+    let mut refused = Vec::new();
+    for (id, source) in sources.iter() {
+        let header = &source.bytes[..source.bytes.len().min(HEADER)];
+        if checked.get(&id).is_some_and(|h| h[..] == *header) {
+            continue;
+        }
+        checked.insert(id, header.to_vec());
+        if let Some(path) = server.get_path(id).filter(|p| !decodable(Some(p.path()), &source.bytes)) {
+            refused.push((id, path.to_string()));
+        }
+    }
     let mut log = log;
     for (id, path) in refused {
         sources.remove(id);
+        checked.remove(&id);
         let message = format!(
             "{path} is not Ogg Vorbis or WAV, the audio this engine decodes; it is not played (docs/audio.md says how to get mp3 and flac)"
         );
@@ -126,6 +138,16 @@ fn seconds(secs: f64) -> Result<Duration, String> {
     Duration::try_from_secs_f64(secs).map_err(|_| format!("{secs} is not a number of seconds"))
 }
 
+/// A finite linear volume of 0 or more.
+fn linear(volume: f32) -> Result<Volume, String> {
+    (volume.is_finite() && volume >= 0.0).then_some(Volume::Linear(volume)).ok_or_else(|| format!("{volume} is not a volume: give a linear volume of 0 or more"))
+}
+
+/// A finite speed above 0.
+fn speed(speed: f32) -> Result<f32, String> {
+    (speed.is_finite() && speed > 0.0).then_some(speed).ok_or_else(|| format!("{speed} is not a speed: give a speed above 0"))
+}
+
 impl AudioSinksParam<'_, '_> {
     /// `f` on the entity's sink; `None` with an `AudioPlayer` and no sink yet.
     fn read<T>(&self, e: Entity, f: impl FnOnce(&dyn AudioSinkPlayback) -> T) -> Result<Option<T>, String> {
@@ -174,9 +196,11 @@ impl AudioSinksParam<'_, '_> {
         self.read(e, |s| s.volume().to_linear())
     }
 
-    /// Sets the volume, linear (`1` is the source's own). While muted, it is kept for `unmute`.
+    /// Sets the volume, linear (`1` is the source's own; below 0 or NaN throws). While muted, it is
+    /// kept for `unmute`.
     pub fn set_volume(&mut self, e: Entity, volume: f32) -> Result<(), String> {
-        self.write(e, |s| s.set_volume(Volume::Linear(volume))).map(drop)
+        let volume = linear(volume)?;
+        self.write(e, |s| s.set_volume(volume)).map(drop)
     }
 
     /// The speed: `1` is normal.
@@ -184,8 +208,9 @@ impl AudioSinksParam<'_, '_> {
         self.read(e, |s| s.speed())
     }
 
-    /// Sets the speed, which changes the pitch too.
+    /// Sets the speed, above 0, which changes the pitch too.
     pub fn set_speed(&mut self, e: Entity, speed: f32) -> Result<(), String> {
+        let speed = self::speed(speed)?;
         self.write(e, |s| s.set_speed(speed)).map(drop)
     }
 

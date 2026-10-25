@@ -16,7 +16,7 @@ The engine SHALL add Bevy's `AudioPlugin` in window mode, and in viewport mode o
 - **THEN** the engine has Bevy's `AudioPlugin`, and an `AudioPlayer` whose asset has loaded gets an `AudioSink` when an output device exists
 
 ### Requirement: Ogg and WAV decode
-The engine SHALL decode Ogg Vorbis (`ogg`, `oga`, `spx`) and WAV (`wav`) through Bevy's `vorbis` and `wav` features. mp3 and flac SHALL NOT be compiled in. Since an `AudioPlayer`'s asset loads by type whatever its extension, an `AudioSource` Bevy's decoder cannot take (its extension is not one `AudioLoader` lists, or an Ogg or WAV path whose bytes are not that container) SHALL be removed when it loads and named in the script log, so Bevy never panics decoding it.
+The engine SHALL decode Ogg Vorbis (`ogg`, `oga`, `spx`) and WAV (`wav`) through Bevy's `vorbis` and `wav` features. mp3 and flac SHALL NOT be compiled in. Since an `AudioPlayer`'s asset loads by type whatever its extension, an `AudioSource` Bevy's decoder cannot take (its extension is not one `AudioLoader` lists, or an Ogg or WAV path whose bytes are not that container) SHALL be removed when it loads, or when a hot reload replaces it under the same id, and named in the script log, before Bevy plays it that frame, so Bevy never panics decoding it.
 
 #### Scenario: Decode headless
 - **WHEN** a headless engine loads `tone.ogg` and `tone.wav`
@@ -26,6 +26,10 @@ The engine SHALL decode Ogg Vorbis (`ogg`, `oga`, `spx`) and WAV (`wav`) through
 - **WHEN** a headless engine loads `music.mp3` as an `AudioSource`
 - **THEN** its bytes load, the engine removes the source, and the script log has one error naming `music.mp3`, "Ogg Vorbis or WAV" and `docs/audio.md`
 
+#### Scenario: An mp3 saved over an Ogg file
+- **WHEN** `tone.ogg` has loaded and its source is replaced under the same id by mp3 bytes, as a hot reload does
+- **THEN** the engine removes the source, and the script log has one error naming `tone.ogg`
+
 ### Requirement: AudioPlayer and PlaybackSettings from TSX
 `bevy-ts/bevy` SHALL declare `AudioPlayer` as a reflect-tier component whose one field is `value`, an asset path, so `<AudioPlayer value="sounds/hit.ogg" />` plays that asset and `With<AudioPlayer>` filters a query. `PlaybackSettings` SHALL stay a column (`mode`, `speed`, `paused`, `muted`, `spatial`), with `volume` (`{ Linear: n }` or `{ Decibels: n }`), `spatial_scale`, `start_position` and `duration` (seconds, or `null`) as TSX props written through reflection.
 
@@ -34,7 +38,7 @@ The engine SHALL decode Ogg Vorbis (`ogg`, `oga`, `spx`) and WAV (`wav`) through
 - **THEN** the entity's `AudioPlayer` handle has path `music.ogg` and its `PlaybackSettings` has `mode` `Loop`, `volume` `Decibels(-6)` and `start_position` 0.5 s
 
 ### Requirement: AudioSinks controls a playing sound
-`bevy-ts/audio` SHALL export the param `AudioSinks`, over `AudioSink` and `SpatialAudioSink`. Each method SHALL take the entity first and act on whichever sink it has, under Bevy's `AudioSinkPlayback` names: `volume`, `setVolume`, `speed`, `setSpeed`, `play`, `pause`, `togglePlayback`, `isPaused`, `position`, `trySeek`, `stop`, `empty`, `isMuted`, `mute`, `unmute`, `toggleMute`. A volume SHALL cross as its linear `number` and a position as seconds. `trySeek` SHALL throw Bevy's `SeekError` text. `setEarsPosition(e, left, right)`, `setListenerPosition(e, translation, rotation, gap)` and `setEmitterPosition(e, position)` SHALL act on a `SpatialAudioSink` and throw on a plain sink. An entity with an `AudioPlayer` and no sink yet SHALL read as not playing: getters return `undefined`, setters do nothing. An entity with no `AudioPlayer` SHALL throw, naming `AudioSinks`, the method and the entity.
+`bevy-ts/audio` SHALL export the param `AudioSinks`, over `AudioSink` and `SpatialAudioSink`. Each method SHALL take the entity first and act on whichever sink it has, under Bevy's `AudioSinkPlayback` names: `volume`, `setVolume`, `speed`, `setSpeed`, `play`, `pause`, `togglePlayback`, `isPaused`, `position`, `trySeek`, `stop`, `empty`, `isMuted`, `mute`, `unmute`, `toggleMute`. A volume SHALL cross as its linear `number` and a position as seconds. `trySeek` SHALL throw Bevy's `SeekError` text. A volume below 0, a speed of 0 or less, a negative number of seconds, or NaN SHALL throw and change nothing. `setEarsPosition(e, left, right)`, `setListenerPosition(e, translation, rotation, gap)` and `setEmitterPosition(e, position)` SHALL act on a `SpatialAudioSink` and throw on a plain sink. An entity with an `AudioPlayer` and no sink yet SHALL read as not playing: getters return `undefined`, setters do nothing. An entity with no `AudioPlayer` SHALL throw, naming `AudioSinks`, the method and the entity.
 
 #### Scenario: Pause and resume
 - **WHEN** an entity has an `AudioPlayer` and an `AudioSink`, and a system calls `sinks.pause(e)`

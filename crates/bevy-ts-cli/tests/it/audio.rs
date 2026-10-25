@@ -146,6 +146,27 @@ fn an_mp3_is_refused_by_name() {
     assert!(refused[0].contains("Ogg Vorbis or WAV") && refused[0].contains("docs/audio.md"), "{}", refused[0]);
 }
 
+#[test]
+fn a_reloaded_source_is_checked_again() {
+    let dir = common::project("audio-reload", &[]);
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    std::fs::write(dir.join("assets/tone.ogg"), TONE_OGG).unwrap();
+    let mut app = engine(Display::Headless, Some(&dir.join("assets")));
+    app.finish();
+    app.cleanup();
+    let handle = app.world().resource::<AssetServer>().load::<AudioSource>("tone.ogg");
+    assert!(loaded(&mut app, &handle));
+    app.update();
+    assert!(app.world().resource::<Assets<AudioSource>>().get(&handle).is_some(), "an Ogg source stays");
+    // A hot reload keeps the id: an mp3 saved over tone.ogg is a `Modified` source.
+    let mp3: std::sync::Arc<[u8]> = std::sync::Arc::from(&[0xFF, 0xFB, 0x90, 0x64, 0, 0, 0, 0][..]);
+    app.world_mut().resource_mut::<Assets<AudioSource>>().insert(handle.id(), AudioSource { bytes: mp3 }).unwrap();
+    app.update();
+    assert!(app.world().resource::<Assets<AudioSource>>().get(&handle).is_none(), "the reloaded source is removed");
+    let refused: Vec<String> = messages(&app).into_iter().filter(|m| m.contains("tone.ogg")).collect();
+    assert_eq!(refused.len(), 1, "{refused:?}");
+}
+
 const SCENE: &str = r#"import { app } from "bevy-ts";
 import { AudioPlayer, PlaybackSettings } from "bevy-ts/bevy";
 
@@ -234,6 +255,8 @@ export function drive(sinks: AudioSinks, plains: Query<[Entity], With<Plain>>, s
       console.log(`s3 plain-ears ${attempt(() => sinks.setEmitterPosition(p, [1, 0, 0]))}`);
       console.log(`s3 seek ${attempt(() => sinks.trySeek(k, 0.1))}`);
       console.log(`s3 seek-negative ${attempt(() => sinks.trySeek(p, -1))}`);
+      console.log(`s3 bad-volume ${attempt(() => sinks.setVolume(p, NaN))} ${attempt(() => sinks.setVolume(p, -0.5))}`);
+      console.log(`s3 bad-speed ${attempt(() => sinks.setSpeed(p, 0))} ${sinks.volume(p)} ${sinks.speed(p)}`);
       sinks.stop(p);
       break;
     }
@@ -364,6 +387,11 @@ fn audio_sinks_control_sinks_with_no_device() {
     assert!(seek.contains("threw") && seek.contains("trySeek") && seek.to_lowercase().contains("not supported"), "{seek}");
     let negative = line(&app, "s3 seek-negative");
     assert!(negative.contains("threw") && negative.contains("-1 is not a number of seconds"), "{negative}");
+    let volume = line(&app, "s3 bad-volume");
+    assert!(volume.contains("threw") && volume.contains("NaN is not a volume") && volume.contains("-0.5 is not a volume"), "{volume}");
+    let speed = line(&app, "s3 bad-speed");
+    assert!(speed.contains("0 is not a speed"), "{speed}");
+    assert!(speed.ends_with(" 0.5 1"), "a refused value leaves the sink as it was: {speed}");
 
     // `stop` ends the sound once the device next pulls.
     pull(&mut out, 1000);
