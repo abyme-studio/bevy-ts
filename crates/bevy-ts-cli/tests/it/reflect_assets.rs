@@ -264,3 +264,58 @@ setTimeout(() => {
     updates(&mut app, 3);
     assert!(logged(&app, "assets.add can only be called while a system runs, TSX renders or the script loads"), "{:?}", messages(&app));
 }
+
+/// `assets_app` with meshes, which `<material>` needs.
+fn material_setup(name: &str, body: &str) -> (PathBuf, App) {
+    let dir = project(name, &[("game.tsx", &format!("{HEAD}{body}"))]);
+    let mut app = assets_app(&dir.join("game.tsx"));
+    app.init_asset::<Mesh>();
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 3);
+    (dir, app)
+}
+
+#[test]
+fn an_element_and_a_value_share_one_material() {
+    let (_dir, mut app) = material_setup(
+        "assets-element-value-share",
+        r##"
+app.scene("s", () => (
+  <entity name="root">
+    <entity name="a"><material color="#fff" roughness={0.3} /></entity>
+    <entity name="b"><MeshMaterial3dStandardMaterial value={StandardMaterial.of({ perceptual_roughness: 0.3, base_color: "#fff" })} /></entity>
+  </entity>
+));
+"##,
+    );
+    let ids = entity_materials(&mut app);
+    assert_eq!(ids.len(), 2);
+    assert_eq!(ids[0], ids[1], "<material> is the StandardMaterial.of value of its props");
+    let ms = materials(&app);
+    assert_eq!(ms.len(), 1, "one material built");
+    assert_eq!((ms[0].base_color, ms[0].perceptual_roughness), (Color::srgb(1.0, 1.0, 1.0), 0.3));
+}
+
+#[test]
+fn a_value_changed_on_re_render_takes_its_new_material() {
+    let (_dir, mut app) = material_setup(
+        "assets-of-rerender",
+        r##"
+import { signal, type Local, type u32 } from "bevy-ts";
+export const [dark, setDark] = signal(false);
+export function flip(frames: Local<{ n: u32 }>) { frames.n += 1; if (frames.n === 3) setDark(true); }
+app.addSystems(Update, flip);
+app.scene("s", () => (
+  <entity name="a"><MeshMaterial3dStandardMaterial value={() => StandardMaterial.of({ base_color: dark() ? "#000" : "#fff" })} /></entity>
+));
+"##,
+    );
+    updates(&mut app, 3);
+    let ids = entity_materials(&mut app);
+    let ms = app.world().resource::<Assets<StandardMaterial>>();
+    assert_eq!(ms.get(ids[0]).unwrap().base_color, Color::srgb(0.0, 0.0, 0.0), "the #000 material");
+    assert_eq!(ms.len(), 2, "#fff built once, then #000; nothing rebuilt");
+    updates(&mut app, 3);
+    assert_eq!(app.world().resource::<Assets<StandardMaterial>>().len(), 2, "no build per frame");
+}

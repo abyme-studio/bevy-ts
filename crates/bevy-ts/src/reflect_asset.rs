@@ -143,13 +143,20 @@ impl ScriptAssets {
 
     /// A new ref for an asset of `ty`, with its UUID handle; its value is queued as added.
     fn make(&self, ty: &AssetType, value: Built) -> (u64, UntypedHandle) {
+        let (n, handle) = self.make_unqueued(ty);
+        self.table().queued.insert(n, Queued { added: true, value });
+        (n, handle)
+    }
+
+    /// A new ref for an asset of `ty`, with its UUID handle; its caller inserts the value now, with
+    /// `&mut World`.
+    fn make_unqueued(&self, ty: &AssetType) -> (u64, UntypedHandle) {
         let mut t = self.table();
         t.last += 1;
         let n = t.last;
         let handle = UntypedHandle::Uuid { type_id: ty.id, uuid: Uuid::from_u64_pair(UUID_TAG, n) };
         t.by_id.insert(handle.id(), n);
         t.refs.insert(n, Made { handle: handle.clone(), kind: ty.kind.clone() });
-        t.queued.insert(n, Queued { added: true, value });
         if t.refs.len() > REFS_WARN && !t.warned {
             t.warned = true;
             warn!("bevy-ts: scripts hold {} assets this session; add an asset once and assets.set it after", t.refs.len());
@@ -412,6 +419,29 @@ impl Slots<'_> {
         }
         self.assets.cache(ty.id, key, n);
         Ok(handle)
+    }
+
+    /// `T.of(props)` of a reflected `T` from Rust, with a step after the write for fields reflection
+    /// cannot reach (`StandardMaterial::cull_mode`): `finish` edits the built value, and `extra`,
+    /// what it sets as JSON, joins the cache key. With `extra` null it is the script's `T.of(props)`
+    /// and shares its asset. Returns the handle, and the value when it was built now: the caller
+    /// inserts it at the handle, whole, since a reflected insert would drop what `finish` set.
+    pub fn value_with<T: Asset + Reflect>(&self, props: &Value, extra: &Value, finish: &mut dyn FnMut(&mut T)) -> Result<(Handle<T>, Option<T>), String> {
+        let ty = asset_type(self.registry, T::type_path())?;
+        if matches!(ty.kind, Kind::Hand(_)) {
+            return Err(format!("{} is hand-mapped, so it has no reflected fields to finish", ty.path));
+        }
+        // Not JSON, so never a script value's key.
+        let key = if extra.is_null() { canonical(props) } else { format!("{}|{}", canonical(props), canonical(extra)) };
+        if let Some(n) = self.assets.cached(ty.id, &key) {
+            return Ok((self.assets.handle(n)?.typed::<T>(), None));
+        }
+        let built = self.write_over(&ty, None, props)?;
+        let mut value = *built.downcast::<T>().map_err(|_| format!("{}: the written value is not a whole {}", ty.path, ty.path))?;
+        finish(&mut value);
+        let (n, handle) = self.assets.make_unqueued(&ty);
+        self.assets.cache(ty.id, key, n);
+        Ok((handle.typed::<T>(), Some(value)))
     }
 }
 

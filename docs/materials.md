@@ -202,8 +202,14 @@ the shadow drops the same pixels.
 
 `<material>` without `kind` is Bevy's `StandardMaterial`. Every field but the 18 blocked below is a
 prop, under its Bevy name in camelCase, two of them under shorter names: `color` is `base_color` and
-`roughness` is `perceptual_roughness`. An unset prop keeps `StandardMaterial::default()`. Equal
-props share one material.
+`roughness` is `perceptual_roughness`. An unset prop keeps `StandardMaterial::default()`. The
+element is the asset value `StandardMaterial.of` of its props, mapped onto Bevy's fields by one
+table (`MATERIAL_PROPS` in `bevy-ts-tsx`): equal props share one material, with every other
+`<material>` and every `Handle<StandardMaterial>` slot given the same value (docs/assets.md).
+`<material color="#fff" roughness={0.3} />` and
+`StandardMaterial.of({ base_color: "#fff", perceptual_roughness: 0.3 })` are one material. A
+material with a texture or `cullMode` shares only with other elements: those are set in Rust after
+the reflected write.
 
 ```tsx
 <entity>
@@ -225,7 +231,7 @@ props share one material.
 | `parallaxMappingMethod` | `"occlusion"` or `{ relief: { maxSteps: 5 } }` |
 | `uvTransform` | `{ scale?: [x, y], rotation?: radians, translation?: [x, y] }`, Bevy's `Affine2::from_scale_angle_translation` |
 
-`alpha` and `alphaMode` are the material-alpha change's.
+`alpha` replaces `color`'s alpha, 0 to 1, and `alphaMode` names the mode; unset, it is `"blend"` below alpha 1 and `"opaque"` otherwise (Alpha and fading, above).
 
 - A texture is an asset path, loaded by the `AssetServer`. Colour textures (base colour, emissive)
   load as sRGB; the rest are data and load linear, as Bevy's glTF loader does. One

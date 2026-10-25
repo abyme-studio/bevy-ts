@@ -46,6 +46,26 @@ A ref goes in any `Handle<T>` slot the reflected writer reaches: a TSX prop
 (`bevy-ts/mutate_components`). A ref of another asset type fails naming both types. A handle a script made reads back as its ref; any
 other handle reads as its path, or `null`.
 
+## Asset values
+
+`T.of(props)` is an asset as a value: a plain `{ $of, props }` that touches nothing until it is
+written into a `Handle<T>` slot. Slots given the same type and props share one asset, compared by
+the props' JSON with keys sorted, built on the first write, so a thousand enemies with
+`StandardMaterial.of({ base_color: "#f80" })` make one material. A value is built only when its
+slot is written (an insert or a changed prop), never per frame.
+
+```tsx
+<MeshMaterial3dStandardMaterial value={StandardMaterial.of({ base_color: "#f80", unlit: true })} />
+```
+
+`<material>` is a `StandardMaterial.of` of its props (docs/materials.md), so
+`<material color="#f80" />` shares with the value above minus `unlit`. A value whose slot
+re-renders with other props takes the asset of those props; the old one stays for any slot still
+using it.
+
+`assets.set` on a shared asset changes every slot that shares it, `<material>` elements included.
+To edit one entity's asset alone, give it its own with `assets.add`.
+
 ## Lifetime
 
 A ref is `{ $asset: n, type }`; `n` counts up from 1 and is never reused in a session. A ref

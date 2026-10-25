@@ -1,6 +1,8 @@
 //! `<mesh>` and `<material>`: asset intrinsics built in Rust. Equal props share one asset
-//! handle, so a thousand identical enemies make one mesh and one material. `<material kind={K}>`
-//! is a script material (bevy-ts-material), shared the same way.
+//! handle, so a thousand identical enemies make one mesh and one material. `<material>` is the
+//! asset value `StandardMaterial.of` of its props, mapped by [`MATERIAL_PROPS`], so it also shares
+//! with a `Handle<StandardMaterial>` slot given that value. `<material kind={K}>` is a script
+//! material (bevy-ts-material), shared the same way.
 
 use bevy::asset::AssetLoadFailedEvent;
 use bevy::ecs::message::{MessageCursor, Messages};
@@ -15,7 +17,11 @@ use bevy::render::render_resource::Face;
 use bevy_ts::backend::SourceLocation;
 use bevy_ts_material::{GltfMaterialFilter, ScriptMaterial3d};
 use crate::shapes::MeshShape;
-use serde::Deserialize;
+use bevy::reflect::structs::Struct;
+use bevy::reflect::{PartialReflect, TypeRegistry};
+use bevy_ts::reflect_asset::{ScriptAssets, Slots};
+use bevy_ts::reflect_value;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
@@ -61,7 +67,9 @@ impl MeshProps {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+/// `<material>`'s props, parsed and checked here; [`MATERIAL_PROPS`] maps them onto
+/// `StandardMaterial`'s fields, and the material is the asset value `StandardMaterial.of` of them.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct MaterialProps {
     /// `base_color`.
@@ -96,14 +104,14 @@ pub struct MaterialProps {
     pub anisotropy_rotation: Option<f32>,
     pub double_sided: Option<bool>,
     /// Unset keeps Bevy's `Some(Back)`; `null` is no culling.
-    #[serde(deserialize_with = "present")]
+    #[serde(deserialize_with = "present", skip_serializing)]
     pub cull_mode: Option<CullMode>,
     pub unlit: Option<bool>,
     /// Replaces `color`'s alpha, 0 to 1.
     #[serde(default)]
     pub alpha: Option<f32>,
     /// A script material's `alphaMode` names; unset, `Blend` below alpha 1 and `Opaque` otherwise.
-    #[serde(default, rename = "alphaMode")]
+    #[serde(default, rename = "alphaMode", skip_serializing)]
     pub alpha_mode: Option<AlphaDecl>,
     pub fog_enabled: Option<bool>,
     pub depth_bias: Option<f32>,
@@ -118,7 +126,7 @@ pub struct MaterialProps {
 }
 
 /// A UV channel prop: `"uv0"` or `"uv1"`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Uv {
     Uv0,
@@ -155,7 +163,7 @@ fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Resul
 }
 
 /// `opaqueRenderMethod`: `"forward"`, `"deferred"` or `"auto"`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RenderMethod {
     Forward,
@@ -174,7 +182,7 @@ impl From<RenderMethod> for OpaqueRendererMethod {
 }
 
 /// `parallaxMappingMethod`: `"occlusion"` or `{ relief: { maxSteps } }`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
 pub enum Parallax {
     Occlusion,
@@ -191,7 +199,7 @@ impl From<Parallax> for ParallaxMappingMethod {
 }
 
 /// `uvTransform`: Bevy's `Affine2::from_scale_angle_translation`, unset parts at identity.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct UvTransform {
     pub scale: Option<[f32; 2]>,
@@ -210,50 +218,85 @@ impl UvTransform {
     }
 }
 
-/// Copy-type props named as their field: `$f` sets `m.$f`.
-macro_rules! plain_fields {
-    ($($f:ident),* $(,)?) => {
-        impl MaterialProps {
-            fn set_plain(&self, m: &mut StandardMaterial) {
-                $(if let Some(v) = self.$f { m.$f = v.into(); })*
-            }
-        }
-    };
+/// How a `<material>` prop's value becomes its `StandardMaterial` field's JSON.
+#[derive(Clone, Copy)]
+pub enum Mapping {
+    /// As given: numbers, bools, and colours in any form `bevy_ts::color` takes.
+    Same,
+    /// Through the Bevy value it stands for, read in Bevy's shape (`"uv1"` is `"Uv1"`); `None` when
+    /// unset.
+    Typed(fn(&MaterialProps) -> Option<Box<dyn PartialReflect>>),
+    /// An asset path, loaded here in the field's colour space: sRGB when true.
+    Texture(bool),
+    /// Not reflected by Bevy (`cull_mode`), so set after the write.
+    Rust,
+    /// Folded into `base_color` and `alpha_mode` with the unset `alphaMode` rule (`alpha`,
+    /// `alphaMode`).
+    Alpha,
 }
 
-plain_fields!(
-    base_color_channel, emissive_exposure_weight, emissive_channel, metallic, metallic_roughness_channel,
-    reflectance, diffuse_transmission, specular_transmission, thickness, ior, attenuation_distance,
-    normal_map_channel, flip_normal_map_y, occlusion_channel, clearcoat, clearcoat_perceptual_roughness,
-    anisotropy_strength, anisotropy_rotation, double_sided, unlit, fog_enabled, depth_bias,
-    parallax_depth_scale, parallax_mapping_method, max_parallax_layer_count, lightmap_exposure,
-    opaque_render_method, deferred_lighting_pass_id,
-);
-
-/// Texture props: the field, and whether it is colour (sRGB) rather than data (linear).
-macro_rules! texture_fields {
-    ($($f:ident $srgb:literal),* $(,)?) => {
-        impl MaterialProps {
-            /// The textures set: (prop, path, sRGB).
-            pub fn textures(&self) -> Vec<(String, &str, bool)> {
-                let mut out = Vec::new();
-                $(if let Some(p) = &self.$f { out.push((camel(stringify!($f)), p.as_str(), $srgb)); })*
-                out
-            }
-
-            fn set_textures(&self, m: &mut StandardMaterial, load: &mut dyn FnMut(&str, bool) -> Handle<Image>) {
-                $(if let Some(p) = &self.$f { m.$f = Some(load(p, $srgb)); })*
-            }
-        }
-    };
+fn boxed<T: PartialReflect>(v: T) -> Box<dyn PartialReflect> {
+    Box::new(v)
 }
 
-// Bevy's four PBR texture features gate nine more texture fields and their channels; they are
-// off (docs/materials.md, "Blocked on Bevy").
-texture_fields!(
-    base_color_texture true, emissive_texture true, metallic_roughness_texture false, normal_map_texture false,
-    occlusion_texture false, depth_map false,
-);
+/// Every `<material>` prop: its name, the `StandardMaterial` field it sets, and how. One per
+/// reflected field but `alpha_mode`, and `cullMode`; `jsx-runtime.d.ts`' `MaterialProps` is
+/// checked against it.
+pub const MATERIAL_PROPS: &[(&str, &str, Mapping)] = &[
+    ("color", "base_color", Mapping::Same),
+    ("baseColorChannel", "base_color_channel", Mapping::Typed(|p| p.base_color_channel.map(|u| boxed(UvChannel::from(u))))),
+    ("baseColorTexture", "base_color_texture", Mapping::Texture(true)),
+    ("emissive", "emissive", Mapping::Typed(|p| p.emissive.as_ref().map(|c| boxed(color(c).expect("checked").to_linear())))),
+    ("emissiveExposureWeight", "emissive_exposure_weight", Mapping::Same),
+    ("emissiveChannel", "emissive_channel", Mapping::Typed(|p| p.emissive_channel.map(|u| boxed(UvChannel::from(u))))),
+    ("emissiveTexture", "emissive_texture", Mapping::Texture(true)),
+    ("roughness", "perceptual_roughness", Mapping::Same),
+    ("metallic", "metallic", Mapping::Same),
+    ("metallicRoughnessChannel", "metallic_roughness_channel", Mapping::Typed(|p| p.metallic_roughness_channel.map(|u| boxed(UvChannel::from(u))))),
+    ("metallicRoughnessTexture", "metallic_roughness_texture", Mapping::Texture(false)),
+    ("reflectance", "reflectance", Mapping::Same),
+    ("specularTint", "specular_tint", Mapping::Same),
+    ("diffuseTransmission", "diffuse_transmission", Mapping::Same),
+    ("specularTransmission", "specular_transmission", Mapping::Same),
+    ("thickness", "thickness", Mapping::Same),
+    ("ior", "ior", Mapping::Same),
+    ("attenuationDistance", "attenuation_distance", Mapping::Same),
+    ("attenuationColor", "attenuation_color", Mapping::Same),
+    ("normalMapChannel", "normal_map_channel", Mapping::Typed(|p| p.normal_map_channel.map(|u| boxed(UvChannel::from(u))))),
+    ("normalMapTexture", "normal_map_texture", Mapping::Texture(false)),
+    ("flipNormalMapY", "flip_normal_map_y", Mapping::Same),
+    ("occlusionChannel", "occlusion_channel", Mapping::Typed(|p| p.occlusion_channel.map(|u| boxed(UvChannel::from(u))))),
+    ("occlusionTexture", "occlusion_texture", Mapping::Texture(false)),
+    ("clearcoat", "clearcoat", Mapping::Same),
+    ("clearcoatPerceptualRoughness", "clearcoat_perceptual_roughness", Mapping::Same),
+    ("anisotropyStrength", "anisotropy_strength", Mapping::Same),
+    ("anisotropyRotation", "anisotropy_rotation", Mapping::Same),
+    ("doubleSided", "double_sided", Mapping::Same),
+    ("cullMode", "cull_mode", Mapping::Rust),
+    ("unlit", "unlit", Mapping::Same),
+    ("alpha", "base_color", Mapping::Alpha),
+    ("alphaMode", "alpha_mode", Mapping::Alpha),
+    ("fogEnabled", "fog_enabled", Mapping::Same),
+    ("depthBias", "depth_bias", Mapping::Same),
+    ("depthMap", "depth_map", Mapping::Texture(false)),
+    ("parallaxDepthScale", "parallax_depth_scale", Mapping::Same),
+    ("parallaxMappingMethod", "parallax_mapping_method", Mapping::Typed(|p| p.parallax_mapping_method.map(|m| boxed(ParallaxMappingMethod::from(m))))),
+    ("maxParallaxLayerCount", "max_parallax_layer_count", Mapping::Same),
+    ("lightmapExposure", "lightmap_exposure", Mapping::Same),
+    ("opaqueRenderMethod", "opaque_render_method", Mapping::Typed(|p| p.opaque_render_method.map(|m| boxed(OpaqueRendererMethod::from(m))))),
+    ("deferredLightingPassId", "deferred_lighting_pass_id", Mapping::Same),
+    ("uvTransform", "uv_transform", Mapping::Typed(|p| p.uv_transform.map(|t| boxed(t.affine())))),
+];
+
+/// A `<material>` as the asset value it builds: the `StandardMaterial.of` props, and what is set
+/// after the write, which joins the cache key as `extra`.
+struct MaterialOf {
+    props: Value,
+    extra: Value,
+    /// (prop, field, path, sRGB).
+    textures: Vec<(&'static str, &'static str, String, bool)>,
+    cull_mode: Option<Option<Face>>,
+}
 
 /// Number props, for the finite check.
 macro_rules! number_fields {
@@ -318,50 +361,90 @@ impl MaterialProps {
         Ok(())
     }
 
+    /// The props as given, by prop name: those set, but `cullMode` and `alphaMode`. Numbers are
+    /// spelt as a script spells them (`0.3`, not the `f32`'s `0.30000001192092896`; `1`, not
+    /// `1.0`), so equal props give the key a script's `StandardMaterial.of` does.
+    fn given(&self) -> Map<String, Value> {
+        fn spelt(v: Value) -> Value {
+            match v {
+                Value::Number(n) if n.is_f64() => serde_json::from_str(&format!("{}", n.as_f64().unwrap_or_default() as f32)).unwrap_or(Value::Number(n)),
+                Value::Array(a) => Value::Array(a.into_iter().map(spelt).collect()),
+                Value::Object(o) => Value::Object(o.into_iter().map(|(k, v)| (k, spelt(v))).collect()),
+                v => v,
+            }
+        }
+        match serde_json::to_value(self) {
+            Ok(Value::Object(o)) => o.into_iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k, spelt(v))).collect(),
+            _ => Map::new(),
+        }
+    }
+
+    /// The textures set: (prop, path, sRGB).
+    pub fn textures(&self) -> Vec<(&'static str, String, bool)> {
+        let given = self.given();
+        MATERIAL_PROPS
+            .iter()
+            .filter_map(|(prop, _, m)| match (m, given.get(*prop)) {
+                (Mapping::Texture(srgb), Some(Value::String(p))) => Some((*prop, p.clone(), *srgb)),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Needs vertex tangents: Bevy ignores these on a mesh without them.
     fn needs_tangents(&self) -> bool {
         self.normal_map_texture.is_some() || self.anisotropy_strength.is_some_and(|s| s != 0.0)
     }
 
-    fn material(&self, load: &mut dyn FnMut(&str, bool) -> Handle<Image>) -> StandardMaterial {
-        let mut m = StandardMaterial::default();
-        self.set_plain(&mut m);
-        self.set_textures(&mut m, load);
-        if let Some(c) = &self.color {
-            m.base_color = color(c).expect("checked");
-        }
-        if let Some(v) = self.roughness {
-            m.perceptual_roughness = v;
-        }
-        if let Some(c) = &self.emissive {
-            m.emissive = color(c).expect("checked").to_linear();
-        }
-        if let Some(c) = &self.specular_tint {
-            m.specular_tint = color(c).expect("checked");
-        }
-        if let Some(c) = &self.attenuation_color {
-            m.attenuation_color = color(c).expect("checked");
+    /// The asset value these props build, by [`MATERIAL_PROPS`].
+    fn of(&self, registry: &TypeRegistry) -> Result<MaterialOf, String> {
+        let read = |v: &dyn PartialReflect| reflect_value::read(registry, v);
+        let given = self.given();
+        let mut props = Map::new();
+        let mut extra = Map::new();
+        let mut textures = Vec::new();
+        for (prop, field, mapping) in MATERIAL_PROPS {
+            match mapping {
+                Mapping::Same => {
+                    if let Some(v) = given.get(*prop) {
+                        props.insert(field.to_string(), v.clone());
+                    }
+                }
+                Mapping::Typed(f) => {
+                    if let Some(v) = f(self) {
+                        props.insert(field.to_string(), read(v.as_ref())?);
+                    }
+                }
+                Mapping::Texture(srgb) => {
+                    if let Some(Value::String(path)) = given.get(*prop) {
+                        extra.insert(field.to_string(), Value::String(path.clone()));
+                        textures.push((*prop, *field, path.clone(), *srgb));
+                    }
+                }
+                Mapping::Rust | Mapping::Alpha => {}
+            }
         }
         if let Some(CullMode(f)) = self.cull_mode {
-            m.cull_mode = f;
+            extra.insert("cull_mode".into(), format!("{f:?}").into());
         }
-        if let Some(t) = &self.uv_transform {
-            m.uv_transform = t.affine();
-        }
-        if let Some(a) = self.alpha {
-            m.base_color.set_alpha(a);
-        }
-        // Bevy's own rule in `StandardMaterial::from(Color)`.
-        m.alpha_mode = match &self.alpha_mode {
-            Some(d) => d.parse().expect("checked"),
-            None if m.base_color.alpha() < 1.0 => AlphaMode::Blend,
-            None => AlphaMode::Opaque,
+        let base = match &self.color {
+            Some(c) => color(c)?,
+            None => StandardMaterial::default().base_color,
         };
-        m
-    }
-
-    fn cache_key(&self) -> String {
-        format!("{self:?}")
+        if let Some(a) = self.alpha {
+            props.insert("base_color".into(), read(&base.with_alpha(a))?);
+        }
+        // Bevy's own rule in `StandardMaterial::from(Color)`; `Opaque` is the default.
+        let mode = match &self.alpha_mode {
+            Some(d) => Some(d.parse()?),
+            None if self.alpha.unwrap_or(base.alpha()) < 1.0 => Some(AlphaMode::Blend),
+            None => None,
+        };
+        if let Some(m) = mode {
+            props.insert("alpha_mode".into(), read(&m)?);
+        }
+        let extra = if extra.is_empty() { Value::Null } else { Value::Object(extra) };
+        Ok(MaterialOf { props: Value::Object(props), extra, textures, cull_mode: self.cull_mode.map(|c| c.0) })
     }
 }
 
@@ -369,13 +452,13 @@ fn color(v: &Value) -> Result<Color, String> {
     bevy_ts::color::parse(v)
 }
 
-/// Asset handles by props, shared by every element with the same props.
+/// Mesh handles by props, shared by every element with the same props; materials share through
+/// the asset-value cache (`bevy_ts::reflect_asset`).
 #[derive(Resource, Default)]
 pub struct IntrinsicAssets {
     meshes: HashMap<String, Handle<Mesh>>,
     /// The same shapes with vertex tangents, for materials that need them.
     tangent_meshes: HashMap<String, Handle<Mesh>>,
-    materials: HashMap<String, Handle<StandardMaterial>>,
     /// Each texture's path and the element that first asked for it, to report a failed load.
     textures: HashMap<AssetId<Image>, (String, Option<SourceLocation>)>,
     /// Assets built, for tests: a repeat of known props builds nothing.
@@ -416,34 +499,56 @@ fn tangent_mesh_handle(world: &mut World, p: &MeshProps) -> Handle<Mesh> {
     h
 }
 
+/// The `<material>`'s handle: the asset value `StandardMaterial.of` of its props, shared with
+/// every element and slot given the same value, its textures loaded here in their colour space.
 fn material_handle(world: &mut World, p: &MaterialProps, at: Option<SourceLocation>) -> Handle<StandardMaterial> {
-    let key = p.cache_key();
-    if let Some(h) = world.resource::<IntrinsicAssets>().materials.get(&key) {
-        return h.clone();
-    }
+    let registry = world.resource::<AppTypeRegistry>().clone();
     let server = world.get_resource::<AssetServer>().cloned();
-    // A section's check and a mount fail a texture with no AssetServer first; any other way in
-    // draws the material untextured and says why.
-    if server.is_none()
-        && let Some((prop, ..)) = p.textures().first()
-    {
+    let assets = world.get_resource::<ScriptAssets>().cloned().unwrap_or_default();
+    let mut loaded = Vec::new();
+    let made = {
+        let registry = registry.read();
+        p.of(&registry).and_then(|of| {
+            // A section's check and a mount fail a texture with no AssetServer first; any other
+            // way in draws the material untextured and says why.
+            let unloaded = if server.is_none() { of.textures.first().map(|t| t.0) } else { None };
+            let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
+            let made = slots.value_with::<StandardMaterial>(&of.props, &of.extra, &mut |m| {
+                if let Some(f) = of.cull_mode {
+                    m.cull_mode = f;
+                }
+                let Some(server) = server.as_ref() else { return };
+                for (_, field, path, srgb) in &of.textures {
+                    let h: Handle<Image> = if *srgb {
+                        server.load(path.clone())
+                    } else {
+                        server.load_builder().with_settings(|s: &mut ImageLoaderSettings| s.is_srgb = false).load(path.clone())
+                    };
+                    loaded.push((h.id(), path.clone()));
+                    if let Some(slot) = m.field_mut(field) {
+                        slot.apply(&Some(h));
+                    }
+                }
+            });
+            made.map(|m| (m, unloaded))
+        })
+    };
+    let ((h, value), unloaded) = match made {
+        Ok(m) => m,
+        Err(e) => {
+            crate::reconcile::log_error(world, format!("<material>: {e}"), at);
+            return Handle::default();
+        }
+    };
+    if let Some(prop) = unloaded {
         crate::reconcile::log_error(world, format!("<material>: {prop} needs an AssetServer to load"), at.clone());
     }
-    let mut loaded = Vec::new();
-    let material = p.material(&mut |path, srgb| {
-        let Some(server) = server.as_ref() else { return Handle::default() };
-        let h: Handle<Image> = if srgb {
-            server.load(path.to_string())
-        } else {
-            server.load_builder().with_settings(|s: &mut ImageLoaderSettings| s.is_srgb = false).load(path.to_string())
-        };
-        loaded.push((h.id(), path.to_string()));
-        h
-    });
-    let h = world.resource_mut::<Assets<StandardMaterial>>().add(material);
+    if let Some(m) = value {
+        // Whole: a reflected insert would drop `cull_mode`.
+        let _ = world.resource_mut::<Assets<StandardMaterial>>().insert(h.id(), m);
+        world.resource_mut::<IntrinsicAssets>().built += 1;
+    }
     let mut cache = world.resource_mut::<IntrinsicAssets>();
-    cache.built += 1;
-    cache.materials.insert(key, h.clone());
     for (id, path) in loaded {
         cache.textures.entry(id).or_insert((path, at.clone()));
     }
@@ -544,5 +649,36 @@ pub fn report_texture_failures(world: &mut World, mut cursor: Local<MessageCurso
     for (id, error) in failed {
         let Some((path, at)) = world.resource::<IntrinsicAssets>().textures.get(&id).cloned() else { continue };
         crate::reconcile::log_error(world, format!("<material>: texture {path:?} failed to load: {error}"), at);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    fn table() -> BTreeSet<String> {
+        MATERIAL_PROPS.iter().map(|(p, ..)| p.to_string()).collect()
+    }
+
+    #[test]
+    fn the_table_has_every_prop_once() {
+        assert_eq!(table().len(), MATERIAL_PROPS.len(), "a prop twice");
+        // Every serialized field, and the two read by hand.
+        let mut fields: BTreeSet<String> = serde_json::to_value(MaterialProps::default()).unwrap().as_object().unwrap().keys().cloned().collect();
+        fields.extend(["cullMode".to_string(), "alphaMode".to_string()]);
+        assert_eq!(table(), fields);
+    }
+
+    #[test]
+    fn jsx_runtime_material_props_match_the_table() {
+        let dts = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/bevy-ts/jsx-runtime.d.ts")).unwrap();
+        let body = dts.split("export interface MaterialProps {").nth(1).and_then(|s| s.split("\n}").next()).expect("MaterialProps in jsx-runtime.d.ts");
+        let typed: BTreeSet<String> = body
+            .lines()
+            .filter_map(|l| l.trim().split_once("?:").map(|(k, _)| k.to_string()))
+            .filter(|k| k != "kind")
+            .collect();
+        assert_eq!(typed, table(), "jsx-runtime.d.ts' MaterialProps against MATERIAL_PROPS");
     }
 }

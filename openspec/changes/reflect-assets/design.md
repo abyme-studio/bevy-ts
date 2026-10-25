@@ -142,13 +142,18 @@ Findings are in `research.md` (2026-10-23, Bevy 0.20.0). The short of it:
    plus `load`. An asset with no default (`Mesh`) is typed with no `of` and `add` refuses it at
    the type level.
 
-8. **`<material>` becomes a prop table over the generic path.** `MaterialProps`' serde fields go.
+8. **`<material>` becomes a prop table over the generic path.** `MaterialProps` stays the parsed,
+   checked props (its messages are the element's), and its hand-written build goes.
    `intrinsics.rs` keeps one table: prop name → `StandardMaterial` field and a value mapping
    (`color` → `base_color`; `roughness` → `perceptual_roughness`; camelCase → snake_case; enum
    spellings `"back"`/`null`, `"uv0"`, `{ relief: { maxSteps } }` → Bevy's variant JSON;
    `uvTransform` → `Affine2`; `alpha` → `base_color`'s alpha; `alphaMode` → `alpha_mode`, unset
    following material-alpha's rule). The element's props become one `StandardMaterial.of` value
-   and the handle goes on `MeshMaterial3d`, through the same cache. Kept from
+   and the handle goes on `MeshMaterial3d`, through the same cache. `cull_mode` is not reflected
+   and textures load with settings a path cannot give, so both are set in Rust after the write
+   (`Slots::value_with`) and join the cache key; such a material shares only with other elements,
+   and is inserted whole, since a reflected insert drops `cull_mode`. Numbers keep a script's
+   spelling (`0.3`, `1`) so the keys match. Kept from
    standard-material-fields unchanged: texture-path loading and the colour-space rule (in stage 2
    still through its own code; in stage 3 each texture prop maps to an `Image.load` value with
    `is_srgb` per field), the tangent swap, the 16-sampler limits test, the blocked-texture list and
