@@ -3066,13 +3066,23 @@ function reflectMutGet(t, entity, tick) {
   return e.v;
 }
 
-/** Writes back the values `Mut` getters handed out that the run changed. */
+/** Writes back the values `Mut` getters handed out that the run changed; a failed write does not
+ * stop the others, and the first failure is thrown after them. */
 function reflectFlush() {
   const list = REFLECT.pending;
   if (!list.length) return;
   REFLECT.pending = [];
   REFLECT.pendingByKey.clear();
-  for (const p of list) if (!p.done && !reflectSame(p.v, p.orig)) reflectSet(p.t, p.entity, p.v);
+  let failed;
+  for (const p of list) {
+    if (p.done || reflectSame(p.v, p.orig)) continue;
+    try {
+      reflectSet(p.t, p.entity, p.v);
+    } catch (e) {
+      failed ??= e;
+    }
+  }
+  if (failed !== undefined) throw failed;
 }
 
 /** A row's entity from an accessor's `e` view, or -1 for a resource row. */
@@ -3113,9 +3123,12 @@ function reflectAccessor(name, info, write) {
       },
       set(v) {
         if (!write) throw new TypeError(`${name}.${f} is read-only here; take Mut<${name}>`);
-        const whole = reflectClone(reflectGet(t, rowEntity(this), this[TICKS][this[ROW]]));
+        // The run's `Mut` copy, when there is one, so its in-place changes are written too.
+        const e = rowEntity(this);
+        const p = REFLECT.pendingByKey.get(`${t}:${e}`);
+        const whole = p ? p.v : reflectClone(reflectGet(t, e, this[TICKS][this[ROW]]));
         whole[f] = v;
-        reflectSet(t, rowEntity(this), whole);
+        reflectSet(t, e, whole);
       },
     });
   }
