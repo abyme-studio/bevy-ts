@@ -10,8 +10,8 @@
 - [x] 1.2 `crates/bevy-ts/src/reflect_asset.rs`: entry kind `Uuid | Strong`; `insert_strong -> u64`, `drop`, `remove`; `clear(world, false)` (hot reload) drops strong entries; stop drops and removes all
 - [x] 1.3 `crates/bevy-ts-cli/src/assets.rs`: `ScriptAssetServer` (`stands_for = "Res<AssetServer>"`) with `load(path, type?)`, `loadState`, `dependencyLoadState`, `recursiveDependencyLoadState`, `isLoaded`, `isLoadedWithDirectDependencies`, `isLoadedWithDependencies`; the failed-state text through a `Uint8Array`; labelled path without a type throws; registered in every engine
 - [x] 1.4 Runtime (`crates/bevy-ts-v8/js/core.js`, `packages/bevy-ts/runtime/core.js`): `assets.drop`, `assets.remove`, `ref.id` (`a_ref_id_is_bevys_asset_id`); types in `packages/bevy-ts/index.d.ts` and the `bevy-ts/assets` d.ts
-- [ ] 1.4a Waits on rust-events 2.3/5.2: `isAdded`/`isModified`/`isRemoved`/`isUnused`/`isLoadedWithDependencies` on `AssetEvent`; `server.loadState` and the other load-state methods taking an `AssetId` as well as an `AssetRef`, with a test; and `a_load_is_seen_as_an_event` un-ignored. Stages 1-3 land without it; this change is archived after it
-- [x] 1.5 `crates/bevy-ts-cli/tests/it/script_assets.rs`: `a_texture_loads_and_reaches_loaded`, `a_missing_file_fails_with_bevys_error`, `a_gltf_waits_for_its_dependencies`, `a_labelled_path_needs_a_type`, `a_dropped_mesh_nothing_holds_is_freed`, `a_dropped_mesh_an_entity_draws_stays`, `remove_frees_at_once`, `a_stale_ref_throws`, `hot_reload_frees_what_only_the_old_script_held`, `a_uuid_ref_keeps_its_asset_after_drop`, `a_load_is_seen_as_an_event` (needs rust-events; `#[ignore]` with its name until it lands)
+- [ ] 1.4a On rust-events' `AssetEvent<A>` reader (landed): `isAdded`/`isModified`/`isRemoved`/`isUnused`/`isLoadedWithDependencies` on `AssetEvent`; `server.loadState` and the other load-state methods taking an `AssetId` as well as an `AssetRef`, with a test; and `a_load_is_seen_as_an_event` un-ignored. Stages 1-3 land without it; this change is archived after it
+- [x] 1.5 `crates/bevy-ts-cli/tests/it/script_assets.rs`: `a_texture_loads_and_reaches_loaded`, `a_missing_file_fails_with_bevys_error`, `a_gltf_waits_for_its_dependencies`, `a_labelled_path_needs_a_type`, `a_dropped_mesh_nothing_holds_is_freed`, `a_dropped_mesh_an_entity_draws_stays`, `remove_frees_at_once`, `a_stale_ref_throws`, `hot_reload_frees_what_only_the_old_script_held`, `a_uuid_ref_keeps_its_asset_after_drop`, `a_load_is_seen_as_an_event` (`#[ignore]` naming 1.4a until 1.4a builds it)
 - [x] 1.6 `packages/bevy-ts/test/script-assets.ts` (`pnpm check`): `Res<AssetServer>` and `ResMut<Assets<Mesh>>` resolve to the exports; `load` typed by its class argument; a `meshes.add` ref fits a `Handle<Mesh>` slot
 - [x] 1.7 `docs/assets.md`: handles, load state, drop and remove, ids and events; script-made (UUID) assets grow across hot reloads in dev only, freed on restart; `docs/native.md`: the `AssetRef` kind
 
@@ -34,6 +34,6 @@
 
 ## 4. Landing (each stage)
 
-- [ ] 4.1 Touched crates' tests through gate-slot while working; `pnpm check` and the affected gate before `abyme call land add`
-- [ ] 4.2 Every coverage-table row names a test that exists or an owner
-- [ ] 4.3 `openspec validate script-assets --strict`
+- [x] 4.1 Touched crates' tests through gate-slot while working; `pnpm check` and the affected gate before `abyme call land add`
+- [x] 4.2 Every coverage-table row names a test that exists or an owner
+- [x] 4.3 `openspec validate script-assets --strict`
