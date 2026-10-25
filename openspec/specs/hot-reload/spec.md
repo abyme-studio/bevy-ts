@@ -20,7 +20,10 @@ A saved file, or a `bevy-ts/reload` request, SHALL recompile the module graph on
 - **THEN** within 200 ms on a recent laptop the cube moves with the new constant, and the generation number goes up by one
 
 ### Requirement: ECS state survives a reload
-A reload SHALL keep every entity, component value, resource and parent link. It SHALL replace all systems, observers, plugins and component declarations with the new generation's. JS module-level state SHALL NOT survive; state that must survive belongs in components.
+A reload SHALL keep every entity, component value, resource and parent link, and the session bytes
+(see session-bytes). It SHALL replace all systems, observers, plugins and component declarations
+with the new generation's. JS module-level state SHALL NOT survive; state that must survive belongs
+in components, or in session bytes when it is keyed by id or larger than a component.
 
 #### Scenario: The cube keeps its place
 - **WHEN** a reload happens while the cube is at y = 1.4
@@ -30,6 +33,10 @@ A reload SHALL keep every entity, component value, resource and parent link. It 
 - **WHEN** a module keeps `let hits = 0` and increments it, then reloads
 - **THEN** `hits` starts at 0 again in the new generation
 
+#### Scenario: Session bytes across a reload
+- **WHEN** a system puts bytes under `"heimdall/camera"` and the module is saved and reloads
+- **THEN** the new generation reads the same bytes under `"heimdall/camera"`
+
 ### Requirement: Systems are identified by module and export name
 Every system, observer and plugin SHALL be identified by `<module path>#<export name>` (for example `src/enemy.ts#chase`), assigned by the loader. That identity SHALL key ordering, per-system `Changed`/`Added` ticks, message cursors and `Local` storage across reloads. Renaming an export SHALL be reported as a removed and an added system; the new one starts with default `Local` values and an unread message cursor.
 
@@ -38,7 +45,7 @@ Every system, observer and plugin SHALL be identified by `<module path>#<export 
 - **THEN** `s.wave` is still 4 in the new generation
 
 ### Requirement: Startup systems run once per identity per world
-A system in `Startup` SHALL run once the first time a generation registering its identity is applied, and SHALL NOT run again on later reloads. A `Startup` system with a new identity SHALL run when the generation that adds it is applied. When the game has not started (an engine under `--edit` that has not entered play or stepped, see edit-mode), a `Startup` system SHALL instead run when the game starts, and a generation applied before then SHALL run none. `bevy-ts/reload` with `restart: true` SHALL despawn every entity spawned by TS, forget which `Startup` systems ran, reset `Local` storage, remove every TS resource so the generation inserts it again with its `insertResource` value, clear every TS state and pending TS message, notify registered plugins (see plugin-api), and apply the generation as if first; in edit mode the game is then not started and `Startup` waits for play. A Stop (edit-mode) SHALL reset the world the same way, re-applying the live generation instead of compiling.
+A system in `Startup` SHALL run once the first time a generation registering its identity is applied, and SHALL NOT run again on later reloads. A `Startup` system with a new identity SHALL run when the generation that adds it is applied. When the game has not started (an engine under `--edit` that has not entered play or stepped, see edit-mode), a `Startup` system SHALL instead run when the game starts, and a generation applied before then SHALL run none. `bevy-ts/reload` with `restart: true` SHALL despawn every entity spawned by TS, forget which `Startup` systems ran, reset `Local` storage, empty the session bytes, remove every TS resource so the generation inserts it again with its `insertResource` value, clear every TS state and pending TS message, notify registered plugins (see plugin-api), and apply the generation as if first; in edit mode the game is then not started and `Startup` waits for play. A Stop (edit-mode) SHALL reset the world the same way, re-applying the live generation instead of compiling.
 
 #### Scenario: Editing a startup's body
 - **WHEN** the body of `Startup` system `scene` changes and reloads
@@ -55,6 +62,10 @@ A system in `Startup` SHALL run once the first time a generation registering its
 #### Scenario: A restart drops a pending message
 - **WHEN** a system wrote a `Hit` message this frame and a client calls `bevy-ts/reload` with `restart: true`
 - **THEN** no reader sees that `Hit` after the restart
+
+#### Scenario: A Stop empties the session bytes
+- **WHEN** a value was put during play and a client switches the viewport to edit
+- **THEN** `count()` is 0 when play starts again
 
 ### Requirement: Layout changes migrate by field name
 When a component name is redeclared with a different layout, bevy-ts SHALL register a new `ComponentId` for it, copy each entity's value field by field where name and type match, fill new fields with their defaults (zero if none), drop removed fields, remove the old component from every entity, and report the migration. The old `ComponentId` SHALL become retired: hidden from the protocol and never matched by TS systems.
