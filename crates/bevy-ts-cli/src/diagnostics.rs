@@ -112,7 +112,8 @@ impl StoreParam<'_> {
         n
     }
 
-    /// How many diagnostics are registered.
+    /// How many diagnostics are registered. Every method here is exported, so no `is_empty`.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> u32 {
         self.paths().len() as u32
     }

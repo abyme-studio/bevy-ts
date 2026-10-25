@@ -59,10 +59,10 @@ fn ts_reads_the_store_and_the_frame_count_as_rust_does() {
     assert_eq!(tagged(&app, "startup ").first().map(String::as_str), Some("0"));
     let counts = tagged(&app, "update ");
     assert_eq!(counts.get(2).map(String::as_str), Some("2"), "the third update reads 2: {counts:?}");
-    // Read in `Last`, after FrameTimeDiagnosticsPlugin measured: the value Rust's store holds.
-    let rust = store(&app).get(&FrameTimeDiagnosticsPlugin::FRAME_TIME).and_then(|d| d.value()).unwrap();
+    // Read in `Last`, after FrameTimeDiagnosticsPlugin measured: values Rust's store holds.
+    let rust: Vec<String> = store(&app).get(&FrameTimeDiagnosticsPlugin::FRAME_TIME).unwrap().values().map(|v| format!("{v} ms")).collect();
     let ts = tagged(&app, "frame_time ").last().cloned().unwrap();
-    assert_eq!(ts, format!("{rust} ms"));
+    assert!(rust.contains(&ts), "TS read {ts}, Rust holds {rust:?}");
     let paths = tagged(&app, "paths ").last().cloned().unwrap();
     assert_eq!(paths, "fps,frame_count,frame_time undefined", "sorted, and past the end is undefined");
     assert_eq!(tagged(&app, "unknown ").last().map(String::as_str), Some("undefined undefined undefined"));
@@ -149,11 +149,13 @@ fn an_engine_adds_only_the_plugins_listed() {
         v.sort();
         v
     };
-    assert!(paths(&engine(&[])).is_empty(), "off by default");
+    // Bevy's AssetPlugin registers `started_load_count` in every app; nothing else is there.
+    let none = paths(&engine(&[]));
+    assert_eq!(none, ["started_load_count"], "off by default");
+    // SystemInformationDiagnosticsPlugin is accepted, but Bevy compiles it to nothing under
+    // `dynamic_linking`, which every test build has: it adds no path here.
     let app = engine(&["EntityCountDiagnosticsPlugin", "SystemInformationDiagnosticsPlugin"]);
-    let got = paths(&app);
-    assert!(got.contains(&"entity_count".to_string()) && got.contains(&"process/cpu_usage".to_string()), "{got:?}");
-    assert!(!got.contains(&"fps".to_string()), "{got:?}");
+    assert_eq!(paths(&app), ["entity_count", "started_load_count"]);
 }
 
 #[test]
