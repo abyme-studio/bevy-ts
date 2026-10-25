@@ -430,3 +430,20 @@ by the headless window, so CPU is the number that moves.
 
 Speed 0 and hiding cost what playing does; `paused` and `cull` bring 100 villagers to within about
 5 to 10 points of none.
+
+### Tweens: a TS clip against a TS system
+
+400 cubes bobbing `translation.y` (`ARMS="T S" scripts/animation-bench.sh 8 400`, process
+`animation-control-tween-bench`): one clip built in TS with `assets.add`, played ping-pong by
+`PlayAnimation` on every cube (T), against a TS system writing every cube's `Transform` each frame
+(S). 3 runs per arm were within noise, so 8, interleaved, niced, on a shared machine; mean ±
+standard deviation over runs, p95 the median over runs.
+
+| Arm | CPU | Update mean | Update p95 |
+| --- | --- | --- | --- |
+| T, clip | 112 ± 11 % | 2.81 ± 0.90 ms | 11.56 ms |
+| S, TS system | 109 ± 12 % | 2.70 ± 0.74 ms | 11.66 ms |
+
+At 400 they cost the same: the arms are within noise. The clip arm runs no TS per frame (the TSX
+tween test checks no host call is made), so its cost does not grow with the script's own work; a
+TS system's does.

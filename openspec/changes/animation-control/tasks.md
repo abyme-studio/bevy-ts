@@ -64,7 +64,7 @@
 - [x] 9.6 `tests/it/clip.rs`: `a_tween_translates_with_an_ease`, `a_tween_rotates`, `scale_ping_pongs`, `a_fade_draws_the_frame_it_samples`, `a_named_child_moves_alone`, `a_wrong_field_fails`, `a_paused_tween_parks`, `a_script_rotation_blends_with_a_gltf_clip`, `every_ease_samples_as_bevy`, `every_curve_samples_as_bevy` (each against Bevy's own curve sampled at the same times)
 - [x] 9.7 `packages/bevy-ts`: `AnimationClip`, `AnimatableCurve`, `animatedField` (typed so an unknown field or non-animatable type fails `tsc`), every curve class and adaptor, `EaseFunction`, `interval`, `AnimationTargetId.root`, emitted into `bevy-ts/bevy`; `test/vitest/animation-clip.test.ts` (JSON of each, the type errors)
 - [x] 9.8 `crates/bevy-ts-cli/tests/animation.rs`: `a_tsx_tween_moves_with_no_ts_per_frame` (a TSX entity tweens; the TS system run count does not grow with frames)
-- [ ] 9.9 Bench: 400 cubes tweening `translation`, a clip arm against a TS-system arm writing `Transform`; numbers in `docs/animation.md`
-- [ ] 9.10 `docs/animation.md`: tweens (the four cases), curves and eases, targets on plain entities, fades through `MaterialAlpha`, the clip rows of the coverage table, why clip events stay Rust; `examples/foxes` gains a tweened sign
+- [x] 9.9 Bench: 400 cubes tweening `translation`, a clip arm against a TS-system arm writing `Transform`; numbers in `docs/animation.md`
+- [x] 9.10 `docs/animation.md`: tweens (the four cases), curves and eases, targets on plain entities, fades through `MaterialAlpha`, the clip rows of the coverage table, why clip events stay Rust; `examples/foxes` gains a tweened sign
 - [ ] 9.11 Delete any `reflect_value::UNCOVERED` entry for `AnimationClip`; gate as 8.11
 
