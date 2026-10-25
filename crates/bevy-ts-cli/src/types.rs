@@ -33,6 +33,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
         .add_plugins(crate::camera::CamerasPlugin)
         .add_plugins(crate::input::ScriptInputPlugin)
         .add_plugins(crate::rust_events::RustEventsPlugin)
+        .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     app
@@ -774,6 +775,18 @@ mod tests {
         assert!(out.contains("status(root: Entity)"), "{out}");
         assert!(out.contains("seekTime: number"), "{out}");
         assert!(out.contains("seek(root: Entity, secs: number): boolean"), "{out}");
+    }
+
+    #[test]
+    fn the_engine_declares_diagnostics() {
+        let mut app = App::new();
+        app.add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin);
+        let out = emit_modules(app.world());
+        assert!(out.contains("declare module \"bevy-ts/diagnostics\" {"), "{out}");
+        assert!(out.contains("export class Diagnostic {"), "{out}");
+        assert!(out.contains("value(path: string)"), "{out}");
+        assert!(out.contains("addMeasurement(path: string, value: number)"), "{out}");
+        assert!(out.contains("registerDiagnostic(d: import(\"bevy-ts/diagnostics\").Diagnostic): App;"), "{out}");
     }
 
     #[test]

@@ -100,7 +100,7 @@ writable-native-params landed: an export may hold `Deferred<T>` params, every ex
 
 ## Plugin costs
 
-Read from Bevy 0.20 source, not measured. Every one is off unless listed.
+Read from Bevy 0.20 source; measured below. Every one is off unless listed.
 
 | Plugin | Per frame | Where |
 | --- | --- | --- |
@@ -113,8 +113,25 @@ Read from Bevy 0.20 source, not measured. Every one is off unless listed.
 | `MeshAllocatorDiagnosticPlugin`, `RenderAssetDiagnosticPlugin<T>` | one extract system and one `PreUpdate` system each | render, main |
 | `ScriptStageDiagnosticsPlugin` | two clock reads and one measurement per TS stage run | main |
 
-The bench (`bench/diagnostics`) measures each arm at 10k and 100k entities, 3 runs per arm, frame
-and main-world time, before the change lands.
+Measured by `bench/diagnostics` (`results/after.jsonl`): main-world time (`First` to `Last`) of a
+release engine, headless, each plugin alone, 8 runs per arm (all were within noise at 3), on a Mac
+under other teams' builds (load average 36 to 96). Medians, ms; the no-plugin arm is 3.55 at 10k and
+2.58 at 100k, with a run-to-run sd of 1.3 to 6 ms.
+
+| Plugin | over none, 10k | over none, 100k |
+| --- | --- | --- |
+| `FrameTimeDiagnosticsPlugin` | 0.68 | 1.05 |
+| `EntityCountDiagnosticsPlugin` | 0.12 | 0.00 |
+| `SystemInformationDiagnosticsPlugin` | -0.34 | -0.49 |
+| `RenderDiagnosticsPlugin` | 0.58 | 0.53 |
+| `MeshAllocatorDiagnosticPlugin` | 3.48 | 0.13 |
+| `RenderAssetDiagnosticPlugin<RenderMesh>` | -0.34 | 1.53 |
+| `ScriptStageDiagnosticsPlugin` | 0.21 | 0.76 |
+
+No cost resolves above the noise: every difference is under one sd of the no-plugin arm, and none
+grows from 10k to 100k. `EntityCountDiagnosticsPlugin`'s slot walk is not visible at 100k;
+`RenderDiagnosticsPlugin` reads about half a millisecond at both sizes, within noise. Frame time is
+paced (about 21 ms) in every arm.
 
 ## Risks / Trade-offs
 

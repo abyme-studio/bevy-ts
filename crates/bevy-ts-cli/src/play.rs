@@ -203,5 +203,27 @@ mod tests {
         let old = r#"{ "name": "cube", "entry": "src/game.ts", "bevyTs": "0.1.0", "engine": "prebuilt" }"#;
         let game: GameFile = serde_json::from_str(old).unwrap();
         assert!(game.net.allow.is_empty() && game.env.is_empty());
+        assert!(game.diagnostics.is_empty(), "and no diagnostics");
+    }
+
+    #[test]
+    fn a_built_game_keeps_its_diagnostics() {
+        let config = crate::project::parse(r#"{ "diagnostics": ["EntityCountDiagnosticsPlugin"] }"#).unwrap();
+        let file = GameFile {
+            name: "town".into(),
+            entry: "src/game.ts".into(),
+            bevy_ts: crate::engine::VERSION.into(),
+            engine: "prebuilt".into(),
+            mesh_picking: false,
+            diagnostics: config.diagnostics,
+            net: Default::default(),
+            env: vec![],
+        };
+        let text = serde_json::to_string(&file).unwrap();
+        assert!(text.contains(r#""diagnostics":["EntityCountDiagnosticsPlugin"]"#), "{text}");
+        let back: GameFile = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.diagnostics, ["EntityCountDiagnosticsPlugin"]);
+        let none = GameFile { diagnostics: vec![], ..file };
+        assert!(!serde_json::to_string(&none).unwrap().contains("diagnostics"), "absent when none");
     }
 }
