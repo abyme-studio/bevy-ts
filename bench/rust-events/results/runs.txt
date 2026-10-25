@@ -7,3 +7,12 @@ OVER BUDGET: the reads cost more than 1 ms a frame
 18:34  up 22:36, 2 users, load averages: 75.64 55.00 49.59
 1000 CursorMoved a frame: frame without a reader 288 us, with 2280 us: 1.992 ms for the reads, 1992 ns per message (1004 ns serialization, 989 ns crossing, parse and loop)
 OVER BUDGET: the reads cost more than 1 ms a frame
+19:36  up 23:38, 2 users, load averages: 73.07 52.63 55.96
+1000 CursorMoved a frame: frame without a reader 169 us, with 1777 us: 1.608 ms for the reads, 1608 ns per message (1033 ns serialization, 575 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
+19:36  up 23:38, 2 users, load averages: 78.43 54.08 56.45
+1000 CursorMoved a frame: frame without a reader 141 us, with 2075 us: 1.935 ms for the reads, 1935 ns per message (1037 ns serialization, 897 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
+19:36  up 23:38, 2 users, load averages: 83.60 55.55 56.96
+1000 CursorMoved a frame: frame without a reader 158 us, with 2357 us: 2.199 ms for the reads, 2199 ns per message (1021 ns serialization, 1178 ns crossing, parse and loop)
+OVER BUDGET: the reads cost more than 1 ms a frame
