@@ -37,7 +37,7 @@ pub enum UiKind {
     WorldText,
 }
 
-/// What every UI intrinsic but `<span>` takes: its `Node`'s look and placement, and `disabled`.
+/// What every UI intrinsic but `<span>` and `<worldText>` takes: its `Node`'s look and placement, and `disabled`.
 const NODE_PROPS: &[&str] = &["style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "disabled"];
 
 /// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak` and `textShadow`.
