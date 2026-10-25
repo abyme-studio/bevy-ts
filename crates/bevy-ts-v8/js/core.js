@@ -1396,7 +1396,7 @@ function resolveParams(g, params, at) {
       case "resMut": {
         const R = refClass(g, p.resource, at);
         if (R[KIND] !== "resource" && !R.reflectTier) throw declError(`${p.kind === "res" ? "Res" : "ResMut"}<${R.name}>: ${R.name} is not a Resource class`, at);
-        out.push({ kind: p.kind, resource: R.componentName, ...(p.optional ? { optional: true } : {}), cls: R });
+        out.push({ kind: p.kind, resource: R.componentName, ...(p.optional ? { optional: true } : {}), ...(R.reflectTier ? { reflect: true } : {}), cls: R });
         break;
       }
       case "local":

@@ -803,7 +803,7 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
     for (i, p) in flat.iter().enumerate() {
         let rp = match p {
             ParamDecl::Query { data, filter } => RunParam::Query(Box::new(build_query(world, data, filter, ts).map_err(err)?)),
-            ParamDecl::Res { resource, optional } | ParamDecl::ResMut { resource, optional } => {
+            ParamDecl::Res { resource, optional, reflect } | ParamDecl::ResMut { resource, optional, reflect } => {
                 let write = matches!(p, ParamDecl::ResMut { .. });
                 let kind = if write { "ResMut" } else { "Res" };
                 if let Some(clock) = Clock::of(resource) {
@@ -812,7 +812,7 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                         return Err(err(format!("ResMut<{resource}> is not allowed; clocks are read-only from TS")));
                     }
                     RunParam::Time(clock)
-                } else if let Some((id, target)) = reflect_resource(world, resource, ts).map_err(err)? {
+                } else if let Some((id, target)) = if *reflect { reflect_resource(world, resource, ts).map_err(err)? } else { None } {
                     RunParam::ReflectRes { name: resource.clone(), id, target, write, optional: *optional }
                 } else {
                     // A spelling an export claims (`ResMut<Time<Virtual>>`) never gets here: the
