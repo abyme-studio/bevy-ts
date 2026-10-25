@@ -249,7 +249,7 @@ const DATA: &[&str] = &["Component", "SceneComponent", "ReflectComponent", "Reso
 
 /// `On<E>`'s own members, beside the event's fields it derefs to: no TS event field may take one
 /// of these names (an `EntityEvent`'s `entity` is its target, skipped before the check).
-const ON_MEMBERS: &[&str] = &["entity", "original", "propagate", "toJSON"];
+const ON_MEMBERS: &[&str] = &["entity", "original", "propagate", "toJSON", "event"];
 
 /// A class declaring a component, resource, message, event, state machine or system set.
 #[derive(Debug)]
@@ -882,7 +882,7 @@ impl Reader<'_> {
                     continue; // the target, carried beside the payload
                 }
                 // `On<E>` derefs to the event's fields beside its own `entity`, `original`,
-                // `propagate` and `toJSON`: a field by one of those names would be shadowed.
+                // `propagate`, `toJSON` and `event`: a field by one of those names would be shadowed.
                 if matches!(kind, "event" | "entityEvent") && ON_MEMBERS.contains(&f.name.as_str()) {
                     errors.push((f.span, format!("field {} shadows On<{}>.{}; rename it", f.name, c.name, f.name)));
                     continue;
@@ -1106,10 +1106,12 @@ impl Reader<'_> {
             self.referenced.insert(scope.file.path.clone());
             return Ok(Head::Value(json!([scope.file.rel, name, clock])));
         }
-        if !args.is_empty() {
-            return Err(self.fail(scope, span, format!("{name} is a value and takes no type arguments")));
-        }
         self.referenced.insert(scope.file.path.clone());
+        // A generic Rust message or event, `AssetEvent<Image>`: its arguments as written pick the
+        // registered instance at load.
+        if !args.is_empty() {
+            return Ok(Head::Value(json!([scope.file.rel, name, null, args.iter().map(spell).collect::<Vec<_>>().join(",")])));
+        }
         Ok(Head::Value(json!([scope.file.rel, name])))
     }
 
