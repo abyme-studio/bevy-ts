@@ -4,7 +4,7 @@
 //! against a layout-tier column read (`Transform.translation.x`). Each arm is one system; its time
 //! is the system's run time less an empty system's over the same rows, per row, median of the
 //! measured frames. Ignored by default; run it in release:
-//! `cargo test --release -p bevy-ts-cli --test it reflect_bench:: -- --ignored --nocapture`.
+//! `BENCH_RUNS=8 cargo static test --release -p bevy-ts-cli --test it reflect_bench:: -- --ignored --nocapture`.
 
 use crate::common;
 
@@ -95,28 +95,47 @@ fn run(system: &str, misses: bool) -> f64 {
     us[FRAMES / 2]
 }
 
+/// The arms: label, system, whether rows are touched to miss, and reads per row a run.
+const ARMS: [(&str, &str, bool, usize); 9] = [
+    ("layout column (Transform.translation.x)", "column", false, REPEAT),
+    ("hit, DirectionalLight.color", "hitColor", false, REPEAT),
+    ("hit, Projection", "hitProjection", false, REPEAT),
+    ("miss through the codec, DirectionalLight.color", "missColor", true, 1),
+    ("miss through the codec, Projection", "missProjection", true, 1),
+    ("JSON baseline, DirectionalLight.color", "jsonColor", false, 1),
+    ("JSON baseline, Projection", "jsonProjection", false, 1),
+    ("write, DirectionalLight.color", "writeColor", false, 1),
+    ("write, Projection", "writeProjection", false, 1),
+];
+
+/// `BENCH_RUNS` rounds (default 3); each round runs every arm in turn, its own empty system first,
+/// so a drift in machine load lands on all arms alike. Prints each arm's median and range.
 #[test]
 #[ignore]
 fn reflected_reads_per_row() {
-    let empty = run("empty", false);
-    let per_row = |us: f64, repeat: usize| ((us - empty).max(0.0) * 1000.0 / (ROWS * repeat) as f64).round();
-    let arms = [
-        ("layout column (Transform.translation.x)", run("column", false), REPEAT),
-        ("hit, DirectionalLight.color", run("hitColor", false), REPEAT),
-        ("hit, Projection", run("hitProjection", false), REPEAT),
-        ("miss through the codec, DirectionalLight.color", run("missColor", true), 1),
-        ("miss through the codec, Projection", run("missProjection", true), 1),
-        ("JSON baseline, DirectionalLight.color", run("jsonColor", false), 1),
-        ("JSON baseline, Projection", run("jsonProjection", false), 1),
-        ("write, DirectionalLight.color", run("writeColor", false), 1),
-        ("write, Projection", run("writeProjection", false), 1),
-    ];
-    println!("| Arm | ns per row |\n|---|---|");
-    for (name, us, repeat) in arms {
-        println!("| {name} | {} |", per_row(us, repeat));
+    let runs: usize = std::env::var("BENCH_RUNS").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
+    let mut rows: Vec<Vec<f64>> = vec![Vec::new(); ARMS.len() + 1];
+    let mut empties = Vec::new();
+    for _ in 0..runs {
+        let empty = run("empty", false);
+        empties.push(empty);
+        for (k, (_, system, misses, repeat)) in ARMS.iter().enumerate() {
+            rows[k].push(((run(system, *misses) - empty).max(0.0) * 1000.0 / (ROWS * repeat) as f64).round());
+        }
+        // One reflected write a frame on one of the rows, less the same loop without the write.
+        rows[ARMS.len()].push(((run("zoomOne", false) - run("emptyOne", false)).max(0.0) * 1000.0).round());
     }
-    println!("(empty system over the same {ROWS} rows: {empty} µs a run, subtracted)");
-    // One reflected write a frame on one of the rows, less the same loop without the write.
-    let one = run("zoomOne", false) - run("emptyOne", false);
-    println!("| one Mut<Projection> write a frame (agent town's zoom) | {} ns a frame |", (one.max(0.0) * 1000.0).round());
+    let stat = |v: &mut Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        (v[v.len() / 2], v[0], v[v.len() - 1])
+    };
+    println!("| Arm | ns per row, median | min–max |\n|---|---|---|");
+    for (k, (name, ..)) in ARMS.iter().enumerate() {
+        let (m, lo, hi) = stat(&mut rows[k]);
+        println!("| {name} | {m} | {lo}–{hi} |");
+    }
+    let (m, lo, hi) = stat(&mut rows[ARMS.len()]);
+    println!("| one Mut<Projection> write a frame (agent town's zoom), ns a frame | {m} | {lo}–{hi} |");
+    let (m, lo, hi) = stat(&mut empties);
+    println!("(empty system over the same {ROWS} rows: {m} µs a run, {lo}–{hi}, subtracted; {runs} rounds)");
 }
