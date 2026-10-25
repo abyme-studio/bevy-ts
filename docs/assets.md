@@ -88,3 +88,14 @@ built `T` goes whole into `Assets<T>` at its ref's id when the run ends. `set` m
 over the current read at the top level: a key given replaces that key whole; when the new read
 equals the old, nothing is queued. A type both hand-mapped and reflected uses its hand map.
 Mapping a type again replaces its entry. The map is process-wide, like a type registration.
+
+`bevy-ts/bevy` has classes only for types registered with `ReflectAsset`, so a script names a type
+with no `Reflect` by its type path, with `asset` from `bevy-ts`, or the owning crate ships that
+class:
+
+```ts
+import { asset, assets } from "bevy-ts";
+
+const Note = asset<{ text: string }>("my_crate::Note");
+const note = assets.add(Note, { text: "hi" });
+```

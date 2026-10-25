@@ -20,7 +20,7 @@
 ## 1a. The runtime hand map (after stage 1, before stage 2)
 
 - [x] 1a.1 `app.ts_hand_map::<T: Asset>(read, write)` on `BevyTsAppExt`, typed over `T`, replacing the const `HAND_MAPS`; `T` needs no `Reflect`; lookup by `T::type_path()`, ahead of the registry; the flush inserts the built `T` into `Assets<T>` at the ref's id; restart and stop remove it
-- [x] 1a.2 Move the entries onto it: the test fixture `Note`, now `Asset + TypePath` only; script-gizmos (`GizmoAsset`), material-params (`ScriptMaterial`) and animation-control (`AnimationGraph`, `AnimationClip`) each register their own
+- [x] 1a.2 Move the entries onto it: the test fixture `Note` moves, now `Asset + TypePath` only. script-gizmos (`GizmoAsset`), material-params (`ScriptMaterial`) and animation-control (`AnimationGraph`, `AnimationClip`) register their own, in their own changes
 - [x] 1a.3 Unit tests: add, get, set, `T.of` sharing, ref reads and checks, restart removal for a type with no `Reflect`
 - [x] 1a.4 `docs/assets.md` (hand-mapped types); spec `reflected-assets` (Rust hand-maps asset types); design decision 9
 
