@@ -156,9 +156,10 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
 fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     let started = Instant::now();
     crate::layout_reflect::fill_once(world);
-    // Script-made assets' refs go stale with the generation; a restart removes the assets too.
-    #[cfg(feature = "pbr")]
-    crate::reflect_asset::clear(world, restart);
+    // Script-made assets' refs go stale once the next generation applies; a restart ends the
+    // live one now and removes the assets too.
+    #[cfg(feature = "reflect")]
+    let assets = crate::reflect_asset::reloading(world, restart);
     // Flush the previous generation's console output so the log reads in order.
     crate::runtime::pump(world);
     let number = world.resource::<Generations>().live + 1;
@@ -216,6 +217,8 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
     let result = load_and_apply(world, &mut rt, &generation);
     let report = match result {
         Ok((migrations, sections, requests)) => {
+            #[cfg(feature = "reflect")]
+            crate::reflect_asset::applied(world, assets);
             world.insert_resource(LiveSet(generation.set));
             world.resource_mut::<Generations>().live = number;
             world.resource_mut::<RuntimeInfo>().generation = number;
@@ -257,6 +260,9 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
             }
         }
         Err(errors) => {
+            // What the failed generation made never stays; the live one's refs still work.
+            #[cfg(feature = "reflect")]
+            crate::reflect_asset::failed(world, assets);
             let live = world.resource::<Generations>().live;
             let mut log = world.resource_mut::<ScriptLog>();
             for e in &errors {
@@ -317,16 +323,10 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     let number = generation.number;
     let LoadedGeneration { manifest, sections, requests } = {
         let mut host = crate::host::LoadHost { world: &*world };
-        let loaded = rt.backend.load_with(generation, &mut host);
-        if loaded.is_err() {
-            // A failed load's assets never go in.
-            #[cfg(feature = "pbr")]
-            crate::reflect_asset::drop_queued(world);
-        }
-        loaded?
+        rt.backend.load_with(generation, &mut host)?
     };
     // Assets a scene's first render made go in before its tree applies.
-    #[cfg(feature = "pbr")]
+    #[cfg(feature = "reflect")]
     crate::reflect_asset::flush(world);
 
     let fail = |rt: &mut ScriptRuntime, errors: Vec<ScriptError>| {

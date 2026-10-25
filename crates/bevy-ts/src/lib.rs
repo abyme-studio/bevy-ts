@@ -30,7 +30,7 @@ pub mod plugin_api;
 pub mod recipes;
 #[cfg(feature = "reflect")]
 pub mod reflect_value;
-#[cfg(feature = "pbr")]
+#[cfg(feature = "reflect")]
 pub mod reflect_asset;
 pub mod runtime;
 pub mod rust_events;
@@ -180,7 +180,7 @@ impl Plugin for BevyTsPlugin {
         if let Err(why) = app.try_register_required_components::<bevy::render::occlusion_culling::OcclusionCulling, bevy::core_pipeline::prepass::DepthPrepass>() {
             bevy::log::debug!("OcclusionCulling does not get a required DepthPrepass: {why}");
         }
-        #[cfg(feature = "pbr")]
+        #[cfg(feature = "reflect")]
         app.init_resource::<reflect_asset::ScriptAssets>();
 
         app.add_systems(

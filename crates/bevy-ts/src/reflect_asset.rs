@@ -8,8 +8,9 @@
 //! commands apply. `get` reads a queued value, so a script sees its `add` and `set` at once.
 //!
 //! A ref is `{ "$asset": n, "type": path }` in JSON, `n` counting up from 1 and never reused in a
-//! session. Script-made assets live until the script reloads or stops ([`clear`] removes them);
-//! a ref used after that is a "stale asset ref". Asset values (`T.of(props)`,
+//! session. Refs go stale when the script reloads or stops ([`reloading`], [`applied`]); a ref
+//! used after that is a "stale asset ref". The assets stay for the entities a hot reload keeps,
+//! until a restart or stop removes them. Asset values (`T.of(props)`,
 //! `{ "$of": path, "props": ... }`) are cached by their type and the props' [`canonical`] JSON, so
 //! every slot given equal props shares one asset.
 
@@ -24,7 +25,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// One session's assets past this many log a warning: `assets.add` in a per-frame system grows
-/// memory until reload.
+/// memory until a restart or stop.
 const REFS_WARN: usize = 10_000;
 
 /// The high half of every script-made asset's UUID; the low half is its ref number.
@@ -118,7 +119,7 @@ impl ScriptAssets {
         let t = self.table();
         match t.refs.get(&n) {
             Some(m) => Ok(m.handle.clone()),
-            None if n >= 1 && n <= t.last => Err(format!("stale asset ref {n}: assets live until the script reloads or stops")),
+            None if n >= 1 && n <= t.last => Err(format!("stale asset ref {n}: refs go stale when the script reloads or stops")),
             None => Err(format!("unknown asset ref {n}")),
         }
     }
@@ -207,36 +208,76 @@ pub fn flush(world: &mut World) {
     }
 }
 
-/// Forgets every queued value and the refs of queued adds, as when a load fails: none goes in.
-pub fn drop_queued(world: &World) {
-    let Some(assets) = world.get_resource::<ScriptAssets>() else { return };
-    let mut guard = assets.table();
-    let t = &mut *guard;
-    let queued = std::mem::take(&mut t.queued);
-    for (n, _) in queued.into_iter().filter(|(_, q)| q.added) {
-        if let Some(m) = t.refs.remove(&n) {
-            t.by_id.remove(&m.handle.id());
-            t.sources.remove(&m.handle.id());
-        }
-    }
-    let refs = &t.refs;
-    t.values.retain(|_, n| refs.contains_key(n));
+/// A reload under way: the last ref the live generation gave, and its asset-value cache, set
+/// aside so the loading generation builds its own.
+pub struct Reloading {
+    last: u64,
+    values: HashMap<(TypeId, String), u64>,
 }
 
-/// Empties the table when the script reloads or stops: refs given before are stale from now on.
-/// A restart or stop (`remove`) also removes every script-made asset; a hot reload keeps them for
-/// the entities it keeps, until the next restart.
-pub fn clear(world: &mut World, remove: bool) {
-    let Some(assets) = world.get_resource::<ScriptAssets>() else { return };
+/// Starts a reload. A restart or Stop ends the live generation now: its refs go stale and every
+/// script-made asset is removed. A hot reload keeps the live generation's refs working until the
+/// new one applies ([`applied`]); if it fails ([`failed`]) the live one carries on.
+pub fn reloading(world: &mut World, restart: bool) -> Reloading {
+    let Some(assets) = world.get_resource::<ScriptAssets>().cloned() else { return Reloading { last: 0, values: HashMap::new() } };
+    if restart {
+        let last = assets.table().last;
+        retire(world, &assets, last, true);
+    }
+    let mut t = assets.table();
+    Reloading { last: t.last, values: std::mem::take(&mut t.values) }
+}
+
+/// The new generation applied: the refs the old one gave are stale from now on. Their assets
+/// stay for the entities the reload kept, until the next restart or stop.
+pub fn applied(world: &mut World, r: Reloading) {
+    let Some(assets) = world.get_resource::<ScriptAssets>().cloned() else { return };
+    retire(world, &assets, r.last, false);
+}
+
+/// The new generation failed: what it made while loading is dropped, from the queue and from
+/// `Assets`, and the live generation's refs and value cache are as they were.
+pub fn failed(world: &mut World, r: Reloading) {
+    let Some(assets) = world.get_resource::<ScriptAssets>().cloned() else { return };
     let gone: Vec<Made> = {
-        let mut t = assets.table();
-        t.by_id.clear();
-        t.values.clear();
-        t.queued.clear();
-        t.sources.clear();
+        let mut guard = assets.table();
+        let t = &mut *guard;
+        let new: Vec<u64> = t.refs.keys().copied().filter(|n| *n > r.last).collect();
+        let mut gone = Vec::new();
+        for n in new {
+            t.queued.remove(&n);
+            if let Some(m) = t.refs.remove(&n) {
+                t.by_id.remove(&m.handle.id());
+                t.sources.remove(&m.handle.id());
+                gone.push(m);
+            }
+        }
+        t.values = r.values;
+        gone
+    };
+    for m in gone {
+        m.reflect.remove(world, m.handle.id());
+    }
+}
+
+/// Makes refs up to `last` stale. `remove` also removes every script-made asset, those of refs
+/// made stale before included.
+fn retire(world: &mut World, assets: &ScriptAssets, last: u64, remove: bool) {
+    let gone: Vec<Made> = {
+        let mut guard = assets.table();
+        let t = &mut *guard;
+        let old: Vec<u64> = t.refs.keys().copied().filter(|n| *n <= last).collect();
+        for n in old {
+            t.queued.remove(&n);
+            if let Some(m) = t.refs.remove(&n) {
+                t.by_id.remove(&m.handle.id());
+                t.sources.remove(&m.handle.id());
+                t.retired.push(m);
+            }
+        }
+        let refs = &t.refs;
+        t.values.retain(|_, n| refs.contains_key(n));
         t.warned = false;
-        let made: Vec<Made> = t.refs.drain().map(|(_, m)| m).collect();
-        t.retired.extend(made);
         if remove { std::mem::take(&mut t.retired) } else { Vec::new() }
     };
     for m in gone {
@@ -530,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn made_assets_enter_assets_on_flush_and_leave_on_clear() {
+    fn made_assets_enter_assets_on_flush_and_leave_on_a_restart() {
         let mut app = app();
         let ty = image(&app);
         let (n, h) = app.world().resource::<ScriptAssets>().make(&ty, Box::new(Image::default()));
@@ -540,14 +581,53 @@ mod tests {
         flush(app.world_mut());
         assert!(app.world().resource::<Assets<Image>>().get(id).is_some());
         assert_eq!(app.world().resource::<ScriptAssets>().ref_of(h.id()), Some(1));
-        clear(app.world_mut(), false);
+        reload(app.world_mut(), false);
         assert!(app.world().resource::<Assets<Image>>().get(id).is_some(), "a hot reload keeps it for its entities");
-        clear(app.world_mut(), true);
+        reload(app.world_mut(), true);
         assert!(app.world().resource::<Assets<Image>>().get(id).is_none(), "a restart removes it");
         let t = app.world().resource::<ScriptAssets>();
         assert!(t.handle(1).unwrap_err().starts_with("stale asset ref"));
         assert!(t.handle(9).unwrap_err().starts_with("unknown asset ref"));
         assert_eq!(t.make(&ty, Box::new(Image::default())).0, 2, "never reused in a session");
+    }
+
+    /// A reload that applies.
+    fn reload(world: &mut World, restart: bool) {
+        let r = reloading(world, restart);
+        applied(world, r);
+    }
+
+    #[test]
+    fn a_failed_hot_reload_keeps_the_live_refs_and_drops_its_own() {
+        let mut app = app();
+        let ty = image(&app);
+        let (old, _) = app.world().resource::<ScriptAssets>().make(&ty, Box::new(Image::default()));
+        flush(app.world_mut());
+        let r = reloading(app.world_mut(), false);
+        // The new generation adds while it loads, and its first render's assets go in.
+        let (new, h) = app.world().resource::<ScriptAssets>().make(&ty, Box::new(Image::default()));
+        flush(app.world_mut());
+        failed(app.world_mut(), r);
+        let t = app.world().resource::<ScriptAssets>();
+        assert!(t.handle(old).is_ok(), "the live generation's ref still works");
+        assert!(t.handle(new).unwrap_err().starts_with("stale asset ref"));
+        assert!(app.world().resource::<Assets<Image>>().get(h.id().typed::<Image>()).is_none(), "the failed generation's asset is gone");
+        assert_eq!(app.world().resource::<Assets<Image>>().len(), 1);
+    }
+
+    #[test]
+    fn a_hot_reload_makes_the_old_refs_stale_once_it_applies() {
+        let mut app = app();
+        let ty = image(&app);
+        let (old, _) = app.world().resource::<ScriptAssets>().make(&ty, Box::new(Image::default()));
+        flush(app.world_mut());
+        let r = reloading(app.world_mut(), false);
+        assert!(app.world().resource::<ScriptAssets>().handle(old).is_ok(), "live while the new one loads");
+        let (new, _) = app.world().resource::<ScriptAssets>().make(&ty, Box::new(Image::default()));
+        applied(app.world_mut(), r);
+        let t = app.world().resource::<ScriptAssets>();
+        assert!(t.handle(old).unwrap_err().starts_with("stale asset ref"));
+        assert!(t.handle(new).is_ok(), "what the new generation made while loading is its own");
     }
 
     #[test]
@@ -561,10 +641,10 @@ mod tests {
             let (_, h) = app.world().resource::<ScriptAssets>().make(&ty, Box::new(Image::default()));
             ids.push(h.id().typed::<Image>());
             flush(app.world_mut());
-            clear(app.world_mut(), false);
+            reload(app.world_mut(), false);
         }
         assert_eq!(app.world().resource::<Assets<Image>>().len(), 2, "both generations' assets kept");
-        clear(app.world_mut(), true);
+        reload(app.world_mut(), true);
         assert!(ids.iter().all(|&id| app.world().resource::<Assets<Image>>().get(id).is_none()));
         assert_eq!(app.world().resource::<Assets<Image>>().len(), 0);
     }
@@ -685,7 +765,7 @@ mod tests {
     fn a_stale_ref_fails() {
         let mut app = pbr_app();
         let r = call(&app, "assets.add", serde_json::json!([MAT, {}])).unwrap();
-        clear(app.world_mut(), true);
+        reload(app.world_mut(), true);
         let e = call(&app, "assets.get", serde_json::json!([r])).unwrap_err();
         assert!(e.contains("stale asset ref"), "{e}");
     }

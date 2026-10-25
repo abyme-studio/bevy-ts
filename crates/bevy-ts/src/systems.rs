@@ -1391,7 +1391,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
         Err(e) => {
             settle_ports(world, &sys.params, false);
             // Assets a throwing run made still go in: their refs were handed out.
-            #[cfg(feature = "pbr")]
+            #[cfg(feature = "reflect")]
             crate::reflect_asset::flush(world);
             rt.log_error(world, &format!("system {} threw", sys.decl.name), &e);
             sys.last_error = Some(e);

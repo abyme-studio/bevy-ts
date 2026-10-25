@@ -166,6 +166,88 @@ app.addSystems(Update, probe);
 }
 
 #[test]
+fn the_protocol_reads_a_script_made_handle_as_its_ref_and_writes_refs_and_values() {
+    use bevy::remote::{RemoteMethodSystemId, RemoteMethods, RemotePlugin};
+    const MAT3D: &str = "bevy_pbr::mesh_material::MeshMaterial3d<bevy_pbr::pbr_material::StandardMaterial>";
+    const MAT: &str = "bevy_pbr::pbr_material::StandardMaterial";
+    let dir = project(
+        "assets-protocol",
+        &[(
+            "game.tsx",
+            &format!(
+                "{HEAD}{}",
+                r##"
+app.scene("s", () => {
+  const a = assets.add(StandardMaterial, { unlit: true });
+  assets.add(StandardMaterial, { perceptual_roughness: 0.5 });
+  return <entity name="it"><MeshMaterial3dStandardMaterial value={a} /></entity>;
+});
+"##
+            ),
+        )],
+    );
+    let mut app = assets_app(&dir.join("game.tsx"));
+    app.add_plugins(RemotePlugin::default());
+    bevy_ts_remote::add_methods(&mut app);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 3);
+    let call = |app: &mut App, method: &str, params: serde_json::Value| {
+        let id = *app.world().resource::<RemoteMethods>().get(method).unwrap();
+        match id {
+            RemoteMethodSystemId::Instant(id) => app.world_mut().run_system_with(id, Some(params)).unwrap().unwrap(),
+            RemoteMethodSystemId::Watching(_) => unreachable!(),
+        }
+    };
+    let world = app.world_mut();
+    let e = world.query_filtered::<Entity, With<MeshMaterial3d<StandardMaterial>>>().single(world).unwrap();
+    let got = call(&mut app, "bevy-ts/get_components", serde_json::json!({ "entity": e, "components": [MAT3D] }));
+    assert_eq!(got["components"][MAT3D], serde_json::json!({ "value": { "$asset": 1, "type": MAT } }), "{got:#}");
+
+    call(&mut app, "bevy-ts/mutate_components", serde_json::json!({ "entity": e, "component": MAT3D, "path": "", "value": { "value": { "$asset": 2, "type": MAT } } }));
+    let id = entity_materials(&mut app)[0];
+    let m = app.world().resource::<Assets<StandardMaterial>>().get(id).unwrap().clone();
+    assert_eq!(m.perceptual_roughness, 0.5, "the entity holds ref 2's material");
+
+    call(&mut app, "bevy-ts/mutate_components", serde_json::json!({ "entity": e, "component": MAT3D, "path": "", "value": { "value": { "$of": MAT, "props": { "base_color": "#f00" } } } }));
+    let id = entity_materials(&mut app)[0];
+    let m = app.world().resource::<Assets<StandardMaterial>>().get(id).expect("a value's material is in Assets after the write");
+    assert_eq!(m.base_color, Color::srgb(1.0, 0.0, 0.0));
+}
+
+#[test]
+fn a_failed_reload_leaves_the_live_refs_working() {
+    let (dir, mut app) = setup(
+        "assets-failed-reload",
+        r##"
+let mat: any = null;
+export function make() {
+  mat = assets.add(StandardMaterial, {});
+}
+export function tweak() {
+  if (!(globalThis as any).go) return;
+  (globalThis as any).go = false;
+  try {
+    assets.set(mat, { perceptual_roughness: 0.5 });
+    console.log("set ok");
+  } catch (e) {
+    console.log(`threw ${(e as Error).message}`);
+  }
+}
+app.addSystems(Startup, make).addSystems(Update, tweak);
+"##,
+    );
+    write(&dir, "game.tsx", &format!("{HEAD}{}", "(globalThis as any).go = true;\nassets.add(StandardMaterial, { unlit: true });\nthrow new Error(\"boom\");\n"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed, "{:?}", r.errors);
+    updates(&mut app, 2);
+    assert!(logged(&app, "set ok"), "{:?}", messages(&app));
+    let ms = materials(&app);
+    assert_eq!(ms.len(), 1, "the failed load's material never stays");
+    assert_eq!(ms[0].perceptual_roughness, 0.5);
+}
+
+#[test]
 fn assets_throw_outside_a_run() {
     let (_dir, mut app) = setup(
         "assets-outside",

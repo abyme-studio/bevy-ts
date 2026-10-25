@@ -42,20 +42,22 @@ adds its assets: their refs were handed out.
 
 A ref goes in any `Handle<T>` slot the reflected writer reaches: a TSX prop
 (`<MeshMaterial3dStandardMaterial value={mat} />`), a field of another asset
-(`assets.add(StandardMaterial, { base_color_texture: img })`) or a script's reflected insert. A ref
-of another asset type fails naming both types. A handle a script made reads back as its ref; any
+(`assets.add(StandardMaterial, { base_color_texture: img })`) or a protocol write
+(`bevy-ts/mutate_components`). A ref of another asset type fails naming both types. A handle a script made reads back as its ref; any
 other handle reads as its path, or `null`.
 
 ## Lifetime
 
-A ref is `{ $asset: n, type }`; `n` counts up from 1 and is never reused in a session. Script-made
-assets live until the script reloads or stops:
+A ref is `{ $asset: n, type }`; `n` counts up from 1 and is never reused in a session. A ref
+works until the script reloads or stops; the asset can outlive it:
 
-- After a hot reload every ref is stale: using one throws "stale asset ref". The assets stay for
+- Once a hot reload applies, every ref the old generation gave is stale: using one throws "stale
+  asset ref". A reload that fails leaves the running generation's refs working, and drops what
+  the failed one made. The assets stay for
   the entities the reload kept, until the next restart. The reloaded script adds its assets again,
   so under `bevy-ts dev` each hot reload keeps one more copy of them until a restart or Stop; a
   shipped game never hot reloads.
 - A restart or a Stop removes every script-made asset.
 
-Adding an asset every frame grows memory until reload, and a warning is logged past 10,000 assets:
+Adding an asset every frame grows memory until a restart or Stop, and a warning is logged past 10,000 assets:
 add once and `set` after. Freeing an asset sooner is script-assets' handle lifecycle, not here.

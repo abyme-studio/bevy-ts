@@ -305,7 +305,7 @@ export interface AssetClass<F = {}> extends AssetType<F> {
 export type AssetProps<F> = {
   [K in keyof F]?: F[K] extends readonly unknown[] ? F[K] : F[K] extends { readonly $asset: number } | { readonly $of: string } ? F[K] : F[K] extends object ? AssetProps<F[K]> : F[K];
 };
-/** A script-made asset, from `assets.add`, for any `Handle<T>` slot. It lives until the script reloads or stops. */
+/** A script-made asset, from `assets.add`, for any `Handle<T>` slot. The ref goes stale when the script reloads or stops; the asset stays for a hot reload's entities, until a restart or stop. */
 export interface AssetRef<F = unknown> {
   readonly $asset: number;
   readonly type: string;
@@ -319,7 +319,7 @@ export interface AssetValue<F = unknown> {
 }
 /** A Rust asset type by type path; `bevy-ts/bevy` declares every one Bevy reflects. */
 export declare function asset<F = {}>(typePath: string): AssetClass<F>;
-/** Builds, reads and edits reflected assets, inside a system's run or a TSX render (docs/assets.md). */
+/** Builds, reads and edits reflected assets, inside a system's run, a TSX render or while the script loads (docs/assets.md). */
 export declare const assets: {
   /** The asset from its type's default with `props` written over it. Visible to `get` at once, in `Assets<T>` when the run ends. */
   add<F>(type: AssetClass<F>, props?: AssetProps<F>): AssetRef<F>;

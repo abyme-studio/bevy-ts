@@ -46,7 +46,7 @@ impl ScriptRuntime {
     /// only when their commands apply.
     pub(crate) fn apply_output(&mut self, world: &mut World, arena: &[u8], out: RunOutput, label: &str) {
         // Assets the call made or changed go in first, so its commands can use them.
-        #[cfg(feature = "pbr")]
+        #[cfg(feature = "reflect")]
         crate::reflect_asset::flush(world);
         let mut bytes = arena[..out.arena_len].to_vec();
         bytes.extend_from_slice(&out.overflow);
@@ -119,7 +119,7 @@ impl ScriptRuntime {
             }
             Err(e) => {
                 settle_params(world, false);
-                #[cfg(feature = "pbr")]
+                #[cfg(feature = "reflect")]
                 crate::reflect_asset::flush(world);
                 rt.log_error(world, &format!("entry {name} threw"), &e);
                 Err(e)

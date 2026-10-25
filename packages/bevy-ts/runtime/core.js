@@ -1133,8 +1133,9 @@ function assetPath(T) {
 }
 
 /**
- * Builds, reads and edits reflected assets, inside a system's run or a TSX render. `add` returns
- * a ref for any `Handle<T>` slot; assets live until the script reloads or stops.
+ * Builds, reads and edits reflected assets, inside a system's run, a TSX render or while the
+ * script loads. `add` returns a ref for any `Handle<T>` slot; refs go stale when the script
+ * reloads or stops (the assets stay for a hot reload's entities, until a restart or stop).
  */
 export const assets = {
   /** `assets.add(StandardMaterial, { base_color: "#f80" })`: the asset from its default, with `props` written over it. */
