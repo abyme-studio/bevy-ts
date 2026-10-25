@@ -25,7 +25,7 @@
 
 ## 4. Stage 1: bench, docs, example
 
-- [ ] 4.1 `bench/world-text/` (`Cargo.toml` with a path dependency on `bevy-ts-material`, `src/main.rs`, `run.sh` sourcing `scripts/slot.sh`): 1,000 labels from Rust (distinct names, two colours, one outline) at 1280×720 offscreen; arms: 0 labels, 1,000 still, 1,000 with 100 texts changed a frame; records first-mount ms (atlas growth included), frame time median and p95 over 600 frames after 240 warm, labels laid out per frame, material count; `bench/world-text/results/README.md` with the machine and load
+- [x] 4.1 `bench/world-text/` (`Cargo.toml` with a path dependency on `bevy-ts-material`, `src/main.rs`, `run.sh` sourcing `scripts/slot.sh`): 1,000 labels from Rust (distinct names, two colours, one outline) at 1280×720 offscreen; arms: 0 labels, 1,000 still, 1,000 with 100 texts changed a frame; records first-mount ms (atlas growth included), frame time median and p95 over 600 frames after 240 warm, labels laid out per frame, material count; `bench/world-text/results/README.md` with the machine and load
 - [x] 4.2 New `docs/world-text.md`: the element, every prop with units and default, the Rust components, what fails the load, limits (atlas size, outline width, corners when magnified, no billboard), how it works, the bench's numbers; link from `README.md`, the Text section of `docs/ui.md` and `docs/fonts.md`
 - [x] 4.3 `examples/cube/src/game.tsx` (or the closest 3D example): a label over the cube with an outline and a bound counter
 - [x] 4.4 Gate: `cargo test -p bevy-ts-material`, `-p bevy-ts-tsx`, the cli `world_text` test, the TS type tests, through the gate slot; `protocol/bevy-ts.openrpc.json` unchanged

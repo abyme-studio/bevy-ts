@@ -1,0 +1,159 @@
+gate: waiting for a check slot, behind earlier runs; held by:
+  script-assets (script-assets:script-assets-test, pid 55624, 40 s)
+  ecs-schedules (bevy-ts:ecs-schedules, pid 90376, 31 s)
+  abyme-land-queue (abyme-land-queue:batch-check, pid 77363, 7 m)
+  abyme-land-queue (abyme-land-queue:affected-gate, pid 22769, 19 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  script-assets (script-assets:script-assets-test, pid 55624, 48 s)
+  ecs-schedules (bevy-ts:ecs-schedules, pid 80978, 1 s)
+  abyme-land-queue (abyme-land-queue:batch-check, pid 77363, 7 m)
+  abyme-land-queue (abyme-land-queue:affected-gate, pid 22769, 19 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  script-assets (script-assets:script-assets-test, pid 55624, 2 m)
+  ecs-schedules (bevy-ts:ecs-schedules, pid 80978, 1 m)
+  abyme-land-queue (abyme-land-queue:batch-check, pid 77363, 9 m)
+  reflect-reads (bevy-ts:reflect-enums-color, pid 71532, 0 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  abyme-land-queue (abyme-land-queue:affected-gate, pid 47095, 0 s)
+  ecs-schedules (bevy-ts:ecs-schedules, pid 80978, 2 m)
+  abyme-land-queue (abyme-land-queue:batch-check, pid 77363, 9 m)
+  reflect-reads (bevy-ts:reflect-enums-color, pid 71532, 44 s)
+gate: waiting for a check slot, behind earlier runs; held by:
+  abyme-land-queue (abyme-land-queue:affected-gate, pid 47095, 19 s)
+  abyme-land-queue (abyme-land-queue:batch-check, pid 77363, 10 m)
+  reflect-reads (bevy-ts:reflect-enums-color, pid 71532, 1 m)
+gate: waiting for a check slot, behind earlier runs; held by:
+  abyme-land-queue (abyme-land-queue:affected-gate, pid 47095, 22 s)
+  bevy-ui-coverage (bevy-ts:bevy-ui-coverage, pid 94842, 1 s)
+  abyme-land-queue (abyme-land-queue:batch-check, pid 77363, 10 m)
+  reflect-reads (bevy-ts:reflect-enums-color, pid 71532, 1 m)
+gate: a slot is free, running
+   Compiling bevy-ts-material v0.1.0 (/Users/rjm/.local/share/abyme/worktrees/bevy-ts/world-text/crates/bevy-ts-material)
+   Compiling world-text-bench v0.0.0 (/Users/rjm/.local/share/abyme/worktrees/bevy-ts/world-text/bench/world-text)
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `world-text-bench` (bin "world-text-bench") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 20.61s
+21:15  up 1 day,  1:17, 2 users, load averages: 30.89 45.25 54.03
+[2m2026-10-25T10:15:49.353307Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:15:49.400419Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:15:49.471149Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:15:49.471170Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=empty labels=0 mount_ms=4.0 mount_frames=1 frame_median_ms=4.037 frame_p95_ms=4.925 gpu_synced_median_ms=5.142 laid_out_per_frame=0.0 materials=0 atlas=4096x256 glyphs=0
+[2m2026-10-25T10:15:56.665260Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:15:56.681293Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:15:56.705897Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:15:56.705921Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=still labels=1000 mount_ms=46.1 mount_frames=1 frame_median_ms=6.446 frame_p95_ms=25.112 gpu_synced_median_ms=11.251 laid_out_per_frame=0.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:16:12.846008Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:16:12.864115Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:16:12.936753Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:16:12.936782Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=churn labels=1000 mount_ms=76.0 mount_frames=1 frame_median_ms=8.872 frame_p95_ms=29.050 gpu_synced_median_ms=13.585 laid_out_per_frame=100.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:16:35.751638Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:16:35.771599Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:16:35.803052Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:16:35.803081Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=empty labels=0 mount_ms=3.9 mount_frames=1 frame_median_ms=7.164 frame_p95_ms=24.944 gpu_synced_median_ms=10.774 laid_out_per_frame=0.0 materials=0 atlas=4096x256 glyphs=0
+[2m2026-10-25T10:16:53.019000Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:16:53.039728Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:16:53.075367Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:16:53.075397Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=still labels=1000 mount_ms=97.5 mount_frames=1 frame_median_ms=5.941 frame_p95_ms=51.332 gpu_synced_median_ms=8.296 laid_out_per_frame=0.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:17:11.519187Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:17:11.565833Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:17:11.618201Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:17:11.618226Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=churn labels=1000 mount_ms=109.9 mount_frames=1 frame_median_ms=13.364 frame_p95_ms=49.959 gpu_synced_median_ms=12.086 laid_out_per_frame=100.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:17:38.800198Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:17:38.821567Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:17:38.861356Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:17:38.861379Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=empty labels=0 mount_ms=12.6 mount_frames=1 frame_median_ms=4.758 frame_p95_ms=17.417 gpu_synced_median_ms=8.786 laid_out_per_frame=0.0 materials=0 atlas=4096x256 glyphs=0
+[2m2026-10-25T10:17:53.599152Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:17:53.621110Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:17:53.653162Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:17:53.653190Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=still labels=1000 mount_ms=50.0 mount_frames=1 frame_median_ms=6.205 frame_p95_ms=23.519 gpu_synced_median_ms=5.658 laid_out_per_frame=0.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:18:05.919735Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:18:05.934970Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:18:05.961988Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:18:05.962010Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=churn labels=1000 mount_ms=36.5 mount_frames=1 frame_median_ms=14.642 frame_p95_ms=37.609 gpu_synced_median_ms=18.966 laid_out_per_frame=100.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:18:32.619244Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:18:32.639751Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:18:32.670923Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:18:32.670950Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=empty labels=0 mount_ms=6.1 mount_frames=1 frame_median_ms=6.498 frame_p95_ms=65.557 gpu_synced_median_ms=9.971 laid_out_per_frame=0.0 materials=0 atlas=4096x256 glyphs=0
+[2m2026-10-25T10:18:53.021827Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:18:53.044236Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:18:53.166466Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:18:53.166497Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=still labels=1000 mount_ms=71.3 mount_frames=1 frame_median_ms=6.449 frame_p95_ms=66.146 gpu_synced_median_ms=9.732 laid_out_per_frame=0.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:19:16.189532Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:19:16.206157Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:19:16.269688Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:19:16.269712Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=churn labels=1000 mount_ms=39.6 mount_frames=1 frame_median_ms=9.638 frame_p95_ms=28.150 gpu_synced_median_ms=13.457 laid_out_per_frame=100.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:19:38.261498Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:19:38.282002Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:19:38.306281Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:19:38.306304Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=empty labels=0 mount_ms=4.2 mount_frames=1 frame_median_ms=3.916 frame_p95_ms=16.201 gpu_synced_median_ms=4.785 laid_out_per_frame=0.0 materials=0 atlas=4096x256 glyphs=0
+[2m2026-10-25T10:19:49.063058Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:19:49.075697Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:19:49.100119Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:19:49.100139Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=still labels=1000 mount_ms=38.4 mount_frames=1 frame_median_ms=4.039 frame_p95_ms=17.760 gpu_synced_median_ms=5.675 laid_out_per_frame=0.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:19:59.636918Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:19:59.649982Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:19:59.673547Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:19:59.673566Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=churn labels=1000 mount_ms=38.6 mount_frames=1 frame_median_ms=7.822 frame_p95_ms=13.442 gpu_synced_median_ms=10.706 laid_out_per_frame=100.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:20:14.918285Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:20:14.935989Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:20:14.962830Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:20:14.962855Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=empty labels=0 mount_ms=4.8 mount_frames=1 frame_median_ms=3.846 frame_p95_ms=5.146 gpu_synced_median_ms=5.880 laid_out_per_frame=0.0 materials=0 atlas=4096x256 glyphs=0
+[2m2026-10-25T10:20:22.799993Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:20:22.813345Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:20:22.838089Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:20:22.838111Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=still labels=1000 mount_ms=30.7 mount_frames=1 frame_median_ms=3.581 frame_p95_ms=4.772 gpu_synced_median_ms=5.339 laid_out_per_frame=0.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:20:30.118846Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:20:30.136639Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:20:30.165747Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:20:30.165775Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=churn labels=1000 mount_ms=43.5 mount_frames=1 frame_median_ms=10.402 frame_p95_ms=27.897 gpu_synced_median_ms=11.925 laid_out_per_frame=100.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:20:51.451820Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:20:51.465939Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:20:51.489443Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:20:51.489462Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=empty labels=0 mount_ms=5.1 mount_frames=1 frame_median_ms=5.536 frame_p95_ms=23.716 gpu_synced_median_ms=11.888 laid_out_per_frame=0.0 materials=0 atlas=4096x256 glyphs=0
+[2m2026-10-25T10:21:07.785018Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:21:07.841022Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:21:07.882275Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:21:07.882300Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=still labels=1000 mount_ms=219.7 mount_frames=1 frame_median_ms=6.399 frame_p95_ms=20.458 gpu_synced_median_ms=15.009 laid_out_per_frame=0.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:21:26.957261Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:21:26.976509Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:21:27.007246Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:21:27.007269Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=churn labels=1000 mount_ms=46.1 mount_frames=1 frame_median_ms=7.970 frame_p95_ms=10.405 gpu_synced_median_ms=16.825 laid_out_per_frame=100.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:21:45.585252Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:21:45.605780Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:21:45.638550Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:21:45.638576Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=empty labels=0 mount_ms=4.4 mount_frames=1 frame_median_ms=3.942 frame_p95_ms=14.792 gpu_synced_median_ms=12.306 laid_out_per_frame=0.0 materials=0 atlas=4096x256 glyphs=0
+[2m2026-10-25T10:21:59.294632Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:21:59.314978Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:21:59.348759Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:21:59.348785Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=still labels=1000 mount_ms=51.9 mount_frames=1 frame_median_ms=11.015 frame_p95_ms=19.565 gpu_synced_median_ms=14.341 laid_out_per_frame=0.0 materials=1 atlas=4096x256 glyphs=46
+[2m2026-10-25T10:22:18.307710Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.4 Tahoe", kernel: "25.4.0", cpu: "Apple M5 Max", core_count: "18", memory: "128.0 GiB" }
+[2m2026-10-25T10:22:18.325550Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M5 Max", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2m2026-10-25T10:22:18.357690Z[0m [32m INFO[0m [2mbevy_pbr::cluster[0m[2m:[0m GPU clustering is supported on this device.
+[2m2026-10-25T10:22:18.357720Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+arm=churn labels=1000 mount_ms=54.3 mount_frames=1 frame_median_ms=8.108 frame_p95_ms=10.474 gpu_synced_median_ms=16.947 laid_out_per_frame=100.0 materials=1 atlas=4096x256 glyphs=46
+21:22  up 1 day,  1:24, 2 users, load averages: 23.82 43.24 50.92

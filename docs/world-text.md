@@ -110,4 +110,7 @@ The code is `crates/bevy-ts-material/src/world_text/`.
 ## The bench
 
 `bench/world-text/`: 1,000 labels from Rust (distinct names, two colours, one outline) at
-1280×720 offscreen; `run.sh` runs its arms. Its numbers are in `bench/world-text/results/README.md`.
+1280×720 offscreen; `run.sh` runs its arms. On an M5 Max under load, 1,000 still labels cost no
+more than an empty scene beyond the noise (a still frame lays out none); 100 labels changed a
+frame cost about 4 ms (40 µs a label); 1,000 labels mount in one frame. One material, one 1 MB
+atlas of 46 glyphs. The numbers are in `bench/world-text/results/README.md`.
