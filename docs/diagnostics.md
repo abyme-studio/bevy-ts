@@ -48,7 +48,7 @@ the engine renders.
 |---|---|---|
 | `FrameTimeDiagnosticsPlugin` | `fps`, `frame_time` (ms), `frame_count` | one `Update` system |
 | `EntityCountDiagnosticsPlugin` | `entity_count` | one `Update` system that walks every entity slot: O(entities) |
-| `SystemInformationDiagnosticsPlugin` | `system/cpu_usage`, `system/mem_usage`, `process/cpu_usage`, `process/mem_usage` | a refresh every 200 ms on the compute pool |
+| `SystemInformationDiagnosticsPlugin` | `system/cpu_usage`, `system/mem_usage`, `process/cpu_usage`, `process/mem_usage` | a refresh every 200 ms on the compute pool; nothing under Bevy's `dynamic_linking` |
 | `LogDiagnosticsPlugin` | none: logs every diagnostic each second | one system |
 | `RenderDiagnosticsPlugin` | `render/<pass>/elapsed_cpu` (and `elapsed_gpu` where the GPU allows) | a span per pass and a readback; on Metal CPU time only |
 | `MeshAllocatorDiagnosticPlugin` | `mesh_allocator_slabs`, `mesh_allocator_slabs_size`, `mesh_allocator_allocations` | one extract and one `PreUpdate` system |
@@ -74,8 +74,10 @@ Every diagnostic source Bevy 0.20 has, and what TS reaches.
 | `Diagnostics` (writer) | `Diagnostics` | same |
 | `RegisterDiagnostic` | `app.registerDiagnostic` | same |
 | `FrameCount` | `FrameCount` | same |
-| `FrameTimeDiagnosticsPlugin`, `EntityCountDiagnosticsPlugin`, `SystemInformationDiagnosticsPlugin`, `LogDiagnosticsPlugin` | the switch | same |
+| `FrameTimeDiagnosticsPlugin`, `EntityCountDiagnosticsPlugin`, `LogDiagnosticsPlugin` | the switch | same |
+| `SystemInformationDiagnosticsPlugin` | the switch; Bevy compiles it to nothing under `dynamic_linking`, so only a release engine measures | `bench/diagnostics` |
 | `RenderDiagnosticsPlugin`, `MeshAllocatorDiagnosticPlugin`, `RenderAssetDiagnosticPlugin<T>` | the switch, when rendering | `bench/diagnostics` |
+| `AssetPlugin`'s `started_load_count` | `DiagnosticsStore`: Bevy registers it in every app, listed or not | `diagnostics.rs` |
 | TS stage CPU time | `ScriptStageDiagnosticsPlugin` | `diagnostics.rs` |
 | Draw and batch counts | Bevy lacks it | — |
 | Pipeline statistics | Bevy has them on Vulkan and DX12 only, not Metal | — |
