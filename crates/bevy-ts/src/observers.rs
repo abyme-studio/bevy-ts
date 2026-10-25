@@ -194,17 +194,18 @@ fn sink(id: TypeId) -> crate::rust_events::TsEventSink {
         }
         let attached = current.map(|e| attached(&world, e));
         // Serialized at every hop: Bevy rewrites the target in the value as the event bubbles.
+        let mut bytes = Vec::new();
         let json = {
             let registry = world.resource::<AppTypeRegistry>().read();
-            crate::rust_events::to_json(&registry, value.as_partial_reflect())
+            crate::rust_events::write_json(&registry, value.as_partial_reflect(), &mut bytes)
         };
-        let bytes = match json.and_then(|v| serde_json::to_vec(&v).map_err(|e| e.to_string())) {
-            Ok(b) => b,
+        match json {
+            Ok(()) => {}
             Err(e) => {
                 warn!(target: "bevy_ts", "{}: {e}; TS observers do not see it", value.reflect_type_path());
                 return;
             }
-        };
+        }
         let mut queue = world.resource_mut::<ObserverQueue>();
         // A later hop joins its trigger's entry even when another trigger was queued between the
         // hops, so `propagate(false)` still drops it.

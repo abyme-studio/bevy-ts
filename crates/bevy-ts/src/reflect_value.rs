@@ -258,6 +258,78 @@ pub fn read_with(registry: &TypeRegistry, handles: Option<&dyn HandleSlots>, val
     }
 }
 
+/// [`read`]'s JSON written straight into `out`, with no `Value` tree between: structs, tuples,
+/// lists, `Option` and unit variants are walked here, and every other kind is [`read_with`]'s or
+/// the same serializer's, so the two cannot differ. On an error `out` holds part of a value.
+pub fn write_json(registry: &TypeRegistry, value: &dyn PartialReflect, out: &mut Vec<u8>) -> Result<(), String> {
+    let path = value.get_represented_type_info().map_or_else(|| value.reflect_type_path(), |i| i.type_path());
+    let json = |out: &mut Vec<u8>, v: &Value| serde_json::to_writer(out, v).map_err(|e| e.to_string());
+    // What `read` gives whole: an uncovered type's error, a colour, a handle, a non-struct opaque.
+    let whole = |out: &mut Vec<u8>| read_with(registry, None, value).and_then(|v| json(out, &v));
+    if uncovered(path).is_some() {
+        return whole(out);
+    }
+    if let Some(r) = value.try_as_reflect() {
+        let any = r.as_any();
+        if let Some(v) = read_scalar(any) {
+            return json(out, &v);
+        }
+        if any.is::<Color>() || registry.get_type_data::<ReflectHandle>(any.type_id()).is_some() {
+            return whole(out);
+        }
+    }
+    let items = |out: &mut Vec<u8>, it: &mut dyn Iterator<Item = &dyn PartialReflect>| -> Result<(), String> {
+        out.push(b'[');
+        for (i, v) in it.enumerate() {
+            if i > 0 {
+                out.push(b',');
+            }
+            write_json(registry, v, out).map_err(|e| format!("[{i}]: {e}"))?;
+        }
+        out.push(b']');
+        Ok(())
+    };
+    match value.reflect_ref() {
+        // Through `read`: its `Value` widens an `f32` lane to `f64`, which writing straight would
+        // not (`0.921061` against `0.9210609793663025`).
+        ReflectRef::Struct(_) | ReflectRef::TupleStruct(_) if path.starts_with("glam::") => whole(out),
+        ReflectRef::Struct(s) => {
+            out.push(b'{');
+            let mut first = true;
+            for i in 0..s.field_len() {
+                let (name, f) = (s.name_at(i).expect("a field"), s.field_at(i).expect("a field"));
+                // A field of an uncovered type is absent.
+                if uncovered(f.get_represented_type_info().map_or_else(|| f.reflect_type_path(), |i| i.type_path())).is_some() {
+                    continue;
+                }
+                if !first {
+                    out.push(b',');
+                }
+                first = false;
+                json(out, &Value::from(name))?;
+                out.push(b':');
+                write_json(registry, f, out).map_err(|e| format!("{name}: {e}"))?;
+            }
+            out.push(b'}');
+            Ok(())
+        }
+        ReflectRef::TupleStruct(t) if t.field_len() == 1 => write_json(registry, t.field(0).expect("one field"), out),
+        ReflectRef::TupleStruct(t) => items(out, &mut t.iter_fields()),
+        ReflectRef::Tuple(t) => items(out, &mut t.iter_fields()),
+        ReflectRef::Array(a) => items(out, &mut a.iter()),
+        ReflectRef::List(l) => items(out, &mut l.iter()),
+        ReflectRef::Enum(e) if path.starts_with("core::option::Option<") => match e.field_at(0) {
+            Some(inner) => write_json(registry, inner, out),
+            None => {
+                out.extend_from_slice(b"null");
+                Ok(())
+            }
+        },
+        ReflectRef::Enum(e) if e.variant_type() == VariantType::Unit => json(out, &Value::from(e.variant_name())),
+        _ => whole(out),
+    }
+}
+
 /// A whole component's JSON: [`read`], with a newtype as `{ value }`, the field TSX names.
 pub fn read_component(registry: &TypeRegistry, value: &dyn PartialReflect) -> Result<Value, String> {
     read_component_with(registry, None, value)
@@ -1254,5 +1326,45 @@ mod tests {
         assert!(e.contains("Projection") && e.contains("Perspective, Orthographic, Custom"), "{e}");
         let e = written::<Settings>(json!({ "levle": 1 })).unwrap_err();
         assert!(e.contains("levle") && e.contains("Settings"), "{e}");
+    }
+
+    /// `write_json`'s bytes parse to `read`'s value, error for error, for every kind `read` owns.
+    #[test]
+    fn write_json_agrees_with_read() {
+        let mut r = every_registry();
+        r.register::<Timers>();
+        r.register::<Settings>();
+        r.register::<Projection>();
+        r.register::<Shape>();
+        r.register::<bevy::time::Timer>();
+        r.register::<Vec2>();
+        r.register::<Vec3>();
+        r.register::<Quat>();
+        let one = Cooldown { wait: Duration::from_millis(250), serial: 1 << 60, span: 0.5..2.0 };
+        let timers = Timers { all: vec![one.clone(), one.clone()], pick: Some(one) };
+        let settings = Settings { viewport: Some(Rect::new(0.0, 0.0, 2.0, 3.0)), tint: Color::srgb(1.0, 0.5, 0.0), level: 0.1 };
+        let values: Vec<Box<dyn PartialReflect>> = vec![
+            Box::new(every()),
+            Box::new(timers),
+            Box::new(Timers::default()),
+            Box::new(settings),
+            Box::new(Settings::default()),
+            Box::new(Projection::default()),
+            Box::new(Shape::Empty),
+            Box::new(Shape::Radius(f32::NAN)),
+            Box::new(Shape::Span(1.0, f32::INFINITY)),
+            Box::new(Shape::Box { w: 1.0, h: 2.0 }),
+            Box::new(bevy::time::Timer::from_seconds(1.5, bevy::time::TimerMode::Once)),
+            Box::new(Vec2::new(1.0, 0.1)),
+            Box::new(Some(Vec3::ONE)),
+            Box::new(None::<Quat>),
+            Box::new((1u64 << 60, Entity::from_bits(42), Name::new("n"))),
+            Box::new(TypeId::of::<u8>()),
+        ];
+        for v in values {
+            let mut out = Vec::new();
+            let written = write_json(&r, v.as_ref(), &mut out).map(|()| serde_json::from_slice::<Value>(&out).expect("valid JSON"));
+            assert_eq!(written, read(&r, v.as_ref()), "{}", v.reflect_type_path());
+        }
     }
 }

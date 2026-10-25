@@ -166,6 +166,20 @@ pub fn to_json(registry: &TypeRegistry, value: &dyn PartialReflect) -> Result<Va
     }
 }
 
+/// [`to_json`] written straight into `out` ([`crate::reflect_value::write_json`]): what a reader
+/// pays per message read. On an error `out` holds part of a value.
+pub fn write_json(registry: &TypeRegistry, value: &dyn PartialReflect, out: &mut Vec<u8>) -> Result<(), String> {
+    #[cfg(feature = "reflect")]
+    {
+        crate::reflect_value::write_json(registry, value, out)
+    }
+    #[cfg(not(feature = "reflect"))]
+    {
+        let _ = (registry, value, out);
+        Err(NO_REFLECT.into())
+    }
+}
+
 /// A value of the type `id` from its JSON, in `reflect_value`'s shape.
 pub fn from_json(registry: &TypeRegistry, id: TypeId, json: &Value) -> Result<Box<dyn PartialReflect>, String> {
     #[cfg(feature = "reflect")]
