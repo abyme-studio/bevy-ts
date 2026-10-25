@@ -1,7 +1,8 @@
 //! `bevy-ts dev`: compile on a background thread, watch every loaded file and every path the
 //! resolver missed, and send each compiled module set to the engine as the next generation.
 
-use crate::compile::{Compiler, SHADER_EXT, content_hash};
+use crate::compile::{Compiler, SHADER_EXT};
+use bevy_ts_levels::engine::content_hash;
 use bevy_ts::generation::DevEvent;
 use notify::{RecursiveMode, Watcher};
 use std::collections::{BTreeMap, BTreeSet};

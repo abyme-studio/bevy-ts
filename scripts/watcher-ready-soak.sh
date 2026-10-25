@@ -18,10 +18,13 @@ src=crates/bevy-ts-cli/src
 bins=target/debug/deps
 cp "$(it)" "$bins/watch-soak-after"
 cp "$src/dev.rs" "$src/compile.rs" "$out/"
+# Put this tree's watcher back however the run ends: the worktree is the team's.
+trap 'cp "$out/dev.rs" "$out/compile.rs" "$src/"' EXIT
 git show main:$src/dev.rs > "$src/dev.rs"
 git show main:$src/compile.rs > "$src/compile.rs"
 cp "$(it)" "$bins/watch-soak-before"
 cp "$out/dev.rs" "$out/compile.rs" "$src/"
+trap - EXIT
 for arm in before after; do
   echo "== $arm"
   SOAK_BIN=$bins/watch-soak-$arm scripts/levels-watch-soak.sh "${1:-8}" "${2:-5}" packages:: reload::a_saved_file_applies_as

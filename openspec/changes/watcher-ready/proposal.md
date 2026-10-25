@@ -25,6 +25,6 @@ Bevy's own asset watcher is armed while the app builds (`AssetPlugin`), and the 
 
 ## Impact
 
-- `crates/bevy-ts-cli/src/dev.rs`, `crates/bevy-ts-cli/src/compile.rs` (`hashes`, `content_hash`).
+- `crates/bevy-ts-cli/src/dev.rs`, `crates/bevy-ts-cli/src/compile.rs` (`hashes`, by `bevy_ts_levels::engine::content_hash`).
 - Tests in `crates/bevy-ts-cli/tests/it/{packages,reload}.rs`, `crates/bevy-ts-levels/tests/it/levels.rs`.
 - No protocol change. Each compile hashes the sources it reads, and each `package.json` once more.

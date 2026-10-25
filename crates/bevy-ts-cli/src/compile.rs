@@ -382,14 +382,6 @@ fn resolve_error(spec: &str, e: ResolveError, at: &SourceLocation) -> ScriptErro
 
 /// A `.wgsl` import's synthetic module: its default export is an opaque shader-file value naming
 /// the file. The WGSL stays on the host; script materials read it there.
-/// The hash [`Compiler::hashes`] keeps of a file's bytes.
-pub fn content_hash(bytes: &[u8]) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    bytes.hash(&mut h);
-    h.finish()
-}
-
 pub fn shader_module(path: &Path) -> String {
     let p = serde_json::to_string(&path.to_string_lossy()).expect("a string");
     format!("export default Object.freeze({{ kind: \"shaderFile\", path: {p} }});\n")
@@ -544,7 +536,7 @@ impl Compiler {
                     continue;
                 }
             };
-            hashes.insert(path.clone(), content_hash(source.as_bytes()));
+            hashes.insert(path.clone(), bevy_ts_levels::engine::content_hash(source.as_bytes()));
             let package = is_package(&self.root, &path).then(|| package_of(&path).map_or_else(|| bevy_ts::backend::display_path(&path), |(_, n, _)| n));
             let options = Options {
                 dev: self.dev,
