@@ -1039,3 +1039,60 @@ app.addSystems(Update, run);
     assert_eq!(made.primitive_topology(), PrimitiveTopology::LineList);
     assert_eq!(made.count_vertices(), 2);
 }
+
+/// `Mesh3d.of(ref)` in `commands.spawn`, for refs from `meshes.add` and `server.load`, twice in one
+/// system and again in a later one; and a `Mut<Mesh3d>` given a ref. Each entity holds its ref's
+/// handle (the commands once wrote reflected values without the asset hook and skipped them all).
+#[test]
+fn spawns_and_writes_take_mesh_refs() {
+    let mut app = mesh_app(
+        "mesh-ref-spawns",
+        r#"
+import { Component, type f32 } from "bevy-ts";
+import { Mesh3d } from "bevy-ts/bevy";
+import type { Commands, Mut, Query, With } from "bevy-ts";
+export class Tag extends Component { static path = "t::Tag"; ref: f32 = 0 }
+export class Repaint extends Component { static path = "t::Repaint" }
+const make = () => Mesh.new(PrimitiveTopology.TriangleList).insertAttribute(Mesh.ATTRIBUTE_POSITION, new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]));
+function two(commands: Commands, a: AssetRef<MeshData>, b: AssetRef<MeshData>) {
+  commands.spawn(Tag.of({ ref: a.$asset }), Mesh3d.of(a));
+  commands.spawn(Tag.of({ ref: b.$asset }), Mesh3d.of(b));
+}
+export function start(commands: Commands, meshes: ResMut<Assets<Mesh>>, server: Res<AssetServer>) {
+  two(commands, meshes.add(make()), meshes.add(make()));
+  two(commands, server.load("a.gltf#Mesh0/Primitive0", Mesh), server.load("b.gltf#Mesh0/Primitive0", Mesh));
+  commands.spawn(Repaint, Mesh3d.of(meshes.add(make())));
+}
+let frame = 0;
+export function later(commands: Commands, meshes: ResMut<Assets<Mesh>>, q: Query<[Mut<Mesh3d>], With<Repaint>>) {
+  if (++frame !== 2) return;
+  two(commands, meshes.add(make()), meshes.add(make()));
+  const r = meshes.add(make());
+  q.each((m) => { m.value = r; });
+  console.log(`repainted ${r.$asset}`);
+}
+app.addSystems(Startup, start).addSystems(Update, later);
+"#,
+    );
+    updates(&mut app, 4);
+    let m = messages(&app);
+    assert!(!m.iter().any(|l| l.contains("skipped") || l.contains("threw")), "{m:?}");
+    let repainted = ref_of(&app, "repainted ");
+    let world = app.world_mut();
+    let tagged: Vec<(Entity, Handle<Mesh>)> = world.query_filtered::<(Entity, &Mesh3d), Without<Name>>().iter(world).map(|(e, m)| (e, m.0.clone())).collect();
+    assert_eq!(tagged.len(), 7, "four from start, two later, one repainted: {m:?}");
+    let tag = bevy_ts::plugin_api::component_by_name(app.world(), "t::Tag").unwrap().0;
+    let assets = app.world().resource::<ScriptAssets>();
+    let mut tags = 0;
+    for (e, h) in &tagged {
+        let want = match app.world().get_by_id(*e, tag) {
+            Some(_) => {
+                tags += 1;
+                read_ts(&app, *e, "t::Tag").unwrap()["ref"].as_f64().unwrap() as u64
+            }
+            None => repainted,
+        };
+        assert_eq!(h.id().untyped(), assets.handle(want).unwrap().id(), "entity {e} holds ref {want}");
+    }
+    assert_eq!(tags, 6);
+}

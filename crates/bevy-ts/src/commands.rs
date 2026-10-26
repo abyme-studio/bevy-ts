@@ -852,7 +852,6 @@ fn insert_reflect(world: &mut World, entity: Entity, mode: u8, type_name: &str, 
     use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld};
     use bevy::reflect::{ParsedPath, ReflectPath};
     let registry = world.resource::<AppTypeRegistry>().clone();
-    let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();
     let reg = registry
         .get_with_type_path(type_name)
@@ -876,27 +875,44 @@ fn insert_reflect(world: &mut World, entity: Entity, mode: u8, type_name: &str, 
         REFLECT_INSERT => {
             let mut value = default.ok_or_else(|| format!("{path} has no reflected Default or FromWorld, so a script cannot insert it"))?;
             if let Some(json) = json {
-                reflect_value::write_component(&registry, server.as_ref(), value.as_partial_reflect_mut(), None, json)?;
+                with_cx(world, &registry, false, |cx| reflect_value::write_component_with(cx, value.as_partial_reflect_mut(), None, json))?;
             }
             rc.insert(&mut world.entity_mut(entity), value.as_partial_reflect(), &registry);
             Ok(())
         }
         REFLECT_PATCH => {
             let Some(serde_json::Value::Object(fields)) = json else { return Err(format!("{path}: a patch is an object of fields")) };
-            let mut e = world.entity_mut(entity);
-            let mut current = rc.reflect_mut(&mut e).ok_or_else(|| format!("entity {entity} has no {path} to patch"))?;
             // Written into a copy first, so a bad field changes nothing.
+            let current = rc.reflect(world.entity(entity)).ok_or_else(|| format!("entity {entity} has no {path} to patch"))?;
             let mut copy = current.reflect_clone().map_err(|e| format!("{path}: {e}"))?;
-            for (field, v) in fields {
-                let at = ParsedPath::parse(&format!(".{field}")).map_err(|_| format!("{path} has no field {field}"))?;
-                let slot = at.reflect_element_mut(copy.as_partial_reflect_mut()).map_err(|_| format!("{path} has no field {field}"))?;
-                let base = default.as_deref().and_then(|d| at.reflect_element(d.as_partial_reflect()).ok());
-                reflect_value::write(&registry, server.as_ref(), slot, base, v).map_err(|e| format!("{path}.{field}: {e}"))?;
-            }
-            current.apply(copy.as_partial_reflect());
+            with_cx(world, &registry, false, |cx| {
+                for (field, v) in fields {
+                    let at = ParsedPath::parse(&format!(".{field}")).map_err(|_| format!("{path} has no field {field}"))?;
+                    let slot = at.reflect_element_mut(copy.as_partial_reflect_mut()).map_err(|_| format!("{path} has no field {field}"))?;
+                    let base = default.as_deref().and_then(|d| at.reflect_element(d.as_partial_reflect()).ok());
+                    reflect_value::write_with(cx, slot, base, v).map_err(|e| format!("{path}.{field}: {e}"))?;
+                }
+                Ok::<_, String>(())
+            })?;
+            let mut e = world.entity_mut(entity);
+            rc.reflect_mut(&mut e).ok_or_else(|| format!("entity {entity} has no {path} to patch"))?.apply(copy.as_partial_reflect());
             Ok(())
         }
         other => Err(format!("unknown reflect insert mode {other}")),
+    }
+}
+
+/// Runs `f` with the writer's context: with `ScriptAssets`' hook when the app has it, so a
+/// `Handle<T>` slot takes an asset ref or `T.of(...)` as a TSX prop does. A `check` makes nothing.
+#[cfg(feature = "reflect")]
+fn with_cx<R>(world: &World, registry: &bevy::reflect::TypeRegistry, check: bool, f: impl FnOnce(crate::reflect_value::Cx) -> R) -> R {
+    let server = world.get_resource::<AssetServer>();
+    match world.get_resource::<crate::reflect_asset::ScriptAssets>() {
+        Some(assets) => {
+            let slots = crate::reflect_asset::Slots { registry, server, assets, world: (!check).then_some(world), check };
+            f(slots.cx())
+        }
+        None => f(crate::reflect_value::Cx { registry, server, handles: None }),
     }
 }
 
@@ -930,17 +946,17 @@ fn check_reflect(world: &mut World, mode: u8, type_name: &str, json: Option<&ser
         },
     };
     let Some(mut value) = value else { return Ok(()) };
-    match (mode, json) {
+    with_cx(world, &registry, true, |cx| match (mode, json) {
         (REFLECT_INSERT, None) => Ok(()),
-        (REFLECT_INSERT, Some(json)) => reflect_value::write_component(&registry, None, value.as_mut(), None, json),
+        (REFLECT_INSERT, Some(json)) => reflect_value::write_component_with(cx, value.as_mut(), None, json),
         (REFLECT_PATCH, Some(serde_json::Value::Object(fields))) => fields.iter().try_for_each(|(field, v)| {
             let at = ParsedPath::parse(&format!(".{field}")).map_err(|_| format!("{path} has no field {field}"))?;
             let slot = at.reflect_element_mut(value.as_mut()).map_err(|_| format!("{path} has no field {field}"))?;
-            reflect_value::write(&registry, None, slot, None, v).map_err(|e| format!("{path}.{field}: {e}"))
+            reflect_value::write_with(cx, slot, None, v).map_err(|e| format!("{path}.{field}: {e}"))
         }),
         (REFLECT_PATCH, _) => Err(format!("{path}: a patch is an object of fields")),
         (other, _) => Err(format!("unknown reflect insert mode {other}")),
-    }
+    })
 }
 
 #[cfg(not(feature = "reflect"))]

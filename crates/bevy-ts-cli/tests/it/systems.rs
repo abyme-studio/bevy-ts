@@ -320,6 +320,46 @@ app.addSystems(Startup, spawn, throws);
     assert_eq!(QueryBuilder::<Entity>::new(world).with_id(big).build().iter(world).count(), 100, "100 KB of spawns overflow the arena");
 }
 
+/// Two spawns in one run both land, from a startup system, an update system and an observer, with
+/// layout and reflected values (a review note said only the last one did; not reproduced).
+#[test]
+fn two_spawns_in_one_run_both_land() {
+    let (_, mut app) = load(
+        "two-spawns",
+        &src(
+            r#"import type { Add, On } from "bevy-ts";
+export class FromUpdate extends Component { static path = "t::FromUpdate"; i: f32 = 0 }
+export class FromObserver extends Component { static path = "t::FromObserver"; i: f32 = 0 }
+export function start(commands: Commands) {
+  commands.spawn(Mover.of({ speed: 1 }), Transform.of({ translation: [1, 0, 0] }));
+  commands.spawn(Mover.of({ speed: 2 }), Transform.lookingAt([2, 1, 1], [0, 0, 0]));
+}
+let done = false;
+export function once(commands: Commands) {
+  if (done) return;
+  done = true;
+  commands.spawn(FromUpdate.of({ i: 1 }), Marked);
+  commands.spawn(FromUpdate.of({ i: 2 }));
+}
+export function onMarked(on: On<Add<Marked>>, commands: Commands) {
+  commands.spawn(FromObserver.of({ i: 1 }));
+  commands.spawn(FromObserver.of({ i: 2 }), Transform);
+}
+app.addSystems(Startup, start).addSystems(Update, once).addObserver(onMarked);
+"#,
+        ),
+    );
+    updates(&mut app, 3);
+    for (name, field) in [("game::Mover", "speed"), ("t::FromUpdate", "i"), ("t::FromObserver", "i")] {
+        let id = bevy_ts::plugin_api::component_by_name(app.world(), name).unwrap().0;
+        let world = app.world_mut();
+        let es: Vec<Entity> = QueryBuilder::<Entity>::new(world).with_id(id).build().iter(world).collect();
+        let mut got: Vec<f64> = es.iter().map(|e| read_ts(&app, *e, name).unwrap()[field].as_f64().unwrap()).collect();
+        got.sort_by(f64::total_cmp);
+        assert_eq!(got, [1.0, 2.0], "{name}: {:?}", messages(&app));
+    }
+}
+
 #[test]
 fn load_errors_name_what_is_wrong() {
     let cases: &[(&str, &str, &str)] = &[

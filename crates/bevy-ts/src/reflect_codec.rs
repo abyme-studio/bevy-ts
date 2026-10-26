@@ -666,7 +666,15 @@ pub unsafe fn write(cell: UnsafeWorldCell, t: &Target, entity: Entity, json: &se
             None => whole,
             Some(h) => field_mut(whole, h).ok_or_else(|| format!("{} has no field {}", t.type_path, h.0))?,
         };
-        let r = reflect_value::write(&registry, server, slot, base.as_deref(), json);
+        // A `Handle<T>` slot takes an asset ref or `T.of(...)`, as a TSX prop does.
+        let r = match world.get_resource::<crate::reflect_asset::ScriptAssets>() {
+            Some(assets) => {
+                // No world: the component is borrowed mutably meanwhile.
+                let slots = crate::reflect_asset::Slots { registry: &registry, server, assets, world: None, check: false };
+                reflect_value::write_with(slots.cx(), slot, base.as_deref(), json)
+            }
+            None => reflect_value::write(&registry, server, slot, base.as_deref(), json),
+        };
         r.map_err(|e| match &t.hole {
             Some(h) => format!("{}.{}: {e}", t.type_path, h.0),
             None => e,
