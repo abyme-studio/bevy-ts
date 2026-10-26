@@ -451,3 +451,48 @@ fn a_sprite_atlas_index_past_its_grid_names_index_and_count() {
     let e = refused("two-d-atlas-index", &format!("    <entity><Sprite image=\"arrow.png\" texture_atlas={{{{ layout: {GRID}, index: 32 }}}} /></entity>\n"));
     assert!(e.contains("texture_atlas.index 32") && e.contains("32 tiles"), "{e}");
 }
+
+/// Bevy's `sprite_sheet` example as a TS system: a timer on the sprite steps its atlas index.
+const SHEET: &str = r##"import { app, Component, FixedUpdate, Time, Timer, type Mut, type Query, type Res, type u32 } from "bevy-ts";
+import { Sprite, TextureAtlasLayout } from "bevy-ts/bevy";
+
+export class Frames extends Component {
+  timer = Timer.fromSeconds(0.1, "Repeating");
+  last: u32 = 7;
+}
+
+export function animate(time: Res<Time>, sheets: Query<[Mut<Sprite>, Mut<Frames>]>) {
+  for (const [sprite, frames] of sheets) {
+    if (!frames.timer.tick(time.delta_secs).just_finished) continue;
+    const atlas = sprite.texture_atlas;
+    if (atlas) atlas.index = atlas.index === frames.last ? 0 : atlas.index + 1;
+  }
+}
+
+app.addSystems(FixedUpdate, animate);
+app.scene("s", () => (
+  <entity key="sheet">
+    <Sprite image="arrow.png" texture_atlas={{ layout: TextureAtlasLayout.fromGrid({ tileSize: [8, 8], columns: 8, rows: 1 }), index: 0 }} />
+    <Frames />
+  </entity>
+));
+"##;
+
+#[test]
+fn a_ts_system_on_a_timer_steps_a_sprites_atlas_index() {
+    let (mut app, r) = load_game("two-d-sheet", SHEET, |_| {});
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    // 35 ms steps, so no frame falls on a step's edge: the timer finishes at 0.105, 0.21 and 0.315 s.
+    let step = std::time::Duration::from_millis(35);
+    app.world_mut().resource_mut::<Time<Fixed>>().set_timestep(step);
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(step));
+    // The first frame mounts the scene and starts the clock; each next one runs one fixed step.
+    app.update();
+    let world = app.world_mut();
+    let e = world.query::<(Entity, &TsxNode)>().iter(world).find(|(_, n)| n.key_path == ["sheet"]).map(|(e, _)| e).expect("the sheet");
+    let index = |app: &App| app.world().get::<Sprite>(e).unwrap().texture_atlas.as_ref().expect("an atlas").index;
+    assert_eq!(index(&app), 0);
+    updates(&mut app, 10);
+    assert_eq!(app.world().resource::<Time<Fixed>>().elapsed(), step * 10, "0.35 s of fixed steps");
+    assert_eq!(index(&app), 3);
+}

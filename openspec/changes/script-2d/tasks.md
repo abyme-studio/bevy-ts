@@ -33,9 +33,9 @@
 
 ## 4. Stage 4: sprite-sheet animation (after reflect-coverage stage 3)
 
-- [ ] 4.1 `examples/shapes-2d`: a TS system on a `Timer` advancing `sprite.texture_atlas.index`, as Bevy's `sprite_sheet` example
-- [ ] 4.2 Test: at 0.1 s per frame, after 0.35 s of fixed steps the index is 3
-- [ ] 4.3 `docs/2d.md`: the pattern and its row
+- [x] 4.1 `examples/shapes-2d`: a TS system on a `Timer` advancing `sprite.texture_atlas.index`, as Bevy's `sprite_sheet` example
+- [x] 4.2 Test: at 0.1 s per frame, after 0.35 s of fixed steps the index is 3
+- [x] 4.3 `docs/2d.md`: the pattern and its row
 
 ## 5. Stage 5: tilemap chunks
 
