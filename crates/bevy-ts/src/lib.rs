@@ -14,6 +14,7 @@ pub mod conditions;
 pub mod engine;
 pub mod fake;
 pub mod generation;
+pub mod heap;
 pub mod host;
 pub mod keys;
 pub mod layout;

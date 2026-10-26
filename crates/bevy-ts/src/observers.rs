@@ -132,7 +132,7 @@ pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
     let mut sizes: HashMap<ComponentId, usize> = HashMap::new();
     if let Some(ts) = world.get_resource::<crate::components::TsComponents>() {
         let native = world.get_resource::<crate::layout::NativeLayouts>().cloned().unwrap_or_default();
-        sizes = ts.writable_sizes(&native);
+        sizes = ts.writable_sizes(&native).into_iter().map(|(id, w)| (id, w.size)).collect();
         sizes.extend(native.iter().map(|n| (n.id, n.layout.size)));
     }
     let mut spawned = Vec::new();

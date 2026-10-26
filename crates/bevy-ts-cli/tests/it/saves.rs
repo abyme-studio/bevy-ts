@@ -75,7 +75,7 @@ fn set_phase(app: &mut App, n: u32) {
     let e = world.resource_entities().get(id).unwrap();
     let bytes = bevy_ts::plugin_api::encode_component(world, "game::Phase", json!({ "n": n }).as_object().unwrap()).unwrap();
     // SAFETY: encoded with the resource's own layout.
-    unsafe { bevy_ts::commands::insert_bytes(&mut world.entity_mut(e), id, &bytes) };
+    unsafe { bevy_ts::commands::insert_owned(&mut world.entity_mut(e), id, bytes) };
 }
 
 fn until(app: &mut App, what: &str, done: impl Fn(&App) -> bool) {

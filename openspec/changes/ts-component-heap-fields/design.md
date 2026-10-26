@@ -76,13 +76,18 @@ Plain bytes keep today's `&[u8]` path.
   memcpy'd twice (today's `defaults.clone()` in `commit` becomes an encode per entity for heap
   components).
 
-### 3. Inserts carry heap values beside the bytes
+### 3. Inserts carry heap values after the bytes
 
-Spawn and insert from JS: the column bytes as today, plus the heap fields' values in the same
-command, as reflect-coverage stage 2 split bytes and holes (`OP_INSERT_REFLECT`, `REFLECT_PATCH`).
-A TS component's heap values go in a new mode of the same op (`TS_HEAP_PATCH`): component id, then
-each field's index and its value in the codec's bytes (decision 4). One command: a bad value fails
-that command, naming the component and field, and the entity is as it was.
+Spawn and insert from JS: the column bytes as today, then, in the same component entry (its `len`
+covers both), the heap fields' values: a `u16` count, then each field's index and its value in the
+codec's bytes (decision 4). Rust builds the value whole (`heap::HeapFill`): JS's plain fields, the
+header, and every heap slot from the entry or the default. One command: a bad value fails the
+decode naming the component and field, and nothing applies.
+
+Built: first planned as a new `OP_INSERT_REFLECT` mode (`TS_HEAP_PATCH`), as reflect-coverage
+stage 2 split bytes and holes. Inline values need no new op, and reach every op that carries
+component entries (spawn, insert, the batches, `insertIfNew`, `tryInsert`, `insertRecursive`)
+with no pairing of ops to check.
 
 ### 4. Reads and writes in TS systems: the hole path
 

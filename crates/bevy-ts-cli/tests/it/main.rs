@@ -23,6 +23,7 @@ mod ecs_queries;
 mod exported;
 mod gizmos;
 mod headless_pointer;
+mod heap_fields;
 mod headless_ui;
 mod input_devices;
 mod inspector;

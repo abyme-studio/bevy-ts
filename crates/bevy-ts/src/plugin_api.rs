@@ -217,8 +217,9 @@ pub fn scene_components(world: &World) -> Vec<crate::manifest::ComponentDecl> {
 }
 
 /// Encodes a map of field names to values into a live TS component's native bytes, defaults
-/// filled in, type errors naming the field.
-pub fn encode_component(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<u8>, ValueError> {
+/// filled in, type errors naming the field. Insert it with `commands::insert_owned`: a component
+/// with a heap field owns its values.
+pub fn encode_component(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<crate::heap::HeapBytes, ValueError> {
     world.resource::<TsComponents>().encode(name, values)
 }
 

@@ -296,6 +296,30 @@ fn handle_fields_take_asset_paths() {
     assert!(f.app.world().get::<Sign>(gone).is_some());
 }
 
+#[test]
+fn a_string_field_takes_the_levels_value() {
+    let tag = ComponentDecl {
+        name: "game::Tag".into(),
+        fields: vec![FieldDecl { name: "label".into(), ty: FieldType::Str, default: Some(json!("crate")), hints: Default::default() }],
+        ..Default::default()
+    };
+    let level = "#Gate\nTag { label: \"gate\" }\n--\n#Box\nTag\n";
+    let mut f = fixture("strings", &[("levels/tags.bsn", level)]);
+    f.load_with(&["levels/tags.bsn"], vec![tag]);
+    f.settle();
+    assert!(f.errors().is_empty(), "{:?}", f.errors());
+    let read = |f: &mut Fixture, name: &str| {
+        let e = f.by_name(name);
+        let world = f.app.world();
+        let c = world.resource::<bevy_ts::components::TsComponents>().live("game::Tag").unwrap();
+        let p = world.get_by_id(e, c.id).unwrap();
+        // SAFETY: the column holds a live value of `c.layout`.
+        bevy_ts::value::decode_component(&c.layout, unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) })
+    };
+    assert_eq!(read(&mut f, "Gate"), json!({ "label": "gate" }));
+    assert_eq!(read(&mut f, "Box"), json!({ "label": "crate" }));
+}
+
 mod writes {
     use super::*;
     use bevy_ts_levels::edit::{WriteRequest, write_level};

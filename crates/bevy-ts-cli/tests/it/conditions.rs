@@ -36,7 +36,7 @@ fn write_res(app: &mut App, name: &str, values: serde_json::Value) {
     let bytes = bevy_ts::plugin_api::encode_component(app.world(), name, values.as_object().unwrap()).unwrap();
     let e = app.world().resource_entities().get(id).unwrap();
     let mut em = app.world_mut().entity_mut(e);
-    unsafe { bevy_ts::commands::insert_bytes(&mut em, id, &bytes) };
+    unsafe { bevy_ts::commands::insert_owned(&mut em, id, bytes) };
 }
 
 fn remove_res(app: &mut App, name: &str) {

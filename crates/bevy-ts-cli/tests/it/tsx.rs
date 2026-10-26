@@ -151,3 +151,23 @@ fn a_ts_entry_mounts_and_unmounts_an_enemy_at_runtime() {
     bevy_ts::plugin_api::call_entry(app.world_mut(), "click", key.as_bytes()).unwrap();
     assert!(app.world().get_entity(e).is_err(), "unmounted");
 }
+
+#[test]
+fn a_string_prop_reaches_its_entity_and_a_reload_rewrites_it() {
+    let tag = |label: &str| {
+        format!(
+            "import {{ app, Component }} from \"bevy-ts\";\nexport class Tag extends Component {{ label: string = \"crate\" }}\napp.scene(\"arena\", () => (\n  <>\n    <entity key=\"door\"><Tag label=\"{label}\" /></entity>\n    <entity key=\"box\"><Tag /></entity>\n  </>\n));\n"
+        )
+    };
+    let dir = project("tsx-string", &[("game.tsx", &tag("door"))]);
+    let mut app = tsx_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let (door, _) = node(&mut app, &["door"]).unwrap();
+    let (crate_, _) = node(&mut app, &["box"]).unwrap();
+    assert_eq!(read_ts(&app, door, "game::Tag").unwrap(), serde_json::json!({ "label": "door" }));
+    assert_eq!(read_ts(&app, crate_, "game::Tag").unwrap(), serde_json::json!({ "label": "crate" }));
+    let r = save(&mut app, &dir, "game.tsx", &tag("gate"));
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    assert_eq!(read_ts(&app, door, "game::Tag").unwrap(), serde_json::json!({ "label": "gate" }), "a controlled field is written in place");
+}

@@ -236,7 +236,7 @@ fn components_by_name_and_encoding() {
     let (id, layout) = plugin_api::component_by_name(app.world(), "game::Health").unwrap();
     assert_eq!(layout.size, 8);
     let bytes = plugin_api::encode_component(app.world(), "game::Health", json!({"hp": 50}).as_object().unwrap()).unwrap();
-    assert_eq!(bytes, [50f32.to_le_bytes(), 100f32.to_le_bytes()].concat());
+    assert_eq!(bytes.bytes(), [50f32.to_le_bytes(), 100f32.to_le_bytes()].concat());
     let e = plugin_api::encode_component(app.world(), "game::Health", json!({"hp": "x"}).as_object().unwrap()).unwrap_err();
     assert_eq!(e.path, ".hp");
     let _ = id;
@@ -298,7 +298,7 @@ fn a_section_applies_after_commit_and_before_startups() {
     let s = seen.clone();
     app.on_ts_section_applied("test/scene", move |world, input| {
         let live = world.resource::<Generations>().live;
-        let bytes = plugin_api::encode_component(world, "game::Health", &serde_json::Map::new()).unwrap();
+        let bytes = plugin_api::encode_component(world, "game::Health", &serde_json::Map::new()).unwrap().into_plain().unwrap();
         if !input.present {
             s.push(format!("absent gen={}", input.generation));
             return;

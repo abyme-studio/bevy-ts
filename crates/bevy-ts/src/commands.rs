@@ -36,12 +36,17 @@
 //! | writeReflect | 31 | type path len u16, type path, len u32, the message's JSON |
 //! | triggerReflect | 32 | type path len u16, type path, len u32, the event's JSON |
 //!
-//! Entities are `Entity::to_bits`. Component values are native layout bytes, except
+//! Entities are `Entity::to_bits`. Component values are native layout bytes; a TS component with a
+//! heap field (`string`) carries its values after them, in the same `len`: a `u16` count, then per
+//! value its field's `u16` index in the layout and the value in the reflect codec's wire format.
+//! Rust writes the header and every heap slot (`heap::HeapFill`); JS's bytes there are ignored.
+//! Except
 //! `insertReflect`'s: a reflected value's JSON, written by `reflect_value` (mode 0 inserts the
 //! component from its default, mode 1 writes fields over the one just inserted, a layout value's
 //! holes). A spawn or insert and the `insertReflect` ops right after it for the same entity are one
 //! command: every reflected value is checked before any of it applies, and a bad one skips it all.
 
+use crate::heap::{HeapBytes, HeapFill};
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::ptr::OwningPtr;
 use bevy::prelude::*;
@@ -126,11 +131,18 @@ impl Bookkeeping {
     }
 }
 
+/// A component TS may write: its size, and for one with a heap field what builds its values.
+#[derive(Clone, Debug)]
+pub struct Writable {
+    pub size: usize,
+    pub heap: Option<Arc<HeapFill>>,
+}
+
 /// A decoded op.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Op {
-    Spawn { entity: Entity, components: Vec<(ComponentId, Vec<u8>)> },
-    Insert { entity: Entity, components: Vec<(ComponentId, Vec<u8>)>, how: Insert },
+    Spawn { entity: Entity, components: Vec<(ComponentId, HeapBytes)> },
+    Insert { entity: Entity, components: Vec<(ComponentId, HeapBytes)>, how: Insert },
     Despawn { entity: Entity },
     Remove { entity: Entity, components: Vec<ComponentId>, how: Remove },
     Clear { entity: Entity },
@@ -266,17 +278,22 @@ impl<'a> Reader<'a> {
         let bits = self.u64()?;
         Entity::try_from_bits(bits).ok_or_else(|| format!("{bits} is not an entity"))
     }
-    fn components(&mut self, sizes: &HashMap<ComponentId, usize>) -> Result<Vec<(ComponentId, Vec<u8>)>, String> {
+    fn components(&mut self, sizes: &HashMap<ComponentId, Writable>) -> Result<Vec<(ComponentId, HeapBytes)>, String> {
         let n = self.u16()?;
         (0..n)
             .map(|_| {
                 let id = ComponentId::new(self.u32()? as usize);
                 let len = self.u32()? as usize;
-                let size = *sizes.get(&id).ok_or_else(|| format!("component id {} cannot be written from TS", id.index()))?;
-                if size != len {
-                    return Err(format!("component id {} takes {size} bytes, got {len}", id.index()));
+                let w = sizes.get(&id).ok_or_else(|| format!("component id {} cannot be written from TS", id.index()))?;
+                match &w.heap {
+                    None if w.size != len => Err(format!("component id {} takes {} bytes, got {len}", id.index(), w.size)),
+                    None => Ok((id, HeapBytes::plain(self.take(len)?.to_vec()))),
+                    Some(_) if len < w.size => Err(format!("component id {} takes at least {} bytes, got {len}", id.index(), w.size)),
+                    Some(fill) => {
+                        let b = self.take(len)?;
+                        Ok((id, fill.build(&b[..w.size], &b[w.size..])?))
+                    }
                 }
-                Ok((id, self.take(len)?.to_vec()))
             })
             .collect()
     }
@@ -288,7 +305,7 @@ impl<'a> Reader<'a> {
 
 /// Decodes a whole buffer. Any malformed op or unknown opcode fails the whole buffer, so a
 /// run's commands apply all or nothing.
-pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, usize>, kinds: &CommandKinds) -> Result<Vec<Op>, String> {
+pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, Writable>, kinds: &CommandKinds) -> Result<Vec<Op>, String> {
     let mut r = Reader { b: bytes, at: 0 };
     let mut ops = Vec::new();
     while r.at < bytes.len() {
@@ -487,24 +504,37 @@ pub unsafe fn insert_bytes(entity: &mut EntityWorldMut, id: ComponentId, bytes: 
     // The component took ownership of the bytes by copy; `buf` has no drop glue to run twice.
 }
 
-/// Inserts `typed` (values already owned by pointer, with their ids) and raw native bytes as
-/// components, all in one archetype move.
+/// Inserts a whole value as a component, its heap values moved into the column.
+///
+/// # Safety
+/// `id` must be a component whose values `bytes` is one of: a TS component, or a native layout
+/// (as [`insert_bytes`] requires).
+pub unsafe fn insert_owned(entity: &mut EntityWorldMut, id: ComponentId, bytes: HeapBytes) {
+    let mut buf = crate::heap::Aligned::new(bytes.bytes());
+    // SAFETY: the pointer is valid and aligned to 16; the caller vouches for the type.
+    unsafe { entity.insert_by_id(id, OwningPtr::new(buf.ptr())) };
+    // The column owns the heap values now.
+    bytes.into_moved();
+}
+
+/// Inserts `typed` (values already owned by pointer, with their ids) and whole values as
+/// components, all in one archetype move; their heap values move into the columns.
 ///
 /// # Safety
 /// Each `typed` pointer must hold a value of its id's type, and each id in `parts` must be as
-/// [`insert_bytes`] requires for its bytes. No id may appear twice.
-pub unsafe fn insert_bytes_many<'a>(entity: &mut EntityWorldMut, typed: Vec<(ComponentId, OwningPtr<'a>)>, parts: &[(ComponentId, &[u8])]) {
-    // Each copied into 16-aligned storage, as `insert_bytes` does.
-    let mut bufs: Vec<Vec<u128>> = parts.iter().map(|(_, b)| vec![0u128; b.len().div_ceil(16).max(1)]).collect();
-    for (buf, (_, bytes)) in bufs.iter_mut().zip(parts) {
-        // SAFETY: `buf` holds at least `bytes.len()` bytes.
-        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr() as *mut u8, bytes.len()) };
-    }
+/// [`insert_owned`] requires for its value. No id may appear twice.
+pub unsafe fn insert_bytes_many<'a>(entity: &mut EntityWorldMut, typed: Vec<(ComponentId, OwningPtr<'a>)>, parts: Vec<(ComponentId, HeapBytes)>) {
+    // Each copied into 16-aligned storage, as `insert_owned` does.
+    let mut bufs: Vec<_> = parts.iter().map(|(_, b)| crate::heap::Aligned::new(b.bytes())).collect();
     let ids: Vec<ComponentId> = typed.iter().map(|(id, _)| *id).chain(parts.iter().map(|(id, _)| *id)).collect();
     // SAFETY: each buffer pointer is valid and aligned to 16.
-    let raw = bufs.iter_mut().map(|b| unsafe { OwningPtr::new(NonNull::new_unchecked(b.as_mut_ptr() as *mut u8)) });
+    let raw = bufs.iter_mut().map(|b| unsafe { OwningPtr::new(b.ptr()) });
     // SAFETY: the caller vouches for every pointer's type.
     unsafe { entity.insert_by_ids(&ids, typed.into_iter().map(|(_, p)| p).chain(raw)) };
+    // The columns own the heap values now.
+    for (_, b) in parts {
+        b.into_moved();
+    }
 }
 
 /// Applies decoded ops in order. Errors in single ops (a missing entity) are collected as
@@ -557,8 +587,8 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                 Ok(mut e) => {
                     e.insert(TsSpawned);
                     for (id, bytes) in components {
-                        // SAFETY: decode checked the id is TS-writable and the size matches.
-                        unsafe { insert_bytes(&mut e, id, &bytes) };
+                        // SAFETY: decode checked the id is TS-writable and built its value.
+                        unsafe { insert_owned(&mut e, id, bytes) };
                     }
                 }
                 Err(err) => warnings.push(format!("spawn {entity}: {err}")),
@@ -581,8 +611,11 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                         if how == Insert::IfNew && e.contains_id(*id) {
                             continue;
                         }
-                        // SAFETY: as above.
-                        unsafe { insert_bytes(&mut e, *id, bytes) };
+                        // SAFETY: as above; each target gets its own copy of the heap values.
+                        match bytes.shape() {
+                            None => unsafe { insert_bytes(&mut e, *id, bytes.bytes()) },
+                            Some(_) => unsafe { insert_owned(&mut e, *id, bytes.duplicate()) },
+                        }
                     }
                 }
             }

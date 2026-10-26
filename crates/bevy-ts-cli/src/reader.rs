@@ -109,6 +109,8 @@ enum Ty {
     Strings(Vec<String>, Span),
     /// `boolean`, `string` or `number`.
     Keyword(&'static str, Span),
+    /// `T[]`.
+    Array(Box<Ty>, Span),
     /// Anything else, unreadable; `what` says what it is.
     Other { what: &'static str, span: Span },
 }
@@ -186,7 +188,7 @@ fn ty(t: &TSType) -> Ty {
         TSType::TSNumberKeyword(k) => Ty::Keyword("number", k.span),
         TSType::TSIntersectionType(_) => other("an intersection type"),
         TSType::TSFunctionType(_) | TSType::TSConstructorType(_) => other("a function type"),
-        TSType::TSArrayType(_) => other("an array type"),
+        TSType::TSArrayType(a) => Ty::Array(Box::new(ty(&a.element_type)), a.span),
         TSType::TSLiteralType(l) => match &l.literal {
             TSLiteral::StringLiteral(s) => Ty::Strings(vec![s.value.to_string()], l.span),
             _ => other("a literal type"),
@@ -287,7 +289,8 @@ struct SceneSrc {
     span: Span,
 }
 
-/// A literal default: a number, a bool, a string, a vector as an array or `vec3(...)`/`quat(...)`.
+/// A literal default: a number, a bool, a string, an array of them (a vector or a list), or
+/// `vec3(...)`/`quat(...)`.
 fn literal(e: &Expression) -> Option<Value> {
     let num = |e: &Expression| match e {
         Expression::NumericLiteral(n) => Some(n.value),
@@ -305,7 +308,8 @@ fn literal(e: &Expression) -> Option<Value> {
     match e {
         Expression::BooleanLiteral(b) => Some(json!(b.value)),
         Expression::StringLiteral(s) => Some(json!(s.value.as_str())),
-        Expression::ArrayExpression(a) => a.elements.iter().map(|el| el.as_expression().and_then(num).map(number)).collect::<Option<Vec<_>>>().map(Value::Array),
+        // A vector, or a list's items (numbers, bools, strings).
+        Expression::ArrayExpression(a) => a.elements.iter().map(|el| el.as_expression().and_then(literal)).collect::<Option<Vec<_>>>().map(Value::Array),
         Expression::CallExpression(c) => {
             let Expression::Identifier(callee) = &c.callee else { return None };
             let args = c.arguments.iter().map(|a| a.as_expression().and_then(num)).collect::<Option<Vec<_>>>()?;
@@ -793,7 +797,7 @@ impl Reader<'_> {
                 }
                 Ty::Tuple(ts, _) => ts.iter().for_each(|a| walk(a, file, params, out)),
                 Ty::Object(ms, _) => ms.iter().filter_map(|m| m.1.as_ref()).for_each(|a| walk(a, file, params, out)),
-                Ty::App | Ty::Other { .. } | Ty::Strings(..) | Ty::Keyword(..) => {}
+                Ty::App | Ty::Other { .. } | Ty::Strings(..) | Ty::Keyword(..) | Ty::Array(..) => {}
             }
         }
         let mut out = BTreeSet::new();
@@ -891,9 +895,9 @@ impl Reader<'_> {
                     errors.push((f.span, format!("field {} of {} needs a type (f32, u32, bool, Entity, Vec3, Quat, a string-literal union, ...)", f.name, c.name)));
                     continue;
                 };
-                // A reflect-tier Rust component's fields cross as JSON through reflection, so they
-                // may be strings (native-components).
-                match self.field_ty(t, scope, kind == "reflectComponent", 0) {
+                // A component's fields may be strings: a TS component's are heap fields (Rust's
+                // `String`), a reflect-tier Rust component's cross as JSON (native-components).
+                match self.field_ty(t, scope, matches!(kind, "component" | "sceneComponent" | "reflectComponent"), 0) {
                     Ok(ty) if matches!(ty["kind"].as_str(), Some("timer" | "stopwatch")) && f.init && f.default.is_none() => {
                         errors.push((f.span, format!("{} field {}: a {} field's initialiser is Timer.fromSeconds(s, mode), Timer.new(s, mode) or Stopwatch.new()", c.name, f.name, ty["kind"].as_str().unwrap_or(""))));
                     }
@@ -982,7 +986,7 @@ impl Reader<'_> {
     }
 
     /// A field type: `f32`, `bool`, `Vec3`, `Entity`, a string-literal union, or an alias of one.
-    /// `string` only where `strings` (scene props).
+    /// `string` only where `strings` (components and scene props).
     fn field_ty(&mut self, t: &Ty, scope: &Scope, strings: bool, depth: u32) -> Result<Value, (Span, String)> {
         const NAMED: &[(&str, &str)] = &[
             ("f32", "f32"), ("f64", "f64"), ("i8", "i8"), ("u8", "u8"), ("i16", "i16"), ("u16", "u16"), ("i32", "i32"), ("u32", "u32"),
@@ -1000,7 +1004,16 @@ impl Reader<'_> {
             Ty::Strings(v, _) => Ok(json!({ "kind": "enum", "variants": v })),
             Ty::Keyword("boolean", _) => Ok(json!({ "kind": "bool" })),
             Ty::Keyword("string", _) if strings => Ok(json!({ "kind": "string" })),
-            Ty::Keyword("string", span) => Err((*span, "strings are not supported; components hold fixed-size data only".into())),
+            Ty::Keyword("string", span) => Err((*span, "heap fields (string, T[]) are allowed on components only".into())),
+            // `T[]`: a list of numbers, bool or string, on components only.
+            Ty::Array(of, span) if strings => {
+                let item = self.field_ty(of, scope, true, depth + 1)?;
+                match item["kind"].as_str() {
+                    Some("f32" | "f64" | "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "bool" | "string") => Ok(json!({ "kind": "list", "of": item })),
+                    _ => Err((*span, "a list holds numbers (f32, f64, i8..u32), bool or string".into())),
+                }
+            }
+            Ty::Array(_, span) => Err((*span, "heap fields (string, T[]) are allowed on components only".into())),
             Ty::Keyword(k, span) => Err(bad(*span, k)),
             Ty::Ref { name, args, span } if args.is_empty() => {
                 if let Some((t, s)) = scope.subst.get(name) {
@@ -1045,6 +1058,7 @@ impl Reader<'_> {
             Ty::App => return Ok(Head::App),
             Ty::Strings(_, span) => return Err(self.unreadable(scope, *span, "a string-literal union")),
             Ty::Keyword(_, span) => return Err(self.unreadable(scope, *span, "a built-in type")),
+            Ty::Array(_, span) => return Err(self.unreadable(scope, *span, "an array type")),
             Ty::Other { what, span } => {
                 let text = &scope.file.source[span.start as usize..span.end as usize];
                 return Err(self.fail(scope, *span, format!("`{text}` is {what}; a param type is a bevy-ts param kind, an alias of one or a param bundle. Use system(() => ...) for computed types")));
@@ -1348,7 +1362,7 @@ impl Reader<'_> {
 
 fn span_of(t: &Ty) -> Span {
     match t {
-        Ty::Ref { span, .. } | Ty::Other { span, .. } | Ty::Tuple(_, span) | Ty::Object(_, span) | Ty::Strings(_, span) | Ty::Keyword(_, span) => *span,
+        Ty::Ref { span, .. } | Ty::Other { span, .. } | Ty::Tuple(_, span) | Ty::Object(_, span) | Ty::Strings(_, span) | Ty::Keyword(_, span) | Ty::Array(_, span) => *span,
         Ty::App => Span::default(),
     }
 }
@@ -1766,7 +1780,7 @@ export function wrong(p: Option<Query<[Pos]>>) {}
 
     #[test]
     fn class_fields_props_and_their_errors() {
-        let src = r#"import { Component, SceneComponent, EntityEvent, type f32, type u8, type Entity } from "bevy-ts";
+        let src = r#"import { Component, Resource, SceneComponent, EntityEvent, type f32, type u8, type Entity } from "bevy-ts";
 type Team = "red" | "blue";
 interface Props { label: string; size?: f32; team?: Team }
 export class Badge extends Component { team: Team = "red"; declare owner: Entity; on: boolean = true }
@@ -1774,7 +1788,8 @@ export class Sign extends SceneComponent {
   height: f32 = 1;
   static scene({ label, size = 2, team = pick() }: Props) { return null; }
 }
-export class Bad extends Component { name: string = "x" }
+export class Bad extends Resource { name: string = "x" }
+export class Tag extends Component { label: string = "crate"; declare note: string; scores: u8[] = [1, 2]; names: string[] = ["a"] }
 export class Bare extends Component { hp = 3 }
 export class Clash extends SceneComponent { size: f32 = 1; static scene({ size = 1 }: { size?: f32 }) { return null; } }
 export class Boom extends EntityEvent { static propagate = true; declare entity: Entity; declare radius: f32 }
@@ -1803,7 +1818,16 @@ class Local extends Component { x: f32 = vec3(1, 2).x }
         );
         let err = |c: &str| d[c]["error"].as_str().unwrap_or_default().to_string();
         assert!(err("Bad").starts_with("src/units/my-tank.ts:9:"), "{}", err("Bad"));
-        assert!(err("Bad").contains("Bad field name: strings are not supported"), "{}", err("Bad"));
+        assert!(err("Bad").contains("Bad field name: heap fields (string, T[]) are allowed on components only"), "{}", err("Bad"));
+        assert_eq!(
+            d["Tag"]["fields"],
+            json!([
+                { "name": "label", "type": { "kind": "string" }, "default": "crate" },
+                { "name": "note", "type": { "kind": "string" } },
+                { "name": "scores", "type": { "kind": "list", "of": { "kind": "u8" } }, "default": [1, 2] },
+                { "name": "names", "type": { "kind": "list", "of": { "kind": "string" } }, "default": ["a"] },
+            ])
+        );
         assert!(err("Bare").contains("field hp of Bare needs a type"), "{}", err("Bare"));
         assert!(err("Clash").contains("size is both a field and a scene prop"), "{}", err("Clash"));
         assert_eq!(d["Boom"]["fields"], json!([{ "name": "radius", "type": { "kind": "f32" } }]), "an entity event's target is not a field");

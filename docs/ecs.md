@@ -77,6 +77,41 @@ matched archetype hands JS a row list into its table, as `Changed` does. A query
 components only keeps the whole-table path. A `table.write(T)` marks only the rows the query
 matched.
 
+## Heap fields: `string` and `T[]`
+
+A TS component may hold a string or a list, as a Bevy component holds a `String` or a `Vec<T>`:
+
+```ts
+export class Tag extends Component { label: string = "crate"; scores: u32[] = []; declare note: string }
+```
+
+- A list's items are a number kind (`f32`, `f64`, `i8`..`u32`), `bool` or `string`. Vectors,
+  `Entity`, objects and nested lists fail the load with the file and line. A `declare`d field
+  starts as `""` or `[]`.
+- Components only: a heap field in a TS resource, a message, an event or a `Local` fails the load
+  ("heap fields (string, T[]) are allowed on components only").
+- The value lives in the component's own bytes, Rust's `String` or `Vec<T>`, so a Rust system reads
+  it as Bevy would. A component with one starts with an 8-byte header Rust owns (the layout's
+  offsets skip it), registers a drop fn and deep-copies on `cloneAndSpawn`. A component with no
+  heap field is laid out, dropped and cloned as before.
+- A row reads a heap field through the host, cached by the row's changed tick: the first read of a
+  row costs a host call, later reads of an unchanged row cost none. A list reads as a frozen
+  `readonly T[]`; `tag.scores.push(1)` throws a `TypeError`.
+- A `Mut<Tag>` row assigns a whole field: `tag.label = "open"`, `tag.scores = [...tag.scores, 4]`.
+  The write is a host call that applies at once and marks the row changed, so the same system,
+  a later Rust system and `Changed<Tag>` see it this frame.
+- `Tag.of({ label: "lamp" })` spawns and inserts carry the values in the same command; a value the
+  command leaves out takes its default, built in Rust for each entity.
+- `q.tables` gives no raw arrays for a component with a heap field; read it on `q.each` rows.
+  Its plain fields stay columns on those rows.
+
+What a row costs, in ns, 1,000 rows, against a column (`bench/ts-heap-fields`, TBD-BENCH):
+
+TBD-TABLE
+
+Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
+fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).
+
 ## Commands
 
 ```ts

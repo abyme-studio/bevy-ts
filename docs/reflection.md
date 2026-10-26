@@ -84,6 +84,14 @@ bevy-ts has no built-in spawn recipes. `spawnNative` stays for recipes a plugin 
 
 Calling a removed recipe logs its replacement.
 
+## TS components' heap fields
+
+A TS component's `string` and `T[]` fields (docs/ecs.md, "Heap fields") use the same read path: a
+target per field, the codec's `Str` or `List` op built from the field's type instead of its
+`TypeInfo`, and the changed-tick cache in JS. Writes cross as the codec's bytes, not JSON: both
+ends are bevy-ts's, and no reflection is involved. Over the protocol, `.label` and `.scores` are
+written whole; `.scores[0]` is refused.
+
 ## No gap goes unchecked
 
 `crates/bevy-ts-cli/tests/it/reflect_coverage.rs` walks every component, resource and asset in the

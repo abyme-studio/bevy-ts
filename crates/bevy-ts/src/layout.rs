@@ -36,7 +36,17 @@ pub enum FieldType {
     Timer,
     /// Bevy's `Stopwatch` as plain data: the fields of [`stopwatch_layout`].
     Stopwatch,
+    /// A heap field: Rust's `String`, in the component's own bytes (components only).
+    #[serde(rename = "string")]
+    Str,
+    /// A heap field: Rust's `Vec<T>` of a number kind, `bool` or `string` (components only).
+    List { of: Box<FieldType> },
 }
+
+/// A heap field's storage: a `String` or a `Vec<T>`, 24 bytes aligned to 8.
+const HEAP_SIZE: usize = 24;
+const _: () = assert!(size_of::<String>() == HEAP_SIZE && align_of::<String>() == 8);
+const _: () = assert!(size_of::<Vec<f64>>() == HEAP_SIZE && align_of::<Vec<u8>>() == 8);
 
 /// A `Timer` field: 24 bytes aligned to 8. `mode` is `TimerMode`, `Once` 0 and `Repeating` 1.
 pub fn timer_layout() -> &'static ComponentLayout {
@@ -76,7 +86,14 @@ impl FieldType {
             FieldType::Enum { variants, .. } => enum_width(variants.len()),
             FieldType::Array { of, len } => of.size() * *len as usize,
             FieldType::Timer | FieldType::Stopwatch => self.fields().unwrap().size,
+            FieldType::Str | FieldType::List { .. } => HEAP_SIZE,
         }
+    }
+
+    /// Whether the value lives on the heap (`String`, `Vec<T>`): a component holding one gets a
+    /// drop fn, a deep clone and a header (`crate::heap`).
+    pub fn is_heap(&self) -> bool {
+        matches!(self, FieldType::Str | FieldType::List { .. })
     }
 
     /// Alignment in bytes. Every field's alignment equals its element width, so one typed-array
@@ -85,7 +102,7 @@ impl FieldType {
         match self {
             FieldType::Vec2 | FieldType::Vec3 | FieldType::Vec4 | FieldType::Quat => 4,
             FieldType::Array { of, .. } => of.align(),
-            FieldType::Timer | FieldType::Stopwatch => 8,
+            FieldType::Timer | FieldType::Stopwatch | FieldType::Str | FieldType::List { .. } => 8,
             other => other.size(),
         }
     }
@@ -111,6 +128,8 @@ impl FieldType {
             FieldType::Array { of, len } => format!("array({}, {len})", of.ts_name()),
             FieldType::Timer => "Timer".into(),
             FieldType::Stopwatch => "Stopwatch".into(),
+            FieldType::Str => "string".into(),
+            FieldType::List { of } => format!("{}[]", of.ts_name()),
         }
     }
 
@@ -144,8 +163,12 @@ impl FieldType {
             FieldType::Array { of, .. } if matches!(**of, FieldType::Array { .. }) => {
                 Err("arrays of arrays are not supported".into())
             }
-            FieldType::Array { of, .. } if of.fields().is_some() => Err(format!("arrays of {} are not supported", of.ts_name())),
+            FieldType::Array { of, .. } if of.fields().is_some() || of.is_heap() => Err(format!("arrays of {} are not supported", of.ts_name())),
             FieldType::Array { of, .. } => of.validate(),
+            FieldType::List { of } => match **of {
+                FieldType::F32 | FieldType::F64 | FieldType::I8 | FieldType::U8 | FieldType::I16 | FieldType::U16 | FieldType::I32 | FieldType::U32 | FieldType::Bool | FieldType::Str => Ok(()),
+                ref other => Err(format!("{}[] is not supported: a list holds numbers (f32, f64, i8..u32), bool or string", other.ts_name())),
+            },
             _ => Ok(()),
         }
     }
@@ -182,7 +205,7 @@ impl FieldType {
     /// (`bool`, enums, `entity`), never as a raw array.
     pub fn accessor_only(&self) -> bool {
         match self {
-            FieldType::Bool | FieldType::Entity | FieldType::Enum { .. } | FieldType::Timer | FieldType::Stopwatch => true,
+            FieldType::Bool | FieldType::Entity | FieldType::Enum { .. } | FieldType::Timer | FieldType::Stopwatch | FieldType::Str | FieldType::List { .. } => true,
             FieldType::Array { of, .. } => of.accessor_only(),
             _ => false,
         }
@@ -218,10 +241,13 @@ pub struct ComponentLayout {
 
 impl ComponentLayout {
     /// Lays out `fields` with C rules: each field at an offset aligned to its own alignment,
-    /// total size rounded up to the largest alignment.
+    /// total size rounded up to the largest alignment. A layout with a heap field starts with
+    /// [`crate::heap::HEADER`] bytes Rust owns; one without has none.
     pub fn c_layout<'a>(fields: impl IntoIterator<Item = (&'a str, &'a FieldType)>) -> Self {
-        let mut offset = 0usize;
-        let mut align = 1;
+        let fields: Vec<_> = fields.into_iter().collect();
+        let header = fields.iter().any(|(_, t)| t.is_heap());
+        let mut offset = if header { crate::heap::HEADER } else { 0 };
+        let mut align = if header { 8 } else { 1 };
         let mut out = Vec::new();
         for (name, ty) in fields {
             let a = ty.align();
@@ -235,6 +261,11 @@ impl ComponentLayout {
 
     pub fn field(&self, name: &str) -> Option<&FieldLayout> {
         self.fields.iter().find(|f| f.name == name)
+    }
+
+    /// Whether a field is a heap field, so the value starts with a header.
+    pub fn has_heap(&self) -> bool {
+        self.fields.iter().any(|f| f.ty.is_heap())
     }
 
     pub fn std_layout(&self) -> std::alloc::Layout {
@@ -466,6 +497,21 @@ mod tests {
         let l = layout(&[("alive", FieldType::Bool), ("hp", FieldType::F32), ("pos", FieldType::Vec3)]);
         assert_eq!((l.size, l.align), (20, 4));
         assert_eq!(offsets(&l), vec![0, 4, 8]);
+    }
+
+    #[test]
+    fn a_heap_field_puts_a_header_first() {
+        let l = layout(&[("alive", FieldType::Bool), ("label", FieldType::Str), ("hp", FieldType::F32)]);
+        assert_eq!(offsets(&l), vec![8, 16, 40]);
+        assert_eq!((l.size, l.align), (48, 8));
+        assert!(l.has_heap());
+        let plain = layout(&[("alive", FieldType::Bool), ("hp", FieldType::F32), ("pos", FieldType::Vec3)]);
+        assert!(!plain.has_heap());
+        assert!(FieldType::Array { of: Box::new(FieldType::Str), len: 2 }.validate().is_err());
+        let list = |of: FieldType| FieldType::List { of: Box::new(of) };
+        assert!(list(FieldType::U32).validate().is_ok() && list(FieldType::Str).validate().is_ok());
+        assert!(list(FieldType::Vec3).validate().is_err() && list(list(FieldType::U8)).validate().is_err());
+        assert_eq!((list(FieldType::F32).size(), list(FieldType::F32).align(), list(FieldType::F32).ts_name()), (24, 8, "f32[]".into()));
     }
 
     #[test]

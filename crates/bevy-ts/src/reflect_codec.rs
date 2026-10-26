@@ -18,6 +18,10 @@
 //! Writes cross as JSON text and go through [`reflect_value::write`] over the slot type's
 //! default, so a script writes every form TSX takes (a partial struct, a colour string,
 //! `{ secs, nanos }`); the binary form only carries complete values.
+//!
+//! A TS component's heap field (`label: string`, `crate::heap`) is a target too: no reflection,
+//! its op built from its `FieldType`, read from and written to the column's slot. Its writes cross
+//! as the codec's bytes, not JSON: both ends are bevy-ts's.
 
 use crate::manifest::{ResolvedHole, ResolvedReflect};
 use crate::reflect_value;
@@ -485,6 +489,8 @@ pub struct Target {
     pub codec: Codec,
     /// The slot's own type, for its default when written.
     pub slot_type: TypeId,
+    /// A TS component's heap field: its offset and kind. `type_id` and `slot_type` are then `()`.
+    pub heap: Option<(usize, crate::heap::HeapKind)>,
 }
 
 /// The read targets every generation so far has named, by index. Kept across generations (a
@@ -510,7 +516,7 @@ impl ReflectTargets {
             return Err(format!("{} has no ReflectComponent", reg.type_info().type_path()));
         }
         let codec = compile_component(registry, reg.type_info());
-        Ok(self.push((component, None), Target { component, type_id, type_path: reg.type_info().type_path().into(), hole: None, codec, slot_type: type_id }))
+        Ok(self.push((component, None), Target { component, type_id, type_path: reg.type_info().type_path().into(), hole: None, codec, slot_type: type_id, heap: None }))
     }
 
     /// The target of one hole: the component's top-level field `name` (`value` for a newtype's,
@@ -539,8 +545,45 @@ impl ReflectTargets {
             hole: Some((name.to_string(), index)),
             codec: Codec { wrap: false, node },
             slot_type,
+            heap: None,
         };
         Ok(self.push(key, target))
+    }
+
+    /// The target of a TS component's heap field.
+    pub fn ts_heap(&mut self, component: ComponentId, name: &str, field: &crate::layout::FieldLayout) -> u32 {
+        let key = (component, Some(field.name.clone()));
+        if let Some(i) = self.by_key.get(&key) {
+            return *i;
+        }
+        let kind = crate::heap::HeapKind::of(&field.ty).expect("a heap field");
+        use crate::heap::{HeapKind, Item};
+        let item = |i: Item| match i {
+            Item::F32 => Node::Num { t: Num::F32 },
+            Item::F64 => Node::Num { t: Num::F64 },
+            Item::I8 => Node::Num { t: Num::I8 },
+            Item::U8 => Node::Num { t: Num::U8 },
+            Item::I16 => Node::Num { t: Num::I16 },
+            Item::U16 => Node::Num { t: Num::U16 },
+            Item::I32 => Node::Num { t: Num::I32 },
+            Item::U32 => Node::Num { t: Num::U32 },
+            Item::Bool => Node::Num { t: Num::Bool },
+            Item::Str => Node::Str,
+        };
+        let node = match kind {
+            HeapKind::Str => Node::Str,
+            HeapKind::List(i) => Node::List { of: Box::new(item(i)) },
+        };
+        let target = Target {
+            component,
+            type_id: TypeId::of::<()>(),
+            type_path: name.to_string(),
+            hole: Some((field.name.clone(), None)),
+            codec: Codec { wrap: false, node },
+            slot_type: TypeId::of::<()>(),
+            heap: Some((field.offset, kind)),
+        };
+        self.push(key, target)
     }
 
     fn push(&mut self, key: (ComponentId, Option<String>), t: Target) -> u32 {
@@ -570,6 +613,12 @@ fn field_mut<'a>(v: &'a mut dyn PartialReflect, hole: &(String, Option<usize>)) 
 
 /// Encodes target `t` of `entity` into `out`.
 pub fn read(world: &World, t: &Target, entity: Entity, out: &mut Vec<u8>) -> Result<(), String> {
+    if let Some((offset, kind)) = t.heap {
+        let p = world.get_entity(entity).map_err(|_| format!("{entity} does not exist"))?.get_by_id(t.component).map_err(|_| format!("{entity} has no {}", t.type_path))?;
+        // SAFETY: the component's column holds a live value with a heap value of `kind` there.
+        unsafe { crate::heap::put_codec_at(p.as_ptr(), offset, kind, out) };
+        return Ok(());
+    }
     let registry = world.resource::<AppTypeRegistry>().read();
     let rc = registry.get_type_data::<ReflectComponent>(t.type_id).ok_or_else(|| format!("{}: no ReflectComponent", t.type_path))?;
     let e = world.get_entity(entity).map_err(|_| format!("{entity} does not exist"))?;
@@ -590,6 +639,9 @@ pub fn read(world: &World, t: &Target, entity: Entity, out: &mut Vec<u8>) -> Res
 /// The caller has exclusive access to the component for the duration of the call, and no
 /// reference into it is live (a JS view over a layout-tier column is raw memory, not one).
 pub unsafe fn write(cell: UnsafeWorldCell, t: &Target, entity: Entity, json: &serde_json::Value, tick: Tick) -> Result<(), String> {
+    if t.heap.is_some() {
+        return Err(format!("{}: a heap field is written as codec bytes", t.type_path));
+    }
     reflect_value::refuse_computed(&t.type_path)?;
     // SAFETY: shared reads of the registry and the asset server, which nothing writes mid-run.
     let world = unsafe { cell.world() };
@@ -614,6 +666,41 @@ pub unsafe fn write(cell: UnsafeWorldCell, t: &Target, entity: Entity, json: &se
     }
     value.set_last_changed(tick);
     Ok(())
+}
+
+/// Writes a heap field from the codec's bytes, marking the component changed at `tick`.
+///
+/// # Safety
+/// As [`write`].
+pub unsafe fn write_heap(cell: UnsafeWorldCell, t: &Target, entity: Entity, mut bytes: &[u8], tick: Tick) -> Result<(), String> {
+    let (offset, kind) = t.heap.ok_or("not a heap field")?;
+    let field = t.hole.as_ref().map_or("", |h| h.0.as_str());
+    let v = crate::heap::HeapValue::read_codec(kind, &mut bytes).map_err(|e| format!("{}.{field}: {e}", t.type_path))?;
+    if !bytes.is_empty() {
+        return Err(format!("{}.{field}: bytes left after the value", t.type_path));
+    }
+    let e = cell.get_entity(entity).map_err(|_| format!("{entity} does not exist"))?;
+    // SAFETY: exclusive access to the component (the caller's contract).
+    let mut value = unsafe { e.get_mut_by_id(t.component) }.map_err(|_| format!("{entity} has no {}", t.type_path))?;
+    // SAFETY: the column holds a live value with a heap value of `kind` at `offset`.
+    unsafe { crate::heap::replace(value.bypass_change_detection().as_ptr(), offset, v) };
+    value.set_last_changed(tick);
+    Ok(())
+}
+
+/// The read targets of a TS component's heap fields, as the resolution hands them to JS.
+pub fn ts_heap_holes(world: &mut World, name: &str, id: ComponentId, layout: &crate::layout::ComponentLayout) -> Vec<ResolvedHole> {
+    let mut targets = world.get_resource_or_init::<ReflectTargets>();
+    layout
+        .fields
+        .iter()
+        .filter(|f| f.ty.is_heap())
+        .map(|f| {
+            let t = targets.ts_heap(id, name, f);
+            let codec = serde_json::to_value(&targets.targets[t as usize].codec).expect("a codec is JSON");
+            ResolvedHole { name: f.name.clone(), target: t, codec, heap: true }
+        })
+        .collect()
 }
 
 /// What a generation's JS needs for the reflected values its systems read: per reflect-tier
@@ -680,7 +767,7 @@ pub fn resolve(world: &mut World, systems: &crate::systems::TsSystems) -> (BTree
             .filter(|f| !columns.contains(f))
             .filter_map(|f| {
                 let t = targets.hole(&registry, id, type_id, &f).ok()?;
-                Some(ResolvedHole { name: f, target: t, codec: serde_json::to_value(&targets.get(t)?.codec).ok()? })
+                Some(ResolvedHole { name: f, target: t, codec: serde_json::to_value(&targets.get(t)?.codec).ok()?, heap: false })
             })
             .collect();
         if !list.is_empty() {
@@ -755,6 +842,14 @@ fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, 
             let mut w = crate::host::SlotWriter::new(ret);
             w.push(scratch.len() as f64);
             w.finish()
+        }
+        WRITE if t.heap.is_some() => {
+            let len = r.slot()? as usize;
+            let bytes = buf.get(..len).ok_or("write: length past the buffer")?;
+            let t = t.clone();
+            // SAFETY: called from a host call during an exclusive run: no other access is live.
+            unsafe { write_heap(cell, &t, entity, bytes, tick) }?;
+            Ok(0)
         }
         WRITE => {
             let len = r.slot()? as usize;

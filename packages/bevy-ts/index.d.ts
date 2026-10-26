@@ -159,11 +159,16 @@ export interface Stopwatch extends ReadonlyStopwatch {
 }
 export declare const Stopwatch: Field<"stopwatch"> & { "new"(): Stopwatch };
 
+/** A list field (`scores: u32[]`, a heap field) as a row gives it: a frozen array, assigned whole.
+ * A fixed-length tuple (`array(u16, 3)`) stays itself. */
+type HeapList<V> = V extends readonly (infer E)[] ? (number extends V["length"] ? readonly E[] : V) : V;
 /** Read access: every field readonly, vectors without mutating methods. */
 export type ReadView<T> = {
   readonly [K in keyof T as K extends symbol ? never : K]: T[K] extends Vec3 ? ReadonlyVec3 : T[K] extends Quat ? ReadonlyQuat
-    : T[K] extends Timer ? ReadonlyTimer : T[K] extends Stopwatch ? ReadonlyStopwatch : T[K];
+    : T[K] extends Timer ? ReadonlyTimer : T[K] extends Stopwatch ? ReadonlyStopwatch : HeapList<T[K]>;
 };
+/** Write access: list fields are frozen arrays, assigned whole (`tag.scores = [1, 2]`). */
+type MutView<T> = { [K in keyof T]: HeapList<T[K]> };
 /** Initial values, as Rust's `Health { hp: 3.0, ..default() }`: vectors take a tuple or a vector. */
 export type Init<T> = {
   [K in keyof T as K extends symbol ? never : K]?: T[K] extends Vec3 ? Vec3Like : T[K] extends Quat ? readonly [number, number, number, number] | ReadonlyQuat : T[K];
@@ -215,6 +220,12 @@ declare abstract class Data {
    */
   static of<T, H = {}>(this: (new () => T) & { readonly tsxProps?: H }, init?: Init<T> & NoInfer<H>): T;
 }
+/**
+ * A TS component: plain fields are columns. A `string` or `T[]` field (`T` a number kind, `bool`
+ * or `string`) is a heap field, Rust's `String` or `Vec<T>` in the row: read and assigned whole
+ * through the host (`tag.label = "door"`, `tag.scores = [1, 2]` on a `Mut<Tag>` row), a list a
+ * frozen `readonly T[]`, and never a raw `q.tables` array.
+ */
 export declare abstract class Component extends Data { readonly [tierBrand]?: "layout" }
 /**
  * A placeable prefab, Bevy's `#[derive(SceneComponent)]`: a component whose scene is spawned with
@@ -497,7 +508,7 @@ type Item<D> =
   : D extends Has<unknown> ? boolean
   : D extends Ref<infer T> ? (T extends ReflectComponent ? ReadView<ReflectRow<T>> : LayoutRow<T>) & RefTicks
   : D extends AnyOf<infer Ts> ? { -readonly [I in keyof Ts]: Item<Ts[I]> | undefined }
-  : D extends Mut<infer T> ? (T extends ReflectComponent ? ReflectRow<T> : T & HolesOf<T>)
+  : D extends Mut<infer T> ? (T extends ReflectComponent ? ReflectRow<T> : MutView<T> & HolesOf<T>)
   : D extends abstract new (...a: never) => infer I ? (I extends ReflectComponent ? ReadView<ReflectRow<I>> : LayoutRow<I>) // value form: Mut(C) / C
   : D extends ReflectComponent ? ReadView<ReflectRow<D>>
   : LayoutRow<D>;

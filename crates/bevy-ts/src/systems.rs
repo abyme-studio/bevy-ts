@@ -861,7 +861,7 @@ fn adopt_targeted(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSys
             let lookup = |name: &str| ts.live(name).map(|c| (c.id, c.layout.size));
             let encode = |name: &str, values: &serde_json::Map<String, serde_json::Value>| {
                 let c = ts.live(name)?;
-                Some(ts.encode(name, values).map(|b| (b, c.layout.clone())).map_err(|e| e.to_string()))
+                Some(ts.encode(name, values).map_err(|e| e.to_string()).and_then(|b| b.into_plain()).map(|b| (b, c.layout.clone())))
             };
             build_targeted(world, generation, index as usize, &decl, &lookup, &encode, &mut systems.natives)
         });
@@ -910,7 +910,11 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], need
         if *mutable && native.by_id(id).is_some_and(|n| !n.writable) {
             return Err(format!("{} is an immutable Rust component; TS can read it but not take Mut<{}>", component.name, component.name));
         }
-        let holes = native.by_id(id).is_some_and(|n| !n.holes.is_empty());
+        // A TS component with a heap field reads it as a hole too: only it registers a drop fn.
+        let holes = match native.by_id(id) {
+            Some(n) => !n.holes.is_empty(),
+            None => world.components().get_info(id).is_some_and(|i| i.drop().is_some()),
+        };
         columns.push(Access { name: component.name.clone(), id, size, write: *mutable, optional, tracked: *tracked, reflect: None, holes });
         Ok(Some(id))
     };
@@ -1100,6 +1104,9 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 }
             }
             ParamDecl::Local { fields } => {
+                if let Some(f) = fields.iter().find(|f| f.ty.is_heap()) {
+                    return Err(err(format!("Local field {}: {}", f.name, crate::heap::COMPONENTS_ONLY)));
+                }
                 locals.push(fields.clone());
                 RunParam::Local(locals.len() - 1)
             }

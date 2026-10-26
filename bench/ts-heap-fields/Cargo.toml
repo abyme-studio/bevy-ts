@@ -1,0 +1,19 @@
+[package]
+name = "ts-heap-fields-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# What heap fields on TS components cost (openspec ts-component-heap-fields, tasks 1.20, 2.10):
+# string and list reads, misses and writes over 1,000 rows through V8, a heap component's despawn,
+# and a plain component's column read and despawn, which must match main's. `run.sh` runs it in
+# release.
+
+[dependencies]
+bevy = { version = "0.20", default-features = false }
+bevy-ts = { path = "../../crates/bevy-ts", features = ["reflect"] }
+bevy-ts-cli = { path = "../../crates/bevy-ts-cli" }
+bevy-ts-v8 = { path = "../../crates/bevy-ts-v8" }
+
+[profile.release]
+debug = false

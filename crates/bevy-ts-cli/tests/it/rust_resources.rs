@@ -215,7 +215,7 @@ app.addSystems(Update, add);
     let (id, _) = bevy_ts::plugin_api::component_by_name(app.world(), "game::Score").expect("Score");
     let bytes = bevy_ts::plugin_api::encode_component(app.world(), "game::Score", &serde_json::Map::new()).unwrap();
     let mut e = app.world_mut().spawn(bevy::ecs::resource::IsResource::new(id));
-    unsafe { bevy_ts::commands::insert_bytes(&mut e, id, &bytes) };
+    unsafe { bevy_ts::commands::insert_owned(&mut e, id, bytes) };
     updates(&mut app, 2);
     assert_eq!(read_res(&app, "game::Score"), Some(serde_json::json!({ "value": 2 })));
     assert_eq!(run_error(&app), None);

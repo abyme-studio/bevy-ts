@@ -2045,9 +2045,16 @@ function scalarKind(t) {
   return t.kind === "enum" ? enumView(t) : t.kind;
 }
 
+/** A heap field (`string`, `T[]`): Rust's value in the row, read and written through the host,
+ * never a view. */
+function isHeap(t) {
+  return t.kind === "string" || t.kind === "list";
+}
+
 function viewsFor(layout) {
   const need = new Set();
   const add = (t) => {
+    if (isHeap(t)) return;
     if (LANES[t.kind]) need.add("f32");
     else if (t.kind === "enum") need.add(enumView(t));
     else if (t.kind === "array") add(t.of);
@@ -2131,6 +2138,8 @@ function generateAccessor(name, layout, write) {
     const key = JSON.stringify(f.name);
     // A vector's or array's nested view: under a symbol of its own, made with the class.
     const slot = `$s${subclasses.length}`;
+    // A heap field's getter and setter are a hole's (`addHoles`), from the resolution.
+    if (isHeap(t)) continue;
     if (LANES[t.kind]) {
       const lanes = LANES[t.kind];
       const names = ["x", "y", "z", "w"].slice(0, lanes);
@@ -2248,6 +2257,7 @@ function resolveClass(C, r) {
   C.defaults = r.defaults ? Uint8Array.from(r.defaults) : null;
   C.rawWrites = r.rawWrites !== false;
   C.reflected = r.reflected === true;
+  C.heap = r.layout.fields.some((f) => isHeap(f.type));
   C.views = viewsFor(r.layout);
   C.offsets = Object.fromEntries(r.layout.fields.map((f) => [f.name, f.offset]));
   C.size = r.layout.size;
@@ -2333,6 +2343,7 @@ class Table {
     const buf = this.q.raw[this.i][2][c];
     const C = this.q.parts[c].cls;
     if (C.reflectInfo) throw new Error(`${C.name} is read through reflection, never a column; read it on the rows of q.each`);
+    if (C.heap) throw new Error(`${C.name} has heap fields (string), which are never columns; read it on the rows of q.each`);
     const out = { buffer: buf };
     for (const n of C.views) out[n] = buf ? new VIEW_CTORS[n](buf) : null;
     out.offsets = C.offsets;
@@ -3132,6 +3143,8 @@ const REFLECT = {
   /** Per target: its decoder, and its cache (entity → { t: tick, v: value }). */
   decoders: [],
   caches: [],
+  /** Targets whose decoder freezes what it reads (heap lists). */
+  frozen: [],
   /** Values handed out by `Mut` getters this run, written back at its end when changed. */
   pending: [],
   pendingByKey: new Map(),
@@ -3301,6 +3314,15 @@ function reflectCommit(res) {
   };
   for (const r of Object.values(res.reflect || {})) add(r);
   for (const hs of Object.values(res.holes || {})) for (const h of hs) add(h);
+  // A heap list reads as a frozen array: edits in place would be lost, so they throw.
+  for (const hs of Object.values(res.holes || {})) {
+    for (const h of hs) {
+      if (!h.heap || h.codec.node.k !== "list" || REFLECT.frozen[h.target]) continue;
+      const dec = REFLECT.decoders[h.target];
+      REFLECT.decoders[h.target] = (dv, buf) => Object.freeze(dec(dv, buf));
+      REFLECT.frozen[h.target] = true;
+    }
+  }
 }
 
 /** One host call: target `t` of `entity` (-1 for a resource) decoded. */
@@ -3481,24 +3503,95 @@ function reflectAccessor(name, info, write) {
   return Row;
 }
 
-/** Hole getters and setters on a layout-tier class's accessors; never columns. */
+/** Hole getters and setters on a layout-tier class's accessors; never columns. A TS component's
+ * heap field (`h.heap`) is a hole too: assigned whole, written as the codec's bytes. */
 function addHoles(Acc, holes, name, write) {
   for (const h of holes) {
     const t = h.target;
+    const heap = h.heap === true;
+    const encode = heap ? codecEncoder(h.codec.node) : null;
     Object.defineProperty(Acc.prototype, h.name, {
       configurable: true,
       get() {
         const tick = this[TICKS] === DUMMY_TICKS ? -1 : this[TICKS][this[ROW]];
         // A row without its ticks (a read-only resource) is fetched every time.
         if (tick === -1) return reflectFetch(t, rowEntity(this));
-        return (write ? reflectMutGet : reflectGet)(t, rowEntity(this), tick);
+        return (write && !heap ? reflectMutGet : reflectGet)(t, rowEntity(this), tick);
       },
       set(v) {
         if (!write) throw new TypeError(`${name}.${h.name} is read-only here; take Mut<${name}>`);
-        reflectSet(t, rowEntity(this), v);
+        if (heap) heapSet(t, rowEntity(this), encode, v, `${name}.${h.name}`);
+        else reflectSet(t, rowEntity(this), v);
       },
     });
   }
+}
+
+/** Writes a heap field at once as the codec's bytes; the next read fetches it. */
+function heapSet(t, entity, encode, value, path) {
+  if (!core) throw new Error("heap fields need the engine");
+  const w = new Writer();
+  encode(w, value, path);
+  const bytes = w.bytes();
+  const H = HOST;
+  H.slots[0] = entity;
+  H.slots[1] = t;
+  H.slots[2] = bytes.length;
+  REFLECT.calls++;
+  const n = core.ops.op_bevyts_host(REFLECT_WRITE, H.slotBytes, H.resultBytes, bytes, H.EMPTY, H.EMPTY, H.EMPTY);
+  if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
+  REFLECT.caches[t].delete(entity);
+}
+
+/** An encoder for a heap field's codec op (`reflect_codec::Node`): `(writer, value, path)`, the
+ * wire format `reflectDecoder` reads. */
+function codecEncoder(node) {
+  if (node.k === "str") {
+    return (w, v, path) => {
+      if (typeof v !== "string") throw new TypeError(`${path} expects a string, got ${typeof v}`);
+      const b = encoder.encode(v);
+      w.u32(b.length);
+      w.raw(b);
+    };
+  }
+  if (node.k === "num") return numEncoder(node.t);
+  if (node.k === "list") {
+    const item = codecEncoder(node.of);
+    return (w, v, path) => {
+      if (!Array.isArray(v)) throw new TypeError(`${path} expects an array, got ${typeof v}`);
+      w.u32(v.length);
+      for (let i = 0; i < v.length; i++) item(w, v[i], `${path}[${i}]`);
+    };
+  }
+  throw new Error(`no encoder for codec op ${node.k}`);
+}
+
+const INT_RANGE = { i8: [-128, 127], u8: [0, 255], i16: [-32768, 32767], u16: [0, 65535], i32: [-2147483648, 2147483647], u32: [0, 4294967295] };
+
+/** A number item's encoder: its own width, little-endian; an integer out of range throws. */
+function numEncoder(t) {
+  const range = INT_RANGE[t];
+  return (w, v, path) => {
+    if (t === "bool") {
+      if (typeof v !== "boolean") throw new TypeError(`${path} expects a bool, got ${typeof v}`);
+      w.u8(v ? 1 : 0);
+      return;
+    }
+    if (typeof v !== "number") throw new TypeError(`${path} expects ${t}, got ${typeof v}`);
+    if (range && (!Number.isInteger(v) || v < range[0] || v > range[1])) throw new RangeError(`${path} expects ${t}, got ${v}`);
+    const n = t === "f64" ? 8 : WIDTH[t];
+    w.room(n);
+    const dv = w.dv, o = w.n;
+    if (t === "f32") dv.setFloat32(o, v, true);
+    else if (t === "f64") dv.setFloat64(o, v, true);
+    else if (t === "i8") dv.setInt8(o, v);
+    else if (t === "u8") dv.setUint8(o, v);
+    else if (t === "i16") dv.setInt16(o, v, true);
+    else if (t === "u16") dv.setUint16(o, v, true);
+    else if (t === "i32") dv.setInt32(o, v, true);
+    else dv.setUint32(o, v, true);
+    w.n += n;
+  };
 }
 
 /** Gives reflect-tier classes and layout-tier holes their accessors from the resolution. */
@@ -4420,9 +4513,12 @@ function encodeField(dv, t, off, v, path) {
   }
 }
 
-/** Native bytes for a value; omitted fields take their declared default. */
+/** Native bytes for a value; omitted fields take their declared default. A component with heap
+ * fields carries the values given for them after its bytes (`commands.rs`'s format): a count,
+ * then each one's field index and codec bytes. Rust fills the rest from their defaults. */
 function encodeWithLayout(C, layout, values) {
   if (!layout) throw new Error(`${C.componentName} has no layout yet`);
+  if (C.heap && C.layout === layout) return encodeWithHeap(C, layout, values);
   const out = new Uint8Array(layout.size);
   // A Rust component starts from its Default, so its holes (AmbientLight's colour) keep it.
   if (C.defaults && C.defaults.length === layout.size && C.layout === layout) out.set(C.defaults);
@@ -4440,6 +4536,45 @@ function encodeWithLayout(C, layout, values) {
     }
   }
   return out;
+}
+
+function encodeWithHeap(C, layout, values) {
+  const plain = values ? Object.fromEntries(Object.entries(values).filter(([k]) => !layout.fields.some((f) => f.name === k && isHeap(f.type)))) : values;
+  const out = new Uint8Array(layout.size);
+  const dv = new DataView(out.buffer);
+  const defaults = (C.decl && C.decl.fields) || [];
+  const given = [];
+  layout.fields.forEach((f, i) => {
+    if (isHeap(f.type)) {
+      if (values && values[f.name] !== undefined) given.push([i, f]);
+      return;
+    }
+    let v = plain ? plain[f.name] : undefined;
+    if (v === undefined) v = (defaults.find((d) => d.name === f.name) || {}).default;
+    if (v !== undefined) encodeField(dv, f.type, f.offset, v, `${C.componentName}.${f.name}`);
+  });
+  if (values) {
+    for (const k of Object.keys(values)) {
+      if (!layout.fields.some((f) => f.name === k)) throw new TypeError(`${C.componentName} has no field ${k}`);
+    }
+  }
+  const w = new Writer();
+  w.raw(out);
+  if (given.length) {
+    w.u16(given.length);
+    for (const [i, f] of given) {
+      w.u16(i);
+      heapEncoder(f.type)(w, values[f.name], `${C.componentName}.${f.name}`);
+    }
+  }
+  return w.bytes();
+}
+
+/** A heap field type's codec encoder (the op Rust builds from the type). */
+function heapEncoder(t) {
+  if (t.kind === "string") return codecEncoder({ k: "str" });
+  if (t.kind === "list") return codecEncoder({ k: "list", of: t.of.kind === "string" ? { k: "str" } : { k: "num", t: t.of.kind } });
+  throw new Error(`no heap encoder for ${t.kind}`);
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -34,6 +34,14 @@ const processes = {
   "rust-events-check": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo check -p bevy-ts --all-targets && cargo check -p bevy-ts --features reflect --all-targets && cargo check -p bevy-ts-cli --all-targets\" 2>&1 | grep -v ld64 | tee target/rust-events-check.log | grep -E \"^error|^warning|-->|Finished\" | tail -80'",
   },
+  // ts-component-heap-fields: protocol types regenerated, the touched crates' unit tests and their heap, save, protocol and TSX tests, tsc, in the gate slot.
+  "ts-heap-fields-test": {
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:ts-heap-fields -- bash -c \"scripts/gen-protocol.sh && cargo test -p bevy-ts --lib --features reflect && cargo test -p bevy-ts --test it -- heap_fields:: saves:: plugin_api:: && cargo test -p bevy-ts-tsx -p bevy-ts-remote -p bevy-ts-levels --lib && cargo test -p bevy-ts-levels --test it && cargo test -p bevy-ts-cli --lib reader && cargo test -p bevy-ts-cli --no-fail-fast --test it -- heap_fields:: protocol:: tsx:: saves:: conditions:: rust_resources:: reload:: reflect_systems:: systems:: ecs_queries:: native_components:: && cargo clippy -p bevy-ts -p bevy-ts-tsx -p bevy-ts-remote -p bevy-ts-levels -p bevy-ts-cli --all-targets -- -D warnings && (cd packages/bevy-ts && pnpm check)\" 2>&1 | grep -v ld64 | tee target/ts-heap-fields-test.log | grep -E -A5 \"^error|^warning|-->|test result|FAILED|panicked|error TS\" | tail -150'",
+  },
+  // ts-component-heap-fields tasks 1.20, 2.10: heap field reads, writes and despawn, and the plain arms against main; 3 rounds (8 with RUNS=8).
+  "ts-heap-fields-bench": {
+    cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:ts-heap-fields -- bench/ts-heap-fields/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tail -60'",
+  },
   // rust-events task 2.4: 1,000 CursorMoved reads a frame, 3 release runs (8 with RUNS=8), on a quiet machine.
   "rust-events-bench": {
     cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bench/rust-events/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tail -40'",

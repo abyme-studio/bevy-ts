@@ -10,7 +10,7 @@
 //! file renamed over the old one. A load reads and deserialises on the pool, and [`finish_io`]
 //! writes the world in a later frame. Outcomes arrive as [`WorldSaved`] and [`WorldLoaded`].
 
-use crate::commands::{TsSpawned, insert_bytes};
+use crate::commands::{TsSpawned, insert_owned};
 use crate::components::{Migration, TsComponents};
 use crate::layout::{ComponentLayout, FieldType};
 use crate::log::{LogLevel, ScriptLog};
@@ -462,7 +462,7 @@ fn apply(world: &mut World, dynamic: &DynamicWorld, parent: Option<Entity>) -> (
                 Ok((bytes, id, m)) => {
                     let mut em = world.entity_mut(*e);
                     // SAFETY: `restore` encoded the bytes with this live component's layout.
-                    unsafe { insert_bytes(&mut em, id, &bytes) };
+                    unsafe { insert_owned(&mut em, id, bytes) };
                     count(&mut migrations, m);
                 }
                 Err(e) => {
@@ -491,7 +491,7 @@ fn apply(world: &mut World, dynamic: &DynamicWorld, parent: Option<Entity>) -> (
                         None => world.spawn(IsResource::new(id)),
                     };
                     // SAFETY: as above.
-                    unsafe { insert_bytes(&mut em, id, &bytes) };
+                    unsafe { insert_owned(&mut em, id, bytes) };
                     count(&mut migrations, m);
                 }
                 Err(e) => {
@@ -530,7 +530,7 @@ fn count(migrations: &mut BTreeMap<String, Migration>, m: Option<Migration>) {
 /// One saved TS component or resource, migrated to its live layout and its `Entity` fields
 /// remapped: its bytes, its id, and the migration if its fields changed. `Err(None)` when no live
 /// class has the name, `Err(Some(why))` when its value does not encode.
-fn restore(world: &mut World, map: &mut EntityHashMap<Entity>, name: &str, json: &str) -> Result<(Vec<u8>, ComponentId, Option<Migration>), Option<String>> {
+fn restore(world: &mut World, map: &mut EntityHashMap<Entity>, name: &str, json: &str) -> Result<(crate::heap::HeapBytes, ComponentId, Option<Migration>), Option<String>> {
     let c = world.resource::<TsComponents>().live(name).ok_or(None)?.clone();
     let saved: Map<String, Value> = match serde_json::from_str(json) {
         Ok(Value::Object(o)) => o,
@@ -592,7 +592,13 @@ fn migrate(decl: &ComponentDecl, layout: &ComponentLayout, saved: &Map<String, V
         match saved.get(&f.name) {
             Some(v) => {
                 let mut scratch = vec![0u8; f.ty.size()];
-                if same_shape(&shape(v), &shape(&value::zero(&f.ty))) && value::encode_field("", &f.ty, v, &mut scratch).is_ok() {
+                // A heap field is kept when the saved value is one of its type, whatever a list's
+                // length; a plain field when its shape matches too.
+                let fits = match f.ty.is_heap() {
+                    true => value::heap_value("", &f.ty, v).is_ok(),
+                    false => same_shape(&shape(v), &shape(&value::zero(&f.ty))) && value::encode_field("", &f.ty, v, &mut scratch).is_ok(),
+                };
+                if fits {
                     values.insert(f.name.clone(), v.clone());
                     m.kept.push(f.name.clone());
                 } else {

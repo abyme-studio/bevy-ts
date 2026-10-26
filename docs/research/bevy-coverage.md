@@ -25,6 +25,7 @@ path, and a writable exported param, which most of them need, is refused by desi
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
 | TS components (layout columns) | idiomatic | `bevy-ts-cli/tests/it/systems.rs` `ts_writes_reach_rust_and_only_written_rows_are_changed` | — |
+| TS component `String` / `Vec<T>` fields (`string`, `T[]` of numbers, `bool`, `string`) | partial: whole assignment only; in-place list edits (`Mut` copy-and-flush), heap fields in `Local`, TS resources, messages and events, lists of vectors, `Entity` or structs, and `.field[i]` protocol edits of a list are follow-ups | `bevy-ts/tests/it/heap_fields.rs`, `bevy-ts-cli/tests/it/heap_fields.rs`, `bevy-ts-cli/tests/it/protocol.rs` `string_and_list_fields_read_edit_and_type_on_contract` | ts-component-heap-fields; follow-ups: new |
 | Rust layout-tier components as query data | idiomatic | `bevy-ts-cli/tests/it/native_components.rs` `a_ts_write_is_seen_by_rust_the_same_frame…` | — |
 | Layout-tier holes (`Color`, enums with data, `Option`) | partial: TSX writes after reflect-enums-color; systems never see them | `bevy.d.ts` "Holes" comments | reflect-enums-color (TSX), reflect-coverage stage 3 (systems) |
 | Reflect-tier components in TSX, `With`/`Without` | idiomatic | `native_components.rs` `a_reflect_tier_component_is_a_tsx_element`; filters: no test | — |

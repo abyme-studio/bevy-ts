@@ -390,6 +390,14 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
             if let Err(e) = f.ty.validate() {
                 errors.push(ScriptError::at(format!("{}.{}: {e}", p.name, f.name), p.location.clone()));
             }
+            if f.ty.is_heap() {
+                errors.push(ScriptError::at(format!("{}.{}: {}", p.name, f.name, crate::heap::COMPONENTS_ONLY), p.location.clone()));
+            }
+        }
+    }
+    for r in &manifest.resources {
+        for f in r.fields.iter().filter(|f| f.ty.is_heap()) {
+            errors.push(ScriptError::at(format!("{}.{}: {}", r.name, f.name, crate::heap::COMPONENTS_ONLY), r.location.clone()));
         }
     }
     for st in &manifest.states {
@@ -461,7 +469,7 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
         let lookup = |name: &str| pending.lookup(name).map(|(id, l)| (id, l.size));
         let encode = |name: &str, values: &serde_json::Map<String, serde_json::Value>| {
             let (_, layout) = pending.lookup(name)?;
-            Some(pending.encode(name, values).map(|b| (b, layout.clone())).map_err(|e| e.to_string()))
+            Some(pending.encode(name, values).map_err(|e| e.to_string()).and_then(|b| b.into_plain()).map(|b| (b, layout.clone())))
         };
         systems::build(world, number, &manifest.systems, &manifest.targeted, &manifest.groups, &lookup, &encode)
     };
@@ -490,7 +498,9 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
         resolution.ports = h.glue();
     }
     for (name, id, layout) in pending.iter() {
-        resolution.components.insert(name.to_string(), ResolvedComponent { id: id.index() as u32, layout: layout.clone(), raw_writes: true, defaults: Vec::new(), reflected: false });
+        // A heap field is never a column: no raw `q.tables` arrays for its component.
+        let raw_writes = !layout.has_heap();
+        resolution.components.insert(name.to_string(), ResolvedComponent { id: id.index() as u32, layout: layout.clone(), raw_writes, defaults: Vec::new(), reflected: false });
     }
     for n in world.resource::<NativeLayouts>().iter() {
         let raw_writes = n.holes.is_empty() && n.layout.fields.iter().all(|f| !f.ty.accessor_only());
@@ -503,6 +513,11 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
     #[cfg(feature = "reflect")]
     {
         (resolution.reflect, resolution.holes) = crate::reflect_codec::resolve(world, &systems);
+        let heap: Vec<_> = pending.iter().filter(|(.., l)| l.has_heap()).map(|(n, id, l)| (n.to_string(), id, l.clone())).collect();
+        for (name, id, layout) in heap {
+            let holes = crate::reflect_codec::ts_heap_holes(world, &name, id, &layout);
+            resolution.holes.insert(name, holes);
+        }
         resolution.rust_messages = crate::rust_events::codecs(&world.resource::<AppTypeRegistry>().read());
     }
     for clock in systems::Clock::ALL {
@@ -586,8 +601,8 @@ fn insert_resources(world: &mut World, manifest: &crate::manifest::Manifest) {
             }
         };
         let mut e = world.spawn(IsResource::new(c.id));
-        // SAFETY: `c.id` is a TS component with `c.layout`; `bytes` has its size.
-        unsafe { commands::insert_bytes(&mut e, c.id, &bytes) };
+        // SAFETY: `c.id` is a TS component with `c.layout`; `bytes` is a value of it.
+        unsafe { commands::insert_owned(&mut e, c.id, bytes) };
     }
 }
 

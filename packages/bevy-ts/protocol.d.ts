@@ -525,7 +525,7 @@ export interface SchemaParams {
   source?: ComponentSource;
 }
 /**
- * A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`).
+ * A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`). `string` and `list` are heap fields (protocol 1.32.0), Rust's `String` and `Vec<T>` in the component's own bytes: a JSON string, or an array of the list's item type `of` (a number kind, `bool` or `string`), each written whole by `.field` (`.field[i]` on a list is refused). A component with one starts with an 8-byte header the layout's offsets and `size` include.
  *
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
  * via the `definition` "FieldType".
@@ -549,7 +549,9 @@ export interface FieldType {
     | "enum"
     | "array"
     | "timer"
-    | "stopwatch";
+    | "stopwatch"
+    | "string"
+    | "list";
   variants?: string[];
   of?: FieldType;
   len?: number;

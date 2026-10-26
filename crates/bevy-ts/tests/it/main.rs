@@ -5,6 +5,7 @@
 #[cfg(all(not(debug_assertions), not(bevy_ts_static)))]
 compile_error!("a release build of the tests links the Bevy dylib: build it with `cargo static test --release`");
 
+mod heap_fields;
 mod http;
 mod net;
 mod plugin_api;

@@ -1,6 +1,8 @@
 //! Native layout bytes to and from JSON values, little-endian. Used for defaults, migration,
-//! the plugin API's encoding and the protocol's reads and edits.
+//! the plugin API's encoding and the protocol's reads and edits. A heap field (`string`) is a
+//! JSON string; its value lives in a [`HeapBytes`], never in loose bytes.
 
+use crate::heap::{HeapBytes, HeapShape, HeapValue, List};
 use crate::layout::{ComponentLayout, FieldType};
 use crate::manifest::{ComponentDecl, FieldHints};
 use bevy::prelude::Entity;
@@ -37,7 +39,66 @@ fn as_int(path: &str, ty: &FieldType, v: &Value, min: f64, max: f64) -> Result<i
     Ok(n as i64)
 }
 
-/// Encodes one value of `ty` into `out` (exactly `ty.size()` bytes).
+/// A heap field's value from JSON: a string, or an array of the list's item type.
+pub fn heap_value(path: &str, ty: &FieldType, v: &Value) -> Result<HeapValue, ValueError> {
+    match ty {
+        FieldType::Str => v.as_str().map(|s| HeapValue::Str(s.to_string())).ok_or_else(|| err(path, ty, format!("got {v}"))),
+        FieldType::List { of } => {
+            let a = v.as_array().ok_or_else(|| err(path, ty, format!("got {v}")))?;
+            // Each item checked as a field of the item type, then read back as its Rust value.
+            fn items<T>(path: &str, of: &FieldType, a: &[Value], read: impl Fn(&[u8]) -> T) -> Result<Vec<T>, ValueError> {
+                let mut b = vec![0u8; of.size()];
+                a.iter()
+                    .enumerate()
+                    .map(|(i, x)| encode_field(&format!("{path}[{i}]"), of, x, &mut b).map(|_| read(&b)))
+                    .collect()
+            }
+            let list = match **of {
+                FieldType::F32 => List::F32(items(path, of, a, |b| f32::from_le_bytes(b.try_into().unwrap()))?),
+                FieldType::F64 => List::F64(items(path, of, a, |b| f64::from_le_bytes(b.try_into().unwrap()))?),
+                FieldType::I8 => List::I8(items(path, of, a, |b| b[0] as i8)?),
+                FieldType::U8 => List::U8(items(path, of, a, |b| b[0])?),
+                FieldType::I16 => List::I16(items(path, of, a, |b| i16::from_le_bytes(b.try_into().unwrap()))?),
+                FieldType::U16 => List::U16(items(path, of, a, |b| u16::from_le_bytes(b.try_into().unwrap()))?),
+                FieldType::I32 => List::I32(items(path, of, a, |b| i32::from_le_bytes(b.try_into().unwrap()))?),
+                FieldType::U32 => List::U32(items(path, of, a, |b| u32::from_le_bytes(b.try_into().unwrap()))?),
+                FieldType::Bool => List::Bool(items(path, of, a, |b| b[0] != 0)?),
+                FieldType::Str => List::Str(
+                    a.iter()
+                        .enumerate()
+                        .map(|(i, x)| x.as_str().map(str::to_string).ok_or_else(|| err(&format!("{path}[{i}]"), of, format!("got {x}"))))
+                        .collect::<Result<_, _>>()?,
+                ),
+                _ => return Err(err(path, ty, "not a list of numbers, bool or string")),
+            };
+            Ok(HeapValue::List(list))
+        }
+        _ => Err(err(path, ty, "not a heap field")),
+    }
+}
+
+/// A heap field's value as JSON.
+pub fn heap_json(v: &HeapValue) -> Value {
+    match v {
+        HeapValue::Str(s) => json!(s),
+        HeapValue::List(l) => match l {
+            List::F32(x) => json!(x),
+            List::F64(x) => json!(x),
+            List::I8(x) => json!(x),
+            List::U8(x) => json!(x),
+            List::I16(x) => json!(x),
+            List::U16(x) => json!(x),
+            List::I32(x) => json!(x),
+            List::U32(x) => json!(x),
+            List::Bool(x) => json!(x),
+            List::Str(x) => json!(x),
+        },
+    }
+}
+
+/// Encodes one value of `ty` into `out` (exactly `ty.size()` bytes). A heap type is only checked:
+/// its value is built by [`encode_component`] or written whole by its owner, never into loose
+/// bytes.
 pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Result<(), ValueError> {
     debug_assert_eq!(out.len(), ty.size());
     match ty {
@@ -103,6 +164,9 @@ pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Re
                 encode_field(&format!("{path}[{i}]"), of, x, &mut out[i * w..(i + 1) * w])?;
             }
         }
+        FieldType::Str | FieldType::List { .. } => {
+            heap_value(path, ty, v)?;
+        }
         // An object of its fields; a field left out is zero.
         FieldType::Timer | FieldType::Stopwatch => {
             let layout = ty.fields().unwrap();
@@ -121,7 +185,8 @@ pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Re
     Ok(())
 }
 
-/// Decodes one value of `ty` from exactly `ty.size()` bytes.
+/// Decodes one value of `ty` from exactly `ty.size()` bytes. For a heap type they are the slot of
+/// a live value (a column's or a [`HeapBytes`]'), whose `String` is read in place.
 pub fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
     let f32_at = |i: usize| f32::from_le_bytes(b[i * 4..i * 4 + 4].try_into().unwrap());
     match ty {
@@ -149,6 +214,12 @@ pub fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
             Value::Array((0..*len as usize).map(|i| decode_field(of, &b[i * w..(i + 1) * w])).collect())
         }
         FieldType::Timer | FieldType::Stopwatch => decode_component(ty.fields().unwrap(), b),
+        FieldType::Str | FieldType::List { .. } => {
+            assert_eq!(b.len(), ty.size(), "a heap slot");
+            let kind = crate::heap::HeapKind::of(ty).expect("a heap field");
+            // SAFETY: the bytes are a live value's slot (this function's contract).
+            heap_json(&unsafe { crate::heap::read(b.as_ptr(), 0, kind) })
+        }
     }
 }
 
@@ -161,14 +232,65 @@ pub fn decode_component(layout: &ComponentLayout, bytes: &[u8]) -> Value {
     Value::Object(m)
 }
 
-/// The zero value of a field, as JSON.
+/// The zero value of a field, as JSON: `""` for a string, `[]` for a list.
 pub fn zero(ty: &FieldType) -> Value {
-    decode_field(ty, &vec![0u8; ty.size()])
+    match ty {
+        FieldType::Str => json!(""),
+        FieldType::List { .. } => json!([]),
+        _ => decode_field(ty, &vec![0u8; ty.size()]),
+    }
+}
+
+/// One field's value, encoded to write over a live component's field: bytes for a plain field, an
+/// owned value for a heap field (`string`), which replaces the old one.
+#[derive(Debug, PartialEq)]
+pub enum FieldValue {
+    Bytes(Vec<u8>),
+    Heap(HeapValue),
+}
+
+impl FieldValue {
+    /// Encodes `v` as a value of `ty`.
+    pub fn encode(path: &str, ty: &FieldType, v: &Value) -> Result<FieldValue, ValueError> {
+        if ty.is_heap() {
+            return heap_value(path, ty, v).map(FieldValue::Heap);
+        }
+        let mut b = vec![0u8; ty.size()];
+        encode_field(path, ty, v, &mut b)?;
+        Ok(FieldValue::Bytes(b))
+    }
+
+    /// Whether the field at `p + offset` already holds this value.
+    ///
+    /// # Safety
+    /// `p` is a live value of a component with this field at `offset`.
+    pub unsafe fn same_at(&self, p: *const u8, offset: usize) -> bool {
+        match self {
+            // SAFETY: the field's bytes lie inside the value (the caller's contract).
+            FieldValue::Bytes(b) => unsafe { std::slice::from_raw_parts(p.add(offset), b.len()) == b.as_slice() },
+            // SAFETY: the slot holds a live value of its kind.
+            FieldValue::Heap(h) => unsafe { crate::heap::read(p, offset, h.kind()) == *h },
+        }
+    }
+
+    /// Writes the value over the field at `p + offset`; a heap value replaces (and frees) the old.
+    ///
+    /// # Safety
+    /// As [`Self::same_at`], with write access.
+    pub unsafe fn write_at(self, p: *mut u8, offset: usize) {
+        match self {
+            // SAFETY: as above.
+            FieldValue::Bytes(b) => unsafe { std::ptr::copy_nonoverlapping(b.as_ptr(), p.add(offset), b.len()) },
+            // SAFETY: as above.
+            FieldValue::Heap(h) => unsafe { crate::heap::replace(p, offset, h) },
+        }
+    }
 }
 
 /// Encodes a map of field names to values into a component's native bytes, filling every field
-/// the map leaves out with its declared default (zero if none). Unknown fields are errors.
-pub fn encode_component(decl: &ComponentDecl, layout: &ComponentLayout, values: &Map<String, Value>) -> Result<Vec<u8>, ValueError> {
+/// the map leaves out with its declared default (zero if none). Unknown fields are errors. A
+/// component with a heap field gets its header and owns its heap values.
+pub fn encode_component(decl: &ComponentDecl, layout: &ComponentLayout, values: &Map<String, Value>) -> Result<HeapBytes, ValueError> {
     for key in values.keys() {
         if layout.field(key).is_none() {
             return Err(ValueError {
@@ -178,14 +300,14 @@ pub fn encode_component(decl: &ComponentDecl, layout: &ComponentLayout, values: 
             });
         }
     }
-    let mut out = vec![0u8; layout.size];
+    let mut out = HeapBytes::new(layout.size, HeapShape::of(&decl.name, layout));
     for f in &layout.fields {
         let path = format!(".{}", f.name);
-        let slot = &mut out[f.offset..f.offset + f.ty.size()];
-        if let Some(v) = values.get(&f.name) {
-            encode_field(&path, &f.ty, v, slot)?;
-        } else if let Some(d) = decl.field(&f.name).and_then(|d| d.default.as_ref()) {
-            encode_field(&path, &f.ty, d, slot)?;
+        let Some(v) = values.get(&f.name).or_else(|| decl.field(&f.name).and_then(|d| d.default.as_ref())) else { continue };
+        if f.ty.is_heap() {
+            out.set(f.offset, heap_value(&path, &f.ty, v)?);
+        } else {
+            encode_field(&path, &f.ty, v, out.field_mut(f.offset, f.ty.size()))?;
         }
     }
     Ok(out)
@@ -243,6 +365,9 @@ pub fn resolve_path(layout: &ComponentLayout, path: &str) -> Result<PathTarget, 
         } else if let Some(r) = rest.strip_prefix('[') {
             let close = r.find(']').ok_or_else(|| bad("unclosed [".into()))?;
             let i: usize = r[..close].parse().map_err(|_| bad(format!("bad index {}", &r[..close])))?;
+            if let FieldType::List { .. } = &target.ty {
+                return Err(bad(format!("{0} is a list: write it whole, with the path .{0}", target.field)));
+            }
             let FieldType::Array { of, len } = &target.ty else {
                 return Err(bad(format!("{} is not an array", target.ty.ts_name())));
             };
@@ -279,7 +404,7 @@ mod tests {
     #[test]
     fn encodes_a_partial_value_with_defaults() {
         let d = health();
-        let bytes = encode_component(&d, &d.layout(), json!({"hp": 50}).as_object().unwrap()).unwrap();
+        let bytes = encode_component(&d, &d.layout(), json!({"hp": 50}).as_object().unwrap()).unwrap().into_plain().unwrap();
         assert_eq!(bytes.len(), 8);
         assert_eq!(f32::from_le_bytes(bytes[0..4].try_into().unwrap()), 50.0);
         assert_eq!(f32::from_le_bytes(bytes[4..8].try_into().unwrap()), 100.0);
@@ -318,6 +443,51 @@ mod tests {
         assert_eq!(v["mode"], json!("Repeating"));
         assert_eq!(v["finished"], json!(false));
         assert!(encode_field(".cooldown", &FieldType::Timer, &json!({"nope": 1}), &mut b).is_err());
+    }
+
+    #[test]
+    fn a_string_field_round_trips_and_owns_its_value() {
+        let d = ComponentDecl {
+            name: "value::tests::Tag".into(),
+            fields: vec![
+                FieldDecl { name: "hp".into(), ty: FieldType::F32, default: None, hints: Default::default() },
+                FieldDecl { name: "label".into(), ty: FieldType::Str, default: Some(json!("crate")), hints: Default::default() },
+            ],
+            ..Default::default()
+        };
+        let l = d.layout();
+        let shape = HeapShape::of(&d.name, &l).unwrap();
+        let a = encode_component(&d, &l, json!({"hp": 2}).as_object().unwrap()).unwrap();
+        let b = encode_component(&d, &l, json!({"label": "door"}).as_object().unwrap()).unwrap();
+        assert_eq!(decode_component(&l, a.bytes()), json!({"hp": 2.0, "label": "crate"}));
+        assert_eq!(decode_component(&l, b.bytes()), json!({"hp": 0.0, "label": "door"}));
+        assert_eq!(shape.live(), 2);
+        drop((a, b));
+        assert_eq!(shape.live(), 0);
+        let e = encode_component(&d, &l, json!({"label": 3}).as_object().unwrap()).unwrap_err();
+        assert_eq!((e.path.as_str(), e.expected.as_str()), (".label", "string"));
+        assert_eq!(shape.live(), 0);
+        assert_eq!(zero(&FieldType::Str), json!(""));
+    }
+
+    #[test]
+    fn a_list_field_checks_its_items_and_is_written_whole() {
+        let list = |of: FieldType| FieldType::List { of: Box::new(of) };
+        let d = ComponentDecl {
+            name: "value::tests::Scores".into(),
+            fields: vec![
+                FieldDecl { name: "scores".into(), ty: list(FieldType::U32), default: Some(json!([1, 2])), hints: Default::default() },
+                FieldDecl { name: "names".into(), ty: list(FieldType::Str), default: None, hints: Default::default() },
+            ],
+            ..Default::default()
+        };
+        let l = d.layout();
+        let b = encode_component(&d, &l, json!({"names": ["a", "b"]}).as_object().unwrap()).unwrap();
+        assert_eq!(decode_component(&l, b.bytes()), json!({"scores": [1, 2], "names": ["a", "b"]}));
+        let e = encode_component(&d, &l, json!({"scores": [1, -1]}).as_object().unwrap()).unwrap_err();
+        assert_eq!(e.path, ".scores[1]");
+        assert!(resolve_path(&l, ".scores[0]").unwrap_err().message.contains("write it whole, with the path .scores"));
+        assert_eq!(zero(&list(FieldType::F32)), json!([]));
     }
 
     #[test]

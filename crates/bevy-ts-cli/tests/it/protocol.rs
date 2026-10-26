@@ -487,3 +487,39 @@ fn reflected_components_read_and_write_in_the_shape_tsx_takes() {
     let got = ok(&mut app, "bevy-ts/get_components", Some(json!({ "entity": timer.to_bits(), "components": [cooldown] })));
     assert_eq!(got["components"][cooldown], json!({ "wait": 1.5 }), "{got:#}");
 }
+
+#[test]
+fn string_and_list_fields_read_edit_and_type_on_contract() {
+    let src = r#"import { Component, type f32, type u32 } from "bevy-ts";
+export class Tag extends Component { label: string = "crate"; hp: f32 = 1; scores: u32[] = [] }
+"#;
+    let dir = project("protocol-strings", &[("game.ts", src)]);
+    let mut app = app(&dir.join("game.ts"));
+    app.add_plugins(RemotePlugin::default());
+    bevy_ts_remote::add_methods(&mut app);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, bevy_ts::generation::ReloadStatus::Applied, "{:?}", r.errors);
+    let e = spawn_ts(&mut app, "game::Tag", json!({ "label": "door" }), ());
+    let got = ok(&mut app, "bevy-ts/get_components", Some(json!({ "entity": e.to_bits(), "components": ["game::Tag"] })));
+    assert_eq!(got["components"]["game::Tag"], json!({ "label": "door", "hp": 1.0, "scores": [] }));
+
+    ok(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".label", "value": "gate" })));
+    assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["label"], json!("gate"));
+    let bad = call(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".label", "value": 3 }))).unwrap_err();
+    assert!(bad.message.contains(".label expects string"), "{}", bad.message);
+    assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["label"], json!("gate"), "a bad value writes nothing");
+    ok(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".scores", "value": [3, 1] })));
+    assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["scores"], json!([3, 1]));
+    let item = call(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".scores[0]", "value": 1 }))).unwrap_err();
+    assert!(item.message.contains("scores is a list: write it whole, with the path .scores"), "{}", item.message);
+    assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["scores"], json!([3, 1]));
+
+    let s = ok(&mut app, "bevy-ts/schema", Some(json!({ "names": ["game::Tag"] })));
+    assert_eq!(s["game::Tag"]["properties"]["label"], json!({ "type": "string" }));
+    let fields = &s["game::Tag"]["x-bevy-ts"]["layout"]["fields"];
+    let label = fields.as_array().unwrap().iter().find(|f| f["name"] == "label").unwrap();
+    assert_eq!((label["type"].clone(), label["offset"].clone()), (json!({ "kind": "string" }), json!(8)), "after the 8-byte header");
+    let scores = fields.as_array().unwrap().iter().find(|f| f["name"] == "scores").unwrap();
+    assert_eq!(scores["type"], json!({ "kind": "list", "of": { "kind": "u32" } }));
+    assert_eq!(s["game::Tag"]["properties"]["scores"]["type"], json!("array"));
+}

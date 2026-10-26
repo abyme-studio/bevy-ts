@@ -2,7 +2,8 @@
 //! generations, migration by field name, and undeclared components.
 
 use crate::backend::ScriptError;
-use crate::commands::insert_bytes;
+use crate::commands::{Writable, insert_owned};
+use crate::heap::{HeapBytes, HeapFill, HeapKind};
 use crate::layout::{ComponentLayout, FieldType, NativeLayouts};
 use crate::manifest::ComponentDecl;
 use crate::value::{self, ValueError};
@@ -10,6 +11,7 @@ use bevy::ecs::component::{ComponentCloneBehavior, ComponentDescriptor, Componen
 use bevy::prelude::*;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Where a TS component stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -30,6 +32,8 @@ pub struct TsComponent {
     pub decl: ComponentDecl,
     pub layout: ComponentLayout,
     pub state: ComponentState,
+    /// For a component with a heap field: what a command builds its values from.
+    pub fill: Option<Arc<HeapFill>>,
 }
 
 /// A migration performed while applying a generation.
@@ -94,7 +98,7 @@ impl TsComponents {
     }
 
     /// Encodes a field map into a live component's native bytes, defaults filled in.
-    pub fn encode(&self, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<u8>, ValueError> {
+    pub fn encode(&self, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<HeapBytes, ValueError> {
         let c = self.live(name).ok_or_else(|| ValueError {
             path: String::new(),
             expected: "a live TS component".into(),
@@ -104,13 +108,13 @@ impl TsComponents {
     }
 
     /// Component ids TS may write with their sizes: live TS components and native layouts.
-    pub fn writable_sizes(&self, native: &NativeLayouts) -> HashMap<ComponentId, usize> {
+    pub fn writable_sizes(&self, native: &NativeLayouts) -> HashMap<ComponentId, Writable> {
         let mut m: HashMap<_, _> = self
             .current()
             .filter(|c| c.state == ComponentState::Live)
-            .map(|c| (c.id, c.layout.size))
+            .map(|c| (c.id, Writable { size: c.layout.size, heap: c.fill.clone() }))
             .collect();
-        m.extend(native.iter().filter(|n| n.insertable).map(|n| (n.id, n.layout.size)));
+        m.extend(native.iter().filter(|n| n.insertable).map(|n| (n.id, Writable { size: n.layout.size, heap: None })));
         m
     }
 }
@@ -150,17 +154,24 @@ pub fn validate(decls: &[ComponentDecl], native: &NativeLayouts) -> Vec<ScriptEr
 }
 
 fn register(world: &mut World, decl: &ComponentDecl, layout: &ComponentLayout) -> ComponentId {
-    // SAFETY: TS components are plain bytes: no drop, any bit pattern is a valid value for every
-    // field type's storage, and the data is Send + Sync.
+    // A heap field's value is freed by the drop fn and deep-copied by the clone fn, both reading
+    // the value's header; any other component is plain bytes.
+    let (drop, clone): (Option<for<'a> unsafe fn(bevy::ptr::OwningPtr<'a>)>, _) = match layout.has_heap() {
+        true => (Some(crate::heap::drop_component), ComponentCloneBehavior::Custom(crate::heap::clone_component)),
+        false => (None, ComponentCloneBehavior::Custom(clone_bytes)),
+    };
+    // SAFETY: a plain TS component is bytes: any bit pattern is a valid value for every field
+    // type's storage. One with a heap field is only ever built as a whole `HeapBytes` value, which
+    // the drop fn frees. Both are Send + Sync.
     let descriptor = unsafe {
         ComponentDescriptor::new_with_layout(
             decl.name.clone(),
             StorageType::Table,
             layout.std_layout(),
-            None,
+            drop,
             true,
             true,
-            ComponentCloneBehavior::Custom(clone_bytes),
+            clone,
             None,
         )
     };
@@ -196,7 +207,7 @@ fn plan(old: &TsComponent, decl: &ComponentDecl, layout: &ComponentLayout) -> Mi
     m
 }
 
-fn default_bytes(decl: &ComponentDecl, layout: &ComponentLayout) -> Vec<u8> {
+fn default_bytes(decl: &ComponentDecl, layout: &ComponentLayout) -> HeapBytes {
     value::encode_component(decl, layout, &serde_json::Map::new()).expect("defaults were validated")
 }
 
@@ -228,7 +239,7 @@ impl PendingComponents {
     }
 
     /// Encodes a field map into a pending component's native bytes, defaults filled in.
-    pub fn encode(&self, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<u8>, ValueError> {
+    pub fn encode(&self, name: &str, values: &serde_json::Map<String, serde_json::Value>) -> Result<HeapBytes, ValueError> {
         let (d, l, ..) = self.items.iter().find(|(d, ..)| d.name == name).ok_or_else(|| ValueError {
             path: String::new(),
             expected: "a component of this generation".into(),
@@ -293,6 +304,7 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
         match planned {
             Planned::Reuse(i, _) => {
                 let c = &mut registry.entries[i];
+                c.fill = HeapFill::of(&decl, &layout).map(Arc::new);
                 c.decl = decl;
                 c.state = ComponentState::Live;
             }
@@ -300,21 +312,30 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
                 if let Some(i) = from {
                     let old = registry.entries[i].clone();
                     let mut m = plan(&old, &decl, &layout);
-                    let defaults = default_bytes(&decl, &layout);
                     let entities = entities_with(world, old.id);
                     for e in &entities {
-                        let mut bytes = defaults.clone();
-                        let src = world.get_by_id(*e, old.id).expect("queried entity has the component");
-                        // SAFETY: the column holds `old.layout.size` bytes for this entity.
-                        let src = unsafe { std::slice::from_raw_parts(src.as_ptr(), old.layout.size) };
+                        // Built per entity: a default string is its own value on each.
+                        let mut bytes = default_bytes(&decl, &layout);
+                        let mut em = world.entity_mut(*e);
+                        let mut src = em.get_mut_by_id(old.id).expect("queried entity has the component");
+                        let src = src.bypass_change_detection().as_ptr();
                         for name in &m.kept {
                             let (o, n) = (old.layout.field(name).unwrap(), layout.field(name).unwrap());
-                            let w = n.ty.size();
-                            bytes[n.offset..n.offset + w].copy_from_slice(&src[o.offset..o.offset + w]);
+                            match HeapKind::of(&n.ty) {
+                                // A kept heap value moves: the old slot is left empty, so the old
+                                // component's drop frees nothing the new one holds.
+                                // SAFETY: the old column's slot holds a live value of `kind`.
+                                Some(kind) => bytes.set(n.offset, unsafe { crate::heap::take_value(src, o.offset, kind) }),
+                                None => {
+                                    let w = n.ty.size();
+                                    // SAFETY: the column holds `old.layout.size` bytes for this entity.
+                                    let from = unsafe { std::slice::from_raw_parts(src.add(o.offset), w) };
+                                    bytes.field_mut(n.offset, w).copy_from_slice(from);
+                                }
+                            }
                         }
-                        let mut em = world.entity_mut(*e);
-                        // SAFETY: `id` was registered with `layout`, `bytes` has its size.
-                        unsafe { insert_bytes(&mut em, id, &bytes) };
+                        // SAFETY: `id` was registered with `layout`, `bytes` is a value of it.
+                        unsafe { insert_owned(&mut em, id, bytes) };
                         em.remove_by_id(old.id);
                     }
                     m.entities = entities.len();
@@ -322,7 +343,8 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
                     migrations.push(m);
                 }
                 let name = decl.name.clone();
-                registry.entries.push(TsComponent { id, decl, layout, state: ComponentState::Live });
+                let fill = HeapFill::of(&decl, &layout).map(Arc::new);
+                registry.entries.push(TsComponent { id, decl, layout, state: ComponentState::Live, fill });
                 let new_index = registry.entries.len() - 1;
                 registry.current.insert(name, new_index);
             }
@@ -345,7 +367,7 @@ pub fn apply(world: &mut World, decls: &[ComponentDecl]) -> Vec<Migration> {
 }
 
 /// Builds a zeroed or defaulted value: used by `spawn` when JS passes a component type alone.
-pub fn defaults_of(c: &TsComponent) -> Vec<u8> {
+pub fn defaults_of(c: &TsComponent) -> HeapBytes {
     default_bytes(&c.decl, &c.layout)
 }
 
@@ -381,7 +403,7 @@ mod tests {
     fn spawn_with(world: &mut World, c: &TsComponent, v: serde_json::Value) -> Entity {
         let bytes = value::encode_component(&c.decl, &c.layout, v.as_object().unwrap()).unwrap();
         let mut e = world.spawn_empty();
-        unsafe { insert_bytes(&mut e, c.id, &bytes) };
+        unsafe { insert_owned(&mut e, c.id, bytes) };
         e.id()
     }
 

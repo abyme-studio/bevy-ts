@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy::world_serialization::{DynamicWorld, WorldSerializationPlugin};
 use bevy_ts::BevyTsPlugin;
 use bevy_ts::backend::ModuleSet;
-use bevy_ts::commands::{TsSpawned, insert_bytes};
+use bevy_ts::commands::{TsSpawned, insert_owned};
 use bevy_ts::fake::{FakeHandle, FakeProgram};
 use bevy_ts::generation::{self, ReloadStatus};
 use bevy_ts::layout::FieldType;
@@ -124,7 +124,7 @@ impl Game {
         let (id, _) = plugin_api::component_by_name(world, c).expect("live component");
         let bytes = plugin_api::encode_component(world, c, v.as_object().unwrap()).unwrap();
         // SAFETY: encoded with the component's own layout.
-        unsafe { insert_bytes(&mut world.entity_mut(e), id, &bytes) };
+        unsafe { insert_owned(&mut world.entity_mut(e), id, bytes) };
     }
 
     fn read_ts(&self, e: Entity, c: &str) -> Option<Value> {
@@ -150,7 +150,7 @@ impl Game {
         let e = world.resource_entities().get(id).unwrap();
         let bytes = plugin_api::encode_component(world, "game::Score", json!({ "value": v }).as_object().unwrap()).unwrap();
         // SAFETY: as above.
-        unsafe { insert_bytes(&mut world.entity_mut(e), id, &bytes) };
+        unsafe { insert_owned(&mut world.entity_mut(e), id, bytes) };
     }
 
     fn by_name(&mut self, name: &str) -> Vec<Entity> {
@@ -504,4 +504,32 @@ fn a_load_under_a_parent() {
     assert_eq!(g.app.world().get::<ChildOf>(a).unwrap().parent(), root);
     assert_eq!(g.app.world().get::<ChildOf>(kid).unwrap().parent(), a);
     assert!(g.app.world().get::<Children>(root).unwrap().contains(&a));
+}
+
+#[test]
+fn strings_and_lists_round_trip_and_retyped_ones_reset() {
+    let list = |of: FieldType| FieldType::List { of: Box::new(of) };
+    let tag = |label: FieldType, default: Value, scores: FieldType| {
+        component("game::Tag", vec![field("label", label, Some(default)), field("scores", scores, Some(json!([]))), field("hp", FieldType::F32, None)])
+    };
+    let mut m = declarations();
+    m.components.push(tag(FieldType::Str, json!("crate"), list(FieldType::U32)));
+    let mut g = Game::new("saves-strings", m.clone());
+    g.spawn("a", &[("game::Tag", json!({ "label": "door", "scores": [3, 1, 4], "hp": 2 }))], Save);
+    g.save_ok("strings", json!({}));
+    g.despawn_saved();
+    g.load_ok("strings");
+    let a = g.one("a");
+    assert_eq!(g.read_ts(a, "game::Tag"), Some(json!({ "label": "door", "scores": [3, 1, 4], "hp": 2.0 })), "a list of 3 against a default of []");
+    assert!(!g.log().iter().any(|l| l.contains("game::Tag migrated")), "{:?}", g.log());
+
+    // `label` is now an `f32` and `scores` a `string[]`: both reset to their defaults.
+    g.despawn_saved();
+    m.components.pop();
+    m.components.push(tag(FieldType::F32, json!(7), list(FieldType::Str)));
+    g.declare(m);
+    g.load_ok("strings");
+    let a = g.one("a");
+    assert_eq!(g.read_ts(a, "game::Tag"), Some(json!({ "label": 7.0, "scores": [], "hp": 2.0 })));
+    assert!(g.log().iter().any(|l| l.contains("game::Tag migrated on 1 entities; reset label, scores")), "{:?}", g.log());
 }

@@ -677,7 +677,7 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
         Target::Native { id, type_path, .. } => {
             let bytes = r.insert_bytes().expect("native target");
             // SAFETY: `id` was registered with the layout `bytes` was encoded with.
-            unsafe { bevy_ts::commands::insert_bytes(&mut world.entity_mut(e), *id, &bytes) };
+            unsafe { bevy_ts::commands::insert_owned(&mut world.entity_mut(e), *id, bytes) };
             holes(world, e, r, type_path.as_deref());
         }
         Target::Name => {
@@ -822,7 +822,7 @@ pub fn keep_after(world: &mut World, parent: Entity, later: &[Later]) {
 fn spawn(world: &mut World, root: &str, n: &RNode, parent: Option<Entity>, stats: &mut ReconcileStats) -> Entity {
     let mut components = BTreeMap::new();
     // By id: a component given twice keeps its last value, as inserting it twice would.
-    let mut native: BTreeMap<bevy::ecs::component::ComponentId, Vec<u8>> = BTreeMap::new();
+    let mut native: BTreeMap<bevy::ecs::component::ComponentId, bevy_ts::heap::HeapBytes> = BTreeMap::new();
     let mut after = Vec::new();
     for r in n.comps.iter() {
         components.insert(r.key.clone(), owned(r));
@@ -836,16 +836,16 @@ fn spawn(world: &mut World, root: &str, n: &RNode, parent: Option<Entity>, stats
     }
     let node = TsxNode { id: n.id, root: root.to_string(), key_path: n.path.clone(), types: n.types.clone(), source: n.source.clone(), components };
     let ids = (world.register_component::<TsxNode>(), world.register_component::<ChildOf>());
-    let parts: Vec<_> = native.iter().map(|(id, b)| (*id, b.as_slice())).collect();
+    let parts: Vec<_> = native.into_iter().collect();
     let mut em = world.spawn_empty();
     let e = em.id();
     bevy::ptr::OwningPtr::make(node, |node| match parent {
         // SAFETY: each pointer holds a value of its id's type, and each native id was registered
         // with the layout its bytes were encoded with.
         Some(p) => bevy::ptr::OwningPtr::make(ChildOf(p), |child_of| unsafe {
-            bevy_ts::commands::insert_bytes_many(&mut em, vec![(ids.0, node), (ids.1, child_of)], &parts)
+            bevy_ts::commands::insert_bytes_many(&mut em, vec![(ids.0, node), (ids.1, child_of)], parts)
         }),
-        None => unsafe { bevy_ts::commands::insert_bytes_many(&mut em, vec![(ids.0, node)], &parts) },
+        None => unsafe { bevy_ts::commands::insert_bytes_many(&mut em, vec![(ids.0, node)], parts) },
     });
     for r in after {
         match &r.target {
@@ -868,12 +868,11 @@ fn bound_fields(r: &Resolved, prev: &OwnedComponent, state: &mut OwnedComponent)
 /// Writes one field of a native-layout component in place, marking it changed.
 pub fn write_field(world: &mut World, e: Entity, id: bevy::ecs::component::ComponentId, layout: &ComponentLayout, f: &str, v: &Value) -> bool {
     let fl = layout.field(f).expect("checked field");
-    let mut bytes = vec![0u8; fl.ty.size()];
-    value::encode_field(f, &fl.ty, v, &mut bytes).expect("checked value");
+    let v = value::FieldValue::encode(f, &fl.ty, v).expect("checked value");
     let mut em = world.entity_mut(e);
     let Ok(mut m) = em.get_mut_by_id(id) else { return false };
-    // SAFETY: the component has `layout`, so the field's bytes lie inside it.
-    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), m.as_mut().as_ptr().add(fl.offset), bytes.len()) };
+    // SAFETY: the component has `layout`, so the field lies inside it.
+    unsafe { v.write_at(m.as_mut().as_ptr(), fl.offset) };
     true
 }
 

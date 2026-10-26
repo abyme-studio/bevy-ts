@@ -516,17 +516,14 @@ fn patch(world: &mut World, binding: u32, v: Value) {
         };
         match field {
             Some((id, Some(fl))) => {
-                let mut scratch = vec![0u8; fl.ty.size()];
-                value::encode_field(&prop, &fl.ty, &v, &mut scratch).map_err(|e| e.to_string()).map(|_| {
+                value::FieldValue::encode(&prop, &fl.ty, &v).map_err(|e| e.to_string()).map(|fv| {
                     let Ok(mut em) = world.get_entity_mut(e) else { return };
                     // A derived value equal to the row's writes nothing: its tick stays.
-                    let same = em.get_by_id(id).is_ok_and(|p| {
-                        // SAFETY: the field lies inside the component's bytes.
-                        unsafe { std::slice::from_raw_parts(p.as_ptr().add(fl.offset), scratch.len()) == scratch.as_slice() }
-                    });
+                    // SAFETY: the field lies inside the component's live value.
+                    let same = em.get_by_id(id).is_ok_and(|p| unsafe { fv.same_at(p.as_ptr(), fl.offset) });
                     if !same && let Ok(mut m) = em.get_mut_by_id(id) {
-                        // SAFETY: as above; `scratch` holds the field's encoded value.
-                        unsafe { std::ptr::copy_nonoverlapping(scratch.as_ptr(), m.as_mut().as_ptr().add(fl.offset), scratch.len()) };
+                        // SAFETY: as above.
+                        unsafe { fv.write_at(m.as_mut().as_ptr(), fl.offset) };
                     }
                 })
             }

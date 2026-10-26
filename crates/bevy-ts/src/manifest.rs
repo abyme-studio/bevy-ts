@@ -707,6 +707,9 @@ pub struct ResolvedHole {
     pub name: String,
     pub target: u32,
     pub codec: serde_json::Value,
+    /// A TS component's heap field: written as the codec's bytes, not JSON.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub heap: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -48,10 +48,11 @@ impl TsLookup for TsComponents {
 /// What a component element writes.
 #[derive(Clone, Debug)]
 pub enum Target {
-    /// A component with a native layout: a TS component or `Transform`. `defaults` is a whole
-    /// value with every field at its declared default. `type_path` is a Rust component's, for
+    /// A component with a native layout: a TS component or `Transform`. `defaults` is a Rust
+    /// component's whole default value; a TS component's value is encoded from `decl` instead,
+    /// so its heap fields (`string`) are built in Rust. `type_path` is a Rust component's, for
     /// its holes written through reflection.
-    Native { id: ComponentId, layout: ComponentLayout, defaults: Vec<u8>, type_path: Option<String> },
+    Native { id: ComponentId, layout: ComponentLayout, defaults: Vec<u8>, type_path: Option<String>, decl: Option<Box<bevy_ts::manifest::ComponentDecl>> },
     Name,
     Mesh(MeshProps),
     Material(Box<MaterialProps>),
@@ -100,15 +101,19 @@ impl Resolved {
         if self.overrides.contains_key(field) { crate::tree::Provenance::Override } else { crate::tree::Provenance::Controlled }
     }
 
-    /// The bytes to insert: defaults, then initial and controlled values.
-    pub fn insert_bytes(&self) -> Option<Vec<u8>> {
-        let Target::Native { layout, defaults, .. } = &self.target else { return None };
+    /// The value to insert: defaults, then initial and controlled values.
+    pub fn insert_bytes(&self) -> Option<bevy_ts::heap::HeapBytes> {
+        let Target::Native { layout, defaults, decl, .. } = &self.target else { return None };
+        if let Some(decl) = decl {
+            let values: Map<String, Value> = self.initial.iter().chain(self.controlled.iter()).map(|(k, v)| (k.clone(), v.clone())).collect();
+            return Some(value::encode_component(decl, layout, &values).expect("checked values"));
+        }
         let mut bytes = defaults.clone();
         for (f, v) in self.initial.iter().chain(self.controlled.iter()) {
             let fl = layout.field(f).expect("checked field");
             value::encode_field(f, &fl.ty, v, &mut bytes[fl.offset..fl.offset + fl.ty.size()]).expect("checked value");
         }
-        Some(bytes)
+        Some(bevy_ts::heap::HeapBytes::plain(bytes))
     }
 }
 
@@ -336,8 +341,8 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
             let (id, layout, decl) =
                 ts.ts(&c.ty).ok_or_else(|| err(format!("unknown component {}: no component() declares it", c.ty), &c.source))?;
             let fields: Vec<_> = decl.fields.iter().map(|f| (f.name.clone(), f.ty.clone(), f.default.clone())).collect();
-            let defaults = value::encode_component(&decl, &layout, &Map::new()).map_err(|e| err(e.to_string(), &c.source))?;
-            Ok(resolved(Target::Native { id, layout, defaults, type_path: None }, split_fields(c, &fields)?))
+            value::encode_component(&decl, &layout, &Map::new()).map_err(|e| err(e.to_string(), &c.source))?;
+            Ok(resolved(Target::Native { id, layout, defaults: Vec::new(), type_path: None, decl: Some(Box::new(decl)) }, split_fields(c, &fields)?))
         }
         ComponentKind::Rust if c.ty == NAME => {
             let mut props = c.props.clone();
@@ -403,7 +408,7 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
                 let fl = n.layout.field(f).expect("layout field");
                 *v = value::decode_field(&fl.ty, &defaults[fl.offset..fl.offset + fl.ty.size()]);
             }
-            let mut r = resolved(Target::Native { id: n.id, layout: n.layout.clone(), defaults, type_path: Some(n.type_path.clone()) }, split);
+            let mut r = resolved(Target::Native { id: n.id, layout: n.layout.clone(), defaults, type_path: Some(n.type_path.clone()), decl: None }, split);
             r.reflected = reflected.into_iter().collect();
             Ok(r)
         }

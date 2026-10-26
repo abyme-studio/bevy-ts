@@ -139,7 +139,7 @@ pub fn spawn_ts(app: &mut App, component: &str, values: serde_json::Value, extra
     let (id, _) = bevy_ts::plugin_api::component_by_name(app.world(), component).expect("live component");
     let bytes = bevy_ts::plugin_api::encode_component(app.world(), component, values.as_object().unwrap()).unwrap();
     let mut e = app.world_mut().spawn(extra);
-    unsafe { bevy_ts::commands::insert_bytes(&mut e, id, &bytes) };
+    unsafe { bevy_ts::commands::insert_owned(&mut e, id, bytes) };
     e.id()
 }
 
@@ -148,7 +148,7 @@ pub fn insert_ts(app: &mut App, e: Entity, component: &str, values: serde_json::
     let (id, _) = bevy_ts::plugin_api::component_by_name(app.world(), component).expect("live component");
     let bytes = bevy_ts::plugin_api::encode_component(app.world(), component, values.as_object().unwrap()).unwrap();
     let mut em = app.world_mut().entity_mut(e);
-    unsafe { bevy_ts::commands::insert_bytes(&mut em, id, &bytes) };
+    unsafe { bevy_ts::commands::insert_owned(&mut em, id, bytes) };
 }
 
 /// A TS component's value on an entity, as JSON.

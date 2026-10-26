@@ -22,7 +22,9 @@ impl LocalStore {
         let layout = ComponentLayout::c_layout(fields.iter().map(|f| (f.name.as_str(), &f.ty)));
         let mut store = LocalStore { fields: fields.to_vec(), bytes: vec![0; layout.size.div_ceil(16).max(1)], layout };
         let decl = crate::manifest::ComponentDecl { name: "Local".into(), fields: fields.to_vec(), ..Default::default() };
-        if let Ok(init) = value::encode_component(&decl, &store.layout, &serde_json::Map::new()) {
+        // A `Local` has no heap field (systems refuse one), so its value is plain bytes.
+        if let Ok(init) = value::encode_component(&decl, &store.layout, &serde_json::Map::new()).map(|b| b.into_plain()) {
+            let init = init.expect("a Local has no heap field");
             store.data_mut()[..init.len()].copy_from_slice(&init);
         }
         store

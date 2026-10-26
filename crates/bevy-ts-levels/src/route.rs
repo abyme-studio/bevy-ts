@@ -108,11 +108,13 @@ fn wvalue(ty: &ValueType, v: &Value) -> Result<WValue, String> {
         ValueType::Field(FieldType::F32) => WValue::Float { v: v.as_f64().ok_or("expected a number")?, f32: true },
         ValueType::Field(FieldType::F64) => WValue::Float { v: v.as_f64().ok_or("expected a number")?, f32: false },
         ValueType::Field(FieldType::Bool) => WValue::Bool(v.as_bool().ok_or("expected a bool")?),
+        ValueType::Field(FieldType::Str) => WValue::Str(v.as_str().ok_or("expected a string")?.to_string()),
         ValueType::Field(FieldType::Enum { .. }) => WValue::Path(v.as_str().ok_or("expected a variant name")?.to_string()),
         ValueType::Field(FieldType::Vec2 | FieldType::Vec3 | FieldType::Vec4 | FieldType::Quat | FieldType::Entity | FieldType::Array { .. }) => {
             return Err("a whole vector is written lane by lane".into());
         }
         ValueType::Field(FieldType::Timer | FieldType::Stopwatch) => return Err("a whole timer is written field by field".into()),
+        ValueType::Field(FieldType::List { .. }) => return Err("list values are not supported in .bsn files".into()),
         ValueType::Field(_) => WValue::Int(v.as_f64().ok_or("expected an integer")? as i64),
     })
 }

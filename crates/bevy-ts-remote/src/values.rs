@@ -11,7 +11,7 @@ use bevy::remote::{BrpError, BrpResult, error_codes};
 use bevy_ts::components::{ComponentState, TsComponent, TsComponents};
 use bevy_ts::layout::FieldType;
 use bevy_ts::reflect_asset::{ScriptAssets, Slots};
-use bevy_ts::value::{check_hints, decode_component, encode_field, resolve_path};
+use bevy_ts::value::{FieldValue, check_hints, decode_component, resolve_path};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 
@@ -29,6 +29,8 @@ fn field_schema(ty: &FieldType, hints: Option<&bevy_ts::manifest::FieldHints>) -
             json!({ "type": "array", "items": { "type": "number" }, "minItems": n, "maxItems": n })
         }
         FieldType::Enum { variants, .. } => json!({ "type": "string", "enum": variants }),
+        FieldType::Str => json!({ "type": "string" }),
+        FieldType::List { of } => json!({ "type": "array", "items": field_schema(of, None) }),
         FieldType::Array { of, len } => json!({ "type": "array", "items": field_schema(of, None), "minItems": len, "maxItems": len }),
         FieldType::Timer | FieldType::Stopwatch => {
             let l = ty.fields().unwrap();
@@ -322,17 +324,16 @@ pub(crate) fn get_components_watch(In(p): In<Option<Value>>, world: &mut World) 
 fn write_ts(world: &mut World, entity: Entity, c: &TsComponent, path: &str, v: &Value) -> Result<(), BrpError> {
     let target = resolve_path(&c.layout, path).map_err(|e| invalid(e.to_string()))?;
     let hints = c.decl.field(&target.field).map(|f| f.hints.clone()).unwrap_or_default();
-    let mut bytes = vec![0u8; target.ty.size()];
-    let check = encode_field(path, &target.ty, v, &mut bytes).and_then(|_| check_hints(path, &target.ty, &hints, v));
-    check.map_err(|e| BrpError { code: error_codes::INVALID_PARAMS, message: e.to_string(), data: Some(json!({ "path": e.path, "expected": e.expected })) })?;
+    let check = FieldValue::encode(path, &target.ty, v).and_then(|fv| check_hints(path, &target.ty, &hints, v).map(|_| fv));
+    let fv = check.map_err(|e| BrpError { code: error_codes::INVALID_PARAMS, message: e.to_string(), data: Some(json!({ "path": e.path, "expected": e.expected })) })?;
     let mut e = world.get_entity_mut(entity).map_err(|_| BrpError::entity_not_found(entity))?;
     let mut m = e
         .get_mut_by_id(c.id)
         .map_err(|_| invalid(format!("entity {entity} has no {}", c.decl.name)))?;
     // Marks the component changed for watchers and `Changed`.
     let ptr = m.as_mut();
-    // SAFETY: `target` lies inside the component's `layout.size` bytes.
-    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr.as_ptr().add(target.offset), bytes.len()) };
+    // SAFETY: `target` lies inside the component's live value.
+    unsafe { fv.write_at(ptr.as_ptr(), target.offset) };
     Ok(())
 }
 

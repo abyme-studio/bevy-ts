@@ -58,7 +58,8 @@ export function outcomes(saved: MessageReader<WorldSaved>, loaded: MessageReader
 - Every reflected Rust component (`#[reflect(Component)]`) on those entities, written by Bevy's
   serializer. Handles are written as their asset path and load through the `AssetServer`.
 - Every TS component, as one reflected `bevy_ts::saves::TsSaved` per entity: TS component name to
-  its JSON (`value::decode_component`). An entity with no TS component has none.
+  its JSON (`value::decode_component`). An entity with no TS component has none. A `string` field
+  is a JSON string and a `T[]` field a JSON array (docs/ecs.md, "Heap fields").
 - `allow: [Health, Transform]` saves only those (and `Save`); `deny: [...]` leaves them out, after
   `allow`. Rust classes by their type path, TS classes by name. A class that is neither fails the
   save, naming it.
@@ -106,7 +107,9 @@ registered type, so a Bevy upgrade that adds an unserialisable component fails t
 TS fields migrate by the rules a reload uses (`components::commit`, openspec `hot-reload`): a field of the same name and type is
 kept, a new field takes its default, a field whose type changed is reset to its default, a field
 no longer declared is dropped. The type is read from the saved value's shape (a float, an
-integer, a list of its length, an enum's name...). Each component that migrated is logged once per
+integer, a list of its length, an enum's name...). A `string` or `T[]` field is kept when the saved
+value is one of its type, whatever a list's length: a saved `[3, 1, 4]` loads into a `u32[]` whose
+default is `[]`, and a saved `[1.5]` resets a `string[]`. Each component that migrated is logged once per
 load as a warning: `load: game::Health migrated on 3 entities; added max; reset hp`.
 
 A TS component whose class no longer exists is never dropped: its JSON stays in the entity's
