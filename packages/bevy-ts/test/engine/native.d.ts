@@ -3,17 +3,17 @@
 // typed values for TSX, the protocol and With/Without filters.
 
 import { Component, ReflectComponent, Resource } from "bevy-ts";
-import type { AssetFields, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { events: readonly (readonly ["Root" | { Node: string }, readonly ({ time?: number; event?: {  } })[]])[]; duration: number }>;
 export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", {  }>;
-export type Image = AssetFields<"bevy_image::image::Image", {  }>;
+export type Image = AssetFields<"bevy_image::image::Image", { sampler: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } } }>;
 export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { size: readonly [number, number]; textures: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] }>;
 export type Mesh = AssetFields<"bevy_mesh::mesh::Mesh", {  }>;
-export type StandardMaterial = AssetFields<"bevy_pbr::pbr_material::StandardMaterial", { base_color: ColorValue; base_color_channel: "Uv0" | "Uv1"; base_color_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive: { red?: number; green?: number; blue?: number; alpha?: number }; emissive_exposure_weight: number; emissive_channel: "Uv0" | "Uv1"; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; perceptual_roughness: number; metallic: number; metallic_roughness_channel: "Uv0" | "Uv1"; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; reflectance: number; specular_tint: ColorValue; diffuse_transmission: number; specular_transmission: number; thickness: number; ior: number; attenuation_distance: number; attenuation_color: ColorValue; normal_map_channel: "Uv0" | "Uv1"; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; flip_normal_map_y: boolean; occlusion_channel: "Uv0" | "Uv1"; occlusion_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; clearcoat: number; clearcoat_perceptual_roughness: number; anisotropy_strength: number; anisotropy_rotation: number; double_sided: boolean; unlit: boolean; fog_enabled: boolean; alpha_mode: "Opaque" | { Mask: number } | "Blend" | "Premultiplied" | "AlphaToCoverage" | "Add" | "Multiply"; depth_bias: number; depth_map: string | AssetRef<Image> | AssetValue<Image> | null | null; parallax_depth_scale: number; parallax_mapping_method: "Occlusion" | { Relief: { max_steps?: number } }; max_parallax_layer_count: number; lightmap_exposure: number; opaque_render_method: "Forward" | "Deferred" | "Auto"; deferred_lighting_pass_id: number; uv_transform: readonly [number, number, number, number, number, number] }>;
+export type StandardMaterial = AssetFields<"bevy_pbr::pbr_material::StandardMaterial", { base_color: ColorValue; base_color_channel: "Uv0" | "Uv1"; base_color_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive: { red?: number; green?: number; blue?: number; alpha?: number }; emissive_exposure_weight: number; emissive_channel: "Uv0" | "Uv1"; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; perceptual_roughness: number; metallic: number; metallic_roughness_channel: "Uv0" | "Uv1"; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; reflectance: number; specular_tint: ColorValue; diffuse_transmission: number; specular_transmission: number; thickness: number; ior: number; attenuation_distance: number; attenuation_color: ColorValue; normal_map_channel: "Uv0" | "Uv1"; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; flip_normal_map_y: boolean; occlusion_channel: "Uv0" | "Uv1"; occlusion_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; clearcoat: number; clearcoat_perceptual_roughness: number; anisotropy_strength: number; anisotropy_rotation: number; double_sided: boolean; unlit: boolean; fog_enabled: boolean; alpha_mode: "Opaque" | { Mask: number } | "Blend" | "Premultiplied" | "AlphaToCoverage" | "Add" | "Multiply"; depth_bias: number; depth_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; parallax_depth_scale: number; parallax_mapping_method: "Occlusion" | { Relief: { max_steps?: number } }; max_parallax_layer_count: number; lightmap_exposure: number; opaque_render_method: "Forward" | "Deferred" | "Auto"; deferred_lighting_pass_id: number; uv_transform: readonly [number, number, number, number, number, number] }>;
 export type ShaderBuffer = AssetFields<"bevy_render::storage::ShaderBuffer", {  }>;
-export type ColorMaterial = AssetFields<"bevy_sprite_render::mesh2d::color_material::ColorMaterial", { color: ColorValue; alpha_mode: "Opaque" | { Mask: number } | "Blend"; uv_transform: readonly [number, number, number, number, number, number]; texture: string | AssetRef<Image> | AssetValue<Image> | null | null }>;
-export type SpriteMeshMaterial = AssetFields<"bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial", { image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend"; anchor: readonly [number, number]; texture_atlas_layout: { size?: readonly [number, number]; textures?: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] } | null; texture_atlas_index: number | string }>;
+export type ColorMaterial = AssetFields<"bevy_sprite_render::mesh2d::color_material::ColorMaterial", { color: ColorValue; alpha_mode: "Opaque" | { Mask: number } | "Blend"; uv_transform: readonly [number, number, number, number, number, number]; texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }>;
+export type SpriteMeshMaterial = AssetFields<"bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial", { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend"; anchor: readonly [number, number]; texture_atlas_layout: { size?: readonly [number, number]; textures?: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] } | null; texture_atlas_index: number | string }>;
 /** System sets exposed with `app.ts_set`, for `.before`/`.after(systemSet(name))`. */
 export type NativeSet = "bevy-ts:first" | "bevy-ts:fixed-first" | "bevy-ts:fixed-last" | "bevy-ts:fixed-post-update" | "bevy-ts:fixed-pre-update" | "bevy-ts:fixed-update" | "bevy-ts:last" | "bevy-ts:post-update" | "bevy-ts:pre-update" | "bevy-ts:run-fixed-main-loop" | "bevy-ts:spawn-scene" | "bevy-ts:update" | "bevy:fixed-main-loop" | "bevy:transform-propagate";
 /** Schedules exposed with `app.ts_schedule`, for `schedule(name)`. */
@@ -146,7 +146,7 @@ export declare class ManualTextureViewHandle extends Component {
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_camera::camera::RenderTarget)). */
 export declare class RenderTarget extends ReflectComponent {
   static readonly path: "bevy_camera::camera::RenderTarget";
-  declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
+  declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 }
 
 /** Reflect tier: it has no reflected fields. */
@@ -620,10 +620,10 @@ export declare class ClusterConfig extends ReflectComponent {
 /** Holes, not columns: base_color_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); normal_map_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); metallic_roughness_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); emissive_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class ClusteredDecal extends Component {
   static readonly path: "bevy_light::cluster::ClusteredDecal";
-  static readonly tsxProps: { base_color_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null; normal_map_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null; metallic_roughness_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null };
+  static readonly tsxProps: { base_color_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; normal_map_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; metallic_roughness_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null };
   declare tag: u32;
 }
-export interface ClusteredDecal extends Holes<{ base_color_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | null | null }> {}
+export interface ClusteredDecal extends Holes<{ base_color_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color); soft_shadow_size: an enum with data (core::option::Option<f32>). */
 export declare class DirectionalLight extends Component {
@@ -641,7 +641,7 @@ export interface DirectionalLight extends Holes<{ color: ColorValue; soft_shadow
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class DirectionalLightTexture extends ReflectComponent {
   static readonly path: "bevy_light::directional_light::DirectionalLightTexture";
-  declare image: string | AssetRef<Image> | AssetValue<Image> | null;
+  declare image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
   declare tiled: boolean;
 }
 
@@ -671,38 +671,38 @@ export interface PointLight extends Holes<{ color: ColorValue }> {}
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class PointLightTexture extends ReflectComponent {
   static readonly path: "bevy_light::point_light::PointLightTexture";
-  declare image: string | AssetRef<Image> | AssetValue<Image> | null;
+  declare image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
   declare cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal";
 }
 
 /** Holes, not columns: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class EnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::EnvironmentMapLight";
-  static readonly tsxProps: { diffuse_map?: string | AssetRef<Image> | AssetValue<Image> | null; specular_map?: string | AssetRef<Image> | AssetValue<Image> | null };
+  static readonly tsxProps: { diffuse_map?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; specular_map?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
 }
-export interface EnvironmentMapLight extends Holes<{ diffuse_map: string | AssetRef<Image> | AssetValue<Image> | null; specular_map: string | AssetRef<Image> | AssetValue<Image> | null }> {}
+export interface EnvironmentMapLight extends Holes<{ diffuse_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; specular_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
 
 /** Holes, not columns: environment_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class GeneratedEnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::GeneratedEnvironmentMapLight";
-  static readonly tsxProps: { environment_map?: string | AssetRef<Image> | AssetValue<Image> | null };
+  static readonly tsxProps: { environment_map?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
 }
-export interface GeneratedEnvironmentMapLight extends Holes<{ environment_map: string | AssetRef<Image> | AssetValue<Image> | null }> {}
+export interface GeneratedEnvironmentMapLight extends Holes<{ environment_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
 
 /** Holes, not columns: voxels: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class IrradianceVolume extends Component {
   static readonly path: "bevy_light::probe::IrradianceVolume";
-  static readonly tsxProps: { voxels?: string | AssetRef<Image> | AssetValue<Image> | null };
+  static readonly tsxProps: { voxels?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null };
   declare intensity: f32;
   declare affects_lightmapped_meshes: bool;
 }
-export interface IrradianceVolume extends Holes<{ voxels: string | AssetRef<Image> | AssetValue<Image> | null }> {}
+export interface IrradianceVolume extends Holes<{ voxels: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
 
 export declare class LightProbe extends Component {
   static readonly path: "bevy_light::probe::LightProbe";
@@ -718,11 +718,11 @@ export declare class ParallaxCorrection extends ReflectComponent {
 /** Holes, not columns: image: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class Skybox extends Component {
   static readonly path: "bevy_light::probe::Skybox";
-  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | null | null };
+  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null };
   declare brightness: f32;
   declare readonly rotation: Quat;
 }
-export interface Skybox extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | null | null }> {}
+export interface Skybox extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class RectLight extends Component {
@@ -757,13 +757,13 @@ export interface SpotLight extends Holes<{ color: ColorValue }> {}
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class SpotLightTexture extends ReflectComponent {
   static readonly path: "bevy_light::spot_light::SpotLightTexture";
-  declare image: string | AssetRef<Image> | AssetValue<Image> | null;
+  declare image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
 }
 
 /** Holes, not columns: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
 export declare class FogVolume extends Component {
   static readonly path: "bevy_light::volumetric::FogVolume";
-  static readonly tsxProps: { fog_color?: ColorValue; density_texture?: string | AssetRef<Image> | AssetValue<Image> | null | null; light_tint?: ColorValue };
+  static readonly tsxProps: { fog_color?: ColorValue; density_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; light_tint?: ColorValue };
   declare density_factor: f32;
   declare readonly density_texture_offset: Vec3;
   declare absorption: f32;
@@ -771,7 +771,7 @@ export declare class FogVolume extends Component {
   declare scattering_asymmetry: f32;
   declare light_intensity: f32;
 }
-export interface FogVolume extends Holes<{ fog_color: ColorValue; density_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; light_tint: ColorValue }> {}
+export interface FogVolume extends Holes<{ fog_color: ColorValue; density_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; light_tint: ColorValue }> {}
 
 /** Holes, not columns: ambient_color: an enum with data (bevy_color::color::Color). */
 export declare class VolumetricFog extends Component {
@@ -846,10 +846,10 @@ export interface DistanceFog extends Holes<{ color: ColorValue; directional_ligh
 /** Holes, not columns: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); uv_rect: not plain data (bevy_math::rects::rect::Rect). */
 export declare class Lightmap extends Component {
   static readonly path: "bevy_pbr::lightmap::Lightmap";
-  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | null; uv_rect?: { min?: readonly [number, number]; max?: readonly [number, number] } };
+  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; uv_rect?: { min?: readonly [number, number]; max?: readonly [number, number] } };
   declare bicubic_sampling: bool;
 }
-export interface Lightmap extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] } }> {}
+export interface Lightmap extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] } }> {}
 
 export declare class DefaultOpaqueRendererMethod extends Resource {
   static readonly path: "bevy_pbr::material::DefaultOpaqueRendererMethod";
@@ -971,7 +971,7 @@ export interface PickingSettings extends Holes<{ multi_click_interval: number }>
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_picking::cursor::EntityCursor)). */
 export declare class EntityCursor extends ReflectComponent {
   static readonly path: "bevy_picking::cursor::EntityCursor";
-  declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+  declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 }
 
 /** Immutable: read-only in TS. */
@@ -1046,12 +1046,12 @@ export declare class PointerPressState extends Component {
 /** Holes, not columns: range: opaque to reflection (core::ops::RangeInclusive<f32>); filter: opaque to reflection (core::ops::RangeInclusive<f32>); metering_mask: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); compensation_curve: an enum with data (bevy_asset::handle::Handle<bevy_post_process::auto_exposure::compensation_curve::AutoExposureCompensationCurve>). */
 export declare class AutoExposure extends Component {
   static readonly path: "bevy_post_process::auto_exposure::settings::AutoExposure";
-  static readonly tsxProps: { range?: { start: number; end: number }; filter?: { start: number; end: number }; metering_mask?: string | AssetRef<Image> | AssetValue<Image> | null; compensation_curve?: string | null };
+  static readonly tsxProps: { range?: { start: number; end: number }; filter?: { start: number; end: number }; metering_mask?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; compensation_curve?: string | null };
   declare speed_brighten: f32;
   declare speed_darken: f32;
   declare exponential_transition_distance: f32;
 }
-export interface AutoExposure extends Holes<{ range: { start: number; end: number }; filter: { start: number; end: number }; metering_mask: string | AssetRef<Image> | AssetValue<Image> | null; compensation_curve: string | null }> {}
+export interface AutoExposure extends Holes<{ range: { start: number; end: number }; filter: { start: number; end: number }; metering_mask: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; compensation_curve: string | null }> {}
 
 /** Holes, not columns: prefilter: not plain data (bevy_post_process::bloom::settings::BloomPrefilter). */
 export declare class Bloom extends Component {
@@ -1080,11 +1080,11 @@ export declare class DepthOfField extends Component {
 /** Holes, not columns: color_lut: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class ChromaticAberration extends Component {
   static readonly path: "bevy_post_process::effect_stack::chromatic_aberration::ChromaticAberration";
-  static readonly tsxProps: { color_lut?: string | AssetRef<Image> | AssetValue<Image> | null | null };
+  static readonly tsxProps: { color_lut?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null };
   declare intensity: f32;
   declare max_samples: u32;
 }
-export interface ChromaticAberration extends Holes<{ color_lut: string | AssetRef<Image> | AssetValue<Image> | null | null }> {}
+export interface ChromaticAberration extends Holes<{ color_lut: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class Vignette extends Component {
@@ -1165,7 +1165,7 @@ export declare class RenderShadowMapVisibleEntities extends ReflectComponent {
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class Screenshot extends ReflectComponent {
   static readonly path: "bevy_render::view::window::screenshot::Screenshot";
-  declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
+  declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 }
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
@@ -1196,11 +1196,11 @@ export declare class Anchor extends Component {
 /** Holes, not columns: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); color: an enum with data (bevy_color::color::Color); custom_size: an enum with data (core::option::Option<glam::Vec2>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_sprite::sprite::SpriteImageMode); alpha_mode: an enum with data (bevy_sprite::sprite::SpriteAlphaMode). */
 export declare class Sprite extends Component {
   static readonly path: "bevy_sprite::sprite::Sprite";
-  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color?: ColorValue; custom_size?: readonly [number, number] | null; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode?: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode?: "Opaque" | { Mask: number } | "Blend" };
+  static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color?: ColorValue; custom_size?: readonly [number, number] | null; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode?: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode?: "Opaque" | { Mask: number } | "Blend" };
   declare flip_x: bool;
   declare flip_y: bool;
 }
-export interface Sprite extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" }> {}
+export interface Sprite extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class Text2d extends ReflectComponent {
@@ -1269,7 +1269,7 @@ export declare class TilemapChunk extends ReflectComponent {
   static readonly path: "bevy_sprite_render::tilemap_chunk::TilemapChunk";
   declare chunk_size: readonly [number, number];
   declare tile_display_size: readonly [number, number];
-  declare tileset: string | AssetRef<Image> | AssetValue<Image> | null;
+  declare tileset: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
   declare alpha_mode: "Opaque" | { Mask: number } | "Blend";
 }
 
@@ -1737,12 +1737,12 @@ export declare class DeprecatedButton extends ReflectComponent {
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_ui::widget::image::NodeImageMode). */
 export declare class ImageNode extends Component {
   static readonly path: "bevy_ui::widget::image::ImageNode";
-  static readonly tsxProps: { color?: ColorValue; image?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode?: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } };
+  static readonly tsxProps: { color?: ColorValue; image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode?: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } };
   declare flip_x: bool;
   declare flip_y: bool;
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
 }
-export interface ImageNode extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } }> {}
+export interface ImageNode extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } }> {}
 
 /** Reflect tier: no field is plain data (size: not plain data (glam::UVec2)). */
 export declare class ImageNodeSize extends ReflectComponent {
@@ -1753,11 +1753,11 @@ export declare class ImageNodeSize extends ReflectComponent {
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>). */
 export declare class InlineImage extends Component {
   static readonly path: "bevy_ui::widget::inline_image::InlineImage";
-  static readonly tsxProps: { color?: ColorValue; image?: string | AssetRef<Image> | AssetValue<Image> | null; width?: number | null; height?: number | null };
+  static readonly tsxProps: { color?: ColorValue; image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; width?: number | null; height?: number | null };
   declare flip_x: bool;
   declare flip_y: bool;
 }
-export interface InlineImage extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | null; width: number | null; height: number | null }> {}
+export interface InlineImage extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; width: number | null; height: number | null }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Label extends ReflectComponent {
@@ -2031,7 +2031,7 @@ export declare class TextInput extends ReflectComponent {
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_window::cursor::CursorIcon)). */
 export declare class CursorIcon extends ReflectComponent {
   static readonly path: "bevy_window::cursor::CursorIcon";
-  declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+  declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 }
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */

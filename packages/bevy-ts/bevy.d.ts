@@ -2,7 +2,7 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components and resources TS can name.
 import { Component, EntityEvent, Event, Message, Resource } from "bevy-ts";
-import type { AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { AssetClass, AssetFields, AssetLoad, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 export { Time, Transform } from "bevy-ts";
 
@@ -121,7 +121,7 @@ export declare class ManualTextureViewHandle extends Component {
 
 /** As an element, `<RenderTarget value={...} />`: the whole value, in Bevy's shape; `RenderTarget.of(...)` in commands. */
 export declare const RenderTarget: ReflectClass<RenderTargetValue, ReflectValue<RenderTargetValue>> & { readonly tsxProps: { value?: RenderTargetValue } };
-export type RenderTargetValue = { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
+export type RenderTargetValue = { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 export type RenderTarget = InstanceType<typeof RenderTarget>;
 
 /** `ShadowLodOrigin.of(...)` in commands: the value written over its default. */
@@ -529,10 +529,10 @@ export declare class ClusteredDecal extends Component {
   static readonly path: "bevy_light::cluster::ClusteredDecal";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { base_color_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; tag: number };
+  static readonly __element: { base_color_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; tag: number };
   declare tag: u32;
 }
-export interface ClusteredDecal extends Holes<{ base_color_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | null | null }> {}
+export interface ClusteredDecal extends Holes<{ base_color_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color); soft_shadow_size: an enum with data (core::option::Option<f32>). */
 export declare class DirectionalLight extends Component {
@@ -549,7 +549,7 @@ export declare class DirectionalLight extends Component {
 export interface DirectionalLight extends Holes<{ color: ColorValue; soft_shadow_size: number | null }> {}
 
 /** `DirectionalLightTexture.of(...)` in commands: the value written over its default. */
-export declare const DirectionalLightTexture: ReflectClass<{ image?: string | AssetRef<Image> | AssetValue<Image> | null; tiled?: boolean }, { image: string | AssetRef<Image> | AssetValue<Image> | null; tiled: boolean }>;
+export declare const DirectionalLightTexture: ReflectClass<{ image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; tiled?: boolean }, { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; tiled: boolean }>;
 export type DirectionalLightTexture = InstanceType<typeof DirectionalLightTexture>;
 
 /** `ShowLightGizmo.of(...)` in commands: the value written over its default. */
@@ -575,7 +575,7 @@ export declare class PointLight extends Component {
 export interface PointLight extends Holes<{ color: ColorValue }> {}
 
 /** `PointLightTexture.of(...)` in commands: the value written over its default. */
-export declare const PointLightTexture: ReflectClass<{ image?: string | AssetRef<Image> | AssetValue<Image> | null; cubemap_layout?: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }, { image: string | AssetRef<Image> | AssetValue<Image> | null; cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }>;
+export declare const PointLightTexture: ReflectClass<{ image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; cubemap_layout?: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }, { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }>;
 export type PointLightTexture = InstanceType<typeof PointLightTexture>;
 
 /** Holes, not columns: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
@@ -583,35 +583,35 @@ export declare class EnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::EnvironmentMapLight";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { diffuse_map: string | AssetRef<Image> | AssetValue<Image> | null; specular_map: string | AssetRef<Image> | AssetValue<Image> | null; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
+  static readonly __element: { diffuse_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; specular_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
 }
-export interface EnvironmentMapLight extends Holes<{ diffuse_map: string | AssetRef<Image> | AssetValue<Image> | null; specular_map: string | AssetRef<Image> | AssetValue<Image> | null }> {}
+export interface EnvironmentMapLight extends Holes<{ diffuse_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; specular_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
 
 /** Holes, not columns: environment_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class GeneratedEnvironmentMapLight extends Component {
   static readonly path: "bevy_light::probe::GeneratedEnvironmentMapLight";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { environment_map: string | AssetRef<Image> | AssetValue<Image> | null; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
+  static readonly __element: { environment_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; intensity: number; rotation: readonly [number, number, number, number]; affects_lightmapped_mesh_diffuse: boolean };
   declare intensity: f32;
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
 }
-export interface GeneratedEnvironmentMapLight extends Holes<{ environment_map: string | AssetRef<Image> | AssetValue<Image> | null }> {}
+export interface GeneratedEnvironmentMapLight extends Holes<{ environment_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
 
 /** Holes, not columns: voxels: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class IrradianceVolume extends Component {
   static readonly path: "bevy_light::probe::IrradianceVolume";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { voxels: string | AssetRef<Image> | AssetValue<Image> | null; intensity: number; affects_lightmapped_meshes: boolean };
+  static readonly __element: { voxels: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; intensity: number; affects_lightmapped_meshes: boolean };
   declare intensity: f32;
   declare affects_lightmapped_meshes: bool;
 }
-export interface IrradianceVolume extends Holes<{ voxels: string | AssetRef<Image> | AssetValue<Image> | null }> {}
+export interface IrradianceVolume extends Holes<{ voxels: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
 
 export declare class LightProbe extends Component {
   static readonly path: "bevy_light::probe::LightProbe";
@@ -629,11 +629,11 @@ export declare class Skybox extends Component {
   static readonly path: "bevy_light::probe::Skybox";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | null | null; brightness: number; rotation: readonly [number, number, number, number] };
+  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; brightness: number; rotation: readonly [number, number, number, number] };
   declare brightness: f32;
   declare readonly rotation: Quat;
 }
-export interface Skybox extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | null | null }> {}
+export interface Skybox extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class RectLight extends Component {
@@ -668,7 +668,7 @@ export declare class SpotLight extends Component {
 export interface SpotLight extends Holes<{ color: ColorValue }> {}
 
 /** `SpotLightTexture.of(...)` in commands: the value written over its default. */
-export declare const SpotLightTexture: ReflectClass<{ image?: string | AssetRef<Image> | AssetValue<Image> | null }, { image: string | AssetRef<Image> | AssetValue<Image> | null }>;
+export declare const SpotLightTexture: ReflectClass<{ image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }, { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }>;
 export type SpotLightTexture = InstanceType<typeof SpotLightTexture>;
 
 /** Holes, not columns: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
@@ -676,7 +676,7 @@ export declare class FogVolume extends Component {
   static readonly path: "bevy_light::volumetric::FogVolume";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { fog_color: ColorValue; density_factor: number; density_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; density_texture_offset: readonly [number, number, number]; absorption: number; scattering: number; scattering_asymmetry: number; light_tint: ColorValue; light_intensity: number };
+  static readonly __element: { fog_color: ColorValue; density_factor: number; density_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; density_texture_offset: readonly [number, number, number]; absorption: number; scattering: number; scattering_asymmetry: number; light_tint: ColorValue; light_intensity: number };
   declare density_factor: f32;
   declare readonly density_texture_offset: Vec3;
   declare absorption: f32;
@@ -684,7 +684,7 @@ export declare class FogVolume extends Component {
   declare scattering_asymmetry: f32;
   declare light_intensity: f32;
 }
-export interface FogVolume extends Holes<{ fog_color: ColorValue; density_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; light_tint: ColorValue }> {}
+export interface FogVolume extends Holes<{ fog_color: ColorValue; density_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; light_tint: ColorValue }> {}
 
 /** Holes, not columns: ambient_color: an enum with data (bevy_color::color::Color). */
 export declare class VolumetricFog extends Component {
@@ -753,10 +753,10 @@ export declare class Lightmap extends Component {
   static readonly path: "bevy_pbr::lightmap::Lightmap";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] }; bicubic_sampling: boolean };
+  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] }; bicubic_sampling: boolean };
   declare bicubic_sampling: bool;
 }
-export interface Lightmap extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] } }> {}
+export interface Lightmap extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] } }> {}
 
 export declare class DefaultOpaqueRendererMethod extends Resource {
   static readonly path: "bevy_pbr::material::DefaultOpaqueRendererMethod";
@@ -875,7 +875,7 @@ export interface PickingSettings extends Holes<{ multi_click_interval: number }>
 
 /** As an element, `<EntityCursor value={...} />`: the whole value, in Bevy's shape; `EntityCursor.of(...)` in commands. */
 export declare const EntityCursor: ReflectClass<EntityCursorValue, ReflectValue<EntityCursorValue>> & { readonly tsxProps: { value?: EntityCursorValue } };
-export type EntityCursorValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+export type EntityCursorValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type EntityCursor = InstanceType<typeof EntityCursor>;
 
 /** Immutable: read-only in TS. */
@@ -950,12 +950,12 @@ export declare class AutoExposure extends Component {
   static readonly path: "bevy_post_process::auto_exposure::settings::AutoExposure";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { range: { start: number; end: number }; filter: { start: number; end: number }; speed_brighten: number; speed_darken: number; exponential_transition_distance: number; metering_mask: string | AssetRef<Image> | AssetValue<Image> | null; compensation_curve: string | null };
+  static readonly __element: { range: { start: number; end: number }; filter: { start: number; end: number }; speed_brighten: number; speed_darken: number; exponential_transition_distance: number; metering_mask: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; compensation_curve: string | null };
   declare speed_brighten: f32;
   declare speed_darken: f32;
   declare exponential_transition_distance: f32;
 }
-export interface AutoExposure extends Holes<{ range: { start: number; end: number }; filter: { start: number; end: number }; metering_mask: string | AssetRef<Image> | AssetValue<Image> | null; compensation_curve: string | null }> {}
+export interface AutoExposure extends Holes<{ range: { start: number; end: number }; filter: { start: number; end: number }; metering_mask: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; compensation_curve: string | null }> {}
 
 /** Holes, not columns: prefilter: not plain data (bevy_post_process::bloom::settings::BloomPrefilter). */
 export declare class Bloom extends Component {
@@ -988,11 +988,11 @@ export declare class ChromaticAberration extends Component {
   static readonly path: "bevy_post_process::effect_stack::chromatic_aberration::ChromaticAberration";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { color_lut: string | AssetRef<Image> | AssetValue<Image> | null | null; intensity: number; max_samples: number };
+  static readonly __element: { color_lut: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; intensity: number; max_samples: number };
   declare intensity: f32;
   declare max_samples: u32;
 }
-export interface ChromaticAberration extends Holes<{ color_lut: string | AssetRef<Image> | AssetValue<Image> | null | null }> {}
+export interface ChromaticAberration extends Holes<{ color_lut: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class Vignette extends Component {
@@ -1070,7 +1070,7 @@ export declare const RenderShadowMapVisibleEntities: ReflectClass<{  }, {}>;
 export type RenderShadowMapVisibleEntities = InstanceType<typeof RenderShadowMapVisibleEntities>;
 
 /** `Screenshot.of(...)` in commands: the value written over its default. */
-export declare const Screenshot: ReflectClass<{ Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } }, { value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } } }>;
+export declare const Screenshot: ReflectClass<{ Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } }, { value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } } }>;
 export type Screenshot = InstanceType<typeof Screenshot>;
 
 /** `SceneComponentInfo.of(...)` in commands: the value written over its default. */
@@ -1101,11 +1101,11 @@ export declare class Sprite extends Component {
   static readonly path: "bevy_sprite::sprite::Sprite";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" };
+  static readonly __element: { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" };
   declare flip_x: bool;
   declare flip_y: bool;
 }
-export interface Sprite extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" }> {}
+export interface Sprite extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" }> {}
 
 /** `Text2d.of(...)` in commands: the value written over its default. */
 export declare const Text2d: ReflectClass<string, { value: string }>;
@@ -1158,7 +1158,7 @@ export declare class Wireframe2dConfig extends Resource {
 export interface Wireframe2dConfig extends Holes<{ default_color: ColorValue }> {}
 
 /** `TilemapChunk.of(...)` in commands: the value written over its default. */
-export declare const TilemapChunk: ReflectClass<{ chunk_size?: readonly [number, number]; tile_display_size?: readonly [number, number]; tileset?: string | AssetRef<Image> | AssetValue<Image> | null; alpha_mode?: "Opaque" | { Mask: number } | "Blend" }, { chunk_size: readonly [number, number]; tile_display_size: readonly [number, number]; tileset: string | AssetRef<Image> | AssetValue<Image> | null; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
+export declare const TilemapChunk: ReflectClass<{ chunk_size?: readonly [number, number]; tile_display_size?: readonly [number, number]; tileset?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; alpha_mode?: "Opaque" | { Mask: number } | "Blend" }, { chunk_size: readonly [number, number]; tile_display_size: readonly [number, number]; tileset: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
 export type TilemapChunk = InstanceType<typeof TilemapChunk>;
 
 /** `TilemapChunkTileData.of(...)` in commands: the value written over its default. */
@@ -1529,12 +1529,12 @@ export declare class ImageNode extends Component {
   static readonly path: "bevy_ui::widget::image::ImageNode";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x: boolean; flip_y: boolean; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; visual_box: "ContentBox" | "PaddingBox" | "BorderBox" };
+  static readonly __element: { color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x: boolean; flip_y: boolean; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; visual_box: "ContentBox" | "PaddingBox" | "BorderBox" };
   declare flip_x: bool;
   declare flip_y: bool;
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
 }
-export interface ImageNode extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } }> {}
+export interface ImageNode extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } }> {}
 
 /** `ImageNodeSize.of(...)` in commands: the value written over its default. */
 export declare const ImageNodeSize: ReflectClass<{ size?: readonly [number, number] }, { size: readonly [number, number] }>;
@@ -1545,11 +1545,11 @@ export declare class InlineImage extends Component {
   static readonly path: "bevy_ui::widget::inline_image::InlineImage";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | null; width: number | null; height: number | null; flip_x: boolean; flip_y: boolean };
+  static readonly __element: { color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; width: number | null; height: number | null; flip_x: boolean; flip_y: boolean };
   declare flip_x: bool;
   declare flip_y: bool;
 }
-export interface InlineImage extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | null; width: number | null; height: number | null }> {}
+export interface InlineImage extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; width: number | null; height: number | null }> {}
 
 /** `Label.of(...)` in commands: the value written over its default. */
 export declare const Label: ReflectClass<{  }, {}>;
@@ -1796,7 +1796,7 @@ export type TextInput = InstanceType<typeof TextInput>;
 
 /** As an element, `<CursorIcon value={...} />`: the whole value, in Bevy's shape; `CursorIcon.of(...)` in commands. */
 export declare const CursorIcon: ReflectClass<CursorIconValue, ReflectValue<CursorIconValue>> & { readonly tsxProps: { value?: CursorIconValue } };
-export type CursorIconValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+export type CursorIconValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type CursorIcon = InstanceType<typeof CursorIcon>;
 
 /** `Monitor.of(...)` in commands: the value written over its default. */
@@ -1870,8 +1870,9 @@ export declare const AnimationClip: AssetClass<AnimationClip>;
 export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", {  }>;
 export declare const AnimationGraph: AssetType<AnimationGraph>;
 
-export type Image = AssetFields<"bevy_image::image::Image", {  }>;
-export declare const Image: AssetClass<Image>;
+export type Image = AssetFields<"bevy_image::image::Image", { sampler: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } } }>;
+export type ImageLoadSettings = { sampler?: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } }; is_srgb?: boolean };
+export declare const Image: AssetClass<Image> & Loadable<Image, ImageLoadSettings>;
 
 export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { size: readonly [number, number]; textures: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] }>;
 export declare const TextureAtlasLayout: AssetType<TextureAtlasLayout>;
@@ -1879,16 +1880,16 @@ export declare const TextureAtlasLayout: AssetType<TextureAtlasLayout>;
 export type Mesh = AssetFields<"bevy_mesh::mesh::Mesh", {  }>;
 export declare const Mesh: AssetType<Mesh>;
 
-export type StandardMaterial = AssetFields<"bevy_pbr::pbr_material::StandardMaterial", { base_color: ColorValue; base_color_channel: "Uv0" | "Uv1"; base_color_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; emissive: { red?: number; green?: number; blue?: number; alpha?: number }; emissive_exposure_weight: number; emissive_channel: "Uv0" | "Uv1"; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; perceptual_roughness: number; metallic: number; metallic_roughness_channel: "Uv0" | "Uv1"; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; reflectance: number; specular_tint: ColorValue; diffuse_transmission: number; specular_transmission: number; thickness: number; ior: number; attenuation_distance: number; attenuation_color: ColorValue; normal_map_channel: "Uv0" | "Uv1"; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; flip_normal_map_y: boolean; occlusion_channel: "Uv0" | "Uv1"; occlusion_texture: string | AssetRef<Image> | AssetValue<Image> | null | null; clearcoat: number; clearcoat_perceptual_roughness: number; anisotropy_strength: number; anisotropy_rotation: number; double_sided: boolean; unlit: boolean; fog_enabled: boolean; alpha_mode: "Opaque" | { Mask: number } | "Blend" | "Premultiplied" | "AlphaToCoverage" | "Add" | "Multiply"; depth_bias: number; depth_map: string | AssetRef<Image> | AssetValue<Image> | null | null; parallax_depth_scale: number; parallax_mapping_method: "Occlusion" | { Relief: { max_steps?: number } }; max_parallax_layer_count: number; lightmap_exposure: number; opaque_render_method: "Forward" | "Deferred" | "Auto"; deferred_lighting_pass_id: number; uv_transform: readonly [number, number, number, number, number, number] }>;
+export type StandardMaterial = AssetFields<"bevy_pbr::pbr_material::StandardMaterial", { base_color: ColorValue; base_color_channel: "Uv0" | "Uv1"; base_color_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive: { red?: number; green?: number; blue?: number; alpha?: number }; emissive_exposure_weight: number; emissive_channel: "Uv0" | "Uv1"; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; perceptual_roughness: number; metallic: number; metallic_roughness_channel: "Uv0" | "Uv1"; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; reflectance: number; specular_tint: ColorValue; diffuse_transmission: number; specular_transmission: number; thickness: number; ior: number; attenuation_distance: number; attenuation_color: ColorValue; normal_map_channel: "Uv0" | "Uv1"; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; flip_normal_map_y: boolean; occlusion_channel: "Uv0" | "Uv1"; occlusion_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; clearcoat: number; clearcoat_perceptual_roughness: number; anisotropy_strength: number; anisotropy_rotation: number; double_sided: boolean; unlit: boolean; fog_enabled: boolean; alpha_mode: "Opaque" | { Mask: number } | "Blend" | "Premultiplied" | "AlphaToCoverage" | "Add" | "Multiply"; depth_bias: number; depth_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; parallax_depth_scale: number; parallax_mapping_method: "Occlusion" | { Relief: { max_steps?: number } }; max_parallax_layer_count: number; lightmap_exposure: number; opaque_render_method: "Forward" | "Deferred" | "Auto"; deferred_lighting_pass_id: number; uv_transform: readonly [number, number, number, number, number, number] }>;
 export declare const StandardMaterial: AssetClass<StandardMaterial>;
 
 export type ShaderBuffer = AssetFields<"bevy_render::storage::ShaderBuffer", {  }>;
 export declare const ShaderBuffer: AssetClass<ShaderBuffer>;
 
-export type ColorMaterial = AssetFields<"bevy_sprite_render::mesh2d::color_material::ColorMaterial", { color: ColorValue; alpha_mode: "Opaque" | { Mask: number } | "Blend"; uv_transform: readonly [number, number, number, number, number, number]; texture: string | AssetRef<Image> | AssetValue<Image> | null | null }>;
+export type ColorMaterial = AssetFields<"bevy_sprite_render::mesh2d::color_material::ColorMaterial", { color: ColorValue; alpha_mode: "Opaque" | { Mask: number } | "Blend"; uv_transform: readonly [number, number, number, number, number, number]; texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }>;
 export declare const ColorMaterial: AssetClass<ColorMaterial>;
 
-export type SpriteMeshMaterial = AssetFields<"bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial", { image: string | AssetRef<Image> | AssetValue<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend"; anchor: readonly [number, number]; texture_atlas_layout: { size?: readonly [number, number]; textures?: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] } | null; texture_atlas_index: number | string }>;
+export type SpriteMeshMaterial = AssetFields<"bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial", { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; flip_x: boolean; flip_y: boolean; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend"; anchor: readonly [number, number]; texture_atlas_layout: { size?: readonly [number, number]; textures?: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] } | null; texture_atlas_index: number | string }>;
 export declare const SpriteMeshMaterial: AssetType<SpriteMeshMaterial>;
 
 // Rust messages and events, by type path (rust-events). Values are in reflect-coverage's shape.
@@ -2038,14 +2039,14 @@ export declare class PointerCancel extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerCancel";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
 }
 export declare class PointerClick extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerClick";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
   declare readonly duration: number;
@@ -2055,7 +2056,7 @@ export declare class PointerDrag extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerDrag";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly distance: readonly [number, number];
   declare readonly delta: readonly [number, number];
@@ -2064,7 +2065,7 @@ export declare class PointerDragDrop extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerDragDrop";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly dropped: Entity;
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
@@ -2073,7 +2074,7 @@ export declare class PointerDragEnd extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerDragEnd";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly distance: readonly [number, number];
 }
@@ -2081,7 +2082,7 @@ export declare class PointerDragEnter extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerDragEnter";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly dragged: Entity;
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
@@ -2090,7 +2091,7 @@ export declare class PointerDragLeave extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerDragLeave";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly dragged: Entity;
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
@@ -2099,7 +2100,7 @@ export declare class PointerDragOver extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerDragOver";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly dragged: Entity;
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
@@ -2108,7 +2109,7 @@ export declare class PointerDragStart extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerDragStart";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
 }
@@ -2116,7 +2117,7 @@ export declare class PointerEnter extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerEnter";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
   declare readonly is_in_bounds: boolean;
 }
@@ -2124,7 +2125,7 @@ export declare class PointerLeave extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerLeave";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
   declare readonly was_in_bounds: boolean;
 }
@@ -2132,7 +2133,7 @@ export declare class PointerMove extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerMove";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
   declare readonly delta: readonly [number, number];
 }
@@ -2140,21 +2141,21 @@ export declare class PointerOut extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerOut";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
 }
 export declare class PointerOver extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerOver";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
 }
 export declare class PointerPress extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerPress";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
   declare readonly count: number;
@@ -2163,7 +2164,7 @@ export declare class PointerRelease extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerRelease";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly button: "Primary" | "Secondary" | "Middle";
   declare readonly hit: { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null };
 }
@@ -2171,7 +2172,7 @@ export declare class PointerScroll extends EntityEvent {
   static readonly path: "bevy_picking::events::PointerScroll";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
+  declare readonly pointer: { id?: "Mouse" | { Touch: number | string } | { Custom: string }; target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number]; propagate?: boolean };
   declare readonly unit: "Line" | "Pixel";
   declare readonly x: number;
   declare readonly y: number;
@@ -2182,7 +2183,7 @@ export declare class PointerInput extends Message {
   static readonly path: "bevy_picking::pointer::PointerInput";
   static readonly native: true;
   declare readonly pointer_id: "Mouse" | { Touch: number | string } | { Custom: string };
-  declare readonly location: { target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number] };
+  declare readonly location: { target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number] };
   declare readonly action: { Press: "Primary" | "Secondary" | "Middle" } | { Release: "Primary" | "Secondary" | "Middle" } | { Move: { delta?: readonly [number, number] } } | { Scroll: { unit?: "Line" | "Pixel"; x?: number; y?: number; phase?: "Started" | "Moved" | "Ended" | "Canceled" } } | "Cancel";
 }
 export declare class ScreenshotCaptured extends EntityEvent {
