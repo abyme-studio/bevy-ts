@@ -312,11 +312,14 @@ fn build(
     state
 }
 
+/// An owned instance read back: its id, its params by name and its textures by name.
+type Owned = (AssetId<ScriptMaterial>, Map<String, Value>, Vec<(String, Option<Handle<Image>>)>);
+
 /// Every other `ScriptMaterial` of the kind (owned ones, from `Kind.add`) re-encoded against the
 /// new kind by param name, as keyed ones are, keeping its textures by name.
 fn reencode_owned(world: &mut World, generation: u64, state: &KindState) {
     let keyed: std::collections::HashSet<AssetId<ScriptMaterial>> = state.instances.values().map(|(h, _)| h.id()).collect();
-    let owned: Vec<(AssetId<ScriptMaterial>, Map<String, Value>, Vec<(String, Option<Handle<Image>>)>)> = world
+    let owned: Vec<Owned> = world
         .resource::<Assets<ScriptMaterial>>()
         .iter()
         .filter(|(id, m)| m.kind.name == state.decl.name && !Arc::ptr_eq(&m.kind, &state.kind) && !keyed.contains(id))
@@ -600,9 +603,12 @@ pub fn no_such_prop(kind: &str, bindings: &Bindings, p: &str) -> String {
     format!("{kind} has no param or texture {p}; it has {}", names.join(", "))
 }
 
+/// The asset's key props, the entity's instance props, and the kind's bindings.
+pub type SplitProps = (Map<String, Value>, Map<String, Value>, Bindings);
+
 /// `<material kind>`'s props split by where they live: params and textures key the shared asset,
 /// instance params go to the entity. `None` for a kind that is not live.
-pub fn split_props(world: &World, kind: &str, props: &Map<String, Value>) -> Option<(Map<String, Value>, Map<String, Value>, Bindings)> {
+pub fn split_props(world: &World, kind: &str, props: &Map<String, Value>) -> Option<SplitProps> {
     let k = world.resource::<MaterialKinds>().live.get(kind)?;
     let b = &k.kind.bindings;
     let (instance, key) = props.iter().map(|(p, v)| (p.clone(), v.clone())).partition(|(p, _)| b.instance().field(p).is_some());
