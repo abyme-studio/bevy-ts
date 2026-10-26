@@ -8,6 +8,8 @@
 //! - (d) TS: one call with a 256×256 sub-rect, copied row by row.
 //! - (e) Rust: `Image::clone`, what Bevy's extraction adds per `Modified` when the image stays in
 //!   the main world (`RenderAssetUsages::default()`).
+//! - (f) TS: `images.getMut(ref).setData(bytes)` through the engine's `Images`
+//!   (`ResMut<Assets<Image>>`), what a game writes; (b) is a bench-only export.
 //! - (0) TS: the same system with nothing to do, subtracted from the TS arms.
 //!
 //! Each arm runs 3 times (8 when arms are within noise, `RUNS=8`), 200 frames after 20 to warm up,
@@ -78,7 +80,9 @@ impl Pixels<'_> {
 }
 
 const TS: &str = r#"import { app, Update } from "bevy-ts";
+import type { AssetRef, Assets, ResMut } from "bevy-ts";
 import type { Pixels } from "bevy-ts/bench";
+import { Image, TextureFormat } from "bevy-ts/bevy";
 
 const ARM = "__ARM__";
 const side = 1024;
@@ -101,7 +105,14 @@ export function paint(p: Pixels) {
     p.writeRect(384, 384, 256, 256, rect);
   }
 }
-app.addSystems(Update, paint);
+let image: AssetRef<Image> | undefined;
+export function set(images: ResMut<Assets<Image>>) {
+  frame++;
+  image ??= images.add(Image.new([side, side], TextureFormat.Rgba8UnormSrgb, bytes));
+  bytes[0] = frame & 255;
+  images.getMut(image)!.setData(bytes);
+}
+app.addSystems(Update, ARM === "set" ? set : paint);
 "#;
 
 /// A fresh directory holding `game.ts`, under the temp dir.
@@ -134,8 +145,11 @@ fn ts_app(arm: &str) -> App {
     let dir = project(&format!("image-bench-{arm}"), &TS.replace("__ARM__", arm));
     let mut app = base_app();
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true));
+    app.add_plugins(bevy_ts_cli::assets::ScriptAssetsPlugin);
     app.ts_param::<Pixels<'static>>();
     app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.ts"), true).unwrap())));
+    app.finish();
+    app.cleanup();
     let r = reload(&mut app);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     app
@@ -208,11 +222,12 @@ fn arm(make: &dyn Fn() -> App) -> (f64, f64) {
 fn main() {
     let (empty, _) = arm(&|| ts_app("empty"));
     let mib = (SIDE * SIDE * 4) as f64 / (1024.0 * 1024.0);
-    let arms: [(&str, &str, f64, f64, Box<dyn Fn() -> App>); 5] = [
+    let arms: [(&str, &str, f64, f64, Box<dyn Fn() -> App>); 6] = [
         ("a", "Rust get_mut + copy_from_slice, whole image (floor)", 0.0, mib, Box::new(|| rust_app(false))),
         ("b", "TS one write(bytes), whole image", empty, mib, Box::new(|| ts_app("full"))),
         ("c", "TS every pixel written in JS, then write(bytes)", empty, mib, Box::new(|| ts_app("fill"))),
         ("d", "TS one writeRect, 256x256", empty, 0.25, Box::new(|| ts_app("rect"))),
+        ("f", "TS images.getMut(ref).setData(bytes), whole image", empty, mib, Box::new(|| ts_app("set"))),
         ("e", "Rust Image::clone (extraction, main world kept)", 0.0, mib, Box::new(|| rust_app(true))),
     ];
     println!("{SIDE}x{SIDE} RGBA8 ({mib} MiB), {} runs x {FRAMES} frames; µs per update, a TS system's own run ({empty:.1} µs median) subtracted from TS arms", runs());
