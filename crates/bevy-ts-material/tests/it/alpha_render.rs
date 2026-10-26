@@ -73,7 +73,8 @@ fn camera(world: &mut World, at: Transform) -> (Handle<Image>, Entity) {
 /// pipeline rendering.
 fn until_drawn(app: &mut App, target: &Handle<Image>, loaded: impl Fn(&World) -> Result<(), String>, mut check: impl FnMut(&World, &Image) -> Result<(), String>) {
     use bevy::render::RenderApp;
-    use bevy::render::render_resource::{CachedPipelineState, PipelineCache};
+    use bevy::render::render_resource::{CachedPipeline, CachedPipelineState, PipelineCache};
+    use bevy::shader::ShaderCacheError;
     const BOUND: Duration = Duration::from_secs(300);
     let mut start = Instant::now();
     loop {
@@ -88,10 +89,15 @@ fn until_drawn(app: &mut App, target: &Handle<Image>, loaded: impl Fn(&World) ->
     loop {
         app.update();
         let cache = app.sub_app(RenderApp).world().resource::<PipelineCache>();
-        let (count, waiting) = (cache.pipelines().count(), cache.waiting_pipelines().count());
-        if let Some(p) = cache.pipelines().find(|p| matches!(p.state, CachedPipelineState::Err(_))) {
+        // A shader or import not loaded yet is an error Bevy retries (`PipelineCache::process_queue`):
+        // still waiting, not failed.
+        let retrying = |p: &&CachedPipeline| {
+            matches!(p.state, CachedPipelineState::Err(ShaderCacheError::ShaderNotLoaded(_) | ShaderCacheError::ShaderImportNotYetAvailable))
+        };
+        if let Some(p) = cache.pipelines().find(|p| matches!(p.state, CachedPipelineState::Err(_)) && !retrying(p)) {
             panic!("a pipeline failed: {:?}", p.state);
         }
+        let (count, waiting) = (cache.pipelines().count(), cache.waiting_pipelines().count() + cache.pipelines().filter(retrying).count());
         if count > 0 && waiting == 0 && count == held {
             break;
         }
