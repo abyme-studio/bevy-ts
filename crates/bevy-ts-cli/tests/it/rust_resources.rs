@@ -120,6 +120,31 @@ app.addSystems(Update, dim);
 }
 
 #[test]
+fn a_layout_resources_hole_reads_in_bevys_shape_and_takes_any_form_on_res_mut() {
+    // mut-read-type: `ResMut<GlobalAmbientLight>` has its holes, typed `ColorRead` and `ColorValue`.
+    let src = r##"import { app, Update } from "bevy-ts";
+import type { Local, ResMut, u32 } from "bevy-ts";
+import { GlobalAmbientLight } from "bevy-ts/bevy";
+export function tint(ambient: ResMut<GlobalAmbientLight>, runs: Local<{ n: u32 }>) {
+  if (runs.n++ > 0) return;
+  console.log(`ambient ${JSON.stringify(ambient.color)}`);
+  ambient.color = "#ff0000";
+}
+app.addSystems(Update, tint);
+"##;
+    let dir = project("rust-res-hole", &[("game.ts", src)]);
+    let mut app = with_types(&dir);
+    app.insert_resource(GlobalAmbientLight { color: Color::srgba(0.5, 0.5, 0.5, 1.0), ..default() });
+    load_ok(&mut app);
+    app.update();
+    app.update();
+    assert!(run_error(&app).is_none(), "{:?}", run_error(&app));
+    let read = r#"ambient {"Srgba":{"red":0.5,"green":0.5,"blue":0.5,"alpha":1}}"#;
+    assert!(messages(&app).iter().any(|m| m.starts_with(read)), "{:?}", messages(&app));
+    assert_eq!(app.world().resource::<GlobalAmbientLight>().color, Color::srgb(1.0, 0.0, 0.0));
+}
+
+#[test]
 fn a_read_of_a_bevy_resource_does_not_move_its_tick() {
     let body = r#"
 export function show(scale: Res<UiScale>) {

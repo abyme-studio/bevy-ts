@@ -222,6 +222,8 @@ export const Hero = () => (
 export const TiledHero = () => <entity><Sprite image_mode={{ Tiled: { tile_x: true, stretch_value: 2 } }} /></entity>;
 // UI's helpers return the shape `image_mode` takes.
 export const SlicedPanel = () => <entity><Sprite image_mode={sliced({ border: 8 })} /></entity>;
+// mut-read-type: TSX keeps the written shape, a string index included.
+export const AtlasFrame = () => <entity><Sprite texture_atlas={{ index: "3" }} /></entity>;
 export const TiledPanel = () => <entity><Sprite image_mode={tiled({ y: false })} /></entity>;
 // @ts-expect-error  `custom_size` is a size, not a number
 export const BadSize = () => <entity><Sprite custom_size={32} /></entity>;

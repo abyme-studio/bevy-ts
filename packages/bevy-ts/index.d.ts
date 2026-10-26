@@ -197,8 +197,19 @@ declare const valueBrand: unique symbol;
 declare const holesBrand: unique symbol;
 /** A reflect-tier class's whole value as its row's `value` sees it (an enum's, `Name`'s). */
 export type ReflectValue<V> = { readonly [valueBrand]?: V };
-/** A layout-tier class's holes: fields read and written through reflection, beside its columns. */
+/**
+ * A layout-tier class's holes: fields read and written through reflection, beside its columns. A
+ * hole whose read and written shapes differ is an accessor pair (`get color(): ColorRead; set
+ * color(v: ColorValue)`): rows read the first and `Mut` rows assign the second.
+ */
 export type Holes<H> = { readonly [holesBrand]?: H };
+declare const rowBrand: unique symbol;
+/**
+ * A reflect-tier class's row in TS systems: `value` and a struct's fields, each read as reflection
+ * reads it and assigned as it writes (accessor pairs where the two differ). The class's own fields
+ * stay the written shape, for TSX and `.of()`.
+ */
+export type ReflectRead<A> = { readonly [rowBrand]?: A };
 type HolesOf<T> = T extends { readonly [holesBrand]?: infer H } ? NonNullable<H> : {};
 declare const resourceBrand: unique symbol;
 declare const messageBrand: unique symbol;
@@ -291,6 +302,25 @@ export type ColorValue =
   | { readonly Okhsva: Channels<"hue" | "saturation" | "value"> }
   | { readonly Okhwba: Channels<"hue" | "whiteness" | "blackness"> };
 type Channels<K extends string> = { readonly [P in K]: number } & { readonly alpha?: number };
+/**
+ * A `Color` as a TS system's row reads it (a hole, a reflect-tier field): Bevy's shape, every
+ * channel and `alpha` present. Assignment takes any `ColorValue`. A test in `types.rs` checks it
+ * against Bevy's registry.
+ */
+export type ColorRead =
+  | { Srgba: { red: number; green: number; blue: number; alpha: number } }
+  | { LinearRgba: { red: number; green: number; blue: number; alpha: number } }
+  | { Hsla: { hue: number; saturation: number; lightness: number; alpha: number } }
+  | { Hsva: { hue: number; saturation: number; value: number; alpha: number } }
+  | { Hwba: { hue: number; whiteness: number; blackness: number; alpha: number } }
+  | { Laba: { lightness: number; a: number; b: number; alpha: number } }
+  | { Lcha: { lightness: number; chroma: number; hue: number; alpha: number } }
+  | { Oklaba: { lightness: number; a: number; b: number; alpha: number } }
+  | { Oklcha: { lightness: number; chroma: number; hue: number; alpha: number } }
+  | { Xyza: { x: number; y: number; z: number; alpha: number } }
+  | { Okhsla: { hue: number; saturation: number; lightness: number; alpha: number } }
+  | { Okhsva: { hue: number; saturation: number; value: number; alpha: number } }
+  | { Okhwba: { hue: number; whiteness: number; blackness: number; alpha: number } };
 /** An sRGB colour, channels 0 to 1: Bevy's `Color::srgba`. */
 export declare function srgb(r: number, g: number, b: number, a?: number): ColorValue;
 /** A linear RGB colour, channels 0 to 1: Bevy's `Color::linear_rgba`. */
@@ -308,7 +338,7 @@ export type ComponentType<_ = any> = ComponentClass & { readonly componentName: 
  * spawned or inserted as `C.of(value)` (its JSON written over the component's default) or as the
  * bare class (its default).
  */
-export type ReflectClass<V = unknown, F = {}> = (abstract new () => ReflectComponent & F) & {
+export type ReflectClass<V = unknown, F = {}, A = unknown> = (abstract new () => ReflectComponent & F & ReflectRead<A>) & {
   readonly componentName: string;
   readonly source: "rust";
   /** `Projection.of({ Orthographic: {} })`: the value written over the component's default. */
@@ -678,10 +708,12 @@ export interface RefTicks {
 // A reflect-tier class's row reads through reflection: `value` is the whole value, and a
 // struct's fields are on the row too (`weapon.name`). Unchanged rows are cached across runs.
 // A layout-tier class's row has its holes beside its columns.
-type ReflectRow<T> = T & {
+type ReflectRow<T> = T extends { readonly [rowBrand]?: infer A } ? (unknown extends A ? WholeRow<T> : NonNullable<A>) : WholeRow<T>;
+/** A reflect-tier row with no generated row type (`reflectClass(...)` by hand): the written shape. */
+type WholeRow<T> = T & {
   value: T extends { readonly [valueBrand]?: infer V } ? (unknown extends V ? FieldsOf<T> : V) : FieldsOf<T>;
 };
-type FieldsOf<T> = T extends { value: infer V } ? V : Omit<T, typeof tierBrand>;
+type FieldsOf<T> = T extends { value: infer V } ? V : Omit<T, typeof tierBrand | typeof rowBrand>;
 type LayoutRow<T> = ReadView<T> & Readonly<HolesOf<T>>;
 type Item<D> =
   D extends Entity ? Entity
@@ -772,8 +804,11 @@ type Claimed<C, T, Else> = {
   ? [R] extends [never] ? Else : R
   : Else;
 /** The brand (never read) lets `Option` tell a resource param from query data. */
-export type Res<T> = Claimed<ResClaims, T, ReadView<T> & { readonly [resBrand]: true }>;
-export type ResMut<T> = Claimed<ResMutClaims, T, T & { readonly [resBrand]: true }>;
+export type Res<T> = Claimed<ResClaims, T, ResRead<T> & { readonly [resBrand]: true }>;
+export type ResMut<T> = Claimed<ResMutClaims, T, ResWrite<T> & { readonly [resBrand]: true }>;
+/** A resource's view: a reflect-tier one's row, or a layout one's fields and holes. */
+type ResRead<T> = T extends ReflectComponent ? ReadView<ReflectRow<T>> : ReadView<T> & Readonly<HolesOf<T>>;
+type ResWrite<T> = T extends ReflectComponent ? ReflectRow<T> : T & HolesOf<T>;
 /**
  * Exactly one match, given as that row, as Bevy's `Single<D, F>`: with none or several the system
  * is skipped (no call, no error). `Option<Single<...>>`: zero or one, the row or `undefined`.

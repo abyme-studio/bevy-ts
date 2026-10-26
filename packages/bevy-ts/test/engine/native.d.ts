@@ -3,7 +3,7 @@
 // typed values for TSX, the protocol and With/Without filters.
 
 import { Component, ReflectComponent, Resource } from "bevy-ts";
-import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, MeshData, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorRead, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, MeshData, Quat, ReflectRead, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number }>;
 export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", { graph: { nodes: { node_type: "Blend" | "Add" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; node_holes: never[]; edge_property: "directed"; edges: [number, number, null][] }; root: number; mask_groups: [string | { readonly names: readonly string[] }, number][] }>;
@@ -44,24 +44,28 @@ export declare class AnimatedBy extends ReflectComponent {
   static readonly path: "bevy_animation::AnimatedBy";
   declare value: Entity;
 }
+export interface AnimatedBy extends ReflectRead<{ value: Entity }> {}
 
 /** Reflect tier: no field is plain data (active_animations: not plain data (bevy_platform::collections::HashMap<petgraph::graph::NodeIndex, bevy_animation::ActiveAnimation, bevy_platform::hash::FixedHasher>)). */
 export declare class AnimationPlayer extends ReflectComponent {
   static readonly path: "bevy_animation::AnimationPlayer";
   declare active_animations: readonly (readonly [number, { weight?: number; repeat?: "Never" | { Count: number } | "Forever"; speed?: number; elapsed?: number; seek_time?: number; last_seek_time?: number | null; completions?: number; just_completed?: boolean; paused?: boolean }])[];
 }
+export interface AnimationPlayer extends ReflectRead<{ get active_animations(): ([number, { weight: number; repeat: "Never" | { Count: number } | "Forever"; speed: number; elapsed: number; seek_time: number; last_seek_time: number | null; completions: number; just_completed: boolean; paused: boolean }])[]; set active_animations(v: readonly (readonly [number, { weight?: number; repeat?: "Never" | { Count: number } | "Forever"; speed?: number; elapsed?: number; seek_time?: number; last_seek_time?: number | null; completions?: number; just_completed?: boolean; paused?: boolean }])[]); get value(): { active_animations: ([number, { weight: number; repeat: "Never" | { Count: number } | "Forever"; speed: number; elapsed: number; seek_time: number; last_seek_time: number | null; completions: number; just_completed: boolean; paused: boolean }])[] }; set value(v: { active_animations?: readonly (readonly [number, { weight?: number; repeat?: "Never" | { Count: number } | "Forever"; speed?: number; elapsed?: number; seek_time?: number; last_seek_time?: number | null; completions?: number; just_completed?: boolean; paused?: boolean }])[] }) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class AnimationTargetId extends ReflectComponent {
   static readonly path: "bevy_animation::AnimationTargetId";
   declare value: string;
 }
+export interface AnimationTargetId extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_animation::graph::AnimationGraph>)). */
 export declare class AnimationGraphHandle extends ReflectComponent {
   static readonly path: "bevy_animation::graph::AnimationGraphHandle";
   declare value: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null;
 }
+export interface AnimationGraphHandle extends ReflectRead<{ get value(): string | AssetRef<AnimationGraph> | null; set value(v: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null) }> {}
 
 /** Reflect tier: no field is plain data (main_animation: an enum with data (core::option::Option<petgraph::graph::NodeIndex>); transitions: not plain data (alloc::vec::Vec<bevy_animation::transition::AnimationTransition>)). */
 export declare class AnimationTransitions extends ReflectComponent {
@@ -69,6 +73,7 @@ export declare class AnimationTransitions extends ReflectComponent {
   declare main_animation: number | null;
   declare transitions: readonly ({ current_weight?: number; weight_decline_per_sec?: number; animation?: number })[];
 }
+export interface AnimationTransitions extends ReflectRead<{ main_animation: number | null; get transitions(): ({ current_weight: number; weight_decline_per_sec: number; animation: number })[]; set transitions(v: readonly ({ current_weight?: number; weight_decline_per_sec?: number; animation?: number })[]); get value(): { main_animation: number | null; transitions: ({ current_weight: number; weight_decline_per_sec: number; animation: number })[] }; set value(v: { main_animation?: number | null; transitions?: readonly ({ current_weight?: number; weight_decline_per_sec?: number; animation?: number })[] }) }> {}
 
 export declare class ContrastAdaptiveSharpening extends Component {
   static readonly path: "bevy_anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening";
@@ -104,12 +109,14 @@ export declare class AudioPlayer extends ReflectComponent {
   static readonly path: "bevy_audio::audio::AudioPlayer<bevy_audio::audio_source::AudioSource>";
   declare value: string | null;
 }
+export interface AudioPlayer extends ReflectRead<{ value: string | null }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (bevy_audio::audio::SpatialScale)). */
 export declare class DefaultSpatialScale extends ReflectComponent {
   static readonly path: "bevy_audio::audio::DefaultSpatialScale";
   declare value: readonly [number, number, number];
 }
+export interface DefaultSpatialScale extends ReflectRead<{ get value(): [number, number, number]; set value(v: readonly [number, number, number]) }> {}
 
 /** Holes, not columns: volume: an enum with data (bevy_audio::volume::Volume); spatial_scale: an enum with data (core::option::Option<bevy_audio::audio::SpatialScale>); start_position: an enum with data (core::option::Option<core::time::Duration>); duration: an enum with data (core::option::Option<core::time::Duration>). */
 export declare class PlaybackSettings extends Component {
@@ -121,7 +128,7 @@ export declare class PlaybackSettings extends Component {
   declare muted: bool;
   declare spatial: bool;
 }
-export interface PlaybackSettings extends Holes<{ volume: { Linear: number } | { Decibels: number }; spatial_scale: readonly [number, number, number] | null; start_position: number | null; duration: number | null }> {}
+export interface PlaybackSettings extends Holes<{ volume: { Linear: number } | { Decibels: number }; get spatial_scale(): [number, number, number] | null; set spatial_scale(v: readonly [number, number, number] | null); start_position: number | null; duration: number | null }> {}
 
 export declare class SpatialListener extends Component {
   static readonly path: "bevy_audio::audio::SpatialListener";
@@ -134,6 +141,7 @@ export declare class GlobalVolume extends ReflectComponent {
   static readonly path: "bevy_audio::volume::GlobalVolume";
   declare volume: { Linear: number } | { Decibels: number };
 }
+export interface GlobalVolume extends ReflectRead<{ volume: { Linear: number } | { Decibels: number }; get value(): { volume: { Linear: number } | { Decibels: number } }; set value(v: { volume?: { Linear: number } | { Decibels: number } }) }> {}
 
 /** Holes, not columns: viewport: an enum with data (core::option::Option<bevy_camera::camera::Viewport>); order: opaque to reflection (isize); computed: not plain data (bevy_camera::camera::ComputedCameraValues); output_mode: an enum with data (bevy_camera::camera::CameraOutputMode); clear_color: an enum with data (bevy_camera::clear_color::ClearColorConfig); sub_camera_view: an enum with data (core::option::Option<bevy_camera::camera::SubCameraView>). */
 export declare class Camera extends Component {
@@ -143,25 +151,28 @@ export declare class Camera extends Component {
   declare msaa_writeback: "Off" | "Auto" | "Always";
   declare invert_culling: bool;
 }
-export interface Camera extends Holes<{ viewport: { physical_position?: readonly [number, number]; physical_size?: readonly [number, number]; depth?: { start: number; end: number } } | null; order: number | string; computed: { clip_from_view?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; target_info?: { physical_size?: readonly [number, number]; scale_factor?: number } | null; old_viewport_size?: readonly [number, number] | null; old_sub_camera_view?: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null }; output_mode: { Write: { blend_state?: never | null; clear_color?: "Default" | { Custom: ColorValue } | "None" } } | "Skip"; clear_color: "Default" | { Custom: ColorValue } | "None"; sub_camera_view: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null }> {}
+export interface Camera extends Holes<{ get viewport(): { physical_position: [number, number]; physical_size: [number, number]; depth: { start: number; end: number } } | null; set viewport(v: { physical_position?: readonly [number, number]; physical_size?: readonly [number, number]; depth?: { start: number; end: number } } | null); get order(): number; set order(v: number | string); get computed(): { clip_from_view: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; target_info: { physical_size: [number, number]; scale_factor: number } | null; old_viewport_size: [number, number] | null; old_sub_camera_view: { full_size: [number, number]; offset: [number, number]; size: [number, number] } | null }; set computed(v: { clip_from_view?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; target_info?: { physical_size?: readonly [number, number]; scale_factor?: number } | null; old_viewport_size?: readonly [number, number] | null; old_sub_camera_view?: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null }); get output_mode(): { Write: { blend_state: never | null; clear_color: "Default" | { Custom: ColorRead } | "None" } } | "Skip"; set output_mode(v: { Write: { blend_state?: never | null; clear_color?: "Default" | { Custom: ColorValue } | "None" } } | "Skip"); get clear_color(): "Default" | { Custom: ColorRead } | "None"; set clear_color(v: "Default" | { Custom: ColorValue } | "None"); get sub_camera_view(): { full_size: [number, number]; offset: [number, number]; size: [number, number] } | null; set sub_camera_view(v: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null) }> {}
 
 /** Reflect tier: bevy_camera::camera::CameraMainTextureUsages is not a struct. */
 export declare class CameraMainTextureUsages extends ReflectComponent {
   static readonly path: "bevy_camera::camera::CameraMainTextureUsages";
   declare value: never;
 }
+export interface CameraMainTextureUsages extends ReflectRead<{ value: never }> {}
 
 /** Reflect tier: bevy_camera::camera::Exposure is not a struct. */
 export declare class Exposure extends ReflectComponent {
   static readonly path: "bevy_camera::camera::Exposure";
   declare value: { ev100?: number };
 }
+export interface Exposure extends ReflectRead<{ get value(): { ev100: number }; set value(v: { ev100?: number }) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class MainPassResolutionOverride extends ReflectComponent {
   static readonly path: "bevy_camera::camera::MainPassResolutionOverride";
   declare value: readonly [number, number];
 }
+export interface MainPassResolutionOverride extends ReflectRead<{ get value(): [number, number]; set value(v: readonly [number, number]) }> {}
 
 export declare class ManualTextureViewHandle extends Component {
   static readonly path: "bevy_camera::camera::ManualTextureViewHandle";
@@ -173,22 +184,26 @@ export declare class RenderTarget extends ReflectComponent {
   static readonly path: "bevy_camera::camera::RenderTarget";
   declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 }
+export interface RenderTarget extends ReflectRead<{ get value(): { Window: "Primary" | { Entity: Entity } } | { Image: { handle: string | AssetRef<Image> | null; scale_factor: number } } | { TextureView: number } | { None: { size: [number, number] } }; set value(v: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class ShadowLodOrigin extends ReflectComponent {
   static readonly path: "bevy_camera::camera::ShadowLodOrigin";
 }
+export interface ShadowLodOrigin extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_color::color::Color)). */
 export declare class ClearColor extends ReflectComponent {
   static readonly path: "bevy_camera::clear_color::ClearColor";
   declare value: ColorValue;
 }
+export interface ClearColor extends ReflectRead<{ get value(): ColorRead; set value(v: ColorValue) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Camera2d extends ReflectComponent {
   static readonly path: "bevy_camera::components::Camera2d";
 }
+export interface Camera2d extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (depth_load_op: an enum with data (bevy_camera::components::Camera3dDepthLoadOp); depth_texture_usages: not plain data (bevy_camera::components::Camera3dDepthTextureUsage)). */
 export declare class Camera3d extends ReflectComponent {
@@ -196,6 +211,7 @@ export declare class Camera3d extends ReflectComponent {
   declare depth_load_op: { Clear: number } | "Load";
   declare depth_texture_usages: number;
 }
+export interface Camera3d extends ReflectRead<{ depth_load_op: { Clear: number } | "Load"; depth_texture_usages: number; get value(): { depth_load_op: { Clear: number } | "Load"; depth_texture_usages: number }; set value(v: { depth_load_op?: { Clear: number } | "Load"; depth_texture_usages?: number }) }> {}
 
 export declare class CompositingSpace extends Component {
   static readonly path: "bevy_camera::components::CompositingSpace";
@@ -206,6 +222,7 @@ export declare class CompositingSpace extends Component {
 export declare class Hdr extends ReflectComponent {
   static readonly path: "bevy_camera::components::Hdr";
 }
+export interface Hdr extends ReflectRead<{ value: {  } }> {}
 
 export declare class Aabb extends Component {
   static readonly path: "bevy_camera::primitives::Aabb";
@@ -218,18 +235,21 @@ export declare class CascadesFrusta extends ReflectComponent {
   static readonly path: "bevy_camera::primitives::CascadesFrusta";
   declare frusta: readonly (readonly [Entity, readonly ({ half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] })[]])[];
 }
+export interface CascadesFrusta extends ReflectRead<{ get frusta(): ([Entity, ({ half_spaces: ({ normal_d: [number, number, number, number] })[] })[]])[]; set frusta(v: readonly (readonly [Entity, readonly ({ half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] })[]])[]); get value(): { frusta: ([Entity, ({ half_spaces: ({ normal_d: [number, number, number, number] })[] })[]])[] }; set value(v: { frusta?: readonly (readonly [Entity, readonly ({ half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] })[]])[] }) }> {}
 
 /** Reflect tier: no field is plain data (frusta: an array of bevy_camera::primitives::Frustum). */
 export declare class CubemapFrusta extends ReflectComponent {
   static readonly path: "bevy_camera::primitives::CubemapFrusta";
   declare frusta: readonly ({ half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] })[];
 }
+export interface CubemapFrusta extends ReflectRead<{ get frusta(): ({ half_spaces: ({ normal_d: [number, number, number, number] })[] })[]; set frusta(v: readonly ({ half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] })[]); get value(): { frusta: ({ half_spaces: ({ normal_d: [number, number, number, number] })[] })[] }; set value(v: { frusta?: readonly ({ half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] })[] }) }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (bevy_shape::view_frustum::ViewFrustum)). */
 export declare class Frustum extends ReflectComponent {
   static readonly path: "bevy_camera::primitives::Frustum";
   declare value: { half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] };
 }
+export interface Frustum extends ReflectRead<{ get value(): { half_spaces: ({ normal_d: [number, number, number, number] })[] }; set value(v: { half_spaces?: readonly ({ normal_d?: readonly [number, number, number, number] })[] }) }> {}
 
 export declare class Sphere extends Component {
   static readonly path: "bevy_camera::primitives::Sphere";
@@ -242,21 +262,25 @@ export declare class Projection extends ReflectComponent {
   static readonly path: "bevy_camera::projection::Projection";
   declare value: { Perspective: { fov?: number; aspect_ratio?: number; near?: number; far?: number; near_clip_plane?: readonly [number, number, number, number] } } | { Orthographic: { near?: number; far?: number; viewport_origin?: readonly [number, number]; scaling_mode?: "WindowSize" | { Fixed: { width?: number; height?: number } } | { AutoMin: { min_width?: number; min_height?: number } } | { AutoMax: { max_width?: number; max_height?: number } } | { FixedVertical: { viewport_height?: number } } | { FixedHorizontal: { viewport_width?: number } }; scale?: number; area?: { min?: readonly [number, number]; max?: readonly [number, number] } } } | { Custom: {  } };
 }
+export interface Projection extends ReflectRead<{ get value(): { Perspective: { fov: number; aspect_ratio: number; near: number; far: number; near_clip_plane: [number, number, number, number] } } | { Orthographic: { near: number; far: number; viewport_origin: [number, number]; scaling_mode: "WindowSize" | { Fixed: { width: number; height: number } } | { AutoMin: { min_width: number; min_height: number } } | { AutoMax: { max_width: number; max_height: number } } | { FixedVertical: { viewport_height: number } } | { FixedHorizontal: { viewport_width: number } }; scale: number; area: { min: [number, number]; max: [number, number] } } } | { Custom: {  } }; set value(v: { Perspective: { fov?: number; aspect_ratio?: number; near?: number; far?: number; near_clip_plane?: readonly [number, number, number, number] } } | { Orthographic: { near?: number; far?: number; viewport_origin?: readonly [number, number]; scaling_mode?: "WindowSize" | { Fixed: { width?: number; height?: number } } | { AutoMin: { min_width?: number; min_height?: number } } | { AutoMax: { max_width?: number; max_height?: number } } | { FixedVertical: { viewport_height?: number } } | { FixedHorizontal: { viewport_width?: number } }; scale?: number; area?: { min?: readonly [number, number]; max?: readonly [number, number] } } } | { Custom: {  } }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class CascadesVisibleEntities extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::CascadesVisibleEntities";
 }
+export interface CascadesVisibleEntities extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class CubemapVisibleEntities extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::CubemapVisibleEntities";
 }
+export interface CubemapVisibleEntities extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class DynamicSkinnedMeshBounds extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::DynamicSkinnedMeshBounds";
 }
+export interface DynamicSkinnedMeshBounds extends ReflectRead<{ value: {  } }> {}
 
 export declare class InheritedVisibility extends Component {
   static readonly path: "bevy_camera::visibility::InheritedVisibility";
@@ -267,6 +291,7 @@ export declare class InheritedVisibility extends Component {
 export declare class NoFrustumCulling extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::NoFrustumCulling";
 }
+export interface NoFrustumCulling extends ReflectRead<{ value: {  } }> {}
 
 export declare class ViewVisibility extends Component {
   static readonly path: "bevy_camera::visibility::ViewVisibility";
@@ -283,16 +308,19 @@ export declare class VisibilityClass extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::VisibilityClass";
   declare value: readonly never[];
 }
+export interface VisibilityClass extends ReflectRead<{ get value(): never[]; set value(v: readonly never[]) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class VisibleEntities extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::VisibleEntities";
 }
+export interface VisibleEntities extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class VisibleMeshEntities extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::VisibleMeshEntities";
 }
+export interface VisibleMeshEntities extends ReflectRead<{ value: {  } }> {}
 
 /** Holes, not columns: start_margin: opaque to reflection (core::ops::Range<f32>); end_margin: opaque to reflection (core::ops::Range<f32>). */
 export declare class VisibilityRange extends Component {
@@ -307,47 +335,56 @@ export declare class RenderLayers extends ReflectComponent {
   static readonly path: "bevy_camera::visibility::render_layers::RenderLayers";
   declare value: readonly (number | string)[];
 }
+export interface RenderLayers extends ReflectRead<{ get value(): number[]; set value(v: readonly (number | string)[]) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class DeferredPrepass extends ReflectComponent {
   static readonly path: "bevy_core_pipeline::prepass::DeferredPrepass";
 }
+export interface DeferredPrepass extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class DeferredPrepassDoubleBuffer extends ReflectComponent {
   static readonly path: "bevy_core_pipeline::prepass::DeferredPrepassDoubleBuffer";
 }
+export interface DeferredPrepassDoubleBuffer extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class DepthPrepass extends ReflectComponent {
   static readonly path: "bevy_core_pipeline::prepass::DepthPrepass";
 }
+export interface DepthPrepass extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class DepthPrepassDoubleBuffer extends ReflectComponent {
   static readonly path: "bevy_core_pipeline::prepass::DepthPrepassDoubleBuffer";
 }
+export interface DepthPrepassDoubleBuffer extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class MotionVectorPrepass extends ReflectComponent {
   static readonly path: "bevy_core_pipeline::prepass::MotionVectorPrepass";
 }
+export interface MotionVectorPrepass extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class NormalPrepass extends ReflectComponent {
   static readonly path: "bevy_core_pipeline::prepass::NormalPrepass";
 }
+export interface NormalPrepass extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class NoBackgroundMotionVectors extends ReflectComponent {
   static readonly path: "bevy_core_pipeline::prepass::background_motion_vectors::NoBackgroundMotionVectors";
 }
+export interface NoBackgroundMotionVectors extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class RootNonCameraView extends ReflectComponent {
   static readonly path: "bevy_core_pipeline::schedule::RootNonCameraView";
   declare value: readonly [];
 }
+export interface RootNonCameraView extends ReflectRead<{ get value(): []; set value(v: readonly []) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class FpsOverlayConfig extends ReflectComponent {
@@ -358,11 +395,13 @@ export declare class FpsOverlayConfig extends ReflectComponent {
   declare refresh_interval: number;
   declare frame_time_graph_config: { enabled?: boolean; min_fps?: number; target_fps?: number };
 }
+export interface FpsOverlayConfig extends ReflectRead<{ get text_config(): { font: { Handle: string | null } | { Family: string } | { Families: string } | { List: any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing: "None" | "AntiAliased"; font_features: { features: ([[number, number, number, number], number])[] }; font_variations: { variations: ([[number, number, number, number], number])[] } }; set text_config(v: { font?: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size?: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight?: number; width?: number; style?: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing?: "None" | "AntiAliased"; font_features?: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations?: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } }); get text_color(): ColorRead; set text_color(v: ColorValue); enabled: boolean; refresh_interval: number; get frame_time_graph_config(): { enabled: boolean; min_fps: number; target_fps: number }; set frame_time_graph_config(v: { enabled?: boolean; min_fps?: number; target_fps?: number }); get value(): { text_config: { font: { Handle: string | null } | { Family: string } | { Families: string } | { List: any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing: "None" | "AntiAliased"; font_features: { features: ([[number, number, number, number], number])[] }; font_variations: { variations: ([[number, number, number, number], number])[] } }; text_color: ColorRead; enabled: boolean; refresh_interval: number; frame_time_graph_config: { enabled: boolean; min_fps: number; target_fps: number } }; set value(v: { text_config?: { font?: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size?: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight?: number; width?: number; style?: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing?: "None" | "AntiAliased"; font_features?: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations?: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } }; text_color?: ColorValue; enabled?: boolean; refresh_interval?: number; frame_time_graph_config?: { enabled?: boolean; min_fps?: number; target_fps?: number } }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class InfiniteGrid extends ReflectComponent {
   static readonly path: "bevy_dev_tools::infinite_grid::InfiniteGrid";
 }
+export interface InfiniteGrid extends ReflectRead<{ value: {  } }> {}
 
 /** Holes, not columns: x_axis_color: an enum with data (bevy_color::color::Color); z_axis_color: an enum with data (bevy_color::color::Color); minor_line_color: an enum with data (bevy_color::color::Color); major_line_color: an enum with data (bevy_color::color::Color). */
 export declare class InfiniteGridSettings extends Component {
@@ -373,19 +412,21 @@ export declare class InfiniteGridSettings extends Component {
   declare scale: f32;
   declare major_line_interval: u32;
 }
-export interface InfiniteGridSettings extends Holes<{ x_axis_color: ColorValue; z_axis_color: ColorValue; minor_line_color: ColorValue; major_line_color: ColorValue }> {}
+export interface InfiniteGridSettings extends Holes<{ get x_axis_color(): ColorRead; set x_axis_color(v: ColorValue); get z_axis_color(): ColorRead; set z_axis_color(v: ColorValue); get minor_line_color(): ColorRead; set minor_line_color(v: ColorValue); get major_line_color(): ColorRead; set major_line_color(v: ColorValue) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class PointerDebugOverlay extends ReflectComponent {
   static readonly path: "bevy_dev_tools::picking_debug::PointerDebugOverlay";
   declare overlay: Entity;
 }
+export interface PointerDebugOverlay extends ReflectRead<{ overlay: Entity; get value(): { overlay: Entity }; set value(v: { overlay?: Entity }) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class PointerDebugOverlayOf extends ReflectComponent {
   static readonly path: "bevy_dev_tools::picking_debug::PointerDebugOverlayOf";
   declare pointer: Entity;
 }
+export interface PointerDebugOverlayOf extends ReflectRead<{ pointer: Entity; get value(): { pointer: Entity }; set value(v: { pointer?: Entity }) }> {}
 
 /** Holes, not columns: mode: an enum with data (bevy_dev_tools::render_debug::RenderDebugMode). */
 export declare class GlobalRenderDebugOverlay extends Resource {
@@ -394,7 +435,7 @@ export declare class GlobalRenderDebugOverlay extends Resource {
   declare enabled: bool;
   declare opacity: f32;
 }
-export interface GlobalRenderDebugOverlay extends Holes<{ mode: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } }> {}
+export interface GlobalRenderDebugOverlay extends Holes<{ get mode(): "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level: number } }; set mode(v: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } }) }> {}
 
 /** Holes, not columns: mode: an enum with data (bevy_dev_tools::render_debug::RenderDebugMode). */
 export declare class RenderDebugOverlay extends Component {
@@ -403,12 +444,13 @@ export declare class RenderDebugOverlay extends Component {
   declare enabled: bool;
   declare opacity: f32;
 }
-export interface RenderDebugOverlay extends Holes<{ mode: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } }> {}
+export interface RenderDebugOverlay extends Holes<{ get mode(): "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level: number } }; set mode(v: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Disabled extends ReflectComponent {
   static readonly path: "bevy_ecs::entity_disabling::Disabled";
 }
+export interface Disabled extends ReflectRead<{ value: {  } }> {}
 
 /** Immutable: read-only in TS. */
 export declare class ChildOf extends Component {
@@ -421,42 +463,49 @@ export declare class Children extends ReflectComponent {
   static readonly path: "bevy_ecs::hierarchy::Children";
   declare value: readonly Entity[];
 }
+export interface Children extends ReflectRead<{ get value(): Entity[]; set value(v: readonly Entity[]) }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (bevy_ecs::name::HashedStr)). */
 export declare class Name extends ReflectComponent {
   static readonly path: "bevy_ecs::name::Name";
   declare value: string;
 }
+export interface Name extends ReflectRead<{ value: unknown }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class ObservedBy extends ReflectComponent {
   static readonly path: "bevy_ecs::observer::distributed_storage::ObservedBy";
   declare value: readonly Entity[];
 }
+export interface ObservedBy extends ReflectRead<{ get value(): Entity[]; set value(v: readonly Entity[]) }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (bevy_ecs::component::info::ComponentId)). */
 export declare class IsResource extends ReflectComponent {
   static readonly path: "bevy_ecs::resource::IsResource";
   declare value: number | string;
 }
+export interface IsResource extends ReflectRead<{ get value(): number; set value(v: number | string) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class MainEntity extends ReflectComponent {
   static readonly path: "bevy_extract::sync_world::MainEntity";
   declare value: Entity;
 }
+export interface MainEntity extends ReflectRead<{ value: Entity }> {}
 
 /** Reflect tier: no field is plain data (color: an enum with data (core::option::Option<bevy_color::color::Color>)). */
 export declare class ShowAabbGizmo extends ReflectComponent {
   static readonly path: "bevy_gizmos::aabb::ShowAabbGizmo";
   declare color: ColorValue | null;
 }
+export interface ShowAabbGizmo extends ReflectRead<{ get color(): ColorRead | null; set color(v: ColorValue | null); get value(): { color: ColorRead | null }; set value(v: { color?: ColorValue | null }) }> {}
 
 /** Reflect tier: no field is plain data (color: an enum with data (core::option::Option<bevy_color::color::Color>)). */
 export declare class ShowFrustumGizmo extends ReflectComponent {
   static readonly path: "bevy_gizmos::frustum::ShowFrustumGizmo";
   declare color: ColorValue | null;
 }
+export interface ShowFrustumGizmo extends ReflectRead<{ get color(): ColorRead | null; set color(v: ColorValue | null); get value(): { color: ColorRead | null }; set value(v: { color?: ColorValue | null }) }> {}
 
 /** Holes, not columns: handle: an enum with data (bevy_asset::handle::Handle<bevy_gizmos::GizmoAsset>); line_config: not plain data (bevy_gizmos::config::GizmoLineConfig). */
 export declare class Gizmo extends Component {
@@ -464,23 +513,26 @@ export declare class Gizmo extends Component {
   static readonly tsxProps: { handle?: string | AssetRef<AssetFields<"bevy_gizmos::GizmoAsset", {}>> | AssetValue<AssetFields<"bevy_gizmos::GizmoAsset", {}>> | null; line_config?: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } };
   declare depth_bias: f32;
 }
-export interface Gizmo extends Holes<{ handle: string | AssetRef<AssetFields<"bevy_gizmos::GizmoAsset", {}>> | AssetValue<AssetFields<"bevy_gizmos::GizmoAsset", {}>> | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } }> {}
+export interface Gizmo extends Holes<{ get handle(): string | AssetRef<AssetFields<"bevy_gizmos::GizmoAsset", {}>> | null; set handle(v: string | AssetRef<AssetFields<"bevy_gizmos::GizmoAsset", {}>> | AssetValue<AssetFields<"bevy_gizmos::GizmoAsset", {}>> | null); get line_config(): { width: number; perspective: boolean; style: "Solid" | "Dotted" | { Dashed: { gap_scale: number; line_scale: number } }; joints: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset: number }; set line_config(v: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number }) }> {}
 
 /** Reflect tier: no field is plain data (color: an enum with data (core::option::Option<bevy_color::color::Color>)). */
 export declare class ShowSkinnedMeshBoundsGizmo extends ReflectComponent {
   static readonly path: "bevy_gizmos::skinned_mesh_bounds::ShowSkinnedMeshBoundsGizmo";
   declare color: ColorValue | null;
 }
+export interface ShowSkinnedMeshBoundsGizmo extends ReflectRead<{ get color(): ColorRead | null; set color(v: ColorValue | null); get value(): { color: ColorRead | null }; set value(v: { color?: ColorValue | null }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class TransformGizmoCamera extends ReflectComponent {
   static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoCamera";
 }
+export interface TransformGizmoCamera extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class TransformGizmoFocus extends ReflectComponent {
   static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoFocus";
 }
+export interface TransformGizmoFocus extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class TransformGizmoSettings extends ReflectComponent {
@@ -497,6 +549,7 @@ export declare class TransformGizmoSettings extends ReflectComponent {
   declare screen_scale_factor: number;
   declare scale_sensitivity: number;
 }
+export interface TransformGizmoSettings extends ReflectRead<{ mode: "Translate" | "Rotate" | "Scale"; space: "World" | "Local"; axis_length: number; rotate_ring_radius: number; axis_hit_distance: number; snap_translate: number | null; snap_rotate: number | null; snap_scale: number | null; confine_cursor: boolean; screen_scale_factor: number; scale_sensitivity: number; get value(): { mode: "Translate" | "Rotate" | "Scale"; space: "World" | "Local"; axis_length: number; rotate_ring_radius: number; axis_hit_distance: number; snap_translate: number | null; snap_rotate: number | null; snap_scale: number | null; confine_cursor: boolean; screen_scale_factor: number; scale_sensitivity: number }; set value(v: { mode?: "Translate" | "Rotate" | "Scale"; space?: "World" | "Local"; axis_length?: number; rotate_ring_radius?: number; axis_hit_distance?: number; snap_translate?: number | null; snap_rotate?: number | null; snap_scale?: number | null; confine_cursor?: boolean; screen_scale_factor?: number; scale_sensitivity?: number }) }> {}
 
 /** Holes, not columns: hovered_axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); start_transform: not plain data (bevy_transform::components::transform::Transform); entity: an enum with data (core::option::Option<bevy_ecs::entity::Entity>). */
 export declare class TransformGizmoState extends Resource {
@@ -506,49 +559,56 @@ export declare class TransformGizmoState extends Resource {
   declare readonly drag_start_world: Vec3;
   declare readonly gizmo_origin: Vec3;
 }
-export interface TransformGizmoState extends Holes<{ hovered_axis: "X" | "Y" | "Z" | "View" | null; axis: "X" | "Y" | "Z" | "View" | null; start_transform: { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] }; entity: Entity | null }> {}
+export interface TransformGizmoState extends Holes<{ hovered_axis: "X" | "Y" | "Z" | "View" | null; axis: "X" | "Y" | "Z" | "View" | null; get start_transform(): { translation: [number, number, number]; rotation: [number, number, number, number]; scale: [number, number, number] }; set start_transform(v: { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] }); entity: Entity | null }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfExtras extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfExtras";
   declare value: string;
 }
+export interface GltfExtras extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfMaterialExtras extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfMaterialExtras";
   declare value: string;
 }
+export interface GltfMaterialExtras extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfMaterialName extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfMaterialName";
   declare value: string;
 }
+export interface GltfMaterialName extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfMeshExtras extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfMeshExtras";
   declare value: string;
 }
+export interface GltfMeshExtras extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfMeshName extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfMeshName";
   declare value: string;
 }
+export interface GltfMeshName extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfSceneExtras extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfSceneExtras";
   declare value: string;
 }
+export interface GltfSceneExtras extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfSceneName extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfSceneName";
   declare value: string;
 }
+export interface GltfSceneName extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (vendor_id: an enum with data (core::option::Option<u16>); product_id: an enum with data (core::option::Option<u16>); digital: not plain data (bevy_input::button_input::ButtonInput<bevy_input::gamepad::GamepadButton>); analog: not plain data (bevy_input::axis::Axis<bevy_input::gamepad::GamepadInput>)). */
 export declare class Gamepad extends ReflectComponent {
@@ -558,6 +618,7 @@ export declare class Gamepad extends ReflectComponent {
   declare digital: { pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] };
   declare analog: { axis_data?: readonly (readonly [{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] };
 }
+export interface Gamepad extends ReflectRead<{ vendor_id: number | null; product_id: number | null; get digital(): { pressed: ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed: ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released: ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; set digital(v: { pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }); get analog(): { axis_data: ([{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] }; set analog(v: { axis_data?: readonly (readonly [{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] }); get value(): { vendor_id: number | null; product_id: number | null; digital: { pressed: ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed: ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released: ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog: { axis_data: ([{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] } }; set value(v: { vendor_id?: number | null; product_id?: number | null; digital?: { pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog?: { axis_data?: readonly (readonly [{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] } }) }> {}
 
 /** Reflect tier: no field is plain data (default_button_settings: not plain data (bevy_input::gamepad::ButtonSettings); default_axis_settings: not plain data (bevy_input::gamepad::AxisSettings); default_button_axis_settings: not plain data (bevy_input::gamepad::ButtonAxisSettings); button_settings: not plain data (bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadButton, bevy_input::gamepad::ButtonSettings, bevy_platform::hash::FixedHasher>); axis_settings: not plain data (bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadAxis, bevy_input::gamepad::AxisSettings, bevy_platform::hash::FixedHasher>); button_axis_settings: not plain data (bevy_platform::collections::HashMap<bevy_input::gamepad::GamepadButton, bevy_input::gamepad::ButtonAxisSettings, bevy_platform::hash::FixedHasher>)). */
 export declare class GamepadSettings extends ReflectComponent {
@@ -569,6 +630,7 @@ export declare class GamepadSettings extends ReflectComponent {
   declare axis_settings: readonly (readonly ["LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number }, { livezone_upperbound?: number; deadzone_upperbound?: number; deadzone_lowerbound?: number; livezone_lowerbound?: number; threshold?: number }])[];
   declare button_axis_settings: readonly (readonly ["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { high?: number; low?: number; threshold?: number }])[];
 }
+export interface GamepadSettings extends ReflectRead<{ get default_button_settings(): { press_threshold: number; release_threshold: number }; set default_button_settings(v: { press_threshold?: number; release_threshold?: number }); get default_axis_settings(): { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }; set default_axis_settings(v: { livezone_upperbound?: number; deadzone_upperbound?: number; deadzone_lowerbound?: number; livezone_lowerbound?: number; threshold?: number }); get default_button_axis_settings(): { high: number; low: number; threshold: number }; set default_button_axis_settings(v: { high?: number; low?: number; threshold?: number }); get button_settings(): (["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { press_threshold: number; release_threshold: number }])[]; set button_settings(v: readonly (readonly ["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { press_threshold?: number; release_threshold?: number }])[]); get axis_settings(): (["LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number }, { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }])[]; set axis_settings(v: readonly (readonly ["LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number }, { livezone_upperbound?: number; deadzone_upperbound?: number; deadzone_lowerbound?: number; livezone_lowerbound?: number; threshold?: number }])[]); get button_axis_settings(): (["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { high: number; low: number; threshold: number }])[]; set button_axis_settings(v: readonly (readonly ["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { high?: number; low?: number; threshold?: number }])[]); get value(): { default_button_settings: { press_threshold: number; release_threshold: number }; default_axis_settings: { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }; default_button_axis_settings: { high: number; low: number; threshold: number }; button_settings: (["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { press_threshold: number; release_threshold: number }])[]; axis_settings: (["LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number }, { livezone_upperbound: number; deadzone_upperbound: number; deadzone_lowerbound: number; livezone_lowerbound: number; threshold: number }])[]; button_axis_settings: (["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { high: number; low: number; threshold: number }])[] }; set value(v: { default_button_settings?: { press_threshold?: number; release_threshold?: number }; default_axis_settings?: { livezone_upperbound?: number; deadzone_upperbound?: number; deadzone_lowerbound?: number; livezone_lowerbound?: number; threshold?: number }; default_button_axis_settings?: { high?: number; low?: number; threshold?: number }; button_settings?: readonly (readonly ["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { press_threshold?: number; release_threshold?: number }])[]; axis_settings?: readonly (readonly ["LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number }, { livezone_upperbound?: number; deadzone_upperbound?: number; deadzone_lowerbound?: number; livezone_lowerbound?: number; threshold?: number }])[]; button_axis_settings?: readonly (readonly ["South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number }, { high?: number; low?: number; threshold?: number }])[] }) }> {}
 
 export declare class AccumulatedMouseMotion extends Resource {
   static readonly path: "bevy_input::mouse::AccumulatedMouseMotion";
@@ -593,6 +655,7 @@ export declare class FocusedInputKeyboardInput extends ReflectComponent {
   declare input: { key_code?: { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } } | "Backquote" | "Backslash" | "BracketLeft" | "BracketRight" | "Comma" | "Digit0" | "Digit1" | "Digit2" | "Digit3" | "Digit4" | "Digit5" | "Digit6" | "Digit7" | "Digit8" | "Digit9" | "Equal" | "IntlBackslash" | "IntlRo" | "IntlYen" | "KeyA" | "KeyB" | "KeyC" | "KeyD" | "KeyE" | "KeyF" | "KeyG" | "KeyH" | "KeyI" | "KeyJ" | "KeyK" | "KeyL" | "KeyM" | "KeyN" | "KeyO" | "KeyP" | "KeyQ" | "KeyR" | "KeyS" | "KeyT" | "KeyU" | "KeyV" | "KeyW" | "KeyX" | "KeyY" | "KeyZ" | "Minus" | "Period" | "Quote" | "Semicolon" | "Slash" | "AltLeft" | "AltRight" | "Backspace" | "CapsLock" | "ContextMenu" | "ControlLeft" | "ControlRight" | "Enter" | "SuperLeft" | "SuperRight" | "ShiftLeft" | "ShiftRight" | "Space" | "Tab" | "Convert" | "KanaMode" | "Lang1" | "Lang2" | "Lang3" | "Lang4" | "Lang5" | "NonConvert" | "Delete" | "End" | "Help" | "Home" | "Insert" | "PageDown" | "PageUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "NumLock" | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4" | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9" | "NumpadAdd" | "NumpadBackspace" | "NumpadClear" | "NumpadClearEntry" | "NumpadComma" | "NumpadDecimal" | "NumpadDivide" | "NumpadEnter" | "NumpadEqual" | "NumpadHash" | "NumpadMemoryAdd" | "NumpadMemoryClear" | "NumpadMemoryRecall" | "NumpadMemoryStore" | "NumpadMemorySubtract" | "NumpadMultiply" | "NumpadParenLeft" | "NumpadParenRight" | "NumpadStar" | "NumpadSubtract" | "Escape" | "Fn" | "FnLock" | "PrintScreen" | "ScrollLock" | "Pause" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "Eject" | "LaunchApp1" | "LaunchApp2" | "LaunchMail" | "MediaPlayPause" | "MediaSelect" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "Power" | "Sleep" | "AudioVolumeDown" | "AudioVolumeMute" | "AudioVolumeUp" | "WakeUp" | "Meta" | "Hyper" | "Turbo" | "Abort" | "Resume" | "Suspend" | "Again" | "Copy" | "Cut" | "Find" | "Open" | "Paste" | "Props" | "Select" | "Undo" | "Hiragana" | "Katakana" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; logical_key?: { Character: string } | { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } | { Web: string } } | { Dead: string | null } | "Alt" | "AltGraph" | "CapsLock" | "Control" | "Fn" | "FnLock" | "NumLock" | "ScrollLock" | "Shift" | "Symbol" | "SymbolLock" | "Meta" | "Hyper" | "Super" | "Enter" | "Tab" | "Space" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "End" | "Home" | "PageDown" | "PageUp" | "Backspace" | "Clear" | "Copy" | "CrSel" | "Cut" | "Delete" | "EraseEof" | "ExSel" | "Insert" | "Paste" | "Redo" | "Undo" | "Accept" | "Again" | "Attn" | "Cancel" | "ContextMenu" | "Escape" | "Execute" | "Find" | "Help" | "Pause" | "Play" | "Props" | "Select" | "ZoomIn" | "ZoomOut" | "BrightnessDown" | "BrightnessUp" | "Eject" | "LogOff" | "Power" | "PowerOff" | "PrintScreen" | "Hibernate" | "Standby" | "WakeUp" | "AllCandidates" | "Alphanumeric" | "CodeInput" | "Compose" | "Convert" | "FinalMode" | "GroupFirst" | "GroupLast" | "GroupNext" | "GroupPrevious" | "ModeChange" | "NextCandidate" | "NonConvert" | "PreviousCandidate" | "Process" | "SingleCandidate" | "HangulMode" | "HanjaMode" | "JunjaMode" | "Eisu" | "Hankaku" | "Hiragana" | "HiraganaKatakana" | "KanaMode" | "KanjiMode" | "Katakana" | "Romaji" | "Zenkaku" | "ZenkakuHankaku" | "Soft1" | "Soft2" | "Soft3" | "Soft4" | "ChannelDown" | "ChannelUp" | "Close" | "MailForward" | "MailReply" | "MailSend" | "MediaClose" | "MediaFastForward" | "MediaPause" | "MediaPlay" | "MediaPlayPause" | "MediaRecord" | "MediaRewind" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "New" | "Open" | "Print" | "Save" | "SpellCheck" | "Key11" | "Key12" | "AudioBalanceLeft" | "AudioBalanceRight" | "AudioBassBoostDown" | "AudioBassBoostToggle" | "AudioBassBoostUp" | "AudioFaderFront" | "AudioFaderRear" | "AudioSurroundModeNext" | "AudioTrebleDown" | "AudioTrebleUp" | "AudioVolumeDown" | "AudioVolumeUp" | "AudioVolumeMute" | "MicrophoneToggle" | "MicrophoneVolumeDown" | "MicrophoneVolumeUp" | "MicrophoneVolumeMute" | "SpeechCorrectionList" | "SpeechInputToggle" | "LaunchApplication1" | "LaunchApplication2" | "LaunchCalendar" | "LaunchContacts" | "LaunchMail" | "LaunchMediaPlayer" | "LaunchMusicPlayer" | "LaunchPhone" | "LaunchScreenSaver" | "LaunchSpreadsheet" | "LaunchWebBrowser" | "LaunchWebCam" | "LaunchWordProcessor" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "AppSwitch" | "Call" | "Camera" | "CameraFocus" | "EndCall" | "GoBack" | "GoHome" | "HeadsetHook" | "LastNumberRedial" | "Notification" | "MannerMode" | "VoiceDial" | "TV" | "TV3DMode" | "TVAntennaCable" | "TVAudioDescription" | "TVAudioDescriptionMixDown" | "TVAudioDescriptionMixUp" | "TVContentsMenu" | "TVDataService" | "TVInput" | "TVInputComponent1" | "TVInputComponent2" | "TVInputComposite1" | "TVInputComposite2" | "TVInputHDMI1" | "TVInputHDMI2" | "TVInputHDMI3" | "TVInputHDMI4" | "TVInputVGA1" | "TVMediaContext" | "TVNetwork" | "TVNumberEntry" | "TVPower" | "TVRadioService" | "TVSatellite" | "TVSatelliteBS" | "TVSatelliteCS" | "TVSatelliteToggle" | "TVTerrestrialAnalog" | "TVTerrestrialDigital" | "TVTimer" | "AVRInput" | "AVRPower" | "ColorF0Red" | "ColorF1Green" | "ColorF2Yellow" | "ColorF3Blue" | "ColorF4Grey" | "ColorF5Brown" | "ClosedCaptionToggle" | "Dimmer" | "DisplaySwap" | "DVR" | "Exit" | "FavoriteClear0" | "FavoriteClear1" | "FavoriteClear2" | "FavoriteClear3" | "FavoriteRecall0" | "FavoriteRecall1" | "FavoriteRecall2" | "FavoriteRecall3" | "FavoriteStore0" | "FavoriteStore1" | "FavoriteStore2" | "FavoriteStore3" | "Guide" | "GuideNextDay" | "GuidePreviousDay" | "Info" | "InstantReplay" | "Link" | "ListProgram" | "LiveContent" | "Lock" | "MediaApps" | "MediaAudioTrack" | "MediaLast" | "MediaSkipBackward" | "MediaSkipForward" | "MediaStepBackward" | "MediaStepForward" | "MediaTopMenu" | "NavigateIn" | "NavigateNext" | "NavigateOut" | "NavigatePrevious" | "NextFavoriteChannel" | "NextUserProfile" | "OnDemand" | "Pairing" | "PinPDown" | "PinPMove" | "PinPToggle" | "PinPUp" | "PlaySpeedDown" | "PlaySpeedReset" | "PlaySpeedUp" | "RandomToggle" | "RcLowBattery" | "RecordSpeedNext" | "RfBypass" | "ScanChannelsToggle" | "ScreenModeNext" | "Settings" | "SplitScreenToggle" | "STBInput" | "STBPower" | "Subtitle" | "Teletext" | "VideoModeNext" | "Wink" | "ZoomToggle" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; state?: "Pressed" | "Released"; text?: string | null; repeat?: boolean; window?: Entity };
   declare window: Entity;
 }
+export interface FocusedInputKeyboardInput extends ReflectRead<{ focused_entity: Entity; get input(): { key_code: { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } } | "Backquote" | "Backslash" | "BracketLeft" | "BracketRight" | "Comma" | "Digit0" | "Digit1" | "Digit2" | "Digit3" | "Digit4" | "Digit5" | "Digit6" | "Digit7" | "Digit8" | "Digit9" | "Equal" | "IntlBackslash" | "IntlRo" | "IntlYen" | "KeyA" | "KeyB" | "KeyC" | "KeyD" | "KeyE" | "KeyF" | "KeyG" | "KeyH" | "KeyI" | "KeyJ" | "KeyK" | "KeyL" | "KeyM" | "KeyN" | "KeyO" | "KeyP" | "KeyQ" | "KeyR" | "KeyS" | "KeyT" | "KeyU" | "KeyV" | "KeyW" | "KeyX" | "KeyY" | "KeyZ" | "Minus" | "Period" | "Quote" | "Semicolon" | "Slash" | "AltLeft" | "AltRight" | "Backspace" | "CapsLock" | "ContextMenu" | "ControlLeft" | "ControlRight" | "Enter" | "SuperLeft" | "SuperRight" | "ShiftLeft" | "ShiftRight" | "Space" | "Tab" | "Convert" | "KanaMode" | "Lang1" | "Lang2" | "Lang3" | "Lang4" | "Lang5" | "NonConvert" | "Delete" | "End" | "Help" | "Home" | "Insert" | "PageDown" | "PageUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "NumLock" | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4" | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9" | "NumpadAdd" | "NumpadBackspace" | "NumpadClear" | "NumpadClearEntry" | "NumpadComma" | "NumpadDecimal" | "NumpadDivide" | "NumpadEnter" | "NumpadEqual" | "NumpadHash" | "NumpadMemoryAdd" | "NumpadMemoryClear" | "NumpadMemoryRecall" | "NumpadMemoryStore" | "NumpadMemorySubtract" | "NumpadMultiply" | "NumpadParenLeft" | "NumpadParenRight" | "NumpadStar" | "NumpadSubtract" | "Escape" | "Fn" | "FnLock" | "PrintScreen" | "ScrollLock" | "Pause" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "Eject" | "LaunchApp1" | "LaunchApp2" | "LaunchMail" | "MediaPlayPause" | "MediaSelect" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "Power" | "Sleep" | "AudioVolumeDown" | "AudioVolumeMute" | "AudioVolumeUp" | "WakeUp" | "Meta" | "Hyper" | "Turbo" | "Abort" | "Resume" | "Suspend" | "Again" | "Copy" | "Cut" | "Find" | "Open" | "Paste" | "Props" | "Select" | "Undo" | "Hiragana" | "Katakana" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; logical_key: { Character: string } | { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } | { Web: string } } | { Dead: string | null } | "Alt" | "AltGraph" | "CapsLock" | "Control" | "Fn" | "FnLock" | "NumLock" | "ScrollLock" | "Shift" | "Symbol" | "SymbolLock" | "Meta" | "Hyper" | "Super" | "Enter" | "Tab" | "Space" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "End" | "Home" | "PageDown" | "PageUp" | "Backspace" | "Clear" | "Copy" | "CrSel" | "Cut" | "Delete" | "EraseEof" | "ExSel" | "Insert" | "Paste" | "Redo" | "Undo" | "Accept" | "Again" | "Attn" | "Cancel" | "ContextMenu" | "Escape" | "Execute" | "Find" | "Help" | "Pause" | "Play" | "Props" | "Select" | "ZoomIn" | "ZoomOut" | "BrightnessDown" | "BrightnessUp" | "Eject" | "LogOff" | "Power" | "PowerOff" | "PrintScreen" | "Hibernate" | "Standby" | "WakeUp" | "AllCandidates" | "Alphanumeric" | "CodeInput" | "Compose" | "Convert" | "FinalMode" | "GroupFirst" | "GroupLast" | "GroupNext" | "GroupPrevious" | "ModeChange" | "NextCandidate" | "NonConvert" | "PreviousCandidate" | "Process" | "SingleCandidate" | "HangulMode" | "HanjaMode" | "JunjaMode" | "Eisu" | "Hankaku" | "Hiragana" | "HiraganaKatakana" | "KanaMode" | "KanjiMode" | "Katakana" | "Romaji" | "Zenkaku" | "ZenkakuHankaku" | "Soft1" | "Soft2" | "Soft3" | "Soft4" | "ChannelDown" | "ChannelUp" | "Close" | "MailForward" | "MailReply" | "MailSend" | "MediaClose" | "MediaFastForward" | "MediaPause" | "MediaPlay" | "MediaPlayPause" | "MediaRecord" | "MediaRewind" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "New" | "Open" | "Print" | "Save" | "SpellCheck" | "Key11" | "Key12" | "AudioBalanceLeft" | "AudioBalanceRight" | "AudioBassBoostDown" | "AudioBassBoostToggle" | "AudioBassBoostUp" | "AudioFaderFront" | "AudioFaderRear" | "AudioSurroundModeNext" | "AudioTrebleDown" | "AudioTrebleUp" | "AudioVolumeDown" | "AudioVolumeUp" | "AudioVolumeMute" | "MicrophoneToggle" | "MicrophoneVolumeDown" | "MicrophoneVolumeUp" | "MicrophoneVolumeMute" | "SpeechCorrectionList" | "SpeechInputToggle" | "LaunchApplication1" | "LaunchApplication2" | "LaunchCalendar" | "LaunchContacts" | "LaunchMail" | "LaunchMediaPlayer" | "LaunchMusicPlayer" | "LaunchPhone" | "LaunchScreenSaver" | "LaunchSpreadsheet" | "LaunchWebBrowser" | "LaunchWebCam" | "LaunchWordProcessor" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "AppSwitch" | "Call" | "Camera" | "CameraFocus" | "EndCall" | "GoBack" | "GoHome" | "HeadsetHook" | "LastNumberRedial" | "Notification" | "MannerMode" | "VoiceDial" | "TV" | "TV3DMode" | "TVAntennaCable" | "TVAudioDescription" | "TVAudioDescriptionMixDown" | "TVAudioDescriptionMixUp" | "TVContentsMenu" | "TVDataService" | "TVInput" | "TVInputComponent1" | "TVInputComponent2" | "TVInputComposite1" | "TVInputComposite2" | "TVInputHDMI1" | "TVInputHDMI2" | "TVInputHDMI3" | "TVInputHDMI4" | "TVInputVGA1" | "TVMediaContext" | "TVNetwork" | "TVNumberEntry" | "TVPower" | "TVRadioService" | "TVSatellite" | "TVSatelliteBS" | "TVSatelliteCS" | "TVSatelliteToggle" | "TVTerrestrialAnalog" | "TVTerrestrialDigital" | "TVTimer" | "AVRInput" | "AVRPower" | "ColorF0Red" | "ColorF1Green" | "ColorF2Yellow" | "ColorF3Blue" | "ColorF4Grey" | "ColorF5Brown" | "ClosedCaptionToggle" | "Dimmer" | "DisplaySwap" | "DVR" | "Exit" | "FavoriteClear0" | "FavoriteClear1" | "FavoriteClear2" | "FavoriteClear3" | "FavoriteRecall0" | "FavoriteRecall1" | "FavoriteRecall2" | "FavoriteRecall3" | "FavoriteStore0" | "FavoriteStore1" | "FavoriteStore2" | "FavoriteStore3" | "Guide" | "GuideNextDay" | "GuidePreviousDay" | "Info" | "InstantReplay" | "Link" | "ListProgram" | "LiveContent" | "Lock" | "MediaApps" | "MediaAudioTrack" | "MediaLast" | "MediaSkipBackward" | "MediaSkipForward" | "MediaStepBackward" | "MediaStepForward" | "MediaTopMenu" | "NavigateIn" | "NavigateNext" | "NavigateOut" | "NavigatePrevious" | "NextFavoriteChannel" | "NextUserProfile" | "OnDemand" | "Pairing" | "PinPDown" | "PinPMove" | "PinPToggle" | "PinPUp" | "PlaySpeedDown" | "PlaySpeedReset" | "PlaySpeedUp" | "RandomToggle" | "RcLowBattery" | "RecordSpeedNext" | "RfBypass" | "ScanChannelsToggle" | "ScreenModeNext" | "Settings" | "SplitScreenToggle" | "STBInput" | "STBPower" | "Subtitle" | "Teletext" | "VideoModeNext" | "Wink" | "ZoomToggle" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; state: "Pressed" | "Released"; text: string | null; repeat: boolean; window: Entity }; set input(v: { key_code?: { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } } | "Backquote" | "Backslash" | "BracketLeft" | "BracketRight" | "Comma" | "Digit0" | "Digit1" | "Digit2" | "Digit3" | "Digit4" | "Digit5" | "Digit6" | "Digit7" | "Digit8" | "Digit9" | "Equal" | "IntlBackslash" | "IntlRo" | "IntlYen" | "KeyA" | "KeyB" | "KeyC" | "KeyD" | "KeyE" | "KeyF" | "KeyG" | "KeyH" | "KeyI" | "KeyJ" | "KeyK" | "KeyL" | "KeyM" | "KeyN" | "KeyO" | "KeyP" | "KeyQ" | "KeyR" | "KeyS" | "KeyT" | "KeyU" | "KeyV" | "KeyW" | "KeyX" | "KeyY" | "KeyZ" | "Minus" | "Period" | "Quote" | "Semicolon" | "Slash" | "AltLeft" | "AltRight" | "Backspace" | "CapsLock" | "ContextMenu" | "ControlLeft" | "ControlRight" | "Enter" | "SuperLeft" | "SuperRight" | "ShiftLeft" | "ShiftRight" | "Space" | "Tab" | "Convert" | "KanaMode" | "Lang1" | "Lang2" | "Lang3" | "Lang4" | "Lang5" | "NonConvert" | "Delete" | "End" | "Help" | "Home" | "Insert" | "PageDown" | "PageUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "NumLock" | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4" | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9" | "NumpadAdd" | "NumpadBackspace" | "NumpadClear" | "NumpadClearEntry" | "NumpadComma" | "NumpadDecimal" | "NumpadDivide" | "NumpadEnter" | "NumpadEqual" | "NumpadHash" | "NumpadMemoryAdd" | "NumpadMemoryClear" | "NumpadMemoryRecall" | "NumpadMemoryStore" | "NumpadMemorySubtract" | "NumpadMultiply" | "NumpadParenLeft" | "NumpadParenRight" | "NumpadStar" | "NumpadSubtract" | "Escape" | "Fn" | "FnLock" | "PrintScreen" | "ScrollLock" | "Pause" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "Eject" | "LaunchApp1" | "LaunchApp2" | "LaunchMail" | "MediaPlayPause" | "MediaSelect" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "Power" | "Sleep" | "AudioVolumeDown" | "AudioVolumeMute" | "AudioVolumeUp" | "WakeUp" | "Meta" | "Hyper" | "Turbo" | "Abort" | "Resume" | "Suspend" | "Again" | "Copy" | "Cut" | "Find" | "Open" | "Paste" | "Props" | "Select" | "Undo" | "Hiragana" | "Katakana" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; logical_key?: { Character: string } | { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } | { Web: string } } | { Dead: string | null } | "Alt" | "AltGraph" | "CapsLock" | "Control" | "Fn" | "FnLock" | "NumLock" | "ScrollLock" | "Shift" | "Symbol" | "SymbolLock" | "Meta" | "Hyper" | "Super" | "Enter" | "Tab" | "Space" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "End" | "Home" | "PageDown" | "PageUp" | "Backspace" | "Clear" | "Copy" | "CrSel" | "Cut" | "Delete" | "EraseEof" | "ExSel" | "Insert" | "Paste" | "Redo" | "Undo" | "Accept" | "Again" | "Attn" | "Cancel" | "ContextMenu" | "Escape" | "Execute" | "Find" | "Help" | "Pause" | "Play" | "Props" | "Select" | "ZoomIn" | "ZoomOut" | "BrightnessDown" | "BrightnessUp" | "Eject" | "LogOff" | "Power" | "PowerOff" | "PrintScreen" | "Hibernate" | "Standby" | "WakeUp" | "AllCandidates" | "Alphanumeric" | "CodeInput" | "Compose" | "Convert" | "FinalMode" | "GroupFirst" | "GroupLast" | "GroupNext" | "GroupPrevious" | "ModeChange" | "NextCandidate" | "NonConvert" | "PreviousCandidate" | "Process" | "SingleCandidate" | "HangulMode" | "HanjaMode" | "JunjaMode" | "Eisu" | "Hankaku" | "Hiragana" | "HiraganaKatakana" | "KanaMode" | "KanjiMode" | "Katakana" | "Romaji" | "Zenkaku" | "ZenkakuHankaku" | "Soft1" | "Soft2" | "Soft3" | "Soft4" | "ChannelDown" | "ChannelUp" | "Close" | "MailForward" | "MailReply" | "MailSend" | "MediaClose" | "MediaFastForward" | "MediaPause" | "MediaPlay" | "MediaPlayPause" | "MediaRecord" | "MediaRewind" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "New" | "Open" | "Print" | "Save" | "SpellCheck" | "Key11" | "Key12" | "AudioBalanceLeft" | "AudioBalanceRight" | "AudioBassBoostDown" | "AudioBassBoostToggle" | "AudioBassBoostUp" | "AudioFaderFront" | "AudioFaderRear" | "AudioSurroundModeNext" | "AudioTrebleDown" | "AudioTrebleUp" | "AudioVolumeDown" | "AudioVolumeUp" | "AudioVolumeMute" | "MicrophoneToggle" | "MicrophoneVolumeDown" | "MicrophoneVolumeUp" | "MicrophoneVolumeMute" | "SpeechCorrectionList" | "SpeechInputToggle" | "LaunchApplication1" | "LaunchApplication2" | "LaunchCalendar" | "LaunchContacts" | "LaunchMail" | "LaunchMediaPlayer" | "LaunchMusicPlayer" | "LaunchPhone" | "LaunchScreenSaver" | "LaunchSpreadsheet" | "LaunchWebBrowser" | "LaunchWebCam" | "LaunchWordProcessor" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "AppSwitch" | "Call" | "Camera" | "CameraFocus" | "EndCall" | "GoBack" | "GoHome" | "HeadsetHook" | "LastNumberRedial" | "Notification" | "MannerMode" | "VoiceDial" | "TV" | "TV3DMode" | "TVAntennaCable" | "TVAudioDescription" | "TVAudioDescriptionMixDown" | "TVAudioDescriptionMixUp" | "TVContentsMenu" | "TVDataService" | "TVInput" | "TVInputComponent1" | "TVInputComponent2" | "TVInputComposite1" | "TVInputComposite2" | "TVInputHDMI1" | "TVInputHDMI2" | "TVInputHDMI3" | "TVInputHDMI4" | "TVInputVGA1" | "TVMediaContext" | "TVNetwork" | "TVNumberEntry" | "TVPower" | "TVRadioService" | "TVSatellite" | "TVSatelliteBS" | "TVSatelliteCS" | "TVSatelliteToggle" | "TVTerrestrialAnalog" | "TVTerrestrialDigital" | "TVTimer" | "AVRInput" | "AVRPower" | "ColorF0Red" | "ColorF1Green" | "ColorF2Yellow" | "ColorF3Blue" | "ColorF4Grey" | "ColorF5Brown" | "ClosedCaptionToggle" | "Dimmer" | "DisplaySwap" | "DVR" | "Exit" | "FavoriteClear0" | "FavoriteClear1" | "FavoriteClear2" | "FavoriteClear3" | "FavoriteRecall0" | "FavoriteRecall1" | "FavoriteRecall2" | "FavoriteRecall3" | "FavoriteStore0" | "FavoriteStore1" | "FavoriteStore2" | "FavoriteStore3" | "Guide" | "GuideNextDay" | "GuidePreviousDay" | "Info" | "InstantReplay" | "Link" | "ListProgram" | "LiveContent" | "Lock" | "MediaApps" | "MediaAudioTrack" | "MediaLast" | "MediaSkipBackward" | "MediaSkipForward" | "MediaStepBackward" | "MediaStepForward" | "MediaTopMenu" | "NavigateIn" | "NavigateNext" | "NavigateOut" | "NavigatePrevious" | "NextFavoriteChannel" | "NextUserProfile" | "OnDemand" | "Pairing" | "PinPDown" | "PinPMove" | "PinPToggle" | "PinPUp" | "PlaySpeedDown" | "PlaySpeedReset" | "PlaySpeedUp" | "RandomToggle" | "RcLowBattery" | "RecordSpeedNext" | "RfBypass" | "ScanChannelsToggle" | "ScreenModeNext" | "Settings" | "SplitScreenToggle" | "STBInput" | "STBPower" | "Subtitle" | "Teletext" | "VideoModeNext" | "Wink" | "ZoomToggle" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; state?: "Pressed" | "Released"; text?: string | null; repeat?: boolean; window?: Entity }); window: Entity; get value(): { focused_entity: Entity; input: { key_code: { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } } | "Backquote" | "Backslash" | "BracketLeft" | "BracketRight" | "Comma" | "Digit0" | "Digit1" | "Digit2" | "Digit3" | "Digit4" | "Digit5" | "Digit6" | "Digit7" | "Digit8" | "Digit9" | "Equal" | "IntlBackslash" | "IntlRo" | "IntlYen" | "KeyA" | "KeyB" | "KeyC" | "KeyD" | "KeyE" | "KeyF" | "KeyG" | "KeyH" | "KeyI" | "KeyJ" | "KeyK" | "KeyL" | "KeyM" | "KeyN" | "KeyO" | "KeyP" | "KeyQ" | "KeyR" | "KeyS" | "KeyT" | "KeyU" | "KeyV" | "KeyW" | "KeyX" | "KeyY" | "KeyZ" | "Minus" | "Period" | "Quote" | "Semicolon" | "Slash" | "AltLeft" | "AltRight" | "Backspace" | "CapsLock" | "ContextMenu" | "ControlLeft" | "ControlRight" | "Enter" | "SuperLeft" | "SuperRight" | "ShiftLeft" | "ShiftRight" | "Space" | "Tab" | "Convert" | "KanaMode" | "Lang1" | "Lang2" | "Lang3" | "Lang4" | "Lang5" | "NonConvert" | "Delete" | "End" | "Help" | "Home" | "Insert" | "PageDown" | "PageUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "NumLock" | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4" | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9" | "NumpadAdd" | "NumpadBackspace" | "NumpadClear" | "NumpadClearEntry" | "NumpadComma" | "NumpadDecimal" | "NumpadDivide" | "NumpadEnter" | "NumpadEqual" | "NumpadHash" | "NumpadMemoryAdd" | "NumpadMemoryClear" | "NumpadMemoryRecall" | "NumpadMemoryStore" | "NumpadMemorySubtract" | "NumpadMultiply" | "NumpadParenLeft" | "NumpadParenRight" | "NumpadStar" | "NumpadSubtract" | "Escape" | "Fn" | "FnLock" | "PrintScreen" | "ScrollLock" | "Pause" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "Eject" | "LaunchApp1" | "LaunchApp2" | "LaunchMail" | "MediaPlayPause" | "MediaSelect" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "Power" | "Sleep" | "AudioVolumeDown" | "AudioVolumeMute" | "AudioVolumeUp" | "WakeUp" | "Meta" | "Hyper" | "Turbo" | "Abort" | "Resume" | "Suspend" | "Again" | "Copy" | "Cut" | "Find" | "Open" | "Paste" | "Props" | "Select" | "Undo" | "Hiragana" | "Katakana" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; logical_key: { Character: string } | { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } | { Web: string } } | { Dead: string | null } | "Alt" | "AltGraph" | "CapsLock" | "Control" | "Fn" | "FnLock" | "NumLock" | "ScrollLock" | "Shift" | "Symbol" | "SymbolLock" | "Meta" | "Hyper" | "Super" | "Enter" | "Tab" | "Space" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "End" | "Home" | "PageDown" | "PageUp" | "Backspace" | "Clear" | "Copy" | "CrSel" | "Cut" | "Delete" | "EraseEof" | "ExSel" | "Insert" | "Paste" | "Redo" | "Undo" | "Accept" | "Again" | "Attn" | "Cancel" | "ContextMenu" | "Escape" | "Execute" | "Find" | "Help" | "Pause" | "Play" | "Props" | "Select" | "ZoomIn" | "ZoomOut" | "BrightnessDown" | "BrightnessUp" | "Eject" | "LogOff" | "Power" | "PowerOff" | "PrintScreen" | "Hibernate" | "Standby" | "WakeUp" | "AllCandidates" | "Alphanumeric" | "CodeInput" | "Compose" | "Convert" | "FinalMode" | "GroupFirst" | "GroupLast" | "GroupNext" | "GroupPrevious" | "ModeChange" | "NextCandidate" | "NonConvert" | "PreviousCandidate" | "Process" | "SingleCandidate" | "HangulMode" | "HanjaMode" | "JunjaMode" | "Eisu" | "Hankaku" | "Hiragana" | "HiraganaKatakana" | "KanaMode" | "KanjiMode" | "Katakana" | "Romaji" | "Zenkaku" | "ZenkakuHankaku" | "Soft1" | "Soft2" | "Soft3" | "Soft4" | "ChannelDown" | "ChannelUp" | "Close" | "MailForward" | "MailReply" | "MailSend" | "MediaClose" | "MediaFastForward" | "MediaPause" | "MediaPlay" | "MediaPlayPause" | "MediaRecord" | "MediaRewind" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "New" | "Open" | "Print" | "Save" | "SpellCheck" | "Key11" | "Key12" | "AudioBalanceLeft" | "AudioBalanceRight" | "AudioBassBoostDown" | "AudioBassBoostToggle" | "AudioBassBoostUp" | "AudioFaderFront" | "AudioFaderRear" | "AudioSurroundModeNext" | "AudioTrebleDown" | "AudioTrebleUp" | "AudioVolumeDown" | "AudioVolumeUp" | "AudioVolumeMute" | "MicrophoneToggle" | "MicrophoneVolumeDown" | "MicrophoneVolumeUp" | "MicrophoneVolumeMute" | "SpeechCorrectionList" | "SpeechInputToggle" | "LaunchApplication1" | "LaunchApplication2" | "LaunchCalendar" | "LaunchContacts" | "LaunchMail" | "LaunchMediaPlayer" | "LaunchMusicPlayer" | "LaunchPhone" | "LaunchScreenSaver" | "LaunchSpreadsheet" | "LaunchWebBrowser" | "LaunchWebCam" | "LaunchWordProcessor" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "AppSwitch" | "Call" | "Camera" | "CameraFocus" | "EndCall" | "GoBack" | "GoHome" | "HeadsetHook" | "LastNumberRedial" | "Notification" | "MannerMode" | "VoiceDial" | "TV" | "TV3DMode" | "TVAntennaCable" | "TVAudioDescription" | "TVAudioDescriptionMixDown" | "TVAudioDescriptionMixUp" | "TVContentsMenu" | "TVDataService" | "TVInput" | "TVInputComponent1" | "TVInputComponent2" | "TVInputComposite1" | "TVInputComposite2" | "TVInputHDMI1" | "TVInputHDMI2" | "TVInputHDMI3" | "TVInputHDMI4" | "TVInputVGA1" | "TVMediaContext" | "TVNetwork" | "TVNumberEntry" | "TVPower" | "TVRadioService" | "TVSatellite" | "TVSatelliteBS" | "TVSatelliteCS" | "TVSatelliteToggle" | "TVTerrestrialAnalog" | "TVTerrestrialDigital" | "TVTimer" | "AVRInput" | "AVRPower" | "ColorF0Red" | "ColorF1Green" | "ColorF2Yellow" | "ColorF3Blue" | "ColorF4Grey" | "ColorF5Brown" | "ClosedCaptionToggle" | "Dimmer" | "DisplaySwap" | "DVR" | "Exit" | "FavoriteClear0" | "FavoriteClear1" | "FavoriteClear2" | "FavoriteClear3" | "FavoriteRecall0" | "FavoriteRecall1" | "FavoriteRecall2" | "FavoriteRecall3" | "FavoriteStore0" | "FavoriteStore1" | "FavoriteStore2" | "FavoriteStore3" | "Guide" | "GuideNextDay" | "GuidePreviousDay" | "Info" | "InstantReplay" | "Link" | "ListProgram" | "LiveContent" | "Lock" | "MediaApps" | "MediaAudioTrack" | "MediaLast" | "MediaSkipBackward" | "MediaSkipForward" | "MediaStepBackward" | "MediaStepForward" | "MediaTopMenu" | "NavigateIn" | "NavigateNext" | "NavigateOut" | "NavigatePrevious" | "NextFavoriteChannel" | "NextUserProfile" | "OnDemand" | "Pairing" | "PinPDown" | "PinPMove" | "PinPToggle" | "PinPUp" | "PlaySpeedDown" | "PlaySpeedReset" | "PlaySpeedUp" | "RandomToggle" | "RcLowBattery" | "RecordSpeedNext" | "RfBypass" | "ScanChannelsToggle" | "ScreenModeNext" | "Settings" | "SplitScreenToggle" | "STBInput" | "STBPower" | "Subtitle" | "Teletext" | "VideoModeNext" | "Wink" | "ZoomToggle" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; state: "Pressed" | "Released"; text: string | null; repeat: boolean; window: Entity }; window: Entity }; set value(v: { focused_entity?: Entity; input?: { key_code?: { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } } | "Backquote" | "Backslash" | "BracketLeft" | "BracketRight" | "Comma" | "Digit0" | "Digit1" | "Digit2" | "Digit3" | "Digit4" | "Digit5" | "Digit6" | "Digit7" | "Digit8" | "Digit9" | "Equal" | "IntlBackslash" | "IntlRo" | "IntlYen" | "KeyA" | "KeyB" | "KeyC" | "KeyD" | "KeyE" | "KeyF" | "KeyG" | "KeyH" | "KeyI" | "KeyJ" | "KeyK" | "KeyL" | "KeyM" | "KeyN" | "KeyO" | "KeyP" | "KeyQ" | "KeyR" | "KeyS" | "KeyT" | "KeyU" | "KeyV" | "KeyW" | "KeyX" | "KeyY" | "KeyZ" | "Minus" | "Period" | "Quote" | "Semicolon" | "Slash" | "AltLeft" | "AltRight" | "Backspace" | "CapsLock" | "ContextMenu" | "ControlLeft" | "ControlRight" | "Enter" | "SuperLeft" | "SuperRight" | "ShiftLeft" | "ShiftRight" | "Space" | "Tab" | "Convert" | "KanaMode" | "Lang1" | "Lang2" | "Lang3" | "Lang4" | "Lang5" | "NonConvert" | "Delete" | "End" | "Help" | "Home" | "Insert" | "PageDown" | "PageUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "NumLock" | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4" | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9" | "NumpadAdd" | "NumpadBackspace" | "NumpadClear" | "NumpadClearEntry" | "NumpadComma" | "NumpadDecimal" | "NumpadDivide" | "NumpadEnter" | "NumpadEqual" | "NumpadHash" | "NumpadMemoryAdd" | "NumpadMemoryClear" | "NumpadMemoryRecall" | "NumpadMemoryStore" | "NumpadMemorySubtract" | "NumpadMultiply" | "NumpadParenLeft" | "NumpadParenRight" | "NumpadStar" | "NumpadSubtract" | "Escape" | "Fn" | "FnLock" | "PrintScreen" | "ScrollLock" | "Pause" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "Eject" | "LaunchApp1" | "LaunchApp2" | "LaunchMail" | "MediaPlayPause" | "MediaSelect" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "Power" | "Sleep" | "AudioVolumeDown" | "AudioVolumeMute" | "AudioVolumeUp" | "WakeUp" | "Meta" | "Hyper" | "Turbo" | "Abort" | "Resume" | "Suspend" | "Again" | "Copy" | "Cut" | "Find" | "Open" | "Paste" | "Props" | "Select" | "Undo" | "Hiragana" | "Katakana" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; logical_key?: { Character: string } | { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } | { Web: string } } | { Dead: string | null } | "Alt" | "AltGraph" | "CapsLock" | "Control" | "Fn" | "FnLock" | "NumLock" | "ScrollLock" | "Shift" | "Symbol" | "SymbolLock" | "Meta" | "Hyper" | "Super" | "Enter" | "Tab" | "Space" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "End" | "Home" | "PageDown" | "PageUp" | "Backspace" | "Clear" | "Copy" | "CrSel" | "Cut" | "Delete" | "EraseEof" | "ExSel" | "Insert" | "Paste" | "Redo" | "Undo" | "Accept" | "Again" | "Attn" | "Cancel" | "ContextMenu" | "Escape" | "Execute" | "Find" | "Help" | "Pause" | "Play" | "Props" | "Select" | "ZoomIn" | "ZoomOut" | "BrightnessDown" | "BrightnessUp" | "Eject" | "LogOff" | "Power" | "PowerOff" | "PrintScreen" | "Hibernate" | "Standby" | "WakeUp" | "AllCandidates" | "Alphanumeric" | "CodeInput" | "Compose" | "Convert" | "FinalMode" | "GroupFirst" | "GroupLast" | "GroupNext" | "GroupPrevious" | "ModeChange" | "NextCandidate" | "NonConvert" | "PreviousCandidate" | "Process" | "SingleCandidate" | "HangulMode" | "HanjaMode" | "JunjaMode" | "Eisu" | "Hankaku" | "Hiragana" | "HiraganaKatakana" | "KanaMode" | "KanjiMode" | "Katakana" | "Romaji" | "Zenkaku" | "ZenkakuHankaku" | "Soft1" | "Soft2" | "Soft3" | "Soft4" | "ChannelDown" | "ChannelUp" | "Close" | "MailForward" | "MailReply" | "MailSend" | "MediaClose" | "MediaFastForward" | "MediaPause" | "MediaPlay" | "MediaPlayPause" | "MediaRecord" | "MediaRewind" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "New" | "Open" | "Print" | "Save" | "SpellCheck" | "Key11" | "Key12" | "AudioBalanceLeft" | "AudioBalanceRight" | "AudioBassBoostDown" | "AudioBassBoostToggle" | "AudioBassBoostUp" | "AudioFaderFront" | "AudioFaderRear" | "AudioSurroundModeNext" | "AudioTrebleDown" | "AudioTrebleUp" | "AudioVolumeDown" | "AudioVolumeUp" | "AudioVolumeMute" | "MicrophoneToggle" | "MicrophoneVolumeDown" | "MicrophoneVolumeUp" | "MicrophoneVolumeMute" | "SpeechCorrectionList" | "SpeechInputToggle" | "LaunchApplication1" | "LaunchApplication2" | "LaunchCalendar" | "LaunchContacts" | "LaunchMail" | "LaunchMediaPlayer" | "LaunchMusicPlayer" | "LaunchPhone" | "LaunchScreenSaver" | "LaunchSpreadsheet" | "LaunchWebBrowser" | "LaunchWebCam" | "LaunchWordProcessor" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "AppSwitch" | "Call" | "Camera" | "CameraFocus" | "EndCall" | "GoBack" | "GoHome" | "HeadsetHook" | "LastNumberRedial" | "Notification" | "MannerMode" | "VoiceDial" | "TV" | "TV3DMode" | "TVAntennaCable" | "TVAudioDescription" | "TVAudioDescriptionMixDown" | "TVAudioDescriptionMixUp" | "TVContentsMenu" | "TVDataService" | "TVInput" | "TVInputComponent1" | "TVInputComponent2" | "TVInputComposite1" | "TVInputComposite2" | "TVInputHDMI1" | "TVInputHDMI2" | "TVInputHDMI3" | "TVInputHDMI4" | "TVInputVGA1" | "TVMediaContext" | "TVNetwork" | "TVNumberEntry" | "TVPower" | "TVRadioService" | "TVSatellite" | "TVSatelliteBS" | "TVSatelliteCS" | "TVSatelliteToggle" | "TVTerrestrialAnalog" | "TVTerrestrialDigital" | "TVTimer" | "AVRInput" | "AVRPower" | "ColorF0Red" | "ColorF1Green" | "ColorF2Yellow" | "ColorF3Blue" | "ColorF4Grey" | "ColorF5Brown" | "ClosedCaptionToggle" | "Dimmer" | "DisplaySwap" | "DVR" | "Exit" | "FavoriteClear0" | "FavoriteClear1" | "FavoriteClear2" | "FavoriteClear3" | "FavoriteRecall0" | "FavoriteRecall1" | "FavoriteRecall2" | "FavoriteRecall3" | "FavoriteStore0" | "FavoriteStore1" | "FavoriteStore2" | "FavoriteStore3" | "Guide" | "GuideNextDay" | "GuidePreviousDay" | "Info" | "InstantReplay" | "Link" | "ListProgram" | "LiveContent" | "Lock" | "MediaApps" | "MediaAudioTrack" | "MediaLast" | "MediaSkipBackward" | "MediaSkipForward" | "MediaStepBackward" | "MediaStepForward" | "MediaTopMenu" | "NavigateIn" | "NavigateNext" | "NavigateOut" | "NavigatePrevious" | "NextFavoriteChannel" | "NextUserProfile" | "OnDemand" | "Pairing" | "PinPDown" | "PinPMove" | "PinPToggle" | "PinPUp" | "PlaySpeedDown" | "PlaySpeedReset" | "PlaySpeedUp" | "RandomToggle" | "RcLowBattery" | "RecordSpeedNext" | "RfBypass" | "ScanChannelsToggle" | "ScreenModeNext" | "Settings" | "SplitScreenToggle" | "STBInput" | "STBPower" | "Subtitle" | "Teletext" | "VideoModeNext" | "Wink" | "ZoomToggle" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; state?: "Pressed" | "Released"; text?: string | null; repeat?: boolean; window?: Entity }; window?: Entity }) }> {}
 
 /** Reflect tier: no field is plain data (current_focus: an enum with data (core::option::Option<bevy_ecs::entity::Entity>); recorded_changes: not plain data (alloc::vec::Vec<core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>>); original_focus: an enum with data (core::option::Option<bevy_ecs::entity::Entity>)). */
 export declare class InputFocus extends ReflectComponent {
@@ -601,6 +664,7 @@ export declare class InputFocus extends ReflectComponent {
   declare recorded_changes: readonly (readonly [Entity, "Navigated" | "Pressed" | "Auto"] | null)[];
   declare original_focus: Entity | null;
 }
+export interface InputFocus extends ReflectRead<{ current_focus: Entity | null; get recorded_changes(): ([Entity, "Navigated" | "Pressed" | "Auto"] | null)[]; set recorded_changes(v: readonly (readonly [Entity, "Navigated" | "Pressed" | "Auto"] | null)[]); original_focus: Entity | null; get value(): { current_focus: Entity | null; recorded_changes: ([Entity, "Navigated" | "Pressed" | "Auto"] | null)[]; original_focus: Entity | null }; set value(v: { current_focus?: Entity | null; recorded_changes?: readonly (readonly [Entity, "Navigated" | "Pressed" | "Auto"] | null)[]; original_focus?: Entity | null }) }> {}
 
 export declare class InputFocusVisible extends Resource {
   static readonly path: "bevy_input_focus::InputFocusVisible";
@@ -611,6 +675,7 @@ export declare class InputFocusVisible extends Resource {
 export declare class AutoFocus extends ReflectComponent {
   static readonly path: "bevy_input_focus::autofocus::AutoFocus";
 }
+export interface AutoFocus extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class AutoNavigationConfig extends ReflectComponent {
@@ -619,12 +684,14 @@ export declare class AutoNavigationConfig extends ReflectComponent {
   declare max_search_distance: number | null;
   declare prefer_aligned: boolean;
 }
+export interface AutoNavigationConfig extends ReflectRead<{ min_alignment_factor: number; max_search_distance: number | null; prefer_aligned: boolean; get value(): { min_alignment_factor: number; max_search_distance: number | null; prefer_aligned: boolean }; set value(v: { min_alignment_factor?: number; max_search_distance?: number | null; prefer_aligned?: boolean }) }> {}
 
 /** Reflect tier: no field is plain data (neighbors: not plain data (bevy_ecs::entity::hash_map::EntityEquivalentHashMap<bevy_ecs::entity::Entity, bevy_input_focus::directional_navigation::NavNeighbors>)). */
 export declare class DirectionalNavigationMap extends ReflectComponent {
   static readonly path: "bevy_input_focus::directional_navigation::DirectionalNavigationMap";
   declare neighbors: readonly (readonly [Entity, { neighbors?: readonly ("Auto" | "Blocked" | { Set: Entity })[] }])[];
 }
+export interface DirectionalNavigationMap extends ReflectRead<{ get neighbors(): ([Entity, { neighbors: ("Auto" | "Blocked" | { Set: Entity })[] }])[]; set neighbors(v: readonly (readonly [Entity, { neighbors?: readonly ("Auto" | "Blocked" | { Set: Entity })[] }])[]); get value(): { neighbors: ([Entity, { neighbors: ("Auto" | "Blocked" | { Set: Entity })[] }])[] }; set value(v: { neighbors?: readonly (readonly [Entity, { neighbors?: readonly ("Auto" | "Blocked" | { Set: Entity })[] }])[] }) }> {}
 
 export declare class TabGroup extends Component {
   static readonly path: "bevy_input_focus::tab_navigation::TabGroup";
@@ -641,11 +708,13 @@ export declare class TabIndex extends Component {
 export declare class NotShadowCaster extends ReflectComponent {
   static readonly path: "bevy_light::NotShadowCaster";
 }
+export interface NotShadowCaster extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class NotShadowReceiver extends ReflectComponent {
   static readonly path: "bevy_light::NotShadowReceiver";
 }
+export interface NotShadowReceiver extends ReflectRead<{ value: {  } }> {}
 
 export declare class ShadowFilteringMethod extends Component {
   static readonly path: "bevy_light::ShadowFilteringMethod";
@@ -656,6 +725,7 @@ export declare class ShadowFilteringMethod extends Component {
 export declare class TransmittedShadowReceiver extends ReflectComponent {
   static readonly path: "bevy_light::TransmittedShadowReceiver";
 }
+export interface TransmittedShadowReceiver extends ReflectRead<{ value: {  } }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class AmbientLight extends Component {
@@ -664,7 +734,7 @@ export declare class AmbientLight extends Component {
   declare brightness: f32;
   declare affects_lightmapped_meshes: bool;
 }
-export interface AmbientLight extends Holes<{ color: ColorValue }> {}
+export interface AmbientLight extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class GlobalAmbientLight extends Resource {
@@ -673,7 +743,7 @@ export declare class GlobalAmbientLight extends Resource {
   declare brightness: f32;
   declare affects_lightmapped_meshes: bool;
 }
-export interface GlobalAmbientLight extends Holes<{ color: ColorValue }> {}
+export interface GlobalAmbientLight extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 /** Holes, not columns: bounds: not plain data (alloc::vec::Vec<f32>). */
 export declare class CascadeShadowConfig extends Component {
@@ -682,19 +752,21 @@ export declare class CascadeShadowConfig extends Component {
   declare overlap_proportion: f32;
   declare minimum_distance: f32;
 }
-export interface CascadeShadowConfig extends Holes<{ bounds: readonly number[] }> {}
+export interface CascadeShadowConfig extends Holes<{ get bounds(): number[]; set bounds(v: readonly number[]) }> {}
 
 /** Reflect tier: no field is plain data (cascades: not plain data (bevy_ecs::entity::hash_map::EntityEquivalentHashMap<bevy_ecs::entity::Entity, alloc::vec::Vec<bevy_light::cascade::Cascade>>)). */
 export declare class Cascades extends ReflectComponent {
   static readonly path: "bevy_light::cascade::Cascades";
   declare cascades: readonly (readonly [Entity, readonly ({ world_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_world?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; texel_size?: number })[]])[];
 }
+export interface Cascades extends ReflectRead<{ get cascades(): ([Entity, ({ world_from_cascade: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_cascade: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_world: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; texel_size: number })[]])[]; set cascades(v: readonly (readonly [Entity, readonly ({ world_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_world?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; texel_size?: number })[]])[]); get value(): { cascades: ([Entity, ({ world_from_cascade: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_cascade: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_world: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; texel_size: number })[]])[] }; set value(v: { cascades?: readonly (readonly [Entity, readonly ({ world_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_world?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; texel_size?: number })[]])[] }) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_light::cluster::ClusterConfig)). */
 export declare class ClusterConfig extends ReflectComponent {
   static readonly path: "bevy_light::cluster::ClusterConfig";
   declare value: "None" | "Single" | { XYZ: { dimensions?: readonly [number, number, number]; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } } | { FixedZ: { total?: number; z_slices?: number; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } };
 }
+export interface ClusterConfig extends ReflectRead<{ get value(): "None" | "Single" | { XYZ: { dimensions: [number, number, number]; z_config: { first_slice_depth: number; far_z_mode: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing: boolean } } | { FixedZ: { total: number; z_slices: number; z_config: { first_slice_depth: number; far_z_mode: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing: boolean } }; set value(v: "None" | "Single" | { XYZ: { dimensions?: readonly [number, number, number]; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } } | { FixedZ: { total?: number; z_slices?: number; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } }) }> {}
 
 /** Holes, not columns: base_color_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); normal_map_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); metallic_roughness_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); emissive_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class ClusteredDecal extends Component {
@@ -702,7 +774,7 @@ export declare class ClusteredDecal extends Component {
   static readonly tsxProps: { base_color_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; normal_map_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; metallic_roughness_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive_texture?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null };
   declare tag: u32;
 }
-export interface ClusteredDecal extends Holes<{ base_color_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
+export interface ClusteredDecal extends Holes<{ get base_color_texture(): string | AssetRef<Image> | null | null; set base_color_texture(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null); get normal_map_texture(): string | AssetRef<Image> | null | null; set normal_map_texture(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null); get metallic_roughness_texture(): string | AssetRef<Image> | null | null; set metallic_roughness_texture(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null); get emissive_texture(): string | AssetRef<Image> | null | null; set emissive_texture(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color); soft_shadow_size: an enum with data (core::option::Option<f32>). */
 export declare class DirectionalLight extends Component {
@@ -715,13 +787,14 @@ export declare class DirectionalLight extends Component {
   declare shadow_depth_bias: f32;
   declare shadow_normal_bias: f32;
 }
-export interface DirectionalLight extends Holes<{ color: ColorValue; soft_shadow_size: number | null }> {}
+export interface DirectionalLight extends Holes<{ get color(): ColorRead; set color(v: ColorValue); soft_shadow_size: number | null }> {}
 
 /** Reflect tier: no field is plain data (size: opaque to reflection (usize)). */
 export declare class DirectionalLightShadowMap extends ReflectComponent {
   static readonly path: "bevy_light::directional_light::DirectionalLightShadowMap";
   declare size: number | string;
 }
+export interface DirectionalLightShadowMap extends ReflectRead<{ get size(): number; set size(v: number | string); get value(): { size: number }; set value(v: { size?: number | string }) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class DirectionalLightTexture extends ReflectComponent {
@@ -729,12 +802,14 @@ export declare class DirectionalLightTexture extends ReflectComponent {
   declare image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
   declare tiled: boolean;
 }
+export interface DirectionalLightTexture extends ReflectRead<{ get image(): string | AssetRef<Image> | null; set image(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); tiled: boolean; get value(): { image: string | AssetRef<Image> | null; tiled: boolean }; set value(v: { image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; tiled?: boolean }) }> {}
 
 /** Reflect tier: no field is plain data (color: an enum with data (core::option::Option<bevy_light::gizmos::LightGizmoColor>)). */
 export declare class ShowLightGizmo extends ReflectComponent {
   static readonly path: "bevy_light::gizmos::ShowLightGizmo";
   declare color: { Manual: ColorValue } | "Varied" | "MatchLightColor" | "ByLightType" | null;
 }
+export interface ShowLightGizmo extends ReflectRead<{ get color(): { Manual: ColorRead } | "Varied" | "MatchLightColor" | "ByLightType" | null; set color(v: { Manual: ColorValue } | "Varied" | "MatchLightColor" | "ByLightType" | null); get value(): { color: { Manual: ColorRead } | "Varied" | "MatchLightColor" | "ByLightType" | null }; set value(v: { color?: { Manual: ColorValue } | "Varied" | "MatchLightColor" | "ByLightType" | null }) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class PointLight extends Component {
@@ -751,13 +826,14 @@ export declare class PointLight extends Component {
   declare shadow_normal_bias: f32;
   declare shadow_map_near_z: f32;
 }
-export interface PointLight extends Holes<{ color: ColorValue }> {}
+export interface PointLight extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 /** Reflect tier: no field is plain data (size: opaque to reflection (usize)). */
 export declare class PointLightShadowMap extends ReflectComponent {
   static readonly path: "bevy_light::point_light::PointLightShadowMap";
   declare size: number | string;
 }
+export interface PointLightShadowMap extends ReflectRead<{ get size(): number; set size(v: number | string); get value(): { size: number }; set value(v: { size?: number | string }) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class PointLightTexture extends ReflectComponent {
@@ -765,6 +841,7 @@ export declare class PointLightTexture extends ReflectComponent {
   declare image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
   declare cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal";
 }
+export interface PointLightTexture extends ReflectRead<{ get image(): string | AssetRef<Image> | null; set image(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal"; get value(): { image: string | AssetRef<Image> | null; cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }; set value(v: { image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; cubemap_layout?: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }) }> {}
 
 /** Holes, not columns: diffuse_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); specular_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class EnvironmentMapLight extends Component {
@@ -774,7 +851,7 @@ export declare class EnvironmentMapLight extends Component {
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
 }
-export interface EnvironmentMapLight extends Holes<{ diffuse_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; specular_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
+export interface EnvironmentMapLight extends Holes<{ get diffuse_map(): string | AssetRef<Image> | null; set diffuse_map(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); get specular_map(): string | AssetRef<Image> | null; set specular_map(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null) }> {}
 
 /** Holes, not columns: environment_map: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class GeneratedEnvironmentMapLight extends Component {
@@ -784,7 +861,7 @@ export declare class GeneratedEnvironmentMapLight extends Component {
   declare readonly rotation: Quat;
   declare affects_lightmapped_mesh_diffuse: bool;
 }
-export interface GeneratedEnvironmentMapLight extends Holes<{ environment_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
+export interface GeneratedEnvironmentMapLight extends Holes<{ get environment_map(): string | AssetRef<Image> | null; set environment_map(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null) }> {}
 
 /** Holes, not columns: voxels: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>). */
 export declare class IrradianceVolume extends Component {
@@ -793,7 +870,7 @@ export declare class IrradianceVolume extends Component {
   declare intensity: f32;
   declare affects_lightmapped_meshes: bool;
 }
-export interface IrradianceVolume extends Holes<{ voxels: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }> {}
+export interface IrradianceVolume extends Holes<{ get voxels(): string | AssetRef<Image> | null; set voxels(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null) }> {}
 
 export declare class LightProbe extends Component {
   static readonly path: "bevy_light::probe::LightProbe";
@@ -805,6 +882,7 @@ export declare class ParallaxCorrection extends ReflectComponent {
   static readonly path: "bevy_light::probe::ParallaxCorrection";
   declare value: "None" | "Auto" | { Custom: readonly [number, number, number] };
 }
+export interface ParallaxCorrection extends ReflectRead<{ get value(): "None" | "Auto" | { Custom: [number, number, number] }; set value(v: "None" | "Auto" | { Custom: readonly [number, number, number] }) }> {}
 
 /** Holes, not columns: image: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>). */
 export declare class Skybox extends Component {
@@ -813,7 +891,7 @@ export declare class Skybox extends Component {
   declare brightness: f32;
   declare readonly rotation: Quat;
 }
-export interface Skybox extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
+export interface Skybox extends Holes<{ get image(): string | AssetRef<Image> | null | null; set image(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class RectLight extends Component {
@@ -824,7 +902,7 @@ export declare class RectLight extends Component {
   declare width: f32;
   declare height: f32;
 }
-export interface RectLight extends Holes<{ color: ColorValue }> {}
+export interface RectLight extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class SpotLight extends Component {
@@ -843,13 +921,14 @@ export declare class SpotLight extends Component {
   declare outer_angle: f32;
   declare inner_angle: f32;
 }
-export interface SpotLight extends Holes<{ color: ColorValue }> {}
+export interface SpotLight extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class SpotLightTexture extends ReflectComponent {
   static readonly path: "bevy_light::spot_light::SpotLightTexture";
   declare image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
 }
+export interface SpotLightTexture extends ReflectRead<{ get image(): string | AssetRef<Image> | null; set image(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); get value(): { image: string | AssetRef<Image> | null }; set value(v: { image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null }) }> {}
 
 /** Holes, not columns: fog_color: an enum with data (bevy_color::color::Color); density_texture: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_image::image::Image>>); light_tint: an enum with data (bevy_color::color::Color). */
 export declare class FogVolume extends Component {
@@ -862,7 +941,7 @@ export declare class FogVolume extends Component {
   declare scattering_asymmetry: f32;
   declare light_intensity: f32;
 }
-export interface FogVolume extends Holes<{ fog_color: ColorValue; density_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; light_tint: ColorValue }> {}
+export interface FogVolume extends Holes<{ get fog_color(): ColorRead; set fog_color(v: ColorValue); get density_texture(): string | AssetRef<Image> | null | null; set density_texture(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null); get light_tint(): ColorRead; set light_tint(v: ColorValue) }> {}
 
 /** Holes, not columns: ambient_color: an enum with data (bevy_color::color::Color). */
 export declare class VolumetricFog extends Component {
@@ -872,24 +951,27 @@ export declare class VolumetricFog extends Component {
   declare jitter: f32;
   declare step_count: u32;
 }
-export interface VolumetricFog extends Holes<{ ambient_color: ColorValue }> {}
+export interface VolumetricFog extends Holes<{ get ambient_color(): ColorRead; set ambient_color(v: ColorValue) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class VolumetricLight extends ReflectComponent {
   static readonly path: "bevy_light::volumetric::VolumetricLight";
 }
+export interface VolumetricLight extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_mesh::mesh::Mesh>)). */
 export declare class Mesh2d extends ReflectComponent {
   static readonly path: "bevy_mesh::components::Mesh2d";
   declare value: string | AssetRef<Mesh> | AssetValue<Mesh> | null;
 }
+export interface Mesh2d extends ReflectRead<{ get value(): string | AssetRef<Mesh> | null; set value(v: string | AssetRef<Mesh> | AssetValue<Mesh> | null) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_mesh::mesh::Mesh>)). */
 export declare class Mesh3d extends ReflectComponent {
   static readonly path: "bevy_mesh::components::Mesh3d";
   declare value: string | AssetRef<Mesh> | AssetValue<Mesh> | null;
 }
+export interface Mesh3d extends ReflectRead<{ get value(): string | AssetRef<Mesh> | null; set value(v: string | AssetRef<Mesh> | AssetValue<Mesh> | null) }> {}
 
 /** Holes, not columns: type_id: an enum with data (core::option::Option<core::any::TypeId>). */
 export declare class MeshTag extends Component {
@@ -904,6 +986,7 @@ export declare class MeshMorphWeights extends ReflectComponent {
   static readonly path: "bevy_mesh::morph::MeshMorphWeights";
   declare value: { Value: { weights?: readonly number[] } } | { Reference: Entity };
 }
+export interface MeshMorphWeights extends ReflectRead<{ get value(): { Value: { weights: number[] } } | { Reference: Entity }; set value(v: { Value: { weights?: readonly number[] } } | { Reference: Entity }) }> {}
 
 /** Reflect tier: no field is plain data (weights: not plain data (alloc::vec::Vec<f32>); first_mesh: an enum with data (core::option::Option<bevy_asset::handle::Handle<bevy_mesh::mesh::Mesh>>)). */
 export declare class MorphWeights extends ReflectComponent {
@@ -911,6 +994,7 @@ export declare class MorphWeights extends ReflectComponent {
   declare weights: readonly number[];
   declare first_mesh: string | AssetRef<Mesh> | AssetValue<Mesh> | null | null;
 }
+export interface MorphWeights extends ReflectRead<{ get weights(): number[]; set weights(v: readonly number[]); get first_mesh(): string | AssetRef<Mesh> | null | null; set first_mesh(v: string | AssetRef<Mesh> | AssetValue<Mesh> | null | null); get value(): { weights: number[]; first_mesh: string | AssetRef<Mesh> | null | null }; set value(v: { weights?: readonly number[]; first_mesh?: string | AssetRef<Mesh> | AssetValue<Mesh> | null | null }) }> {}
 
 /** Reflect tier: no field is plain data (inverse_bindposes: an enum with data (bevy_asset::handle::Handle<bevy_mesh::skinning::SkinnedMeshInverseBindposes>); joints: not plain data (alloc::vec::Vec<bevy_ecs::entity::Entity>)). */
 export declare class SkinnedMesh extends ReflectComponent {
@@ -918,6 +1002,7 @@ export declare class SkinnedMesh extends ReflectComponent {
   declare inverse_bindposes: string | null;
   declare joints: readonly Entity[];
 }
+export interface SkinnedMesh extends ReflectRead<{ inverse_bindposes: string | null; get joints(): Entity[]; set joints(v: readonly Entity[]); get value(): { inverse_bindposes: string | null; joints: Entity[] }; set value(v: { inverse_bindposes?: string | null; joints?: readonly Entity[] }) }> {}
 
 export declare class ContactShadows extends Component {
   static readonly path: "bevy_pbr::contact_shadows::ContactShadows";
@@ -932,7 +1017,7 @@ export declare class DistanceFog extends Component {
   static readonly tsxProps: { color?: ColorValue; directional_light_color?: ColorValue; falloff?: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } } };
   declare directional_light_exponent: f32;
 }
-export interface DistanceFog extends Holes<{ color: ColorValue; directional_light_color: ColorValue; falloff: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } } }> {}
+export interface DistanceFog extends Holes<{ get color(): ColorRead; set color(v: ColorValue); get directional_light_color(): ColorRead; set directional_light_color(v: ColorValue); get falloff(): { Linear: { start: number; end: number } } | { Exponential: { density: number } } | { ExponentialSquared: { density: number } } | { Atmospheric: { extinction: [number, number, number]; inscattering: [number, number, number] } }; set falloff(v: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } }) }> {}
 
 /** Holes, not columns: image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); uv_rect: not plain data (bevy_math::rects::rect::Rect). */
 export declare class Lightmap extends Component {
@@ -940,7 +1025,7 @@ export declare class Lightmap extends Component {
   static readonly tsxProps: { image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; uv_rect?: { min?: readonly [number, number]; max?: readonly [number, number] } };
   declare bicubic_sampling: bool;
 }
-export interface Lightmap extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; uv_rect: { min?: readonly [number, number]; max?: readonly [number, number] } }> {}
+export interface Lightmap extends Holes<{ get image(): string | AssetRef<Image> | null; set image(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); get uv_rect(): { min: [number, number]; max: [number, number] }; set uv_rect(v: { min?: readonly [number, number]; max?: readonly [number, number] }) }> {}
 
 export declare class DefaultOpaqueRendererMethod extends Resource {
   static readonly path: "bevy_pbr::material::DefaultOpaqueRendererMethod";
@@ -952,24 +1037,28 @@ export declare class MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalM
   static readonly path: "bevy_pbr::mesh_material::MeshMaterial3d<bevy_pbr::extended_material::ExtendedMaterial<bevy_pbr::pbr_material::StandardMaterial, bevy_pbr::decal::forward::ForwardDecalMaterialExt>>";
   declare value: string | null;
 }
+export interface MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt extends ReflectRead<{ value: string | null }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_pbr::extended_material::ExtendedMaterial<bevy_pbr::pbr_material::StandardMaterial, bevy_ts_material::alpha::Fade>>)). */
 export declare class MeshMaterial3dExtendedMaterialStandardMaterialFade extends ReflectComponent {
   static readonly path: "bevy_pbr::mesh_material::MeshMaterial3d<bevy_pbr::extended_material::ExtendedMaterial<bevy_pbr::pbr_material::StandardMaterial, bevy_ts_material::alpha::Fade>>";
   declare value: string | null;
 }
+export interface MeshMaterial3dExtendedMaterialStandardMaterialFade extends ReflectRead<{ value: string | null }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_pbr::extended_material::ExtendedMaterial<bevy_pbr::pbr_material::StandardMaterial, bevy_ts_material::world_text::material::WorldTextExt>>)). */
 export declare class MeshMaterial3dExtendedMaterialStandardMaterialWorldTextExt extends ReflectComponent {
   static readonly path: "bevy_pbr::mesh_material::MeshMaterial3d<bevy_pbr::extended_material::ExtendedMaterial<bevy_pbr::pbr_material::StandardMaterial, bevy_ts_material::world_text::material::WorldTextExt>>";
   declare value: string | null;
 }
+export interface MeshMaterial3dExtendedMaterialStandardMaterialWorldTextExt extends ReflectRead<{ value: string | null }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_pbr::pbr_material::StandardMaterial>)). */
 export declare class MeshMaterial3dStandardMaterial extends ReflectComponent {
   static readonly path: "bevy_pbr::mesh_material::MeshMaterial3d<bevy_pbr::pbr_material::StandardMaterial>";
   declare value: string | AssetRef<StandardMaterial> | AssetValue<StandardMaterial> | null;
 }
+export interface MeshMaterial3dStandardMaterial extends ReflectRead<{ get value(): string | AssetRef<StandardMaterial> | null; set value(v: string | AssetRef<StandardMaterial> | AssetValue<StandardMaterial> | null) }> {}
 
 /** Holes, not columns: quality_level: an enum with data (bevy_pbr::ssao::ScreenSpaceAmbientOcclusionQualityLevel). */
 export declare class ScreenSpaceAmbientOcclusion extends Component {
@@ -978,7 +1067,7 @@ export declare class ScreenSpaceAmbientOcclusion extends Component {
   declare radius: f32;
   declare constant_object_thickness: f32;
 }
-export interface ScreenSpaceAmbientOcclusion extends Holes<{ quality_level: "Low" | "Medium" | "High" | "Ultra" | { Custom: { slice_count?: number; samples_per_slice_side?: number } } }> {}
+export interface ScreenSpaceAmbientOcclusion extends Holes<{ get quality_level(): "Low" | "Medium" | "High" | "Ultra" | { Custom: { slice_count: number; samples_per_slice_side: number } }; set quality_level(v: "Low" | "Medium" | "High" | "Ultra" | { Custom: { slice_count?: number; samples_per_slice_side?: number } }) }> {}
 
 /** Holes, not columns: min_perceptual_roughness: opaque to reflection (core::ops::Range<f32>); max_perceptual_roughness: opaque to reflection (core::ops::Range<f32>); edge_fadeout: opaque to reflection (core::ops::Range<f32>). */
 export declare class ScreenSpaceReflections extends Component {
@@ -998,29 +1087,33 @@ export declare class ScreenSpaceTransmission extends Component {
   static readonly tsxProps: { steps?: number | string };
   declare quality: "Low" | "Medium" | "High" | "Ultra";
 }
-export interface ScreenSpaceTransmission extends Holes<{ steps: number | string }> {}
+export interface ScreenSpaceTransmission extends Holes<{ get steps(): number; set steps(v: number | string) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_pbr::wireframe::WireframeMaterial>)). */
 export declare class Mesh3dWireframe extends ReflectComponent {
   static readonly path: "bevy_pbr::wireframe::Mesh3dWireframe";
   declare value: string | null;
 }
+export interface Mesh3dWireframe extends ReflectRead<{ value: string | null }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class NoWireframe extends ReflectComponent {
   static readonly path: "bevy_pbr::wireframe::NoWireframe";
 }
+export interface NoWireframe extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Wireframe extends ReflectComponent {
   static readonly path: "bevy_pbr::wireframe::Wireframe";
 }
+export interface Wireframe extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (color: an enum with data (bevy_color::color::Color)). */
 export declare class WireframeColor extends ReflectComponent {
   static readonly path: "bevy_pbr::wireframe::WireframeColor";
   declare color: ColorValue;
 }
+export interface WireframeColor extends ReflectRead<{ get color(): ColorRead; set color(v: ColorValue); get value(): { color: ColorRead }; set value(v: { color?: ColorValue }) }> {}
 
 /** Holes, not columns: default_color: an enum with data (bevy_color::color::Color). */
 export declare class WireframeConfig extends Resource {
@@ -1031,7 +1124,7 @@ export declare class WireframeConfig extends Resource {
   declare default_topology: "Triangles" | "Quads";
   declare xray_mode: bool;
 }
-export interface WireframeConfig extends Holes<{ default_color: ColorValue }> {}
+export interface WireframeConfig extends Holes<{ get default_color(): ColorRead; set default_color(v: ColorValue) }> {}
 
 export declare class WireframeLineWidth extends Component {
   static readonly path: "bevy_pbr::wireframe::WireframeLineWidth";
@@ -1070,24 +1163,28 @@ export declare class RayMap extends ReflectComponent {
   static readonly path: "bevy_picking::backend::ray::RayMap";
   declare map: readonly (readonly [{ camera?: Entity; pointer?: "Mouse" | { Touch: number | string } | { Custom: string } }, { origin?: readonly [number, number, number]; direction?: readonly [number, number, number] }])[];
 }
+export interface RayMap extends ReflectRead<{ get map(): ([{ camera: Entity; pointer: "Mouse" | { Touch: number } | { Custom: string } }, { origin: [number, number, number]; direction: [number, number, number] }])[]; set map(v: readonly (readonly [{ camera?: Entity; pointer?: "Mouse" | { Touch: number | string } | { Custom: string } }, { origin?: readonly [number, number, number]; direction?: readonly [number, number, number] }])[]); get value(): { map: ([{ camera: Entity; pointer: "Mouse" | { Touch: number } | { Custom: string } }, { origin: [number, number, number]; direction: [number, number, number] }])[] }; set value(v: { map?: readonly (readonly [{ camera?: Entity; pointer?: "Mouse" | { Touch: number | string } | { Custom: string } }, { origin?: readonly [number, number, number]; direction?: readonly [number, number, number] }])[] }) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_picking::cursor::EntityCursor)). */
 export declare class DefaultCursor extends ReflectComponent {
   static readonly path: "bevy_picking::cursor::DefaultCursor";
   declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 }
+export interface DefaultCursor extends ReflectRead<{ get value(): { Custom: { Image: { handle: string | AssetRef<Image> | null; texture_atlas: { layout: string | AssetRef<TextureAtlasLayout> | null; index: number } | null; flip_x: boolean; flip_y: boolean; rect: { min: [number, number]; max: [number, number] } | null; hotspot: [number, number] } } | { Url: { url: string; hotspot: [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" }; set value(v: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" }) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_picking::cursor::EntityCursor)). */
 export declare class EntityCursor extends ReflectComponent {
   static readonly path: "bevy_picking::cursor::EntityCursor";
   declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 }
+export interface EntityCursor extends ReflectRead<{ get value(): { Custom: { Image: { handle: string | AssetRef<Image> | null; texture_atlas: { layout: string | AssetRef<TextureAtlasLayout> | null; index: number } | null; flip_x: boolean; flip_y: boolean; rect: { min: [number, number]; max: [number, number] } | null; hotspot: [number, number] } } | { Url: { url: string; hotspot: [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" }; set value(v: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" }) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (core::option::Option<bevy_picking::cursor::EntityCursor>)). */
 export declare class OverrideCursor extends ReflectComponent {
   static readonly path: "bevy_picking::cursor::OverrideCursor";
   declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } | null;
 }
+export interface OverrideCursor extends ReflectRead<{ get value(): { Custom: { Image: { handle: string | AssetRef<Image> | null; texture_atlas: { layout: string | AssetRef<TextureAtlasLayout> | null; index: number } | null; flip_x: boolean; flip_y: boolean; rect: { min: [number, number]; max: [number, number] } | null; hotspot: [number, number] } } | { Url: { url: string; hotspot: [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } | null; set value(v: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } | null) }> {}
 
 /** Immutable: read-only in TS. */
 export declare class DirectlyHovered extends Component {
@@ -1100,6 +1197,7 @@ export declare class HoverMap extends ReflectComponent {
   static readonly path: "bevy_picking::hover::HoverMap";
   declare value: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[];
 }
+export interface HoverMap extends ReflectRead<{ get value(): (["Mouse" | { Touch: number } | { Custom: string }, ([Entity, { camera: Entity; depth: number; position: [number, number, number] | null; normal: [number, number, number] | null }])[]])[]; set value(v: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[]) }> {}
 
 /** Immutable: read-only in TS. */
 export declare class Hovered extends Component {
@@ -1117,6 +1215,7 @@ export declare class PreviousHoverMap extends ReflectComponent {
   static readonly path: "bevy_picking::hover::PreviousHoverMap";
   declare value: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[];
 }
+export interface PreviousHoverMap extends ReflectRead<{ get value(): (["Mouse" | { Touch: number } | { Custom: string }, ([Entity, { camera: Entity; depth: number; position: [number, number, number] | null; normal: [number, number, number] | null }])[]])[]; set value(v: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[]) }> {}
 
 export declare class PointerInputSettings extends Resource {
   static readonly path: "bevy_picking::input::PointerInputSettings";
@@ -1128,6 +1227,7 @@ export declare class PointerInputSettings extends Resource {
 export declare class MeshPickingCamera extends ReflectComponent {
   static readonly path: "bevy_picking::mesh_picking::MeshPickingCamera";
 }
+export interface MeshPickingCamera extends ReflectRead<{ value: {  } }> {}
 
 export declare class MeshPickingSettings extends Resource {
   static readonly path: "bevy_picking::mesh_picking::MeshPickingSettings";
@@ -1139,35 +1239,41 @@ export declare class MeshPickingSettings extends Resource {
 export declare class RayCastBackfaces extends ReflectComponent {
   static readonly path: "bevy_picking::mesh_picking::ray_cast::RayCastBackfaces";
 }
+export interface RayCastBackfaces extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class SimplifiedMesh extends ReflectComponent {
   static readonly path: "bevy_picking::mesh_picking::ray_cast::SimplifiedMesh";
   declare value: string | AssetRef<Mesh> | AssetValue<Mesh> | null;
 }
+export interface SimplifiedMesh extends ReflectRead<{ get value(): string | AssetRef<Mesh> | null; set value(v: string | AssetRef<Mesh> | AssetValue<Mesh> | null) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_picking::pointer::PointerId)). */
 export declare class PointerId extends ReflectComponent {
   static readonly path: "bevy_picking::pointer::PointerId";
   declare value: "Mouse" | { Touch: number | string } | { Custom: string };
 }
+export interface PointerId extends ReflectRead<{ get value(): "Mouse" | { Touch: number } | { Custom: string }; set value(v: "Mouse" | { Touch: number | string } | { Custom: string }) }> {}
 
 /** Reflect tier: no field is plain data (sorted_entities: not plain data (alloc::vec::Vec<(bevy_ecs::entity::Entity, bevy_picking::backend::HitData)>)). */
 export declare class PointerInteraction extends ReflectComponent {
   static readonly path: "bevy_picking::pointer::PointerInteraction";
   declare sorted_entities: readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[];
 }
+export interface PointerInteraction extends ReflectRead<{ get sorted_entities(): ([Entity, { camera: Entity; depth: number; position: [number, number, number] | null; normal: [number, number, number] | null }])[]; set sorted_entities(v: readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]); get value(): { sorted_entities: ([Entity, { camera: Entity; depth: number; position: [number, number, number] | null; normal: [number, number, number] | null }])[] }; set value(v: { sorted_entities?: readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[] }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class PointerLocation extends ReflectComponent {
   static readonly path: "bevy_picking::pointer::PointerLocation";
 }
+export interface PointerLocation extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (inner: not plain data (bevy_platform::collections::HashMap<bevy_picking::pointer::PointerId, bevy_ecs::entity::Entity, bevy_platform::hash::FixedHasher>)). */
 export declare class PointerMap extends ReflectComponent {
   static readonly path: "bevy_picking::pointer::PointerMap";
   declare inner: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, Entity])[];
 }
+export interface PointerMap extends ReflectRead<{ get inner(): (["Mouse" | { Touch: number } | { Custom: string }, Entity])[]; set inner(v: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, Entity])[]); get value(): { inner: (["Mouse" | { Touch: number } | { Custom: string }, Entity])[] }; set value(v: { inner?: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, Entity])[] }) }> {}
 
 export declare class PointerPressState extends Component {
   static readonly path: "bevy_picking::pointer::PointerPressState";
@@ -1184,7 +1290,7 @@ export declare class AutoExposure extends Component {
   declare speed_darken: f32;
   declare exponential_transition_distance: f32;
 }
-export interface AutoExposure extends Holes<{ range: { start: number; end: number }; filter: { start: number; end: number }; metering_mask: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; compensation_curve: string | null }> {}
+export interface AutoExposure extends Holes<{ range: { start: number; end: number }; filter: { start: number; end: number }; get metering_mask(): string | AssetRef<Image> | null; set metering_mask(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); compensation_curve: string | null }> {}
 
 /** Holes, not columns: prefilter: not plain data (bevy_post_process::bloom::settings::BloomPrefilter). */
 export declare class Bloom extends Component {
@@ -1198,7 +1304,7 @@ export declare class Bloom extends Component {
   declare max_mip_dimension: u32;
   declare readonly scale: Vec2;
 }
-export interface Bloom extends Holes<{ prefilter: { threshold?: number; threshold_softness?: number } }> {}
+export interface Bloom extends Holes<{ get prefilter(): { threshold: number; threshold_softness: number }; set prefilter(v: { threshold?: number; threshold_softness?: number }) }> {}
 
 export declare class DepthOfField extends Component {
   static readonly path: "bevy_post_process::dof::DepthOfField";
@@ -1217,7 +1323,7 @@ export declare class ChromaticAberration extends Component {
   declare intensity: f32;
   declare max_samples: u32;
 }
-export interface ChromaticAberration extends Holes<{ color_lut: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }> {}
+export interface ChromaticAberration extends Holes<{ get color_lut(): string | AssetRef<Image> | null | null; set color_lut(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class Vignette extends Component {
@@ -1230,7 +1336,7 @@ export declare class Vignette extends Component {
   declare readonly center: Vec2;
   declare edge_compensation: f32;
 }
-export interface Vignette extends Holes<{ color: ColorValue }> {}
+export interface Vignette extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 export declare class MotionBlur extends Component {
   static readonly path: "bevy_post_process::motion_blur::MotionBlur";
@@ -1243,6 +1349,7 @@ export declare class CameraRenderGraph extends ReflectComponent {
   static readonly path: "bevy_render::camera::CameraRenderGraph";
   declare value: never;
 }
+export interface CameraRenderGraph extends ReflectRead<{ value: never }> {}
 
 export declare class MipBias extends Component {
   static readonly path: "bevy_render::camera::MipBias";
@@ -1265,6 +1372,7 @@ export declare class GlobalsUniform extends Resource {
 export declare class OcclusionCulling extends ReflectComponent {
   static readonly path: "bevy_render::occlusion_culling::OcclusionCulling";
 }
+export interface OcclusionCulling extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (global: not plain data (bevy_render::view::ColorGradingGlobal); shadows: not plain data (bevy_render::view::ColorGradingSection); midtones: not plain data (bevy_render::view::ColorGradingSection); highlights: not plain data (bevy_render::view::ColorGradingSection)). */
 export declare class ColorGrading extends ReflectComponent {
@@ -1274,6 +1382,7 @@ export declare class ColorGrading extends ReflectComponent {
   declare midtones: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number };
   declare highlights: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number };
 }
+export interface ColorGrading extends ReflectRead<{ get global(): { exposure: number; temperature: number; tint: number; hue: number; post_saturation: number; midtones_range: { start: number; end: number } }; set global(v: { exposure?: number; temperature?: number; tint?: number; hue?: number; post_saturation?: number; midtones_range?: { start: number; end: number } }); get shadows(): { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; set shadows(v: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number }); get midtones(): { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; set midtones(v: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number }); get highlights(): { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; set highlights(v: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number }); get value(): { global: { exposure: number; temperature: number; tint: number; hue: number; post_saturation: number; midtones_range: { start: number; end: number } }; shadows: { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; midtones: { saturation: number; contrast: number; gamma: number; gain: number; lift: number }; highlights: { saturation: number; contrast: number; gamma: number; gain: number; lift: number } }; set value(v: { global?: { exposure?: number; temperature?: number; tint?: number; hue?: number; post_saturation?: number; midtones_range?: { start: number; end: number } }; shadows?: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number }; midtones?: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number }; highlights?: { saturation?: number; contrast?: number; gamma?: number; gain?: number; lift?: number } }) }> {}
 
 export declare class DebandDither extends Component {
   static readonly path: "bevy_render::view::DebandDither";
@@ -1294,12 +1403,14 @@ export declare class Tonemapping extends Component {
 export declare class RenderShadowMapVisibleEntities extends ReflectComponent {
   static readonly path: "bevy_render::view::visibility::RenderShadowMapVisibleEntities";
 }
+export interface RenderShadowMapVisibleEntities extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class Screenshot extends ReflectComponent {
   static readonly path: "bevy_render::view::window::screenshot::Screenshot";
   declare value: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 }
+export interface Screenshot extends ReflectRead<{ get value(): { Window: "Primary" | { Entity: Entity } } | { Image: { handle: string | AssetRef<Image> | null; scale_factor: number } } | { TextureView: number } | { None: { size: [number, number] } }; set value(v: { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } }) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class SceneComponentInfo extends ReflectComponent {
@@ -1307,11 +1418,13 @@ export declare class SceneComponentInfo extends ReflectComponent {
   declare spawned_from_scene: boolean;
   declare component_name: string;
 }
+export interface SceneComponentInfo extends ReflectRead<{ spawned_from_scene: boolean; component_name: string; value: never }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class SpritePickingCamera extends ReflectComponent {
   static readonly path: "bevy_sprite::picking_backend::SpritePickingCamera";
 }
+export interface SpritePickingCamera extends ReflectRead<{ value: {  } }> {}
 
 /** Holes, not columns: picking_mode: an enum with data (bevy_sprite::picking_backend::SpritePickingMode). */
 export declare class SpritePickingSettings extends Resource {
@@ -1333,13 +1446,14 @@ export declare class Sprite extends Component {
   declare flip_x: bool;
   declare flip_y: bool;
 }
-export interface Sprite extends Holes<{ image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; color: ColorValue; custom_size: readonly [number, number] | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }; alpha_mode: "Opaque" | { Mask: number } | "Blend" }> {}
+export interface Sprite extends Holes<{ get image(): string | AssetRef<Image> | null; set image(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); get texture_atlas(): { layout: string | AssetRef<TextureAtlasLayout> | null; index: number } | null; set texture_atlas(v: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null); get color(): ColorRead; set color(v: ColorValue); get custom_size(): [number, number] | null; set custom_size(v: readonly [number, number] | null); get rect(): { min: [number, number]; max: [number, number] } | null; set rect(v: { min?: readonly [number, number]; max?: readonly [number, number] } | null); get image_mode(): "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border: { min_inset: [number, number]; max_inset: [number, number] }; center_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; sides_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; max_corner_scale: number } } | { Tiled: { tile_x: boolean; tile_y: boolean; stretch_value: number } }; set image_mode(v: "Auto" | { Scale: "FillCenter" | "FillStart" | "FillEnd" | "FitCenter" | "FitStart" | "FitEnd" } | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }); alpha_mode: "Opaque" | { Mask: number } | "Blend" }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class Text2d extends ReflectComponent {
   static readonly path: "bevy_sprite::text2d::Text2d";
   declare value: string;
 }
+export interface Text2d extends ReflectRead<{ value: string }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class Text2dShadow extends Component {
@@ -1347,47 +1461,54 @@ export declare class Text2dShadow extends Component {
   static readonly tsxProps: { color?: ColorValue };
   declare readonly offset: Vec2;
 }
-export interface Text2dShadow extends Holes<{ color: ColorValue }> {}
+export interface Text2dShadow extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_sprite_render::mesh2d::color_material::ColorMaterial>)). */
 export declare class MeshMaterial2dColorMaterial extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::mesh2d::color_material::ColorMaterial>";
   declare value: string | AssetRef<ColorMaterial> | AssetValue<ColorMaterial> | null;
 }
+export interface MeshMaterial2dColorMaterial extends ReflectRead<{ get value(): string | AssetRef<ColorMaterial> | null; set value(v: string | AssetRef<ColorMaterial> | AssetValue<ColorMaterial> | null) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial>)). */
 export declare class MeshMaterial2dSpriteMeshMaterial extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial>";
   declare value: string | AssetRef<SpriteMeshMaterial> | AssetValue<SpriteMeshMaterial> | null;
 }
+export interface MeshMaterial2dSpriteMeshMaterial extends ReflectRead<{ get value(): string | AssetRef<SpriteMeshMaterial> | null; set value(v: string | AssetRef<SpriteMeshMaterial> | AssetValue<SpriteMeshMaterial> | null) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_sprite_render::tilemap_chunk::tilemap_chunk_material::TilemapChunkMaterial>)). */
 export declare class MeshMaterial2dTilemapChunkMaterial extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::material::MeshMaterial2d<bevy_sprite_render::tilemap_chunk::tilemap_chunk_material::TilemapChunkMaterial>";
   declare value: string | null;
 }
+export interface MeshMaterial2dTilemapChunkMaterial extends ReflectRead<{ value: string | null }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dMaterial>)). */
 export declare class Mesh2dWireframe extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::Mesh2dWireframe";
   declare value: string | null;
 }
+export interface Mesh2dWireframe extends ReflectRead<{ value: string | null }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class NoWireframe2d extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::NoWireframe2d";
 }
+export interface NoWireframe2d extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Wireframe2d extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2d";
 }
+export interface Wireframe2d extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (color: an enum with data (bevy_color::color::Color)). */
 export declare class Wireframe2dColor extends ReflectComponent {
   static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dColor";
   declare color: ColorValue;
 }
+export interface Wireframe2dColor extends ReflectRead<{ get color(): ColorRead; set color(v: ColorValue); get value(): { color: ColorRead }; set value(v: { color?: ColorValue }) }> {}
 
 /** Holes, not columns: default_color: an enum with data (bevy_color::color::Color). */
 export declare class Wireframe2dConfig extends Resource {
@@ -1395,7 +1516,7 @@ export declare class Wireframe2dConfig extends Resource {
   static readonly tsxProps: { default_color?: ColorValue };
   declare global: bool;
 }
-export interface Wireframe2dConfig extends Holes<{ default_color: ColorValue }> {}
+export interface Wireframe2dConfig extends Holes<{ get default_color(): ColorRead; set default_color(v: ColorValue) }> {}
 
 /** Reflect tier: no field is plain data (chunk_size: not plain data (glam::UVec2); tile_display_size: not plain data (glam::UVec2); tileset: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); alpha_mode: an enum with data (bevy_sprite_render::mesh2d::material::AlphaMode2d)). */
 export declare class TilemapChunk extends ReflectComponent {
@@ -1405,12 +1526,14 @@ export declare class TilemapChunk extends ReflectComponent {
   declare tileset: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
   declare alpha_mode: "Opaque" | { Mask: number } | "Blend";
 }
+export interface TilemapChunk extends ReflectRead<{ get chunk_size(): [number, number]; set chunk_size(v: readonly [number, number]); get tile_display_size(): [number, number]; set tile_display_size(v: readonly [number, number]); get tileset(): string | AssetRef<Image> | null; set tileset(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); alpha_mode: "Opaque" | { Mask: number } | "Blend"; get value(): { chunk_size: [number, number]; tile_display_size: [number, number]; tileset: string | AssetRef<Image> | null; alpha_mode: "Opaque" | { Mask: number } | "Blend" }; set value(v: { chunk_size?: readonly [number, number]; tile_display_size?: readonly [number, number]; tileset?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; alpha_mode?: "Opaque" | { Mask: number } | "Blend" }) }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (alloc::vec::Vec<core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>>)). */
 export declare class TilemapChunkTileData extends ReflectComponent {
   static readonly path: "bevy_sprite_render::tilemap_chunk::TilemapChunkTileData";
   declare value: readonly ({ tileset_index?: number; color?: ColorValue; visible?: boolean; orientation?: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[];
 }
+export interface TilemapChunkTileData extends ReflectRead<{ get value(): ({ tileset_index: number; color: ColorRead; visible: boolean; orientation: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[]; set value(v: readonly ({ tileset_index?: number; color?: ColorValue; visible?: boolean; orientation?: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[]) }> {}
 
 /** Reflect tier: no field is plain data (width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>)). */
 export declare class TextBounds extends ReflectComponent {
@@ -1418,6 +1541,7 @@ export declare class TextBounds extends ReflectComponent {
   declare width: number | null;
   declare height: number | null;
 }
+export interface TextBounds extends ReflectRead<{ width: number | null; height: number | null; get value(): { width: number | null; height: number | null }; set value(v: { width?: number | null; height?: number | null }) }> {}
 
 /** Holes, not columns: glyphs: not plain data (alloc::vec::Vec<bevy_text::glyph::PositionedGlyph>); run_geometry: not plain data (alloc::vec::Vec<bevy_text::pipeline::RunGeometry>); cursor: an enum with data (core::option::Option<(bool, bevy_math::rects::rect::Rect)>); selection_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); preedit_underline_rects: not plain data (alloc::vec::Vec<bevy_math::rects::rect::Rect>); inline_boxes: not plain data (alloc::vec::Vec<(bevy_ecs::entity::Entity, bevy_text::inline_box::InlineBoxKind, bevy_math::rects::rect::Rect)>). */
 export declare class TextLayoutInfo extends Component {
@@ -1426,7 +1550,7 @@ export declare class TextLayoutInfo extends Component {
   declare scale_factor: f32;
   declare readonly size: Vec2;
 }
-export interface TextLayoutInfo extends Holes<{ glyphs: readonly ({ position?: readonly [number, number]; atlas_info?: { texture?: { Index: { index?: { generation?: number; index?: number } } } | { Uuid: { uuid?: string } }; rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; offset?: readonly [number, number]; is_alpha_mask?: boolean }; section_index?: number; line_index?: number })[]; run_geometry: readonly ({ section_index?: number; bounds?: { min?: readonly [number, number]; max?: readonly [number, number] }; strikethrough_y?: number; strikethrough_thickness?: number; underline_y?: number; underline_thickness?: number })[]; cursor: readonly [boolean, { min?: readonly [number, number]; max?: readonly [number, number] }] | null; selection_rects: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[]; preedit_underline_rects: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[]; inline_boxes: readonly (readonly [Entity, "InFlow" | "OutOfFlow", { min?: readonly [number, number]; max?: readonly [number, number] }])[] }> {}
+export interface TextLayoutInfo extends Holes<{ get glyphs(): ({ position: [number, number]; atlas_info: { texture: { Index: { index: { generation: number; index: number } } } | { Uuid: { uuid: string } }; rect: { min: [number, number]; max: [number, number] }; offset: [number, number]; is_alpha_mask: boolean }; section_index: number; line_index: number })[]; set glyphs(v: readonly ({ position?: readonly [number, number]; atlas_info?: { texture?: { Index: { index?: { generation?: number; index?: number } } } | { Uuid: { uuid?: string } }; rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; offset?: readonly [number, number]; is_alpha_mask?: boolean }; section_index?: number; line_index?: number })[]); get run_geometry(): ({ section_index: number; bounds: { min: [number, number]; max: [number, number] }; strikethrough_y: number; strikethrough_thickness: number; underline_y: number; underline_thickness: number })[]; set run_geometry(v: readonly ({ section_index?: number; bounds?: { min?: readonly [number, number]; max?: readonly [number, number] }; strikethrough_y?: number; strikethrough_thickness?: number; underline_y?: number; underline_thickness?: number })[]); get cursor(): [boolean, { min: [number, number]; max: [number, number] }] | null; set cursor(v: readonly [boolean, { min?: readonly [number, number]; max?: readonly [number, number] }] | null); get selection_rects(): ({ min: [number, number]; max: [number, number] })[]; set selection_rects(v: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[]); get preedit_underline_rects(): ({ min: [number, number]; max: [number, number] })[]; set preedit_underline_rects(v: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[]); get inline_boxes(): ([Entity, "InFlow" | "OutOfFlow", { min: [number, number]; max: [number, number] }])[]; set inline_boxes(v: readonly (readonly [Entity, "InFlow" | "OutOfFlow", { min?: readonly [number, number]; max?: readonly [number, number] }])[]) }> {}
 
 /** Holes, not columns: entities: not plain data (smallvec::SmallVec<[bevy_text::text::TextEntity; 1]>). */
 export declare class ComputedTextBlock extends Component {
@@ -1436,7 +1560,7 @@ export declare class ComputedTextBlock extends Component {
   declare uses_viewport_sizes: bool;
   declare uses_rem_sizes: bool;
 }
-export interface ComputedTextBlock extends Holes<{ entities: readonly ({ entity?: Entity; depth?: number | string; font_smoothing?: "None" | "AntiAliased" })[] }> {}
+export interface ComputedTextBlock extends Holes<{ get entities(): ({ entity: Entity; depth: number; font_smoothing: "None" | "AntiAliased" })[]; set entities(v: readonly ({ entity?: Entity; depth?: number | string; font_smoothing?: "None" | "AntiAliased" })[]) }> {}
 
 export declare class EmSize extends Component {
   static readonly path: "bevy_text::text::EmSize";
@@ -1453,30 +1577,35 @@ export declare class LetterSpacing extends ReflectComponent {
   static readonly path: "bevy_text::text::LetterSpacing";
   declare value: { Px: number } | { Rem: number };
 }
+export interface LetterSpacing extends ReflectRead<{ value: { Px: number } | { Rem: number } }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_text::text::LineHeight)). */
 export declare class LineHeight extends ReflectComponent {
   static readonly path: "bevy_text::text::LineHeight";
   declare value: { Px: number } | { RelativeToFont: number };
 }
+export interface LineHeight extends ReflectRead<{ value: { Px: number } | { RelativeToFont: number } }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_color::color::Color)). */
 export declare class StrikethroughColor extends ReflectComponent {
   static readonly path: "bevy_text::text::StrikethroughColor";
   declare value: ColorValue;
 }
+export interface StrikethroughColor extends ReflectRead<{ get value(): ColorRead; set value(v: ColorValue) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_color::color::Color)). */
 export declare class TextBackgroundColor extends ReflectComponent {
   static readonly path: "bevy_text::text::TextBackgroundColor";
   declare value: ColorValue;
 }
+export interface TextBackgroundColor extends ReflectRead<{ get value(): ColorRead; set value(v: ColorValue) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_color::color::Color)). */
 export declare class TextColor extends ReflectComponent {
   static readonly path: "bevy_text::text::TextColor";
   declare value: ColorValue;
 }
+export interface TextColor extends ReflectRead<{ get value(): ColorRead; set value(v: ColorValue) }> {}
 
 /** Holes, not columns: font: an enum with data (bevy_text::text::FontSource); font_size: an enum with data (bevy_text::text::FontSize); weight: not plain data (bevy_text::text::FontWeight); width: not plain data (bevy_text::text::FontWidth); style: an enum with data (bevy_text::text::FontStyle); font_features: not plain data (bevy_text::text::FontFeatures); font_variations: not plain data (bevy_text::text::FontVariations). */
 export declare class TextFont extends Component {
@@ -1484,7 +1613,7 @@ export declare class TextFont extends Component {
   static readonly tsxProps: { font?: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size?: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight?: number; width?: number; style?: "Normal" | "Italic" | { Oblique: number | null }; font_features?: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations?: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } };
   declare font_smoothing: "None" | "AntiAliased";
 }
-export interface TextFont extends Holes<{ font: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; font_features: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } }> {}
+export interface TextFont extends Holes<{ get font(): { Handle: string | null } | { Family: string } | { Families: string } | { List: any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; set font(v: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }); font_size: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight: number; width: number; style: "Normal" | "Italic" | { Oblique: number | null }; get font_features(): { features: ([[number, number, number, number], number])[] }; set font_features(v: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }); get font_variations(): { variations: ([[number, number, number, number], number])[] }; set font_variations(v: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] }) }> {}
 
 export declare class TextLayout extends Component {
   static readonly path: "bevy_text::text::TextLayout";
@@ -1497,18 +1626,21 @@ export declare class TextSpan extends ReflectComponent {
   static readonly path: "bevy_text::text::TextSpan";
   declare value: string;
 }
+export interface TextSpan extends ReflectRead<{ value: string }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_color::color::Color)). */
 export declare class UnderlineColor extends ReflectComponent {
   static readonly path: "bevy_text::text::UnderlineColor";
   declare value: ColorValue;
 }
+export interface UnderlineColor extends ReflectRead<{ get value(): ColorRead; set value(v: ColorValue) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class DelayedCommandQueue extends ReflectComponent {
   static readonly path: "bevy_time::delayed_commands::DelayedCommandQueue";
   declare submit_at: number;
 }
+export interface DelayedCommandQueue extends ReflectRead<{ submit_at: number; get value(): { submit_at: number }; set value(v: { submit_at?: number }) }> {}
 
 /** Holes, not columns: context: not plain data (()); wrap_period: opaque to reflection (core::time::Duration); delta: opaque to reflection (core::time::Duration); elapsed: opaque to reflection (core::time::Duration); elapsed_wrapped: opaque to reflection (core::time::Duration). */
 export declare class Time extends Resource {
@@ -1521,7 +1653,7 @@ export declare class Time extends Resource {
   declare elapsed_secs_wrapped: f32;
   declare elapsed_secs_wrapped_f64: f64;
 }
-export interface Time extends Holes<{ context: readonly []; wrap_period: number; delta: number; elapsed: number; elapsed_wrapped: number }> {}
+export interface Time extends Holes<{ get context(): []; set context(v: readonly []); wrap_period: number; delta: number; elapsed: number; elapsed_wrapped: number }> {}
 
 /** Holes, not columns: context: not plain data (bevy_time::fixed::Fixed); wrap_period: opaque to reflection (core::time::Duration); delta: opaque to reflection (core::time::Duration); elapsed: opaque to reflection (core::time::Duration); elapsed_wrapped: opaque to reflection (core::time::Duration). */
 export declare class TimeFixed extends Resource {
@@ -1534,7 +1666,7 @@ export declare class TimeFixed extends Resource {
   declare elapsed_secs_wrapped: f32;
   declare elapsed_secs_wrapped_f64: f64;
 }
-export interface TimeFixed extends Holes<{ context: { timestep?: number; overstep?: number }; wrap_period: number; delta: number; elapsed: number; elapsed_wrapped: number }> {}
+export interface TimeFixed extends Holes<{ get context(): { timestep: number; overstep: number }; set context(v: { timestep?: number; overstep?: number }); wrap_period: number; delta: number; elapsed: number; elapsed_wrapped: number }> {}
 
 /** Holes, not columns: context: not plain data (bevy_time::real::Real); wrap_period: opaque to reflection (core::time::Duration); delta: opaque to reflection (core::time::Duration); elapsed: opaque to reflection (core::time::Duration); elapsed_wrapped: opaque to reflection (core::time::Duration). */
 export declare class TimeReal extends Resource {
@@ -1547,7 +1679,7 @@ export declare class TimeReal extends Resource {
   declare elapsed_secs_wrapped: f32;
   declare elapsed_secs_wrapped_f64: f64;
 }
-export interface TimeReal extends Holes<{ context: { startup?: unknown; first_update?: unknown | null; last_update?: unknown | null }; wrap_period: number; delta: number; elapsed: number; elapsed_wrapped: number }> {}
+export interface TimeReal extends Holes<{ get context(): { startup: unknown; first_update: unknown | null; last_update: unknown | null }; set context(v: { startup?: unknown; first_update?: unknown | null; last_update?: unknown | null }); wrap_period: number; delta: number; elapsed: number; elapsed_wrapped: number }> {}
 
 /** Holes, not columns: context: not plain data (bevy_time::virt::Virtual); wrap_period: opaque to reflection (core::time::Duration); delta: opaque to reflection (core::time::Duration); elapsed: opaque to reflection (core::time::Duration); elapsed_wrapped: opaque to reflection (core::time::Duration). */
 export declare class TimeVirtual extends Resource {
@@ -1560,13 +1692,14 @@ export declare class TimeVirtual extends Resource {
   declare elapsed_secs_wrapped: f32;
   declare elapsed_secs_wrapped_f64: f64;
 }
-export interface TimeVirtual extends Holes<{ context: { max_delta?: number; paused?: boolean; relative_speed?: number; effective_speed?: number }; wrap_period: number; delta: number; elapsed: number; elapsed_wrapped: number }> {}
+export interface TimeVirtual extends Holes<{ get context(): { max_delta: number; paused: boolean; relative_speed: number; effective_speed: number }; set context(v: { max_delta?: number; paused?: boolean; relative_speed?: number; effective_speed?: number }); wrap_period: number; delta: number; elapsed: number; elapsed_wrapped: number }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (glam::Affine3A)). */
 export declare class GlobalTransform extends ReflectComponent {
   static readonly path: "bevy_transform::components::global_transform::GlobalTransform";
   declare value: readonly [number, number, number, number, number, number, number, number, number, number, number, number];
 }
+export interface GlobalTransform extends ReflectRead<{ get value(): [number, number, number, number, number, number, number, number, number, number, number, number]; set value(v: readonly [number, number, number, number, number, number, number, number, number, number, number, number]) }> {}
 
 export declare class Transform extends Component {
   static readonly path: "bevy_transform::components::transform::Transform";
@@ -1579,16 +1712,19 @@ export declare class Transform extends Component {
 export declare class TransformTreeChanged extends ReflectComponent {
   static readonly path: "bevy_transform::components::transform::TransformTreeChanged";
 }
+export interface TransformTreeChanged extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class ScriptHidden extends ReflectComponent {
   static readonly path: "bevy_ts::ScriptHidden";
 }
+export interface ScriptHidden extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class TsSpawned extends ReflectComponent {
   static readonly path: "bevy_ts::commands::TsSpawned";
 }
+export interface TsSpawned extends ReflectRead<{ value: {  } }> {}
 
 export declare class Save extends Component {
   static readonly path: "bevy_ts::saves::Save";
@@ -1599,6 +1735,7 @@ export declare class TsSaved extends ReflectComponent {
   static readonly path: "bevy_ts::saves::TsSaved";
   declare value: Record<string, string>;
 }
+export interface TsSaved extends ReflectRead<{ value: Record<string, string> }> {}
 
 /** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); graph: an enum with data (bevy_asset::handle::Handle<bevy_animation::graph::AnimationGraph>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
@@ -1609,13 +1746,14 @@ export declare class PlayAnimation extends Component {
   declare paused: bool;
   declare cull: bool;
 }
-export interface PlayAnimation extends Holes<{ clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; graph: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null; repeat: "Never" | { Count: number } | "Forever" }> {}
+export interface PlayAnimation extends Holes<{ get clip(): string | AssetRef<AnimationClip> | null; set clip(v: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null); get graph(): string | AssetRef<AnimationGraph> | null; set graph(v: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null); repeat: "Never" | { Count: number } | "Forever" }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (alloc::vec::Vec<bevy_ts_levels::compose::MissingComponent>)). */
 export declare class MissingComponents extends ReflectComponent {
   static readonly path: "bevy_ts_levels::engine::MissingComponents";
   declare value: readonly ({ component?: string; reason?: "Unregistered" | "Failed" | "Mismatch"; message?: string; fields?: Record<string, string>; location?: { file?: string; line?: number; column?: number }; expected?: { file?: string; line?: number; column?: number } | null; misfit?: Record<string, string>; overrides?: readonly ({ path?: readonly string[]; fields?: Record<string, string> })[]; scene?: boolean })[];
 }
+export interface MissingComponents extends ReflectRead<{ get value(): ({ component: string; reason: "Unregistered" | "Failed" | "Mismatch"; message: string; fields: Record<string, string>; location: { file: string; line: number; column: number }; expected: { file: string; line: number; column: number } | null; misfit: Record<string, string>; overrides: ({ path: string[]; fields: Record<string, string> })[]; scene: boolean })[]; set value(v: readonly ({ component?: string; reason?: "Unregistered" | "Failed" | "Mismatch"; message?: string; fields?: Record<string, string>; location?: { file?: string; line?: number; column?: number }; expected?: { file?: string; line?: number; column?: number } | null; misfit?: Record<string, string>; overrides?: readonly ({ path?: readonly string[]; fields?: Record<string, string> })[]; scene?: boolean })[]) }> {}
 
 export declare class MaterialAlpha extends Component {
   static readonly path: "bevy_ts_material::alpha::MaterialAlpha";
@@ -1628,13 +1766,14 @@ export declare class ComputedWorldText extends Component {
   static readonly tsxProps: { rect?: { min?: readonly [number, number]; max?: readonly [number, number] } };
   declare quads: u32;
 }
-export interface ComputedWorldText extends Holes<{ rect: { min?: readonly [number, number]; max?: readonly [number, number] } }> {}
+export interface ComputedWorldText extends Holes<{ get rect(): { min: [number, number]; max: [number, number] }; set rect(v: { min?: readonly [number, number]; max?: readonly [number, number] }) }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class WorldText extends ReflectComponent {
   static readonly path: "bevy_ts_material::world_text::WorldText";
   declare value: string;
 }
+export interface WorldText extends ReflectRead<{ value: string }> {}
 
 /** Holes, not columns: width: an enum with data (core::option::Option<f32>); outline: an enum with data (core::option::Option<(f32, bevy_color::color::Color)>). */
 export declare class WorldTextStyle extends Component {
@@ -1645,7 +1784,7 @@ export declare class WorldTextStyle extends Component {
   declare readonly anchor: Vec2;
   declare lit: bool;
 }
-export interface WorldTextStyle extends Holes<{ width: number | null; outline: readonly [number, ColorValue] | null }> {}
+export interface WorldTextStyle extends Holes<{ width: number | null; get outline(): [number, ColorRead] | null; set outline(v: readonly [number, ColorValue] | null) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class TextHalo extends Component {
@@ -1653,7 +1792,7 @@ export declare class TextHalo extends Component {
   static readonly tsxProps: { color?: ColorValue };
   declare width: f32;
 }
-export interface TextHalo extends Holes<{ color: ColorValue }> {}
+export interface TextHalo extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 export declare class UiScale extends Resource {
   static readonly path: "bevy_ui::UiScale";
@@ -1665,6 +1804,7 @@ export declare class AccessibleLabel extends ReflectComponent {
   static readonly path: "bevy_ui::accessibility::AccessibleLabel";
   declare value: string;
 }
+export interface AccessibleLabel extends ReflectRead<{ value: string }> {}
 
 export declare class AutoDirectionalNavigation extends Component {
   static readonly path: "bevy_ui::auto_directional_navigation::AutoDirectionalNavigation";
@@ -1687,49 +1827,57 @@ export declare class RelativeCursorPosition extends Component {
   static readonly tsxProps: { normalized?: readonly [number, number] | null };
   declare cursor_over: bool;
 }
-export interface RelativeCursorPosition extends Holes<{ normalized: readonly [number, number] | null }> {}
+export interface RelativeCursorPosition extends Holes<{ get normalized(): [number, number] | null; set normalized(v: readonly [number, number] | null) }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (alloc::vec::Vec<bevy_ui::gradients::Gradient>)). */
 export declare class BackgroundGradient extends ReflectComponent {
   static readonly path: "bevy_ui::gradients::BackgroundGradient";
   declare value: readonly ({ Linear: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle?: number; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Radial: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; shape?: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } | { Ellipse: readonly ["Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }, "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }] }; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Conic: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start?: number; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; stops?: readonly ({ color?: ColorValue; angle?: number | null; hint?: number })[] } })[];
 }
+export interface BackgroundGradient extends ReflectRead<{ get value(): ({ Linear: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle: number; stops: ({ color: ColorRead; point: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint: number })[] } } | { Radial: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position: { anchor: [number, number]; x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; shape: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } | { Ellipse: ["Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }, "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }] }; stops: ({ color: ColorRead; point: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint: number })[] } } | { Conic: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start: number; position: { anchor: [number, number]; x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; stops: ({ color: ColorRead; angle: number | null; hint: number })[] } })[]; set value(v: readonly ({ Linear: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle?: number; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Radial: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; shape?: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } | { Ellipse: readonly ["Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }, "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }] }; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Conic: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start?: number; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; stops?: readonly ({ color?: ColorValue; angle?: number | null; hint?: number })[] } })[]) }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (alloc::vec::Vec<bevy_ui::gradients::Gradient>)). */
 export declare class BorderGradient extends ReflectComponent {
   static readonly path: "bevy_ui::gradients::BorderGradient";
   declare value: readonly ({ Linear: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle?: number; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Radial: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; shape?: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } | { Ellipse: readonly ["Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }, "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }] }; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Conic: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start?: number; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; stops?: readonly ({ color?: ColorValue; angle?: number | null; hint?: number })[] } })[];
 }
+export interface BorderGradient extends ReflectRead<{ get value(): ({ Linear: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle: number; stops: ({ color: ColorRead; point: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint: number })[] } } | { Radial: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position: { anchor: [number, number]; x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; shape: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } | { Ellipse: ["Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }, "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }] }; stops: ({ color: ColorRead; point: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint: number })[] } } | { Conic: { color_space: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start: number; position: { anchor: [number, number]; x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; stops: ({ color: ColorRead; angle: number | null; hint: number })[] } })[]; set value(v: readonly ({ Linear: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; angle?: number; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Radial: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; shape?: "ClosestSide" | "FarthestSide" | "ClosestCorner" | "FarthestCorner" | { Circle: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } | { Ellipse: readonly ["Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }, "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }] }; stops?: readonly ({ color?: ColorValue; point?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; hint?: number })[] } } | { Conic: { color_space?: "Oklaba" | "Oklcha" | "OklchaLong" | "Srgba" | "LinearRgba" | "Hsla" | "HslaLong" | "Hsva" | "HsvaLong" | "Okhsla" | "OkhslaLong"; start?: number; position?: { anchor?: readonly [number, number]; x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; stops?: readonly ({ color?: ColorValue; angle?: number | null; hint?: number })[] } })[]) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Checkable extends ReflectComponent {
   static readonly path: "bevy_ui::interaction_states::Checkable";
 }
+export interface Checkable extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Checked extends ReflectComponent {
   static readonly path: "bevy_ui::interaction_states::Checked";
 }
+export interface Checked extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class InteractionDisabled extends ReflectComponent {
   static readonly path: "bevy_ui::interaction_states::InteractionDisabled";
 }
+export interface InteractionDisabled extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Pressed extends ReflectComponent {
   static readonly path: "bevy_ui::interaction_states::Pressed";
 }
+export interface Pressed extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class ContentSize extends ReflectComponent {
   static readonly path: "bevy_ui::measurement::ContentSize";
 }
+export interface ContentSize extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class UiPickingCamera extends ReflectComponent {
   static readonly path: "bevy_ui::picking_backend::UiPickingCamera";
 }
+export interface UiPickingCamera extends ReflectRead<{ value: {  } }> {}
 
 export declare class UiPickingSettings extends Resource {
   static readonly path: "bevy_ui::picking_backend::UiPickingSettings";
@@ -1746,6 +1894,7 @@ export declare class BackgroundColor extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::BackgroundColor";
   declare value: ColorValue;
 }
+export interface BackgroundColor extends ReflectRead<{ get value(): ColorRead; set value(v: ColorValue) }> {}
 
 /** Reflect tier: no field is plain data (top: an enum with data (bevy_color::color::Color); right: an enum with data (bevy_color::color::Color); bottom: an enum with data (bevy_color::color::Color); left: an enum with data (bevy_color::color::Color)). */
 export declare class BorderColor extends ReflectComponent {
@@ -1755,18 +1904,21 @@ export declare class BorderColor extends ReflectComponent {
   declare bottom: ColorValue;
   declare left: ColorValue;
 }
+export interface BorderColor extends ReflectRead<{ get top(): ColorRead; set top(v: ColorValue); get right(): ColorRead; set right(v: ColorValue); get bottom(): ColorRead; set bottom(v: ColorValue); get left(): ColorRead; set left(v: ColorValue); get value(): { top: ColorRead; right: ColorRead; bottom: ColorRead; left: ColorRead }; set value(v: { top?: ColorValue; right?: ColorValue; bottom?: ColorValue; left?: ColorValue }) }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (alloc::vec::Vec<bevy_ui::ui_node::ShadowStyle>)). */
 export declare class BoxShadow extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::BoxShadow";
   declare value: readonly ({ color?: ColorValue; x_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; spread_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; blur_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } })[];
 }
+export interface BoxShadow extends ReflectRead<{ get value(): ({ color: ColorRead; x_offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y_offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; spread_radius: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; blur_radius: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } })[]; set value(v: readonly ({ color?: ColorValue; x_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; spread_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; blur_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } })[]) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_ui::ui_node::CalculatedClip)). */
 export declare class CalculatedClip extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::CalculatedClip";
   declare value: { Rects: readonly ({ rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; world_to_clip_local?: readonly [number, number, number, number, number, number] })[] } | "FullyClipped";
 }
+export interface CalculatedClip extends ReflectRead<{ get value(): { Rects: ({ rect: { min: [number, number]; max: [number, number] }; world_to_clip_local: [number, number, number, number, number, number] })[] } | "FullyClipped"; set value(v: { Rects: readonly ({ rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; world_to_clip_local?: readonly [number, number, number, number, number, number] })[] } | "FullyClipped") }> {}
 
 /** Holes, not columns: border: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); border_radius: not plain data (bevy_ui::ui_node::ResolvedBorderRadius); padding: not plain data (bevy_sprite::texture_slice::border_rect::BorderRect); em_size: not plain data (bevy_text::text::EmSize); rem_size: not plain data (bevy_text::text::RemSize). */
 export declare class ComputedNode extends Component {
@@ -1781,7 +1933,7 @@ export declare class ComputedNode extends Component {
   declare readonly unrounded_size: Vec2;
   declare inverse_scale_factor: f32;
 }
-export interface ComputedNode extends Holes<{ border: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; border_radius: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }; padding: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; em_size: number; rem_size: number }> {}
+export interface ComputedNode extends Holes<{ get border(): { min_inset: [number, number]; max_inset: [number, number] }; set border(v: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }); get border_radius(): { top_left: [number, number]; top_right: [number, number]; bottom_right: [number, number]; bottom_left: [number, number] }; set border_radius(v: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }); get padding(): { min_inset: [number, number]; max_inset: [number, number] }; set padding(v: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }); em_size: number; rem_size: number }> {}
 
 /** Holes, not columns: physical_size: not plain data (glam::UVec2). */
 export declare class ComputedUiRenderTargetInfo extends Component {
@@ -1789,18 +1941,20 @@ export declare class ComputedUiRenderTargetInfo extends Component {
   static readonly tsxProps: { physical_size?: readonly [number, number] };
   declare scale_factor: f32;
 }
-export interface ComputedUiRenderTargetInfo extends Holes<{ physical_size: readonly [number, number] }> {}
+export interface ComputedUiRenderTargetInfo extends Holes<{ get physical_size(): [number, number]; set physical_size(v: readonly [number, number]) }> {}
 
 /** Reflect tier: no field is plain data (camera: an enum with data (core::option::Option<bevy_ecs::entity::Entity>)). */
 export declare class ComputedUiTargetCamera extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::ComputedUiTargetCamera";
   declare camera: Entity | null;
 }
+export interface ComputedUiTargetCamera extends ReflectRead<{ camera: Entity | null; get value(): { camera: Entity | null }; set value(v: { camera?: Entity | null }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class FixedNode extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::FixedNode";
 }
+export interface FixedNode extends ReflectRead<{ value: {  } }> {}
 
 export declare class GlobalZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::GlobalZIndex";
@@ -1812,11 +1966,13 @@ export declare class IgnoreScroll extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::IgnoreScroll";
   declare value: readonly [boolean, boolean];
 }
+export interface IgnoreScroll extends ReflectRead<{ get value(): [boolean, boolean]; set value(v: readonly [boolean, boolean]) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class IsDefaultUiCamera extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::IsDefaultUiCamera";
 }
+export interface IsDefaultUiCamera extends ReflectRead<{ value: {  } }> {}
 
 export declare class LayoutConfig extends Component {
   static readonly path: "bevy_ui::ui_node::LayoutConfig";
@@ -1844,13 +2000,14 @@ export declare class Node extends Component {
   declare flex_shrink: f32;
   declare grid_auto_flow: "Row" | "Column" | "RowDense" | "ColumnDense";
 }
-export interface Node extends Holes<{ overflow: { x?: "Visible" | "Clip" | "Hidden" | "Scroll"; y?: "Visible" | "Clip" | "Hidden" | "Scroll" }; overflow_clip_margin: { visual_box?: "ContentBox" | "PaddingBox" | "BorderBox"; margin?: number }; left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; aspect_ratio: number | null; margin: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; padding: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; border_radius: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; flex_basis: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; row_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; column_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; grid_template_rows: readonly ({ repetition?: { Count: number } | "AutoFill" | "AutoFit"; tracks?: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[] })[]; grid_template_columns: readonly ({ repetition?: { Count: number } | "AutoFill" | "AutoFit"; tracks?: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[] })[]; grid_auto_rows: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_auto_columns: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; grid_row: { start?: number | null; span?: number | null; end?: number | null }; grid_column: { start?: number | null; span?: number | null; end?: number | null } }> {}
+export interface Node extends Holes<{ get overflow(): { x: "Visible" | "Clip" | "Hidden" | "Scroll"; y: "Visible" | "Clip" | "Hidden" | "Scroll" }; set overflow(v: { x?: "Visible" | "Clip" | "Hidden" | "Scroll"; y?: "Visible" | "Clip" | "Hidden" | "Scroll" }); get overflow_clip_margin(): { visual_box: "ContentBox" | "PaddingBox" | "BorderBox"; margin: number }; set overflow_clip_margin(v: { visual_box?: "ContentBox" | "PaddingBox" | "BorderBox"; margin?: number }); left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; min_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; max_height: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; aspect_ratio: number | null; get margin(): { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; set margin(v: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }); get padding(): { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; set padding(v: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }); get border(): { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; set border(v: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }); get border_radius(): { top_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; set border_radius(v: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }); flex_basis: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; row_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; column_gap: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; get grid_template_rows(): ({ repetition: { Count: number } | "AutoFill" | "AutoFit"; tracks: ({ min_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[] })[]; set grid_template_rows(v: readonly ({ repetition?: { Count: number } | "AutoFill" | "AutoFit"; tracks?: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[] })[]); get grid_template_columns(): ({ repetition: { Count: number } | "AutoFill" | "AutoFit"; tracks: ({ min_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[] })[]; set grid_template_columns(v: readonly ({ repetition?: { Count: number } | "AutoFill" | "AutoFit"; tracks?: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[] })[]); get grid_auto_rows(): ({ min_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; set grid_auto_rows(v: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]); get grid_auto_columns(): ({ min_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]; set grid_auto_columns(v: readonly ({ min_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | "Auto" | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number }; max_sizing_function?: { Px: number } | { Percent: number } | { Em: number } | { Rem: number } | "MinContent" | "MaxContent" | { FitContentPx: number } | { FitContentPercent: number } | "Auto" | { Fraction: number } | { VMin: number } | { VMax: number } | { Vh: number } | { Vw: number } })[]); get grid_row(): { start: number | null; span: number | null; end: number | null }; set grid_row(v: { start?: number | null; span?: number | null; end?: number | null }); get grid_column(): { start: number | null; span: number | null; end: number | null }; set grid_column(v: { start?: number | null; span?: number | null; end?: number | null }) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_color::color::Color)). */
 export declare class OuterColor extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::OuterColor";
   declare value: ColorValue;
 }
+export interface OuterColor extends ReflectRead<{ get value(): ColorRead; set value(v: ColorValue) }> {}
 
 /** Reflect tier: no field is plain data (width: an enum with data (bevy_ui::geometry::Val); offset: an enum with data (bevy_ui::geometry::Val); color: an enum with data (bevy_color::color::Color)). */
 export declare class Outline extends ReflectComponent {
@@ -1859,11 +2016,13 @@ export declare class Outline extends ReflectComponent {
   declare offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number };
   declare color: ColorValue;
 }
+export interface Outline extends ReflectRead<{ width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; get color(): ColorRead; set color(v: ColorValue); get value(): { width: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; offset: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; color: ColorRead }; set value(v: { width?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; color?: ColorValue }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class OverrideClip extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::OverrideClip";
 }
+export interface OverrideClip extends ReflectRead<{ value: {  } }> {}
 
 export declare class ScrollPosition extends Component {
   static readonly path: "bevy_ui::ui_node::ScrollPosition";
@@ -1875,6 +2034,7 @@ export declare class UiTargetCamera extends ReflectComponent {
   static readonly path: "bevy_ui::ui_node::UiTargetCamera";
   declare value: Entity;
 }
+export interface UiTargetCamera extends ReflectRead<{ value: Entity }> {}
 
 export declare class ZIndex extends Component {
   static readonly path: "bevy_ui::ui_node::ZIndex";
@@ -1886,6 +2046,7 @@ export declare class UiGlobalTransform extends ReflectComponent {
   static readonly path: "bevy_ui::ui_transform::UiGlobalTransform";
   declare value: readonly [number, number, number, number, number, number];
 }
+export interface UiGlobalTransform extends ReflectRead<{ get value(): [number, number, number, number, number, number]; set value(v: readonly [number, number, number, number, number, number]) }> {}
 
 /** Holes, not columns: translation: not plain data (bevy_ui::ui_transform::Val2); rotation: not plain data (bevy_math::rotation2d::Rot2). */
 export declare class UiTransform extends Component {
@@ -1893,12 +2054,13 @@ export declare class UiTransform extends Component {
   static readonly tsxProps: { translation?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; rotation?: { cos?: number; sin?: number } };
   declare readonly scale: Vec2;
 }
-export interface UiTransform extends Holes<{ translation: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; rotation: { cos?: number; sin?: number } }> {}
+export interface UiTransform extends Holes<{ get translation(): { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; set translation(v: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }); get rotation(): { cos: number; sin: number }; set rotation(v: { cos?: number; sin?: number }) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class DeprecatedButton extends ReflectComponent {
   static readonly path: "bevy_ui::widget::button::DeprecatedButton";
 }
+export interface DeprecatedButton extends ReflectRead<{ value: {  } }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); texture_atlas: an enum with data (core::option::Option<bevy_image::texture_atlas::TextureAtlas>); rect: an enum with data (core::option::Option<bevy_math::rects::rect::Rect>); image_mode: an enum with data (bevy_ui::widget::image::NodeImageMode). */
 export declare class ImageNode extends Component {
@@ -1908,13 +2070,14 @@ export declare class ImageNode extends Component {
   declare flip_y: bool;
   declare visual_box: "ContentBox" | "PaddingBox" | "BorderBox";
 }
-export interface ImageNode extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; rect: { min?: readonly [number, number]; max?: readonly [number, number] } | null; image_mode: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } } }> {}
+export interface ImageNode extends Holes<{ get color(): ColorRead; set color(v: ColorValue); get image(): string | AssetRef<Image> | null; set image(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); get texture_atlas(): { layout: string | AssetRef<TextureAtlasLayout> | null; index: number } | null; set texture_atlas(v: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null); get rect(): { min: [number, number]; max: [number, number] } | null; set rect(v: { min?: readonly [number, number]; max?: readonly [number, number] } | null); get image_mode(): "Auto" | "Stretch" | { Sliced: { border: { min_inset: [number, number]; max_inset: [number, number] }; center_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; sides_scale_mode: "Stretch" | { Tile: { stretch_value: number } }; max_corner_scale: number } } | { Tiled: { tile_x: boolean; tile_y: boolean; stretch_value: number } }; set image_mode(v: "Auto" | "Stretch" | { Sliced: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; center_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; sides_scale_mode?: "Stretch" | { Tile: { stretch_value?: number } }; max_corner_scale?: number } } | { Tiled: { tile_x?: boolean; tile_y?: boolean; stretch_value?: number } }) }> {}
 
 /** Reflect tier: no field is plain data (size: not plain data (glam::UVec2)). */
 export declare class ImageNodeSize extends ReflectComponent {
   static readonly path: "bevy_ui::widget::image::ImageNodeSize";
   declare size: readonly [number, number];
 }
+export interface ImageNodeSize extends ReflectRead<{ get size(): [number, number]; set size(v: readonly [number, number]); get value(): { size: [number, number] }; set value(v: { size?: readonly [number, number] }) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color); image: an enum with data (bevy_asset::handle::Handle<bevy_image::image::Image>); width: an enum with data (core::option::Option<f32>); height: an enum with data (core::option::Option<f32>). */
 export declare class InlineImage extends Component {
@@ -1923,18 +2086,20 @@ export declare class InlineImage extends Component {
   declare flip_x: bool;
   declare flip_y: bool;
 }
-export interface InlineImage extends Holes<{ color: ColorValue; image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; width: number | null; height: number | null }> {}
+export interface InlineImage extends Holes<{ get color(): ColorRead; set color(v: ColorValue); get image(): string | AssetRef<Image> | null; set image(v: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null); width: number | null; height: number | null }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Label extends ReflectComponent {
   static readonly path: "bevy_ui::widget::label::Label";
 }
+export interface Label extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class Text extends ReflectComponent {
   static readonly path: "bevy_ui::widget::text::Text";
   declare value: string;
 }
+export interface Text extends ReflectRead<{ value: string }> {}
 
 /** Holes, not columns: no_wrap_measure: an enum with data (core::option::Option<glam::Vec2>). */
 export declare class TextNodeFlags extends Component {
@@ -1943,7 +2108,7 @@ export declare class TextNodeFlags extends Component {
   declare needs_measure_fn: bool;
   declare needs_recompute: bool;
 }
-export interface TextNodeFlags extends Holes<{ no_wrap_measure: readonly [number, number] | null }> {}
+export interface TextNodeFlags extends Holes<{ get no_wrap_measure(): [number, number] | null; set no_wrap_measure(v: readonly [number, number] | null) }> {}
 
 /** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
 export declare class TextShadow extends Component {
@@ -1951,13 +2116,14 @@ export declare class TextShadow extends Component {
   static readonly tsxProps: { color?: ColorValue };
   declare readonly offset: Vec2;
 }
-export interface TextShadow extends Holes<{ color: ColorValue }> {}
+export interface TextShadow extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class ViewportNode extends ReflectComponent {
   static readonly path: "bevy_ui::widget::viewport::ViewportNode";
   declare camera: Entity | null;
 }
+export interface ViewportNode extends ReflectRead<{ camera: Entity | null; get value(): { camera: Entity | null }; set value(v: { camera?: Entity | null }) }> {}
 
 export declare class BoxShadowSamples extends Component {
   static readonly path: "bevy_ui_render::BoxShadowSamples";
@@ -1983,7 +2149,7 @@ export declare class GlobalUiDebugOptions extends Resource {
   declare show_clipped: bool;
   declare ignore_border_radius: bool;
 }
-export interface GlobalUiDebugOptions extends Holes<{ line_color_override: { red?: number; green?: number; blue?: number; alpha?: number } | null }> {}
+export interface GlobalUiDebugOptions extends Holes<{ get line_color_override(): { red: number; green: number; blue: number; alpha: number } | null; set line_color_override(v: { red?: number; green?: number; blue?: number; alpha?: number } | null) }> {}
 
 /** Holes, not columns: line_color_override: an enum with data (core::option::Option<bevy_color::linear_rgba::LinearRgba>). */
 export declare class UiDebugOptions extends Component {
@@ -1999,38 +2165,44 @@ export declare class UiDebugOptions extends Component {
   declare show_clipped: bool;
   declare ignore_border_radius: bool;
 }
-export interface UiDebugOptions extends Holes<{ line_color_override: { red?: number; green?: number; blue?: number; alpha?: number } | null }> {}
+export interface UiDebugOptions extends Holes<{ get line_color_override(): { red: number; green: number; blue: number; alpha: number } | null; set line_color_override(v: { red?: number; green?: number; blue?: number; alpha?: number } | null) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class ImageNodeTextureAtlasLayout extends ReflectComponent {
   static readonly path: "bevy_ui_render::image::ImageNodeTextureAtlasLayout";
   declare value: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null;
 }
+export interface ImageNodeTextureAtlasLayout extends ReflectRead<{ get value(): string | AssetRef<TextureAtlasLayout> | null; set value(v: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class ActivateOnPress extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::button::ActivateOnPress";
 }
+export interface ActivateOnPress extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Button extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::button::Button";
 }
+export interface Button extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Checkbox extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::checkbox::Checkbox";
 }
+export interface Checkbox extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Dialog extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::dialog::Dialog";
 }
+export interface Dialog extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class DialogDragHandle extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::dialog::DialogDragHandle";
 }
+export interface DialogDragHandle extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class DialogDragState extends ReflectComponent {
@@ -2038,33 +2210,39 @@ export declare class DialogDragState extends ReflectComponent {
   declare start_dialog_translation: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } };
   declare start_pointer_location: readonly [number, number];
 }
+export interface DialogDragState extends ReflectRead<{ get start_dialog_translation(): { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; set start_dialog_translation(v: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }); get start_pointer_location(): [number, number]; set start_pointer_location(v: readonly [number, number]); get value(): { start_dialog_translation: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; start_pointer_location: [number, number] }; set value(v: { start_dialog_translation?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; start_pointer_location?: readonly [number, number] }) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (core::option::Option<bevy_ecs::entity::Entity>)). */
 export declare class ActiveDescendant extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::list::ActiveDescendant";
   declare value: Entity | null;
 }
+export interface ActiveDescendant extends ReflectRead<{ value: Entity | null }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class ListItem extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::list::ListItem";
 }
+export interface ListItem extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class MenuButton extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::menu::MenuButton";
 }
+export interface MenuButton extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class MenuFocusState extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::menu::MenuFocusState";
   declare value: { Opening: "Next" | "Previous" | "First" | "Last" } | "Open" | "Closed";
 }
+export interface MenuFocusState extends ReflectRead<{ value: { Opening: "Next" | "Previous" | "First" | "Last" } | "Open" | "Closed" }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class MenuItem extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::menu::MenuItem";
 }
+export interface MenuItem extends ReflectRead<{ value: {  } }> {}
 
 export declare class MenuPopup extends Component {
   static readonly path: "bevy_ui_widgets::menu::MenuPopup";
@@ -2075,11 +2253,13 @@ export declare class MenuPopup extends Component {
 export declare class ModalDialog extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::modal::ModalDialog";
 }
+export interface ModalDialog extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class ModalDialogBarrier extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::modal::ModalDialogBarrier";
 }
+export interface ModalDialogBarrier extends ReflectRead<{ value: {  } }> {}
 
 /** Holes, not columns: positions: not plain data (alloc::vec::Vec<bevy_ui_widgets::popover::PopoverPlacement>). */
 export declare class Popover extends Component {
@@ -2087,22 +2267,25 @@ export declare class Popover extends Component {
   static readonly tsxProps: { positions?: readonly ({ side?: "Top" | "Bottom" | "Left" | "Right"; align?: "Start" | "Center" | "End"; gap?: number })[] };
   declare window_margin: f32;
 }
-export interface Popover extends Holes<{ positions: readonly ({ side?: "Top" | "Bottom" | "Left" | "Right"; align?: "Start" | "Center" | "End"; gap?: number })[] }> {}
+export interface Popover extends Holes<{ get positions(): ({ side: "Top" | "Bottom" | "Left" | "Right"; align: "Start" | "Center" | "End"; gap: number })[]; set positions(v: readonly ({ side?: "Top" | "Bottom" | "Left" | "Right"; align?: "Start" | "Center" | "End"; gap?: number })[]) }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class RadioButton extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::radio::RadioButton";
 }
+export interface RadioButton extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class RadioGroup extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::radio::RadioGroup";
 }
+export interface RadioGroup extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class ScrollArea extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::scrollarea::ScrollArea";
 }
+export interface ScrollArea extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class Scrollbar extends ReflectComponent {
@@ -2111,6 +2294,7 @@ export declare class Scrollbar extends ReflectComponent {
   declare orientation: "Horizontal" | "Vertical";
   declare min_thumb_length: number;
 }
+export interface Scrollbar extends ReflectRead<{ target: Entity; orientation: "Horizontal" | "Vertical"; min_thumb_length: number; get value(): { target: Entity; orientation: "Horizontal" | "Vertical"; min_thumb_length: number }; set value(v: { target?: Entity; orientation?: "Horizontal" | "Vertical"; min_thumb_length?: number }) }> {}
 
 export declare class ScrollbarDragState extends Component {
   static readonly path: "bevy_ui_widgets::scrollbar::ScrollbarDragState";
@@ -2124,6 +2308,7 @@ export declare class ScrollbarThumb extends ReflectComponent {
   declare border_radius: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } };
   declare border: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } };
 }
+export interface ScrollbarThumb extends ReflectRead<{ get border_radius(): { top_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; set border_radius(v: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }); get border(): { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; set border(v: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }); get value(): { border_radius: { top_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left: { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; border: { left: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; set value(v: { border_radius?: { top_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; top_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_right?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; bottom_left?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }; border?: { left?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; right?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; top?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; bottom?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } }) }> {}
 
 export declare class Slider extends Component {
   static readonly path: "bevy_ui_widgets::slider::Slider";
@@ -2137,6 +2322,7 @@ export declare class SliderDragState extends ReflectComponent {
   declare dragging: boolean;
   declare offset: number;
 }
+export interface SliderDragState extends ReflectRead<{ dragging: boolean; offset: number; get value(): { dragging: boolean; offset: number }; set value(v: { dragging?: boolean; offset?: number }) }> {}
 
 export declare class SliderPrecision extends Component {
   static readonly path: "bevy_ui_widgets::slider::SliderPrecision";
@@ -2160,6 +2346,7 @@ export declare class SliderStep extends Component {
 export declare class SliderThumb extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::slider::SliderThumb";
 }
+export interface SliderThumb extends ReflectRead<{ value: {  } }> {}
 
 /** Immutable: read-only in TS. */
 export declare class SliderValue extends Component {
@@ -2172,11 +2359,13 @@ export declare class SelectedTab extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::tabs::SelectedTab";
   declare value: Entity | null;
 }
+export interface SelectedTab extends ReflectRead<{ value: Entity | null }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Tab extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::tabs::Tab";
 }
+export interface Tab extends ReflectRead<{ value: {  } }> {}
 
 export declare class TabList extends Component {
   static readonly path: "bevy_ui_widgets::tabs::TabList";
@@ -2188,17 +2377,20 @@ export declare class TabList extends Component {
 export declare class SelectAllOnFocus extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::text_input::SelectAllOnFocus";
 }
+export interface SelectAllOnFocus extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class TextInput extends ReflectComponent {
   static readonly path: "bevy_ui_widgets::text_input::TextInput";
 }
+export interface TextInput extends ReflectRead<{ value: {  } }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_window::cursor::CursorIcon)). */
 export declare class CursorIcon extends ReflectComponent {
   static readonly path: "bevy_window::cursor::CursorIcon";
   declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 }
+export interface CursorIcon extends ReflectRead<{ get value(): { Custom: { Image: { handle: string | AssetRef<Image> | null; texture_atlas: { layout: string | AssetRef<TextureAtlasLayout> | null; index: number } | null; flip_x: boolean; flip_y: boolean; rect: { min: [number, number]; max: [number, number] } | null; hotspot: [number, number] } } | { Url: { url: string; hotspot: [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" }; set value(v: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" }) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class Monitor extends ReflectComponent {
@@ -2211,11 +2403,13 @@ export declare class Monitor extends ReflectComponent {
   declare scale_factor: number;
   declare video_modes: readonly ({ physical_size?: readonly [number, number]; bit_depth?: number; refresh_rate_millihertz?: number })[];
 }
+export interface Monitor extends ReflectRead<{ name: string | null; physical_height: number; physical_width: number; get physical_position(): [number, number]; set physical_position(v: readonly [number, number]); refresh_rate_millihertz: number | null; scale_factor: number; get video_modes(): ({ physical_size: [number, number]; bit_depth: number; refresh_rate_millihertz: number })[]; set video_modes(v: readonly ({ physical_size?: readonly [number, number]; bit_depth?: number; refresh_rate_millihertz?: number })[]); get value(): { name: string | null; physical_height: number; physical_width: number; physical_position: [number, number]; refresh_rate_millihertz: number | null; scale_factor: number; video_modes: ({ physical_size: [number, number]; bit_depth: number; refresh_rate_millihertz: number })[] }; set value(v: { name?: string | null; physical_height?: number; physical_width?: number; physical_position?: readonly [number, number]; refresh_rate_millihertz?: number | null; scale_factor?: number; video_modes?: readonly ({ physical_size?: readonly [number, number]; bit_depth?: number; refresh_rate_millihertz?: number })[] }) }> {}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class PrimaryMonitor extends ReflectComponent {
   static readonly path: "bevy_window::monitor::PrimaryMonitor";
 }
+export interface PrimaryMonitor extends ReflectRead<{ value: {  } }> {}
 
 export declare class CursorOptions extends Component {
   static readonly path: "bevy_window::window::CursorOptions";
@@ -2228,6 +2422,7 @@ export declare class CursorOptions extends Component {
 export declare class PrimaryWindow extends ReflectComponent {
   static readonly path: "bevy_window::window::PrimaryWindow";
 }
+export interface PrimaryWindow extends ReflectRead<{ value: {  } }> {}
 
 /** Holes, not columns: mode: an enum with data (bevy_window::window::WindowMode); position: an enum with data (bevy_window::window::WindowPosition); resolution: not plain data (bevy_window::window::WindowResolution); title: opaque to reflection (alloc::string::String); name: an enum with data (core::option::Option<alloc::string::String>); resize_constraints: not plain data (bevy_window::window::WindowResizeConstraints); enabled_buttons: not plain data (bevy_window::window::EnabledButtons); canvas: an enum with data (core::option::Option<alloc::string::String>); internal: not plain data (bevy_window::window::InternalWindowState); window_theme: an enum with data (core::option::Option<bevy_window::window::WindowTheme>); desired_maximum_frame_latency: an enum with data (core::option::Option<core::num::NonZeroU32>); recognize_pan_gesture: an enum with data (core::option::Option<(u8, u8)>). */
 export declare class Window extends Component {
@@ -2262,16 +2457,18 @@ export declare class Window extends Component {
   declare prefers_status_bar_hidden: bool;
   declare preferred_screen_edges_deferring_system_gestures: "None" | "Top" | "Left" | "Bottom" | "Right" | "All";
 }
-export interface Window extends Holes<{ mode: "Windowed" | { BorderlessFullscreen: "Current" | "Primary" | { Index: number | string } | { Entity: Entity } } | { Fullscreen: readonly ["Current" | "Primary" | { Index: number | string } | { Entity: Entity }, "Current" | { Specific: { physical_size?: readonly [number, number]; bit_depth?: number; refresh_rate_millihertz?: number } }] }; position: "Automatic" | { Centered: "Current" | "Primary" | { Index: number | string } | { Entity: Entity } } | { At: readonly [number, number] }; resolution: { physical_width?: number; physical_height?: number; scale_factor_override?: number | null; scale_factor?: number }; title: string; name: string | null; resize_constraints: { min_width?: number; min_height?: number; max_width?: number; max_height?: number }; enabled_buttons: { minimize?: boolean; maximize?: boolean; close?: boolean }; canvas: string | null; internal: { minimize_request?: boolean | null; maximize_request?: boolean | null; drag_move_request?: boolean; drag_resize_request?: "North" | "NorthEast" | "East" | "SouthEast" | "South" | "SouthWest" | "West" | "NorthWest" | null; physical_cursor_position?: readonly [number, number] | null }; window_theme: "Light" | "Dark" | null; desired_maximum_frame_latency: number | null; recognize_pan_gesture: readonly [number, number] | null }> {}
+export interface Window extends Holes<{ get mode(): "Windowed" | { BorderlessFullscreen: "Current" | "Primary" | { Index: number } | { Entity: Entity } } | { Fullscreen: ["Current" | "Primary" | { Index: number } | { Entity: Entity }, "Current" | { Specific: { physical_size: [number, number]; bit_depth: number; refresh_rate_millihertz: number } }] }; set mode(v: "Windowed" | { BorderlessFullscreen: "Current" | "Primary" | { Index: number | string } | { Entity: Entity } } | { Fullscreen: readonly ["Current" | "Primary" | { Index: number | string } | { Entity: Entity }, "Current" | { Specific: { physical_size?: readonly [number, number]; bit_depth?: number; refresh_rate_millihertz?: number } }] }); get position(): "Automatic" | { Centered: "Current" | "Primary" | { Index: number } | { Entity: Entity } } | { At: [number, number] }; set position(v: "Automatic" | { Centered: "Current" | "Primary" | { Index: number | string } | { Entity: Entity } } | { At: readonly [number, number] }); get resolution(): { physical_width: number; physical_height: number; scale_factor_override: number | null; scale_factor: number }; set resolution(v: { physical_width?: number; physical_height?: number; scale_factor_override?: number | null; scale_factor?: number }); title: string; name: string | null; get resize_constraints(): { min_width: number; min_height: number; max_width: number; max_height: number }; set resize_constraints(v: { min_width?: number; min_height?: number; max_width?: number; max_height?: number }); get enabled_buttons(): { minimize: boolean; maximize: boolean; close: boolean }; set enabled_buttons(v: { minimize?: boolean; maximize?: boolean; close?: boolean }); canvas: string | null; get internal(): { minimize_request: boolean | null; maximize_request: boolean | null; drag_move_request: boolean; drag_resize_request: "North" | "NorthEast" | "East" | "SouthEast" | "South" | "SouthWest" | "West" | "NorthWest" | null; physical_cursor_position: [number, number] | null }; set internal(v: { minimize_request?: boolean | null; maximize_request?: boolean | null; drag_move_request?: boolean; drag_resize_request?: "North" | "NorthEast" | "East" | "SouthEast" | "South" | "SouthWest" | "West" | "NorthWest" | null; physical_cursor_position?: readonly [number, number] | null }); window_theme: "Light" | "Dark" | null; desired_maximum_frame_latency: number | null; get recognize_pan_gesture(): [number, number] | null; set recognize_pan_gesture(v: readonly [number, number] | null) }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_world_serialization::dynamic_world::DynamicWorld>)). */
 export declare class DynamicWorldRoot extends ReflectComponent {
   static readonly path: "bevy_world_serialization::components::DynamicWorldRoot";
   declare value: string | null;
 }
+export interface DynamicWorldRoot extends ReflectRead<{ value: string | null }> {}
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_world_serialization::world_asset::WorldAsset>)). */
 export declare class WorldAssetRoot extends ReflectComponent {
   static readonly path: "bevy_world_serialization::components::WorldAssetRoot";
   declare value: string | null;
 }
+export interface WorldAssetRoot extends ReflectRead<{ value: string | null }> {}
