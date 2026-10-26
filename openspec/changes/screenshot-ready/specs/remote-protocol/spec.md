@@ -1,20 +1,20 @@
 ## MODIFIED Requirements
 
 ### Requirement: Screenshot over the protocol
-`bevy-ts/screenshot` (params `path: string`) SHALL save what the run shows as a PNG at `path`. It SHALL capture on the first rendered frame on which Bevy's `PipelineCache` has nothing waiting, by spawning Bevy's `Screenshot` entity observed by Bevy's `save_to_disk(path)`. The target SHALL be the offscreen image under `--headless`, the viewport's frame under `--viewport`, and the primary window in a window.
+`bevy-ts/screenshot` (params `path: string`) SHALL save what the run shows as a PNG at `path`. It SHALL capture once Bevy's `PipelineCache` has nothing waiting and no asset load is in flight, as a headless run's ready frame defines both, by spawning Bevy's `Screenshot` entity observed by Bevy's `save_to_disk(path)`. The target SHALL be the offscreen image under `--headless`, the viewport's frame under `--viewport`, and the primary window in a window.
 
 It SHALL answer once the file is written with `{ path, width, height, frame }`. `frame` is the bevy-ts frame it rendered in: the counter `bevy-ts/pause` and `bevy-ts/step` report, which counts paused updates too.
 
 It SHALL fail, writing nothing, when:
 - `path` is not absolute, does not end in `.png`, or names a folder that does not exist;
-- pipelines are still waiting after 60 seconds;
+- pipelines are still waiting, or assets still loading, after 60 seconds;
 - no frame renders within 5 seconds;
 - Bevy started a capture and no image is read back within 60 seconds;
 - Bevy captured but did not write the file.
 
 Every failure SHALL name the path and the reason. It SHALL work while paused, so a client takes a shot at a chosen frame with `bevy-ts/pause` and `bevy-ts/step` first.
 
-With `BEVY_TS_FIXED_STEP=1`, an engine SHALL advance time as under `BEVY_TS_SCREENSHOT`: by `TimeUpdateStrategy::ManualDuration`, 1/60 s on a ready frame (script started and no pipeline waiting) and nothing otherwise. That way a client's shots are the same at any load.
+With `BEVY_TS_FIXED_STEP=1`, an engine SHALL advance time as under `BEVY_TS_SCREENSHOT`: by `TimeUpdateStrategy::ManualDuration`, 1/60 s on a ready frame (script started, no pipeline waiting, no asset load in flight) and nothing otherwise. That way a client's shots are the same at any load.
 
 #### Scenario: A shot at a chosen frame
 - **WHEN** a headless client pauses, steps the game 30 frames, and calls `bevy-ts/screenshot` with `/tmp/at-30.png`

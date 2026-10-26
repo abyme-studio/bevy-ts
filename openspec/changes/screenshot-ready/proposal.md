@@ -10,7 +10,8 @@ A headless shot is not the same picture twice. Agent town's goldens flake under 
 
 - A run is ready to shoot when its script has run (its first generation applied) and Bevy's `PipelineCache` has nothing waiting. A render-world system reads the cache's own `waiting_pipelines()` each frame; there is no counter of ours.
 - `BEVY_TS_SCREENSHOT` saves at the 60th ready frame in a row, not at app frame 60. A frame that is not ready starts the count again.
-- `bevy-ts/screenshot` waits for an idle pipeline cache before it captures. It fails, naming the path, if the cache is still busy after 60 s.
+- A ready frame also has no asset load in flight (every live handle's `RecursiveDependencyLoadState` is not `Loading`) and every spawned world asset's instance ready (`WorldInstanceSpawner::instance_is_ready`). A failed asset is warned by path, not waited for.
+- `bevy-ts/screenshot` waits for an idle pipeline cache and no load in flight before it captures. It fails, naming the path, if the cache is still busy after 60 s.
 - Fixed step: time advances exactly 1/60 s a frame through Bevy's `TimeUpdateStrategy::ManualDuration`, and not at all while the run is not ready. It is on under `BEVY_TS_SCREENSHOT`, and under `BEVY_TS_FIXED_STEP=1` for a run driven over the protocol (a test mode). So frame N after ready is the same picture at any load.
 - If a run is not ready after 60 s, `BEVY_TS_SCREENSHOT` shoots anyway and logs a warning saying how many pipelines are still waiting. A missing shader keeps a pipeline waiting for ever, and the run should still produce its image.
 - `BEVY_TS_PIPELINE_TRACE` stays as it is. It is already in every engine's `base_app`, so it reaches npm with the next release.
