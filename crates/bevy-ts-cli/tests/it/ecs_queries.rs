@@ -860,7 +860,8 @@ app.addSystems(Update, kids);
 fn required_components_from_every_path() {
     // Commands (alone, and beside a given value), TSX, transitive through another TS component,
     // a native layout with a value, and a Rust insert. Levels: levels_scene.rs.
-    let body = r#"export class Grunt extends Component { static path = "game::Grunt"; static require = [Health.of({ hp: 10 }), Shield] }
+    let body = r#"export class Label extends Component { static path = "game::Label"; text: string = "none" }
+export class Grunt extends Component { static path = "game::Grunt"; static require = [Health.of({ hp: 10 }), Shield, Label.of({ text: "grunt" })] }
 export class Boss extends Component { static path = "game::Boss"; static require = [Grunt, Transform.of({ translation: [1, 2, 3] })] }
 let frame = 0;
 let boss: Entity;
@@ -874,8 +875,10 @@ export function make(c: Commands) {
   }
   if (frame === 3) c.entity(boss).removeWithRequires(Boss);
 }
-export function seen(all: Query<[Entity], With<Grunt>>, bare: Query<[Entity], [With<Grunt>, Without<Health>]>) {
-  console.log(`grunts ${all.len} bare ${bare.len}`);
+export function seen(all: Query<[Entity], With<Grunt>>, bare: Query<[Entity], [With<Grunt>, Without<Health>]>, labels: Query<[Label], With<Grunt>>) {
+  let named = 0;
+  labels.each((l) => { if (l.text === "grunt") named++; });
+  console.log(`grunts ${all.len} bare ${bare.len} named ${named}`);
 }
 app.addSystems(Update, make);
 app.addSystems(PostUpdate, seen);
@@ -883,7 +886,10 @@ app.addSystems(PostUpdate, seen);
     let (_, mut app, _) = staged("ecsq-required", |_| vec![], body);
     updates(&mut app, 2);
     // Each required part is there by the next system: none bare, the first frame included.
-    assert!(lines(&mut app, "grunts").iter().all(|l| l.ends_with("bare 0")), "{:?}", lines(&mut app, "grunts"));
+    // A heap-field part (a string) is copied per entity: each has its own.
+    let seen = lines(&mut app, "grunts");
+    assert!(seen.iter().all(|l| l.contains("bare 0")), "{seen:?}");
+    assert!(seen.iter().all(|l| { let w: Vec<&str> = l.split(' ').collect(); w[1] == w[5] }), "every grunt has its Label: {seen:?}");
     let rust = spawn_ts(&mut app, "game::Grunt", json!({}), ());
     assert_eq!(read_ts(&app, rust, "game::Health").map(|h| h["hp"].clone()), Some(json!(10.0)), "a Rust insert meets the hook");
     let grunts = with(&mut app, "game::Grunt");
