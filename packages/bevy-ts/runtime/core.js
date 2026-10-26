@@ -2345,7 +2345,7 @@ class Table {
   read(T) {
     return this.arrays(T, this.col(T));
   }
-  /** A written component's arrays; every row of this table is marked changed after the run. */
+  /** A written component's arrays; every row of this table the query matched is marked changed after the run. */
   write(T) {
     const c = this.col(T);
     if (!this.q.columnWrites[c]) throw new Error(`${T.name} is not Mut in this query`);

@@ -129,8 +129,6 @@ fn sparse_set_data_is_refused() {
     let e = errors("ecsq-spark", "export function s(q: Query<[QSpark]>) {}\napp.addSystems(Update, s);\n");
     assert!(e.iter().any(|e| e.message.contains("`QSpark` is a sparse-set component; it can be a filter but not query data")), "{e:?}");
     assert!(e.iter().all(|e| e.location.as_ref().is_some_and(|l| l.file.ends_with("game.tsx"))), "located: {e:?}");
-    let e = errors("ecsq-spark-has", "export function s(q: Query<[Entity, Has<QTag>]>) {}\napp.addSystems(Update, s);\n");
-    assert!(e.iter().any(|e| e.message.contains("sparse-set filters need the sparse-set query path")), "{e:?}");
     // A declined item (ecs-coverage): not query data, named, located.
     let e = errors("ecsq-declined", "export function s(q: Query<[SpawnDetails]>) {}\napp.addSystems(Update, s);\n");
     assert!(e.iter().any(|e| e.message.contains("SpawnDetails is not query data")), "{e:?}");
@@ -156,11 +154,37 @@ app.addSystems(PostUpdate, probe);
     );
     updates(&mut app, 3);
     assert_eq!(lines(&mut app, "probe"), vec!["probe 3 1 4"; 3]);
-    // Sparse-set filters are refused at load until queries take the sparse-set path.
-    for (i, f) in ["With<QTag>", "Without<QTag>", "Changed<QTag>", "Or<[With<QTag>, Added<Plain>]>"].iter().enumerate() {
-        let e = errors(&format!("ecsq-probe-sparse-{i}"), &format!("export function s(q: Query<[Entity, Plain], {f}>) {{}}\napp.addSystems(Update, s);\n"));
-        assert!(e.iter().any(|e| e.message.contains("sparse-set filters need the sparse-set query path")), "{f}: {e:?}");
-    }
+    // Sparse-set filters: one table, two archetypes, so the run goes by archetype. Lengths as
+    // Bevy's own queries give them; `Changed`/`Added` from the sparse set's ticks.
+    let body = r#"export function sp(w: Query<[Entity, Plain], With<QTag>>, wo: Query<[Entity, Plain], Without<QTag>>, h: Query<[Entity, Plain, Has<QTag>]>, ch: Query<[Entity, Plain], Changed<QTag>>, or: Query<[Entity, Plain], Or<[With<QTag>, Added<Plain>]>>) {
+  let n = 0;
+  h.each((e, p, t) => { if (t) n++; });
+  console.log(`sparse ${w.len} ${wo.len} ${n} ${ch.len} ${or.len}`);
+}
+app.addSystems(PostUpdate, sp);
+"#;
+    let (_, mut app, es) = staged(
+        "ecsq-probe-sparse",
+        |app| {
+            let es: Vec<Entity> = (0..4).map(|_| ts(app, "game::Plain", json!({}))).collect();
+            app.world_mut().entity_mut(es[1]).insert(bevy::ecs::entity_disabling::Disabled);
+            app.world_mut().entity_mut(es[2]).insert(QTag);
+            es
+        },
+        body,
+    );
+    updates(&mut app, 2);
+    let plain = app.world().resource::<bevy_ts::components::TsComponents>().live("game::Plain").unwrap().id;
+    let world = app.world_mut();
+    let with = QueryBuilder::<Entity>::new(world).with_id(plain).with::<QTag>().build().iter(world).count();
+    let without = QueryBuilder::<Entity>::new(world).with_id(plain).without::<QTag>().build().iter(world).count();
+    assert_eq!((with, without), (1, 2));
+    // First run: every `Plain` was just added and `QTag` too; then only `With<QTag>` holds.
+    assert_eq!(lines(&mut app, "sparse"), vec!["sparse 1 2 1 1 3", "sparse 1 2 1 0 1"]);
+    // A changed tag is seen once more.
+    app.world_mut().get_mut::<QTag>(es[2]).unwrap().set_changed();
+    updates(&mut app, 1);
+    assert_eq!(lines(&mut app, "sparse"), vec!["sparse 1 2 1 1 3", "sparse 1 2 1 0 1", "sparse 1 2 1 1 1"]);
 }
 
 #[test]

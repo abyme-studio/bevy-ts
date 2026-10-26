@@ -68,8 +68,12 @@ TS queries honour `DefaultQueryFilters`: an entity with `Disabled` matches only 
 
 A Rust component with `#[component(storage = "SparseSet")]` cannot be query data: its storage is
 not in table order, so it cannot be a zero-copy column. Loading fails with
-"`Spark` is a sparse-set component; it can be a filter but not query data". As a filter or
-`Has`, it fails the load too until queries take the sparse-set path.
+"`Spark` is a sparse-set component; it can be a filter but not query data". As a filter
+(`With`, `Without`, `Changed`, `Added`, inside `Or`) or as `Has`, it matches what Bevy's query
+matches. A sparse-set component splits no tables, so such a query is run by archetype: each
+matched archetype hands JS a row list into its table, as `Changed` does. A query of table
+components only keeps the whole-table path. A `table.write(T)` marks only the rows the query
+matched.
 
 ## Commands
 

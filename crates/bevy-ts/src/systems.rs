@@ -13,7 +13,8 @@ use crate::reflect_codec::ReflectTargets;
 use crate::runtime::{self, ScriptRuntime};
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::ComponentId;
-use bevy::ecs::storage::TableId;
+use bevy::ecs::archetype::{Archetype, ArchetypeId};
+use bevy::ecs::storage::{SparseSets, TableId};
 use bevy::prelude::*;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -218,15 +219,32 @@ impl Term {
         }
     }
 
-    /// The term for one table: tick slices looked up once, `With`/`Without` decided.
-    fn live<'t>(&self, table: &'t bevy::ecs::storage::Table) -> Live<'t> {
+    /// The term for one table, or for one archetype's rows in it (a sparse-set query): tick
+    /// slices or sparse sets looked up once, `With`/`Without` decided.
+    fn live<'t>(&self, table: &'t bevy::ecs::storage::Table, arch: Option<&Archetype>, sparse: &'t SparseSets) -> Live<'t> {
+        let has = |id: ComponentId| arch.map_or_else(|| table.has_column(id), |a| a.contains(id));
         match self {
-            Term::Changed(id) => table.get_changed_ticks_slice_for(*id).map_or(Live::Const(false), Live::Ticks),
-            Term::Added(id) => table.get_added_ticks_slice_for(*id).map_or(Live::Const(false), Live::Ticks),
+            Term::Changed(id) => match table.get_changed_ticks_slice_for(*id) {
+                Some(t) => Live::Ticks(t),
+                None => sparse.get(*id).map_or(Live::Const(false), |s| Live::Sparse(s, false)),
+            },
+            Term::Added(id) => match table.get_added_ticks_slice_for(*id) {
+                Some(t) => Live::Ticks(t),
+                None => sparse.get(*id).map_or(Live::Const(false), |s| Live::Sparse(s, true)),
+            },
             Term::Spawned => Live::Spawned,
-            Term::With(id) => Live::Const(table.has_column(*id)),
-            Term::Without(id) => Live::Const(!table.has_column(*id)),
-            Term::Or(ts) => Live::Or(ts.iter().map(|t| t.live(table)).collect()),
+            Term::With(id) => Live::Const(has(*id)),
+            Term::Without(id) => Live::Const(!has(*id)),
+            Term::Or(ts) => Live::Or(ts.iter().map(|t| t.live(table, arch, sparse)).collect()),
+        }
+    }
+
+    /// Its components, for the dense check.
+    fn ids(&self, out: &mut Vec<ComponentId>) {
+        match self {
+            Term::Changed(id) | Term::Added(id) | Term::With(id) | Term::Without(id) => out.push(*id),
+            Term::Spawned => {}
+            Term::Or(ts) => ts.iter().for_each(|t| t.ids(out)),
         }
     }
 }
@@ -234,6 +252,8 @@ impl Term {
 /// A [`Term`] for one table.
 enum Live<'t> {
     Ticks(&'t [std::cell::UnsafeCell<Tick>]),
+    /// A sparse-set component's ticks by entity: added (`true`) or changed.
+    Sparse(&'t bevy::ecs::storage::ComponentSparseSet, bool),
     Const(bool),
     Spawned,
     Or(Vec<Live<'t>>),
@@ -244,6 +264,11 @@ impl Live<'_> {
         match self {
             // SAFETY: exclusive stage; ticks are plain u32 cells.
             Live::Ticks(t) => unsafe { *t[row].get() }.is_newer_than(last_run, tick),
+            Live::Sparse(s, added) => {
+                let cell = if *added { s.get_added_tick(entity) } else { s.get_changed_tick(entity) };
+                // SAFETY: as above.
+                cell.is_some_and(|c| unsafe { *c.get() }.is_newer_than(last_run, tick))
+            }
             Live::Const(b) => *b,
             Live::Spawned => world.entities().entity_get_spawn_or_despawn_tick(entity).is_some_and(|t| t.is_newer_than(last_run, tick)),
             Live::Or(ls) => ls.iter().any(|l| l.holds(row, entity, world, last_run, tick)),
@@ -270,6 +295,10 @@ pub struct QueryParam {
     /// `Has<C>` data, in order: one bit each per table.
     has: Vec<ComponentId>,
     pub need: Need,
+    /// Bevy's rule: every filter, `Has` and disabling component is in a table, so a matched
+    /// table holds only matching rows. Otherwise the run goes by matched archetype, each a row
+    /// list into its table.
+    dense: bool,
 }
 
 /// A resolved param, flattened (bundles depth-first) in the order frames are handed over.
@@ -889,11 +918,7 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], need
                 column(world, d, false, &mut columns)?;
             }
             DataDecl::Has { has: r } => {
-                let id = resolve_ref(world, r, ts, &native, false)?.0;
-                if is_sparse(world, id) {
-                    return Err(format!("Has<{}>: sparse-set filters need the sparse-set query path", r.name));
-                }
-                has.push(id);
+                has.push(resolve_ref(world, r, ts, &native, false)?.0);
             }
             DataDecl::AnyOf { any_of: parts } => {
                 if parts.is_empty() {
@@ -919,6 +944,12 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], need
         }
         archetypal.push(t);
     }
+    let mut ids: Vec<ComponentId> = columns.iter().map(|c| c.id).chain(has.iter().copied()).collect();
+    archetypal.iter().for_each(|t| t.ids(&mut ids));
+    if let Some(d) = world.get_resource::<bevy::ecs::entity_disabling::DefaultQueryFilters>() {
+        ids.extend(d.disabling_ids());
+    }
+    let dense = !ids.iter().any(|id| is_sparse(world, *id));
     let mut b = QueryBuilder::<Entity>::new(world);
     for c in &columns {
         match (c.optional, c.write) {
@@ -958,19 +989,12 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], need
         add_archetypal(&mut b, t);
     }
     b.without::<crate::ScriptHidden>();
-    Ok(QueryParam { state: b.build(), columns, rows, has, need })
+    Ok(QueryParam { state: b.build(), columns, rows, has, need, dense })
 }
 
-/// A filter as a [`Term`]. Sparse-set components are refused until queries take the
-/// sparse-set path.
+/// A filter as a [`Term`].
 fn term(world: &World, f: &FilterDecl, ts: &TsLookup, native: &NativeLayouts) -> Result<Term, String> {
-    let id = |r: &ComponentRef| -> Result<ComponentId, String> {
-        let id = resolve_ref(world, r, ts, native, false)?.0;
-        if is_sparse(world, id) {
-            return Err(format!("{} is a sparse-set component: sparse-set filters need the sparse-set query path", r.name));
-        }
-        Ok(id)
-    };
+    let id = |r: &ComponentRef| -> Result<ComponentId, String> { Ok(resolve_ref(world, r, ts, native, false)?.0) };
     Ok(match f {
         FilterDecl::With(r) => Term::With(id(r)?),
         FilterDecl::Without(r) => Term::Without(id(r)?),
@@ -1202,6 +1226,8 @@ pub(crate) struct Scratch {
     rows: Vec<Vec<u32>>,
     time: Vec<u64>,
     json: Vec<Vec<u8>>,
+    /// A query's parts: its matched tables (dense), or its matched archetypes and their tables.
+    parts: Vec<(TableId, Option<ArchetypeId>)>,
 }
 
 /// Runs every system of a stage. Called from the stage's exclusive system.
@@ -1515,16 +1541,28 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                 RunParam::Query(q) => {
                     q.state.update_archetypes(world);
                     let tables = &world.storages().tables;
+                    let sparse = &world.storages().sparse_sets;
                     let mut out = Vec::new();
                     let mut count = 0usize;
-                    for table_id in q.state.matched_tables() {
+                    let mut parts = std::mem::take(&mut scratch.parts);
+                    parts.clear();
+                    if q.dense {
+                        parts.extend(q.state.matched_tables().map(|t| (t, None)));
+                    } else {
+                        parts.extend(q.state.matched_archetypes().map(|a| (world.archetypes()[a].table_id(), Some(a))));
+                    }
+                    // A sparse-set query's tables, each with its entities' slot, built once per table.
+                    let mut table_ents: Vec<(TableId, usize)> = Vec::new();
+                    for &(table_id, arch_id) in &parts {
                         let table = tables.get(table_id).expect("matched table exists");
+                        let arch = arch_id.map(|a| &world.archetypes()[a]);
                         let len = table.entity_count() as usize;
-                        if len == 0 {
+                        if arch.map_or(len, |a| a.len() as usize) == 0 {
                             continue;
                         }
-                        // Row filters: the rows that pass against this system's last run.
-                        let rows = if q.rows.is_empty() {
+                        // Row filters: the rows that pass against this system's last run. An
+                        // archetype's rows are always a list, whether or not anything filters.
+                        let rows = if q.rows.is_empty() && arch.is_none() {
                             count += len;
                             None
                         } else {
@@ -1533,10 +1571,23 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                             }
                             let list = &mut scratch.rows[rows_used];
                             list.clear();
-                            let live: Vec<Live> = q.rows.iter().map(|t| t.live(table)).collect();
-                            for (row, e) in table.entities().iter().enumerate() {
-                                if live.iter().all(|l| l.holds(row, *e, world, last_run, tick)) {
-                                    list.push(row as u32);
+                            let live: Vec<Live> = q.rows.iter().map(|t| t.live(table, arch, sparse)).collect();
+                            let pass = |row: usize, e: Entity| live.iter().all(|l| l.holds(row, e, world, last_run, tick));
+                            match arch {
+                                None => {
+                                    for (row, e) in table.entities().iter().enumerate() {
+                                        if pass(row, *e) {
+                                            list.push(row as u32);
+                                        }
+                                    }
+                                }
+                                Some(a) => {
+                                    for ae in a.entities() {
+                                        let row = ae.table_row().index_u32();
+                                        if pass(row as usize, ae.id()) {
+                                            list.push(row);
+                                        }
+                                    }
                                 }
                             }
                             if list.is_empty() {
@@ -1546,17 +1597,27 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                             rows_used += 1;
                             Some((list.as_ptr(), list.len()))
                         };
-                        if scratch.entities.len() <= ents_used {
-                            scratch.entities.push(Vec::new());
-                        }
-                        let ents = &mut scratch.entities[ents_used];
-                        ents_used += 1;
-                        ents.clear();
-                        for e in table.entities() {
-                            let bits = e.to_bits();
-                            ents.push(bits as u32);
-                            ents.push((bits >> 32) as u32);
-                        }
+                        let slot = match table_ents.iter().find(|(t, _)| *t == table_id) {
+                            Some(&(_, slot)) => slot,
+                            None => {
+                                if scratch.entities.len() <= ents_used {
+                                    scratch.entities.push(Vec::new());
+                                }
+                                let ents = &mut scratch.entities[ents_used];
+                                ents.clear();
+                                for e in table.entities() {
+                                    let bits = e.to_bits();
+                                    ents.push(bits as u32);
+                                    ents.push((bits >> 32) as u32);
+                                }
+                                if arch.is_some() {
+                                    table_ents.push((table_id, ents_used));
+                                }
+                                ents_used += 1;
+                                ents_used - 1
+                            }
+                        };
+                        let ents = &scratch.entities[slot];
                         let mut columns = Vec::with_capacity(q.columns.len());
                         for (ci, c) in q.columns.iter().enumerate() {
                             let Some(column) = table.get_column(c.id) else {
@@ -1587,9 +1648,13 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                             }
                             columns.push(ColumnFrame { data, bytes: len * c.size, ticks, added });
                         }
-                        let has = q.has.iter().enumerate().fold(0u32, |bits, (i, id)| bits | (table.has_column(*id) as u32) << i);
+                        let has = q.has.iter().enumerate().fold(0u32, |bits, (i, id)| {
+                            let here = arch.map_or_else(|| table.has_column(*id), |a| a.contains(*id));
+                            bits | (here as u32) << i
+                        });
                         out.push(TableFrame { len, entities: ents.as_ptr(), columns, rows, has });
                     }
+                    scratch.parts = parts;
                     let ok = match q.need {
                         Need::Any => true,
                         Need::One => count == 1,
@@ -1826,7 +1891,14 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     && let Some(ticks) = tf.columns.get(c as usize).and_then(|c| c.ticks)
                 {
                     // SAFETY: the tick column has `len` entries and the stage is exclusive.
-                    unsafe { std::slice::from_raw_parts_mut(ticks, tf.len) }.fill(tick.get());
+                    let all = unsafe { std::slice::from_raw_parts_mut(ticks, tf.len) };
+                    match tf.rows {
+                        // Only the rows the query matched: a filtered or sparse-set frame's table
+                        // holds others.
+                        // SAFETY: the list has `n` entries, each a row of the table.
+                        Some((rows, n)) => unsafe { std::slice::from_raw_parts(rows, n) }.iter().for_each(|r| all[*r as usize] = tick.get()),
+                        None => all.fill(tick.get()),
+                    }
                 }
             }
         }
