@@ -726,22 +726,25 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                 }
                 let _ = writeln!(dts, "export declare class {name} extends {base} {{\n  static readonly path: {path:?};\n  static readonly native: true;");
                 // An element's props where they are not the columns: a component never inserted
-                // from bytes is written through reflection, holes included.
+                // from bytes is written through reflection, holes included; and a `Vec2` column,
+                // which TS types as a `Vec3`, takes `[x, y]` (`<Anchor value={[-0.5, 0.5]} />`).
+                // Resources are never elements.
+                let vec2 = base == "Component" && n.layout.fields.iter().any(|f| matches!(f.ty, FieldType::Vec2));
                 let element = match reg.type_info() {
-                    TypeInfo::Struct(st) if !n.insertable && !n.holes.is_empty() => Some(
+                    TypeInfo::Struct(st) if vec2 || (!n.insertable && !n.holes.is_empty()) => Some(
                         st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(&registry, f.type_path(), 1))).collect::<Vec<_>>().join("; "),
                     ),
+                    TypeInfo::TupleStruct(t) if vec2 && t.field_len() == 1 => t.field_at(0).map(|f| format!("value: {}", ts_type(&registry, f.type_path(), 1))),
                     _ => None,
                 };
-                match element {
-                    Some(props) => {
-                        let _ = writeln!(dts, "  /** Its props as an element. */\n  static readonly __element: {{ {props} }};");
-                    }
-                    // Inserted from bytes: its writable holes are TSX props beside the columns.
-                    None => {
-                        if let Some(h) = hole_props(&registry, n) {
-                            let _ = writeln!(dts, "{h}");
-                        }
+                if let Some(props) = &element {
+                    let _ = writeln!(dts, "  /** Its props as an element. */\n  static readonly __element: {{ {props} }};");
+                }
+                // Inserted from bytes: its writable holes are TSX props beside the columns, and
+                // `.of()`'s, `__element` or not.
+                if element.is_none() || n.insertable {
+                    if let Some(h) = hole_props(&registry, n) {
+                        let _ = writeln!(dts, "{h}");
                     }
                 }
                 for f in &n.layout.fields {

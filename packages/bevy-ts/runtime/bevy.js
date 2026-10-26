@@ -468,6 +468,10 @@ export class Save extends nativeComponent("Save", {  }) {}
 
 export const TsSaved = reflectClass("TsSaved");
 
+export class Save extends nativeComponent("Save", {  }) {}
+
+export const TsSaved = rustComponent("TsSaved");
+
 export class PlayAnimation extends nativeComponent("PlayAnimation", { speed: f32, transition_secs: f32, paused: bool, cull: bool }) {}
 
 export const MissingComponents = reflectClass("MissingComponents");

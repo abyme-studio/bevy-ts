@@ -2,7 +2,7 @@
 // stage 3): docs/native.md's examples verbatim. `tsc -p test` must pass, and every
 // `@ts-expect-error` must be an error.
 import { type ColorValue, type Mut, type Option, type Query, ref, type With } from "bevy-ts";
-import { Camera3d, DirectionalLight, Projection } from "bevy-ts/bevy";
+import { Camera3d, DirectionalLight, Projection, TextShadow, Vignette } from "bevy-ts/bevy";
 import type { ProjectionValue } from "bevy-ts/bevy";
 
 // docs/native.md, "Reflected rows in TS systems".
@@ -40,3 +40,7 @@ export function look(q: Query<[Projection, DirectionalLight, Option<Projection>]
 
 const sun = ref();
 export const sunColor = (): ColorValue => sun.get(DirectionalLight).color;
+
+// A class with a `Vec2` column takes `[x, y]` as an element; `.of()` still takes its holes.
+export const vignette = Vignette.of({ color: "#f00", intensity: 0.5 });
+export const shadow = TextShadow.of({ color: "#000" });
