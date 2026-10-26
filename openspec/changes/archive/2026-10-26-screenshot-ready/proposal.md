@@ -30,7 +30,7 @@ None.
 ## Impact
 
 - Code: `crates/bevy-ts-remote/src/screenshot.rs` keeps ownership of shots. It gains the ready count, the render-world idle reading, the fixed step, and the env shot's trigger. `crates/bevy-ts-cli/src/headless.rs` `screenshot_on_request` moves into it. `cli.rs` adds the plugin.
-- Protocol: 1.30.0 → 1.31.0, the minor `bevy-ts/screenshot` should have taken. It landed on main inside 1.30.0: land's rebase kept reflect-assets' 1.30.0 over this method's 1.31.0. Its summary gains the pipeline wait. There are no type changes.
+- Protocol: 1.31.0 → 1.32.0, the minor `bevy-ts/screenshot` should have taken. It landed on main inside 1.30.0: land's rebase kept reflect-assets' 1.30.0 over this method's own minor, and ecs-queries took 1.31.0 first. Its summary gains the pipeline and asset waits. There are no type changes.
 - Tests:
   - A slow-starting script, where the shot shows its scene, not black.
   - A late-compiling material, where the shot shows it, not the fallback.

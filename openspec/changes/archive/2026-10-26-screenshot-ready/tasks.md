@@ -9,7 +9,7 @@
 ## 2. Method
 
 - [x] 2.1 `Progress::Waiting { since }`: capture once pipelines are idle and nothing loads; fail after 60 s naming the path and what waits
-- [x] 2.2 Contract: the screenshot summary names the wait; protocol 1.30.0 → 1.31.0; regenerate
+- [x] 2.2 Contract: the screenshot summary names the wait; protocol 1.31.0 → 1.32.0 (ecs-queries took 1.31.0); regenerate
 
 ## 3. Tests
 
