@@ -160,8 +160,9 @@ stale when the script drops it, removes it, or a hot reload applies; using a sta
   frees the asset once no component holds it either. Once a hot reload applies, it drops every
   strong ref the old script held; a reload that fails keeps them working and drops what it made. A
   restart or Stop drops them all; what an entity still uses stays.
-  `commands.spawn` is deferred, so dropping a ref in the same system that spawns with it makes
-  the spawn fail with "stale asset ref": drop it in a later system or frame.
+  `commands.spawn` is deferred and takes the ref when it applies, so dropping a ref in the same
+  system that spawns with it leaves the entity without that component and logs "insert Mesh3d: …
+  stale asset ref" for the system; its other components land. Drop it in a later system or frame.
 - `assets.remove(ref)` (and `meshes.remove(ref)`) is Bevy's `Assets::remove`: the asset goes when
   the run ends (`meshes.remove`: at once), even while a component holds it, which then draws
   nothing.

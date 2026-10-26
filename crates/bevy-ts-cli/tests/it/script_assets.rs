@@ -1096,3 +1096,45 @@ app.addSystems(Startup, start).addSystems(Update, later);
     }
     assert_eq!(tags, 6);
 }
+
+/// `assets.drop(ref)` in the system that spawns with the ref: the spawn is deferred, so it meets
+/// the dropped ref when it applies. A drop in a later frame leaves the entity holding the asset.
+#[test]
+fn a_drop_in_the_spawning_system_stales_the_spawn() {
+    let mut app = mesh_app(
+        "drop-with-spawn",
+        r#"
+import { Component } from "bevy-ts";
+import { Mesh3d } from "bevy-ts/bevy";
+import type { Commands } from "bevy-ts";
+export class Early extends Component { static path = "t::Early" }
+export class Late extends Component { static path = "t::Late" }
+const make = () => Mesh.new(PrimitiveTopology.TriangleList).insertAttribute(Mesh.ATTRIBUTE_POSITION, new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]));
+let late: AssetRef<MeshData> | undefined;
+export function run(commands: Commands, meshes: ResMut<Assets<Mesh>>) {
+  if (late) { assets.drop(late); late = undefined; return; }
+  if (done) return;
+  done = true;
+  const a = meshes.add(make());
+  commands.spawn(Early, Mesh3d.of(a));
+  assets.drop(a);
+  late = meshes.add(make());
+  commands.spawn(Late, Mesh3d.of(late));
+}
+let done = false;
+app.addSystems(Update, run);
+"#,
+    );
+    updates(&mut app, 4);
+    let m = messages(&app);
+    assert_eq!(m.iter().filter(|l| l.contains("stale asset ref 1")).count(), 1, "{m:?}");
+    assert!(!m.iter().any(|l| l.contains("stale asset ref 2")), "{m:?}");
+    let has = |app: &mut App, name: &str| {
+        let id = bevy_ts::plugin_api::component_by_name(app.world(), name).unwrap().0;
+        let world = app.world_mut();
+        let es: Vec<Entity> = QueryBuilder::<Entity>::new(world).with_id(id).build().iter(world).collect();
+        es.into_iter().map(|e| world.entity(e).contains::<Mesh3d>()).collect::<Vec<_>>()
+    };
+    assert_eq!(has(&mut app, "t::Late"), [true], "a drop in a later frame leaves the mesh: {m:?}");
+    assert_eq!(has(&mut app, "t::Early"), [false], "the spawn lands, its dropped mesh does not: {m:?}");
+}
