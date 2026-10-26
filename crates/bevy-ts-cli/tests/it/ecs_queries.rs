@@ -156,10 +156,10 @@ app.addSystems(PostUpdate, probe);
     assert_eq!(lines(&mut app, "probe"), vec!["probe 3 1 4"; 3]);
     // Sparse-set filters: one table, two archetypes, so the run goes by archetype. Lengths as
     // Bevy's own queries give them; `Changed`/`Added` from the sparse set's ticks.
-    let body = r#"export function sp(w: Query<[Entity, Plain], With<QTag>>, wo: Query<[Entity, Plain], Without<QTag>>, h: Query<[Entity, Plain, Has<QTag>]>, ch: Query<[Entity, Plain], Changed<QTag>>, or: Query<[Entity, Plain], Or<[With<QTag>, Added<Plain>]>>) {
+    let body = r#"export function sp(w: Query<[Entity, Plain], With<QTag>>, wo: Query<[Entity, Plain], Without<QTag>>, h: Query<[Entity, Plain, Has<QTag>]>, ch: Query<[Entity, Plain], Changed<QTag>>, or: Query<[Entity, Plain], Or<[With<QTag>, Added<Plain>]>>, ad: Query<[Entity, Plain], Added<QTag>>) {
   let n = 0;
   h.each((e, p, t) => { if (t) n++; });
-  console.log(`sparse ${w.len} ${wo.len} ${n} ${ch.len} ${or.len}`);
+  console.log(`sparse ${w.len} ${wo.len} ${n} ${ch.len} ${or.len} ${ad.len}`);
 }
 app.addSystems(PostUpdate, sp);
 "#;
@@ -180,11 +180,38 @@ app.addSystems(PostUpdate, sp);
     let without = QueryBuilder::<Entity>::new(world).with_id(plain).without::<QTag>().build().iter(world).count();
     assert_eq!((with, without), (1, 2));
     // First run: every `Plain` was just added and `QTag` too; then only `With<QTag>` holds.
-    assert_eq!(lines(&mut app, "sparse"), vec!["sparse 1 2 1 1 3", "sparse 1 2 1 0 1"]);
-    // A changed tag is seen once more.
+    assert_eq!(lines(&mut app, "sparse"), vec!["sparse 1 2 1 1 3 1", "sparse 1 2 1 0 1 0"]);
+    // A changed tag is seen once more; an added one is not.
     app.world_mut().get_mut::<QTag>(es[2]).unwrap().set_changed();
     updates(&mut app, 1);
-    assert_eq!(lines(&mut app, "sparse"), vec!["sparse 1 2 1 1 3", "sparse 1 2 1 0 1", "sparse 1 2 1 1 1"]);
+    assert_eq!(lines(&mut app, "sparse"), vec!["sparse 1 2 1 1 3 1", "sparse 1 2 1 0 1 0", "sparse 1 2 1 1 1 0"]);
+}
+
+#[test]
+fn raw_write_marks_only_matched_rows() {
+    // One table, two archetypes: a raw `write` under a sparse-set `With` marks the tagged row
+    // only, so another system's `Changed` sees that row and not its table-mates.
+    let body = r#"export function wr(q: Query<[Mut<Plain>], With<QTag>>) {
+  for (const tb of q.tables) tb.write(Plain);
+}
+export function seen(q: Query<[Entity, Plain], Changed<Plain>>) {
+  console.log(`changed ${q.len}`);
+}
+app.addSystems(Update, wr);
+app.addSystems(PostUpdate, seen);
+"#;
+    let (_, mut app, _) = staged(
+        "ecsq-raw-write",
+        |app| {
+            let es: Vec<Entity> = (0..4).map(|_| ts(app, "game::Plain", json!({}))).collect();
+            app.world_mut().entity_mut(es[2]).insert(QTag);
+            es
+        },
+        body,
+    );
+    updates(&mut app, 3);
+    // First run: every `Plain` was just added.
+    assert_eq!(lines(&mut app, "changed"), vec!["changed 4", "changed 1", "changed 1"]);
 }
 
 #[test]

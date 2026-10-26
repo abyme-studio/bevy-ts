@@ -33,7 +33,9 @@ Filters, alone or in a tuple (all of):
 | `Or<[F1, F2]>` | any of: `Or<[Changed<Health>, Added<Shield>]>` |
 
 `Changed`, `Added` and `Spawned` (also inside an `Or`) are checked per row in Rust, which hands JS
-the rows that pass; `With`/`Without` decide whole tables.
+the rows that pass; `With`/`Without` on table components decide whole tables. In raw `q.tables`,
+a table with `rows` set matches only those rows (`len` is the table's length), and a query naming a
+sparse-set component hands a table once per matched archetype.
 
 ### Query methods
 

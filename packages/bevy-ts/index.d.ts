@@ -522,14 +522,19 @@ export interface ColumnArrays {
   readonly stride: number;
 }
 export interface Table {
+  /** The table's length, not the match count: with `rows` set, only those rows match. */
   readonly len: number;
   /** (index, generation) pairs. */
   readonly entities: Uint32Array;
-  /** For `Changed`/`Added` queries: the rows that passed. */
+  /**
+   * The rows that match, or `null` when every row does. Set for `Changed`/`Added`/`Spawned`, and
+   * for any query naming a sparse-set component (filter or `Has`): such a query hands one table
+   * per matched archetype, so one table can appear more than once, each time with its own rows.
+   */
   readonly rows: Uint32Array | null;
   entity(row: number): Entity;
   read(c: ComponentClass): ColumnArrays;
-  /** A `Mut` component's arrays; every row of this table is marked changed after the run. */
+  /** A `Mut` component's arrays; every row of this table the query matched is marked changed after the run. */
   write(c: ComponentClass): ColumnArrays;
   /** A `Mut` component's arrays plus its changed ticks; set `ticks[row] = q.tick` yourself. */
   split(c: ComponentClass): ColumnArrays & { readonly ticks: Uint32Array };

@@ -2317,7 +2317,7 @@ class Table {
   get entities() {
     return this.q.raw[this.i][1];
   }
-  /** For `Changed`/`Added` queries: the rows that passed. */
+  /** The rows that match, or null when every row does (`Changed`/`Added`/`Spawned`, or a sparse-set filter or `Has`). */
   get rows() {
     return this.q.raw[this.i][4];
   }

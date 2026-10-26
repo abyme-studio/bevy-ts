@@ -260,7 +260,8 @@ components and custom relationships go to the operator first.
 `bob_bench`, release, 8 runs per arm, before and after alternating, medians of each run's median
 (µs). Before is `ecs-queries-stage7-before` (6dab285b): 7.2's refusal lifted, so `With<SparseTag>`
 walks the whole table and gives every row, the wrong answer. After walks each matched
-archetype's row list. Every other entity is tagged. The machine was loaded (1-minute load 74 to
+archetype's row list. The filtered variants use accessors; the raw variants ignore `rows`, so they
+are not run with a sparse-set filter. Every other entity is tagged. The machine was loaded (1-minute load 74 to
 115), so spreads are wide.
 
 | entities | variant | before bob run | after bob run | before app.update | after app.update |
