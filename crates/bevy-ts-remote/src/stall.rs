@@ -15,6 +15,7 @@ use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 use bevy::remote::{BrpError, BrpMessage, BrpResult, BrpSender, RemotePlugin, error_codes};
 use bevy::render::{ExtractSchedule, Render, RenderApp, RenderSystems};
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::{Duration, Instant};
@@ -365,7 +366,9 @@ fn watch(beats: Weak<Beats>, mailbox: Arc<Mailbox>, thread: Option<String>, sett
         current = Some(open);
         let stall = Stall { frame: open.frame, open: now.saturating_sub(open.since), limit: settings.limit, stuck: open.stuck, thread: thread.clone() };
         let line = stall.line();
-        eprintln!("{line}");
+        // Straight to the stream: `eprintln!` here inherits a test's output capture, and the exit
+        // below would drop the line with it.
+        let _ = writeln!(std::io::stderr(), "{line}");
         mailbox.stall(&line);
         match &settings.action {
             StallAction::Exit(code) => {
