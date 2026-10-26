@@ -141,7 +141,14 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
                 std::process::exit(2);
             }
         },
-        Some("build") => std::process::exit(crate::build::run(&engine, extra, &args[1..])),
+        Some("build") => {
+            if engine.identity.kind == bevy_ts::engine::EngineKind::Prebuilt
+                && let Some(code) = crate::build::in_project(&args[1..])
+            {
+                std::process::exit(code);
+            }
+            std::process::exit(crate::build::run(&engine, extra, &args[1..]))
+        }
         Some("play") => match parse_play(&args[1..]) {
             Ok((folder, headless, game_args)) => std::process::exit(crate::play::run(&engine, extra, Path::new(&folder), headless, &game_args)),
             Err(e) => {

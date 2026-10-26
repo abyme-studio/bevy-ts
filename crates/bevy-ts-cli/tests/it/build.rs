@@ -274,7 +274,7 @@ fn a_linked_engine_ships_as_a_real_file() {
     };
     // No toolchain and an empty cache: the build fails, naming the engine hash.
     let first = run();
-    let at = first.find("project engine ").expect(&first) + "project engine ".len();
+    let at = first.find("; engine ").expect(&first) + "; engine ".len();
     let hash = &first[at..at + 32];
     assert!(hash.chars().all(|c| c.is_ascii_hexdigit()), "{first}");
     let entry = cache.join(hash).join(TARGET);
@@ -325,4 +325,15 @@ fn a_build_imports_every_module_types_lists() {
     let out = project.join("dist/here");
     let (code, events) = build(&[project.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{modules:?}\n{events:#?}");
+}
+
+/// A port's module (`bevy-ts/rapier`) registers only in the project engine, so a project with Rust
+/// builds through it.
+#[test]
+#[ignore = "builds the rapier project engine"]
+fn a_port_project_builds_with_its_module() {
+    let rapier = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/rapier");
+    let out = tmp("build-rapier").join("rapier");
+    let (code, events) = build(&[rapier.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{events:#?}");
 }

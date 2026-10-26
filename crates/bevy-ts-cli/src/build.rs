@@ -263,6 +263,30 @@ pub fn run(engine: &crate::cli::Engine, extra: impl bevy::prelude::Plugin, raw: 
     }
 }
 
+/// Set for the project engine `in_project` runs, so it builds rather than hands off again.
+const IN_ENGINE: &str = "BEVY_TS_BUILD_IN_ENGINE";
+
+/// `bevy-ts build` in a project with Rust: the project engine's own `build`, whose app holds the
+/// project's ports and so their modules (`bevy-ts/rapier`), which the scripts compile against.
+/// `None` when the project has none, or the arguments need no engine: the caller builds in-process.
+pub fn in_project(raw: &[String]) -> Option<i32> {
+    // The project engine runs this same command: it builds in-process.
+    if std::env::var_os(IN_ENGINE).is_some() {
+        return None;
+    }
+    let args = parse(raw).ok().filter(|a| !a.targets)?;
+    let root = project_root(&PathBuf::from(args.dir.as_deref().unwrap_or("."))).ok()?;
+    let plan = engine::Plan::new(&project::find(&root).ok()??, Profile::Release).ok()??;
+    let (exe, _, _) = match engine::obtain(&plan, true, &mut Sink::Stderr) {
+        Ok(x) => x,
+        Err(e) => {
+            Reporter { json: raw.iter().any(|a| a == "--json") }.failed(&e);
+            return Some(1);
+        }
+    };
+    Some(std::process::Command::new(exe).arg("build").args(raw).env(IN_ENGINE, "1").status().ok().and_then(|s| s.code()).unwrap_or(1))
+}
+
 fn list_targets(json: bool) {
     let all = targets();
     if json {
