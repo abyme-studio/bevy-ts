@@ -21,7 +21,7 @@ A crate (the project's own or a port) SHALL be able to expose a Bevy system set 
 - **THEN** it reads the propagated value of that frame
 
 ### Requirement: Slots exist only for sets a generation names
-For an exposed set, the engine SHALL make two exclusive bevy-ts stage systems in that set's schedule, one ordered before the set and one after it, the first time a generation orders a TS system against the set. Making them SHALL be one schedule edit, applied with that generation at the frame boundary. TS systems SHALL be placed into slots by `.before(systemSet(name))`/`.after(systemSet(name))` and run there in registration order, exactly as in a bridge stage. A slot no generation has named SHALL NOT exist, because an exclusive system is a barrier for the parallel executor even when its run condition would skip it. Later reloads SHALL move systems between existing slots without changing any Bevy schedule; an emptied slot SHALL stay and be skipped until `restart: true`.
+For an exposed set, the engine SHALL make two slot sets in that set's schedule, `BevyTsSlot::before(name)` ordered before the set and `BevyTsSlot::after(name)` ordered after it, the first time a generation orders a TS system against the set. Each TS system placed in a slot SHALL be its own Bevy system in that slot's set, with its declared access, and the slot's systems SHALL run in registration order, exactly as in a bridge stage. TS systems SHALL be placed into slots by `.before(systemSet(name))`/`.after(systemSet(name))`. A slot set holds no system of its own, so a slot no TS system uses SHALL cost the executor nothing. A reload that keeps every system's identity, declaration and place SHALL NOT change any Bevy schedule. A reload that adds, removes or moves a system, or changes its params, SHALL edit only the schedules that system leaves or joins, once, at the frame boundary where the generation applies.
 
 #### Scenario: A TS system after physics
 - **WHEN** a TS system `thrust(q: Query<[Transform, Mut<Thrust>]>)` is registered as `systems(thrust).after(systemSet("rapier:step"))`
@@ -29,11 +29,15 @@ For an exposed set, the engine SHALL make two exclusive bevy-ts stage systems in
 
 #### Scenario: An exposed set nobody uses
 - **WHEN** the Rapier port exposes three sets and no TS system names any of them
-- **THEN** the engine's schedules contain no bevy-ts slot systems for them
+- **THEN** the engine's schedules contain no bevy-ts systems for them
 
 #### Scenario: A reload moves a system
 - **WHEN** a system stops naming `"rapier:step"` and the file is saved
-- **THEN** the system runs in its bridge stage from the next frame, and no schedule is rebuilt
+- **THEN** the system runs in its bridge stage from the next frame, and only `FixedUpdate`'s schedule is edited
+
+#### Scenario: A reload that changes only a body
+- **WHEN** the file of `thrust` is saved with a change inside its body only
+- **THEN** no Bevy schedule is edited and `thrust` runs the new body from the next frame
 
 ### Requirement: Slot placement is validated at load
 A TS system SHALL name at most one exposed set across `before` and `after`, and the schedule it is registered in SHALL match that set's schedule; any schedule with a bevy-ts stage (ts-schedules) MAY hold such a system. Otherwise the generation SHALL fail with an error naming the system and the set. `after` and `before` between TS systems SHALL apply only within one slot or stage; naming a TS system in another slot SHALL fail the load.
