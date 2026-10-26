@@ -278,6 +278,11 @@ const HAND_FIELDS: &[(&str, HandFields)] = &[
     ),
     // The JSON `bevy_ts::reflect_asset`'s `Mesh` hand map takes.
     ("bevy_mesh::mesh::Mesh", HandFields::Type("MeshData")),
+    // `bevy_ts::atlas_layout`'s: a grid, or Bevy's fields.
+    (
+        "bevy_image::texture_atlas::TextureAtlasLayout",
+        HandFields::Ts("fromGrid?: TextureAtlasGrid; size?: readonly [number, number]; textures?: readonly { min: readonly [number, number]; max: readonly [number, number] }[]"),
+    ),
     (
         "bevy_animation::AnimationClip",
         HandFields::Ts("curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number"),
@@ -308,6 +313,11 @@ const HAND: &[Hand] = &[
         path: "bevy_animation::graph::AnimationGraph",
         js: include_str!("hand_ts/animation_graph.js"),
         dts: include_str!("hand_ts/animation_graph.d.ts"),
+    },
+    Hand {
+        path: "bevy_image::texture_atlas::TextureAtlasLayout",
+        js: include_str!("hand_ts/texture_atlas_layout.js"),
+        dts: include_str!("hand_ts/texture_atlas_layout.d.ts"),
     },
     Hand {
         path: "bevy_animation::AnimationClip",

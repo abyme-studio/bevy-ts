@@ -56,7 +56,7 @@
 - **THEN** the handler runs once with the sprite's entity
 
 ### Requirement: Atlas layouts are values
-`TextureAtlasLayout.fromGrid({ tileSize, columns, rows, padding?, offset? })` from `bevy-ts` SHALL return a plain value. Where a `Handle<TextureAtlasLayout>` is written from TSX (a `Sprite`'s `texture_atlas.layout`, UI's `<image atlas>` `layout`), Rust SHALL build Bevy's `TextureAtlasLayout::from_grid` once per distinct value, cache it with the other intrinsic assets, and write its handle. `tileSize`, `columns` and `rows` SHALL be positive; otherwise the load SHALL fail naming the prop. `texture_atlas` SHALL take `{ layout, index }`; an `index` past the layout's last tile SHALL fail the load naming the index and the tile count.
+`TextureAtlasLayout.fromGrid({ tileSize, columns, rows, padding?, offset? })` from `bevy-ts/bevy` SHALL return a plain asset value, and SHALL be the one form `<image atlas>` `layout` takes besides a path or an asset ref. Where a `Handle<TextureAtlasLayout>` is written from TSX (a `Sprite`'s `texture_atlas.layout`, UI's `<image atlas>` `layout`), Rust SHALL build Bevy's `TextureAtlasLayout::from_grid` once per distinct value, cache it with the other script asset values, and write its handle. `tileSize`, `columns` and `rows` SHALL be positive; otherwise the load SHALL fail naming the prop. `texture_atlas` SHALL take `{ layout, index }`; an `index` past the layout's last tile SHALL fail the load naming the index and the tile count.
 
 #### Scenario: One frame of a sprite sheet
 - **WHEN** two sprites mount with `texture_atlas={{ layout: TextureAtlasLayout.fromGrid({ tileSize: [16, 16], columns: 8, rows: 4 }), index: 3 }}` and `index: 5`

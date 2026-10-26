@@ -35,6 +35,8 @@ pub mod reflect_value;
 #[cfg(feature = "pbr")]
 pub mod mesh_data;
 #[cfg(feature = "reflect")]
+pub mod atlas_layout;
+#[cfg(feature = "reflect")]
 pub mod reflect_asset;
 pub mod runtime;
 pub mod rust_events;

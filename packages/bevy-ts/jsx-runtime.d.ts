@@ -2,7 +2,7 @@
 // are plain descriptions: an `<entity>`, component elements on it (`<Health initialHp={100} />`),
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
 import type { AssetLoad, AssetRef, AssetValue, ColorValue, Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
-import type { Image } from "bevy-ts/bevy";
+import type { Image, TextureAtlasLayout } from "bevy-ts/bevy";
 import type { AlphaMode, KindFields } from "bevy-ts/material";
 
 /** Bevy 0.20's picking events, each an `on` prop on any `<entity>` or UI element. */
@@ -455,9 +455,9 @@ export interface ImageProps extends NodeProps {
   flipY?: Bindable<boolean>;
   /** The part of the image to draw, `[x, y, width, height]` in pixels. */
   rect?: Bindable<readonly [number, number, number, number]>;
-  /** A tile of a grid atlas (`TextureAtlasLayout::from_grid`). */
+  /** A tile of an atlas: `layout` is `TextureAtlasLayout.fromGrid({...})`, shared with sprites given an equal grid. */
   atlas?: Bindable<{
-    layout: { tile: readonly [number, number]; columns: number; rows: number; padding?: readonly [number, number]; offset?: readonly [number, number] };
+    layout: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout>;
     index: number;
   }>;
   /** `NodeImageMode`: `"auto"`, `"stretch"`, `sliced(...)` or `tiled(...)` (or what they return, written out). */

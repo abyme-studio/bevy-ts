@@ -21,6 +21,7 @@ use bevy::prelude::*;
 use bevy::text::{EditableText, TextBounds, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, TextCursorStyle, Underline, UnderlineColor};
 use bevy::camera::RenderTarget;
 use bevy::image::{TextureAtlas, TextureAtlasLayout};
+use bevy_ts::reflect_asset::{ScriptAssets, Slots};
 use bevy::render::render_resource::TextureFormat;
 use bevy::sprite::{Anchor, Text2dShadow};
 use bevy::ui::widget::{NodeImageMode, TextShadow, ViewportNode};
@@ -1175,32 +1176,15 @@ fn own_image_target(world: &mut World, camera: Entity) -> Result<(), String> {
     Ok(())
 }
 
-/// A grid atlas layout, Bevy's `TextureAtlasLayout::from_grid`.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct AtlasGrid {
-    tile: UVec2,
-    columns: u32,
-    rows: u32,
-    padding: UVec2,
-    offset: UVec2,
-}
-
 /// `<image>`'s `ImageNode` fields beside `src`.
 struct ImageFields {
     color: Option<Color>,
     flip_x: bool,
     flip_y: bool,
     rect: Option<Rect>,
-    atlas: Option<(AtlasGrid, usize)>,
+    /// The layout's JSON (`TextureAtlasLayout.fromGrid(...)`, a path or a ref) and the tile.
+    atlas: Option<(Value, usize)>,
     mode: NodeImageMode,
-}
-
-fn uvec2(v: &Value, what: &str) -> Result<UVec2, String> {
-    let [x, y] = v.as_array().map(Vec::as_slice).unwrap_or_default() else {
-        return Err(format!("{what} takes [x, y]"));
-    };
-    let n = |c: &Value| c.as_u64().filter(|n| *n <= u32::MAX as u64).map(|n| n as u32).ok_or_else(|| format!("{what} takes whole pixels"));
-    Ok(UVec2::new(n(x)?, n(y)?))
 }
 
 fn flag(v: &Value, what: &str) -> Result<bool, String> {
@@ -1225,20 +1209,10 @@ fn image_fields(props: &Map<String, Value>) -> Result<ImageFields, String> {
     }
     if let Some(v) = props.get("atlas") {
         let o = fields(v, "atlas", &["layout", "index"])?;
-        let l = fields(o.get("layout").ok_or("atlas takes a layout")?, "atlas.layout", &["tile", "columns", "rows", "padding", "offset"])?;
-        let count = |k: &str| l.get(k).and_then(Value::as_u64).filter(|n| *n > 0 && *n <= u32::MAX as u64).map(|n| n as u32).ok_or_else(|| format!("atlas.layout.{k} takes a positive count"));
-        let grid = AtlasGrid {
-            tile: uvec2(l.get("tile").ok_or("atlas.layout takes tile: [width, height]")?, "atlas.layout.tile")?,
-            columns: count("columns")?,
-            rows: count("rows")?,
-            padding: l.get("padding").map(|p| uvec2(p, "atlas.layout.padding")).transpose()?.unwrap_or(UVec2::ZERO),
-            offset: l.get("offset").map(|p| uvec2(p, "atlas.layout.offset")).transpose()?.unwrap_or(UVec2::ZERO),
-        };
+        let layout = o.get("layout").ok_or("atlas takes { layout: TextureAtlasLayout.fromGrid(...), index }")?;
         let index = o.get("index").and_then(Value::as_u64).ok_or("atlas.index takes a tile number")? as usize;
-        if index >= (grid.columns * grid.rows) as usize {
-            return Err(format!("atlas.index {index} is past the layout's {} tiles", grid.columns * grid.rows));
-        }
-        f.atlas = Some((grid, index));
+        bevy_ts::atlas_layout::check_index(v, "atlas")?;
+        f.atlas = Some((layout.clone(), index));
     }
     if let Some(v) = props.get("mode") {
         f.mode = image_mode(v)?;
@@ -1269,17 +1243,21 @@ fn image_mode(v: &Value) -> Result<NodeImageMode, String> {
     Ok(mode)
 }
 
-/// Equal grids share one `TextureAtlasLayout`, as equal meshes share one mesh.
-#[derive(Resource, Default)]
-struct AtlasLayouts(std::collections::HashMap<AtlasGrid, Handle<TextureAtlasLayout>>);
-
-fn atlas_layout(world: &mut World, grid: AtlasGrid) -> Result<Handle<TextureAtlasLayout>, String> {
-    if let Some(h) = world.get_resource::<AtlasLayouts>().and_then(|l| l.0.get(&grid)) {
-        return Ok(h.clone());
-    }
-    let layout = TextureAtlasLayout::from_grid(grid.tile, grid.columns, grid.rows, Some(grid.padding), Some(grid.offset));
-    let h = world.get_resource_mut::<Assets<TextureAtlasLayout>>().ok_or("atlas needs the image plugin (no Assets<TextureAtlasLayout>)")?.add(layout);
-    world.get_resource_or_insert_with(AtlasLayouts::default).0.insert(grid, h.clone());
+/// An `<image atlas>` layout's handle, through the reflect writer's asset hook: equal
+/// `fromGrid` values share one layout with every sprite given it (`bevy_ts::atlas_layout`).
+fn atlas_layout(world: &mut World, layout: &Value) -> Result<Handle<TextureAtlasLayout>, String> {
+    let registry = world.get_resource::<AppTypeRegistry>().ok_or("atlas needs the type registry")?.clone();
+    let registry = registry.read();
+    let server = world.get_resource::<AssetServer>().cloned();
+    let assets = world.get_resource::<ScriptAssets>().cloned().unwrap_or_default();
+    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, world: None, check: false };
+    let h = match layout.as_str() {
+        Some(path) => server.as_ref().ok_or("atlas needs the asset plugin (no AssetServer)")?.load(path.to_string()),
+        None => bevy_ts::reflect_value::HandleSlots::write(&slots, std::any::TypeId::of::<TextureAtlasLayout>(), layout).map_err(|e| format!("atlas.layout: {e}"))?.typed::<TextureAtlasLayout>(),
+    };
+    drop(registry);
+    // The layout a value made goes in now: no run ends after a TSX write.
+    bevy_ts::reflect_asset::flush(world);
     Ok(h)
 }
 
@@ -1664,8 +1642,8 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             node.flip_y = f.flip_y;
             node.rect = f.rect;
             node.image_mode = f.mode;
-            if let Some((grid, index)) = f.atlas {
-                node.texture_atlas = Some(TextureAtlas { layout: atlas_layout(world, grid)?, index });
+            if let Some((layout, index)) = f.atlas {
+                node.texture_atlas = Some(TextureAtlas { layout: atlas_layout(world, &layout)?, index });
             }
             world.entity_mut(e).insert(node);
         }

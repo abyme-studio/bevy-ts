@@ -44,13 +44,11 @@ Bevy keeps `Mesh2d`/`MeshMaterial2d` apart from `Mesh3d`/`MeshMaterial3d`. Wheth
 
 Alternative rejected: `<mesh dimension="2d">`. It is one element with two meanings and still needs a second material.
 
-### 2. Atlas layouts are values, cached as intrinsic assets
+### 2. Atlas layouts are asset values
 
-`TextureAtlasLayout.fromGrid({...})` in TS returns `{ fromGrid: { tileSize, columns, rows, padding, offset } }`. Where the reflect writer reaches a `Handle<TextureAtlasLayout>` field and finds this value, it builds `TextureAtlasLayout::from_grid` once per distinct value into `IntrinsicAssets.atlas_layouts` and writes the handle. UI's `<image atlas>` calls the same function. One owner (script-2d, in `intrinsics.rs`); UI takes it.
+`TextureAtlasLayout.fromGrid({...})` from `bevy-ts/bevy` returns the asset value `{ $of: "bevy_image::texture_atlas::TextureAtlasLayout", props: { fromGrid: { tileSize, columns, rows, padding, offset } } }`. Bevy gives `TextureAtlasLayout` no reflected default, so `T.of` cannot build it; `bevy_ts::atlas_layout` hand-maps it instead, as `Image` and `Mesh` are, and builds `TextureAtlasLayout::from_grid`. Asset values are cached by their props, so every `Handle<TextureAtlasLayout>` slot given an equal grid shares one layout. The reflect writer reaches a sprite's `texture_atlas.layout` through its asset hook (reflect-coverage stage 1's nested handles); UI's `<image atlas>` calls the same hook. One owner, `atlas_layout.rs`, which also checks `texture_atlas.index` against the grid. UI's own grid cache and its `{ tile, ... }` form are gone (lead's ruling, 2026-10-27): `fromGrid` is the one form, named after Bevy's `tile_size`.
 
-It needs no new pattern: the intrinsics already turn values into cached handles. A later `Assets.add` handle (script-assets) fits the same slot. Waiting for script-assets would block on a change with no team that needs `writable-native-params`, an ask-first item.
-
-The hook sits in the walker reflect-coverage stage 1 builds for nested handles, as `texture_atlas` is `Option<TextureAtlas>` with the handle one level down. Stage 3 waits for it rather than writing a second walker.
+It needs no new pattern: hand-mapped asset values already turn JSON into cached handles, and an `assets.add` ref fits the same slot.
 
 ### 3. `<text2d>` is a text kind on UI's text props
 

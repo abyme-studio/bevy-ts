@@ -22,7 +22,7 @@ use common::*;
 use std::sync::{Arc, Mutex};
 
 fn scene(body: &str) -> String {
-    format!("import {{ app }} from \"bevy-ts\";\nimport {{ Anchor, Camera2d, Projection, Sprite }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
+    format!("import {{ app }} from \"bevy-ts\";\nimport {{ Anchor, Camera2d, Projection, Sprite, TextureAtlasLayout }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
 }
 
 /// Bevy's default plugins with no window, every camera drawing into [`Offscreen`], and the first
@@ -398,4 +398,36 @@ fn a_bound_text2d_writes_only_its_text2d_and_its_span_is_a_child() {
     updates(&mut app, 3);
     assert_eq!(app.world().get::<Text2d>(e).unwrap().0, "2");
     assert_eq!(ticks(&app), before, "only Text2d is written");
+}
+
+/// One grid, given to two sprites and a UI image.
+const GRID: &str = "TextureAtlasLayout.fromGrid({ tileSize: [8, 8], columns: 8, rows: 4 })";
+
+#[test]
+fn sprites_and_a_ui_image_given_one_grid_share_one_32_tile_layout() {
+    let body = format!(
+        "    <entity key=\"a\"><Sprite image=\"arrow.png\" texture_atlas={{{{ layout: {GRID}, index: 3 }}}} /></entity>\n\
+         <entity key=\"b\"><Sprite image=\"arrow.png\" texture_atlas={{{{ layout: {GRID}, index: 31 }}}} /></entity>\n\
+         <image key=\"c\" src=\"arrow.png\" atlas={{{{ layout: {GRID}, index: 0 }}}} />\n"
+    );
+    let mut app = setup("two-d-atlas", &body);
+    let world = app.world_mut();
+    let by_key = |world: &mut World, k: &str| world.query::<(Entity, &TsxNode)>().iter(world).find(|(_, n)| n.key_path == [k]).map(|(e, _)| e).unwrap();
+    let (a, b, c) = (by_key(world, "a"), by_key(world, "b"), by_key(world, "c"));
+    let w = app.world();
+    let atlas = |e: Entity| w.get::<Sprite>(e).unwrap().texture_atlas.clone().expect("an atlas");
+    let (ta, tb) = (atlas(a), atlas(b));
+    assert_eq!((ta.index, tb.index), (3, 31));
+    assert_eq!(ta.layout, tb.layout, "one grid, one layout");
+    let ui = w.get::<ImageNode>(c).unwrap().texture_atlas.clone().expect("the image's atlas");
+    assert_eq!(ui.layout, ta.layout, "the UI image shares the sprites' layout");
+    let layout = w.resource::<Assets<bevy::image::TextureAtlasLayout>>().get(&ta.layout).expect("the layout is built");
+    assert_eq!(layout.textures.len(), 32);
+    assert_eq!(layout.textures[3], URect::new(24, 0, 32, 8));
+}
+
+#[test]
+fn a_sprite_atlas_index_past_its_grid_names_index_and_count() {
+    let e = refused("two-d-atlas-index", &format!("    <entity><Sprite image=\"arrow.png\" texture_atlas={{{{ layout: {GRID}, index: 32 }}}} /></entity>\n"));
+    assert!(e.contains("texture_atlas.index 32") && e.contains("32 tiles"), "{e}");
 }

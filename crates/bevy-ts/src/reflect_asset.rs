@@ -826,13 +826,15 @@ fn hands() -> Vec<Arc<HandMap>> {
     HANDS.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-/// bevy-ts' own hand maps, registered before the first lookup: `Mesh` under `pbr`.
+/// bevy-ts' own hand maps, registered before the first lookup: `Mesh` under `pbr`, and
+/// `TextureAtlasLayout` (`crate::atlas_layout`).
 fn builtins() {
-    #[cfg(feature = "pbr")]
-    {
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| own(entry::<Mesh>(crate::mesh_data::read, crate::mesh_data::write, None)));
-    }
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        #[cfg(feature = "pbr")]
+        own(entry::<Mesh>(crate::mesh_data::read, crate::mesh_data::write, None));
+        own(entry::<bevy::image::TextureAtlasLayout>(crate::atlas_layout::read, crate::atlas_layout::write, None));
+    });
 }
 
 /// Adds one of bevy-ts' own maps, unless the app mapped its type.

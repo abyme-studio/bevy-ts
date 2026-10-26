@@ -40,6 +40,8 @@ fn slot_ref<'t>(target: &'t dyn PartialReflect, field: &str) -> Option<&'t dyn P
 /// Writes `v` into `field` of `target`, over `base`'s value of that field (the slot's own when
 /// there is no default).
 fn set(slots: &Slots, target: &mut dyn PartialReflect, base: Option<&dyn PartialReflect>, type_path: &str, field: &str, v: &Value) -> Result<(), String> {
+    // A `texture_atlas` whose layout is a `fromGrid` value: its index is checked against the grid.
+    bevy_ts::atlas_layout::check_index(v, field).map_err(|e| format!("{type_path}.{e}"))?;
     let s = slot(target, field).map_err(|e| format!("{type_path}: {e}"))?;
     let b = base.and_then(|b| slot_ref(b, field));
     reflect_value::write_with(slots.cx(), s, b, v).map_err(|e| format!("{type_path}.{field}: {e}"))

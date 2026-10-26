@@ -22,14 +22,14 @@
 
 ## 3. Stage 3: atlases and 2D text (after reflect-coverage stage 1 and bevy-ui-coverage stages 2 and 7)
 
-- [ ] 3.1 `packages/bevy-ts`: export `TextureAtlasLayout.fromGrid({ tileSize, columns, rows, padding?, offset? })` returning `{ fromGrid: {...} }`, typed
-- [ ] 3.2 `intrinsics.rs`: `atlas_layout_handle(world, &GridLayout)`, cached in `IntrinsicAssets.atlas_layouts`; positive `tileSize`/`columns`/`rows` checked, naming the prop
-- [ ] 3.3 The reflect writer's nested-handle hook (reflect-coverage stage 1): a `Handle<TextureAtlasLayout>` field given a `fromGrid` value gets the cached handle; `texture_atlas.index` past the tile count fails naming index and count
-- [ ] 3.4 `ui.rs`: `<image atlas>` `layout` takes the same value through 3.2
+- [x] 3.1 `bevy-ts/bevy` (types.rs hand entry): `TextureAtlasLayout.fromGrid({ tileSize, columns, rows, padding?, offset? })` returning the asset value `{ $of, props: { fromGrid } }`, typed
+- [x] 3.2 `bevy_ts::atlas_layout`: `TextureAtlasLayout` hand-mapped in `reflect_asset`'s builtins, building `from_grid`, cached with the script asset values; positive `tileSize`/`columns`/`rows` checked, naming the prop
+- [x] 3.3 The reflect writer's nested-handle hook (reflect-coverage stage 1): a `Handle<TextureAtlasLayout>` field given a `fromGrid` value gets the cached handle; `texture_atlas.index` past the tile count fails naming index and count
+- [x] 3.4 `ui.rs`: `<image atlas>` `layout` takes the same value through 3.2's hook; UI's `AtlasLayouts` and `{ tile }` form removed, callers moved to `fromGrid`
 - [x] 3.5 `ui.rs`: `<text2d>` kind sharing `<text>`'s props parser and bound-children writer, plus `anchor`, `bounds`, and `textShadow` as `<text>`'s writing `Text2dShadow`; no `Node`; `<span>` children valid in it
 - [x] 3.6 `jsx-runtime.d.ts`: `Text2dProps`; `elements.tsx` cases
-- [ ] 3.7 `two_d.rs`: two sprites with one `fromGrid` value share a 32-tile layout handle; a UI image shares it; an out-of-range index fails; `<text2d>` with a bound child writes only `Text2d` on change, with `TextFont`, `TextColor`, `Anchor` as given
-- [ ] 3.8 `examples/shapes-2d`: a static atlas frame and a bound score in `<text2d>`; `docs/2d.md` rows
+- [x] 3.7 `two_d.rs`: two sprites with one `fromGrid` value share a 32-tile layout handle; a UI image shares it; an out-of-range index fails; `<text2d>` with a bound child writes only `Text2d` on change, with `TextFont`, `TextColor`, `Anchor` as given
+- [x] 3.8 `examples/shapes-2d`: a static atlas frame and a bound score in `<text2d>`; `docs/2d.md` rows
 
 ## 4. Stage 4: sprite-sheet animation (after reflect-coverage stage 3)
 

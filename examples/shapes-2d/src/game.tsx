@@ -1,10 +1,10 @@
 // Every 2D shape as a `<mesh2d>`, in a grid seen by a `Camera2d` (Bevy's 2d_shapes example),
-// and a row of sprites: plain, tinted, flipped; click one to tint it. One world unit is one
-// pixel. docs/2d.md lists what 2D takes. Not shipped (no example.json):
-// `bevy-ts dev src/game.tsx`.
+// and a row of sprites: plain, tinted, flipped; click one to tint it. Beside them, frame 3 of a
+// sprite sheet, and a `<text2d>` counting the clicks. One world unit is one pixel. docs/2d.md
+// lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
 import { app, signal } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
-import { Camera2d, Sprite, Transform } from "bevy-ts/bevy";
+import { Camera2d, Sprite, TextureAtlasLayout, Transform } from "bevy-ts/bevy";
 
 const shapes: Mesh2dProps[] = [
   { shape: "circle", radius: 50 },
@@ -31,6 +31,13 @@ const sprites: SpriteRow[] = [
   { key: "upside-down", flip_y: true },
 ];
 const [clicked, setClicked] = signal<string | null>(null);
+const [clicks, setClicks] = signal(0);
+/** sheet.png: four 32-pixel tiles in a row, marked 1 to 4. */
+const sheet = TextureAtlasLayout.fromGrid({ tileSize: [32, 32], columns: 4, rows: 1 });
+const click = (key: string) => {
+  setClicked((c) => (c === key ? null : key));
+  setClicks((n) => n + 1);
+};
 
 export const Shapes = () => (
   <>
@@ -51,11 +58,21 @@ export const Shapes = () => (
       );
     })}
     {sprites.map(({ key, color = "#fff", flip_x = false, flip_y = false }, i) => (
-      <entity key={key} name={`sprite ${key}`} onPointerClick={() => setClicked((c) => (c === key ? null : key))}>
+      <entity key={key} name={`sprite ${key}`} onPointerClick={() => click(key)}>
         <Transform translation={[(i - (sprites.length - 1) / 2) * STEP, -1.5 * STEP, 0]} />
         <Sprite image="arrow.png" custom_size={[96, 96]} flip_x={flip_x} flip_y={flip_y} color={() => (clicked() === key ? "#f44" : color)} />
       </entity>
     ))}
+    <entity key="frame" name="sheet frame 3">
+      <Transform translation={[2.5 * STEP, -1.5 * STEP, 0]} />
+      <Sprite image="sheet.png" custom_size={[96, 96]} texture_atlas={{ layout: sheet, index: 2 }} />
+    </entity>
+    <entity key="clicks" name="clicks">
+      <Transform translation={[0, -2.2 * STEP, 0]} />
+      <text2d size={28} color="#fff" textShadow={{ y: -2 }}>
+        Clicks: {() => `${clicks()}`}<span color="#f44">{() => (clicked() ? ` (${clicked()} is red)` : "")}</span>
+      </text2d>
+    </entity>
   </>
 );
 

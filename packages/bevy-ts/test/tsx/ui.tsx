@@ -1,7 +1,7 @@
 // Type tests for the UI intrinsics' props: `tsc -p test` must pass, and every `@ts-expect-error`
 // must be an error.
 import { app, conicGradient, deg, fr, linearGradient, minmax, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
-import { ZIndex } from "bevy-ts/bevy";
+import { TextureAtlasLayout, ZIndex } from "bevy-ts/bevy";
 
 app.scene("ui", () => (
   <>
@@ -54,7 +54,7 @@ const mapCam = ref();
 export const Media = () => (
   <node camera={mapCam}>
     <viewport camera={mapCam} />
-    <image src="a.png" flipX rect={[0, 0, 8, 8]} atlas={{ layout: { tile: [8, 8], columns: 2, rows: 2 }, index: 1 }} mode={sliced({ border: 4, center: { tile: 1 } })} />
+    <image src="a.png" flipX rect={[0, 0, 8, 8]} atlas={{ layout: TextureAtlasLayout.fromGrid({ tileSize: [8, 8], columns: 2, rows: 2 }), index: 1 }} mode={sliced({ border: 4, center: { tile: 1 } })} />
     <image src="a.png" mode={tiled()} />
     {/* @ts-expect-error  a viewport needs a camera */}
     <viewport />

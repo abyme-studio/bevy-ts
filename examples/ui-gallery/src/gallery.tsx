@@ -2,7 +2,7 @@
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
 import { app, Show, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
-import { AutoDirectionalNavigation, Camera3d, Checked, GlobalZIndex, Pressed, ScrollPosition, Transform, ZIndex } from "bevy-ts/bevy";
+import { AutoDirectionalNavigation, Camera3d, Checked, GlobalZIndex, Pressed, ScrollPosition, TextureAtlasLayout, Transform, ZIndex } from "bevy-ts/bevy";
 import { CompassOctant, KeyCode, type DirectionalNavigation, type InputFocusVisible, type Keys } from "bevy-ts/input";
 import type { Child } from "bevy-ts/jsx-runtime";
 
@@ -87,7 +87,7 @@ const Media = () => (
     <node key="row" style={{ columnGap: px(10), alignItems: "center" }}>
       <viewport key="minimap" camera={mini} style={{ width: px(96), height: px(72), border: px(2) }} border="#9fb3d1" radius={px(4)} />
       <image key="flip" src="ui/checker.png" flipX rect={[0, 0, 32, 64]} style={{ width: px(24), height: px(48) }} color="#ffd060" />
-      <image key="atlas" src="ui/checker.png" atlas={{ layout: { tile: [16, 16], columns: 4, rows: 4 }, index: 5 }} style={{ width: px(32), height: px(32) }} />
+      <image key="atlas" src="ui/checker.png" atlas={{ layout: TextureAtlasLayout.fromGrid({ tileSize: [16, 16], columns: 4, rows: 4 }), index: 5 }} style={{ width: px(32), height: px(32) }} />
     </node>
     <node key="modes" style={{ columnGap: px(10) }}>
       <image key="sliced" src="ui/checker.png" mode={sliced({ border: 16 })} style={{ width: px(120), height: px(40) }} />

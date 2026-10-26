@@ -173,7 +173,7 @@ const mini = ref();
 | `color` | `ImageNode.color` | a tint colour |
 | `flipX`, `flipY` | `flip_x`, `flip_y` | `true` |
 | `rect` | `rect` | `[x, y, width, height]` in pixels |
-| `atlas` | `texture_atlas` | `{ layout: { tile: [w, h], columns, rows, padding, offset }, index }`, a grid layout (`TextureAtlasLayout::from_grid`); equal grids share one layout |
+| `atlas` | `texture_atlas` | `{ layout: TextureAtlasLayout.fromGrid({ tileSize: [w, h], columns, rows, padding, offset }), index }` (`TextureAtlasLayout::from_grid`, from `bevy-ts/bevy`); equal grids share one layout, with sprites too |
 | `mode` | `image_mode` | `"auto"`, `"stretch"`, `sliced({ border, center, sides, maxCornerScale })` or `tiled({ x, y, stretch })` |
 
 `sliced` is a nine-slice: `border` in pixels, one number or `{ left, right, top, bottom }`;

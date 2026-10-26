@@ -15,7 +15,7 @@ use common::*;
 use std::path::PathBuf;
 
 const GAME: &str = r##"import { app, px, ref, sliced, tiled } from "bevy-ts";
-import { Camera3d } from "bevy-ts/bevy";
+import { Camera3d, TextureAtlasLayout } from "bevy-ts/bevy";
 
 const mini = ref();
 const main = ref();
@@ -28,8 +28,8 @@ app.scene("ui", () => (
       <viewport key="map" camera={mini} style={{ width: px(200), height: px(120) }} />
     </node>
     <image key="flipped" src="ui/a.png" flipX flipY rect={[2, 4, 16, 8]} color="#ff0000" />
-    <image key="tile0" src="ui/a.png" atlas={{ layout: { tile: [16, 16], columns: 4, rows: 2 }, index: 5 }} />
-    <image key="tile1" src="ui/a.png" atlas={{ layout: { tile: [16, 16], columns: 4, rows: 2 }, index: 6 }} />
+    <image key="tile0" src="ui/a.png" atlas={{ layout: TextureAtlasLayout.fromGrid({ tileSize: [16, 16], columns: 4, rows: 2 }), index: 5 }} />
+    <image key="tile1" src="ui/a.png" atlas={{ layout: TextureAtlasLayout.fromGrid({ tileSize: [16, 16], columns: 4, rows: 2 }), index: 6 }} />
     <image key="panel" src="ui/a.png" mode={sliced({ border: 8, center: { tile: 2 }, maxCornerScale: 0.5 })} />
     <image key="sides" src="ui/a.png" mode={sliced({ border: { left: 1, right: 2, top: 3, bottom: 4 } })} />
     <image key="floor" src="ui/a.png" mode={tiled({ y: false, stretch: 1.5 })} />
@@ -214,7 +214,7 @@ fn camera_inside_another_ui_element_fails_naming_its_location() {
 #[test]
 fn an_atlas_index_past_its_grid_fails() {
     let _hang = common::watchdog("an_atlas_index_past_its_grid_fails", common::BOUND);
-    let src = "import { app } from \"bevy-ts\";\napp.scene(\"ui\", () => <image src=\"a.png\" atlas={{ layout: { tile: [8, 8], columns: 2, rows: 2 }, index: 4 }} />);\n";
+    let src = "import { app } from \"bevy-ts\";\nimport { TextureAtlasLayout } from \"bevy-ts/bevy\";\napp.scene(\"ui\", () => <image src=\"a.png\" atlas={{ layout: TextureAtlasLayout.fromGrid({ tileSize: [8, 8], columns: 2, rows: 2 }), index: 4 }} />);\n";
     let dir = project("ui-media-atlas-index", &[("game.tsx", src)]);
     let mut app = media_app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
