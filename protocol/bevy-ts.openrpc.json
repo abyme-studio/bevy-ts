@@ -188,7 +188,7 @@
     },
     {
       "name": "bevy-ts/screenshot",
-      "summary": "Saves what the run shows as a PNG at path, on the first rendered frame with no render pipeline still compiling and no asset still loading, and answers once the file is written. Works while paused: pause and step to choose the frame. Since 1.32.0.",
+      "summary": "Saves what the run shows as a PNG at path, at the third update in a row with no render pipeline still compiling and no asset still loading, so pipelines a finished load needs are not missed, and answers once the file is written. Works while paused: pause and step to choose the frame. Since 1.32.0.",
       "x-bevy-ts-crate": "bevy-ts-remote",
       "params": [
         {

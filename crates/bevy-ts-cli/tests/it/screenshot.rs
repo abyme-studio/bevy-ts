@@ -121,10 +121,12 @@ fn a_shot_at_a_chosen_frame_shows_that_frame() {
     for (at, colour) in [(29, BEFORE), (30, AFTER)] {
         step_to(&mut app, at);
         let path = dir.join(format!("at-{at}.png"));
-        // The shot renders in the next update, the frame the answer names.
-        let next = frame(&app) + 1;
+        // The shot renders in a later update, paused, the frame the answer names.
+        let asked = frame(&app);
         let r = ask(&mut app, "bevy-ts/screenshot", json!({ "path": path })).unwrap();
-        assert_eq!(r, json!({ "path": path, "width": SIZE.0, "height": SIZE.1, "frame": next }));
+        let shot = r["frame"].as_u64().unwrap();
+        assert!(shot > asked && shot <= frame(&app), "rendered after it was asked: {r}");
+        assert_eq!(r, json!({ "path": path, "width": SIZE.0, "height": SIZE.1, "frame": shot }));
         assert_eq!(ran(&app), at, "still paused after {at} frames");
         let image = png(&path);
         assert_eq!((image.width(), image.height()), SIZE);

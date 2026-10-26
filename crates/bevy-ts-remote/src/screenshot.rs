@@ -41,6 +41,10 @@ pub const READBACK_TIMEOUT: Duration = Duration::from_secs(60);
 pub const READY_TIMEOUT: Duration = Duration::from_secs(60);
 /// The env shot's ready frame: the 60th in a row.
 pub const SHOT_FRAME: u64 = 60;
+/// The method's ready update: the 3rd in a row. Loads are read as they are now and pipelines one
+/// render behind, and an update renders after it ends, so the 3rd reads the render of the 1st:
+/// the pipelines a load just finished needs (a texture's material) are waiting there, not missed.
+pub const METHOD_FRAME: u32 = 3;
 /// One frame of [`FixedStep`] time.
 pub const STEP: Duration = Duration::from_nanos(1_000_000_000 / 60);
 
@@ -60,13 +64,25 @@ impl PipelinesWaiting {
     }
 }
 
-/// Pipelines waiting after the render of the frame before this one, `None` if it did not render.
-/// That render has always finished by now, pipelined or not, so every run reads the same frame's
-/// answer at any load. With no `FrameCount`, the last render's.
+/// The `FrameCount` this update began with, noted in `First`. Bevy advances `FrameCount` in
+/// `Last`, and that frame is extracted after `Last`, so a system after it (the method runs in
+/// `RemoteLast`) would otherwise ask after the frame the render thread is still drawing.
+#[derive(Resource, Default)]
+struct UpdateFrame(Option<u32>);
+
+fn note_frame(frame: Option<Res<FrameCount>>, mut update: ResMut<UpdateFrame>) {
+    update.0 = frame.map(|f| f.0);
+}
+
+/// Pipelines waiting after the render of the frame before this update's, `None` if it did not
+/// render. That render has always finished by now, pipelined or not, so every run reads the same
+/// frame's answer at any load, from any schedule of the update. With no `FrameCount`, the last
+/// render's.
 pub fn pipelines_waiting(world: &World) -> Option<u64> {
     let waiting = world.get_resource::<PipelinesWaiting>()?;
-    match world.get_resource::<FrameCount>() {
-        Some(frame) => waiting.at(frame.0.wrapping_sub(1)),
+    let noted = world.get_resource::<UpdateFrame>().and_then(|u| u.0);
+    match noted.or_else(|| world.get_resource::<FrameCount>().map(|f| f.0)) {
+        Some(frame) => waiting.at(frame.wrapping_sub(1)),
         None => waiting.latest(),
     }
 }
@@ -120,7 +136,8 @@ impl Plugin for ReadyPlugin {
         app.init_resource::<PipelinesWaiting>()
             .init_resource::<Ready>()
             .init_resource::<HandleTypes>()
-            .add_systems(First, count_ready.before(TimeSystems))
+            .init_resource::<UpdateFrame>()
+            .add_systems(First, (note_frame, count_ready).chain().before(TimeSystems))
             .add_systems(Update, shoot_when_ready.run_if(resource_exists::<ShotWhenReady>));
     }
 
@@ -398,8 +415,10 @@ struct Served {
 }
 
 enum Progress {
-    /// Asked, and waiting for the pipeline cache to empty and the loads to finish before it captures.
-    Waiting { path: PathBuf, since: Instant },
+    /// Asked, and waiting for the pipeline cache to empty and the loads to finish before it
+    /// captures, at the [`METHOD_FRAME`]th ready update in a row; `ready` counts them, to update
+    /// `at`, so identical requests in one update count it once.
+    Waiting { path: PathBuf, since: Instant, ready: u32, at: u64 },
     Pending(Entity),
     /// Answered in update `at`, to `owed` requests. Bevy calls each once more in the next update
     /// (its send then fails, and Bevy drops it): those calls get the answer again, as does an
@@ -435,13 +454,18 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
         Some(w @ Progress::Waiting { .. }) => w,
         _ => {
             let params: protocol::ScreenshotParams = required(p)?;
-            Progress::Waiting { path: check(&params.path)?, since: Instant::now() }
+            Progress::Waiting { path: check(&params.path)?, since: Instant::now(), ready: 0, at: update.wrapping_sub(1) }
         }
     };
     let state = match state {
-        Progress::Waiting { path, since } => {
+        Progress::Waiting { path, since, ready, at } => {
             let loads = if pipelines_idle(world) { loads(world) } else { Loads { loading: 1, failed: Vec::new() } };
-            if pipelines_idle(world) && loads.loading == 0 {
+            let ready = match (pipelines_idle(world) && loads.loading == 0, at == update) {
+                (false, _) => 0,
+                (true, true) => ready,
+                (true, false) => ready + 1,
+            };
+            if ready >= METHOD_FRAME {
                 warn_failed(&path, &loads);
                 Progress::Pending(capture(world, path))
             } else if world.contains_resource::<PipelinesWaiting>() && pipelines_waiting(world).is_none() && since.elapsed() > TIMEOUT {
@@ -451,7 +475,7 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
                 let answer = Err(internal(format!("{}: {} after {} s", path.display(), not_ready(world, &loads), READY_TIMEOUT.as_secs())));
                 Progress::Done { answer, at: update, owed: 1 }
             } else {
-                Progress::Waiting { path, since }
+                Progress::Waiting { path, since, ready, at: update }
             }
         }
         state => state,
@@ -525,4 +549,41 @@ pub(crate) fn forget_closed(mut shots: ResMut<Shots>, mut commands: Commands) {
         }
         keep
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::diagnostic::{FrameCountPlugin, update_frame_count};
+
+    #[derive(Resource, Default)]
+    struct Seen(Vec<Option<u64>>);
+
+    /// Each render is recorded during the next update, as a pipelined render thread finishes it. A
+    /// system after `Last`, where the method runs, still reads a render that has finished.
+    #[test]
+    fn after_last_the_render_read_has_finished() {
+        let mut app = App::new();
+        app.add_plugins((FrameCountPlugin, ReadyPlugin)).init_resource::<Seen>().add_systems(
+            Last,
+            (|world: &mut World| {
+                let waiting = pipelines_waiting(world);
+                world.resource_mut::<Seen>().0.push(waiting);
+            })
+            .after(update_frame_count),
+        );
+        app.finish();
+        app.cleanup();
+        let renders = app.world().resource::<PipelinesWaiting>().clone();
+        let mut drawing = None;
+        for _ in 0..6 {
+            app.update();
+            if let Some(frame) = drawing {
+                renders.0.lock().unwrap().push_back((frame, 0));
+            }
+            drawing = Some(app.world().resource::<FrameCount>().0);
+        }
+        let seen = &app.world().resource::<Seen>().0;
+        assert_eq!(seen[2..], [Some(0); 4], "every update after the first render reads it: {seen:?}");
+    }
 }
