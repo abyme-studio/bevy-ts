@@ -6,24 +6,24 @@
 
 ## 2. Skip the kept levels' check (`crates/bevy-ts-levels`)
 
-- [ ] 2.1 `check_section` skips the level paths in the `StopPlan`
-- [ ] 2.2 Tests: a kept level is not prepared in a Stop's rebuild; a level saved during play is checked and remounts
+- [x] 2.1 `check_section` skips the level paths in the `StopPlan`
+- [x] 2.2 Tests: a kept level is not prepared in a Stop's rebuild; a level saved during play is checked and remounts
 
 ## 3. The spare engine (`crates/bevy-ts`, `crates/bevy-ts-v8`)
 
-- [ ] 3.1 `ScriptBackend::prepare_restart`; `restart` takes the held runtime or boots one; the old one retired
-- [ ] 3.2 A `Last` system under `dev`: drops the retired runtime, then boots a spare when none is held; not in a shipped game
-- [ ] 3.3 The inspector follows the taken runtime
-- [ ] 3.4 The fake backend counts prepares, takes and drops
-- [ ] 3.5 Tests: a global set before a restart is undefined after; two Stops with no frame between both get fresh instances; the debugger reattaches after a Stop
+- [x] 3.1 `ScriptBackend::prepare_restart`; `restart` takes the held runtime or boots one; the old one retired
+- [x] 3.2 A `Last` system under `dev`: drops the retired runtime, then boots a spare when none is held; not in a shipped game
+- [x] 3.3 The inspector follows the taken runtime
+- [x] 3.4 The fake backend counts prepares, takes and drops
+- [x] 3.5 Tests: a global set before a restart is undefined after; two Stops with no frame between both get fresh instances; the debugger reattaches after a Stop
 
 ## 4. Write back (`crates/bevy-ts-tsx`, `crates/bevy-ts-levels`)
 
-- [ ] 4.1 `restore::changed`: per changed node, the changed component ids and whether the archetype differs
-- [ ] 4.2 The recomputed list beside `restore::derived` (`GlobalTransform`, `TransformTreeChanged`; not `InheritedVisibility`, design decision 4), each with a test that Bevy recomputes it
-- [ ] 4.3 `write_back(world, root, nodes)`: inserts each changed tsx component from the kept resolved node
-- [ ] 4.4 `levels::restore`: write back the nodes that qualify, respawn the rest, stamp only respawned ones
-- [ ] 4.5 Tests, one per scenario: a moved enemy is written back and keeps its id; every enemy moved, nothing spawned; an added component respawns; a Rust-inserted component changed respawns; a written-back parent with a respawned child
+- [x] 4.1 `restore::changed`: per changed node, the changed component ids and whether the archetype differs
+- [x] 4.2 The recomputed list beside `restore::derived` (`GlobalTransform`, `TransformTreeChanged`; not `InheritedVisibility`, design decision 4), each with a test that Bevy recomputes it
+- [x] 4.3 `write_back(world, root, nodes)`: inserts each changed tsx component from the kept resolved node
+- [x] 4.4 `levels::restore`: write back the nodes that qualify, respawn the rest, stamp only respawned ones
+- [x] 4.5 Tests, one per scenario: a moved enemy is written back and keeps its id; every enemy moved, nothing spawned; an added component respawns; a Rust-inserted component changed respawns; a written-back parent with a respawned child
 
 ## 5. Measure
 
@@ -32,6 +32,6 @@
 
 ## 6. Docs
 
-- [ ] 6.1 `docs/viewport.md`: a moved level entity keeps its id after Stop
-- [ ] 6.2 `docs/native.md`: write-back fires replace and insert hooks for the components written; an entity with a changed component a plugin inserted is respawned
+- [x] 6.1 `docs/viewport.md`: a moved level entity keeps its id after Stop
+- [x] 6.2 `docs/native.md`: write-back fires replace and insert hooks for the components written; an entity with a changed component a plugin inserted is respawned
 - [ ] 6.3 Workspace gate once, last, through `gate-slot`
