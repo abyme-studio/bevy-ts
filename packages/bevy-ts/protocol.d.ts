@@ -21,7 +21,7 @@ export type ReloadStatus = "compiling" | "applied" | "failed";
  */
 export type ComponentSource = "ts" | "rust";
 /**
- * The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition. (1.33) predicate (a TS predicate condition, run when a condition naming it is evaluated).
+ * The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition. (1.34) predicate (a TS predicate condition, run when a condition naming it is evaluated).
  *
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
  * via the `definition` "Stage".
