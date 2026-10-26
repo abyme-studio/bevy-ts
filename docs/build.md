@@ -65,7 +65,7 @@ offscreen image. `bevy-ts/screenshot { path }` saves it as a PNG and answers onc
 written, with its size and the frame it shows; for a chosen frame, `bevy-ts/pause` and
 `bevy-ts/step` there first (rendering runs while paused). A shot waits until no render pipeline
 is still compiling and no asset is still loading (a texture, a glTF and its scene), so nothing is
-caught as its fallback or missing; an asset that failed is named in a warning. A run with no protocol (`play
+caught as its fallback or missing; an asset that failed is named in a warning; after 60 s the method fails, naming what never held: pipelines still waiting, assets still loading, or no frame rendered. A run with no protocol (`play
 --headless`) takes one shot with `BEVY_TS_SCREENSHOT=<path>`, at the 60th ready frame in a row: a
 frame on which the script has started, no pipeline is waiting and nothing is loading (after 60 s it shoots anyway,
 and warns). Under it, time runs on a fixed step, through Bevy's
