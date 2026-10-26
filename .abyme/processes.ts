@@ -52,6 +52,10 @@ const processes = {
   "ts-heap-fields-bench": {
     cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:ts-heap-fields -- bench/ts-heap-fields/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tail -60'",
   },
+  // ts-heap-fields-2 task 6.1: every arm at stage 1 (b229f74c3, or REF) against every arm here, 8 rounds interleaved.
+  "ts-heap-fields-vs-ref": {
+    cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:ts-heap-fields -- bench/ts-heap-fields/vs.sh ${REF:-b229f74c3} ${RUNS:-8} 2>&1 | grep -v ld64 | tail -60'",
+  },
   // rust-events task 2.4: 1,000 CursorMoved reads a frame, 3 release runs (8 with RUNS=8), on a quiet machine.
   "rust-events-bench": {
     cmd: "bash -c 'set -o pipefail; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bench/rust-events/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tail -40'",

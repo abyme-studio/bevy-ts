@@ -213,6 +213,21 @@ At 8 items the two are within noise for a push (869-1212 against 1021-1447); at 
 about half an assignment, which re-sends every item. The plain arms match main in those rounds
 (column 12 against 12, despawn 26 against 29, message 607 against 725, event 2228 against 2559).
 
+The ts-heap-fields-2 verdict (8 rounds each, `results/runs.txt`):
+
+- Plain arms against main at 740badaa0 (load about 50, medians, ns): column 18.5 on main and
+  20 here, despawn 42 and 43, `Res` read 19 and 19, `Local` read 20 and 20.5, a message 1080 and
+  1066, an event 4048 and 4158, each pair's ranges overlapping. No plain type is slower.
+- Stage 1's arms against stage 1's own build (b229f74c3), interleaved (`vs.sh`, process
+  `ts-heap-fields-vs-ref`). At load about 100 (medians): column 8.5 there and 8 here, string hit
+  28 and 30.5, miss 116.5 and 111.5, write 366 and 338.5, 8-item `f32[]` hit 31 and 32, miss 119
+  and 107.5, despawn of both fields 40 and 43. The list write was 398.5 against 514.5, ranges
+  apart (343-488, 504-674): every assignment built a pending-edit key it had no use for. With
+  that skipped when no edit is pending, a rerun at load 85-233 has the list write at 352 there
+  and 361 here (fastest of 8; that load spreads medians by 2x).
+- At 8 items `push` in place and a whole assignment stay within noise over 8 rounds (1780 against
+  2103, ranges 1399-2243 and 1574-2415); at 64 an edit is about half (2873 against 5385).
+
 Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
 fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).
 ## Required components

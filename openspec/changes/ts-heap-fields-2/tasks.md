@@ -74,4 +74,4 @@ binary, lowest layer, no fixed waits. Every cargo job through `~/dev/abyme/scrip
 
 ## 6. Bench verdict
 
-- [ ] 6.1 `bench/ts-heap-fields/run.sh` through process `ts-heap-fields-bench`, 3 runs per arm, 8 where arms are within noise; plain controls match main, stage-1 arms match stage 1's numbers (design.md Context); a table in `docs/ecs.md`
+- [x] 6.1 `bench/ts-heap-fields/run.sh` through process `ts-heap-fields-bench`, 3 runs per arm, 8 where arms are within noise; plain controls match main, stage-1 arms match stage 1's numbers (design.md Context); a table in `docs/ecs.md`

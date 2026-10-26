@@ -583,6 +583,7 @@ dependencies = [
 name = "bevy-ts-remote"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "bevy",
  "bevy-ts",
  "serde",
