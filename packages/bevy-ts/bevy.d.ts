@@ -772,6 +772,10 @@ export type MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialEx
 export declare const MeshMaterial3dExtendedMaterialStandardMaterialFade: ReflectClass<string | null, { value: string | null }>;
 export type MeshMaterial3dExtendedMaterialStandardMaterialFade = InstanceType<typeof MeshMaterial3dExtendedMaterialStandardMaterialFade>;
 
+/** `MeshMaterial3dExtendedMaterialStandardMaterialWorldTextExt.of(...)` in commands: the value written over its default. */
+export declare const MeshMaterial3dExtendedMaterialStandardMaterialWorldTextExt: ReflectClass<string | null, { value: string | null }>;
+export type MeshMaterial3dExtendedMaterialStandardMaterialWorldTextExt = InstanceType<typeof MeshMaterial3dExtendedMaterialStandardMaterialWorldTextExt>;
+
 /** `MeshMaterial3dStandardMaterial.of(...)` in commands: the value written over its default. */
 export declare const MeshMaterial3dStandardMaterial: ReflectClass<string | AssetRef<StandardMaterial> | AssetValue<StandardMaterial> | null, { value: string | AssetRef<StandardMaterial> | AssetValue<StandardMaterial> | null }>;
 export type MeshMaterial3dStandardMaterial = InstanceType<typeof MeshMaterial3dStandardMaterial>;
@@ -1301,6 +1305,30 @@ export declare class MaterialAlpha extends Component {
   static readonly path: "bevy_ts_material::alpha::MaterialAlpha";
   static readonly native: true;
   declare alpha: f32;
+}
+
+/** Holes, never visible: rect: not plain data (bevy_math::rects::rect::Rect). */
+export declare class ComputedWorldText extends Component {
+  static readonly path: "bevy_ts_material::world_text::ComputedWorldText";
+  static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { rect: { min?: readonly [number, number]; max?: readonly [number, number] }; quads: number };
+  declare quads: u32;
+}
+
+/** `WorldText.of(...)` in commands: the value written over its default. */
+export declare const WorldText: ReflectClass<string, { value: string }>;
+export type WorldText = InstanceType<typeof WorldText>;
+
+/** Holes, never visible: width: an enum with data (core::option::Option<f32>); outline: an enum with data (core::option::Option<(f32, bevy_color::color::Color)>). */
+export declare class WorldTextStyle extends Component {
+  static readonly path: "bevy_ts_material::world_text::WorldTextStyle";
+  static readonly native: true;
+  static readonly tsxProps: { width?: number | null; outline?: readonly [number, ColorValue] | null };
+  declare size: f32;
+  declare letter_spacing: f32;
+  declare readonly anchor: Vec2;
+  declare lit: bool;
 }
 
 export declare class UiScale extends Resource {

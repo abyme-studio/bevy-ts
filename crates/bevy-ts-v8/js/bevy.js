@@ -434,7 +434,7 @@ export class MaterialAlpha extends nativeComponent("MaterialAlpha", { alpha: f32
 
 export class ComputedWorldText extends nativeComponent("ComputedWorldText", { quads: u32 }) {}
 
-export const WorldText = rustComponent("WorldText");
+export const WorldText = reflectClass("WorldText");
 
 export class WorldTextStyle extends nativeComponent("WorldTextStyle", { size: f32, letter_spacing: f32, anchor: vec2, lit: bool }) {}
 

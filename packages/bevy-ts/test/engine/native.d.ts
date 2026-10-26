@@ -879,6 +879,12 @@ export declare class MeshMaterial3dExtendedMaterialStandardMaterialFade extends 
   declare value: string | null;
 }
 
+/** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_pbr::extended_material::ExtendedMaterial<bevy_pbr::pbr_material::StandardMaterial, bevy_ts_material::world_text::material::WorldTextExt>>)). */
+export declare class MeshMaterial3dExtendedMaterialStandardMaterialWorldTextExt extends ReflectComponent {
+  static readonly path: "bevy_pbr::mesh_material::MeshMaterial3d<bevy_pbr::extended_material::ExtendedMaterial<bevy_pbr::pbr_material::StandardMaterial, bevy_ts_material::world_text::material::WorldTextExt>>";
+  declare value: string | null;
+}
+
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_asset::handle::Handle<bevy_pbr::pbr_material::StandardMaterial>)). */
 export declare class MeshMaterial3dStandardMaterial extends ReflectComponent {
   static readonly path: "bevy_pbr::mesh_material::MeshMaterial3d<bevy_pbr::pbr_material::StandardMaterial>";
@@ -1498,6 +1504,29 @@ export declare class MissingComponents extends ReflectComponent {
 export declare class MaterialAlpha extends Component {
   static readonly path: "bevy_ts_material::alpha::MaterialAlpha";
   declare alpha: f32;
+}
+
+/** Holes, never visible: rect: not plain data (bevy_math::rects::rect::Rect). */
+export declare class ComputedWorldText extends Component {
+  static readonly path: "bevy_ts_material::world_text::ComputedWorldText";
+  static readonly tsxProps: { rect?: { min?: readonly [number, number]; max?: readonly [number, number] } };
+  declare quads: u32;
+}
+
+/** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
+export declare class WorldText extends ReflectComponent {
+  static readonly path: "bevy_ts_material::world_text::WorldText";
+  declare value: string;
+}
+
+/** Holes, never visible: width: an enum with data (core::option::Option<f32>); outline: an enum with data (core::option::Option<(f32, bevy_color::color::Color)>). */
+export declare class WorldTextStyle extends Component {
+  static readonly path: "bevy_ts_material::world_text::WorldTextStyle";
+  static readonly tsxProps: { width?: number | null; outline?: readonly [number, ColorValue] | null };
+  declare size: f32;
+  declare letter_spacing: f32;
+  declare readonly anchor: Vec2;
+  declare lit: bool;
 }
 
 export declare class UiScale extends Resource {
