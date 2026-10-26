@@ -6,10 +6,6 @@ import type { AssetClass, AssetFields, AssetLoad, AssetProps, AssetRef, AssetTyp
 
 export { Time, Transform } from "bevy-ts";
 
-/** `Res<AccessibilityRequested>` and `ResMut<AccessibilityRequested>` in systems, read and written through reflection. */
-export declare const AccessibilityRequested: ReflectClass<never, { value: unknown }>;
-export type AccessibilityRequested = InstanceType<typeof AccessibilityRequested>;
-
 export declare class ManageAccessibilityUpdates extends Resource {
   static readonly path: "bevy_a11y::ManageAccessibilityUpdates";
   static readonly native: true;
@@ -341,10 +337,6 @@ export declare class RenderDebugOverlay extends Component {
 }
 export interface RenderDebugOverlay extends Holes<{ mode: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } }> {}
 
-/** `Res<DefaultQueryFilters>` and `ResMut<DefaultQueryFilters>` in systems, read and written through reflection. */
-export declare const DefaultQueryFilters: ReflectClass<{ disabling?: readonly (number | string)[] }, { disabling: readonly (number | string)[] }>;
-export type DefaultQueryFilters = InstanceType<typeof DefaultQueryFilters>;
-
 /** `Disabled.of(...)` in commands: the value written over its default. */
 export declare const Disabled: ReflectClass<{  }, {}>;
 export type Disabled = InstanceType<typeof Disabled>;
@@ -421,10 +413,6 @@ export declare class TransformGizmoState extends Resource {
 }
 export interface TransformGizmoState extends Holes<{ hovered_axis: "X" | "Y" | "Z" | "View" | null; axis: "X" | "Y" | "Z" | "View" | null; start_transform: { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] }; entity: Entity | null }> {}
 
-/** `Res<LineGizmoEntities>` and `ResMut<LineGizmoEntities>` in systems, read and written through reflection. */
-export declare const LineGizmoEntities: ReflectClass<{ line_gizmo_renderer?: Entity; line_strip_gizmo_renderer?: Entity; line_joint_gizmo_renderer?: Entity }, { line_gizmo_renderer: Entity; line_strip_gizmo_renderer: Entity; line_joint_gizmo_renderer: Entity }>;
-export type LineGizmoEntities = InstanceType<typeof LineGizmoEntities>;
-
 /** `GltfExtras.of(...)` in commands: the value written over its default. */
 export declare const GltfExtras: ReflectClass<{ value?: string }, { value: string }>;
 export type GltfExtras = InstanceType<typeof GltfExtras>;
@@ -452,10 +440,6 @@ export type GltfSceneExtras = InstanceType<typeof GltfSceneExtras>;
 /** `GltfSceneName.of(...)` in commands: the value written over its default. */
 export declare const GltfSceneName: ReflectClass<string, { value: string }>;
 export type GltfSceneName = InstanceType<typeof GltfSceneName>;
-
-/** `Res<ButtonInputGamepadButton>` and `ResMut<ButtonInputGamepadButton>` in systems, read and written through reflection. */
-export declare const ButtonInputGamepadButton: ReflectClass<{ pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }, { pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }>;
-export type ButtonInputGamepadButton = InstanceType<typeof ButtonInputGamepadButton>;
 
 /** `Gamepad.of(...)` in commands: the value written over its default. */
 export declare const Gamepad: ReflectClass<{ vendor_id?: number | null; product_id?: number | null; digital?: { pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog?: { axis_data?: readonly (readonly [{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] } }, { vendor_id: number | null; product_id: number | null; digital: { pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog: { axis_data?: readonly (readonly [{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] } }>;
@@ -959,10 +943,6 @@ export type EntityCursor = InstanceType<typeof EntityCursor>;
 export declare const OverrideCursor: ReflectClass<{ Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } | null, { value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } | null }>;
 export type OverrideCursor = InstanceType<typeof OverrideCursor>;
 
-/** `Res<PointerState>` and `ResMut<PointerState>` in systems, read and written through reflection. */
-export declare const PointerState: ReflectClass<never, { pointer_buttons: readonly (readonly [readonly ["Mouse" | { Touch: number | string } | { Custom: string }, "Primary" | "Secondary" | "Middle"], { pressing?: readonly (readonly [Entity, readonly [{ target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number] }, unknown, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }]])[]; clicking?: readonly (readonly [Entity, readonly [unknown, number]])[]; dragging?: readonly (readonly [Entity, { start_pos?: readonly [number, number]; latest_pos?: readonly [number, number] }])[]; dragging_over?: readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[] }])[]; hovered_entity_ancestors: readonly (readonly [Entity, readonly Entity[]])[] }>;
-export type PointerState = InstanceType<typeof PointerState>;
-
 /** Immutable: read-only in TS. */
 export declare class DirectlyHovered extends Component {
   static readonly path: "bevy_picking::hover::DirectlyHovered";
@@ -1112,10 +1092,6 @@ export declare class MotionBlur extends Component {
   declare samples: u32;
 }
 
-/** `Res<SchemaTypesMetadata>` and `ResMut<SchemaTypesMetadata>` in systems, read and written through reflection. */
-export declare const SchemaTypesMetadata: ReflectClass<{ type_data_map?: readonly (readonly [never, string])[] }, { type_data_map: readonly (readonly [never, string])[] }>;
-export type SchemaTypesMetadata = InstanceType<typeof SchemaTypesMetadata>;
-
 /** `CameraRenderGraph.of(...)` in commands: the value written over its default. */
 export declare const CameraRenderGraph: ReflectClass<never, {}>;
 export type CameraRenderGraph = InstanceType<typeof CameraRenderGraph>;
@@ -1262,10 +1238,6 @@ export interface Wireframe2dConfig extends Holes<{ default_color: ColorValue }> 
 export declare const TilemapChunk: ReflectClass<{ chunk_size?: readonly [number, number]; tile_display_size?: readonly [number, number]; tileset?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; alpha_mode?: "Opaque" | { Mask: number } | "Blend" }, { chunk_size: readonly [number, number]; tile_display_size: readonly [number, number]; tileset: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
 export type TilemapChunk = InstanceType<typeof TilemapChunk>;
 
-/** `Res<TilemapChunkMeshCache>` and `ResMut<TilemapChunkMeshCache>` in systems, read and written through reflection. */
-export declare const TilemapChunkMeshCache: ReflectClass<readonly (readonly [readonly [number, number], string | AssetRef<Mesh> | AssetValue<Mesh> | null])[], { value: readonly (readonly [readonly [number, number], string | AssetRef<Mesh> | AssetValue<Mesh> | null])[] }>;
-export type TilemapChunkMeshCache = InstanceType<typeof TilemapChunkMeshCache>;
-
 /** `TilemapChunkTileData.of(...)` in commands: the value written over its default. */
 export declare const TilemapChunkTileData: ReflectClass<readonly ({ tileset_index?: number; color?: ColorValue; visible?: boolean; orientation?: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[], { value: readonly ({ tileset_index?: number; color?: ColorValue; visible?: boolean; orientation?: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[] }>;
 export type TilemapChunkTileData = InstanceType<typeof TilemapChunkTileData>;
@@ -1384,10 +1356,6 @@ export declare class Save extends Component {
 /** `TsSaved.of(...)` in commands: the value written over its default. */
 export declare const TsSaved: ReflectClass<Record<string, string>, { value: Record<string, string> }>;
 export type TsSaved = InstanceType<typeof TsSaved>;
-
-/** `Res<TsSavedResources>` and `ResMut<TsSavedResources>` in systems, read and written through reflection. */
-export declare const TsSavedResources: ReflectClass<Record<string, string>, { value: Record<string, string> }>;
-export type TsSavedResources = InstanceType<typeof TsSavedResources>;
 
 /** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); graph: an enum with data (bevy_asset::handle::Handle<bevy_animation::graph::AnimationGraph>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
@@ -1518,10 +1486,6 @@ export declare class ComputedStackIndex extends Component {
   static readonly native: true;
   declare value: u32;
 }
-
-/** `Res<UiStack>` and `ResMut<UiStack>` in systems, read and written through reflection. */
-export declare const UiStack: ReflectClass<{ partition?: readonly ({ start: number | string; end: number | string })[]; uinodes?: readonly Entity[] }, { partition: readonly ({ start: number | string; end: number | string })[]; uinodes: readonly Entity[] }>;
-export type UiStack = InstanceType<typeof UiStack>;
 
 /** `BackgroundColor.of(...)` in commands: the value written over its default. */
 export declare const BackgroundColor: ReflectClass<ColorValue, { value: ColorValue }>;
@@ -1924,10 +1888,6 @@ export declare class TabList extends Component {
   declare orientation: "Horizontal" | "Vertical";
   declare activation: "Manual" | "Automatic";
 }
-
-/** `Res<QueuedSelectAll>` and `ResMut<QueuedSelectAll>` in systems, read and written through reflection. */
-export declare const QueuedSelectAll: ReflectClass<Entity | null, { value: Entity | null }>;
-export type QueuedSelectAll = InstanceType<typeof QueuedSelectAll>;
 
 /** `SelectAllOnFocus.of(...)` in commands: the value written over its default. */
 export declare const SelectAllOnFocus: ReflectClass<{  }, {}>;
