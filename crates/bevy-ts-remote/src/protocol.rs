@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.37.0";
+pub const VERSION: &str = "1.38.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -4516,6 +4516,82 @@ pub struct TsFieldInfo {
     #[serde(rename = "type")]
     pub type_: FieldType,
 }
+///`TsRelationship`
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct TsRelationship {
+    ///A source's `static allowSelfReferential = true`.
+    #[serde(
+        rename = "allowSelfReferential",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub allow_self_referential: ::std::option::Option<bool>,
+    ///The other half's component name: a target's source, a source's target.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub counterpart: ::std::option::Option<::std::string::String>,
+    ///A target's `{ linkedSpawn: true }`: despawning it despawns its sources.
+    #[serde(
+        rename = "linkedSpawn",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub linked_spawn: ::std::option::Option<bool>,
+    pub role: TsRelationshipRole,
+}
+///`TsRelationshipRole`
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd
+)]
+pub enum TsRelationshipRole {
+    #[serde(rename = "source")]
+    Source,
+    #[serde(rename = "target")]
+    Target,
+}
+impl ::std::fmt::Display for TsRelationshipRole {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Source => f.write_str("source"),
+            Self::Target => f.write_str("target"),
+        }
+    }
+}
+impl ::std::str::FromStr for TsRelationshipRole {
+    type Err = self::error::ConversionError;
+    fn from_str(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "source" => Ok(Self::Source),
+            "target" => Ok(Self::Target),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for TsRelationshipRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &str,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for TsRelationshipRole {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`TsSchemaExtension`
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -4528,6 +4604,9 @@ pub struct TsSchemaExtension {
     pub layout: Layout,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub line: ::std::option::Option<u32>,
+    ///Its half of a relationship pair: a source (`extends Relationship`) or a target (`extends RelationshipTarget(Source)`). A target's layout has no fields and its value is an array of entities. Since 1.38.0.
+    #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+    pub relationship: ::std::option::Option<TsRelationship>,
     pub source: TsSchemaExtensionSource,
 }
 ///`TsSchemaExtensionSource`
