@@ -51,5 +51,5 @@
 
 - [x] 7.1 `docs/native.md`: `ts_message`/`ts_event` first, `write_message` for non-reflected types; scripting guide section on Rust messages and events
 - [x] 7.2 Update the coverage audit rows to idiomatic with their tests
-- [x] 7.3 If any wire change appeared, bump the protocol to the next free minor (none: ops 18 and 19, after main's 14-17, are the command buffer's, not the protocol's; it stays 1.29.0)
+- [x] 7.3 If any wire change appeared, bump the protocol to the next free minor (none: ops 31 and 32, after main's 14-30, are the command buffer's, not the protocol's; it stays at main's version)
 - [x] 7.4 `openspec validate rust-events --strict`; full gate green; land with the code. Gate at 89207906: build and clippy green; tests green but 2 GPU materials::drawn tests lost to load, which pass alone (rust-events-gpu)

@@ -3487,7 +3487,7 @@ function makeCtx() {
 
 const OP_SPAWN = 1, OP_INSERT = 2, OP_DESPAWN = 3, OP_REMOVE = 4, OP_SET_PARENT = 5, OP_SPAWN_NATIVE = 6, OP_PLUGIN = 7;
 const OP_WRITE_MESSAGE = 8, OP_TRIGGER = 9, OP_SET_STATE = 10, OP_RUN_SYSTEM = 11, OP_RUN_SCHEDULE = 12, OP_OBSERVE = 13, OP_STATE_SCOPED = 14;
-const OP_SAVE_WORLD = 15, OP_LOAD_WORLD = 16, OP_INSERT_REFLECT = 17, OP_WRITE_REFLECT = 18, OP_TRIGGER_REFLECT = 19;
+const OP_SAVE_WORLD = 15, OP_LOAD_WORLD = 16, OP_INSERT_REFLECT = 17;
 
 // A save's name never leaves the save folder: no separator, no dot, no drive (docs/saves.md).
 const SAVE_NAME = /^[A-Za-z0-9_-]{1,64}$/;
@@ -3525,7 +3525,7 @@ function saveEntities(x) {
 const REFLECT_INSERT = 0, REFLECT_PATCH = 1;
 const OP_SPAWN_BATCH = 18, OP_INSERT_BATCH = 19, OP_INSERT_IF_NEW = 20, OP_TRY_INSERT = 21, OP_RETAIN = 22, OP_CLEAR = 23;
 const OP_REMOVE_WITH_REQUIRES = 24, OP_CLONE_AND_SPAWN = 25, OP_INSERT_RECURSIVE = 26, OP_REMOVE_RECURSIVE = 27, OP_ADD_CHILDREN = 28;
-const OP_DETACH_CHILDREN = 29, OP_DESPAWN_CHILDREN = 30;
+const OP_DETACH_CHILDREN = 29, OP_DESPAWN_CHILDREN = 30, OP_WRITE_REFLECT = 31, OP_TRIGGER_REFLECT = 32;
 /** The `reserve(n)` host function (`commands::RESERVE`): `n` more spawn ids when the pool runs out. */
 const HOST_RESERVE = 0x3fffffff;
 const RESERVE_N = 256;
