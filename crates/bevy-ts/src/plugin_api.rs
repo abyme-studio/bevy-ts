@@ -123,6 +123,7 @@ pub trait BevyTsAppExt {
     /// gives it as JSON, `write` builds it from JSON, and the built `T` goes whole into
     /// `Assets<T>` at its ref's id. `T` needs no `Reflect`. See [`crate::reflect_asset::register`].
     #[cfg(feature = "reflect")]
+    #[track_caller]
     fn ts_hand_map<T: Asset>(&mut self, read: crate::reflect_asset::HandRead<T>, write: crate::reflect_asset::HandWrite<T>) -> &mut Self;
 }
 
@@ -181,6 +182,7 @@ impl BevyTsAppExt for App {
     }
 
     #[cfg(feature = "reflect")]
+    #[track_caller]
     fn ts_hand_map<T: Asset>(&mut self, read: crate::reflect_asset::HandRead<T>, write: crate::reflect_asset::HandWrite<T>) -> &mut Self {
         crate::reflect_asset::register(read, write);
         self

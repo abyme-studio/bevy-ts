@@ -668,9 +668,9 @@ fn image_write(slots: &Slots, base: Option<&Image>, json: &Value) -> Result<Imag
     Ok(image)
 }
 
-/// Hand-maps `Image` by its sampler ([`image_read`], [`image_write`]).
+/// Hand-maps `Image` by its sampler ([`image_read`], [`image_write`]), unless the app mapped it.
 pub fn register_image() {
-    register::<Image>(image_read, image_write);
+    own(entry::<Image>(image_read, image_write, None));
 }
 
 impl reflect_value::HandleSlots for Slots<'_> {
@@ -813,6 +813,8 @@ struct HandMap {
     get: fn(&World, UntypedAssetId) -> Option<&dyn Any>,
     put: fn(&mut World, UntypedAssetId, Hand) -> Result<(), String>,
     remove: fn(&mut World, UntypedAssetId),
+    /// Where the app mapped it; `None` for bevy-ts' own (`Mesh`, `Image`), which an app's replaces.
+    at: Option<&'static std::panic::Location<'static>>,
 }
 
 /// The hand-mapped asset types. Process-wide, like a type registration, so a check with only the
@@ -829,8 +831,13 @@ fn builtins() {
     #[cfg(feature = "pbr")]
     {
         static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| register::<Mesh>(crate::mesh_data::read, crate::mesh_data::write));
+        ONCE.call_once(|| own(entry::<Mesh>(crate::mesh_data::read, crate::mesh_data::write, None)));
     }
+}
+
+/// Adds one of bevy-ts' own maps, unless the app mapped its type.
+fn own(entry: HandMap) {
+    insert(&mut HANDS.write().unwrap_or_else(|e| e.into_inner()), entry).expect("bevy-ts' own map is never refused");
 }
 
 /// Whether asset type `asset` is hand-mapped: a check that walks reflected fields round-trips
@@ -848,9 +855,33 @@ fn hand_map(asset: TypeId) -> Option<Arc<HandMap>> {
 /// and refs reach it through `read` and `write`, and [`flush`] inserts the built `T` whole into
 /// `Assets<T>` at the ref's id. `T` needs no `Reflect`; it needs `app.init_asset::<T>()`. A type
 /// hand-mapped and also reflected uses its hand map. `assets.set` merges its patch over the
-/// current read at the top level: a key given replaces that key whole. Mapping `T` again replaces
-/// its entry.
+/// current read at the top level: a key given replaces that key whole. The app's map of `T` wins
+/// over bevy-ts' own, whichever comes first. Mapping `T` again from the same place replaces its
+/// entry (one process builds many apps); from another place it panics naming both.
+#[track_caller]
 pub fn register<T: Asset>(read: HandRead<T>, write: HandWrite<T>) {
+    let entry = entry::<T>(read, write, Some(std::panic::Location::caller()));
+    if let Err(e) = insert(&mut HANDS.write().unwrap_or_else(|e| e.into_inner()), entry) {
+        panic!("{e}");
+    }
+}
+
+/// Adds `entry` to `hands`. bevy-ts' own never replaces the app's; the app's replaces bevy-ts'
+/// own and its own from the same place, and is refused from another place.
+fn insert(hands: &mut Vec<Arc<HandMap>>, entry: HandMap) -> Result<(), String> {
+    if let Some(old) = hands.iter().find(|h| h.id == entry.id) {
+        match (old.at, entry.at) {
+            (Some(_), None) => return Ok(()),
+            (Some(a), Some(b)) if a != b => return Err(format!("{} is hand-mapped twice: at {a} and at {b}", entry.path)),
+            _ => {}
+        }
+    }
+    hands.retain(|h| h.id != entry.id);
+    hands.push(Arc::new(entry));
+    Ok(())
+}
+
+fn entry<T: Asset>(read: HandRead<T>, write: HandWrite<T>, at: Option<&'static std::panic::Location<'static>>) -> HandMap {
     fn typed<T: Asset>(v: &dyn Any) -> Result<&T, String> {
         v.downcast_ref::<T>().ok_or_else(|| format!("not a {}", T::type_path()))
     }
@@ -868,7 +899,7 @@ pub fn register<T: Asset>(read: HandRead<T>, write: HandWrite<T>) {
             assets.remove(id.typed::<T>());
         }
     }
-    let entry = HandMap {
+    HandMap {
         id: TypeId::of::<T>(),
         path: T::type_path(),
         read: Box::new(move |slots, source, v| read(slots, source, typed::<T>(v)?)),
@@ -879,10 +910,8 @@ pub fn register<T: Asset>(read: HandRead<T>, write: HandWrite<T>) {
         get: get::<T>,
         put: put::<T>,
         remove: remove::<T>,
-    };
-    let mut hands = HANDS.write().unwrap_or_else(|e| e.into_inner());
-    hands.retain(|h| h.id != entry.id);
-    hands.push(Arc::new(entry));
+        at,
+    }
 }
 
 fn default_value(registry: &TypeRegistry, ty: &AssetType) -> Result<Box<dyn PartialReflect>, String> {
@@ -964,6 +993,53 @@ mod tests {
 
     fn image(app: &App) -> AssetType {
         asset_type(&app.world().resource::<AppTypeRegistry>().read(), "bevy_image::image::Image").expect("Image is an asset")
+    }
+
+    /// An app's own `Mesh` map, told apart from bevy-ts' by what it reads.
+    #[cfg(feature = "pbr")]
+    fn app_mesh_read(_: &Slots, _: Option<&Value>, _: &Mesh) -> Result<Value, String> {
+        Ok(Value::from("app's"))
+    }
+
+    #[cfg(feature = "pbr")]
+    fn reads(h: &HandMap) -> Value {
+        let world = World::new();
+        let registry = TypeRegistry::new();
+        let assets = ScriptAssets::default();
+        let slots = Slots { registry: &registry, assets: &assets, server: None, world: Some(&world), check: false };
+        (h.read)(&slots, None, &Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, Default::default())).unwrap()
+    }
+
+    #[cfg(feature = "pbr")]
+    #[test]
+    fn an_apps_own_hand_map_wins_over_bevy_ts_own() {
+        let at = Some(std::panic::Location::caller());
+        // The app maps `Mesh` before the first lookup, which adds bevy-ts' own after it.
+        let mut hands = Vec::new();
+        insert(&mut hands, entry::<Mesh>(app_mesh_read, crate::mesh_data::write, at)).unwrap();
+        insert(&mut hands, entry::<Mesh>(crate::mesh_data::read, crate::mesh_data::write, None)).unwrap();
+        assert_eq!(hands.len(), 1);
+        assert_eq!(reads(&hands[0]), Value::from("app's"));
+        // And after it: the app's replaces bevy-ts' own.
+        let mut hands = Vec::new();
+        insert(&mut hands, entry::<Mesh>(crate::mesh_data::read, crate::mesh_data::write, None)).unwrap();
+        insert(&mut hands, entry::<Mesh>(app_mesh_read, crate::mesh_data::write, at)).unwrap();
+        assert_eq!(hands.len(), 1);
+        assert_eq!(reads(&hands[0]), Value::from("app's"));
+    }
+
+    #[cfg(feature = "pbr")]
+    #[test]
+    fn an_app_mapping_a_type_twice_is_refused_naming_both() {
+        let mut hands = Vec::new();
+        let first = std::panic::Location::caller();
+        insert(&mut hands, entry::<Mesh>(app_mesh_read, crate::mesh_data::write, Some(first))).unwrap();
+        // The same place again is the same registration in another app of the process.
+        insert(&mut hands, entry::<Mesh>(app_mesh_read, crate::mesh_data::write, Some(first))).unwrap();
+        let second = std::panic::Location::caller();
+        let e = insert(&mut hands, entry::<Mesh>(crate::mesh_data::read, crate::mesh_data::write, Some(second))).unwrap_err();
+        assert_eq!(e, format!("bevy_mesh::mesh::Mesh is hand-mapped twice: at {first} and at {second}"));
+        assert_eq!(reads(&hands[0]), Value::from("app's"), "the first stays");
     }
 
     #[test]
