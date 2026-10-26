@@ -37,3 +37,9 @@
 - [x] 4.1 Touched crates' tests through gate-slot while working; `pnpm check` and the affected gate before `abyme call land add`
 - [x] 4.2 Every coverage-table row names a test that exists or an owner
 - [x] 4.3 `openspec validate script-assets --strict`
+
+## 5. Review notes (script-assets-notes)
+
+- [x] 5.1 "Two `commands.spawn` keep only the last": not reproduced for layout, reflected or element spawns (`systems.rs::two_spawns_in_one_run_both_land`). What was broken: `commands.spawn(Mesh3d.of(ref))` skipped every spawn, since `commands::insert_reflect`, its check and `reflect_codec::write` wrote without `ScriptAssets`' hook; they take it now (`script_assets.rs::spawns_and_writes_take_mesh_refs`)
+- [x] 5.2 An app's own `Mesh` (or `Image`) hand map wins over bevy-ts' own; a second map of a type from another place panics naming both (`reflect_asset.rs::an_apps_own_hand_map_wins_over_bevy_ts_own`, `an_app_mapping_a_type_twice_is_refused_naming_both`)
+- [x] 5.3 `bevy-ts build` imports `bevy-ts/assets` and `bevy-ts/input` and the shipped game runs their values (`build.rs::a_build_imports_the_native_modules`); the claim did not reproduce

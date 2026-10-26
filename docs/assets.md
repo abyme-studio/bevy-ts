@@ -71,8 +71,9 @@ Bevy does not reflect a mesh's data, so `Mesh` has its own entry (`crates/bevy-t
 
 A ref goes in any `Handle<T>` slot the reflected writer reaches: a TSX prop
 (`<MeshMaterial3dStandardMaterial value={mat} />`), a field of another asset
-(`assets.add(StandardMaterial, { base_color_texture: img })`) or a protocol write
-(`bevy-ts/mutate_components`). A ref of another asset type fails naming both types. A handle a script made reads back as its ref; any
+(`assets.add(StandardMaterial, { base_color_texture: img })`), a component a system spawns or
+inserts (`commands.spawn(Mesh3d.of(meshes.add(mesh)))`), a `Mut<T>` value it writes
+(`m.value = ref`) or a protocol write (`bevy-ts/mutate_components`). A ref of another asset type fails naming both types. A handle a script made reads back as its ref; any
 other handle reads as its path, or `null`.
 
 ## Asset values
@@ -221,7 +222,9 @@ a value. Both get `Slots`, whose `world` is the app's world for a map that reads
 last wrote the asset from, `None` for a loaded asset. The built `T` goes whole into `Assets<T>` at its ref's id when the run ends. `set` merges its patch
 over the current read at the top level: a key given replaces that key whole; when the new read
 equals the old, nothing is queued. A type both hand-mapped and reflected uses its hand map.
-Mapping a type again replaces its entry. The map is process-wide, like a type registration.
+An app's map of `Mesh` or `Image` wins over bevy-ts' own, registered before or after it. The map is
+process-wide, like a type registration: the same call run again (another app in the process)
+replaces its entry, and a second map of a type from another place panics naming both places.
 
 `bevy-ts/bevy` has classes only for types registered with `ReflectAsset`, so a script names a type
 with no `Reflect` by its type path, with `asset` from `bevy-ts`, or the owning crate ships that
