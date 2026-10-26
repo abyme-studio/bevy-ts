@@ -1,6 +1,6 @@
 ## Context
 
-Research: `docs/research/script-2d.md` (2fb92f7). The engine already builds `SpritePlugin`, `ColorMaterialPlugin`, `Text2d`, `TilemapChunkPlugin` and sprite picking. `<mesh>`/`<material>` always insert `Mesh3d`/`MeshMaterial3d` (`crates/bevy-ts-tsx/src/intrinsics.rs`), with equal props sharing a handle through `IntrinsicAssets`. A Rust component with heap holes (`Sprite`) or no layout (`Camera2d`) goes the reflect path (`resolve.rs:250`, `reflected.rs`): inserted from `ReflectDefault`, props written by reflection, a string in a top-level `Handle<T>` loaded as a path. Reflect-path props cannot be bound (`resolve.rs:214`).
+Research: `docs/research/script-2d.md` (2fb92f7). The engine already builds `SpritePlugin`, `ColorMaterialPlugin`, `Text2d`, `TilemapChunkPlugin` and sprite picking. `<mesh>`/`<material>` always insert `Mesh3d`/`MeshMaterial3d` (`crates/bevy-ts-tsx/src/intrinsics.rs`), with equal props sharing a handle through `IntrinsicAssets`. A Rust component with heap holes (`Sprite`) or no layout (`Camera2d`) goes the reflect path (`resolve.rs:250`, `reflected.rs`): inserted from `ReflectDefault`, props written by reflection, a string in a top-level `Handle<T>` loaded as a path. Reflect-path props bind and type-check (reflect-bindable).
 
 Neighbours own parts of 2D:
 
@@ -18,7 +18,7 @@ Neighbours own parts of 2D:
 
 **Goals:** every part of Bevy 0.20's 2D surface has a TS form in Bevy's names, a test, and a row in `docs/2d.md`. Each stage lands on its own.
 
-**Non-Goals:** a 2D editor camera; binding reflect-path props; custom `Material2d`, `Wireframe2d`, `SpriteMesh`; `Assets.add`; `Sprite.of()` from commands (reflect-coverage stage 2).
+**Non-Goals:** a 2D editor camera; custom `Material2d`, `Wireframe2d`, `SpriteMesh`; `Assets.add`; `Sprite.of()` from commands (reflect-coverage stage 2).
 
 ## Stages
 
@@ -68,7 +68,9 @@ The picking test feeds `PointerInput` to a headless app with a `Camera2d` render
 
 ### 7. Tilemap tileset as an array texture
 
-Bevy's example loads the tileset with `ImageLoaderSettings { array_layout: Some(ImageArrayLayout::RowCount { rows }) }`. The path rule cannot pass loader settings, so a `TilemapChunk`'s `tileset` string loads through `AssetServer::load_with_settings` with the row count from the image and `tile_display_size`. Because `TilemapChunk` is immutable, its insert hook builds the chunk mesh; TSX re-inserts it on a prop change instead of writing a field.
+Bevy's example loads the tileset with `ImageLoaderSettings { array_layout: Some(ImageArrayLayout::RowCount { rows }) }`. The row count cannot come from the image, which is not loaded when its settings are chosen, nor from `tile_display_size`, which is the size on screen. So `Image.load` takes Bevy's `array_layout` beside `sampler` and `is_srgb` (one line in its loader entry), and `tileset` takes `Image.load(path, { array_layout })` or an image ref; a bare path, or a load with no `array_layout`, fails the load naming the fix.
+
+Because `TilemapChunk` is immutable, its insert hook builds the chunk mesh, from the `TilemapChunkTileData` already on the entity. `reflected::write` inserts any immutable component again on a changed prop (read, set the field, insert), which runs its hook. `resolve_node` puts the tile data before the chunk, whatever the source order, and checks its length against `chunk_size`. Tile data is mutable: a change is written in place and Bevy's `update_tilemap_chunk_indices` redraws.
 
 ### 8. Protocol
 

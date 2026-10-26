@@ -18,7 +18,7 @@ Across stages:
 - **Bevy's names.** Rust components keep their field names (`custom_size`, `texture_atlas`). Intrinsics use camelCase props as `<mesh>` does.
 - **No `spawnNative` recipe** for any 2D type.
 - **No protocol change expected.** If one shows, the next free minor at landing.
-- **Out of scope, follow-ups:** a 2D editor camera in the studio (the editor camera is a `Camera3d`, so 2D is invisible in edit mode); binding reflect-path props to signals (`resolve.rs:214`); `Wireframe2d`, custom `Material2d` (a script material with a 2D target), `SpriteMesh`; spawning sprites from a system (`Sprite.of()`, reflect-coverage stage 2); `Assets.add` (script-assets).
+- **Out of scope, follow-ups:** a 2D editor camera in the studio (the editor camera is a `Camera3d`, so 2D is invisible in edit mode); `Wireframe2d`, custom `Material2d` (a script material with a 2D target), `SpriteMesh`; spawning sprites from a system (`Sprite.of()`, reflect-coverage stage 2); `Assets.add` (script-assets).
 
 ## Capabilities
 

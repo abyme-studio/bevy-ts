@@ -2,7 +2,9 @@
 //! writable holes of layout-tier ones (a light's `color`): inserted from their `Default` and
 //! written field by field through `bevy_ts::reflect_value`, so a changed prop writes one field as
 //! a controlled field does. A field's value is its JSON over the default's value of that field. A
-//! component that is itself an enum takes its whole value as `value`.
+//! component that is itself an enum takes its whole value as `value`. An immutable component
+//! (`TilemapChunk`) cannot be written in place: a changed prop inserts it again, which runs its
+//! insert hook.
 
 use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld};
 use bevy::prelude::*;
@@ -44,9 +46,28 @@ fn set(slots: &Slots, target: &mut dyn PartialReflect, base: Option<&dyn Partial
     if field == "texture_atlas" {
         bevy_ts::atlas_layout::check_index(v, field).map_err(|e| format!("{type_path}.{e}"))?;
     }
+    if field == "tileset" && type_path == TILEMAP_CHUNK {
+        check_tileset(v)?;
+    }
     let s = slot(target, field).map_err(|e| format!("{type_path}: {e}"))?;
     let b = base.and_then(|b| slot_ref(b, field));
     reflect_value::write_with(slots.cx(), s, b, v).map_err(|e| format!("{type_path}.{field}: {e}"))
+}
+
+const TILEMAP_CHUNK: &str = "bevy_sprite_render::tilemap_chunk::TilemapChunk";
+
+/// A `TilemapChunk`'s tileset is an array texture, one layer per tile: a path loads as one 2D
+/// image, which its material cannot sample, so a path needs `Image.load`'s `array_layout`. A ref
+/// is the script's own image, taken as it is.
+fn check_tileset(v: &Value) -> Result<(), String> {
+    let layered = v.get("settings").and_then(|s| s.get("array_layout")).is_some();
+    let path = v.as_str().or_else(|| v.get("$load").and_then(Value::as_str));
+    match path {
+        Some(p) if !layered => Err(format!(
+            "TilemapChunk.tileset is an array texture: give Image.load({p:?}, {{ array_layout: {{ RowCount: {{ rows }} }} }}) from bevy-ts/bevy, one layer per tile, not {v}"
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// The asset hook for writes into the world: refs and asset values in `Handle<T>` slots.
@@ -125,6 +146,15 @@ pub fn write(world: &mut World, e: Entity, type_path: &str, field: &str, v: &Val
     let base = default(&registry, reg);
     let assets = slots_of(world);
     let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, world: None, check: false };
+    let immutable = world.components().get_id(reg.type_id()).and_then(|id| world.components().get_info(id)).is_some_and(|i| !i.mutable());
+    if immutable {
+        let Some(current) = rc.reflect(world.entity(e)) else { return Ok(false) };
+        let mut value = current.reflect_clone().map_err(|err| format!("{type_path} is immutable and cannot be cloned to write {field}: {err}"))?.into_partial_reflect();
+        set(&slots, value.as_mut(), base.as_deref(), type_path, field, v)?;
+        rc.insert(&mut world.entity_mut(e), value.as_ref(), &registry);
+        bevy_ts::reflect_asset::flush(world);
+        return Ok(true);
+    }
     {
         let mut em = world.entity_mut(e);
         let Some(mut m) = rc.reflect_mut(&mut em) else { return Ok(false) };

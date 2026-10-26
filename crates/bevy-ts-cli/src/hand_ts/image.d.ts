@@ -1,6 +1,12 @@
 export { TextureFormat } from "bevy-ts";
+/** Bevy's `ImageArrayLayout`: how `Image.load` cuts an image into an array texture (a `TilemapChunk` tileset). */
+export type ImageArrayLayout =
+  | { RowCount: { rows: number } }
+  | { RowHeight: { pixels: number } }
+  | { GridCount: { columns: number; rows: number } }
+  | { GridSize: { tile_width_pixels: number; tile_height_pixels: number } };
 /** The loader settings `Image.load` takes. */
-export type ImageLoadSettings = { sampler?: Image["sampler"]; is_srgb?: boolean };
+export type ImageLoadSettings = { sampler?: Image["sampler"]; is_srgb?: boolean; array_layout?: ImageArrayLayout };
 /** The options `Image.new` takes: the sampler in the shape `Image.load` and `assets.set` take. */
 export interface ImageOptions {
   sampler?: Image["sampler"];

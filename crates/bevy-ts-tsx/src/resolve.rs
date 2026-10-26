@@ -514,12 +514,38 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts, 
     if let (Some(a), Some(b)) = (out.iter().find(is_3d), out.iter().find(is_2d)) {
         return Err(err(format!("<{}> and <{}> on one entity: pair <mesh> with <material>, <mesh2d> with <material2d>", a.key, b.key), &b.source));
     }
+    tilemap(&mut out)?;
     // World text owns its entity's mesh and material.
     let world_text = out.iter().any(|r| matches!(r.target, Target::Ui(UiKind::WorldText)));
     if world_text && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Mesh(_) | Target::Material(_) | Target::ScriptMaterial { .. } | Target::OwnedMaterial { .. })) {
         return Err(err(format!("<worldText> and <{}> on one entity: a label draws its own mesh and material; give it an entity of its own", m.key), &node.location()));
     }
     Ok(out)
+}
+
+/// A `TilemapChunk` and its `TilemapChunkTileData`: the tile array is `chunk_size.x * chunk_size.y`
+/// long (Bevy only warns and draws nothing), and the data goes in first, since the chunk's insert
+/// hook builds its mesh from the data on the entity.
+fn tilemap(out: &mut Vec<Resolved>) -> Result<(), ScriptError> {
+    let is = |r: &Resolved, ty: &str| matches!(&r.target, Target::Reflect { type_path } if type_path == ty);
+    let (Some(c), Some(d)) = (
+        out.iter().position(|r| is(r, "bevy_sprite_render::tilemap_chunk::TilemapChunk")),
+        out.iter().position(|r| is(r, "bevy_sprite_render::tilemap_chunk::TilemapChunkTileData")),
+    ) else {
+        return Ok(());
+    };
+    let size = out[c].initial.get("chunk_size").or(out[c].controlled.get("chunk_size")).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_u64).product::<u64>());
+    let tiles = out[d].initial.get("value").or(out[d].controlled.get("value")).and_then(Value::as_array).map(Vec::len);
+    if let (Some(size), Some(tiles)) = (size, tiles)
+        && size != tiles as u64
+    {
+        return Err(err(format!("TilemapChunkTileData has {tiles} tiles, but TilemapChunk's chunk_size is {size}: give one tile (or null) per cell"), &out[d].source));
+    }
+    if d > c {
+        let data = out.remove(d);
+        out.insert(c, data);
+    }
+    Ok(())
 }
 
 /// Checks a whole section: duplicate roots and sibling keys, and every component element.

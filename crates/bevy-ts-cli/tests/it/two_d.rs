@@ -22,7 +22,7 @@ use common::*;
 use std::sync::{Arc, Mutex};
 
 fn scene(body: &str) -> String {
-    format!("import {{ app, sliced, tiled }} from \"bevy-ts\";\nimport {{ Anchor, Camera2d, Projection, Sprite, TextureAtlasLayout }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
+    format!("import {{ app, sliced, tiled }} from \"bevy-ts\";\nimport {{ Anchor, Camera2d, Image, Projection, Sprite, TextureAtlasLayout, TilemapChunk, TilemapChunkTileData }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
 }
 
 /// Bevy's default plugins with no window, every camera drawing into [`Offscreen`], and the first
@@ -684,4 +684,92 @@ fn a_bound_bitmap_text_goes_from_two_glyphs_to_three() {
     updates(&mut app, 2);
     assert_eq!(glyphs(&mut app), 3, "BEA");
     assert_eq!(app.world().entity(e).get_ref::<Transform>().unwrap().last_changed(), before, "the entity's own components are unchanged");
+}
+
+/// A tileset of four 8-pixel tiles stacked in a column, one colour each.
+fn tileset_png() -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut enc = png::Encoder::new(&mut out, 8, 32);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    let rows: Vec<u8> = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255, 255, 0, 255]].iter().flat_map(|c| c.repeat(8 * 8)).collect();
+    enc.write_header().unwrap().write_image_data(&rows).unwrap();
+    out
+}
+
+/// A 4x4 chunk, its tile data after it in the source, with a bound display size.
+const TILEMAP: &str = r##"import { app, Component, u8, signal, Update, type Query } from "bevy-ts";
+import { Image, TilemapChunk, TilemapChunkTileData } from "bevy-ts/bevy";
+
+export class Hit extends Component { static path = "game::Hit"; declare on: u8 }
+export const [size, setSize] = signal(16);
+export function grow(q: Query<[Hit]>) {
+  q.each((h) => { if (h.on === 1) setSize(32); });
+}
+app.addSystems(Update, grow);
+
+const tileset = Image.load("tiles.png", { array_layout: { RowCount: { rows: 4 } } });
+const tiles = Array.from({ length: 16 }, (_, i) => (i === 5 ? null : { tileset_index: i % 4 }));
+app.scene("s", () => (
+  <entity key="map">
+    <TilemapChunk chunk_size={[4, 4]} tile_display_size={() => [size(), size()]} tileset={tileset} />
+    <TilemapChunkTileData value={tiles} />
+  </entity>
+));
+"##;
+
+#[test]
+fn a_tilemap_chunk_mounts_with_an_array_tileset_and_a_changed_prop_inserts_it_again() {
+    use bevy::sprite_render::{TilemapChunk, TilemapChunkMaterial, TilemapChunkTileData};
+    let (mut app, r) = load_game_with_assets("two-d-tilemap", TILEMAP, &[("tiles.png", &tileset_png())], |_| {});
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    let world = app.world_mut();
+    let e = world.query::<(Entity, &TsxNode)>().iter(world).find(|(_, n)| n.key_path == ["map"]).map(|(e, _)| e).expect("the map");
+    let w = app.world();
+    let chunk = w.get::<TilemapChunk>(e).expect("a TilemapChunk").clone();
+    assert_eq!((chunk.chunk_size, chunk.tile_display_size), (UVec2::splat(4), UVec2::splat(16)));
+    let data = w.get::<TilemapChunkTileData>(e).expect("its tile data");
+    assert_eq!(data.len(), 16);
+    assert!(data[5].is_none(), "null is an empty tile");
+    assert_eq!(data[6].map(|t| (t.tileset_index, t.visible)), Some((2, true)), "a tile's unset fields take TileData's default");
+    // Bevy's insert hook built the chunk: it found the tile data, though the source gives it second.
+    assert!(w.get::<MeshMaterial2d<TilemapChunkMaterial>>(e).is_some(), "the chunk's material");
+    let mesh = w.get::<Mesh2d>(e).expect("the chunk's mesh").0.clone();
+    let mut layers = None;
+    for _ in 0..200 {
+        app.update();
+        layers = app.world().resource::<Assets<Image>>().get(&chunk.tileset).map(|i| i.texture_descriptor.array_layer_count());
+        if layers.is_some() {
+            break;
+        }
+    }
+    assert_eq!(layers, Some(4), "the tileset is an array texture, one layer per tile");
+    let errors: Vec<_> = logs(&app).into_iter().filter(|l| l.level == bevy_ts::log::LogLevel::Error).map(|l| l.message).collect();
+    assert!(errors.is_empty(), "{errors:?}");
+
+    // TilemapChunk is immutable: its changed prop inserts it again, and the hook builds a new mesh.
+    let (id, _) = bevy_ts::plugin_api::component_by_name(app.world(), "game::Hit").unwrap();
+    let hit = app.world_mut().spawn_empty().id();
+    // SAFETY: Hit is one u8.
+    unsafe { bevy_ts::commands::insert_bytes(&mut app.world_mut().entity_mut(hit), id, &[1]) };
+    updates(&mut app, 3);
+    let w = app.world();
+    assert_eq!(w.get::<TilemapChunk>(e).unwrap().tile_display_size, UVec2::splat(32));
+    assert_eq!(w.get::<TilemapChunk>(e).unwrap().tileset, chunk.tileset, "the other fields are kept");
+    assert_ne!(w.get::<Mesh2d>(e).unwrap().0, mesh, "a 128-pixel chunk has its own mesh");
+}
+
+#[test]
+fn a_tilemap_refuses_a_tile_count_off_its_size_and_a_tileset_with_no_array_layout() {
+    let chunk = |tileset: &str, n: usize| {
+        format!("    <entity><TilemapChunk chunk_size={{[4, 4]}} tile_display_size={{[16, 16]}} tileset={{{tileset}}} /><TilemapChunkTileData value={{Array.from({{ length: {n} }}, () => ({{ tileset_index: 0 }}))}} /></entity>\n")
+    };
+    let layered = "Image.load(\"tiles.png\", { array_layout: { RowCount: { rows: 4 } } })";
+    let e = refused("two-d-tilemap-count", &chunk(layered, 15));
+    assert!(e.contains("15") && e.contains("16") && e.contains("chunk_size"), "{e}");
+    for (name, tileset) in [("two-d-tileset-path", "\"tiles.png\""), ("two-d-tileset-load", "Image.load(\"tiles.png\")")] {
+        let e = refused(name, &chunk(tileset, 16));
+        assert!(e.contains("tileset") && e.contains("array_layout"), "{tileset}: {e}");
+    }
 }

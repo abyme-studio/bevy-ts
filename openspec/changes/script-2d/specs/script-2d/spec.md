@@ -81,11 +81,19 @@ A TS system SHALL animate a sprite sheet the way Bevy's `sprite_sheet` example d
 - **THEN** the sprite's index is 3
 
 ### Requirement: Tilemap chunks in TSX
-`<TilemapChunk>` SHALL take Bevy's fields (`chunk_size`, `tile_display_size`, `tileset`, `alpha_mode`) and `<TilemapChunkTileData value>` an array of `{ tileset_index, color?, visible? }` or `null` per tile. `tileset` SHALL be an asset path loaded as an array texture, with one layer per tile cut from the image by `tile_display_size`. A tile array whose length is not `chunk_size.x * chunk_size.y` SHALL fail the load naming both. Since Bevy's `TilemapChunk` is immutable, a changed prop SHALL re-insert the component.
+`<TilemapChunk>` SHALL take Bevy's fields (`chunk_size`, `tile_display_size`, `tileset`, `alpha_mode`) and `<TilemapChunkTileData value>` an array of `{ tileset_index, color?, visible?, orientation? }` or `null` per tile. `tileset` SHALL be an array texture with one layer per tile: `Image.load(path, { array_layout })`, Bevy's `ImageArrayLayout`, which `Image.load` SHALL take beside `sampler` and `is_srgb`, or an image ref; a bare path or a load with no `array_layout` SHALL fail the load naming `array_layout`. A tile array whose length is not `chunk_size.x * chunk_size.y` SHALL fail the load naming both. Since Bevy's `TilemapChunk` is immutable, a changed prop SHALL insert the component again, so its hook rebuilds the chunk; the tile data SHALL be on the entity before the chunk whatever the source order.
 
 #### Scenario: A static map
-- **WHEN** a scene mounts a 4x4 `TilemapChunk` with a 16-entry tile array and `tileset="tiles.png"`
-- **THEN** the entity has `TilemapChunk`, `TilemapChunkTileData` with 16 entries, and the tileset image is loaded with one array layer per tile
+- **WHEN** a scene mounts a 4x4 `TilemapChunk` with a 16-entry tile array and `tileset={Image.load("tiles.png", { array_layout: { RowCount: { rows: 4 } } })}`
+- **THEN** the entity has `TilemapChunk`, `TilemapChunkTileData` with 16 entries, the chunk's mesh and material, and the tileset image is loaded with one array layer per tile
+
+#### Scenario: A changed chunk is inserted again
+- **WHEN** a bound `tile_display_size` changes from 16 to 32
+- **THEN** the entity's `TilemapChunk` has the new size and its other fields, and a new mesh
+
+#### Scenario: A wrong tile count or a flat tileset
+- **WHEN** a 4x4 chunk is given 15 tiles, or a `tileset` path with no `array_layout`
+- **THEN** loading fails naming 15 and 16, or `array_layout`
 
 ### Requirement: The 2D coverage table
 `docs/2d.md` SHALL list every part of Bevy 0.20's 2D surface (cameras, `Mesh2d` and its shapes, `ColorMaterial`, every `Sprite` field, `Anchor`, atlases, `Text2d` and its components, sprite-sheet animation, tilemap chunks, picking, `Wireframe2d`, custom `Material2d`, `SpriteMesh`) with its TS form and the test that proves it, or the change that owns it, or "out of scope" with the reason.

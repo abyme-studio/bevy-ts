@@ -18,7 +18,7 @@
 use bevy::asset::uuid::Uuid;
 use crate::reflect_value;
 use bevy::asset::{AssetServer, ReflectAsset, UntypedAssetId, UntypedHandle};
-use bevy::image::{ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
+use bevy::image::{ImageArrayLayout, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
 use bevy::reflect::{PartialReflect, ReflectFromReflect, TypeRegistry};
 use serde_json::{Map, Value};
@@ -610,15 +610,17 @@ pub fn loadable(type_path: &str) -> bool {
     LOADERS.iter().any(|(p, _)| *p == type_path)
 }
 
-/// `Image.load(path, { sampler, is_srgb })`, by `ImageLoaderSettings`.
+/// `Image.load(path, { sampler, is_srgb, array_layout })`, by `ImageLoaderSettings`.
 fn load_image(slots: &Slots, path: &str, settings: &Map<String, Value>) -> Result<UntypedHandle, String> {
     let mut sampler = None;
     let mut is_srgb = None;
+    let mut array_layout = None;
     for (k, v) in settings {
         match k.as_str() {
             "sampler" => sampler = Some(image_sampler(slots, None, v)?),
             "is_srgb" => is_srgb = Some(v.as_bool().ok_or_else(|| format!("Image.load's is_srgb is true or false, not {v}"))?),
-            _ => return Err(format!("Image.load takes the settings sampler and is_srgb, not {k}")),
+            "array_layout" => array_layout = Some(image_array_layout(v)?),
+            _ => return Err(format!("Image.load takes the settings sampler, is_srgb and array_layout, not {k}")),
         }
     }
     if slots.check {
@@ -634,9 +636,29 @@ fn load_image(slots: &Slots, path: &str, settings: &Map<String, Value>) -> Resul
             if let Some(b) = is_srgb {
                 s.is_srgb = b;
             }
+            if let Some(a) = array_layout {
+                s.array_layout = Some(a);
+            }
         })
         .load(path.to_string());
     Ok(h.untyped())
+}
+
+/// Bevy's `ImageArrayLayout` (serde, not `Reflect`): the image cut into an array texture, as a
+/// `TilemapChunk`'s tileset is. Each count or size is positive.
+fn image_array_layout(v: &Value) -> Result<ImageArrayLayout, String> {
+    const FORMS: &str = "{ RowCount: { rows } }, { RowHeight: { pixels } }, { GridCount: { columns, rows } } or { GridSize: { tile_width_pixels, tile_height_pixels } }";
+    let layout: ImageArrayLayout = serde_json::from_value(v.clone()).map_err(|e| format!("Image.load's array_layout takes {FORMS}, not {v}: {e}"))?;
+    let counts = match layout {
+        ImageArrayLayout::RowCount { rows } => [rows, 1],
+        ImageArrayLayout::RowHeight { pixels } => [pixels, 1],
+        ImageArrayLayout::GridCount { columns, rows } => [columns, rows],
+        ImageArrayLayout::GridSize { tile_width_pixels, tile_height_pixels } => [tile_width_pixels, tile_height_pixels],
+    };
+    if counts.contains(&0) {
+        return Err(format!("Image.load's array_layout counts and sizes are positive, not {v}"));
+    }
+    Ok(layout)
 }
 
 /// An `ImageSampler` from the writer's JSON: `"Default"`, or `{ Descriptor: { ... } }` with the
@@ -1464,6 +1486,11 @@ mod tests {
         assert!(e.contains("srgb") && e.contains("is_srgb"), "{e}");
         let e = slots.write(id, &serde_json::json!({ "$load": "b.png", "settings": { "is_srgb": 0 } })).unwrap_err();
         assert!(e.contains("is_srgb"), "{e}");
+        slots.write(id, &serde_json::json!({ "$load": "t.png", "settings": { "array_layout": { "RowCount": { "rows": 4 } } } })).expect("an array layout");
+        for bad in [serde_json::json!({ "RowCount": { "rows": 0 } }), serde_json::json!({ "Rows": 4 })] {
+            let e = slots.write(id, &serde_json::json!({ "$load": "u.png", "settings": { "array_layout": bad } })).unwrap_err();
+            assert!(e.contains("array_layout") && e.contains("RowCount"), "{e}");
+        }
         let e = slots.write(TypeId::of::<Mesh>(), &serde_json::json!({ "$load": "m.glb" })).unwrap_err();
         assert!(e.contains("Mesh") && e.contains("no loader settings"), "{e}");
         let check = Slots { registry: &registry, server: None, assets, world: None, check: true };

@@ -2243,8 +2243,14 @@ export interface AnimationGraphNode {
 
 export type Image = AssetFields<"bevy_image::image::Image", { sampler: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } } }>;
 export { TextureFormat } from "bevy-ts";
+/** Bevy's `ImageArrayLayout`: how `Image.load` cuts an image into an array texture (a `TilemapChunk` tileset). */
+export type ImageArrayLayout =
+  | { RowCount: { rows: number } }
+  | { RowHeight: { pixels: number } }
+  | { GridCount: { columns: number; rows: number } }
+  | { GridSize: { tile_width_pixels: number; tile_height_pixels: number } };
 /** The loader settings `Image.load` takes. */
-export type ImageLoadSettings = { sampler?: Image["sampler"]; is_srgb?: boolean };
+export type ImageLoadSettings = { sampler?: Image["sampler"]; is_srgb?: boolean; array_layout?: ImageArrayLayout };
 /** The options `Image.new` takes: the sampler in the shape `Image.load` and `assets.set` take. */
 export interface ImageOptions {
   sampler?: Image["sampler"];

@@ -39,11 +39,11 @@
 
 ## 5. Stage 5: tilemap chunks
 
-- [ ] 5.1 `TilemapChunk`'s `tileset` path loads with `ImageLoaderSettings { array_layout }` cut by `tile_display_size` (design 7)
-- [ ] 5.2 `<TilemapChunkTileData value>` takes an array of `{ tileset_index, color?, visible? }` or `null`; a length other than `chunk_size.x * chunk_size.y` fails naming both
-- [ ] 5.3 A changed prop on either component re-inserts it
-- [ ] 5.4 `two_d.rs`: a 4x4 chunk with 16 tiles mounts with both components and an array-texture tileset
-- [ ] 5.5 `examples/shapes-2d`: a small tile floor; `docs/2d.md` rows
+- [x] 5.1 `Image.load` takes Bevy's `array_layout`; `TilemapChunk.tileset` refuses a path or a load without it (design 7)
+- [x] 5.2 `<TilemapChunkTileData value>` takes an array of `{ tileset_index, color?, visible? }` or `null`; a length other than `chunk_size.x * chunk_size.y` fails naming both
+- [x] 5.3 A changed prop on `TilemapChunk` (immutable) re-inserts it, re-running its hook; `TilemapChunkTileData` is written in place
+- [x] 5.4 `two_d.rs`: a 4x4 chunk with 16 tiles mounts with both components and an array-texture tileset
+- [x] 5.5 `examples/shapes-2d`: a small tile floor; `docs/2d.md` rows
 
 ## 6. Landing (each stage)
 
