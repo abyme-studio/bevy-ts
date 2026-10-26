@@ -126,7 +126,7 @@ fn a_label_draws_in_its_bounds_and_not_from_behind() {
         let world = app.world_mut();
         let (target, cam) = camera(world, Transform::from_xyz(0.0, 0.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y), (320, 180), Color::BLACK, msaa);
         let e = label(world, "HELLO", WorldTextStyle::default(), Transform::default());
-        until_drawn(&mut app, &target, |w, img| {
+        until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
             let b = label_box(w, cam, e)?;
             let (inner, outer) = (count(inside(img, b), white), count(all(img).filter(|(p, _)| !b.grow(2).contains(*p)).map(|(_, c)| c), |c| !black(c)));
             if inner > 200 && outer == 0 { Ok(()) } else { Err(format!("{msaa:?}: {inner} white inside {b:?}, {outer} drawn outside")) }
@@ -151,7 +151,7 @@ fn a_cube_in_front_hides_half_a_label() {
     let solid = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial { base_color: Color::srgb(1.0, 0.0, 0.0), unlit: true, ..default() });
     // Its right face at x = 0, in front of the label.
     world.spawn((Mesh3d(cube), MeshMaterial3d(solid), Transform::from_xyz(-2.0, 0.0, 1.0)));
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
         let b = label_box(w, cam, e)?;
         let edge = project(w, cam, [Vec3::new(0.0, 0.0, 1.1), Vec3::new(0.0, 0.0, 1.1)])?.max.x;
         let left = Px { min: b.min, max: IVec2::new(edge - 1, b.max.y) };
@@ -173,7 +173,7 @@ fn under_a_depth_prepass_the_space_between_glyphs_hides_nothing() {
     let cube = world.resource_mut::<Assets<Mesh>>().add(Cuboid::new(20.0, 20.0, 0.2));
     let solid = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial { base_color: Color::srgb(1.0, 0.0, 0.0), unlit: true, ..default() });
     world.spawn((Mesh3d(cube), MeshMaterial3d(solid), Transform::from_xyz(0.0, 0.0, -1.0)));
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
         let b = label_box(w, cam, e)?;
         let n = ((b.max - b.min).x * (b.max - b.min).y) as f32;
         let (r, wh) = (count(inside(img, b), red) as f32 / n, count(inside(img, b), white) as f32 / n);
@@ -190,7 +190,7 @@ fn close_up_an_edge_is_sharp() {
     let world = app.world_mut();
     let (target, cam) = camera(world, Transform::from_xyz(0.0, 0.0, 1.0).looking_at(Vec3::ZERO, Vec3::Y), (480, 480), Color::BLACK, Msaa::Sample4);
     let e = label(world, "I", WorldTextStyle::default(), Transform::default());
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
         let b = label_box(w, cam, e)?;
         let row = (b.min.y + b.max.y) / 2;
         let lum = |x: i32| rgb(img, IVec2::new(x, row))[0];
@@ -226,7 +226,7 @@ fn far_away_a_label_does_not_shimmer() {
     let e = label(world, "Distant label here", WorldTextStyle { size, ..default() }, Transform::default());
     // Summed as light, not as sRGB values: a pixel half covered is half the light of one covered.
     let coverage = |img: &Image| all(img).map(|(_, c)| (c[0] as f32 / 255.0).powf(2.2)).sum::<f32>();
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
         // Lit inside the label's box and dark outside it: the label drawn, not a target the
         // camera has not cleared yet.
         let b = label_box(w, cam, e)?.grow(2);
@@ -252,7 +252,7 @@ fn an_outline_is_a_band_around_every_glyph() {
     let world = app.world_mut();
     let (target, cam) = camera(world, Transform::from_xyz(0.0, 0.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y), (320, 180), Color::srgb(1.0, 0.0, 0.0), Msaa::Sample4);
     let e = label(world, "Ob", WorldTextStyle { outline: Some((0.1, Color::BLACK)), ..default() }, Transform::default());
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
         let b = label_box(w, cam, e)?;
         let band = project(w, cam, [Vec3::ZERO, Vec3::new(0.1, 0.0, 0.0)])?;
         let reach = (band.max.x - band.min.x) as f32 + 2.0;
@@ -278,7 +278,7 @@ fn lit_labels_take_the_light_and_unlit_ones_do_not() {
     let (target, cam) = camera(world, Transform::from_xyz(0.0, 0.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y), (320, 180), Color::srgb(0.5, 0.5, 0.5), Msaa::Off);
     let unlit = label(world, "MMM", WorldTextStyle::default(), Transform::from_xyz(-1.5, 0.0, 0.0));
     let lit = label(world, "MMM", WorldTextStyle { lit: true, ..default() }, Transform::from_xyz(1.5, 0.0, 0.0));
-    until_drawn(&mut app, &target, |w, img| {
+    until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
         let (u, l) = (label_box(w, cam, unlit)?, label_box(w, cam, lit)?);
         let dark = |c: [u8; 3]| c.iter().all(|v| *v < 26);
         let (uw, ld, lw) = (count(inside(img, u), white), count(inside(img, l), dark), count(inside(img, l), white));
