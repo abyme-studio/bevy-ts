@@ -154,3 +154,52 @@ fn a_bound_material_alpha_fades_a_scene_frame_by_frame() {
     }
     assert_eq!(last, 0.0);
 }
+
+// Change material-params, stage 3: instance params on a scene root.
+
+#[test]
+fn a_scene_roots_meshes_take_and_follow_its_instance_params() {
+    let src = game("<material kind={Hover} gltfMaterial=\"hull\" hover={() => h()} />")
+        .replace("import { app } from \"bevy-ts\";", "import { app, signal, Update, type Local, type u32 } from \"bevy-ts\";")
+        .replace(
+            "\napp.scene(",
+            "\nexport const Hover = material(\"game::Hover\", { params: { color: color }, instance: { hover: f32 }, fragment: hoverShader });\nexport const [h, setH] = signal(0);\nexport function tick(frames: Local<{ n: u32 }>) { frames.n += 1; setH(frames.n); }\napp.addSystems(Update, tick);\n\napp.scene(",
+        )
+        .replace("import glow from \"./glow.wgsl\";", "import glow from \"./glow.wgsl\";\nimport hoverShader from \"./hover.wgsl\";");
+    let hover_wgsl = "import bevy_pbr::render::forward_io::VertexOutput;\n\n@fragment\nfn fragment(in: VertexOutput) -> @location(0) vec4<f32> {\n    return params.color * instance(in.instance_index).hover;\n}\n";
+    let ship = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../bevy-ts-material/tests/assets/models/ship.gltf")).unwrap();
+    let dir = project("scene-material-instance", &[("src/game.tsx", &src), ("src/glow.wgsl", WGSL), ("src/hover.wgsl", hover_wgsl), ("assets/models/ship.gltf", &ship)]);
+    let mut app = scene_app(&dir);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    // Each mesh's hover, by glTF material name.
+    let hovers = |app: &mut App| {
+        let world = app.world_mut();
+        let mut out: Vec<(String, Option<u32>)> = world
+            .query::<(&GltfMaterialName, Option<&bevy_ts_material::ScriptInstance>)>()
+            .iter(world)
+            .map(|(n, s)| (n.0.clone(), s.map(|s| f32::from_bits(s.data[0]) as u32)))
+            .collect();
+        out.sort();
+        out
+    };
+    until(&mut app, "the hull took the root's hover", |app| {
+        let h = hovers(app);
+        h.len() == 3 && h[0].1.is_some_and(|v| v > 0) && h[0].1 == h[1].1 && h[2].1.is_none()
+    });
+    let root = {
+        let world = app.world_mut();
+        world.query_filtered::<Entity, With<bevy::world_serialization::WorldAssetRoot>>().single(world).unwrap()
+    };
+    for _ in 0..5 {
+        app.update();
+        let root_hover = app.world().get::<bevy_ts_material::ScriptInstance>(root).map(|s| f32::from_bits(s.data[0]) as u32);
+        let h = hovers(&mut app);
+        assert!(h[0].1.is_some() && h[0].1.unwrap() + 1 >= root_hover.unwrap(), "the hull follows the root: {h:?} {root_hover:?}");
+    }
+    // No material: the meshes lose it.
+    write(&dir, "src/game.tsx", &src.replace("<material kind={Hover} gltfMaterial=\"hull\" hover={() => h()} />", ""));
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    updates(&mut app, 2);
+    assert!(hovers(&mut app).iter().all(|(_, v)| v.is_none()), "{:?}", hovers(&mut app));
+}

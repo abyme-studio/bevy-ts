@@ -504,6 +504,15 @@ fn patch(world: &mut World, binding: u32, v: Value) {
             new.insert(prop.clone(), v.clone());
         }
         crate::ui::update(world, e, kind, &old, &new).map(|_| ())
+    } else if key == resolve::MATERIAL && owned.fields.contains_key("kind") {
+        // A script material's instance param: the entity's `ScriptInstance`, never the asset.
+        let mut props: Map<String, Value> = owned.fields.iter().filter(|(k, s)| !s.applied.is_null() && k.as_str() != "kind" && k.as_str() != "gltfMaterial").map(|(k, s)| (k.clone(), s.applied.clone())).collect();
+        props.insert(prop.clone(), v.clone());
+        let kind = match &owned.fields["kind"].applied {
+            Value::String(s) => s.clone(),
+            k => k.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+        };
+        bevy_ts_material::instance::patch(world, e, &kind, &prop, &props, source.clone())
     } else if resolve::asset_intrinsic(&key) || key == resolve::NAME {
         Err("this prop cannot be bound".to_string())
     } else if let Some(path) = world.resource::<TsComponents>().live(&key).is_none().then(|| resolve::reflect_path(world.resource::<NativeLayouts>(), &key)).flatten() {

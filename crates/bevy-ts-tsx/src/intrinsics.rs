@@ -778,6 +778,7 @@ pub fn remove_mesh(world: &mut World, e: Entity, p: &MeshProps) {
 
 pub fn insert_material(world: &mut World, e: Entity, p: &MaterialProps, at: Option<SourceLocation>) {
     let m = material_handle(world, p, at);
+    bevy_ts_material::instance::remove(world, e);
     let mut em = world.entity_mut(e);
     em.remove::<(ScriptMaterial3d, GltfMaterialFilter)>().insert(MeshMaterial3d(m));
     if p.needs_tangents() {
@@ -803,7 +804,8 @@ pub fn insert_script_material(
         crate::reconcile::log_error(world, "<material kind>: script materials need ScriptMaterialPlugin".into(), at);
         return;
     }
-    match bevy_ts_material::kinds::instance(world, kind, props) {
+    // Instance props go to the entity's `ScriptInstance`; the rest key the shared asset.
+    match bevy_ts_material::instance::apply(world, e, kind, props, at.clone()) {
         Some(h) => put_script_material(world, e, h, gltf_material),
         None => crate::reconcile::log_error(world, format!("<material kind>: no material {kind}"), at),
     }
@@ -821,14 +823,22 @@ pub fn insert_owned_material(world: &mut World, e: Entity, asset: u64, gltf_mate
         world.resource::<ScriptAssets>().handle_for(&registry, std::any::TypeId::of::<bevy_ts_material::ScriptMaterial>(), asset)
     };
     match handle {
-        Ok(h) => put_script_material(world, e, h.typed::<bevy_ts_material::ScriptMaterial>(), gltf_material),
+        Ok(h) => {
+            let h = h.typed::<bevy_ts_material::ScriptMaterial>();
+            bevy_ts_material::instance::owned(world, e, &h, at);
+            put_script_material(world, e, h, gltf_material);
+        }
         Err(m) => crate::reconcile::log_error(world, format!("<material asset>: {m}"), at),
     }
 }
 
 fn put_script_material(world: &mut World, e: Entity, h: Handle<bevy_ts_material::ScriptMaterial>, gltf_material: Option<&str>) {
     let mut em = world.entity_mut(e);
-    em.remove::<(MeshMaterial3d<StandardMaterial>, NeedsTangents)>().insert(ScriptMaterial3d(h));
+    em.remove::<(MeshMaterial3d<StandardMaterial>, NeedsTangents)>();
+    // The same handle again (only instance props changed) is not a change: nothing respecialises.
+    if em.get::<ScriptMaterial3d>().is_none_or(|m| m.0 != h) {
+        em.insert(ScriptMaterial3d(h));
+    }
     match gltf_material {
         Some(name) if em.get::<GltfMaterialFilter>().is_none_or(|f| f.0 != name) => {
             em.insert(GltfMaterialFilter(name.into()));
@@ -842,6 +852,7 @@ fn put_script_material(world: &mut World, e: Entity, h: Handle<bevy_ts_material:
 }
 
 pub fn remove_material(world: &mut World, e: Entity) {
+    bevy_ts_material::instance::remove(world, e);
     world.entity_mut(e).remove::<(MeshMaterial3d<StandardMaterial>, ScriptMaterial3d, GltfMaterialFilter, NeedsTangents)>();
     fit_mesh(world, e);
 }

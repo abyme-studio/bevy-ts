@@ -25,12 +25,13 @@ use bevy::render::erased_render_asset::{ErasedRenderAsset, ErasedRenderAssetPlug
 use bevy::render::material_bind_groups::{MaterialBindGroupAllocator, MaterialBindGroupAllocators, RenderMaterialBindings};
 use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_phase::DrawFunctions;
-use bevy::render::render_resource::binding_types::{sampler, texture_2d, uniform_buffer_sized};
+use bevy::render::render_resource::binding_types::{sampler, storage_buffer_read_only_sized, texture_2d, uniform_buffer_sized};
 use bevy::render::render_resource::{
     BindGroupBuilder, BindGroupLayoutDescriptor, BlendComponent, BlendFactor, BlendOperation, BlendState,
     RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, TextureSampleType, TextureViewDimension, UnpreparedBindingResource, UnpreparedBindingResources,
 };
 use bevy::render::renderer::RenderDevice;
+use bevy::render::storage::{GpuShaderBuffer, ShaderBuffer};
 use bevy::render::sync_world::MainEntity;
 use bevy::render::texture::{FallbackImage, GpuImage};
 use bevy::render::{Extract, RenderApp, RenderStartup};
@@ -65,6 +66,9 @@ impl Kind {
             let b = bindings.texture_binding(i);
             entries.push(texture_2d(TextureSampleType::Float { filterable: true }).build(b, vis));
             entries.push(sampler(SamplerBindingType::Filtering).build(b + 1, vis));
+        }
+        if let Some(b) = bindings.instance_binding() {
+            entries.push(storage_buffer_read_only_sized(false, None).build(b, vis));
         }
         let layout = BindGroupLayoutDescriptor::new(format!("script_material {name}"), &entries);
         static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -105,9 +109,14 @@ impl Plugin for ScriptMaterialRenderPlugin {
             .add_systems(PostUpdate, check_entities_needing_specialization.after(AssetEventSystems));
         crate::scene::plugin(app);
         crate::alpha::plugin(app);
+        crate::instance::plugin(app);
+        let instances = crate::instance::buffer(app.world());
         let watch = crate::wgsl::PipelineWatch::default();
         app.insert_resource(watch.clone());
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
+        if let Some(b) = instances {
+            render_app.insert_resource(InstanceBuffer(b));
+        }
         render_app
             .insert_resource(watch)
             .add_systems(bevy::render::Render, crate::wgsl::watch_pipelines.in_set(bevy::render::RenderSystems::Cleanup))
@@ -126,6 +135,11 @@ impl Plugin for ScriptMaterialRenderPlugin {
 
 #[derive(Resource)]
 pub struct ScriptMaterialSampler(Sampler);
+
+/// Render world: the storage buffer of every entity's `ScriptInstance`, bound by each kind with
+/// instance params.
+#[derive(Resource)]
+pub struct InstanceBuffer(pub Handle<ShaderBuffer>);
 
 fn init_render_resources(mut commands: Commands, device: Res<RenderDevice>, mut allocators: ResMut<MaterialBindGroupAllocators>) {
     let linear = SamplerDescriptor {
@@ -155,12 +169,14 @@ impl ErasedRenderAsset for ScriptMaterial {
         SRes<RenderAssets<GpuImage>>,
         SRes<ScriptMaterialSampler>,
         SRes<FallbackImage>,
+        Option<SRes<InstanceBuffer>>,
+        SRes<RenderAssets<GpuShaderBuffer>>,
     );
 
     fn prepare_asset(
         source: ScriptMaterial,
         asset_id: AssetId<ScriptMaterial>,
-        (opaque, alpha_mask, transparent, allocators, bindings, images, linear, fallback): &mut SystemParamItem<Self::Param>,
+        (opaque, alpha_mask, transparent, allocators, bindings, images, linear, fallback, instances, buffers): &mut SystemParamItem<Self::Param>,
     ) -> Result<PreparedMaterial, PrepareAssetError<ScriptMaterial>> {
         let kind = source.kind.clone();
         let mut resources = Vec::new();
@@ -180,6 +196,14 @@ impl ErasedRenderAsset for ScriptMaterial {
             let b = kind.bindings.texture_binding(i);
             resources.push((b, UnpreparedBindingResource::TextureView(TextureViewDimension::D2, view)));
             resources.push((b + 1, UnpreparedBindingResource::Sampler(SamplerBindingType::Filtering, linear.0.clone())));
+        }
+        if let Some(b) = kind.bindings.instance_binding() {
+            // Bound once Bevy has made the buffer; it rebinds when the buffer grows.
+            let Some(InstanceBuffer(h)) = instances.as_deref() else { return Err(PrepareAssetError::RetryNextUpdate(source)) };
+            if buffers.get(h.id()).is_none() {
+                return Err(PrepareAssetError::RetryNextUpdate(source));
+            }
+            resources.push((b, UnpreparedBindingResource::ShaderBuffer(h.clone())));
         }
         let mut unprepared = BindGroupBuilder { binding_resources: UnpreparedBindingResources(resources), data_buffer };
         let allocator = allocators.get_mut(&TypeId::of::<ScriptMaterial>()).expect("allocator inserted at render startup");
@@ -220,7 +244,7 @@ impl ErasedRenderAsset for ScriptMaterial {
         Ok(PreparedMaterial { binding, properties: Arc::new(properties) })
     }
 
-    fn unload_asset(source: AssetId<ScriptMaterial>, (.., allocators, bindings, _, _, _): &mut SystemParamItem<Self::Param>) {
+    fn unload_asset(source: AssetId<ScriptMaterial>, (.., allocators, bindings, _, _, _, _, _): &mut SystemParamItem<Self::Param>) {
         if let Some(b) = bindings.remove(&source.untyped())
             && let Some(a) = allocators.get_mut(&TypeId::of::<ScriptMaterial>())
         {

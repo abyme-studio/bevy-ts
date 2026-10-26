@@ -1007,6 +1007,24 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
                     Err(m) => log_error(world, format!("<{}> {m}", r.key), r.source.clone()),
                 }
             }
+            Target::ScriptMaterial { kind, props, gltf_material } => {
+                // Rebuilt as a whole when an unbound prop changed; bound instance props keep what
+                // their binding last wrote, and go with the rebuild.
+                let unbound: Map<String, Value> = prev.fields.iter().filter(|(f, _)| !r.bound.contains_key(*f)).map(|(k, s)| (k.clone(), s.applied.clone())).collect();
+                state = owned(r);
+                bound_fields(r, prev, &mut state);
+                if unbound != r.controlled.clone().into_iter().collect::<Map<_, _>>() {
+                    let mut all = props.clone();
+                    for f in r.bound.keys() {
+                        match prev.fields.get(f).map(|s| &s.applied) {
+                            Some(v) if !v.is_null() => all.insert(f.clone(), v.clone()),
+                            _ => None,
+                        };
+                    }
+                    intrinsics::insert_script_material(world, e, kind, &all, gltf_material.as_deref(), r.source.clone());
+                    stats.written += 1;
+                }
+            }
             target => {
                 // Name and asset intrinsics: their props as a whole, rebuilt when they change.
                 if props_of(prev) != r.controlled.clone().into_iter().collect::<Map<_, _>>() {

@@ -39,26 +39,37 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
   the colour itself to fade an additive glow.
 - Equal props share one material instance. New props take another instance, never write the
   shared one, so no other element's material changes. An instance no entity holds is freed at the
-  end of the frame. Props cannot be bindings yet.
+  end of the frame. Params and textures cannot be bindings; instance params can
+  ([below](#instance-params)).
 - The shape is a `<mesh>` ([meshes.md](meshes.md)).
-- `kind`, `asset` and `gltfMaterial` are props of `<material>` itself, so no param or texture may
-  take any of those names.
+- `kind`, `asset` and `gltfMaterial` are props of `<material>` itself, so no param, texture or
+  instance param may take any of those names.
 
 ## Owned instances
 
 An instance one script owns and writes in place, for values that change often:
 
 ```tsx
-import { assets } from "bevy-ts";
+import { app, assets, Update, type Local, type u32 } from "bevy-ts";
+import { color, f32, material } from "bevy-ts/material";
+import glow from "./glow.wgsl";
 
+export const Glow = material("game::Glow", { params: { color: color, pulse: f32 }, fragment: glow });
 export const g = Glow.add({ color: "#ff0000", pulse: 1 });
 
-<entity>
-  <mesh shape="cuboid" />
-  <material asset={g} />
-</entity>
+// Every entity given g draws the new pulse: the same asset, written in place.
+export function beat(frames: Local<{ n: u32 }>) {
+  frames.n += 1;
+  assets.set(g, { pulse: 1 + (frames.n % 60) / 30 });
+}
+app.addSystems(Update, beat);
 
-assets.set(g, { pulse: 3 }); // in a system: every entity given g draws it, same asset
+app.scene("main", () => (
+  <entity>
+    <mesh shape="cuboid" />
+    <material asset={g} />
+  </entity>
+));
 ```
 
 - `Kind.add(props)` makes one `ScriptMaterial` outside the shared cache and returns its asset ref
@@ -80,12 +91,63 @@ assets.set(g, { pulse: 3 }); // in a system: every entity given g draws it, same
   A texture changed to an unloaded image draws nothing until it loads.
 - From Rust, the write is `bevy_ts_material::owned`, registered with `app.ts_hand_map`.
 
+## Instance params
+
+Values per entity that keep one material and one batch, for hover, team colour or damage flashes:
+
+```tsx
+import { app, signal } from "bevy-ts";
+import { color, f32, material } from "bevy-ts/material";
+import glow from "./glow.wgsl";
+
+export const Glow = material("game::Glow", { params: { color: color }, instance: { hover: f32 }, fragment: glow });
+export const [hovered, setHovered] = signal(0);
+
+app.scene("main", () => (
+  <>
+    <entity><mesh shape="sphere" /><material kind={Glow} color="#f80" hover={0} /></entity>
+    <entity><mesh shape="sphere" /><material kind={Glow} color="#f80" hover={() => hovered()} /></entity>
+  </>
+));
+```
+
+```wgsl
+import bevy_pbr::render::forward_io::VertexOutput;
+
+@fragment
+fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+    return params.color * (1.0 + instance(in.instance_index).hover);
+}
+```
+
+- `instance` takes the types `params` takes, laid out by the same rules, at most 256 bytes. Its
+  names may not be a param's, a texture's or its sampler's, `instance`, `instances` or the
+  generated `<Name>Instance`; otherwise the load fails at the `material()` call.
+- Instance props on `<material kind>` go to the entity's `ScriptInstance`, never to the asset or
+  its key: both spheres above hold one `ScriptMaterial`. Unset values are zero, colours white.
+- They may be bound (`hover={() => hovered()}`): a new value writes the entity, never the asset.
+  Params and textures still fail the load when bound.
+- The WGSL gets, appended, `struct GlowInstance { hover: f32, ... }`, a read-only storage array
+  `instances` after the textures, and `fn instance(i: u32) -> GlowInstance`, read as
+  `instance(in.instance_index)`. bevy-ts also imports Bevy's `get_tag` at the start of the file's
+  first line (as `bevy_ts_get_tag`), so errors on that line keep their columns.
+- On a glTF scene root, each mesh it swaps takes the root's values and follows them.
+- An owned instance (`<material asset>`) takes no instance props; its entities read the defaults.
+- Limits: Bevy packs every entity's values into one storage buffer (`GpuComponentArrayBuffer`) and
+  gives each entity a `MeshTag`, its row. An entity may have one `MeshTag`: one bevy-ts did not
+  set is kept, the entity takes no instance params, and an error names the entity and element. A
+  tag set after bevy-ts gave the entity its row is not caught, and Bevy then writes the row it
+  names: set none on an entity with instance params. A kind's own
+  prepass or shadow shader cannot read instance values. Any change uploads the whole buffer, 256
+  bytes per entity (2.5 MB at 10k).
+
 ## What lives where
 
 | Field | Where it lives | Set by | Written in place | Bindable | Batches with others |
 |---|---|---|---|---|---|
 | `params` | the asset's uniform | keyed props, or `Kind.add`/`assets.set` | owned only | no | equal asset only |
 | `textures` | the asset's bind group | keyed props, or `Kind.add`/`assets.set` | owned only | no | equal asset only |
+| `instance` | the entity's `ScriptInstance` | instance props | yes | yes | yes, one asset |
 | `alphaMode` | the kind | `material()` | no (hot reload) | no | per kind |
 | Fade, `alpha` | `MaterialAlpha`, `StandardMaterial` only | not on script materials | n/a | n/a | n/a |
 

@@ -100,8 +100,8 @@ pub(crate) fn textures_without_server(nodes: &[desc::NodeDesc], errors: &mut Vec
     }
 }
 
-/// Every `<material kind>` against the kinds the generation declares. Bound props are left to
-/// `resolve`, which fails them on their own.
+/// Every `<material kind>` against the kinds the generation declares. Only instance params may be
+/// bound.
 fn check_script_materials(plugin: bool, kinds: &std::collections::BTreeMap<String, Option<bevy_ts_material::layout::Bindings>>, nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
     for n in nodes {
         for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::MATERIAL && c.props.contains_key("kind")) {
@@ -110,9 +110,12 @@ fn check_script_materials(plugin: bool, kinds: &std::collections::BTreeMap<Strin
                 errors.push(ScriptError::at("<material kind>: script materials need ScriptMaterialPlugin", c.source.clone()));
                 continue;
             }
+            let bound: Vec<String> = props.iter().filter(|(_, v)| desc::binding_id(v).is_some()).map(|(p, _)| p.clone()).collect();
             props.retain(|_, v| desc::binding_id(v).is_none());
             if let Err(m) = bevy_ts_material::kinds::check_props(kinds, &kind, &props) {
                 errors.push(ScriptError::at(format!("<material>: {m}"), c.source.clone()));
+            } else if let Err(m) = bevy_ts_material::kinds::check_bound(kinds, &kind, bound) {
+                errors.push(ScriptError::at(m, c.source.clone()));
             }
         }
         check_script_materials(plugin, kinds, &n.children, errors);

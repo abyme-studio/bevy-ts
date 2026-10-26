@@ -3,6 +3,7 @@
 //! per material.
 
 pub mod alpha;
+pub mod instance;
 pub mod kinds;
 pub mod layout;
 pub mod owned;
@@ -12,6 +13,7 @@ pub mod wgsl;
 pub mod world_text;
 
 pub use alpha::{Fade, FadeMaterial, MaterialAlpha, MaterialAlphaTargets, standard_of};
+pub use instance::ScriptInstance;
 pub use kinds::MaterialKinds;
 pub use render::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
 pub use scene::{GltfMaterialFilter, SceneMaterialSet, SceneMaterialTargets, scene_entities};

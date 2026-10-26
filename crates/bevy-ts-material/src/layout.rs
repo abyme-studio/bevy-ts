@@ -320,14 +320,29 @@ pub fn color(value: &Value) -> Result<[f32; 4], String> {
     Ok(bevy_ts::color::parse(value)?.to_linear().to_f32_array())
 }
 
+/// Bytes of instance params one entity holds: `ScriptInstance`'s size.
+pub const INSTANCE_BYTES: usize = 256;
+
+/// The name the prepended import gives Bevy's `mesh_functions::get_tag`.
+pub const GET_TAG: &str = "bevy_ts_get_tag";
+
+/// The prepended import, on the author's first line so their lines keep their numbers: WESL
+/// imports come before every declaration, so it cannot be appended.
+pub const INSTANCE_IMPORT: &str = "import bevy_pbr::render::mesh_functions::get_tag as bevy_ts_get_tag; ";
+
+/// The instance struct's padding field, which fills it to [`INSTANCE_BYTES`].
+const PAD: &str = "bevy_ts_pad";
+
 /// What a material binds, in binding order: the params struct (if any), then each texture and
-/// its sampler.
+/// its sampler, then the instance array (if the kind has instance params).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Bindings {
     /// The struct's WGSL name: the material name's last segment plus `Params`.
     struct_name: String,
     params: ParamsLayout,
     textures: Vec<String>,
+    /// Per-entity params, laid out as params are, in a storage array indexed by `MeshTag`.
+    instance: ParamsLayout,
 }
 
 impl Bindings {
@@ -354,7 +369,71 @@ impl Bindings {
                 }
             }
         }
-        Ok(Bindings { struct_name, params, textures: textures.to_vec() })
+        Ok(Bindings { struct_name, params, textures: textures.to_vec(), instance: ParamsLayout::default() })
+    }
+
+    /// Adds per-entity `instance` params: at most [`INSTANCE_BYTES`], and no name equal to a
+    /// param, texture or sampler (they share `<material>`'s props), `instance`, `instances` or
+    /// the instance struct.
+    pub fn with_instance<'a>(mut self, instance: impl IntoIterator<Item = (&'a str, &'a ParamType)>) -> Result<Self, String> {
+        let layout = ParamsLayout::new(instance).map_err(|e| e.replacen("param ", "instance param ", 1))?;
+        if layout.fields.is_empty() {
+            return Ok(self);
+        }
+        if layout.size > INSTANCE_BYTES {
+            return Err(format!("its instance params take {} bytes; at most {INSTANCE_BYTES} fit", layout.size));
+        }
+        let struct_name = self.instance_struct();
+        let mut taken: Vec<String> = self.params.fields.iter().map(|f| f.name.clone()).collect();
+        for t in &self.textures {
+            taken.extend([t.clone(), format!("{t}_sampler")]);
+        }
+        for f in &layout.fields {
+            let n = f.name.as_str();
+            if taken.iter().any(|t| t == n) {
+                return Err(format!("instance param {n}: a param or texture already uses the name"));
+            }
+            if ["instance", "instances", PAD, GET_TAG, struct_name.as_str()].contains(&n) {
+                return Err(format!("instance param {n}: the generated instance code declares {n}"));
+            }
+        }
+        self.instance = layout;
+        Ok(self)
+    }
+
+    pub fn instance(&self) -> &ParamsLayout {
+        &self.instance
+    }
+
+    /// Whether the kind has instance params, and so its entities a `ScriptInstance`.
+    pub fn has_instance(&self) -> bool {
+        !self.instance.fields.is_empty()
+    }
+
+    /// `GlowParams` → `GlowInstance`.
+    pub fn instance_struct(&self) -> String {
+        format!("{}Instance", self.struct_name.strip_suffix("Params").unwrap_or(&self.struct_name))
+    }
+
+    /// The instance array's binding, after the textures.
+    pub fn instance_binding(&self) -> Option<u32> {
+        self.has_instance().then(|| self.texture_binding(self.textures.len()))
+    }
+
+    /// The names the generated code declares at module scope.
+    pub fn generated_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        if self.params_binding().is_some() {
+            names.extend(["params".to_string(), self.struct_name.clone()]);
+        }
+        for t in &self.textures {
+            names.push(t.clone());
+            names.push(format!("{t}_sampler"));
+        }
+        if self.has_instance() {
+            names.extend([self.instance_struct(), "instances".into(), "instance".into(), GET_TAG.into()]);
+        }
+        names
     }
 
     pub fn struct_name(&self) -> &str {
@@ -395,6 +474,21 @@ impl Bindings {
             let b = self.texture_binding(i);
             s.push_str(&format!("@group({MATERIAL_GROUP}) @binding({b}) var {t}: texture_2d<f32>;\n"));
             s.push_str(&format!("@group({MATERIAL_GROUP}) @binding({}) var {t}_sampler: sampler;\n", b + 1));
+        }
+        if let Some(b) = self.instance_binding() {
+            let name = self.instance_struct();
+            s.push_str(&format!("struct {name} {{\n"));
+            for f in &self.instance.fields {
+                s.push_str(&format!("    {}: {},\n", f.name, f.ty.wgsl()));
+            }
+            // Filled to `INSTANCE_BYTES`, the stride of `ScriptInstance` in the buffer.
+            let end = self.instance.fields.iter().map(|f| f.offset + f.ty.size()).max().unwrap_or(0);
+            if end < INSTANCE_BYTES {
+                s.push_str(&format!("    {PAD}: array<u32, {}>,\n", (INSTANCE_BYTES - end) / 4));
+            }
+            s.push_str("}\n");
+            s.push_str(&format!("@group({MATERIAL_GROUP}) @binding({b}) var<storage, read> instances: array<{name}>;\n"));
+            s.push_str(&format!("fn instance(i: u32) -> {name} {{\n    return instances[{GET_TAG}(i)];\n}}\n"));
         }
         s
     }
@@ -587,6 +681,45 @@ mod tests {
         assert!(w.contains("@group(3) @binding(1) var noise: texture_2d<f32>;"), "{w}");
         assert!(w.contains("@group(3) @binding(2) var noise_sampler: sampler;"), "{w}");
         assert_eq!(b.params.size, 32);
+    }
+
+    #[test]
+    fn instance_params_append_a_struct_of_256_bytes_and_a_storage_array() {
+        let p = [("color", B(Color))];
+        let i = [("hover", B(F32)), ("tint", B(Vec3f))];
+        let b = Bindings::new("game::Glow", p.iter().map(|(n, t)| (*n, t)), &["noise".into()]).unwrap().with_instance(i.iter().map(|(n, t)| (*n, t))).unwrap();
+        assert_eq!(b.instance_binding(), Some(3));
+        assert_eq!(offsets(b.instance()), [0, 16]);
+        let w = b.wgsl("game::Glow");
+        // hover at 0, tint 16..28: 228 bytes of padding make 256.
+        assert!(w.contains("struct GlowInstance {\n    hover: f32,\n    tint: vec3<f32>,\n    bevy_ts_pad: array<u32, 57>,\n}"), "{w}");
+        assert!(w.contains("@group(3) @binding(3) var<storage, read> instances: array<GlowInstance>;"), "{w}");
+        assert!(w.contains("fn instance(i: u32) -> GlowInstance {\n    return instances[bevy_ts_get_tag(i)];\n}"), "{w}");
+        assert!(b.generated_names().contains(&"instances".to_string()));
+        // Exactly 256 bytes: no padding field.
+        let full = [("m", ParamType::Array { array: Mat4x4f, len: 4 })];
+        let w = Bindings::new("k", [], &[]).unwrap().with_instance(full.iter().map(|(n, t)| (*n, t))).unwrap().wgsl("k");
+        assert!(!w.contains("bevy_ts_pad"), "{w}");
+        assert_eq!(Bindings::new("k", [], &[]).unwrap().with_instance([]).unwrap().instance_binding(), None);
+    }
+
+    #[test]
+    fn instance_names_and_size_are_checked() {
+        let p = [("pulse", B(F32))];
+        let new = |i: &[(&str, ParamType)]| {
+            Bindings::new("game::Glow", p.iter().map(|(n, t)| (*n, t)), &["noise".into()]).unwrap().with_instance(i.iter().map(|(n, t)| (*n, t)))
+        };
+        assert!(new(&[("hover", B(F32))]).is_ok());
+        for taken in ["pulse", "noise", "noise_sampler"] {
+            assert!(new(&[(taken, B(F32))]).unwrap_err().contains("already uses"), "{taken}");
+        }
+        for generated in ["instance", "instances", "GlowInstance", "bevy_ts_pad", "bevy_ts_get_tag"] {
+            assert!(new(&[(generated, B(F32))]).unwrap_err().contains("generated instance code"), "{generated}");
+        }
+        assert!(new(&[("asset", B(F32))]).unwrap_err().contains("<material> takes asset itself"));
+        assert!(new(&[("loop", B(F32))]).unwrap_err().contains("instance param loop is a WGSL reserved word"));
+        let e = new(&[("m", ParamType::Array { array: Mat4x4f, len: 5 })]).unwrap_err();
+        assert!(e.contains("320 bytes; at most 256"), "{e}");
     }
 
     #[test]

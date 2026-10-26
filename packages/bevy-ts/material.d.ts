@@ -45,10 +45,17 @@ export type ParamValue<T extends ParamType> = T extends "f32" | "i32" | "u32"
               : never;
 
 /** A material kind, what `<material kind={...} />` names. */
-export interface MaterialKind<P extends Record<string, ParamType> = Record<string, ParamType>, T extends Record<string, "texture2d"> = {}> {
+export interface MaterialKind<
+  P extends Record<string, ParamType> = Record<string, ParamType>,
+  T extends Record<string, "texture2d"> = {},
+  I extends Record<string, ParamType> = {},
+> {
   readonly name: string;
-  /** Types only: the params and textures `<material>` takes for this kind. */
-  readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string };
+  /**
+   * Types only: the props `<material>` takes for this kind: params and textures by value, instance
+   * params by value or bound (`hover={() => h()}`).
+   */
+  readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string } & { [K in keyof I]?: ParamValue<I[K]> | (() => ParamValue<I[K]>) };
   /**
    * An owned instance: one asset outside the shared cache, written in place at the same asset id
    * with `assets.set(ref, patch)` and given as `<material asset={ref} />`. `assets.get(ref)` reads
@@ -64,11 +71,13 @@ export type KindFields<P extends Record<string, ParamType>, T extends Record<str
 
 /**
  * Declares a script material: its params, laid out by WGSL's uniform rules in Rust; its textures;
- * and its shaders, `.wgsl` files imported like modules (`import glow from "./glow.wgsl"`). The WGSL
- * reads the params as `params.<name>` and each texture as `<name>` with `<name>_sampler`; bevy-ts
- * appends those declarations, so the file does not declare them.
+ * its per-entity `instance` params (at most 256 bytes); and its shaders, `.wgsl` files imported
+ * like modules (`import glow from "./glow.wgsl"`). The WGSL reads the params as `params.<name>`,
+ * each texture as `<name>` with `<name>_sampler`, and the instance params as
+ * `instance(in.instance_index).<name>`; bevy-ts appends those declarations, so the file does not
+ * declare them.
  */
-export declare function material<P extends Record<string, ParamType>, T extends Record<string, "texture2d"> = {}>(
+export declare function material<P extends Record<string, ParamType>, T extends Record<string, "texture2d"> = {}, I extends Record<string, ParamType> = {}>(
   name: string,
-  decl: { params: P; textures?: T; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode },
-): MaterialKind<P, T>;
+  decl: { params: P; textures?: T; instance?: I; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode },
+): MaterialKind<P, T, I>;

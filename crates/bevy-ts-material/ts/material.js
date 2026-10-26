@@ -47,7 +47,7 @@ function isShaderFile(v) {
   return v !== null && typeof v === "object" && v.kind === "shaderFile" && typeof v.path === "string";
 }
 
-/** Each kind's params and textures, by name, for `Kind.add`. */
+/** Each kind's params, textures and instance params, by name, for `Kind.add`. */
 const SCHEMAS = new Map();
 
 /** The asset class of every script material instance, for `assets.add`. */
@@ -83,7 +83,7 @@ export function material(name, decl) {
   if (typeof name !== "string" || !name) throw located("material(name, ...): the name is a string (\"game::Glow\")", at);
   if (!decl || typeof decl !== "object") fail("takes { params, fragment }");
   for (const k of Object.keys(decl)) {
-    if (!["params", "textures", "fragment", "vertex", "alphaMode"].includes(k)) fail(`unknown option ${k}`);
+    if (!["params", "textures", "instance", "fragment", "vertex", "alphaMode"].includes(k)) fail(`unknown option ${k}`);
   }
   const shader = (k) => {
     const v = decl[k];
@@ -106,12 +106,21 @@ export function material(name, decl) {
     if (params.some((p) => p.name === t)) fail(`${t} is both a param and a texture`);
     textures.push(t);
   }
+  // Per-entity params: on `<material kind>` they go to the entity, not the shared asset. Rust lays
+  // them out and refuses more than 256 bytes.
+  const instance = [];
+  for (const [p, type] of Object.entries(decl.instance || {})) {
+    const ok = BASES.has(type) || (type && typeof type === "object" && BASES.has(type.array) && Number.isInteger(type.len));
+    if (!ok) fail(`instance param ${p} has type ${JSON.stringify(type)}; use f32, i32, u32, vec2f, vec3f, vec4f, mat4x4f, color or array(...)`);
+    if (params.some((q) => q.name === p) || textures.includes(p)) fail(`${p} is both an instance param and a param or texture`);
+    instance.push({ name: p, type });
+  }
   let alphaMode = decl.alphaMode === undefined ? "opaque" : decl.alphaMode;
   if (typeof alphaMode === "object" && alphaMode !== null && typeof alphaMode.mask === "number") alphaMode = { mask: alphaMode.mask };
   else if (!ALPHA.has(alphaMode)) fail(`alphaMode ${JSON.stringify(alphaMode)}; use ${[...ALPHA].join(", ")} or { mask: 0.5 }`);
   const items = sectionItems("materials");
   if (items.some((m) => m.name === name)) fail("is declared twice");
-  items.push({ name, params, textures, fragment, vertex: shader("vertex"), alphaMode, location: at || null });
-  SCHEMAS.set(name, { params, textures });
+  items.push({ name, params, textures, instance, fragment, vertex: shader("vertex"), alphaMode, location: at || null });
+  SCHEMAS.set(name, { params, textures, instance });
   return new MaterialKind(name);
 }

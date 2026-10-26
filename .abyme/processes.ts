@@ -66,6 +66,9 @@ const processes = {
   "from-world-rest": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:from-world-default -- bash -c \"cargo test -p bevy-ts-material --features bevy-ts/reflect --test it -- alpha_render:: && cargo clippy -p bevy-ts -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/from-world-rest.log | grep -E \"^error|-->|test result|FAILED|panicked\"'" },
   // Change material-params, task 4.2: owned writes against re-keying, release (bench/material-params).
   "material-params-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/material-params/run.sh 3 2>&1 | tee target/material-params-bench.log | tail -30'" },
+  // Task 4.3: 10k entities, a bound instance param against re-keying.
+  "material-params-bench-instance": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/material-params/run.sh 3 3 2>&1 | tee target/material-params-bench-instance.log | tail -30'" },
+  "material-params-bench-instance-8": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/material-params/run.sh 5 3 2>&1 | tee target/material-params-bench-instance-8.log | tail -30'" },
   "material-params-bench-8": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/material-params/run.sh 5 2>&1 | tee target/material-params-bench-8.log | tail -40'" },
   "material-params-it": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:material-params -- bash -c \"for i in 1 2 3; do cargo test -p bevy-ts-cli --no-fail-fast --test it -- materials:: material_params_render::; done\" 2>&1 | grep -v ld64 | tee target/material-params-it.log | grep -E \"^error|-->|test result|FAILED|panicked\" | tail -60'" },
   // Change session-bytes: bevy-ts' unit tests, the cli's lib tests and the session tests, in a check slot.

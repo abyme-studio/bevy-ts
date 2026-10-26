@@ -60,6 +60,8 @@ pub fn write(slots: &Slots, base: Option<&ScriptMaterial>, json: &Value) -> Resu
                 },
                 _ => return Err(format!("{name}: texture {p} takes an asset path")),
             };
+        } else if b.instance().field(p).is_some() {
+            return Err(format!("{name}: {p} is an instance param, held by each entity: give it on <material kind={{{name}}}>, not on an owned instance"));
         } else {
             return Err(kinds::no_such_prop(name, b, p));
         }
@@ -67,15 +69,20 @@ pub fn write(slots: &Slots, base: Option<&ScriptMaterial>, json: &Value) -> Resu
     Ok(ScriptMaterial { kind, data, textures })
 }
 
-/// What `$schema` holds: the kind's params and textures as `material()` declared them.
+/// What `$schema` holds: the kind's params, textures and instance params as `material()` declared
+/// them.
 #[derive(Deserialize)]
 struct Schema {
     params: Vec<ParamDecl>,
     #[serde(default)]
     textures: Vec<String>,
+    #[serde(default)]
+    instance: Vec<ParamDecl>,
 }
 
-/// The kind an instance is written against. On `assets.set`, the live kind, else the base's. On
+/// The kind an instance is written against. On `assets.set`, the live kind, else the base's: the
+/// kind that draws, also while a newer declaration waits on its shaders (`KindState::wanted`), so a
+/// patch is checked against the names that draw now. On
 /// `assets.add`, the live kind when its bindings equal `schema`'s, else a kind made from `schema`
 /// that draws nothing until the generation's kinds apply and re-encode it (`kinds::apply`): an
 /// instance added while the script loads comes before its kind. `None` in a check with no world.
@@ -98,7 +105,9 @@ fn kind_of(slots: &Slots, base: Option<&ScriptMaterial>, name: &str, schema: Opt
         };
     };
     let schema: Schema = serde_json::from_value(schema.clone()).map_err(|e| format!("{name}: its schema: {e}"))?;
-    let bindings = Bindings::new(name, schema.params.iter().map(|p| (p.name.as_str(), &p.ty)), &schema.textures).map_err(|e| format!("material {name}: {e}"))?;
+    let bindings = Bindings::new(name, schema.params.iter().map(|p| (p.name.as_str(), &p.ty)), &schema.textures)
+        .and_then(|b| b.with_instance(schema.instance.iter().map(|p| (p.name.as_str(), &p.ty))))
+        .map_err(|e| format!("material {name}: {e}"))?;
     Ok(Some(match live {
         Some(k) if k.bindings == bindings => k,
         _ => Arc::new(Kind::new(name, bindings, None, None, AlphaMode::Opaque)),

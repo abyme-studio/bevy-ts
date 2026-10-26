@@ -650,3 +650,106 @@ fn a_schema_change_re_encodes_an_owned_instance() {
         assert_eq!(f32_at(&app, h, 20), 2.0, "pulse at its new offset");
     }
 }
+
+// Stage 3 of material-params: per-entity `instance` params.
+
+/// `game::Glow` with a `hover` instance param and two cubes, `a` and `b`, given `a` and `b`'s
+/// props; `tick` runs every frame with `frames.n` and the signal `h`.
+fn instanced(a: &str, b: &str, tick: &str) -> String {
+    format!(
+        "import {{ app, signal, Update, type Local, type u32 }} from \"bevy-ts\";\nimport {{ color, f32, material }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n\nexport const Glow = material(\"game::Glow\", {{ params: {{ color: color }}, instance: {{ hover: f32, tint: color }}, fragment: glow }});\nexport const [h, setH] = signal(0);\nexport function tick(frames: Local<{{ n: u32 }}>) {{ frames.n += 1; {tick} }}\napp.addSystems(Update, tick);\n\napp.scene(\"s\", () => (\n  <>\n    <entity name=\"a\"><mesh shape=\"cuboid\" /><material kind={{Glow}} color=\"#f80\" {a} /></entity>\n    <entity name=\"b\"><mesh shape=\"cuboid\" /><material kind={{Glow}} color=\"#f80\" {b} /></entity>\n  </>\n));\n"
+    )
+}
+
+fn hover(app: &mut App, name: &str) -> Option<f32> {
+    let e = named(app, name);
+    app.world().get::<bevy_ts_material::ScriptInstance>(e).map(|s| f32::from_bits(s.data[0]))
+}
+
+fn handle(app: &mut App, name: &str) -> AssetId<ScriptMaterial> {
+    let e = named(app, name);
+    app.world().get::<ScriptMaterial3d>(e).expect("a script material").0.id()
+}
+
+#[test]
+fn instance_props_go_to_the_entity_and_share_one_asset() {
+    let (_dir, mut app) = setup("materials-instance", &instanced("hover={0}", "hover={1}", ""));
+    app.update();
+    assert_eq!(handle(&mut app, "a"), handle(&mut app, "b"), "one asset: hover is not in its key");
+    assert_eq!(hover(&mut app, "a"), Some(0.0));
+    assert_eq!(hover(&mut app, "b"), Some(1.0));
+    let e = named(&mut app, "a");
+    let si = app.world().get::<bevy_ts_material::ScriptInstance>(e).unwrap();
+    // `tint` unset: white, at 16..32.
+    assert_eq!(si.data[4..8].iter().map(|w| f32::from_bits(*w)).collect::<Vec<_>>(), [1.0; 4]);
+    let src = fragment_source(&app);
+    assert!(src.starts_with(bevy_ts_material::layout::INSTANCE_IMPORT), "{src}");
+    assert!(src.contains("fn instance(i: u32) -> GlowInstance"), "{src}");
+}
+
+#[test]
+fn a_bound_instance_prop_writes_the_entity_every_frame_and_no_asset() {
+    let (_dir, mut app) = setup("materials-instance-bound", &instanced("hover={() => h()}", "hover={1}", "setH(frames.n % 2);"));
+    let id = handle(&mut app, "a");
+    let assets = app.world().resource::<Assets<ScriptMaterial>>().len();
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..8 {
+        app.update();
+        seen.insert(hover(&mut app, "a").expect("a ScriptInstance").to_bits());
+        assert_eq!(handle(&mut app, "a"), id);
+    }
+    assert_eq!(seen, [0f32.to_bits(), 1f32.to_bits()].into(), "hover follows h");
+    assert_eq!(hover(&mut app, "b"), Some(1.0));
+    assert_eq!(app.world().resource::<Assets<ScriptMaterial>>().len(), assets, "no new asset");
+}
+
+#[test]
+fn a_bound_param_of_an_instanced_kind_still_fails() {
+    let dir = project("materials-instance-bound-param", &[("game.tsx", &instanced("color={() => \"#fff\"}", "", "")), ("glow.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    assert!(r.errors.iter().any(|e| e.message.contains("<material> props cannot be bound yet; bind a component field or a UI prop")), "{:?}", r.errors);
+}
+
+#[test]
+fn an_instance_param_named_like_a_param_fails_at_material() {
+    let src = instanced("", "", "").replace("instance: { hover: f32, tint: color }", "instance: { color: f32 }");
+    let dir = project("materials-instance-clash", &[("game.tsx", &src), ("glow.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    assert!(r.errors.iter().any(|e| e.message.contains("color is both an instance param and a param or texture")), "{:?}", r.errors);
+}
+
+#[test]
+fn a_user_mesh_tag_is_kept_and_reported() {
+    let dir = project("materials-instance-user-tag", &[("game.tsx", &instanced("hover={1}", "hover={1}", "")), ("glow.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    // Rust tags `a`'s mesh before its material arrives.
+    app.add_observer(|add: On<Add<Mesh3d>>, names: Query<&Name>, mut commands: Commands| {
+        if names.get(add.entity).is_ok_and(|n| n.as_str() == "a") {
+            commands.entity(add.entity).insert(bevy::mesh::MeshTag::new(7));
+        }
+    });
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    let e = named(&mut app, "a");
+    assert_eq!(app.world().get::<bevy::mesh::MeshTag>(e).map(|t| t.value), Some(7), "the user's tag is kept");
+    assert_eq!(hover(&mut app, "a"), None, "no ScriptInstance");
+    assert_eq!(hover(&mut app, "b"), Some(1.0));
+    let m = messages(&app);
+    let hit: Vec<&String> = m.iter().filter(|m| m.contains("has a MeshTag bevy-ts did not set")).collect();
+    assert_eq!(hit.len(), 1, "reported once: {m:?}");
+    assert!(hit[0].contains(&format!("entity {e}")) && hit[0].contains("<material kind={game::Glow}>"), "{hit:?}");
+}
+
+#[test]
+fn a_kind_without_instance_params_adds_no_script_instance() {
+    let (_dir, mut app) = setup("materials-no-instance", &game("color: color, pulse: f32", "pulse={2}"));
+    app.update();
+    let (e, _) = cube(&mut app);
+    assert!(app.world().get::<bevy_ts_material::ScriptInstance>(e).is_none());
+    assert!(app.world().get::<bevy::mesh::MeshTag>(e).is_none());
+}

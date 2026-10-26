@@ -24,9 +24,11 @@ use wesl::syntax::{GlobalDeclaration, GlobalDeclarationNode, Ident, ImportConten
 
 /// The author's file, then the params and texture declarations. Appended, not prepended: WGSL
 /// declarations are order-free and WESL imports must come first, so the author's lines keep their
-/// numbers and anything past their last line is generated.
+/// numbers and anything past their last line is generated. A kind with instance params also needs
+/// Bevy's `get_tag`, imported at the start of the author's first line
+/// ([`INSTANCE_IMPORT`](crate::layout::INSTANCE_IMPORT)), which shifts only that line's columns.
 pub fn combine(text: &str, bindings: &Bindings, material: &str) -> String {
-    let mut s = text.to_string();
+    let mut s = if bindings.has_instance() { format!("{}{text}", crate::layout::INSTANCE_IMPORT) } else { text.to_string() };
     if !s.ends_with('\n') {
         s.push('\n');
     }
@@ -48,7 +50,12 @@ pub enum Checked {
 /// Checks a combined source under `defs`. `shaders` holds Bevy's shader modules.
 pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &MaterialDecl, defs: &[ShaderDefVal]) -> Checked {
     let author_lines = combined.find("\n// bevy-ts: the params").map_or(combined.lines().count(), |i| combined[..i].lines().count());
-    let at = |line: usize, column: u32| Some(SourceLocation { file: bevy_ts::backend::display_path(file), line: line as u32, column });
+    // The prepended import's columns are not the author's.
+    let shift = if combined.starts_with(crate::layout::INSTANCE_IMPORT) { crate::layout::INSTANCE_IMPORT.len() as u32 } else { 0 };
+    let at = |line: usize, column: u32| {
+        let column = if line == 1 { column.saturating_sub(shift).max(1) } else { column };
+        Some(SourceLocation { file: bevy_ts::backend::display_path(file), line: line as u32, column })
+    };
     let fail = |m: String, loc| Checked::Errors(vec![ScriptError::at(format!("material {}: {m}", decl.name), loc)]);
 
     // The file as WESL: its imports, and the names it declares.
@@ -78,7 +85,7 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
         *declared.entry(i.name().clone()).or_default() += 1;
     }
     if let Some(n) = generated.iter().find(|n| declared.get(*n).copied().unwrap_or_default() > 1) {
-        return fail(format!("the file declares `{n}`, which its params or textures generate"), decl.at());
+        return fail(format!("the file declares `{n}`, which its params, textures or instance params generate"), decl.at());
     }
 
     // Bevy's modules, by module path, as its shader cache resolves them.
@@ -193,19 +200,9 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
     Checked::Ok
 }
 
-/// The names the generated declarations use: `params` and the struct (when there are params),
-/// each texture and sampler.
+/// The names the generated declarations use ([`Bindings::generated_names`]).
 fn generated_names(decl: &MaterialDecl) -> Vec<String> {
-    let Ok(b) = decl.bindings() else { return Vec::new() };
-    let mut names = Vec::new();
-    if b.params_binding().is_some() {
-        names.extend(["params".to_string(), b.struct_name().to_string()]);
-    }
-    for t in b.textures() {
-        names.push(t.clone());
-        names.push(format!("{t}_sampler"));
-    }
-    names
+    decl.bindings().map(|b| b.generated_names()).unwrap_or_default()
 }
 
 /// A global declaration's name.

@@ -5,6 +5,7 @@
 //! `MaterialAlpha` keeps its original, which `alpha.rs` knows; put back, it is faded again.
 
 use crate::alpha::{FadeMaterial, standard_of};
+use crate::instance::{self, ScriptInstance};
 use crate::render::ScriptMaterial3d;
 use bevy::ecs::entity::EntityHashSet;
 use bevy::gltf::GltfMaterialName;
@@ -33,7 +34,7 @@ struct ReadyRoots(EntityHashSet);
 pub(crate) fn plugin(app: &mut App) {
     app.init_resource::<ReadyRoots>()
         .add_observer(on_ready)
-        .add_systems(PostUpdate, changed.in_set(SceneMaterialSet).before(crate::render::check_entities_needing_specialization));
+        .add_systems(PostUpdate, (changed, follow_instance).chain().in_set(SceneMaterialSet).before(crate::render::check_entities_needing_specialization));
 }
 
 /// The scene is ready (spawned, or spawned again after a reload): swap its meshes in
@@ -52,13 +53,29 @@ fn changed(
     mut ready: ResMut<ReadyRoots>,
     mut removed_material: RemovedComponents<ScriptMaterial3d>,
     mut removed_filter: RemovedComponents<GltfMaterialFilter>,
+    mut removed_instance: RemovedComponents<ScriptInstance>,
     mut commands: Commands,
 ) {
-    let gone = removed_material.read().chain(removed_filter.read()).chain(ready.0.drain()).filter(|e| swapped.contains(*e));
+    let gone = removed_material
+        .read()
+        .chain(removed_filter.read())
+        .chain(removed_instance.read())
+        .chain(ready.0.drain())
+        .filter(|e| swapped.contains(*e));
     let mut seen = EntityHashSet::default();
     for root in roots.iter().chain(gone) {
         if seen.insert(root) {
             commands.queue(move |world: &mut World| sync(world, root));
+        }
+    }
+}
+
+/// A root's instance params changed: each mesh it swapped takes them, in place.
+fn follow_instance(roots: Query<(&ScriptInstance, &SceneMaterialTargets), Changed<ScriptInstance>>, mut commands: Commands) {
+    for (si, targets) in &roots {
+        for (e, _) in &targets.0 {
+            let (e, si) = (*e, si.clone());
+            commands.queue(move |world: &mut World| instance::put(world, e, si));
         }
     }
 }
@@ -80,6 +97,7 @@ pub fn scene_entities(world: &World, root: Entity) -> Vec<Entity> {
 pub fn sync(world: &mut World, root: Entity) {
     let Ok(r) = world.get_entity(root) else { return };
     let material = r.get::<ScriptMaterial3d>().cloned();
+    let si = r.get::<ScriptInstance>().cloned();
     let filter = r.get::<GltfMaterialFilter>().map(|f| f.0.clone());
     let mut targets = r.get::<SceneMaterialTargets>().cloned().unwrap_or_default().0;
     let scene = scene_entities(world, root);
@@ -99,6 +117,7 @@ pub fn sync(world: &mut World, root: Entity) {
         if wants(world, e) {
             kept.push((e, original));
         } else {
+            instance::remove(world, e);
             world.entity_mut(e).remove::<ScriptMaterial3d>().insert(MeshMaterial3d(original));
         }
     }
@@ -116,6 +135,13 @@ pub fn sync(world: &mut World, root: Entity) {
             let Some(original) = standard_of(world, e) else { continue };
             world.entity_mut(e).remove::<(MeshMaterial3d<StandardMaterial>, MeshMaterial3d<FadeMaterial>)>().insert(m.clone());
             kept.push((e, original));
+        }
+    }
+    // The root's instance params on every mesh it swapped; none, when it has none.
+    for (e, _) in &kept {
+        match &si {
+            Some(si) => instance::put(world, *e, si.clone()),
+            None => instance::remove(world, *e),
         }
     }
     let mut r = world.entity_mut(root);

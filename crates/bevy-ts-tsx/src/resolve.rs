@@ -308,6 +308,8 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts, reg
         }
         // Checked against the type by reflection when a value arrives.
         Target::Reflect { .. } => {}
+        // Instance params may be bound; the tsx check, which sees the kinds, fails any other.
+        Target::ScriptMaterial { .. } => {}
         _ => return Err(err(format!("<{}> props cannot be bound yet; bind a component field or a UI prop", c.ty), &c.source)),
     }
     r.bound = bound;

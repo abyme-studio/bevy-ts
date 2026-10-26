@@ -3,7 +3,7 @@
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
 import type { AssetLoad, AssetRef, AssetValue, ColorValue, Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
 import type { Image } from "bevy-ts/bevy";
-import type { AlphaMode } from "bevy-ts/material";
+import type { AlphaMode, KindFields } from "bevy-ts/material";
 
 /** Bevy 0.20's picking events, each an `on` prop on any `<entity>` or UI element. */
 export type PointerKind =
@@ -776,6 +776,8 @@ export interface Material2dProps {
  * `<material kind={Glow} color="#f80" pulse={2} />`: a script material from `material()` in
  * `bevy-ts/material`, with its params by name and its textures as asset paths. Checked against
  * the kind's schema when the generation loads. On a glTF scene root it draws the scene's meshes.
+ * Instance params (`hover={0}`, or bound, `hover={() => h()}`) go to the entity, not the shared
+ * asset.
  */
 export interface ScriptMaterialProps {
   kind: { readonly name: string };
@@ -793,7 +795,7 @@ export interface ScriptMaterialProps {
  * element given `g` draws, written in place with `assets.set(g, patch)`. Takes nothing else.
  */
 export interface OwnedMaterialProps {
-  asset: AssetRef<unknown>;
+  asset: AssetRef<KindFields<any, any>>;
   kind?: never;
   /** On a glTF scene root, only the scene's meshes whose glTF material is named this. */
   gltfMaterial?: string;

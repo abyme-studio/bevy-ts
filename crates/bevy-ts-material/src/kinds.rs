@@ -58,6 +58,9 @@ pub struct MaterialDecl {
     pub params: Vec<ParamDecl>,
     #[serde(default)]
     pub textures: Vec<String>,
+    /// Per-entity params, on the entity's `ScriptInstance`.
+    #[serde(default)]
+    pub instance: Vec<ParamDecl>,
     pub fragment: PathBuf,
     #[serde(default)]
     pub vertex: Option<PathBuf>,
@@ -68,7 +71,8 @@ pub struct MaterialDecl {
 
 impl MaterialDecl {
     pub fn bindings(&self) -> Result<Bindings, String> {
-        Bindings::new(&self.name, self.params.iter().map(|p| (p.name.as_str(), &p.ty)), &self.textures)
+        Bindings::new(&self.name, self.params.iter().map(|p| (p.name.as_str(), &p.ty)), &self.textures)?
+            .with_instance(self.instance.iter().map(|p| (p.name.as_str(), &p.ty)))
     }
 
     pub fn alpha_mode(&self) -> Result<AlphaMode, String> {
@@ -262,6 +266,7 @@ fn build(
     mut sources: BTreeMap<&'static str, Option<String>>,
     old: Option<KindState>,
 ) -> KindState {
+    let old_bindings = old.as_ref().map(|o| o.kind.bindings.clone());
     let (mut fragment, vertex, instances) = match old {
         Some(o) => (o.fragment, o.vertex, o.instances),
         None => (new_stage(world, "fragment", &decl.fragment), None, BTreeMap::new()),
@@ -301,17 +306,17 @@ fn build(
     }
     state.instances.retain(|_, (h, _)| world.resource::<Assets<ScriptMaterial>>().contains(h));
     reencode_owned(world, generation, &state);
+    if old_bindings.as_ref().map(Bindings::instance) != Some(state.kind.bindings.instance()) {
+        crate::instance::reencode(world, &state.decl.name, old_bindings.as_ref(), &state.kind.bindings);
+    }
     state
 }
-
-/// An owned instance read back: its id, its params by name and its textures by name.
-type Owned = (AssetId<ScriptMaterial>, Map<String, Value>, Vec<(String, Option<Handle<Image>>)>);
 
 /// Every other `ScriptMaterial` of the kind (owned ones, from `Kind.add`) re-encoded against the
 /// new kind by param name, as keyed ones are, keeping its textures by name.
 fn reencode_owned(world: &mut World, generation: u64, state: &KindState) {
     let keyed: std::collections::HashSet<AssetId<ScriptMaterial>> = state.instances.values().map(|(h, _)| h.id()).collect();
-    let owned: Vec<Owned> = world
+    let owned: Vec<(AssetId<ScriptMaterial>, Map<String, Value>, Vec<(String, Option<Handle<Image>>)>)> = world
         .resource::<Assets<ScriptMaterial>>()
         .iter()
         .filter(|(id, m)| m.kind.name == state.decl.name && !Arc::ptr_eq(&m.kind, &state.kind) && !keyed.contains(id))
@@ -530,7 +535,7 @@ fn encode(k: &KindState, props: &Map<String, Value>) -> (ScriptMaterial, Vec<Str
             if params.encode(p, v, &mut data).is_err() {
                 dropped.push(p.clone());
             }
-        } else if !k.kind.bindings.textures().contains(p) {
+        } else if !k.kind.bindings.textures().contains(p) && k.kind.bindings.instance().field(p).is_none() {
             dropped.push(p.clone());
         }
     }
@@ -565,6 +570,9 @@ pub fn check_props(kinds: &BTreeMap<String, Option<Bindings>>, kind: &str, props
             if !v.is_string() {
                 return Err(format!("{kind}: texture {p} takes an asset path"));
             }
+        } else if bindings.instance().field(p).is_some() {
+            let mut scratch = bindings.instance().defaults();
+            bindings.instance().encode(p, v, &mut scratch).map_err(|e| format!("{kind}: {e}"))?;
         } else {
             return Err(no_such_prop(kind, bindings, p));
         }
@@ -572,11 +580,33 @@ pub fn check_props(kinds: &BTreeMap<String, Option<Bindings>>, kind: &str, props
     Ok(())
 }
 
+/// Checks the bound props of `<material kind={K} .../>`: only instance params may be bound.
+pub fn check_bound(kinds: &BTreeMap<String, Option<Bindings>>, kind: &str, bound: impl IntoIterator<Item = String>) -> Result<(), String> {
+    let Some(Some(bindings)) = kinds.get(kind) else { return Ok(()) };
+    match bound.into_iter().find(|p| bindings.instance().field(p).is_none()) {
+        Some(_) => Err(BOUND.into()),
+        None => Ok(()),
+    }
+}
+
+/// A bound param or texture: only instance params follow a binding.
+pub const BOUND: &str = "<material> props cannot be bound yet; bind a component field or a UI prop";
+
 /// The error for a prop `kind` has no param or texture for, naming those it has.
 pub fn no_such_prop(kind: &str, bindings: &Bindings, p: &str) -> String {
     let mut names: Vec<&str> = bindings.params().fields.iter().map(|f| f.name.as_str()).collect();
     names.extend(bindings.textures().iter().map(String::as_str));
+    names.extend(bindings.instance().fields.iter().map(|f| f.name.as_str()));
     format!("{kind} has no param or texture {p}; it has {}", names.join(", "))
+}
+
+/// `<material kind>`'s props split by where they live: params and textures key the shared asset,
+/// instance params go to the entity. `None` for a kind that is not live.
+pub fn split_props(world: &World, kind: &str, props: &Map<String, Value>) -> Option<(Map<String, Value>, Map<String, Value>, Bindings)> {
+    let k = world.resource::<MaterialKinds>().live.get(kind)?;
+    let b = &k.kind.bindings;
+    let (instance, key) = props.iter().map(|(p, v)| (p.clone(), v.clone())).partition(|(p, _)| b.instance().field(p).is_some());
+    Some((key, instance, b.clone()))
 }
 
 /// The instance for `kind` with `props`: equal props share one asset, as `<material>` does.
