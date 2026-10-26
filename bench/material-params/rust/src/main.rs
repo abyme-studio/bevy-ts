@@ -4,9 +4,10 @@
 //! - `rekey`: N `<material kind={Glow} pulse={...} />` rows of a `<For>`, keyed by their pulse, so
 //!   each frame's value is a new key (today's only way to change a param from TSX).
 //!
-//! Prints one line, `bench: ` and JSON: mean and p95 frame time (`app.update()`, pipelined rendering off, so the
-//! render world's work is in it), the most `ScriptMaterial` assets alive, and material prepares per
-//! frame (`AssetEvent` added or modified: each makes a uniform buffer and a bind group).
+//! Prints one line, `bench: ` and JSON: mean and p95 frame time (`app.update()`, pipelined
+//! rendering off, so the render world's work is in it), the most `ScriptMaterial` assets alive,
+//! and material prepares per frame (`AssetEvent` added or modified: each makes a uniform buffer
+//! and a bind group).
 
 use bevy::camera::RenderTarget;
 use bevy::ecs::message::Messages;
@@ -30,7 +31,7 @@ const WGSL: &str = "import bevy_pbr::render::forward_io::VertexOutput;\n\n@fragm
 
 fn game(arm: &str, n: usize) -> String {
     let head = format!(
-        "import {{ app, assets, signal, For, Update }} from \"bevy-ts\";\nimport {{ Camera3d, Transform }} from \"bevy-ts/bevy\";\nimport {{ color, f32, material }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n\nexport const Glow = material(\"game::Glow\", {{ params: {{ color: color, pulse: f32 }}, fragment: glow }});\nconst N = {n};\nconst at = (i: number): [number, number, number] => [(i % 10) * 3 - 13.5, Math.floor(i / 10) * 3 - 13.5, 0];\nlet t = 0;\nconst pulse = (i: number) => ((t + i) % 100) / 100;\nconst cam = <entity name=\"cam\"><Camera3d /><Transform translation={{[0, 0, 40]}} /></entity>;\n"
+        "import {{ app, assets, signal, For, Update }} from \"bevy-ts\";\nimport {{ Camera3d, Transform }} from \"bevy-ts/bevy\";\nimport {{ color, f32, material }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n\nexport const Glow = material(\"game::Glow\", {{ params: {{ color: color, pulse: f32 }}, fragment: glow }});\nconst N = {n};\nconst at = (i: number): [number, number, number] => [(i % 10) * 3 - 13.5, Math.floor(i / 10) * 3 - 13.5, 0];\nlet t = 0;\n// Never repeats, so the keyed cache holds no row's next value already.\nconst pulse = (i: number) => 0.5 + t / 10000 + i / 1000000;\nconst cam = <entity name=\"cam\"><Camera3d /><Transform translation={{[0, 0, 40]}} /></entity>;\n"
     );
     let body = match arm {
         "set" => "const gs = Array.from({ length: N }, (_, i) => Glow.add({ color: \"#ff8800\", pulse: pulse(i) }));\nexport const [rows] = signal(Array.from({ length: N }, (_, i) => i));\nexport function write() { t += 1; for (let i = 0; i < N; i++) assets.set(gs[i], { pulse: pulse(i) }); }\napp.addSystems(Update, write);\napp.scene(\"s\", () => (<>{cam}<For each={rows} key={(i: number) => `${i}`}>{(i: number) => <entity><Transform translation={at(i)} /><mesh shape=\"cuboid\" /><material asset={gs[i]} /></entity>}</For></>));\n",
