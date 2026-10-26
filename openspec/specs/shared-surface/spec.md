@@ -102,7 +102,7 @@ While a viewer is attached and visible, the engine SHALL run one `App::update` p
 - **THEN** the median over 200 presses is at most 16.7 ms at 120 Hz
 
 ### Requirement: Edit mode and the protocol work in windowed mode
-Every viewport method except `viewport_attach`, `viewport_detach`, `viewport_resize` and `viewport_input` SHALL work the same in windowed mode, against the engine's own window. Under `--headless`, `viewport_input` SHALL be served for `pointer` events alone, as the viewport-input spec's headless pointer says; the other viewport methods are not served headless.
+Every viewport method except `viewport_attach`, `viewport_detach`, `viewport_resize` and `viewport_input` SHALL work the same in windowed mode, against the engine's own window. Under `--headless`, `viewport_input` SHALL be served for `pointer`, `key` and `ime` events, as the viewport-input spec's headless input says; the other viewport methods are not served headless.
 
 #### Scenario: Edit mode without abyme
 - **WHEN** a client calls `bevy-ts/viewport_mode` with `edit` against `bevy-ts dev` in its own window
