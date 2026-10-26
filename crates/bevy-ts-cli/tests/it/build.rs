@@ -291,19 +291,23 @@ fn a_linked_engine_ships_as_a_real_file() {
     assert_eq!(meta.len(), std::fs::metadata(BIN).unwrap().len());
 }
 
-/// A native module (`bevy-ts/input`, `bevy-ts/camera`) registers while the engine's app builds,
-/// and the build compiles the scripts first: it must build that app before it resolves imports.
+/// A native module (`bevy-ts/input`, `bevy-ts/assets`, `bevy-ts/camera`) registers while the
+/// engine's app builds, and the build compiles the scripts first: it must build that app before it
+/// resolves imports. The shipped game runs their values.
 #[test]
 fn a_build_imports_the_native_modules() {
-    let project = common::project(
-        "build-native-modules",
-        &[("tsconfig.json", "{}"), ("src/game.ts", "import \"bevy-ts/input\";\nimport type { Cameras } from \"bevy-ts/camera\";\nexport const a: Cameras | number = 1;\n")],
-    );
+    const GAME: &str = r#"import { MouseButton } from "bevy-ts/input";
+import { Mesh, PrimitiveTopology } from "bevy-ts/assets";
+import type { Cameras } from "bevy-ts/camera";
+export const a: Cameras | number = 1;
+console.log(`modules ${MouseButton !== undefined} ${Mesh.new(PrimitiveTopology.TriangleList).countVertices()}`);
+"#;
+    let project = common::project("build-native-modules", &[("tsconfig.json", "{}"), ("src/game.ts", GAME)]);
     let out = project.join("dist/here");
     let (code, events) = build(&[project.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{events:#?}");
     let (engine, rx) = play(&out.join("game"));
-    wait_for(&rx, &["generation 1 applied"], LAUNCH);
+    wait_for(&rx, &["modules true 0", "generation 1 applied"], LAUNCH);
     drop(engine);
 }
 
