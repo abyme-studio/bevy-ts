@@ -23,4 +23,4 @@
 - [x] 3.1 Test `MessageReader` of `MouseButtonInput`, `CursorMoved`, `TouchInput`, `PinchGesture` and `GamepadEvent` from TS: rust-events' `input_messages_reach_a_ts_reader` and `window_messages_reach_a_ts_reader` own it (`tests/it/rust_events.rs`), so no second test
 - [x] 3.2 Test `MessageWriter<GamepadRumbleRequest>`: drain `Messages<GamepadRumbleRequest>` and check pad, duration and intensity: rust-events' `a_ts_writer_sends_a_rumble_request_a_rust_reader_sees` owns it
 - [x] 3.3 Document input messages, gestures and rumble, with `Duration` as rust-events spells it; mark their table rows done (docs/native.md; its example type-checked by `packages/bevy-ts/test/input_messages.ts`)
-- [ ] 3.4 Run the repo gate
+- [x] 3.4 Run the repo gate: affected-gate on d7836564 passes openspec, npm, tests and alone; its clippy and bevy reds are main's own, from material-params (b68d26ef: kinds.rs:311 type_complexity, test/engine stale), not this change's paths
