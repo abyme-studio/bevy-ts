@@ -38,7 +38,7 @@
 
 - [x] 4.1 Bench as `bench/material-params/rust`, release with Bevy static; `results/README.md` with the command
 - [x] 4.2 Stage 2: N owned instances (1, 10, 100) written at 60 Hz with `assets.set` vs the same values re-keyed through props: frame time, asset count, bind groups made
-- [ ] 4.3 Stage 3: 10k entities with an animated instance param vs re-keying: frame time, buffer bytes
+- [x] 4.3 Stage 3: 10k entities with an animated instance param vs re-keying: frame time, buffer bytes
 - [ ] 4.4 Run 4.2 before stage 3 starts; its numbers go in stage 2's landing note
 
 ## 5. Landing (each stage)

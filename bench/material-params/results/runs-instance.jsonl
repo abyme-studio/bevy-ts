@@ -1,0 +1,6 @@
+{"arm":"instance","n":10000,"mean_ms":54.921,"p95_ms":81.213,"assets_max":1,"prepares_per_frame":0.00,"pipelines":[44,44],"buffer_bytes":2872832,"frames":150,"errors":[]}
+{"arm":"instance-rekey","n":10000,"mean_ms":1163.701,"p95_ms":1850.702,"assets_max":20000,"prepares_per_frame":10000.00,"pipelines":[44,44],"buffer_bytes":256,"frames":150,"errors":[]}
+{"arm":"instance","n":10000,"mean_ms":40.991,"p95_ms":64.062,"assets_max":1,"prepares_per_frame":0.00,"pipelines":[44,44],"buffer_bytes":2872832,"frames":150,"errors":[]}
+{"arm":"instance-rekey","n":10000,"mean_ms":2534.196,"p95_ms":5597.692,"assets_max":20000,"prepares_per_frame":10000.00,"pipelines":[44,44],"buffer_bytes":256,"frames":150,"errors":[]}
+{"arm":"instance","n":10000,"mean_ms":48.451,"p95_ms":101.258,"assets_max":1,"prepares_per_frame":0.00,"pipelines":[44,44],"buffer_bytes":2872832,"frames":150,"errors":[]}
+{"arm":"instance-rekey","n":10000,"mean_ms":1812.808,"p95_ms":3134.032,"assets_max":20000,"prepares_per_frame":10000.00,"pipelines":[44,44],"buffer_bytes":256,"frames":150,"errors":[]}
