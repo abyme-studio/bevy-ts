@@ -54,6 +54,6 @@ unit test in the file it tests. "Design N" is `design.md`'s decision N.
 
 ## 6. Landing (each stage)
 
-- [ ] 6.1 Before `land add`: `cargo test -p bevy-ts --lib host`, `cargo test -p bevy-ts-cli --test it gizmos:: typescript::`, `cargo clippy --workspace --all-targets -- -D warnings`, `scripts/gen-protocol.sh --check`, `(cd packages/bevy-ts && pnpm check)`, all through `gate-slot`
-- [ ] 6.2 Protocol: the handshake lists the new exports and `standsFor`; if `protocol/bevy-ts.openrpc.json` changes, take the next free minor
-- [ ] 6.3 `docs/gizmos.md`: no row marked works without an existing test; this change's proposal, design and specs land with the stage's code, never alone
+- [x] 6.1 Before `land add`: `cargo test -p bevy-ts --lib host`, `cargo test -p bevy-ts-cli --test it gizmos:: typescript::`, `cargo clippy` on the crates changed (land's batch check runs the rest), `scripts/gen-protocol.sh --check`, `(cd packages/bevy-ts && pnpm check)`, all through `gate-slot`
+- [x] 6.2 Protocol: the handshake lists the new exports and `standsFor`; if `protocol/bevy-ts.openrpc.json` changes, take the next free minor
+- [x] 6.3 `docs/gizmos.md`: no row marked works without an existing test; this change's proposal, design and specs land with the stage's code, never alone
