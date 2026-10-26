@@ -2190,7 +2190,7 @@ export type Image = AssetFields<"bevy_image::image::Image", { sampler: "Default"
 export type ImageLoadSettings = { sampler?: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } }; is_srgb?: boolean };
 export declare const Image: AssetClass<Image> & Loadable<Image, ImageLoadSettings>;
 
-export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { fromGrid?: TextureAtlasGrid; size?: readonly [number, number]; textures?: readonly { min: readonly [number, number]; max: readonly [number, number] }[] }>;
+export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { fromGrid?: { tileSize: readonly [number, number]; columns: number; rows: number; padding?: readonly [number, number]; offset?: readonly [number, number] }; size?: readonly [number, number]; textures?: readonly { min: readonly [number, number]; max: readonly [number, number] }[] }>;
 /** A grid of equal tiles, Bevy's `TextureAtlasLayout::from_grid`: sizes in whole pixels. */
 export interface TextureAtlasGrid {
   /** One tile's `[width, height]`. */

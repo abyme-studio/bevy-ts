@@ -281,7 +281,7 @@ const HAND_FIELDS: &[(&str, HandFields)] = &[
     // `bevy_ts::atlas_layout`'s: a grid, or Bevy's fields.
     (
         "bevy_image::texture_atlas::TextureAtlasLayout",
-        HandFields::Ts("fromGrid?: TextureAtlasGrid; size?: readonly [number, number]; textures?: readonly { min: readonly [number, number]; max: readonly [number, number] }[]"),
+        HandFields::Ts("fromGrid?: { tileSize: readonly [number, number]; columns: number; rows: number; padding?: readonly [number, number]; offset?: readonly [number, number] }; size?: readonly [number, number]; textures?: readonly { min: readonly [number, number]; max: readonly [number, number] }[]"),
     ),
     (
         "bevy_animation::AnimationClip",
