@@ -23,6 +23,71 @@ declare module "bevy-ts/animation" {
   }
 }
 
+declare module "bevy-ts/assets" {
+  import type { AssetId, AssetRef, AssetType, LiveMesh, LoadState, Mesh, MeshData } from "bevy-ts";
+  export { Indices, Mesh, PrimitiveTopology, RenderAssetUsages } from "bevy-ts";
+  /** `ResMut<Assets<Mesh>>`: Bevy's meshes. The other methods are the host calls these make. */
+  export interface Meshes {
+    /** Builds a `Mesh.new` mesh in Rust and adds it: one call per attribute, one for indices, one for the computed data. Returns a strong ref; `assets.drop(ref)` lets it go. A failed step adds nothing. */
+    add(mesh: Mesh): AssetRef<MeshData>;
+    /** The mesh, read-only, or `undefined` when it is gone. */
+    get(ref: AssetRef<MeshData>): LiveMesh | undefined;
+    /** The live mesh: each write is one host call into the asset; Bevy sends one `Modified` per frame it changes. */
+    getMut(ref: AssetRef<MeshData>): LiveMesh | undefined;
+  }
+  /** `Res<AssetServer>`: Bevy's loads. Each load-state method takes an `AssetRef` or an `AssetId` (`ref.id`, an `AssetEvent<A>`'s) and is one host call; a failed state makes one more for its text. The other methods are the host calls these make. */
+  export interface ScriptAssetServer {
+    /** Bevy's `load`: a strong ref, typed by `T` or by the loader of the path's extension. A labelled path (`"fox.glb#Mesh0/Primitive0"`) needs `T`. Loading a path again gives the same ref. */
+    load(path: string, T: typeof Mesh): AssetRef<MeshData>;
+    load<F>(path: string, T: AssetType<F>): AssetRef<F>;
+    load(path: string): AssetRef<unknown>;
+    loadState(asset: AssetRef<unknown> | AssetId<unknown>): LoadState;
+    dependencyLoadState(asset: AssetRef<unknown> | AssetId<unknown>): LoadState;
+    recursiveDependencyLoadState(asset: AssetRef<unknown> | AssetId<unknown>): LoadState;
+    isLoaded(asset: AssetRef<unknown> | AssetId<unknown>): boolean;
+    isLoadedWithDirectDependencies(asset: AssetRef<unknown> | AssetId<unknown>): boolean;
+    isLoadedWithDependencies(asset: AssetRef<unknown> | AssetId<unknown>): boolean;
+  }
+  /** `bevy_ts_cli::assets::ScriptAssetServer<'_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface ScriptAssetServer {
+    loadPath(path: Uint8Array, typePath: Uint8Array): import("bevy-ts").AssetRefOf<"">;
+    typePath(r: import("bevy-ts").AssetRefOf<"">, out: Uint8Array): number;
+    loadStateCode(r: import("bevy-ts").AssetRefOf<"">): number;
+    dependencyLoadStateCode(r: import("bevy-ts").AssetRefOf<"">): number;
+    recursiveDependencyLoadStateCode(r: import("bevy-ts").AssetRefOf<"">): number;
+    failedText(r: import("bevy-ts").AssetRefOf<"">, which: number, out: Uint8Array): number;
+    isLoaded(r: import("bevy-ts").AssetRefOf<"">): boolean;
+    isLoadedWithDirectDependencies(r: import("bevy-ts").AssetRefOf<"">): boolean;
+    isLoadedWithDependencies(r: import("bevy-ts").AssetRefOf<"">): boolean;
+    idCode(id: unknown, typePath: Uint8Array, which: number): number;
+    idFailedText(id: unknown, typePath: Uint8Array, which: number, out: Uint8Array): number;
+  }
+  /** `bevy_ts_cli::assets::Meshes<'_, '_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface Meshes {
+    begin(topology: number, usage: number): void;
+    finish(): import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">;
+    abandon(): void;
+    insertAttributeF32(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, attribute: number, data: Float32Array): void;
+    insertAttributeU16(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, attribute: number, data: Uint16Array): void;
+    removeAttribute(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, attribute: number): void;
+    insertIndicesU16(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, data: Uint16Array): void;
+    insertIndicesU32(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, data: Uint32Array): void;
+    apply(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, ops: Uint8Array): void;
+    countVertices(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): number;
+    topology(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): number;
+    usage(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): number;
+    attributeLen(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, attribute: number): number | undefined;
+    readAttributeF32(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, attribute: number, out: Float32Array): void;
+    readAttributeU16(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, attribute: number, out: Uint16Array): void;
+    indicesWidth(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): number | undefined;
+    indicesLen(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): number;
+    readIndicesU16(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, out: Uint16Array): void;
+    readIndicesU32(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, out: Uint32Array): void;
+    contains(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): boolean;
+    remove(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): boolean;
+  }
+}
+
 declare module "bevy-ts/audio" {
   import type { Entity } from "bevy-ts";
   /** `bevy_ts_cli::audio::AudioSinksParam<'_, '_>`, a system param exported from Rust; take it as a system parameter. */
@@ -791,10 +856,17 @@ declare module "bevy-ts/material" {
                 : never;
   
   /** A material kind, what `<material kind={...} />` names. */
-  export interface MaterialKind<P extends Record<string, ParamType> = Record<string, ParamType>, T extends Record<string, "texture2d"> = {}> {
+  export interface MaterialKind<
+    P extends Record<string, ParamType> = Record<string, ParamType>,
+    T extends Record<string, "texture2d"> = {},
+    I extends Record<string, ParamType> = {},
+  > {
     readonly name: string;
-    /** Types only: the params and textures `<material>` takes for this kind. */
-    readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string };
+    /**
+     * Types only: the props `<material>` takes for this kind: params and textures by value, instance
+     * params by value or bound (`hover={() => h()}`).
+     */
+    readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string } & { [K in keyof I]?: ParamValue<I[K]> | (() => ParamValue<I[K]>) };
     /**
      * An owned instance: one asset outside the shared cache, written in place at the same asset id
      * with `assets.set(ref, patch)` and given as `<material asset={ref} />`. `assets.get(ref)` reads
@@ -810,14 +882,16 @@ declare module "bevy-ts/material" {
   
   /**
    * Declares a script material: its params, laid out by WGSL's uniform rules in Rust; its textures;
-   * and its shaders, `.wgsl` files imported like modules (`import glow from "./glow.wgsl"`). The WGSL
-   * reads the params as `params.<name>` and each texture as `<name>` with `<name>_sampler`; bevy-ts
-   * appends those declarations, so the file does not declare them.
+   * its per-entity `instance` params (at most 256 bytes); and its shaders, `.wgsl` files imported
+   * like modules (`import glow from "./glow.wgsl"`). The WGSL reads the params as `params.<name>`,
+   * each texture as `<name>` with `<name>_sampler`, and the instance params as
+   * `instance(in.instance_index).<name>`; bevy-ts appends those declarations, so the file does not
+   * declare them.
    */
-  export function material<P extends Record<string, ParamType>, T extends Record<string, "texture2d"> = {}>(
+  export function material<P extends Record<string, ParamType>, T extends Record<string, "texture2d"> = {}, I extends Record<string, ParamType> = {}>(
     name: string,
-    decl: { params: P; textures?: T; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode },
-  ): MaterialKind<P, T>;
+    decl: { params: P; textures?: T; instance?: I; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode },
+  ): MaterialKind<P, T, I>;
 }
 
 declare module "bevy-ts/session" {

@@ -13,12 +13,12 @@
 //! precondition Bevy asserts is checked first, so no call panics and a failed call leaves the mesh
 //! as it was. A changed mesh sends one `Modified` per frame however many calls change it.
 
-use bevy::asset::{AssetId, AssetPath, DependencyLoadState, LoadState, RecursiveDependencyLoadState, RenderAssetUsages, UntypedHandle};
+use bevy::asset::{AssetId, AssetPath, DependencyLoadState, LoadState, RecursiveDependencyLoadState, RenderAssetUsages, UntypedAssetId, UntypedHandle};
 use bevy::diagnostic::FrameCount;
 use bevy::ecs::system::SystemParam;
 use bevy::mesh::{Indices, MeshVertexAttribute, PrimitiveTopology, VertexAttributeValues, VertexFormat};
 use bevy::platform::collections::HashSet;
-use bevy_ts::host::{ScriptRef, UntypedScriptRef};
+use bevy_ts::host::{HostJson, ScriptRef, UntypedScriptRef};
 use bevy_ts::mesh_data::{MeshOp, access, check, run};
 use bevy_ts::reflect_asset::ScriptAssets;
 use bevy_ts_native::prelude::*;
@@ -365,6 +365,64 @@ impl ScriptAssetServer<'_> {
     fn id(&self, r: UntypedScriptRef) -> Result<bevy::asset::UntypedAssetId, String> {
         Ok(r.handle(&self.refs)?.id())
     }
+
+    /// `id`, an `AssetId` as JSON, of the asset type at `type_path`: a registered type, else the
+    /// argument of a registered `AssetEvent<A>` (`Gltf` is not registered itself).
+    fn asset_id(&self, id: &HostJson, type_path: &[u8]) -> Result<UntypedAssetId, String> {
+        let type_path = utf8(type_path, "the asset type")?;
+        let registry = self.registry.read();
+        let type_id = match registry.get_with_type_path(type_path) {
+            Some(r) => r.type_id(),
+            None => registry
+                .get_with_type_path(&format!("bevy_asset::event::AssetEvent<{type_path}>"))
+                .and_then(|e| e.type_info().generics().iter().next().map(|g| g.type_id()))
+                .ok_or_else(|| format!("{type_path} is not a registered asset type"))?,
+        };
+        bevy_ts::reflect_asset::id_of_json(&registry, type_id, &id.0)
+    }
+
+    /// A state of `id` as a code: `which` 0 load, 1 dependency, 2 recursive (`NotLoaded` 0,
+    /// `Loading` 1, `Loaded` 2, `Failed` 3); 3 `is_loaded`, 4 with direct dependencies, 5 with
+    /// all (1 for true).
+    fn code(&self, id: UntypedAssetId, which: u32) -> u32 {
+        let s = &self.server;
+        match which {
+            0 => state_code(&s.load_state(id)),
+            1 => match s.dependency_load_state(id) {
+                DependencyLoadState::NotLoaded => 0,
+                DependencyLoadState::Loading => 1,
+                DependencyLoadState::Loaded => 2,
+                DependencyLoadState::Failed(_) => 3,
+            },
+            2 => match s.recursive_dependency_load_state(id) {
+                RecursiveDependencyLoadState::NotLoaded => 0,
+                RecursiveDependencyLoadState::Loading => 1,
+                RecursiveDependencyLoadState::Loaded => 2,
+                RecursiveDependencyLoadState::Failed(_) => 3,
+            },
+            3 => s.is_loaded(id) as u32,
+            4 => s.is_loaded_with_direct_dependencies(id) as u32,
+            _ => s.is_loaded_with_dependencies(id) as u32,
+        }
+    }
+
+    /// The error of `id`'s failed state (`which`: 0 load, 1 dependency, 2 recursive).
+    fn failed(&self, id: UntypedAssetId, which: u32) -> Option<String> {
+        match which {
+            0 => match self.server.load_state(id) {
+                LoadState::Failed(e) => Some(e.to_string()),
+                _ => None,
+            },
+            1 => match self.server.dependency_load_state(id) {
+                DependencyLoadState::Failed(e) => Some(e.to_string()),
+                _ => None,
+            },
+            _ => match self.server.recursive_dependency_load_state(id) {
+                RecursiveDependencyLoadState::Failed(e) => Some(e.to_string()),
+                _ => None,
+            },
+        }
+    }
 }
 
 #[export(ts = "ScriptAssetServer", module = "bevy-ts/assets", stands_for = "Res<AssetServer>")]
@@ -410,57 +468,44 @@ impl ScriptAssetServer<'_> {
 
     /// `load_state` as a code.
     pub fn load_state_code(&self, r: UntypedScriptRef) -> Result<u32, String> {
-        Ok(state_code(&self.server.load_state(self.id(r)?)))
+        Ok(self.code(self.id(r)?, 0))
     }
 
     pub fn dependency_load_state_code(&self, r: UntypedScriptRef) -> Result<u32, String> {
-        Ok(match self.server.dependency_load_state(self.id(r)?) {
-            DependencyLoadState::NotLoaded => 0,
-            DependencyLoadState::Loading => 1,
-            DependencyLoadState::Loaded => 2,
-            DependencyLoadState::Failed(_) => 3,
-        })
+        Ok(self.code(self.id(r)?, 1))
     }
 
     pub fn recursive_dependency_load_state_code(&self, r: UntypedScriptRef) -> Result<u32, String> {
-        Ok(match self.server.recursive_dependency_load_state(self.id(r)?) {
-            RecursiveDependencyLoadState::NotLoaded => 0,
-            RecursiveDependencyLoadState::Loading => 1,
-            RecursiveDependencyLoadState::Loaded => 2,
-            RecursiveDependencyLoadState::Failed(_) => 3,
-        })
+        Ok(self.code(self.id(r)?, 2))
     }
 
     /// The error of a failed state (`which`: 0 load, 1 dependency, 2 recursive), copied into
     /// `out`; returns its whole length, 0 when that state is not failed.
     pub fn failed_text(&self, r: UntypedScriptRef, which: u32, out: &mut [u8]) -> Result<u32, String> {
-        let id = self.id(r)?;
-        let error = match which {
-            0 => match self.server.load_state(id) {
-                LoadState::Failed(e) => Some(e.to_string()),
-                _ => None,
-            },
-            1 => match self.server.dependency_load_state(id) {
-                DependencyLoadState::Failed(e) => Some(e.to_string()),
-                _ => None,
-            },
-            _ => match self.server.recursive_dependency_load_state(id) {
-                RecursiveDependencyLoadState::Failed(e) => Some(e.to_string()),
-                _ => None,
-            },
-        };
-        Ok(error.map_or(0, |e| put_text(&e, out)))
+        Ok(self.failed(self.id(r)?, which).map_or(0, |e| put_text(&e, out)))
     }
 
     pub fn is_loaded(&self, r: UntypedScriptRef) -> Result<bool, String> {
-        Ok(self.server.is_loaded(self.id(r)?))
+        Ok(self.code(self.id(r)?, 3) == 1)
     }
 
     pub fn is_loaded_with_direct_dependencies(&self, r: UntypedScriptRef) -> Result<bool, String> {
-        Ok(self.server.is_loaded_with_direct_dependencies(self.id(r)?))
+        Ok(self.code(self.id(r)?, 4) == 1)
     }
 
     pub fn is_loaded_with_dependencies(&self, r: UntypedScriptRef) -> Result<bool, String> {
-        Ok(self.server.is_loaded_with_dependencies(self.id(r)?))
+        Ok(self.code(self.id(r)?, 5) == 1)
+    }
+
+    /// The load-state methods for an `AssetId<A>` (`id`, with `A` at `type_path`, UTF-8), as
+    /// `ref.id` and an `AssetEvent<A>` give it: `which` 0 to 2 the state codes, 3 to 5 the
+    /// `is_loaded` forms (1 for true).
+    pub fn id_code(&self, id: HostJson, type_path: &[u8], which: u32) -> Result<u32, String> {
+        Ok(self.code(self.asset_id(&id, type_path)?, which))
+    }
+
+    /// [`Self::failed_text`] for an `AssetId<A>`.
+    pub fn id_failed_text(&self, id: HostJson, type_path: &[u8], which: u32, out: &mut [u8]) -> Result<u32, String> {
+        Ok(self.failed(self.asset_id(&id, type_path)?, which).map_or(0, |e| put_text(&e, out)))
     }
 }

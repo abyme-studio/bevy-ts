@@ -901,6 +901,17 @@ pub fn id_json(registry: &TypeRegistry, id: UntypedAssetId) -> Result<Value, Str
     crate::reflect_value::read(registry, &typed)
 }
 
+/// The inverse of [`id_json`]: `json`, an `AssetId` in its shape, as the id of an asset of type
+/// `type_id` (an `AssetId<A>` from TS: `ref.id`, or an `AssetEvent<A>`'s).
+pub fn id_of_json(registry: &TypeRegistry, type_id: TypeId, json: &Value) -> Result<UntypedAssetId, String> {
+    let mut typed = bevy::asset::AssetId::<bevy::asset::LoadedFolder>::default();
+    crate::reflect_value::write(registry, None, &mut typed, None, json).map_err(|e| format!("not an AssetId: {e}"))?;
+    Ok(match typed {
+        bevy::asset::AssetId::Index { index, .. } => UntypedAssetId::Index { type_id, index },
+        bevy::asset::AssetId::Uuid { uuid } => UntypedAssetId::Uuid { type_id, uuid },
+    })
+}
+
 /// The ref number of `{ "$asset": n, ... }`; `None` for any other JSON.
 pub fn parse_ref(json: &Value) -> Option<Result<u64, String>> {
     let n = json.as_object()?.get("$asset")?;

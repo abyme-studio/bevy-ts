@@ -3,13 +3,13 @@
 // typed values for TSX, the protocol and With/Without filters.
 
 import { Component, ReflectComponent, Resource } from "bevy-ts";
-import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, MeshData, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number }>;
 export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", { graph: { nodes: { node_type: "Blend" | "Add" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; node_holes: never[]; edge_property: "directed"; edges: [number, number, null][] }; root: number; mask_groups: [string | { readonly names: readonly string[] }, number][] }>;
 export type Image = AssetFields<"bevy_image::image::Image", { sampler: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } } }>;
 export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { size: readonly [number, number]; textures: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] }>;
-export type Mesh = AssetFields<"bevy_mesh::mesh::Mesh", {  }>;
+export type Mesh = MeshData;
 export type StandardMaterial = AssetFields<"bevy_pbr::pbr_material::StandardMaterial", { base_color: ColorValue; base_color_channel: "Uv0" | "Uv1"; base_color_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; emissive: { red?: number; green?: number; blue?: number; alpha?: number }; emissive_exposure_weight: number; emissive_channel: "Uv0" | "Uv1"; emissive_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; perceptual_roughness: number; metallic: number; metallic_roughness_channel: "Uv0" | "Uv1"; metallic_roughness_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; reflectance: number; specular_tint: ColorValue; diffuse_transmission: number; specular_transmission: number; thickness: number; ior: number; attenuation_distance: number; attenuation_color: ColorValue; normal_map_channel: "Uv0" | "Uv1"; normal_map_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; flip_normal_map_y: boolean; occlusion_channel: "Uv0" | "Uv1"; occlusion_texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; clearcoat: number; clearcoat_perceptual_roughness: number; anisotropy_strength: number; anisotropy_rotation: number; double_sided: boolean; unlit: boolean; fog_enabled: boolean; alpha_mode: "Opaque" | { Mask: number } | "Blend" | "Premultiplied" | "AlphaToCoverage" | "Add" | "Multiply"; depth_bias: number; depth_map: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null; parallax_depth_scale: number; parallax_mapping_method: "Occlusion" | { Relief: { max_steps?: number } }; max_parallax_layer_count: number; lightmap_exposure: number; opaque_render_method: "Forward" | "Deferred" | "Auto"; deferred_lighting_pass_id: number; uv_transform: readonly [number, number, number, number, number, number] }>;
 export type ShaderBuffer = AssetFields<"bevy_render::storage::ShaderBuffer", {  }>;
 export type ColorMaterial = AssetFields<"bevy_sprite_render::mesh2d::color_material::ColorMaterial", { color: ColorValue; alpha_mode: "Opaque" | { Mask: number } | "Blend"; uv_transform: readonly [number, number, number, number, number, number]; texture: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null | null }>;
@@ -26,9 +26,11 @@ export type NativeCondition = "bevy:on-real-timer" | "bevy:on-timer" | "bevy:onc
 declare module "bevy-ts" {
   interface ResClaims {
     "Res<GizmoConfigStore>": [import("bevy-ts/gizmos").GizmoConfigStore, import("bevy-ts/gizmos").GizmoConfigStoreRead];
+    "Res<AssetServer>": [AssetServer, import("bevy-ts/assets").ScriptAssetServer];
   }
   interface ResMutClaims {
     "ResMut<GizmoConfigStore>": [import("bevy-ts/gizmos").GizmoConfigStore, import("bevy-ts/gizmos").GizmoConfigStoreMut];
+    "ResMut<Assets<Mesh>>": [Assets<Mesh>, import("bevy-ts/assets").Meshes];
   }
 }
 

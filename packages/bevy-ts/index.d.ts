@@ -339,7 +339,7 @@ export interface RustGeneric<I> {
   readonly instances: I;
 }
 /** A message's or event's value as a reader or `On<E>.event` sees it. */
-export type ValueOf<M> = M extends { readonly [rustEnumBrand]: infer V } ? V : ReadView<M>;
+export type ValueOf<M> = M extends { readonly [rustEnumBrand]: infer V } ? (M extends { readonly [assetEventBrand]: unknown } ? V & AssetEventIs : V) : ReadView<M>;
 /** What `MessageWriter<M>.write` takes beside an `M`. */
 export type WriteValue<M> = M extends { readonly [rustEnumBrand]: infer V } ? V : Partial<M>;
 /**
@@ -408,8 +408,19 @@ export interface AssetRef<F = unknown> {
   readonly id: AssetId<F>;
   readonly [assetBrand]?: F;
 }
-/** Bevy's `AssetId<A>` as JSON: compare two with `JSON.stringify`, not `===`. */
-export type AssetId<F = unknown> = ({ readonly Index: { readonly index: unknown } } | { readonly Uuid: { readonly uuid: string } }) & { readonly [assetBrand]?: F };
+/** Bevy's `AssetId<A>` as JSON: compare two with `JSON.stringify`, not `===`. One from `ref.id` or an `AssetEvent<A>` knows its asset type, so `AssetEvent.isAdded` and `server.loadState` take it. */
+export type AssetId<F = unknown> = ({ readonly Index: { readonly index?: unknown } } | { readonly Uuid: { readonly uuid?: string } }) & { readonly [assetBrand]?: F };
+/** Bevy's `AssetEvent<A>` methods, on each value a `MessageReader<AssetEvent<A>>` gives: whether the event is that variant for that asset. An asset of another type throws. */
+export interface AssetEventIs {
+  isAdded(asset: AssetRef<any> | AssetId<any>): boolean;
+  isModified(asset: AssetRef<any> | AssetId<any>): boolean;
+  isRemoved(asset: AssetRef<any> | AssetId<any>): boolean;
+  isUnused(asset: AssetRef<any> | AssetId<any>): boolean;
+  isLoadedWithDependencies(asset: AssetRef<any> | AssetId<any>): boolean;
+}
+declare const assetEventBrand: unique symbol;
+/** What `bevy-ts/bevy`'s `AssetEvent<A>` adds, so a reader's values have [`AssetEventIs`]. */
+export type AssetEventOf<A> = { readonly [assetEventBrand]: A };
 /** `T.of(props)`: a plain description of an asset, built when a `Handle<T>` slot is written with it. */
 export interface AssetValue<F = unknown> {
   readonly $of: string;

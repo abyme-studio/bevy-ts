@@ -934,9 +934,54 @@ app.addSystems(Update, run);
     assert!(logged(&app, "stale ").contains("ref"), "{}", logged(&app, "stale "));
 }
 
+/// A load seen through `MessageReader<AssetEvent<Image>>`: Bevy's `is*` methods take the ref, the
+/// event's id reaches the load-state methods, and an id with no asset type throws.
 #[test]
-#[ignore = "script-assets 1.4a: AssetEvent.isLoadedWithDependencies(ref) in TS"]
-fn a_load_is_seen_as_an_event() {}
+fn a_load_is_seen_as_an_event() {
+    let png = png();
+    let (_, mut app) = assets_app(
+        "load-event",
+        r#"
+import { AssetEvent, Image } from "bevy-ts/bevy";
+import type { MessageReader } from "bevy-ts";
+let r: AssetRef<unknown> | undefined;
+export function watch(server: Res<AssetServer>, events: MessageReader<AssetEvent<Image>>) {
+  r ??= server.load("grid.png");
+  const ref = r;
+  events.each((e) => {
+    if (e.isAdded(ref.id)) console.log(`added ${e.isLoadedWithDependencies(ref)} ${e.isModified(ref)}`);
+    if ("LoadedWithDependencies" in e && e.isLoadedWithDependencies(ref)) {
+      const id = e.LoadedWithDependencies.id!;
+      console.log(`same ${JSON.stringify(id) === JSON.stringify(ref.id)} ${e.isAdded(id)}`);
+      console.log(`loaded ${server.isLoadedWithDependencies(id)} ${server.isLoaded(id)} ${JSON.stringify(server.loadState(id))} ${JSON.stringify(server.recursiveDependencyLoadState(id))}`);
+      try {
+        e.isAdded({ Uuid: { uuid: "00000000-0000-0000-0000-000000000000" } });
+      } catch (err) {
+        console.log(`untyped ${(err as Error).message}`);
+      }
+    }
+  });
+}
+app.addSystems(Update, watch);
+"#,
+        &[("grid.png", &png)],
+        |app| {
+            app.add_plugins(bevy::input::InputPlugin)
+                .add_plugins(bevy::window::WindowPlugin { primary_window: None, exit_condition: bevy::window::ExitCondition::DontExit, ..default() })
+                .add_plugins(bevy_ts_cli::rust_events::RustEventsPlugin);
+        },
+    );
+    assert_eq!(until_logged(&mut app, "loaded "), "true true \"Loaded\" \"Loaded\"");
+    for _ in 0..5 {
+        app.update();
+    }
+    let m = messages(&app);
+    let count = |p: &str| m.iter().filter(|l| l.starts_with(p)).count();
+    assert_eq!((count("added "), count("loaded ")), (1, 1), "{m:?}");
+    assert_eq!(logged(&app, "added "), "false false");
+    assert_eq!(logged(&app, "same "), "true false");
+    assert!(logged(&app, "untyped ").contains("expected an AssetRef or an AssetId"), "{}", logged(&app, "untyped "));
+}
 
 #[test]
 fn a_mesh_reads_back_as_bevy_named_json() {

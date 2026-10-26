@@ -146,6 +146,7 @@ export function watch(server: Res<AssetServer>) {
 - `loadState`, `dependencyLoadState` and `recursiveDependencyLoadState` give Bevy's variants by
   name: `"NotLoaded"`, `"Loading"`, `"Loaded"`, or `{ Failed: <Bevy's error text> }`.
   `isLoaded`, `isLoadedWithDirectDependencies` and `isLoadedWithDependencies` are Bevy's.
+- Each takes an `AssetRef` or an `AssetId`: `ref.id`, or the id an `AssetEvent<A>` carries.
 - Each is one host call; a failed state makes one more for its text.
 
 ## Lifetime
@@ -169,9 +170,26 @@ stale when the script drops it, removes it, or a hot reload applies; using a sta
   until a restart or Stop; a shipped game never hot reloads.
 
 `ref.id` is the asset's `AssetId<A>` as JSON, the value an `AssetEvent<A>` carries; it is one host
-call, and the value stays valid after the ref is dropped. Compare two with `JSON.stringify`.
-A system reads them with `MessageReader<AssetEvent<A>>`. Bevy's `isAdded`, `isModified`,
-`isRemoved`, `isUnused` and `isLoadedWithDependencies` on it are not here yet.
+call; read it before `assets.drop`, and the value stays valid after. Compare two with
+`JSON.stringify`. A system reads the events with `MessageReader<AssetEvent<A>>`, and each has
+Bevy's `isAdded`, `isModified`, `isRemoved`, `isUnused` and `isLoadedWithDependencies`, taking a
+ref or an id:
+
+```ts
+import { AssetEvent, Image } from "bevy-ts/bevy";
+
+let tex: AssetRef<unknown> | undefined;
+export function watch(server: Res<AssetServer>, events: MessageReader<AssetEvent<Image>>) {
+  const ref = (tex ??= server.load("textures/grid.png"));
+  events.each((e) => {
+    if (e.isLoadedWithDependencies(ref)) console.log("ready");
+    if ("Added" in e) console.log(server.loadState(e.Added.id!));
+  });
+}
+```
+
+An id knows its asset type, which its JSON leaves out: only an id from `ref.id` or an event works
+here, and one of another asset type throws.
 
 Adding an asset every frame grows memory, and a warning is logged past 10,000 refs: add once and
 `set` or `getMut` after, or `drop` what you replace.

@@ -1381,12 +1381,79 @@ function isAssetValue(v) {
   return v !== null && typeof v === "object" && typeof v.$of === "string";
 }
 
+/** The asset type path of an `AssetId` from TS (`ref.id`, an `AssetEvent<A>`'s): not in its JSON. */
+const ASSET_TYPE = Symbol("asset type");
+
+function typedId(id, type) {
+  Object.defineProperty(id, ASSET_TYPE, { value: type });
+  return id;
+}
+
 /** What every `AssetRef` shares: `ref.id`, the asset's `AssetId<A>` as `AssetEvent<A>` carries it. */
 const REF_PROTO = Object.freeze({
   get id() {
-    return assetCall("id", [this]);
+    return Object.freeze(typedId(assetCall("id", [this]), this.type));
   },
 });
+
+/** An `AssetId` from a ref or an id, and its asset type; throws naming `what` for anything else. */
+function assetIdOf(asset, what) {
+  const id = asset && typeof asset.$asset === "number" ? asset.id : asset;
+  const type = id && id[ASSET_TYPE];
+  if (typeof type !== "string") {
+    throw new TypeError(`${what}: expected an AssetRef or an AssetId (ref.id, or an AssetEvent's id), got ${asset === undefined ? "undefined" : JSON.stringify(asset)}`);
+  }
+  return id;
+}
+
+function sameId(a, b) {
+  if (!a || !b) return false;
+  if (a.Uuid || b.Uuid) return !!(a.Uuid && b.Uuid) && a.Uuid.uuid === b.Uuid.uuid;
+  const x = a.Index && a.Index.index;
+  const y = b.Index && b.Index.index;
+  return !!x && !!y && x.index === y.index && x.generation === y.generation;
+}
+
+/** Whether `event` is `variant` for `asset` (Bevy's `AssetEvent::is_added` and the rest). */
+function eventIs(event, variant, asset, method) {
+  const type = event[ASSET_TYPE];
+  const id = assetIdOf(asset, `AssetEvent.${method}`);
+  if (id[ASSET_TYPE] !== type) throw new TypeError(`AssetEvent<${type}>.${method}: expected an asset of that type, got one of ${id[ASSET_TYPE]}`);
+  const v = event[variant];
+  return v !== undefined && sameId(v.id, id);
+}
+
+/** Bevy's `AssetEvent<A>` methods, on each value a `MessageReader<AssetEvent<A>>` gives. */
+const ASSET_EVENT_PROTO = Object.freeze({
+  isAdded(asset) {
+    return eventIs(this, "Added", asset, "isAdded");
+  },
+  isModified(asset) {
+    return eventIs(this, "Modified", asset, "isModified");
+  },
+  isRemoved(asset) {
+    return eventIs(this, "Removed", asset, "isRemoved");
+  },
+  isUnused(asset) {
+    return eventIs(this, "Unused", asset, "isUnused");
+  },
+  isLoadedWithDependencies(asset) {
+    return eventIs(this, "LoadedWithDependencies", asset, "isLoadedWithDependencies");
+  },
+});
+
+const ASSET_EVENT = /^bevy_asset::event::AssetEvent<(.+)>$/;
+
+/** `m`, a decoded `AssetEvent<A>` of asset type `type`, with Bevy's methods and its id typed. */
+function assetEvent(m, type) {
+  Object.setPrototypeOf(m, ASSET_EVENT_PROTO);
+  Object.defineProperty(m, ASSET_TYPE, { value: type });
+  for (const k of Object.keys(m)) {
+    const id = m[k] && m[k].id;
+    if (id && typeof id === "object") typedId(id, type);
+  }
+  return m;
+}
 
 /** An `AssetRef`: own `$asset` and `type`, so it reads and serializes as `{ $asset, type }`. */
 function assetRef(n, type) {
@@ -1714,6 +1781,8 @@ function meshesClass(Base) {
 }
 
 // Load states (docs/assets.md): the export returns a code, and the failed text in a second call.
+// Each method takes an `AssetRef` or an `AssetId`.
+const isRef = (r) => r !== null && typeof r === "object" && typeof r.$asset === "number";
 const LOAD_STATES = ["NotLoaded", "Loading", "Loaded"];
 const TEXT = new Uint8Array(4096);
 
@@ -1721,14 +1790,19 @@ const TEXT = new Uint8Array(4096);
 function serverClass(Base) {
   return class ScriptAssetServer extends Base {
     #text(r, which) {
-      let n = super.failedText(r, which, TEXT);
+      const read = (out) => (isRef(r) ? super.failedText(r, which, out) : super.idFailedText(r, encoder.encode(r[ASSET_TYPE]), which, out));
+      let n = read(TEXT);
       if (n <= TEXT.length) return decoder.decode(TEXT.subarray(0, n));
       const big = new Uint8Array(n);
-      n = super.failedText(r, which, big);
+      n = read(big);
       return decoder.decode(big.subarray(0, n));
     }
     #state(code, r, which) {
       return code === 3 ? Object.freeze({ Failed: this.#text(r, which) }) : LOAD_STATES[code];
+    }
+    /** A load-state method of an `AssetId` (`ref.id`, an `AssetEvent<A>`'s): `which` as `id_code` takes it. */
+    #idCode(id, which, method) {
+      return super.idCode(assetIdOf(id, `server.${method}`), encoder.encode(id[ASSET_TYPE]), which);
     }
     /** `AssetServer::load`: a strong ref, typed by `T` (an asset class) or by the path's extension. A labelled path needs `T`. */
     load(path, T) {
@@ -1741,13 +1815,22 @@ function serverClass(Base) {
       return HOST.asRef(r.$asset, decoder.decode(TEXT.subarray(0, len)));
     }
     loadState(r) {
-      return this.#state(super.loadStateCode(r), r, 0);
+      return this.#state(isRef(r) ? super.loadStateCode(r) : this.#idCode(r, 0, "loadState"), r, 0);
     }
     dependencyLoadState(r) {
-      return this.#state(super.dependencyLoadStateCode(r), r, 1);
+      return this.#state(isRef(r) ? super.dependencyLoadStateCode(r) : this.#idCode(r, 1, "dependencyLoadState"), r, 1);
     }
     recursiveDependencyLoadState(r) {
-      return this.#state(super.recursiveDependencyLoadStateCode(r), r, 2);
+      return this.#state(isRef(r) ? super.recursiveDependencyLoadStateCode(r) : this.#idCode(r, 2, "recursiveDependencyLoadState"), r, 2);
+    }
+    isLoaded(r) {
+      return isRef(r) ? super.isLoaded(r) : this.#idCode(r, 3, "isLoaded") === 1;
+    }
+    isLoadedWithDirectDependencies(r) {
+      return isRef(r) ? super.isLoadedWithDirectDependencies(r) : this.#idCode(r, 4, "isLoadedWithDirectDependencies") === 1;
+    }
+    isLoadedWithDependencies(r) {
+      return isRef(r) ? super.isLoadedWithDependencies(r) : this.#idCode(r, 5, "isLoadedWithDependencies") === 1;
     }
   };
 }
@@ -3111,6 +3194,9 @@ class RustMessageReaderParam {
     }
     this.frame = null;
     this.items = null;
+    // `AssetEvent<A>`: its values get Bevy's methods (`isAdded`) and ids typed by `A`.
+    const event = ASSET_EVENT.exec(cls.path);
+    this.assetType = event ? event[1] : null;
   }
   bind(frame) {
     // [buffer, its length, -, -, 1]: the run's bytes. Four of a codec's are its count.
@@ -3123,6 +3209,7 @@ class RustMessageReaderParam {
       if (!f) this.items = [];
       else if (this.decode) this.items = this.decode(new DataView(f[0], 0, f[1]), new Uint8Array(f[0], 0, f[1]));
       else this.items = JSON.parse(decoder.decode(new Uint8Array(f[0], 0, f[1])));
+      if (this.assetType) for (const m of this.items) assetEvent(m, this.assetType);
     }
     return this.items;
   }

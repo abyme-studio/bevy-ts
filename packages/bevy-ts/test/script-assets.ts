@@ -2,7 +2,8 @@
 // the cli's exports, and `load` is typed by its class. The block below is what `bevy-ts types`
 // writes into native.d.ts for them.
 import { assets, type AssetRef, Indices, Mesh, PrimitiveTopology, type Res, type ResMut, type AssetServer, type Assets, type LoadState, type MeshData } from "bevy-ts";
-import { Image, type Mesh3d, StandardMaterial } from "bevy-ts/bevy";
+import { AssetEvent, Image, type Mesh3d, StandardMaterial } from "bevy-ts/bevy";
+import type { MessageReader } from "bevy-ts";
 
 declare module "bevy-ts" {
   interface ResClaims {
@@ -53,4 +54,19 @@ export function data() {
   // @ts-expect-error  topology is one of Bevy's names
   Mesh.of({ primitive_topology: "Triangles" });
   void slot, topology;
+}
+
+// `AssetEvent<A>` values have Bevy's `is*` methods; their ids reach the load-state methods.
+export function events(server: Res<AssetServer>, r: MessageReader<AssetEvent<Image>>) {
+  const img = server.load("tex.png", Image);
+  r.each((e) => {
+    const added: boolean = e.isAdded(img) || e.isModified(img.id) || e.isLoadedWithDependencies(img);
+    if ("Added" in e) {
+      const state: LoadState = server.loadState(e.Added.id!);
+      void state;
+    }
+    // @ts-expect-error  an asset id, not a path
+    e.isRemoved("tex.png");
+    void added;
+  });
 }

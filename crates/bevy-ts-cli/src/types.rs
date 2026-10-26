@@ -237,6 +237,8 @@ enum HandFields {
     Reflected(&'static [(&'static str, &'static str)]),
     /// The fields as TS, for a builder TS holds as JSON (change `animation-control`).
     Ts(&'static str),
+    /// The whole type, a `bevy-ts` export the generated files import (`Mesh`'s `MeshData`).
+    Type(&'static str),
 }
 
 const HAND_FIELDS: &[(&str, HandFields)] = &[
@@ -249,6 +251,8 @@ const HAND_FIELDS: &[(&str, HandFields)] = &[
              mask_groups: [string | { readonly names: readonly string[] }, number][]",
         ),
     ),
+    // The JSON `bevy_ts::reflect_asset`'s `Mesh` hand map takes.
+    ("bevy_mesh::mesh::Mesh", HandFields::Type("MeshData")),
     (
         "bevy_animation::AnimationClip",
         HandFields::Ts("curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number"),
@@ -297,6 +301,7 @@ fn asset_fields(registry: &TypeRegistry, path: &str, reg: &TypeRegistration) -> 
     let hand = HAND_FIELDS.iter().find(|(p, _)| *p == path).map(|(_, f)| f);
     let fields: Vec<String> = match (hand, reg.type_info()) {
         (Some(HandFields::Ts(fields)), _) => vec![fields.to_string()],
+        (Some(HandFields::Type(name)), _) => return name.to_string(),
         (Some(HandFields::Reflected(fields)), _) => fields.iter().map(|(f, ty)| format!("{}: {}", prop(f), ts_type(registry, ty, 1))).collect(),
         (None, TypeInfo::Struct(st)) if bevy_ts::reflect_value::uncovered(path).is_none() => {
             st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(registry, f.type_path(), 1))).collect()
@@ -686,7 +691,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name.\n\
          import {{ Component, EntityEvent, Event, Message, Resource }} from \"bevy-ts\";\n\
-         import type {{ AssetClass, AssetFields, AssetLoad, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
+         import type {{ AssetClass, AssetEventOf, AssetFields, AssetLoad, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, MeshData, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
     let components = named(&registry, native, &claimed(world));
@@ -976,6 +981,8 @@ fn emit_rust_events(registry: &TypeRegistry, taken: &mut BTreeSet<String>, asset
         } else {
             args.iter().zip(&types).rev().fold("never".to_string(), |rest, (a, t)| format!("A extends {a} ? {t} : {rest}"))
         };
+        // An `AssetEvent<A>` value has Bevy's `isAdded` and the rest (`AssetEventIs`).
+        let value = if base == "bevy_asset::event::AssetEvent" { format!("{value} & AssetEventOf<A>") } else { value };
         let _ = writeln!(dts, "export type {name}<A extends {}> = {value};", args.join(" | "));
     }
 }
@@ -991,7 +998,7 @@ pub fn emit(world: &World) -> String {
          // Component and Resource classes are columns in TS systems; ReflectComponent classes are\n\
          // typed values for TSX, the protocol and With/Without filters.\n\n\
          import { Component, ReflectComponent, Resource } from \"bevy-ts\";\n\
-         import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
+         import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, MeshData, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
     );
     // The `T` of every `Handle<T>` a field names; the asset classes are `bevy-ts/bevy`'s.
     for (path, name, reg) in assets_named(&registry) {
