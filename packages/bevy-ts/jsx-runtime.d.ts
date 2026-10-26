@@ -1,7 +1,8 @@
 // `bevy-ts/jsx-runtime`: the automatic JSX runtime (`"jsxImportSource": "bevy-ts"`). Elements
 // are plain descriptions: an `<entity>`, component elements on it (`<Health initialHp={100} />`),
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
-import type { AssetRef, ColorValue, Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
+import type { AssetLoad, AssetRef, AssetValue, ColorValue, Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
+import type { Image } from "bevy-ts/bevy";
 import type { AlphaMode } from "bevy-ts/material";
 
 /** Bevy 0.20's picking events, each an `on` prop on any `<entity>` or UI element. */
@@ -620,22 +621,27 @@ export interface UvTransform {
 }
 
 /**
+ * A `<material>` texture: an asset path (base colour and emissive load as sRGB, the rest as linear
+ * data), or an image ref, `Image.of(...)` or `Image.load(path, settings)` for a sampler.
+ */
+export type Texture = string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image>;
+
+/**
  * `<material>`: a `StandardMaterial`, every field under its Bevy name in camelCase (`color` is
- * `base_color`, `roughness` is `perceptual_roughness`). A texture is an asset path: base colour,
- * emissive load as sRGB, the rest as linear data.
+ * `base_color`, `roughness` is `perceptual_roughness`). Textures are [`Texture`]s.
  */
 export interface MaterialProps {
   color?: ColorValue;
   baseColorChannel?: UvChannel;
-  baseColorTexture?: string;
+  baseColorTexture?: Texture;
   emissive?: ColorValue;
   emissiveExposureWeight?: number;
   emissiveChannel?: UvChannel;
-  emissiveTexture?: string;
+  emissiveTexture?: Texture;
   roughness?: number;
   metallic?: number;
   metallicRoughnessChannel?: UvChannel;
-  metallicRoughnessTexture?: string;
+  metallicRoughnessTexture?: Texture;
   reflectance?: number;
   specularTint?: ColorValue;
   diffuseTransmission?: number;
@@ -646,10 +652,10 @@ export interface MaterialProps {
   attenuationColor?: ColorValue;
   normalMapChannel?: UvChannel;
   /** Gives the entity's `<mesh>` vertex tangents. */
-  normalMapTexture?: string;
+  normalMapTexture?: Texture;
   flipNormalMapY?: boolean;
   occlusionChannel?: UvChannel;
-  occlusionTexture?: string;
+  occlusionTexture?: Texture;
   clearcoat?: number;
   clearcoatPerceptualRoughness?: number;
   /** Non-zero gives the entity's `<mesh>` vertex tangents. */
@@ -667,7 +673,7 @@ export interface MaterialProps {
   alphaMode?: AlphaMode;
   fogEnabled?: boolean;
   depthBias?: number;
-  depthMap?: string;
+  depthMap?: Texture;
   parallaxDepthScale?: number;
   parallaxMappingMethod?: ParallaxMappingMethod;
   maxParallaxLayerCount?: number;

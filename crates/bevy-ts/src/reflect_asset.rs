@@ -12,11 +12,13 @@
 //! used after that is a "stale asset ref". The assets stay for the entities a hot reload keeps,
 //! until a restart or stop removes them. Asset values (`T.of(props)`,
 //! `{ "$of": path, "props": ... }`) are cached by their type and the props' [`canonical`] JSON, so
-//! every slot given equal props shares one asset.
+//! every slot given equal props shares one asset. `Image` is hand-mapped by its sampler alone, and
+//! `Image.load(path, settings)` (`{ "$load": path, "settings": ... }`) loads with loader settings.
 
 use bevy::asset::uuid::Uuid;
 use crate::reflect_value;
 use bevy::asset::{AssetServer, ReflectAsset, UntypedAssetId, UntypedHandle};
+use bevy::image::{ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
 use bevy::reflect::{PartialReflect, ReflectFromReflect, TypeRegistry};
 use serde_json::{Map, Value};
@@ -124,6 +126,9 @@ struct Table {
     /// The JSON each hand-mapped asset a script made was last written from, for entries whose
     /// read gives it back (`AnimationClip`).
     sources: HashMap<UntypedAssetId, Value>,
+    /// Each path loaded with settings, and the settings it was first loaded with: the asset server
+    /// ignores the settings of a later load of the same path.
+    loads: HashMap<String, String>,
     /// Assets of refs a reload made stale, kept for the entities that still use them until the
     /// next restart or stop.
     retired: Vec<Made>,
@@ -447,10 +452,116 @@ impl Slots<'_> {
     }
 }
 
+impl Slots<'_> {
+    /// `T.load(path, settings)` in a slot of asset type `asset`, by its type's [`LOADERS`] entry. A
+    /// path loaded again with other settings keeps the first (the asset server's rule), and warns.
+    fn load(&self, asset: TypeId, path: &Value, settings: &Value) -> Result<UntypedHandle, String> {
+        let type_path = path_of(self.registry, asset);
+        let path = path.as_str().filter(|p| !p.is_empty()).ok_or_else(|| format!("{type_path}.load takes an asset path, not {path}"))?;
+        let load = LOADERS.iter().find(|(p, _)| *p == type_path).map(|(_, l)| *l).ok_or_else(|| format!("{type_path} has no loader settings: only {} loads with them", LOADERS.iter().map(|(p, _)| *p).collect::<Vec<_>>().join(", ")))?;
+        let empty = Map::new();
+        let settings_map = match settings {
+            Value::Null => &empty,
+            Value::Object(o) => o,
+            v => return Err(format!("{type_path}.load's settings are an object, not {v}")),
+        };
+        let handle = load(self, path, settings_map)?;
+        if !self.check {
+            let key = canonical(settings);
+            let mut t = self.assets.table();
+            match t.loads.get(path) {
+                Some(first) if *first != key => warn!("bevy-ts: {path} is loaded with settings {key} after {first}; the asset server keeps the first"),
+                Some(_) => {}
+                None => _ = t.loads.insert(path.to_string(), key),
+            }
+        }
+        Ok(handle)
+    }
+}
+
+/// A loader-settings entry: loads `path` with the settings given, read by hand (loader settings are
+/// serde, not `Reflect`). In check mode it checks the settings and loads nothing.
+type Load = fn(&Slots, &str, &Map<String, Value>) -> Result<UntypedHandle, String>;
+
+/// The asset types `T.load(path, settings)` takes, by type path. Adding a settings key is one line
+/// in its entry.
+const LOADERS: &[(&str, Load)] = &[("bevy_image::image::Image", load_image)];
+
+/// Whether `T.load` takes asset type `type_path`.
+pub fn loadable(type_path: &str) -> bool {
+    LOADERS.iter().any(|(p, _)| *p == type_path)
+}
+
+/// `Image.load(path, { sampler, is_srgb })`, by `ImageLoaderSettings`.
+fn load_image(slots: &Slots, path: &str, settings: &Map<String, Value>) -> Result<UntypedHandle, String> {
+    let mut sampler = None;
+    let mut is_srgb = None;
+    for (k, v) in settings {
+        match k.as_str() {
+            "sampler" => sampler = Some(image_sampler(slots, None, v)?),
+            "is_srgb" => is_srgb = Some(v.as_bool().ok_or_else(|| format!("Image.load's is_srgb is true or false, not {v}"))?),
+            _ => return Err(format!("Image.load takes the settings sampler and is_srgb, not {k}")),
+        }
+    }
+    if slots.check {
+        return Ok(UntypedHandle::Uuid { type_id: TypeId::of::<Image>(), uuid: Uuid::nil() });
+    }
+    let server = slots.server.ok_or_else(|| format!("Image.load({path:?}) needs an AssetServer"))?;
+    let h: Handle<Image> = server
+        .load_builder()
+        .with_settings(move |s: &mut ImageLoaderSettings| {
+            if let Some(x) = &sampler {
+                s.sampler = x.clone();
+            }
+            if let Some(b) = is_srgb {
+                s.is_srgb = b;
+            }
+        })
+        .load(path.to_string());
+    Ok(h.untyped())
+}
+
+/// An `ImageSampler` from the writer's JSON: `"Default"`, or `{ Descriptor: { ... } }` with the
+/// fields given written over `base`'s descriptor, else over `ImageSamplerDescriptor::default()`.
+fn image_sampler(slots: &Slots, base: Option<&ImageSampler>, json: &Value) -> Result<ImageSampler, String> {
+    let mut s = match (json.as_object(), base) {
+        (Some(o), Some(b @ ImageSampler::Descriptor(_))) if o.contains_key("Descriptor") => b.clone(),
+        (Some(o), _) if o.contains_key("Descriptor") => ImageSampler::Descriptor(ImageSamplerDescriptor::default()),
+        _ => ImageSampler::Default,
+    };
+    reflect_value::write_with(slots.cx(), &mut s, None, json).map_err(|e| format!("sampler: {e}"))?;
+    Ok(s)
+}
+
+/// `Image`'s hand-mapped read: `{ sampler }` alone. Its pixels and texture descriptors are opaque
+/// to reflection, so a script reaches the sampler only.
+fn image_read(slots: &Slots, _: Option<&Value>, image: &Image) -> Result<Value, String> {
+    Ok(serde_json::json!({ "sampler": reflect_value::read_with(slots.registry, Some(slots), &image.sampler)? }))
+}
+
+/// `Image`'s hand-mapped write: the base `Image` (its default for an add) with the sampler given
+/// written over its own.
+fn image_write(slots: &Slots, base: Option<&Image>, json: &Value) -> Result<Image, String> {
+    let o = json.as_object().ok_or_else(|| format!("an Image takes {{ sampler }}, not {json}"))?;
+    let mut image = base.cloned().unwrap_or_default();
+    for (k, v) in o {
+        match k.as_str() {
+            "sampler" => image.sampler = image_sampler(slots, base.map(|b| &b.sampler), v)?,
+            _ => return Err(format!("Image has no field {k} for scripts: they set its sampler alone")),
+        }
+    }
+    Ok(image)
+}
+
+/// Hand-maps `Image` by its sampler ([`image_read`], [`image_write`]).
+pub fn register_image() {
+    register::<Image>(image_read, image_write);
+}
+
 impl reflect_value::HandleSlots for Slots<'_> {
     fn write(&self, asset: TypeId, json: &Value) -> Result<UntypedHandle, String> {
         let Some(o) = json.as_object() else {
-            return Err(format!("expected an asset path, an asset ref or T.of(...), got {json}"));
+            return Err(format!("expected an asset path, an asset ref, T.of(...) or T.load(...), got {json}"));
         };
         if let Some(n) = parse_ref(json) {
             let n = n?;
@@ -468,10 +579,10 @@ impl reflect_value::HandleSlots for Slots<'_> {
         if let Some(path) = o.get("$of") {
             return self.value(asset, path, o.get("props").unwrap_or(&Value::Null));
         }
-        if o.contains_key("$load") {
-            return Err(format!("{} has no loader settings", path_of(self.registry, asset)));
+        if let Some(path) = o.get("$load") {
+            return self.load(asset, path, o.get("settings").unwrap_or(&Value::Null));
         }
-        Err(format!("expected an asset path, an asset ref or T.of(...), got {json}"))
+        Err(format!("expected an asset path, an asset ref, T.of(...) or T.load(...), got {json}"))
     }
 
     fn read(&self, handle: &UntypedHandle) -> Option<Value> {
@@ -697,7 +808,14 @@ mod tests {
         app.init_asset::<Mesh>().register_asset_reflect::<Mesh>();
         app.register_type::<Name>();
         app.init_resource::<ScriptAssets>();
+        // As `BevyTsPlugin` does; the map is process-wide, so every test sees `Image` hand-mapped.
+        register_image();
         app
+    }
+
+    /// A made `Image`, as a hand-mapped value.
+    fn blank() -> Built {
+        Built::Hand(Arc::new(Image::default()))
     }
 
     fn image(app: &App) -> AssetType {
@@ -718,7 +836,7 @@ mod tests {
     fn made_assets_enter_assets_on_flush_and_leave_on_a_restart() {
         let mut app = app();
         let ty = image(&app);
-        let (n, h) = app.world().resource::<ScriptAssets>().make(&ty, Built::Reflected(Box::new(Image::default())));
+        let (n, h) = app.world().resource::<ScriptAssets>().make(&ty, blank());
         assert_eq!(n, 1);
         let id = h.id().typed::<Image>();
         assert!(app.world().resource::<Assets<Image>>().get(id).is_none(), "queued until the run ends");
@@ -732,7 +850,7 @@ mod tests {
         let t = app.world().resource::<ScriptAssets>();
         assert!(t.handle(1).unwrap_err().starts_with("stale asset ref"));
         assert!(t.handle(9).unwrap_err().starts_with("unknown asset ref"));
-        assert_eq!(t.make(&ty, Built::Reflected(Box::new(Image::default()))).0, 2, "never reused in a session");
+        assert_eq!(t.make(&ty, blank()).0, 2, "never reused in a session");
     }
 
     /// A reload that applies.
@@ -745,11 +863,11 @@ mod tests {
     fn a_failed_hot_reload_keeps_the_live_refs_and_drops_its_own() {
         let mut app = app();
         let ty = image(&app);
-        let (old, _) = app.world().resource::<ScriptAssets>().make(&ty, Built::Reflected(Box::new(Image::default())));
+        let (old, _) = app.world().resource::<ScriptAssets>().make(&ty, blank());
         flush(app.world_mut());
         let r = reloading(app.world_mut(), false);
         // The new generation adds while it loads, and its first render's assets go in.
-        let (new, h) = app.world().resource::<ScriptAssets>().make(&ty, Built::Reflected(Box::new(Image::default())));
+        let (new, h) = app.world().resource::<ScriptAssets>().make(&ty, blank());
         flush(app.world_mut());
         failed(app.world_mut(), r);
         let t = app.world().resource::<ScriptAssets>();
@@ -763,11 +881,11 @@ mod tests {
     fn a_hot_reload_makes_the_old_refs_stale_once_it_applies() {
         let mut app = app();
         let ty = image(&app);
-        let (old, _) = app.world().resource::<ScriptAssets>().make(&ty, Built::Reflected(Box::new(Image::default())));
+        let (old, _) = app.world().resource::<ScriptAssets>().make(&ty, blank());
         flush(app.world_mut());
         let r = reloading(app.world_mut(), false);
         assert!(app.world().resource::<ScriptAssets>().handle(old).is_ok(), "live while the new one loads");
-        let (new, _) = app.world().resource::<ScriptAssets>().make(&ty, Built::Reflected(Box::new(Image::default())));
+        let (new, _) = app.world().resource::<ScriptAssets>().make(&ty, blank());
         applied(app.world_mut(), r);
         let t = app.world().resource::<ScriptAssets>();
         assert!(t.handle(old).unwrap_err().starts_with("stale asset ref"));
@@ -782,7 +900,7 @@ mod tests {
         let ty = image(&app);
         let mut ids = Vec::new();
         for _ in 0..2 {
-            let (_, h) = app.world().resource::<ScriptAssets>().make(&ty, Built::Reflected(Box::new(Image::default())));
+            let (_, h) = app.world().resource::<ScriptAssets>().make(&ty, blank());
             ids.push(h.id().typed::<Image>());
             flush(app.world_mut());
             reload(app.world_mut(), false);
@@ -796,7 +914,7 @@ mod tests {
     #[test]
     fn a_ref_of_another_type_names_both() {
         let app = app();
-        let (n, _) = app.world().resource::<ScriptAssets>().make(&image(&app), Built::Reflected(Box::new(Image::default())));
+        let (n, _) = app.world().resource::<ScriptAssets>().make(&image(&app), blank());
         let registry = app.world().resource::<AppTypeRegistry>().read();
         let t = app.world().resource::<ScriptAssets>();
         assert!(t.handle_for(&registry, TypeId::of::<Image>(), n).is_ok());
@@ -885,7 +1003,7 @@ mod tests {
         let mut app = pbr_app();
         let img = {
             let ty = image(&app);
-            let (n, _) = app.world().resource::<ScriptAssets>().make(&ty, Built::Reflected(Box::new(Image::default())));
+            let (n, _) = app.world().resource::<ScriptAssets>().make(&ty, blank());
             ref_json(n, IMG)
         };
         let r = call(&app, "assets.add", serde_json::json!([MAT, { "base_color_texture": img }])).unwrap();
@@ -989,7 +1107,7 @@ mod tests {
     fn a_hand_mapped_type_needs_no_reflect_and_goes_in_its_assets_at_the_refs_id() {
         let mut app = note_app();
         assert!(app.world().resource::<AppTypeRegistry>().read().get(TypeId::of::<Note>()).is_none(), "Note is not registered");
-        assert!(is_hand_mapped(TypeId::of::<Note>()) && !is_hand_mapped(TypeId::of::<Image>()));
+        assert!(is_hand_mapped(TypeId::of::<Note>()) && !is_hand_mapped(TypeId::of::<Mesh>()));
         call(&app, "assets.add", serde_json::json!([NOTE, { "text": "a" }])).unwrap();
         assert!(note(&app, 1).is_none(), "queued until the run ends");
         flush(app.world_mut());
@@ -1044,6 +1162,79 @@ mod tests {
         assert!(assets.is_empty());
         let e = slots.write(TypeId::of::<StandardMaterial>(), &serde_json::json!({ "$of": MAT, "props": { "nope": 1 } })).unwrap_err();
         assert!(e.contains("nope"), "{e}");
+    }
+
+    fn image_of(app: &App, r: &Value) -> Image {
+        let h = app.world().resource::<ScriptAssets>().handle(parse_ref(r).unwrap().unwrap()).unwrap();
+        app.world().resource::<Assets<Image>>().get(h.id().typed::<Image>()).expect("added").clone()
+    }
+
+    #[test]
+    fn an_images_sampler_is_set_and_read_back() {
+        let mut app = app();
+        let r = call(&app, "assets.add", serde_json::json!([IMG, {}])).unwrap();
+        assert_eq!(call(&app, "assets.get", serde_json::json!([r])).unwrap(), serde_json::json!({ "sampler": "Default" }));
+        let repeat = serde_json::json!({ "Descriptor": { "address_mode_u": "Repeat", "address_mode_v": "Repeat" } });
+        call(&app, "assets.set", serde_json::json!([r, { "sampler": repeat }])).unwrap();
+        flush(app.world_mut());
+        let ImageSampler::Descriptor(d) = image_of(&app, &r).sampler else { panic!("a descriptor sampler") };
+        let want = ImageSamplerDescriptor { address_mode_u: bevy::image::ImageAddressMode::Repeat, address_mode_v: bevy::image::ImageAddressMode::Repeat, ..default() };
+        assert_eq!(d, want, "the fields not given keep the descriptor's default");
+        let got = call(&app, "assets.get", serde_json::json!([r])).unwrap();
+        assert_eq!(got["sampler"]["Descriptor"]["address_mode_u"], "Repeat");
+        assert_eq!(got["sampler"]["Descriptor"]["anisotropy_clamp"], 1);
+        assert_eq!(image_of(&app, &r).size(), Image::default().size(), "its pixels are the base's");
+        let nearest = serde_json::json!({ "Descriptor": { "mag_filter": "Nearest" } });
+        call(&app, "assets.set", serde_json::json!([r, { "sampler": nearest }])).unwrap();
+        flush(app.world_mut());
+        let ImageSampler::Descriptor(d) = image_of(&app, &r).sampler else { panic!("a descriptor sampler") };
+        assert_eq!((d.address_mode_u, d.mag_filter), (bevy::image::ImageAddressMode::Repeat, bevy::image::ImageFilterMode::Nearest), "written over the current sampler");
+        let e = call(&app, "assets.set", serde_json::json!([r, { "data": [] }])).unwrap_err();
+        assert!(e.contains("data") && e.contains("sampler"), "{e}");
+    }
+
+    #[test]
+    fn an_image_round_trips_from_nothing() {
+        let app = app();
+        let first = call(&app, "assets.add", serde_json::json!([IMG, {}])).unwrap();
+        let read = call(&app, "assets.get", serde_json::json!([first])).unwrap();
+        let again = call(&app, "assets.add", serde_json::json!([IMG, read])).unwrap();
+        assert_eq!(call(&app, "assets.get", serde_json::json!([again])).unwrap(), read);
+        let nearest = serde_json::json!({ "sampler": { "Descriptor": { "mag_filter": "Nearest" } } });
+        let n = call(&app, "assets.add", serde_json::json!([IMG, nearest])).unwrap();
+        let read = call(&app, "assets.get", serde_json::json!([n])).unwrap();
+        let again = call(&app, "assets.add", serde_json::json!([IMG, read])).unwrap();
+        assert_eq!(call(&app, "assets.get", serde_json::json!([again])).unwrap(), read);
+    }
+
+    #[test]
+    fn image_load_takes_its_settings_and_refuses_others() {
+        use reflect_value::HandleSlots;
+        let app = app();
+        let registry = app.world().resource::<AppTypeRegistry>().read();
+        let assets = app.world().resource::<ScriptAssets>();
+        let server = app.world().resource::<AssetServer>();
+        let slots = Slots { registry: &registry, server: Some(server), assets, check: false };
+        let id = TypeId::of::<Image>();
+        let linear = serde_json::json!({ "$load": "a.png", "settings": { "is_srgb": false, "sampler": { "Descriptor": { "address_mode_u": "Repeat" } } } });
+        let a = slots.write(id, &linear).unwrap();
+        assert_eq!(slots.write(id, &linear).unwrap().id(), a.id(), "one path, one image");
+        assert_eq!(assets.table().loads.get("a.png").map(String::as_str), Some(canonical(&linear["settings"]).as_str()));
+        slots.write(id, &serde_json::json!({ "$load": "a.png" })).expect("other settings warn and keep the first");
+        assert_eq!(assets.table().loads.get("a.png").map(String::as_str), Some(canonical(&linear["settings"]).as_str()));
+        let e = slots.write(id, &serde_json::json!({ "$load": "b.png", "settings": { "srgb": false } })).unwrap_err();
+        assert!(e.contains("srgb") && e.contains("is_srgb"), "{e}");
+        let e = slots.write(id, &serde_json::json!({ "$load": "b.png", "settings": { "is_srgb": 0 } })).unwrap_err();
+        assert!(e.contains("is_srgb"), "{e}");
+        let e = slots.write(TypeId::of::<Mesh>(), &serde_json::json!({ "$load": "m.glb" })).unwrap_err();
+        assert!(e.contains("Mesh") && e.contains("no loader settings"), "{e}");
+        let check = Slots { registry: &registry, server: None, assets, check: true };
+        check.write(id, &serde_json::json!({ "$load": "c.png", "settings": { "is_srgb": true } })).expect("a check loads nothing");
+        assert!(check.write(id, &serde_json::json!({ "$load": "c.png", "settings": { "nope": 1 } })).is_err());
+        assert!(!assets.table().loads.contains_key("c.png"));
+        let none = Slots { registry: &registry, server: None, assets, check: false };
+        assert!(none.write(id, &serde_json::json!({ "$load": "d.png" })).unwrap_err().contains("AssetServer"));
+        assert!(loadable(IMG) && !loadable(MAT));
     }
 
     #[test]

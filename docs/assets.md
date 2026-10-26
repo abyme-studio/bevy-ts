@@ -67,6 +67,33 @@ using it.
 `assets.set` on a shared asset changes every slot that shares it, `<material>` elements included.
 To edit one entity's asset alone, give it its own with `assets.add`.
 
+## Images and loader settings
+
+`Image` is hand-mapped by its sampler alone: its pixels and texture descriptors are opaque to
+reflection. `assets.add(Image, { sampler })` builds Bevy's default 1 x 1 image with that sampler,
+`assets.get` reads `{ sampler }`, and `assets.set` changes the sampler and keeps the pixels. The
+sampler is Bevy's `ImageSampler` in the writer's shape: `"Default"` (the `ImagePlugin`'s), or
+`{ Descriptor: { address_mode_u: "Repeat", mag_filter: "Nearest", ... } }`, unset fields keeping
+`ImageSamplerDescriptor::default()`.
+
+`Image.load(path, settings)` is a path loaded with loader settings, for any `Handle<Image>` slot:
+
+```tsx
+import { Image } from "bevy-ts/bevy";
+
+const atlas = Image.load("textures/atlas.png", { sampler: { Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat" } } });
+const normals = Image.load("textures/crate_n.png", { is_srgb: false });
+assets.add(StandardMaterial, { base_color_texture: atlas, normal_map_texture: normals });
+```
+
+- `settings` takes `sampler` and `is_srgb` (Bevy's `ImageLoaderSettings`); any other key fails.
+  `Image.load(path)` with none is the plain path.
+- Only `Image` has `load`: a `$load` in another type's slot fails naming the type.
+- Bevy loads a path once: a later load of it with other settings gets the first load's image, and
+  logs a warning naming both settings. Load one file one way.
+- `Image.load` is a value like `T.of`: it loads when its slot is written, and reads back as its
+  path.
+
 ## Lifetime
 
 A ref is `{ $asset: n, type }`; `n` counts up from 1 and is never reused in a session. A ref
@@ -85,8 +112,8 @@ add once and `set` after. Freeing an asset sooner is script-assets' handle lifec
 
 ## Hand-mapped types
 
-An asset type reflection cannot reach whole (`GizmoAsset`, `AnimationGraph`, a material crate's
-own type) is hand-mapped from Rust, by the crate that owns it. `T` needs only `Asset`, no
+An asset type reflection cannot reach whole (`Image`, `GizmoAsset`, `AnimationGraph`, a material
+crate's own type) is hand-mapped from Rust, by the crate that owns it (bevy-ts maps `Image`). `T` needs only `Asset`, no
 `Reflect`:
 
 ```rust

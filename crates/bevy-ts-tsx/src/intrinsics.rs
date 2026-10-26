@@ -8,7 +8,6 @@
 
 use bevy::asset::AssetLoadFailedEvent;
 use bevy::ecs::message::{MessageCursor, Messages};
-use bevy::image::ImageLoaderSettings;
 use bevy::math::Affine2;
 use bevy::mesh::UvChannel;
 use bevy::material::OpaqueRendererMethod;
@@ -25,7 +24,7 @@ use bevy::reflect::{PartialReflect, TypeRegistry};
 use bevy_ts::reflect_asset::{ScriptAssets, Slots};
 use bevy_ts::reflect_value;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 
 /// `<mesh shape .../>`: a Bevy mesh primitive (see `shapes`) and an optional color.
@@ -156,16 +155,16 @@ pub struct MaterialProps {
     /// `base_color`.
     pub color: Option<Value>,
     pub base_color_channel: Option<Uv>,
-    pub base_color_texture: Option<String>,
+    pub base_color_texture: Option<Texture>,
     pub emissive: Option<Value>,
     pub emissive_exposure_weight: Option<f32>,
     pub emissive_channel: Option<Uv>,
-    pub emissive_texture: Option<String>,
+    pub emissive_texture: Option<Texture>,
     /// `perceptual_roughness`.
     pub roughness: Option<f32>,
     pub metallic: Option<f32>,
     pub metallic_roughness_channel: Option<Uv>,
-    pub metallic_roughness_texture: Option<String>,
+    pub metallic_roughness_texture: Option<Texture>,
     pub reflectance: Option<f32>,
     pub specular_tint: Option<Value>,
     pub diffuse_transmission: Option<f32>,
@@ -175,10 +174,10 @@ pub struct MaterialProps {
     pub attenuation_distance: Option<f32>,
     pub attenuation_color: Option<Value>,
     pub normal_map_channel: Option<Uv>,
-    pub normal_map_texture: Option<String>,
+    pub normal_map_texture: Option<Texture>,
     pub flip_normal_map_y: Option<bool>,
     pub occlusion_channel: Option<Uv>,
-    pub occlusion_texture: Option<String>,
+    pub occlusion_texture: Option<Texture>,
     pub clearcoat: Option<f32>,
     pub clearcoat_perceptual_roughness: Option<f32>,
     pub anisotropy_strength: Option<f32>,
@@ -196,7 +195,7 @@ pub struct MaterialProps {
     pub alpha_mode: Option<AlphaDecl>,
     pub fog_enabled: Option<bool>,
     pub depth_bias: Option<f32>,
-    pub depth_map: Option<String>,
+    pub depth_map: Option<Texture>,
     pub parallax_depth_scale: Option<f32>,
     pub parallax_mapping_method: Option<Parallax>,
     pub max_parallax_layer_count: Option<f32>,
@@ -299,6 +298,15 @@ impl UvTransform {
     }
 }
 
+/// A `<material>` texture prop: an asset path, loaded as `Image.load` in its field's colour space,
+/// or what any `Handle<Image>` slot takes (a ref, `Image.of(...)`, `Image.load(...)`).
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum Texture {
+    Path(String),
+    Asset(Map<String, Value>),
+}
+
 /// How a `<material>` prop's value becomes its `StandardMaterial` field's JSON.
 #[derive(Clone, Copy)]
 pub enum Mapping {
@@ -307,7 +315,8 @@ pub enum Mapping {
     /// Through the Bevy value it stands for, read in Bevy's shape (`"uv1"` is `"Uv1"`); `None` when
     /// unset.
     Typed(fn(&MaterialProps) -> Option<Box<dyn PartialReflect>>),
-    /// An asset path, loaded here in the field's colour space: sRGB when true.
+    /// An asset path becomes `Image.load` in the field's colour space, sRGB when true; a ref or
+    /// value goes as given.
     Texture(bool),
     /// Not reflected by Bevy (`cull_mode`), so set after the write.
     Rust,
@@ -374,8 +383,8 @@ pub const MATERIAL_PROPS: &[(&str, &str, Mapping)] = &[
 struct MaterialOf {
     props: Value,
     extra: Value,
-    /// (prop, field, path, sRGB).
-    textures: Vec<(&'static str, &'static str, String, bool)>,
+    /// Texture paths: (prop, field, path), loaded in `props` when there is an asset server.
+    textures: Vec<(&'static str, &'static str, String)>,
     cull_mode: Option<Option<Face>>,
 }
 
@@ -477,8 +486,9 @@ impl MaterialProps {
         self.normal_map_texture.is_some() || self.anisotropy_strength.is_some_and(|s| s != 0.0)
     }
 
-    /// The asset value these props build, by [`MATERIAL_PROPS`].
-    fn of(&self, registry: &TypeRegistry) -> Result<MaterialOf, String> {
+    /// The asset value these props build, by [`MATERIAL_PROPS`]. Texture paths load only with
+    /// `load`, an asset server to load them.
+    fn of(&self, registry: &TypeRegistry, load: bool) -> Result<MaterialOf, String> {
         let read = |v: &dyn PartialReflect| reflect_value::read(registry, v);
         let given = self.given();
         let mut props = Map::new();
@@ -496,12 +506,27 @@ impl MaterialProps {
                         props.insert(field.to_string(), read(v.as_ref())?);
                     }
                 }
-                Mapping::Texture(srgb) => {
-                    if let Some(Value::String(path)) = given.get(*prop) {
-                        extra.insert(field.to_string(), Value::String(path.clone()));
-                        textures.push((*prop, *field, path.clone(), *srgb));
+                Mapping::Texture(srgb) => match given.get(*prop) {
+                    Some(Value::String(path)) => {
+                        textures.push((*prop, *field, path.clone()));
+                        if load {
+                            // `Image.load(path)`, linear for data textures: one key with a script's.
+                            let v = if *srgb { json!({ "$load": path }) } else { json!({ "$load": path, "settings": { "is_srgb": false } }) };
+                            props.insert(field.to_string(), v);
+                        }
                     }
-                }
+                    // An `Image.load` with no `is_srgb` takes the field's colour space.
+                    Some(Value::Object(o)) if !*srgb && o.contains_key("$load") && o.get("settings").and_then(|s| s.get("is_srgb")).is_none() => {
+                        let mut v = o.clone();
+                        let settings = v.entry("settings").or_insert_with(|| json!({}));
+                        if let Some(s) = settings.as_object_mut() {
+                            s.insert("is_srgb".into(), false.into());
+                        }
+                        props.insert(field.to_string(), Value::Object(v));
+                    }
+                    Some(v) => _ = props.insert(field.to_string(), v.clone()),
+                    None => {}
+                },
                 Mapping::Rust | Mapping::Alpha => {}
             }
         }
@@ -582,7 +607,8 @@ fn tangent_mesh_handle(world: &mut World, p: &MeshProps) -> Handle<Mesh> {
 }
 
 /// The `<material>`'s handle: the asset value `StandardMaterial.of` of its props, shared with
-/// every element and slot given the same value, its textures loaded here in their colour space.
+/// every element and slot given the same value, its texture paths loaded as `Image.load` in their
+/// colour space.
 fn material_handle(world: &mut World, p: &MaterialProps, at: Option<SourceLocation>) -> Handle<StandardMaterial> {
     let registry = world.resource::<AppTypeRegistry>().clone();
     let server = world.get_resource::<AssetServer>().cloned();
@@ -590,7 +616,7 @@ fn material_handle(world: &mut World, p: &MaterialProps, at: Option<SourceLocati
     let mut loaded = Vec::new();
     let made = {
         let registry = registry.read();
-        p.of(&registry).and_then(|of| {
+        p.of(&registry, server.is_some()).and_then(|of| {
             // A section's check and a mount fail a texture with no AssetServer first; any other
             // way in draws the material untextured and says why.
             let unloaded = if server.is_none() { of.textures.first().map(|t| t.0) } else { None };
@@ -599,16 +625,9 @@ fn material_handle(world: &mut World, p: &MaterialProps, at: Option<SourceLocati
                 if let Some(f) = of.cull_mode {
                     m.cull_mode = f;
                 }
-                let Some(server) = server.as_ref() else { return };
-                for (_, field, path, srgb) in &of.textures {
-                    let h: Handle<Image> = if *srgb {
-                        server.load(path.clone())
-                    } else {
-                        server.load_builder().with_settings(|s: &mut ImageLoaderSettings| s.is_srgb = false).load(path.clone())
-                    };
-                    loaded.push((h.id(), path.clone()));
-                    if let Some(slot) = m.field_mut(field) {
-                        slot.apply(&Some(h));
+                for (_, field, path) in &of.textures {
+                    if let Some(Some(h)) = m.field(field).and_then(|f| f.try_downcast_ref::<Option<Handle<Image>>>()) {
+                        loaded.push((h.id(), path.clone()));
                     }
                 }
             });
@@ -837,6 +856,29 @@ mod tests {
             .filter(|k| k != "kind" && k != "asset")
             .collect();
         assert_eq!(typed, table(), "jsx-runtime.d.ts' MaterialProps against MATERIAL_PROPS");
+    }
+
+    #[test]
+    fn texture_paths_are_image_loads_in_their_colour_space() {
+        let p: MaterialProps = serde_json::from_value(json!({
+            "baseColorTexture": "a.png",
+            "normalMapTexture": "n.png",
+            "emissiveTexture": { "$asset": 3, "type": "bevy_image::image::Image" },
+            "occlusionTexture": { "$load": "o.png", "settings": {} },
+            "depthMap": { "$load": "d.png", "settings": { "is_srgb": true } },
+        }))
+        .unwrap();
+        let registry = TypeRegistry::default();
+        let of = p.of(&registry, true).unwrap();
+        assert_eq!(of.props["base_color_texture"], json!({ "$load": "a.png" }), "sRGB, Image.load's default");
+        assert_eq!(of.props["normal_map_texture"], json!({ "$load": "n.png", "settings": { "is_srgb": false } }), "linear data");
+        assert_eq!(of.props["emissive_texture"]["$asset"], 3, "a ref goes as given");
+        assert_eq!(of.props["occlusion_texture"], json!({ "$load": "o.png", "settings": { "is_srgb": false } }), "Image.load takes the field's colour space");
+        assert_eq!(of.props["depth_map"]["settings"]["is_srgb"], true, "unless it gives its own");
+        assert!(of.extra.is_null(), "textures key as props, so they share with a script's value");
+        let unloaded = p.of(&registry, false).unwrap();
+        assert!(unloaded.props.get("base_color_texture").is_none(), "no asset server: a path is left untextured");
+        assert_eq!(unloaded.props["emissive_texture"]["$asset"], 3);
     }
 
     /// `Mesh2dProps` takes exactly the shapes `jsx-runtime.d.ts`'s `Shape2dMesh` lists.

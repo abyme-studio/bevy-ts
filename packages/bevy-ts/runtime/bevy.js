@@ -619,7 +619,7 @@ export const AnimationClip = asset("bevy_animation::AnimationClip");
 
 export const AnimationGraph = asset("bevy_animation::graph::AnimationGraph", { of: false });
 
-export const Image = asset("bevy_image::image::Image");
+export const Image = asset("bevy_image::image::Image", { load: true });
 
 export const TextureAtlasLayout = asset("bevy_image::texture_atlas::TextureAtlasLayout", { of: false });
 

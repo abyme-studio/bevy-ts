@@ -193,7 +193,11 @@ impl Plugin for BevyTsPlugin {
             bevy::log::debug!("OcclusionCulling does not get a required DepthPrepass: {why}");
         }
         #[cfg(feature = "reflect")]
-        app.init_resource::<reflect_asset::ScriptAssets>();
+        {
+            app.init_resource::<reflect_asset::ScriptAssets>();
+            // Scripts set an `Image`'s sampler; the rest of it is opaque to reflection.
+            reflect_asset::register_image();
+        }
 
         app.add_systems(
             First,

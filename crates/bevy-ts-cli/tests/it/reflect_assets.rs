@@ -319,3 +319,29 @@ app.scene("s", () => (
     updates(&mut app, 3);
     assert_eq!(app.world().resource::<Assets<StandardMaterial>>().len(), 2, "no build per frame");
 }
+
+#[test]
+fn a_texture_path_is_the_image_load_of_its_value() {
+    let (_dir, mut app) = material_setup(
+        "assets-texture-load-share",
+        r##"
+import { Image } from "bevy-ts/bevy";
+app.scene("s", () => (
+  <entity name="root">
+    <entity name="a"><material baseColorTexture="textures/a.png" /></entity>
+    <entity name="b"><MeshMaterial3dStandardMaterial value={StandardMaterial.of({ base_color_texture: Image.load("textures/a.png") })} /></entity>
+    <entity name="c"><material normalMapTexture="textures/n.png" /></entity>
+  </entity>
+));
+"##,
+    );
+    let ids = entity_materials(&mut app);
+    assert_eq!(ids.len(), 3);
+    let ms = app.world().resource::<Assets<StandardMaterial>>();
+    let textured: Vec<_> = ids.iter().map(|id| ms.get(*id).unwrap()).collect();
+    assert_eq!(textured.iter().filter(|m| m.base_color_texture.is_some()).count(), 2);
+    assert_eq!(ms.len(), 2, "the element and Image.load's value share one material; the normal map is its own");
+    let server = app.world().resource::<AssetServer>();
+    let path = |h: &Option<Handle<Image>>| h.as_ref().and_then(|h| server.get_path(h.id())).map(|p| p.to_string());
+    assert!(textured.iter().any(|m| path(&m.normal_map_texture).as_deref() == Some("textures/n.png")));
+}

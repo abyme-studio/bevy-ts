@@ -1355,7 +1355,8 @@ export function local(fields) {
 /**
  * A Rust asset type Bevy reflects (`StandardMaterial`), by type path: `bevy-ts/bevy` declares one
  * per registered asset. `T.of(props)` is an asset value: a plain description that touches nothing
- * until a `Handle<T>` slot is written with it. A type with no default has no `of`.
+ * until a `Handle<T>` slot is written with it. A type with no default has no `of`; a type with
+ * loader settings (`Image`) has `load`.
  */
 export function asset(typePath, opts = {}) {
   const C = class {};
@@ -1364,6 +1365,8 @@ export function asset(typePath, opts = {}) {
   C.source = "rust";
   C[KIND] = "asset";
   if (opts.of !== false) C.of = (props = {}) => Object.freeze({ $of: typePath, props });
+  // `Image.load(path, settings)`: a path with loader settings, for a type that takes them.
+  if (opts.load) C.load = (path, settings) => Object.freeze(settings === undefined ? { $load: path } : { $load: path, settings });
   return C;
 }
 

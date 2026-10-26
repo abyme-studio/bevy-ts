@@ -258,8 +258,9 @@ table (`MATERIAL_PROPS` in `bevy-ts-tsx`): equal props share one material with e
 props the table passes through as they are share with a script value: `emissive`, the UV channels,
 `parallaxMappingMethod`, `opaqueRenderMethod`, `uvTransform`, `alpha` and `alphaMode` are written in
 Bevy's read shape, so `<material emissive="#f00" />` is not `StandardMaterial.of({ emissive: "#f00" })`.
-A material with a texture or `cullMode` shares only with other elements: those are set in Rust after
-the reflected write.
+A texture path is the `Image.load` value of it, so `<material baseColorTexture="a.png" />` is
+`StandardMaterial.of({ base_color_texture: Image.load("a.png") })`. A material with `cullMode`
+shares only with other elements: Bevy does not reflect it, so it is set in Rust after the write.
 
 ```tsx
 <entity>
@@ -283,19 +284,45 @@ the reflected write.
 
 `alpha` replaces `color`'s alpha, 0 to 1, and `alphaMode` names the mode; unset, it is `"blend"` below alpha 1 and `"opaque"` otherwise (Alpha and fading, above).
 
-- A texture is an asset path, loaded by the `AssetServer`. Colour textures (base colour, emissive)
-  load as sRGB; the rest are data and load linear, as Bevy's glTF loader does. One
-  file keeps the colour space of its first load, so keep colour and data textures in separate
-  files. A path that fails to load is an error at the element, naming the path, and the mesh stays undrawn (Bevy draws no material with an unloaded texture). A saved texture
+- A texture is an asset path, loaded by the `AssetServer`, or anything a `Handle<Image>` slot takes:
+  a ref, `Image.of(...)` or `Image.load(path, settings)` (docs/assets.md). A path is
+  `Image.load(path)` for the colour textures (base colour, emissive), which load as sRGB, and
+  `Image.load(path, { is_srgb: false })` for the rest, data loaded linear as Bevy's glTF loader
+  does. One file keeps the settings of its first load, so keep colour and data textures in
+  separate files. A path that fails to load is an error at the element, naming the path, and the mesh stays undrawn (Bevy draws no material with an unloaded texture). A saved texture
   redraws by Bevy's asset reload.
 - A two-sided leaf needs both `doubleSided` and `cullMode={null}`, as in Bevy: `doubleSided` alone
   lights the back face but still culls it.
-- `uvTransform` with a scale above 1 clamps rather than tiles: textures sample with Bevy's default
-  sampler, which clamps to the edge. Offsets, rotation and sub-rectangles work.
+- `uvTransform` with a scale above 1 tiles only with a repeating sampler; a path samples with
+  Bevy's default sampler, which clamps to the edge. Offsets, rotation and sub-rectangles work
+  either way. See Tiling textures.
 - `normalMapTexture` or a non-zero `anisotropyStrength` give the entity's `<mesh>` vertex tangents, which Bevy needs for them. The
   tangent mesh is built once per shape and shared; any other mesh stays as it is.
 - Bad values fail the load at the element: an unknown prop or enum name, a non-finite number, a bad
   colour, a malformed `uvTransform`, an empty texture path, or a texture with no `AssetServer`.
+
+### Tiling textures
+
+A texture repeats under a `uvTransform` scale above 1 when its image's sampler repeats. Load it with
+one: `Image.load`'s `sampler` is Bevy's `ImageSampler` in the writer's shape, its fields unset
+keeping `ImageSamplerDescriptor::default()`.
+
+```tsx
+import { Image } from "bevy-ts/bevy";
+
+// A pixel-art atlas, tiled four times across the face.
+const atlas = Image.load("textures/atlas.png", {
+  sampler: { Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat", mag_filter: "Nearest" } },
+});
+
+<entity>
+  <mesh shape="cuboid" />
+  <material unlit baseColorTexture={atlas} uvTransform={{ scale: [4, 4] }} />
+</entity>
+```
+
+A path keeps the settings of its first load, so a file tiled in one place and clamped in another
+needs two files, or `assets.set` on a script-made image's sampler.
 
 ### Blocked on Bevy (16-sampler default limit)
 

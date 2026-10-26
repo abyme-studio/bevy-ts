@@ -378,7 +378,7 @@ export interface AssetClass<F = {}> extends AssetType<F> {
 }
 /** Props written over an asset: any fields, nested structs merged field by field. */
 export type AssetProps<F> = {
-  [K in keyof F]?: F[K] extends readonly unknown[] ? F[K] : F[K] extends { readonly $asset: number } | { readonly $of: string } ? F[K] : F[K] extends object ? AssetProps<F[K]> : F[K];
+  [K in keyof F]?: F[K] extends readonly unknown[] ? F[K] : F[K] extends { readonly $asset: number } | { readonly $of: string } | { readonly $load: string } ? F[K] : F[K] extends object ? AssetProps<F[K]> : F[K];
 };
 /** A script-made asset, from `assets.add`, for any `Handle<T>` slot. The ref goes stale when the script reloads or stops; the asset stays for a hot reload's entities, until a restart or stop. */
 export interface AssetRef<F = unknown> {
@@ -391,6 +391,17 @@ export interface AssetValue<F = unknown> {
   readonly $of: string;
   readonly props: AssetProps<F>;
   readonly [assetBrand]?: F;
+}
+/** `T.load(path, settings)`: an asset path loaded with loader settings, for a `Handle<T>` slot. */
+export interface AssetLoad<F = unknown> {
+  readonly $load: string;
+  readonly settings?: object;
+  readonly [assetBrand]?: F;
+}
+/** An asset type with loader settings (`Image`): `load` gives a path with them (docs/assets.md). */
+export interface Loadable<F, S> {
+  /** `Image.load("atlas.png", { sampler: { Descriptor: { address_mode_u: "Repeat" } } })`. A path loaded again with other settings keeps the first. */
+  load(path: string, settings?: S): AssetLoad<F>;
 }
 /** A Rust asset type by type path; `bevy-ts/bevy` declares every one Bevy reflects. */
 export declare function asset<F = {}>(typePath: string): AssetClass<F>;

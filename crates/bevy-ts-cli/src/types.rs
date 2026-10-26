@@ -200,17 +200,18 @@ fn glam_ts(path: &str) -> Option<String> {
 }
 
 /// A `Handle<T>`'s TS type: an asset path, or `null` for a handle with none; for a `T` with
-/// `ReflectAsset`, also a ref from `assets.add` or a value `T.of(...)` (reflect-assets), `T` named
-/// by [`asset_name`].
+/// `ReflectAsset`, also a ref from `assets.add`, a value `T.of(...)`, and `T.load(...)` for a `T`
+/// with loader settings (reflect-assets), `T` named by [`asset_name`].
 fn handle_ts(registry: &TypeRegistry, path: &str) -> String {
     let asset = registry
         .get_with_type_path(path)
         .and_then(|r| r.data::<bevy::asset::ReflectHandle>())
         .map(|h| h.asset_type_id())
         .filter(|id| registry.get_type_data::<bevy::asset::ReflectAsset>(*id).is_some())
-        .and_then(|id| asset_name(registry, id));
+        .and_then(|id| Some((asset_name(registry, id)?, registry.get(id)?.type_info().type_path())));
     match asset {
-        Some(name) => format!("string | AssetRef<{name}> | AssetValue<{name}> | null"),
+        Some((name, p)) if bevy_ts::reflect_asset::loadable(p) => format!("string | AssetRef<{name}> | AssetValue<{name}> | AssetLoad<{name}> | null"),
+        Some((name, _)) => format!("string | AssetRef<{name}> | AssetValue<{name}> | null"),
         None => "string | null".into(),
     }
 }
@@ -226,11 +227,21 @@ fn assets_named(registry: &TypeRegistry) -> Vec<(String, String, &TypeRegistrati
     out
 }
 
+/// Hand-mapped assets' fields, each by the reflected type its entry reads and writes it as
+/// (`bevy_ts::reflect_asset`'s `Image` entry).
+const HAND_FIELDS: &[(&str, &[(&str, &str)])] = &[("bevy_image::image::Image", &[("sampler", "bevy_image::image::ImageSampler")])];
+
+/// The settings `T.load(path, settings)` takes, by the reflected type each is written as;
+/// `bevy_ts::reflect_asset`'s loader entries.
+const LOAD_SETTINGS: &[(&str, &[(&str, &str)])] = &[("bevy_image::image::Image", &[("sampler", "bevy_image::image::ImageSampler"), ("is_srgb", "bool")])];
+
 /// An asset's fields as `bevy-ts/bevy` types them: as the writer takes them, tagged with its type
 /// path so refs of two assets never type as each other.
 fn asset_fields(registry: &TypeRegistry, path: &str, reg: &TypeRegistration) -> String {
-    let fields: Vec<String> = match reg.type_info() {
-        TypeInfo::Struct(st) if bevy_ts::reflect_value::uncovered(path).is_none() => {
+    let hand = HAND_FIELDS.iter().find(|(p, _)| *p == path).map(|(_, f)| *f);
+    let fields: Vec<String> = match (hand, reg.type_info()) {
+        (Some(fields), _) => fields.iter().map(|(f, ty)| format!("{}: {}", prop(f), ts_type(registry, ty, 1))).collect(),
+        (None, TypeInfo::Struct(st)) if bevy_ts::reflect_value::uncovered(path).is_none() => {
             st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(registry, f.type_path(), 1))).collect()
         }
         _ => vec![],
@@ -585,7 +596,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name.\n\
          import {{ Component, EntityEvent, Event, Message, Resource }} from \"bevy-ts\";\n\
-         import type {{ AssetClass, AssetFields, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
+         import type {{ AssetClass, AssetFields, AssetLoad, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
     let components = named(&registry, native);
@@ -677,10 +688,24 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         let default = reg.data::<ReflectDefault>().is_some();
         js.push('\n');
         dts.push('\n');
-        let _ = writeln!(js, "export const {name} = asset({path:?}{});", if default { "" } else { ", { of: false }" });
+        let settings = LOAD_SETTINGS.iter().find(|(p, _)| *p == path).map(|(_, s)| *s);
+        let opts = match (default, settings.is_some()) {
+            (true, false) => "",
+            (true, true) => ", { load: true }",
+            (false, false) => ", { of: false }",
+            (false, true) => ", { of: false, load: true }",
+        };
+        let _ = writeln!(js, "export const {name} = asset({path:?}{opts});");
         let _ = writeln!(dts, "export type {name} = {};", asset_fields(&registry, &path, reg));
         let class = if default { "AssetClass" } else { "AssetType" };
-        let _ = writeln!(dts, "export declare const {name}: {class}<{name}>;");
+        match settings {
+            Some(s) => {
+                let fields: Vec<String> = s.iter().map(|(k, ty)| format!("{}?: {}", prop(k), ts_type(&registry, ty, 1))).collect();
+                let _ = writeln!(dts, "export type {name}LoadSettings = {{ {} }};", fields.join("; "));
+                let _ = writeln!(dts, "export declare const {name}: {class}<{name}> & Loadable<{name}, {name}LoadSettings>;");
+            }
+            None => _ = writeln!(dts, "export declare const {name}: {class}<{name}>;"),
+        }
     }
     emit_rust_events(&registry, &mut taken, assets, &mut js, &mut dts);
     (js, dts)
@@ -862,7 +887,7 @@ pub fn emit(world: &World) -> String {
          // Component and Resource classes are columns in TS systems; ReflectComponent classes are\n\
          // typed values for TSX, the protocol and With/Without filters.\n\n\
          import { Component, ReflectComponent, Resource } from \"bevy-ts\";\n\
-         import type { AssetFields, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
+         import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from \"bevy-ts\";\n\n",
     );
     // The `T` of every `Handle<T>` a field names; the asset classes are `bevy-ts/bevy`'s.
     for (path, name, reg) in assets_named(&registry) {

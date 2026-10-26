@@ -383,21 +383,33 @@ mod drawn {
 
     /// The scene `s`, with a black background and the camera and sun `stage` spawns.
     fn draw(name: &str, stage: &str, scene: &str, textures: &[(&str, [u8; 4])]) -> Image {
-        draw_with(name, "", stage, scene, &[], textures, Color::BLACK)
+        let textures: Vec<(&str, Vec<u8>)> = textures.iter().map(|(p, rgba)| (*p, png(4, 4, *rgba))).collect();
+        draw_with(name, "", stage, scene, &[], &textures, Color::BLACK)
+    }
+
+    /// A 4 x 4 PNG, its left half `left` and its right half `right`.
+    fn halves(left: [u8; 4], right: [u8; 4]) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut enc = png::Encoder::new(&mut out, 4, 4);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let row = [left, left, right, right].concat();
+        enc.write_header().unwrap().write_image_data(&row.repeat(4)).unwrap();
+        out
     }
 
     /// As `draw`, with `header` after the imports, `files` beside the game, and a `clear` colour.
-    fn draw_with(name: &str, header: &str, stage: &str, scene: &str, files: &[(&str, &str)], textures: &[(&str, [u8; 4])], clear: Color) -> Image {
+    fn draw_with(name: &str, header: &str, stage: &str, scene: &str, files: &[(&str, &str)], textures: &[(&str, Vec<u8>)], clear: Color) -> Image {
         let game = format!(
             "import {{ app, Startup }} from \"bevy-ts\";\nimport type {{ Commands }} from \"bevy-ts\";\nimport {{ Camera3d, DirectionalLight, Transform }} from \"bevy-ts/bevy\";\n{header}\n\nexport function stage(commands: Commands) {{\n{stage}\n}}\napp.addSystems(Startup, stage);\n\napp.scene(\"s\", () => (\n  <>\n{scene}\n  </>\n));\n"
         );
         let mut all = vec![("game.tsx", game.as_str()), ("package.json", "{}")];
         all.extend_from_slice(files);
         let dir = project(name, &all);
-        for (path, rgba) in textures {
+        for (path, bytes) in textures {
             let p = dir.join("assets").join(path);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::write(p, png(4, 4, *rgba)).unwrap();
+            std::fs::write(p, bytes).unwrap();
         }
         let mut app = App::new();
         app.add_plugins(headless::default_plugins(true).set(sync_pipelines()).set(headless::asset_plugin_unwatched(&dir.join("assets"))))
@@ -470,6 +482,31 @@ mod drawn {
         let (plain, mapped) = (at(&image, 0.38, 0.5), at(&image, 0.62, 0.5));
         let diff = (plain.red - mapped.red).abs() + (plain.green - mapped.green).abs() + (plain.blue - mapped.blue).abs();
         assert!(diff > 0.05, "the normal map changes the lit face: {plain:?} vs {mapped:?}");
+    }
+
+    /// Agent town's atlas: a pixel-art texture tiled four times across a face (`uvTransform` scale 4).
+    /// Middle of the face, left to right: whether each sample is the atlas's green half.
+    fn atlas_row(name: &str, settings: &str) -> Vec<bool> {
+        let header = format!("import {{ Image }} from \"bevy-ts/bevy\";\nconst atlas = Image.load(\"textures/atlas.png\"{settings});");
+        let scene = "    <entity>\n      <mesh shape=\"cuboid\" />\n      <material unlit baseColorTexture={atlas} uvTransform={{ scale: [4, 4] }} />\n    </entity>";
+        let atlas = halves([0, 255, 0, 255], [255, 0, 0, 255]);
+        let image = draw_with(name, &header, CAMERA, scene, &[], &[("textures/atlas.png", atlas)], Color::BLACK);
+        (0..41).map(|i| at(&image, 0.42 + 0.004 * i as f32, 0.5)).map(|c| c.green > c.red).collect()
+    }
+
+    fn changes(row: &[bool]) -> usize {
+        row.windows(2).filter(|w| w[0] != w[1]).count()
+    }
+
+    #[test]
+    fn an_atlas_scaled_by_four_repeats_with_a_repeating_sampler() {
+        let repeat = ", { sampler: { Descriptor: { address_mode_u: \"Repeat\", address_mode_v: \"Repeat\", mag_filter: \"Nearest\" } } }";
+        let row = atlas_row("standard-atlas-repeat", repeat);
+        assert!(changes(&row) >= 3, "green and red repeat across the face: {row:?}");
+        // Bevy's default sampler clamps: past the first tile the face is the atlas's right edge.
+        let row = atlas_row("standard-atlas-clamp", "");
+        assert_eq!(changes(&row), 0, "clamped to the red edge: {row:?}");
+        assert!(!row[0], "red: {row:?}");
     }
 
     /// A cube that adds over a red background: what is behind shows through its green.
