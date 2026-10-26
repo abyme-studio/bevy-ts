@@ -350,7 +350,7 @@ app.scene("s", () => (
 
 #[test]
 fn a_failed_reload_adds_no_asset() {
-    let (dir, mut app) = setup("assets-failed-reload", "assets.add(StandardMaterial, { unlit: true });\n");
+    let (dir, mut app) = setup("assets-failed-reload-none", "assets.add(StandardMaterial, { unlit: true });\n");
     assert_eq!(materials(&app).len(), 1);
     let mut cursor = app.world().resource::<Messages<AssetEvent<StandardMaterial>>>().get_cursor_current();
     // The new generation adds while it loads, then throws.
