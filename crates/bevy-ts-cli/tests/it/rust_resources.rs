@@ -41,6 +41,22 @@ mod b {
     }
 }
 
+/// A tiered and an untiered resource that share the short name `Breeze`.
+pub mod tiered {
+    use bevy::prelude::*;
+    #[derive(Resource, Reflect, Default)]
+    #[reflect(Resource, Default)]
+    pub struct Breeze {
+        pub v: f32,
+    }
+}
+
+pub mod untiered {
+    use bevy::prelude::*;
+    #[derive(Resource, Default)]
+    pub struct Breeze;
+}
+
 const HEAD: &str = r#"import { app, f32, nativeResource, Transform, u32, Update } from "bevy-ts";
 import type { Local, Option, Res, ResMut } from "bevy-ts";
 export class UiScale extends nativeResource("UiScale", { value: f32 }) {}
@@ -281,4 +297,20 @@ app.addSystems(Update, systems(s).runIf(resourceExistsAndEquals(Gust.of({ v: 1 }
     let mut app = with_types(&dir);
     let r = reload(&mut app, false);
     assert!(r.errors.iter().any(|e| e.message.contains("resourceExistsAndEquals(Gust): Gust names more than one Rust type")), "{:?}", r.errors);
+}
+
+#[test]
+fn a_short_name_a_tiered_and_an_untiered_resource_share_fails_the_load_naming_both_paths() {
+    let body = r#"
+export class Breeze extends nativeResource("Breeze", { v: f32 }) {}
+export function s(b: Res<Breeze>) {}
+app.addSystems(Update, s);
+"#;
+    let dir = project("rust-res-tiered-untiered", &[("game.ts", &format!("{HEAD}{body}"))]);
+    let mut app = with_types(&dir);
+    app.register_type::<tiered::Breeze>();
+    app.world_mut().register_component::<untiered::Breeze>();
+    let r = reload(&mut app, false);
+    let named = |m: &str| m.contains("Breeze names more than one Rust type") && m.contains("it::rust_resources::tiered::Breeze") && m.contains("it::rust_resources::untiered::Breeze");
+    assert!(r.errors.iter().any(|e| named(&e.message)), "{:?}", r.errors);
 }

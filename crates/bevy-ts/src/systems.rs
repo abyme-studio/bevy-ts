@@ -531,6 +531,9 @@ fn resolve_res(world: &mut World, name: &str, write: bool, ts: &TsLookup) -> Res
         return Ok(hit);
     }
     crate::layout_reflect::retry(world, name);
+    // A short name is looked up among every registered type, not only the tiered ones, so a
+    // tiered and an untiered resource that share it are refused too.
+    rust_component_by_name(world, name)?;
     let native = world.resource::<NativeLayouts>();
     if let Some(t) = native.reflect_tier(name) {
         return Err(if t.resource {
