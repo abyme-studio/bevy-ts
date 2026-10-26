@@ -22,6 +22,7 @@ pub fn register(app: &mut App) {
     let mut redundant = Vec::new();
     defaults(&mut r, &mut redundant);
     ranges(&mut r, &mut redundant);
+    resources(&mut r, &mut redundant);
     drop(r);
     app.insert_resource(RedundantTypeData(redundant));
 }
@@ -99,10 +100,22 @@ fn ranges(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
     each!(f32, f64, i8, i16, i32, i64, u8, u16, u32, u64, usize, isize);
 }
 
+/// `ReflectResource` for resources Bevy reflects without `reflect(Resource)`, so `Res<T>` and
+/// `ResMut<T>` reach them.
+fn resources(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
+    // bevy_input 0.20 src/mouse.rs:165
+    with_resource::<bevy::input::mouse::MouseScrollPixelsPerLine>(r, redundant);
+}
+
 #[cfg_attr(not(feature = "pbr"), allow(dead_code))]
 fn with_default<T: Reflect + TypePath + GetTypeRegistration + Default>(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
     r.register::<T>();
     add::<T, ReflectDefault>(r, redundant);
+}
+
+fn with_resource<T: Resource + bevy::reflect::FromReflect + TypePath + GetTypeRegistration>(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
+    r.register::<T>();
+    add::<T, bevy::ecs::reflect::ReflectResource>(r, redundant);
 }
 
 fn with_serde<T>(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>)
@@ -114,12 +127,13 @@ where
     add::<T, bevy::reflect::ReflectDeserialize>(r, redundant);
 }
 
-/// Inserts `D` for the registered `T` when it lacks it; notes `T` when Bevy already has it.
+/// Inserts `D`, and the data `D` depends on (`ReflectResource` needs `ReflectComponent`), for the
+/// registered `T` when it lacks it; notes `T` when Bevy already has it.
 fn add<T: TypePath + 'static, D: TypeData + CreateTypeData<T>>(r: &mut TypeRegistry, redundant: &mut Vec<&'static str>) {
     let reg = r.get_mut(TypeId::of::<T>()).expect("registered first");
     match reg.data::<D>() {
         Some(_) => redundant.push(T::type_path()),
-        None => reg.insert(<D as CreateTypeData<T>>::create_type_data(())),
+        None => reg.register_type_data::<D, T>(),
     }
 }
 
@@ -137,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn visibility_range_and_ranges_get_their_data() {
+    fn visibility_range_ranges_and_scroll_pixels_get_their_data() {
         let mut app = App::new();
         register(&mut app);
         let registry = app.world().resource::<AppTypeRegistry>().read();
@@ -145,5 +159,8 @@ mod tests {
         assert!(registry.get_type_data::<ReflectDefault>(TypeId::of::<bevy::camera::visibility::VisibilityRange>()).is_some());
         assert!(registry.get_type_data::<bevy::reflect::ReflectDeserialize>(TypeId::of::<Range<f32>>()).is_some());
         assert!(registry.get_type_data::<bevy::reflect::ReflectSerialize>(TypeId::of::<RangeInclusive<usize>>()).is_some());
+        let pixels = TypeId::of::<bevy::input::mouse::MouseScrollPixelsPerLine>();
+        assert!(registry.get_type_data::<bevy::ecs::reflect::ReflectResource>(pixels).is_some());
+        assert!(registry.get_type_data::<bevy::ecs::reflect::ReflectComponent>(pixels).is_some(), "a 0.20 resource is a component");
     }
 }

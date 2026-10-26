@@ -524,6 +524,11 @@ export declare class AccumulatedMouseScroll extends Resource {
   declare readonly delta: Vec2;
 }
 
+export declare class MouseScrollPixelsPerLine extends Resource {
+  static readonly path: "bevy_input::mouse::MouseScrollPixelsPerLine";
+  declare value: f32;
+}
+
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class FocusedInputKeyboardInput extends ReflectComponent {
   static readonly path: "bevy_input_focus::FocusedInput<bevy_input::keyboard::KeyboardInput>";

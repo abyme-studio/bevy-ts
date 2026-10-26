@@ -258,7 +258,7 @@ What reaches TS, by resource (tiers from `bevy-ts types` on the prebuilt engine)
 | `GlobalAmbientLight` | layout, `color` a hole | `Res`/`ResMut` | here; `color` reflect-coverage stage 3 |
 | `UiScale` | layout | `Res`/`ResMut` | here |
 | `AccumulatedMouseMotion`, `AccumulatedMouseScroll` | layout | `Res` | path here; docs and tests script-input-devices |
-| `MouseScrollPixelsPerLine` | none: Bevy reflects it without `Resource` | not reachable | script-input-devices |
+| `MouseScrollPixelsPerLine` | layout; bevy-ts adds the `ReflectResource` Bevy leaves out | `Res`/`ResMut` | scroll-pixels-reflect |
 | `PickingSettings`, `PointerInputSettings`, `MeshPickingSettings`, `SpritePickingSettings`, `UiPickingSettings` | layout | `Res`/`ResMut` | here |
 | `WireframeConfig`, `Wireframe2dConfig`, `GlobalUiDebugOptions`, `GlobalRenderDebugOverlay`, `TransformGizmoState` | layout | `Res`/`ResMut` | here |
 | `DefaultOpaqueRendererMethod`, `ManageAccessibilityUpdates`, `InputFocusVisible` | layout | `Res`/`ResMut` | here |
@@ -647,14 +647,11 @@ again the next frame:
 
 ```ts
 import type { Res } from "bevy-ts";
-import { AccumulatedMouseMotion, AccumulatedMouseScroll } from "bevy-ts/bevy";
+import { AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollPixelsPerLine } from "bevy-ts/bevy";
 
-// 100 is the default of Bevy's MouseScrollPixelsPerLine, which TS cannot read (table below).
-const PIXELS_PER_LINE = 100;
-
-export function orbit(motion: Res<AccumulatedMouseMotion>, scroll: Res<AccumulatedMouseScroll>) {
+export function orbit(motion: Res<AccumulatedMouseMotion>, scroll: Res<AccumulatedMouseScroll>, perLine: Res<MouseScrollPixelsPerLine>) {
   turn(motion.delta.x, motion.delta.y);
-  zoom(scroll.unit === "Line" ? scroll.delta.y * PIXELS_PER_LINE : scroll.delta.y);
+  zoom(scroll.unit === "Line" ? scroll.delta.y * perLine.value : scroll.delta.y);
 }
 ```
 
@@ -663,12 +660,12 @@ with `MessageReader` (Rust messages and events, above). A rumble is a `MessageWr
 `duration` is in seconds, as reflect-coverage spells a `Duration`:
 
 ```ts
-import type { MessageReader, MessageWriter } from "bevy-ts";
-import { GamepadEvent, GamepadRumbleRequest, MouseWheel, PinchGesture } from "bevy-ts/bevy";
+import type { MessageReader, MessageWriter, Res } from "bevy-ts";
+import { GamepadEvent, GamepadRumbleRequest, MouseScrollPixelsPerLine, MouseWheel, PinchGesture } from "bevy-ts/bevy";
 
-export function pinchZoom(pinch: MessageReader<PinchGesture>, wheel: MessageReader<MouseWheel>) {
+export function pinchZoom(pinch: MessageReader<PinchGesture>, wheel: MessageReader<MouseWheel>, perLine: Res<MouseScrollPixelsPerLine>) {
   pinch.each((p) => zoom(p));                              // a tuple struct reads as its value
-  wheel.each((w) => zoom(w.unit === "Line" ? w.y * PIXELS_PER_LINE : w.y));
+  wheel.each((w) => zoom(w.unit === "Line" ? w.y * perLine.value : w.y));
 }
 export function buzzOnConnect(events: MessageReader<GamepadEvent>, rumble: MessageWriter<GamepadRumbleRequest>) {
   events.each((e) => {
@@ -696,7 +693,7 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 | `KeyboardInput`, `KeyboardFocusLost` | `MessageReader` | rust-events |
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` | script-input-devices |
 | `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollUnit` | `Res<T>`; the unit as `"Line" \| "Pixel"` | rust-resources; script-input-devices |
-| `MouseScrollPixelsPerLine` | none: Bevy 0.20 reflects it without `reflect(Resource)`; `register_type_data::<_, ReflectResource>()` would reach it | follow-up, lead@script-input-devices |
+| `MouseScrollPixelsPerLine` | `Res`/`ResMut`; bevy-ts adds the `ReflectResource` Bevy 0.20 leaves out | scroll-pixels-reflect |
 | `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events |
 | `Window::cursor_position`, `physical_cursor_position` | `Cursor` | script-input-devices |
 | `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events |

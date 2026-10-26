@@ -171,6 +171,8 @@ export class AccumulatedMouseMotion extends nativeResource("AccumulatedMouseMoti
 
 export class AccumulatedMouseScroll extends nativeResource("AccumulatedMouseScroll", { unit: enumOf("Line", "Pixel"), delta: vec2 }) {}
 
+export class MouseScrollPixelsPerLine extends nativeResource("MouseScrollPixelsPerLine", { value: f32 }) {}
+
 export const FocusedInputKeyboardInput = reflectClass("FocusedInput<KeyboardInput>");
 
 export class InputFocusVisible extends nativeResource("InputFocusVisible", { value: bool }) {}

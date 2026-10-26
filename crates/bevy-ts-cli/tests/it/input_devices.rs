@@ -339,3 +339,26 @@ fn mouse_motion_and_scroll_read_as_bevys_resources() {
     assert_eq!(frame(&mut app, "motion"), "motion 4,-2 scroll Pixel 0,24", "one frame's messages, summed");
     assert_eq!(frame(&mut app, "motion"), "motion 0,0 scroll Line 0,0", "and cleared the next, back to Bevy's Line");
 }
+
+const PIXELS: &str = r#"import { app, systems, Update } from "bevy-ts";
+import type { Res, ResMut } from "bevy-ts";
+import { MouseScrollPixelsPerLine } from "bevy-ts/bevy";
+
+export function read(pixels: Res<MouseScrollPixelsPerLine>) {
+  console.log(`pixels ${pixels.value}`);
+}
+export function set(pixels: ResMut<MouseScrollPixelsPerLine>) {
+  pixels.value = 40;
+}
+app.addSystems(Update, read, systems(set).after(read));
+"#;
+
+/// Bevy reflects `MouseScrollPixelsPerLine` without `reflect(Resource)`; bevy-ts adds it, so a
+/// script reads it with `Res` and sets it with `ResMut` under Bevy's name.
+#[test]
+fn mouse_scroll_pixels_per_line_reads_and_writes_as_bevys_resource() {
+    use bevy::input::mouse::MouseScrollPixelsPerLine;
+    let mut app = input_app("input-scroll-pixels", PIXELS, false);
+    assert_eq!(frame(&mut app, "pixels"), "pixels 100", "Bevy's default");
+    assert_eq!(**app.world().resource::<MouseScrollPixelsPerLine>(), 40.0, "ResMut wrote Bevy's resource");
+}
