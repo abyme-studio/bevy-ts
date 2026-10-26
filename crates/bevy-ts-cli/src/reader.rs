@@ -1004,12 +1004,20 @@ impl Reader<'_> {
             Ty::Strings(v, _) => Ok(json!({ "kind": "enum", "variants": v })),
             Ty::Keyword("boolean", _) => Ok(json!({ "kind": "bool" })),
             Ty::Keyword("string", _) => Ok(json!({ "kind": "string" })),
-            // `T[]`: a list of numbers, bool or string.
+            // `T[]`: a list of numbers, bool, string, vectors, `Entity`, a string-literal union, or
+            // an object type of those but string.
             Ty::Array(of, span) => {
-                let item = self.field_ty(of, scope, depth + 1)?;
+                let item = match self.field_ty(of, scope, depth + 1) {
+                    Ok(item) => item,
+                    Err(e) => match self.object(of, scope, depth + 1) {
+                        Ok((members, ms)) => self.struct_ty(&members, &ms, span_of(of), depth)?,
+                        Err(_) => return Err(e),
+                    },
+                };
                 match item["kind"].as_str() {
-                    Some("f32" | "f64" | "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "bool" | "string") => Ok(json!({ "kind": "list", "of": item })),
-                    _ => Err((*span, "a list holds numbers (f32, f64, i8..u32), bool or string".into())),
+                    Some("list") => Err((*span, "a list holds no list".into())),
+                    Some("timer" | "stopwatch") => Err((*span, "a list holds numbers, bool, string, vectors, Entity, a string-literal union or an object of those".into())),
+                    _ => Ok(json!({ "kind": "list", "of": item })),
                 }
             }
             Ty::Keyword(k, span) => Err(bad(*span, k)),
@@ -1034,6 +1042,28 @@ impl Reader<'_> {
                 Err(bad(span, &scope.file.source[span.start as usize..span.end as usize]))
             }
         }
+    }
+
+    /// A list's object item (`{ at: Vec3, hp: f32 }[]`): each member a plain field type, in order.
+    fn struct_ty(&mut self, members: &[Member], scope: &Scope, span: Span, depth: u32) -> Result<Value, (Span, String)> {
+        if members.is_empty() {
+            return Err((span, "a list's object type needs at least one member".into()));
+        }
+        let mut fields = Vec::new();
+        for (name, t, at, optional) in members {
+            let Some(t) = t.as_ref().filter(|_| !name.is_empty()) else {
+                return Err((*at, "a list's object type holds typed members, no methods".into()));
+            };
+            if *optional {
+                return Err((*at, format!("{name} is optional: a list's object item gives every member")));
+            }
+            let ty = self.field_ty(t, scope, depth + 1)?;
+            if matches!(ty["kind"].as_str(), Some("string" | "list" | "timer" | "stopwatch")) {
+                return Err((*at, format!("{name}: an object in a list holds numbers, bool, vectors, Entity or a string-literal union")));
+            }
+            fields.push(json!({ "name": name, "type": ty }));
+        }
+        Ok(json!({ "kind": "struct", "fields": fields }))
     }
 
     fn unreadable(&self, scope: &Scope, span: Span, what: &str) -> Fail {

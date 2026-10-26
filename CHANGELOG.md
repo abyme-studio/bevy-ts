@@ -4,6 +4,11 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- Protocol 1.34.0: a list field's item type `of` may be a vector, `entity`, `enum` or
+  `{ kind: "struct", fields: [{ name, type }] }` (`path: Vec3[]`, `hits: { at: Vec3, by: Entity }[]`).
+  A reader that switches on a field type's `kind` handles `struct`; its value is an object of every
+  member. A Rust system reads such a list as a `Vec<T>` of the item's layout: `Vec4` and `Quat`
+  items as `[f32; 4]`, an object as a `#[repr(C)]` struct of its members.
 - Protocol 1.33.0: a TS component field may be `{ kind: "string" }` (`label: string`) or
   `{ kind: "list", of }` (`scores: u32[]`), heap fields. A reader that switches on a field type's
   `kind` handles both; a component with one has an 8-byte header before its first field, already in

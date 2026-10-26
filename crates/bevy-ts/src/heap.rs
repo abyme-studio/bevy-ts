@@ -9,8 +9,14 @@
 //! [`HeapBytes`] is a value's bytes that own their heap values: built by `value.rs` or a
 //! [`HeapFill`], moved into a column once by `commands::insert_owned`, dropped through the shape
 //! otherwise. Its buffer is unaligned, so every access here reads and writes unaligned.
+//!
+//! A list of fixed-size items other than numbers (vectors, `Entity`, enums, objects of those) is a
+//! raw list ([`ItemShape`]): the three words of a Rust `Vec<T>` of a `T` of the item's layout,
+//! built, cloned and freed only here. A Rust system reads it as that `Vec<T>` (a `Vec4` or `Quat`
+//! item as `[f32; 4]`, an object as a `#[repr(C)]` struct of its members).
 
 use crate::layout::{ComponentLayout, FieldType};
+use bevy::prelude::Entity;
 use crate::manifest::ComponentDecl;
 use bevy::ecs::entity::{ComponentCloneCtx, SourceComponent};
 use bevy::ptr::{OwningPtr, Ptr};
@@ -37,6 +43,234 @@ pub enum Item {
     U32,
     Bool,
     Str,
+    /// A vector, `Entity`, an enum or an object: a raw list of the item's bytes.
+    Plain(&'static ItemShape),
+}
+
+/// A raw list's item: its type and layout. One per distinct type, leaked once.
+#[derive(Debug)]
+pub struct ItemShape {
+    pub ty: FieldType,
+    /// The item's size, a multiple of `align`: the list's stride.
+    pub size: usize,
+    pub align: usize,
+    /// Lists of it in a slot now: for tests, which check every path frees what it built.
+    live: AtomicIsize,
+}
+
+impl PartialEq for ItemShape {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl Eq for ItemShape {}
+
+impl std::hash::Hash for ItemShape {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.ty.hash(h)
+    }
+}
+
+impl ItemShape {
+    pub fn of(ty: &FieldType) -> &'static ItemShape {
+        static SHAPES: LazyLock<Mutex<HashMap<FieldType, &'static ItemShape>>> = LazyLock::new(Default::default);
+        let mut shapes = SHAPES.lock().unwrap_or_else(|e| e.into_inner());
+        shapes.entry(ty.clone()).or_insert_with(|| {
+            let (size, align) = (ty.size(), ty.align());
+            assert!(size > 0 && size.is_multiple_of(align), "a list item's size is a multiple of its alignment");
+            Box::leak(Box::new(ItemShape { ty: ty.clone(), size, align, live: AtomicIsize::new(0) }))
+        })
+    }
+
+    /// Lists of this item alive now.
+    pub fn live(&self) -> isize {
+        self.live.load(Ordering::SeqCst)
+    }
+
+    fn layout(&self, cap: usize) -> std::alloc::Layout {
+        std::alloc::Layout::from_size_align(self.size * cap, self.align).expect("a list's buffer fits in memory")
+    }
+
+    /// One item's bytes in the codec's wire format: numbers and lanes as themselves, an entity as
+    /// its bits, an enum as its `u32` variant index, an object as its members in order.
+    fn put(ty: &FieldType, b: &[u8], out: &mut Vec<u8>) {
+        match ty {
+            FieldType::Enum { .. } => {
+                let mut raw = [0u8; 4];
+                raw[..b.len()].copy_from_slice(b);
+                let stored = u32::from_le_bytes(raw);
+                out.extend_from_slice(&ty.enum_index(stored).map_or(u32::MAX, |i| i as u32).to_le_bytes());
+            }
+            FieldType::Struct { .. } => {
+                for f in ty.struct_layout().unwrap().fields {
+                    ItemShape::put(&f.ty, &b[f.offset..f.offset + f.ty.size()], out);
+                }
+            }
+            _ => out.extend_from_slice(b),
+        }
+    }
+
+    /// Reads one item of `ty` in the wire format into `out` (`ty.size()` bytes, padding zero).
+    fn read(ty: &FieldType, b: &mut &[u8], out: &mut [u8]) -> Result<(), String> {
+        match ty {
+            FieldType::Enum { variants, .. } => {
+                let i = u32::from_le_bytes(take(b, 4)?.try_into().unwrap());
+                let stored = ty.enum_value(i as usize).ok_or_else(|| format!("variant {i} of {}", variants.len()))?;
+                out.copy_from_slice(&stored.to_le_bytes()[..out.len()]);
+            }
+            FieldType::Struct { .. } => {
+                for f in ty.struct_layout().unwrap().fields {
+                    ItemShape::read(&f.ty, b, &mut out[f.offset..f.offset + f.ty.size()])?;
+                }
+            }
+            FieldType::Entity => {
+                let bits = u64::from_le_bytes(take(b, 8)?.try_into().unwrap());
+                Entity::try_from_bits(bits).ok_or_else(|| format!("{bits} is not an entity"))?;
+                out.copy_from_slice(&bits.to_le_bytes());
+            }
+            FieldType::Bool => out[0] = (take(b, 1)?[0] != 0) as u8,
+            _ => out.copy_from_slice(take(b, out.len())?),
+        }
+        Ok(())
+    }
+
+    /// One item's bytes with its padding zeroed, so equal items have equal bytes.
+    fn copy_item(ty: &FieldType, src: &[u8], out: &mut [u8]) {
+        match ty.struct_layout() {
+            Some(l) => l.fields.iter().for_each(|f| out[f.offset..f.offset + f.ty.size()].copy_from_slice(&src[f.offset..f.offset + f.ty.size()])),
+            None => out.copy_from_slice(src),
+        }
+    }
+}
+
+/// A raw list's items, owned: `len` items of `shape`, `shape.size` bytes each, padding zero.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlainList {
+    pub shape: &'static ItemShape,
+    pub bytes: Vec<u8>,
+}
+
+impl PlainList {
+    pub fn len(&self) -> usize {
+        self.bytes.len() / self.shape.size
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    /// Item `i`'s bytes.
+    pub fn item(&self, i: usize) -> &[u8] {
+        &self.bytes[i * self.shape.size..(i + 1) * self.shape.size]
+    }
+}
+
+/// Where `Vec` keeps its pointer, capacity and length among its three words: not stable Rust, so
+/// read once from a real one. A raw list writes its words in that order.
+pub fn vec_order() -> [usize; 3] {
+    static ORDER: LazyLock<[usize; 3]> = LazyLock::new(|| {
+        const _: () = assert!(size_of::<Vec<u8>>() == 3 * size_of::<usize>());
+        let mut v: Vec<u8> = Vec::with_capacity(7);
+        v.extend_from_slice(&[1, 2]);
+        let (ptr, cap) = (v.as_ptr() as usize, v.capacity());
+        assert!(cap != 2 && ptr != 2 && ptr != cap);
+        // SAFETY: a `Vec` is three words; read as a copy, the `Vec` still owns its buffer.
+        let words: [usize; 3] = unsafe { std::mem::transmute_copy(&v) };
+        let at = |x: usize| words.iter().position(|w| *w == x).expect("a Vec is a pointer, a capacity and a length");
+        [at(ptr), at(cap), at(2)]
+    });
+    *ORDER
+}
+
+/// A raw list's words: its buffer, capacity and length, in items.
+#[derive(Clone, Copy)]
+struct Raw {
+    ptr: *mut u8,
+    cap: usize,
+    len: usize,
+}
+
+impl Raw {
+    /// An empty list, as `Vec::new()` makes it: a dangling pointer aligned to the item.
+    fn empty(shape: &ItemShape) -> Raw {
+        Raw { ptr: std::ptr::without_provenance_mut(shape.align), cap: 0, len: 0 }
+    }
+
+    /// A list owning a copy of `items` (`shape.size` bytes each).
+    fn of(shape: &ItemShape, items: &[u8]) -> Raw {
+        let len = items.len() / shape.size;
+        if len == 0 {
+            return Raw::empty(shape);
+        }
+        let layout = shape.layout(len);
+        // SAFETY: `layout` has a non-zero size; the buffer is filled before it is read.
+        let ptr = unsafe { std::alloc::alloc(layout) };
+        if ptr.is_null() {
+            std::alloc::handle_alloc_error(layout);
+        }
+        // SAFETY: the buffer holds `items.len()` bytes.
+        unsafe { std::ptr::copy_nonoverlapping(items.as_ptr(), ptr, items.len()) };
+        Raw { ptr, cap: len, len }
+    }
+
+    /// # Safety
+    /// `p` holds a raw list's words.
+    unsafe fn get(p: *const u8) -> Raw {
+        let o = vec_order();
+        // SAFETY: the caller's contract.
+        let w = |i: usize| unsafe { std::ptr::read_unaligned((p as *const usize).add(o[i])) };
+        Raw { ptr: std::ptr::with_exposed_provenance_mut(w(0)), cap: w(1), len: w(2) }
+    }
+
+    /// # Safety
+    /// `p` has room for a raw list's words; what was there is not dropped. The slot then owns a
+    /// list of `shape`.
+    unsafe fn put(self, p: *mut u8, shape: &ItemShape) {
+        shape.live.fetch_add(1, Ordering::SeqCst);
+        let o = vec_order();
+        // SAFETY: the caller's contract.
+        unsafe {
+            std::ptr::write_unaligned((p as *mut usize).add(o[0]), self.ptr.expose_provenance());
+            std::ptr::write_unaligned((p as *mut usize).add(o[1]), self.cap);
+            std::ptr::write_unaligned((p as *mut usize).add(o[2]), self.len);
+        }
+    }
+
+    /// The items' bytes.
+    ///
+    /// # Safety
+    /// `self` is a live list of `shape`.
+    unsafe fn items<'a>(self, shape: &ItemShape) -> &'a [u8] {
+        // SAFETY: the caller's contract: `len` items are initialised.
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len * shape.size) }
+    }
+
+    /// The items, owned, padding zeroed.
+    ///
+    /// # Safety
+    /// As [`Raw::items`].
+    unsafe fn to_list(self, shape: &'static ItemShape) -> PlainList {
+        // SAFETY: the caller's contract.
+        let src = unsafe { self.items(shape) };
+        let mut bytes = vec![0u8; src.len()];
+        for (a, b) in src.chunks_exact(shape.size).zip(bytes.chunks_exact_mut(shape.size)) {
+            ItemShape::copy_item(&shape.ty, a, b);
+        }
+        PlainList { shape, bytes }
+    }
+
+    /// Frees the buffer of the list a slot held.
+    ///
+    /// # Safety
+    /// `self` is a live list of `shape`, freed once, here.
+    unsafe fn free(self, shape: &ItemShape) {
+        shape.live.fetch_sub(1, Ordering::SeqCst);
+        if self.cap != 0 {
+            // SAFETY: allocated with this layout, by `Raw::of` or by a Rust `Vec<T>` of the same.
+            unsafe { std::alloc::dealloc(self.ptr, shape.layout(self.cap)) };
+        }
+    }
 }
 
 /// What a heap field holds: a `String`, or a `Vec` of an item type.
@@ -59,6 +293,7 @@ impl HeapKind {
             FieldType::U32 => Some(Item::U32),
             FieldType::Bool => Some(Item::Bool),
             FieldType::Str => Some(Item::Str),
+            t if t.item_member() || matches!(t, FieldType::Struct { .. }) => Some(Item::Plain(ItemShape::of(t))),
             _ => None,
         };
         match ty {
@@ -82,6 +317,7 @@ pub enum List {
     U32(Vec<u32>),
     Bool(Vec<bool>),
     Str(Vec<String>),
+    Plain(PlainList),
 }
 
 /// A heap field's value, owned.
@@ -139,6 +375,7 @@ macro_rules! slot_type {
                 type $T = Vec<String>;
                 $body
             }
+            HeapKind::List(Item::Plain(_)) => unreachable!("a raw list has no Rust type here"),
         }
     };
 }
@@ -241,6 +478,9 @@ list_slots!(F32 f32, F64 f64, I8 i8, U8 u8, I16 i16, U16 u16, I32 i32, U32 u32, 
 impl HeapValue {
     /// The empty value of a kind: `""` or `[]`. It allocates nothing.
     pub fn empty(kind: HeapKind) -> HeapValue {
+        if let HeapKind::List(Item::Plain(shape)) = kind {
+            return HeapValue::List(List::Plain(PlainList { shape, bytes: Vec::new() }));
+        }
         slot_type!(kind, T => T::default().into_value())
     }
 
@@ -259,6 +499,7 @@ impl HeapValue {
                 List::U32(_) => Item::U32,
                 List::Bool(_) => Item::Bool,
                 List::Str(_) => Item::Str,
+                List::Plain(l) => Item::Plain(l.shape),
             }),
         }
     }
@@ -267,6 +508,18 @@ impl HeapValue {
     /// a string is a `u32` byte length then UTF-8, a list a `u32` count then its items), advancing
     /// `b` past it.
     pub fn read_codec(kind: HeapKind, b: &mut &[u8]) -> Result<HeapValue, String> {
+        if let HeapKind::List(Item::Plain(shape)) = kind {
+            let n = u32::from_le_bytes(take(b, 4)?.try_into().unwrap()) as usize;
+            // Each item is at least a byte: a count past the bytes left is cut short.
+            if n > b.len() {
+                return Err("a heap value is cut short".into());
+            }
+            let mut bytes = vec![0u8; n * shape.size];
+            for (i, item) in bytes.chunks_exact_mut(shape.size).enumerate() {
+                ItemShape::read(&shape.ty, b, item).map_err(|e| format!("[{i}]: {e}"))?;
+            }
+            return Ok(HeapValue::List(List::Plain(PlainList { shape, bytes })));
+        }
         slot_type!(kind, T => T::read_codec(b).map(Slot::into_value))
     }
 }
@@ -346,9 +599,36 @@ pub unsafe fn header(p: *const u8) -> &'static HeapShape {
 unsafe fn drop_values(p: *mut u8, shape: &HeapShape) {
     for &(off, kind) in &shape.fields {
         // SAFETY: the slot holds a value of `kind` (the caller's contract).
-        slot_type!(kind, T => drop(unsafe { std::ptr::read_unaligned(p.add(off) as *const T) }))
+        unsafe { drop_slot(p.add(off), kind) }
     }
     shape.live.fetch_sub(1, Ordering::SeqCst);
+}
+
+/// Drops the value in the slot at `p`.
+///
+/// # Safety
+/// The slot holds a live value of `kind`, dropped once, here.
+unsafe fn drop_slot(p: *mut u8, kind: HeapKind) {
+    if let HeapKind::List(Item::Plain(shape)) = kind {
+        // SAFETY: the caller's contract.
+        return unsafe { Raw::get(p).free(shape) };
+    }
+    // SAFETY: the caller's contract.
+    slot_type!(kind, T => drop(unsafe { std::ptr::read_unaligned(p as *const T) }))
+}
+
+/// Writes `v` into the slot at `p`, which holds nothing live.
+///
+/// # Safety
+/// `p` has room for a heap slot.
+unsafe fn write_slot(p: *mut u8, v: HeapValue) {
+    if let HeapValue::List(List::Plain(l)) = &v {
+        // SAFETY: the caller's contract.
+        return unsafe { Raw::of(l.shape, &l.bytes).put(p, l.shape) };
+    }
+    let kind = v.kind();
+    // SAFETY: the caller's contract.
+    slot_type!(kind, T => unsafe { std::ptr::write_unaligned(p as *mut T, T::from_value(v)) })
 }
 
 /// A heap value at `p + off`, cloned.
@@ -356,6 +636,10 @@ unsafe fn drop_values(p: *mut u8, shape: &HeapShape) {
 /// # Safety
 /// The slot holds a live value of `kind`.
 pub unsafe fn read(p: *const u8, off: usize, kind: HeapKind) -> HeapValue {
+    if let HeapKind::List(Item::Plain(shape)) = kind {
+        // SAFETY: the caller's contract.
+        return HeapValue::List(List::Plain(unsafe { Raw::get(p.add(off)).to_list(shape) }));
+    }
     // SAFETY: read as a copy that is never dropped: the slot keeps owning it.
     slot_type!(kind, T => {
         let v = std::mem::ManuallyDrop::new(unsafe { std::ptr::read_unaligned(p.add(off) as *const T) });
@@ -369,6 +653,20 @@ pub unsafe fn read(p: *const u8, off: usize, kind: HeapKind) -> HeapValue {
 /// The slot holds a live value of `kind`, and so does `other`'s.
 pub unsafe fn eq_at(p: *const u8, off: usize, kind: HeapKind, other: &HeapBytes) -> bool {
     assert_eq!(other.slot(off), Some(kind), "offset {off} is not a {kind:?} slot");
+    if let HeapKind::List(Item::Plain(shape)) = kind {
+        // SAFETY: both slots hold live lists of `shape`.
+        let (a, b) = unsafe { (Raw::get(p.add(off)), Raw::get(other.bytes.as_ptr().add(off))) };
+        // SAFETY: as above.
+        let (a, b) = unsafe { (a.items(shape), b.items(shape)) };
+        let mut x = vec![0u8; shape.size];
+        let mut y = vec![0u8; shape.size];
+        return a.len() == b.len()
+            && a.chunks_exact(shape.size).zip(b.chunks_exact(shape.size)).all(|(i, j)| {
+                ItemShape::copy_item(&shape.ty, i, &mut x);
+                ItemShape::copy_item(&shape.ty, j, &mut y);
+                x == y
+            });
+    }
     // SAFETY: both are read as copies that are never dropped: the slots keep owning them.
     slot_type!(kind, T => unsafe {
         let a = std::mem::ManuallyDrop::new(std::ptr::read_unaligned(p.add(off) as *const T));
@@ -382,6 +680,16 @@ pub unsafe fn eq_at(p: *const u8, off: usize, kind: HeapKind, other: &HeapBytes)
 /// # Safety
 /// The slot holds a live value of `kind`.
 pub unsafe fn put_codec_at(p: *const u8, off: usize, kind: HeapKind, out: &mut Vec<u8>) {
+    if let HeapKind::List(Item::Plain(shape)) = kind {
+        // SAFETY: the caller's contract.
+        let raw = unsafe { Raw::get(p.add(off)) };
+        out.extend_from_slice(&(raw.len as u32).to_le_bytes());
+        // SAFETY: as above.
+        for item in unsafe { raw.items(shape) }.chunks_exact(shape.size) {
+            ItemShape::put(&shape.ty, item, out);
+        }
+        return;
+    }
     // SAFETY: as in `read`.
     slot_type!(kind, T => std::mem::ManuallyDrop::new(unsafe { std::ptr::read_unaligned(p.add(off) as *const T) }).put_codec(out))
 }
@@ -391,9 +699,11 @@ pub unsafe fn put_codec_at(p: *const u8, off: usize, kind: HeapKind, out: &mut V
 /// # Safety
 /// The slot holds a live value of `v`'s kind.
 pub unsafe fn replace(p: *mut u8, off: usize, v: HeapValue) {
-    let kind = v.kind();
-    // SAFETY: the caller's contract.
-    slot_type!(kind, T => drop(unsafe { replace_unaligned(p.add(off) as *mut T, T::from_value(v)) }))
+    // SAFETY: the caller's contract: the old value is dropped once, then the slot holds nothing.
+    unsafe {
+        drop_slot(p.add(off), v.kind());
+        write_slot(p.add(off), v);
+    }
 }
 
 /// Takes the value at `p + off`, leaving an empty one that owns nothing.
@@ -401,6 +711,16 @@ pub unsafe fn replace(p: *mut u8, off: usize, v: HeapValue) {
 /// # Safety
 /// The slot holds a live value of `kind`.
 pub unsafe fn take_value(p: *mut u8, off: usize, kind: HeapKind) -> HeapValue {
+    if let HeapKind::List(Item::Plain(shape)) = kind {
+        // SAFETY: the caller's contract; the list is copied out, freed, and an empty one put.
+        unsafe {
+            let raw = Raw::get(p.add(off));
+            let v = raw.to_list(shape);
+            raw.free(shape);
+            Raw::empty(shape).put(p.add(off), shape);
+            return HeapValue::List(List::Plain(v));
+        }
+    }
     // SAFETY: the caller's contract; the empty value allocates nothing.
     slot_type!(kind, T => unsafe { replace_unaligned(p.add(off) as *mut T, T::default()) }.into_value())
 }
@@ -484,7 +804,7 @@ impl HeapBytes {
             unsafe {
                 std::ptr::write_unaligned(p as *mut *const HeapShape, s as *const HeapShape);
                 for &(off, kind) in &s.fields {
-                    slot_type!(kind, T => std::ptr::write_unaligned(p.add(off) as *mut T, T::default()))
+                    write_slot(p.add(off), HeapValue::empty(kind));
                 }
             }
             s.live.fetch_add(1, Ordering::SeqCst);
@@ -680,5 +1000,64 @@ impl HeapFill {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::StructField;
+    use bevy::math::Vec3;
+
+    #[test]
+    fn the_vec_field_order_probe_reads_a_real_vec() {
+        let mut v: Vec<u32> = Vec::with_capacity(9);
+        v.extend_from_slice(&[4, 5, 6]);
+        // SAFETY: a `Vec` is three words, read as a copy.
+        let words: [usize; 3] = unsafe { std::mem::transmute_copy(&v) };
+        let o = vec_order();
+        assert_eq!([words[o[0]], words[o[1]], words[o[2]]], [v.as_ptr() as usize, v.capacity(), 3]);
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    struct Hit {
+        at: Vec3,
+        by: Entity,
+        kind: u8,
+        hp: f32,
+    }
+
+    #[test]
+    fn a_raw_list_is_a_rust_vec_a_system_can_push_onto() {
+        let kind = FieldType::Enum { variants: vec!["hit".into(), "miss".into()], repr: None };
+        let field = |name: &str, ty: FieldType| StructField { name: name.into(), ty };
+        let ty = FieldType::Struct { fields: vec![field("at", FieldType::Vec3), field("by", FieldType::Entity), field("kind", kind), field("hp", FieldType::F32)] };
+        let shape = ItemShape::of(&ty);
+        assert_eq!((shape.size, shape.align), (size_of::<Hit>(), align_of::<Hit>()));
+        let mut slot = [0u8; HEAP_SLOT];
+        let p = slot.as_mut_ptr();
+        let v = crate::value::heap_value("", &FieldType::List { of: Box::new(ty.clone()) }, &serde_json::json!([{ "at": [1, 2, 3], "by": 7, "kind": "miss", "hp": 0.5 }])).unwrap();
+        let kind = v.kind();
+        // SAFETY: `slot` is a heap slot holding nothing live; then it holds a list of `shape`.
+        unsafe { write_slot(p, v) };
+        assert_eq!(shape.live(), 1);
+        // A Rust system takes it as a `Vec<Hit>`, pushes past its capacity and puts it back.
+        // SAFETY: the slot holds a `Vec<Hit>`'s words.
+        let mut hits: Vec<Hit> = unsafe { std::ptr::read_unaligned(p as *const Vec<Hit>) };
+        assert_eq!(hits, vec![Hit { at: Vec3::new(1.0, 2.0, 3.0), by: Entity::from_bits(7), kind: 1, hp: 0.5 }]);
+        hits.push(Hit { at: Vec3::ZERO, by: Entity::from_bits(9), kind: 0, hp: 2.0 });
+        // SAFETY: back into the slot it came from.
+        unsafe { std::ptr::write_unaligned(p as *mut Vec<Hit>, hits) };
+        // SAFETY: the slot holds a live list of `kind`.
+        let back = crate::value::heap_json(&unsafe { read(p, 0, kind) });
+        assert_eq!(back[1], serde_json::json!({ "at": [0.0, 0.0, 0.0], "by": 9, "kind": "hit", "hp": 2.0 }));
+        let mut wire = Vec::new();
+        // SAFETY: as above.
+        unsafe { put_codec_at(p, 0, kind, &mut wire) };
+        assert_eq!(HeapValue::read_codec(kind, &mut wire.as_slice()).unwrap(), unsafe { read(p, 0, kind) }, "the codec's bytes read back");
+        // SAFETY: as above; freed once, with the layout Rust grew it with.
+        unsafe { drop_slot(p, kind) };
+        assert_eq!(shape.live(), 0);
     }
 }

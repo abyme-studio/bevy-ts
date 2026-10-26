@@ -79,8 +79,9 @@ path it looked for and did not find, inside the project or a package. Running `p
 
 A field of a class extending `Component` is one of: `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`,
 `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, `Timer`, `Stopwatch`, a union of string
-literals (an enum), `string`, or `T[]` with `T` a number kind, `bool` or `string`. `string` and
-`T[]` are heap fields (docs/ecs.md, "Heap fields"). Resources, messages, events and `Local`s take
+literals (an enum), `string`, or `T[]` with `T` a number kind, `bool`, `string`, a vector,
+`Entity`, a union of string literals, or an object type of those but `string`. `string` and `T[]`
+are heap fields (docs/ecs.md, "Heap fields"). Resources, messages, events and `Local`s take
 the same types.
 
 ## Schedules, conditions and states

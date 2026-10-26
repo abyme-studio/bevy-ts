@@ -10,7 +10,7 @@ use bevy_ts::commands::{self, CommandKinds, NativeRecipes, insert_owned};
 use bevy_ts::components::TsComponents;
 use bevy_ts::fake::{FakeHandle, FakeProgram};
 use bevy_ts::generation::{self, ReloadStatus};
-use bevy_ts::heap::HeapShape;
+use bevy_ts::heap::{HeapShape, ItemShape};
 use bevy_ts::layout::FieldType;
 use bevy_ts::fake::FakeFn;
 use bevy_ts::manifest::{ComponentDecl, ComponentRef, ComponentSource, FieldDecl, Lifecycle, Manifest, ParamDecl, ResourceDecl, ScheduleDecl, Stage, SystemDecl};
@@ -411,4 +411,115 @@ fn a_lifecycle_value_is_a_copy_read_at_the_observer_place_and_freed_once() {
     assert!(saw.contains(&"door".to_string()), "the observer reads the value as it was: {saw:?}");
     assert!(saw.iter().any(|m| m.contains("no observer is running")), "a system names the place that is not live: {saw:?}");
     assert_eq!(shape.live(), 0, "the drain dropped the copy once its observer ran");
+}
+
+/// `name { points: vec3[], turns: quat[], who: entity[], kinds: Kind[], hits: Hit[] }`, `Hit` an
+/// object `{ at: vec3, by: entity, kind: Kind, hp: f32 }`.
+fn trail(name: &str, extra: Vec<FieldDecl>) -> Manifest {
+    let mut fields = vec![
+        field("points", list(FieldType::Vec3), None),
+        field("turns", list(FieldType::Quat), None),
+        field("who", list(FieldType::Entity), None),
+        field("kinds", list(kind()), None),
+        field("hits", list(hit()), None),
+    ];
+    fields.extend(extra);
+    Manifest { components: vec![ComponentDecl { name: name.into(), fields, ..Default::default() }], ..Default::default() }
+}
+
+fn kind() -> FieldType {
+    FieldType::Enum { variants: vec!["hit".into(), "miss".into()], repr: None }
+}
+
+fn hit() -> FieldType {
+    let m = |name: &str, ty: FieldType| bevy_ts::layout::StructField { name: name.into(), ty };
+    FieldType::Struct { fields: vec![m("at", FieldType::Vec3), m("by", FieldType::Entity), m("kind", kind()), m("hp", FieldType::F32)] }
+}
+
+/// Held by every test that counts `lists()`: the item shapes are shared by the whole binary.
+static LISTS: Mutex<()> = Mutex::new(());
+
+/// Lists of each richer item kind alive now.
+fn lists() -> [isize; 5] {
+    [FieldType::Vec3, FieldType::Quat, FieldType::Entity, kind(), hit()].map(|t| ItemShape::of(&t).live())
+}
+
+#[test]
+fn every_list_item_kind_is_freed_once_on_spawn_clone_reload_and_drop() {
+    let _one = LISTS.lock().unwrap_or_else(|e| e.into_inner());
+    let name = "it::heap_fields::Trail";
+    let mut g = Game::new(trail(name, vec![]));
+    let base = lists();
+    let v = json!({
+        "points": [[1, 2, 3], [4, 5, 6]],
+        "turns": [[0, 0, 0, 1]],
+        "who": [7],
+        "kinds": ["miss", "hit"],
+        "hits": [{ "at": [1, 0, 0], "by": 9, "kind": "miss", "hp": 0.5 }],
+    });
+    let a = g.spawn(name, v.clone());
+    let read = g.read(a, name).unwrap();
+    assert_eq!(read["points"], json!([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]));
+    assert_eq!((read["who"].clone(), read["kinds"].clone()), (json!([7]), json!(["miss", "hit"])));
+    assert_eq!(read["hits"], json!([{ "at": [1.0, 0.0, 0.0], "by": 9, "kind": "miss", "hp": 0.5 }]));
+    assert_eq!(lists(), base.map(|n| n + 1));
+    let clone = g.world().entity_allocator().alloc();
+    let mut op = vec![commands::OP_CLONE_AND_SPAWN];
+    op.extend_from_slice(&a.to_bits().to_le_bytes());
+    op.extend_from_slice(&clone.to_bits().to_le_bytes());
+    assert!(g.commands(&op).is_empty());
+    assert_eq!(lists(), base.map(|n| n + 2), "the clone owns its own lists");
+    g.world().despawn(a);
+    assert_eq!(g.read(clone, name).unwrap()["hits"], read["hits"], "and they outlive the source's");
+    // A reload that adds a field moves every list into the new value.
+    g.declare(trail(name, vec![field("weight", FieldType::F32, None)]));
+    assert_eq!(g.read(clone, name).unwrap()["points"], read["points"]);
+    assert_eq!(lists(), base.map(|n| n + 1));
+    // A malformed item builds nothing.
+    let world = g.world();
+    for bad in [json!({ "hits": [{ "at": [0, 0, 0], "by": 1, "kind": "miss" }] }), json!({ "kinds": ["bounce"] }), json!({ "points": [[1, 2]] })] {
+        assert!(plugin_api::encode_component(world, name, bad.as_object().unwrap()).is_err(), "{bad}");
+    }
+    assert_eq!(lists(), base.map(|n| n + 1));
+    drop(g);
+    assert_eq!(lists(), base, "the world's drop frees each list once");
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Hit {
+    at: Vec3,
+    by: Entity,
+    kind: u8,
+    hp: f32,
+}
+
+#[test]
+fn a_rust_system_reads_vec3_and_struct_lists_and_pushes_onto_one() {
+    let _one = LISTS.lock().unwrap_or_else(|e| e.into_inner());
+    let name = "it::heap_fields::Pushed";
+    let mut g = Game::new(trail(name, vec![]));
+    let base = lists();
+    let a = g.spawn(name, json!({ "points": [[1, 2, 3]], "hits": [{ "at": [0, 1, 0], "by": 3, "kind": "hit", "hp": 1 }] }));
+    let c = g.app.world().resource::<TsComponents>().live(name).unwrap().clone();
+    let at = |f: &str| c.layout.field(f).unwrap().offset;
+    let (points, hits) = (at("points"), at("hits"));
+    let mut e = g.world().entity_mut(a);
+    let mut v = e.get_mut_by_id(c.id).unwrap();
+    let p = v.as_mut().as_ptr();
+    // SAFETY: the column holds a live value whose `points` is a `Vec<Vec3>` and `hits` a
+    // `Vec<Hit>` of the same layout; read as copies the slot keeps owning, then one grown and put back.
+    unsafe {
+        let pts = std::mem::ManuallyDrop::new(std::ptr::read_unaligned(p.add(points) as *const Vec<Vec3>));
+        assert_eq!(*pts, vec![Vec3::new(1.0, 2.0, 3.0)]);
+        let mut hs: Vec<Hit> = std::ptr::read_unaligned(p.add(hits) as *const Vec<Hit>);
+        assert_eq!(hs, vec![Hit { at: Vec3::Y, by: Entity::from_bits(3), kind: 0, hp: 1.0 }]);
+        hs.extend((1..=20).map(|i| Hit { at: Vec3::splat(i as f32), by: Entity::from_bits(i), kind: 1, hp: 0.0 }));
+        std::ptr::write_unaligned(p.add(hits) as *mut Vec<Hit>, hs);
+    }
+    let read = g.read(a, name).unwrap();
+    assert_eq!(read["hits"].as_array().unwrap().len(), 21);
+    assert_eq!(read["hits"][20], json!({ "at": [20.0, 20.0, 20.0], "by": 20, "kind": "miss", "hp": 0.0 }));
+    g.world().despawn(a);
+    assert_eq!(lists(), base, "the grown list is freed once, with the layout Rust grew it with");
 }

@@ -574,23 +574,7 @@ impl ReflectTargets {
         if let Some(i) = self.by_heap.get(&key) {
             return *i;
         }
-        use crate::heap::{HeapKind, Item};
-        let item = |i: Item| match i {
-            Item::F32 => Node::Num { t: Num::F32 },
-            Item::F64 => Node::Num { t: Num::F64 },
-            Item::I8 => Node::Num { t: Num::I8 },
-            Item::U8 => Node::Num { t: Num::U8 },
-            Item::I16 => Node::Num { t: Num::I16 },
-            Item::U16 => Node::Num { t: Num::U16 },
-            Item::I32 => Node::Num { t: Num::I32 },
-            Item::U32 => Node::Num { t: Num::U32 },
-            Item::Bool => Node::Num { t: Num::Bool },
-            Item::Str => Node::Str,
-        };
-        let node = match kind {
-            HeapKind::Str => Node::Str,
-            HeapKind::List(i) => Node::List { of: Box::new(item(i)) },
-        };
+        let node = field_node(&field.ty);
         let target = Target {
             component,
             type_id: TypeId::of::<()>(),
@@ -612,6 +596,29 @@ impl ReflectTargets {
         self.targets.push(t);
         self.by_key.insert(key, i);
         i
+    }
+}
+
+/// A TS field type's op: a heap field's, or a list item's. `core.js`'s `fieldNode` makes the same.
+pub fn field_node(ty: &crate::layout::FieldType) -> Node {
+    use crate::layout::FieldType as F;
+    match ty {
+        F::F32 => Node::Num { t: Num::F32 },
+        F::F64 => Node::Num { t: Num::F64 },
+        F::I8 => Node::Num { t: Num::I8 },
+        F::U8 => Node::Num { t: Num::U8 },
+        F::I16 => Node::Num { t: Num::I16 },
+        F::U16 => Node::Num { t: Num::U16 },
+        F::I32 => Node::Num { t: Num::I32 },
+        F::U32 => Node::Num { t: Num::U32 },
+        F::Bool => Node::Num { t: Num::Bool },
+        F::Str => Node::Str,
+        F::Vec2 | F::Vec3 | F::Vec4 | F::Quat => Node::Lanes { t: Num::F32, n: ty.lanes().unwrap() as u8 },
+        F::Entity => Node::Entity,
+        F::Enum { variants, .. } => Node::Enum { variants: variants.iter().map(|v| Variant { name: v.clone(), shape: Shape::Unit, items: vec![], fields: None }).collect() },
+        F::Struct { fields } => Node::Struct { fields: fields.iter().map(|f| (f.name.clone(), field_node(&f.ty))).collect() },
+        F::List { of } => Node::List { of: Box::new(field_node(of)) },
+        other => unreachable!("{} is no heap field or list item", other.ts_name()),
     }
 }
 

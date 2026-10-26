@@ -295,16 +295,110 @@ app.addMessage(Ping).addSystems(Update, chain(send, read));
     assert!(quiet, "a plain message's reader made host calls");
 }
 
+/// The `Hit` of the TS below, as a Rust system mirrors it: a `#[repr(C)]` struct of its members.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Hit {
+    at: Vec3,
+    by: Entity,
+    kind: u8,
+    hp: f32,
+}
+
+/// A Rust system after TS's: pushes one `Hit` onto each `Trail` that holds fewer than two.
+fn rust_pushes(world: &mut World) {
+    let Some(c) = world.resource::<bevy_ts::components::TsComponents>().live("game::Trail").cloned() else { return };
+    let hits = c.layout.field("hits").unwrap().offset;
+    let mut q = QueryBuilder::<bevy::ecs::world::FilteredEntityMut>::new(world).mut_id(c.id).build();
+    for mut r in q.iter_mut(world) {
+        let p = r.get_mut_by_id(c.id).unwrap().as_mut().as_ptr();
+        // SAFETY: `hits` is a `Vec<Hit>` of the same layout, taken out and put back.
+        unsafe {
+            let mut v: Vec<Hit> = std::ptr::read_unaligned(p.add(hits) as *const Vec<Hit>);
+            if v.len() < 2 {
+                v.push(Hit { at: Vec3::new(7.0, 8.0, 9.0), by: Entity::from_bits(4), kind: 1, hp: 0.25 });
+            }
+            std::ptr::write_unaligned(p.add(hits) as *mut Vec<Hit>, v);
+        }
+    }
+}
+
+#[test]
+fn each_list_item_kind_reads_frozen_and_a_rust_push_is_seen() {
+    let src = r#"import { app, Component, Update, vec3 } from "bevy-ts";
+import type { Entity, f32, Mut, Query, Quat, Vec2, Vec3 } from "bevy-ts";
+type Kind = "hit" | "miss";
+interface Hit { at: Vec3; by: Entity; kind: Kind; hp: f32 }
+export class Trail extends Component {
+  points: Vec3[] = [];
+  flat: Vec2[] = [];
+  turns: Quat[] = [];
+  who: Entity[] = [];
+  kinds: Kind[] = [];
+  hits: Hit[] = [];
+}
+export function look(q: Query<[Mut<Trail>]>) {
+  q.each((t) => {
+    const p = t.points[0];
+    console.log("point " + p.x + " " + p.length().toFixed(3) + " " + Object.isFrozen(p) + " " + Object.isFrozen(t.points));
+    console.log("flat " + JSON.stringify(t.flat) + " turn " + JSON.stringify(t.turns));
+    console.log("who " + JSON.stringify(t.who) + " kinds " + JSON.stringify(t.kinds));
+    console.log("hits " + JSON.stringify(t.hits) + " " + Object.isFrozen(t.hits[0]) + " " + Object.isFrozen(t.hits[0].at));
+    if (t.points.length === 1) t.points = [...t.points, vec3(0, 0, 2)];
+    try {
+      (t.hits[0] as { hp: f32 }).hp = 5;
+    } catch (e) {
+      console.log("edit " + (e instanceof TypeError));
+    }
+  });
+}
+app.addSystems(Update, look);
+"#;
+    let (_, mut app) = load("heap-items", src);
+    app.add_systems(PostUpdate, rust_pushes);
+    let v = json!({
+        "points": [[3, 4, 0]],
+        "flat": [[1, 2]],
+        "turns": [[0, 0, 0, 1]],
+        "who": [6],
+        "kinds": ["miss"],
+        "hits": [{ "at": [1, 0, 0], "by": 2, "kind": "hit", "hp": 1 }],
+    });
+    let e = spawn_ts(&mut app, "game::Trail", v, ());
+    updates(&mut app, 3);
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l == "point 3 5.000 true true"), "{m:?}");
+    assert!(m.iter().any(|l| l == r#"flat [[1,2,0]] turn [[0,0,0,1]]"#), "a vec2 reads as a vector with z 0: {m:?}");
+    assert!(m.iter().any(|l| l == r#"who [6] kinds ["miss"]"#), "{m:?}");
+    let first = r#"{"at":[1,0,0],"by":2,"kind":"hit","hp":1}"#;
+    let pushed = r#"{"at":[7,8,9],"by":4,"kind":"miss","hp":0.25}"#;
+    assert!(m.iter().any(|l| *l == format!("hits [{first}] true true")), "{m:?}");
+    assert!(m.iter().any(|l| *l == format!("hits [{first},{pushed}] true true")), "TS reads the item Rust pushed: {m:?}");
+    assert!(m.iter().any(|l| l == "edit true"), "an item is read-only: {m:?}");
+    assert_eq!(read_ts(&app, e, "game::Trail").unwrap()["points"], json!([[3.0, 4.0, 0.0], [0.0, 0.0, 2.0]]));
+}
+
 #[test]
 fn unsupported_heap_types_fail_with_file_and_line() {
     let errors = load_errors(
         "heap-list-of",
-        r#"import { Component, type Vec3 } from "bevy-ts";
-export class Path extends Component { declare points: Vec3[] }
+        r#"import { Component, type f32 } from "bevy-ts";
+export class Grid extends Component { declare rows: f32[][] }
 "#,
     );
     let e = errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join("\n");
-    assert!(e.contains("game.ts:2:") && e.contains("Path field points"), "{e}");
+    assert!(e.contains("game.ts:2:") && e.contains("Grid field rows") && e.contains("a list holds no list"), "{e}");
+
+    let errors = load_errors(
+        "heap-item-string",
+        r#"import { Component } from "bevy-ts";
+export class Roster extends Component {
+  declare names: { name: string }[];
+}
+"#,
+    );
+    let e = errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join("\n");
+    assert!(e.contains("game.ts:3:") && e.contains("name: an object in a list holds"), "{e}");
 
     let errors = load_errors(
         "heap-object",

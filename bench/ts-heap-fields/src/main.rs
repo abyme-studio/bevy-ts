@@ -52,9 +52,10 @@ app.addSystems(Update, chain(__SYSTEM__));
 "#;
 
 const HEAP: &str = r#"import { app, chain, Component, Startup, Update } from "bevy-ts";
-import type { Commands, f32, Local, Mut, Query, Res } from "bevy-ts";
-import { Resource } from "bevy-ts";
+import type { Commands, f32, Local, Mut, Query, Res, Vec3 } from "bevy-ts";
+import { Resource, vec3 } from "bevy-ts";
 export class Tag extends Component { label: string = "crate"; hp: f32 = 1; scores: f32[] = [] }
+export class Trail extends Component { points: Vec3[] = [] }
 export class Title extends Resource { text: string = "a title" }
 app.insertResource(Title.of({ text: "a title" }));
 const REPEAT = __REPEAT__;
@@ -62,8 +63,15 @@ let sink = 0;
 let n = 0;
 export function make(commands: Commands) {
   for (let i = 0; i < __ROWS__; i++) commands.spawn(Tag.of({ label: "tag " + i, hp: i, scores: [1, 2, 3, 4, 5, 6, 7, i] }));
+  const points = [1, 2, 3, 4, 5, 6, 7, 8].map((k) => vec3(k, 0, 1));
+  for (let i = 0; i < __ROWS__; i++) commands.spawn(Trail.of({ points }));
 }
 export function empty(q: Query<[Tag]>) { q.each(() => { sink++; }); }
+export function emptyTrail(q: Query<[Trail]>) { q.each(() => { sink++; }); }
+export function vecHit(q: Query<[Trail]>) {
+  for (let k = 0; k < REPEAT; k++) q.each((t) => { sink += t.points[7].x; });
+}
+export function vecMiss(q: Query<[Trail]>) { q.each((t) => { sink += t.points[7].x; }); }
 export function heapPlainField(q: Query<[Tag]>) {
   for (let k = 0; k < REPEAT; k++) q.each((t) => { sink += t.hp; });
 }
@@ -273,6 +281,9 @@ fn main() {
         println!("{tree} | {label} | {} ns a row", per_row(run(HEAP, system, miss), empty, reads));
     }
     println!("{tree} | despawn, a string and an 8-item list | {:.0} ns a row", despawn(HEAP, "game::Tag"));
+    let empty_trail = run(HEAP, "emptyTrail", None);
+    println!("{tree} | 8-item Vec3[] hit (Trail.points) | {} ns a row", per_row(run(HEAP, "vecHit", None), empty_trail, REPEAT));
+    println!("{tree} | 8-item Vec3[] miss | {} ns a row", per_row(run(HEAP, "vecMiss", Some("game::Trail")), empty_trail, 1));
     let (read, skip) = (frames("read"), frames("skip"));
     println!("{tree} | On<Remove> value's string read (Tag.label) | {} ns an event", per_row(read, skip, 1));
     println!("{tree} | string message written and read (Chat.text), whole frame | {} ns a message", payload_ns(HEAP_PAYLOADS, MESSAGES));

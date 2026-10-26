@@ -39,8 +39,20 @@ pub enum FieldType {
     /// A heap field: Rust's `String`, in the value's own bytes (components, resources, `Local`).
     #[serde(rename = "string")]
     Str,
-    /// A heap field: Rust's `Vec<T>` of a number kind, `bool` or `string` (as `Str`).
+    /// A heap field: Rust's `Vec<T>` of a number kind, `bool`, `string` (as `Str`), a vector,
+    /// `Entity`, an enum or a [`FieldType::Struct`].
     List { of: Box<FieldType> },
+    /// An object type of plain members (`{ at: Vec3, hp: f32 }`), laid out as a `#[repr(C)]`
+    /// struct: only a list's item.
+    Struct { fields: Vec<StructField> },
+}
+
+/// One member of a [`FieldType::Struct`].
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StructField {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
 }
 
 /// A heap field's storage: a `String` or a `Vec<T>`, 24 bytes aligned to 8.
@@ -87,6 +99,7 @@ impl FieldType {
             FieldType::Array { of, len } => of.size() * *len as usize,
             FieldType::Timer | FieldType::Stopwatch => self.fields().unwrap().size,
             FieldType::Str | FieldType::List { .. } => HEAP_SIZE,
+            FieldType::Struct { .. } => self.struct_layout().unwrap().size,
         }
     }
 
@@ -103,6 +116,7 @@ impl FieldType {
             FieldType::Vec2 | FieldType::Vec3 | FieldType::Vec4 | FieldType::Quat => 4,
             FieldType::Array { of, .. } => of.align(),
             FieldType::Timer | FieldType::Stopwatch | FieldType::Str | FieldType::List { .. } => 8,
+            FieldType::Struct { .. } => self.struct_layout().unwrap().align,
             other => other.size(),
         }
     }
@@ -130,6 +144,17 @@ impl FieldType {
             FieldType::Stopwatch => "Stopwatch".into(),
             FieldType::Str => "string".into(),
             FieldType::List { of } => format!("{}[]", of.ts_name()),
+            FieldType::Struct { fields } => {
+                format!("{{ {} }}", fields.iter().map(|f| format!("{}: {}", f.name, f.ty.ts_name())).collect::<Vec<_>>().join(", "))
+            }
+        }
+    }
+
+    /// A struct's members laid out with C rules, as a `#[repr(C)]` Rust struct of them is.
+    pub fn struct_layout(&self) -> Option<ComponentLayout> {
+        match self {
+            FieldType::Struct { fields } => Some(ComponentLayout::c_layout(fields.iter().map(|f| (f.name.as_str(), &f.ty)))),
+            _ => None,
         }
     }
 
@@ -153,7 +178,7 @@ impl FieldType {
     }
 
     /// Checks the type is one this change supports (enums non-empty, arrays non-empty and of
-    /// scalars or vectors).
+    /// scalars or vectors, lists of no list, structs only as a list's item).
     pub fn validate(&self) -> Result<(), String> {
         match self {
             FieldType::Enum { variants, .. } if variants.is_empty() => {
@@ -166,9 +191,28 @@ impl FieldType {
             FieldType::Array { of, .. } if of.fields().is_some() || of.is_heap() => Err(format!("arrays of {} are not supported", of.ts_name())),
             FieldType::Array { of, .. } => of.validate(),
             FieldType::List { of } => match **of {
-                FieldType::F32 | FieldType::F64 | FieldType::I8 | FieldType::U8 | FieldType::I16 | FieldType::U16 | FieldType::I32 | FieldType::U32 | FieldType::Bool | FieldType::Str => Ok(()),
-                ref other => Err(format!("{}[] is not supported: a list holds numbers (f32, f64, i8..u32), bool or string", other.ts_name())),
+                FieldType::List { .. } => Err(format!("{} is not supported: a list holds no list", self.ts_name())),
+                FieldType::Struct { ref fields } => {
+                    if fields.is_empty() {
+                        return Err("a list's object type needs at least one member".into());
+                    }
+                    for f in fields {
+                        if !f.ty.item_member() {
+                            return Err(format!(
+                                "{}[] is not supported: member {} is {}, and an object in a list holds numbers, bool, vectors, Entity or a string-literal union",
+                                of.ts_name(),
+                                f.name,
+                                f.ty.ts_name()
+                            ));
+                        }
+                        f.ty.validate()?;
+                    }
+                    Ok(())
+                }
+                ref other if other.item_member() || *other == FieldType::Str => other.validate(),
+                ref other => Err(format!("{}[] is not supported: a list holds numbers, bool, string, vectors, Entity, a string-literal union or an object of those", other.ts_name())),
             },
+            FieldType::Struct { .. } => Err(format!("{} is a field type only as a list's item ({}[])", self.ts_name(), self.ts_name())),
             _ => Ok(()),
         }
     }
@@ -205,10 +249,22 @@ impl FieldType {
     /// (`bool`, enums, `entity`), never as a raw array.
     pub fn accessor_only(&self) -> bool {
         match self {
-            FieldType::Bool | FieldType::Entity | FieldType::Enum { .. } | FieldType::Timer | FieldType::Stopwatch | FieldType::Str | FieldType::List { .. } => true,
+            FieldType::Bool | FieldType::Entity | FieldType::Enum { .. } | FieldType::Timer | FieldType::Stopwatch | FieldType::Str | FieldType::List { .. } | FieldType::Struct { .. } => true,
             FieldType::Array { of, .. } => of.accessor_only(),
             _ => false,
         }
+    }
+}
+
+impl FieldType {
+    /// Whether a list item or a list's struct member may be this: a plain value of fixed size
+    /// (a number, `bool`, a vector, `Entity`, an enum).
+    pub fn item_member(&self) -> bool {
+        matches!(
+            self,
+            FieldType::F32 | FieldType::F64 | FieldType::I8 | FieldType::U8 | FieldType::I16 | FieldType::U16 | FieldType::I32 | FieldType::U32 | FieldType::Bool
+                | FieldType::Vec2 | FieldType::Vec3 | FieldType::Vec4 | FieldType::Quat | FieldType::Entity | FieldType::Enum { .. }
+        )
     }
 }
 
@@ -510,8 +566,26 @@ mod tests {
         assert!(FieldType::Array { of: Box::new(FieldType::Str), len: 2 }.validate().is_err());
         let list = |of: FieldType| FieldType::List { of: Box::new(of) };
         assert!(list(FieldType::U32).validate().is_ok() && list(FieldType::Str).validate().is_ok());
-        assert!(list(FieldType::Vec3).validate().is_err() && list(list(FieldType::U8)).validate().is_err());
+        assert!(list(FieldType::Vec3).validate().is_ok() && list(FieldType::Entity).validate().is_ok());
+        assert!(list(list(FieldType::U8)).validate().is_err() && list(FieldType::Timer).validate().is_err());
         assert_eq!((list(FieldType::F32).size(), list(FieldType::F32).align(), list(FieldType::F32).ts_name()), (24, 8, "f32[]".into()));
+    }
+
+    #[test]
+    fn a_struct_item_is_laid_out_as_repr_c_and_only_in_a_list() {
+        let member = |name: &str, ty: FieldType| StructField { name: name.into(), ty };
+        let hit = FieldType::Struct { fields: vec![member("at", FieldType::Vec3), member("by", FieldType::Entity), member("kind", FieldType::U8), member("hp", FieldType::F32)] };
+        let l = hit.struct_layout().unwrap();
+        assert_eq!(offsets(&l), vec![0, 16, 24, 28]);
+        // The stride is the size, a multiple of the alignment, as a `#[repr(C)]` struct's.
+        assert_eq!((hit.size(), hit.align()), (32, 8));
+        assert!(!l.has_heap());
+        let list = |of: FieldType| FieldType::List { of: Box::new(of) };
+        assert!(list(hit.clone()).validate().is_ok());
+        assert!(hit.validate().is_err(), "an object is a field only as a list's item");
+        let named = FieldType::Struct { fields: vec![member("name", FieldType::Str)] };
+        assert!(list(named).validate().unwrap_err().contains("member name is string"));
+        assert!(list(FieldType::Struct { fields: vec![] }).validate().is_err());
     }
 
     #[test]

@@ -32,6 +32,11 @@ fn field_schema(ty: &FieldType, hints: Option<&bevy_ts::manifest::FieldHints>) -
         FieldType::Str => json!({ "type": "string" }),
         FieldType::List { of } => json!({ "type": "array", "items": field_schema(of, None) }),
         FieldType::Array { of, len } => json!({ "type": "array", "items": field_schema(of, None), "minItems": len, "maxItems": len }),
+        FieldType::Struct { .. } => {
+            let l = ty.struct_layout().unwrap();
+            let properties: Map<String, Value> = l.fields.iter().map(|f| (f.name.clone(), field_schema(&f.ty, None))).collect();
+            json!({ "type": "object", "properties": properties, "required": l.fields.iter().map(|f| &f.name).collect::<Vec<_>>(), "additionalProperties": false })
+        }
         FieldType::Timer | FieldType::Stopwatch => {
             let l = ty.fields().unwrap();
             let properties: Map<String, Value> = l.fields.iter().map(|f| (f.name.clone(), field_schema(&f.ty, None))).collect();

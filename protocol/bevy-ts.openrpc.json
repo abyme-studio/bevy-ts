@@ -2,7 +2,7 @@
   "openrpc": "1.3.2",
   "info": {
     "title": "bevy-ts Remote Protocol",
-    "version": "1.33.0",
+    "version": "1.34.0",
     "description": "Methods bevy-ts serves next to stock bevy_remote. One contract for every bevy-ts crate: each method names its owning crate in x-bevy-ts-crate and is served only when that crate's plugin is added. Adding a method or field is a minor bump; removing, renaming or retyping anything is a major bump. Methods with x-bevy-ts-channel are not HTTP methods: they are JSON-RPC notifications on a viewport's Mach channel, sent by the side it names (both: each side sends it)."
   },
   "methods": [
@@ -1455,7 +1455,7 @@
       },
       "FieldType": {
         "type": "object",
-        "description": "A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`). `string` and `list` are heap fields (protocol 1.33.0), Rust's `String` and `Vec<T>` in the component's own bytes: a JSON string, or an array of the list's item type `of` (a number kind, `bool` or `string`), each written whole by `.field` (`.field[i]` on a list is refused). A component with one starts with an 8-byte header the layout's offsets and `size` include.",
+        "description": "A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`). `string` and `list` are heap fields (protocol 1.33.0), Rust's `String` and `Vec<T>` in the component's own bytes: a JSON string, or an array of the list's item type `of` (a number kind, `bool`, `string`, a vector, `entity`, `enum`, or (protocol 1.34.0) `struct`), each written whole by `.field` (`.field[i]` on a list is refused). A `struct` is only a list's item: an object of its `fields`, each `{ name, type }` of a plain type (a number kind, `bool`, a vector, `entity`, `enum`), laid out with C rules as a `#[repr(C)]` Rust struct; a value gives every member. A component with one starts with an 8-byte header the layout's offsets and `size` include.",
         "required": [
           "kind"
         ],
@@ -1482,8 +1482,15 @@
               "timer",
               "stopwatch",
               "string",
-              "list"
+              "list",
+              "struct"
             ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StructField"
+            }
           },
           "variants": {
             "type": "array",
@@ -1498,6 +1505,23 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0
+          }
+        }
+      },
+      "StructField": {
+        "type": "object",
+        "description": "One member of a `struct` field type.",
+        "required": [
+          "name",
+          "type"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldType"
           }
         }
       },

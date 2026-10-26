@@ -28,7 +28,7 @@
 - **THEN** the call fails saying `.scores` has 2 items, and the component is unchanged
 
 ### Requirement: Schemas carry string and list field types
-The layout in a TS component's `x-bevy-ts` SHALL name a `string` field's type `{ kind: "string" }` and a `T[]` field's type `{ kind: "list", of: <item type> }`, where the item type is any field type a list holds: a number kind, `bool`, `string`, a vector, `entity`, an enum, or `{ kind: "struct", fields: [...] }` with each member's name and type. Its `properties` SHALL be a JSON Schema string or array of the item type. The protocol schema file SHALL list these kinds under a new protocol minor version.
+The layout in a TS component's `x-bevy-ts` SHALL name a `string` field's type `{ kind: "string" }` and a `T[]` field's type `{ kind: "list", of: <item type> }`, where the item type is any field type a list holds: a number kind, `bool`, `string`, a vector, `entity`, an enum, or `{ kind: "struct", fields: [...] }` with each member's name and type. Its `properties` SHALL be a JSON Schema string or array of the item type. The protocol schema file SHALL list these kinds under a new protocol minor version, 1.34.0 (`struct` with its `fields`, and vectors, `entity` and enums as list items), noted in the changelog.
 
 #### Scenario: An editor types a list
 - **WHEN** the inspector asks `bevy-ts/schema` for `game::Tag`

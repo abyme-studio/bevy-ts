@@ -197,8 +197,11 @@ take `.points[i].x`. Whole-field edits are unchanged.
 
 ### 9. Richer list items
 
-`Item` gains `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, `Enum { width }` and `Struct(&'static ItemShape)`.
-Storage, as Bevy keeps a `Vec<T>`:
+As built: `Item` gains one kind, `Plain(&'static ItemShape)`, for every item below. `Vec<Vec3>` and
+the rest have exactly a raw list's memory (three words; a buffer of `size * cap` bytes at the item's
+alignment), so one raw-list path in `heap.rs` serves vectors, entities, enums and structs alike,
+with one codec walk over the item's `FieldType`; no per-kind Rust type. `ItemShape` counts the lists
+alive, for the free-once tests. Storage, as Bevy keeps a `Vec<T>`:
 
 - `Vec<Vec2>`, `Vec<Vec3>`; `Vec4` and `Quat` as `Vec<[f32; 4]>`, since glam's SIMD `Vec4`/`Quat` are
   16-aligned and a column stores them at align 4 (`layout.rs` `align`).

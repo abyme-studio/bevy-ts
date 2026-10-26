@@ -1000,7 +1000,7 @@ fn convert(ctx: &FileCtx, field: &str, v: &syntax::Value, ty: &ValueType, base: 
             _ => return Err(ctx.err("expected a string", v.span)),
         },
         FieldType::Entity => return Err(ctx.err("entity fields cannot be set from a level", v.span)),
-        FieldType::Array { .. } | FieldType::List { .. } => return Err(ctx.err("list values are not supported in .bsn files", v.span)),
+        FieldType::Array { .. } | FieldType::List { .. } | FieldType::Struct { .. } => return Err(ctx.err("list values are not supported in .bsn files", v.span)),
         // `Timer { duration: 2.0, mode: Repeating }`: its fields over `base`, the rest zero.
         FieldType::Timer | FieldType::Stopwatch => {
             let (layout, name) = (ty.fields().expect("a struct"), ty.ts_name());

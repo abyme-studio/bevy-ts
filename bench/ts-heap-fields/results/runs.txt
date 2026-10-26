@@ -717,3 +717,91 @@ branch | despawn, a string and an 8-item list | 56 ns a row
 branch | On<Remove> value's string read (Tag.label) | 350 ns an event
 branch | string message written and read (Chat.text), whole frame | 1814 ns a message
 branch | string event triggered and observed (Shout.text), whole frame | 5428 ns an event
+main at 2dcea33e1, branch at f0f02fa5c
+ 6:28  up 2 days, 10:30, 2 users, load averages: 103.48 85.14 95.92
+main | plain column (Plain.hp) | 16 ns a row
+main | despawn, plain | 38 ns a row
+main | plain Res read (Score.value) | 18 ns a read
+main | plain Local read (n) | 16 ns a read
+main | plain message written and read (Ping.n), whole frame | 1074 ns a message
+main | plain event triggered and observed (Hit.n), whole frame | 4310 ns an event
+branch | plain column (Plain.hp) | 17 ns a row
+branch | despawn, plain | 36 ns a row
+branch | plain Res read (Score.value) | 15 ns a read
+branch | plain Local read (n) | 19 ns a read
+branch | plain message written and read (Ping.n), whole frame | 1025 ns a message
+branch | plain event triggered and observed (Hit.n), whole frame | 3937 ns an event
+branch | heap component's plain field (Tag.hp) | 14 ns a row
+branch | string hit (Tag.label) | 53 ns a row
+branch | string miss | 215 ns a row
+branch | string write | 751 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 65 ns a row
+branch | 8-item f32[] miss | 237 ns a row
+branch | 8-item f32[] write | 803 ns a row
+branch | heap Res string read (Title.text, cached) | 25 ns a row
+branch | Local string read (text, cached) | 17 ns a row
+branch | empty system, µs a run (subtracted) | 35
+branch | despawn, a string and an 8-item list | 72 ns a row
+branch | 8-item Vec3[] hit (Trail.points) | 93 ns a row
+branch | 8-item Vec3[] miss | 804 ns a row
+branch | On<Remove> value's string read (Tag.label) | 1054 ns an event
+branch | string message written and read (Chat.text), whole frame | 1897 ns a message
+branch | string event triggered and observed (Shout.text), whole frame | 5420 ns an event
+ 6:29  up 2 days, 10:31, 2 users, load averages: 93.43 84.10 95.29
+main | plain column (Plain.hp) | 16 ns a row
+main | despawn, plain | 38 ns a row
+main | plain Res read (Score.value) | 17 ns a read
+main | plain Local read (n) | 17 ns a read
+main | plain message written and read (Ping.n), whole frame | 944 ns a message
+main | plain event triggered and observed (Hit.n), whole frame | 3469 ns an event
+branch | plain column (Plain.hp) | 15 ns a row
+branch | despawn, plain | 33 ns a row
+branch | plain Res read (Score.value) | 15 ns a read
+branch | plain Local read (n) | 15 ns a read
+branch | plain message written and read (Ping.n), whole frame | 901 ns a message
+branch | plain event triggered and observed (Hit.n), whole frame | 3418 ns an event
+branch | heap component's plain field (Tag.hp) | 17 ns a row
+branch | string hit (Tag.label) | 57 ns a row
+branch | string miss | 202 ns a row
+branch | string write | 694 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 60 ns a row
+branch | 8-item f32[] miss | 258 ns a row
+branch | 8-item f32[] write | 889 ns a row
+branch | heap Res string read (Title.text, cached) | 24 ns a row
+branch | Local string read (text, cached) | 18 ns a row
+branch | empty system, µs a run (subtracted) | 33
+branch | despawn, a string and an 8-item list | 70 ns a row
+branch | 8-item Vec3[] hit (Trail.points) | 73 ns a row
+branch | 8-item Vec3[] miss | 647 ns a row
+branch | On<Remove> value's string read (Tag.label) | 372 ns an event
+branch | string message written and read (Chat.text), whole frame | 1815 ns a message
+branch | string event triggered and observed (Shout.text), whole frame | 4352 ns an event
+ 6:29  up 2 days, 10:31, 2 users, load averages: 85.02 82.73 94.61
+main | plain column (Plain.hp) | 12 ns a row
+main | despawn, plain | 30 ns a row
+main | plain Res read (Score.value) | 13 ns a read
+main | plain Local read (n) | 14 ns a read
+main | plain message written and read (Ping.n), whole frame | 866 ns a message
+main | plain event triggered and observed (Hit.n), whole frame | 3031 ns an event
+branch | plain column (Plain.hp) | 12 ns a row
+branch | despawn, plain | 27 ns a row
+branch | plain Res read (Score.value) | 13 ns a read
+branch | plain Local read (n) | 13 ns a read
+branch | plain message written and read (Ping.n), whole frame | 792 ns a message
+branch | plain event triggered and observed (Hit.n), whole frame | 3090 ns an event
+branch | heap component's plain field (Tag.hp) | 15 ns a row
+branch | string hit (Tag.label) | 49 ns a row
+branch | string miss | 165 ns a row
+branch | string write | 551 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 44 ns a row
+branch | 8-item f32[] miss | 198 ns a row
+branch | 8-item f32[] write | 696 ns a row
+branch | heap Res string read (Title.text, cached) | 17 ns a row
+branch | Local string read (text, cached) | 14 ns a row
+branch | empty system, µs a run (subtracted) | 28
+branch | despawn, a string and an 8-item list | 57 ns a row
+branch | 8-item Vec3[] hit (Trail.points) | 67 ns a row
+branch | 8-item Vec3[] miss | 476 ns a row
+branch | On<Remove> value's string read (Tag.label) | 28 ns an event
+branch | string message written and read (Chat.text), whole frame | 1523 ns a message
+branch | string event triggered and observed (Shout.text), whole frame | 3833 ns an event

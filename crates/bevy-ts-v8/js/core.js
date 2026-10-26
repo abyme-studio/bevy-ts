@@ -3906,7 +3906,8 @@ function reflectCommit(res) {
     for (const h of hs) {
       if (!h.heap || h.codec.node.k !== "list" || REFLECT.frozen[h.target]) continue;
       const dec = REFLECT.decoders[h.target];
-      REFLECT.decoders[h.target] = (dv, buf) => Object.freeze(dec(dv, buf));
+      const item = h.codec.node.of;
+      REFLECT.decoders[h.target] = (dv, buf) => heapList(item, dec(dv, buf));
       REFLECT.frozen[h.target] = true;
     }
   }
@@ -4161,14 +4162,14 @@ function messageHole(t, h, name, encode, initial) {
       if (!own) throw new TypeError(`${path} is read-only: a reader reads its message as Bevy's &M`);
       // Checked now, so a bad value throws where it was set.
       encode(new Writer(), v, path);
-      own[h.name] = h.codec.node.k === "list" ? Object.freeze([...v]) : v;
+      own[h.name] = h.codec.node.k === "list" ? heapList(h.codec.node.of, [...v]) : v;
     },
   };
 }
 
 /** A heap hole's value before anything is set: the declaration's default `d`, else empty. */
 function heapDefault(h, d) {
-  if (h.codec.node.k === "list") return Object.freeze(d === undefined ? [] : [...d]);
+  if (h.codec.node.k === "list") return heapList(h.codec.node.of, d === undefined ? [] : [...d]);
   return d === undefined ? "" : d;
 }
 
@@ -4189,6 +4190,33 @@ function heapSet(t, entity, encode, value, path) {
   REFLECT.caches[t].delete(entity);
 }
 
+/** A list as a row reads it, frozen: a vector item a frozen `Vec3` (`vec2` with z 0) or `Quat`
+ * (`vec4` too), an object item a frozen object of its members. `items` is the list's own array. */
+function heapList(of, items) {
+  if (of.k === "lanes" || of.k === "struct") for (let i = 0; i < items.length; i++) items[i] = heapItem(of, items[i]);
+  return Object.freeze(items);
+}
+
+/** A vector's lanes as an array: from an array, a `Vec3` or `Quat`, or an `{ x, y, z, w }`. */
+function lanesOf(v, n) {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v.toArray === "function") return v.toArray();
+  return v && typeof v === "object" ? ["x", "y", "z", "w"].slice(0, n).map((k) => v[k]) : null;
+}
+
+function heapItem(node, v) {
+  if (node.k === "lanes") {
+    v = lanesOf(v, node.n);
+    return Object.freeze(node.n === 4 ? new Quat(v[0], v[1], v[2], v[3]) : new Vec3(v[0], v[1], node.n === 3 ? v[2] : 0));
+  }
+  if (node.k === "struct") {
+    const o = {};
+    for (const [name, f] of node.fields) o[name] = heapItem(f, v[name]);
+    return Object.freeze(o);
+  }
+  return v;
+}
+
 /** An encoder for a heap field's codec op (`reflect_codec::Node`): `(writer, value, path)`, the
  * wire format `reflectDecoder` reads. */
 function codecEncoder(node) {
@@ -4201,6 +4229,40 @@ function codecEncoder(node) {
     };
   }
   if (node.k === "num") return numEncoder(node.t);
+  if (node.k === "lanes") {
+    const f = numEncoder(node.t);
+    return (w, v, path) => {
+      const a = lanesOf(v, node.n);
+      // A `vec2` is a `Vec3` whose z is 0.
+      if (!a || a.length < node.n) throw new TypeError(`${path} expects ${node.n} lanes`);
+      for (let i = 0; i < node.n; i++) f(w, a[i], path);
+    };
+  }
+  if (node.k === "entity") {
+    return (w, v, path) => {
+      if (typeof v !== "number" || !Number.isInteger(v) || v < 0) throw new TypeError(`${path} expects an Entity, got ${v}`);
+      w.u32(v % 4294967296);
+      w.u32(Math.floor(v / 4294967296));
+    };
+  }
+  if (node.k === "enum") {
+    const names = node.variants.map((va) => va.name);
+    return (w, v, path) => {
+      const i = names.indexOf(v);
+      if (i < 0) throw new RangeError(`${path} expects one of ${names.join(", ")}, got ${v}`);
+      w.u32(i);
+    };
+  }
+  if (node.k === "struct") {
+    const fs = node.fields.map(([name, f]) => [name, codecEncoder(f)]);
+    return (w, v, path) => {
+      if (!v || typeof v !== "object") throw new TypeError(`${path} expects an object, got ${typeof v}`);
+      for (const [name, f] of fs) {
+        if (v[name] === undefined) throw new TypeError(`${path}.${name} is missing: a list's object item gives every member`);
+        f(w, v[name], `${path}.${name}`);
+      }
+    };
+  }
   if (node.k === "list") {
     const item = codecEncoder(node.of);
     return (w, v, path) => {
@@ -5229,7 +5291,12 @@ function heapPatch(w, C, layout, values) {
 /** A heap field type's codec op, as Rust's `ReflectTargets::ts_heap` makes it. */
 function heapNode(t) {
   if (t.kind === "string") return { k: "str" };
-  if (t.kind === "list") return { k: "list", of: t.of.kind === "string" ? { k: "str" } : { k: "num", t: t.of.kind } };
+  if (t.kind === "list") return { k: "list", of: heapNode(t.of) };
+  if (LANES[t.kind]) return { k: "lanes", t: "f32", n: LANES[t.kind] };
+  if (t.kind === "entity") return { k: "entity" };
+  if (t.kind === "enum") return { k: "enum", variants: t.variants.map((name) => ({ name, shape: "unit", items: [] })) };
+  if (t.kind === "struct") return { k: "struct", fields: t.fields.map((f) => [f.name, heapNode(f.type)]) };
+  if (WIDTH[t.kind] || t.kind === "f64" || t.kind === "bool") return { k: "num", t: t.kind };
   throw new Error(`no heap codec for ${t.kind}`);
 }
 
@@ -5239,8 +5306,9 @@ function heapEncoder(t) {
 
 /** A heap field type's decoder; a list reads frozen, as a component's does. */
 function heapDecoder(t) {
-  const dec = reflectDecoder({ wrap: false, node: heapNode(t) });
-  return t.kind === "list" ? (dv, buf) => Object.freeze(dec(dv, buf)) : dec;
+  const node = heapNode(t);
+  const dec = reflectDecoder({ wrap: false, node });
+  return t.kind === "list" ? (dv, buf) => heapList(node.of, dec(dv, buf)) : dec;
 }
 
 // ---------------------------------------------------------------------------------------------

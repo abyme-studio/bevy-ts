@@ -363,7 +363,7 @@ app.addSystems(Startup, start).addSystems(Update, once).addObserver(onMarked);
 #[test]
 fn load_errors_name_what_is_wrong() {
     let cases: &[(&str, &str, &str)] = &[
-        ("list of lists", "import { Message, type u8 } from \"bevy-ts\";\nexport class Title extends Message { declare rows: u8[][] }\n", "a list holds numbers"),
+        ("list of lists", "import { Message, type u8 } from \"bevy-ts\";\nexport class Title extends Message { declare rows: u8[][] }\n", "a list holds no list"),
         // A reflect-tier Rust component (`GlobalTransform`) is query data since reflect-coverage stage 3.
         (
             "cycle",

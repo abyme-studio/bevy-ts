@@ -47,19 +47,19 @@ binary, lowest layer, no fixed waits. Every cargo job through `~/dev/abyme/scrip
 
 ## 4. Stage 4: richer list items
 
-- [ ] 4.1 `crates/bevy-ts/src/layout.rs`: `FieldType::Struct { fields }` (allowed only as a list item, `c_layout` of plain members); `validate` allows `List` of vectors, `Entity`, `Enum`, `Struct`; refuses nested lists and heap members of a struct
-- [ ] 4.2 `crates/bevy-ts/src/heap.rs`: `Item` gains `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, `Enum { width }`, `Struct(&'static ItemShape)`; storage `Vec<Vec2>`, `Vec<Vec3>`, `Vec<[f32; 4]>`, `Vec<Entity>`, `Vec<u8|u16|u32>`, struct items as a raw list with `len` and `cap` in items, allocated with the item's layout, `Vec`'s field order probed once (design decision 9); `ItemShape` leaked per layout; drop, clone and codec per kind
-- [ ] 4.3 `crates/bevy-ts/src/value.rs`: JSON encode and decode of the new items (vectors as arrays, entities as numbers, enums as names, structs as objects)
-- [ ] 4.4 `crates/bevy-ts/src/reflect_codec.rs`: heap target codec items `Lanes`, `Entity`, `Enum`, `Struct`
-- [ ] 4.5 `core.js`: encoders for the four item nodes; read items frozen (vector values, plain objects); `packages/bevy-ts/index.d.ts`: `readonly ReadonlyVec3[]` etc. on `Read`
-- [ ] 4.6 `reader.rs` `field_ty`: list items of vectors, `Entity`, unions and object types (via `object()`), with file and line for refusals; `crates/bevy-ts-cli/src/types.rs` if it names field types
-- [ ] 4.7 `crates/bevy-ts/src/saves.rs`: `map_entities` into lists and struct items; `migrate` keeps a struct list only when item members match
-- [ ] 4.8 `crates/bevy-ts-remote/src/protocol.rs`, `values.rs`: item kinds and JSON Schema for them; regenerate `protocol/bevy-ts.openrpc.json` (`scripts/gen-protocol.sh`), next free minor
-- [ ] 4.9 `crates/bevy-ts-levels`: an entity list from a level fails as an `Entity` field does
-- [ ] 4.10 Tests: `crates/bevy-ts/src/layout.rs` unit: struct item layout and stride; `crates/bevy-ts/tests/it/heap_fields.rs` each item kind freed once on every path, a Rust system reads `Vec<Vec3>` and a `#[repr(C)]` struct `Vec` from the bytes; a Rust system pushes onto a struct list, TS reads every item, and it is freed once; `crates/bevy-ts/src/heap.rs` unit: the `Vec` field-order probe; `saves.rs` an entity list remapped, a struct item member added resets; `crates/bevy-ts-cli/tests/it/heap_fields.rs` read each kind, refusals of `f32[][]` and `{ name: string }[]` with file and line; `protocol.rs` schema of a struct list validated against the protocol schema
-- [ ] 4.11 Bench: 8-item `Vec3[]` hit and miss
-- [ ] 4.12 Docs: `docs/ecs.md`, `docs/scripts.md`, `docs/saves.md`
-- [ ] 4.13 `cargo build`, tests of `bevy-ts`, `bevy-ts-cli`, `bevy-ts-remote`, `bevy-ts-levels` through `gate-slot`
+- [x] 4.1 `crates/bevy-ts/src/layout.rs`: `FieldType::Struct { fields }` (allowed only as a list item, `c_layout` of plain members); `validate` allows `List` of vectors, `Entity`, `Enum`, `Struct`; refuses nested lists and heap members of a struct
+- [x] 4.2 `crates/bevy-ts/src/heap.rs`: `Item` gains `Plain(&'static ItemShape)` for vectors, `Entity`, enums and structs (design decision 9, as built); storage `Vec<Vec2>`, `Vec<Vec3>`, `Vec<[f32; 4]>`, `Vec<Entity>`, `Vec<u8|u16|u32>`, struct items as a raw list with `len` and `cap` in items, allocated with the item's layout, `Vec`'s field order probed once (design decision 9); `ItemShape` leaked per layout; drop, clone and codec per kind
+- [x] 4.3 `crates/bevy-ts/src/value.rs`: JSON encode and decode of the new items (vectors as arrays, entities as numbers, enums as names, structs as objects)
+- [x] 4.4 `crates/bevy-ts/src/reflect_codec.rs`: heap target codec items `Lanes`, `Entity`, `Enum`, `Struct`
+- [x] 4.5 `core.js`: encoders for the four item nodes; read items frozen (vector values, plain objects); `packages/bevy-ts/index.d.ts`: `readonly ReadonlyVec3[]` etc. on `Read`
+- [x] 4.6 `reader.rs` `field_ty`: list items of vectors, `Entity`, unions and object types (via `object()`), with file and line for refusals; `crates/bevy-ts-cli/src/types.rs` if it names field types
+- [x] 4.7 `crates/bevy-ts/src/saves.rs`: `map_entities` into lists and struct items; `migrate` keeps a struct list only when item members match
+- [x] 4.8 `crates/bevy-ts-remote/src/protocol.rs`, `values.rs`: item kinds and JSON Schema for them; regenerate `protocol/bevy-ts.openrpc.json` (`scripts/gen-protocol.sh`), next free minor
+- [x] 4.9 `crates/bevy-ts-levels`: an entity list from a level fails as an `Entity` field does
+- [x] 4.10 Tests: `crates/bevy-ts/src/layout.rs` unit: struct item layout and stride; `crates/bevy-ts/tests/it/heap_fields.rs` each item kind freed once on every path, a Rust system reads `Vec<Vec3>` and a `#[repr(C)]` struct `Vec` from the bytes; a Rust system pushes onto a struct list, TS reads every item, and it is freed once; `crates/bevy-ts/src/heap.rs` unit: the `Vec` field-order probe; `saves.rs` an entity list remapped, a struct item member added resets; `crates/bevy-ts-cli/tests/it/heap_fields.rs` read each kind, refusals of `f32[][]` and `{ name: string }[]` with file and line; `protocol.rs` schema of a struct list validated against the protocol schema
+- [x] 4.11 Bench: 8-item `Vec3[]` hit and miss
+- [x] 4.12 Docs: `docs/ecs.md`, `docs/scripts.md`, `docs/saves.md`
+- [x] 4.13 `cargo build`, tests of `bevy-ts`, `bevy-ts-cli`, `bevy-ts-remote`, `bevy-ts-levels` through `gate-slot`
 
 ## 5. Stage 5: in-place list edits and `.field[i]`
 

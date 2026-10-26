@@ -523,3 +523,34 @@ export class Tag extends Component { label: string = "crate"; hp: f32 = 1; score
     assert_eq!(scores["type"], json!({ "kind": "list", "of": { "kind": "u32" } }));
     assert_eq!(s["game::Tag"]["properties"]["scores"]["type"], json!("array"));
 }
+
+#[test]
+fn a_list_of_objects_reads_edits_and_types_on_contract() {
+    let src = r#"import { Component, type Entity, type f32, type Vec3 } from "bevy-ts";
+type Kind = "hit" | "miss";
+interface Hit { at: Vec3; by: Entity; kind: Kind; hp: f32 }
+export class Trail extends Component { hits: Hit[] = []; points: Vec3[] = [] }
+"#;
+    let dir = project("protocol-objects", &[("game.ts", src)]);
+    let mut app = app(&dir.join("game.ts"));
+    app.add_plugins(RemotePlugin::default());
+    bevy_ts_remote::add_methods(&mut app);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, bevy_ts::generation::ReloadStatus::Applied, "{:?}", r.errors);
+    let e = spawn_ts(&mut app, "game::Trail", json!({ "points": [[1, 2, 3]] }), ());
+    let hits = json!([{ "at": [1.0, 0.0, 0.0], "by": 5, "kind": "miss", "hp": 2.0 }]);
+    ok(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Trail", "path": ".hits", "value": hits })));
+    let got = ok(&mut app, "bevy-ts/get_components", Some(json!({ "entity": e.to_bits(), "components": ["game::Trail"] })));
+    assert_eq!(got["components"]["game::Trail"], json!({ "hits": hits, "points": [[1.0, 2.0, 3.0]] }));
+    let partial = call(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Trail", "path": ".hits", "value": [{ "at": [0, 0, 0] }] }))).unwrap_err();
+    assert!(partial.message.contains("member by is missing"), "{}", partial.message);
+
+    // `ok` validates the schema's answer against the protocol's: a `struct` item is on contract.
+    let s = ok(&mut app, "bevy-ts/schema", Some(json!({ "names": ["game::Trail"] })));
+    let fields = &s["game::Trail"]["x-bevy-ts"]["layout"]["fields"];
+    let hits = fields.as_array().unwrap().iter().find(|f| f["name"] == "hits").unwrap();
+    assert_eq!(hits["type"]["of"]["kind"], json!("struct"));
+    assert_eq!(hits["type"]["of"]["fields"][1], json!({ "name": "by", "type": { "kind": "entity" } }));
+    let item = &s["game::Trail"]["properties"]["hits"]["items"];
+    assert_eq!((item["type"].clone(), item["required"].clone()), (json!("object"), json!(["at", "by", "kind", "hp"])));
+}

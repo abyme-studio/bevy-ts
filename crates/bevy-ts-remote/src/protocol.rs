@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.33.0";
+pub const VERSION: &str = "1.34.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1192,9 +1192,11 @@ pub struct FieldRoutes {
     pub scale: EditRoute,
     pub translation: EditRoute,
 }
-///A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`). `string` and `list` are heap fields (protocol 1.33.0), Rust's `String` and `Vec<T>` in the component's own bytes: a JSON string, or an array of the list's item type `of` (a number kind, `bool` or `string`), each written whole by `.field` (`.field[i]` on a list is refused). A component with one starts with an 8-byte header the layout's offsets and `size` include.
+///A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`). `string` and `list` are heap fields (protocol 1.33.0), Rust's `String` and `Vec<T>` in the component's own bytes: a JSON string, or an array of the list's item type `of` (a number kind, `bool`, `string`, a vector, `entity`, `enum`, or (protocol 1.34.0) `struct`), each written whole by `.field` (`.field[i]` on a list is refused). A `struct` is only a list's item: an object of its `fields`, each `{ name, type }` of a plain type (a number kind, `bool`, a vector, `entity`, `enum`), laid out with C rules as a `#[repr(C)]` Rust struct; a value gives every member. A component with one starts with an 8-byte header the layout's offsets and `size` include.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct FieldType {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub fields: ::std::vec::Vec<StructField>,
     pub kind: FieldTypeKind,
     #[serde(skip_serializing_if = "::std::option::Option::is_none")]
     pub len: ::std::option::Option<u32>,
@@ -1257,6 +1259,8 @@ pub enum FieldTypeKind {
     String,
     #[serde(rename = "list")]
     List,
+    #[serde(rename = "struct")]
+    Struct,
 }
 impl ::std::fmt::Display for FieldTypeKind {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -1281,6 +1285,7 @@ impl ::std::fmt::Display for FieldTypeKind {
             Self::Stopwatch => f.write_str("stopwatch"),
             Self::String => f.write_str("string"),
             Self::List => f.write_str("list"),
+            Self::Struct => f.write_str("struct"),
         }
     }
 }
@@ -1310,6 +1315,7 @@ impl ::std::str::FromStr for FieldTypeKind {
             "stopwatch" => Ok(Self::Stopwatch),
             "string" => Ok(Self::String),
             "list" => Ok(Self::List),
+            "struct" => Ok(Self::Struct),
             _ => Err("invalid value".into()),
         }
     }
@@ -4263,6 +4269,14 @@ impl ::std::default::Default for StepParams {
             frames: defaults::default_nzu64::<::std::num::NonZeroU32, 1>(),
         }
     }
+}
+///One member of a `struct` field type.
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct StructField {
+    pub name: ::std::string::String,
+    #[serde(rename = "type")]
+    pub type_: FieldType,
 }
 ///Carries the IOSurface's Mach port.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]

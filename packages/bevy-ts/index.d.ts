@@ -159,9 +159,11 @@ export interface Stopwatch extends ReadonlyStopwatch {
 }
 export declare const Stopwatch: Field<"stopwatch"> & { "new"(): Stopwatch };
 
-/** A list field (`scores: u32[]`, a heap field) as a row gives it: a frozen array, assigned whole.
- * A fixed-length tuple (`array(u16, 3)`) stays itself. */
-type HeapList<V> = V extends readonly (infer E)[] ? (number extends V["length"] ? readonly E[] : V) : V;
+/** A list field (`scores: u32[]`, a heap field) as a row gives it: a frozen array, assigned whole,
+ * whose vector items are read-only vectors and object items read-only objects. A fixed-length
+ * tuple (`array(u16, 3)`) stays itself. */
+type HeapList<V> = V extends readonly (infer E)[] ? (number extends V["length"] ? readonly HeapItem<E>[] : V) : V;
+type HeapItem<E> = E extends number | string | boolean ? E : E extends Vec3 ? ReadonlyVec3 : E extends Quat ? ReadonlyQuat : E extends object ? { readonly [K in keyof E]: HeapItem<E[K]> } : E;
 /** Read access: every field readonly, vectors without mutating methods. */
 export type ReadView<T> = {
   readonly [K in keyof T as K extends symbol ? never : K]: T[K] extends Vec3 ? ReadonlyVec3 : T[K] extends Quat ? ReadonlyQuat

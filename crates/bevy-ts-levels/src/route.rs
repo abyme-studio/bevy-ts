@@ -114,7 +114,7 @@ fn wvalue(ty: &ValueType, v: &Value) -> Result<WValue, String> {
             return Err("a whole vector is written lane by lane".into());
         }
         ValueType::Field(FieldType::Timer | FieldType::Stopwatch) => return Err("a whole timer is written field by field".into()),
-        ValueType::Field(FieldType::List { .. }) => return Err("list values are not supported in .bsn files".into()),
+        ValueType::Field(FieldType::List { .. } | FieldType::Struct { .. }) => return Err("list values are not supported in .bsn files".into()),
         ValueType::Field(_) => WValue::Int(v.as_f64().ok_or("expected an integer")? as i64),
     })
 }

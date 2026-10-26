@@ -109,7 +109,9 @@ kept, a new field takes its default, a field whose type changed is reset to its 
 no longer declared is dropped. The type is read from the saved value's shape (a float, an
 integer, a list of its length, an enum's name...). A `string` or `T[]` field is kept when the saved
 value is one of its type, whatever a list's length: a saved `[3, 1, 4]` loads into a `u32[]` whose
-default is `[]`, and a saved `[1.5]` resets a `string[]`. Each component that migrated is logged once per
+default is `[]`, and a saved `[1.5]` resets a `string[]`. A list of objects is kept only while
+each saved item has exactly the members it declares: a member added or removed resets it. Entities
+in a list, and in its objects, are remapped as an `Entity` field is. Each component that migrated is logged once per
 load as a warning: `load: game::Health migrated on 3 entities; added max; reset hp`.
 
 A TS component whose class no longer exists is never dropped: its JSON stays in the entity's

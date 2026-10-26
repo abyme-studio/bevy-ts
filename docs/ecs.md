@@ -89,9 +89,20 @@ export class Title extends Resource { text: string = "untitled" }
 export class Chat extends Message { text: string = ""; to: u32[] = [] }
 ```
 
-- A list's items are a number kind (`f32`, `f64`, `i8`..`u32`), `bool` or `string`. Vectors,
-  `Entity`, objects and nested lists fail the load with the file and line. A `declare`d field
-  starts as `""` or `[]`.
+- A list's items are a number kind (`f32`, `f64`, `i8`..`u32`), `bool`, `string`, a vector
+  (`Vec2`, `Vec3`, `Vec4`, `Quat`), `Entity`, a string-literal union, or an object type of those
+  but `string` (`{ at: Vec3; by: Entity; kind: Kind; hp: f32 }[]`, a literal, an alias or an
+  interface). A nested list (`f32[][]`), a `string` or list member of an object, an optional
+  member and an object field outside a list fail the load with the file and line. A `declare`d
+  field starts as `""` or `[]`.
+- A row reads a vector item as a frozen `Vec3` (a `Vec2` with z 0) or `Quat` (`Vec4` too), an
+  entity as `Entity`, a union as its name and an object as a frozen object of its members. A list
+  is written whole, and an object item gives every member.
+- A Rust system reads a list of them as Bevy keeps one: `Vec<Vec2>`, `Vec<Vec3>`, `Vec<Entity>`,
+  `Vec<[f32; 4]>` for `Vec4` and `Quat` (glam's are 16-aligned, a column's are not), `Vec<u8>`
+  (or `u16`, `u32`, by the union's size) of the variant index, and an object as a `Vec<T>` of a
+  `#[repr(C)]` struct of its members in order. It may push onto one: the list is freed with the
+  layout Rust grew it with.
 - Components, resources, `Local`, messages and events take them; an `In<E>` input of an event
   with one does not yet (`runSystemWith` throws).
 - A `Local<{ log: string; hits: u32[] }>` keeps its heap values across runs in the system's
@@ -164,6 +175,12 @@ observer): a plain message is 810 on main and 804 here; a plain event 3290 on ma
 5% apart with the two ranges (2835-4875, 3101-5126) overlapping. A string field costs about 1,230
 ns a message (2033) and 1,790 an event (5249): the string's build from JS bytes, its free and one
 host call a read.
+
+A list of vectors (3 rounds against main at f0f02fa5c, load about 90, medians): an 8-item
+`Vec3[]` reads in 73 ns a row unchanged and 647 changed, against 60 and 237 for an 8-item `f32[]`
+in the same rounds: a changed read builds 8 frozen `Vec3`s. The plain arms match main in those
+rounds (column 15 against 16, despawn 33 against 38, message 901 against 944, event 3418 against
+3469).
 
 Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
 fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).

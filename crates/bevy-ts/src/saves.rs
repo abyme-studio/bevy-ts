@@ -624,10 +624,19 @@ fn map_entities(ty: &FieldType, v: &mut Value, mapper: &mut SceneEntityMapper) {
                 *v = Value::from(mapper.get_mapped(e).to_bits());
             }
         }
-        FieldType::Array { of, .. } => {
+        FieldType::Array { of, .. } | FieldType::List { of } => {
             if let Value::Array(a) = v {
                 for x in a {
                     map_entities(of, x, mapper);
+                }
+            }
+        }
+        FieldType::Struct { fields } => {
+            if let Value::Object(o) = v {
+                for f in fields {
+                    if let Some(x) = o.get_mut(&f.name) {
+                        map_entities(&f.ty, x, mapper);
+                    }
                 }
             }
         }
@@ -680,6 +689,43 @@ mod tests {
         assert_eq!(v.as_u64(), Some(old.to_bits()));
         SceneEntityMapper::world_scope(&mut map, &mut world, |_, mapper| map_entities(&FieldType::Entity, &mut v, mapper));
         assert_eq!(v.as_u64(), Some(new.to_bits()));
+    }
+
+    #[test]
+    fn entities_in_a_list_and_its_objects_are_remapped() {
+        use crate::layout::StructField;
+        let mut world = World::new();
+        let (old, new) = (Entity::from_bits(40), world.spawn_empty().id());
+        let mut map = EntityHashMap::default();
+        map.insert(old, new);
+        let hit = FieldType::Struct { fields: vec![StructField { name: "by".into(), ty: FieldType::Entity }, StructField { name: "hp".into(), ty: FieldType::F32 }] };
+        let (who, hits) = (FieldType::List { of: Box::new(FieldType::Entity) }, FieldType::List { of: Box::new(hit) });
+        let mut a = serde_json::json!([old.to_bits()]);
+        let mut b = serde_json::json!([{ "by": old.to_bits(), "hp": 1.0 }]);
+        SceneEntityMapper::world_scope(&mut map, &mut world, |_, mapper| {
+            map_entities(&who, &mut a, mapper);
+            map_entities(&hits, &mut b, mapper);
+        });
+        assert_eq!((a, b), (serde_json::json!([new.to_bits()]), serde_json::json!([{ "by": new.to_bits(), "hp": 1.0 }])));
+    }
+
+    #[test]
+    fn a_list_of_objects_is_kept_only_while_its_members_match() {
+        use crate::layout::StructField;
+        use crate::manifest::FieldDecl;
+        use serde_json::json;
+        let m = |n: &str, ty: FieldType| StructField { name: n.into(), ty };
+        let decl = |members: Vec<StructField>| ComponentDecl {
+            name: "game::Trail".into(),
+            fields: vec![FieldDecl { name: "hits".into(), ty: FieldType::List { of: Box::new(FieldType::Struct { fields: members }) }, default: None, hints: Default::default() }],
+            ..Default::default()
+        };
+        let saved = json!({ "hits": [{ "at": [1, 2, 3], "hp": 2 }] });
+        let same = decl(vec![m("at", FieldType::Vec3), m("hp", FieldType::F32)]);
+        assert!(migrate(&same, &same.layout(), saved.as_object().unwrap()).1.is_none(), "its members match: kept");
+        let added = decl(vec![m("at", FieldType::Vec3), m("hp", FieldType::F32), m("kind", FieldType::U8)]);
+        let (values, change) = migrate(&added, &added.layout(), saved.as_object().unwrap());
+        assert_eq!((change.unwrap().reset, values.len()), (vec!["hits".to_string()], 0), "a member added resets it");
     }
 
     #[test]

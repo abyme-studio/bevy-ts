@@ -2,7 +2,7 @@
 //! the plugin API's encoding and the protocol's reads and edits. A heap field (`string`) is a
 //! JSON string; its value lives in a [`HeapBytes`], never in loose bytes.
 
-use crate::heap::{HeapBytes, HeapShape, HeapValue, List};
+use crate::heap::{HeapBytes, HeapShape, HeapValue, ItemShape, List, PlainList};
 use crate::layout::{ComponentLayout, FieldType};
 use crate::manifest::{ComponentDecl, FieldHints};
 use bevy::prelude::Entity;
@@ -69,7 +69,15 @@ pub fn heap_value(path: &str, ty: &FieldType, v: &Value) -> Result<HeapValue, Va
                         .map(|(i, x)| x.as_str().map(str::to_string).ok_or_else(|| err(&format!("{path}[{i}]"), of, format!("got {x}"))))
                         .collect::<Result<_, _>>()?,
                 ),
-                _ => return Err(err(path, ty, "not a list of numbers, bool or string")),
+                ref t if t.item_member() || matches!(t, FieldType::Struct { .. }) => {
+                    let shape = ItemShape::of(t);
+                    let mut bytes = vec![0u8; a.len() * shape.size];
+                    for (i, (x, b)) in a.iter().zip(bytes.chunks_exact_mut(shape.size)).enumerate() {
+                        encode_field(&format!("{path}[{i}]"), of, x, b)?;
+                    }
+                    List::Plain(PlainList { shape, bytes })
+                }
+                _ => return Err(err(path, ty, "not a list of numbers, bool, string, vectors, entities, enums or objects")),
             };
             Ok(HeapValue::List(list))
         }
@@ -92,6 +100,8 @@ pub fn heap_json(v: &HeapValue) -> Value {
             List::U32(x) => json!(x),
             List::Bool(x) => json!(x),
             List::Str(x) => json!(x),
+            // SAFETY: a raw list's items are plain.
+            List::Plain(l) => Value::Array((0..l.len()).map(|i| unsafe { decode_field(&l.shape.ty, l.item(i)) }).collect()),
         },
     }
 }
@@ -174,6 +184,19 @@ pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Re
         FieldType::Str | FieldType::List { .. } => {
             heap_value(path, ty, v)?;
         }
+        // An object of every member, none other: a list's item is whole.
+        FieldType::Struct { .. } => {
+            let layout = ty.struct_layout().unwrap();
+            let o = v.as_object().ok_or_else(|| err(path, ty, format!("got {v}")))?;
+            if let Some(k) = o.keys().find(|k| layout.field(k).is_none()) {
+                return Err(err(path, ty, format!("no member {k}")));
+            }
+            out.fill(0);
+            for f in &layout.fields {
+                let x = o.get(&f.name).ok_or_else(|| err(path, ty, format!("member {} is missing", f.name)))?;
+                encode_field(&format!("{path}.{}", f.name), &f.ty, x, &mut out[f.offset..f.offset + f.ty.size()])?;
+            }
+        }
         // An object of its fields; a field left out is zero.
         FieldType::Timer | FieldType::Stopwatch => {
             let layout = ty.fields().unwrap();
@@ -227,6 +250,8 @@ pub unsafe fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
         }
         // SAFETY: a timer's fields are plain.
         FieldType::Timer | FieldType::Stopwatch => unsafe { decode_component(ty.fields().unwrap(), b) },
+        // SAFETY: a struct's members are plain (`validate`).
+        FieldType::Struct { .. } => unsafe { decode_component(&ty.struct_layout().unwrap(), b) },
         FieldType::Str | FieldType::List { .. } => {
             assert_eq!(b.len(), ty.size(), "a heap slot");
             let kind = crate::heap::HeapKind::of(ty).expect("a heap field");
