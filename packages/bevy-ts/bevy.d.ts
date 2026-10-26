@@ -2183,8 +2183,26 @@ export interface AnimationGraphNode {
 }
 
 export type Image = AssetFields<"bevy_image::image::Image", { sampler: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } } }>;
-export type ImageLoadSettings = { sampler?: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } }; is_srgb?: boolean };
-export declare const Image: AssetClass<Image> & Loadable<Image, ImageLoadSettings>;
+export { TextureFormat } from "bevy-ts";
+/** The loader settings `Image.load` takes. */
+export type ImageLoadSettings = { sampler?: Image["sampler"]; is_srgb?: boolean };
+/** The options `Image.new` takes: the sampler in the shape `Image.load` and `assets.set` take. */
+export interface ImageOptions {
+  sampler?: Image["sampler"];
+}
+declare const newImageBrand: unique symbol;
+/** An image `Image.new` made: recorded in JS until `images.add` makes it in one host call. */
+export interface NewImage {
+  readonly size: [number, number];
+  readonly format: import("bevy-ts").TextureFormat;
+  readonly data: Uint8Array;
+  readonly [newImageBrand]: true;
+}
+/** Bevy's `Image`. `Image.new` makes one from bytes for `images: ResMut<Assets<Image>>` (docs/assets.md). */
+export declare const Image: AssetClass<Image> & Loadable<Image, ImageLoadSettings> & {
+  /** A 2D image of `data`, exactly `width × height × bytes per pixel` long; `images.add` copies it once into Bevy's image. */
+  "new"(size: readonly [number, number], format: import("bevy-ts").TextureFormat, data: Uint8Array, options?: ImageOptions): NewImage;
+};
 
 export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { fromGrid?: { tileSize: readonly [number, number]; columns: number; rows: number; padding?: readonly [number, number]; offset?: readonly [number, number] }; size?: readonly [number, number]; textures?: readonly { min: readonly [number, number]; max: readonly [number, number] }[] }>;
 /** A grid of equal tiles, Bevy's `TextureAtlasLayout::from_grid`: sizes in whole pixels. */

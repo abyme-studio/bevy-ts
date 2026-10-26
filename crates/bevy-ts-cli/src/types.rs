@@ -320,6 +320,11 @@ const HAND: &[Hand] = &[
         dts: include_str!("hand_ts/texture_atlas_layout.d.ts"),
     },
     Hand {
+        path: "bevy_image::image::Image",
+        js: include_str!("hand_ts/image.js"),
+        dts: include_str!("hand_ts/image.d.ts"),
+    },
+    Hand {
         path: "bevy_animation::AnimationClip",
         js: include_str!("hand_ts/animation_clip.js"),
         dts: include_str!("hand_ts/animation_clip.d.ts"),

@@ -9,8 +9,10 @@ use crate::wgsl;
 use bevy::prelude::*;
 use bevy_ts::backend::{ScriptError, SourceLocation};
 use bevy_ts::log::{LogLevel, ScriptLog};
+use bevy_ts::reflect_asset::ScriptAssets;
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use std::any::TypeId;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -299,7 +301,8 @@ fn build(
                 generation,
             );
         }
-        let material = material.with_textures(world_textures(world, &state, &props));
+        let textures = textures_keeping(world, &state, &props, world.resource::<Assets<ScriptMaterial>>().get(&handle));
+        let material = material.with_textures(textures);
         if let Some(mut m) = world.resource_mut::<Assets<ScriptMaterial>>().get_mut(&handle) {
             *m = material;
         }
@@ -546,17 +549,40 @@ fn encode(k: &KindState, props: &Map<String, Value>) -> (ScriptMaterial, Vec<Str
     (ScriptMaterial { kind: k.kind.clone(), data, textures }, dropped)
 }
 
-fn world_textures(world: &World, k: &KindState, props: &Map<String, Value>) -> Vec<Option<Handle<Image>>> {
-    let server = world.get_resource::<AssetServer>();
-    k.kind
-        .bindings
-        .textures()
-        .iter()
-        .map(|t| match (props.get(t).and_then(Value::as_str), server) {
-            (Some(path), Some(s)) => Some(s.load(path.to_string())),
-            _ => None,
-        })
-        .collect()
+/// A texture prop's image: an asset path, loaded by the `AssetServer`, or an image ref, resolved
+/// through the script's refs (its strong handle kept in the instance). `None` when unset, or for a
+/// path with no `AssetServer`.
+fn texture(world: &World, t: &str, v: Option<&Value>) -> Result<Option<Handle<Image>>, String> {
+    match v {
+        Some(Value::String(path)) => Ok(world.get_resource::<AssetServer>().map(|s| s.load(path.clone()))),
+        Some(v) if ref_number(v).is_some() => {
+            let n = ref_number(v).expect("checked");
+            let registry = world.resource::<AppTypeRegistry>().read();
+            let refs = world.get_resource::<ScriptAssets>().ok_or_else(|| format!("texture {t}: image refs need BevyTsPlugin"))?;
+            refs.handle_for(&registry, TypeId::of::<Image>(), n).map(|h| Some(h.typed::<Image>())).map_err(|e| format!("texture {t}: {e}"))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// The number of an asset ref (`{ "$asset": n, "type": path }`).
+fn ref_number(v: &Value) -> Option<u64> {
+    v.as_object()?.get("$asset")?.as_u64()
+}
+
+fn world_textures(world: &World, k: &KindState, props: &Map<String, Value>) -> Result<Vec<Option<Handle<Image>>>, String> {
+    k.kind.bindings.textures().iter().map(|t| texture(world, t, props.get(t))).collect()
+}
+
+/// [`world_textures`] for an instance `old` already draws: a ref that no longer resolves (the
+/// script dropped it, or reloaded) keeps the image `old` holds under that texture's name.
+fn textures_keeping(world: &World, k: &KindState, props: &Map<String, Value>, old: Option<&ScriptMaterial>) -> Vec<Option<Handle<Image>>> {
+    let held = |t: &str| {
+        let old = old?;
+        let i = old.kind.bindings.textures().iter().position(|n| n == t)?;
+        old.textures.get(i).cloned().flatten()
+    };
+    k.kind.bindings.textures().iter().map(|t| texture(world, t, props.get(t)).unwrap_or_else(|_| held(t))).collect()
 }
 
 /// Checks `<material kind={K} .../>`'s props against the kinds a generation declares
@@ -570,9 +596,7 @@ pub fn check_props(kinds: &BTreeMap<String, Option<Bindings>>, kind: &str, props
         if bindings.params().field(p).is_some() {
             bindings.params().encode(p, v, &mut scratch).map_err(|e| format!("{kind}: {e}"))?;
         } else if bindings.textures().contains(p) {
-            if !v.is_string() {
-                return Err(format!("{kind}: texture {p} takes an asset path"));
-            }
+            check_texture(kind, p, v)?;
         } else if bindings.instance().field(p).is_some() {
             let mut scratch = bindings.instance().defaults();
             bindings.instance().encode(p, v, &mut scratch).map_err(|e| format!("{kind}: {e}"))?;
@@ -581,6 +605,21 @@ pub fn check_props(kinds: &BTreeMap<String, Option<Bindings>>, kind: &str, props
         }
     }
     Ok(())
+}
+
+/// A texture prop's value without a world: an asset path, or an asset ref whose type is `Image`.
+fn check_texture(kind: &str, p: &str, v: &Value) -> Result<(), String> {
+    const IMAGE: &str = "bevy_image::image::Image";
+    let takes = format!("{kind}: texture {p} takes an asset path or an image ref");
+    if v.is_string() {
+        return Ok(());
+    }
+    let Some(n) = ref_number(v) else { return Err(format!("{takes}, not {v}")) };
+    match v.get("type").and_then(Value::as_str) {
+        Some(IMAGE) => Ok(()),
+        Some(ty) => Err(format!("{takes}; asset ref {n} is a {ty}, not a {IMAGE}")),
+        None => Err(format!("{takes}; asset ref {n} names no type")),
+    }
 }
 
 /// Checks the bound props of `<material kind={K} .../>`: only instance params may be bound.
@@ -615,19 +654,22 @@ pub fn split_props(world: &World, kind: &str, props: &Map<String, Value>) -> Opt
     Some((key, instance, b.clone()))
 }
 
-/// The instance for `kind` with `props`: equal props share one asset, as `<material>` does.
-pub fn instance(world: &mut World, kind: &str, props: &Map<String, Value>) -> Option<Handle<ScriptMaterial>> {
+/// The instance for `kind` with `props`: equal props share one asset, as `<material>` does. Fails
+/// for a kind that is not live, or a texture ref that is stale or of another type.
+pub fn instance(world: &mut World, kind: &str, props: &Map<String, Value>) -> Result<Handle<ScriptMaterial>, String> {
     let key = serde_json::to_string(props).unwrap_or_default();
     let kinds = world.resource::<MaterialKinds>();
-    let k = kinds.live.get(kind)?;
+    let k = kinds.live.get(kind).ok_or_else(|| format!("no material {kind}"))?;
     if let Some((h, _)) = k.instances.get(&key) {
-        return Some(h.clone());
+        return Ok(h.clone());
     }
     let (material, _) = encode(k, props);
-    let material = material.with_textures(world_textures(world, k, props));
+    let material = material.with_textures(world_textures(world, k, props).map_err(|e| format!("{kind}: {e}"))?);
     let h = world.resource_mut::<Assets<ScriptMaterial>>().add(material);
-    world.resource_mut::<MaterialKinds>().live.get_mut(kind)?.instances.insert(key, (h.clone(), props.clone()));
-    Some(h)
+    if let Some(k) = world.resource_mut::<MaterialKinds>().live.get_mut(kind) {
+        k.instances.insert(key, (h.clone(), props.clone()));
+    }
+    Ok(h)
 }
 
 /// `PostUpdate`, after the TSX reconcile: drops each instance only the cache holds. Every
@@ -650,5 +692,33 @@ mod tests {
         assert_ne!(shader_path("game::Glow", "fragment"), shader_path("Game::glow", "fragment"));
         assert_ne!(shader_path("game::Glow", "fragment"), shader_path("game::Glow", "vertex"));
         assert_ne!(shader_path("a_b", "fragment"), shader_path("a::b", "fragment"));
+    }
+
+    fn town() -> BTreeMap<String, Option<Bindings>> {
+        let b = Bindings::new("Town", [], &["owners".into()]).unwrap();
+        BTreeMap::from([("Town".to_string(), Some(b))])
+    }
+
+    fn props(v: Value) -> Map<String, Value> {
+        serde_json::json!({ "owners": v }).as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn a_texture_takes_a_path_or_an_image_ref() {
+        let kinds = town();
+        assert!(check_props(&kinds, "Town", &props(Value::from("owners.png"))).is_ok());
+        let image = serde_json::json!({ "$asset": 3, "type": "bevy_image::image::Image" });
+        assert!(check_props(&kinds, "Town", &props(image)).is_ok());
+        let mesh = check_props(&kinds, "Town", &props(serde_json::json!({ "$asset": 4, "type": "bevy_mesh::mesh::Mesh" }))).unwrap_err();
+        assert_eq!(mesh, "Town: texture owners takes an asset path or an image ref; asset ref 4 is a bevy_mesh::mesh::Mesh, not a bevy_image::image::Image");
+        let number = check_props(&kinds, "Town", &props(Value::from(7))).unwrap_err();
+        assert_eq!(number, "Town: texture owners takes an asset path or an image ref, not 7");
+    }
+
+    #[test]
+    fn equal_refs_give_one_instance_key() {
+        let a = props(serde_json::json!({ "$asset": 3, "type": "bevy_image::image::Image" }));
+        let b = props(serde_json::json!({ "type": "bevy_image::image::Image", "$asset": 3 }));
+        assert_eq!(serde_json::to_string(&a).unwrap(), serde_json::to_string(&b).unwrap());
     }
 }

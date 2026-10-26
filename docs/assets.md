@@ -100,7 +100,7 @@ To edit one entity's asset alone, give it its own with `assets.add`.
 ## Images and loader settings
 
 `Image` is hand-mapped by its sampler alone: its pixels and texture descriptors are opaque to
-reflection. `assets.add(Image, { sampler })` builds Bevy's default 1 x 1 image with that sampler,
+reflection (an image from bytes is [`images.add`](#images-from-bytes)). `assets.add(Image, { sampler })` builds Bevy's default 1 x 1 image with that sampler,
 `assets.get` reads `{ sampler }`, and `assets.set` changes the sampler and keeps the pixels. The
 sampler is Bevy's `ImageSampler` in the writer's shape: `"Default"` (the `ImagePlugin`'s), or
 `{ Descriptor: { address_mode_u: "Repeat", mag_filter: "Nearest", ... } }`. Unset fields keep the
@@ -124,6 +124,71 @@ assets.add(StandardMaterial, { base_color_texture: atlas, normal_map_texture: no
   logs a warning naming both settings. Load one file one way.
 - `Image.load` is a value like `T.of`: it loads when its slot is written, and reads back as its
   path.
+
+## Images from bytes
+
+A system that takes `images: ResMut<Assets<Image>>` makes and rewrites images from its own bytes.
+The param is the engine's `Images` export (`bevy-ts/assets`, `crates/bevy-ts-cli/src/assets.rs`).
+
+```ts
+import type { Assets, AssetRef, ResMut } from "bevy-ts";
+import { Image, TextureFormat } from "bevy-ts/bevy";
+
+const side = 256;
+const owners = new Uint8Array(side * side * 4);
+let tex: AssetRef<Image> | undefined;
+
+export function paint(images: ResMut<Assets<Image>>) {
+  if (!tex) {
+    tex = images.add(Image.new([side, side], TextureFormat.Rgba8UnormSrgb, owners, { sampler: { Descriptor: { mag_filter: "Nearest" } } }));
+    return;
+  }
+  if (!changed()) return;
+  images.getMut(tex)!.setData(owners);           // the whole image
+  // or: images.getMut(tex)!.writeRect(x, y, w, h, patch), patch tightly packed rows
+}
+```
+
+- `Image.new([width, height], format, data, { sampler? })` records a 2D image in JS. `data` is a
+  `Uint8Array` of exactly `width × height × bytes per pixel`. `images.add(image)` makes Bevy's
+  `Image::new` in one host call and returns a strong `AssetRef<Image>`; `assets.drop(ref)` lets it
+  go. A wrong length, a side of 0 or past 8192, or another format throws naming the size, format
+  and expected length, and adds nothing.
+- Formats: `TextureFormat.R8Unorm` (1 byte a pixel), `Rg8Unorm` (2), `Rgba8Unorm` (4) and
+  `Rgba8UnormSrgb` (4, colour). No 3D or array images, mipmaps or compressed formats.
+- `sampler` is the shape `Image.load` and `assets.set(img, { sampler })` take, written by the same
+  writer.
+- `images.getMut(ref)` is the live image: `setData(bytes)` copies the image's whole length into
+  its own data, and `writeRect(x, y, w, h, packedRows)` copies `w × h` pixels into that rect. Each
+  is one host call with no allocation. A wrong length or a rect outside the image throws naming
+  the image's size and the rect or length, and leaves the image as it was. However many writes one
+  system makes in a frame, Bevy sends one `AssetEvent::Modified`.
+- `images.get(ref)` reads it: `size` (`[width, height]`), `format`, and `readData(out?)`, which
+  copies the bytes into `out` or a new `Uint8Array`. A loaded image of another format reads its
+  size and throws on `format` and `readData`. Both are `undefined` once the image is gone.
+  `images.remove(ref)` is Bevy's `Assets::remove`; the ref goes stale.
+- The ref goes in any `Handle<Image>` slot (`assets.add(StandardMaterial, { base_color_texture:
+  ref })`, a TSX prop) and in a script material's texture prop. A rewrite reaches what samples it
+  the next rendered frame.
+
+### Cost
+
+Bytes cross as a view of the `Uint8Array`, and Rust copies them once into the image's `Vec`. A
+1024 × 1024 RGBA image (4 MiB), median per update (Apple M5 Max; `bench/script-image-bytes`,
+docs/research/script-image-bytes.md):
+
+| what | µs |
+|---|---|
+| Rust `get_mut` and one copy (floor) | 78.3 |
+| TS, one `setData` | 91.0 |
+| TS, a JS loop writing every pixel, then `setData` | 757.0 |
+| TS, one 256 × 256 `writeRect` | 24.0 |
+| Bevy's extraction clone of the image per `Modified` | 85.5 |
+
+Then Bevy re-uploads the whole image to the GPU on every `Modified`: it keeps the texture, but has
+no partial upload, so a rect saves CPU only. A 2048 × 2048 image is 16 MiB per update. So keep one
+`Uint8Array`, change only what changed, and write once a frame at most, only when something
+changed. Producing every pixel in JS costs far more than the crossing.
 
 ## Loading and load state
 

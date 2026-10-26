@@ -62,6 +62,7 @@ mod rust_events;
 mod rust_events_coverage;
 mod rust_resources;
 mod script_assets;
+mod script_images;
 mod scene_material;
 mod saves;
 mod schedules;

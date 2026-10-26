@@ -648,6 +648,14 @@ fn image_sampler(slots: &Slots, base: Option<&ImageSampler>, json: &Value) -> Re
     Ok(s)
 }
 
+/// An `ImageSampler` from the writer's JSON, for a Rust caller with no world at hand
+/// (`Image.new`'s `sampler` in the engine's `Images` export): the shape `Image.load` and
+/// `assets.set(img, { sampler })` take.
+pub fn sampler_of_json(registry: &TypeRegistry, assets: &ScriptAssets, json: &Value) -> Result<ImageSampler, String> {
+    let slots = Slots { registry, server: None, assets, world: None, check: false };
+    image_sampler(&slots, None, json)
+}
+
 /// `Image`'s hand-mapped read: `{ sampler }` alone. Its pixels and texture descriptors are opaque
 /// to reflection, so a script reaches the sampler only.
 fn image_read(slots: &Slots, _: Option<&Value>, image: &Image) -> Result<Value, String> {

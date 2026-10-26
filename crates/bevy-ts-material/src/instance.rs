@@ -232,12 +232,13 @@ pub fn set(world: &mut World, e: Entity, kind: &str, bindings: &Bindings, props:
 }
 
 /// `<material kind={K} ...props />` on `e`: the shared asset for its params and textures, and its
-/// instance props on the entity. `None` for a kind that is not live.
-pub fn apply(world: &mut World, e: Entity, kind: &str, props: &Map<String, Value>, at: Option<SourceLocation>) -> Option<Handle<ScriptMaterial>> {
-    let (key, instance, bindings) = crate::kinds::split_props(world, kind, props)?;
+/// instance props on the entity. Fails for a kind that is not live, or a texture ref that is stale
+/// or of another type.
+pub fn apply(world: &mut World, e: Entity, kind: &str, props: &Map<String, Value>, at: Option<SourceLocation>) -> Result<Handle<ScriptMaterial>, String> {
+    let (key, instance, bindings) = crate::kinds::split_props(world, kind, props).ok_or_else(|| format!("no material {kind}"))?;
     let h = crate::kinds::instance(world, kind, &key)?;
     set(world, e, kind, &bindings, &instance, at);
-    Some(h)
+    Ok(h)
 }
 
 /// A bound prop of `<material kind>` arrived: `props` are the element's values now. Only an

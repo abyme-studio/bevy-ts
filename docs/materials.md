@@ -28,7 +28,11 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
   and `array(of, len)`. Unset params are zero;
   colors, and the elements of a color array, are white.
 - `textures: { noise: texture2d }` adds a 2D texture and a filtering sampler; the prop is an asset
-  path (`noise="textures/noise.png"`). Unset, it binds a white fallback. Param and texture names are
+  path (`noise="textures/noise.png"`) or an image ref (`noise={tex}`, from `images.add`,
+  [assets.md](assets.md#images-from-bytes)). The instance holds the image, so it stays while the
+  material draws after the script drops its ref, and a `setData` on it draws the next frame with
+  no new instance. Equal refs share one instance; a stale ref fails at the element, and a ref of
+  another type fails the load naming both types. Unset, it binds a white fallback. Param and texture names are
   WGSL identifiers, not reserved words and not starting with `__`; a texture's name and its
   `<name>_sampler` may not be a param, `params`, the struct's name or another texture's. Otherwise
   the load fails at the `material()` call.

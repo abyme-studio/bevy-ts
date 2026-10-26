@@ -1,7 +1,8 @@
 //! Script material params as a picture (material-params): `assets.set` on a `Kind.add` instance
 //! redraws the same asset in the new colour, and writing it every frame builds no new pipeline;
-//! per-entity instance params draw two colours from one asset. Drawn to an offscreen image, no
-//! window shown.
+//! per-entity instance params draw two colours from one asset; an image made from TS bytes is
+//! sampled by a `StandardMaterial` and a script material, and redrawn after `setData`. Drawn to an
+//! offscreen image, no window shown.
 #![cfg(target_os = "macos")]
 
 use crate::common;
@@ -60,7 +61,7 @@ fn app(entry: &Path) -> App {
             .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }),
     )
     .add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true))
-    .add_plugins((bevy_ts_tsx::TsxPlugin, ScriptMaterialPlugin))
+    .add_plugins((bevy_ts_tsx::TsxPlugin, ScriptMaterialPlugin, bevy_ts_cli::assets::ScriptAssetsPlugin))
     .insert_resource(ClearColor(Color::BLACK))
     .insert_resource(DevSource(Arc::new(Compiler::new(entry, true).unwrap())));
     while app.plugins_state() == bevy::app::PluginsState::Adding {
@@ -219,4 +220,58 @@ fn a_bound_hover_redraws_with_no_new_asset() {
     pixels(&mut app, &[LEFT, RIGHT], |p| red(p[0]) && red(p[1]));
     pixels(&mut app, &[LEFT], |p| blue(p[0]));
     assert_eq!(app.world().resource::<Assets<ScriptMaterial>>().len(), assets, "no new asset");
+}
+
+/// Change script-image-bytes: one image from TS bytes, sampled by a `StandardMaterial` on the left
+/// and a script material's texture prop on the right; `setData` turns both from red to blue.
+const IMAGE_GAME: &str = r##"import { app, assets, asset, signal, Show, Startup, Update } from "bevy-ts";
+import type { Assets, AssetRef, ResMut } from "bevy-ts";
+import { Camera3d, Image, MeshMaterial3dStandardMaterial, TextureFormat, Tonemapping, Transform } from "bevy-ts/bevy";
+import { f32, material, texture2d } from "bevy-ts/material";
+import paint from "./paint.wgsl";
+
+const StandardMaterial = asset("bevy_pbr::pbr_material::StandardMaterial");
+export const Paint = material("game::Paint", { params: { k: f32 }, textures: { tex: texture2d }, fragment: paint });
+const colour = (r: number, g: number, b: number) => new Uint8Array(16).map((_, i) => [r, g, b, 255][i % 4]);
+export const [tex, setTex] = signal<AssetRef<Image> | undefined>(undefined);
+export const [mat, setMat] = signal<AssetRef<unknown> | undefined>(undefined);
+export function make(images: ResMut<Assets<Image>>) {
+  const r = images.add(Image.new([2, 2], TextureFormat.Rgba8UnormSrgb, colour(255, 0, 0)));
+  setMat(assets.add(StandardMaterial, { base_color_texture: r, unlit: true }));
+  setTex(r);
+}
+let frame = 0;
+export function repaint(images: ResMut<Assets<Image>>) {
+  if (++frame === 120) images.getMut(tex()!)!.setData(colour(0, 0, 255));
+}
+app.addSystems(Startup, make).addSystems(Update, repaint);
+
+app.scene("s", () => (
+  <>
+    <entity name="cam"><Camera3d /><Tonemapping value="None" /><Transform translation={[0, 0, 6]} /></entity>
+    <Show when={tex}>
+      {() => (
+        <>
+          <entity name="left"><mesh shape="cuboid" size={[1.5, 1.5, 1.5]} /><Transform translation={[-1.5, 0, 0]} /><MeshMaterial3dStandardMaterial value={mat()} /></entity>
+          <entity name="right"><mesh shape="cuboid" size={[1.5, 1.5, 1.5]} /><Transform translation={[1.5, 0, 0]} /><material kind={Paint} k={1} tex={tex()} /></entity>
+        </>
+      )}
+    </Show>
+  </>
+));
+"##;
+
+const PAINT_WGSL: &str = "import bevy_pbr::render::forward_io::VertexOutput;\n\n@fragment\nfn fragment(in: VertexOutput) -> @location(0) vec4<f32> {\n    return textureSample(tex, tex_sampler, in.uv) * params.k;\n}\n";
+
+#[test]
+fn an_image_from_bytes_is_sampled_and_redrawn_after_set_data() {
+    let dir = project("material-params-render-image", &[("game.tsx", IMAGE_GAME), ("paint.wgsl", PAINT_WGSL)]);
+    let mut app = app(&dir.join("game.tsx"));
+    let m = common::messages(&app);
+    assert!(!m.iter().any(|l| l.contains("threw") || l.contains("error")), "{m:?}");
+    let px = pixels(&mut app, &[LEFT, RIGHT], |p| red(p[0]) && red(p[1]));
+    let assets = app.world().resource::<Assets<ScriptMaterial>>().len();
+    // Frame 120 rewrites the image blue: both quads sample it the next rendered frame.
+    pixels(&mut app, &[LEFT, RIGHT], |p| blue(p[0]) && blue(p[1]));
+    assert_eq!(app.world().resource::<Assets<ScriptMaterial>>().len(), assets, "the instance is unchanged: {px:?}");
 }

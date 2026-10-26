@@ -51,10 +51,11 @@ export interface MaterialKind<
 > {
   readonly name: string;
   /**
-   * Types only: the props `<material>` takes for this kind: params and textures by value, instance
-   * params by value or bound (`hover={() => h()}`).
+   * Types only: the props `<material>` takes for this kind: params by value, textures as an asset
+   * path or an image ref (`images.add(Image.new(...))`), instance params by value or bound
+   * (`hover={() => h()}`).
    */
-  readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string } & { [K in keyof I]?: ParamValue<I[K]> | (() => ParamValue<I[K]>) };
+  readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string | AssetRef<import("bevy-ts/bevy").Image> } & { [K in keyof I]?: ParamValue<I[K]> | (() => ParamValue<I[K]>) };
   /**
    * An owned instance: one asset outside the shared cache, written in place at the same asset id
    * with `assets.set(ref, patch)` and given as `<material asset={ref} />`. `assets.get(ref)` reads

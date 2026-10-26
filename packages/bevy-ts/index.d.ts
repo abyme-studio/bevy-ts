@@ -471,9 +471,31 @@ export interface Assets<A> {
 /** Asset fields by Rust type path, for refs an exported method takes or returns. */
 export interface AssetTypes {
   "bevy_mesh::mesh::Mesh": MeshData;
+  "bevy_image::image::Image": import("bevy-ts/bevy").Image;
 }
 /** The ref type of the asset at type path `P`. */
 export type AssetRefOf<P extends string> = AssetRef<P extends keyof AssetTypes ? AssetTypes[P] : unknown>;
+
+/** The image formats `Image.new` takes (`bevy-ts/bevy`'s `Image`): 8 bits per channel, 2D. */
+export declare const TextureFormat: {
+  readonly R8Unorm: 0;
+  readonly Rg8Unorm: 1;
+  readonly Rgba8Unorm: 2;
+  readonly Rgba8UnormSrgb: 3;
+};
+export type TextureFormat = (typeof TextureFormat)[keyof typeof TextureFormat];
+/** An image in `Assets<Image>`, from `images.get` (read-only) or `images.getMut`. Each call is one host call. */
+export interface LiveImage {
+  readonly size: [number, number];
+  /** Throws for a loaded image of a format `TextureFormat` does not name. */
+  readonly format: TextureFormat;
+  /** Copies the bytes into `out` (or a new `Uint8Array`) and returns it. */
+  readData(out?: Uint8Array): Uint8Array;
+  /** Copies `data`, exactly the image's length, into it: no allocation. Bevy then uploads the whole image. */
+  setData(data: Uint8Array): this;
+  /** Copies `w × h` pixels of tightly packed rows into the rect at `x`, `y`. Saves CPU only: Bevy still uploads the whole image. */
+  writeRect(x: number, y: number, w: number, h: number, packedRows: Uint8Array): this;
+}
 
 /** Bevy's `PrimitiveTopology`. */
 export declare const PrimitiveTopology: {

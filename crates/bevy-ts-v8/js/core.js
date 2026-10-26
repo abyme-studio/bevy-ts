@@ -1952,6 +1952,112 @@ function meshesClass(Base) {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Images (docs/assets.md): an image from TS bytes over `ResMut<Assets<Image>>`, the engine's
+// `Images` export (crates/bevy-ts-cli/src/assets.rs). `Image.new` (on `bevy-ts/bevy`'s `Image`)
+// records in JS; `images.add` crosses once. Bytes cross as one `Uint8Array`, copied once in Rust.
+
+/** The image formats `Image.new` takes, codes as `FORMATS` in assets.rs. */
+export const TextureFormat = Object.freeze({ R8Unorm: 0, Rg8Unorm: 1, Rgba8Unorm: 2, Rgba8UnormSrgb: 3 });
+const FORMAT_NAMES = Object.keys(TextureFormat);
+const FORMAT_BYTES = [1, 2, 4, 4];
+
+/** `Image.new` made it: what `images.add` sends. */
+class NewImage {
+  constructor(width, height, format, data, sampler) {
+    this.width = width;
+    this.height = height;
+    this.format = format;
+    this.data = data;
+    this.sampler = sampler;
+    Object.freeze(this);
+  }
+  get size() {
+    return [this.width, this.height];
+  }
+}
+
+/** `Image.new([width, height], format, data, { sampler })`: a 2D image of `data`, recorded until `images.add`. */
+export function imageNew(size, format, data, options) {
+  if (!Array.isArray(size) || size.length !== 2 || !size.every((n) => Number.isInteger(n) && n >= 0)) {
+    throw new TypeError("Image.new: the size is [width, height], two whole numbers");
+  }
+  if (FORMAT_NAMES[format] === undefined) throw new TypeError(`Image.new: ${format} is not a TextureFormat (${FORMAT_NAMES.join(", ")})`);
+  if (!(data instanceof Uint8Array)) throw new TypeError(`Image.new: the data is a Uint8Array, not ${data && data.constructor ? data.constructor.name : typeof data}`);
+  const [width, height] = size;
+  const want = width * height * FORMAT_BYTES[format];
+  if (data.length !== want) {
+    throw new RangeError(`Image.new: a ${width}×${height} ${FORMAT_NAMES[format]} image takes ${want} bytes, not ${data.length}`);
+  }
+  if (options !== undefined && (options === null || typeof options !== "object")) throw new TypeError("Image.new: options is { sampler }");
+  for (const k of Object.keys(options ?? {})) if (k !== "sampler") throw new TypeError(`Image.new takes the option sampler, not ${k}`);
+  return new NewImage(width, height, format, data, options?.sampler ?? null);
+}
+
+/** An image in `Assets<Image>`: each call is one host call on the asset. */
+class LiveImage {
+  #p;
+  #ref;
+  #writable;
+  constructor(p, ref, writable) {
+    this.#p = p;
+    this.#ref = ref;
+    this.#writable = writable;
+  }
+  #w(method) {
+    if (!this.#writable) throw new Error(`${method}: images.get gives a read-only image; use images.getMut`);
+    return this.#p;
+  }
+  /** `[width, height]`. */
+  get size() {
+    const s = this.#p.size(this.#ref);
+    return [s.x, s.y];
+  }
+  get format() {
+    return this.#p.format(this.#ref);
+  }
+  /** Copies the bytes into `out` (or a new `Uint8Array`) and returns it. */
+  readData(out) {
+    const n = this.#p.dataLen(this.#ref);
+    if (out === undefined) out = new Uint8Array(n);
+    else if (!(out instanceof Uint8Array) || out.length < n) throw new TypeError(`readData: out is a Uint8Array of at least ${n} bytes`);
+    this.#p.readData(this.#ref, out);
+    return out;
+  }
+  /** Copies `data`, the image's whole length, into the image: one host call, no allocation. */
+  setData(data) {
+    if (!(data instanceof Uint8Array)) throw new TypeError("setData takes a Uint8Array");
+    this.#w("setData").setData(this.#ref, data);
+    return this;
+  }
+  /** Copies `cols`×`rows` pixels of tightly packed rows into the rect at `x`, `y`: one host call. */
+  writeRect(x, y, cols, rows, data) {
+    if (!(data instanceof Uint8Array)) throw new TypeError("writeRect takes a Uint8Array of packed rows");
+    for (const n of [x, y, cols, rows]) if (!Number.isInteger(n) || n < 0) throw new TypeError("writeRect: x, y, width and height are whole numbers");
+    this.#w("writeRect").writeRect(this.#ref, x, y, cols, rows, data);
+    return this;
+  }
+}
+
+/** `Images` with Bevy's `Assets<Image>` names over its host calls. */
+function imagesClass(Base) {
+  return class Images extends Base {
+    /** Adds an `Image.new` image in one host call; returns a strong ref. */
+    add(image) {
+      if (!(image instanceof NewImage)) throw new TypeError("images.add takes an image from Image.new");
+      return super.create(image.width, image.height, image.format, image.data, image.sampler);
+    }
+    /** The image, read-only, or `undefined` when it is gone. */
+    get(ref) {
+      return super.contains(ref) ? new LiveImage(this, ref, false) : undefined;
+    }
+    /** The live image: its writes go into the asset in place; Bevy sends one `Modified` per frame. */
+    getMut(ref) {
+      return super.contains(ref) ? new LiveImage(this, ref, true) : undefined;
+    }
+  };
+}
+
 // Load states (docs/assets.md): the export returns a code, and the failed text in a second call.
 // Each method takes an `AssetRef` or an `AssetId`.
 const isRef = (r) => r !== null && typeof r === "object" && typeof r.$asset === "number";
@@ -2008,7 +2114,7 @@ function serverClass(Base) {
 }
 
 /** JS wrappers of engine exports, by TS name: Bevy's names over the raw host calls. */
-const PORT_WRAPS = { Meshes: meshesClass, ScriptAssetServer: serverClass };
+const PORT_WRAPS = { Meshes: meshesClass, Images: imagesClass, ScriptAssetServer: serverClass };
 
 const FIELD_BY_TYPE = { f32, f64, i8, u8, i16, u16, i32, u32, bool, vec2, vec3, vec4, quat, entity, timer: Timer, stopwatch: Stopwatch };
 

@@ -24,7 +24,8 @@ declare module "bevy-ts/animation" {
 }
 
 declare module "bevy-ts/assets" {
-  import type { AssetId, AssetRef, AssetType, LiveMesh, LoadState, Mesh, MeshData } from "bevy-ts";
+  import type { AssetId, AssetRef, AssetType, LiveImage, LiveMesh, LoadState, Mesh, MeshData } from "bevy-ts";
+  import type { Image, NewImage } from "bevy-ts/bevy";
   export { Indices, Mesh, PrimitiveTopology, RenderAssetUsages } from "bevy-ts";
   /** `ResMut<Assets<Mesh>>`: Bevy's meshes. The other methods are the host calls these make. */
   export interface Meshes {
@@ -34,6 +35,17 @@ declare module "bevy-ts/assets" {
     get(ref: AssetRef<MeshData>): LiveMesh | undefined;
     /** The live mesh: each write is one host call into the asset; Bevy sends one `Modified` per frame it changes. */
     getMut(ref: AssetRef<MeshData>): LiveMesh | undefined;
+  }
+  /** `ResMut<Assets<Image>>`: Bevy's images, made and rewritten from bytes. The other methods are the host calls these make. */
+  export interface Images {
+    /** Makes an `Image.new` image in one host call, its bytes copied once. Returns a strong ref; `assets.drop(ref)` lets it go. A wrong length adds nothing. */
+    add(image: NewImage): AssetRef<Image>;
+    /** The image, read-only, or `undefined` when it is gone. */
+    get(ref: AssetRef<Image>): LiveImage | undefined;
+    /** The live image: `setData` and `writeRect` write into it in place; Bevy sends one `Modified` per frame it changes. */
+    getMut(ref: AssetRef<Image>): LiveImage | undefined;
+    /** Bevy's `Assets::remove`, at once: whether it removed one. The ref goes stale. */
+    remove(ref: AssetRef<Image>): boolean;
   }
   /** `Res<AssetServer>`: Bevy's loads. Each load-state method takes an `AssetRef` or an `AssetId` (`ref.id`, an `AssetEvent<A>`'s) and is one host call; a failed state makes one more for its text. The other methods are the host calls these make. */
   export interface ScriptAssetServer {
@@ -85,6 +97,18 @@ declare module "bevy-ts/assets" {
     readIndicesU32(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">, out: Uint32Array): void;
     contains(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): boolean;
     remove(mesh: import("bevy-ts").AssetRefOf<"bevy_mesh::mesh::Mesh">): boolean;
+  }
+  /** `bevy_ts_cli::assets::Images<'_, '_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface Images {
+    create(width: number, height: number, format: number, data: Uint8Array, sampler: unknown): import("bevy-ts").AssetRefOf<"bevy_image::image::Image">;
+    setData(image: import("bevy-ts").AssetRefOf<"bevy_image::image::Image">, data: Uint8Array): void;
+    writeRect(image: import("bevy-ts").AssetRefOf<"bevy_image::image::Image">, x: number, y: number, cols: number, rows: number, data: Uint8Array): void;
+    size(image: import("bevy-ts").AssetRefOf<"bevy_image::image::Image">): { readonly x: number; readonly y: number };
+    format(image: import("bevy-ts").AssetRefOf<"bevy_image::image::Image">): number;
+    dataLen(image: import("bevy-ts").AssetRefOf<"bevy_image::image::Image">): number;
+    readData(image: import("bevy-ts").AssetRefOf<"bevy_image::image::Image">, out: Uint8Array): void;
+    contains(image: import("bevy-ts").AssetRefOf<"bevy_image::image::Image">): boolean;
+    remove(image: import("bevy-ts").AssetRefOf<"bevy_image::image::Image">): boolean;
   }
 }
 
@@ -1204,10 +1228,11 @@ declare module "bevy-ts/material" {
   > {
     readonly name: string;
     /**
-     * Types only: the props `<material>` takes for this kind: params and textures by value, instance
-     * params by value or bound (`hover={() => h()}`).
+     * Types only: the props `<material>` takes for this kind: params by value, textures as an asset
+     * path or an image ref (`images.add(Image.new(...))`), instance params by value or bound
+     * (`hover={() => h()}`).
      */
-    readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string } & { [K in keyof I]?: ParamValue<I[K]> | (() => ParamValue<I[K]>) };
+    readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string | AssetRef<import("bevy-ts/bevy").Image> } & { [K in keyof I]?: ParamValue<I[K]> | (() => ParamValue<I[K]>) };
     /**
      * An owned instance: one asset outside the shared cache, written in place at the same asset id
      * with `assets.set(ref, patch)` and given as `<material asset={ref} />`. `assets.get(ref)` reads

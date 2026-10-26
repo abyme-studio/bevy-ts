@@ -806,8 +806,8 @@ pub fn insert_script_material(
     }
     // Instance props go to the entity's `ScriptInstance`; the rest key the shared asset.
     match bevy_ts_material::instance::apply(world, e, kind, props, at.clone()) {
-        Some(h) => put_script_material(world, e, h, gltf_material),
-        None => crate::reconcile::log_error(world, format!("<material kind>: no material {kind}"), at),
+        Ok(h) => put_script_material(world, e, h, gltf_material),
+        Err(m) => crate::reconcile::log_error(world, format!("<material kind>: {m}"), at),
     }
 }
 

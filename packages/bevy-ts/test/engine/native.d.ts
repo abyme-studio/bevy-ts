@@ -22,7 +22,7 @@ export type NativeSchedule = never;
 export type NativeCondition = "bevy:on-real-timer" | "bevy:on-timer" | "bevy:once-after-delay" | "bevy:once-after-real-delay" | "bevy:paused" | "bevy:repeating-after-delay" | "bevy:repeating-after-real-delay" | "input:just-pressed" | "input:just-released" | "input:pressed" | "input:toggle-active";
 
 /** Exports standing for a Bevy spelling (`stands_for`): `ResMut<T>` types them as the export. */
-// Claimed, but TS declares no such type yet, so not typed here: Gizmos<DefaultGizmoConfigGroup> (Gizmos), Gizmos<AabbGizmoConfigGroup> (Gizmos_AabbGizmoConfigGroup), Gizmos<FrustumGizmoConfigGroup> (Gizmos_FrustumGizmoConfigGroup), Gizmos<SkinnedMeshBoundsGizmoConfigGroup> (Gizmos_SkinnedMeshBoundsGizmoConfigGroup), Gizmos<LightGizmoConfigGroup> (Gizmos_LightGizmoConfigGroup).
+// Claimed, but TS declares no such type yet, so not typed here: Gizmos<DefaultGizmoConfigGroup> (Gizmos), Gizmos<AabbGizmoConfigGroup> (Gizmos_AabbGizmoConfigGroup), Gizmos<FrustumGizmoConfigGroup> (Gizmos_FrustumGizmoConfigGroup), Gizmos<SkinnedMeshBoundsGizmoConfigGroup> (Gizmos_SkinnedMeshBoundsGizmoConfigGroup), Gizmos<LightGizmoConfigGroup> (Gizmos_LightGizmoConfigGroup), ResMut<Assets<Image>> (Images).
 declare module "bevy-ts" {
   interface ResClaims {
     "Res<GizmoConfigStore>": [import("bevy-ts/gizmos").GizmoConfigStore, import("bevy-ts/gizmos").GizmoConfigStoreRead];
