@@ -233,7 +233,7 @@ mod tests {
     fn with_slots<T>(app: &App, check: bool, f: impl FnOnce(&Slots) -> T) -> T {
         let registry = app.world().resource::<AppTypeRegistry>().read();
         let server = app.world().resource::<AssetServer>();
-        let slots = Slots { registry: &registry, server: (!check).then_some(server), assets: app.world().resource::<ScriptAssets>(), check };
+        let slots = Slots { registry: &registry, server: (!check).then_some(server), assets: app.world().resource::<ScriptAssets>(), world: None, check };
         f(&slots)
     }
 

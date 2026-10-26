@@ -142,7 +142,7 @@ fn round_trip(registry: &TypeRegistry, id: TypeId) -> Result<(), (&'static str, 
 /// the same JSON. Check mode, on its own `ScriptAssets`: nothing loads and `world` gains nothing.
 fn hand_round_trip(world: &World, registry: &TypeRegistry, path: &str) -> Result<(), String> {
     let assets = ScriptAssets::default();
-    let slots = Slots { registry, server: None, assets: &assets, check: true };
+    let slots = Slots { registry, server: None, assets: &assets, world: None, check: true };
     let read = |json: &serde_json::Value| reflect_asset::get(world, &slots, &reflect_asset::add(&slots, path, json)?);
     let json = read(&json!({}))?;
     let again = read(&json)?;
