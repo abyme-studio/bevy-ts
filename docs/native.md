@@ -139,6 +139,28 @@ the field's address minus the value's. No `repr(C)` and no code per type.
   A tuple struct with more fields keeps `"0"`, `"1"`. Level files and the protocol keep Bevy's
   reflection path (`.0`).
 
+### TS relationships from Rust
+
+A TS relationship pair (docs/scripts.md, "Relationships") carries Bevy's `RelationshipAccessor`,
+so Rust code and Bevy's own tooling read it with no TS type:
+
+```rust
+use bevy::ecs::relationship::RelationshipAccessor;
+
+let (liked_by, _) = bevy_ts::plugin_api::component_by_name(world, "game::LikedBy").unwrap();
+let info = world.components().get_info(liked_by).unwrap();
+if let Some(RelationshipAccessor::RelationshipTarget { iter, relationship, .. }) = info.relationship_accessor() {
+    let ptr = world.get_by_id(entity, liked_by).unwrap();
+    // SAFETY: `ptr` is a value of the component the accessor belongs to.
+    let sources: Vec<Entity> = unsafe { iter(ptr) }.collect();
+}
+```
+
+A source's accessor gives its `entity_field_offset` (0, or 8 behind a heap field's header) and
+its target's id. Inserting a source by id (`insert_by_id`) runs the same hooks a script's insert
+does. A source is registered immutable: write it by inserting it again, never through
+`get_mut_by_id`.
+
 ### Reflected values in TSX
 
 TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::reflect_value`;

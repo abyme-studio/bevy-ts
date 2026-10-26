@@ -5,7 +5,7 @@ A relationship source SHALL be a class extending `Relationship` whose first fiel
 
 #### Scenario: A pair loads
 - **WHEN** `game.ts` exports `class Likes extends Relationship { declare target: Entity }` and `class LikedBy extends RelationshipTarget(Likes) {}`
-- **THEN** both are components in the world after the module loads, and Bevy's `RelationshipAccessor` on `game::Likes` gives entity offset 0 and on `game::LikedBy` names `game::Likes`
+- **THEN** both are components in the world after the module loads, and Bevy's `RelationshipAccessor` on `game::Likes` gives entity offset 0 (8 behind a heap field's header) and on `game::LikedBy` names `game::Likes`
 
 #### Scenario: Target not first
 - **WHEN** a source declares `since: f32` before `target: Entity`
@@ -50,7 +50,7 @@ bevy-ts SHALL register Bevy's relationship hooks by `ComponentId` on every sourc
 - **THEN** `t`'s `LikedBy` lists that entity
 
 ### Requirement: Targets are read-only query data
-A TS query MAY name a target as data (`Query<[LikedBy]>`, `Option<LikedBy>`) and as a filter (`With`, `Without`, `Changed`, `Added`). Each row SHALL get a read-only list of `Entity` with `length`, indexing and iteration, valid for the run. `Mut<Target>` SHALL fail the load. Rust SHALL pack each matched table's lists into one offsets array and one entity array before the JS call, so reading a target costs no host call per row.
+A TS query MAY name a target as data (`Query<[LikedBy]>`, `Option<LikedBy>`) and as a filter (`With`, `Without`, `Changed`, `Added`). Each row SHALL get a read-only `TargetList` of `Entity` with `length`, `at(i)`, `includes`, iteration and `toArray()`, reused for the next row as every row accessor is. `Mut<Target>` SHALL fail the load. Rust SHALL pack each matched table's lists into one offsets array and one entity array before the JS call, so reading a target costs no host call per row.
 
 #### Scenario: Reading a target
 - **WHEN** `t`'s `LikedBy` lists `a` and `b` and a system iterates `Query<[Entity, LikedBy]>`

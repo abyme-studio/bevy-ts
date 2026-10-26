@@ -84,6 +84,51 @@ literals (an enum), `string`, or `T[]` with `T` a number kind, `bool`, `string`,
 are heap fields (docs/ecs.md, "Heap fields"). Resources, messages, events and `Local`s take
 the same types.
 
+## Relationships
+
+Bevy's `#[relationship]` pairs, declared in TS (openspec custom-relationships):
+
+```ts
+import { Component, Relationship, RelationshipTarget, f32 } from "bevy-ts";
+import type { Commands, Entity, Query } from "bevy-ts";
+
+export class Likes extends Relationship { declare target: Entity; since: f32 = 0 }
+export class LikedBy extends RelationshipTarget(Likes) {}
+
+export function like(c: Commands) { c.entity(a).insert(Likes.of({ target: b })); }
+export function fans(q: Query<[Entity, LikedBy]>) {
+  q.each((e, by) => console.log(`${e} is liked by ${by.length}: ${by.toArray()}`));
+}
+```
+
+- **The source** extends `Relationship`. Its first field is `target: Entity`; other fields may
+  follow. Inserting it puts its entity on the target entity's list, from any path: TS commands,
+  TSX, Rust and the protocol. It is immutable, as `ChildOf` is: `Mut<Likes>` fails the load. To
+  retarget, insert it again (`insert(Likes.of({ target: c }))`); the entity moves from the old
+  list to the new one. A source pointing at an entity that does not exist is removed with a
+  warning, and so is one pointing at its own entity unless the class has
+  `static allowSelfReferential = true`.
+- **The target** extends `RelationshipTarget(Likes)`, with no fields. It is the list of entities
+  whose `Likes` points here, kept by Bevy's own hook logic: removing the last source removes it,
+  and removing it removes `Likes` from every entity it lists. It is never inserted from TS, TSX,
+  levels or the protocol, and never saved; it is rebuilt from the sources. Each source has
+  exactly one target class, and each target names a `Relationship`; anything else fails the load.
+- **Linked spawn**: `RelationshipTarget(OwnedBy, { linkedSpawn: true })` despawns the listed
+  entities with the target, as `Children` does, and linked cloning clones them.
+- **Reading**: a query names a target as data (`Query<[LikedBy]>`, `Option<LikedBy>`) or as a
+  filter (`With`, `Without`, `Changed`, `Added`). Each row gets a read-only `TargetList`:
+  `length`, `at(i)` (from the end when negative), `includes(e)`, iteration and `toArray()`. Like
+  every row accessor it is reused for the next row; `toArray()` copies it. Rust packs each
+  matched table's lists before the run, so a read is no host call. `Mut<LikedBy>` fails the load.
+- **Clone**: `cloneAndSpawn` of an entity with a source gives the clone the source, its target
+  mapped, and the clone joins the target's list. A target's clone starts empty, as Bevy's does.
+- **Reload**: changing either half of a pair (a field, `linkedSpawn`, `allowSelfReferential`,
+  plain to source) gives both new ids. Sources keep their values by field name; every list is
+  rebuilt from them, in source order, so a list's order after such a reload may differ. A
+  reload that does not touch the pair leaves its lists alone.
+- Levels do not author relationships yet: they refuse `Entity` fields, and a target is refused in
+  a level.
+
 ## Schedules, conditions and states
 
 ### Schedules
