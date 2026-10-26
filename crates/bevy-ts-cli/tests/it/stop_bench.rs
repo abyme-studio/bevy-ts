@@ -3,8 +3,9 @@
 //! builds, rendering on. Four arms, three Stops each: the full remount (the level made dirty, so
 //! it is not kept), and the restore with nothing touched, 100 enemies moved, and every one moved.
 //! Each Stop end to end through `viewport_mode`, then its parts called one by one as Stop calls
-//! them: the plan (scan, file hashes), `OnExit(Play)`, the rebuild (a fresh isolate and the
-//! generation applied), the restore and the settle. And the kept tree's memory.
+//! them: the plan (scan, file hashes), `OnExit(Play)`, the rebuild in its steps (reset, a fresh
+//! isolate, load, sections, apply, startups), the restore and the settle. And the kept tree's
+//! memory.
 //! Ignored by default; run it in release:
 //! `cargo static test --release -p bevy-ts-cli --test it stop_bench:: -- --ignored --nocapture`.
 #![cfg(target_os = "macos")]
@@ -153,6 +154,7 @@ fn arm(app: &mut App, n: usize, arm: Arm) -> String {
     }
     // The parts, as `stop` calls them.
     let (mut plan, mut exit, mut rebuild, mut restore, mut settle) = (vec![], vec![], vec![], vec![], vec![]);
+    let mut steps: [Vec<f64>; 6] = Default::default();
     for _ in 0..3 {
         play(app, n, arm);
         let open = bevy_ts_levels::engine::open_set(app.world());
@@ -165,8 +167,29 @@ fn arm(app: &mut App, n: usize, arm: Arm) -> String {
         world.resource_mut::<NextState<EngineMode>>().set(EngineMode::Edit);
         world.run_schedule(bevy::state::state::StateTransition);
         exit.push(ms(t));
+        // `generation::rebuild`, step by step.
         let t = Instant::now();
-        bevy_ts::generation::rebuild(world).unwrap();
+        let set = world.resource::<bevy_ts::generation::LiveSet>().0.clone();
+        let mut a = bevy_ts::generation::Applying::begin(world, set, true);
+        let s = Instant::now();
+        a.reset(world);
+        steps[0].push(ms(s));
+        let s = Instant::now();
+        a.restart_engine();
+        steps[1].push(ms(s));
+        let s = Instant::now();
+        a.load(world);
+        steps[2].push(ms(s));
+        let s = Instant::now();
+        a.sections(world);
+        steps[3].push(ms(s));
+        let s = Instant::now();
+        let report = a.apply(world);
+        steps[4].push(ms(s));
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        let s = Instant::now();
+        bevy_ts::generation::run_startups(world);
+        steps[5].push(ms(s));
         rebuild.push(ms(t));
         let t = Instant::now();
         bevy_ts_levels::engine::restore_open(world, &open);
@@ -189,8 +212,26 @@ fn arm(app: &mut App, n: usize, arm: Arm) -> String {
         Arm::Touched(k) if k >= n => "restore, all touched".to_string(),
         Arm::Touched(k) => format!("restore, {k} touched"),
     };
-    println!("{n} {name}: stop {total:.1?} ms, respawned {respawned:?}; plan {plan:.1?}, onexit {exit:.2?}, rebuild {rebuild:.1?}, restore {restore:.1?}, settle {settle:.1?}");
-    format!("| {n} | {name} | {:.0} | {:.1} | {:.2} | {:.0} | {:.1} | {:.0} |", median(total), median(plan), median(exit), median(rebuild), median(restore), median(settle))
+    let [reset, engine, load, sections, apply, startups] = steps;
+    println!(
+        "{n} {name}: stop {total:.1?} ms, respawned {respawned:?}; plan {plan:.1?}, onexit {exit:.2?}, rebuild {rebuild:.1?} (reset {reset:.1?}, engine {engine:.1?}, load {load:.1?}, sections {sections:.1?}, apply {apply:.1?}, startups {startups:.2?}), restore {restore:.1?}, settle {settle:.1?}"
+    );
+    let steps = [reset, engine, load, sections, apply, startups].map(median);
+    format!(
+        "| {n} | {name} | {:.0} | {:.1} | {:.2} | {:.0} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.2} | {:.1} | {:.0} |",
+        median(total),
+        median(plan),
+        median(exit),
+        median(rebuild),
+        steps[0],
+        steps[1],
+        steps[2],
+        steps[3],
+        steps[4],
+        steps[5],
+        median(restore),
+        median(settle)
+    )
 }
 
 /// One size: the level loaded once, then each arm.
@@ -216,8 +257,8 @@ fn run(n: usize) -> Vec<String> {
 #[ignore]
 fn stop_at_scale() {
     let mut rows = vec![
-        "| instances | arm | Stop (ms) | plan (ms) | OnExit (ms) | rebuild (ms) | restore (ms) | settle (ms) |".to_string(),
-        "|---:|---|---:|---:|---:|---:|---:|---:|".to_string(),
+        "| instances | arm | Stop (ms) | plan (ms) | OnExit (ms) | rebuild (ms) | reset | engine | load | sections | apply | startups | restore (ms) | settle (ms) |".to_string(),
+        "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|".to_string(),
     ];
     for n in [1_000, 10_000] {
         rows.extend(run(n));
