@@ -56,6 +56,31 @@ fn ms(t: Instant) -> f64 {
     t.elapsed().as_secs_f64() * 1000.0
 }
 
+/// This thread's CPU time, in ms: what the shared machine's load does not stretch.
+fn cpu_ms() -> f64 {
+    unsafe extern "C" {
+        fn clock_gettime(clock: i32, tp: *mut [i64; 2]) -> i32;
+    }
+    // CLOCK_THREAD_CPUTIME_ID: 16 on macOS, 3 on Linux.
+    const CLOCK: i32 = if cfg!(target_os = "macos") { 16 } else { 3 };
+    let mut tp = [0i64; 2];
+    assert_eq!(unsafe { clock_gettime(CLOCK, &mut tp) }, 0);
+    tp[0] as f64 * 1000.0 + tp[1] as f64 / 1e6
+}
+
+/// The median of 7 runs of `f`, in this thread's CPU ms.
+fn cpu_median(mut f: impl FnMut()) -> f64 {
+    let mut v: Vec<f64> = (0..7)
+        .map(|_| {
+            let t = cpu_ms();
+            f();
+            cpu_ms() - t
+        })
+        .collect();
+    v.sort_by(f64::total_cmp);
+    v[3]
+}
+
 fn run(n: usize) -> String {
     let dir = project(&format!("levels-bench-{n}"), &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", &level(n))]);
     let mut app = level_app(&dir);
@@ -78,7 +103,7 @@ fn run(n: usize) -> String {
     let reconcile = ms(t);
     assert_eq!(app.world().resource::<bevy_ts_tsx::TsxTree>().last.written, 0);
 
-    // The expansion host call alone.
+    // The expansion host call alone, as levels make it: each item answering for itself.
     let items: Vec<bevy_ts_tsx::ExpandItem> = (0..n)
         .map(|i| bevy_ts_tsx::ExpandItem {
             component: "enemies::Grunt".into(),
@@ -87,8 +112,20 @@ fn run(n: usize) -> String {
         })
         .collect();
     let t = Instant::now();
-    bevy_ts_tsx::expand(app.world_mut(), &items).unwrap();
+    bevy_ts_tsx::expand_each(app.world_mut(), &items).unwrap();
     let expand = ms(t);
+
+    // The unchanged reconcile split, in CPU time (medians of 7): compose without expansion,
+    // expansion, tsx's resolve and diff, and what the reconcile does after the diff.
+    let world = app.world_mut();
+    let reconcile_cpu = cpu_median(|| reconcile_level(world, "levels/arena.bsn"));
+    let compose_level_cpu = cpu_median(|| drop(bevy_ts_levels::engine::compose_level(world, "levels/arena.bsn")));
+    let expand_cpu = cpu_median(|| drop(bevy_ts_tsx::expand_each(world, &items).unwrap()));
+    let nodes = bevy_ts_levels::engine::compose_level(world, "levels/arena.bsn").0.unwrap().nodes;
+    let tsx_cpu = cpu_median(|| {
+        bevy_ts_tsx::reconcile_external(world, "level:levels/arena.bsn", None, &nodes).unwrap();
+    });
+    println!("{n}: cpu reconcile {reconcile_cpu:.1} ms = compose {:.1} + expand {expand_cpu:.1} + tsx {tsx_cpu:.1} + after the diff {:.1}", compose_level_cpu - expand_cpu, reconcile_cpu - compose_level_cpu - tsx_cpu);
 
     // Writer latency: one-field edits, each a full write (splice, verify, atomic write, reload).
     let edits = 20;

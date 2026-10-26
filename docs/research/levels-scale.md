@@ -32,3 +32,20 @@ What is left, if 10,000-instance levels become a target:
 
 - A write reconciles the whole level. It could reconcile only the edited entity, since the writer knows the touched name paths.
 - Every reconcile re-expands every instance in one host call, which is 65 ms of the 257. Expansions whose component, props and generation are unchanged could be cached by content.
+
+## The compose regression, 2026-10-27
+
+`scene-expansion-cache.md` measured the compose row at 165 to 276 ms. That was real, not load. On a shared machine at load 25 to 160, wall times swung 4x between rounds of the same binary. So the bench now also prints the unchanged reconcile split in this thread's CPU time, a median of 7 calls each, which load barely stretches. `levels-bench-ab` alternates a saved older binary with this tree's.
+
+The cause is a62596a79 (2026-10-23, missing code loads as placeholders). Levels moved from `bevy_ts_tsx::expand` to the new `expand_each`, which normalizes each item's source paths with a new `desc::Files`. `Files::new` reads the working directory, and on macOS `getcwd` opens and stats folders. That is 10,000 directory walks per compose at 10,000 instances, about three quarters of the compose in a profile. The bench timed `expand`, not `expand_each`, so the cost showed up in the compose leftover. `expand_each` now makes one `Files` per call, and the bench times `expand_each`, the call levels make.
+
+CPU ms at 10,000 instances (20,000 entities), medians over rounds, alternated:
+
+| tree | rounds | reconcile | compose | expand | tsx | after the diff |
+|---|---:|---:|---:|---:|---:|---:|
+| 418fd701d, where the 44 ms was measured | 3 | 305 | 71 | 86 | 144 | 4 |
+| HEAD before the fix | 3 | 576 | 379 | 85 | 146 | -34 |
+| 418fd701d | 11 | 260 | 55 | 77 | 111 | 2 |
+| HEAD with the fix | 11 | 310 | 84 | 75 | 114 | 33 |
+
+What is left: compose is about 28 ms above 418fd701d, and the stamps after the diff about 31 ms. A second profile showed no hot spot, so this is the work added since (placeholders, missing components, scene placements). The wall-clock 44 ms was a quiet-machine number; the same commit reads 55 to 71 ms of CPU at this load.

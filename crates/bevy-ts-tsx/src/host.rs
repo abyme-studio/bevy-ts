@@ -4,7 +4,7 @@
 //! carrying the changed values; the call returns patches for bound props, slot mounts, and the
 //! pairs to watch. A quiet frame makes no call.
 
-use crate::desc::{NodeDesc, normalize_sources};
+use crate::desc::{Files, NodeDesc, normalize_sources, normalize_with};
 use crate::reconcile::{self, Prune, RNode, apply_root, log_error, resolve_tree};
 use crate::resolve;
 use crate::tree::{BindTarget, FieldState, GroupRows, Provenance, Subscription, TsxNode, TsxTree};
@@ -773,12 +773,15 @@ pub fn expand_each(world: &mut World, items: &[ExpandItem]) -> Result<Vec<ItemEx
     for e in errors {
         log_error(world, e.message, e.location);
     }
+    // One `Files` for the call: one per item read the working directory 10,000 times for a
+    // 10,000-instance level, three quarters of its compose (levels-scale.md).
+    let mut files = Files::new();
     Ok(expanded
         .into_iter()
         .map(|x| {
-            let mut nodes = vec![x.map_err(|e| vec![e])?];
-            normalize_sources(&mut nodes);
-            Ok(nodes.pop().expect("one"))
+            let mut n = x.map_err(|e| vec![e])?;
+            normalize_with(&mut files, std::slice::from_mut(&mut n));
+            Ok(n)
         })
         .collect())
 }
