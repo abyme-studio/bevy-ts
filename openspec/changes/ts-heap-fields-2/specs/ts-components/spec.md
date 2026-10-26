@@ -42,7 +42,7 @@ The component's name in Bevy, the protocol and `.bsn` files SHALL default to a R
 - **THEN** it keeps the `ComponentId` of `game::Shield`, and every entity keeps its value
 
 ### Requirement: Heap fields in TS systems
-A TS system SHALL read a heap field through its row accessor (`tag.label`, `tag.scores`), the value fetched from Rust on the first read and kept until the row's changed tick moves. Through a read-only accessor a list SHALL read as a frozen array typed `readonly T[]`, and `tag.scores.push(1)` throws a `TypeError`. Through a writable accessor (`Mut<C>`, `ResMut<R>`, `Local`) a list SHALL read as a mutable array typed `T[]`, edited in place with JS's array API (`push`, `pop`, `tag.scores[i] = x`, `length = n`, item fields of a struct or vector item); the edits SHALL be applied in Rust at the end of the system's run, before any later system, as item edits (set, append, truncate) when the change is one of those and as a whole write otherwise, with the change tick stored once. A list read through a writable accessor and left unchanged SHALL write nothing and mark nothing changed. A heap read from Rust in the same run of a row with pending edits SHALL see them. A whole assignment (`tag.label = "x"`, `tag.scores = [1, 2]`) SHALL apply at once, store the run's change tick and be seen by Rust and by later reads the same frame. `q.tables` SHALL offer no raw arrays for a component with a heap field. A query over a component with no heap field SHALL make no host call for it.
+A TS system SHALL read a heap field through its row accessor (`tag.label`, `tag.scores`), the value fetched from Rust on the first read and kept until the row's changed tick moves. Through a read-only accessor a list SHALL read as a frozen array typed `readonly T[]`, and `tag.scores.push(1)` throws a `TypeError`. Through a writable accessor (`Mut<C>`, `ResMut<R>`, `Local`) a list SHALL read as a mutable array typed `T[]`, edited in place with JS's array API (`push`, `pop`, `tag.scores[i] = x`, `length = n`, item fields of a struct or vector item); the edits SHALL be applied in Rust at the end of the system's run, before any later system, as item edits (set, append, truncate) when the change is one of those and as a whole write otherwise, with the change tick stored once. A list read through a writable accessor and left unchanged SHALL write nothing and mark nothing changed. Items SHALL be compared with `Object.is`. A list with a hole or an `undefined` item at the end of the run (a grown `length`, `a[i] = x` past the end) SHALL fail the run with a `TypeError` naming the field and the index, and write nothing for that list. A heap read from Rust in the same run of a row with pending edits SHALL see them. A whole assignment (`tag.label = "x"`, `tag.scores = [1, 2]`) SHALL apply at once, store the run's change tick and be seen by Rust and by later reads the same frame; it SHALL replace the array and its snapshot, so edits before it are dropped and edits after it are taken against it. `q.tables` SHALL offer no raw arrays for a component with a heap field. A query over a component with no heap field SHALL make no host call for it.
 
 #### Scenario: A write is seen at once
 - **WHEN** a system with `Query<[Mut<Tag>]>` sets `tag.label = "open"` and then reads `tag.label`
@@ -59,6 +59,14 @@ A TS system SHALL read a heap field through its row accessor (`tag.label`, `tag.
 #### Scenario: A push in place
 - **WHEN** a system with `Query<[Mut<Tag>]>` calls `tag.scores.push(4)` on a row holding `[1, 2, 3]`, and sets `tag.scores[0] = 9`
 - **THEN** a Rust system after it reads `[9, 2, 3, 4]`, the write reached Rust as one set and one append, and `Changed<Tag>` matches the row
+
+#### Scenario: An item past the end
+- **WHEN** a system with `Query<[Mut<Tag>]>` sets `tag.scores[10] = 1` on a list of 3
+- **THEN** the run fails with a `TypeError` naming `scores` and index 3, and the list is still its 3 items
+
+#### Scenario: An assignment after a push
+- **WHEN** a system calls `tag.scores.push(4)` then assigns `tag.scores = [7]`, then pushes 8
+- **THEN** a Rust system after it reads `[7, 8]`
 
 #### Scenario: A list read and left alone
 - **WHEN** a system with `Query<[Mut<Tag>]>` reads `tag.scores.length` on every row and edits none

@@ -66,8 +66,8 @@ component does (`Local`'s name is its system identity and index). No second drop
   JS's `encodeWithHeap` bytes. `encodeWithLayout` already emits that format for any class with a
   heap field; messages and events set `C.heap` the way components do.
 - Containers stop deriving `Clone` where they hold heap values (`LocalStore`, `Memory`,
-  `MessageQueue`, `TsPayloads`, `Pending`). Generation rollback moves the old `TsPayloads` aside and
-  moves it back on failure instead of cloning it; `declare` on the next one moves queues across.
+  `MessageQueue`, `TsPayloads`, `Pending`). Generation rollback moves the old `TsPayloads` aside instead of cloning it; `declare` on the next
+  one moves queues across, and a failed reload moves them back, so unread messages survive it.
 - Plain layouts keep plain `Vec<u8>` paths: a queue or store whose layout has no heap field never
   touches a shape.
 
@@ -88,20 +88,26 @@ from `cLayout`; a `Local` with no heap field keeps `cLayout`'s layout, which equ
 
 ### 4. A heap read names a place
 
-`Target` today is (component, field). A heap host call gains a place in slot 0..1, encoded as a kind
-and an id, instead of the bare entity:
+`Target` today is (component, field). A heap host call's slots are `f64`s; today slot 0 is the
+entity (negative: the resource) and slot 1 the target (`reflect_codec.rs:803-805`). Every heap call
+(`READ`, `WRITE`, `WRITE_EDIT`) takes one layout instead: slot 0 the entity's bits or a negative
+place kind, slot 1 the place id (0, unused, for an entity and a resource), slot 2 the target, then
+the call's own slots (a write's byte length in slot 3). Reflected (non-heap) calls move to the same
+layout, so there is one.
 
 | Place | Slot 0 | Slot 1 | Lifetime of a cached read |
 | --- | --- | --- | --- |
-| entity's component | entity bits (≥ 0) | target | row's changed tick |
-| resource | -1 | target | resource's changed tick |
-| running system's `Local` i | -2 | i | until a write (the system is the only writer) |
-| message, by type and sequence | -3 | sequence | the record's life (messages are read-only) |
+| entity's component | entity bits (≥ 0) | 0 | row's changed tick |
+| resource | -1 | 0 | resource's changed tick |
+| running system's `Local` | -2 | the `Local`'s index in the system | until the system writes it (it is the only writer) |
+| message | -3 | its sequence number (< 2^53, exact in an `f64`) | the record's life (messages are read-only) |
 | the running observer's value | -4 | 0 | the observer's run |
+
+A message's queue is found by the target's owner name (the message type), then the record by its sequence number.
 
 For `Local` and observer places, Rust resolves the place against the run in progress: the system
 runner keeps the running system's identity and the observer drain keeps the `Pending` it is running
-(`systems.rs:1474`), in a `RunPlace` resource set for the call and cleared after. A place that is not
+(`systems.rs:1474`), in a `RunPlace` resource. A host call gets only a shared world, so the runner sets `RunPlace` once per system or observer run, before calling JS, and clears it after. A place that is not
 live (a stale sequence, no observer running) fails the call naming the place. The field is still the
 `Target`; for non-component places the target is built from the layout's shape (`Target::ts_heap`,
 keyed by the layout's owner name), so the codec is one.
@@ -136,23 +142,35 @@ trigger time is the closest match. docs/ecs.md's "reads live, throws once gone" 
 ### 7. In-place list edits: copy, edit, flush item edits
 
 A list read through a writable accessor (`Mut<C>`, `ResMut<R>`, `Local`) returns a plain, mutable JS
-array, cached per row with a snapshot of its length and items (the `reflectMutGet` path). At the end
-of the run, `reflectFlush` diffs each touched list against its snapshot and sends one `WRITE_EDIT`
-host call per list:
+array, made for this run from the cached value, with a snapshot of its items (the `reflectMutGet`
+path). At the end of the run, `reflectFlush` diffs each touched list against its snapshot and sends
+one `WRITE_EDIT` host call per changed list. With old length `n0` and new length `n1`, items compared
+with `Object.is` (so `NaN` equals `NaN` and `-0` differs from `0`; struct and vector items member by
+member):
 
-- items changed at indices < old length: `set(i, item)`;
-- new length > old: `append(items)`; new length < old: `truncate(len)`;
-- anything else (`splice`, `sort`, a shift): `replace(all)`, today's whole write.
+- `truncate(n1)` when `n1 < n0`;
+- `set(i, item)` for each `i < min(n0, n1)` whose item differs;
+- `append(items[n0..n1])` when `n1 > n0`;
+- in that order, applied in place on the `Vec`. When the sets cover more than half of `min(n0, n1)`
+  (a `sort`, a `shift`, a `splice`), one `replace(all)` is sent instead: today's whole write.
 
-Rust applies the ops in place on the `Vec` (`heap.rs` `List::apply`), sets the change tick once, and
-drops the cache entry. A list that was read but not changed sends nothing and marks nothing changed.
-A whole assignment (`tag.scores = [...]`) stays an immediate `WRITE` and replaces the cached copy.
-Read-only accessors keep frozen arrays.
+Rust applies the ops (`heap.rs` `List::apply`), sets the change tick once, and drops the cache entry.
+A list that was read but not changed sends nothing and marks nothing changed, as bevy-ts marks a row
+only on a real write (docs/ecs.md), like Bevy's `set_if_neq`.
 
+- Holes: an array with a hole or an `undefined` item at flush (`length = n` grown, `a[10] = x` past
+  the end) fails the run with a `TypeError` naming the field and the first bad index, and writes
+  nothing for that list.
+- Assignment: a whole assignment (`tag.scores = [...]`) stays an immediate `WRITE`, and replaces the
+  array and its snapshot with the assigned value, so edits before it are dropped and edits after it
+  diff against it.
 - When the edit is seen: by the same system at once (it holds the array); by Rust at the end of the
-  system's run, before any later system. Same rule as reflected `Mut` fields today. A host call in
-  the same run that reads that field from Rust (another query over the same row) flushes first:
-  `reflectFlush` runs before a heap `READ` of a row with a pending edit.
+  system's or observer's run, before any later system. Same rule as reflected `Mut` fields today. The
+  observer runner flushes as `runSystem` does. A host call in the same run that reads that field from
+  Rust (another query over the same row) flushes first: `reflectFlush` runs before a heap `READ` of
+  a row with a pending edit.
+- An array kept past its run is a plain JS array, no longer tied to the row: editing it later writes
+  nothing. The next run hands out a fresh one.
 - Cost: diffing is O(items) per touched list, once per run, no allocation for an untouched one.
 
 Alternative: a `Proxy` sending each `push` and `[i] =` as it happens. Index access through a proxy
@@ -175,10 +193,17 @@ Storage, as Bevy keeps a `Vec<T>`:
   16-aligned and a column stores them at align 4 (`layout.rs` `align`).
 - `Vec<Entity>`; enums as `Vec<u8|u16|u32>` of the stored variant value.
 - A struct item is a `FieldType::Struct { fields }` laid out by `c_layout` (plain fields only, no heap
-  member), stored as a `Vec<A>` with `A` the unsigned integer of the item's alignment (1, 2, 4 or 8),
-  `stride / size_of::<A>()` words an item. The allocation has the item's alignment, so it is the same
-  memory as a `#[repr(C)]` Rust `Vec<Point>`. `ItemShape` (the item layout) is leaked per distinct
-  layout, as `HeapShape` is.
+  member; its size is a multiple of its alignment, so the stride is the size). It is stored as a raw
+  list `heap.rs` owns: a pointer, `cap` and `len` counted in items, the buffer allocated and freed
+  with `Layout::from_size_align(stride * cap, align)`. That is the memory a Rust `Vec<Point>` of a
+  `#[repr(C)]` `Point` of the same layout has, so a Rust system reads it as one. Vec's field order
+  is not stable Rust, so it is probed once from a real `Vec` (a `Vec<u8>` with distinct `cap` and
+  `len`, read as three words) and every raw list writes its words in that order; a unit test asserts
+  the probe. A raw list is built, edited, cloned and dropped only through `heap.rs` (`ItemShape`, the
+  item layout, leaked per distinct layout as `HeapShape` is), never through a `Vec`'s own push or
+  drop.
+- A Rust mirror of a `Vec4` or `Quat` item, in a list or in a struct item, uses `[f32; 4]`, not
+  glam's `Vec4`/`Quat` (16-aligned).
 
 Codec: items reuse the reflect codec's `Lanes`, `Entity`, `Enum` and `Struct` nodes, so `core.js`'s
 decoder already reads them; the encoder gains the same four. JS reads a vector item as a frozen
@@ -238,7 +263,7 @@ None for the build; the ask-first items below need the operator's go before stag
 ## Ask first
 
 - New architectural pattern: heap host calls address a place (table in decision 4), with a
-  `RunPlace` the runner sets per call. Alternative: decode heap fields eagerly into the frame (no
+  `RunPlace` the runner sets per run. Alternative: decode heap fields eagerly into the frame (no
   pattern, every reader pays).
 - Performance: in-place list edits flush by diffing at the end of the run (O(items) per touched
   list); message and event records with heap fields drop per record. Plain types unchanged, shown by
