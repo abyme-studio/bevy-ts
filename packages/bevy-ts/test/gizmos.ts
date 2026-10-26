@@ -1,5 +1,5 @@
-// Type tests for `bevy-ts/gizmos`: gizmos-module.d.ts is the engine's declaration (tests/it/gizmos.rs
-// `the_engine_declares_gizmos` keeps it equal), and `tsc -p test` checks these cases against it.
+// Type tests for `bevy-ts/gizmos`: engine/native-modules.d.ts holds the engine's declaration
+// (tests/it/gizmos.rs `the_engine_declares_gizmos` checks it), and `tsc -p test` checks these cases against it.
 import type { ResMut } from "bevy-ts";
 import { type Gizmos, type GizmoConfigStore, type LightGizmoConfigGroup, DefaultGizmoConfigGroup } from "bevy-ts/gizmos";
 
