@@ -228,3 +228,36 @@ app.addSystems(Update, s);
     };
     assert!(r.errors.iter().any(|e| named(&e.message)), "{:?}", r.errors);
 }
+
+/// A tiered and an untiered Rust type with one short name.
+pub mod tiered {
+    use bevy::prelude::*;
+    #[derive(Component, Reflect, Default)]
+    #[reflect(Component, Default)]
+    pub struct Gale {
+        pub v: f32,
+    }
+}
+
+pub mod untiered {
+    use bevy::prelude::*;
+    #[derive(Component)]
+    pub struct Gale;
+}
+
+#[test]
+fn a_short_name_a_tiered_and_an_untiered_type_share_fails_the_load_naming_both_paths() {
+    let body = r#"
+import { f32 as F32, nativeComponent as native } from "bevy-ts";
+export class Gale extends native("Gale", { v: F32 }) {}
+export function s(q: Query<[Gale]>) {}
+app.addSystems(Update, s);
+"#;
+    let dir = project("native-tiered-untiered", &[("game.ts", &format!("{HEAD}{body}"))]);
+    let mut app = app(&dir.join("game.ts"));
+    app.register_type::<tiered::Gale>();
+    app.world_mut().register_component::<untiered::Gale>();
+    let r = reload(&mut app, false);
+    let named = |m: &str| m.contains("Gale names more than one Rust type") && m.contains("it::native_components::tiered::Gale") && m.contains("it::native_components::untiered::Gale");
+    assert!(r.errors.iter().any(|e| named(&e.message)), "{:?}", r.errors);
+}
