@@ -8,21 +8,27 @@
 ### Requirement: A built-in input module
 Every engine SHALL ship the built-in module `bevy-ts/input`, registered with `ts_module`, its declarations written to `native-modules.d.ts` by `bevy-ts types`. It SHALL export two exported params (native-functions):
 - `Keys`, over `Res<ButtonInput<KeyCode>>`, with `pressed(code)`, `justPressed(code)` and `justReleased(code)`, each returning `boolean`.
-- `InputFocus`, over `Res<InputFocus>`, with `get()` returning the focused `Entity`, or `undefined` while nothing has focus.
+- `InputFocus`, over `Res<InputFocus>`, with `get()` returning the focused `Entity`, or `undefined` while nothing has focus, and `typing()` returning `true` when the focused entity has `EditableText` (a text field), else `false`.
 
 They SHALL read Bevy's own resources, so they agree with Rust systems in the same frame, and SHALL NOT add a resource or a system of their own.
 
+`get()` is not a shortcut guard: in viewport mode and headless there is a primary window, and Bevy's `set_initial_focus` puts `InputFocus` on it, so `get()` is the window while no field has focus. A single-key shortcut SHALL be written `keys.justPressed(KeyCode.KeyN) && !focus.typing()`.
+
 #### Scenario: A key read while nothing has focus
-- **WHEN** a system taking `keys: Keys, focus: InputFocus` runs `if (keys.justPressed(KeyCode.KeyN) && focus.get() === undefined) count += 1`, and `N` is pressed in viewport mode with no field focused
-- **THEN** `count` is 1 after that frame and stays 1 on the next
+- **WHEN** a system taking `keys: Keys, focus: InputFocus` runs `if (keys.justPressed(KeyCode.KeyN) && !focus.typing()) count += 1`, and `N` is pressed in viewport mode with `InputFocus` on the primary window
+- **THEN** `count` is 1 after that frame and stays 1 on the next, and `focus.get()` is the window
 
 #### Scenario: A key typed into a field
 - **WHEN** a field has focus and `N` is pressed
-- **THEN** `keys.justPressed(KeyCode.KeyN)` is still true, as in Bevy, `focus.get()` is the field, and `count` stays 0
+- **THEN** `keys.justPressed(KeyCode.KeyN)` is still true, as in Bevy, `focus.get()` is the field, `focus.typing()` is true, and `count` stays 0
 
 #### Scenario: After Escape
 - **WHEN** a focused field receives `Escape` and `N` is pressed on a later frame
-- **THEN** `focus.get()` is `undefined` and `count` is 1
+- **THEN** `focus.get()` is `undefined`, `focus.typing()` is false and `count` is 1
+
+#### Scenario: Headless
+- **WHEN** the same system runs under `--headless` and a test posts `N`, first with focus on the window and then after clicking an `<input>`
+- **THEN** `count` is 1 after the first and stays 1 after the second
 
 ### Requirement: KeyCode is a generated enum
 `bevy-ts/input` SHALL export `KeyCode`, a TS enum with one member per Bevy 0.20 `KeyCode` variant that carries no data, named as in Rust (`KeyCode.KeyN`, `KeyCode.Enter`, `KeyCode.ArrowUp`), each a number. The TS enum and the Rust table that maps numbers back to `KeyCode` SHALL come from one generated source, and a test SHALL fail when they differ from Bevy's variants. A method given a number that is not a member SHALL throw, naming the param, the method and the number.
@@ -166,3 +172,45 @@ When a `tabIndex` or `tabGroup` prop mounts and `TabNavigationPlugin` was not ad
 #### Scenario: navigate with the switch off
 - **WHEN** a TS system calls `nav.navigate(CompassOctant.South)` in a game without `directionalNavigation`
 - **THEN** the call throws an error naming `"directionalNavigation": true`
+
+### Requirement: Logical keys
+`bevy-ts/input` SHALL export the param `LogicalKeys`, over `Res<ButtonInput<Key>>`, with `pressed(key)`, `justPressed(key)` and `justReleased(key)`, each returning `boolean`, as `Keys` does for `KeyCode`. It SHALL read Bevy's own resource, which Bevy's `keyboard_input_system` fills from each `KeyboardInput`'s `logical_key`, so a character key reads as the character the layout and modifiers typed: Shift with `N` is `Key.Character("N")`, not `"n"`. With no such resource, it SHALL read as no key down.
+
+#### Scenario: A key bound by what it types
+- **WHEN** a system taking `keys: LogicalKeys` runs `if (keys.justPressed(Key.Character("z"))) count += 1`, and the viewer sends `key` down with `code: "KeyY"`, `key: "z"` (a German layout)
+- **THEN** `count` is 1, and `Keys.justPressed(KeyCode.KeyZ)` is false that frame
+
+#### Scenario: A named key
+- **WHEN** the viewer sends `key` down for `Enter`
+- **THEN** `keys.justPressed(Key.Enter)` is true that frame and `keys.pressed(Key.Enter)` stays true until the key up
+
+#### Scenario: Case follows the layout
+- **WHEN** the viewer sends `ShiftLeft` down, then `KeyN` down with `key: "N"`
+- **THEN** `keys.pressed(Key.Character("N"))` is true and `keys.pressed(Key.Character("n"))` is false
+
+### Requirement: Key is one number
+`bevy-ts/input` SHALL export `Key`, Bevy 0.20's `Key` as a number in the input number space (script-input-devices):
+- one member per `Key` variant that carries no data, named as in Rust (`Key.Enter`, `Key.Escape`, `Key.ArrowUp`, `Key.Shift`), numbered from `0x3000`;
+- `Key.Character(c)`, `0x100000` plus the code point of `c` after NFC normalisation;
+- `Key.Dead(c)`, `0x300000` plus the code point of `c`, and `Key.Dead()` for `Dead(None)`, `0x300000 + 0x110000`.
+
+`Key.Character` and `Key.Dead` SHALL be the module's JS, so no string crosses into Rust; a `c` that is not exactly one code point after normalisation SHALL throw, naming `Key.Character` or `Key.Dead` and `c`. `Unidentified` keys SHALL have no member. The named list and the Rust table that maps numbers back to `Key` SHALL come from one generated source beside `KEY_CODES`, and a test SHALL fail when it differs from Bevy's data-free variants or when the ranges overlap another device's. A `LogicalKeys` method given a number outside the `Key` ranges SHALL throw, naming `LogicalKeys`, the method and the number.
+
+#### Scenario: A character with two code points
+- **WHEN** a system calls `Key.Character("ab")`
+- **THEN** it throws naming `Key.Character` and `"ab"`
+
+#### Scenario: A decomposed character
+- **WHEN** a system calls `Key.Character("é")`
+- **THEN** it returns the same number as `Key.Character("é")`
+
+#### Scenario: A KeyCode given to LogicalKeys
+- **WHEN** a system calls `keys.pressed(KeyCode.KeyN)` on a `LogicalKeys`
+- **THEN** the call throws naming `LogicalKeys`, `pressed` and the number
+
+### Requirement: Input conditions take logical keys
+`inputPressed`, `inputJustPressed`, `inputJustReleased` and `inputToggleActive` SHALL also take a `Key` and evaluate it in Rust against `ButtonInput<Key>`, chosen by the number's range as for `KeyCode` and `MouseButton`, as Bevy's generic `input_just_pressed::<Key>` does.
+
+#### Scenario: Pause on the key that types p
+- **WHEN** `systems(pause).runIf(inputJustPressed(Key.Character("p")))` is registered and the viewer sends `key` down with `key: "p"`
+- **THEN** `pause` runs on that frame only, and the condition makes no JS call
