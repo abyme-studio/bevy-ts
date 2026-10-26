@@ -16,7 +16,7 @@ It SHALL save at the 60th ready frame in a row. A frame is ready when:
 
 A failed asset SHALL NOT keep a frame waiting; the shot SHALL log a warning naming its path. A frame that is not ready SHALL start the count again. If no 60th ready frame comes within 60 s of start, it SHALL save anyway and log a warning saying what is not ready.
 
-Under `BEVY_TS_SCREENSHOT`, time SHALL advance by Bevy's `TimeUpdateStrategy::ManualDuration`: 1/60 s on a ready frame and nothing otherwise. So the shot is the same picture at any machine load.
+Under `BEVY_TS_SCREENSHOT`, time SHALL advance by Bevy's `TimeUpdateStrategy::ManualDuration`: 1/60 s on a ready frame and nothing otherwise. Until the shot is saved, time SHALL stop once it has advanced 60 steps, so the shot's clock is 60 steps even when a ready frame came before a frame that was not. Every camera SHALL draw with Bevy's `NoIndirectDrawing`, given when it is spawned, so the order in which a batch's instances are drawn, and which of two at the same depth shows, is the same every frame. So the shot is the same picture, byte for byte, at any machine load.
 
 #### Scenario: A screenshot without a window
 - **WHEN** the arena plays with `--headless` and `BEVY_TS_SCREENSHOT=shot.png`
@@ -45,6 +45,14 @@ Under `BEVY_TS_SCREENSHOT`, time SHALL advance by Bevy's `TimeUpdateStrategy::Ma
 #### Scenario: A looping glTF clip at any load
 - **WHEN** a glTF scene playing a looping clip is shot twice, once with each read 500 ms slower and 30 ms of extra work each frame
 - **THEN** the two PNGs have identical pixels
+
+#### Scenario: A ready frame before a load
+- **WHEN** one frame is ready, the next has a pipeline waiting, and the frames after are ready
+- **THEN** the shot's clock is 60 steps, not 61
+
+#### Scenario: Instances at one depth
+- **WHEN** 64 copies of one textured quad, each turned in the plane they share, are shot four times, two with 30 ms of extra work each frame
+- **THEN** the four PNGs have identical pixels
 
 ### Requirement: Game UI draws into the headless image
 A headless run SHALL give `IsDefaultUiCamera` to the highest-order camera rendering into the offscreen image (ties broken by entity, as Bevy breaks them for a window), and to no other, so UI roots without a `UiTargetCamera` lay out at the image's size and draw into it. When the game places its own `IsDefaultUiCamera` on another camera, headless SHALL place none (one on the camera headless already chose is taken as headless's); a root's `UiTargetCamera` SHALL win as in Bevy.

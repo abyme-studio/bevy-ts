@@ -187,7 +187,7 @@ It SHALL fail, writing nothing, when:
 
 Every failure SHALL name the path and the reason. It SHALL work while paused, so a client takes a shot at a chosen frame with `bevy-ts/pause` and `bevy-ts/step` first.
 
-With `BEVY_TS_FIXED_STEP=1`, an engine SHALL advance time as under `BEVY_TS_SCREENSHOT`: by `TimeUpdateStrategy::ManualDuration`, 1/60 s on a ready frame (script started, no pipeline waiting, no asset load in flight) and nothing otherwise. That way a client's shots are the same at any load.
+With `BEVY_TS_FIXED_STEP=1`, an engine SHALL advance time as under `BEVY_TS_SCREENSHOT`: by `TimeUpdateStrategy::ManualDuration`, 1/60 s on a ready frame (script started, no pipeline waiting, no asset load in flight) and nothing otherwise. Its cameras SHALL draw with `NoIndirectDrawing`, as under `BEVY_TS_SCREENSHOT`. That way a client's shots are the same at any load. Without it, cameras keep Bevy's GPU culling, and two shots of the same frame MAY differ where instances meet at one depth.
 
 #### Scenario: A shot at a chosen frame
 - **WHEN** a headless client pauses, steps the game 30 frames, and calls `bevy-ts/screenshot` with `/tmp/at-30.png`
