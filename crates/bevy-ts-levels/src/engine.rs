@@ -894,8 +894,18 @@ impl WorldSchema<'_> {
     }
 }
 
+impl WorldSchema<'_> {
+    /// Whether `path` names a TS relationship target: derived from its sources, never in a level.
+    pub fn is_target(&self, path: &str) -> bool {
+        self.ts.iter().any(|d| d.is_target() && (d.name == path || short(&d.name) == path))
+    }
+}
+
 impl Schema for WorldSchema<'_> {
     fn component(&self, path: &str) -> Result<ComponentSchema, String> {
+        if self.is_target(path) {
+            return Err(format!("{path} is a relationship target: its list is kept from its sources, never written in a level"));
+        }
         if path == "Name" || path == "bevy_ecs::name::Name" {
             return Ok(ComponentSchema { name: "Name".into(), kind: ComponentKind::Rust, fields: Vec::new(), is_name: true });
         }

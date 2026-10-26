@@ -46,6 +46,42 @@ pub struct ComponentDecl {
     /// `static require = [B, C.of({ ... })]`: what inserting it adds when missing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub require: Vec<RequiredDecl>,
+    /// `extends Relationship` or `extends RelationshipTarget(Source)`: its half of a pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relationship: Option<RelationshipDecl>,
+}
+
+impl ComponentDecl {
+    pub fn is_target(&self) -> bool {
+        self.relationship.as_ref().is_some_and(|r| r.role == RelationshipRole::Target)
+    }
+
+    pub fn is_source(&self) -> bool {
+        self.relationship.as_ref().is_some_and(|r| r.role == RelationshipRole::Source)
+    }
+}
+
+/// A component's half of a relationship pair (custom-relationships).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationshipDecl {
+    pub role: RelationshipRole,
+    /// A target's source, by component name. A source's target is the one that names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counterpart: Option<String>,
+    /// A target's `{ linkedSpawn: true }`: despawning it despawns its sources.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub linked_spawn: bool,
+    /// A source's `static allowSelfReferential = true`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_self_referential: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RelationshipRole {
+    Source,
+    Target,
 }
 
 /// One required component: a TS component or a Rust one with a native layout, and the fields

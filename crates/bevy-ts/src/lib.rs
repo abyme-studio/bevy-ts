@@ -42,6 +42,7 @@ pub mod atlas_layout;
 pub mod reflect_asset;
 pub mod runtime;
 pub mod rust_events;
+pub mod relationships;
 pub mod saves;
 pub mod schedules;
 pub mod session;

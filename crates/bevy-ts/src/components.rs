@@ -5,7 +5,8 @@ use crate::backend::ScriptError;
 use crate::commands::{Writable, insert_owned};
 use crate::heap::{HeapBytes, HeapFill, HeapKind};
 use crate::layout::{ComponentLayout, FieldType, NativeLayouts};
-use crate::manifest::ComponentDecl;
+use crate::manifest::{ComponentDecl, RelationshipRole};
+use crate::relationships::{self, Role, TsHooks};
 use crate::value::{self, ValueError};
 use bevy::ecs::component::{ComponentCloneBehavior, ComponentDescriptor, ComponentId, StorageType};
 use bevy::ecs::lifecycle::HookContext;
@@ -106,6 +107,7 @@ impl TsComponents {
             expected: "a live TS component".into(),
             message: format!("no live component named {name}"),
         })?;
+        refuse_target(&c.decl)?;
         value::encode_component(&c.decl, &c.layout, values)
     }
 
@@ -113,7 +115,7 @@ impl TsComponents {
     pub fn writable_sizes(&self, native: &NativeLayouts) -> HashMap<ComponentId, Writable> {
         let mut m: HashMap<_, _> = self
             .current()
-            .filter(|c| c.state == ComponentState::Live)
+            .filter(|c| c.state == ComponentState::Live && !c.decl.is_target())
             .map(|c| (c.id, Writable { size: c.layout.size, heap: c.fill.clone() }))
             .collect();
         m.extend(native.iter().filter(|n| n.insertable).map(|n| (n.id, Writable { size: n.layout.size, heap: None })));
@@ -137,7 +139,8 @@ impl Required {
     }
 }
 
-/// The one `on_add` hook of every TS component, registered by id in [`register`]. It inserts,
+/// The required-components part of every TS component's `on_add`, which
+/// [`relationships::dispatch_on_add`] calls (the slot is registered by id in [`register`]). It inserts,
 /// through the world's commands, each part the component requires that the entity lacks, so
 /// they land at the next flush, before the next system. Each insert runs its own `on_add`, so
 /// requirements apply transitively; a part the entity has keeps its value.
@@ -190,6 +193,18 @@ fn require_cycle(decls: &[ComponentDecl]) -> Option<Vec<String>> {
     None
 }
 
+/// A relationship target is derived from its sources: no path builds one from values.
+fn refuse_target(d: &ComponentDecl) -> Result<(), ValueError> {
+    match d.is_target() {
+        true => Err(ValueError {
+            path: String::new(),
+            expected: "a component that can be inserted".into(),
+            message: format!("{} is a relationship target: its list is kept from its sources, never inserted", d.name),
+        }),
+        false => Ok(()),
+    }
+}
+
 /// Validates a generation's component declarations without touching the world.
 pub fn validate(decls: &[ComponentDecl], native: &NativeLayouts) -> Vec<ScriptError> {
     let mut errors = Vec::new();
@@ -225,34 +240,140 @@ pub fn validate(decls: &[ComponentDecl], native: &NativeLayouts) -> Vec<ScriptEr
             }
         }
     }
+    errors.extend(validate_pairs(decls));
     errors
 }
 
-fn register(world: &mut World, decl: &ComponentDecl, layout: &ComponentLayout) -> ComponentId {
-    // A heap field's value is freed by the drop fn and deep-copied by the clone fn, both reading
-    // the value's header; any other component is plain bytes.
-    let (drop, clone): (Option<for<'a> unsafe fn(bevy::ptr::OwningPtr<'a>)>, _) = match layout.has_heap() {
-        true => (Some(crate::heap::drop_component), ComponentCloneBehavior::Custom(crate::heap::clone_component)),
-        false => (None, ComponentCloneBehavior::Custom(clone_bytes)),
-    };
-    // SAFETY: a plain TS component is bytes: any bit pattern is a valid value for every field
-    // type's storage. One with a heap field is only ever built as a whole `HeapBytes` value, which
-    // the drop fn frees. Both are Send + Sync.
-    let descriptor = unsafe {
-        ComponentDescriptor::new_with_layout(
-            decl.name.clone(),
-            StorageType::Table,
-            layout.std_layout(),
-            drop,
-            true,
-            true,
-            clone,
-            None,
-        )
+/// Relationship pairs: a source's first field is `target: Entity`, a target has no fields and
+/// names a source, and each source has exactly one target (custom-relationships decision 3).
+fn validate_pairs(decls: &[ComponentDecl]) -> Vec<ScriptError> {
+    let mut errors = Vec::new();
+    let by_name: HashMap<&str, &ComponentDecl> = decls.iter().map(|d| (d.name.as_str(), d)).collect();
+    let mut targets: HashMap<&str, Vec<&ComponentDecl>> = HashMap::new();
+    for d in decls {
+        let at = d.location.clone();
+        let Some(r) = &d.relationship else { continue };
+        match r.role {
+            RelationshipRole::Source => {
+                if !d.fields.first().is_some_and(|f| f.name == "target" && f.ty == FieldType::Entity) {
+                    errors.push(ScriptError::at(format!("{}: a Relationship's first field is target: Entity", d.name), at));
+                }
+            }
+            RelationshipRole::Target => {
+                if let Some(f) = d.fields.first() {
+                    errors.push(ScriptError::at(format!("{}: a RelationshipTarget has no fields; {} is one", d.name, f.name), at.clone()));
+                }
+                match r.counterpart.as_deref() {
+                    Some(s) if by_name.get(s).is_some_and(|s| s.is_source()) => targets.entry(s).or_default().push(d),
+                    Some(s) => errors.push(ScriptError::at(format!("{}: RelationshipTarget({s}) names a class that is not a Relationship", d.name), at)),
+                    None => errors.push(ScriptError::at(format!("{}: RelationshipTarget(...) names no source", d.name), at)),
+                }
+            }
+        }
+    }
+    for d in decls.iter().filter(|d| d.is_source()) {
+        match targets.get(d.name.as_str()).map(Vec::as_slice) {
+            None | Some([]) => errors.push(ScriptError::at(format!("{}: no RelationshipTarget({}) names this Relationship; declare one", d.name, d.name), d.location.clone())),
+            Some([_]) => {}
+            Some(ts) => {
+                let names: Vec<&str> = ts.iter().map(|t| t.name.as_str()).collect();
+                errors.push(ScriptError::at(format!("{}: two targets name it ({}); a Relationship has one RelationshipTarget", d.name, names.join(", ")), ts[1].location.clone()));
+            }
+        }
+    }
+    errors
+}
+
+/// How a declaration registers: plain, or one half of a relationship pair.
+#[derive(Clone, Copy, Debug)]
+enum Kind {
+    Plain,
+    /// `linked_spawn` is its target's.
+    Source { linked_spawn: bool },
+    /// `source` is the source's id, registered first.
+    Target { source: ComponentId, allow_self_referential: bool },
+}
+
+fn register(world: &mut World, decl: &ComponentDecl, layout: &ComponentLayout, kind: Kind) -> ComponentId {
+    let rel = decl.relationship.as_ref();
+    let allow_self = rel.is_some_and(|r| r.allow_self_referential);
+    let offset = layout.field("target").map_or(0, |f| f.offset);
+    let descriptor = match kind {
+        // A target is Rust-owned: a `Vec<Entity>` Bevy writes through its hooks.
+        // SAFETY: the layout and drop fn are `Vec<Entity>`'s, and every value is built as one.
+        Kind::Target { source, allow_self_referential } => unsafe {
+            ComponentDescriptor::new_with_layout(
+                decl.name.clone(),
+                StorageType::Table,
+                std::alloc::Layout::new::<Vec<Entity>>(),
+                Some(drop_list),
+                true,
+                true,
+                ComponentCloneBehavior::Custom(relationships::clone_target),
+                Some(relationships::target_accessor(source, rel.is_some_and(|r| r.linked_spawn), allow_self_referential)),
+            )
+        },
+        _ => {
+            // A heap field's value is freed by the drop fn and deep-copied by the clone fn, both
+            // reading the value's header; any other component is plain bytes. A source's clone
+            // maps its `target` too.
+            let source = matches!(kind, Kind::Source { .. });
+            let (drop, clone): (Option<for<'a> unsafe fn(bevy::ptr::OwningPtr<'a>)>, _) = match (layout.has_heap(), source) {
+                (true, false) => (Some(crate::heap::drop_component), ComponentCloneBehavior::Custom(crate::heap::clone_component)),
+                (true, true) => (Some(crate::heap::drop_component), ComponentCloneBehavior::Custom(relationships::clone_source_heap)),
+                (false, false) => (None, ComponentCloneBehavior::Custom(clone_bytes)),
+                (false, true) => (None, ComponentCloneBehavior::Custom(relationships::clone_source)),
+            };
+            let accessor = match kind {
+                Kind::Source { linked_spawn } => Some(relationships::source_accessor(offset, linked_spawn, allow_self)),
+                _ => None,
+            };
+            // SAFETY: a plain TS component is bytes: any bit pattern is a valid value for every
+            // field type's storage. One with a heap field is only ever built as a whole
+            // `HeapBytes` value, which the drop fn frees. Both are Send + Sync. A source is
+            // immutable, as `ChildOf` is: its hooks keep the target's list.
+            unsafe { ComponentDescriptor::new_with_layout(decl.name.clone(), StorageType::Table, layout.std_layout(), drop, !source, true, clone, accessor) }
+        }
     };
     let id = world.register_component_with_descriptor(descriptor);
-    world.register_component_hooks_by_id(id).expect("a TS component was just registered").on_add(on_add);
+    let hooks = world.register_component_hooks_by_id(id).expect("a TS component was just registered");
+    hooks.on_add(relationships::dispatch_on_add);
+    match kind {
+        Kind::Plain => {}
+        Kind::Source { .. } => {
+            hooks.on_insert(relationships::dispatch_on_insert).on_discard(relationships::dispatch_on_discard);
+        }
+        Kind::Target { .. } => {
+            hooks.on_discard(relationships::dispatch_on_discard);
+            if rel.is_some_and(|r| r.linked_spawn) {
+                hooks.on_despawn(relationships::dispatch_on_despawn);
+            }
+        }
+    }
+    let role = match kind {
+        Kind::Plain => None,
+        Kind::Source { linked_spawn } => Some(Role::Source { target: None, offset, linked_spawn, allow_self_referential: allow_self }),
+        Kind::Target { source, .. } => Some(Role::Target { source, linked_spawn: rel.is_some_and(|r| r.linked_spawn) }),
+    };
+    if let Some(role) = role {
+        let mut roles = world.get_resource_or_init::<TsHooks>();
+        roles.set_role(id, role);
+        if let Role::Target { source, .. } = role
+            && let Some(Role::Source { offset, linked_spawn, allow_self_referential, .. }) = roles.role(source)
+        {
+            roles.set_role(source, Role::Source { target: Some(id), offset, linked_spawn, allow_self_referential });
+        }
+    }
     id
+}
+
+/// A target's drop fn: its `Vec<Entity>`.
+///
+/// # Safety
+/// `p` owns a target's value.
+unsafe fn drop_list(p: bevy::ptr::OwningPtr<'_>) {
+    // SAFETY: the caller's contract.
+    unsafe { p.drop_as::<Vec<Entity>>() };
 }
 
 /// Clones a TS component by copying its bytes (`cloneAndSpawn`): it is plain data.
@@ -324,6 +445,7 @@ impl PendingComponents {
             expected: "a component of this generation".into(),
             message: format!("no component named {name}"),
         })?;
+        refuse_target(d)?;
         value::encode_component(d, l, values)
     }
 
@@ -368,26 +490,73 @@ impl PendingComponents {
 /// Declarations must have passed [`validate`].
 pub fn prepare(world: &mut World, decls: &[ComponentDecl]) -> PendingComponents {
     let mut registry = world.remove_resource::<TsComponents>().unwrap_or_default();
-    let mut items = Vec::new();
-    for decl in decls {
-        let layout = decl.layout();
-        let current = registry.current.get(&decl.name).copied();
-        let planned = match current {
-            Some(i) if registry.entries[i].layout.same_shape(&layout) => Planned::Reuse(i, registry.entries[i].id),
-            from => {
-                let spare = registry.spares.iter().position(|(n, l, _)| n == &decl.name && l.same_shape(&layout));
-                let id = match spare {
-                    Some(s) => registry.spares.swap_remove(s).2,
-                    None => register(world, decl, &layout),
+    let layouts: Vec<ComponentLayout> = decls.iter().map(ComponentDecl::layout).collect();
+    // The entry each declaration may keep: same layout and same relationship role.
+    let mut keep: Vec<Option<usize>> = decls
+        .iter()
+        .zip(&layouts)
+        .map(|(d, l)| registry.current.get(&d.name).copied().filter(|&i| registry.entries[i].layout.same_shape(l) && registry.entries[i].decl.relationship == d.relationship))
+        .collect();
+    // A pair's ids name each other through their accessors, so if either half needs a new id
+    // both get one (custom-relationships decision 8).
+    let index: HashMap<&str, usize> = decls.iter().enumerate().map(|(i, d)| (d.name.as_str(), i)).collect();
+    let pair_of = |t: &ComponentDecl| t.relationship.as_ref().filter(|_| t.is_target()).and_then(|r| r.counterpart.as_deref()).and_then(|s| index.get(s).copied());
+    for (ti, t) in decls.iter().enumerate() {
+        if let Some(si) = pair_of(t)
+            && (keep[ti].is_none() || keep[si].is_none())
+        {
+            keep[ti] = None;
+            keep[si] = None;
+        }
+    }
+    let mut planned: Vec<Option<Planned>> = vec![None; decls.len()];
+    // Targets last: each names its source's id.
+    let order = (0..decls.len()).filter(|&i| !decls[i].is_target()).chain((0..decls.len()).filter(|&i| decls[i].is_target()));
+    for i in order.collect::<Vec<_>>() {
+        let (decl, layout) = (&decls[i], &layouts[i]);
+        if let Some(k) = keep[i] {
+            planned[i] = Some(Planned::Reuse(k, registry.entries[k].id));
+            continue;
+        }
+        let from = registry.current.get(&decl.name).copied();
+        let kind = match decl.relationship.as_ref().map(|r| r.role) {
+            None => Kind::Plain,
+            Some(RelationshipRole::Source) => {
+                let linked_spawn = decls.iter().find(|t| pair_of(t) == Some(i)).and_then(|t| t.relationship.as_ref()).is_some_and(|r| r.linked_spawn);
+                Kind::Source { linked_spawn }
+            }
+            Some(RelationshipRole::Target) => {
+                let si = pair_of(decl).expect("a validated target names a declared source");
+                let source = match planned[si] {
+                    Some(Planned::Reuse(_, id) | Planned::New { id, .. }) => id,
+                    None => unreachable!("sources are planned before targets"),
                 };
-                Planned::New { id, from }
+                Kind::Target { source, allow_self_referential: decls[si].relationship.as_ref().is_some_and(|r| r.allow_self_referential) }
             }
         };
-        let id = match planned {
-            Planned::Reuse(_, id) | Planned::New { id, .. } => id,
+        // A spare is plain: a pair's ids are always fresh, as each names the other.
+        let spare = match kind {
+            Kind::Plain => registry.spares.iter().position(|(n, l, _)| n == &decl.name && l.same_shape(layout)),
+            _ => None,
         };
-        items.push((decl.clone(), layout, planned, id));
+        let id = match spare {
+            Some(s) => registry.spares.swap_remove(s).2,
+            None => register(world, decl, layout, kind),
+        };
+        planned[i] = Some(Planned::New { id, from });
     }
+    let items = decls
+        .iter()
+        .zip(layouts)
+        .zip(planned)
+        .map(|((decl, layout), planned)| {
+            let planned = planned.expect("every declaration is planned");
+            let id = match planned {
+                Planned::Reuse(_, id) | Planned::New { id, .. } => id,
+            };
+            (decl.clone(), layout, planned, id)
+        })
+        .collect();
     world.insert_resource(registry);
     PendingComponents { items, required: HashMap::new() }
 }
@@ -406,7 +575,9 @@ fn native_bytes(n: &crate::layout::NativeComponent, values: &serde_json::Map<Str
 pub fn abandon(world: &mut World, pending: PendingComponents) {
     let mut registry = world.resource_mut::<TsComponents>();
     for (d, l, p, _) in pending.items {
-        if let Planned::New { id, .. } = p {
+        if let Planned::New { id, .. } = p
+            && d.relationship.is_none()
+        {
             registry.spares.push((d.name, l, id));
         }
     }
@@ -419,6 +590,22 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
     let mut migrations = Vec::new();
     let declared: HashMap<String, ()> = pending.items.iter().map(|(d, ..)| (d.name.clone(), ())).collect();
     world.insert_resource(Required(pending.required));
+    // A pair with a new id is rebuilt, not migrated: its hooks, old and new, are off until then
+    // (custom-relationships decision 8).
+    let mut rebuild = Vec::new();
+    {
+        let mut hooks = world.get_resource_or_init::<TsHooks>();
+        for (decl, _, planned, id) in &pending.items {
+            let Planned::New { from, .. } = planned else { continue };
+            let old = from.map(|i| registry.entries[i].id);
+            if decl.relationship.is_some() || old.is_some_and(|o| hooks.role(o).is_some()) {
+                hooks.suspend(old.into_iter().chain([*id]));
+            }
+            if let Some(Role::Target { source, .. }) = hooks.role(*id) {
+                rebuild.push((source, *id));
+            }
+        }
+    }
 
     for (decl, layout, planned, _) in pending.items {
         match planned {
@@ -429,7 +616,14 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
                 c.state = ComponentState::Live;
             }
             Planned::New { id, from } => {
-                if let Some(i) = from {
+                if let Some(i) = from.filter(|_| decl.is_target()) {
+                    // A target is derived: the old lists go (their drop runs) and are rebuilt.
+                    let old = registry.entries[i].id;
+                    for e in entities_with(world, old) {
+                        world.entity_mut(e).remove_by_id(old);
+                    }
+                    registry.entries[i].state = ComponentState::Retired;
+                } else if let Some(i) = from {
                     let old = registry.entries[i].clone();
                     let mut m = plan(&old, &decl, &layout);
                     let entities = entities_with(world, old.id);
@@ -437,7 +631,9 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
                         // Built per entity: a default string is its own value on each.
                         let mut bytes = default_bytes(&decl, &layout);
                         let mut em = world.entity_mut(*e);
-                        let mut src = em.get_mut_by_id(old.id).expect("queried entity has the component");
+                        // SAFETY: the old value is removed below; a kept heap value moves out of it,
+                        // which an immutable source allows as its removal does.
+                        let mut src = unsafe { em.get_mut_assume_mutable_by_id(old.id) }.expect("queried entity has the component");
                         let src = src.bypass_change_detection().as_ptr();
                         for name in &m.kept {
                             let (o, n) = (old.layout.field(name).unwrap(), layout.field(name).unwrap());
@@ -477,6 +673,10 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
         }
     }
     world.insert_resource(registry);
+    for (source, target) in rebuild {
+        relationships::rebuild(world, source, target);
+    }
+    world.resource_mut::<TsHooks>().resume();
     migrations
 }
 

@@ -368,6 +368,9 @@ fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&s
     for (at, op) in ops.iter().enumerate() {
         // Writes to a placeholder's fields are refused: its text stays as saved.
         match op {
+            Op::Set { component, .. } | Op::AddComponent { component, .. } if schema.is_target(component) => {
+                return Err(refuse(at, "invalid", format!("{component} is a relationship target: its list is kept from its sources, never written in a level")));
+            }
             Op::Set { path, component, .. } | Op::Revert { path, component, .. } if placeholder(path, Some(component)) => {
                 return Err(refuse(at, "missing", format!("{component} on {} is a placeholder: its code is missing, so its saved text is kept as it is", path.join("/"))));
             }

@@ -299,9 +299,10 @@ fn build(world: &mut World, name: &str, options: &SaveOptions) -> Result<(String
     let mut dynamic = builder.build();
     cut_hierarchy(&mut dynamic);
 
-    // TS components: live and undeclared, merged over what an earlier load kept.
+    // TS components: live and undeclared, merged over what an earlier load kept. A relationship
+    // target is derived from its sources, so it is never saved.
     let ts = world.resource::<TsComponents>();
-    let by_id: HashMap<ComponentId, (&str, &ComponentLayout)> = ts.current().map(|c| (c.id, (c.decl.name.as_str(), &c.layout))).collect();
+    let by_id: HashMap<ComponentId, (&str, &ComponentLayout)> = ts.current().filter(|c| !c.decl.is_target()).map(|c| (c.id, (c.decl.name.as_str(), &c.layout))).collect();
     let keep = |n: &str| ts_allow.as_ref().is_none_or(|a| a.contains(n)) && !ts_deny.contains(n);
     for d in &mut dynamic.entities {
         let mut map = world.get::<TsSaved>(d.entity).map(|s| s.0.clone()).unwrap_or_default();

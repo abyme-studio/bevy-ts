@@ -1004,12 +1004,19 @@ pub unsafe fn drop_component(ptr: OwningPtr<'_>) {
 /// The clone fn a component with a heap field registers with (`cloneAndSpawn`): the clone owns
 /// its own copy of every heap value.
 pub fn clone_component(source: &SourceComponent, ctx: &mut ComponentCloneCtx) {
+    clone_component_with(source, ctx, |_, _| {});
+}
+
+/// [`clone_component`], with `edit` given the clone's bytes before they are written (a
+/// relationship source maps its target there).
+pub(crate) fn clone_component_with(source: &SourceComponent, ctx: &mut ComponentCloneCtx, edit: impl FnOnce(*mut u8, &mut ComponentCloneCtx)) {
     let src = source.ptr().as_ptr();
     // SAFETY: the source is a live value of a component registered with this clone fn.
     let shape = unsafe { header(src) };
     // SAFETY: as above.
     let copy = unsafe { HeapBytes::copy_of(src, shape) };
     let mut buf = Aligned::new(copy.bytes());
+    edit(buf.ptr().as_ptr(), ctx);
     // SAFETY: `buf` holds a value of the component; the target takes ownership of its heap values
     // by copy, so `copy`'s own are forgotten, never dropped.
     unsafe { ctx.write_target_component_ptr(Ptr::new(buf.ptr())) };

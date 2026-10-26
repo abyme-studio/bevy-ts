@@ -203,6 +203,8 @@ pub struct Access {
     /// A layout-tier term with holes: its frame carries its changed ticks even when read, which
     /// key the holes' cache.
     pub holes: bool,
+    /// A TS relationship target: its frame is the table's lists, packed before the run.
+    pub list: bool,
 }
 
 /// A filter term evaluated per row (`Changed`, `Added`, `Spawned`), or inside an `Or` a term
@@ -1015,19 +1017,34 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], need
         };
         let optional = *optional || optional_part;
         if let Some((id, target)) = reflect_term(world, component)? {
-            columns.push(Access { name: component.name.clone(), id, size: 0, write: *mutable, optional, tracked: *tracked, reflect: Some(target), holes: false });
+            columns.push(Access { name: component.name.clone(), id, size: 0, write: *mutable, optional, tracked: *tracked, reflect: Some(target), holes: false, list: false });
             return Ok(Some(id));
         }
         let (id, size) = resolve_ref(world, component, ts, &native, true)?;
         if *mutable && native.by_id(id).is_some_and(|n| !n.writable) {
             return Err(format!("{} is an immutable Rust component; TS can read it but not take Mut<{}>", component.name, component.name));
         }
-        // A TS component with a heap field reads it as a hole too: only it registers a drop fn.
+        // A relationship's halves are written only through the source's inserts, so its hooks
+        // keep the target's list (custom-relationships decision 2).
+        let role = world.get_resource::<crate::relationships::TsHooks>().and_then(|h| h.role(id));
+        let short = component.name.rsplit("::").next().unwrap_or(&component.name);
+        match role {
+            Some(crate::relationships::Role::Source { .. }) if *mutable => {
+                return Err(format!("{} is a relationship source, immutable as ChildOf is; retarget by inserting it again: commands.entity(e).insert({short}.of({{ target }}))", component.name));
+            }
+            Some(crate::relationships::Role::Target { .. }) if *mutable => {
+                return Err(format!("{} is a relationship target: read-only, its list changes through its source", component.name));
+            }
+            _ => {}
+        }
+        let list = matches!(role, Some(crate::relationships::Role::Target { .. }));
+        // A TS component with a heap field reads it as a hole too: only it, and a target, register
+        // a drop fn.
         let holes = match native.by_id(id) {
             Some(n) => !n.holes.is_empty(),
-            None => world.components().get_info(id).is_some_and(|i| i.drop().is_some()),
+            None => !list && world.components().get_info(id).is_some_and(|i| i.drop().is_some()),
         };
-        columns.push(Access { name: component.name.clone(), id, size, write: *mutable, optional, tracked: *tracked, reflect: None, holes });
+        columns.push(Access { name: component.name.clone(), id, size, write: *mutable, optional, tracked: *tracked, reflect: None, holes, list });
         Ok(Some(id))
     };
     for d in data {
@@ -1423,12 +1440,32 @@ fn hash_bytes(b: &[u8]) -> u64 {
     h
 }
 
+/// A table's relationship target lists as one `u32` array: `len + 1` row offsets into the array
+/// itself, then each row's entities as (index, generation) pairs, the frame's entity encoding.
+fn pack_lists(lists: &[std::cell::UnsafeCell<Vec<Entity>>], out: &mut Vec<u32>) {
+    out.clear();
+    out.resize(lists.len() + 1, 0);
+    for (r, cell) in lists.iter().enumerate() {
+        out[r] = out.len() as u32;
+        // SAFETY: exclusive stage; nothing writes the column while it is packed.
+        for e in unsafe { &*cell.get() } {
+            let bits = e.to_bits();
+            out.push(bits as u32);
+            out.push((bits >> 32) as u32);
+        }
+    }
+    let end = out.len() as u32;
+    out[lists.len()] = end;
+}
+
 /// Per-runtime scratch kept between runs so little allocates per frame once warm.
 #[derive(Default)]
 pub(crate) struct Scratch {
     pub(crate) arena: Vec<u8>,
     entities: Vec<Vec<u32>>,
     rows: Vec<Vec<u32>>,
+    /// Relationship targets' packed lists, one per target column of a matched table.
+    lists: Vec<Vec<u32>>,
     time: Vec<u64>,
     json: Vec<Vec<u8>>,
     /// A query's parts: its matched tables (dense), or its matched archetypes and their tables.
@@ -1824,7 +1861,7 @@ pub(crate) unsafe fn run_body(
     let mut read_cols: Vec<(usize, usize, usize, ComponentId)> = Vec::new();
     let mut written_ids: HashSet<ComponentId> = HashSet::new();
     let mut reader_cursors: Vec<(String, u64)> = Vec::new();
-    let (mut ents_used, mut rows_used, mut json_used) = (0usize, 0usize, 0usize);
+    let (mut ents_used, mut rows_used, mut json_used, mut lists_used) = (0usize, 0usize, 0usize, 0usize);
     let mut failure: Option<ScriptError> = None;
     // A `Single` or `Populated` that does not match skips the run, as Bevy's param validation does.
     let mut skip = false;
@@ -1945,6 +1982,19 @@ pub(crate) unsafe fn run_body(
                                 columns.push(ColumnFrame { data: std::ptr::null_mut(), bytes: 0, ticks: None, added: None });
                                 continue;
                             };
+                            if c.list {
+                                if scratch.lists.len() <= lists_used {
+                                    scratch.lists.push(Vec::new());
+                                }
+                                let buf = &mut scratch.lists[lists_used];
+                                lists_used += 1;
+                                // SAFETY: a target's column holds `len` `Vec<Entity>`s; the stage is exclusive.
+                                pack_lists(unsafe { column.get_data_slice::<Vec<Entity>>(len) }, buf);
+                                let ticks = c.tracked.then(|| table.get_changed_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32);
+                                let added = c.tracked.then(|| table.get_added_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32);
+                                columns.push(ColumnFrame { data: buf.as_mut_ptr() as *mut u8, bytes: buf.len() * 4, ticks, added });
+                                continue;
+                            }
                             if c.reflect.is_some() {
                                 // A reflected term's frame is its changed ticks: JS keys its cache by
                                 // them and fetches a value only for a row it reads whose tick moved.
