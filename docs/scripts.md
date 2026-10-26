@@ -91,12 +91,24 @@ the same types.
 `app.addSystems(schedule, ...systems)` takes Bevy's schedules under their names: `PreStartup`,
 `Startup`, `PostStartup`, `First`, `PreUpdate`, `RunFixedMainLoop`, `Update`, `SpawnScene`,
 `PostUpdate`, `Last`, `FixedFirst`, `FixedPreUpdate`, `FixedUpdate`, `FixedPostUpdate` and
-`FixedLast`, plus `OnEnter(...)` and `OnExit(...)`. Each schedule's TS systems run in one
-exclusive bevy-ts stage, in set `BevyTsSet::<Stage>`. `PreUpdate`, `Update`, `PostUpdate` and
+`FixedLast`, plus `OnEnter(...)` and `OnExit(...)`. Each TS system in a schedule is a Bevy
+system of its own, named after its identity (`game.ts#move`), in that schedule's bevy-ts stage:
+set `BevyTsSet::<Stage>`. `PreUpdate`, `Update`, `PostUpdate` and
 `FixedUpdate` have theirs from startup; any other schedule gets its stage the first time a
 generation puts a system in it, so a schedule you never use costs nothing. A stage made by the
 generation applied in `First` itself starts in the next frame. A system in a fixed schedule runs
 once per fixed step and reads the fixed step as `Res<Time>`.
+
+A TS system declares to Bevy exactly what it touches: a read or write of each component its
+queries name, of each resource it names, and its exported params' access. Bevy orders it, traces
+it, and reports it as ambiguous with an unordered Rust system that conflicts with it (when the
+schedule's ambiguity detection is on); a Rust system that does not conflict may run beside it on
+another thread. JS itself still runs on the main thread, one TS system at a time. Within a stage
+TS systems run in registration order, adjusted by `chain`, `.after` and `.before`, and each is
+followed by a sync point: its commands, message writes, state changes and triggers apply before
+the next TS system runs, so `b` sees what `a` spawned in the same frame. A reload that changes
+only bodies edits no schedule; a declaration change rebuilds only the systems it touches, which
+keep their `Local`s, message cursors, conditions' state and `Changed` ticks.
 
 The three startup lists run when TS startup runs, at the generation apply, once per system per
 world: every due `PreStartup` system, then `Startup`, then `PostStartup`. A reload runs only

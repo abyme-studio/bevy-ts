@@ -105,7 +105,7 @@ fn main() {
                 let t = Instant::now();
                 app.update();
                 frames.push(t.elapsed().as_secs_f64() * 1e6);
-                runs.push(app.world().resource::<TsSystems>().iter().next().unwrap().last_run_us as f64);
+                runs.push(app.world().resource::<TsSystems>().iter().next().unwrap().last_run_us() as f64);
             }
             println!("| {n} | {v} | {:.0} | {:.0} |", median(runs), median(frames));
         }

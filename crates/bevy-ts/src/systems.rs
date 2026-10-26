@@ -1,5 +1,7 @@
 //! TS systems: resolving their params, ordering them, evaluating run conditions in Rust, and
-//! running them over zero-copy column views with per-row change ticks.
+//! running them over zero-copy column views with per-row change ticks. A system in a schedule
+//! runs as a Bevy system of its own ([`crate::bevy_system`]); startup, transition, one-shot and
+//! predicate systems and observers run here, from bevy-ts's exclusive systems, on the same body.
 
 use crate::backend::{CallContext, ColumnFrame, ParamFrame, ScriptError, ScriptKey, SystemRun, TableFrame};
 use crate::layout::{ComponentLayout, FieldType, NativeLayouts};
@@ -15,9 +17,12 @@ use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::archetype::{Archetype, ArchetypeId};
 use bevy::ecs::storage::{SparseSets, TableId};
+use bevy::ecs::world::FilteredEntityMut;
+use bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell;
 use bevy::prelude::*;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 // JS stores ticks as u32 straight into Bevy's tick column.
@@ -109,7 +114,10 @@ enum TimeValue {
 }
 
 /// Appends a clock's view, read from the world with Bevy's getters, as little-endian words.
-fn push_time(world: &World, clock: Clock, out: &mut Vec<u64>) {
+///
+/// # Safety
+/// `world` may read every `Time` resource.
+unsafe fn push_time(world: UnsafeWorldCell, clock: Clock, out: &mut Vec<u64>) {
     use bevy::time::{Fixed, Real, Virtual};
     use TimeValue::*;
     fn common<T: Default>(t: Option<&Time<T>>) -> [TimeValue; 7] {
@@ -127,15 +135,15 @@ fn push_time(world: &World, clock: Clock, out: &mut Vec<u64>) {
     let mut values = [F32(0.0); 18];
     let n = match clock {
         Clock::Generic => {
-            values[..7].copy_from_slice(&common(world.get_resource::<Time>()));
+            values[..7].copy_from_slice(&common(unsafe { world.get_resource::<Time>() }));
             7
         }
         Clock::Real => {
-            values[..7].copy_from_slice(&common(world.get_resource::<Time<Real>>()));
+            values[..7].copy_from_slice(&common(unsafe { world.get_resource::<Time<Real>>() }));
             7
         }
         Clock::Virtual => {
-            let t = world.get_resource::<Time<Virtual>>();
+            let t = unsafe { world.get_resource::<Time<Virtual>>() };
             values[..7].copy_from_slice(&common(t));
             if let Some(t) = t {
                 values[7..14].copy_from_slice(&[
@@ -151,7 +159,7 @@ fn push_time(world: &World, clock: Clock, out: &mut Vec<u64>) {
             14
         }
         Clock::Fixed => {
-            let t = world.get_resource::<Time<Fixed>>();
+            let t = unsafe { world.get_resource::<Time<Fixed>>() };
             values[..7].copy_from_slice(&common(t));
             if let Some(t) = t {
                 values[7..11].copy_from_slice(&[
@@ -210,6 +218,15 @@ enum Term {
 }
 
 impl Term {
+    /// The components whose ticks it reads: its `Changed` and `Added`.
+    fn tick_ids(&self, out: &mut Vec<ComponentId>) {
+        match self {
+            Term::Changed(id) | Term::Added(id) => out.push(*id),
+            Term::Or(ts) => ts.iter().for_each(|t| t.tick_ids(out)),
+            _ => {}
+        }
+    }
+
     /// Whether it reads anything per row.
     fn per_row(&self) -> bool {
         match self {
@@ -260,9 +277,9 @@ enum Live<'t> {
 }
 
 impl Live<'_> {
-    fn holds(&self, row: usize, entity: Entity, world: &World, last_run: Tick, tick: Tick) -> bool {
+    fn holds(&self, row: usize, entity: Entity, entities: &bevy::ecs::entity::Entities, last_run: Tick, tick: Tick) -> bool {
         match self {
-            // SAFETY: exclusive stage; ticks are plain u32 cells.
+            // SAFETY: the run holds the column's access; ticks are plain u32 cells.
             Live::Ticks(t) => unsafe { *t[row].get() }.is_newer_than(last_run, tick),
             Live::Sparse(s, added) => {
                 let cell = if *added { s.get_added_tick(entity) } else { s.get_changed_tick(entity) };
@@ -270,8 +287,8 @@ impl Live<'_> {
                 cell.is_some_and(|c| unsafe { *c.get() }.is_newer_than(last_run, tick))
             }
             Live::Const(b) => *b,
-            Live::Spawned => world.entities().entity_get_spawn_or_despawn_tick(entity).is_some_and(|t| t.is_newer_than(last_run, tick)),
-            Live::Or(ls) => ls.iter().any(|l| l.holds(row, entity, world, last_run, tick)),
+            Live::Spawned => entities.entity_get_spawn_or_despawn_tick(entity).is_some_and(|t| t.is_newer_than(last_run, tick)),
+            Live::Or(ls) => ls.iter().any(|l| l.holds(row, entity, entities, last_run, tick)),
         }
     }
 }
@@ -286,7 +303,7 @@ pub enum Need {
 }
 
 pub struct QueryParam {
-    state: QueryState<Entity>,
+    pub(crate) state: QueryState<FilteredEntityMut<'static, 'static>>,
     /// Data components in order (`Entity` and `Has` data are not columns; `AnyOf` gives one per
     /// part).
     pub columns: Vec<Access>,
@@ -326,8 +343,9 @@ pub enum RunParam {
         #[cfg(feature = "reflect")]
         node: crate::reflect_codec::Node,
     },
-    /// `State<S>` (`previous: false`) or `PreviousState<S>`: a machine by index in `TsPayloads`.
-    State { index: usize, previous: bool },
+    /// `State<S>` (`previous: false`) or `PreviousState<S>`: a machine by index in `TsPayloads`,
+    /// read through its resources' readers.
+    State { index: usize, previous: bool, cell: crate::states::StateCell },
     /// An observer's trigger.
     Event,
     /// An exported Rust param: its index in `HostParams`.
@@ -339,18 +357,55 @@ pub enum RunParam {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ObserverOf(pub Trigger);
 
-/// A live TS system or observer.
+/// A live TS system or observer. A system in a schedule hands its params and condition to its
+/// Bevy system at commit; both keep the [`TsSystemCell`].
 pub struct TsSystem {
-    pub key: ScriptKey,
     pub decl: SystemDecl,
     /// Its key in `SystemMemory`: its identity, or a predicate use's own key.
     pub memory: String,
     pub params: Vec<RunParam>,
     pub condition: Option<Condition>,
     pub observes: Option<ObserverOf>,
+    pub cell: Arc<TsSystemCell>,
+    /// What the Bevy system is built from (resolved params, condition, groups); a reload that
+    /// keeps it, the place and the predecessor keeps the Bevy system.
+    pub(crate) fingerprint: String,
+}
+
+/// What a TS system and its Bevy system share: the generation's function to call, and the
+/// run's stats. A reload that keeps the Bevy system only swaps the key and the location.
+#[derive(Debug)]
+pub struct TsSystemCell {
+    pub key: Mutex<ScriptKey>,
+    /// Where the system is declared now: a body-only reload may move it.
+    pub location: Mutex<Option<crate::backend::SourceLocation>>,
+    pub stats: Mutex<SystemStats>,
+}
+
+#[derive(Debug, Default)]
+pub struct SystemStats {
     pub last_run_us: u64,
     pub last_error: Option<ScriptError>,
-    warned_read_write: bool,
+    pub warned_read_write: bool,
+}
+
+impl TsSystem {
+    pub fn key(&self) -> ScriptKey {
+        *self.cell.key.lock().unwrap()
+    }
+
+    pub fn last_run_us(&self) -> u64 {
+        self.cell.stats.lock().unwrap().last_run_us
+    }
+
+    pub fn last_error(&self) -> Option<ScriptError> {
+        self.cell.stats.lock().unwrap().last_error.clone()
+    }
+
+    /// The exported params it takes, by index in `HostParams`, in parameter order.
+    pub(crate) fn ports(&self) -> Vec<usize> {
+        self.params.iter().filter_map(|p| if let RunParam::Port(i) = p { Some(*i) } else { None }).collect()
+    }
 }
 
 /// The live generation's systems, by schedule, in run order.
@@ -386,9 +441,6 @@ pub struct TsSystems {
 /// Where a list of systems lives in [`TsSystems`].
 #[derive(Clone, Debug)]
 pub(crate) enum ListKey {
-    Stage(Stage),
-    Schedule(String),
-    Slot(SlotKey),
     PreStartup,
     Startup,
     PostStartup,
@@ -429,9 +481,6 @@ impl TsSystems {
 
     fn take(&mut self, k: &ListKey) -> Vec<TsSystem> {
         match k {
-            ListKey::Stage(s) => self.stages.remove(s),
-            ListKey::Schedule(n) => self.schedules.remove(n),
-            ListKey::Slot(s) => self.slots.remove(s),
             ListKey::PreStartup => Some(std::mem::take(&mut self.pre_startup)),
             ListKey::Startup => Some(std::mem::take(&mut self.startup)),
             ListKey::PostStartup => Some(std::mem::take(&mut self.post_startup)),
@@ -447,9 +496,6 @@ impl TsSystems {
             return;
         }
         match k {
-            ListKey::Stage(s) => drop(self.stages.insert(*s, list)),
-            ListKey::Schedule(n) => drop(self.schedules.insert(n.clone(), list)),
-            ListKey::Slot(s) => drop(self.slots.insert(s.clone(), list)),
             ListKey::PreStartup => self.pre_startup = list,
             ListKey::Startup => self.startup = list,
             ListKey::PostStartup => self.post_startup = list,
@@ -501,7 +547,13 @@ pub type TsEncode<'a> = dyn Fn(&str, &serde_json::Map<String, serde_json::Value>
 /// A resource's entity and location, while the entity holds it: removing a resource leaves its
 /// entity behind, so the entity alone does not say the resource exists.
 pub(crate) fn resource_entity(world: &World, id: ComponentId) -> Option<(Entity, bevy::ecs::entity::EntityLocation)> {
-    let e = world.resource_entities().get(id)?;
+    resource_entity_cell(world.as_unsafe_world_cell_readonly(), id)
+}
+
+/// [`resource_entity`] from a run's cell: metadata only.
+pub(crate) fn resource_entity_cell(world: UnsafeWorldCell, id: ComponentId) -> Option<(Entity, bevy::ecs::entity::EntityLocation)> {
+    // SAFETY: the resource index is metadata.
+    let e = unsafe { world.resource_entities() }.get(id)?;
     let loc = world.entities().get_spawned(e).ok()?;
     world.archetypes()[loc.archetype_id].contains(id).then_some((e, loc))
 }
@@ -679,13 +731,15 @@ fn reflect_resource(_: &mut World, _: &str, _: &TsLookup) -> Result<Option<(Comp
 }
 
 /// The changed-tick cell of `id` on entity `e`, in a table or a sparse set.
-fn changed_cell(world: &World, id: ComponentId, e: Entity) -> Option<*mut u32> {
-    if let Some(set) = world.storages().sparse_sets.get(id) {
+fn changed_cell(world: UnsafeWorldCell, id: ComponentId, e: Entity) -> Option<*mut u32> {
+    // SAFETY: storage metadata; the cell is only located, not read.
+    let storages = unsafe { world.storages() };
+    if let Some(set) = storages.sparse_sets.get(id) {
         let (_, cells) = set.get_with_ticks(e)?;
         return Some(cells.changed.get() as *mut u32);
     }
     let loc = world.entities().get_spawned(e).ok()?;
-    let table = world.storages().tables.get(loc.table_id)?;
+    let table = storages.tables.get(loc.table_id)?;
     let ticks = table.get_changed_ticks_slice_for(id)?;
     Some(ticks.get(loc.table_row.index())?.get() as *mut u32)
 }
@@ -1015,7 +1069,7 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], need
         ids.extend(d.disabling_ids());
     }
     let dense = !ids.iter().any(|id| is_sparse(world, *id));
-    let mut b = QueryBuilder::<Entity>::new(world);
+    let mut b = QueryBuilder::<FilteredEntityMut>::new(world);
     for c in &columns {
         match (c.optional, c.write) {
             (false, true) => {
@@ -1052,6 +1106,17 @@ fn build_query(world: &mut World, data: &[DataDecl], filter: &[FilterDecl], need
     }
     for t in &archetypal {
         add_archetypal(&mut b, t);
+    }
+    // `Changed`/`Added` read the column's ticks, so they declare a read, as Bevy's filters do; the
+    // access only, so one under an `Or` does not make its component required.
+    let mut ticks = Vec::new();
+    archetypal.iter().for_each(|t| t.tick_ids(&mut ticks));
+    for id in ticks {
+        if !columns.iter().any(|c| c.id == id && !c.optional) {
+            let mut access = bevy::ecs::query::FilteredAccess::default();
+            access.access_mut().add_read(id);
+            b.extend_access(access);
+        }
     }
     b.without::<crate::ScriptHidden>();
     Ok(QueryParam { state: b.build(), columns, rows, has, need, dense })
@@ -1240,7 +1305,8 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
             },
             ParamDecl::State { state } | ParamDecl::PreviousState { state } => {
                 let index = world.resource::<TsPayloads>().state(state).ok_or_else(|| err(format!("no state {state}")))?;
-                RunParam::State { index, previous: matches!(p, ParamDecl::PreviousState { .. }) }
+                let slot = world.resource::<TsPayloads>().states[index].slot;
+                RunParam::State { index, previous: matches!(p, ParamDecl::PreviousState { .. }), cell: crate::states::state_cell_of(world, slot) }
             }
             ParamDecl::In { event } => {
                 if i != 0 {
@@ -1294,17 +1360,52 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
     for (path, end) in rust_cursors {
         mem.cursors.entry(path).or_insert(end);
     }
+    let fingerprint = fingerprint(d, &params, condition.as_ref());
     Ok(TsSystem {
-        key: ScriptKey { generation, index: index as u32 },
         decl: d.clone(),
         memory,
         params,
         condition,
         observes,
-        last_run_us: 0,
-        last_error: None,
-        warned_read_write: false,
+        cell: Arc::new(TsSystemCell { key: Mutex::new(ScriptKey { generation, index: index as u32 }), location: Mutex::new(d.location.clone()), stats: Mutex::default() }),
+        fingerprint,
     })
+}
+
+/// What a system's Bevy system is built from: its declaration without its location, the ids
+/// and indices its params and condition resolved to.
+fn fingerprint(d: &SystemDecl, params: &[RunParam], condition: Option<&Condition>) -> String {
+    use std::fmt::Write;
+    let mut out = format!("{:?}|{:?}|{:?}|{:?}|{:?}|", d.params, d.after, d.before, d.sets, d.groups);
+    for p in params {
+        let _ = match p {
+            RunParam::Query(q) => write!(
+                out,
+                "q({:?},{:?},{:?},{:?},{:?})",
+                q.state.component_access(),
+                q.columns.iter().map(|c| (c.id, c.size, c.write, c.optional, c.tracked, c.reflect, c.holes)).collect::<Vec<_>>(),
+                q.has,
+                q.need,
+                q.dense
+            ),
+            RunParam::Res { id, size, write, heap, optional, .. } => write!(out, "r({id:?},{size},{write},{heap},{optional})"),
+            RunParam::ReflectRes { id, target, write, optional, .. } => write!(out, "rr({id:?},{target},{write},{optional})"),
+            RunParam::Time(c) => write!(out, "t({c:?})"),
+            RunParam::Local(i) => write!(out, "l({i})"),
+            RunParam::MessageReader { index } => write!(out, "m({index})"),
+            RunParam::Removed { id, key } => write!(out, "rm({id:?},{key})"),
+            RunParam::ChangeTick => write!(out, "ct"),
+            RunParam::RustMessageReader { path, .. } => write!(out, "rm({path})"),
+            RunParam::State { index, previous, .. } => write!(out, "s({index},{previous})"),
+            RunParam::Event => write!(out, "e"),
+            RunParam::Port(i) => write!(out, "p({i})"),
+            RunParam::None => write!(out, "n"),
+        };
+    }
+    if let Some(c) = condition {
+        c.fingerprint(&mut out);
+    }
+    out
 }
 
 /// A fast 64-bit hash of a column, for the dev-only check that read columns stay unwritten.
@@ -1332,35 +1433,56 @@ pub(crate) struct Scratch {
     parts: Vec<(TableId, Option<ArchetypeId>)>,
 }
 
-/// Runs every system of a stage. Called from the stage's exclusive system.
-pub fn run_stage(world: &mut World, stage: Stage) {
-    if !runtime::stage_should_run(world) {
-        return;
-    }
-    let empty = world.get_resource::<TsSystems>().is_none_or(|s| s.stages.get(&stage).is_none_or(|l| l.is_empty()));
-    if !stage.eager() && empty {
-        return;
-    }
-    // Two clock reads, only when the plugin is listed and the stage has TS systems to time.
-    let timed = !empty && world.contains_resource::<StageTiming>();
-    let started = timed.then(Instant::now);
-    drive(world, &ListKey::Stage(stage), None);
-    if let Some(t) = started {
-        record_stage(world, stage, t.elapsed().as_secs_f64() * 1000.0);
-    }
-}
-
 /// bevy-ts's own diagnostics plugin, shaped as Bevy's render diagnostics are: each TS stage that
-/// runs systems records its CPU time as `bevy_ts/<stage>/elapsed_cpu`, in milliseconds,
-/// bevy-ts's own work in the stage (column views, commands) included.
+/// runs systems records its CPU time as `bevy_ts/<stage>/elapsed_cpu`, in milliseconds: the sum
+/// of its TS systems' runs and applies, bevy-ts's own work (column views, commands) included,
+/// once a frame.
 pub struct ScriptStageDiagnosticsPlugin;
-
-#[derive(Resource)]
-struct StageTiming;
 
 impl Plugin for ScriptStageDiagnosticsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<bevy::diagnostic::DiagnosticsStore>().insert_resource(StageTiming);
+        app.init_resource::<bevy::diagnostic::DiagnosticsStore>();
+        app.world_mut().get_resource_or_init::<StageClocks>().0.on.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// Each stage's TS time this frame, in nanoseconds, added by its Bevy TS systems while the
+/// diagnostics plugin is on; `Last` records and clears it.
+#[derive(Default)]
+pub struct StageTimes {
+    pub(crate) on: std::sync::atomic::AtomicBool,
+    nanos: [std::sync::atomic::AtomicU64; 12],
+}
+
+impl StageTimes {
+    /// Starts timing a run, when timing is on.
+    pub(crate) fn start(&self) -> Option<Instant> {
+        self.on.load(std::sync::atomic::Ordering::Relaxed).then(Instant::now)
+    }
+
+    pub(crate) fn add(&self, stage: Stage, started: Option<Instant>) {
+        if let Some(t) = started {
+            let i = Stage::ALL.iter().position(|s| *s == stage).expect("every stage is in ALL");
+            self.nanos[i].fetch_add(t.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+/// The shared [`StageTimes`], which each Bevy TS system of a stage holds.
+#[derive(Resource, Default, Clone)]
+pub struct StageClocks(pub Arc<StageTimes>);
+
+/// `Last`: records each stage's TS time this frame, for the stages that ran TS systems.
+pub(crate) fn record_stages(world: &mut World) {
+    let Some(clocks) = world.get_resource::<StageClocks>().cloned() else { return };
+    if !clocks.0.on.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    for (i, stage) in Stage::ALL.iter().enumerate() {
+        let n = clocks.0.nanos[i].swap(0, std::sync::atomic::Ordering::Relaxed);
+        if n > 0 {
+            record_stage(world, *stage, n as f64 / 1e6);
+        }
     }
 }
 
@@ -1398,17 +1520,6 @@ fn record_stage(world: &mut World, stage: Stage, ms: f64) {
     }
 }
 
-/// Runs a custom schedule's TS systems. Called from its stage's exclusive system.
-pub fn run_custom_stage(world: &mut World, name: &str) {
-    if !runtime::stage_should_run(world) {
-        return;
-    }
-    if world.get_resource::<TsSystems>().is_none_or(|s| s.schedules.get(name).is_none_or(|l| l.is_empty())) {
-        return;
-    }
-    drive(world, &ListKey::Schedule(name.to_string()), None);
-}
-
 /// Runs a TS `OnEnter`/`OnExit`/`OnTransition` list: called from the exclusive system
 /// crate::states adds to Bevy's schedule of that name.
 pub(crate) fn run_state_list(world: &mut World, key: ListKey) {
@@ -1418,27 +1529,15 @@ pub(crate) fn run_state_list(world: &mut World, key: ListKey) {
     drive(world, &key, None);
 }
 
-/// Runs the systems of one slot. Called from the slot's exclusive system, which
-/// [`crate::sets::ensure_slots`] adds around the exposed set the first time a generation names it.
-pub fn run_slot(world: &mut World, key: &SlotKey) {
-    if !runtime::stage_should_run(world) {
-        return;
-    }
-    if world.get_resource::<TsSystems>().is_none_or(|s| s.slots.get(key).is_none_or(|l| l.is_empty())) {
-        return;
-    }
-    drive(world, &ListKey::Slot(key.clone()), None);
-}
-
 /// Runs a startup list's systems whose identity is in `due`.
 pub(crate) fn run_startup_list(world: &mut World, key: ListKey, due: &HashSet<String>) {
     drive(world, &key, Some(due));
 }
 
-/// Runs a list of systems in order: a group's collective `runIf` once per call, each system's
-/// own conditions, observers after each, and the schedules and one-shot systems a system's
-/// commands queue before the next system runs. Takes the runtime and `TsSystems` out of the world
-/// while JS runs and puts them back for nested runs.
+/// Runs a list of systems in order, from an exclusive system: a group's collective `runIf` once
+/// per call, each system's own conditions, observers after each, and the schedules and one-shot
+/// systems a system's commands queue before the next system runs. Takes the runtime and
+/// `TsSystems` out of the world while JS runs and puts them back for nested runs.
 fn drive(world: &mut World, key: &ListKey, only: Option<&HashSet<String>>) {
     let mut groups: HashMap<String, bool> = HashMap::new();
     let mut from = 0;
@@ -1504,12 +1603,12 @@ fn gate(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSystems, sys:
 
 /// Runs a TS predicate and gives its return: false when it threw, or returned something other
 /// than a boolean, which is warned once.
-fn run_predicate(world: &mut World, rt: &mut ScriptRuntime, predicates: &mut BTreeMap<String, TsSystem>, memory: &str) -> bool {
+pub(crate) fn run_predicate(world: &mut World, rt: &mut ScriptRuntime, predicates: &mut BTreeMap<String, TsSystem>, memory: &str) -> bool {
     let Some(p) = predicates.get_mut(memory) else { return false };
     match run_one(world, rt, p, None).returned {
         Some(b) => b,
         None => {
-            if p.last_error.is_none() {
+            if p.last_error().is_none() {
                 let short = p.decl.name.rsplit('#').next().unwrap_or(&p.decl.name);
                 rt.log_warn(world, format!("predicate {short} returned no boolean; a condition's function returns true or false"), p.decl.location.clone());
             }
@@ -1567,8 +1666,17 @@ pub(crate) fn run_one_shot(world: &mut World, identity: &str, input: Option<&[u8
 }
 
 
-/// Takes the runtime and the systems out of the world for `f`.
+/// Takes the runtime and the systems out of the world for `f`, then frees the spawn pool.
 pub(crate) fn with_systems(world: &mut World, f: impl FnOnce(&mut World, &mut ScriptRuntime, &mut TsSystems)) {
+    with_systems_keeping_pool(world, |world, rt, systems| {
+        f(world, rt, systems);
+        rt.free_pool(world);
+    });
+}
+
+/// [`with_systems`], keeping the spawn pool for the next TS system: a Bevy TS system's apply,
+/// whose pool `Last` frees once a frame.
+pub(crate) fn with_systems_keeping_pool(world: &mut World, f: impl FnOnce(&mut World, &mut ScriptRuntime, &mut TsSystems)) {
     let Some(mut rt) = world.remove_non_send::<ScriptRuntime>() else { return };
     let Some(mut systems) = world.remove_resource::<TsSystems>() else {
         world.insert_non_send(rt);
@@ -1576,7 +1684,6 @@ pub(crate) fn with_systems(world: &mut World, f: impl FnOnce(&mut World, &mut Sc
     };
     f(world, &mut rt, &mut systems);
     world.insert_resource(systems);
-    rt.free_pool(world);
     world.insert_non_send(rt);
 }
 
@@ -1623,26 +1730,93 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
     warn!(target: "bevy_ts", "observer queue still busy after 10,000 events; the rest wait for the next stage");
 }
 
-/// What a run gives back: an observer's `propagate(false)`, and the function's return when it
-/// was a boolean (a predicate's value).
+/// What a run gives back to an exclusive caller: an observer's `propagate(false)`, and the
+/// function's return when it was a boolean (a predicate's value).
 #[derive(Clone, Copy, Debug, Default)]
 struct Ran {
     stop: bool,
     returned: Option<bool>,
 }
 
-/// Runs one system (or one observer event).
+/// Runs one system (or one observer event) from an exclusive system, at a tick of its own, and
+/// applies its output at once.
 fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event: Option<(&[u8], (u64, u64))>) -> Ran {
-    let key = sys.memory.clone();
+    let this_run = world.increment_change_tick();
+    let last_run = world.resource::<SystemMemory>().0.get(&sys.memory).map_or(Tick::new(0), |m| m.last_run);
+    let ticks = crate::host::RunTicks { last_run, this_run };
+    world.init_resource::<crate::places::RunPlace>();
+    // SAFETY: the world is held exclusively for the run.
+    let ran = unsafe { run_body(world.as_unsafe_world_cell(), rt, &mut sys.params, &sys.decl, &sys.memory, &sys.cell, ticks, event, true) };
+    if let Some(w) = ran.warn {
+        rt.log_warn(world, w, sys.decl.location.clone());
+    }
+    let label = format!("system {}", sys.decl.name);
+    match ran.result {
+        Ok(None) => Ran { stop: false, returned: Some(false) },
+        Ok(Some(out)) => {
+            let ran = Ran { stop: out.stop, returned: out.returned };
+            rt.apply_output(world, out.bytes, out.pool_used, &label);
+            settle_ports(world, &sys.ports(), true);
+            ran
+        }
+        Err(e) => {
+            settle_ports(world, &sys.ports(), false);
+            // Assets a throwing run made still go in: their refs were handed out.
+            #[cfg(feature = "reflect")]
+            crate::reflect_asset::flush(world);
+            rt.log_error(world, &format!("{label} threw"), &e);
+            Ran::default()
+        }
+    }
+}
+
+/// A run's output, not yet applied: its command bytes, how many pool ids it spawned, an
+/// observer's `propagate(false)` and a predicate's return.
+pub(crate) struct RunBytes {
+    pub bytes: Vec<u8>,
+    pub pool_used: usize,
+    pub stop: bool,
+    pub returned: Option<bool>,
+}
+
+/// What one run produced: its output (`None`: skipped, as a `Single` or `Populated` that did not
+/// match, with no call into JS) or error, and a dev-guard warning.
+pub(crate) struct Body {
+    pub result: Result<Option<RunBytes>, ScriptError>,
+    pub warn: Option<String>,
+}
+
+/// Runs one system over `world`: fetches its frames, calls JS once, then stamps summary ticks,
+/// whole-table marks, its memory and stats, and runs the dev guard. Applies nothing: the caller
+/// applies the output now (an exclusive path) or at the sync point after the system (a Bevy
+/// system). `spawns` fills the entity pool first.
+///
+/// # Safety
+/// `world` may read and write everything the system's params declare (see
+/// [`crate::bevy_system`]), plus `SystemMemory`, `TsPayloads`, `ScriptFrame`, every `Time`,
+/// `RunPlace`, `HostParams` and the exported params' access; nothing else touches them for the
+/// run.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn run_body(
+    world: UnsafeWorldCell,
+    rt: &mut ScriptRuntime,
+    params: &mut [RunParam],
+    decl: &SystemDecl,
+    key: &str,
+    cell: &TsSystemCell,
+    ticks: crate::host::RunTicks,
+    event: Option<(&[u8], (u64, u64))>,
+    spawns: bool,
+) -> Body {
+    let crate::host::RunTicks { last_run, this_run: tick } = ticks;
     let dev = rt.dev;
-    let tick = world.increment_change_tick();
-    let last_run = world.resource::<SystemMemory>().0.get(&key).map_or(Tick::new(0), |m| m.last_run);
     let frame = runtime::frame_info(world, tick.get());
     let started = Instant::now();
+    let script_key = *cell.key.lock().unwrap();
 
     let mut scratch = std::mem::take(&mut rt.scratch);
     scratch.time.clear();
-    let mut frames: Vec<ParamFrame> = Vec::with_capacity(sys.params.len());
+    let mut frames: Vec<ParamFrame> = Vec::with_capacity(params.len());
     // Written columns per (table) for summary ticks; read columns per frame for the dev guard.
     let mut written: Vec<(TableId, ComponentId)> = Vec::new();
     let mut read_cols: Vec<(usize, usize, usize, ComponentId)> = Vec::new();
@@ -1652,21 +1826,28 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     let mut failure: Option<ScriptError> = None;
     // A `Single` or `Populated` that does not match skips the run, as Bevy's param validation does.
     let mut skip = false;
-    let mut memory = world.remove_resource::<SystemMemory>().unwrap_or_default();
-    let mem = memory.0.entry(key.clone()).or_default();
+    // SAFETY (every world read and write below): declared, per the caller's contract.
+    let (mut memory, payloads, storages) = unsafe {
+        (
+            world.get_resource_mut::<SystemMemory>().expect("SystemMemory exists"),
+            world.get_resource::<TsPayloads>().expect("TsPayloads exists"),
+            world.storages(),
+        )
+    };
+    let mem = memory.0.entry(key.to_string()).or_default();
+    let port_list: Vec<usize> = params.iter().filter_map(|p| if let RunParam::Port(i) = p { Some(*i) } else { None }).collect();
+    let ports = !port_list.is_empty();
+    let mut host_params = if ports { unsafe { world.get_resource_mut::<crate::host::HostParams>() } } else { None };
     // Columns and resource rows the run exposes, for the slice-overlap check of host calls.
-    let ports = sys.params.iter().any(|p| matches!(p, RunParam::Port(_)));
     let mut regions: Vec<crate::host::Region> = Vec::new();
     {
-        if let Some(host) = world.get_resource::<crate::host::HostParams>() {
-            for p in &sys.params {
-                if let RunParam::Port(i) = p {
-                    // A native write to a column a TS query only reads is not TS's mistake.
-                    written_ids.extend(host.writes(*i).iter().copied());
-                }
+        if let Some(host) = &host_params {
+            for i in &port_list {
+                // A native write to a column a TS query only reads is not TS's mistake.
+                written_ids.extend(host.writes(*i).iter().copied());
             }
         }
-        for p in &sys.params {
+        for p in params.iter() {
             if let RunParam::Query(q) = p {
                 written_ids.extend(q.columns.iter().filter(|c| c.write).map(|c| c.id));
             }
@@ -1674,12 +1855,12 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                 written_ids.insert(*id);
             }
         }
-        for p in sys.params.iter_mut() {
+        for p in params.iter_mut() {
             let frame = match p {
                 RunParam::Query(q) => {
-                    q.state.update_archetypes(world);
-                    let tables = &world.storages().tables;
-                    let sparse = &world.storages().sparse_sets;
+                    q.state.update_archetypes_unsafe_world_cell(world);
+                    let tables = &storages.tables;
+                    let sparse = &storages.sparse_sets;
                     let mut out = Vec::new();
                     let mut count = 0usize;
                     let mut parts = std::mem::take(&mut scratch.parts);
@@ -1710,7 +1891,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                             let list = &mut scratch.rows[rows_used];
                             list.clear();
                             let live: Vec<Live> = q.rows.iter().map(|t| t.live(table, arch, sparse)).collect();
-                            let pass = |row: usize, e: Entity| live.iter().all(|l| l.holds(row, e, world, last_run, tick));
+                            let pass = |row: usize, e: Entity| live.iter().all(|l| l.holds(row, e, world.entities(), last_run, tick));
                             match arch {
                                 None => {
                                     for (row, e) in table.entities().iter().enumerate() {
@@ -1771,7 +1952,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                                 continue;
                             }
                             // SAFETY: the column holds `len × size` bytes; only the start pointer is
-                            // taken. Cells are `UnsafeCell`s and the stage is exclusive.
+                            // taken. Cells are `UnsafeCell`s and the run holds the column's access.
                             let data = unsafe { column.get_data_slice::<u8>(len) }.as_ptr() as *mut u8;
                             let changed = || table.get_changed_ticks_slice_for(c.id).expect("column has ticks").as_ptr() as *mut u32;
                             let ticks = (c.write || c.tracked || c.holes).then(changed);
@@ -1802,18 +1983,18 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     skip |= !ok;
                     ParamFrame::Query { tables: out, last_run: last_run.get() }
                 }
-                RunParam::Res { name, id, size, write, heap, optional } => match resource_entity(world, *id) {
+                RunParam::Res { name, id, size, write, heap, optional } => match resource_entity_cell(world, *id) {
                     // A Rust resource is stored in a sparse set (`#[derive(Resource)]`); a TS one in a table.
-                    Some((e, _)) if world.storages().sparse_sets.get(*id).is_some() => {
-                        let set = world.storages().sparse_sets.get(*id).expect("sparse set");
+                    Some((e, _)) if storages.sparse_sets.get(*id).is_some() => {
+                        let set = storages.sparse_sets.get(*id).expect("sparse set");
                         let (ptr, cells) = set.get_with_ticks(e).expect("resource row");
-                        // SAFETY: as for table rows; the stage is exclusive and the cells are `UnsafeCell`s.
+                        // SAFETY: as for table rows; the run holds the row's access and the cells are `UnsafeCell`s.
                         let data = ptr.as_ptr() as *mut u8;
                         let ticks = write.then(|| cells.changed.get() as *mut u32);
                         ParamFrame::Row { data, bytes: *size, ticks }
                     }
                     Some((_, loc)) => {
-                        let table = world.storages().tables.get(loc.table_id).expect("resource table");
+                        let table = storages.tables.get(loc.table_id).expect("resource table");
                         let row = loc.table_row.index();
                         let col = table.get_column(*id).expect("resource column");
                         let len = table.entity_count() as usize;
@@ -1835,7 +2016,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                         ParamFrame::None
                     }
                 },
-                RunParam::ReflectRes { name, id, write, optional, .. } => match resource_entity(world, *id).and_then(|(e, _)| changed_cell(world, *id, e)) {
+                RunParam::ReflectRes { name, id, write, optional, .. } => match resource_entity_cell(world, *id).and_then(|(e, _)| changed_cell(world, *id, e)) {
                     Some(cell) => ParamFrame::Row { data: cell as *mut u8, bytes: 4, ticks: write.then_some(cell) },
                     None if *optional => ParamFrame::None,
                     None => {
@@ -1845,7 +2026,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                 },
                 RunParam::Time(clock) => {
                     // The frame is pointed at once `scratch.time` stops growing (below).
-                    push_time(world, *clock, &mut scratch.time);
+                    unsafe { push_time(world, *clock, &mut scratch.time) };
                     ParamFrame::None
                 }
                 RunParam::Local(i) => {
@@ -1854,7 +2035,6 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     ParamFrame::Row { data: store.data_mut().as_mut_ptr(), bytes, ticks: None }
                 }
                 RunParam::MessageReader { index } => {
-                    let payloads = world.resource::<TsPayloads>();
                     let q = &payloads.messages[*index];
                     let cursor = mem.cursors.get(&q.name).copied().unwrap_or(0);
                     let [a, b] = q.unread(cursor);
@@ -1898,6 +2078,8 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     let buf = &mut scratch.json[json_used];
                     json_used += 1;
                     buf.clear();
+                    // SAFETY: a system reading a Rust message declares a read of the whole world.
+                    let world = unsafe { world.world() };
                     let registry = world.resource::<AppTypeRegistry>().read();
                     let mut bad = None;
                     #[cfg(feature = "reflect")]
@@ -1941,10 +2123,10 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     // One run of one-byte records: the codec's bytes, or a JSON array.
                     ParamFrame::Messages { parts: [(buf.as_ptr(), buf.len()), (std::ptr::null(), 0)], stride: 1, seqs: [0, 0] }
                 }
-                RunParam::State { index, previous } => {
+                RunParam::State { index, previous, cell } => {
                     // JS numbers a machine's values in its declared order.
-                    let m = &world.resource::<TsPayloads>().states[*index];
-                    let v = if *previous { crate::states::previous_of(world, m.slot) } else { crate::states::current_of(world, m.slot) };
+                    let m = &payloads.states[*index];
+                    let v = unsafe { if *previous { (cell.previous_of)(world) } else { (cell.current)(world) } };
                     ParamFrame::State { value: v.and_then(|v| m.index_of_sym(v)).unwrap_or(u32::MAX) }
                 }
                 RunParam::Event => match event {
@@ -1958,7 +2140,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
         // Time views point into `scratch.time`, which no longer grows.
         const _: () = assert!(cfg!(target_endian = "little"));
         let mut t = 0;
-        for (p, f) in sys.params.iter().zip(frames.iter_mut()) {
+        for (p, f) in params.iter().zip(frames.iter_mut()) {
             if let RunParam::Time(clock) = p {
                 let bytes = time_layout(*clock).size;
                 // SAFETY: `bytes / 8` words per Time param were pushed above, in this order.
@@ -1972,9 +2154,8 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     if skip && failure.is_none() {
         // Skipped like a false run condition: no call into JS, and the last run stays. A
         // predicate skipped so is false, as a Bevy condition whose params fail validation.
-        world.insert_resource(memory);
         rt.scratch = scratch;
-        return Ran { stop: false, returned: Some(false) };
+        return Body { result: Ok(None), warn: None };
     }
 
     let hashes: Vec<u64> = read_cols
@@ -1992,27 +2173,31 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     let result = match failure {
         Some(e) => Err(e),
         None => {
-            rt.fill_pool(world);
+            if spawns {
+                rt.fill_pool(world.entity_allocator());
+            }
             scratch.arena.resize(crate::commands::ARENA_BYTES, 0);
             let pool = std::mem::take(&mut rt.pool);
-            let mut params = world.remove_resource::<crate::host::HostParams>().unwrap_or_default();
             // A `Local`'s heap field is read and written through its place; observers the run
             // triggers set their own and put this one back.
             let locals = crate::places::RunLocals::of(&mut mem.locals);
-            let locals_before = world.get_resource_or_init::<crate::places::RunPlace>().locals.replace(locals);
+            let mut place = unsafe { world.get_resource_mut::<crate::places::RunPlace>() }.expect("RunPlace exists");
+            let locals_before = place.locals.replace(locals);
             let r = {
-                // The world is held exclusively for the run and not touched until it ends; host
-                // calls fetch their params from this cell at the run's ticks.
-                let ticks = crate::host::RunTicks { last_run, this_run: tick };
-                let ports: Vec<usize> = sys.params.iter().filter_map(|p| if let RunParam::Port(i) = p { Some(*i) } else { None }).collect();
-                let mut host = crate::host::WorldHost { world: world.as_unsafe_world_cell(), ticks, regions: &regions, allowed: Some(&ports), params: &mut params, reserved: Vec::new(), reserves: 0 };
+                // Host calls fetch their params from this cell at the run's ticks. A system taking
+                // none only reads `HostParams`, to name the param a kept instance belongs to.
+                let params = match host_params.as_deref_mut() {
+                    Some(p) => crate::host::ParamsOf::Taken(p),
+                    // SAFETY: a system taking no exported param declares a read of `HostParams`.
+                    None => crate::host::ParamsOf::Refused(unsafe { world.get_resource::<crate::host::HostParams>() }),
+                };
+                let mut host = crate::host::WorldHost { world, ticks, regions: &regions, allowed: Some(&port_list), params, reserved: Vec::new(), reserves: 0 };
                 let mut run = SystemRun { ctx: CallContext { frame, arena: &mut scratch.arena, pool: &pool, host: Some(&mut host) }, params: &frames };
-                let r = rt.backend.run_system(sys.key, &mut run);
+                let r = rt.backend.run_system(script_key, &mut run);
                 (r, host.reserved, host.reserves)
             };
             let (r, reserved, reserves) = r;
-            world.resource_mut::<crate::places::RunPlace>().locals = locals_before;
-            world.insert_resource(params);
+            place.locals = locals_before;
             rt.pool = pool;
             rt.pool.extend(reserved);
             rt.reserve_calls += reserves;
@@ -2021,8 +2206,9 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     };
 
     // Post-run: summary ticks, whole-table marks, the dev guard.
+    let mut warn = None;
     {
-        let tables = &world.storages().tables;
+        let tables = &storages.tables;
         for (table_id, id) in &written {
             if let Some(s) = tables.get(*table_id).and_then(|t| t.get_summary_tick(*id)) {
                 s.set(tick);
@@ -2034,7 +2220,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     && let Some(tf) = tables.get(t as usize)
                     && let Some(ticks) = tf.columns.get(c as usize).and_then(|c| c.ticks)
                 {
-                    // SAFETY: the tick column has `len` entries and the stage is exclusive.
+                    // SAFETY: the tick column has `len` entries and the run holds its access.
                     let all = unsafe { std::slice::from_raw_parts_mut(ticks, tf.len) };
                     match tf.rows {
                         // Only the rows the query matched: a filtered or sparse-set frame's table
@@ -2046,77 +2232,58 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                 }
             }
         }
-        if dev && !sys.warned_read_write {
+        let mut stats = cell.stats.lock().unwrap();
+        if dev && !stats.warned_read_write {
             for ((f, t, c, id), before) in read_cols.iter().zip(&hashes) {
                 if let ParamFrame::Query { tables, .. } = &frames[*f] {
                     let cf = &tables[*t].columns[*c];
                     // SAFETY: unchanged structurally since the run.
                     if hash_bytes(unsafe { std::slice::from_raw_parts(cf.data, cf.bytes) }) != *before {
-                        sys.warned_read_write = true;
-                        let name = sys
-                            .params
+                        stats.warned_read_write = true;
+                        let name = params
                             .iter()
                             .find_map(|p| match p {
                                 RunParam::Query(q) => q.columns.iter().find(|a| a.id == *id).map(|a| a.name.clone()),
                                 _ => None,
                             })
                             .unwrap_or_default();
-                        world.insert_resource(memory);
-                        rt.log_warn(
-                            world,
-                            format!("system {} wrote to {name}, which no query of it declares Mut; declare it Mut", sys.decl.name),
-                            sys.decl.location.clone(),
-                        );
-                        memory = world.remove_resource::<SystemMemory>().unwrap();
+                        warn = Some(format!("system {} wrote to {name}, which no query of it declares Mut; declare it Mut", decl.name));
                         break;
                     }
                 }
             }
         }
     }
-    let mem = memory.0.entry(key).or_default();
+    let mem = memory.0.entry(key.to_string()).or_default();
     mem.last_run = tick;
-    let mut ran = Ran::default();
     if result.is_ok() {
         for (name, next) in reader_cursors {
             mem.cursors.insert(name, next);
         }
     }
-    world.insert_resource(memory);
-    sys.last_run_us = started.elapsed().as_micros() as u64;
-
-    match result {
-        Ok(out) => {
-            sys.last_error = None;
-            ran = Ran { stop: out.stop_propagation, returned: out.returned };
-            let label = format!("system {}", sys.decl.name);
-            rt.apply_output(world, &scratch.arena, out, &label);
-            settle_ports(world, &sys.params, true);
-        }
-        Err(e) => {
-            settle_ports(world, &sys.params, false);
-            // Assets a throwing run made still go in: their refs were handed out.
-            #[cfg(feature = "reflect")]
-            crate::reflect_asset::flush(world);
-            rt.log_error(world, &format!("system {} threw", sys.decl.name), &e);
-            sys.last_error = Some(e);
-        }
+    let result = result.map(|out| {
+        let mut bytes = scratch.arena[..out.arena_len].to_vec();
+        bytes.extend_from_slice(&out.overflow);
+        Some(RunBytes { bytes, pool_used: out.pool_used, stop: out.stop_propagation, returned: out.returned })
+    });
+    {
+        let mut stats = cell.stats.lock().unwrap();
+        stats.last_run_us = started.elapsed().as_micros() as u64;
+        stats.last_error = result.as_ref().err().cloned();
     }
     rt.scratch = scratch;
-    ran
+    Body { result, warn }
 }
 
 /// After TS's own output: applies (or, for a failed run, drops) the deferred state of the
 /// system's exported params, in its parameter order.
-fn settle_ports(world: &mut World, params: &[RunParam], ok: bool) {
-    if !params.iter().any(|p| matches!(p, RunParam::Port(_))) {
+pub(crate) fn settle_ports(world: &mut World, ports: &[usize], ok: bool) {
+    if ports.is_empty() {
         return;
     }
     let Some(mut host) = world.remove_resource::<crate::host::HostParams>() else { return };
-    for p in params {
-        if let RunParam::Port(i) = p {
-            if ok { host.apply(*i, world) } else { host.discard(*i, world) }
-        }
+    for &i in ports {
+        if ok { host.apply(i, world) } else { host.discard(i, world) }
     }
     world.insert_resource(host);
 }
@@ -2165,9 +2332,9 @@ impl TsSystem {
             params: self.decl.params.clone(),
             read,
             write,
-            generation: self.key.generation,
-            last_run_us: self.last_run_us,
-            last_error: self.last_error.clone(),
+            generation: self.key().generation,
+            last_run_us: self.last_run_us(),
+            last_error: self.last_error(),
         }
     }
 }

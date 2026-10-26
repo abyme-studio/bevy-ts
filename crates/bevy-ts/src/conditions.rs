@@ -1,9 +1,13 @@
 //! Run conditions, compiled from the manifest and evaluated in Rust with no call into JS: Bevy
 //! 0.20's built-in conditions under their names, the combinators, and conditions a crate exposes
 //! with `app.ts_condition`. A TS predicate is the one node that calls into JS, once per
-//! evaluation. A stateful condition keeps its tick, cursor or previous value in
-//! [`ConditionMemory`], per gated config and position in its tree, so a reload keeps it and a
-//! restart clears it. A predicate keeps its own in `SystemMemory`, under the same key.
+//! evaluation. A compiled condition is a Bevy condition system ([`TsCondition`]) declaring what
+//! it reads; one that calls into JS or reads a Rust message queue needs the whole world on the
+//! main thread, so an exclusive gate system evaluates it and the run condition reads the gate's
+//! answer ([`Condition::needs_world`]). A stateful condition keeps its tick, cursor or previous
+//! value in a handle [`ConditionMemory`] keeps per gated config and position in its tree, so a
+//! rebuilt condition system takes the old one's state, a reload keeps it and a restart clears
+//! it. A predicate keeps its own in `SystemMemory`, under the same key.
 
 use crate::backend::SourceLocation;
 use crate::heap::{HeapBytes, HeapKind};
@@ -15,37 +19,46 @@ use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::lifecycle::RemovedComponentEntity;
 use bevy::ecs::message::MessageCursor;
+use bevy::ecs::query::FilteredAccess;
+use bevy::ecs::resource::IS_RESOURCE;
 use bevy::ecs::schedule::BoxedCondition;
+use bevy::ecs::system::{ReadOnlySystem, RunSystemError, SystemAccess, SystemIn, SystemStateFlags};
+use bevy::ecs::world::DeferredWorld;
+use bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell;
 use bevy::prelude::*;
+use bevy::utils::prelude::DebugName;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::panic::Location;
 use std::sync::{Arc, Mutex};
 
-/// A run condition, compiled for Rust. `slot` keys a stateful node's memory.
+/// A stateful node's memory, shared with [`ConditionMemory`] under its slot key.
+pub type Slot = Arc<Mutex<ConditionState>>;
+
+/// A run condition, compiled for Rust. `slot` is a stateful node's memory.
 pub enum Condition {
-    /// A TS machine's slot and a value's symbol.
-    InState { slot: u8, value: u32 },
-    /// Bevy's `state_changed` on a TS machine: its `State` changed since this condition ran.
-    StateChanged { slot: u8, key: String },
-    StateExists { slot: u8 },
+    /// A machine's `State` resource, its reader, and a value's symbol.
+    InState { state: ComponentId, current: crate::states::CurrentCell, value: u32 },
+    /// Bevy's `state_changed` on a machine: its `State` changed since this condition ran.
+    StateChanged { state: ComponentId, slot: Slot },
+    StateExists { state: ComponentId, current: crate::states::CurrentCell },
     /// Messages written since this condition last ran: its own cursor, as Bevy's `on_message`.
-    OnMessage { index: usize, slot: String },
+    OnMessage { payloads: ComponentId, index: usize, slot: Slot },
     /// `onMessage` of a Rust message, with its own cursor into Bevy's `Messages<M>`.
-    OnRustMessage { reader: crate::rust_events::ReflectTsMessage, slot: String },
-    RunOnce { slot: String },
+    OnRustMessage { reader: crate::rust_events::ReflectTsMessage, slot: Slot },
+    RunOnce { slot: Slot },
     ResourceExists { id: Option<ComponentId> },
-    Resource { kind: ResourceKind, id: Option<ComponentId>, slot: String },
+    Resource { kind: ResourceKind, id: Option<ComponentId>, slot: Slot },
     /// The expected value, its plain fields' byte ranges, and its heap fields, compared by value.
     ResourceEquals { id: Option<ComponentId>, bytes: HeapBytes, fields: Vec<(usize, usize)>, heap: Vec<(usize, HeapKind)> },
     AnyWith { query: Box<QueryState<Entity>> },
-    AnyRemoved { id: ComponentId, slot: String },
-    AnyMatch { query: Box<QueryState<Entity>>, changed: Vec<ComponentId>, added: Vec<ComponentId>, slot: String },
-    Changed { condition: Box<Condition>, to: Option<bool>, slot: String },
+    AnyRemoved { id: ComponentId, slot: Slot },
+    AnyMatch { query: Box<QueryState<Entity>>, changed: Vec<ComponentId>, added: Vec<ComponentId>, slot: Slot },
+    Changed { condition: Box<Condition>, to: Option<bool>, slot: Slot },
     Not(Box<Condition>),
     /// Several `runIf` calls: every one is evaluated, as Bevy folds a system's conditions.
     All(Vec<Condition>),
     Combine { op: CombineOp, a: Box<Condition>, b: Box<Condition>, eager: bool },
-    Native { system: Arc<Mutex<BoxedCondition>> },
+    Native { system: Arc<Mutex<BoxedCondition>>, access: SystemAccess, key: String },
     /// A use of a TS predicate: `system` is its identity, `memory` this use's key in
     /// `SystemMemory`, so each use has its own ticks, cursors and `Local`s, as each of Bevy's
     /// `run_if(f)` is its own condition system. Evaluating it is one call into JS.
@@ -76,7 +89,12 @@ pub struct ConditionState {
 
 /// Every stateful condition's memory, by `<config>@<path>`. Survives reloads; a restart clears it.
 #[derive(Resource, Default, Debug)]
-pub struct ConditionMemory(pub HashMap<String, ConditionState>);
+pub struct ConditionMemory(pub HashMap<String, Slot>);
+
+/// The memory under `key`, made on first use.
+fn slot_of(world: &mut World, key: &str) -> Slot {
+    world.get_resource_or_init::<ConditionMemory>().0.entry(key.to_string()).or_default().clone()
+}
 
 /// A `nativeCondition` call's arguments, as JSON.
 pub type ConditionArgs = serde_json::Value;
@@ -133,9 +151,9 @@ pub fn expose(app: &mut App, name: &str, factory: impl Fn(&serde_json::Value) ->
 }
 
 /// Instances of exposed conditions, kept across generations while a use's name and arguments
-/// stay the same, so the condition's own state survives a reload.
+/// stay the same, so the condition's own state survives a reload; with the access each declared.
 #[derive(Resource, Default)]
-pub struct NativeConditions(pub HashMap<String, Arc<Mutex<BoxedCondition>>>);
+pub struct NativeConditions(pub HashMap<String, (Arc<Mutex<BoxedCondition>>, SystemAccess)>);
 
 /// A compile error, with the location of the call that caused it when there is one.
 pub struct CompileError {
@@ -234,35 +252,40 @@ fn hidden_query(world: &mut World, with: &[ComponentId], without: &[ComponentId]
 /// Compiles a condition tree. `path` is the node's position, part of its memory key.
 pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile) -> Result<Condition, CompileError> {
     let slot_key = format!("{}@{path}", c.config);
-    let slot = || slot_key.clone();
     let slot_key = &slot_key;
     let child = |i: usize| if path.is_empty() { i.to_string() } else { format!("{path}.{i}") };
     Ok(match d {
         ConditionDecl::InState { state, value } => {
             let payloads = world.resource::<TsPayloads>();
             let m = &payloads.states[payloads.state(state).ok_or_else(|| format!("no state {state}"))?];
-            Condition::InState { slot: m.slot, value: m.sym(value).ok_or_else(|| format!("{state} has no value {value}"))? }
+            let (slot, value) = (m.slot, m.sym(value).ok_or_else(|| format!("{state} has no value {value}"))?);
+            let crate::states::StateCell { state, current, .. } = crate::states::state_cell_of(world, slot);
+            Condition::InState { state, current, value }
         }
         ConditionDecl::StateChanged { state } | ConditionDecl::StateExists { state } => {
             let payloads = world.resource::<TsPayloads>();
             let slot = payloads.states[payloads.state(state).ok_or_else(|| format!("no state {state}"))?].slot;
-            if matches!(d, ConditionDecl::StateChanged { .. }) { Condition::StateChanged { slot, key: slot_key.clone() } } else { Condition::StateExists { slot } }
+            let crate::states::StateCell { state, current, .. } = crate::states::state_cell_of(world, slot);
+            if matches!(d, ConditionDecl::StateChanged { .. }) { Condition::StateChanged { state, slot: slot_of(world, slot_key) } } else { Condition::StateExists { state, current } }
         }
         ConditionDecl::OnMessage { message } => match world.resource::<TsPayloads>().message(message) {
-            Some(index) => Condition::OnMessage { index, slot: slot() },
+            Some(index) => Condition::OnMessage { payloads: world.register_component::<TsPayloads>(), index, slot: slot_of(world, slot_key) },
             None if message.contains("::") => {
                 let (_, reader) = crate::rust_events::reader(&world.resource::<AppTypeRegistry>().read(), message).map_err(|e| format!("onMessage({message}): {e}"))?;
                 // A new cursor starts at the queue's end, so a restart does not replay old messages.
                 let end = reader.end(world) as u64;
-                let st = state(world, &slot());
-                if st.messages == 0 {
-                    st.messages = end;
+                let slot = slot_of(world, slot_key);
+                {
+                    let mut st = slot.lock().unwrap();
+                    if st.messages == 0 {
+                        st.messages = end;
+                    }
                 }
-                Condition::OnRustMessage { reader, slot: slot() }
+                Condition::OnRustMessage { reader, slot }
             }
             None => return Err(format!("no message {message}").into()),
         },
-        ConditionDecl::RunOnce => Condition::RunOnce { slot: slot() },
+        ConditionDecl::RunOnce => Condition::RunOnce { slot: slot_of(world, slot_key) },
         ConditionDecl::ResourceExists { resource } => Condition::ResourceExists { id: resource_id(world, resource, c.ts, "resourceExists")? },
         ConditionDecl::ResourceAdded { resource }
         | ConditionDecl::ResourceChanged { resource }
@@ -276,7 +299,7 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
                 ConditionDecl::ResourceExistsAndChanged { .. } => (ResourceKind::Changed, "resourceExistsAndChanged"),
                 _ => (ResourceKind::Changed, "resourceChanged"),
             };
-            Condition::Resource { kind, id: resource_id(world, resource, c.ts, condition)?, slot: slot() }
+            Condition::Resource { kind, id: resource_id(world, resource, c.ts, condition)?, slot: slot_of(world, slot_key) }
         }
         ConditionDecl::ResourceEquals { resource, value } | ConditionDecl::ResourceExistsAndEquals { resource, value } => {
             let condition = if matches!(d, ConditionDecl::ResourceEquals { .. }) { "resourceEquals" } else { "resourceExistsAndEquals" };
@@ -288,7 +311,7 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             let id = component_id(world, component, c.ts)?;
             Condition::AnyWith { query: hidden_query(world, &[id], &[]) }
         }
-        ConditionDecl::AnyComponentRemoved { component } => Condition::AnyRemoved { id: component_id(world, component, c.ts)?, slot: slot() },
+        ConditionDecl::AnyComponentRemoved { component } => Condition::AnyRemoved { id: component_id(world, component, c.ts)?, slot: slot_of(world, slot_key) },
         ConditionDecl::AnyMatchFilter { filter } => {
             let (mut with, mut without, mut changed, mut added) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
             for f in filter {
@@ -303,13 +326,15 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
                 }
             }
             with.extend(changed.iter().chain(&added));
-            Condition::AnyMatch { query: hidden_query(world, &with, &without), changed, added, slot: slot() }
+            Condition::AnyMatch { query: hidden_query(world, &with, &without), changed, added, slot: slot_of(world, slot_key) }
         }
         ConditionDecl::ConditionChanged { condition } => {
-            Condition::Changed { condition: Box::new(compile(world, condition, &child(0), c)?), to: None, slot: slot() }
+            let condition = Box::new(compile(world, condition, &child(0), c)?);
+            Condition::Changed { condition, to: None, slot: slot_of(world, slot_key) }
         }
         ConditionDecl::ConditionChangedTo { condition, to } => {
-            Condition::Changed { condition: Box::new(compile(world, condition, &child(0), c)?), to: Some(*to), slot: slot() }
+            let condition = Box::new(compile(world, condition, &child(0), c)?);
+            Condition::Changed { condition, to: Some(*to), slot: slot_of(world, slot_key) }
         }
         ConditionDecl::Not { condition } => Condition::Not(Box::new(compile(world, condition, &child(0), c)?)),
         ConditionDecl::All { conditions } => {
@@ -334,142 +359,342 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             let Some(exposed) = world.get_resource::<TsConditions>().and_then(|t| t.get(name)).cloned() else {
                 return Err(at(format!("nativeCondition({name:?}): no loaded crate exposes a condition named {name}")));
             };
-            let key = format!("{}|{name}|{args}", slot());
+            let key = format!("{slot_key}|{name}|{args}");
             c.natives.insert(key.clone());
-            if let Some(system) = world.get_resource::<NativeConditions>().and_then(|n| n.0.get(&key)).cloned() {
-                return Ok(Condition::Native { system });
+            if let Some((system, access)) = world.get_resource::<NativeConditions>().and_then(|n| n.0.get(&key)).cloned() {
+                return Ok(Condition::Native { system, access, key });
             }
             let mut system = (exposed.factory)(args).map_err(|e| at(format!("nativeCondition({name:?}): {e}")))?;
-            system.initialize(world);
+            let access = system.initialize(world);
+            if access.is_exclusive() || system.has_deferred() {
+                return Err(at(format!("nativeCondition({name:?}): a run condition may only read the world")));
+            }
             let system = Arc::new(Mutex::new(system));
-            world.get_resource_or_init::<NativeConditions>().0.insert(key, system.clone());
-            Condition::Native { system }
+            world.get_resource_or_init::<NativeConditions>().0.insert(key.clone(), (system.clone(), access.clone()));
+            Condition::Native { system, access, key }
         }
     })
-}
-
-fn state<'w>(world: &'w mut World, slot: &str) -> &'w mut ConditionState {
-    world.get_resource_or_init::<ConditionMemory>().into_inner().0.entry(slot.to_string()).or_default()
 }
 
 /// Runs a use of a TS predicate, by its memory key, and gives its return.
 pub type CallPredicate<'a> = dyn FnMut(&mut World, &str) -> bool + 'a;
 
-/// Evaluates a condition. Stateful nodes advance each time they are evaluated, as Bevy's
-/// condition systems do. `predicate` runs a TS predicate, the only node that calls into JS.
+/// Evaluates a condition from an exclusive system, at the world's current tick. Stateful nodes
+/// advance each time they are evaluated, as Bevy's condition systems do. `predicate` runs a TS
+/// predicate, the only node that calls into JS.
 pub fn evaluate(world: &mut World, c: &mut Condition, predicate: &mut CallPredicate) -> bool {
-    match c {
-        Condition::InState { slot, value } => crate::states::current_of(world, *slot) == Some(*value),
-        Condition::StateExists { slot } => crate::states::current_of(world, *slot).is_some(),
-        Condition::StateChanged { slot, key } => {
-            // The `State` resource exists once the machine has a value.
-            let this_run = world.change_tick();
-            let ticks = crate::states::state_id_of(world, *slot).and_then(|id| world.get_resource_change_ticks_by_id(id));
-            let last_run = std::mem::replace(&mut state(world, key).last_run, this_run);
-            ticks.is_some_and(|t| t.is_changed(last_run, this_run))
-        }
-        Condition::OnMessage { index, slot } => {
-            let Some(next) = world.resource::<TsPayloads>().messages.get(*index).map(|q| q.next_seq) else { return false };
-            let cursor = std::mem::replace(&mut state(world, slot).messages, next);
-            world.resource::<TsPayloads>().messages[*index].has_unread(cursor)
-        }
-        Condition::OnRustMessage { reader, slot } => {
-            let end = reader.end(world) as u64;
-            let cursor = std::mem::replace(&mut state(world, slot).messages, end);
-            reader.unread(world, cursor as usize)
-        }
-        Condition::RunOnce { slot } => !std::mem::replace(&mut state(world, slot).flag, true),
-        Condition::ResourceExists { id } => id.is_some_and(|id| crate::systems::resource_entity(world, id).is_some()),
-        Condition::Resource { kind, id, slot } => {
-            let this_run = world.change_tick();
-            let ticks = id.and_then(|id| world.get_resource_change_ticks_by_id(id));
-            let st = state(world, slot);
-            let last_run = std::mem::replace(&mut st.last_run, this_run);
-            match (kind, ticks) {
-                (ResourceKind::Added, t) => t.is_some_and(|t| t.is_added(last_run, this_run)),
-                (ResourceKind::Changed, t) => t.is_some_and(|t| t.is_changed(last_run, this_run)),
-                (ResourceKind::Removed, Some(_)) => {
-                    st.flag = true;
-                    false
+    let this_run = world.change_tick();
+    // SAFETY: the world is held exclusively, and nothing borrows it while a predicate runs.
+    unsafe { evaluate_cell(world.as_unsafe_world_cell(), this_run, c, Some(predicate)) }
+}
+
+/// Evaluates a condition at `this_run`. With `predicate`, the caller holds the world exclusively:
+/// a TS predicate runs and a Rust message queue is read. Without it, those nodes are false; a
+/// [`TsCondition`] holds none ([`Condition::needs_world`]).
+///
+/// # Safety
+/// `world` may read everything [`Condition::access`] declares, and nothing writes it meanwhile;
+/// with `predicate`, `world` is the whole world, held exclusively.
+pub unsafe fn evaluate_cell(world: UnsafeWorldCell, this_run: Tick, c: &mut Condition, mut predicate: Option<&mut CallPredicate>) -> bool {
+    // SAFETY (each read below): declared by `access`, per the caller's contract.
+    unsafe {
+        match c {
+            Condition::InState { current, value, .. } => current(world) == Some(*value),
+            Condition::StateExists { current, .. } => current(world).is_some(),
+            Condition::StateChanged { state, slot } => {
+                // The `State` resource exists once the machine has a value.
+                let ticks = resource_ticks(world, *state);
+                let last_run = std::mem::replace(&mut slot.lock().unwrap().last_run, this_run);
+                ticks.is_some_and(|(_, changed)| changed.is_newer_than(last_run, this_run))
+            }
+            Condition::OnMessage { index, slot, .. } => {
+                let Some(q) = world.get_resource::<TsPayloads>().and_then(|p| p.messages.get(*index)) else { return false };
+                let cursor = std::mem::replace(&mut slot.lock().unwrap().messages, q.next_seq);
+                q.has_unread(cursor)
+            }
+            Condition::OnRustMessage { reader, slot } => {
+                if predicate.is_none() {
+                    return false;
                 }
-                (ResourceKind::ChangedOrRemoved, Some(t)) => {
-                    st.flag = true;
-                    t.is_changed(last_run, this_run)
+                let world = world.world();
+                let end = reader.end(world) as u64;
+                let cursor = std::mem::replace(&mut slot.lock().unwrap().messages, end);
+                reader.unread(world, cursor as usize)
+            }
+            Condition::RunOnce { slot } => !std::mem::replace(&mut slot.lock().unwrap().flag, true),
+            Condition::ResourceExists { id } => id.is_some_and(|id| resource_location(world, id).is_some()),
+            Condition::Resource { kind, id, slot } => {
+                let ticks = id.and_then(|id| resource_ticks(world, id));
+                let mut st = slot.lock().unwrap();
+                let last_run = std::mem::replace(&mut st.last_run, this_run);
+                match (*kind, ticks) {
+                    (ResourceKind::Added, t) => t.is_some_and(|(added, _)| added.is_newer_than(last_run, this_run)),
+                    (ResourceKind::Changed, t) => t.is_some_and(|(_, changed)| changed.is_newer_than(last_run, this_run)),
+                    (ResourceKind::Removed, Some(_)) => {
+                        st.flag = true;
+                        false
+                    }
+                    (ResourceKind::ChangedOrRemoved, Some((_, changed))) => {
+                        st.flag = true;
+                        changed.is_newer_than(last_run, this_run)
+                    }
+                    (ResourceKind::Removed | ResourceKind::ChangedOrRemoved, None) => std::mem::replace(&mut st.flag, false),
                 }
-                (ResourceKind::Removed | ResourceKind::ChangedOrRemoved, None) => std::mem::replace(&mut st.flag, false),
             }
-        }
-        Condition::ResourceEquals { id, bytes, fields, heap } => {
-            let Some(ptr) = id.and_then(|id| world.get_resource_by_id(id)) else { return false };
-            // SAFETY: the resource's layout is the one `bytes` was encoded with: `bytes.len()` bytes.
-            let have = unsafe { std::slice::from_raw_parts(ptr.as_ptr(), bytes.len()) };
-            let want = bytes.bytes();
-            // SAFETY: the resource and `bytes` hold live heap values of these kinds at these offsets.
-            fields.iter().all(|&(a, b)| have[a..b] == want[a..b]) && heap.iter().all(|&(off, kind)| unsafe { crate::heap::eq_at(ptr.as_ptr(), off, kind, bytes) })
-        }
-        Condition::AnyWith { query } => {
-            query.update_archetypes(world);
-            query.iter_manual(world).next().is_some()
-        }
-        Condition::AnyRemoved { id, slot } => {
-            let id = *id;
-            let mut cursor = std::mem::take(&mut state(world, slot).removals);
-            let any = world.removed_components().get(id).is_some_and(|m| cursor.read(m).count() > 0);
-            state(world, slot).removals = cursor;
-            any
-        }
-        Condition::AnyMatch { query, changed, added, slot } => {
-            let this_run = world.change_tick();
-            let last_run = std::mem::replace(&mut state(world, slot).last_run, this_run);
-            query.update_archetypes(world);
-            if changed.is_empty() && added.is_empty() {
-                return query.iter_manual(world).next().is_some();
+            Condition::ResourceEquals { id, bytes, fields, heap } => {
+                let Some(ptr) = id.and_then(|id| world.get_resource_by_id(id)) else { return false };
+                // The resource's layout is the one `bytes` was encoded with: `bytes.len()` bytes.
+                let have = std::slice::from_raw_parts(ptr.as_ptr(), bytes.len());
+                let want = bytes.bytes();
+                // The resource and `bytes` hold live heap values of these kinds at these offsets.
+                fields.iter().all(|&(a, b)| have[a..b] == want[a..b]) && heap.iter().all(|&(off, kind)| crate::heap::eq_at(ptr.as_ptr(), off, kind, bytes))
             }
-            // Per entity, so sparse-set components and the query's `Without` are honoured.
-            query.iter_manual(world).any(|e| {
-                let Ok(row) = world.get_entity(e) else { return false };
-                changed.iter().all(|id| row.get_change_ticks_by_id(*id).is_some_and(|t| t.is_changed(last_run, this_run)))
-                    && added.iter().all(|id| row.get_change_ticks_by_id(*id).is_some_and(|t| t.is_added(last_run, this_run)))
-            })
-        }
-        Condition::Changed { condition, to, slot } => {
-            let now = evaluate(world, condition, predicate);
-            let st = state(world, slot);
-            let before = std::mem::replace(&mut st.previous, now);
-            before != now && to.is_none_or(|t| t == now)
-        }
-        Condition::Not(c) => !evaluate(world, c, predicate),
-        Condition::All(cs) => {
-            let mut ok = true;
-            for c in cs.iter_mut() {
-                ok &= evaluate(world, c, predicate);
+            Condition::AnyWith { query } => {
+                query.update_archetypes_unsafe_world_cell(world);
+                query.query_unchecked_manual_with_ticks(world, this_run, this_run).iter().next().is_some()
             }
-            ok
-        }
-        Condition::Combine { op, a, b, eager } => {
-            let x = evaluate(world, a, predicate);
-            let decided = match op {
-                CombineOp::And | CombineOp::Nand => !x,
-                CombineOp::Or | CombineOp::Nor => x,
-                CombineOp::Xor | CombineOp::Xnor => false,
-            };
-            if decided && !*eager {
-                return matches!(op, CombineOp::Or | CombineOp::Nand);
+            Condition::AnyRemoved { id, slot } => {
+                let mut st = slot.lock().unwrap();
+                world.removed_components().get(*id).is_some_and(|m| st.removals.read(m).count() > 0)
             }
-            let y = evaluate(world, b, predicate);
-            match op {
-                CombineOp::And => x && y,
-                CombineOp::Or => x || y,
-                CombineOp::Nand => !(x && y),
-                CombineOp::Nor => !(x || y),
-                CombineOp::Xor => x ^ y,
-                CombineOp::Xnor => !(x ^ y),
+            Condition::AnyMatch { query, changed, added, slot } => {
+                let last_run = std::mem::replace(&mut slot.lock().unwrap().last_run, this_run);
+                query.update_archetypes_unsafe_world_cell(world);
+                let q = query.query_unchecked_manual_with_ticks(world, last_run, this_run);
+                let mut rows = q.iter();
+                if changed.is_empty() && added.is_empty() {
+                    return rows.next().is_some();
+                }
+                // Per entity, so sparse-set components and the query's `Without` are honoured.
+                rows.any(|e| {
+                    let Ok(row) = world.get_entity(e) else { return false };
+                    changed.iter().all(|id| row.get_change_ticks_by_id(*id).is_some_and(|t| t.is_changed(last_run, this_run)))
+                        && added.iter().all(|id| row.get_change_ticks_by_id(*id).is_some_and(|t| t.is_added(last_run, this_run)))
+                })
             }
+            Condition::Changed { condition, to, slot } => {
+                let now = evaluate_cell(world, this_run, condition, predicate.as_deref_mut());
+                let before = std::mem::replace(&mut slot.lock().unwrap().previous, now);
+                before != now && to.is_none_or(|t| t == now)
+            }
+            Condition::Not(c) => !evaluate_cell(world, this_run, c, predicate),
+            Condition::All(cs) => {
+                let mut ok = true;
+                for c in cs.iter_mut() {
+                    ok &= evaluate_cell(world, this_run, c, predicate.as_deref_mut());
+                }
+                ok
+            }
+            Condition::Combine { op, a, b, eager } => {
+                let x = evaluate_cell(world, this_run, a, predicate.as_deref_mut());
+                let decided = match op {
+                    CombineOp::And | CombineOp::Nand => !x,
+                    CombineOp::Or | CombineOp::Nor => x,
+                    CombineOp::Xor | CombineOp::Xnor => false,
+                };
+                if decided && !*eager {
+                    return matches!(op, CombineOp::Or | CombineOp::Nand);
+                }
+                let y = evaluate_cell(world, this_run, b, predicate);
+                match op {
+                    CombineOp::And => x && y,
+                    CombineOp::Or => x || y,
+                    CombineOp::Nand => !(x && y),
+                    CombineOp::Nor => !(x || y),
+                    CombineOp::Xor => x ^ y,
+                    CombineOp::Xnor => !(x ^ y),
+                }
+            }
+            Condition::Native { system, .. } => system.lock().unwrap().run_unsafe((), world).unwrap_or(false),
+            Condition::Predicate { memory, .. } => match predicate {
+                Some(p) => p(world.world_mut(), memory),
+                None => false,
+            },
         }
-        Condition::Native { system } => system.lock().unwrap().run_readonly((), world).unwrap_or(false),
-        Condition::Predicate { memory, .. } => predicate(world, memory),
     }
 }
+
+/// Where a resource's value lives: `None` once it was removed, though its entity may stay.
+///
+/// # Safety
+/// The caller may read the world's metadata.
+unsafe fn resource_location(world: UnsafeWorldCell, id: ComponentId) -> Option<Entity> {
+    let e = unsafe { world.resource_entities() }.get(id)?;
+    let loc = world.entities().get_spawned(e).ok()?;
+    world.archetypes()[loc.archetype_id].contains(id).then_some(e)
+}
+
+/// A resource's added and changed ticks.
+///
+/// # Safety
+/// The caller may read `id`'s ticks.
+unsafe fn resource_ticks(world: UnsafeWorldCell, id: ComponentId) -> Option<(Tick, Tick)> {
+    let entity = unsafe { resource_location(world, id) }?;
+    let ticks = unsafe { world.get_entity(entity).ok()?.get_change_ticks_by_id(id)? };
+    Some((ticks.added, ticks.changed))
+}
+
+impl Condition {
+    /// Whether evaluating it needs the whole world on the main thread: a TS predicate calls into
+    /// JS, and a Rust message queue is read through reflection. Such a condition is evaluated by
+    /// an exclusive gate system rather than by a [`TsCondition`].
+    pub fn needs_world(&self) -> bool {
+        match self {
+            Condition::Predicate { .. } | Condition::OnRustMessage { .. } => true,
+            Condition::Changed { condition, .. } | Condition::Not(condition) => condition.needs_world(),
+            Condition::All(cs) => cs.iter().any(Condition::needs_world),
+            Condition::Combine { a, b, .. } => a.needs_world() || b.needs_world(),
+            _ => false,
+        }
+    }
+
+    /// Adds what evaluating the condition reads to `access`.
+    pub fn access(&self, access: &mut SystemAccess) {
+        let read = |access: &mut SystemAccess, id: ComponentId| {
+            let mut f = FilteredAccess::default();
+            f.add_read(id);
+            f.and_with(IS_RESOURCE);
+            access.ensure_filtered_access(f);
+        };
+        match self {
+            Condition::InState { state, .. } | Condition::StateExists { state, .. } | Condition::StateChanged { state, .. } => read(access, *state),
+            Condition::OnMessage { payloads, .. } => read(access, *payloads),
+            Condition::RunOnce { .. } | Condition::ResourceExists { .. } | Condition::AnyRemoved { .. } => access.ensure_metadata_access(),
+            Condition::Resource { id, .. } | Condition::ResourceEquals { id, .. } => match id {
+                Some(id) => read(access, *id),
+                None => access.ensure_metadata_access(),
+            },
+            Condition::AnyWith { query } => access.ensure_filtered_access(query.component_access().clone()),
+            Condition::AnyMatch { query, changed, added, .. } => {
+                let mut f = query.component_access().clone();
+                for id in changed.iter().chain(added) {
+                    f.add_read(*id);
+                }
+                access.ensure_filtered_access(f);
+            }
+            Condition::Changed { condition, .. } | Condition::Not(condition) => condition.access(access),
+            Condition::All(cs) => cs.iter().for_each(|c| c.access(access)),
+            Condition::Combine { a, b, .. } => {
+                a.access(access);
+                b.access(access);
+            }
+            Condition::Native { access: a, .. } => access.extend(a.clone()),
+            // Evaluated by an exclusive gate, which holds the whole world.
+            Condition::OnRustMessage { .. } | Condition::Predicate { .. } => *access = SystemAccess::Exclusive,
+        }
+    }
+
+    /// What the condition was built from: ids, indices and native instances. Two equal ones
+    /// gate the same way, so a rebuild may keep the old condition system.
+    pub fn fingerprint(&self, out: &mut String) {
+        use std::fmt::Write;
+        let _ = match self {
+            Condition::InState { state, value, .. } => write!(out, "in({state:?},{value})"),
+            Condition::StateExists { state, .. } => write!(out, "state({state:?})"),
+            Condition::StateChanged { state, .. } => write!(out, "statechanged({state:?})"),
+            Condition::OnMessage { index, .. } => write!(out, "msg({index})"),
+            Condition::OnRustMessage { .. } => write!(out, "rustmsg"),
+            Condition::RunOnce { .. } => write!(out, "once"),
+            Condition::ResourceExists { id } => write!(out, "exists({id:?})"),
+            Condition::Resource { kind, id, .. } => write!(out, "res({kind:?},{id:?})"),
+            Condition::ResourceEquals { id, bytes, .. } => write!(out, "eq({id:?},{:?})", bytes.bytes()),
+            Condition::AnyWith { query } => write!(out, "with({:?})", query.component_access()),
+            Condition::AnyRemoved { id, .. } => write!(out, "removed({id:?})"),
+            Condition::AnyMatch { query, changed, added, .. } => write!(out, "match({:?},{changed:?},{added:?})", query.component_access()),
+            Condition::Changed { condition, to, .. } => {
+                let _ = write!(out, "changed({to:?},");
+                condition.fingerprint(out);
+                write!(out, ")")
+            }
+            Condition::Not(c) => {
+                out.push('!');
+                c.fingerprint(out);
+                Ok(())
+            }
+            Condition::All(cs) => {
+                out.push('[');
+                for c in cs {
+                    c.fingerprint(out);
+                    out.push(',');
+                }
+                write!(out, "]")
+            }
+            Condition::Combine { op, a, b, eager } => {
+                let _ = write!(out, "{op:?}{eager}(");
+                a.fingerprint(out);
+                out.push(',');
+                b.fingerprint(out);
+                write!(out, ")")
+            }
+            Condition::Native { key, .. } => write!(out, "native({key})"),
+            Condition::Predicate { system, memory } => write!(out, "pred({system},{memory})"),
+        };
+    }
+}
+
+/// A compiled condition as a Bevy condition system: the `run_if` of a TS system, or of a group's
+/// set for a collective `runIf`. It declares what it reads, so it runs beside any Rust system
+/// that does not write it. A condition that [needs the world](Condition::needs_world) is not one.
+pub struct TsCondition {
+    name: DebugName,
+    condition: Condition,
+    last_run: Tick,
+}
+
+impl TsCondition {
+    pub fn new(name: String, condition: Condition) -> Self {
+        debug_assert!(!condition.needs_world(), "{name}: a condition needing the world is evaluated by a gate");
+        TsCondition { name: DebugName::owned(name), condition, last_run: Tick::new(0) }
+    }
+}
+
+impl System for TsCondition {
+    type In = ();
+    type Out = bool;
+
+    fn name(&self) -> DebugName {
+        self.name.clone()
+    }
+
+    fn flags(&self) -> SystemStateFlags {
+        SystemStateFlags::empty()
+    }
+
+    unsafe fn run_unsafe(&mut self, _input: SystemIn<'_, Self>, world: UnsafeWorldCell) -> Result<bool, RunSystemError> {
+        let this_run = world.increment_change_tick();
+        // SAFETY: the caller grants the access `initialize` returned, which is `Condition::access`.
+        let pass = unsafe { evaluate_cell(world, this_run, &mut self.condition, None) };
+        self.last_run = this_run;
+        Ok(pass)
+    }
+
+    fn apply_deferred(&mut self, _world: &mut World) {}
+
+    fn queue_deferred(&mut self, _world: DeferredWorld) {}
+
+    fn initialize(&mut self, world: &mut World) -> SystemAccess {
+        self.last_run = crate::bevy_system::never_ran(world.change_tick());
+        let mut access = SystemAccess::default();
+        self.condition.access(&mut access);
+        access
+    }
+
+    fn check_change_tick(&mut self, check: bevy::ecs::change_detection::CheckChangeTicks) {
+        self.last_run.check_tick(check);
+    }
+
+    fn get_last_run(&self) -> Tick {
+        self.last_run
+    }
+
+    fn set_last_run(&mut self, last_run: Tick) {
+        self.last_run = last_run;
+    }
+}
+
+// SAFETY: a condition only reads the world: `evaluate_cell` writes nothing it declares, and its
+// state lives in its own handles.
+unsafe impl ReadOnlySystem for TsCondition {}
 
 /// Drops native condition instances the live generation no longer uses.
 pub(crate) fn prune_natives(world: &mut World, live: &HashSet<String>) {

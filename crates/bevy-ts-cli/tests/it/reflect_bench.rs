@@ -88,8 +88,8 @@ fn run(system: &str, misses: bool) -> f64 {
         app.update();
         let systems = app.world().resource::<TsSystems>();
         let s = systems.iter().find(|s| s.decl.name.rsplit('#').next() == Some(system)).expect("system");
-        assert!(s.last_error.is_none(), "{system}: {:?}", s.last_error);
-        us.push(s.last_run_us as f64);
+        assert!(s.last_error().is_none(), "{system}: {:?}", s.last_error());
+        us.push(s.last_run_us() as f64);
     }
     us.sort_by(f64::total_cmp);
     us[FRAMES / 2]

@@ -19,6 +19,10 @@ const processes = {
   "ports-proof": {
     cmd: "cd bench/ports && cargo test -- --nocapture 2>&1 | tee results/cargo-test.txt",
   },
+  // docs/research/script-threading.md: isolate startup, memory, thread hop, column split.
+  "bench-threading": {
+    cmd: "cd bench/threading/rust && mkdir -p ../results && cargo run --release 2>&1 | grep -v '^ *\\(Compiling\\|Downloaded\\|Downloading\\)' | tee ../results/run.txt",
+  },
   "dx-rust-check": {
     cmd: "cd bench/dx/rust && cargo check 2>&1 | tee ../results/rust-check.txt",
   },

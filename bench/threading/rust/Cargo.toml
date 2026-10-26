@@ -1,0 +1,11 @@
+[package]
+name = "threading-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+deno_core = "=0.412.0"
+
+[profile.release]
+debug = false

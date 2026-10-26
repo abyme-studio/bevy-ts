@@ -49,7 +49,11 @@ fn a_system_in_last_runs_after_post_update_and_its_stage_is_made_on_load() {
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     updates(&mut app, 2);
     assert_eq!(said(&mut app), ["post", "late", "post", "late"]);
-    assert_eq!(systems_in(&mut app, Last), before + 1, "one bevy-ts stage made in Last");
+    assert!(systems_in(&mut app, Last) > before, "the stage made in Last");
+    let identity = app.world().resource::<bevy_ts::systems::TsSystems>().iter().map(|s| s.decl.name.clone()).find(|n| n.ends_with("#late")).unwrap();
+    let schedules = app.world().resource::<Schedules>();
+    let late = schedules.get(Last).unwrap().graph().systems_in_set(bevy_ts::bevy_system::TsSystemSet(identity).intern()).unwrap().len();
+    assert_eq!(late, 1, "late is one Bevy system in Last");
 }
 
 #[test]

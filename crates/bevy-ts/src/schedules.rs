@@ -134,7 +134,7 @@ pub fn stage_label(stage: Stage) -> InternedScheduleLabel {
     }
 }
 
-/// The set a stage's exclusive system runs in.
+/// The set a stage's TS systems run in.
 pub fn stage_set(stage: Stage) -> BevyTsSet {
     match stage {
         Stage::First => BevyTsSet::First,
@@ -152,8 +152,8 @@ pub fn stage_set(stage: Stage) -> BevyTsSet {
     }
 }
 
-/// Stages and custom schedules made so far. Each is one exclusive system, kept for the life of
-/// the app (an emptied one is skipped).
+/// Stages and custom schedules made so far: each is a set configured in its schedule, with its
+/// head, kept for the life of the app (an emptied one holds no TS system).
 #[derive(Resource, Default, Debug)]
 pub struct MadeStages {
     pub stages: BTreeSet<Stage>,
@@ -167,21 +167,22 @@ pub struct MadeStages {
 /// makes the `First` stage): applied in `Last`, or in the next `First`.
 pub struct DeferredEdit {
     pub label: InternedScheduleLabel,
-    pub edit: Box<dyn FnOnce(&mut Schedules) + Send + Sync>,
+    pub edit: Box<dyn FnOnce(&mut World) + Send + Sync>,
 }
 
 #[derive(Resource, Default)]
 pub struct DeferredEdits(pub Vec<DeferredEdit>);
 
 /// Applies schedule edits that waited for their schedule to finish, once it has.
-pub(crate) fn apply_deferred_edits(mut edits: ResMut<DeferredEdits>, mut schedules: ResMut<Schedules>) {
-    if edits.0.is_empty() {
+pub(crate) fn apply_deferred_edits(world: &mut World) {
+    if world.get_resource::<DeferredEdits>().is_none_or(|e| e.0.is_empty()) {
         return;
     }
-    let (ready, waiting): (Vec<_>, Vec<_>) = edits.0.drain(..).partition(|e| schedules.contains(e.label));
-    edits.0 = waiting;
+    let all = std::mem::take(&mut world.resource_mut::<DeferredEdits>().0);
+    let (ready, waiting): (Vec<_>, Vec<_>) = all.into_iter().partition(|e| world.resource::<Schedules>().contains(e.label));
+    world.resource_mut::<DeferredEdits>().0.extend(waiting);
     for e in ready {
-        (e.edit)(&mut schedules);
+        (e.edit)(world);
     }
 }
 
@@ -194,7 +195,7 @@ fn main_schedule(label: InternedScheduleLabel) -> bool {
 /// Edits `label`'s schedule now, or once it stops running. A missing main schedule is running,
 /// as is a missing custom one bevy-ts created; a missing fixed schedule never runs while a
 /// generation applies (in `First`, or outside any schedule), so it is created.
-fn edit(world: &mut World, label: InternedScheduleLabel, custom: bool, f: impl FnOnce(&mut Schedules) + Send + Sync + 'static) {
+pub(crate) fn edit(world: &mut World, label: InternedScheduleLabel, custom: bool, f: impl FnOnce(&mut World) + Send + Sync + 'static) {
     let present = world.resource::<Schedules>().contains(label);
     let made = world.get_resource_or_init::<MadeStages>().created.contains(&label);
     let running = if custom { made } else { main_schedule(label) };
@@ -202,33 +203,40 @@ fn edit(world: &mut World, label: InternedScheduleLabel, custom: bool, f: impl F
         if custom {
             world.resource_mut::<MadeStages>().created.insert(label);
         }
-        f(&mut world.resource_mut::<Schedules>());
+        if !present {
+            world.resource_mut::<Schedules>().insert(Schedule::new(label));
+        }
+        f(world);
     } else {
         world.get_resource_or_init::<DeferredEdits>().0.push(DeferredEdit { label, edit: Box::new(f) });
     }
 }
 
-/// Adds a stage's exclusive system to its schedule.
-fn make_stage(world: &mut World, stage: Stage) {
+/// Configures a stage's set in `schedules`, where Bevy's own schedules place it.
+pub(crate) fn configure_stage(schedules: &mut Schedules, stage: Stage) {
     let label = stage_label(stage);
     let set = stage_set(stage);
-    edit(world, label, false, move |schedules| {
-        let run = move |world: &mut World| crate::systems::run_stage(world, stage);
-        match stage {
-            Stage::First => schedules.add_systems(label, run.in_set(set).after(crate::runtime::pump)),
-            Stage::RunFixedMainLoop => schedules.add_systems(label, run.in_set(set).in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop)),
-            _ => schedules.add_systems(label, run.in_set(set)),
-        };
-    });
+    match stage {
+        Stage::First => drop(schedules.configure_sets(label, set.after(crate::runtime::pump))),
+        Stage::RunFixedMainLoop => drop(schedules.configure_sets(label, set.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop))),
+        Stage::PostUpdate => drop(schedules.configure_sets(label, set.before(bevy::transform::TransformSystems::Propagate))),
+        _ => {}
+    }
+    crate::bevy_system::configure_stage(schedules, label, set.intern());
 }
 
-/// Adds a custom schedule's stage, creating the schedule if absent.
+/// Configures a stage's set in its schedule.
+fn make_stage(world: &mut World, stage: Stage) {
+    edit(world, stage_label(stage), false, move |world| configure_stage(&mut world.resource_mut::<Schedules>(), stage));
+}
+
+/// Configures a custom schedule's stage, creating the schedule if absent.
 fn make_schedule_stage(world: &mut World, name: &str) {
     let label = label_of(world, name);
     let custom = world.get_resource::<TsSchedules>().is_none_or(|s| s.get(name).is_none());
     let key: &'static str = TsSchedule::new(name).0;
-    edit(world, label, custom, move |schedules| {
-        schedules.add_systems(label, (move |world: &mut World| crate::systems::run_custom_stage(world, key)).in_set(BevyTsSet::Schedule(key)));
+    edit(world, label, custom, move |world| {
+        crate::bevy_system::configure_stage(&mut world.resource_mut::<Schedules>(), label, BevyTsSet::Schedule(key).intern());
     });
 }
 
@@ -242,8 +250,8 @@ fn init_schedule(world: &mut World, name: &str) {
     world.resource_mut::<Schedules>().insert(Schedule::new(label));
 }
 
-/// Makes the stages a just-committed generation names for the first time: one schedule edit
-/// each, at this frame boundary. Later generations reuse them without touching schedules.
+/// Configures the stages a just-committed generation names for the first time: one schedule edit
+/// each, at this frame boundary. Later generations reuse them.
 pub(crate) fn ensure_stages(world: &mut World, init: &[String]) {
     let (stages, schedules): (Vec<Stage>, Vec<String>) = match world.get_resource::<TsSystems>() {
         Some(s) => (

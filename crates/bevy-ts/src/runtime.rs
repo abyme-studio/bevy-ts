@@ -1,7 +1,7 @@
 //! The script runtime: the backend as non-send data on the main thread, the entity pool, the
 //! command arena, and the helpers every call into JS shares.
 
-use crate::backend::{CallContext, FrameInfo, RunOutput, ScriptBackend, ScriptError, SourceLocation};
+use crate::backend::{CallContext, FrameInfo, ScriptBackend, ScriptError, SourceLocation};
 use crate::commands::{self, CommandKinds, NativeRecipes, POOL_SIZE};
 use crate::components::TsComponents;
 use crate::layout::NativeLayouts;
@@ -23,16 +23,24 @@ pub struct ScriptRuntime {
     pub(crate) entries: HashSet<String>,
     /// `reserve` host calls JS made when a call's pool ran out, for tests and stats.
     pub reserve_calls: u64,
+    /// Errors and warnings from TS systems Bevy ran, which hold no `ScriptLog`; [`flush_log`]
+    /// moves them there.
+    pub(crate) log: Vec<Pending>,
+}
+
+/// A log entry waiting for [`flush_log`].
+pub(crate) enum Pending {
+    Error(String, ScriptError),
+    Warn(String, Option<SourceLocation>),
 }
 
 impl ScriptRuntime {
     pub fn new(backend: Box<dyn ScriptBackend>, dev: bool) -> Self {
-        ScriptRuntime { backend, dev, pool: Vec::new(), scratch: Scratch::default(), entries: HashSet::new(), reserve_calls: 0 }
+        ScriptRuntime { backend, dev, pool: Vec::new(), scratch: Scratch::default(), entries: HashSet::new(), reserve_calls: 0, log: Vec::new() }
     }
 
     /// Tops the pool up to [`POOL_SIZE`] ids from `EntityAllocator::alloc`.
-    pub(crate) fn fill_pool(&mut self, world: &World) {
-        let alloc = world.entity_allocator();
+    pub(crate) fn fill_pool(&mut self, alloc: &bevy::ecs::entity::EntityAllocator) {
         while self.pool.len() < POOL_SIZE {
             self.pool.push(alloc.alloc().to_bits());
         }
@@ -44,16 +52,14 @@ impl ScriptRuntime {
         world.entity_allocator_mut().free_many(&freed);
     }
 
-    /// Decodes and applies a call's commands, all or nothing. Spawned pool ids leave the pool
-    /// only when their commands apply.
-    pub(crate) fn apply_output(&mut self, world: &mut World, arena: &[u8], out: RunOutput, label: &str) {
+    /// Decodes and applies a call's command bytes, all or nothing. Spawned pool ids leave the
+    /// pool only when their commands apply.
+    pub(crate) fn apply_output(&mut self, world: &mut World, bytes: Vec<u8>, pool_used: usize, label: &str) {
         // Assets the call made or changed go in first, so its commands can use them.
         #[cfg(feature = "reflect")]
         crate::reflect_asset::flush(world);
-        let mut bytes = arena[..out.arena_len].to_vec();
-        bytes.extend_from_slice(&out.overflow);
         if bytes.is_empty() {
-            self.pool.drain(..out.pool_used.min(self.pool.len()));
+            self.pool.drain(..pool_used.min(self.pool.len()));
             return;
         }
         let sizes = world.resource::<TsComponents>().writable_sizes(world.resource::<NativeLayouts>());
@@ -61,7 +67,7 @@ impl ScriptRuntime {
         let recipes = world.resource::<NativeRecipes>().clone();
         match commands::decode(&bytes, &sizes, &kinds) {
             Ok(ops) => {
-                self.pool.drain(..out.pool_used.min(self.pool.len()));
+                self.pool.drain(..pool_used.min(self.pool.len()));
                 for w in commands::apply(world, ops, &kinds, &recipes, label) {
                     self.log_warn(world, format!("{label}: {w}"), None);
                 }
@@ -94,8 +100,8 @@ impl ScriptRuntime {
             return Err(ScriptError::new(format!("no entry named {name} in the live generation")));
         }
         let tick = world.increment_change_tick();
-        let frame = frame_info(world, tick.get());
-        rt.fill_pool(world);
+        let frame = frame_info(world.as_unsafe_world_cell(), tick.get());
+        rt.fill_pool(world.entity_allocator());
         let mut scratch = std::mem::take(&mut rt.scratch);
         scratch.arena_mut().resize(commands::ARENA_BYTES, 0);
         let result = {
@@ -105,7 +111,7 @@ impl ScriptRuntime {
                 // As `run_one`: the world is held exclusively for the call; host calls fetch at
                 // the entry's tick, with the world's last change tick as their last run.
                 let ticks = crate::host::RunTicks { last_run: world.last_change_tick(), this_run: tick };
-                let mut host = crate::host::WorldHost { world: world.as_unsafe_world_cell(), ticks, regions: &[], allowed: None, params: &mut params, reserved: Vec::new(), reserves: 0 };
+                let mut host = crate::host::WorldHost { world: world.as_unsafe_world_cell(), ticks, regions: &[], allowed: None, params: crate::host::ParamsOf::Taken(&mut params), reserved: Vec::new(), reserves: 0 };
                 let mut ctx = CallContext { frame, arena: scratch.arena_mut(), pool: &pool, host: Some(&mut host) };
                 let r = rt.backend.call_entry(name, payload, &mut ctx);
                 (r, host.reserved, host.reserves)
@@ -119,7 +125,9 @@ impl ScriptRuntime {
         };
         let out = match result {
             Ok((bytes, out)) => {
-                rt.apply_output(world, scratch.arena_mut(), out, &format!("entry {name}"));
+                let mut commands = scratch.arena_mut()[..out.arena_len].to_vec();
+                commands.extend_from_slice(&out.overflow);
+                rt.apply_output(world, commands, out.pool_used, &format!("entry {name}"));
                 settle_params(world, true);
                 Ok(bytes)
             }
@@ -235,15 +243,38 @@ pub fn advance_clock(mut clock: ResMut<ScriptClock>, mut frame: ResMut<ScriptFra
     }
 }
 
-pub(crate) fn frame_info(world: &World, tick: u32) -> FrameInfo {
-    let (dt, elapsed) = world.get_resource::<Time>().map_or((0.0, 0.0), |t| (t.delta_secs_f64(), t.elapsed_secs_f64()));
-    let frame = world.get_resource::<ScriptFrame>().map_or(0, |f| f.0);
-    FrameInfo { dt, elapsed, tick, frame }
+/// The scalars a call carries. Reads `Time` and [`ScriptFrame`], which every TS system declares.
+pub(crate) fn frame_info(world: bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell, tick: u32) -> FrameInfo {
+    // SAFETY: callers hold read access to both resources (a TS system declares it; an exclusive
+    // caller holds the world).
+    let (time, frame) = unsafe { (world.get_resource::<Time>(), world.get_resource::<ScriptFrame>()) };
+    let (dt, elapsed) = time.map_or((0.0, 0.0), |t| (t.delta_secs_f64(), t.elapsed_secs_f64()));
+    FrameInfo { dt, elapsed, tick, frame: frame.map_or(0, |f| f.0) }
+}
+
+/// Moves the errors and warnings TS systems left on the runtime into `ScriptLog`.
+pub(crate) fn flush_log(world: &mut World, rt: &mut ScriptRuntime) {
+    for p in std::mem::take(&mut rt.log) {
+        match p {
+            Pending::Error(context, e) => rt.log_error(world, &context, &e),
+            Pending::Warn(message, at) => rt.log_warn(world, message, at),
+        }
+    }
+}
+
+/// `Last`: [`flush_log`], so a frame's errors are on the log when it ends, and frees the spawn
+/// pool the frame's TS systems kept.
+pub fn flush_log_system(world: &mut World) {
+    let Some(mut rt) = world.remove_non_send::<ScriptRuntime>() else { return };
+    flush_log(world, &mut rt);
+    rt.free_pool(world);
+    world.insert_non_send(rt);
 }
 
 /// `First`: pumps the backend (microtasks, timers, inspector) and logs `console.*` output.
 pub fn pump(world: &mut World) {
     let Some(mut rt) = world.remove_non_send::<ScriptRuntime>() else { return };
+    flush_log(world, &mut rt);
     let messages = rt.backend.pump();
     let generation = current_generation(world);
     let mut log = world.resource_mut::<ScriptLog>();

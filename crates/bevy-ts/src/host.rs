@@ -1171,6 +1171,11 @@ impl HostParams {
         &self.params[index].writes
     }
 
+    /// The world access param `index` registers, which the TS systems taking it declare.
+    pub fn access(&self, index: usize, world: &mut World) -> Option<SystemAccess> {
+        Some(self.params.get(index)?.state.access(world))
+    }
+
     /// Applies param `index`'s deferred state if a call since the last apply queued any.
     pub fn apply(&mut self, index: usize, world: &mut World) {
         let reg = &mut self.params[index];
@@ -1194,6 +1199,13 @@ impl HostParams {
         for i in 0..self.params.len() {
             if ok { self.apply(i, world) } else { self.discard(i, world) }
         }
+    }
+
+    /// The error of host function `id` called from a system that takes none of these params.
+    pub fn refusal(&self, id: u32) -> String {
+        let Some(&(p, m)) = self.fns.get(id as usize) else { return format!("no host function {id}") };
+        let spec = &self.params[p].spec;
+        format!("{ts}.{}: this system does not take {ts}; take it as a parameter of the system that calls it", spec.methods[m].name, ts = spec.ts)
     }
 
     /// Calls host function `id` at the run's ticks. A panic in the method becomes an error
@@ -1220,7 +1232,7 @@ impl HostParams {
         // A param instance kept from another system's run would skip this run's overlap check
         // and settle with the wrong system.
         if allowed.is_some_and(|a| !a.contains(&p)) {
-            return Err(format!("{ts}.{}: this system does not take {ts}; take it as a parameter of the system that calls it", method.name));
+            return Err(self.refusal(id));
         }
         if !regions.is_empty() {
             let specs = method.args.iter().filter_map(ArgSpec::slice);
@@ -1291,7 +1303,7 @@ pub struct WorldHost<'a> {
     pub regions: &'a [Region],
     /// The params the running system takes, by index; `None` for an entry call.
     pub allowed: Option<&'a [usize]>,
-    pub params: &'a mut HostParams,
+    pub params: ParamsOf<'a>,
     /// Pool ids `reserve` handed JS during the call, in order, after the call's pool.
     pub reserved: Vec<u64>,
     /// `reserve` calls made during the call.
@@ -1338,7 +1350,10 @@ impl crate::backend::HostCalls for WorldHost<'_> {
         if id >= crate::reflect_codec::READ {
             return crate::reflect_codec::call(self.world, self.ticks.this_run, id, args, ret, slices);
         }
-        self.params.call(self.world, self.ticks, self.regions, self.allowed, id, args, ret, slices)
+        match &mut self.params {
+            ParamsOf::Taken(params) => params.call(self.world, self.ticks, self.regions, self.allowed, id, args, ret, slices),
+            ParamsOf::Refused(params) => Err(params.map_or_else(|| format!("no host function {id}"), |h| h.refusal(id))),
+        }
     }
 
     #[cfg_attr(not(feature = "pbr"), allow(unused_variables))]
@@ -1352,6 +1367,13 @@ impl crate::backend::HostCalls for WorldHost<'_> {
             _ => Err(format!("no host service {name}")),
         }
     }
+}
+
+/// The exported params a run may call: all of them, held for the run, or none, when the system
+/// takes none and so only reads `HostParams`, to name the param in the refusal.
+pub enum ParamsOf<'a> {
+    Taken(&'a mut HostParams),
+    Refused(Option<&'a HostParams>),
 }
 
 fn write_js(kind: &Kind, expr: &str, out: &mut String) {
