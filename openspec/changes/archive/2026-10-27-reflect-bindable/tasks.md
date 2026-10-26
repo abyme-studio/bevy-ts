@@ -26,4 +26,4 @@
 - [x] 4.1 `docs/native.md` "Reflected rows in TS systems": `GlobalTransform`'s methods; TSX section: reflect-tier props bind, layout holes do not
 - [x] 4.2 `docs/research/bevy-coverage.md`: rows "Reflect-tier TSX props bound to a function", "`GlobalTransform` read; `TransformHelper`" (`TransformHelper` stays missing), "Rust resources"; drop items 1 and 2 from "Open, ranked" and the three fixed lines from "Docs and specs that claim more than the code"
 - [x] 4.3 `docs/research/script-2d.md:33`: reflect-path props bind; tell script-2d's lead that `openspec/changes/script-2d/design.md` says otherwise (their path, not ours)
-- [ ] 4.4 Sync the deltas into `openspec/specs` at archive
+- [x] 4.4 Sync the deltas into `openspec/specs` at archive
