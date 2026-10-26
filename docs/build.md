@@ -69,7 +69,7 @@ caught as its fallback or missing; an asset that failed is named in a warning. A
 --headless`) takes one shot with `BEVY_TS_SCREENSHOT=<path>`, at the 60th ready frame in a row: a
 frame on which the script has started, no pipeline is waiting and nothing is loading (after 60 s it shoots anyway,
 and warns). Under it, time runs on a fixed step, through Bevy's
-`TimeUpdateStrategy::ManualDuration`: 1/60 s a ready frame and none before. So the shot is the
+`TimeUpdateStrategy::ManualDuration`: 1/60 s a ready frame and none on a frame that is not ready. So the shot is the
 same picture at any machine load. `BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the
 same clock. `BEVY_TS_PIPELINE_TRACE=1` prints when the pipelines are ready
 ([native.md](native.md#project-engines)). Game UI draws into

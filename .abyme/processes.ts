@@ -124,7 +124,7 @@ const processes = {
   "build-thrusters": {
     cmd: "bash -c 'cargo build -p bevy-ts-cli && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts build examples/thrusters --json --out target/thrusters-dist > target/build-thrusters.jsonl; echo exit $?; grep -c progress target/build-thrusters.jsonl; grep -v log target/build-thrusters.jsonl | tail -8'",
   },
-  // The arena built and played headless, a screenshot at frame 60 (its game camera, not the editor's).
+  // The arena built and played headless, a screenshot at the 60th ready frame (its game camera, not the editor's).
   "arena-shot": {
     cmd: "bash -c 'cargo build -p bevy-ts-cli && rm -f target/arena-shot.png && CARGO_TARGET_DIR=$PWD/target ./target/debug/bevy-ts build examples/arena --out target/arena-dist > target/arena-shot.log 2>&1 && BEVY_TS_SCREENSHOT=$PWD/target/arena-shot.png timeout 60 ./target/debug/bevy-ts play target/arena-dist/game --headless >> target/arena-shot.log 2>&1; ls -la target/arena-dist target/arena-shot.png; tail -5 target/arena-shot.log'",
   },
@@ -274,7 +274,7 @@ const processes = {
   // The gate's steps after the tests, for a lint fix that changes no behaviour.
   "ui-lint": { cmd: "bash -c 'set -o pipefail; export RUSTC_WRAPPER=; (cargo clippy --workspace --all-targets -- -D warnings && scripts/gen-protocol.sh --check && scripts/gen-bevy-types.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep --line-buffered -v ld64 | tee target/ui-lint.log | tail -30; echo exit $?'" },
   "ui-gen": { cmd: "bash -c 'export RUSTC_WRAPPER=; scripts/gen-bevy-types.sh && git diff --stat -- packages/bevy-ts/bevy.d.ts crates/bevy-ts-v8/js/bevy.js'" },
-  // Walk the gallery: build, play it headless, a shot at frame 60 (target/ui-walk.png).
+  // Walk the gallery: build, play it headless, a shot at the 60th ready frame (target/ui-walk.png).
   "ui-walk": { cmd: "bash -c 'export RUSTC_WRAPPER=; cargo build -p bevy-ts-cli 2>&1 | grep --line-buffered -v ld64 | tail -3; rm -f target/ui-walk.png; cd examples/ui-gallery && BEVY_TS_SCREENSHOT=$OLDPWD/target/ui-walk.png timeout 120 $OLDPWD/target/debug/bevy-ts dev src/gallery.tsx --headless > $OLDPWD/target/ui-walk.log 2>&1; ls -la $OLDPWD/target/ui-walk.png; tail -8 $OLDPWD/target/ui-walk.log'" },
   // Fix show-bound-text: bound children of <Show>/<For>; the crates it touches and the cli's tsx tests.
   "show-bound-text-tests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-tsx -p bevy-ts-v8 && cargo test -p bevy-ts-cli --no-fail-fast --test it -- tsx_reactive:: tsx:: tsx_sites:: tsx_expand:: tsx_overlay:: tsx_protocol:: levels_scene:: ) 2>&1 | grep --line-buffered -v ld64 | tee target/show-bound-text-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"'" },

@@ -12,6 +12,7 @@ use bevy::asset::io::{AssetReader, AssetReaderError, AssetSourceBuilder, PathStr
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
+use bevy::remote::{BrpMessage, BrpSender, RemotePlugin};
 use bevy::world_serialization::WorldAssetRoot;
 use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts::runtime::RuntimeInfo;
@@ -19,6 +20,7 @@ use bevy_ts_cli::compile::Compiler;
 use bevy_ts_cli::headless::{self, SIZE};
 use bevy_ts_remote::screenshot::{FixedStep, ReadyPlugin, ShotWhenReady};
 use common::*;
+use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -273,4 +275,48 @@ fn a_looping_clip_on_a_slow_gltf_is_the_same_at_any_load() {
     let lit = quick.chunks(4).filter(|p| p[..3] != [0, 0, 0]).count();
     assert!(lit > 1000, "the fox is in the shot: {lit} pixels");
     assert!(quick == loaded, "the two shots differ in {} of {} bytes", quick.iter().zip(&loaded).filter(|(a, b)| a != b).count(), quick.len());
+}
+
+/// `bevy-ts/screenshot` waits as the env shot does: asked while a texture's read is held, it
+/// answers only after the read, and its PNG shows the texture.
+#[test]
+fn the_method_waits_for_a_texture_on_a_slow_disk() {
+    let dir = shots_dir("ready-method-texture");
+    let path = dir.join("method.png");
+    let root = dir.join("assets");
+    std::fs::create_dir_all(&root).unwrap();
+    let [r, g, b, _] = SCENE.to_srgba().to_u8_array();
+    std::fs::write(root.join("scene.png"), png_of([r, g, b, 255])).unwrap();
+    let open = Arc::new(AtomicBool::new(false));
+    let slow = Slow { root, open: open.clone(), delay: Duration::ZERO };
+    let (_, mut app) = engine_with("ready-method-texture", &dir.join("unused.png"), 3, Some(slow));
+    app.world_mut().remove_resource::<ShotWhenReady>();
+    app.add_plugins(RemotePlugin::default())
+        .add_systems(Startup, |mut commands: Commands, server: Res<AssetServer>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {
+            let texture = server.load("slow://scene.png");
+            let material = materials.add(StandardMaterial { base_color: Color::WHITE, base_color_texture: Some(texture), unlit: true, ..default() });
+            commands.spawn((Mesh3d(meshes.add(Cuboid::new(3.0, 3.0, 0.5))), MeshMaterial3d(material)));
+        });
+    bevy_ts_remote::add_methods(&mut app);
+    start(&mut app);
+    apply_script(&mut app);
+    // `RemotePlugin` makes its mailbox in `PreStartup`.
+    app.update();
+    let (tx, rx) = async_channel::bounded(1);
+    let message = BrpMessage { method: "bevy-ts/screenshot".into(), params: Some(json!({ "path": path })), sender: tx };
+    app.world().resource::<BrpSender>().try_send(message).unwrap();
+    for _ in 0..100 {
+        app.update();
+        assert!(rx.try_recv().is_err(), "answered while the texture was still loading");
+    }
+    assert!(!path.exists(), "shot while the texture was still loading");
+    open.store(true, Ordering::Relaxed);
+    let answer = (0..600).find_map(|_| {
+        app.update();
+        rx.try_recv().ok()
+    });
+    let answer = answer.expect("the method answered within 600 frames").unwrap();
+    assert_eq!(answer["path"], json!(path));
+    let pixel = centre(&path);
+    assert!((pixel.to_srgba().to_vec3() - SCENE.to_srgba().to_vec3()).length() < 0.05, "the texture, not {pixel:?}");
 }

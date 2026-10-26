@@ -31,3 +31,7 @@ With `BEVY_TS_FIXED_STEP=1`, an engine SHALL advance time as under `BEVY_TS_SCRE
 #### Scenario: A pipeline still compiling
 - **WHEN** a client asks for a shot while a material's pipeline is compiling
 - **THEN** the shot is taken once the pipeline is ready, and shows the material
+
+#### Scenario: A texture still loading
+- **WHEN** a client asks for a shot while a material's texture is still being read
+- **THEN** no answer comes while it loads; the shot is taken once it has loaded, and shows the texture

@@ -17,6 +17,7 @@
 - [x] 3.2 A material compiled in the background: the shot at the first ready frame shows it
 - [x] 3.3 Two runs, one with 30 ms extra work a frame: identical pixels
 - [x] 3.5 A texture behind a held reader: no shot until it opens, then the texture
+- [x] 3.7 The method asked while a texture's read is held: no answer until it opens, then the texture
 - [x] 3.6 Fox.glb from a slow reader, its run clip looping, on the fixed step: identical pixels at two loads
 - [x] 3.4 The existing screenshot, headless_ui and viewport tests still pass
 

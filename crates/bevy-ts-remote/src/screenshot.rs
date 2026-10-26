@@ -264,7 +264,10 @@ fn collect(registry: &TypeRegistry, value: &dyn PartialReflect, out: &mut Vec<Un
         ReflectRef::Tuple(t) => t.iter_fields().for_each(|f| collect(registry, f, out)),
         ReflectRef::List(l) => l.iter().for_each(|f| collect(registry, f, out)),
         ReflectRef::Array(a) => a.iter().for_each(|f| collect(registry, f, out)),
-        ReflectRef::Map(m) => m.iter().for_each(|(_, v)| collect(registry, v, out)),
+        ReflectRef::Map(m) => m.iter().for_each(|(k, v)| {
+            collect(registry, k, out);
+            collect(registry, v, out);
+        }),
         ReflectRef::Set(s) => s.iter().for_each(|f| collect(registry, f, out)),
         ReflectRef::Enum(e) => e.iter_fields().for_each(|f| collect(registry, f.value(), out)),
         _ => {}
@@ -272,19 +275,34 @@ fn collect(registry: &TypeRegistry, value: &dyn PartialReflect, out: &mut Vec<Un
 }
 
 /// Whether a value of type `ty` can hold a `Handle`, from its `TypeInfo`. A type with no info
-/// is taken to hold one.
+/// is taken to hold one. Cached per type once known.
 fn holds_handles(registry: &TypeRegistry, ty: TypeId, types: &mut HashMap<TypeId, bool>) -> bool {
     if let Some(&holds) = types.get(&ty) {
         return holds;
     }
-    // A type that contains itself holds a handle only through its other fields.
-    types.insert(ty, false);
-    let holds = registry.get_type_data::<ReflectHandle>(ty).is_some() || registry.get(ty).is_none_or(|r| info_holds(registry, Some(r.type_info()), types));
+    let holds = type_holds(registry, ty, types, &mut HashSet::new());
     types.insert(ty, holds);
     holds
 }
 
-fn info_holds(registry: &TypeRegistry, info: Option<&'static TypeInfo>, types: &mut HashMap<TypeId, bool>) -> bool {
+/// As [`holds_handles`], under the types `walking` now. A type met again inside itself adds
+/// nothing, so a `false` found that way is not cached: only `true`, which is final, is.
+fn type_holds(registry: &TypeRegistry, ty: TypeId, types: &mut HashMap<TypeId, bool>, walking: &mut HashSet<TypeId>) -> bool {
+    if let Some(&holds) = types.get(&ty) {
+        return holds;
+    }
+    if !walking.insert(ty) {
+        return false;
+    }
+    let holds = registry.get_type_data::<ReflectHandle>(ty).is_some() || registry.get(ty).is_none_or(|r| info_holds(registry, Some(r.type_info()), types, walking));
+    walking.remove(&ty);
+    if holds {
+        types.insert(ty, true);
+    }
+    holds
+}
+
+fn info_holds(registry: &TypeRegistry, info: Option<&'static TypeInfo>, types: &mut HashMap<TypeId, bool>, walking: &mut HashSet<TypeId>) -> bool {
     let Some(info) = info else { return true };
     if registry.get_type_data::<ReflectHandle>(info.type_id()).is_some() {
         return true;
@@ -295,8 +313,8 @@ fn info_holds(registry: &TypeRegistry, info: Option<&'static TypeInfo>, types: &
         TypeInfo::Tuple(t) => t.iter().map(|f| f.type_info()).collect(),
         TypeInfo::List(l) => vec![l.item_info()],
         TypeInfo::Array(a) => vec![a.item_info()],
-        TypeInfo::Map(m) => vec![m.value_info()],
-        TypeInfo::Set(s) => return holds_handles(registry, s.value_ty().id(), types),
+        TypeInfo::Map(m) => vec![m.key_info(), m.value_info()],
+        TypeInfo::Set(s) => return type_holds(registry, s.value_ty().id(), types, walking),
         TypeInfo::Enum(e) => e
             .iter()
             .flat_map(|v| match v {
@@ -308,7 +326,7 @@ fn info_holds(registry: &TypeRegistry, info: Option<&'static TypeInfo>, types: &
         TypeInfo::Opaque(_) => return false,
     };
     fields.into_iter().any(|f| match f {
-        Some(f) => holds_handles(registry, f.type_id(), types),
+        Some(f) => type_holds(registry, f.type_id(), types, walking),
         None => true,
     })
 }
@@ -426,6 +444,9 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
             if pipelines_idle(world) && loads.loading == 0 {
                 warn_failed(&path, &loads);
                 Progress::Pending(capture(world, path))
+            } else if world.contains_resource::<PipelinesWaiting>() && pipelines_waiting(world).is_none() && since.elapsed() > TIMEOUT {
+                let answer = Err(internal(format!("{}: no frame rendered within {} s", path.display(), TIMEOUT.as_secs())));
+                Progress::Done { answer, at: update, owed: 1 }
             } else if since.elapsed() > READY_TIMEOUT {
                 let answer = Err(internal(format!("{}: {} after {} s", path.display(), not_ready(world, &loads), READY_TIMEOUT.as_secs())));
                 Progress::Done { answer, at: update, owed: 1 }

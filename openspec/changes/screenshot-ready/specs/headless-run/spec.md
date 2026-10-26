@@ -9,7 +9,7 @@ It SHALL save at the 60th ready frame in a row. A frame is ready when:
 - no asset load is in flight: no `Handle` an entity's reflected components hold, or an asset added without the server holds, has `RecursiveDependencyLoadState::Loading`;
 - every `WorldAssetRoot` and `DynamicWorldRoot` has a `WorldInstance` that `WorldInstanceSpawner::instance_is_ready` reports ready.
 
-A failed asset SHALL NOT keep a frame waiting; the shot SHALL log a warning naming its path. A frame that is not ready SHALL start the count again. If no such shot is due 60 s after start, it SHALL save anyway and log a warning saying what is not ready.
+A failed asset SHALL NOT keep a frame waiting; the shot SHALL log a warning naming its path. A frame that is not ready SHALL start the count again. If no 60th ready frame comes within 60 s of start, it SHALL save anyway and log a warning saying what is not ready.
 
 Under `BEVY_TS_SCREENSHOT`, time SHALL advance by Bevy's `TimeUpdateStrategy::ManualDuration`: 1/60 s on a ready frame and nothing otherwise. So the shot is the same picture at any machine load.
 
