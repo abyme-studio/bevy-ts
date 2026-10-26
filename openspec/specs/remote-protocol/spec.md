@@ -58,7 +58,7 @@ The file SHALL also hold methods owned by other bevy-ts crates. They follow the 
 - **THEN** the call succeeds and the projection is unchanged
 
 ### Requirement: Editing a field
-`bevy-ts/mutate_components` SHALL take stock `world.mutate_components`'s params (`entity`, `component`, `path`, `value`) for any component. For TS components, `path` SHALL accept `.field`, `.field.x|y|z|w` for vectors and `.field[i]` for arrays; the value SHALL be checked against the field type and hints, written into the column, and the change tick set so watchers and `Changed` see it. For reflected components, `path` SHALL be a reflection path and the value SHALL be written by `bevy_ts::reflect_value::write` over the slot's default, taking every form TSX takes. An invalid path or value SHALL return an error naming the path and the expected type, and write nothing.
+`bevy-ts/mutate_components` SHALL take stock `world.mutate_components`'s params (`entity`, `component`, `path`, `value`) for any component. For TS components, `path` SHALL accept `.field`, `.field.x|y|z|w` for vectors and `.field[i]` for fixed arrays; the value SHALL be checked against the field type and hints, written into the column, and the change tick set so watchers and `Changed` see it. A `string` or `T[]` field SHALL be written whole through `.field`, its value a string or an array of its item type; `.field[i]` on a `T[]` field SHALL fail naming the whole-field form. For reflected components, `path` SHALL be a reflection path and the value SHALL be written by `bevy_ts::reflect_value::write` over the slot's default, taking every form TSX takes. An invalid path or value SHALL return an error naming the path and the expected type, and write nothing.
 
 #### Scenario: Dragging a number in the inspector
 - **WHEN** the inspector sends `{ entity, component: "game::Mover", path: ".amplitude", value: 4 }`
@@ -71,6 +71,14 @@ The file SHALL also hold methods owned by other bevy-ts crates. They follow the 
 #### Scenario: A colour from the inspector
 - **WHEN** the inspector sends `{ component: "bevy_light::directional_light::DirectionalLight", path: ".color", value: "#ffd7a8" }`
 - **THEN** the light's colour is that sRGB colour
+
+#### Scenario: Renaming in the inspector
+- **WHEN** the inspector sends `{ component: "game::Tag", path: ".label", value: "gate" }`
+- **THEN** the next `bevy-ts/get_components` answer has `label: "gate"` and a TS system reads `"gate"`
+
+#### Scenario: An item of a list
+- **WHEN** the inspector sends `{ component: "game::Tag", path: ".scores[0]", value: 1 }`
+- **THEN** the call fails saying `.scores` is written whole, and the component is unchanged
 
 ### Requirement: Pausing for editing
 `bevy-ts/pause` (`paused: boolean`) SHALL stop or resume all bevy-ts stages and `Time<Virtual>`, so an edited value is not overwritten by a system on the next frame. `bevy-ts/step` (`frames: number`, default 1) SHALL, while paused, run that many frames and pause again. The window and rendering SHALL keep running while paused. Before the game has started (see edit-mode), `bevy-ts/pause` with `paused: false` SHALL fail with "the game has not started; switch to play", and leave it paused.
@@ -196,3 +204,10 @@ With `BEVY_TS_FIXED_STEP=1`, an engine SHALL advance time as under `BEVY_TS_SCRE
 #### Scenario: A texture still loading
 - **WHEN** a client asks for a shot while a material's texture is still being read
 - **THEN** no answer comes while it loads; the shot is taken once it has loaded, and shows the texture
+
+### Requirement: Schemas carry string and list field types
+The layout in a TS component's `x-bevy-ts` SHALL name a `string` field's type `{ kind: "string" }` and a `T[]` field's type `{ kind: "list", of: <item type> }`, and its `properties` SHALL be a JSON Schema string or array of the item type. The protocol schema file SHALL list both kinds under a new protocol minor version.
+
+#### Scenario: An editor types a list
+- **WHEN** the inspector asks `bevy-ts/schema` for `game::Tag`
+- **THEN** `scores` has `{ kind: "list", of: { kind: "u32" } }` and an array property of integers
