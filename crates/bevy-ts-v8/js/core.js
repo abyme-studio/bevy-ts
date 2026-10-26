@@ -4543,9 +4543,11 @@ function addHoles(Acc, holes, name, write, C) {
       },
       set(v) {
         if (!write) throw new TypeError(`${path} is read-only here; take Mut<${name}>`);
-        if (list) heapMutDrop(`${t}:${rowEntity(this)}`);
-        if (heap) heapSet(t, rowEntity(this), encode, v, path);
-        else reflectSet(t, rowEntity(this), v);
+        const e = rowEntity(this);
+        // Only a run that edited a list in place has a key to drop: an assignment builds none.
+        if (list && REFLECT.pending.length) heapMutDrop(`${t}:${e}`);
+        if (heap) heapSet(t, e, encode, v, path);
+        else reflectSet(t, e, v);
       },
     });
   }
