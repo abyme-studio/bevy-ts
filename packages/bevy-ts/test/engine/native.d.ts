@@ -5,8 +5,8 @@
 import { Component, ReflectComponent, Resource } from "bevy-ts";
 import type { AssetFields, AssetLoad, AssetRef, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Quat, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
-export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { events: readonly (readonly ["Root" | { Node: string }, readonly ({ time?: number; event?: {  } })[]])[]; duration: number }>;
-export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", {  }>;
+export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number }>;
+export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", { graph: { nodes: { node_type: "Blend" | "Add" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; node_holes: never[]; edge_property: "directed"; edges: [number, number, null][] }; root: number; mask_groups: [string | { readonly names: readonly string[] }, number][] }>;
 export type Image = AssetFields<"bevy_image::image::Image", { sampler: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } } }>;
 export type TextureAtlasLayout = AssetFields<"bevy_image::texture_atlas::TextureAtlasLayout", { size: readonly [number, number]; textures: readonly ({ min?: readonly [number, number]; max?: readonly [number, number] })[] }>;
 export type Mesh = AssetFields<"bevy_mesh::mesh::Mesh", {  }>;
@@ -1484,16 +1484,16 @@ export declare class TsSaved extends ReflectComponent {
   declare value: Record<string, string>;
 }
 
-/** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
+/** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); graph: an enum with data (bevy_asset::handle::Handle<bevy_animation::graph::AnimationGraph>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
-  static readonly tsxProps: { clip?: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; repeat?: "Never" | { Count: number } | "Forever" };
+  static readonly tsxProps: { clip?: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; graph?: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null; repeat?: "Never" | { Count: number } | "Forever" };
   declare speed: f32;
   declare transition_secs: f32;
   declare paused: bool;
   declare cull: bool;
 }
-export interface PlayAnimation extends Holes<{ clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; repeat: "Never" | { Count: number } | "Forever" }> {}
+export interface PlayAnimation extends Holes<{ clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; graph: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null; repeat: "Never" | { Count: number } | "Forever" }> {}
 
 /** Reflect tier: no field is plain data (value: not plain data (alloc::vec::Vec<bevy_ts_levels::compose::MissingComponent>)). */
 export declare class MissingComponents extends ReflectComponent {

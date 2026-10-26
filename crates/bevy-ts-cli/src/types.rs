@@ -230,9 +230,29 @@ fn assets_named(registry: &TypeRegistry) -> Vec<(String, String, &TypeRegistrati
     out
 }
 
-/// Hand-mapped assets' fields, each by the reflected type its entry reads and writes it as
-/// (`bevy_ts::reflect_asset`'s `Image` entry).
-const HAND_FIELDS: &[(&str, &[(&str, &str)])] = &[("bevy_image::image::Image", &[("sampler", "bevy_image::image::ImageSampler")])];
+/// A hand-mapped asset's fields (`app.ts_hand_map`): the JSON its entry reads and writes.
+enum HandFields {
+    /// Each field by the reflected type it is written as (`bevy_ts::reflect_asset`'s `Image`).
+    Reflected(&'static [(&'static str, &'static str)]),
+    /// The fields as TS, for a builder TS holds as JSON (change `animation-control`).
+    Ts(&'static str),
+}
+
+const HAND_FIELDS: &[(&str, HandFields)] = &[
+    ("bevy_image::image::Image", HandFields::Reflected(&[("sampler", "bevy_image::image::ImageSampler")])),
+    (
+        "bevy_animation::graph::AnimationGraph",
+        HandFields::Ts(
+            "graph: { nodes: { node_type: \"Blend\" | \"Add\" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; \
+             node_holes: never[]; edge_property: \"directed\"; edges: [number, number, null][] }; root: number; \
+             mask_groups: [string | { readonly names: readonly string[] }, number][]",
+        ),
+    ),
+    (
+        "bevy_animation::AnimationClip",
+        HandFields::Ts("curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number"),
+    ),
+];
 
 /// The settings `T.load(path, settings)` takes, by the reflected type each is written as;
 /// `bevy_ts::reflect_asset`'s loader entries.
@@ -241,12 +261,11 @@ const LOAD_SETTINGS: &[(&str, &[(&str, &str)])] = &[("bevy_image::image::Image",
 /// A `bevy-ts/bevy` class written by hand in place of the generated one (change
 /// `animation-control`): a builder TS holds as JSON for a hand-mapped asset
 /// (`app.ts_hand_map`), or statics on a component. Its JS and d.ts replace the generated
-/// lines; an asset's `fields` is the JSON its hand-map reads and writes.
+/// lines; an asset's fields are in `HAND_FIELDS`.
 struct Hand {
     path: &'static str,
     js: &'static str,
     dts: &'static str,
-    fields: Option<&'static str>,
 }
 
 const HAND: &[Hand] = &[
@@ -254,23 +273,16 @@ const HAND: &[Hand] = &[
         path: "bevy_animation::AnimationTargetId",
         js: include_str!("hand_ts/animation_target_id.js"),
         dts: include_str!("hand_ts/animation_target_id.d.ts"),
-        fields: None,
     },
     Hand {
         path: "bevy_animation::graph::AnimationGraph",
         js: include_str!("hand_ts/animation_graph.js"),
         dts: include_str!("hand_ts/animation_graph.d.ts"),
-        fields: Some(
-            "graph: { nodes: { node_type: \"Blend\" | \"Add\" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; \
-             node_holes: never[]; edge_property: \"directed\"; edges: [number, number, null][] }; root: number; \
-             mask_groups: [string | { readonly names: readonly string[] }, number][]",
-        ),
     },
     Hand {
         path: "bevy_animation::AnimationClip",
         js: include_str!("hand_ts/animation_clip.js"),
         dts: include_str!("hand_ts/animation_clip.d.ts"),
-        fields: Some("curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number"),
     },
 ];
 
@@ -281,12 +293,10 @@ fn hand(path: &str) -> Option<&'static Hand> {
 /// An asset's fields as `bevy-ts/bevy` types them: as the writer takes them, tagged with its type
 /// path so refs of two assets never type as each other.
 fn asset_fields(registry: &TypeRegistry, path: &str, reg: &TypeRegistration) -> String {
-    if let Some(fields) = hand(path).and_then(|h| h.fields) {
-        return format!("AssetFields<{path:?}, {{ {fields} }}>");
-    }
-    let hand = HAND_FIELDS.iter().find(|(p, _)| *p == path).map(|(_, f)| *f);
+    let hand = HAND_FIELDS.iter().find(|(p, _)| *p == path).map(|(_, f)| f);
     let fields: Vec<String> = match (hand, reg.type_info()) {
-        (Some(fields), _) => fields.iter().map(|(f, ty)| format!("{}: {}", prop(f), ts_type(registry, ty, 1))).collect(),
+        (Some(HandFields::Ts(fields)), _) => vec![fields.to_string()],
+        (Some(HandFields::Reflected(fields)), _) => fields.iter().map(|(f, ty)| format!("{}: {}", prop(f), ts_type(registry, ty, 1))).collect(),
         (None, TypeInfo::Struct(st)) if bevy_ts::reflect_value::uncovered(path).is_none() => {
             st.iter().map(|f| format!("{}: {}", prop(f.name()), ts_type(registry, f.type_path(), 1))).collect()
         }
