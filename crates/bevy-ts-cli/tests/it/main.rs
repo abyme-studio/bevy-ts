@@ -19,6 +19,7 @@ mod classes;
 mod conditions;
 mod diagnostics;
 mod dev_edit;
+mod ecs_queries;
 mod exported;
 mod headless_pointer;
 mod headless_ui;

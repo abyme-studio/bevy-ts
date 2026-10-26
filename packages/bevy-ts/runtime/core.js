@@ -1598,19 +1598,40 @@ function resolveParams(g, params, at) {
   const out = [];
   for (const p of params) {
     switch (p.kind) {
-      case "query": {
-        const data = p.data.map((d) => {
+      case "query":
+      case "single":
+      case "populated": {
+        const datum = (d) => {
           if (d.entity) return { entity: true };
+          if (d.has) {
+            const C = refClass(g, d.has, at);
+            return { has: componentRef(C, at, "Has<...>"), cls: C };
+          }
+          if (d.anyOf) return { anyOf: d.anyOf.map(datum) };
           const C = refClass(g, d.component, at);
-          return { component: componentRef(C, at, "query data"), mutable: !!(d.mut || d.mutable), optional: !!d.optional, cls: C };
-        });
-        const filter = p.filter.map((f) => {
+          const r = { component: componentRef(C, at, "query data"), mutable: !!(d.mut || d.mutable), optional: !!d.optional, cls: C };
+          if (d.ref) r.ref = true;
+          return r;
+        };
+        const filterOf = (f) => {
+          if (f === "spawned") return f;
           const [k] = Object.keys(f);
+          if (k === "or") return { or: f.or.map(filterOf) };
           return { [k]: componentRef(refClass(g, f[k], at), at, `${k} filter`) };
-        });
-        out.push({ kind: "query", data, filter });
+        };
+        const q = { kind: p.kind, data: p.data.map(datum), filter: p.filter.map(filterOf) };
+        if (p.kind === "single") q.optional = !!p.optional;
+        out.push(q);
         break;
       }
+      case "removedComponents": {
+        const C = refClass(g, p.component, at);
+        out.push({ kind: p.kind, component: componentRef(C, at, "RemovedComponents<...>") });
+        break;
+      }
+      case "systemChangeTick":
+        out.push({ kind: p.kind });
+        break;
       case "res":
       case "resMut": {
         const R = refClass(g, p.resource, at);
@@ -1641,7 +1662,10 @@ function resolveParams(g, params, at) {
       }
       case "on":
         if (p.lifecycle) {
-          out.push({ kind: "on", lifecycle: p.lifecycle, component: componentRef(refClass(g, p.component, at), at, "On<...>") });
+          const C = refClass(g, p.component, at);
+          // Discard, Remove and Despawn carry the value as it was when the event fired.
+          const carries = p.lifecycle === "discard" || p.lifecycle === "remove" || p.lifecycle === "despawn";
+          out.push({ kind: "on", lifecycle: p.lifecycle, component: componentRef(C, at, "On<...>"), cls: carries ? C : undefined });
         } else {
           const E = refClass(g, p.event, at);
           if (E[KIND] !== "event") throw declError(`On<${E.name}>: ${E.name} is not an Event class`, at);
@@ -1673,7 +1697,10 @@ function resolveParams(g, params, at) {
 function manifestParams(params) {
   return params.map((p) => {
     const { cls, ...rest } = p;
-    if (rest.kind === "query") rest.data = rest.data.map(({ cls, ...d }) => d);
+    if (rest.kind === "query" || rest.kind === "single" || rest.kind === "populated") {
+      const strip = ({ cls, ...d }) => (d.anyOf ? { anyOf: d.anyOf.map(strip) } : d);
+      rest.data = rest.data.map(strip);
+    }
     if (rest.kind === "bundle") rest.fields = rest.fields.map((f) => ({ name: f.name, param: manifestParams([f.param])[0] }));
     return rest;
   });
@@ -1960,12 +1987,20 @@ const ROW = Symbol("row");
 const TICK = Symbol("tick");
 const TICKS = Symbol("ticks");
 const PRESENT = Symbol("present");
+// `Ref<C>` rows: the added-tick column and the system's last run.
+const ADDED = Symbol("added");
+const LAST_RUN = Symbol("lastRun");
 const VIEW_KEY = Object.fromEntries(Object.keys(VIEW_CTORS).map((v) => [v, Symbol(v)]));
 const SLOT_NAMES = ["$r", "$k", "$t", ...Object.keys(VIEW_KEY).map((v) => "$" + v)];
 const SLOT_KEYS = [ROW, TICK, TICKS, ...Object.values(VIEW_KEY)];
 
 function setterTail(write) {
   return write ? "p[$t][p[$r]] = p[$k];" : "throw new TypeError(READONLY);";
+}
+
+/** A setter's body: a read view throws before writing anything. */
+function setter(set, write) {
+  return write ? `${set} ${setterTail(true)}` : setterTail(false);
 }
 
 /** Source for reading/writing one scalar at byte offset `off` of a `size`-byte row. */
@@ -2021,7 +2056,7 @@ function generateAccessor(name, layout, write) {
       names.forEach((n, i) => {
         const c = scalarCode("f32", f.offset + i * 4, size);
         cls.push(`get ${n}() { const p = this.p; return ${c.get}; }`);
-        cls.push(`set ${n}(v) { const p = this.p; ${c.set} ${setterTail(write)} }`);
+        cls.push(`set ${n}(v) { const p = this.p; ${setter(c.set, write)} }`);
       });
       if (lanes === 2) cls.push(`get z() { return 0; } set z(v) {}`);
       if (write) {
@@ -2070,7 +2105,7 @@ function generateAccessor(name, layout, write) {
           c = scalarCode(scalarKind(el), off, size, el.kind === "enum" ? el : undefined);
         }
         cls.push(`get ${i}() { const p = this.p; return ${c.get}; }`);
-        cls.push(`set ${i}(v) { const p = this.p; ${c.set} ${setterTail(write)} }`);
+        cls.push(`set ${i}(v) { const p = this.p; ${setter(c.set, write)} }`);
       }
       cls.push(`get(i) { return this[i]; } set(i, v) { if (i < 0 || i >= ${t.len}) throw new RangeError("index " + i); this[i] = v; }`);
       cls.push(`toArray() { return Array.from({ length: ${t.len} }, (_, i) => this[i]); } toJSON() { return this.toArray(); }`);
@@ -2087,7 +2122,7 @@ function generateAccessor(name, layout, write) {
     } else {
       const c = scalarCode(scalarKind(t), f.offset, size, t.kind === "enum" ? t : undefined);
       parts.push(`get ${key}() { const p = this; return ${c.get}; }`);
-      parts.push(`set ${key}(v) { const p = this; ${c.set} ${setterTail(write)} }`);
+      parts.push(`set ${key}(v) { const p = this; ${setter(c.set, write)} }`);
     }
   }
   const views = viewsFor(layout);
@@ -2205,7 +2240,7 @@ class Table {
   }
   arrays(T, c) {
     const buf = this.q.raw[this.i][2][c];
-    const C = this.q.data[this.q.dataIndexOfColumn[c]].cls;
+    const C = this.q.parts[c].cls;
     const out = { buffer: buf };
     for (const n of C.views) out[n] = buf ? new VIEW_CTORS[n](buf) : null;
     out.offsets = C.offsets;
@@ -2244,27 +2279,68 @@ function rawWritable(T) {
   }
 }
 
+// Bevy's `Tick::is_newer_than`: ticks wrap, so both are measured back from this run.
+const MAX_CHANGE_AGE = 4294967295 - (2 * 518400000 - 1);
+function newerThan(t, lastRun, thisRun) {
+  const sinceT = Math.min((thisRun - t) >>> 0, MAX_CHANGE_AGE);
+  const sinceRun = Math.min((thisRun - lastRun) >>> 0, MAX_CHANGE_AGE);
+  return sinceRun > sinceT;
+}
+
+/** `Ref<C>`'s accessor: `C`'s read view plus the row's change ticks. */
+function refClassOf(C) {
+  if (!C.Ref || C.Ref.base !== C.Read) {
+    const R = class extends C.Read {
+      /** Whether the value was added since this system last ran (Bevy's `Ref::is_added`). */
+      isAdded() {
+        return newerThan(this[ADDED][this[ROW]], this[LAST_RUN], this[TICK]);
+      }
+      /** Whether the value was changed (or added) since this system last ran. */
+      isChanged() {
+        return newerThan(this[TICKS][this[ROW]], this[LAST_RUN], this[TICK]);
+      }
+      /** The tick the value last changed at. */
+      lastChanged() {
+        return this[TICKS][this[ROW]];
+      }
+    };
+    R.base = C.Read;
+    C.Ref = R;
+  }
+  return C.Ref;
+}
+
 class QueryParam {
   constructor(desc, marks) {
-    // `data`: per datum, { entity } or { cls, write, optional, column }.
+    // `data`: per datum, { entity }, { has, bit }, { anyOf: [part...], row } or a part:
+    // { cls, write, optional, ref, column }.
     this.data = [];
+    this.parts = [];
     this.columnWrites = [];
-    this.dataIndexOfColumn = [];
     this.columnOf = new Map();
-    for (const d of desc.data) {
-      if (d.entity) {
-        this.data.push({ entity: true });
-        continue;
-      }
+    let bit = 0;
+    const part = (d) => {
       const column = this.columnWrites.length;
       this.columnWrites.push(!!d.mutable);
-      this.dataIndexOfColumn.push(this.data.length);
       if (!this.columnOf.has(d.cls)) this.columnOf.set(d.cls, column);
-      this.data.push({ cls: d.cls, write: !!d.mutable, optional: !!d.optional, column });
+      const p = { cls: d.cls, write: !!d.mutable, optional: !!d.optional, ref: !!d.ref, column };
+      this.parts.push(p);
+      return p;
+    };
+    for (const d of desc.data) {
+      if (d.entity) this.data.push({ entity: true });
+      else if (d.has) this.data.push({ has: true, bit: bit++ });
+      else if (d.anyOf) {
+        const parts = d.anyOf.map((x) => part({ ...x, optional: true }));
+        this.data.push({ anyOf: parts, row: new Array(parts.length) });
+      } else this.data.push(part(d));
     }
+    // Plain components only: the hot loop may skip `fill`.
+    this.plain = this.data.every((d) => d.cls);
     this.marks = marks;
     this.raw = [];
     this.tick = 0;
+    this.lastRun = 0;
     this.paramIndex = 0;
     this.accs = null;
     this._tables = null;
@@ -2273,35 +2349,52 @@ class QueryParam {
   bind(raw, tick, paramIndex) {
     this.raw = raw;
     this.tick = tick;
+    this.lastRun = raw.lastRun || 0;
     this.paramIndex = paramIndex;
     this._tables = null;
     this._index = null;
-    if (!this.accs) this.accs = this.data.map((d) => (d.entity ? null : new (d.write ? d.cls.Write : d.cls.Read)()));
+    if (!this.accs) this.accs = this.newAccs();
   }
-  /** Points the reused accessors at table `t`; returns false for tables whose optional data is absent. */
+  /** One accessor per column. */
+  newAccs() {
+    return this.parts.map((p) => new (p.ref ? refClassOf(p.cls) : p.write ? p.cls.Write : p.cls.Read)());
+  }
+  /** Points the reused accessors at table `t`; a column the table lacks reads as absent. */
   enter(t, accs) {
     const tb = this.raw[t];
-    for (let i = 0; i < this.data.length; i++) {
-      const d = this.data[i];
-      if (d.entity) continue;
-      const buf = tb[2][d.column];
-      const a = accs[i];
+    for (let c = 0; c < this.parts.length; c++) {
+      const p = this.parts[c];
+      const buf = tb[2][c];
+      const a = accs[c];
       if (!buf) {
         a[PRESENT] = false;
         continue;
       }
       a[PRESENT] = true;
-      for (const v of d.cls.views) a[VIEW_KEY[v]] = new VIEW_CTORS[v](buf);
-      a[TICKS] = tb[3][d.column] ? new Uint32Array(tb[3][d.column]) : DUMMY_TICKS;
+      for (const v of p.cls.views) a[VIEW_KEY[v]] = new VIEW_CTORS[v](buf);
+      a[TICKS] = tb[3][c] ? new Uint32Array(tb[3][c]) : DUMMY_TICKS;
       a[TICK] = this.tick;
+      if (p.ref) {
+        a[ADDED] = tb[6] && tb[6][c] ? new Uint32Array(tb[6][c]) : DUMMY_TICKS;
+        a[LAST_RUN] = this.lastRun;
+      }
     }
   }
-  fill(row, accs, ents, r) {
+  fill(row, accs, ents, r, tb) {
     for (let i = 0; i < this.data.length; i++) {
       const d = this.data[i];
       if (d.entity) row[i] = ents[r * 2] + ents[r * 2 + 1] * 4294967296;
-      else {
-        const a = accs[i];
+      else if (d.has) row[i] = ((tb[5] >>> d.bit) & 1) === 1;
+      else if (d.anyOf) {
+        const out = d.row;
+        for (let k = 0; k < d.anyOf.length; k++) {
+          const a = accs[d.anyOf[k].column];
+          a[ROW] = r;
+          out[k] = a[PRESENT] === false ? undefined : a;
+        }
+        row[i] = out;
+      } else {
+        const a = accs[d.column];
         a[ROW] = r;
         row[i] = a[PRESENT] === false ? undefined : a;
       }
@@ -2318,10 +2411,10 @@ class QueryParam {
       const ents = tb[1];
       const rows = tb[4];
       if (rows) {
-        for (let k = 0; k < rows.length; k++) fn(...this.fill(row, accs, ents, rows[k]));
+        for (let k = 0; k < rows.length; k++) fn(...this.fill(row, accs, ents, rows[k], tb));
       } else {
         const len = tb[0];
-        if (this.data.length === 2 && !this.data[0].entity && !this.data[1].entity) {
+        if (this.plain && this.data.length === 2) {
           const a0 = accs[0], a1 = accs[1];
           const p0 = a0[PRESENT] !== false, p1 = a1[PRESENT] !== false;
           for (let r = 0; r < len; r++) {
@@ -2330,7 +2423,7 @@ class QueryParam {
             fn(p0 ? a0 : undefined, p1 ? a1 : undefined);
           }
         } else {
-          for (let r = 0; r < len; r++) fn(...this.fill(row, accs, ents, r));
+          for (let r = 0; r < len; r++) fn(...this.fill(row, accs, ents, r, tb));
         }
       }
     }
@@ -2342,14 +2435,23 @@ class QueryParam {
       this.enter(t, accs);
       const rows = tb[4];
       const n = rows ? rows.length : tb[0];
-      for (let k = 0; k < n; k++) yield this.fill(new Array(this.data.length), accs, tb[1], rows ? rows[k] : k);
+      for (let k = 0; k < n; k++) yield this.copy(this.fill(new Array(this.data.length), accs, tb[1], rows ? rows[k] : k, tb));
     }
+  }
+  /** A row whose `AnyOf` tuples are its own (the reused ones change with the next row). */
+  copy(row) {
+    for (let i = 0; i < row.length; i++) if (this.data[i].anyOf) row[i] = row[i].slice();
+    return row;
   }
   /** Number of matches. */
   get len() {
     let n = 0;
     for (const tb of this.raw) n += tb[4] ? tb[4].length : tb[0];
     return n;
+  }
+  /** Whether nothing matches (Bevy's `Query::is_empty`). */
+  isEmpty() {
+    return this.len === 0;
   }
   /** The matched tables, for hand-written loops over the typed arrays. */
   get tables() {
@@ -2358,21 +2460,26 @@ class QueryParam {
   }
   /** A row with fresh accessors (safe to keep while calling `get` again in this run). */
   rowAt(t, r) {
-    const accs = this.data.map((d) => (d.entity ? null : new (d.write ? d.cls.Write : d.cls.Read)()));
+    const accs = this.newAccs();
     this.enter(t, accs);
-    return this.fill(new Array(this.data.length), accs, this.raw[t][1], r);
+    return this.copy(this.fill(new Array(this.data.length), accs, this.raw[t][1], r, this.raw[t]));
   }
   /** Exactly one match, or throws. */
   single() {
     if (this.len !== 1) throw new Error(`single(): expected exactly one match, found ${this.len}`);
+    return this.first();
+  }
+  /** The first match, or `undefined`. */
+  first() {
     for (let t = 0; t < this.raw.length; t++) {
       const tb = this.raw[t];
       const n = tb[4] ? tb[4].length : tb[0];
       if (n) return this.rowAt(t, tb[4] ? tb[4][0] : 0);
     }
+    return undefined;
   }
-  /** The row of `entity`, or `undefined`. */
-  get(entity) {
+  /** (table, row) of `entity`, or `undefined`. */
+  at(entity) {
     if (!this._index) {
       this._index = new Map();
       for (let t = 0; t < this.raw.length; t++) {
@@ -2383,8 +2490,71 @@ class QueryParam {
         else for (let r = 0; r < tb[0]; r++) visit(r);
       }
     }
-    const at = this._index.get(entity);
+    return this._index.get(entity);
+  }
+  /** The row of `entity`, or `undefined`. */
+  get(entity) {
+    const at = this.at(entity);
     return at ? this.rowAt(at[0], at[1]) : undefined;
+  }
+  /** Whether `entity` matches (Bevy's `Query::contains`). */
+  contains(entity) {
+    return this.at(entity) !== undefined;
+  }
+  /** The rows of the listed entities that match, in list order (Bevy's `Query::iter_many`). */
+  *iterMany(entities) {
+    for (const e of entities) {
+      const at = this.at(e);
+      if (at) yield this.rowAt(at[0], at[1]);
+    }
+  }
+  /** The rows of the listed entities; throws on the first that does not match (Bevy's `get_many`). */
+  getMany(entities) {
+    return Array.from(entities, (e) => {
+      const at = this.at(e);
+      if (!at) throw new Error(`getMany: entity ${e} does not match this query`);
+      return this.rowAt(at[0], at[1]);
+    });
+  }
+  /** Every set of `k` distinct rows, once each (Bevy's `iter_combinations`). */
+  *iterCombinations(k) {
+    if (!(k >= 1)) throw new RangeError(`iterCombinations: k must be at least 1, got ${k}`);
+    const at = [];
+    for (let t = 0; t < this.raw.length; t++) {
+      const tb = this.raw[t];
+      if (tb[4]) for (const r of tb[4]) at.push([t, r]);
+      else for (let r = 0; r < tb[0]; r++) at.push([t, r]);
+    }
+    const pick = new Array(k);
+    function* walk(from, depth, q) {
+      if (depth === k) {
+        yield pick.map(([t, r]) => q.rowAt(t, r));
+        return;
+      }
+      for (let i = from; i <= at.length - (k - depth); i++) {
+        pick[depth] = at[i];
+        yield* walk(i + 1, depth + 1, q);
+      }
+    }
+    yield* walk(0, 0, this);
+  }
+  /** `entity`'s parent, its parent's parent and on up to the root, through `ChildOf` data
+   * (Bevy's `iter_ancestors`). */
+  *iterAncestors(entity) {
+    const di = this.data.findIndex((d) => d.cls && d.cls.componentName === "ChildOf");
+    if (di < 0) throw new Error("iterAncestors needs ChildOf in the query's data (Query<[ChildOf]>)");
+    // ChildOf's one field, by whatever name its layout gives it.
+    const field = this.data[di].cls.layout.fields[0].name;
+    const seen = new Set([entity]);
+    let e = entity;
+    for (;;) {
+      const row = this.get(e);
+      const parent = row && row[di] ? row[di][field] : undefined;
+      if (parent === undefined || seen.has(parent)) return;
+      seen.add(parent);
+      yield parent;
+      e = parent;
+    }
   }
 }
 
@@ -2422,6 +2592,30 @@ class MessageReaderParam {
         yield a;
       }
     }
+  }
+}
+
+/** `RemovedComponents<C>`: entities that lost `C` since this system last read it. */
+class RemovedParam {
+  constructor() {
+    this.ents = new Uint32Array(0);
+  }
+  bind(frame) {
+    this.ents = frame;
+  }
+  get len() {
+    return this.ents.length / 2;
+  }
+  isEmpty() {
+    return this.ents.length === 0;
+  }
+  each(fn) {
+    const e = this.ents;
+    for (let i = 0; i < e.length; i += 2) fn(e[i] + e[i + 1] * 4294967296);
+  }
+  *[Symbol.iterator]() {
+    const e = this.ents;
+    for (let i = 0; i < e.length; i += 2) yield e[i] + e[i + 1] * 4294967296;
   }
 }
 
@@ -2463,6 +2657,7 @@ const BIND = Symbol("bind");
  * and `propagate(on)`.
  */
 function makeOn(cls) {
+  if (cls && !cls.Read) cls = undefined;
   const o = cls ? new cls.Read() : {};
   Object.defineProperty(o, "entity", { value: undefined, writable: true, enumerable: true });
   Object.defineProperty(o, "original", { value: undefined, writable: true, enumerable: true });
@@ -2578,10 +2773,33 @@ function buildSystem(g, s) {
   // `set` places a param whose value changes per run (an optional res: `undefined` when absent).
   const make = (p, set) => {
     switch (p.kind) {
-      case "query": {
+      case "query":
+      case "populated": {
         const q = new QueryParam(p, marks);
         consumers.push((frame, tick, i) => q.bind(frame, tick, i));
         return q;
+      }
+      case "single": {
+        // Rust skips the run unless the count fits, so the row is there (or, optional, undefined).
+        const q = new QueryParam(p, marks);
+        consumers.push((frame, tick, i) => {
+          q.bind(frame, tick, i);
+          set(q.first());
+        });
+        return undefined;
+      }
+      case "removedComponents": {
+        const r = new RemovedParam();
+        consumers.push((frame) => r.bind(frame));
+        return r;
+      }
+      case "systemChangeTick": {
+        const o = { thisRun: 0, lastRun: 0 };
+        consumers.push((frame) => {
+          o.thisRun = frame[0];
+          o.lastRun = frame[1];
+        });
+        return o;
       }
       case "res":
       case "resMut": {
@@ -2741,31 +2959,81 @@ function saveEntities(x) {
 }
 /** `OP_INSERT_REFLECT`'s modes: a whole component over its default, or fields over a just-inserted one. */
 const REFLECT_INSERT = 0, REFLECT_PATCH = 1;
+const OP_SPAWN_BATCH = 18, OP_INSERT_BATCH = 19, OP_INSERT_IF_NEW = 20, OP_TRY_INSERT = 21, OP_RETAIN = 22, OP_CLEAR = 23;
+const OP_REMOVE_WITH_REQUIRES = 24, OP_CLONE_AND_SPAWN = 25, OP_INSERT_RECURSIVE = 26, OP_REMOVE_RECURSIVE = 27, OP_ADD_CHILDREN = 28;
+const OP_DETACH_CHILDREN = 29, OP_DESPAWN_CHILDREN = 30;
+/** The `reserve(n)` host function (`commands::RESERVE`): `n` more spawn ids when the pool runs out. */
+const HOST_RESERVE = 0x3fffffff;
+const RESERVE_N = 256;
 
+/** `commands.entity(e)`: Bevy's `EntityCommands`, each method applied in order after the run. */
 class EntityCommands {
   constructor(commands, id) {
     this.commands = commands;
     this.id = id;
   }
+  /** Inserts components; an element's root components land on this entity, its children under it. */
   insert(...parts) {
     const els = parts.filter(isElement);
-    if (els.length) for (const el of els) this.commands.mount(el, { parent: this.id });
     const comps = parts.filter((p) => !isElement(p) && !isScoped(p));
+    if (els.length > 1) throw new TypeError("insert takes at most one element; insert the others one by one");
+    const nodes = els.length ? this.commands.rootNodes(els[0], "insert", comps) : null;
     if (comps.length) for (const op of encodeComponentsOps(OP_INSERT, this.id, comps)) this.commands.op(op);
     for (const p of parts.filter(isScoped)) this.commands.scoped(this.id, p);
+    if (nodes) this.commands.mountAt(nodes, this.id);
+    return this;
+  }
+  /** Inserts only the components this entity does not have yet (Bevy's `insert_if_new`). */
+  insertIfNew(...parts) {
+    this.commands.op(encodeComponentsOp(OP_INSERT_IF_NEW, this.id, components(parts, "insertIfNew"), "insertIfNew"));
+    return this;
+  }
+  /** Inserts, or does nothing if the entity is gone (Bevy's `try_insert`). */
+  tryInsert(...parts) {
+    this.commands.op(encodeComponentsOp(OP_TRY_INSERT, this.id, components(parts, "tryInsert"), "tryInsert"));
+    return this;
+  }
+  /** Inserts on this entity and every descendant through `Children` (Bevy's `insert_recursive`). */
+  insertRecursive(...parts) {
+    this.commands.op(encodeComponentsOp(OP_INSERT_RECURSIVE, this.id, components(parts, "insertRecursive"), "insertRecursive"));
     return this;
   }
   remove(...all) {
     for (const C of all.filter((C) => C && C[SCOPED] !== undefined)) this.commands.scoped(this.id, C, true);
     const classes = all.filter((C) => !(C && C[SCOPED] !== undefined));
     if (!classes.length) return this;
-    const w = new Writer();
-    w.u8(OP_REMOVE);
-    w.entity(this.id);
-    w.u16(classes.length);
-    for (const C of classes) w.u32(idOf(C));
-    this.commands.op(w.bytes());
+    this.commands.op(encodeIdsOp(OP_REMOVE, this.id, classes));
     return this;
+  }
+  /** Removes the components and every component they require (Bevy's `remove_with_requires`). */
+  removeWithRequires(...classes) {
+    this.commands.op(encodeIdsOp(OP_REMOVE_WITH_REQUIRES, this.id, classes));
+    return this;
+  }
+  /** Removes every component but these (and what they require) (Bevy's `retain`). */
+  retain(...classes) {
+    this.commands.op(encodeIdsOp(OP_RETAIN, this.id, classes));
+    return this;
+  }
+  /** Removes from this entity and every descendant through `Children` (Bevy's `remove_recursive`). */
+  removeRecursive(...classes) {
+    this.commands.op(encodeIdsOp(OP_REMOVE_RECURSIVE, this.id, classes));
+    return this;
+  }
+  /** Removes every component; the entity stays (Bevy's `clear`). */
+  clear() {
+    this.commands.op(entityOp(OP_CLEAR, this.id));
+    return this;
+  }
+  /** Spawns a copy of this entity's components; the new entity at once (Bevy's `clone_and_spawn`). */
+  cloneAndSpawn() {
+    const e = this.commands.alloc();
+    const w = new Writer();
+    w.u8(OP_CLONE_AND_SPAWN);
+    w.entity(this.id);
+    w.entity(e);
+    this.commands.op(w.bytes());
+    return e;
   }
   setParent(parent) {
     const w = new Writer();
@@ -2791,12 +3059,65 @@ class EntityCommands {
     this.commands.op(w.bytes());
     return this;
   }
-  despawn() {
+  /** Makes each listed entity a child of this one (Bevy's `add_children`). */
+  addChildren(children) {
+    const list = [...children];
     const w = new Writer();
-    w.u8(OP_DESPAWN);
+    w.u8(OP_ADD_CHILDREN);
     w.entity(this.id);
+    w.u32(list.length);
+    for (const c of list) w.entity(c);
     this.commands.op(w.bytes());
+    return this;
   }
+  /** `fn(parent)`, where `parent.spawn(...parts)` spawns a child of this entity (Bevy's `with_children`). */
+  withChildren(fn) {
+    const self = this;
+    fn({
+      spawn(...parts) {
+        const c = self.commands.spawn(...parts);
+        self.commands.entity(c).setParent(self.id);
+        return c;
+      },
+    });
+    return this;
+  }
+  /** Removes `ChildOf` from every child; they stay (Bevy's `detach_all_children`). */
+  detachChildren() {
+    this.commands.op(entityOp(OP_DETACH_CHILDREN, this.id));
+    return this;
+  }
+  /** Despawns every child, with theirs (Bevy's `despawn_children`). */
+  despawnChildren() {
+    this.commands.op(entityOp(OP_DESPAWN_CHILDREN, this.id));
+    return this;
+  }
+  /** Despawns the entity with its children (`ChildOf` is a linked spawn). */
+  despawn() {
+    this.commands.op(entityOp(OP_DESPAWN, this.id));
+  }
+}
+
+function entityOp(op, e) {
+  const w = new Writer();
+  w.u8(op);
+  w.entity(e);
+  return w.bytes();
+}
+
+function encodeIdsOp(op, e, classes) {
+  const w = new Writer();
+  w.u8(op);
+  w.entity(e);
+  w.u16(classes.length);
+  for (const C of classes) w.u32(idOf(C));
+  return w.bytes();
+}
+
+/** Component parts only: elements are for `spawn` and `insert`. */
+function components(parts, method) {
+  if (parts.some(isElement)) throw new TypeError(`${method} takes components, not elements; use insert(<entity>...</entity>)`);
+  return parts;
 }
 
 function isElement(p) {
@@ -2809,6 +3130,7 @@ class Commands {
     this.at = 0;
     this.overflow = null;
     this.pool = null;
+    this.extra = [];
     this.poolUsed = 0;
     this.kinds = null;
     this.res = null;
@@ -2818,6 +3140,7 @@ class Commands {
     this.at = 0;
     this.overflow = null;
     this.pool = new Float64Array(pool);
+    this.extra = [];
     this.poolUsed = 0;
     this.kinds = kinds;
     this.res = res;
@@ -2849,20 +3172,34 @@ class Commands {
       this.overflow.push(bytes.slice());
     }
   }
+  /** The next spawn id: from the pool, then from `reserve` host calls once it runs out. */
   alloc() {
-    if (this.poolUsed >= this.pool.length) throw new Error(`spawn pool exhausted: at most ${this.pool.length} spawns per call`);
-    return this.pool[this.poolUsed++];
+    const n = this.pool.length;
+    if (this.poolUsed >= n + this.extra.length) this.reserve();
+    const i = this.poolUsed++;
+    return i < n ? this.pool[i] : this.extra[i - n];
   }
-  /** Spawns an entity with components (`Health.of({ hp: 3 })`, or a class for its defaults), or mounts a prefab element. */
+  reserve() {
+    if (!core) throw new Error(`spawn pool exhausted: at most ${this.pool.length} spawns per call without the engine`);
+    HOST.slots[0] = RESERVE_N;
+    const got = core.ops.op_bevyts_host(HOST_RESERVE, HOST.slotBytes, HOST.resultBytes, HOST.EMPTY, HOST.EMPTY, HOST.EMPTY, HOST.EMPTY);
+    if (!(got > 0)) HOST.fail("commands", "reserve");
+    for (let k = 0; k < got; k++) this.extra.push(HOST.result[k]);
+  }
+  /**
+   * Spawns an entity with components (`Health.of({ hp: 3 })`, or a class for its defaults) and at
+   * most one element, whose root is the entity spawned: the components go on it, its children
+   * under it. Returns the entity at once.
+   */
   spawn(...parts) {
-    if (parts.length === 1 && isElement(parts[0])) {
-      this.mount(parts[0]);
-      return undefined;
-    }
+    const els = parts.filter(isElement);
+    const comps = parts.filter((p) => !isElement(p) && !isScoped(p));
+    if (els.length > 1) throw new TypeError("spawn takes at most one element; spawn each, or wrap them in <entity>");
+    const nodes = els.length ? this.rootNodes(els[0], "spawn", comps) : null;
     const e = this.alloc();
-    for (const op of encodeComponentsOps(OP_SPAWN, e, parts.filter((p) => !isElement(p) && !isScoped(p)))) this.op(op);
+    for (const op of encodeComponentsOps(OP_SPAWN, e, comps)) this.op(op);
     for (const p of parts.filter(isScoped)) this.scoped(e, p);
-    for (const el of parts.filter(isElement)) this.mount(el, { parent: e });
+    if (nodes) this.mountAt(nodes, e);
     return e;
   }
   /** A state-scoped component on `e`: its kind, machine and value as the generation numbers them. */
@@ -2883,6 +3220,38 @@ class Commands {
       w.u32(St.values.indexOf(p.value.value));
     }
     this.op(w.bytes());
+  }
+  /** Spawns each part list as one entity, in one op (Bevy's `spawn_batch`); the entities, in order. */
+  spawnBatch(list) {
+    const items = [...list].map((parts) => components(Array.isArray(parts) ? parts : [parts], "spawnBatch"));
+    const ids = items.map(() => this.alloc());
+    this.op(encodeBatchOp(OP_SPAWN_BATCH, items.map((parts, i) => [ids[i], parts]), "spawnBatch"));
+    return ids;
+  }
+  /** Inserts on each listed entity, `[entity, ...parts]`, in one op (Bevy's `insert_batch`). */
+  insertBatch(list) {
+    const items = [...list].map(([e, ...parts]) => [e, components(parts, "insertBatch")]);
+    this.op(encodeBatchOp(OP_INSERT_BATCH, items, "insertBatch"));
+  }
+  /** An element's description, checked to be one `<entity>` whose components `comps` do not repeat. */
+  rootNodes(element, method, comps) {
+    const g = S.gens.get(S.live);
+    const nodes = describe(element, g ? g.tsx : undefined);
+    if (nodes.length !== 1 || nodes[0].slot !== undefined) {
+      throw new TypeError(`${method}(<>...</>): a fragment has no single root; ${method} each, or wrap them in <entity>`);
+    }
+    for (const part of comps) {
+      const C = typeof part === "function" ? part : part && part.constructor;
+      const name = C && C.componentName;
+      if (name && nodes[0].components.some((c) => c.type === name)) {
+        throw new TypeError(`${method}: ${name} is given beside the element and on its root <entity>; give it once`);
+      }
+    }
+    return nodes;
+  }
+  /** Mounts a checked description with its root on `entity`. */
+  mountAt(nodes, entity) {
+    this.custom("tsx/mount", { nodes, entity });
   }
   /** Commands for one entity. */
   entity(e) {
@@ -3106,12 +3475,12 @@ function idOf(C) {
 }
 
 /**
- * A spawn or insert as ops: one `op` with every layout value's bytes, then an
- * `OP_INSERT_REFLECT` per reflect-tier value and per layout value that sets holes
+ * A spawn or insert's values split: each layout value's bytes, and an `OP_INSERT_REFLECT` per
+ * reflect-tier value and per layout value that sets holes
  * (`DirectionalLight.of({ illuminance: 8000, color })`: `illuminance` in the bytes, `color` a
  * patch written through reflection right after).
  */
-function encodeComponentsOps(op, e, parts) {
+function splitParts(e, parts) {
   const layout = [];
   const reflected = [];
   for (const part of parts) {
@@ -3140,10 +3509,11 @@ function encodeComponentsOps(op, e, parts) {
     }
     layout.push([C, encodeWithLayout(C, C.layout, own)]);
   }
-  // Always the spawn or insert op, even with no layout values: Rust ties the reflected ops after
-  // it into one command, checked whole before any of it applies.
-  const w = new Writer();
-  w.u8(op);
+  return { layout, reflected };
+}
+
+/** The entity and its layout values, as a spawn or insert op carries them. */
+function writeLayout(w, e, layout) {
   w.entity(e);
   w.u16(layout.length);
   for (const [C, bytes] of layout) {
@@ -3151,7 +3521,39 @@ function encodeComponentsOps(op, e, parts) {
     w.u32(bytes.length);
     w.raw(bytes);
   }
+}
+
+/** A spawn or insert as ops: the op with the layout values, then the reflected ones. */
+function encodeComponentsOps(op, e, parts) {
+  const { layout, reflected } = splitParts(e, parts);
+  // Always the spawn or insert op, even with no layout values: Rust ties the reflected ops after
+  // it into one command, checked whole before any of it applies.
+  const w = new Writer();
+  w.u8(op);
+  writeLayout(w, e, layout);
   return [w.bytes()].concat(reflected);
+}
+
+/** One op of layout values only: `insertIfNew`, `tryInsert`, `insertRecursive` and the batches. */
+function encodeComponentsOp(op, e, parts, method) {
+  const w = new Writer();
+  w.u8(op);
+  writeLayoutOnly(w, e, parts, method);
+  return w.bytes();
+}
+
+function writeLayoutOnly(w, e, parts, method) {
+  const { layout, reflected } = splitParts(e, parts);
+  if (reflected.length) throw new TypeError(`${method} takes layout values only; a reflected value or one with holes goes through insert or spawn`);
+  writeLayout(w, e, layout);
+}
+
+function encodeBatchOp(op, items, method) {
+  const w = new Writer();
+  w.u8(op);
+  w.u32(items.length);
+  for (const [e, parts] of items) writeLayoutOnly(w, e, parts, method);
+  return w.bytes();
 }
 
 /** `OP_INSERT_REFLECT`: the entity, the mode, the type's name and its JSON (empty for its default). */

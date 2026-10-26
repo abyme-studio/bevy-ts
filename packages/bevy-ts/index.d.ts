@@ -375,22 +375,50 @@ type StateValueOf<G> = G extends { readonly [stateBrand]: { values: infer V exte
 
 declare const mutBrand: unique symbol;
 declare const optBrand: unique symbol;
+declare const refBrand: unique symbol;
+declare const hasBrand: unique symbol;
+declare const anyOfBrand: unique symbol;
+declare const singleBrand: unique symbol;
 declare const filterBrand: unique symbol;
 declare const resBrand: unique symbol;
 export type Mut<T> = { readonly [mutBrand]: T };
-/** Query data `Option<C>`; a system param `Option<Res<R>>` is `undefined` when `R` is absent. */
-export type Option<T> = T extends { readonly [resBrand]: true } ? T | undefined : OptionData<T>;
+/** Query data `Option<C>`; a system param `Option<Res<R>>` is `undefined` when `R` is absent, and
+ * `Option<Single<...>>` is zero or one match. */
+export type Option<T> = T extends { readonly [resBrand]: true } ? T | undefined : T extends { readonly [singleBrand]: true } ? T | undefined : OptionData<T>;
 type OptionData<T> = { readonly [optBrand]: T };
+/** Read access plus the row's change ticks, as Bevy's `Ref<T>`: `isAdded()`, `isChanged()`, `lastChanged()`. */
+export type Ref<T> = { readonly [refBrand]: T };
+/** Whether the row has `T`, as Bevy's `Has<T>`: a `boolean`, no access to `T`, never filters. */
+export type Has<T> = { readonly [hasBrand]: T };
+/** Each part as `Option`, and at least one present, as Bevy's `AnyOf<(A, B)>`. */
+export type AnyOf<Ts extends readonly unknown[]> = { readonly [anyOfBrand]: Ts };
 export type With<T> = { readonly [filterBrand]: ["with", T] };
 export type Without<T> = { readonly [filterBrand]: ["without", T] };
 /** Rows whose component changed since this system last ran (bridge per-row ticks). */
 export type Changed<T> = { readonly [filterBrand]: ["changed", T] };
 export type Added<T> = { readonly [filterBrand]: ["added", T] };
+/** Entities spawned since this system last ran, as Bevy's `Spawned`. */
+export type Spawned = { readonly [filterBrand]: ["spawned"] };
+/** Any of the filters, as Bevy's `Or<(F1, F2)>`: `Or<[Changed<Health>, Added<Shield>]>`. */
+export type Or<Fs extends readonly unknown[]> = { readonly [filterBrand]: ["or", Fs] };
+
+/** The change ticks a `Ref<T>` row carries. */
+export interface RefTicks {
+  /** Added since this system last ran (Bevy's `Ref::is_added`). */
+  isAdded(): boolean;
+  /** Changed (or added) since this system last ran (Bevy's `Ref::is_changed`). */
+  isChanged(): boolean;
+  /** The tick it last changed at (Bevy's `Ref::last_changed`). */
+  lastChanged(): number;
+}
 
 type NotReflect<T> = T extends ReflectComponent ? never : T;
 type Item<D> =
   D extends Entity ? Entity
   : D extends OptionData<infer X> ? Item<X> | undefined
+  : D extends Has<unknown> ? boolean
+  : D extends Ref<infer T> ? ReadView<NotReflect<T>> & RefTicks
+  : D extends AnyOf<infer Ts> ? { -readonly [I in keyof Ts]: Item<Ts[I]> | undefined }
   : D extends Mut<infer T> ? NotReflect<T>
   : D extends abstract new (...a: never) => infer I ? ReadView<NotReflect<I>> // value form: Mut(C) / C
   : ReadView<NotReflect<D>>;
@@ -433,6 +461,18 @@ export interface QueryOf<R extends unknown[]> extends Iterable<R> {
   /** Exactly one match, or throws (Bevy's `single`). */
   single(): R;
   get(e: Entity): R | undefined;
+  /** Whether `e` matches (Bevy's `contains`). */
+  contains(e: Entity): boolean;
+  /** Whether nothing matches (Bevy's `is_empty`). */
+  isEmpty(): boolean;
+  /** The rows of the listed entities that match, in list order (Bevy's `iter_many`). */
+  iterMany(entities: Iterable<Entity>): IterableIterator<R>;
+  /** The rows of the listed entities; throws naming the first that does not match (Bevy's `get_many`). */
+  getMany(entities: Iterable<Entity>): R[];
+  /** Every set of `k` distinct rows, once each (Bevy's `iter_combinations`). */
+  iterCombinations(k: number): IterableIterator<R[]>;
+  /** With `ChildOf` data: `e`'s parent, then its parent, up to the root (Bevy's `iter_ancestors`). */
+  iterAncestors(e: Entity): IterableIterator<Entity>;
   readonly len: number;
   /** This run's change tick, for `split` tables. */
   readonly tick: number;
@@ -456,6 +496,24 @@ type Claimed<C, T, Else> = {
 /** The brand (never read) lets `Option` tell a resource param from query data. */
 export type Res<T> = Claimed<ResClaims, T, ReadView<T> & { readonly [resBrand]: true }>;
 export type ResMut<T> = Claimed<ResMutClaims, T, T & { readonly [resBrand]: true }>;
+/**
+ * Exactly one match, given as that row, as Bevy's `Single<D, F>`: with none or several the system
+ * is skipped (no call, no error). `Option<Single<...>>`: zero or one, the row or `undefined`.
+ */
+export type Single<Ds extends readonly unknown[], _Filter = never> = Row<Ds> & { readonly [singleBrand]: true };
+/** A query with at least one match, as Bevy's `Populated<D, F>`: with none the system is skipped. */
+export type Populated<Ds extends readonly unknown[], _Filter = never> = QueryOf<Row<Ds>>;
+/** Entities that lost `C` (removed or despawned) since this system last read it, as Bevy's `RemovedComponents<C>`. */
+export interface RemovedComponents<_C> extends Iterable<Entity> {
+  each(f: (e: Entity) => void): void;
+  readonly len: number;
+  isEmpty(): boolean;
+}
+/** This run's tick and the system's last-run tick, as Bevy's `SystemChangeTick`. */
+export interface SystemChangeTick {
+  readonly thisRun: number;
+  readonly lastRun: number;
+}
 /** Per-system state with a layout, `Local<{ timer: f32; wave: u32 }>`. Kept in Rust under the system's id; survives reloads. */
 export type Local<T> = T;
 export interface MessageReader<M> extends Iterable<ReadView<M>> {
@@ -502,9 +560,19 @@ export declare const DisableOnEnter: StateScoped;
 export declare const EnableOnExit: StateScoped;
 export declare const EnableOnEnter: StateScoped;
 
+type Part = Component | ReflectComponent | ComponentClass;
 export interface Commands {
-  /** Components (`Health.of({ hp: 3 })`, or a class for its defaults) or a prefab element (`<Grunt speed={3} />`). */
-  spawn(...parts: readonly (Component | ReflectComponent | ComponentClass | Element | StateScopedValue)[]): Entity;
+  /**
+   * Components (`Health.of({ hp: 3 })`, or a class for its defaults) and at most one element
+   * (`<Grunt speed={3} />`), whose root `<entity>` is the entity returned, as Bevy's
+   * `spawn_scene` returns the root: the components go on that root, its children under it. A
+   * fragment throws.
+   */
+  spawn(...parts: readonly (Part | Element | StateScopedValue)[]): Entity;
+  /** One entity per part list, in one op, as Bevy's `spawn_batch`; the entities in order. */
+  spawnBatch(list: Iterable<readonly Part[]>): Entity[];
+  /** `[entity, ...parts]` each, in one op, as Bevy's `insert_batch`. */
+  insertBatch(list: Iterable<readonly [Entity, ...Part[]]>): void;
   entity(e: Entity): EntityCommands;
   /** As Rust's `commands.trigger(Explode { entity, radius })`: an entity event carries its target. */
   trigger(event: EntityEvent | Event): void;
@@ -545,9 +613,27 @@ export interface LoadWorldOptions {
   /** Makes each loaded entity without a parent a child of this one. */
   parent?: Entity | null;
 }
+/** Bevy's `EntityCommands`; each method applied in order after the run, under Bevy's name. */
 export interface EntityCommands {
-  insert(...parts: readonly (Component | ReflectComponent | ComponentClass | Element | StateScopedValue)[]): EntityCommands;
+  /** Components, and at most one element whose root components land on this entity, its children under it. */
+  insert(...parts: readonly (Part | Element | StateScopedValue)[]): EntityCommands;
+  /** Keeps a value already there (Bevy's `insert_if_new`). */
+  insertIfNew(...parts: readonly Part[]): EntityCommands;
+  /** Does nothing if the entity is gone (Bevy's `try_insert`). */
+  tryInsert(...parts: readonly Part[]): EntityCommands;
+  /** On this entity and every descendant through `Children` (Bevy's `insert_recursive`). */
+  insertRecursive(...parts: readonly Part[]): EntityCommands;
   remove(...cs: readonly (ComponentClass | StateScoped)[]): EntityCommands;
+  /** With every component they require (Bevy's `remove_with_requires`). */
+  removeWithRequires(...cs: readonly ComponentClass[]): EntityCommands;
+  /** Removes every other component (Bevy's `retain`). */
+  retain(...cs: readonly ComponentClass[]): EntityCommands;
+  /** From this entity and every descendant through `Children` (Bevy's `remove_recursive`). */
+  removeRecursive(...cs: readonly ComponentClass[]): EntityCommands;
+  /** Removes every component; the entity stays (Bevy's `clear`). */
+  clear(): EntityCommands;
+  /** A new entity with copies of this one's components, returned at once (Bevy's `clone_and_spawn`). */
+  cloneAndSpawn(): Entity;
   setParent(parent: Entity | null): EntityCommands;
   /**
    * Attaches an observer to this entity alone, as Bevy's `EntityCommands::observe`: an exported
@@ -555,6 +641,15 @@ export interface EntityCommands {
    * current target is this entity, bubbling hops included, and goes when the entity is despawned.
    */
   observe(observer: (on: On<never>, ...params: never[]) => void): EntityCommands;
+  /** Bevy's `add_children`. */
+  addChildren(children: Iterable<Entity>): EntityCommands;
+  /** `parent.spawn(...)` spawns a child of this entity (Bevy's `with_children`). */
+  withChildren(f: (parent: { spawn(...parts: readonly (Part | Element)[]): Entity }) => void): EntityCommands;
+  /** Bevy's `detach_all_children`. */
+  detachChildren(): EntityCommands;
+  /** Bevy's `despawn_children`. */
+  despawnChildren(): EntityCommands;
+  /** With its children (`ChildOf` is a linked spawn). */
   despawn(): void;
   readonly id: Entity;
 }
@@ -565,15 +660,23 @@ declare const lifecycleBrand: unique symbol;
 export type Add<C> = { readonly [lifecycleBrand]: ["add", C] };
 export type Insert<C> = { readonly [lifecycleBrand]: ["insert", C] };
 export type Remove<C> = { readonly [lifecycleBrand]: ["remove", C] };
+/** Before a value of `C` is replaced or removed (Bevy 0.20's `Discard`). */
+export type Discard<C> = { readonly [lifecycleBrand]: ["discard", C] };
+/** An entity with `C` is despawned (Bevy's `Despawn`). */
+export type Despawn<C> = { readonly [lifecycleBrand]: ["despawn", C] };
 /**
  * An observer's first parameter, as Bevy's `On<Explode>` / `On<Add<Health>>`: the event's fields
  * directly (`explode.radius`, as Rust's `On` derefs to the event), the current target as `entity`,
  * the first target of a bubbling event as `original` (Bevy's `original_event_target`), and
  * `propagate`. So an event's fields may not be named `entity` (bar an EntityEvent's target),
  * `original`, `propagate` or `toJSON`.
+ * `Discard`, `Remove` and `Despawn` give the component's fields as they were when the event fired
+ * (TS observers run later, when the value is gone).
  */
 export type On<E> =
-  & (E extends { readonly [lifecycleBrand]: unknown } ? { readonly entity: Entity; readonly original: Entity } : ReadView<E> & { readonly entity: Entity; readonly original: Entity })
+  & (E extends { readonly [lifecycleBrand]: ["discard" | "remove" | "despawn", infer C] } ? ReadView<C> & { readonly entity: Entity; readonly original: Entity }
+    : E extends { readonly [lifecycleBrand]: unknown } ? { readonly entity: Entity; readonly original: Entity }
+    : ReadView<E> & { readonly entity: Entity; readonly original: Entity })
   & { /** Stop bubbling. */ propagate(on: boolean): void };
 // ---------- Systems, schedules, ordering ----------
 

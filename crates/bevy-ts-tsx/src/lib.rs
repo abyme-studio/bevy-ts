@@ -479,6 +479,7 @@ impl Plugin for TsxPlugin {
         // the value cache.
         app.register_asset_reflect::<StandardMaterial>()
             .init_resource::<bevy_ts::reflect_asset::ScriptAssets>();
+        bevy_ts::commands::Bookkeeping::add::<TsxNode>(app.world_mut());
         app.init_resource::<TsxTree>()
             .init_resource::<intrinsics::IntrinsicAssets>()
             .init_resource::<reconcile::TemplateCache>();

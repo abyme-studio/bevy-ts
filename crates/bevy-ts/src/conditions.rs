@@ -265,6 +265,9 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
                     FilterDecl::Without(r) => without.push(component_id(world, r, c.ts)?),
                     FilterDecl::Changed(r) => changed.push(component_id(world, r, c.ts)?),
                     FilterDecl::Added(r) => added.push(component_id(world, r, c.ts)?),
+                    FilterDecl::Spawned | FilterDecl::Or(_) => {
+                        return Err("anyMatchFilter takes With, Without, Changed and Added; Spawned and Or need a query".to_string().into());
+                    }
                 }
             }
             with.extend(changed.iter().chain(&added));

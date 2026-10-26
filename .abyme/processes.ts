@@ -452,6 +452,8 @@ const processes = {
   "watcher-ready-soak": { cmd: "scripts/watcher-ready-soak.sh 8 5 2>&1 | grep -v ld64 | tee target/watcher-ready-soak.log" },
   // late-subscriber: bevy-ts-levels, the levels protocol tests, and clippy on both.
   "levels-late-subscriber-test": { cmd: "set -o pipefail; mkdir -p target; (cargo test --no-fail-fast -p bevy-ts-levels && cargo test -p bevy-ts-cli --test it -- levels_protocol:: && cargo clippy -p bevy-ts-levels -p bevy-ts-cli --all-targets -- -D warnings) 2>&1 | grep -v ld64 | tee target/levels-late-subscriber-test.log | grep -E \"^error|^warning|-->|^test result|FAILED|panicked\"" },
+  // Change ecs-queries: the protocol types, the touched crates' tests and lint, before `land add`.
+  "ecs-queries-tests": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:ecs-queries -- bash -c 'set -o pipefail; mkdir -p target; (scripts/gen-protocol.sh && cargo test -p bevy-ts --lib && cargo test -p bevy-ts-tsx --lib && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --test it -- ecs_queries:: systems:: tsx:: reload:: native_components:: surface:: schedules:: conditions:: rust_events:: rust_events_coverage:: rust_resources:: animation:: && cargo clippy -p bevy-ts -p bevy-ts-tsx -p bevy-ts-v8 -p bevy-ts-cli --all-targets -- -D warnings && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/ecs-queries-tests.log | grep -E \"^test result|FAILED|panicked|^error|left|right\"; echo tests exit $?'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

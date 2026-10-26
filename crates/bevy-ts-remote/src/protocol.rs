@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.30.0";
+pub const VERSION: &str = "1.31.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -4282,7 +4282,7 @@ pub struct SystemInfo {
     #[serde(rename = "lastRunMicros")]
     pub last_run_micros: u64,
     pub name: ::std::string::String,
-    ///Its params as the compile step declared them.
+    ///Its params as the compile step declared them: kind query, single, populated, removedComponents, systemChangeTick, res, resMut, local, commands, messageReader, messageWriter, state, nextState, on, port or bundle. Query data may hold has, anyOf and ref; filters or and spawned; on lifecycle discard and despawn.
     pub params: ::std::vec::Vec<SystemInfoParamsItem>,
     ///Components its queries read and never write.
     pub read: ::std::vec::Vec<::std::string::String>,

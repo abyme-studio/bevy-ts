@@ -151,6 +151,8 @@ impl Plugin for BevyTsPlugin {
         app.register_type::<commands::TsSpawned>().register_type::<ScriptHidden>();
         type_data::register(app);
         saves::register(app);
+        commands::Bookkeeping::add::<commands::TsSpawned>(app.world_mut());
+        commands::Bookkeeping::add::<ScriptHidden>(app.world_mut());
         app.init_resource::<components::TsComponents>()
             .init_resource::<systems::TsSystems>()
             .init_resource::<commands::CommandKinds>()

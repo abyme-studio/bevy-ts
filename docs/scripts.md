@@ -1,5 +1,7 @@
 # Scripts
 
+What systems can query and command, under Bevy's names: [ecs.md](ecs.md).
+
 ## Using npm packages
 
 A script imports a package by name, as in Node or a bundler:
