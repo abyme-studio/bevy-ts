@@ -923,7 +923,7 @@ fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, 
         Place::Entity(_) | Place::Resource if t.payload.is_some() => return Err(format!("{place} holds no {}", t.type_path)),
         Place::Entity(e) => Some(e),
         // The target's resource, wherever it lives.
-        Place::Resource => Some(world.resource_entities().get(t.component).ok_or_else(|| format!("resource {} does not exist", t.type_path))?),
+        Place::Resource => Some(crate::systems::resource_entity(world, t.component).map(|(e, _)| e).ok_or_else(|| format!("resource {} does not exist", t.type_path))?),
         _ => None,
     };
     let buf = slices.first_mut().ok_or("no buffer")?;

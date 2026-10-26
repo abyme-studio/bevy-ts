@@ -2437,6 +2437,11 @@ function resolveRegistrations(g) {
       continue;
     }
     if (typeof t !== "function") throw declError(`addSystems: ${String(t)} is not a system`, r.at);
+    // A function in runIf with no declaration: a condition factory not called (runOnce), a class,
+    // or an inline arrow, more often than an uncompiled module.
+    if (!d && r.schedule.schedule === "predicate") {
+      throw declError(`runIf(${name === "anonymous" ? "an inline function" : name}): pass a condition (inState(...), runOnce(), ...) or a predicate, an exported function returning boolean that bevy-ts compiles`, r.at);
+    }
     if (!d) throw declError(`${name} was compiled without bevy-ts: its param types were never read; load it through bevy-ts (or its Vite/vitest/esbuild plugin)`, r.at);
     if (d.error) throw declError(d.error, d.at || r.at);
     const params = resolveParams(g, d.params || [], d.at || r.at);

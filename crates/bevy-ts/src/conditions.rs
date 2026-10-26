@@ -1,8 +1,9 @@
 //! Run conditions, compiled from the manifest and evaluated in Rust with no call into JS: Bevy
 //! 0.20's built-in conditions under their names, the combinators, and conditions a crate exposes
-//! with `app.ts_condition`. A TS predicate is the one node that calls into JS, once per evaluation. A stateful condition keeps its tick, cursor or previous value in
+//! with `app.ts_condition`. A TS predicate is the one node that calls into JS, once per
+//! evaluation. A stateful condition keeps its tick, cursor or previous value in
 //! [`ConditionMemory`], per gated config and position in its tree, so a reload keeps it and a
-//! restart clears it.
+//! restart clears it. A predicate keeps its own in `SystemMemory`, under the same key.
 
 use crate::backend::SourceLocation;
 use crate::heap::{HeapBytes, HeapKind};
@@ -45,8 +46,10 @@ pub enum Condition {
     All(Vec<Condition>),
     Combine { op: CombineOp, a: Box<Condition>, b: Box<Condition>, eager: bool },
     Native { system: Arc<Mutex<BoxedCondition>> },
-    /// A TS predicate by identity: evaluating it is one call into JS.
-    Predicate { system: String },
+    /// A use of a TS predicate: `system` is its identity, `memory` this use's key in
+    /// `SystemMemory`, so each use has its own ticks, cursors and `Local`s, as each of Bevy's
+    /// `run_if(f)` is its own condition system. Evaluating it is one call into JS.
+    Predicate { system: String, memory: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -154,8 +157,16 @@ pub struct Compile<'a> {
     pub config: &'a str,
     /// Native condition instances this generation uses, by key.
     pub natives: &'a mut HashSet<String>,
-    /// The generation's TS predicates, by identity.
-    pub predicates: &'a HashSet<String>,
+    pub predicates: &'a mut PredicateUses,
+}
+
+/// The generation's TS predicates, and the uses its conditions make of them.
+#[derive(Default)]
+pub struct PredicateUses {
+    /// Predicates by identity.
+    pub declared: HashSet<String>,
+    /// Each use as (identity, memory key), in compile order.
+    pub uses: Vec<(String, String)>,
 }
 
 /// A resource condition's resource: `None` when no type has the name (the condition is never
@@ -311,10 +322,12 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             eager: *eager,
         },
         ConditionDecl::Predicate { system, location } => {
-            if !c.predicates.contains(system) {
+            if !c.predicates.declared.contains(system) {
                 return Err(CompileError { message: format!("runIf({}): not a predicate this generation declares", system.rsplit('#').next().unwrap_or(system)), location: location.clone() });
             }
-            Condition::Predicate { system: system.clone() }
+            let memory = format!("predicate:{slot_key}");
+            c.predicates.uses.push((system.clone(), memory.clone()));
+            Condition::Predicate { system: system.clone(), memory }
         }
         ConditionDecl::Native { name, args, location } => {
             let at = |message: String| CompileError { message, location: location.clone() };
@@ -339,7 +352,7 @@ fn state<'w>(world: &'w mut World, slot: &str) -> &'w mut ConditionState {
     world.get_resource_or_init::<ConditionMemory>().into_inner().0.entry(slot.to_string()).or_default()
 }
 
-/// Runs a TS predicate by identity and gives its return.
+/// Runs a use of a TS predicate, by its memory key, and gives its return.
 pub type CallPredicate<'a> = dyn FnMut(&mut World, &str) -> bool + 'a;
 
 /// Evaluates a condition. Stateful nodes advance each time they are evaluated, as Bevy's
@@ -366,8 +379,7 @@ pub fn evaluate(world: &mut World, c: &mut Condition, predicate: &mut CallPredic
             reader.unread(world, cursor as usize)
         }
         Condition::RunOnce { slot } => !std::mem::replace(&mut state(world, slot).flag, true),
-        // A removed resource leaves its entity behind: the component is what says it exists.
-        Condition::ResourceExists { id } => id.is_some_and(|id| world.contains_resource_by_id(id)),
+        Condition::ResourceExists { id } => id.is_some_and(|id| crate::systems::resource_entity(world, id).is_some()),
         Condition::Resource { kind, id, slot } => {
             let this_run = world.change_tick();
             let ticks = id.and_then(|id| world.get_resource_change_ticks_by_id(id));
@@ -455,7 +467,7 @@ pub fn evaluate(world: &mut World, c: &mut Condition, predicate: &mut CallPredic
             }
         }
         Condition::Native { system } => system.lock().unwrap().run_readonly((), world).unwrap_or(false),
-        Condition::Predicate { system } => predicate(world, system),
+        Condition::Predicate { memory, .. } => predicate(world, memory),
     }
 }
 
