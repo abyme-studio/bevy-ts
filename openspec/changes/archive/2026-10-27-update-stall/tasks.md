@@ -24,4 +24,4 @@
 - [x] 4.1 `docs/build.md`: `BEVY_TS_STALL_SECS` beside `BEVY_TS_SCREENSHOT`, the exit code 75, and the `Update stopped:` line
 - [x] 4.2 `docs/native.md`: `BEVY_TS_STALL_SECS` in the env list beside `BEVY_TS_PIPELINE_TRACE`
 - [x] 4.3 `docs/testing.md`: an app from `render_app()` or `base_app` is bounded by the engine's stall watchdog, so a test adds none of its own; a stall test sets `Call` and a short limit on the plugin, never an env var
-- [ ] 4.4 Tell `ts-heap-fields-2` (through the lead) to drop its `common::watchdog` call in `ambient_light.rs` if this lands first
+- [x] 4.4 Tell `ts-heap-fields-2` (through the lead) to drop its `common::watchdog` call in `ambient_light.rs` if this lands first (moot: `ts-heap-fields-2` landed first, and this change dropped the call and moved `ambient_light` to `render_app()`)
