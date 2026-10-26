@@ -148,7 +148,7 @@ A query param SHALL offer `q.each((...row) => ...)`, where each element of `row`
 - **THEN** it yields `b`, then `a`
 
 ### Requirement: Change detection on written rows
-Each TS system run SHALL take its own change tick from `World::increment_change_tick` and pass it to JS as `q.tick`. A generated accessor's setter SHALL store that tick in the row's changed tick on every write, so a row is changed when and only when a system wrote it (a write of an equal value included, as with Bevy's `Mut`). After the run, Rust SHALL set the summary tick of every written column in every matched table and SHALL fill the ticks of every table taken through `table.write(T)`. Rows a system did not write SHALL NOT be marked changed. Columns no query writes SHALL NOT be marked changed. In dev builds, bevy-ts SHALL hash those columns before and after the run and report a system that wrote to one. Setting a row's tick SHALL cost one typed-array store and no call into Rust.
+Each TS system run SHALL take its own change tick from `World::increment_change_tick` and pass it to JS as `q.tick`. A generated accessor's setter SHALL store that tick in the row's changed tick on every write, so a row is changed when and only when a system wrote it (a write of an equal value included, as with Bevy's `Mut`). After the run, Rust SHALL set the summary tick of every written column in every matched table and SHALL fill the ticks of the rows the query matched in every table taken through `table.write(T)`. Rows a system did not write SHALL NOT be marked changed. Columns no query writes SHALL NOT be marked changed. In dev builds, bevy-ts SHALL hash those columns before and after the run and report a system that wrote to one. Setting a row's tick SHALL cost one typed-array store and no call into Rust.
 
 #### Scenario: A Rust system filtering Changed
 - **WHEN** a TS system queries `Mut<Mover>`, writes `speed` on 3 of 10,000 matched entities, and a Rust system queries `Changed` on `Mover`'s id
@@ -160,7 +160,11 @@ Each TS system run SHALL take its own change tick from `World::increment_change_
 
 #### Scenario: Raw arrays through write
 - **WHEN** a system takes `table.write(Mover)` and writes one row
-- **THEN** after the run every row of that table reads as changed
+- **THEN** after the run every row of that table the query matched reads as changed
+
+#### Scenario: Raw arrays under a sparse-set filter
+- **WHEN** four entities share `Plain`'s table, one also has the sparse-set `QTag`, and a system with `Query<[Mut<Plain>], With<QTag>>` takes `table.write(Plain)`
+- **THEN** after the run only the tagged row reads as changed to another system's `Changed<Plain>`, not its table-mates
 
 #### Scenario: Writing a read column in dev
 - **WHEN** a system writes to a component no query of it declares `Mut`, under `bevy-ts dev`
