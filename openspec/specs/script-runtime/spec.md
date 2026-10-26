@@ -27,12 +27,20 @@ The core crate (`bevy-ts`) SHALL depend on no JS engine. It SHALL drive a backen
 - **WHEN** a script sends on a `WebSocket`
 - **THEN** the backend hands core a send request with the connection id, generation and bytes, and core's transport writes it
 
-### Requirement: JS runs on the main thread inside exclusive stage systems
-The isolate SHALL live on the thread that runs the main app's schedules and SHALL be stored as non-send data. TS systems SHALL run only inside bevy-ts's exclusive stage systems; no JS SHALL run concurrently with Rust systems of the main app. Remote protocol handlers that need the runtime SHALL run in `RemoteLast`, also on the main thread.
+### Requirement: JS runs on the main thread inside TS systems Bevy schedules
+The isolate SHALL live on the thread that runs the main app's schedules and SHALL be stored as non-send data. Each TS system SHALL be a Bevy system bound to that thread, holding the runtime, so no two TS systems run at once. A Rust system whose access does not conflict with a TS system's declared access MAY run on another thread while that TS system runs; a Rust system whose access conflicts SHALL NOT. Startup systems, state-transition systems, observers and plugin entry calls SHALL run inside bevy-ts's exclusive systems, as before. Remote protocol handlers that need the runtime SHALL run in `RemoteLast`, also on the main thread.
 
 #### Scenario: Rust systems around a JS stage
 - **WHEN** a schedule contains Rust systems ordered before and after the bevy-ts stage set
-- **THEN** those Rust systems still run in parallel with each other, and none overlaps a JS system
+- **THEN** those Rust systems still run in parallel with each other, and none overlaps a JS system of the set
+
+#### Scenario: A Rust system beside a TS system
+- **WHEN** a TS system in `Update` writes `Health`, and an unordered Rust system in `Update` reads only `Fuel`
+- **THEN** Bevy may run the Rust system on another thread while the TS system runs, and the TS system's call still runs on the main thread
+
+#### Scenario: A Rust system that writes what TS reads
+- **WHEN** an unordered Rust system in `Update` writes `Health` and a TS system in `Update` reads it
+- **THEN** the two never run at the same time
 
 ### Requirement: Host-side TypeScript compilation
 TS and TSX sources SHALL be compiled to JS by the host process with `oxc` (type stripping only, no type checking), producing a source map per module. `.tsx` SHALL compile with the automatic JSX runtime and `importSource: "bevy-ts"`; under `bevy-ts dev` it SHALL use the development transform, so each element carries its file, line and column in TS source coordinates. The engine SHALL load modules through its own module loader: relative imports and the built-in modules `bevy-ts`, `bevy-ts/bevy`, `bevy-ts/jsx-runtime` and `bevy-ts/jsx-dev-runtime` are resolved, and bare npm specifiers are resolved at compile time (see "npm packages resolve at compile time"). This change ships the two JSX runtime modules as the resolution targets only; what they do belongs to a later change. A relative import of a `.wgsl` file SHALL resolve to a synthetic module whose default export is an opaque shader-file value naming the file; the loader SHALL read the file host-side, not compile it, and watch it with the other loaded files. A missing `.wgsl` file SHALL fail the load with the importing file and line.

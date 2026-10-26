@@ -2,7 +2,7 @@
 
 - [x] 1.1 Rebase onto main after ecs-schedules stage 1 (3d641f44) and writable-native-params (584b78cf) land; all cargo through `~/dev/abyme/scripts/gate-slot`
 - [x] 1.2 Rewrite the `ts-systems` delta on the synced text of "Schedules, ordering and run conditions" (main 0594ddd7), and a `ts-schedules` delta: a stage is `BevyTsSet::<Stage>` holding each TS system as its own Bevy system; `openspec validate --strict`
-- [ ] 1.3 At archive: whichever of ecs-schedules and this change archives second takes the other's text of "Schedules, ordering and run conditions"
+- [x] 1.3 At archive: whichever of ecs-schedules and this change archives second takes the other's text of "Schedules, ordering and run conditions": ecs-schedules archived first; main's text of every requirement this change modifies is unchanged since 0594ddd7, so the deltas apply as written
 
 ## 2. Fetch and call
 
@@ -24,7 +24,7 @@
 - [x] 4.2 The new `ts-systems` scenarios: a group split across a stage and a slot, two configs with separate state
 - [x] 4.3 Reload keeps state: `last_run` (`Changed<T>` not refiring), `Local`s, message cursors, and ecs-schedules' `runOnce`, `resourceChanged` tick and `onTimer` time
 - [x] 4.4 writable-native-params' tick-per-run, refusal, undeclared-param-throws and output-before-params-order tests still pass
-- [ ] 4.5 `pnpm check` and the cargo suite green through gate-slot (land's check runs `pnpm check` and the affected cargo tests on the batch)
+- [x] 4.5 `pnpm check` and the cargo suite green through gate-slot (land's check runs `pnpm check` and the affected cargo tests on the batch): bevy-ts and bevy-ts-cli green through gate-slot on main ed6b1cf6
 
 ## 5. Docs
 
