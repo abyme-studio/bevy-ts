@@ -702,6 +702,7 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
         Target::Mesh2d(p) => intrinsics::insert_mesh2d(world, e, p),
         Target::Material2d(p) => intrinsics::insert_material2d(world, e, p, r.source.clone()),
         Target::ScriptMaterial { kind, props, gltf_material } => intrinsics::insert_script_material(world, e, kind, props, gltf_material.as_deref(), r.source.clone()),
+        Target::OwnedMaterial { asset, gltf_material } => intrinsics::insert_owned_material(world, e, *asset, gltf_material.as_deref(), r.source.clone()),
         Target::Ui(kind) => {
             let props: Map<String, Value> = r.controlled.clone().into_iter().collect();
             if let Err(m) = ui::insert(world, e, *kind, &props) {

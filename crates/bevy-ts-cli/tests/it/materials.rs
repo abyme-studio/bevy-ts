@@ -497,3 +497,110 @@ mod drawn {
         assert!(adds(c), "the cube adds its green to the red behind: {c:?}");
     }
 }
+
+// Change material-params, stage 2: owned instances from `Kind.add`, written in place.
+
+/// A `Glow` added at load, `<material asset={g} />` on a cube; `tick` runs each frame.
+fn owned(params: &str, tick: &str) -> String {
+    format!(
+        "import {{ app, assets, Update, type Local, type u32 }} from \"bevy-ts\";\nimport {{ color, f32, material }} from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n\nexport const Glow = material(\"game::Glow\", {{ params: {{ {params} }}, fragment: glow }});\nexport const g = Glow.add({{ color: \"#000000\", pulse: 2 }});\nexport function tick(frames: Local<{{ n: u32 }}>) {{ frames.n += 1; {tick} }}\napp.addSystems(Update, tick);\n\napp.scene(\"s\", () => (\n  <entity name=\"cube\">\n    <mesh shape=\"cuboid\" />\n    <material asset={{g}} />\n  </entity>\n));\n"
+    )
+}
+
+/// `assets.get` of the script-made asset `h`, as a script's call reaches the engine.
+fn get(app: &App, h: &Handle<ScriptMaterial>) -> serde_json::Value {
+    let n = app.world().resource::<bevy_ts::reflect_asset::ScriptAssets>().ref_of(h.id().untyped()).expect("a script-made asset");
+    let r = serde_json::json!([{ "$asset": n, "type": "bevy_ts_material::render::ScriptMaterial" }]);
+    serde_json::from_str(&bevy_ts::reflect_asset::host_call(app.world(), "assets.get", &r.to_string()).unwrap()).unwrap()
+}
+
+fn draws_live_kind(app: &App, h: &Handle<ScriptMaterial>) -> bool {
+    let m = app.world().resource::<Assets<ScriptMaterial>>().get(h).unwrap();
+    std::sync::Arc::ptr_eq(&m.kind, &app.world().resource::<MaterialKinds>().live["game::Glow"].kind)
+}
+
+#[test]
+fn an_owned_instance_is_written_in_place_and_read_back() {
+    let (_dir, mut app) = setup("materials-owned-set", &owned("color: color, pulse: f32", "if (frames.n === 3) assets.set(g, { pulse: 3 });"));
+    let (e, h) = cube(&mut app);
+    assert!(draws_live_kind(&app, &h), "added while the script loaded, drawn by the kind once it applied");
+    assert_eq!(f32_at(&app, &h, 16), 2.0);
+    updates(&mut app, 5);
+    assert_eq!(cube(&mut app), (e, h.clone()), "the same entity holds the same asset");
+    assert_eq!(f32_at(&app, &h, 16), 3.0, "pulse written in place");
+    assert_eq!(app.world().resource::<Assets<ScriptMaterial>>().len(), 1, "no new asset");
+    assert!(app.world().resource::<MaterialKinds>().live["game::Glow"].instances.is_empty(), "never in the keyed cache");
+    let read = get(&app, &h);
+    assert_eq!(read["kind"], "game::Glow");
+    assert_eq!(read["pulse"], 3.0);
+    assert_eq!(read["color"]["LinearRgba"]["alpha"], 1.0);
+}
+
+#[test]
+fn an_equal_set_sends_no_modified() {
+    let (_dir, mut app) = setup("materials-owned-equal", &owned("color: color, pulse: f32", "assets.set(g, { pulse: 2, color: \"#000000\" });"));
+    let (_, h) = cube(&mut app);
+    updates(&mut app, 2);
+    for i in 0..5 {
+        app.update();
+        let events = app.world().resource::<bevy::ecs::message::Messages<AssetEvent<ScriptMaterial>>>();
+        let modified = events.iter_current_update_messages().filter(|ev| ev.is_modified(h.id())).count();
+        assert_eq!(modified, 0, "frame {i}: an equal set marks nothing changed");
+    }
+}
+
+#[test]
+fn a_set_naming_what_the_kind_lacks_fails_with_its_names() {
+    let (_dir, mut app) = setup("materials-owned-unknown", &owned("color: color, pulse: f32", "if (frames.n === 2) assets.set(g, { speed: 1 });"));
+    updates(&mut app, 4);
+    let m = messages(&app);
+    assert!(m.iter().any(|m| m.contains("game::Glow has no param or texture speed; it has color, pulse")), "{m:?}");
+}
+
+#[test]
+fn a_ref_of_another_type_fails_at_the_element() {
+    let src = owned("color: color, pulse: f32", "").replace("asset={g}", "asset={{ $asset: 1, type: \"bevy_pbr::pbr_material::StandardMaterial\" } as any}");
+    let dir = project("materials-owned-type", &[("game.tsx", &src), ("glow.wgsl", WGSL)]);
+    let mut app = material_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    let e = &r.errors[0];
+    assert!(e.message.contains("<material asset>") && e.message.contains("not a bevy_ts_material::render::ScriptMaterial"), "{e:?}");
+    assert_eq!(e.location.clone().expect("the element").line, 13);
+    let src = owned("color: color, pulse: f32", "").replace("asset={g}", "asset={g} pulse={1}");
+    write(&dir, "game.tsx", &src);
+    let r = reload(&mut app, false);
+    assert!(r.errors.iter().any(|e| e.message.contains("takes only asset and gltfMaterial, not pulse")), "{:?}", r.errors);
+}
+
+#[test]
+fn a_stale_ref_fails_at_the_element() {
+    // Ref 1 is another instance, so the element's prop changes from ref 2 to ref 1.
+    let first = owned("color: color, pulse: f32", "").replace("export const g =", "export const other = Glow.add({});\nexport const g =");
+    let (dir, mut app) = setup("materials-owned-stale", &first);
+    // The first generation's ref 1, given after a reload made it stale.
+    let src = owned("color: color, pulse: f32", "").replace("asset={g}", "asset={{ $asset: 1, type: \"bevy_ts_material::render::ScriptMaterial\" } as any}");
+    write(&dir, "game.tsx", &src);
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    let m = messages(&app);
+    assert!(m.iter().any(|m| m.contains("<material asset>: stale asset ref 1")), "{m:?}");
+}
+
+#[test]
+fn a_schema_change_re_encodes_an_owned_instance() {
+    let (dir, mut app) = setup("materials-owned-schema", &owned("color: color, pulse: f32", ""));
+    let (_, old) = cube(&mut app);
+    // `speed` before `pulse`: pulse moves from 16 to 20.
+    write(&dir, "game.tsx", &owned("color: color, speed: f32, pulse: f32", ""));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    let (_, new) = cube(&mut app);
+    assert_ne!(new, old, "the reload's own Kind.add");
+    for h in [&old, &new] {
+        assert!(draws_live_kind(&app, h));
+        assert_eq!(f32_at(&app, h, 16), 0.0, "speed defaults to 0");
+        assert_eq!(f32_at(&app, h, 20), 2.0, "pulse at its new offset");
+    }
+}

@@ -2,7 +2,7 @@
 // `.wgsl` files imported like modules; Rust lays out the params, generates their declarations and
 // draws it with one erased material. Served by the engine; evaluated once, so each declaration
 // goes into the loading generation's `materials` section.
-import { sectionItems } from "bevy-ts";
+import { asset, assets, sectionItems } from "bevy-ts";
 
 export const f32 = "f32";
 export const i32 = "i32";
@@ -47,11 +47,27 @@ function isShaderFile(v) {
   return v !== null && typeof v === "object" && v.kind === "shaderFile" && typeof v.path === "string";
 }
 
+/** Each kind's params and textures, by name, for `Kind.add`. */
+const SCHEMAS = new Map();
+
+/** The asset class of every script material instance, for `assets.add`. */
+const ScriptMaterial = asset("bevy_ts_material::render::ScriptMaterial", { of: false });
+
 /** A material kind: what `<material kind={...} />` names. Only `name` crosses into a scene. */
 class MaterialKind {
   constructor(name) {
     this.name = name;
     Object.freeze(this);
+  }
+
+  /**
+   * An owned instance: one asset outside the shared cache, written in place with
+   * `assets.set(ref, patch)` and given as `<material asset={ref} />`. Its schema goes with it, so
+   * an instance added while the script loads is encoded before the generation's kinds apply.
+   */
+  add(props = {}) {
+    if (props && typeof props === "object" && ("kind" in props || "$schema" in props)) throw new Error(`${this.name}.add(props): the kind is ${this.name}; leave kind out`);
+    return assets.add(ScriptMaterial, { ...props, kind: this.name, $schema: SCHEMAS.get(this.name) });
   }
 }
 
@@ -96,5 +112,6 @@ export function material(name, decl) {
   const items = sectionItems("materials");
   if (items.some((m) => m.name === name)) fail("is declared twice");
   items.push({ name, params, textures, fragment, vertex: shader("vertex"), alphaMode, location: at || null });
+  SCHEMAS.set(name, { params, textures });
   return new MaterialKind(name);
 }

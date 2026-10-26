@@ -185,6 +185,8 @@ pub fn apply(world: &mut World, generation: u64, present: bool) {
                 let files: Vec<PathBuf> = std::iter::once(&k.fragment).chain(k.vertex.as_ref()).map(|s| s.file.clone()).collect();
                 let errors = refresh_touched(world, &mut k, &files);
                 log_errors(world, generation, errors, "");
+                // Owned instances the generation added while it loaded.
+                reencode_owned(world, generation, &k);
                 kinds.insert(name, k);
             }
             Some(old) => {
@@ -298,7 +300,41 @@ fn build(
         }
     }
     state.instances.retain(|_, (h, _)| world.resource::<Assets<ScriptMaterial>>().contains(h));
+    reencode_owned(world, generation, &state);
     state
+}
+
+/// Every other `ScriptMaterial` of the kind (owned ones, from `Kind.add`) re-encoded against the
+/// new kind by param name, as keyed ones are, keeping its textures by name.
+fn reencode_owned(world: &mut World, generation: u64, state: &KindState) {
+    let keyed: std::collections::HashSet<AssetId<ScriptMaterial>> = state.instances.values().map(|(h, _)| h.id()).collect();
+    let owned: Vec<(AssetId<ScriptMaterial>, Map<String, Value>, Vec<(String, Option<Handle<Image>>)>)> = world
+        .resource::<Assets<ScriptMaterial>>()
+        .iter()
+        .filter(|(id, m)| m.kind.name == state.decl.name && !Arc::ptr_eq(&m.kind, &state.kind) && !keyed.contains(id))
+        .map(|(id, m)| {
+            let params = m.kind.bindings.params();
+            let props = params.fields.iter().map(|f| (f.name.clone(), params.decode(&f.name, &m.data).expect("a field"))).collect();
+            let textures = m.kind.bindings.textures().iter().cloned().zip(m.textures.iter().cloned()).collect();
+            (id, props, textures)
+        })
+        .collect();
+    for (id, props, textures) in owned {
+        let (material, dropped) = encode(state, &props);
+        for p in dropped {
+            world.resource_mut::<ScriptLog>().push(
+                LogLevel::Warn,
+                format!("material {}: param {p} is gone; its value is dropped from an owned instance", state.decl.name),
+                state.decl.at(),
+                generation,
+            );
+        }
+        let by_name: Vec<Option<Handle<Image>>> =
+            state.kind.bindings.textures().iter().map(|t| textures.iter().find(|(n, _)| n == t).and_then(|(_, h)| h.clone())).collect();
+        if let Some(mut m) = world.resource_mut::<Assets<ScriptMaterial>>().get_mut(id) {
+            *m = material.with_textures(by_name);
+        }
+    }
 }
 
 /// Whether a pipeline built from the stage's shader draws now: not merely installed, built.
@@ -527,12 +563,17 @@ pub fn check_props(kinds: &BTreeMap<String, Option<Bindings>>, kind: &str, props
                 return Err(format!("{kind}: texture {p} takes an asset path"));
             }
         } else {
-            let mut names: Vec<&str> = bindings.params().fields.iter().map(|f| f.name.as_str()).collect();
-            names.extend(bindings.textures().iter().map(String::as_str));
-            return Err(format!("{kind} has no param or texture {p}; it has {}", names.join(", ")));
+            return Err(no_such_prop(kind, bindings, p));
         }
     }
     Ok(())
+}
+
+/// The error for a prop `kind` has no param or texture for, naming those it has.
+pub fn no_such_prop(kind: &str, bindings: &Bindings, p: &str) -> String {
+    let mut names: Vec<&str> = bindings.params().fields.iter().map(|f| f.name.as_str()).collect();
+    names.extend(bindings.textures().iter().map(String::as_str));
+    format!("{kind} has no param or texture {p}; it has {}", names.join(", "))
 }
 
 /// The instance for `kind` with `props`: equal props share one asset, as `<material>` does.

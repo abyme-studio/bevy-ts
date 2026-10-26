@@ -1,7 +1,7 @@
 // `bevy-ts/jsx-runtime`: the automatic JSX runtime (`"jsxImportSource": "bevy-ts"`). Elements
 // are plain descriptions: an `<entity>`, component elements on it (`<Health initialHp={100} />`),
 // prefabs (functions from props to one element) and the asset intrinsics `<mesh>`, `<material>`.
-import type { ColorValue, Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
+import type { AssetRef, ColorValue, Commands, Component, ElementProps, Entity, For, NodeRef, ReflectComponent } from "bevy-ts";
 import type { AlphaMode } from "bevy-ts/material";
 
 /** Bevy 0.20's picking events, each an `on` prop on any `<entity>` or UI element. */
@@ -678,6 +678,7 @@ export interface MaterialProps {
   /** A scale above 1 clamps rather than tiles: textures sample clamped to the edge. */
   uvTransform?: UvTransform;
   kind?: never;
+  asset?: never;
 }
 
 /** `<material2d>`: a `ColorMaterial`. The texture is an asset path, loaded as sRGB. */
@@ -698,12 +699,24 @@ export interface Material2dProps {
  */
 export interface ScriptMaterialProps {
   kind: { readonly name: string };
+  asset?: never;
   /**
    * On an entity with a glTF scene (`WorldAssetRoot`), only the scene's meshes whose glTF material
    * is named this take the material. Without it, every mesh of the scene does.
    */
   gltfMaterial?: string;
   [param: string]: unknown;
+}
+
+/**
+ * `<material asset={g} />`: an owned script material from `Kind.add(props)`, the one asset every
+ * element given `g` draws, written in place with `assets.set(g, patch)`. Takes nothing else.
+ */
+export interface OwnedMaterialProps {
+  asset: AssetRef<unknown>;
+  kind?: never;
+  /** On a glTF scene root, only the scene's meshes whose glTF material is named this. */
+  gltfMaterial?: string;
 }
 
 type DescElement = Element;
@@ -744,7 +757,7 @@ export declare namespace JSX {
   interface IntrinsicElements {
     entity: EntityProps & KeyAttribute;
     mesh: MeshProps;
-    material: MaterialProps | ScriptMaterialProps;
+    material: MaterialProps | ScriptMaterialProps | OwnedMaterialProps;
     mesh2d: Mesh2dProps;
     material2d: Material2dProps;
     node: NodeProps & KeyAttribute;

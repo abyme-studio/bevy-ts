@@ -3,7 +3,7 @@
 // `.wgsl` files imported like modules; Rust lays out the params, generates their declarations and
 // draws it with one erased material. Served by the engine; evaluated once, so each declaration
 // goes into the loading generation's `materials` section.
-import { sectionItems } from "bevy-ts";
+import { asset, assets, sectionItems } from "bevy-ts";
 
 export const f32 = "f32";
 export const i32 = "i32";
@@ -48,11 +48,20 @@ function isShaderFile(v) {
   return v !== null && typeof v === "object" && v.kind === "shaderFile" && typeof v.path === "string";
 }
 
+/** The asset class of every script material instance, for `assets.add`. */
+const ScriptMaterial = asset("bevy_ts_material::render::ScriptMaterial", { of: false });
+
 /** A material kind: what `<material kind={...} />` names. Only `name` crosses into a scene. */
 class MaterialKind {
   constructor(name) {
     this.name = name;
     Object.freeze(this);
+  }
+
+  /** An owned instance: one asset outside the shared cache, written in place with `assets.set(ref, patch)` and given as `<material asset={ref} />`. */
+  add(props = {}) {
+    if (props && typeof props === "object" && "kind" in props) throw new Error(`${this.name}.add(props): the kind is ${this.name}; leave kind out`);
+    return assets.add(ScriptMaterial, { ...props, kind: this.name });
   }
 }
 

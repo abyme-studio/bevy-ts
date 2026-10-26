@@ -756,22 +756,41 @@ pub fn insert_script_material(
         return;
     }
     match bevy_ts_material::kinds::instance(world, kind, props) {
-        Some(h) => {
-            let mut em = world.entity_mut(e);
-            em.remove::<(MeshMaterial3d<StandardMaterial>, NeedsTangents)>().insert(ScriptMaterial3d(h));
-            match gltf_material {
-                Some(name) if em.get::<GltfMaterialFilter>().is_none_or(|f| f.0 != name) => {
-                    em.insert(GltfMaterialFilter(name.into()));
-                }
-                Some(_) => {}
-                None => {
-                    em.remove::<GltfMaterialFilter>();
-                }
-            }
-            fit_mesh(world, e);
-        }
+        Some(h) => put_script_material(world, e, h, gltf_material),
         None => crate::reconcile::log_error(world, format!("<material kind>: no material {kind}"), at),
     }
+}
+
+/// `<material asset={ref} />`: the owned instance `Kind.add` made, by its ref number. A stale ref
+/// or one of another type fails at the element.
+pub fn insert_owned_material(world: &mut World, e: Entity, asset: u64, gltf_material: Option<&str>, at: Option<SourceLocation>) {
+    if !world.contains_resource::<bevy_ts_material::MaterialKinds>() {
+        crate::reconcile::log_error(world, "<material asset>: script materials need ScriptMaterialPlugin".into(), at);
+        return;
+    }
+    let handle = {
+        let registry = world.resource::<AppTypeRegistry>().read();
+        world.resource::<ScriptAssets>().handle_for(&registry, std::any::TypeId::of::<bevy_ts_material::ScriptMaterial>(), asset)
+    };
+    match handle {
+        Ok(h) => put_script_material(world, e, h.typed::<bevy_ts_material::ScriptMaterial>(), gltf_material),
+        Err(m) => crate::reconcile::log_error(world, format!("<material asset>: {m}"), at),
+    }
+}
+
+fn put_script_material(world: &mut World, e: Entity, h: Handle<bevy_ts_material::ScriptMaterial>, gltf_material: Option<&str>) {
+    let mut em = world.entity_mut(e);
+    em.remove::<(MeshMaterial3d<StandardMaterial>, NeedsTangents)>().insert(ScriptMaterial3d(h));
+    match gltf_material {
+        Some(name) if em.get::<GltfMaterialFilter>().is_none_or(|f| f.0 != name) => {
+            em.insert(GltfMaterialFilter(name.into()));
+        }
+        Some(_) => {}
+        None => {
+            em.remove::<GltfMaterialFilter>();
+        }
+    }
+    fit_mesh(world, e);
 }
 
 pub fn remove_material(world: &mut World, e: Entity) {
@@ -815,7 +834,7 @@ mod tests {
         let typed: BTreeSet<String> = body
             .lines()
             .filter_map(|l| l.trim().split_once("?:").map(|(k, _)| k.to_string()))
-            .filter(|k| k != "kind")
+            .filter(|k| k != "kind" && k != "asset")
             .collect();
         assert_eq!(typed, table(), "jsx-runtime.d.ts' MaterialProps against MATERIAL_PROPS");
     }

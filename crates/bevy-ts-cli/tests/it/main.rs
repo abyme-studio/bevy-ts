@@ -31,6 +31,7 @@ mod levels_protocol;
 mod levels_scene;
 mod levels_walk;
 mod material_errors;
+mod material_params_render;
 mod materials;
 mod mesh_picking;
 mod native_components;

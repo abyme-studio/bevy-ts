@@ -188,6 +188,20 @@ impl ParamsLayout {
             }
         }
     }
+
+    /// One param's value read back from `bytes`, the inverse of [`encode`](Self::encode): numbers,
+    /// number arrays, and colours as `{ LinearRgba: {...} }`, so encoding it again gives the same
+    /// bytes.
+    pub fn decode(&self, name: &str, bytes: &[u8]) -> Option<Value> {
+        let f = self.field(name)?;
+        Some(match &f.ty {
+            ParamType::Base(b) => decode_base(*b, bytes, f.offset),
+            ParamType::Array { array, len } => {
+                let stride = ParamType::stride(*array);
+                Value::Array((0..*len as usize).map(|i| decode_base(*array, bytes, f.offset + i * stride)).collect())
+            }
+        })
+    }
 }
 
 /// WGSL keywords and reserved words: no name the generated code declares may be one.
@@ -218,7 +232,7 @@ const PREDECLARED: &[&str] = &[
 ];
 
 /// Props `<material kind>` takes itself, so no param or texture may be named one.
-pub const RESERVED_PROPS: &[&str] = &["kind", "gltfMaterial"];
+pub const RESERVED_PROPS: &[&str] = &["kind", "asset", "gltfMaterial"];
 
 /// A name the generated WGSL declares: an identifier, not reserved, not starting with `__`, and
 /// not a prop `<material>` takes itself.
@@ -274,6 +288,29 @@ fn encode_base(name: &str, b: Base, value: &Value, bytes: &mut [u8], at: usize) 
         put(bytes, at + 4 * i, word);
     }
     Ok(())
+}
+
+fn word(bytes: &[u8], at: usize) -> [u8; 4] {
+    bytes[at..at + 4].try_into().expect("4 bytes")
+}
+
+fn decode_base(b: Base, bytes: &[u8], at: usize) -> Value {
+    let lane = |i: usize| -> Value {
+        let w = word(bytes, at + 4 * i);
+        match b {
+            Base::I32 => i32::from_le_bytes(w).into(),
+            Base::U32 => u32::from_le_bytes(w).into(),
+            _ => f64::from(f32::from_le_bytes(w)).into(),
+        }
+    };
+    match b {
+        Base::Color => {
+            let c: Vec<Value> = (0..4).map(lane).collect();
+            serde_json::json!({ "LinearRgba": { "red": c[0], "green": c[1], "blue": c[2], "alpha": c[3] } })
+        }
+        b if b.lanes() == 1 => lane(0),
+        b => Value::Array((0..b.lanes()).map(lane).collect()),
+    }
 }
 
 /// A color as linear RGBA, in any form `bevy_ts::color` takes (`"#f80"`, `[r, g, b, a?]` in sRGB,
@@ -445,6 +482,59 @@ mod tests {
     }
 
     #[test]
+    fn decodes_every_type_back_to_its_bytes() {
+        let l = layout(&[
+            ("f", B(F32)),
+            ("i", B(I32)),
+            ("u", B(U32)),
+            ("v2", B(Vec2f)),
+            ("v3", B(Vec3f)),
+            ("v4", B(Vec4f)),
+            ("m", B(Mat4x4f)),
+            ("c", B(Color)),
+            ("fs", ParamType::Array { array: F32, len: 2 }),
+            ("is", ParamType::Array { array: I32, len: 2 }),
+            ("v2s", ParamType::Array { array: Vec2f, len: 2 }),
+            ("cs", ParamType::Array { array: Color, len: 2 }),
+            ("ms", ParamType::Array { array: Mat4x4f, len: 1 }),
+        ]);
+        let mut b = l.defaults();
+        let values = [
+            ("f", json!(0.1)),
+            ("i", json!(-7)),
+            ("u", json!(4000000000u32)),
+            ("v2", json!([1.5, -2])),
+            ("v3", json!([0.3, 0.2, 0.1])),
+            ("v4", json!([1, 2, 3, 4])),
+            ("m", json!((0..16).map(|i| i as f64 / 3.0).collect::<Vec<_>>())),
+            ("c", json!("#ff8800")),
+            ("fs", json!([0.25, 1e-3])),
+            ("is", json!([i32::MIN, i32::MAX])),
+            ("v2s", json!([[1, 2], [3, 4]])),
+            ("cs", json!(["#123456", [0.5, 0.5, 0.5, 0.2]])),
+            ("ms", json!([(0..16).map(f64::from).collect::<Vec<_>>()])),
+        ];
+        for (n, v) in &values {
+            l.encode(n, v, &mut b).unwrap();
+        }
+        // Zeros, as the padding between array elements is in `b`: encode writes no padding.
+        let mut again = vec![0u8; l.size];
+        for f in &l.fields {
+            let v = l.decode(&f.name, &b).unwrap();
+            l.encode(&f.name, &v, &mut again).unwrap_or_else(|e| panic!("{}: {e}", f.name));
+        }
+        for f in &l.fields {
+            let r = f.offset..f.offset + f.ty.size();
+            assert_eq!(b[r.clone()], again[r], "{} round-trips", f.name);
+        }
+        assert_eq!(l.decode("i", &b), Some(json!(-7)));
+        assert_eq!(l.decode("u", &b), Some(json!(4000000000u32)));
+        assert_eq!(l.decode("v2", &b), Some(json!([1.5, -2.0])));
+        assert_eq!(l.decode("c", &b).unwrap()["LinearRgba"]["red"], json!(1.0));
+        assert_eq!(l.decode("nope", &b), None);
+    }
+
+    #[test]
     fn color_array_elements_default_white_like_a_color() {
         let l = layout(&[("c", B(Color)), ("cs", ParamType::Array { array: Color, len: 2 })]);
         let b = l.defaults();
@@ -475,6 +565,8 @@ mod tests {
         assert!(ParamsLayout::new([("loop", &B(F32))]).unwrap_err().contains("reserved"));
         assert!(ParamsLayout::new([("gltfMaterial", &B(F32))]).unwrap_err().contains("<material> takes gltfMaterial itself"));
         assert!(new(&["kind"]).unwrap_err().contains("<material> takes kind itself"));
+        assert!(new(&["asset"]).unwrap_err().contains("<material> takes asset itself"));
+        assert!(ParamsLayout::new([("asset", &B(F32))]).unwrap_err().contains("<material> takes asset itself"));
     }
 
     #[test]

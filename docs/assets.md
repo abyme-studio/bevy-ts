@@ -104,7 +104,9 @@ app.init_asset::<Note>().ts_hand_map::<Note>(
 
 Then `assets.add`, `get`, `set`, `T.of(props)` and refs reach `T` through the two functions, by
 `T`'s type path. `write` gets the current asset as its base for a `set`, and none for an `add` or
-a value. `read` gets the JSON a script last wrote the asset from, `None` for a loaded asset. The
+a value. Both get `Slots`, whose `world` is the app's world for a map that reads its resources
+(`ScriptMaterial`'s finds its kind there, [materials.md](materials.md#owned-instances)); it is
+`None` in a load check and where a component is written in place. `read` gets the JSON a script last wrote the asset from, `None` for a loaded asset. The
 built `T` goes whole into `Assets<T>` at its ref's id when the run ends. `set` merges its patch
 over the current read at the top level: a key given replaces that key whole; when the new read
 equals the old, nothing is queued. A type both hand-mapped and reflected uses its hand map.

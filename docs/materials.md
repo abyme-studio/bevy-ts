@@ -41,8 +41,53 @@ export const Glow = material("game::Glow", { params: { color: color, pulse: f32 
   shared one, so no other element's material changes. An instance no entity holds is freed at the
   end of the frame. Props cannot be bindings yet.
 - The shape is a `<mesh>` ([meshes.md](meshes.md)).
-- `kind` and `gltfMaterial` are props of `<material>` itself, so no param or texture may take
-  either name.
+- `kind`, `asset` and `gltfMaterial` are props of `<material>` itself, so no param or texture may
+  take any of those names.
+
+## Owned instances
+
+An instance one script owns and writes in place, for values that change often:
+
+```tsx
+import { assets } from "bevy-ts";
+
+export const g = Glow.add({ color: "#ff0000", pulse: 1 });
+
+<entity>
+  <mesh shape="cuboid" />
+  <material asset={g} />
+</entity>
+
+assets.set(g, { pulse: 3 }); // in a system: every entity given g draws it, same asset
+```
+
+- `Kind.add(props)` makes one `ScriptMaterial` outside the shared cache and returns its asset ref
+  (docs/assets.md). Call it in a system, a render or while the script loads. Its schema goes with
+  it, so one added while the script loads is encoded before the generation's kinds apply.
+- `assets.set(g, patch)` writes the patch over the instance at the top level and keeps its
+  `AssetId`: meshes keep their handle. A patch that changes nothing marks nothing changed. A name
+  the kind lacks, or another `kind`, fails with the kind's names.
+- `assets.get(g)` reads `{ kind, ...params, ...textures }`: params decoded from the uniform bytes,
+  colours as `{ LinearRgba: { red, green, blue, alpha } }`, textures as their paths or `null`.
+- `<material asset={g} />` takes only `asset` and `gltfMaterial`. A ref of another asset type, or
+  any other prop, fails the load at the element. A stale ref (refs go stale when the script
+  reloads) is an error at the element, and the mesh keeps what it had.
+- A changed params schema re-encodes owned instances by param name, as it does shared ones.
+- It lives as other script-made assets do: kept for its entities over a hot reload, removed on a
+  restart or stop.
+- A write is not free. Each changed frame makes a new uniform buffer and bind group, and every
+  entity drawing it re-specialises from the pipeline cache: no shader compiles, no new pipeline.
+  A texture changed to an unloaded image draws nothing until it loads.
+- From Rust, the write is `bevy_ts_material::owned`, registered with `app.ts_hand_map`.
+
+## What lives where
+
+| Field | Where it lives | Set by | Written in place | Bindable | Batches with others |
+|---|---|---|---|---|---|
+| `params` | the asset's uniform | keyed props, or `Kind.add`/`assets.set` | owned only | no | equal asset only |
+| `textures` | the asset's bind group | keyed props, or `Kind.add`/`assets.set` | owned only | no | equal asset only |
+| `alphaMode` | the kind | `material()` | no (hot reload) | no | per kind |
+| Fade, `alpha` | `MaterialAlpha`, `StandardMaterial` only | not on script materials | n/a | n/a | n/a |
 
 ## On a glTF scene
 

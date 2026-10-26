@@ -60,6 +60,8 @@ pub enum Target {
     /// `<material kind={K} ...params />`: a script material instance of kind `kind`. On a glTF
     /// scene root, `gltfMaterial` limits it to the scene's meshes with that material name.
     ScriptMaterial { kind: String, props: Map<String, Value>, gltf_material: Option<String> },
+    /// `<material asset={ref} />`: an owned script material, `Kind.add`'s ref number `asset`.
+    OwnedMaterial { asset: u64, gltf_material: Option<String> },
     /// A reflect-tier Rust component, by type path: written field by field through reflection.
     Reflect { type_path: String },
     /// Bevy's state-scoped component of a TS state value (`<DespawnOnExit value={Game.Playing} />`),
@@ -202,6 +204,34 @@ pub fn script_material(c: &ComponentDesc) -> Result<ScriptMaterialDesc, ScriptEr
         Some(_) => return Err(err("<material gltfMaterial> takes a glTF material name, a string", &c.source)),
     };
     Ok(ScriptMaterialDesc { kind, props, gltf_material })
+}
+
+/// `<material asset={ref} gltfMaterial? />`: the ref number of an owned script material
+/// (`Kind.add`) and its `gltfMaterial`. Any other prop, or a ref of another asset type, fails.
+pub fn owned_material(c: &ComponentDesc) -> Result<(u64, Option<String>), ScriptError> {
+    let path = <bevy_ts_material::ScriptMaterial as bevy::reflect::TypePath>::type_path();
+    if let Some(p) = c.props.keys().find(|p| !["asset", "gltfMaterial"].contains(&p.as_str())) {
+        return Err(err(format!("<material asset> takes only asset and gltfMaterial, not {p}: the asset holds its params"), &c.source));
+    }
+    let v = &c.props["asset"];
+    if binding_id(v).is_some() {
+        return Err(err("<material asset> cannot be bound; assets.set the ref instead", &c.source));
+    }
+    let n = match bevy_ts::reflect_asset::parse_ref(v) {
+        Some(Ok(n)) => n,
+        Some(Err(m)) => return Err(err(format!("<material asset>: {m}"), &c.source)),
+        None => return Err(err(format!("<material asset> takes a {path} ref from Kind.add, not {v}"), &c.source)),
+    };
+    match v.get("type").and_then(Value::as_str) {
+        Some(t) if t == path => {}
+        t => return Err(err(format!("<material asset>: asset ref {n} is a {}, not a {path}", t.unwrap_or("ref of no type")), &c.source)),
+    }
+    let gltf_material = match c.props.get("gltfMaterial") {
+        None => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(_) => return Err(err("<material gltfMaterial> takes a glTF material name, a string", &c.source)),
+    };
+    Ok((n, gltf_material))
 }
 
 /// A one-field tuple struct's element (`<WorldAssetRoot value="..." />`): its field is `value`
@@ -383,6 +413,11 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(resolved(Target::Mesh(props), (controlled, BTreeMap::new(), BTreeMap::new())))
         }
+        ComponentKind::Intrinsic if c.ty == MATERIAL && c.props.contains_key("asset") => {
+            let (asset, gltf_material) = owned_material(c)?;
+            let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Ok(resolved(Target::OwnedMaterial { asset, gltf_material }, (controlled, BTreeMap::new(), BTreeMap::new())))
+        }
         ComponentKind::Intrinsic if c.ty == MATERIAL && c.props.contains_key("kind") => {
             let ScriptMaterialDesc { kind, props, gltf_material } = script_material(c)?;
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -451,7 +486,7 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts, 
     }
     // Mesh `color` and a `<material>` on one entity would both own the material.
     let mesh_color = out.iter().any(|r| matches!(&r.target, Target::Mesh(MeshProps { color: Some(_), .. })));
-    if mesh_color && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Material(_) | Target::ScriptMaterial { .. })) {
+    if mesh_color && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Material(_) | Target::ScriptMaterial { .. } | Target::OwnedMaterial { .. })) {
         return Err(err("give the colour on <material> or on <mesh color>, not both", &m.source));
     }
     let mesh2d_color = out.iter().any(|r| matches!(&r.target, Target::Mesh2d(Mesh2dProps(MeshProps { color: Some(_), .. }))));
