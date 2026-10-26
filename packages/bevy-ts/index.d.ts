@@ -174,9 +174,9 @@ export type ReadView<T> = {
 type MutList<V> = V extends readonly (infer E)[] ? (number extends V["length"] ? HeapItem<E>[] : V) : V;
 /** Write access: list fields are arrays edited in place, sent at the end of the run. */
 type MutView<T> = { [K in keyof T]: MutList<T[K]> };
-/** Initial values, as Rust's `Health { hp: 3.0, ..default() }`: vectors take a tuple or a vector. */
 /** `tsxProps` without their bindings: `.of` takes values only. */
 export type Unbound<H> = { [K in keyof H]: Exclude<H[K], () => unknown> };
+/** Initial values, as Rust's `Health { hp: 3.0, ..default() }`: vectors take a tuple or a vector. */
 export type Init<T> = {
   [K in keyof T as K extends symbol ? never : K]?: T[K] extends Vec3 ? Vec3Like : T[K] extends Quat ? readonly [number, number, number, number] | ReadonlyQuat : T[K];
 };
