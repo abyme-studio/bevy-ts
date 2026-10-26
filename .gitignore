@@ -4,5 +4,6 @@ node_modules/
 dist/
 packages/platforms/*/bin/bevy-ts
 packages/platforms/*/bin/bevy-ts.exe
+packages/platforms/android-arm64/lib/
 .bevy-ts/
 crates/bevy-ts-rapier3d/Cargo.lock

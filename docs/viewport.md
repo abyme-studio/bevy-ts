@@ -118,8 +118,11 @@ no viewer:
 ```
 
 It answers `{ "queued": 4 }`. Headless applies one event a frame, so these four take four frames.
-`crates/bevy-ts-viewport/src/keyboard.rs` turns `key` and `ime` events into Bevy's
-`KeyboardInput` and `Ime` for both modes.
+`bevy_ts_embed::input` (`crates/bevy-ts-embed/src/input.rs`) turns `key` and `ime` events into
+Bevy's `KeyboardInput` and `Ime` for both modes. It owns the whole SURFACE.md input mapping, which
+an embedding host uses too ([android.md](android.md)); the viewport adds only what is its own: the
+viewer's focus and visibility, the cursor it shows, input-to-frame marks and gamepads gated on
+focus.
 
 The viewer sends each typed character once: as a `key` event's `text`, or as an `ime` `commit`
 for a composition, never both. Bevy's `TextInput` turns IME on and inserts both, so a viewer

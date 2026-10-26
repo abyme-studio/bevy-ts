@@ -473,3 +473,46 @@ fn a_top_level_timer_after_a_restart_measures_from_now() {
     updates(&mut app, 30);
     assert!(!has(&app, "after edit"), "{:?}", messages(&app));
 }
+
+/// The embedding host's device key (`originHeaders`) reaches its named origin over TLS and nothing
+/// else: not a script, not another allowed host, not a redirect hop away from the origin.
+#[test]
+fn the_hosts_key_goes_only_to_its_origin_and_no_script_reads_it() {
+    let (mut app, fake) = net_app();
+    {
+        let mut policy = NetPolicy::from_config(&["mac.test:8443".to_string(), "other.test".to_string()], &["ABYME_KEY".to_string()], &|_| None).0;
+        policy.headers_origin = Some(net::HeadersOrigin::parse("https://mac.test:8443").unwrap());
+        policy.origin_headers = vec![("authorization".into(), "Bearer device".into())];
+        app.insert_resource(policy);
+    }
+    load(
+        &mut app,
+        &[(
+            "key.js",
+            r#"
+            console.log(`env ${JSON.stringify(process.env)}`);
+            globalThis.ws = new WebSocket("wss://mac.test:8443/api/stream");
+            fetch("https://mac.test:8443/api/held", { headers: { authorization: "Bearer mine" } }).then((r) => r.text()).then((t) => console.log(`origin ${t}`));
+            fetch("https://other.test/a").then((r) => r.text()).then((t) => console.log(`other ${t}`));
+            "#,
+        )],
+    );
+    app.update();
+    assert!(has(&app, "env {}"), "the key is in no script's environment: {:?}", messages(&app));
+    let (_, conn) = fake.last().unwrap();
+    assert_eq!(conn.request.header("authorization"), Some("Bearer device"), "the handshake to the origin carries the host's key");
+    let fetches = fake.fetches();
+    let by_url = |url: &str| fetches.iter().find(|(_, f)| f.request.url == url).map(|(id, f)| (*id, f.request.clone())).unwrap();
+    let (origin, to_origin) = by_url("https://mac.test:8443/api/held");
+    assert_eq!(to_origin.header("authorization"), Some("Bearer device"), "the host's replaces the script's");
+    let (other, to_other) = by_url("https://other.test/a");
+    assert_eq!(to_other.header("authorization"), None);
+    fake.respond(other, 200, &[], b"o");
+    // A redirect from the origin to another allowed host: the next hop goes without the key.
+    fake.respond(origin, 307, &[("location", "https://other.test/b")], b"");
+    app.update();
+    let (_, hop) = fake.last_fetch().unwrap();
+    assert_eq!(hop.request.url, "https://other.test/b");
+    assert_eq!(hop.request.header("authorization"), None, "the key never follows a redirect away");
+    assert!(fake.fetches().values().all(|f| f.request.url.contains("mac.test") || f.request.header("authorization").is_none()));
+}

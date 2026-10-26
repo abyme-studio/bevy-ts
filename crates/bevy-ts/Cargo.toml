@@ -28,7 +28,6 @@ blocking = "1"
 # futures-rustls is its adapter over futures-io, as async-tungstenite's rustls features are tokio-only.
 futures-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
-rustls-platform-verifier = "0.7"
 # `fetch`: hyper's HTTP/1.1 client, a feature on the hyper every engine already has through bevy_remote.
 http-body-util = "0.1"
 hyper = { version = "1.12", features = ["client", "http1"] }
@@ -43,6 +42,14 @@ bevy = { workspace = true, features = ["std", "multi_threaded", "bevy_log", "asy
 ron = "0.12"
 serde.workspace = true
 serde_json.workspace = true
+
+# The platform's verifier everywhere but Android, where it needs the app's Context through JNI, which
+# an engine library loaded into a host has no hold of: there, webpki-roots (Mozilla's roots).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rustls-platform-verifier = "0.7"
+
+[target.'cfg(target_os = "android")'.dependencies]
+webpki-roots = "1"
 
 [dev-dependencies]
 bevy = { workspace = true, features = ["bevy_ui"] }

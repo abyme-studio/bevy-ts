@@ -4,16 +4,11 @@
 //! `bevy-ts build`, `bevy-ts play`, and an engine with a `game/` beside it, which plays that game
 //! with every argument it was started with.
 
-use crate::project::{DefaultSampler, Switches};
-use bevy::input_focus::directional_navigation::DirectionalNavigationPlugin;
-use bevy::input_focus::tab_navigation::TabNavigationPlugin;
-use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
+use crate::project::Switches;
 use bevy::prelude::*;
-use bevy_ts_tsx::events::TsxHandlers;
 use bevy_ts::backend::{CompiledModule, ModuleSet};
 use bevy_ts::generation::{DevChannel, DevEvent, DevSource};
 use bevy_ts::runtime::RuntimeInfo;
-use bevy_ts::BevyTsPlugin;
 use crate::compile::Compiler;
 use crate::{dev, headless};
 use bevy_ts::engine::EngineIdentity;
@@ -221,28 +216,15 @@ pub enum Display {
     Viewport,
 }
 
-/// Every plugin that gives scripts a built-in module (`bevy-ts/ready`) or element: the run's app and
-/// `bevy-ts types` both add this group, so the generated types declare every module a game can
-/// import.
+/// Every plugin that gives scripts a built-in module (`bevy-ts/ready`) or element: the embedding's
+/// set ([`bevy_ts_embed::shipped::ScriptPlugins`]) and `bevy-ts/audio`, which only the CLI plays.
+/// `bevy-ts types` adds this group and the run's app the same plugins, so the generated types
+/// declare every module a game can import.
 pub struct ScriptPlugins;
 
 impl PluginGroup for ScriptPlugins {
     fn build(self) -> bevy::app::PluginGroupBuilder {
-        bevy::app::PluginGroupBuilder::start::<Self>()
-            .add(bevy_ts_tsx::TsxPlugin)
-            .add(bevy_ts_material::ScriptMaterialPlugin)
-            .add(bevy_ts_material::WorldTextPlugin)
-            .add(bevy_ts_animation::PlayAnimationPlugin)
-            .add(crate::input::ScriptInputPlugin)
-            .add(crate::audio::ScriptAudioPlugin)
-            .add(crate::time::ScriptTimePlugin)
-            .add(crate::camera::CamerasPlugin)
-            .add(crate::gizmos::GizmosPlugin)
-            .add(crate::rust_events::RustEventsPlugin)
-            .add(crate::diagnostics::ScriptDiagnosticsPlugin)
-            .add(crate::session::ScriptSessionPlugin)
-            .add(crate::ready::ScriptReadyPlugin)
-            .add(crate::assets::ScriptAssetsPlugin)
+        bevy_ts_embed::shipped::ScriptPlugins.build().add(crate::audio::ScriptAudioPlugin)
     }
 }
 
@@ -290,10 +272,7 @@ pub fn base_app_with_sources(
     } else {
         plugins
     };
-    let plugins = match switches.image_sampler {
-        DefaultSampler::Nearest => plugins.set(ImagePlugin::default_nearest()),
-        DefaultSampler::Linear => plugins,
-    };
+    let plugins = switches.image_sampler.set(plugins);
     match assets {
         Some(root) if dev => app.add_plugins(plugins.set(headless::asset_plugin(root))),
         Some(root) => app.add_plugins(plugins.set(headless::asset_plugin_unwatched(root))),
@@ -325,15 +304,8 @@ pub fn base_app_with_sources(
         _ => {}
     }
     crate::audio::audio_output(&mut app, display, audio);
-    app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(dev))
-        .add_plugins(ScriptPlugins)
-        .add_plugins(bevy_ts_material::Pixel2dPlugin)
-        .add_plugins(bevy_ts_material::BitmapTextPlugin)
-        .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
-        .add_plugins(bevy_ts_remote::screenshot::ReadyPlugin)
-        .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
-        .insert_resource(engine.identity.clone())
-        .add_plugins(extra);
+    bevy_ts_embed::shipped::add_shipped(&mut app, engine.identity.clone(), options, dev);
+    app.add_plugins(crate::audio::ScriptAudioPlugin).add_plugins(bevy_ts_remote::screenshot::ReadyPlugin).add_plugins(extra);
     for (name, folder) in sources.iter().filter(|(_, f)| !f.is_dir()) {
         let message = format!("asset source \"{name}\": {} does not exist; loads from {name}:// fail", folder.display());
         app.world_mut().resource_mut::<bevy_ts::log::ScriptLog>().push(bevy_ts::log::LogLevel::Warn, message, None, 0);
@@ -341,28 +313,12 @@ pub fn base_app_with_sources(
     headless::pipeline_trace(&mut app);
     shot_from_env(&mut app);
     stall_watchdog(&mut app, display, inspect);
-    // After `extra`: a native crate that adds one itself keeps its own settings.
-    if switches.mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
-        app.add_plugins(MeshPickingPlugin);
-    }
-    if switches.tab_navigation && !app.is_plugin_added::<TabNavigationPlugin>() {
-        app.add_plugins(TabNavigationPlugin);
-    }
-    if switches.directional_navigation && !app.is_plugin_added::<DirectionalNavigationPlugin>() {
-        app.add_plugins(DirectionalNavigationPlugin);
-    }
-    crate::diagnostics::add_plugins(&mut app, diagnostics);
-    // Checked once the plugins are in, so a native crate that added it is not warned.
-    if !app.is_plugin_added::<TabNavigationPlugin>() {
-        app.add_systems(PostUpdate, warn_tab_props);
-    }
-    if let Some(root) = assets {
-        app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().asset_root = root.to_path_buf();
-        // The asset list, thumbnails and previews read the project's assets, not the binary's.
-        #[cfg(target_os = "macos")]
-        if dev {
-            app.insert_resource(bevy_ts_viewport::assets::AssetRoot(root.to_path_buf()));
-        }
+    // After `extra`: a native crate that adds a switch's plugin itself keeps its own settings.
+    bevy_ts_embed::shipped::finish_shipped(&mut app, switches, diagnostics, assets);
+    // The asset list, thumbnails and previews read the project's assets, not the binary's.
+    #[cfg(target_os = "macos")]
+    if dev && let Some(root) = assets {
+        app.insert_resource(bevy_ts_viewport::assets::AssetRoot(root.to_path_buf()));
     }
     app
 }
@@ -418,48 +374,6 @@ fn headless_size(value: Option<&std::ffi::OsStr>) -> Result<Option<UVec2>, Strin
     Err(format!("BEVY_TS_SIZE={text}: expected <width>x<height> in pixels, each at least 1, as 2880x1620"))
 }
 
-/// A mesh that has a pointer handler, one of the two just added.
-type NewMeshHandler = (With<Mesh3d>, With<TsxHandlers>, Or<(Added<Mesh3d>, Added<TsxHandlers>)>);
-
-/// Names, once per process, a mesh with a pointer handler while nothing picks meshes: its
-/// `onPointer*` would never fire. Checks the resource, not the switch, so a native crate that adds
-/// `MeshPickingPlugin` itself is not warned.
-fn warn_mesh_handlers(
-    added: Query<(Entity, Option<&Name>), NewMeshHandler>,
-    log: Option<ResMut<bevy_ts::log::ScriptLog>>,
-    generations: Option<Res<bevy_ts::generation::Generations>>,
-    mut warned: Local<bool>,
-) {
-    if *warned {
-        return;
-    }
-    let (Some((e, name)), Some(mut log)) = (added.iter().next(), log) else { return };
-    *warned = true;
-    let name = name.map(|n| format!(" \"{n}\"")).unwrap_or_default();
-    let message = format!(
-        "entity {e}{name} has a pointer handler on a mesh, but mesh picking is off: it never fires. Set \"meshPicking\": true in bevy-ts.json"
-    );
-    log.push(bevy_ts::log::LogLevel::Warn, message, None, generations.map_or(0, |g| g.live));
-}
-
-/// Names, once per process, an entity whose `tabIndex` or `tabGroup` prop mounted while nothing
-/// moves focus by Tab. Keys on the prop's marker, not `TabIndex`: a `<tab>` writes its own.
-fn warn_tab_props(
-    added: Query<(Entity, Option<&Name>), Added<bevy_ts_tsx::ui::TabProp>>,
-    log: Option<ResMut<bevy_ts::log::ScriptLog>>,
-    generations: Option<Res<bevy_ts::generation::Generations>>,
-    mut warned: Local<bool>,
-) {
-    if *warned {
-        return;
-    }
-    let (Some((e, name)), Some(mut log)) = (added.iter().next(), log) else { return };
-    *warned = true;
-    let name = name.map(|n| format!(" \"{n}\"")).unwrap_or_default();
-    let message = format!("entity {e}{name} has a tabIndex or tabGroup, but tab navigation is off: Tab does not move focus. Set \"tabNavigation\": true in bevy-ts.json");
-    log.push(bevy_ts::log::LogLevel::Warn, message, None, generations.map_or(0, |g| g.live));
-}
-
 /// Whether the app carries the studio's viewport tooling (edit, assets, previews): under `bevy-ts
 /// dev` with a window or a viewport, never in a shipped game.
 pub fn studio_tools(display: Display, dev: bool) -> bool {
@@ -467,14 +381,9 @@ pub fn studio_tools(display: Display, dev: bool) -> bool {
 }
 
 /// Sets what scripts may connect to and see of the environment, from `net.allow` and `env`,
-/// reading `${NAME}` entries and the variables now. Skipped entries are logged.
+/// reading `${NAME}` entries and the variables from the process environment now.
 pub fn insert_net_policy(app: &mut App, allow: &[String], env: &[String]) {
-    let (policy, warnings) = bevy_ts::net::NetPolicy::from_env(allow, env);
-    app.insert_resource(policy);
-    let mut log = app.world_mut().resource_mut::<bevy_ts::log::ScriptLog>();
-    for w in warnings {
-        log.push(bevy_ts::log::LogLevel::Warn, w, None, 0);
-    }
+    bevy_ts_embed::shipped::insert_net_policy(app, allow, env, &|name| std::env::var(name).ok());
 }
 
 /// Where a dev engine on the project at `root` keeps saves: in `.bevy-ts/`, already git-ignored.
@@ -524,7 +433,7 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
         if project.config.levels.prefab_edits.as_deref() == Some("source") {
             app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().prefab_edits = bevy_ts_levels::PrefabEdits::Source;
         }
-        insert_net_policy(&mut app, &project.config.net.allow, &project.config.env);
+        bevy_ts_embed::shipped::insert_net_policy(&mut app, &project.config.net.allow, &project.config.env, &|name| std::env::var(name).ok());
     }
     app.add_plugins(bevy_ts_remote::BevyTsRemotePlugin { port: args.remote_port });
     if display == Display::Headless {

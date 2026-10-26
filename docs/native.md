@@ -936,7 +936,7 @@ avian and bevy_hanabi are in [research/native-ports.md](research/native-ports.md
 The engine itself exports two params, from the built-in module `bevy-ts/camera`, in every
 engine (`dev`, `play`, a shipped game, `bevy-ts types`). `Cameras` is Bevy's `Camera`
 conversions, so a UI node can sit over a world point and a click becomes a ray; `MeshRayCast` is
-Bevy's `MeshRayCast`, which casts that ray at meshes. The code is `crates/bevy-ts-cli/src/camera.rs`.
+Bevy's `MeshRayCast`, which casts that ray at meshes. The code is `crates/bevy-ts-embed/src/camera.rs`.
 
 ```ts
 import type { Cameras } from "bevy-ts/camera";

@@ -178,7 +178,7 @@ assets.add(StandardMaterial, { base_color_texture: atlas, normal_map_texture: no
 ## Images from bytes
 
 A system that takes `images: ResMut<Assets<Image>>` makes and rewrites images from its own bytes.
-The param is the engine's `Images` export (`bevy-ts/assets`, `crates/bevy-ts-cli/src/assets.rs`).
+The param is the engine's `Images` export (`bevy-ts/assets`, `crates/bevy-ts-embed/src/assets.rs`).
 
 ```ts
 import type { Assets, AssetRef, ResMut } from "bevy-ts";
@@ -243,7 +243,7 @@ changed. Producing every pixel in JS costs far more than the crossing.
 ## Loading and load state
 
 A system that takes `server: Res<AssetServer>` gets Bevy's `AssetServer` (the engine's
-`ScriptAssetServer` export, `crates/bevy-ts-cli/src/assets.rs`):
+`ScriptAssetServer` export, `crates/bevy-ts-embed/src/assets.rs`):
 
 ```ts
 import type { AssetRef, AssetServer, Res } from "bevy-ts";
@@ -357,7 +357,7 @@ const note = assets.add(Note, { text: "hi" });
 
 A system that takes `meshes: ResMut<Assets<Mesh>>` builds and updates meshes with Bevy's `Mesh`
 API under Bevy's names. The param is the engine's `Meshes` export (`bevy-ts/assets`,
-`crates/bevy-ts-cli/src/assets.rs`).
+`crates/bevy-ts-embed/src/assets.rs`).
 
 ```ts
 import type { Assets, AssetRef, MeshData, ResMut } from "bevy-ts";

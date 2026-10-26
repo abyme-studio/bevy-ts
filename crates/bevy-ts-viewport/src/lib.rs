@@ -2,14 +2,12 @@
 //! renders into a ring of IOSurfaces another process shows, paced by that process's display,
 //! taking its input over the same Mach channel.
 //!
-//! macOS only, but for [`offscreen`], headless input, and [`keyboard`] and [`mouse`], the input
-//! mappings both use, built everywhere. On other platforms [`supported`] is false.
+//! macOS only, but for [`offscreen`], headless input, built everywhere; both map keys through
+//! `bevy_ts_embed::input`. On other platforms [`supported`] is false.
 
 /// The crate the protocol contract names as owner of every `bevy-ts/viewport_*` method.
 pub const CRATE: &str = "bevy-ts-viewport";
 
-pub mod keyboard;
-pub mod mouse;
 pub mod offscreen;
 
 #[cfg(target_os = "macos")]

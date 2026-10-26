@@ -28,6 +28,7 @@ bevy-ts-levels.workspace = true
 bevy-ts-material.workspace = true
 bevy-ts-animation.workspace = true
 bevy-ts-native.workspace = true
+bevy-ts-embed.workspace = true
 oxc = { version = "0.154", features = ["transformer", "codegen", "semantic", "ast_visit"] }
 oxc_resolver = "11.24"
 notify = "8"

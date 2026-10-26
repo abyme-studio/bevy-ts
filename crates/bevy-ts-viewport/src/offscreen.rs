@@ -3,8 +3,8 @@
 //! `key` and `ime` events. Pointer and wheel events drive one Bevy custom pointer aimed at the
 //! offscreen image the cameras render into, as Bevy's `render_ui_to_texture` example drives one on
 //! a texture, so `bevy_picking` hits and `onPointer*` handlers fire as in a window. Every event
-//! also becomes the messages a window gets, on the primary window, through [`crate::mouse`] and
-//! [`crate::keyboard`] as under `--viewport`. Built on every platform.
+//! also becomes the messages a window gets, on the primary window, through `bevy_ts_embed::input`
+//! as under `--viewport`. Built on every platform.
 //!
 //! The plugin spawns a window-less primary window the size of the image, for two reasons. Bevy
 //! 0.20's `Location::is_in_viewport` (`bevy_picking/src/pointer.rs`) returns false without a
@@ -98,7 +98,7 @@ fn button(b: Option<PointerEventButton>) -> Option<PointerButton> {
 }
 
 /// Applies one queued event a frame, in arrival order, so a key queued after a click lands after
-/// it. Each goes to the primary window through [`crate::mouse`] and [`crate::keyboard`], as under
+/// it. Each goes to the primary window through `bevy_ts_embed::input`, as under
 /// `--viewport`, so the window's cursor follows the pointer; pointer and wheel events also drive
 /// [`POINTER`], a wheel as its `Scroll` where it is.
 ///
@@ -131,14 +131,14 @@ fn apply(world: &mut World, mut last: Local<Option<Vec2>>, mut left: Local<bool>
         && *last != Some(position)
     {
         world.write_message(PointerInput::new(POINTER, at(position), PointerAction::Move { delta: position - last.unwrap_or(position) }));
-        crate::mouse::move_cursor(world, window, position);
+        bevy_ts_embed::input::move_cursor(world, window, position);
         *last = Some(position);
         return;
     }
     let e = world.resource_mut::<Pending>().0.pop_front().expect("front is some");
     let (position, action) = match e {
         ViewportInput::PointerEvent(e) => {
-            crate::mouse::pointer(world, window, &e);
+            bevy_ts_embed::input::pointer(world, window, &e);
             let position = Vec2::new(e.x as f32, e.y as f32);
             let action = match e.kind {
                 PointerEventKind::Move | PointerEventKind::Enter => PointerAction::Move { delta: position - last.unwrap_or(position) },
@@ -161,14 +161,14 @@ fn apply(world: &mut World, mut last: Local<Option<Vec2>>, mut left: Local<bool>
             (position, action)
         }
         ViewportInput::WheelEvent(e) => {
-            crate::mouse::wheel(world, window, &e);
+            bevy_ts_embed::input::wheel(world, window, &e);
             let Some(position) = *last else { return };
-            let MouseWheel { unit, x, y, phase, .. } = crate::mouse::mouse_wheel(window, &e);
+            let MouseWheel { unit, x, y, phase, .. } = bevy_ts_embed::input::mouse_wheel(window, &e);
             (position, PointerAction::Scroll { unit, x, y, phase })
         }
-        ViewportInput::GestureEvent(e) => return crate::mouse::gesture(world, &e),
-        ViewportInput::KeyEvent(e) => return crate::keyboard::key(world, window, e),
-        ViewportInput::ImeEvent(e) => return crate::keyboard::ime(world, window, e),
+        ViewportInput::GestureEvent(e) => return bevy_ts_embed::input::gesture(world, &e),
+        ViewportInput::KeyEvent(e) => return bevy_ts_embed::input::key(world, window, e),
+        ViewportInput::ImeEvent(e) => return bevy_ts_embed::input::ime(world, window, e),
         _ => return,
     };
     world.write_message(PointerInput::new(POINTER, at(position), action));

@@ -85,6 +85,11 @@ the other commands are not reachable from a shipped game. `bevy-ts play <folder>
 [-- <args>…]` plays the game folder named (the one holding `game.json`), for trying a build, with
 the arguments after `--` as the game's.
 
+Playing is a library, `bevy-ts-embed` (`play.rs`, `shipped.rs`): reading and checking `game.json`,
+loading `scripts/` as one generation, and the plugin set every engine ships. `bevy-ts play`, a
+bare start and `bevy-ts dev` build their apps from it; an app that embeds the engine plays the same
+folder through it ([android.md](android.md)).
+
 Headless (`play --headless`, `dev --headless`) has no window: every camera renders into one 960x540
 offscreen image. `BEVY_TS_SIZE=<W>x<H>` (as `2880x1620`) makes it that size instead; only a headless
 run reads it. The UI, headless input and both shots follow the image. A value that is not

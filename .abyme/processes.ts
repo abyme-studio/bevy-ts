@@ -201,6 +201,15 @@ const processes = {
   "custom-relationships-pack": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"cargo test -p bevy-ts --lib packed_lists && cargo test -p bevy-ts-cli --no-fail-fast --test it -- relationships:: && cargo clippy -p bevy-ts -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/custom-relationships-pack.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked\"'",
   },
+  "doctests": { cmd: "bash -c 'set -o pipefail; mkdir -p target; cargo test --workspace --doc 2>&1 | grep -v ld64 | tee target/doctests.log | grep -E \"^test result|FAILED|dyld|^error\"'" },
+  // Change android-native: the Android library (scripts/android takes its own check slot; a V8
+  // build from source when its cache is cold, about 47 min at -j4).
+  android: { cmd: "bash -c 'set -o pipefail; mkdir -p target; scripts/android 2>&1 | grep --line-buffered -v ld64 | tee target/android.log | tail -40'" },
+  // Task 4.6: the library on a headless emulator, from bench/android-smoke (no window on screen).
+  "android-smoke": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/android-smoke/run.sh 2>&1 | tee target/android-smoke.log | tail -40'" },
+  // The same for agent town's two worlds, against its stand-in abymed (bench/android-smoke/abyme-game.mjs).
+  "android-agent-town": { cmd: "bash -c 'set -o pipefail; mkdir -p target; node bench/android-smoke/abyme-game.mjs town 2>&1 | tee target/android-agent-town.log | tail -40'" },
+  "android-learn": { cmd: "bash -c 'set -o pipefail; mkdir -p target; node bench/android-smoke/abyme-game.mjs learn 2>&1 | tee target/android-learn.log | tail -40'" },
 } satisfies ProcessFile;
 
 // Long-running servers: each wraps only its build in gate-slot, so no limit ends it.

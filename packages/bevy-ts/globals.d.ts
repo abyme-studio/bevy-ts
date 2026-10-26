@@ -393,8 +393,9 @@ declare global {
     /**
      * NON-STANDARD: extra handshake headers, such as `authorization`. Sent over `wss:` to any allowed
      * host; over `ws:`, refused unless the URL's host is loopback (`localhost`, `127.0.0.0/8`, `::1`),
-     * so a key never crosses the network in clear text. An `Origin` header is always refused (the
-     * engine sends none).
+     * so a key never crosses the network in clear text. When the engine is embedded in a host that
+     * names a `headersOrigin`, headers go only to loopback or over `wss:` to that origin. An `Origin`
+     * header is always refused (the engine sends none).
      */
     headers?: Record<string, string> | [string, string][];
   }

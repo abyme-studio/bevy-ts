@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Builds the Android engine library (docs/android.md): libbevy_ts_android.so for aarch64-linux-android,
+# API 29, in the `android` profile, written with Engine.java and bevy_ts_embed.h to
+# dist/aarch64-linux-android/. Needs the NDK (ANDROID_NDK_HOME, or r28c under ANDROID_HOME) and cargo-ndk.
+#
+# V8 has no Android prebuilt, so it is built from source once per `v8` version and cached at
+# ~/.cache/bevy-ts/v8-android/v<version>/ (BEVY_TS_V8_CACHE): librusty_v8.a and src_binding.rs, which
+# later builds link (RUSTY_V8_ARCHIVE). A clean V8 build is about 47 min at -j4 on the Mac; ninja is
+# capped at BEVY_TS_V8_JOBS (4) by a wrapper, since rusty_v8's build.rs runs it a job per core.
+# deno_core 0.412 does not compile for Android as published: its errno fix is applied to a copy and
+# patched in for this build only (scripts/android-patches/), with Cargo.lock put back after.
+source "$(dirname "$0")/slot.sh"
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+
+host=$(uname -s | tr '[:upper:]' '[:lower:]')-x86_64 # the NDK ships x86_64 host tools, run by Rosetta on arm Macs
+ANDROID_HOME=${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}
+export ANDROID_NDK_HOME=${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/28.2.13676358}
+[[ -d "$ANDROID_NDK_HOME" ]] || { echo "scripts/android: no NDK at $ANDROID_NDK_HOME; install r28c or set ANDROID_NDK_HOME" >&2; exit 1; }
+command -v cargo-ndk >/dev/null || { echo "scripts/android: cargo-ndk is missing: cargo install cargo-ndk" >&2; exit 1; }
+rustup target list --installed | grep -qx aarch64-linux-android || rustup target add aarch64-linux-android
+export NDK_HOME=$ANDROID_NDK_HOME
+jobs=${BEVY_TS_V8_JOBS:-4}
+
+lock_version() { awk -v n="$1" '$0 == "name = \"" n "\"" { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock; }
+v8=$(lock_version v8)
+deno=$(lock_version deno_core)
+cache=${BEVY_TS_V8_CACHE:-$HOME/.cache/bevy-ts/v8-android}
+v8_cache=$cache/v$v8
+work=$cache/work
+mkdir -p "$work"
+
+# Cargo.lock is put back whatever happens: the patches below are for this build only.
+cp Cargo.lock "$work/Cargo.lock.saved"
+trap 'cp "$work/Cargo.lock.saved" Cargo.lock' EXIT
+
+# deno_core with Android's errno (bionic's __errno), until upstream takes it.
+deno_src=$work/deno_core-$deno
+if [[ ! -f "$deno_src/.patched" ]]; then
+  cargo fetch -q
+  registry=$(ls -d "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/deno_core-"$deno" | head -1)
+  rm -rf "$deno_src" && cp -R "$registry" "$deno_src"
+  patch -s -d "$deno_src" -p1 < scripts/android-patches/deno_core-"$deno"-android-errno.patch
+  touch "$deno_src/.patched"
+fi
+patches=(--config "patch.crates-io.deno_core.path=\"$deno_src\"")
+
+# V8 calls compiler-rt's __clear_cache: link the NDK's builtins.
+clang_lib=$(ls -d "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/"$host"/lib/clang/*/lib/linux | head -1)
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$clang_lib/libclang_rt.builtins-aarch64-android.a"
+
+if [[ -f "$v8_cache/librusty_v8.a" && -f "$v8_cache/src_binding.rs" ]]; then
+  export RUSTY_V8_ARCHIVE=$v8_cache/librusty_v8.a RUSTY_V8_SRC_BINDING_PATH=$v8_cache/src_binding.rs
+else
+  # V8 from a git checkout: the crate leaves out build/android/, and a Mac host needs the recipe in
+  # docs/research/android.md.
+  src=$work/rusty_v8-v$v8
+  if [[ ! -f "$src/.prepared" ]]; then
+    rm -rf "$src"
+    git clone -q --depth 1 --branch "v$v8" --recurse-submodules --shallow-submodules -j8 https://github.com/denoland/rusty_v8.git "$src"
+    # The checkout has no android_toolchain (Chromium's CIPD package): on any host, the NDK
+    # given stands in for it, and its version for the one the package would name.
+    sed -i.bak 's/"ANDROID_NDK_VERSION_ROLL=${android_ndk_version}_1",/"ANDROID_NDK_VERSION_ROLL=r28c_1",/' "$src/build/config/android/BUILD.gn"
+    mkdir -p "$src/third_party/android_toolchain"
+    ln -sfn "$ANDROID_NDK_HOME" "$src/third_party/android_toolchain/ndk"
+    if [[ $(uname -s) == Darwin ]]; then
+      sed -i.bak 's/  assert(host_os == "linux", "Android builds are only supported on Linux.")/  assert(host_os == "linux" || host_os == "mac", "Android builds are only supported on Linux.")/' "$src/build/config/BUILDCONFIG.gn"
+      mkdir -p "$src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+      # build.rs fetches a Linux NDK for cross's linker unless this exists; a Mac host needs none.
+      touch "$src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
+      # Chromium's Mac clang ships no Android runtimes: add the NDK's.
+      (cd "$src" && python3 ./tools/clang/scripts/update.py --output-dir "$work/clang")
+      cv=$(ls "$work/clang/lib/clang")
+      mkdir -p "$work/clang/lib/clang/$cv/lib/linux"
+      cp -R "$clang_lib/." "$work/clang/lib/clang/$cv/lib/linux/"
+    fi
+    touch "$src/.prepared"
+  fi
+  # ninja at -j$jobs whatever build.rs passes.
+  mkdir -p "$work/bin"
+  real_ninja=$(command -v ninja || true)
+  [[ -n "$real_ninja" ]] || { echo "scripts/android: ninja is missing" >&2; exit 1; }
+  cat > "$work/bin/ninja" <<EOF
+#!/usr/bin/env bash
+args=()
+while [ \$# -gt 0 ]; do
+  case \$1 in -j) shift ;; -j*) ;; *) args+=("\$1") ;; esac
+  shift
+done
+exec "$real_ninja" -j$jobs "\${args[@]}"
+EOF
+  chmod +x "$work/bin/ninja"
+  export V8_FROM_SOURCE=1 NINJA=$work/bin/ninja
+  [[ -d "$work/clang" ]] && export GN_ARGS="clang_base_path=\"$work/clang\""
+  patches+=(--config "patch.crates-io.v8.path=\"$src\"")
+fi
+
+cargo ndk -t arm64-v8a -P 29 build "${patches[@]}" -j "$jobs" --profile android -p bevy-ts-android
+
+so=target/aarch64-linux-android/android/libbevy_ts_android.so
+if [[ -z "${RUSTY_V8_ARCHIVE:-}" ]]; then
+  # Keep the V8 just built for every later build of this version.
+  gn_out=target/aarch64-linux-android/android/gn_out
+  mkdir -p "$v8_cache"
+  cp "$gn_out/obj/librusty_v8.a" "$gn_out/src_binding.rs" "$v8_cache/"
+fi
+out=dist/aarch64-linux-android
+rm -rf "$out" && mkdir -p "$out/dev/bevyts"
+cp "$so" "$out/"
+cp crates/bevy-ts-android/java/dev/bevyts/Engine.java "$out/dev/bevyts/"
+cp crates/bevy-ts-embed/include/bevy_ts_embed.h "$out/"
+readelf=$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/"$host"/bin/llvm-readelf)
+# Every native Engine.java declares, and the C ABI (a grep -q on the pipe would SIGPIPE readelf).
+syms=$("$readelf" --dyn-syms "$out/libbevy_ts_android.so")
+for f in Abi Version Create Surface Pause Resume Input Destroy; do
+  grep -q "Java_dev_bevyts_Engine_native$f\$" <<<"$syms" || { echo "scripts/android: $out/libbevy_ts_android.so does not export Java_dev_bevyts_Engine_native$f" >&2; exit 1; }
+done
+grep -q " bevy_ts_create\$" <<<"$syms" || { echo "scripts/android: no bevy_ts_create export" >&2; exit 1; }
+size=$(wc -c < "$out/libbevy_ts_android.so")
+gz=$(gzip -9c "$out/libbevy_ts_android.so" | wc -c)
+echo "scripts/android: $out/libbevy_ts_android.so, $((size / 1000000)) MB, $((gz / 1000000)) MB gzipped"

@@ -80,6 +80,7 @@ with a `TypeError` at the next delivery, its message the log line's. The log get
 | a redirect from `https:` to `http:` | `fetch http://…: a redirect may not leave TLS` |
 | `headers` over `ws:` to a host that is not loopback | `WebSocket …: headers are sent in clear only over loopback; use wss:` |
 | `headers` naming `Origin` | `WebSocket …: the engine sends no Origin header; remove it from headers` |
+| `headers` under an embedding host's `headersOrigin`, to another non-loopback host | `WebSocket …: headers are sent only to loopback or, over wss:, the host's named origin` |
 | edit mode | `WebSocket …: networking runs only in play; open it from a system or once the game plays` (`fetch …:` for a fetch) |
 | not a `ws:`/`wss:` (or `http:`/`https:`) URL | `WebSocket …: not a URL the engine connects to: …` |
 
@@ -95,7 +96,9 @@ Plain bad input (a relative URL, a fragment, repeated protocols) throws `SyntaxE
 verified by the platform: Security.framework on macOS (with its revocation checks), CryptoAPI on
 Windows (likewise), the system's certificate files on Linux (no revocation check, as browsers
 there). So a CA the player's machine trusts, a corporate or school one, works, and the roots update
-with the OS for the life of a shipped game. The server name is the URL's host; an IP host is
+with the OS for the life of a shipped game. On Android ([android.md](android.md)) the engine is a
+library in another app and has no hold of the app's `Context`, which Android's verifier needs: it
+trusts Mozilla's roots (`webpki-roots`) instead, as of the bevy-ts version. The server name is the URL's host; an IP host is
 checked against the certificate's IP names. ALPN offers `http/1.1` only.
 
 The platform's verifier is set up at the game's first `wss:` or `https:` connection, not when the
@@ -137,8 +140,12 @@ new WebSocket("ws://127.0.0.1:4477/api/stream", { headers: { authorization: `Bea
 ```
 
 Over `wss:` it is sent to any allowed host. Over `ws:` it is refused unless the host is loopback
-(`localhost`, `127.0.0.0/8`, `::1`), so a key never crosses the network in clear text. Nothing in
-bevy-ts depends on it; a browser has no such option.
+(`localhost`, `127.0.0.0/8`, `::1`), so a key never crosses the network in clear text. A host
+embedding the engine ([android.md](android.md)) may name one `headersOrigin`; then headers go only
+to loopback or over `wss:` to that origin. Its own key it passes as `originHeaders`, which the
+engine adds to `wss:` and `https:` requests to that origin itself: no script reads it, and a fetch
+or redirect elsewhere never carries it. A fetch's own `headers` follow the rules above for fetch.
+Nothing in bevy-ts depends on it; a browser has no such option.
 
 The handshake sends no `Origin` header, as Deno does: a script has no page origin, and abymed
 answers `403` to a foreign one. A `headers` option naming `Origin` is refused.

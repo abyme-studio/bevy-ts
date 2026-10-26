@@ -27,7 +27,7 @@
 //! }
 //! ```
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -120,92 +120,6 @@ pub fn check_source_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// A source folder as written, resolved: `~/` under `home`, a relative one under `base`, made
-/// canonical when it exists (Bevy's watcher reports canonical paths, as for the default root).
-pub fn resolve_source(folder: &str, base: &Path, home: Option<&Path>) -> PathBuf {
-    let path = match (folder.strip_prefix("~/"), home) {
-        (Some(rest), Some(home)) => home.join(rest),
-        _ => base.join(folder),
-    };
-    let path = std::path::absolute(&path).unwrap_or(path);
-    path.canonicalize().unwrap_or(path)
-}
-
-/// This machine's home folder, for `~/`.
-pub fn home() -> Option<PathBuf> {
-    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
-}
-
-/// Bevy plugins a project opts into, each off by default as Bevy keeps it out of
-/// `DefaultPlugins`, and `ImagePlugin`'s default sampler: read from `bevy-ts.json` under `dev` and from `game.json` when playing, where
-/// `bevy-ts build` writes each that is on. None is an engine hash input: the prebuilt engine has
-/// every plugin, and `base_app` adds the ones switched on.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Switches {
-    /// `MeshPickingPlugin`: 3D meshes and `<mesh2d>`s take pointer events.
-    #[serde(default, rename = "meshPicking", deserialize_with = "mesh_picking", skip_serializing_if = "is_false")]
-    pub mesh_picking: bool,
-    /// `TabNavigationPlugin`: Tab and Shift-Tab move focus in tab order.
-    #[serde(default, rename = "tabNavigation", deserialize_with = "tab_navigation", skip_serializing_if = "is_false")]
-    pub tab_navigation: bool,
-    /// `DirectionalNavigationPlugin`: the map `DirectionalNavigation` navigates.
-    #[serde(default, rename = "directionalNavigation", deserialize_with = "directional_navigation", skip_serializing_if = "is_false")]
-    pub directional_navigation: bool,
-    /// `imageSampler`: `ImagePlugin`'s sampler for every image whose sampler is `Default`.
-    #[serde(default, rename = "imageSampler", skip_serializing_if = "DefaultSampler::is_linear")]
-    pub image_sampler: DefaultSampler,
-}
-
-/// `imageSampler` in `bevy-ts.json`: Bevy's default, linear, or `ImagePlugin::default_nearest()`
-/// for pixel art. An image given its own sampler keeps it.
-#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum DefaultSampler {
-    #[default]
-    Linear,
-    Nearest,
-}
-
-impl DefaultSampler {
-    fn is_linear(&self) -> bool {
-        *self == DefaultSampler::Linear
-    }
-}
-
-impl<'de> Deserialize<'de> for DefaultSampler {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        match serde_json::Value::deserialize(d)? {
-            serde_json::Value::String(s) if s == "linear" => Ok(DefaultSampler::Linear),
-            serde_json::Value::String(s) if s == "nearest" => Ok(DefaultSampler::Nearest),
-            v => Err(serde::de::Error::custom(format!("imageSampler must be \"nearest\" or \"linear\", not {v}"))),
-        }
-    }
-}
-
-fn is_false(b: &bool) -> bool {
-    !b
-}
-
-/// A switch as a bool, its error naming the field (serde's names only the type).
-fn switch<'de, D: serde::Deserializer<'de>>(d: D, field: &str) -> Result<bool, D::Error> {
-    match serde_json::Value::deserialize(d)? {
-        serde_json::Value::Bool(b) => Ok(b),
-        v => Err(serde::de::Error::custom(format!("{field} must be true or false, not {v}"))),
-    }
-}
-
-fn mesh_picking<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
-    switch(d, "meshPicking")
-}
-
-fn tab_navigation<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
-    switch(d, "tabNavigation")
-}
-
-fn directional_navigation<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
-    switch(d, "directionalNavigation")
-}
-
 /// `diagnostics` as a list of plugin names bevy-ts adds, its error naming the bad one.
 fn diagnostics<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
     let names = Vec::<String>::deserialize(d).map_err(|e| serde::de::Error::custom(format!("diagnostics must be a list of plugin names: {e}")))?;
@@ -213,13 +127,7 @@ fn diagnostics<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D:
     Ok(names)
 }
 
-/// `net` in `bevy-ts.json` and `game.json`: deny by default.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub struct NetConfig {
-    /// `host`, `host:port`, a URL, or `${NAME}` read from the environment at start.
-    #[serde(default)]
-    pub allow: Vec<String>,
-}
+pub use bevy_ts_embed::play::{DefaultSampler, NetConfig, Switches, home, resolve_source};
 
 /// `levels` in `bevy-ts.json`.
 #[derive(Clone, Debug, Default, Deserialize)]

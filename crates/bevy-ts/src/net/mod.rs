@@ -14,7 +14,7 @@ mod socket;
 mod tls;
 
 pub use fake::{FakeConn, FakeFetch, FakeTransport};
-pub use policy::{NetPolicy, Refusal, Scheme};
+pub use policy::{HeadersOrigin, NetPolicy, Refusal, Scheme};
 pub use socket::SocketTransport;
 pub use tls::{BuildConfig, NetTls};
 
@@ -53,8 +53,14 @@ pub struct OpenRequest {
     /// A `ws:` or `wss:` URL, as the script side normalised it.
     pub url: String,
     pub protocols: Vec<String>,
-    /// The non-standard, Deno-shaped `headers` option; loopback only.
+    /// The non-standard, Deno-shaped `headers` option (docs/networking.md has where it may go).
     pub headers: Vec<(String, String)>,
+}
+
+impl OpenRequest {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+    }
 }
 
 /// A fetch, numbered by the script side apart from connections; unique within one engine instance.
@@ -291,10 +297,13 @@ impl NetRegistry {
     }
 
     /// Starts a hop of fetch `id` on a fresh wire id.
-    fn start_hop(&mut self, id: FetchId, mut fetch: Fetch) {
+    /// Sends `fetch`'s request as a new hop. The host's own headers go on the wire copy only, so a
+    /// redirect elsewhere never carries them.
+    fn start_hop(&mut self, id: FetchId, mut fetch: Fetch, policy: &NetPolicy) {
         let wire = FetchId(self.next_wire());
         fetch.wire = wire;
-        self.transport.fetch(wire, &fetch.request);
+        let headers = policy.wire_headers(&fetch.request.url, &fetch.request.headers);
+        self.transport.fetch(wire, &HttpRequest { headers, ..fetch.request.clone() });
         self.fetch_wires.insert(wire, id);
         self.fetches.insert(id, fetch);
     }
@@ -386,7 +395,8 @@ impl NetRegistry {
                         let wire = ConnId(self.next_wire());
                         self.conns.insert(id, Conn { wire, generation, state: ConnState::Connecting, origin });
                         self.wires.insert(wire, id);
-                        self.transport.open(wire, &request);
+                        let headers = policy.wire_headers(&request.url, &request.headers);
+                        self.transport.open(wire, &OpenRequest { headers, ..request });
                     }
                     Err(refusal) => {
                         log.push(format!("WebSocket {}: {refusal}", request.url));
@@ -404,7 +414,7 @@ impl NetRegistry {
                     }
                 }
                 NetRequest::Fetch { id, generation, request, redirect } => match policy.check_fetch(&request.url, edit) {
-                    Ok(_) => self.start_hop(id, Fetch { wire: FetchId(0), generation, request, redirect, hops: 0 }),
+                    Ok(_) => self.start_hop(id, Fetch { wire: FetchId(0), generation, request, redirect, hops: 0 }, policy),
                     Err(refusal) => {
                         log.push(format!("fetch {}: {refusal}", request.url));
                         self.pending.push(NetEvent::FetchFailed { id, reason: format!("fetch {}: {refusal}", request.url) });
@@ -468,7 +478,7 @@ impl NetRegistry {
         }
         request.url = next;
         fetch.hops += 1;
-        self.start_hop(id, fetch);
+        self.start_hop(id, fetch, policy);
         None
     }
 

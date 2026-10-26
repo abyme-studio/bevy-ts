@@ -1,0 +1,19 @@
+--------- beginning of main
+10-27 08:38:30.013  2732  2732 I bevy-ts-smoke: loaded /data/user/0/dev.bevyts.smoke/files/libbevy_ts_android.so version 0.1.0 in 361 ms
+10-27 08:38:31.373  2732  2732 I bevy-ts-smoke: surface created
+10-27 08:38:31.373  2732  2732 I bevy-ts-smoke: surface 1080x2062
+10-27 08:38:35.026  2732  3019 I bevy-ts-smoke: event {"event":"log","level":"info","message":"generation 1 applied: 3 systems in 120.6 ms"}
+10-27 08:38:36.749  2732  2960 I bevy-ts-smoke: first frame in 5376 ms
+10-27 08:38:36.749  2732  2960 I bevy-ts-smoke: event {"event":"started","inputs":["pointer","wheel","gesture","key","ime","touch","gamepad","focus","visible"],"js":"v8"}
+10-27 08:38:57.925  2732  2732 I bevy-ts-smoke: touch start
+10-27 08:38:57.953  2732  2732 I bevy-ts-smoke: touch end
+10-27 08:38:58.789  2732  2732 I bevy-ts-smoke: paused
+10-27 08:39:00.898  2732  2732 I bevy-ts-smoke: surface released in 26 ms
+10-27 08:39:01.910  2732  2732 I bevy-ts-smoke: resumed
+10-27 08:39:01.968  2732  2732 I bevy-ts-smoke: surface created
+10-27 08:39:01.968  2732  2732 I bevy-ts-smoke: surface 1080x2062
+10-27 08:39:09.773  2732  2732 I bevy-ts-smoke: paused
+10-27 08:39:09.774  2732  2732 I bevy-ts-smoke: quit
+10-27 08:39:11.728  2732  2732 I bevy-ts-smoke: surface released in 35 ms
+10-27 08:39:12.762  2732  2960 I bevy-ts-smoke: event {"event":"exited","code":0}
+10-27 08:39:12.765  2732  2732 I bevy-ts-smoke: closed

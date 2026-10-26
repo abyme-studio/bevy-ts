@@ -1,28 +1,22 @@
 //! The `bevy-ts` binary's library half: host-side TS compilation, the dev watcher and headless
 //! runs.
 
-pub mod assets;
 pub mod audio;
 pub mod build;
-pub mod camera;
 pub mod cli;
 pub mod compile;
 pub mod coverage;
 pub mod dev;
-pub mod diagnostics;
 pub mod engine;
 pub mod gizmos;
 pub mod headless;
-pub mod input;
 pub mod play;
 pub mod project;
 pub mod reader;
-pub mod ready;
-pub mod rust_events;
-pub mod session;
 pub mod supervise;
-pub mod time;
 pub mod types;
+
+pub use bevy_ts_embed::{assets, camera, diagnostics, ready, rust_events, script_input as input, session, time};
 
 pub use bevy_ts::engine::{EngineIdentity, NativeIdentity};
 pub use cli::{Engine, Prebuilt, run, run_engine};

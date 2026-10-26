@@ -25,3 +25,29 @@ jobs:
         run: cargo test --workspace
       - name: Rust lints
         run: cargo clippy --workspace --all-targets -- -D warnings
+  # The Android engine library builds and exports its JNI entry points (docs/android.md). Build only:
+  # the emulator smoke runs on a Mac (bench/android-smoke/). V8 is built from source once per `v8`
+  # version and cached.
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-linux-android }
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with: { ndk-version: r28c }
+      - run: cargo install cargo-ndk --locked
+      - name: V8 version
+        id: v8
+        run: echo "v8=$(awk '$0 == "name = \"v8\"" { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/bevy-ts/v8-android/v${{ steps.v8.outputs.v8 }}
+          key: v8-android-${{ steps.v8.outputs.v8 }}
+      - name: Build the library and check its exports
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          BEVY_TS_V8_JOBS: 4
+        run: scripts/android

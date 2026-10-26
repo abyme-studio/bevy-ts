@@ -1,66 +1,13 @@
-//! Playing a built game (shipped-game): the compiled modules under `game/scripts/` load once as
-//! one generation, with no compiler, file watcher, remote protocol or inspector, bevy-ts in
-//! non-dev mode, and assets read from `game/assets/` unwatched.
+//! `bevy-ts play` and a built game's bare start: the game folder from argv or beside the
+//! executable, played by `bevy_ts_embed::play` with the process environment, saves in the
+//! player's data folder.
 
 use crate::cli::{Display, Engine, base_app_with_sources};
 use bevy::prelude::*;
-use bevy_ts::backend::{CompiledModule, ModuleSet};
-use bevy_ts::generation::{DevChannel, DevEvent};
-use bevy_ts::runtime::RuntimeInfo;
+pub use bevy_ts_embed::play::{GAME_DIR, GAME_FILE, GameFile, check_engine, read_game, read_scripts};
+use bevy_ts_embed::play::{Game, play_app};
 use bevy_ts_v8::V8Options;
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
-
-/// The folder beside the executable a bare start plays.
-pub const GAME_DIR: &str = "game";
-/// The file that marks a game folder.
-pub const GAME_FILE: &str = "game.json";
-
-/// `game/game.json`: what built the game.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct GameFile {
-    pub name: String,
-    /// The entry module, relative to `scripts/`, with `/` separators.
-    pub entry: String,
-    /// The bevy-ts version that built it.
-    #[serde(rename = "bevyTs")]
-    pub bevy_ts: String,
-    /// `prebuilt`, or the project engine's hash.
-    pub engine: String,
-    /// `bevy-ts.json`'s switches, each absent when off: a `game.json` from before has none.
-    #[serde(flatten)]
-    pub switches: crate::project::Switches,
-    /// `bevy-ts.json`'s `diagnostics`, absent when none.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub diagnostics: Vec<String>,
-    /// `net` and `env` from `bevy-ts.json`, unexpanded: `${NAME}` reads this machine's
-    /// environment when the game starts. A `game.json` from before has neither: no network.
-    #[serde(default)]
-    pub net: crate::project::NetConfig,
-    #[serde(default)]
-    pub env: Vec<String>,
-    /// The extra asset sources, name to folder: `~/` read on the playing machine, a relative one
-    /// from the game folder (`sources/<name>` after `--copy-sources`). Absent when none.
-    #[serde(default, rename = "assetSources", skip_serializing_if = "BTreeMap::is_empty")]
-    pub asset_sources: BTreeMap<String, String>,
-}
-
-/// `game.json`'s sources resolved on this machine; an absent folder fails naming the source, the
-/// folder and the fix, before anything starts.
-pub fn sources(game: &GameFile, folder: &Path) -> Result<Vec<(String, PathBuf)>, String> {
-    let home = crate::project::home();
-    let mut out = Vec::new();
-    for (name, written) in &game.asset_sources {
-        let dir = crate::project::resolve_source(written, folder, home.as_deref());
-        if !dir.is_dir() {
-            return Err(format!("asset source \"{name}\": {} does not exist; put the folder there, or build the game with --copy-sources", dir.display()));
-        }
-        out.push((name.clone(), dir));
-    }
-    Ok(out)
-}
 
 /// The game folder beside the running executable, when it holds a `game.json`.
 pub fn beside_exe() -> Option<PathBuf> {
@@ -70,108 +17,19 @@ pub fn beside_exe() -> Option<PathBuf> {
     dir.join(GAME_FILE).is_file().then_some(dir)
 }
 
-/// Reads `game.json`, refusing one built by another bevy-ts version.
-pub fn read_game(folder: &Path) -> Result<GameFile, String> {
-    let file = folder.join(GAME_FILE);
-    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let game: GameFile = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
-    if game.bevy_ts != crate::engine::VERSION {
-        return Err(format!(
-            "{} was built by bevy-ts {}, but this engine is bevy-ts {}; rebuild the game",
-            game.name,
-            game.bevy_ts,
-            crate::engine::VERSION
-        ));
-    }
-    crate::diagnostics::check_names(&game.diagnostics).map_err(|e| format!("{}: {e}", file.display()))?;
-    Ok(game)
-}
-
-/// Refuses a game built for another engine: a project engine's game runs only on that engine,
-/// the executable its build put beside `game/`.
-pub fn check_engine(game: &GameFile, folder: &Path, identity: &bevy_ts::engine::EngineIdentity) -> Result<(), String> {
-    let prebuilt = identity.kind == bevy_ts::engine::EngineKind::Prebuilt;
-    let fits = if game.engine == "prebuilt" { prebuilt } else { game.engine == identity.hash };
-    if fits {
-        return Ok(());
-    }
-    let exe_name = if cfg!(windows) { format!("{}.exe", game.name) } else { game.name.clone() };
-    let exe = folder.parent().map_or_else(|| PathBuf::from(&exe_name), |d| d.join(&exe_name));
-    Err(if game.engine == "prebuilt" {
-        format!("{} was built for the prebuilt engine, but this is project engine {}; play it with the prebuilt bevy-ts, or {}", game.name, identity.hash, exe.display())
-    } else {
-        format!("{} was built for its project engine {}, not this engine ({}); play it with {}", game.name, game.engine, identity.hash, exe.display())
-    })
-}
-
-/// The extensions a compiled module keeps: the build writes each with its source's name, and a
-/// shader as the `.wgsl` file itself.
-const SCRIPT_EXTENSIONS: [&str; 9] = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "wgsl"];
-
-/// Every module under `scripts/`, its source map taken from the code. Other files (a Finder
-/// `.DS_Store`) are skipped.
-pub fn read_scripts(folder: &Path, game: &GameFile) -> Result<ModuleSet, String> {
-    let scripts = folder.join("scripts");
-    let scripts = scripts.canonicalize().map_err(|e| format!("{}: {e}", scripts.display()))?;
-    let mut files = Vec::new();
-    walk(&scripts, &mut files).map_err(|e| format!("{}: {e}", scripts.display()))?;
-    let mut modules = Vec::with_capacity(files.len());
-    for path in files {
-        // A shipped shader is the WGSL itself; its module names the shipped file, as `bevy-ts dev`'s
-        // names the project's.
-        if path.to_string_lossy().ends_with(crate::compile::SHADER_EXT) {
-            modules.push(CompiledModule { code: crate::compile::shader_module(&path), path, source_map: None });
-            continue;
-        }
-        let code = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let source_map = crate::compile::inline_source_map(&code);
-        modules.push(CompiledModule { path, code, source_map });
-    }
-    let entry = scripts.join(&game.entry);
-    if !modules.iter().any(|m| m.path == entry) {
-        return Err(format!("{}: the entry {} is not under scripts/", folder.join(GAME_FILE).display(), game.entry));
-    }
-    Ok(ModuleSet { entry, modules })
-}
-
-fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<Result<_, _>>()?;
-    entries.sort_by_key(|e| e.file_name());
-    for e in entries {
-        let path = e.path();
-        let hidden = e.file_name().to_string_lossy().starts_with('.');
-        if e.file_type()?.is_dir() {
-            if !hidden {
-                walk(&path, out)?;
-            }
-        } else if !hidden && path.extension().is_some_and(|x| SCRIPT_EXTENSIONS.iter().any(|s| x == *s)) {
-            out.push(path);
-        }
-    }
-    Ok(())
-}
-
 /// The app that plays the game in `folder` (the one holding `game.json`), its one generation
 /// queued: bevy-ts in non-dev mode, assets unwatched, no protocol, inspector or studio tools.
 /// `args` are the game's: `process.argv.slice(2)`.
 pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display, args: &[String]) -> Result<App, String> {
-    let folder = std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf());
-    let game = read_game(&folder)?;
-    check_engine(&game, &folder, &engine.identity)?;
-    let set = read_scripts(&folder, &game)?;
-    let entry = set.entry.clone();
-    let (tx, channel) = DevChannel::new();
-    tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).expect("the channel is open");
-    let sources = sources(&game, &folder)?;
-    let assets = folder.join("assets");
-    let mut app = base_app_with_sources(&sources, engine, extra, display, V8Options::default(), Some(&assets), false, game.switches, &game.diagnostics, false);
-    app.insert_resource(channel);
-    if let Some(dir) = save_dir(&game.name) {
+    let game = Game::load(folder, &engine.identity)?;
+    let saves = save_dir(&game.file.name);
+    let env = |name: &str| std::env::var(name).ok();
+    let mut app = play_app(game, &env, args, |assets, sources, switches, diagnostics| {
+        base_app_with_sources(sources, engine, extra, display, V8Options::default(), Some(assets), false, switches, diagnostics, false)
+    });
+    if let Some(dir) = saves {
         app.insert_resource(bevy_ts::saves::SaveDir(dir));
     }
-    crate::cli::insert_net_policy(&mut app, &game.net.allow, &game.env);
-    app.insert_resource(bevy_ts::backend::ScriptArgs::new(&entry, args));
-    app.world_mut().resource_mut::<RuntimeInfo>().entry = Some(entry);
     Ok(app)
 }
 

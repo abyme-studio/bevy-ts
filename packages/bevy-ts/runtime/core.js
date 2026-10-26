@@ -1711,7 +1711,7 @@ export const assets = {
 
 // ---------------------------------------------------------------------------------------------
 // Meshes (docs/assets.md): Bevy's `Mesh` API over `ResMut<Assets<Mesh>>`, the engine's `Meshes`
-// export (crates/bevy-ts-cli/src/assets.rs). Vertex data crosses as typed arrays, one host call
+// export (crates/bevy-ts-embed/src/assets.rs). Vertex data crosses as typed arrays, one host call
 // per attribute; a `Mesh.new` mesh records in JS until `meshes.add`.
 
 const MESH_TYPE = "bevy_mesh::mesh::Mesh";
@@ -1990,7 +1990,7 @@ function meshesClass(Base) {
 
 // ---------------------------------------------------------------------------------------------
 // Images (docs/assets.md): an image from TS bytes over `ResMut<Assets<Image>>`, the engine's
-// `Images` export (crates/bevy-ts-cli/src/assets.rs). `Image.new` (on `bevy-ts/bevy`'s `Image`)
+// `Images` export (crates/bevy-ts-embed/src/assets.rs). `Image.new` (on `bevy-ts/bevy`'s `Image`)
 // records in JS; `images.add` crosses once. Bytes cross as one `Uint8Array`, copied once in Rust.
 
 /** The image formats `Image.new` takes, codes as `FORMATS` in assets.rs. */
