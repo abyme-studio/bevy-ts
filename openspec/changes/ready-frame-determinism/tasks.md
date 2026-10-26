@@ -6,6 +6,6 @@
 
 ## 2. Tests
 
-- [ ] 2.1 `stacked_instances_at_one_depth_are_the_same_every_shot`: 64 copies of a textured quad at one depth, shot four times, two with 30 ms of extra work a frame, byte-identical; it fails without 1.2
-- [ ] 2.2 Agent town's civ hazards frame, 8 runs with a build of this branch, byte-identical
-- [ ] 2.3 Agent town's learn frame, 6 runs with a build of this branch, byte-identical
+- [x] 2.1 `stacked_instances_at_one_depth_are_the_same_every_shot`: 64 copies of a textured quad at one depth, shot four times, two with 30 ms of extra work a frame, byte-identical; it fails without 1.2
+- [x] 2.2 Agent town's civ hazards frame, 8 runs with a build of this branch, byte-identical
+- [x] 2.3 Agent town's learn frame, 6 runs with a build of this branch, byte-identical: all equal its `learn-frame.alt.png`, the one picture agent town now needs as its golden
