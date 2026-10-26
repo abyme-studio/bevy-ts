@@ -3,21 +3,21 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components and resources TS can name. Column classes have a native
 // layout read from reflection; the rest are handles for With/Without filters and TSX.
-import { array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, rustComponent, u16, u32, u8, vec2, vec3, vec4 } from "bevy-ts";
+import { array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, reflectClass, u16, u32, u8, vec2, vec3, vec4 } from "bevy-ts";
 
 export { Time, Transform } from "bevy-ts";
 
 export class ManageAccessibilityUpdates extends nativeResource("ManageAccessibilityUpdates", { value: bool }) {}
 
-export const AnimatedBy = rustComponent("AnimatedBy");
+export const AnimatedBy = reflectClass("AnimatedBy");
 
-export const AnimationPlayer = rustComponent("AnimationPlayer");
+export const AnimationPlayer = reflectClass("AnimationPlayer");
 
-export const AnimationTargetId = rustComponent("AnimationTargetId");
+export const AnimationTargetId = reflectClass("AnimationTargetId");
 
-export const AnimationGraphHandle = rustComponent("AnimationGraphHandle");
+export const AnimationGraphHandle = reflectClass("AnimationGraphHandle");
 
-export const AnimationTransitions = rustComponent("AnimationTransitions");
+export const AnimationTransitions = reflectClass("AnimationTransitions");
 
 export class ContrastAdaptiveSharpening extends nativeComponent("ContrastAdaptiveSharpening", { enabled: bool, sharpening_strength: f32, denoise: bool }) {}
 
@@ -29,7 +29,7 @@ export class Smaa extends nativeComponent("Smaa", { preset: enumOf("Low", "Mediu
 
 export class TemporalAntiAliasing extends nativeComponent("TemporalAntiAliasing", { reset: bool }) {}
 
-export const AudioPlayer = rustComponent("bevy_audio::audio::AudioPlayer<bevy_audio::audio_source::AudioSource>");
+export const AudioPlayer = reflectClass("bevy_audio::audio::AudioPlayer<bevy_audio::audio_source::AudioSource>");
 
 export class PlaybackSettings extends nativeComponent("PlaybackSettings", { mode: enumOf("Once", "Loop", "Despawn", "Remove"), speed: f32, paused: bool, muted: bool, spatial: bool }) {}
 
@@ -37,157 +37,157 @@ export class SpatialListener extends nativeComponent("SpatialListener", { left_e
 
 export class Camera extends nativeComponent("Camera", { is_active: bool, msaa_writeback: enumOf("Off", "Auto", "Always"), invert_culling: bool }) {}
 
-export const CameraMainTextureUsages = rustComponent("CameraMainTextureUsages");
+export const CameraMainTextureUsages = reflectClass("CameraMainTextureUsages");
 
-export const Exposure = rustComponent("Exposure");
+export const Exposure = reflectClass("Exposure");
 
-export const MainPassResolutionOverride = rustComponent("MainPassResolutionOverride");
+export const MainPassResolutionOverride = reflectClass("MainPassResolutionOverride");
 
 export class ManualTextureViewHandle extends nativeComponent("ManualTextureViewHandle", { value: u32 }) {}
 
-export const RenderTarget = rustComponent("RenderTarget");
+export const RenderTarget = reflectClass("RenderTarget");
 
-export const ShadowLodOrigin = rustComponent("ShadowLodOrigin");
+export const ShadowLodOrigin = reflectClass("ShadowLodOrigin");
 
-export const Camera2d = rustComponent("Camera2d");
+export const Camera2d = reflectClass("Camera2d");
 
-export const Camera3d = rustComponent("Camera3d");
+export const Camera3d = reflectClass("Camera3d");
 
 export class CompositingSpace extends nativeComponent("CompositingSpace", { value: enumOf("Srgb", "Linear", "Oklab") }) {}
 
-export const Hdr = rustComponent("Hdr");
+export const Hdr = reflectClass("Hdr");
 
 export class Aabb extends nativeComponent("Aabb", { center: vec3, half_extents: vec3 }) {}
 
-export const CascadesFrusta = rustComponent("CascadesFrusta");
+export const CascadesFrusta = reflectClass("CascadesFrusta");
 
-export const CubemapFrusta = rustComponent("CubemapFrusta");
+export const CubemapFrusta = reflectClass("CubemapFrusta");
 
-export const Frustum = rustComponent("Frustum");
+export const Frustum = reflectClass("Frustum");
 
 export class Sphere extends nativeComponent("Sphere", { center: vec3, radius: f32 }) {}
 
-export const Projection = rustComponent("Projection");
+export const Projection = reflectClass("Projection");
 
-export const CascadesVisibleEntities = rustComponent("CascadesVisibleEntities");
+export const CascadesVisibleEntities = reflectClass("CascadesVisibleEntities");
 
-export const CubemapVisibleEntities = rustComponent("CubemapVisibleEntities");
+export const CubemapVisibleEntities = reflectClass("CubemapVisibleEntities");
 
-export const DynamicSkinnedMeshBounds = rustComponent("DynamicSkinnedMeshBounds");
+export const DynamicSkinnedMeshBounds = reflectClass("DynamicSkinnedMeshBounds");
 
 export class InheritedVisibility extends nativeComponent("InheritedVisibility", { value: bool }) {}
 
-export const NoFrustumCulling = rustComponent("NoFrustumCulling");
+export const NoFrustumCulling = reflectClass("NoFrustumCulling");
 
 export class ViewVisibility extends nativeComponent("ViewVisibility", { value: u8 }) {}
 
 export class Visibility extends nativeComponent("Visibility", { value: enumOf("Inherited", "Hidden", "Visible") }) {}
 
-export const VisibilityClass = rustComponent("VisibilityClass");
+export const VisibilityClass = reflectClass("VisibilityClass");
 
-export const VisibleEntities = rustComponent("VisibleEntities");
+export const VisibleEntities = reflectClass("VisibleEntities");
 
-export const VisibleMeshEntities = rustComponent("VisibleMeshEntities");
+export const VisibleMeshEntities = reflectClass("VisibleMeshEntities");
 
 export class VisibilityRange extends nativeComponent("VisibilityRange", { use_aabb: bool }) {}
 
-export const RenderLayers = rustComponent("RenderLayers");
+export const RenderLayers = reflectClass("RenderLayers");
 
-export const DeferredPrepass = rustComponent("DeferredPrepass");
+export const DeferredPrepass = reflectClass("DeferredPrepass");
 
-export const DeferredPrepassDoubleBuffer = rustComponent("DeferredPrepassDoubleBuffer");
+export const DeferredPrepassDoubleBuffer = reflectClass("DeferredPrepassDoubleBuffer");
 
-export const DepthPrepass = rustComponent("DepthPrepass");
+export const DepthPrepass = reflectClass("DepthPrepass");
 
-export const DepthPrepassDoubleBuffer = rustComponent("DepthPrepassDoubleBuffer");
+export const DepthPrepassDoubleBuffer = reflectClass("DepthPrepassDoubleBuffer");
 
-export const MotionVectorPrepass = rustComponent("MotionVectorPrepass");
+export const MotionVectorPrepass = reflectClass("MotionVectorPrepass");
 
-export const NormalPrepass = rustComponent("NormalPrepass");
+export const NormalPrepass = reflectClass("NormalPrepass");
 
-export const NoBackgroundMotionVectors = rustComponent("NoBackgroundMotionVectors");
+export const NoBackgroundMotionVectors = reflectClass("NoBackgroundMotionVectors");
 
-export const RootNonCameraView = rustComponent("RootNonCameraView");
+export const RootNonCameraView = reflectClass("RootNonCameraView");
 
-export const InfiniteGrid = rustComponent("InfiniteGrid");
+export const InfiniteGrid = reflectClass("InfiniteGrid");
 
 export class InfiniteGridSettings extends nativeComponent("InfiniteGridSettings", { fadeout_distance: f32, dot_fadeout_strength: f32, scale: f32, major_line_interval: u32 }) {}
 
-export const PointerDebugOverlay = rustComponent("PointerDebugOverlay");
+export const PointerDebugOverlay = reflectClass("PointerDebugOverlay");
 
-export const PointerDebugOverlayOf = rustComponent("PointerDebugOverlayOf");
+export const PointerDebugOverlayOf = reflectClass("PointerDebugOverlayOf");
 
 export class GlobalRenderDebugOverlay extends nativeResource("GlobalRenderDebugOverlay", { enabled: bool, opacity: f32 }) {}
 
 export class RenderDebugOverlay extends nativeComponent("RenderDebugOverlay", { enabled: bool, opacity: f32 }) {}
 
-export const Disabled = rustComponent("Disabled");
+export const Disabled = reflectClass("Disabled");
 
 export class ChildOf extends nativeComponent("ChildOf", { value: entity }) {}
 
-export const Children = rustComponent("Children");
+export const Children = reflectClass("Children");
 
-export const Name = rustComponent("Name");
+export const Name = reflectClass("Name");
 
-export const ObservedBy = rustComponent("ObservedBy");
+export const ObservedBy = reflectClass("ObservedBy");
 
-export const IsResource = rustComponent("IsResource");
+export const IsResource = reflectClass("IsResource");
 
-export const MainEntity = rustComponent("MainEntity");
+export const MainEntity = reflectClass("MainEntity");
 
-export const ShowAabbGizmo = rustComponent("ShowAabbGizmo");
+export const ShowAabbGizmo = reflectClass("ShowAabbGizmo");
 
-export const ShowFrustumGizmo = rustComponent("ShowFrustumGizmo");
+export const ShowFrustumGizmo = reflectClass("ShowFrustumGizmo");
 
 export class Gizmo extends nativeComponent("Gizmo", { depth_bias: f32 }) {}
 
-export const ShowSkinnedMeshBoundsGizmo = rustComponent("ShowSkinnedMeshBoundsGizmo");
+export const ShowSkinnedMeshBoundsGizmo = reflectClass("ShowSkinnedMeshBoundsGizmo");
 
-export const TransformGizmoCamera = rustComponent("TransformGizmoCamera");
+export const TransformGizmoCamera = reflectClass("TransformGizmoCamera");
 
-export const TransformGizmoFocus = rustComponent("TransformGizmoFocus");
+export const TransformGizmoFocus = reflectClass("TransformGizmoFocus");
 
 export class TransformGizmoState extends nativeResource("TransformGizmoState", { active: bool, drag_start_world: vec3, gizmo_origin: vec3 }) {}
 
-export const GltfExtras = rustComponent("GltfExtras");
+export const GltfExtras = reflectClass("GltfExtras");
 
-export const GltfMaterialExtras = rustComponent("GltfMaterialExtras");
+export const GltfMaterialExtras = reflectClass("GltfMaterialExtras");
 
-export const GltfMaterialName = rustComponent("GltfMaterialName");
+export const GltfMaterialName = reflectClass("GltfMaterialName");
 
-export const GltfMeshExtras = rustComponent("GltfMeshExtras");
+export const GltfMeshExtras = reflectClass("GltfMeshExtras");
 
-export const GltfMeshName = rustComponent("GltfMeshName");
+export const GltfMeshName = reflectClass("GltfMeshName");
 
-export const GltfSceneExtras = rustComponent("GltfSceneExtras");
+export const GltfSceneExtras = reflectClass("GltfSceneExtras");
 
-export const GltfSceneName = rustComponent("GltfSceneName");
+export const GltfSceneName = reflectClass("GltfSceneName");
 
-export const Gamepad = rustComponent("Gamepad");
+export const Gamepad = reflectClass("Gamepad");
 
-export const GamepadSettings = rustComponent("GamepadSettings");
+export const GamepadSettings = reflectClass("GamepadSettings");
 
 export class AccumulatedMouseMotion extends nativeResource("AccumulatedMouseMotion", { delta: vec2 }) {}
 
 export class AccumulatedMouseScroll extends nativeResource("AccumulatedMouseScroll", { unit: enumOf("Line", "Pixel"), delta: vec2 }) {}
 
-export const FocusedInputKeyboardInput = rustComponent("FocusedInput<KeyboardInput>");
+export const FocusedInputKeyboardInput = reflectClass("FocusedInput<KeyboardInput>");
 
 export class InputFocusVisible extends nativeResource("InputFocusVisible", { value: bool }) {}
 
-export const AutoFocus = rustComponent("AutoFocus");
+export const AutoFocus = reflectClass("AutoFocus");
 
 export class TabGroup extends nativeComponent("TabGroup", { order: i32, modal: bool }) {}
 
 export class TabIndex extends nativeComponent("TabIndex", { value: i32 }) {}
 
-export const NotShadowCaster = rustComponent("NotShadowCaster");
+export const NotShadowCaster = reflectClass("NotShadowCaster");
 
-export const NotShadowReceiver = rustComponent("NotShadowReceiver");
+export const NotShadowReceiver = reflectClass("NotShadowReceiver");
 
 export class ShadowFilteringMethod extends nativeComponent("ShadowFilteringMethod", { value: enumOf("Hardware2x2", "Gaussian", "Temporal") }) {}
 
-export const TransmittedShadowReceiver = rustComponent("TransmittedShadowReceiver");
+export const TransmittedShadowReceiver = reflectClass("TransmittedShadowReceiver");
 
 export class AmbientLight extends nativeComponent("AmbientLight", { brightness: f32, affects_lightmapped_meshes: bool }) {}
 
@@ -195,21 +195,21 @@ export class GlobalAmbientLight extends nativeResource("GlobalAmbientLight", { b
 
 export class CascadeShadowConfig extends nativeComponent("CascadeShadowConfig", { overlap_proportion: f32, minimum_distance: f32 }) {}
 
-export const Cascades = rustComponent("Cascades");
+export const Cascades = reflectClass("Cascades");
 
-export const ClusterConfig = rustComponent("ClusterConfig");
+export const ClusterConfig = reflectClass("ClusterConfig");
 
 export class ClusteredDecal extends nativeComponent("ClusteredDecal", { tag: u32 }) {}
 
 export class DirectionalLight extends nativeComponent("DirectionalLight", { illuminance: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32 }) {}
 
-export const DirectionalLightTexture = rustComponent("DirectionalLightTexture");
+export const DirectionalLightTexture = reflectClass("DirectionalLightTexture");
 
-export const ShowLightGizmo = rustComponent("ShowLightGizmo");
+export const ShowLightGizmo = reflectClass("ShowLightGizmo");
 
 export class PointLight extends nativeComponent("PointLight", { intensity: f32, range: f32, radius: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, soft_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32, shadow_map_near_z: f32 }) {}
 
-export const PointLightTexture = rustComponent("PointLightTexture");
+export const PointLightTexture = reflectClass("PointLightTexture");
 
 export class EnvironmentMapLight extends nativeComponent("EnvironmentMapLight", { intensity: f32, rotation: quat, affects_lightmapped_mesh_diffuse: bool }) {}
 
@@ -219,7 +219,7 @@ export class IrradianceVolume extends nativeComponent("IrradianceVolume", { inte
 
 export class LightProbe extends nativeComponent("LightProbe", { falloff: vec3 }) {}
 
-export const ParallaxCorrection = rustComponent("ParallaxCorrection");
+export const ParallaxCorrection = reflectClass("ParallaxCorrection");
 
 export class Skybox extends nativeComponent("Skybox", { brightness: f32, rotation: quat }) {}
 
@@ -227,25 +227,25 @@ export class RectLight extends nativeComponent("RectLight", { intensity: f32, ra
 
 export class SpotLight extends nativeComponent("SpotLight", { intensity: f32, range: f32, radius: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, soft_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32, shadow_map_near_z: f32, outer_angle: f32, inner_angle: f32 }) {}
 
-export const SpotLightTexture = rustComponent("SpotLightTexture");
+export const SpotLightTexture = reflectClass("SpotLightTexture");
 
 export class FogVolume extends nativeComponent("FogVolume", { density_factor: f32, density_texture_offset: vec3, absorption: f32, scattering: f32, scattering_asymmetry: f32, light_intensity: f32 }) {}
 
 export class VolumetricFog extends nativeComponent("VolumetricFog", { ambient_intensity: f32, jitter: f32, step_count: u32 }) {}
 
-export const VolumetricLight = rustComponent("VolumetricLight");
+export const VolumetricLight = reflectClass("VolumetricLight");
 
-export const Mesh2d = rustComponent("Mesh2d");
+export const Mesh2d = reflectClass("Mesh2d");
 
-export const Mesh3d = rustComponent("Mesh3d");
+export const Mesh3d = reflectClass("Mesh3d");
 
 export class MeshTag extends nativeComponent("MeshTag", { value: u32 }) {}
 
-export const MeshMorphWeights = rustComponent("MeshMorphWeights");
+export const MeshMorphWeights = reflectClass("MeshMorphWeights");
 
-export const MorphWeights = rustComponent("MorphWeights");
+export const MorphWeights = reflectClass("MorphWeights");
 
-export const SkinnedMesh = rustComponent("SkinnedMesh");
+export const SkinnedMesh = reflectClass("SkinnedMesh");
 
 export class ContactShadows extends nativeComponent("ContactShadows", { linear_steps: u32, thickness: f32, length: f32 }) {}
 
@@ -255,11 +255,11 @@ export class Lightmap extends nativeComponent("Lightmap", { bicubic_sampling: bo
 
 export class DefaultOpaqueRendererMethod extends nativeResource("DefaultOpaqueRendererMethod", { value: enumOf("Forward", "Deferred", "Auto") }) {}
 
-export const MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt = rustComponent("MeshMaterial3d<ExtendedMaterial<StandardMaterial, ForwardDecalMaterialExt>>");
+export const MeshMaterial3dExtendedMaterialStandardMaterialForwardDecalMaterialExt = reflectClass("MeshMaterial3d<ExtendedMaterial<StandardMaterial, ForwardDecalMaterialExt>>");
 
-export const MeshMaterial3dExtendedMaterialStandardMaterialFade = rustComponent("MeshMaterial3d<ExtendedMaterial<StandardMaterial, Fade>>");
+export const MeshMaterial3dExtendedMaterialStandardMaterialFade = reflectClass("MeshMaterial3d<ExtendedMaterial<StandardMaterial, Fade>>");
 
-export const MeshMaterial3dStandardMaterial = rustComponent("MeshMaterial3d<StandardMaterial>");
+export const MeshMaterial3dStandardMaterial = reflectClass("MeshMaterial3d<StandardMaterial>");
 
 export class ScreenSpaceAmbientOcclusion extends nativeComponent("ScreenSpaceAmbientOcclusion", { radius: f32, constant_object_thickness: f32 }) {}
 
@@ -267,13 +267,13 @@ export class ScreenSpaceReflections extends nativeComponent("ScreenSpaceReflecti
 
 export class ScreenSpaceTransmission extends nativeComponent("ScreenSpaceTransmission", { quality: enumOf("Low", "Medium", "High", "Ultra") }) {}
 
-export const Mesh3dWireframe = rustComponent("Mesh3dWireframe");
+export const Mesh3dWireframe = reflectClass("Mesh3dWireframe");
 
-export const NoWireframe = rustComponent("NoWireframe");
+export const NoWireframe = reflectClass("NoWireframe");
 
-export const Wireframe = rustComponent("Wireframe");
+export const Wireframe = reflectClass("Wireframe");
 
-export const WireframeColor = rustComponent("WireframeColor");
+export const WireframeColor = reflectClass("WireframeColor");
 
 export class WireframeConfig extends nativeResource("WireframeConfig", { global: bool, default_line_width: f32, default_topology: enumOf("Triangles", "Quads"), xray_mode: bool }) {}
 
@@ -287,7 +287,7 @@ export class Pickable extends nativeComponent("Pickable", { should_block_lower: 
 
 export class PickingSettings extends nativeResource("PickingSettings", { is_enabled: bool, is_input_enabled: bool, is_hover_enabled: bool, is_window_picking_enabled: bool }) {}
 
-export const EntityCursor = rustComponent("EntityCursor");
+export const EntityCursor = reflectClass("EntityCursor");
 
 export class DirectlyHovered extends nativeComponent("DirectlyHovered", { value: bool }) {}
 
@@ -297,19 +297,19 @@ export class PickingInteraction extends nativeComponent("PickingInteraction", { 
 
 export class PointerInputSettings extends nativeResource("PointerInputSettings", { is_touch_enabled: bool, is_mouse_enabled: bool }) {}
 
-export const MeshPickingCamera = rustComponent("MeshPickingCamera");
+export const MeshPickingCamera = reflectClass("MeshPickingCamera");
 
 export class MeshPickingSettings extends nativeResource("MeshPickingSettings", { require_markers: bool, ray_cast_visibility: enumOf("Any", "Visible", "VisibleInView") }) {}
 
-export const RayCastBackfaces = rustComponent("RayCastBackfaces");
+export const RayCastBackfaces = reflectClass("RayCastBackfaces");
 
-export const SimplifiedMesh = rustComponent("SimplifiedMesh");
+export const SimplifiedMesh = reflectClass("SimplifiedMesh");
 
-export const PointerId = rustComponent("PointerId");
+export const PointerId = reflectClass("PointerId");
 
-export const PointerInteraction = rustComponent("PointerInteraction");
+export const PointerInteraction = reflectClass("PointerInteraction");
 
-export const PointerLocation = rustComponent("PointerLocation");
+export const PointerLocation = reflectClass("PointerLocation");
 
 export class PointerPressState extends nativeComponent("PointerPressState", { primary: bool, secondary: bool, middle: bool }) {}
 
@@ -325,7 +325,7 @@ export class Vignette extends nativeComponent("Vignette", { intensity: f32, radi
 
 export class MotionBlur extends nativeComponent("MotionBlur", { shutter_angle: f32, samples: u32 }) {}
 
-export const CameraRenderGraph = rustComponent("CameraRenderGraph");
+export const CameraRenderGraph = reflectClass("CameraRenderGraph");
 
 export class MipBias extends nativeComponent("MipBias", { value: f32 }) {}
 
@@ -333,9 +333,9 @@ export class TemporalJitter extends nativeComponent("TemporalJitter", { offset: 
 
 export class GlobalsUniform extends nativeResource("GlobalsUniform", { time: f32, delta_time: f32, frame_count: u32 }) {}
 
-export const OcclusionCulling = rustComponent("OcclusionCulling");
+export const OcclusionCulling = reflectClass("OcclusionCulling");
 
-export const ColorGrading = rustComponent("ColorGrading");
+export const ColorGrading = reflectClass("ColorGrading");
 
 export class DebandDither extends nativeComponent("DebandDither", { value: enumOf("Disabled", "Enabled") }) {}
 
@@ -343,13 +343,13 @@ export class Msaa extends nativeComponent("Msaa", { value: enumOf("Off", "Sample
 
 export class Tonemapping extends nativeComponent("Tonemapping", { value: enumOf("None", "Linear", "Reinhard", "ReinhardLuminance", "AcesFitted", "AgX", "SomewhatBoringDisplayTransform", "TonyMcMapface", "BlenderFilmic", "KhronosPbrNeutral") }) {}
 
-export const RenderShadowMapVisibleEntities = rustComponent("RenderShadowMapVisibleEntities");
+export const RenderShadowMapVisibleEntities = reflectClass("RenderShadowMapVisibleEntities");
 
-export const Screenshot = rustComponent("Screenshot");
+export const Screenshot = reflectClass("Screenshot");
 
-export const SceneComponentInfo = rustComponent("SceneComponentInfo");
+export const SceneComponentInfo = reflectClass("SceneComponentInfo");
 
-export const SpritePickingCamera = rustComponent("SpritePickingCamera");
+export const SpritePickingCamera = reflectClass("SpritePickingCamera");
 
 export class SpritePickingSettings extends nativeResource("SpritePickingSettings", { require_markers: bool }) {}
 
@@ -357,31 +357,31 @@ export class Anchor extends nativeComponent("Anchor", { value: vec2 }) {}
 
 export class Sprite extends nativeComponent("Sprite", { flip_x: bool, flip_y: bool }) {}
 
-export const Text2d = rustComponent("Text2d");
+export const Text2d = reflectClass("Text2d");
 
 export class Text2dShadow extends nativeComponent("Text2dShadow", { offset: vec2 }) {}
 
-export const MeshMaterial2dColorMaterial = rustComponent("MeshMaterial2d<ColorMaterial>");
+export const MeshMaterial2dColorMaterial = reflectClass("MeshMaterial2d<ColorMaterial>");
 
-export const MeshMaterial2dSpriteMeshMaterial = rustComponent("MeshMaterial2d<SpriteMeshMaterial>");
+export const MeshMaterial2dSpriteMeshMaterial = reflectClass("MeshMaterial2d<SpriteMeshMaterial>");
 
-export const MeshMaterial2dTilemapChunkMaterial = rustComponent("MeshMaterial2d<TilemapChunkMaterial>");
+export const MeshMaterial2dTilemapChunkMaterial = reflectClass("MeshMaterial2d<TilemapChunkMaterial>");
 
-export const Mesh2dWireframe = rustComponent("Mesh2dWireframe");
+export const Mesh2dWireframe = reflectClass("Mesh2dWireframe");
 
-export const NoWireframe2d = rustComponent("NoWireframe2d");
+export const NoWireframe2d = reflectClass("NoWireframe2d");
 
-export const Wireframe2d = rustComponent("Wireframe2d");
+export const Wireframe2d = reflectClass("Wireframe2d");
 
-export const Wireframe2dColor = rustComponent("Wireframe2dColor");
+export const Wireframe2dColor = reflectClass("Wireframe2dColor");
 
 export class Wireframe2dConfig extends nativeResource("Wireframe2dConfig", { global: bool }) {}
 
-export const TilemapChunk = rustComponent("TilemapChunk");
+export const TilemapChunk = reflectClass("TilemapChunk");
 
-export const TilemapChunkTileData = rustComponent("TilemapChunkTileData");
+export const TilemapChunkTileData = reflectClass("TilemapChunkTileData");
 
-export const TextBounds = rustComponent("TextBounds");
+export const TextBounds = reflectClass("TextBounds");
 
 export class TextLayoutInfo extends nativeComponent("TextLayoutInfo", { scale_factor: f32, size: vec2 }) {}
 
@@ -391,43 +391,47 @@ export class EmSize extends nativeComponent("EmSize", { value: f32 }) {}
 
 export class FontHinting extends nativeComponent("FontHinting", { value: enumOf("Disabled", "Enabled") }) {}
 
-export const LetterSpacing = rustComponent("LetterSpacing");
+export const LetterSpacing = reflectClass("LetterSpacing");
 
-export const LineHeight = rustComponent("LineHeight");
+export const LineHeight = reflectClass("LineHeight");
 
-export const StrikethroughColor = rustComponent("StrikethroughColor");
+export const StrikethroughColor = reflectClass("StrikethroughColor");
 
-export const TextBackgroundColor = rustComponent("TextBackgroundColor");
+export const TextBackgroundColor = reflectClass("TextBackgroundColor");
 
-export const TextColor = rustComponent("TextColor");
+export const TextColor = reflectClass("TextColor");
 
 export class TextFont extends nativeComponent("TextFont", { font_smoothing: enumOf("None", "AntiAliased") }) {}
 
 export class TextLayout extends nativeComponent("TextLayout", { justify: enumOf("Left", "Center", "Right", "Justified", "Start", "End"), linebreak: enumOf("WordBoundary", "AnyCharacter", "WordOrCharacter", "NoWrap") }) {}
 
-export const TextSpan = rustComponent("TextSpan");
+export const TextSpan = reflectClass("TextSpan");
 
-export const UnderlineColor = rustComponent("UnderlineColor");
+export const UnderlineColor = reflectClass("UnderlineColor");
 
-export const DelayedCommandQueue = rustComponent("DelayedCommandQueue");
+export const DelayedCommandQueue = reflectClass("DelayedCommandQueue");
 
-export const GlobalTransform = rustComponent("GlobalTransform");
+export const GlobalTransform = reflectClass("GlobalTransform");
 
-export const TransformTreeChanged = rustComponent("TransformTreeChanged");
+export const TransformTreeChanged = reflectClass("TransformTreeChanged");
 
-export const ScriptHidden = rustComponent("ScriptHidden");
+export const ScriptHidden = reflectClass("ScriptHidden");
 
-export const TsSpawned = rustComponent("TsSpawned");
+export const TsSpawned = reflectClass("TsSpawned");
+
+export class Save extends nativeComponent("Save", {  }) {}
+
+export const TsSaved = reflectClass("TsSaved");
 
 export class PlayAnimation extends nativeComponent("PlayAnimation", { speed: f32, transition_secs: f32, paused: bool, cull: bool }) {}
 
-export const MissingComponents = rustComponent("MissingComponents");
+export const MissingComponents = reflectClass("MissingComponents");
 
 export class MaterialAlpha extends nativeComponent("MaterialAlpha", { alpha: f32 }) {}
 
 export class UiScale extends nativeResource("UiScale", { value: f32 }) {}
 
-export const AccessibleLabel = rustComponent("AccessibleLabel");
+export const AccessibleLabel = reflectClass("AccessibleLabel");
 
 export class AutoDirectionalNavigation extends nativeComponent("AutoDirectionalNavigation", { respect_tab_order: bool }) {}
 
@@ -437,85 +441,85 @@ export class FocusPolicy extends nativeComponent("FocusPolicy", { value: enumOf(
 
 export class RelativeCursorPosition extends nativeComponent("RelativeCursorPosition", { cursor_over: bool }) {}
 
-export const BackgroundGradient = rustComponent("BackgroundGradient");
+export const BackgroundGradient = reflectClass("BackgroundGradient");
 
-export const BorderGradient = rustComponent("BorderGradient");
+export const BorderGradient = reflectClass("BorderGradient");
 
-export const Checkable = rustComponent("Checkable");
+export const Checkable = reflectClass("Checkable");
 
-export const Checked = rustComponent("Checked");
+export const Checked = reflectClass("Checked");
 
-export const InteractionDisabled = rustComponent("InteractionDisabled");
+export const InteractionDisabled = reflectClass("InteractionDisabled");
 
-export const Pressed = rustComponent("Pressed");
+export const Pressed = reflectClass("Pressed");
 
-export const ContentSize = rustComponent("ContentSize");
+export const ContentSize = reflectClass("ContentSize");
 
-export const UiPickingCamera = rustComponent("UiPickingCamera");
+export const UiPickingCamera = reflectClass("UiPickingCamera");
 
 export class UiPickingSettings extends nativeResource("UiPickingSettings", { require_markers: bool }) {}
 
 export class ComputedStackIndex extends nativeComponent("ComputedStackIndex", { value: u32 }) {}
 
-export const BackgroundColor = rustComponent("BackgroundColor");
+export const BackgroundColor = reflectClass("BackgroundColor");
 
-export const BorderColor = rustComponent("BorderColor");
+export const BorderColor = reflectClass("BorderColor");
 
-export const BoxShadow = rustComponent("BoxShadow");
+export const BoxShadow = reflectClass("BoxShadow");
 
-export const CalculatedClip = rustComponent("CalculatedClip");
+export const CalculatedClip = reflectClass("CalculatedClip");
 
 export class ComputedNode extends nativeComponent("ComputedNode", { size: vec2, content_size: vec2, scrollbar_size: vec2, scroll_position: vec2, outline_width: f32, outline_offset: f32, unrounded_size: vec2, inverse_scale_factor: f32 }) {}
 
 export class ComputedUiRenderTargetInfo extends nativeComponent("ComputedUiRenderTargetInfo", { scale_factor: f32 }) {}
 
-export const ComputedUiTargetCamera = rustComponent("ComputedUiTargetCamera");
+export const ComputedUiTargetCamera = reflectClass("ComputedUiTargetCamera");
 
-export const FixedNode = rustComponent("FixedNode");
+export const FixedNode = reflectClass("FixedNode");
 
 export class GlobalZIndex extends nativeComponent("GlobalZIndex", { value: i32 }) {}
 
-export const IgnoreScroll = rustComponent("IgnoreScroll");
+export const IgnoreScroll = reflectClass("IgnoreScroll");
 
-export const IsDefaultUiCamera = rustComponent("IsDefaultUiCamera");
+export const IsDefaultUiCamera = reflectClass("IsDefaultUiCamera");
 
 export class LayoutConfig extends nativeComponent("LayoutConfig", { use_rounding: bool }) {}
 
 export class Node extends nativeComponent("Node", { display: enumOf("Flex", "Grid", "Block", "None"), box_sizing: enumOf("BorderBox", "ContentBox"), position_type: enumOf("Relative", "Absolute"), scrollbar_width: f32, align_items: enumOf("Default", "Start", "StartSafe", "End", "EndSafe", "FlexStart", "FlexStartSafe", "FlexEnd", "FlexEndSafe", "Center", "CenterSafe", "Baseline", "Stretch"), justify_items: enumOf("Default", "Start", "StartSafe", "End", "EndSafe", "Center", "CenterSafe", "Baseline", "Stretch"), align_self: enumOf("Auto", "Start", "StartSafe", "End", "EndSafe", "FlexStart", "FlexStartSafe", "FlexEnd", "FlexEndSafe", "Center", "CenterSafe", "Baseline", "Stretch"), justify_self: enumOf("Auto", "Start", "StartSafe", "End", "EndSafe", "Center", "CenterSafe", "Baseline", "Stretch"), align_content: enumOf("Default", "Start", "StartSafe", "End", "EndSafe", "FlexStart", "FlexStartSafe", "FlexEnd", "FlexEndSafe", "Center", "CenterSafe", "Stretch", "SpaceBetween", "SpaceEvenly", "SpaceAround"), justify_content: enumOf("Default", "Start", "StartSafe", "End", "EndSafe", "FlexStart", "FlexStartSafe", "FlexEnd", "FlexEndSafe", "Center", "CenterSafe", "Stretch", "SpaceBetween", "SpaceEvenly", "SpaceAround"), direction: enumOf("Ltr", "Rtl"), flex_direction: enumOf("Row", "Column", "RowReverse", "ColumnReverse"), flex_wrap: enumOf("NoWrap", "Wrap", "WrapReverse"), flex_grow: f32, flex_shrink: f32, grid_auto_flow: enumOf("Row", "Column", "RowDense", "ColumnDense") }) {}
 
-export const OuterColor = rustComponent("OuterColor");
+export const OuterColor = reflectClass("OuterColor");
 
-export const Outline = rustComponent("Outline");
+export const Outline = reflectClass("Outline");
 
-export const OverrideClip = rustComponent("OverrideClip");
+export const OverrideClip = reflectClass("OverrideClip");
 
 export class ScrollPosition extends nativeComponent("ScrollPosition", { value: vec2 }) {}
 
-export const UiTargetCamera = rustComponent("UiTargetCamera");
+export const UiTargetCamera = reflectClass("UiTargetCamera");
 
 export class ZIndex extends nativeComponent("ZIndex", { value: i32 }) {}
 
-export const UiGlobalTransform = rustComponent("UiGlobalTransform");
+export const UiGlobalTransform = reflectClass("UiGlobalTransform");
 
 export class UiTransform extends nativeComponent("UiTransform", { scale: vec2 }) {}
 
-export const DeprecatedButton = rustComponent("DeprecatedButton");
+export const DeprecatedButton = reflectClass("DeprecatedButton");
 
 export class ImageNode extends nativeComponent("ImageNode", { flip_x: bool, flip_y: bool, visual_box: enumOf("ContentBox", "PaddingBox", "BorderBox") }) {}
 
-export const ImageNodeSize = rustComponent("ImageNodeSize");
+export const ImageNodeSize = reflectClass("ImageNodeSize");
 
 export class InlineImage extends nativeComponent("InlineImage", { flip_x: bool, flip_y: bool }) {}
 
-export const Label = rustComponent("Label");
+export const Label = reflectClass("Label");
 
-export const Text = rustComponent("Text");
+export const Text = reflectClass("Text");
 
 export class TextNodeFlags extends nativeComponent("TextNodeFlags", { needs_measure_fn: bool, needs_recompute: bool }) {}
 
 export class TextShadow extends nativeComponent("TextShadow", { offset: vec2 }) {}
 
-export const ViewportNode = rustComponent("ViewportNode");
+export const ViewportNode = reflectClass("ViewportNode");
 
 export class BoxShadowSamples extends nativeComponent("BoxShadowSamples", { value: u32 }) {}
 
@@ -525,53 +529,53 @@ export class GlobalUiDebugOptions extends nativeResource("GlobalUiDebugOptions",
 
 export class UiDebugOptions extends nativeComponent("UiDebugOptions", { enabled: bool, outline_border_box: bool, outline_padding_box: bool, outline_content_box: bool, outline_scrollbars: bool, line_width: f32, show_hidden: bool, show_clipped: bool, ignore_border_radius: bool }) {}
 
-export const ImageNodeTextureAtlasLayout = rustComponent("ImageNodeTextureAtlasLayout");
+export const ImageNodeTextureAtlasLayout = reflectClass("ImageNodeTextureAtlasLayout");
 
-export const ActivateOnPress = rustComponent("ActivateOnPress");
+export const ActivateOnPress = reflectClass("ActivateOnPress");
 
-export const Button = rustComponent("Button");
+export const Button = reflectClass("Button");
 
-export const Checkbox = rustComponent("Checkbox");
+export const Checkbox = reflectClass("Checkbox");
 
-export const Dialog = rustComponent("Dialog");
+export const Dialog = reflectClass("Dialog");
 
-export const DialogDragHandle = rustComponent("DialogDragHandle");
+export const DialogDragHandle = reflectClass("DialogDragHandle");
 
-export const DialogDragState = rustComponent("DialogDragState");
+export const DialogDragState = reflectClass("DialogDragState");
 
-export const ActiveDescendant = rustComponent("ActiveDescendant");
+export const ActiveDescendant = reflectClass("ActiveDescendant");
 
-export const ListItem = rustComponent("ListItem");
+export const ListItem = reflectClass("ListItem");
 
-export const MenuButton = rustComponent("MenuButton");
+export const MenuButton = reflectClass("MenuButton");
 
-export const MenuFocusState = rustComponent("MenuFocusState");
+export const MenuFocusState = reflectClass("MenuFocusState");
 
-export const MenuItem = rustComponent("MenuItem");
+export const MenuItem = reflectClass("MenuItem");
 
 export class MenuPopup extends nativeComponent("MenuPopup", { layout: enumOf("Column", "Row", "Grid") }) {}
 
-export const ModalDialog = rustComponent("ModalDialog");
+export const ModalDialog = reflectClass("ModalDialog");
 
-export const ModalDialogBarrier = rustComponent("ModalDialogBarrier");
+export const ModalDialogBarrier = reflectClass("ModalDialogBarrier");
 
 export class Popover extends nativeComponent("Popover", { window_margin: f32 }) {}
 
-export const RadioButton = rustComponent("RadioButton");
+export const RadioButton = reflectClass("RadioButton");
 
-export const RadioGroup = rustComponent("RadioGroup");
+export const RadioGroup = reflectClass("RadioGroup");
 
-export const ScrollArea = rustComponent("ScrollArea");
+export const ScrollArea = reflectClass("ScrollArea");
 
-export const Scrollbar = rustComponent("Scrollbar");
+export const Scrollbar = reflectClass("Scrollbar");
 
 export class ScrollbarDragState extends nativeComponent("ScrollbarDragState", { dragging: bool, drag_origin: f32 }) {}
 
-export const ScrollbarThumb = rustComponent("ScrollbarThumb");
+export const ScrollbarThumb = reflectClass("ScrollbarThumb");
 
 export class Slider extends nativeComponent("Slider", { track_click: enumOf("Drag", "Step", "Snap"), orientation: enumOf("Auto", "Horizontal", "Vertical") }) {}
 
-export const SliderDragState = rustComponent("SliderDragState");
+export const SliderDragState = reflectClass("SliderDragState");
 
 export class SliderPrecision extends nativeComponent("SliderPrecision", { value: i32 }) {}
 
@@ -579,35 +583,35 @@ export class SliderRange extends nativeComponent("SliderRange", { start: f32, en
 
 export class SliderStep extends nativeComponent("SliderStep", { value: f32 }) {}
 
-export const SliderThumb = rustComponent("SliderThumb");
+export const SliderThumb = reflectClass("SliderThumb");
 
 export class SliderValue extends nativeComponent("SliderValue", { value: f32 }) {}
 
-export const SelectedTab = rustComponent("SelectedTab");
+export const SelectedTab = reflectClass("SelectedTab");
 
-export const Tab = rustComponent("Tab");
+export const Tab = reflectClass("Tab");
 
 export class TabList extends nativeComponent("TabList", { orientation: enumOf("Horizontal", "Vertical"), activation: enumOf("Manual", "Automatic") }) {}
 
-export const SelectAllOnFocus = rustComponent("SelectAllOnFocus");
+export const SelectAllOnFocus = reflectClass("SelectAllOnFocus");
 
-export const TextInput = rustComponent("TextInput");
+export const TextInput = reflectClass("TextInput");
 
-export const CursorIcon = rustComponent("CursorIcon");
+export const CursorIcon = reflectClass("CursorIcon");
 
-export const Monitor = rustComponent("Monitor");
+export const Monitor = reflectClass("Monitor");
 
-export const PrimaryMonitor = rustComponent("PrimaryMonitor");
+export const PrimaryMonitor = reflectClass("PrimaryMonitor");
 
 export class CursorOptions extends nativeComponent("CursorOptions", { visible: bool, grab_mode: enumOf("None", "Confined", "Locked"), hit_test: bool }) {}
 
-export const PrimaryWindow = rustComponent("PrimaryWindow");
+export const PrimaryWindow = reflectClass("PrimaryWindow");
 
 export class Window extends nativeComponent("Window", { present_mode: enumOf("AutoVsync", "AutoNoVsync", "Fifo", "FifoRelaxed", "Immediate", "Mailbox"), composite_alpha_mode: enumOf("Auto", "Opaque", "PreMultiplied", "PostMultiplied", "Inherit"), resizable: bool, decorations: bool, transparent: bool, focused: bool, window_level: enumOf("AlwaysOnBottom", "Normal", "AlwaysOnTop"), fit_canvas_to_parent: bool, prevent_default_event_handling: bool, ime_enabled: bool, ime_position: vec2, visible: bool, skip_taskbar: bool, clip_children: bool, recognize_pinch_gesture: bool, recognize_rotation_gesture: bool, recognize_doubletap_gesture: bool, movable_by_window_background: bool, fullsize_content_view: bool, has_shadow: bool, titlebar_shown: bool, titlebar_transparent: bool, titlebar_show_title: bool, titlebar_show_buttons: bool, borderless_game: bool, prefers_home_indicator_hidden: bool, prefers_status_bar_hidden: bool, preferred_screen_edges_deferring_system_gestures: enumOf("None", "Top", "Left", "Bottom", "Right", "All") }) {}
 
-export const DynamicWorldRoot = rustComponent("DynamicWorldRoot");
+export const DynamicWorldRoot = reflectClass("DynamicWorldRoot");
 
-export const WorldAssetRoot = rustComponent("WorldAssetRoot");
+export const WorldAssetRoot = reflectClass("WorldAssetRoot");
 
 export const AnimationClip = asset("bevy_animation::AnimationClip");
 
