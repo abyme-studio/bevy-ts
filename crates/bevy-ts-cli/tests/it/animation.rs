@@ -28,6 +28,9 @@ fn anim_app(dir: &Path, entry: &str) -> App {
     // The glTF loader registers in `finish`, which `update` alone never runs.
     app.finish();
     app.cleanup();
+    // Frames of exactly 1/60 s, not of wall time: a loaded machine's long frames would carry a clip
+    // past where a test's frames take it.
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f64(1.0 / 60.0)));
     app.insert_resource(bevy_ts::generation::DevSource(std::sync::Arc::new(bevy_ts_cli::compile::Compiler::new(dir.join(entry), true).unwrap())));
     app
 }
@@ -301,9 +304,6 @@ app.scene("foxes", () => (
 fn animations_seek_rewind_replay() {
     let dir = fox_project("animation-seek", &[("package.json", "{}"), ("src/game.tsx", DRIVE_GAME)]);
     let mut app = anim_app(&dir, "src/game.tsx");
-    // Frames of 1/60 s, not of wall time: a loaded machine's long frames would carry the run past
-    // where two frames take it.
-    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f32(1.0 / 60.0)));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     until(&mut app, "the rewind line", |app| messages(app).iter().any(|l| l.starts_with("after rewind")));
