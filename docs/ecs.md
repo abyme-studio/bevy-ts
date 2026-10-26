@@ -124,8 +124,8 @@ export class Chat extends Message { text: string = ""; to: u32[] = [] }
   `tag.scores.push(4)`, `tag.scores[0] = 1`, `sort`, `length = 2`. It is the run's own copy, the
   same array all run. At the end of the run (or before another accessor in the same run reads that
   row's field) it is compared with what it was copied from, items by `Object.is` (vectors lane by
-  lane, objects member by member; a non-finite float reads as its string, `"NaN"`, and a `NaN`
-  written over it is no change), and sent as item edits: a truncate, a set per changed item, an
+  lane, objects member by member, so a `NaN` written over a `NaN` is no change), and sent as item
+  edits: a truncate, a set per changed item, an
   append. When more than half the items changed (a `sort`, a `shift`) the whole list is sent
   instead. Rust applies them to its `Vec` in place and marks the row changed once. A list read
   and left unchanged sends nothing and marks nothing, as Bevy's `set_if_neq`.

@@ -4052,9 +4052,9 @@ function reflectStr(u8, o, n) {
 /**
  * A decoder for one codec: `(dv, u8) => value`, as JS source generated from its ops. `whole`
  * gives a newtype component as `read_component` does (`{ value }`); a row's `value` is the inner
- * value itself.
+ * value itself. `numbers` keeps a non-finite float a number, as a heap field's type says it is.
  */
-function reflectDecoder(codec, whole) {
+function reflectDecoder(codec, whole, numbers = false) {
   let n = 0;
   const v = () => `v${n++}`;
   const lines = [];
@@ -4068,12 +4068,12 @@ function reflectDecoder(codec, whole) {
     i32: ["getInt32", 4],
     u32: ["getUint32", 4],
   };
-  // Floats that are not finite read as Rust's "NaN", "Infinity", "-Infinity".
+  // Floats that are not finite read as Rust's "NaN", "Infinity", "-Infinity" (unless `numbers`).
   const num = (t, out) => {
     if (t === "bool") return `const ${out} = u8[o++] !== 0;`;
     const [get, size] = NUM[t];
     const read = `dv.${get}(o${size > 1 ? ", true" : ""})`;
-    if (t === "f32" || t === "f64") return `let ${out} = ${read}; o += ${size}; if (${out} - ${out} !== 0) ${out} = String(${out});`;
+    if ((t === "f32" || t === "f64") && !numbers) return `let ${out} = ${read}; o += ${size}; if (${out} - ${out} !== 0) ${out} = String(${out});`;
     return `const ${out} = ${read}; o += ${size};`;
   };
   const str = (out) => `const ${out}_n = dv.getUint32(o, true); o += 4; const ${out} = S(u8, o, ${out}_n); o += ${out}_n;`;
@@ -4191,7 +4191,7 @@ export function __reflectCheck(cases) {
 function reflectCommit(res) {
   REFLECT.caches = [];
   const add = (r) => {
-    if (!REFLECT.decoders[r.target]) REFLECT.decoders[r.target] = reflectDecoder(r.codec);
+    if (!REFLECT.decoders[r.target]) REFLECT.decoders[r.target] = reflectDecoder(r.codec, false, r.heap === true);
     REFLECT.caches[r.target] = new Map();
   };
   for (const r of Object.values(res.reflect || {})) add(r);
@@ -4381,8 +4381,6 @@ function heapMutFlushKey(key) {
 /** Whether two items are the same: `Object.is`, vectors lane by lane, objects member by member. */
 function heapSame(node, a, b) {
   if (Object.is(a, b)) return true;
-  // A non-finite float reads as its string ("NaN"), so a NaN written over it is no change.
-  if (node.k === "num") return typeof a !== typeof b && String(a) === String(b);
   if (node.k === "lanes") {
     const x = lanesOf(a, node.n), y = lanesOf(b, node.n);
     if (!x || !y) return false;
@@ -4439,7 +4437,8 @@ function heapEditFlush(p) {
   const n = core.ops.op_bevyts_host(REFLECT_EDIT, H.slotBytes, H.resultBytes, bytes, H.EMPTY, H.EMPTY, H.EMPTY);
   if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
   p.after();
-  p.orig = v.slice();
+  // Frozen copies, so an item the system mutates after this flush still diffs as changed.
+  p.orig = heapList(p.node.of, v.slice());
 }
 
 /**
@@ -5721,7 +5720,7 @@ function heapEncoder(t) {
 /** A heap field type's decoder; a list reads frozen, as a component's does. */
 function heapDecoder(t) {
   const node = heapNode(t);
-  const dec = reflectDecoder({ wrap: false, node });
+  const dec = reflectDecoder({ wrap: false, node }, false, true);
   return t.kind === "list" ? (dv, buf) => heapList(node.of, dec(dv, buf)) : dec;
 }
 

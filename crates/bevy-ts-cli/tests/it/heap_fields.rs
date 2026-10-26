@@ -176,6 +176,42 @@ app.addSystems(Update, chain(edit, wave, seen));
 }
 
 #[test]
+fn a_non_finite_float_item_reads_as_a_number_and_survives_a_whole_list_edit() {
+    let body = r#"
+import { vec3 } from "bevy-ts";
+import type { Vec3 } from "bevy-ts";
+export class Wave extends Component { ys: f32[] = []; ps: Vec3[] = [] }
+let frame = 0;
+export function wave(q: Query<[Mut<Wave>]>) {
+  frame++;
+  q.each((w) => {
+    if (frame === 1) {
+      w.ys = [NaN, Infinity, 1];
+      w.ps = [vec3(Infinity, 0, 0)];
+    } else if (frame === 2) w.ys.reverse();
+    else if (frame === 3) w.ys = [...w.ys, -Infinity];
+    else if (frame === 4) {
+      const ys = w.ys.map((y) => typeof y + " " + y).join(",");
+      console.log(`ys ${ys} ps ${typeof w.ps[0].x} ${w.ps[0].x}`);
+    }
+  });
+}
+app.addSystems(Update, wave);
+"#;
+    let (_, mut app) = load("heap-non-finite", &format!("{HEAD}{body}"));
+    app.init_resource::<bevy_ts::reflect_codec::EditLog>();
+    spawn_ts(&mut app, "game::Wave", json!({}), ());
+    updates(&mut app, 5);
+    assert_eq!(edits(&mut app), ["game::Wave.ys replace 3"], "a reverse sends the whole list, NaN and Infinity in it");
+    let m = messages(&app);
+    assert!(!m.iter().any(|l| l.contains("threw")), "{m:?}");
+    assert!(
+        m.iter().any(|l| l == "ys number 1,number Infinity,number NaN,number -Infinity ps number Infinity"),
+        "each item a number, the list reversed and then assigned from its own read: {m:?}"
+    );
+}
+
+#[test]
 fn edits_on_res_mut_a_local_and_an_observers_mut_are_seen_after_them() {
     let body = r#"
 import { Resource } from "bevy-ts";
