@@ -366,7 +366,8 @@ pub fn evaluate(world: &mut World, c: &mut Condition, predicate: &mut CallPredic
             reader.unread(world, cursor as usize)
         }
         Condition::RunOnce { slot } => !std::mem::replace(&mut state(world, slot).flag, true),
-        Condition::ResourceExists { id } => id.is_some_and(|id| world.resource_entities().get(id).is_some()),
+        // A removed resource leaves its entity behind: the component is what says it exists.
+        Condition::ResourceExists { id } => id.is_some_and(|id| world.contains_resource_by_id(id)),
         Condition::Resource { kind, id, slot } => {
             let this_run = world.change_tick();
             let ticks = id.and_then(|id| world.get_resource_change_ticks_by_id(id));
