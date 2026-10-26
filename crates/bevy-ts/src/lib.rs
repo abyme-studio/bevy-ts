@@ -246,6 +246,9 @@ impl Plugin for BevyTsPlugin {
         // when that schedule ends.
         app.add_systems(First, schedules::apply_deferred_edits.before(runtime::advance_clock));
         app.add_systems(Last, schedules::apply_deferred_edits);
+        if self.dev {
+            app.add_systems(Last, runtime::prepare_restart);
+        }
         // `Main` holds the schedule orders while it runs: a generation's order edits wait for it.
         app.add_systems(Main, schedules::apply_pending_order.after(Main::run_main));
         app.configure_sets(PostUpdate, BevyTsSet::PostUpdate.before(bevy::transform::TransformSystems::Propagate));

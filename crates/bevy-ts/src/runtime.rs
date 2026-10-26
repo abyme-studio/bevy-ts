@@ -258,3 +258,11 @@ impl Scratch {
         &mut self.arena
     }
 }
+
+/// Under `dev`: drops the engine instance the last restart retired, then boots a spare for the
+/// next one, in a frame of its own (stop-rebuild-split, decision 3).
+pub fn prepare_restart(rt: Option<NonSendMut<ScriptRuntime>>) {
+    if let Some(mut rt) = rt {
+        rt.backend.prepare_restart();
+    }
+}

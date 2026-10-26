@@ -12,6 +12,7 @@ compile_error!(
 );
 
 mod loader;
+mod standby;
 
 use bevy_ts::backend::{
     CallContext, ConsoleMessage, Delivered, Generation, HostCalls, ParamFrame, RunOutput, ScriptBackend, ScriptError, ScriptKey, SourceLocation,
@@ -348,6 +349,8 @@ pub struct V8Backend {
     pool_f64: Vec<f64>,
     options: V8Options,
     pub(crate) inspector: Option<inspector::InspectorServer>,
+    /// The spare a restart takes and the instance it retired.
+    standby: standby::Standby,
 }
 
 mod inspector;
@@ -503,7 +506,7 @@ impl V8Backend {
                 tokio,
                 loader,
                 fns: std::mem::ManuallyDrop::new(fns),
-                calls: 0, loads: 0, pool_f64: Vec::new(), options, inspector: None };
+                calls: 0, loads: 0, pool_f64: Vec::new(), options, inspector: None, standby: Default::default() };
         backend.start_inspector();
         backend
     }
@@ -613,6 +616,8 @@ impl V8Backend {
 impl Drop for V8Backend {
     fn drop(&mut self) {
         self.stop_inspector();
+        // The held instances go while the live one is current, then the live one.
+        self.standby.clear(&mut self.runtime);
         // SAFETY: dropped once, handles before the isolate that owns them.
         unsafe {
             std::mem::ManuallyDrop::drop(&mut self.fns);
@@ -770,14 +775,26 @@ impl ScriptBackend for V8Backend {
         std::mem::take(&mut state.borrow_mut::<ConsoleBuffer>().0)
     }
 
+    fn prepare_restart(&mut self) {
+        let (loader, tokio, inspect) = (&self.loader, &self.tokio, self.options.inspect.is_some());
+        self.standby.prepare(&mut self.runtime, || Self::boot(loader, tokio, inspect));
+    }
+
     fn restart(&mut self) {
         self.stop_inspector();
-        // SAFETY: both are re-initialised below before any other use.
-        unsafe {
-            std::mem::ManuallyDrop::drop(&mut self.fns);
-            std::mem::ManuallyDrop::drop(&mut self.runtime);
-        }
-        let (runtime, fns) = Self::boot(&self.loader, &self.tokio, self.options.inspect.is_some());
+        let (runtime, fns) = if self.standby.has_spare() {
+            // SAFETY: both are written back below before any other use.
+            let live = unsafe { standby::Held { fns: std::mem::ManuallyDrop::take(&mut self.fns), runtime: std::mem::ManuallyDrop::take(&mut self.runtime) } };
+            let fresh = self.standby.take(live).unwrap_or_else(|_| unreachable!("a spare is held"));
+            (fresh.runtime, fresh.fns)
+        } else {
+            // SAFETY: both are re-initialised below before any other use.
+            unsafe {
+                std::mem::ManuallyDrop::drop(&mut self.fns);
+                std::mem::ManuallyDrop::drop(&mut self.runtime);
+            }
+            Self::boot(&self.loader, &self.tokio, self.options.inspect.is_some())
+        };
         // Overwrite without dropping the already-dropped values.
         unsafe {
             std::ptr::write(&mut self.runtime, std::mem::ManuallyDrop::new(runtime));

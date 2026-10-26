@@ -126,6 +126,12 @@ struct State {
     entry_calls: HashMap<String, u64>,
     console: Vec<ConsoleMessage>,
     restarts: u64,
+    /// Spares booted, spares a restart took, and retired instances dropped.
+    prepares: u64,
+    takes: u64,
+    drops: u64,
+    spare: bool,
+    retired: bool,
     /// Requests the next delivery (or load) hands core, as scripts would have made them.
     requests: Vec<crate::net::NetRequest>,
     /// The fake script side's earliest timer.
@@ -157,6 +163,12 @@ impl FakeHandle {
 
     pub fn restarts(&self) -> u64 {
         self.0.lock().unwrap().restarts
+    }
+
+    /// Spares booted, spares a restart took, and retired instances dropped.
+    pub fn spares(&self) -> (u64, u64, u64) {
+        let s = self.0.lock().unwrap();
+        (s.prepares, s.takes, s.drops)
     }
 
     pub fn console(&self, message: ConsoleMessage) {
@@ -384,6 +396,22 @@ impl ScriptBackend for FakeBackend {
         s.loaded.clear();
         s.live = None;
         s.restarts += 1;
+        if std::mem::take(&mut s.spare) {
+            s.takes += 1;
+            if std::mem::replace(&mut s.retired, true) {
+                s.drops += 1;
+            }
+        }
+    }
+
+    fn prepare_restart(&mut self) {
+        let mut s = self.0.0.lock().unwrap();
+        if std::mem::take(&mut s.retired) {
+            s.drops += 1;
+        }
+        if !std::mem::replace(&mut s.spare, true) {
+            s.prepares += 1;
+        }
     }
 
     fn calls_into_js(&self) -> u64 {

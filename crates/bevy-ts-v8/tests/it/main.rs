@@ -9,4 +9,5 @@ mod common;
 
 mod net;
 mod plugin_api;
+mod spare;
 mod web;
