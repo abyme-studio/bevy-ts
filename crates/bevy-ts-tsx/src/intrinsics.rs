@@ -533,8 +533,8 @@ fn color(v: &Value) -> Result<Color, String> {
     bevy_ts::color::parse(v)
 }
 
-/// Mesh handles by props, shared by every element with the same props; materials share through
-/// the asset-value cache (`bevy_ts::reflect_asset`).
+/// Mesh and `<material2d>` handles by props, shared by every element with the same props;
+/// `<material>`s share through the asset-value cache (`bevy_ts::reflect_asset`).
 #[derive(Resource, Default)]
 pub struct IntrinsicAssets {
     meshes: HashMap<String, Handle<Mesh>>,
