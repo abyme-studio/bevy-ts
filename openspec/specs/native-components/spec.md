@@ -14,7 +14,7 @@ A registered Rust component or resource with `ReflectComponent` SHALL be usable 
 
 #### Scenario: Time with opaque Durations
 - **WHEN** a TS system takes `time: Res<Time>`
-- **THEN** it reads `time.delta_secs` and `time.elapsed_secs` as columns, and `time.delta` (a `Duration`) as seconds through reflection, never through `q.tables`
+- **THEN** it reads `time.delta_secs` and `time.elapsed_secs` from Bevy's own `Time`, and its `Duration` fields are not on the row
 
 #### Scenario: A private reflected field
 - **WHEN** a reflected component's field is private (`LockedAxes(u8)`)
