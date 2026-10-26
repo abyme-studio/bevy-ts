@@ -164,7 +164,10 @@ const normals = Image.load("textures/crate_n.png", { is_srgb: false });
 assets.add(StandardMaterial, { base_color_texture: atlas, normal_map_texture: normals });
 ```
 
-- `settings` takes `sampler` and `is_srgb` (Bevy's `ImageLoaderSettings`); any other key fails.
+- `settings` takes `sampler`, `is_srgb` and `array_layout` (Bevy's `ImageLoaderSettings`); any
+  other key fails. `array_layout` cuts the image into an array texture: `{ RowCount: { rows } }`,
+  `{ RowHeight: { pixels } }`, `{ GridCount: { columns, rows } }` or `{ GridSize: {
+  tile_width_pixels, tile_height_pixels } }`, each positive (a tilemap's tileset, docs/2d.md).
   `Image.load(path)` with none is the plain path.
 - Only `Image` has `load`: a `$load` in another type's slot fails naming the type.
 - Bevy loads a path once: a later load of it with other settings gets the first load's image, and

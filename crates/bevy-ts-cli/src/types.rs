@@ -303,7 +303,8 @@ const HAND_FIELDS: &[(&str, HandFields)] = &[
 ];
 
 /// The settings `T.load(path, settings)` takes, by the reflected type each is written as;
-/// `bevy_ts::reflect_asset`'s loader entries.
+/// `bevy_ts::reflect_asset`'s loader entries. A hand-typed asset types its own (`Image`'s
+/// `array_layout`, serde rather than reflected, is in `hand_ts/image.d.ts`).
 const LOAD_SETTINGS: &[(&str, &[(&str, &str)])] = &[("bevy_image::image::Image", &[("sampler", "bevy_image::image::ImageSampler"), ("is_srgb", "bool")])];
 
 /// A `bevy-ts/bevy` class written by hand in place of the generated one (change

@@ -4,12 +4,13 @@
 // y-sorted walkers pacing past each other at the right edge, the first with a screen-size marker
 // over its head (click it). The camera is a pixel camera: keys 1, 2 and 4 zoom it, and zoomed in it
 // follows that walker, so the marker and moving texels stay in view. A title in a bitmap font
-// counts the clicks too. One world unit is one pixel. docs/2d.md
+// counts the clicks too. A tile floor is a `TilemapChunk`. One world unit is one pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
 import { app, Component, signal, sliced, Time, Update, type f32, type Mut, type Query, type Res, type With, type Without } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
 import { KeyCode, type Keys } from "bevy-ts/input";
-import { Camera2d, PixelCamera, ScreenSize, Sprite, SpriteClip, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
+import { Camera2d, Image, PixelCamera, ScreenSize, Sprite, SpriteClip, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
+import { TilemapChunk, TilemapChunkTileData } from "bevy-ts/bevy";
 
 const shapes: Mesh2dProps[] = [
   { shape: "circle", radius: 50 },
@@ -82,6 +83,11 @@ const walkers = [
   { key: "walker-c", color: "#48f", phase: 4.2 },
 ];
 
+/** tiles.png: grass, dirt, stone and water, 16 pixels each, in a column: an array texture. */
+const tileset = Image.load("tiles.png", { array_layout: { RowCount: { rows: 4 } } });
+/** A 6x2 floor, bottom row first: water, then a path of dirt and stone through grass. */
+const floor = [3, 3, 0, 1, 0, 3, 0, 1, 2, 1, 0, 0].map((i) => ({ tileset_index: i }));
+
 const click = (key: string) => {
   setClicked((c) => (c === key ? null : key));
   setClicks((n) => n + 1);
@@ -116,6 +122,11 @@ export const Shapes = () => (
       <Transform translation={[2.5 * STEP, -1.5 * STEP, 0]} />
       <Sprite image="sheet.png" custom_size={[96, 96]} texture_atlas={{ layout: sheet, index: 0 }} />
       <SpriteClip first={0} last={3} fps={10} mode="Repeat" />
+    </entity>
+    <entity key="floor" name="tile floor">
+      <Transform translation={[-2.2 * STEP, 1.4 * STEP, 0]} />
+      <TilemapChunk chunk_size={[6, 2]} tile_display_size={[24, 24]} tileset={tileset} />
+      <TilemapChunkTileData value={floor} />
     </entity>
     {/* panel.png is 32 px with an 8 px border: sliced, its corners keep their size as it stretches. */}
     <entity key="panel" name="sliced panel">
