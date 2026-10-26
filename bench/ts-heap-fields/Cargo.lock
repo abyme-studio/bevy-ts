@@ -507,7 +507,9 @@ name = "bevy-ts-animation"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevy-ts",
  "bevy-ts-native",
+ "serde_json",
 ]
 
 [[package]]

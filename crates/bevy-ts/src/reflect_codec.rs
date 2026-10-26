@@ -841,6 +841,7 @@ fn answer(scratch: &[u8], buf: &mut [u8], ret: &mut [u8]) -> Result<usize, Strin
 
 /// A heap read or write of the running system's `Local` `i`, field `field` of its layout. A
 /// `Local` has no ticks, so a write marks nothing.
+#[allow(clippy::too_many_arguments)]
 fn local_call(world: &World, i: u32, field: u32, id: u32, r: &mut crate::host::SlotReader, scratch: &mut Vec<u8>, ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
     let place = Place::Local(i);
     let locals = world.get_resource::<crate::places::RunPlace>().and_then(|r| r.locals).ok_or_else(|| format!("{place}: no system is running"))?;

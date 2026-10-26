@@ -82,9 +82,12 @@ expected value as `HeapBytes`, compares plain byte ranges as today and heap fiel
 
 `LocalStore` owns a `HeapBytes`-backed, 16-aligned buffer with a header when the layout has a heap
 field; `Drop` drops through the shape. `redeclare` moves a kept heap field (`heap::take_value` from
-the old, `ptr::write` into the new), as component reload does (`components.rs:416`). JS takes a
-`Local`'s layout and its heap holes from Rust's resolution (as for components and resources), not
-from `cLayout`; a `Local` with no heap field keeps `cLayout`'s layout, which equals Rust's.
+the old, `ptr::write` into the new), as component reload does (`components.rs:416`). JS keeps
+`cLayout`, which mirrors `ComponentLayout::c_layout` and so puts the header first and a heap field
+at 24 bytes, aligned 8. A `Local` has no reflected target: its heap call's place is -2 and the
+`Local`'s index in the system, and slot 2 is the field's index in its layout, so no Rust
+resolution is needed. The runner sets `RunPlace::locals` around the run (`places.rs`). JS caches
+a heap field's read until the accessor writes that field, since the system is its only writer.
 
 ### 4. A heap read names a place
 

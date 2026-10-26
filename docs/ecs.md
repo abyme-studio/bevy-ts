@@ -90,8 +90,12 @@ export class Title extends Resource { text: string = "untitled" }
 - A list's items are a number kind (`f32`, `f64`, `i8`..`u32`), `bool` or `string`. Vectors,
   `Entity`, objects and nested lists fail the load with the file and line. A `declare`d field
   starts as `""` or `[]`.
-- Components and resources only, for now: a heap field in a message, an event or a `Local` fails
-  the load ("heap fields (string, T[]) are allowed on components and resources only").
+- Components, resources and `Local` only, for now: a heap field in a message or an event fails
+  the load ("heap fields (string, T[]) are allowed on components, resources and Local only").
+- A `Local<{ log: string; hits: u32[] }>` keeps its heap values across runs in the system's
+  memory, Rust's `String` and `Vec<T>` as in a component. A reload that keeps a field moves its
+  value; a changed field takes its default. A read is cached until the system writes that field
+  (the system is the `Local`'s only writer).
 - The value lives in the component's own bytes, Rust's `String` or `Vec<T>`, so a Rust system reads
   it as Bevy would. A component with one starts with an 8-byte header Rust owns (the layout's
   offsets skip it), registers a drop fn and deep-copies on `cloneAndSpawn`. A component with no
@@ -139,6 +143,9 @@ about 45): a plain `Res` read is 8 ns on main and 8.5 here, a plain despawn 20 a
 the bench's 1 ns step. A heap resource's string read while unchanged is 11 ns (cached by the
 resource's changed tick). An `On<Remove>` observer reading the removed value's string costs 267 ns
 an event over one that reads nothing: the trigger-time copy, its free and one host call.
+
+A `Local` (3 rounds against main at 913e0428c, load about 45): a plain `Local` read is 8 ns on
+main and here; a `Local` string read is 8 ns, cached until the system writes it.
 
 Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
 fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).

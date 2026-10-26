@@ -354,3 +354,67 @@ branch | heap Res string read (Title.text, cached) | 12 ns a row
 branch | empty system, µs a run (subtracted) | 19
 branch | despawn, a string and an 8-item list | 39 ns a row
 branch | On<Remove> value's string read (Tag.label) | 244 ns an event
+main at 913e0428c, branch at d4ffbd89e
+ 0:33  up 2 days,  4:35, 2 users, load averages: 49.29 37.55 36.89
+main | plain column (Plain.hp) | 8 ns a row
+main | despawn, plain | 21 ns a row
+main | plain Res read (Score.value) | 9 ns a read
+main | plain Local read (n) | 9 ns a read
+branch | plain column (Plain.hp) | 8 ns a row
+branch | despawn, plain | 22 ns a row
+branch | plain Res read (Score.value) | 9 ns a read
+branch | plain Local read (n) | 9 ns a read
+branch | heap component's plain field (Tag.hp) | 9 ns a row
+branch | string hit (Tag.label) | 31 ns a row
+branch | string miss | 113 ns a row
+branch | string write | 383 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 29 ns a row
+branch | 8-item f32[] miss | 119 ns a row
+branch | 8-item f32[] write | 365 ns a row
+branch | heap Res string read (Title.text, cached) | 10 ns a row
+branch | Local string read (text, cached) | 8 ns a row
+branch | empty system, µs a run (subtracted) | 16
+branch | despawn, a string and an 8-item list | 37 ns a row
+branch | On<Remove> value's string read (Tag.label) | 12 ns an event
+ 0:33  up 2 days,  4:35, 2 users, load averages: 45.98 37.06 36.73
+main | plain column (Plain.hp) | 11 ns a row
+main | despawn, plain | 21 ns a row
+main | plain Res read (Score.value) | 8 ns a read
+main | plain Local read (n) | 8 ns a read
+branch | plain column (Plain.hp) | 8 ns a row
+branch | despawn, plain | 19 ns a row
+branch | plain Res read (Score.value) | 8 ns a read
+branch | plain Local read (n) | 8 ns a read
+branch | heap component's plain field (Tag.hp) | 8 ns a row
+branch | string hit (Tag.label) | 28 ns a row
+branch | string miss | 106 ns a row
+branch | string write | 333 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 26 ns a row
+branch | 8-item f32[] miss | 102 ns a row
+branch | 8-item f32[] write | 367 ns a row
+branch | heap Res string read (Title.text, cached) | 10 ns a row
+branch | Local string read (text, cached) | 8 ns a row
+branch | empty system, µs a run (subtracted) | 15
+branch | despawn, a string and an 8-item list | 34 ns a row
+branch | On<Remove> value's string read (Tag.label) | 199 ns an event
+ 0:33  up 2 days,  4:35, 2 users, load averages: 42.78 36.55 36.54
+main | plain column (Plain.hp) | 8 ns a row
+main | despawn, plain | 20 ns a row
+main | plain Res read (Score.value) | 8 ns a read
+main | plain Local read (n) | 8 ns a read
+branch | plain column (Plain.hp) | 8 ns a row
+branch | despawn, plain | 22 ns a row
+branch | plain Res read (Score.value) | 9 ns a read
+branch | plain Local read (n) | 8 ns a read
+branch | heap component's plain field (Tag.hp) | 8 ns a row
+branch | string hit (Tag.label) | 26 ns a row
+branch | string miss | 100 ns a row
+branch | string write | 328 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 26 ns a row
+branch | 8-item f32[] miss | 111 ns a row
+branch | 8-item f32[] write | 356 ns a row
+branch | heap Res string read (Title.text, cached) | 10 ns a row
+branch | Local string read (text, cached) | 8 ns a row
+branch | empty system, µs a run (subtracted) | 16
+branch | despawn, a string and an 8-item list | 35 ns a row
+branch | On<Remove> value's string read (Tag.label) | 51 ns an event

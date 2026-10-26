@@ -22,14 +22,14 @@ binary, lowest layer, no fixed waits. Every cargo job through `~/dev/abyme/scrip
 
 ## 2. Stage 2: `Local`
 
-- [ ] 2.1 `crates/bevy-ts/src/memory.rs`: `LocalStore` owns a 16-aligned buffer with a header and shape when its layout has a heap field, `Drop` through the shape; `LocalStore` and `Memory` not `Clone`; `redeclare` moves kept heap fields (`heap::take_value`), resets changed ones; `new` builds defaults through `value::encode_component`
-- [ ] 2.2 `crates/bevy-ts/src/systems.rs`: drop the `Local` refusal (`:1106`); the run sets the `Local` place; the resolution hands JS a `Local`'s Rust layout and heap holes
-- [ ] 2.3 `core.js`: a `Local` with a heap field takes Rust's layout, not `cLayout`; its reads cached until its own write
-- [ ] 2.4 `reader.rs`: heap types allowed in `Local<{...}>`
-- [ ] 2.5 Tests: `crates/bevy-ts/tests/it/heap_fields.rs` a `Local`'s string freed once on redeclare-with-change, restart and world drop, kept on reload; `crates/bevy-ts-cli/tests/it/heap_fields.rs` a `Local<{ log: string; hits: u32[] }>` keeps its values across runs and a reload that adds a field (the spec's `Entity[]` scenario runs once stage 4 lands, in 4.10)
-- [ ] 2.6 Bench: plain `Local` read control, `Local` string read
-- [ ] 2.7 Docs: `docs/ecs.md` `Local` line
-- [ ] 2.8 `cargo build`, tests of `bevy-ts` and `bevy-ts-cli` through `gate-slot`
+- [x] 2.1 `crates/bevy-ts/src/memory.rs`: `LocalStore` owns a 16-aligned buffer with a header and shape when its layout has a heap field, `Drop` through the shape; `LocalStore` and `Memory` not `Clone`; `redeclare` moves kept heap fields (`heap::take_value`), resets changed ones; `new` builds defaults through `value::encode_component`
+- [x] 2.2 `crates/bevy-ts/src/systems.rs`: drop the `Local` refusal (`:1106`); the run sets `RunPlace::locals`; `reflect_codec::local_call` reads and writes at place -2, the field's index in slot 2 (no resolution)
+- [x] 2.3 `core.js`: `cLayout` mirrors Rust's `c_layout` with the header; a `Local`'s heap reads cached until its own write
+- [x] 2.4 `reader.rs`: heap types allowed in `Local<{...}>`
+- [x] 2.5 Tests: `crates/bevy-ts/src/memory.rs` `a_locals_string_is_freed_once_on_redeclare_restart_and_drop`: a `Local`'s string freed once on redeclare-with-change, restart and world drop, kept on reload; `crates/bevy-ts-cli/tests/it/heap_fields.rs` a `Local<{ log: string; hits: u32[] }>` keeps its values across runs and a reload that adds a field (the spec's `Entity[]` scenario runs once stage 4 lands, in 4.10)
+- [x] 2.6 Bench: plain `Local` read control, `Local` string read
+- [x] 2.7 Docs: `docs/ecs.md` `Local` line
+- [x] 2.8 `cargo build`, tests of `bevy-ts` and `bevy-ts-cli` through `gate-slot`
 
 ## 3. Stage 3: messages and events
 

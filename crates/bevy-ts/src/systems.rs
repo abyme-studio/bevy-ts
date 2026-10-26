@@ -1880,7 +1880,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
             // A `Local`'s heap field is read and written through its place; observers the run
             // triggers set their own and put this one back.
             let locals = crate::places::RunLocals::of(&mut mem.locals);
-            let locals_before = std::mem::replace(&mut world.get_resource_or_init::<crate::places::RunPlace>().locals, Some(locals));
+            let locals_before = world.get_resource_or_init::<crate::places::RunPlace>().locals.replace(locals);
             let r = {
                 // The world is held exclusively for the run and not touched until it ends; host
                 // calls fetch their params from this cell at the run's ticks.

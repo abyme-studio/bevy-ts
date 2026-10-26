@@ -90,7 +90,7 @@ impl RunLocals {
     ///
     /// # Safety
     /// The run that set this is in progress, and nothing else holds a reference to the store.
-    pub unsafe fn get(&self, i: u32) -> Option<&mut LocalStore> {
+    pub unsafe fn get<'a>(self, i: u32) -> Option<&'a mut LocalStore> {
         // SAFETY: the caller's contract; `i` is in bounds.
         ((i as usize) < self.len).then(|| unsafe { &mut *self.ptr.add(i as usize) })
     }

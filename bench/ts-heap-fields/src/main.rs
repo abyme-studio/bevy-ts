@@ -28,7 +28,7 @@ const WARMUP: usize = 20;
 const DESPAWNS: usize = 15;
 
 const PLAIN: &str = r#"import { app, chain, Component, Resource, Startup, Update } from "bevy-ts";
-import type { Commands, f32, Query, Res } from "bevy-ts";
+import type { Commands, f32, Local, Query, Res } from "bevy-ts";
 export class Plain extends Component { hp: f32 = 1; x: f32 = 0 }
 export class Score extends Resource { value: f32 = 1 }
 const REPEAT = __REPEAT__;
@@ -41,13 +41,17 @@ export function plainColumn(q: Query<[Plain]>) {
 export function plainRes(q: Query<[Plain]>, s: Res<Score>) {
   for (let k = 0; k < REPEAT; k++) q.each(() => { sink += s.value; });
 }
+export function plainLocal(q: Query<[Plain]>, l: Local<{ n: f32 }>) {
+  l.n = 1;
+  for (let k = 0; k < REPEAT; k++) q.each(() => { sink += l.n; });
+}
 app.insertResource(Score.of({ value: 2 }));
 app.addSystems(Startup, make);
 app.addSystems(Update, chain(__SYSTEM__));
 "#;
 
 const HEAP: &str = r#"import { app, chain, Component, Startup, Update } from "bevy-ts";
-import type { Commands, f32, Mut, Query, Res } from "bevy-ts";
+import type { Commands, f32, Local, Mut, Query, Res } from "bevy-ts";
 import { Resource } from "bevy-ts";
 export class Tag extends Component { label: string = "crate"; hp: f32 = 1; scores: f32[] = [] }
 export class Title extends Resource { text: string = "a title" }
@@ -74,6 +78,10 @@ export function listMiss(q: Query<[Tag]>) { q.each((t) => { sink += t.scores.len
 export function listWrite(q: Query<[Mut<Tag>]>) { n++; q.each((t) => { t.scores = [n, 2, 3, 4, 5, 6, 7, 8]; }); }
 export function resString(q: Query<[Tag]>, t: Res<Title>) {
   for (let k = 0; k < REPEAT; k++) q.each(() => { sink += t.text.length; });
+}
+export function localString(q: Query<[Tag]>, l: Local<{ text: string }>) {
+  if (l.text === "") l.text = "a local";
+  for (let k = 0; k < REPEAT; k++) q.each(() => { sink += l.text.length; });
 }
 app.addSystems(Startup, make);
 app.addSystems(Update, chain(__SYSTEM__));
@@ -195,11 +203,12 @@ fn main() {
     println!("{tree} | plain column (Plain.hp) | {} ns a row", per_row(run(PLAIN, "plainColumn", None), empty, REPEAT));
     println!("{tree} | despawn, plain | {:.0} ns a row", despawn(PLAIN, "game::Plain"));
     println!("{tree} | plain Res read (Score.value) | {} ns a read", per_row(run(PLAIN, "plainRes", None), empty, REPEAT));
+    println!("{tree} | plain Local read (n) | {} ns a read", per_row(run(PLAIN, "plainLocal", None), empty, REPEAT));
     if plain_only {
         return;
     }
     let empty = run(HEAP, "empty", None);
-    let arms: [(&str, &str, Option<&'static str>, usize); 9] = [
+    let arms: [(&str, &str, Option<&'static str>, usize); 10] = [
         ("heap component's plain field (Tag.hp)", "heapPlainField", None, REPEAT),
         ("string hit (Tag.label)", "stringHit", None, REPEAT),
         ("string miss", "stringMiss", Some("game::Tag"), 1),
@@ -208,6 +217,7 @@ fn main() {
         ("8-item f32[] miss", "listMiss", Some("game::Tag"), 1),
         ("8-item f32[] write", "listWrite", None, 1),
         ("heap Res string read (Title.text, cached)", "resString", None, REPEAT),
+        ("Local string read (text, cached)", "localString", None, REPEAT),
         ("empty system, µs a run (subtracted)", "empty", None, 0),
     ];
     for (label, system, miss, reads) in arms {
