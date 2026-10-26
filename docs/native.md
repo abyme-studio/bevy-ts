@@ -230,8 +230,9 @@ export function dim(ambient: ResMut<GlobalAmbientLight>, scale: Res<UiScale>) {
 `Res<R>` reads the resource's own row in place; `ResMut<R>` writes it in place and marks its
 change tick, so a Rust system's `Res<R>::is_changed()` sees the write that frame. Holes (such as
 `GlobalAmbientLight.color`) are read and written through reflection, as on query rows. A
-reflect-tier resource is taken through its reflected class (`rustComponent("DirectionalLightShadowMap")`,
-see below). A name resolves to a TS resource first, then to a Rust resource by type path or
+reflect-tier resource is a reflected handle in `bevy-ts/bevy` (`GlobalVolume`, `ClearColor`), typed
+with its fields and read and written whole through reflection (see below); one a built-in module's
+param stands for (`GizmoConfigStore`, `bevy-ts/gizmos`) is that module's, and has none. A name resolves to a TS resource first, then to a Rust resource by type path or
 unambiguous short name. A Rust resource is never query data. The load fails, naming the system,
 the param and the resource, for a layout class of a reflect-tier resource (with its reason), a
 component that is not a resource, `ResMut` of an immutable type, a short name several types share (with their paths), or
@@ -263,8 +264,9 @@ What reaches TS, by resource (tiers from `bevy-ts types` on the prebuilt engine)
 | `WireframeConfig`, `Wireframe2dConfig`, `GlobalUiDebugOptions`, `GlobalRenderDebugOverlay`, `TransformGizmoState` | layout | `Res`/`ResMut` | here |
 | `DefaultOpaqueRendererMethod`, `ManageAccessibilityUpdates`, `InputFocusVisible` | layout | `Res`/`ResMut` | here |
 | `GlobalsUniform` | layout | none: it lives only in the render world, so `Res` fails every run | here |
-| `ClearColor` | reflect (`Color` only) | not yet; see "Rust components in TS" | reflect-enums-color (reflect-coverage stage 3) |
-| `DirectionalLightShadowMap`, `PointLightShadowMap` | reflect (`usize` is opaque) | not yet | reflect-enums-color (reflect-coverage stage 3) |
+| `ClearColor` | reflect (`Color` only) | `Res`/`ResMut`, `value` | reflect-coverage stage 3 |
+| `DirectionalLightShadowMap`, `PointLightShadowMap` | reflect (`usize` is opaque) | `Res`/`ResMut` | reflect-coverage stage 3 |
+| `GlobalVolume`, `DefaultSpatialScale` | reflect | `Res`/`ResMut` | script-audio (docs/audio.md) |
 | `Time` | per-run value | `Res<Time>` | script-time |
 | `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | `Duration`s | not on this path | script-time |
 | `ButtonInput<*>`, `Touches`, gamepads | not plain data | exported params | script-input-devices |

@@ -6,6 +6,7 @@
 compile_error!("a release build of the tests links the Bevy dylib: build it with `cargo static test --release`");
 
 mod bsn_spike;
+mod from_world;
 mod newtype;
 mod primitives;
 mod reconcile;
