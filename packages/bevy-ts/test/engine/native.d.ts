@@ -32,6 +32,12 @@ declare module "bevy-ts" {
   }
 }
 
+/** Reflect tier: no field is plain data (value: opaque to reflection (bevy_platform::sync::Arc<core::sync::atomic::AtomicBool>)). */
+export declare class AccessibilityRequested extends ReflectComponent {
+  static readonly path: "bevy_a11y::AccessibilityRequested";
+  declare value: never;
+}
+
 export declare class ManageAccessibilityUpdates extends Resource {
   static readonly path: "bevy_a11y::ManageAccessibilityUpdates";
   declare value: bool;
@@ -103,6 +109,12 @@ export declare class AudioPlayer extends ReflectComponent {
   declare value: string | null;
 }
 
+/** Reflect tier: no field is plain data (value: not plain data (bevy_audio::audio::SpatialScale)). */
+export declare class DefaultSpatialScale extends ReflectComponent {
+  static readonly path: "bevy_audio::audio::DefaultSpatialScale";
+  declare value: readonly [number, number, number];
+}
+
 /** Holes, not columns: volume: an enum with data (bevy_audio::volume::Volume); spatial_scale: an enum with data (core::option::Option<bevy_audio::audio::SpatialScale>); start_position: an enum with data (core::option::Option<core::time::Duration>); duration: an enum with data (core::option::Option<core::time::Duration>). */
 export declare class PlaybackSettings extends Component {
   static readonly path: "bevy_audio::audio::PlaybackSettings";
@@ -119,6 +131,12 @@ export declare class SpatialListener extends Component {
   static readonly path: "bevy_audio::audio::SpatialListener";
   declare readonly left_ear_offset: Vec3;
   declare readonly right_ear_offset: Vec3;
+}
+
+/** Reflect tier: no field is plain data (volume: an enum with data (bevy_audio::volume::Volume)). */
+export declare class GlobalVolume extends ReflectComponent {
+  static readonly path: "bevy_audio::volume::GlobalVolume";
+  declare volume: { Linear: number } | { Decibels: number };
 }
 
 /** Holes, not columns: viewport: an enum with data (core::option::Option<bevy_camera::camera::Viewport>); order: opaque to reflection (isize); computed: not plain data (bevy_camera::camera::ComputedCameraValues); output_mode: an enum with data (bevy_camera::camera::CameraOutputMode); clear_color: an enum with data (bevy_camera::clear_color::ClearColorConfig); sub_camera_view: an enum with data (core::option::Option<bevy_camera::camera::SubCameraView>). */
@@ -163,6 +181,12 @@ export declare class RenderTarget extends ReflectComponent {
 /** Reflect tier: it has no reflected fields. */
 export declare class ShadowLodOrigin extends ReflectComponent {
   static readonly path: "bevy_camera::camera::ShadowLodOrigin";
+}
+
+/** Reflect tier: no field is plain data (value: an enum with data (bevy_color::color::Color)). */
+export declare class ClearColor extends ReflectComponent {
+  static readonly path: "bevy_camera::clear_color::ClearColor";
+  declare value: ColorValue;
 }
 
 /** Reflect tier: it has no reflected fields. */
@@ -329,6 +353,16 @@ export declare class RootNonCameraView extends ReflectComponent {
   declare value: readonly [];
 }
 
+/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+export declare class FpsOverlayConfig extends ReflectComponent {
+  static readonly path: "bevy_dev_tools::fps_overlay::FpsOverlayConfig";
+  declare text_config: { font?: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size?: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight?: number; width?: number; style?: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing?: "None" | "AntiAliased"; font_features?: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations?: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } };
+  declare text_color: ColorValue;
+  declare enabled: boolean;
+  declare refresh_interval: number;
+  declare frame_time_graph_config: { enabled?: boolean; min_fps?: number; target_fps?: number };
+}
+
 /** Reflect tier: it has no reflected fields. */
 export declare class InfiniteGrid extends ReflectComponent {
   static readonly path: "bevy_dev_tools::infinite_grid::InfiniteGrid";
@@ -374,6 +408,12 @@ export declare class RenderDebugOverlay extends Component {
   declare opacity: f32;
 }
 export interface RenderDebugOverlay extends Holes<{ mode: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } }> {}
+
+/** Reflect tier: no field is plain data (disabling: not plain data (smallvec::SmallVec<[bevy_ecs::component::info::ComponentId; 4]>)). */
+export declare class DefaultQueryFilters extends ReflectComponent {
+  static readonly path: "bevy_ecs::entity_disabling::DefaultQueryFilters";
+  declare disabling: readonly (number | string)[];
+}
 
 /** Reflect tier: it has no reflected fields. */
 export declare class Disabled extends ReflectComponent {
@@ -452,6 +492,22 @@ export declare class TransformGizmoFocus extends ReflectComponent {
   static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoFocus";
 }
 
+/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+export declare class TransformGizmoSettings extends ReflectComponent {
+  static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoSettings";
+  declare mode: "Translate" | "Rotate" | "Scale";
+  declare space: "World" | "Local";
+  declare axis_length: number;
+  declare rotate_ring_radius: number;
+  declare axis_hit_distance: number;
+  declare snap_translate: number | null;
+  declare snap_rotate: number | null;
+  declare snap_scale: number | null;
+  declare confine_cursor: boolean;
+  declare screen_scale_factor: number;
+  declare scale_sensitivity: number;
+}
+
 /** Holes, not columns: hovered_axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); start_transform: not plain data (bevy_transform::components::transform::Transform); entity: an enum with data (core::option::Option<bevy_ecs::entity::Entity>). */
 export declare class TransformGizmoState extends Resource {
   static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoState";
@@ -461,6 +517,14 @@ export declare class TransformGizmoState extends Resource {
   declare readonly gizmo_origin: Vec3;
 }
 export interface TransformGizmoState extends Holes<{ hovered_axis: "X" | "Y" | "Z" | "View" | null; axis: "X" | "Y" | "Z" | "View" | null; start_transform: { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] }; entity: Entity | null }> {}
+
+/** Reflect tier: no field is plain data (line_gizmo_renderer: not plain data (bevy_extract::sync_world::MainEntity); line_strip_gizmo_renderer: not plain data (bevy_extract::sync_world::MainEntity); line_joint_gizmo_renderer: not plain data (bevy_extract::sync_world::MainEntity)). */
+export declare class LineGizmoEntities extends ReflectComponent {
+  static readonly path: "bevy_gizmos_render::LineGizmoEntities";
+  declare line_gizmo_renderer: Entity;
+  declare line_strip_gizmo_renderer: Entity;
+  declare line_joint_gizmo_renderer: Entity;
+}
 
 /** Reflect tier: no field is plain data (value: opaque to reflection (alloc::string::String)). */
 export declare class GltfExtras extends ReflectComponent {
@@ -502,6 +566,14 @@ export declare class GltfSceneExtras extends ReflectComponent {
 export declare class GltfSceneName extends ReflectComponent {
   static readonly path: "bevy_gltf::assets::GltfSceneName";
   declare value: string;
+}
+
+/** Reflect tier: no field is plain data (pressed: not plain data (bevy_platform::collections::HashSet<bevy_input::gamepad::GamepadButton, bevy_platform::hash::FixedHasher>); just_pressed: not plain data (bevy_platform::collections::HashSet<bevy_input::gamepad::GamepadButton, bevy_platform::hash::FixedHasher>); just_released: not plain data (bevy_platform::collections::HashSet<bevy_input::gamepad::GamepadButton, bevy_platform::hash::FixedHasher>)). */
+export declare class ButtonInputGamepadButton extends ReflectComponent {
+  static readonly path: "bevy_input::button_input::ButtonInput<bevy_input::gamepad::GamepadButton>";
+  declare pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[];
+  declare just_pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[];
+  declare just_released: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[];
 }
 
 /** Reflect tier: no field is plain data (vendor_id: an enum with data (core::option::Option<u16>); product_id: an enum with data (core::option::Option<u16>); digital: not plain data (bevy_input::button_input::ButtonInput<bevy_input::gamepad::GamepadButton>); analog: not plain data (bevy_input::axis::Axis<bevy_input::gamepad::GamepadInput>)). */
@@ -548,6 +620,14 @@ export declare class FocusedInputKeyboardInput extends ReflectComponent {
   declare window: Entity;
 }
 
+/** Reflect tier: no field is plain data (current_focus: an enum with data (core::option::Option<bevy_ecs::entity::Entity>); recorded_changes: not plain data (alloc::vec::Vec<core::option::Option<(bevy_ecs::entity::Entity, bevy_input_focus::gained_and_lost::FocusCause)>>); original_focus: an enum with data (core::option::Option<bevy_ecs::entity::Entity>)). */
+export declare class InputFocus extends ReflectComponent {
+  static readonly path: "bevy_input_focus::InputFocus";
+  declare current_focus: Entity | null;
+  declare recorded_changes: readonly (readonly [Entity, "Navigated" | "Pressed" | "Auto"] | null)[];
+  declare original_focus: Entity | null;
+}
+
 export declare class InputFocusVisible extends Resource {
   static readonly path: "bevy_input_focus::InputFocusVisible";
   declare value: bool;
@@ -556,6 +636,20 @@ export declare class InputFocusVisible extends Resource {
 /** Reflect tier: it has no reflected fields. */
 export declare class AutoFocus extends ReflectComponent {
   static readonly path: "bevy_input_focus::autofocus::AutoFocus";
+}
+
+/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+export declare class AutoNavigationConfig extends ReflectComponent {
+  static readonly path: "bevy_input_focus::directional_navigation::AutoNavigationConfig";
+  declare min_alignment_factor: number;
+  declare max_search_distance: number | null;
+  declare prefer_aligned: boolean;
+}
+
+/** Reflect tier: no field is plain data (neighbors: not plain data (bevy_ecs::entity::hash_map::EntityEquivalentHashMap<bevy_ecs::entity::Entity, bevy_input_focus::directional_navigation::NavNeighbors>)). */
+export declare class DirectionalNavigationMap extends ReflectComponent {
+  static readonly path: "bevy_input_focus::directional_navigation::DirectionalNavigationMap";
+  declare neighbors: readonly (readonly [Entity, { neighbors?: readonly ("Auto" | "Blocked" | { Set: Entity })[] }])[];
 }
 
 export declare class TabGroup extends Component {
@@ -649,6 +743,12 @@ export declare class DirectionalLight extends Component {
 }
 export interface DirectionalLight extends Holes<{ color: ColorValue; soft_shadow_size: number | null }> {}
 
+/** Reflect tier: no field is plain data (size: opaque to reflection (usize)). */
+export declare class DirectionalLightShadowMap extends ReflectComponent {
+  static readonly path: "bevy_light::directional_light::DirectionalLightShadowMap";
+  declare size: number | string;
+}
+
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class DirectionalLightTexture extends ReflectComponent {
   static readonly path: "bevy_light::directional_light::DirectionalLightTexture";
@@ -678,6 +778,12 @@ export declare class PointLight extends Component {
   declare shadow_map_near_z: f32;
 }
 export interface PointLight extends Holes<{ color: ColorValue }> {}
+
+/** Reflect tier: no field is plain data (size: opaque to reflection (usize)). */
+export declare class PointLightShadowMap extends ReflectComponent {
+  static readonly path: "bevy_light::point_light::PointLightShadowMap";
+  declare size: number | string;
+}
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
 export declare class PointLightTexture extends ReflectComponent {
@@ -985,16 +1091,47 @@ export declare class PickingSettings extends Resource {
 }
 export interface PickingSettings extends Holes<{ multi_click_interval: number }> {}
 
+/** Reflect tier: no field is plain data (map: not plain data (bevy_platform::collections::HashMap<bevy_picking::backend::ray::RayId, bevy_shape::ray::Ray3d, bevy_platform::hash::FixedHasher>)). */
+export declare class RayMap extends ReflectComponent {
+  static readonly path: "bevy_picking::backend::ray::RayMap";
+  declare map: readonly (readonly [{ camera?: Entity; pointer?: "Mouse" | { Touch: number | string } | { Custom: string } }, { origin?: readonly [number, number, number]; direction?: readonly [number, number, number] }])[];
+}
+
+/** Reflect tier: no field is plain data (value: an enum with data (bevy_picking::cursor::EntityCursor)). */
+export declare class DefaultCursor extends ReflectComponent {
+  static readonly path: "bevy_picking::cursor::DefaultCursor";
+  declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
+}
+
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_picking::cursor::EntityCursor)). */
 export declare class EntityCursor extends ReflectComponent {
   static readonly path: "bevy_picking::cursor::EntityCursor";
   declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 }
 
+/** Reflect tier: no field is plain data (value: an enum with data (core::option::Option<bevy_picking::cursor::EntityCursor>)). */
+export declare class OverrideCursor extends ReflectComponent {
+  static readonly path: "bevy_picking::cursor::OverrideCursor";
+  declare value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } | null;
+}
+
+/** Reflect tier: no field is plain data (pointer_buttons: not plain data (bevy_platform::collections::HashMap<(bevy_picking::pointer::PointerId, bevy_picking::pointer::PointerButton), bevy_picking::events::PointerButtonState, bevy_platform::hash::FixedHasher>); hovered_entity_ancestors: not plain data (bevy_picking::events::HoveredEntityAncestors)). */
+export declare class PointerState extends ReflectComponent {
+  static readonly path: "bevy_picking::events::PointerState";
+  declare pointer_buttons: readonly (readonly [readonly ["Mouse" | { Touch: number | string } | { Custom: string }, "Primary" | "Secondary" | "Middle"], { pressing?: readonly (readonly [Entity, readonly [{ target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number] }, unknown, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }]])[]; clicking?: readonly (readonly [Entity, readonly [unknown, number]])[]; dragging?: readonly (readonly [Entity, { start_pos?: readonly [number, number]; latest_pos?: readonly [number, number] }])[]; dragging_over?: readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[] }])[];
+  declare hovered_entity_ancestors: readonly (readonly [Entity, readonly Entity[]])[];
+}
+
 /** Immutable: read-only in TS. */
 export declare class DirectlyHovered extends Component {
   static readonly path: "bevy_picking::hover::DirectlyHovered";
   declare readonly value: bool;
+}
+
+/** Reflect tier: no field is plain data (value: not plain data (bevy_platform::collections::HashMap<bevy_picking::pointer::PointerId, bevy_ecs::entity::hash_map::EntityEquivalentHashMap<bevy_ecs::entity::Entity, bevy_picking::backend::HitData>, bevy_platform::hash::FixedHasher>)). */
+export declare class HoverMap extends ReflectComponent {
+  static readonly path: "bevy_picking::hover::HoverMap";
+  declare value: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[];
 }
 
 /** Immutable: read-only in TS. */
@@ -1006,6 +1143,12 @@ export declare class Hovered extends Component {
 export declare class PickingInteraction extends Component {
   static readonly path: "bevy_picking::hover::PickingInteraction";
   declare value: "Pressed" | "Hovered" | "None";
+}
+
+/** Reflect tier: no field is plain data (value: not plain data (bevy_platform::collections::HashMap<bevy_picking::pointer::PointerId, bevy_ecs::entity::hash_map::EntityEquivalentHashMap<bevy_ecs::entity::Entity, bevy_picking::backend::HitData>, bevy_platform::hash::FixedHasher>)). */
+export declare class PreviousHoverMap extends ReflectComponent {
+  static readonly path: "bevy_picking::hover::PreviousHoverMap";
+  declare value: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[];
 }
 
 export declare class PointerInputSettings extends Resource {
@@ -1051,6 +1194,12 @@ export declare class PointerInteraction extends ReflectComponent {
 /** Reflect tier: it has no reflected fields. */
 export declare class PointerLocation extends ReflectComponent {
   static readonly path: "bevy_picking::pointer::PointerLocation";
+}
+
+/** Reflect tier: no field is plain data (inner: not plain data (bevy_platform::collections::HashMap<bevy_picking::pointer::PointerId, bevy_ecs::entity::Entity, bevy_platform::hash::FixedHasher>)). */
+export declare class PointerMap extends ReflectComponent {
+  static readonly path: "bevy_picking::pointer::PointerMap";
+  declare inner: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, Entity])[];
 }
 
 export declare class PointerPressState extends Component {
@@ -1120,6 +1269,12 @@ export declare class MotionBlur extends Component {
   static readonly path: "bevy_post_process::motion_blur::MotionBlur";
   declare shutter_angle: f32;
   declare samples: u32;
+}
+
+/** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
+export declare class SchemaTypesMetadata extends ReflectComponent {
+  static readonly path: "bevy_remote::schemas::SchemaTypesMetadata";
+  declare type_data_map: readonly (readonly [never, string])[];
 }
 
 /** Reflect tier: no value to read offsets from (no Default, FromWorld or live row). */
@@ -1288,6 +1443,12 @@ export declare class TilemapChunk extends ReflectComponent {
   declare tile_display_size: readonly [number, number];
   declare tileset: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null;
   declare alpha_mode: "Opaque" | { Mask: number } | "Blend";
+}
+
+/** Reflect tier: no field is plain data (value: not plain data (bevy_platform::collections::HashMap<glam::UVec2, bevy_asset::handle::Handle<bevy_mesh::mesh::Mesh>, bevy_platform::hash::FixedHasher>)). */
+export declare class TilemapChunkMeshCache extends ReflectComponent {
+  static readonly path: "bevy_sprite_render::tilemap_chunk::TilemapChunkMeshCache";
+  declare value: readonly (readonly [readonly [number, number], string | AssetRef<Mesh> | AssetValue<Mesh> | null])[];
 }
 
 /** Reflect tier: no field is plain data (value: not plain data (alloc::vec::Vec<core::option::Option<bevy_sprite_render::tilemap_chunk::TileData>>)). */
@@ -1484,6 +1645,12 @@ export declare class TsSaved extends ReflectComponent {
   declare value: Record<string, string>;
 }
 
+/** Reflect tier: no field is plain data (value: not plain data (alloc::collections::BTreeMap<alloc::string::String, alloc::string::String>)). */
+export declare class TsSavedResources extends ReflectComponent {
+  static readonly path: "bevy_ts::saves::TsSavedResources";
+  declare value: Record<string, string>;
+}
+
 /** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); graph: an enum with data (bevy_asset::handle::Handle<bevy_animation::graph::AnimationGraph>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
@@ -1615,6 +1782,13 @@ export declare class UiPickingSettings extends Resource {
 export declare class ComputedStackIndex extends Component {
   static readonly path: "bevy_ui::stack::ComputedStackIndex";
   declare value: u32;
+}
+
+/** Reflect tier: no field is plain data (partition: not plain data (alloc::vec::Vec<core::ops::Range<usize>>); uinodes: not plain data (alloc::vec::Vec<bevy_ecs::entity::Entity>)). */
+export declare class UiStack extends ReflectComponent {
+  static readonly path: "bevy_ui::stack::UiStack";
+  declare partition: readonly ({ start: number | string; end: number | string })[];
+  declare uinodes: readonly Entity[];
 }
 
 /** Reflect tier: no field is plain data (value: an enum with data (bevy_color::color::Color)). */
@@ -2058,6 +2232,12 @@ export declare class TabList extends Component {
   static readonly path: "bevy_ui_widgets::tabs::TabList";
   declare orientation: "Horizontal" | "Vertical";
   declare activation: "Manual" | "Automatic";
+}
+
+/** Reflect tier: no field is plain data (value: an enum with data (core::option::Option<bevy_ecs::entity::Entity>)). */
+export declare class QueuedSelectAll extends ReflectComponent {
+  static readonly path: "bevy_ui_widgets::text_input::QueuedSelectAll";
+  declare value: Entity | null;
 }
 
 /** Reflect tier: it has no reflected fields. */

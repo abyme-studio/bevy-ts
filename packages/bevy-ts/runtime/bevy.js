@@ -7,6 +7,8 @@ import { array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeCompo
 
 export { Time, Transform } from "bevy-ts";
 
+export const AccessibilityRequested = reflectClass("AccessibilityRequested");
+
 export class ManageAccessibilityUpdates extends nativeResource("ManageAccessibilityUpdates", { value: bool }) {}
 
 export const AnimatedBy = reflectClass("AnimatedBy");
@@ -40,9 +42,13 @@ export class TemporalAntiAliasing extends nativeComponent("TemporalAntiAliasing"
 
 export const AudioPlayer = reflectClass("bevy_audio::audio::AudioPlayer<bevy_audio::audio_source::AudioSource>");
 
+export const DefaultSpatialScale = reflectClass("DefaultSpatialScale");
+
 export class PlaybackSettings extends nativeComponent("PlaybackSettings", { mode: enumOf("Once", "Loop", "Despawn", "Remove"), speed: f32, paused: bool, muted: bool, spatial: bool }) {}
 
 export class SpatialListener extends nativeComponent("SpatialListener", { left_ear_offset: vec3, right_ear_offset: vec3 }) {}
+
+export const GlobalVolume = reflectClass("GlobalVolume");
 
 export class Camera extends nativeComponent("Camera", { is_active: bool, msaa_writeback: enumOf("Off", "Auto", "Always"), invert_culling: bool }) {}
 
@@ -57,6 +63,8 @@ export class ManualTextureViewHandle extends nativeComponent("ManualTextureViewH
 export const RenderTarget = reflectClass("RenderTarget");
 
 export const ShadowLodOrigin = reflectClass("ShadowLodOrigin");
+
+export const ClearColor = reflectClass("ClearColor");
 
 export const Camera2d = reflectClass("Camera2d");
 
@@ -118,6 +126,8 @@ export const NoBackgroundMotionVectors = reflectClass("NoBackgroundMotionVectors
 
 export const RootNonCameraView = reflectClass("RootNonCameraView");
 
+export const FpsOverlayConfig = reflectClass("FpsOverlayConfig");
+
 export const InfiniteGrid = reflectClass("InfiniteGrid");
 
 export class InfiniteGridSettings extends nativeComponent("InfiniteGridSettings", { fadeout_distance: f32, dot_fadeout_strength: f32, scale: f32, major_line_interval: u32 }) {}
@@ -129,6 +139,8 @@ export const PointerDebugOverlayOf = reflectClass("PointerDebugOverlayOf");
 export class GlobalRenderDebugOverlay extends nativeResource("GlobalRenderDebugOverlay", { enabled: bool, opacity: f32 }) {}
 
 export class RenderDebugOverlay extends nativeComponent("RenderDebugOverlay", { enabled: bool, opacity: f32 }) {}
+
+export const DefaultQueryFilters = reflectClass("DefaultQueryFilters");
 
 export const Disabled = reflectClass("Disabled");
 
@@ -156,7 +168,11 @@ export const TransformGizmoCamera = reflectClass("TransformGizmoCamera");
 
 export const TransformGizmoFocus = reflectClass("TransformGizmoFocus");
 
+export const TransformGizmoSettings = reflectClass("TransformGizmoSettings");
+
 export class TransformGizmoState extends nativeResource("TransformGizmoState", { active: bool, drag_start_world: vec3, gizmo_origin: vec3 }) {}
+
+export const LineGizmoEntities = reflectClass("LineGizmoEntities");
 
 export const GltfExtras = reflectClass("GltfExtras");
 
@@ -172,6 +188,8 @@ export const GltfSceneExtras = reflectClass("GltfSceneExtras");
 
 export const GltfSceneName = reflectClass("GltfSceneName");
 
+export const ButtonInputGamepadButton = reflectClass("ButtonInput<GamepadButton>");
+
 export const Gamepad = reflectClass("Gamepad");
 
 export const GamepadSettings = reflectClass("GamepadSettings");
@@ -184,9 +202,15 @@ export class MouseScrollPixelsPerLine extends nativeResource("MouseScrollPixelsP
 
 export const FocusedInputKeyboardInput = reflectClass("FocusedInput<KeyboardInput>");
 
+export const InputFocus = reflectClass("InputFocus");
+
 export class InputFocusVisible extends nativeResource("InputFocusVisible", { value: bool }) {}
 
 export const AutoFocus = reflectClass("AutoFocus");
+
+export const AutoNavigationConfig = reflectClass("AutoNavigationConfig");
+
+export const DirectionalNavigationMap = reflectClass("DirectionalNavigationMap");
 
 export class TabGroup extends nativeComponent("TabGroup", { order: i32, modal: bool }) {}
 
@@ -214,11 +238,15 @@ export class ClusteredDecal extends nativeComponent("ClusteredDecal", { tag: u32
 
 export class DirectionalLight extends nativeComponent("DirectionalLight", { illuminance: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32 }) {}
 
+export const DirectionalLightShadowMap = reflectClass("DirectionalLightShadowMap");
+
 export const DirectionalLightTexture = reflectClass("DirectionalLightTexture");
 
 export const ShowLightGizmo = reflectClass("ShowLightGizmo");
 
 export class PointLight extends nativeComponent("PointLight", { intensity: f32, range: f32, radius: f32, shadow_maps_enabled: bool, contact_shadows_enabled: bool, soft_shadows_enabled: bool, affects_lightmapped_mesh_diffuse: bool, shadow_depth_bias: f32, shadow_normal_bias: f32, shadow_map_near_z: f32 }) {}
+
+export const PointLightShadowMap = reflectClass("PointLightShadowMap");
 
 export const PointLightTexture = reflectClass("PointLightTexture");
 
@@ -300,13 +328,25 @@ export class Pickable extends nativeComponent("Pickable", { should_block_lower: 
 
 export class PickingSettings extends nativeResource("PickingSettings", { is_enabled: bool, is_input_enabled: bool, is_hover_enabled: bool, is_window_picking_enabled: bool }) {}
 
+export const RayMap = reflectClass("RayMap");
+
+export const DefaultCursor = reflectClass("DefaultCursor");
+
 export const EntityCursor = reflectClass("EntityCursor");
 
+export const OverrideCursor = reflectClass("OverrideCursor");
+
+export const PointerState = reflectClass("PointerState");
+
 export class DirectlyHovered extends nativeComponent("DirectlyHovered", { value: bool }) {}
+
+export const HoverMap = reflectClass("HoverMap");
 
 export class Hovered extends nativeComponent("Hovered", { value: bool }) {}
 
 export class PickingInteraction extends nativeComponent("PickingInteraction", { value: enumOf("Pressed", "Hovered", "None") }) {}
+
+export const PreviousHoverMap = reflectClass("PreviousHoverMap");
 
 export class PointerInputSettings extends nativeResource("PointerInputSettings", { is_touch_enabled: bool, is_mouse_enabled: bool }) {}
 
@@ -324,6 +364,8 @@ export const PointerInteraction = reflectClass("PointerInteraction");
 
 export const PointerLocation = reflectClass("PointerLocation");
 
+export const PointerMap = reflectClass("PointerMap");
+
 export class PointerPressState extends nativeComponent("PointerPressState", { primary: bool, secondary: bool, middle: bool }) {}
 
 export class AutoExposure extends nativeComponent("AutoExposure", { speed_brighten: f32, speed_darken: f32, exponential_transition_distance: f32 }) {}
@@ -337,6 +379,8 @@ export class ChromaticAberration extends nativeComponent("ChromaticAberration", 
 export class Vignette extends nativeComponent("Vignette", { intensity: f32, radius: f32, smoothness: f32, roundness: f32, center: vec2, edge_compensation: f32 }) {}
 
 export class MotionBlur extends nativeComponent("MotionBlur", { shutter_angle: f32, samples: u32 }) {}
+
+export const SchemaTypesMetadata = reflectClass("SchemaTypesMetadata");
 
 export const CameraRenderGraph = reflectClass("CameraRenderGraph");
 
@@ -392,6 +436,8 @@ export class Wireframe2dConfig extends nativeResource("Wireframe2dConfig", { glo
 
 export const TilemapChunk = reflectClass("TilemapChunk");
 
+export const TilemapChunkMeshCache = reflectClass("TilemapChunkMeshCache");
+
 export const TilemapChunkTileData = reflectClass("TilemapChunkTileData");
 
 export const TextBounds = reflectClass("TextBounds");
@@ -436,6 +482,8 @@ export class Save extends nativeComponent("Save", {  }) {}
 
 export const TsSaved = reflectClass("TsSaved");
 
+export const TsSavedResources = reflectClass("TsSavedResources");
+
 export class PlayAnimation extends nativeComponent("PlayAnimation", { speed: f32, transition_secs: f32, paused: bool, cull: bool }) {}
 
 export const MissingComponents = reflectClass("MissingComponents");
@@ -479,6 +527,8 @@ export const UiPickingCamera = reflectClass("UiPickingCamera");
 export class UiPickingSettings extends nativeResource("UiPickingSettings", { require_markers: bool }) {}
 
 export class ComputedStackIndex extends nativeComponent("ComputedStackIndex", { value: u32 }) {}
+
+export const UiStack = reflectClass("UiStack");
 
 export const BackgroundColor = reflectClass("BackgroundColor");
 
@@ -611,6 +661,8 @@ export const SelectedTab = reflectClass("SelectedTab");
 export const Tab = reflectClass("Tab");
 
 export class TabList extends nativeComponent("TabList", { orientation: enumOf("Horizontal", "Vertical"), activation: enumOf("Manual", "Automatic") }) {}
+
+export const QueuedSelectAll = reflectClass("QueuedSelectAll");
 
 export const SelectAllOnFocus = reflectClass("SelectAllOnFocus");
 
