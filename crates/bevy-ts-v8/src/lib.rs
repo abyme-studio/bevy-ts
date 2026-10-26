@@ -785,7 +785,7 @@ impl ScriptBackend for V8Backend {
         let (runtime, fns) = if self.standby.has_spare() {
             // SAFETY: both are written back below before any other use.
             let live = unsafe { standby::Held { fns: std::mem::ManuallyDrop::take(&mut self.fns), runtime: std::mem::ManuallyDrop::take(&mut self.runtime) } };
-            let fresh = self.standby.take(live).unwrap_or_else(|_| unreachable!("a spare is held"));
+            let fresh = self.standby.take(live);
             (fresh.runtime, fresh.fns)
         } else {
             // SAFETY: both are re-initialised below before any other use.

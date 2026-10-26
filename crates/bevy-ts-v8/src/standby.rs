@@ -80,16 +80,16 @@ impl Standby {
     }
 
     /// Takes the spare in place of `live`, which is retired, exited, for [`Standby::prepare`] to
-    /// drop. The spare comes back entered, the current isolate. `Err(live)` without a spare.
-    pub fn take(&mut self, mut live: Held) -> Result<Held, Held> {
-        let Some(mut spare) = self.spare.take() else { return Err(live) };
+    /// drop. The spare comes back entered, the current isolate. Only while [`Standby::has_spare`].
+    pub fn take(&mut self, mut live: Held) -> Held {
+        let mut spare = self.spare.take().expect("take only while a spare is held");
         exit(&mut live.runtime);
         enter(&mut spare.runtime);
         // Two restarts in one frame: the older retired one goes now.
         if let Some(old) = self.retired.replace(live) {
             drop_held(old, &mut spare.runtime);
         }
-        Ok(spare)
+        spare
     }
 
     /// Drops every held instance; `live` is the current isolate before and after.
