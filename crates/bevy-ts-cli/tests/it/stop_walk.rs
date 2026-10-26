@@ -60,6 +60,7 @@ export class Fox extends SceneComponent {
   static scene() {
     return (
       <entity name="fox">
+        <Mover />
         <entity key="model">
           <Transform scale={[0.02, 0.02, 0.02]} />
           <WorldAssetRoot value="models/Fox.glb#Scene0" />
@@ -292,6 +293,42 @@ fn the_stop_walk() {
     println!("walk 3: pixels differing from the long stop: {}", differing(&s2, &s3));
     for (n, v) in &after3 {
         println!("  {n:7} kept={} (before {:?} after {v:?})", after2[n] == *v, after2[n]);
+    }
+    // 4: the level file edited during Play (Still moves 2 units right), then Stop: the edited level shows.
+    post(port, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    let edited = LEVEL.replacen("x: -4.0, z: -2.0", "x: -2.0, z: 1.0", 1);
+    std::fs::write(dir.join("assets/levels/walk.bsn"), &edited).unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    post(port, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    let s4 = shot(&viewer, &mut seen, &shots, "7-after-level-edit-stop");
+    let after4 = ids(port);
+    println!("walk 4: pixels differing after the level edit: {}", differing(&s3, &s4));
+    for (n, v) in &after4 {
+        println!("  {n:7} kept={} (before {:?} after {v:?})", after3[n] == *v, after3[n]);
+    }
+    // 5: five quick cycles, then a script reload.
+    for _ in 0..5 {
+        post(port, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
+        std::thread::sleep(Duration::from_millis(250));
+        post(port, "bevy-ts/viewport_mode", json!({ "mode": "edit" })).unwrap();
+    }
+    let s5 = shot(&viewer, &mut seen, &shots, "8-after-five-cycles");
+    println!("walk 5: pixels differing after five cycles: {}", differing(&s4, &s5));
+    let generation = post(port, "bevy-ts/hello", Value::Null).unwrap()["generation"].as_u64().unwrap();
+    std::fs::write(dir.join("src/game.tsx"), format!("{GAME}\n// reload\n")).unwrap();
+    let t0 = Instant::now();
+    while post(port, "bevy-ts/hello", Value::Null).unwrap()["generation"].as_u64().unwrap() <= generation {
+        assert!(t0.elapsed() < Duration::from_secs(20), "no reload");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let s6 = shot(&viewer, &mut seen, &shots, "9-after-reload");
+    println!("walk 5: pixels differing after the reload: {}", differing(&s5, &s6));
+    let text = std::fs::read_to_string(shots.join("engine.log")).unwrap();
+    let errs: Vec<&str> = text.lines().filter(|l| l.contains("ERROR") || l.contains("WARN") || l.contains("panicked")).collect();
+    println!("walk 5: engine.log errors/warnings: {}", errs.len());
+    for l in errs.iter().take(10) {
+        println!("  {l}");
     }
     ticking.store(false, Ordering::Relaxed);
     ticker.join().unwrap();
