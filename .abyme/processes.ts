@@ -490,7 +490,7 @@ const processes = {
   // on ecs-queries-stage7-before; after: this branch), then each run 3 times, alternating. The
   // binaries and results live outside target/, which was emptied under a finished build once.
   "ecs-queries-bench-build": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:ecs-queries -- bash -c 'set -eo pipefail; mkdir -p $HOME/.cache/bevy-ts-ecsq-bench; b=$(git rev-parse --abbrev-ref HEAD); git switch -q ecs-queries-stage7-before; cargo static build --release -p bevy-ts-cli --example bob_bench 2>&1 | grep -v ld64 | tail -3; cp target/release/examples/bob_bench $HOME/.cache/bevy-ts-ecsq-bench/before; git switch -q $b; cargo static build --release -p bevy-ts-cli --example bob_bench 2>&1 | grep -v ld64 | tail -3; cp target/release/examples/bob_bench $HOME/.cache/bevy-ts-ecsq-bench/after; echo built'" },
-  "ecs-queries-bench": { cmd: "bash -c 'set -eo pipefail; cd $HOME/.cache/bevy-ts-ecsq-bench; for i in 1 2 3; do for a in before after; do uptime | tee $a-$i.md; ./$a >> $a-$i.md; done; done; tail -n +1 *.md'" },
+  "ecs-queries-bench": { cmd: "bash -c 'set -eo pipefail; cd $HOME/.cache/bevy-ts-ecsq-bench; for i in 1 2 3 4 5 6 7 8; do for a in before after; do uptime | tee $a-$i.md; ./$a >> $a-$i.md; done; done; tail -n +1 *.md'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
