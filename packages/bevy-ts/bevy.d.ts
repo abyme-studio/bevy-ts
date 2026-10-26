@@ -2413,7 +2413,7 @@ export declare class ScreenshotCaptured extends EntityEvent {
   static readonly path: "bevy_render::view::window::screenshot::ScreenshotCaptured";
   static readonly native: true;
   declare readonly entity: Entity;
-  declare readonly image: never;
+  declare readonly image: unknown;
 }
 export declare class WorldLoaded extends Message {
   static readonly path: "bevy_ts::saves::WorldLoaded";
