@@ -40,6 +40,31 @@ app.scene("level", () => (
 `duration` in seconds (`null` for none). Bevy reads them once, when the sound starts; change a
 playing sound through `AudioSinks`. A query filters sounds with `With<AudioPlayer>`.
 
+A script spawns one with the same names:
+
+```ts
+commands.spawn(AudioPlayer.of("sounds/hit.ogg"), PlaybackSettings.of({ mode: "Despawn", volume: { Linear: 0.5 } }));
+```
+
+## Global volume and spatial scale
+
+`GlobalVolume` and `DefaultSpatialScale` are resources from `bevy-ts/bevy`, read and written
+through reflection:
+
+```ts
+import type { Res, ResMut } from "bevy-ts";
+import { DefaultSpatialScale, GlobalVolume } from "bevy-ts/bevy";
+
+export function settings(global: ResMut<GlobalVolume>, scale: Res<DefaultSpatialScale>) {
+  global.volume = { Decibels: -12 };
+  console.log(scale.value); // [1, 1, 1]
+}
+```
+
+`GlobalVolume` applies to sinks made after it changes: Bevy multiplies it in when it makes a sink.
+A sound already playing keeps its volume; change it with `AudioSinks`. `DefaultSpatialScale` is
+the `spatial_scale` a spatial sound has when its `PlaybackSettings` gives none, read the same way.
+
 ## Control a playing sound
 
 ```ts
@@ -117,18 +142,18 @@ Every public item of `bevy_audio` 0.20, its TS form, and the test or owner. Test
 | Bevy item | TS form | Status | Test / owner |
 |---|---|---|---|
 | `AudioPlugin { global_volume, default_spatial_scale }` | added by the engine where it plays; elsewhere its asset half | done | `only_a_window_or_a_viewport_given_audio_plays`, `a_headless_engine_loads_audio_and_names_audio_player` |
-| `AudioPlayer<AudioSource>(Handle)` | `<AudioPlayer value="sounds/hit.ogg" />`; `With<AudioPlayer>` | done in TSX | `tsx_writes_audio_player_and_playback_settings`; `commands.spawn` of it: reflect-coverage stage 2, then script-audio-stage-2 |
+| `AudioPlayer<AudioSource>(Handle)` | `<AudioPlayer value="sounds/hit.ogg" />`; `AudioPlayer.of("sounds/hit.ogg")`; `With<AudioPlayer>` | done | `tsx_writes_audio_player_and_playback_settings`, `a_script_spawns_audio_player_and_playback_settings` |
 | `AudioSource { bytes }`, `AudioLoader` | an asset path | done | `ogg_and_wav_decode_headless`, `an_mp3_is_refused_by_name`, `a_reloaded_source_is_checked_again` |
 | `Decodable`, `AddAudioSource`, `Source`, `Sample`, `SampleRate`, `ChannelCount`, `CpalSample` | none: Rust extension points | — | — |
 | `Pitch { frequency, duration }`, `AudioPlayer<Pitch>` | needs `Assets<Pitch>.add` from TS | missing | script-assets |
 | `PlaybackSettings { mode, speed, paused, muted, spatial }` | column fields | done | `tsx_writes_audio_player_and_playback_settings` |
-| `PlaybackSettings { volume, spatial_scale, start_position, duration }` | TSX props through reflection | done in TSX | `tsx_writes_audio_player_and_playback_settings`; `PlaybackSettings.of` with them: reflect-coverage stage 2 |
+| `PlaybackSettings { volume, spatial_scale, start_position, duration }` | TSX props and `PlaybackSettings.of` fields, through reflection | done | `tsx_writes_audio_player_and_playback_settings`, `a_script_spawns_audio_player_and_playback_settings` |
 | `PlaybackSettings::ONCE`, `LOOP`, `DESPAWN`, `REMOVE`, `paused()`, `muted()`, `with_*` | the fields: `mode="Loop"`, `paused` | — | Bevy's constants are struct literals |
 | `PlaybackMode` | `"Once" \| "Loop" \| "Despawn" \| "Remove"` | done | `tsx_writes_audio_player_and_playback_settings` |
 | `SpatialListener { left_ear_offset, right_ear_offset }`, `new(gap)` | column; `new(gap)` is the two offsets | done (column) | registered by reflection; behaviour is Bevy's, with a device |
 | `SpatialScale`, `new`, `new_2d` | a value in `PlaybackSettings.spatial_scale` and `DefaultSpatialScale` | — | with those |
-| `DefaultSpatialScale` | `Res<DefaultSpatialScale>` | missing | reflect-coverage stage 3, then script-audio-stage-2 |
-| `GlobalVolume { volume }`, `new` | `ResMut<GlobalVolume>`; applies to sinks made after it changes | missing | reflect-coverage stage 3, then script-audio-stage-2 |
+| `DefaultSpatialScale` | `Res<DefaultSpatialScale>`, `value` as `[x, y, z]` | done | `global_volume_and_default_spatial_scale_from_ts` |
+| `GlobalVolume { volume }`, `new` | `ResMut<GlobalVolume>`; applies to sinks made after it changes | done | `global_volume_and_default_spatial_scale_from_ts` |
 | `Volume::{Linear, Decibels}` | `{ Linear: n } \| { Decibels: n }`; params take linear `number`s | done | `tsx_writes_audio_player_and_playback_settings`, `audio_sinks_control_sinks_with_no_device` |
 | `Volume::to_linear`, `to_decibels`, `increase_by_percentage`, `decrease_by_percentage`, `scale_to_factor`, `fade_towards`, `*`, `/`, `SILENT` | TS math on numbers | declined | — |
 | `AudioSink`, `SpatialAudioSink` (no `Reflect`) | `AudioSinks`, entity first | done | `audio_sinks_control_sinks_with_no_device` |

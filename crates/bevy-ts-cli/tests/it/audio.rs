@@ -1,13 +1,14 @@
 //! Change `script-audio`: the engine's audio by display, Ogg and WAV decoding headless,
-//! `AudioPlayer` and `PlaybackSettings` from TSX, and `bevy-ts/audio`'s `AudioSinks` on sinks that
-//! have no device. Nothing here opens an audio device: no test builds `AudioPlugin`.
+//! `AudioPlayer` and `PlaybackSettings` from TSX and from a script's commands, `GlobalVolume` and
+//! `DefaultSpatialScale` from TS, and `bevy-ts/audio`'s `AudioSinks` on sinks that have no device.
+//! Nothing here opens an audio device: no test builds `AudioPlugin`.
 
 use crate::common;
 
 use bevy::prelude::*;
 use bevy_audio::{
-    AudioPlayer, AudioPlugin, AudioSink, AudioSinkPlayback, AudioSource, Decodable, PlaybackMode, PlaybackSettings,
-    SpatialAudioSink, Volume,
+    AudioPlayer, AudioPlugin, AudioSink, AudioSinkPlayback, AudioSource, Decodable, DefaultSpatialScale, GlobalVolume, PlaybackMode,
+    PlaybackSettings, SpatialAudioSink, SpatialScale, Volume,
 };
 use bevy_ts::generation::ReloadStatus;
 use bevy_ts_cli::audio::{asset_half, audio_output, decodable, plays};
@@ -198,6 +199,65 @@ fn tsx_writes_audio_player_and_playback_settings() {
     assert!(matches!(settings.volume, Volume::Decibels(db) if db == -6.0), "{:?}", settings.volume);
     assert_eq!(settings.start_position, Some(Duration::from_millis(500)));
     assert_eq!(settings.duration, None);
+}
+
+const SPAWN: &str = r#"import { app, Startup } from "bevy-ts";
+import type { Commands } from "bevy-ts";
+import { AudioPlayer, PlaybackSettings } from "bevy-ts/bevy";
+
+export function hit(commands: Commands) {
+  commands.spawn(AudioPlayer.of("tone.ogg"), PlaybackSettings.of({ mode: "Despawn", volume: { Linear: 0.5 }, spatial_scale: [2, 2, 2], start_position: 0.25 }));
+}
+app.addSystems(Startup, hit);
+"#;
+
+#[test]
+fn a_script_spawns_audio_player_and_playback_settings() {
+    let dir = common::project("audio-spawn", &[("game.ts", SPAWN)]);
+    let mut app = common::app(&dir.join("game.ts"));
+    app.add_plugins(AssetPlugin::default());
+    asset_half(&mut app);
+    app.add_plugins(bevy_ts_cli::audio::ScriptAudioPlugin);
+    let r = common::reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    common::updates(&mut app, 2);
+    let log = common::messages(&app);
+    let world = app.world_mut();
+    let (player, settings) = world.query::<(&AudioPlayer, &PlaybackSettings)>().single(world).unwrap_or_else(|e| panic!("one sound: {e}; {log:?}"));
+    assert_eq!(player.0.path().map(|p| p.to_string()).as_deref(), Some("tone.ogg"));
+    assert!(matches!(settings.mode, PlaybackMode::Despawn), "{:?}", settings.mode);
+    assert_eq!(settings.volume, Volume::Linear(0.5));
+    assert_eq!(settings.spatial_scale.map(|s| s.0), Some(Vec3::splat(2.0)));
+    assert_eq!(settings.start_position, Some(Duration::from_millis(250)));
+    assert_eq!(settings.duration, None);
+}
+
+const RESOURCES: &str = r#"import { app, Update } from "bevy-ts";
+import type { Res, ResMut } from "bevy-ts";
+import { DefaultSpatialScale, GlobalVolume } from "bevy-ts/bevy";
+
+export function volume(global: ResMut<GlobalVolume>, scale: Res<DefaultSpatialScale>) {
+  console.log(`scale ${JSON.stringify(scale.value)} volume ${JSON.stringify(global.volume)}`);
+  if (!("Linear" in global.volume && global.volume.Linear === 0.25)) global.volume = { Linear: 0.25 };
+}
+app.addSystems(Update, volume);
+"#;
+
+#[test]
+fn global_volume_and_default_spatial_scale_from_ts() {
+    let dir = common::project("audio-resources", &[("game.ts", RESOURCES)]);
+    let mut app = common::app(&dir.join("game.ts"));
+    app.add_plugins(AssetPlugin::default());
+    asset_half(&mut app);
+    app.add_plugins(bevy_ts_cli::audio::ScriptAudioPlugin);
+    app.insert_resource(DefaultSpatialScale(SpatialScale::new(0.5)));
+    let r = common::reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    frame(&mut app);
+    assert_eq!(app.world().resource::<GlobalVolume>().volume, Volume::Linear(0.25));
+    frame(&mut app);
+    assert_eq!(line(&app, "scale "), "scale [0.5,0.5,0.5] volume {\"Linear\":0.25}");
+    assert!(common::messages(&app).iter().all(|m| !m.contains("threw")), "{:?}", common::messages(&app));
 }
 
 const SINKS: &str = r#"import { app, Component, Update } from "bevy-ts";

@@ -4,7 +4,7 @@
 //! a controlled field does. A field's value is its JSON over the default's value of that field. A
 //! component that is itself an enum takes its whole value as `value`.
 
-use bevy::ecs::reflect::ReflectComponent;
+use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld};
 use bevy::prelude::*;
 use bevy::reflect::{ParsedPath, PartialReflect, ReflectPath, ReflectRef, TypeRegistry};
 use bevy_ts::reflect_asset::{ScriptAssets, Slots};
@@ -57,9 +57,23 @@ fn component<'r>(registry: &'r TypeRegistry, type_path: &str) -> Result<(&'r Ref
 }
 
 /// A fresh default of the component, the base every write is over: its `ReflectDefault`, else
-/// its `ReflectFromWorld` (`reflect_value::default_of`).
+/// its `ReflectFromWorld` run on an empty world (`reflect_value::default_of`).
 fn default(registry: &TypeRegistry, reg: &bevy::reflect::TypeRegistration) -> Option<Box<dyn PartialReflect>> {
     reflect_value::default_of(registry, reg.type_id())
+}
+
+/// [`default`], else a `FromWorld` that needs the world's resources run on the live world, as a
+/// script's `C.of(...)` is. A `FromWorld` that panics there fails the insert, naming the type.
+fn live_default(world: &mut World, registry: &TypeRegistry, reg: &bevy::reflect::TypeRegistration, type_path: &str) -> Result<Box<dyn PartialReflect>, String> {
+    if let Some(v) = default(registry, reg) {
+        return Ok(v);
+    }
+    let fw = reg
+        .data::<ReflectFromWorld>()
+        .ok_or_else(|| format!("{type_path} has neither a reflected Default nor a reflected FromWorld, so a level cannot insert it"))?;
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fw.from_world(world)))
+        .map(<dyn Reflect>::into_partial_reflect)
+        .map_err(|_| format!("{type_path}'s FromWorld panicked"))
 }
 
 /// Checks `props` against a default of the component without touching the world: the errors a
@@ -84,7 +98,7 @@ pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String,
     let server = world.get_resource::<AssetServer>().cloned();
     let registry = registry.read();
     let (rc, reg) = component(&registry, type_path)?;
-    let mut value = default(&registry, reg).ok_or_else(|| format!("{type_path} has neither a reflected Default nor a reflected FromWorld, so a level cannot insert it"))?;
+    let mut value = live_default(world, &registry, reg, type_path)?;
     let assets = slots_of(world);
     let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, world: Some(world), check: false };
     for (f, v) in props {

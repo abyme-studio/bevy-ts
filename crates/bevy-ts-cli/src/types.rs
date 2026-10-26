@@ -581,17 +581,33 @@ fn bevy_ts_imports(decls: &str) -> (BTreeSet<&str>, Vec<&str>) {
     (names, rest)
 }
 
-/// Every reflected component (and layout-tier resource) with a TS identifier: its short name,
-/// prefixed by its crate when two types share one. Sorted by type path.
-fn named<'r>(registry: &'r bevy::reflect::TypeRegistry, native: &NativeLayouts) -> Vec<(String, String, &'r TypeRegistration)> {
+/// The types params stand for (`stands_for`'s `Res<GizmoConfigStore>`): `GizmoConfigStore`.
+fn claimed(world: &World) -> BTreeSet<String> {
+    let Some(host) = world.get_resource::<bevy_ts::host::HostParams>() else { return BTreeSet::new() };
+    host.specs()
+        .filter_map(|p| p.stands_for)
+        .map(|s| {
+            let inner = s.strip_prefix("ResMut<").or_else(|| s.strip_prefix("Res<")).unwrap_or(s);
+            inner.strip_suffix('>').unwrap_or(inner).to_string()
+        })
+        .collect()
+}
+
+/// Every reflected component (and resource of either tier) with a TS identifier: its short name,
+/// prefixed by its crate when two types share one. Sorted by type path. A reflect-tier resource a
+/// param stands for (`claimed`) is the param's, so it has none.
+fn named<'r>(registry: &'r bevy::reflect::TypeRegistry, native: &NativeLayouts, claimed: &BTreeSet<String>) -> Vec<(String, String, &'r TypeRegistration)> {
     let mut entries: BTreeMap<String, (String, &TypeRegistration)> = BTreeMap::new();
     for reg in registry.iter().filter(|r| r.data::<bevy::ecs::reflect::ReflectComponent>().is_some()) {
         let path = reg.type_info().type_path().to_string();
-        if is_resource(reg) && native.get(&path).is_none_or(|n| n.type_path != path) {
-            // A resource TS cannot read in place has no TS handle yet.
+        let short = reg.type_info().type_path_table().short_path();
+        if is_resource(reg)
+            && native.get(&path).is_none_or(|n| n.type_path != path)
+            && (native.reflect_tier(&path).is_none() || claimed.contains(short) || claimed.contains(&path))
+        {
+            // A resource in neither tier, or one a param stands for, has no TS handle.
             continue;
         }
-        let short = reg.type_info().type_path_table().short_path();
         entries.insert(path, (ident(DEFAULT_ARGUMENTS.iter().find(|(full, _)| *full == short).map_or(short, |(_, bare)| bare)), reg));
     }
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
@@ -637,7 +653,7 @@ fn element_props(registry: &TypeRegistry, reg: &TypeRegistration) -> String {
 /// `bevy-ts/bevy` for the prebuilt engine (native task 3.5): a JS module of handles and its
 /// declarations, generated from the engine's registry. Layout-tier components are column
 /// classes and layout-tier resources `Resource` classes; reflect-tier components are handles for
-/// filters and TSX. `Transform` and `Time` come from `bevy-ts` itself and are re-exported.
+/// filters and TSX, and reflect-tier resources handles for `Res` and `ResMut`. `Transform` and `Time` come from `bevy-ts` itself and are re-exported.
 pub fn emit_bevy(world: &World) -> (String, String) {
     let registry = world.resource::<AppTypeRegistry>().read();
     let native = world.resource::<NativeLayouts>();
@@ -655,7 +671,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
          import type {{ AssetClass, AssetFields, AssetLoad, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
-    let components = named(&registry, native);
+    let components = named(&registry, native, &claimed(world));
     let mut taken: BTreeSet<String> = components.iter().map(|(_, n, _)| n.clone()).collect();
     taken.extend(["Time".to_string(), "Transform".to_string()]);
     for (path, name, reg) in components {
@@ -733,6 +749,9 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                     let _ = writeln!(dts, "/** As an element, `<{name} value={{...}} />`: the whole value, in Bevy's shape; `{name}.of(...)` in commands. */");
                     let _ = writeln!(dts, "export declare const {name}: ReflectClass<{name}Value, ReflectValue<{name}Value>> & {{ readonly tsxProps: {{ value?: {name}Value }} }};");
                     let _ = writeln!(dts, "export type {name}Value = {};", ts_type(&registry, &path, 0));
+                } else if is_resource(reg) {
+                    let _ = writeln!(dts, "/** `Res<{name}>` and `ResMut<{name}>` in systems, read and written through reflection. */");
+                    let _ = writeln!(dts, "export declare const {name}: ReflectClass<{}, {}>;", ts_type(&registry, &path, 0), element_props(&registry, reg));
                 } else {
                     let _ = writeln!(dts, "/** `{name}.of(...)` in commands: the value written over its default. */");
                     let _ = writeln!(dts, "export declare const {name}: ReflectClass<{}, {}>;", ts_type(&registry, &path, 0), element_props(&registry, reg));
@@ -972,7 +991,7 @@ pub fn emit(world: &World) -> String {
     let _ = writeln!(s, "/** Conditions exposed with `app.ts_condition`, for `nativeCondition(name, args)`. */");
     let _ = writeln!(s, "export type NativeCondition = {};", if conditions.is_empty() { "never".to_string() } else { conditions.join(" | ") });
 
-    let classes = named(&registry, native);
+    let classes = named(&registry, native, &claimed(world));
     if let Some(host) = world.get_resource::<bevy_ts::host::HostParams>() {
         let claims: Vec<Claim> = host.specs().filter_map(|p| Some(Claim { spelling: p.stands_for?, module: p.module, ts: p.ts })).collect();
         let modules = bevy_ts::modules::all();

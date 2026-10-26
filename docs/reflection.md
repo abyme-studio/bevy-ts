@@ -113,6 +113,12 @@ its entry reads and writes it whole, so the check adds `{}` with `assets.add`, r
 `assets.get`, adds that read and reads again, and fails when the two reads differ. Its TS type is hand-written
 ([animation](animation.md)).
 
+A component's default is its `Default`, else its `FromWorld`. A `FromWorld` default is made once
+on an empty world and cloned after. One that needs the world's resources panics there, so TSX and
+levels build it from the live world when they insert the component, as a script's `C.of(...)`
+does. One that panics on the live world too is not inserted: the script log names the type
+(`<type>'s FromWorld panicked`).
+
 ## Uncovered
 
 `reflect_value::UNCOVERED`, each with its reason. A field of an uncovered type reads as absent and

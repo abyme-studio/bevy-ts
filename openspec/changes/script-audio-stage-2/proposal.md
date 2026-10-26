@@ -12,17 +12,22 @@ stage 2, split out so stage 1 could archive.
   writes `ResMut<GlobalVolume>` and `Res<DefaultSpatialScale>`.
 - Docs: `docs/audio.md` says `GlobalVolume` applies to sinks made after it changes, and marks the
   rows done.
-- No engine code is expected: reflect-coverage stages 2 and 3 bring the paths. If a test shows a
-  gap, the gap is reflect-coverage's.
+- Engine: reflect-tier resources had no `bevy-ts/bevy` handle, so `Res<GlobalVolume>` could not be
+  imported; `bevy-ts types` now ships them (not one a param stands for). TSX built a `FromWorld`
+  default only on an empty world; one that needs resources is now built from the live world, as
+  scripts' commands do.
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `script-audio`: its coverage rows for script spawns and the two resources become done. Spec
-  deltas, if any, are written when the work starts, against what reflect-coverage landed.
+- `script-audio`: script spawns of `AudioPlayer` and `PlaybackSettings`, and `GlobalVolume` and
+  `DefaultSpatialScale` from TS.
+- `native-components`: reflect-tier resources are reflected handles; TSX builds a `FromWorld`
+  default from the live world.
 
 ## Impact
 
-`crates/bevy-ts-cli/tests/it/audio.rs`, `docs/audio.md`. Starts after reflect-coverage stages 2
-and 3 are on main.
+`crates/bevy-ts-cli/tests/it/audio.rs`, `docs/audio.md`, `crates/bevy-ts-cli/src/types.rs` and the
+regenerated `bevy-ts/bevy`, `crates/bevy-ts-tsx/src/reflected.rs`, `docs/native.md`,
+`docs/reflection.md`.
