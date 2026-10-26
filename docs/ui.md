@@ -443,3 +443,12 @@ const [open, setOpen] = signal(false);
   transform, so a dialog with a handle takes no `transform` prop. Dragging needs a window: it
   works in a game window and in viewport mode, not under `--headless`.
 
+
+## Not available
+
+- UI materials (`MaterialNode` with a `UiMaterial`): a node drawn by a shader of your own. It
+  needs a new material target and render pipeline in `bevy-ts-material`, which has not been asked
+  for. A node's look is its `background`, `border`, gradients, `shadow` and `<image>`.
+- `bevy_feathers`, Bevy's styled widget set: its own docs say it is styled for the Bevy editor,
+  not for game UI, and turning it on adds a dependency. The widgets above are Bevy's unstyled
+  ones, which a game styles itself.

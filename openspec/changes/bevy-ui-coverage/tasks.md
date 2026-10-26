@@ -93,5 +93,5 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 
 ## 8. Close
 
-- [ ] 8.1 `openspec validate bevy-ui-coverage --strict` passes
-- [ ] 8.2 `docs/ui.md` says UI materials and `bevy_feathers` are not available, and why
+- [x] 8.1 `openspec validate bevy-ui-coverage --strict` passes
+- [x] 8.2 `docs/ui.md` says UI materials and `bevy_feathers` are not available, and why
