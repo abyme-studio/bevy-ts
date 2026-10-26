@@ -480,6 +480,18 @@ fn remove_observer_reads_the_value() {
 }
 
 #[test]
+fn remove_observer_reads_a_native_layout_value() {
+    // A native-layout component's lifecycle carries its layout bytes, read through its row, never
+    // the JSON path of a Rust message or event.
+    let mut app = loaded("ecsq-on-remove-native", "export function gone(on: On<Remove<QKnight>>) { console.log(`knight ${on.level}`); }\napp.addObserver(gone);\n");
+    let e = app.world_mut().spawn(QKnight { level: 3.0 }).id();
+    app.update();
+    app.world_mut().entity_mut(e).remove::<QKnight>();
+    app.update();
+    assert_eq!(lines(&mut app, "knight"), vec!["knight 3"]);
+}
+
+#[test]
 fn discard_sees_the_old_value() {
     let (_, mut app, es) = staged(
         "ecsq-discard",
