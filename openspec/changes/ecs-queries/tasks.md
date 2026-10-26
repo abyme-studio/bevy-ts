@@ -42,7 +42,7 @@ unless a path is given; each `ecs-coverage` row's test is written with its featu
 
 ## 6. Hierarchy walk, docs and gate
 
-- [ ] 6.1 `iterDescendants` on a query with `Children` data, once reflect-coverage stage 3 has landed on main; `iter_ancestors_and_descendants`. If it has not landed when stages 1 to 5 are done, land them and leave this task for a follow-up commit on main
+- [x] 6.1 `iterDescendants` on a query with `Children` data, once reflect-coverage stage 3 has landed on main; `iter_ancestors_and_descendants`. If it has not landed when stages 1 to 5 are done, land them and leave this task for a follow-up commit on main
 - [x] 6.2 `docs/ecs.md`: queries (filters, data, `Single`/`Populated`, methods), `RemovedComponents`, lifecycle observers and the copied value, commands (the `spawn(<el/>)` root rule, marked breaking), hierarchy, `Disabled`, sparse-set limits; link it from `docs/scripts.md`
 - [x] 6.3 Every `ecs-coverage` row's test exists; rows not landed say so
 - [ ] 6.4 Gate once: workspace build, tests and clippy; `pnpm` type tests for `index.d.ts`
@@ -53,4 +53,4 @@ unless a path is given; each `ecs-coverage` row's test is written with its featu
 - [x] 7.2 Sparse-set filters: `is_dense` on `QueryParam`; per-table row lists from matched archetypes for non-dense queries; `Changed`/`Added` on a sparse-set component from per-entity sparse ticks; `Has` per archetype; lift 1.1's filter refusal (data stays refused); `probe_disabled_and_sparse_filters` asserts Bevy's lengths
 - [x] 7.3 Bench after: dense unchanged within noise, sparse cost recorded in `docs/research/ecs-queries.md`
 - [x] 7.4 Required components: `static require` in the reader and manifest; an `on_add` hook by id inserting missing parts through `DeferredWorld` commands; cycle error; `required_components_from_every_path` (commands, TSX, level, Rust insert)
-- [ ] 7.5 `Relationship` and `RelationshipTarget` are not exported; the `ecs-coverage` row names custom-relationships as their owner
+- [x] 7.5 `Relationship` and `RelationshipTarget` are not exported; the `ecs-coverage` row names custom-relationships as their owner
