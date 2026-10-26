@@ -40,8 +40,9 @@ pub struct KeptMeshTag;
 
 impl GpuComponentArrayBuffer for ScriptInstance {
     type QueryData = &'static ScriptInstance;
-    // Only meshes draw it (a glTF root holds one for its meshes); a quiet frame packs nothing.
-    type QueryFilter = (With<Mesh3d>, Or<(Changed<ScriptInstance>, Added<Mesh3d>)>);
+    // Every holder gets a row, a glTF root too (its meshes copy it): Bevy's buffer drops a row for
+    // each removed `ScriptInstance` and panics on one it never packed. A quiet frame packs nothing.
+    type QueryFilter = Changed<ScriptInstance>;
     type Out = [u32; WORDS];
 
     fn extract_component(item: QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {

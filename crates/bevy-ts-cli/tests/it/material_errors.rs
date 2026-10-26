@@ -161,12 +161,15 @@ fn an_error_in_the_generated_params_names_the_schema() {
     // The file already declares `noise`; a texture of that name makes the generated code declare
     // it again.
     save_wgsl(&mut app, &dir, &WGSL.replace("const FLOOR: f32 = 0.25;", "const FLOOR: f32 = 0.25;\nconst noise: f32 = 1.0;"));
+    // Keeps-drawing is said only once a pipeline built from the saved shader draws.
+    let (id, _) = fragment(&app);
+    until(&mut app, "the saved shader never drew", |app| app.world().resource::<PipelineWatch>().0.lock().unwrap().drawing.contains(&id));
     let before = fragment(&app);
     write(&dir, "game.tsx", &game_with("color: color, pulse: f32", ", textures: { noise: texture2d }"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     let e = logs(&app).into_iter().rev().find(|e| e.level == LogLevel::Error).expect("an error");
-    assert!(e.message.contains("game::Glow") && e.message.contains("`noise`") && e.message.contains("params or textures generate"), "{}", e.message);
+    assert!(e.message.contains("game::Glow") && e.message.contains("`noise`") && e.message.contains("params, textures or instance params generate"), "{}", e.message);
     assert!(e.location.clone().expect("the material() call").file.ends_with("game.tsx"));
     assert!(e.message.contains("previous material keeps drawing"), "{}", e.message);
     assert_eq!(fragment(&app), before, "the old shader stays");
