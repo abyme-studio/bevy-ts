@@ -42,7 +42,7 @@ const processes = {
   },
   // ts-heap-fields-2: the build, the tests of bevy-ts and bevy-ts-cli (stage 4 adds remote and levels), clippy and tsc, in the gate slot.
   "ts-heap-fields-2-test": {
-    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:ts-heap-fields-2 -- bash -c \"cargo build && cargo test -p bevy-ts --lib --features reflect && cargo test -p bevy-ts --no-fail-fast --test it && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it && cargo clippy -p bevy-ts -p bevy-ts-cli --all-targets -- -D warnings && (cd packages/bevy-ts && pnpm check)\" 2>&1 | grep -v ld64 | tee target/ts-heap-fields-2-test.log | grep -E -A5 \"^error|^warning|-->|test result|FAILED|panicked|error TS\" | tail -150'",
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:ts-heap-fields-2 -- bash -c \"cargo build && cargo clippy -p bevy-ts -p bevy-ts-v8 -p bevy-ts-cli --all-targets -- -D warnings && (cd packages/bevy-ts && pnpm check) && cargo test -p bevy-ts --lib --features reflect && cargo test -p bevy-ts --no-fail-fast --test it && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it\" 2>&1 | grep -v ld64 | tee target/ts-heap-fields-2-test.log | grep -E -A5 \"^error|^warning|-->|test result|FAILED|panicked|error TS\" | tail -150'",
   },
   // ts-component-heap-fields tasks 1.20, 2.10: heap field reads, writes and despawn, and the plain arms against main; 3 rounds (8 with RUNS=8).
   "ts-heap-fields-bench": {
