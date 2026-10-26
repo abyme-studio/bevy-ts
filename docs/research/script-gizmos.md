@@ -110,9 +110,9 @@ reflected value under its type name, `{ Cuboid: { half_size: [0.5, 0.5, 0.5] } }
 
 | Bevy | TS | Status | Test |
 |---|---|---|---|
-| `GizmoAsset` (`lib.rs:325`), `GizmoAsset::new`, `Default`, the drawing API through `DerefMut` (`retained.rs:16-28`) | `const g = new GizmoAsset(); g.sphere([0, 0, 0], 1, "#f00").resolution(64);` every `Gizmos` drawing method, recorded in JS and replayed in Rust on add (design 10) | new, after reflect-assets stage 1 | `a_gizmo_asset_holds_what_gizmos_would_draw` |
-| `Assets<GizmoAsset>::add` | `assets.add(GizmoAsset, g)` on reflect-assets' path, a hand-map entry for `GizmoAsset`; returns an `AssetRef<GizmoAsset>`. `assets.set(ref, g2)` replaces its calls (design 10) | new, after reflect-assets stage 1 and its `HandMap` widening | `a_gizmo_asset_holds_what_gizmos_would_draw`, `set_replaces_a_gizmo_assets_calls` |
-| `Gizmo { handle, line_config, depth_bias }` (`retained.rs:67`) | `<Gizmo handle={ref} line_config={{ width: 4 }} depth_bias={-0.1} />`: `depth_bias` a column (works), `line_config` a reflected hole prop, `handle` an asset ref through reflect-assets' handle hook | partial: `depth_bias` works; rest new | `a_retained_gizmo_renders`, render frame |
+| `GizmoAsset` (`lib.rs:325`), `GizmoAsset::new`, `Default`, the drawing API through `DerefMut` (`retained.rs:16-28`) | `const g = new GizmoAsset(); g.sphere([0, 0, 0], 1, "#f00").resolution(64);` every `Gizmos` drawing method, recorded in JS and replayed in Rust on add (design 10) | works | `a_gizmo_asset_holds_what_gizmos_would_draw` |
+| `Assets<GizmoAsset>::add` | `assets.add(GizmoAsset, g)` on reflect-assets' path, a hand-map entry for `GizmoAsset`; returns an `AssetRef<GizmoAsset>`. `assets.set(ref, g2)` replaces its calls (design 10) | works | `a_gizmo_asset_holds_what_gizmos_would_draw`, `set_replaces_a_gizmo_assets_calls` |
+| `Gizmo { handle, line_config, depth_bias }` (`retained.rs:67`) | `<Gizmo handle={ref} line_config={{ width: 4 }} depth_bias={-0.1} />`: `depth_bias` a column (works), `line_config` a reflected hole prop, `handle` an asset ref through reflect-assets' handle hook | works | `a_retained_gizmo_renders`, frame `after-retained.png` |
 | `GizmoAsset::buffer`, `config_typeid` (`lib.rs:333,348`) | no TS form: internals | — | — |
 | `GizmoHandles` (`lib.rs:205`) | no TS form: Bevy's per-group asset handles | — | — |
 
