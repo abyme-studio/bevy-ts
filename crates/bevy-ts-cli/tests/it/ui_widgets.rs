@@ -210,7 +210,7 @@ mod pointer {
     use bevy::picking::pointer::{Location, PointerId};
     use bevy_ts_remote::protocol::PointerEventKind::{self, Down, Move, Up};
     use bevy_ts_remote::protocol::{PointerEvent, PointerEventButton, PointerEventType};
-    use bevy_ts_viewport::offscreen::{OffscreenPointerPlugin, Pending};
+    use bevy_ts_viewport::offscreen::{OffscreenInputPlugin, Pending};
 
     /// Every widget at a known place: rows 40 px apart, each part 40 by 20.
     const GAME: &str = r##"import { app, For, px, ref, signal } from "bevy-ts";
@@ -261,7 +261,7 @@ app.scene("ui", () => (
         let dir = project(name, &[("game.tsx", GAME)]);
         let mut app = unfinished(Display::Headless, Switches::default(), &dir.join("game.tsx"));
         let image = app.world().resource::<bevy_ts_cli::headless::Offscreen>().0.clone();
-        app.add_plugins(OffscreenPointerPlugin { image });
+        app.add_plugins(OffscreenInputPlugin { image });
         app.finish();
         app.cleanup();
         app.world_mut().spawn(Camera2d);
@@ -283,7 +283,7 @@ app.scene("ui", () => (
             type_: PointerEventType::Pointer,
             x,
             y,
-        });
+        }.into());
         common::updates(app, 2);
     }
 
