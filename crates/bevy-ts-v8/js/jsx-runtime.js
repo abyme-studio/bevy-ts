@@ -15,15 +15,15 @@ export const Fragment = Symbol.for("bevy-ts.fragment");
 const ELEMENT = Symbol.for("bevy-ts.element");
 
 /** Intrinsics that describe components of the enclosing entity. */
-const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d", "worldText"]);
+const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d", "worldText", "text2d"]);
 /** bevy_ui intrinsics: entities of their own, with one intrinsic component named after the tag. */
 const UI_INTRINSICS = new Set([
   "node", "text", "image", "button", "span", "viewport", "input",
   "checkbox", "radioGroup", "radio", "slider", "sliderThumb", "scrollbar", "scrollbarThumb", "tabList", "tab", "listBox", "listItem",
   "menuButton", "menuPopup", "menuItem", "popover", "dialog", "modalDialogBarrier", "dialogDragHandle",
 ]);
-/** Rich text: `<text>` and `<span>` hold strings, bindings and `<span>`s. */
-const RICH = new Set(["text", "span"]);
+/** Rich text: `<text>`, `<text2d>` and `<span>` hold strings, bindings and `<span>`s. */
+const RICH = new Set(["text", "text2d", "span"]);
 /** What a `<span>` takes from its parent unless it sets its own: Bevy gives a span no inheritance. */
 const INHERITED = ["size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing"];
 /** Props every entity-making element takes besides its components. */
@@ -312,7 +312,7 @@ function keyed(items, prefix) {
     seen.set(key, el);
     if (item.group) {
       result.push(...keyed(siblings(el), `${key}/`));
-    } else result.push({ el, key, type });
+    } else result.push({ el, key, type, rich: item.rich });
   }
   return result;
 }
@@ -1440,7 +1440,8 @@ function plainProps(el, skip) {
   return out;
 }
 
-function describeComponent(el) {
+/** `spans`, for `<text2d>`: where its `<span>`s go, as child entities of its entity. */
+function describeComponent(el, spans) {
   const kind = isComponent(el.type) ? (el.type.source === "ts" ? "ts" : "rust") : "intrinsic";
   const native = isComponent(el.type) && (el.type.source === "ts" || el.type.native === true);
   const props = {};
@@ -1459,6 +1460,11 @@ function describeComponent(el) {
   if (el.type === "worldText") {
     const t = worldTextOf(el);
     props.text = typeof t === "function" && Describing ? Describing.ctx.bind(t, Describing.owner, el.source) : t;
+  } else if (el.type === "text2d") {
+    const rich = richText(el);
+    const t = rich.text;
+    props.text = typeof t === "function" && Describing ? Describing.ctx.bind(t, Describing.owner, el.source) : t;
+    spans.push(...rich.items.map((item) => ({ ...item, rich: true })));
   } else if (el.children && (!Array.isArray(el.children) || el.children.length)) {
     throw located(`<${d.type}> takes no children`, el.source);
   }
@@ -1620,7 +1626,7 @@ function describeEntity(el, key, type, parentType) {
       const prev = byType.get(name);
       if (prev) throw located(`${name} is given twice on one entity (first at ${at(prev.source)})`, c.source);
       byType.set(name, c);
-      node.components.push(describeComponent(c));
+      node.components.push(describeComponent(c, childItems));
     } else childItems.push(item);
   }
   node.children = describeEntities(childItems, el.type);
@@ -1629,9 +1635,9 @@ function describeEntity(el, key, type, parentType) {
 
 function describeEntities(items, parentType) {
   const out = [];
-  for (const { el, key, type } of keyed(items, "")) {
-    if (el.type === "span" && !RICH.has(parentType)) throw located("<span> goes inside a <text> or a <span>", el.source);
-    if (el.type === "entity" || UI_INTRINSICS.has(el.type)) out.push(describeEntity(el, key, type, parentType));
+  for (const { el, key, type, rich } of keyed(items, "")) {
+    if (el.type === "span" && !rich && !RICH.has(parentType)) throw located("<span> goes inside a <text>, a <text2d> or a <span>", el.source);
+    if (el.type === "entity" || UI_INTRINSICS.has(el.type)) out.push(describeEntity(el, key, type, rich ? "text2d" : parentType));
     else if (typeof el.type === "function" && el.type[CONTROL]) {
       const id = Describing.ctx.nextSlot++;
       const slot = new Slot(Describing.ctx, id, el, Describing.owner, parentType);

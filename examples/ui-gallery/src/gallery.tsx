@@ -341,6 +341,10 @@ app.scene("gallery", () => (
       <mesh2d shape="rectangle" size={[1, 1]} />
       <material2d color="#3c6" />
     </entity>
+    {/* Not UI: 2D text, so <text2d> appears (it draws under a Camera2d only). */}
+    <entity key="caption">
+      <text2d size={16} color="#fff">{() => `Clicked ${clicks()} times`}</text2d>
+    </entity>
     {/* The minimap's camera, above the cube looking down; its viewport gives it an image of its own. */}
     <entity key="mini" ref={mini}>
       <Camera3d />

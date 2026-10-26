@@ -368,6 +368,25 @@ export interface SpanProps extends SpanStyle {
   children?: TextChild | readonly TextChild[];
 }
 
+/**
+ * `<text2d>`: Bevy's `Text2d`, a component of its `<entity>`, placed by its `Transform` in pixels
+ * under a `Camera2d`. It takes `<text>`'s text props and children; its `<span>`s are child
+ * entities. docs/2d.md.
+ */
+export interface Text2dProps extends SpanStyle {
+  /** `TextLayout.justify`. */
+  justify?: Bindable<"left" | "center" | "right" | "justified" | "start" | "end">;
+  /** `TextLayout.linebreak`. */
+  linebreak?: Bindable<"word" | "char" | "word-or-char" | "none">;
+  /** `Text2dShadow`, y up; a missing field is Bevy's default (`x` 4, `y` -4, black). */
+  textShadow?: Bindable<{ x?: number; y?: number; color?: ColorValue }>;
+  /** `Anchor`: the point of the text's box at the entity's origin (default `"center"`). */
+  anchor?: Bindable<WorldTextAnchor>;
+  /** `TextBounds`: `[width, height]` in pixels to wrap and clip at; `null` is unbounded. */
+  bounds?: Bindable<readonly [number | null, number | null]>;
+  children?: TextChild | readonly TextChild[];
+}
+
 /** `<worldText>`'s children: strings, numbers and bindings, no element. */
 export type WorldTextChild = string | number | (() => string | number) | null | undefined | false;
 
@@ -1034,6 +1053,7 @@ export declare namespace JSX {
     mesh2d: Mesh2dProps;
     material2d: Material2dProps;
     worldText: WorldTextProps;
+    text2d: Text2dProps;
     node: PlainNodeProps & KeyAttribute;
     button: ButtonProps & KeyAttribute;
     text: TextProps & KeyAttribute;

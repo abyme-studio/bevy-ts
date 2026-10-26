@@ -54,7 +54,7 @@ The hook sits in the walker reflect-coverage stage 1 builds for nested handles, 
 
 ### 3. `<text2d>` is a text kind on UI's text props
 
-`Text2d` takes the same `TextFont`, `TextColor`, `TextLayout`, `TextSpan` children as UI `Text`. `<text2d>` is a new kind beside `<text>` in `ui.rs`'s text path: same props parser, same bound-children writer, plus `anchor`, `bounds` and `shadow`. That gives bound props and children on `<text2d>` without touching the reflect path. It inserts no `Node`.
+`Text2d` takes the same `TextFont`, `TextColor`, `TextLayout`, `TextSpan` children as UI `Text`. `<text2d>` is a new kind beside `<text>` in `ui.rs`'s text path: same props parser, same bound-children writer, plus `anchor` and `bounds`; `textShadow` keeps `<text>`'s `{ x, y, color }` and writes `Text2dShadow`. That gives bound props and children on `<text2d>` without touching the reflect path. It inserts no `Node`. Like `<worldText>`, it is a component of its `<entity>`; its `<span>`s are child entities of that entity, as Bevy builds `Text2d` rich text.
 
 ### 4. Rust component props keep Rust names
 

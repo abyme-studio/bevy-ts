@@ -321,6 +321,19 @@ export const ShadowLabel = () => <entity><worldText textShadow={{ x: 1 }}>A</wor
 export const NumberOutline = () => <entity><worldText outline={0.1}>A</worldText></entity>;
 // @ts-expect-error  "middle" is not an anchor
 export const MiddleLabel = () => <entity><worldText anchor="middle">A</worldText></entity>;
+const score2d = () => 1;
+export const ScoreText2d = () => (
+  <entity>
+    <Transform translation={[0, 40, 0]} />
+    <text2d size={24} color="#fff" anchor={[0, -0.5]} bounds={[200, null]} justify="center" textShadow={{ y: -2 }}>
+      Score {() => score2d()}<span color="#f44" weight={700}>!</span>
+    </text2d>
+  </entity>
+);
+// @ts-expect-error  bounds is [width, height]
+export const BoundsNumber = () => <entity><text2d bounds={200}>A</text2d></entity>;
+// @ts-expect-error  <text2d> is not a UI node: no style
+export const StyledText2d = () => <entity><text2d style={{ width: 3 }}>A</text2d></entity>;
 // A graph root: a built graph, or a .animgraph.ron path.
 const blended = AnimationGraph.fromClips(["models/Fox.glb#Animation0", "models/Fox.glb#Animation2"])[0];
 export const Blended = () => <entity><PlayAnimation graph={blended} /></entity>;

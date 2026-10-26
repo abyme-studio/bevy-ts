@@ -67,7 +67,7 @@
 - **THEN** both hold the same layout handle
 
 ### Requirement: `<text2d>` is world-space text
-`<text2d>` SHALL spawn Bevy's `Text2d` on its entity, with the props `<text>` takes (`size`, `color`, `font`, `weight`, `italic`, `justify`, `linebreak`, `lineHeight`, `letterSpacing`, `textBackground`, `underline`, `strikethrough`), and `<span>` children, string children and bound children as `<text>` has them. It SHALL also take `anchor` (`[x, y]`, Bevy's `Anchor`), `bounds` (`[w, h]`, `TextBounds`) and `shadow` (`{ offset, color }`, `Text2dShadow`). Props and children SHALL bind as on `<text>`, writing only what changed.
+`<text2d>` SHALL spawn Bevy's `Text2d` on its entity, with the props `<text>` takes (`size`, `color`, `font`, `weight`, `italic`, `justify`, `linebreak`, `lineHeight`, `letterSpacing`, `textBackground`, `underline`, `strikethrough`), and `<span>` children, string children and bound children as `<text>` has them. It SHALL also take `textShadow` (`<text>`'s `{ x, y, color }`, writing `Text2dShadow` with y up), `anchor` (`<worldText>`'s names or `[x, y]`, Bevy's `Anchor`) and `bounds` (`[w, h]`, each a number or `null`, `TextBounds`). Props and children SHALL bind as on `<text>`, writing only what changed.
 
 #### Scenario: A bound score above a sprite
 - **WHEN** `<entity><Transform translation={[0, 40, 0]} /><text2d size={24} color="#fff" anchor={[0, -0.5]}>{() => `${score()}`}</text2d></entity>` mounts and `score` changes from 1 to 2

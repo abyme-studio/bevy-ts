@@ -33,7 +33,12 @@ fn load(name: &str, body: &str) -> (App, ReloadReport) {
 
 /// [`load`], with `plugins` added before the app finishes.
 fn load_with(name: &str, body: &str, plugins: impl FnOnce(&mut App)) -> (App, ReloadReport) {
-    let dir = project(name, &[("game.tsx", &scene(body))]);
+    load_game(name, &scene(body), plugins)
+}
+
+/// [`load_with`], given the whole of `game.tsx`.
+fn load_game(name: &str, game: &str, plugins: impl FnOnce(&mut App)) -> (App, ReloadReport) {
+    let dir = project(name, &[("game.tsx", game)]);
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -340,4 +345,57 @@ fn clicking_a_mesh2d_runs_its_handler_once_with_its_entity() {
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     app.update();
     clicks_once_at_the_centre(app);
+}
+
+const SCORE: &str = r##"import { app, Component, u8, signal, Update, type Query } from "bevy-ts";
+import { Transform } from "bevy-ts/bevy";
+
+export class Hit extends Component { static path = "game::Hit"; declare on: u8 }
+export const [score, setScore] = signal(1);
+export function scored(q: Query<[Hit]>) {
+  q.each((h) => { if (h.on === 1) setScore(2); });
+}
+app.addSystems(Update, scored);
+
+app.scene("s", () => (
+  <entity key="score">
+    <Transform translation={[0, 40, 0]} />
+    <text2d size={24} color="#fff" anchor={[0, -0.5]} bounds={[200, null]}>
+      {() => `${score()}`}<span color="#f44">!</span>
+    </text2d>
+  </entity>
+));
+"##;
+
+#[test]
+fn a_bound_text2d_writes_only_its_text2d_and_its_span_is_a_child() {
+    let (mut app, r) = load_game("two-d-text2d", SCORE, |_| {});
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    let world = app.world_mut();
+    let e = world.query::<(Entity, &TsxNode)>().iter(world).find(|(_, n)| n.key_path == ["score"]).map(|(e, _)| e).expect("the score");
+    let w = app.world();
+    assert_eq!(w.get::<Text2d>(e).unwrap().0, "1");
+    assert_eq!(w.get::<TextFont>(e).unwrap().font_size, bevy::text::FontSize::Px(24.0));
+    assert_eq!(w.get::<TextColor>(e).unwrap().0.to_srgba(), Srgba::WHITE);
+    assert_eq!(w.get::<Anchor>(e).unwrap().0, Vec2::new(0.0, -0.5));
+    assert_eq!(w.get::<bevy::text::TextBounds>(e).unwrap().width, Some(200.0));
+    assert!(w.get::<Node>(e).is_none(), "<text2d> is no UI node");
+    let span = w.get::<Children>(e).expect("the span").iter().find(|c| w.get::<TextSpan>(*c).is_some()).expect("a TextSpan child");
+    assert_eq!(w.get::<TextSpan>(span).unwrap().0, "!");
+    // A span takes its parent's size it does not set, as on <text>.
+    assert_eq!(w.get::<TextFont>(span).unwrap().font_size, bevy::text::FontSize::Px(24.0));
+
+    let ticks = |app: &App| {
+        let e = app.world().entity(e);
+        (e.get_ref::<TextFont>().unwrap().last_changed(), e.get_ref::<TextColor>().unwrap().last_changed(), e.get_ref::<Anchor>().unwrap().last_changed())
+    };
+    let before = ticks(&app);
+    let (id, _) = bevy_ts::plugin_api::component_by_name(app.world(), "game::Hit").unwrap();
+    let hit = app.world_mut().spawn_empty().id();
+    // SAFETY: Hit is one u8.
+    unsafe { bevy_ts::commands::insert_bytes(&mut app.world_mut().entity_mut(hit), id, &[1]) };
+    updates(&mut app, 3);
+    assert_eq!(app.world().get::<Text2d>(e).unwrap().0, "2");
+    assert_eq!(ticks(&app), before, "only Text2d is written");
 }

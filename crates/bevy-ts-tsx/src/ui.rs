@@ -4,6 +4,8 @@
 //! that component and no other: a bound `<text>` writes `Text` and leaves `TextFont`,
 //! `TextColor` and `Node` alone. `<worldText>` shares `<text>`'s font props and parsers, but is a
 //! component of its entity (world text, `bevy_ts_material::world_text`), not a UI node.
+//! `<text2d>` is Bevy's `Text2d` on its entity: `<text>`'s props and parsers, plus `anchor` and
+//! `bounds`, and no `Node`.
 
 use bevy::input_focus::AutoFocus;
 use bevy::input_focus::tab_navigation::{NavAction, TabGroup, TabIndex};
@@ -16,10 +18,11 @@ use bevy::ui_widgets::{
 use bevy::ui_widgets::popover::{Popover, PopoverAlign, PopoverPlacement, PopoverSide};
 use crate::widgets::{self, TabKey};
 use bevy::prelude::*;
-use bevy::text::{EditableText, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, TextCursorStyle, Underline, UnderlineColor};
+use bevy::text::{EditableText, TextBounds, FontSize, FontSource, FontStyle, FontWeight, LetterSpacing, LineBreak, LineHeight, Strikethrough, StrikethroughColor, TextBackgroundColor, TextCursorStyle, Underline, UnderlineColor};
 use bevy::camera::RenderTarget;
 use bevy::image::{TextureAtlas, TextureAtlasLayout};
 use bevy::render::render_resource::TextureFormat;
+use bevy::sprite::{Anchor, Text2dShadow};
 use bevy::ui::widget::{NodeImageMode, TextShadow, ViewportNode};
 use crate::halo::TextHalo;
 use bevy::ui::{
@@ -63,15 +66,29 @@ pub enum UiKind {
     Dialog,
     ModalDialogBarrier,
     DialogDragHandle,
+    /// `<text2d>`: Bevy's `Text2d`, a component of its entity. No `Node`.
+    Text2d,
 }
 
-/// What every UI intrinsic but `<span>` and `<worldText>` takes: its `Node`'s look and placement, `disabled`, and
+/// What every UI intrinsic but `<span>`, `<worldText>` and `<text2d>` takes: its `Node`'s look and placement, `disabled`, and
 /// focus (`tabIndex`, `tabGroup`, `autoFocus`).
 const NODE_PROPS: &[&str] = &["style", "background", "border", "radius", "outline", "shadow", "transform", "camera", "disabled", "tabIndex", "tabGroup", "autoFocus"];
 
 /// The text props Bevy applies per span; `<text>` adds `justify`, `linebreak`, `textShadow` and
 /// `textHalo`.
 const SPAN_PROPS: &[&str] = &["text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough"];
+
+/// `<text>`'s own props.
+const TEXT_PROPS: &[&str] = &[
+    "text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough", "justify", "linebreak",
+    "textShadow", "textHalo",
+];
+
+/// `<text2d>`'s props: `<text>`'s but `textHalo` (a UI material), then `Anchor` and `TextBounds`.
+const TEXT2D_PROPS: &[&str] = &[
+    "text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough", "justify", "linebreak",
+    "textShadow", "anchor", "bounds",
+];
 
 /// `<worldText>`'s props: `<text>`'s font props, and world text's own (`WorldTextStyle`).
 const WORLD_TEXT_PROPS: &[&str] = &["text", "font", "weight", "italic", "justify", "linebreak", "lineHeight", "color", "size", "letterSpacing", "width", "anchor", "outline", "lit"];
@@ -108,25 +125,25 @@ impl UiKind {
             "dialog" => UiKind::Dialog,
             "modalDialogBarrier" => UiKind::ModalDialogBarrier,
             "dialogDragHandle" => UiKind::DialogDragHandle,
+            "text2d" => UiKind::Text2d,
             _ => return None,
         })
     }
 
-    /// The props every UI intrinsic but `<span>` and `<worldText>` takes, then this kind's own.
+    /// The props every UI intrinsic but `<span>`, `<worldText>` and `<text2d>` takes, then this kind's own.
     fn props(self) -> Vec<&'static str> {
         let own: &[&str] = match self {
             UiKind::Span => return SPAN_PROPS.to_vec(),
             // A label in the world, not a node: no node props (its `outline` is its own).
             UiKind::WorldText => return WORLD_TEXT_PROPS.to_vec(),
+            // Text in the 2D world, not a node: no node props.
+            UiKind::Text2d => return TEXT2D_PROPS.to_vec(),
             // Its widths and corners are `ScrollbarThumb`'s fields; the scrollbar places it.
             UiKind::ScrollbarThumb => return vec!["style", "background", "border", "radius"],
             UiKind::Node => &["scrollArea"],
             UiKind::Viewport | UiKind::SliderThumb | UiKind::Tab => &[],
             UiKind::Button => &["activateOnPress"],
-            UiKind::Text => &[
-                "text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough", "justify", "linebreak",
-                "textShadow", "textHalo",
-            ],
+            UiKind::Text => TEXT_PROPS,
             UiKind::Image => &["src", "color", "flipX", "flipY", "rect", "atlas", "mode"],
             UiKind::Input => &["size", "color", "initialValue", "maxCharacters"],
             // `selfUpdate` is the runtime's, never written in TSX: no controlled prop was given.
@@ -223,6 +240,10 @@ enum Part {
     Popover,
     /// `modal` on `<dialog>`: `ModalDialog`.
     Modal,
+    /// `anchor` on `<text2d>`: `Anchor`.
+    Anchor,
+    /// `bounds` on `<text2d>`: `TextBounds`.
+    Bounds,
 }
 
 /// On an entity whose `tabIndex` or `tabGroup` is a prop, so the engine can name one mounted
@@ -276,6 +297,8 @@ fn part(kind: UiKind, prop: &str) -> Part {
         "activateOnPress" => Part::ActivateOnPress,
         "tabIndex" => Part::TabIndex,
         "tabGroup" => Part::TabGroup,
+        "anchor" => Part::Anchor,
+        "bounds" => Part::Bounds,
         "color" if kind == UiKind::Image => Part::Image,
         "camera" if kind == UiKind::Viewport => Part::Viewport,
         "camera" => Part::Camera,
@@ -997,18 +1020,43 @@ fn letter_spacing(v: &Value) -> Result<LetterSpacing, String> {
 
 /// `{ x, y, color }`; a missing field is Bevy's `TextShadow` default.
 fn text_shadow(v: &Value) -> Result<TextShadow, String> {
-    let o = fields(v, "textShadow", &["x", "y", "color"])?;
-    let mut s = TextShadow::default();
-    for (k, x) in o {
+    let d = TextShadow::default();
+    let (offset, color) = shadow_fields(v, d.offset, d.color)?;
+    Ok(TextShadow { offset, color })
+}
+
+/// `<text2d textShadow>`: `<text>`'s `{ x, y, color }`, y up; a missing field is `Text2dShadow`'s default.
+fn text2d_shadow(v: &Value) -> Result<Text2dShadow, String> {
+    let d = Text2dShadow::default();
+    let (offset, color) = shadow_fields(v, d.offset, d.color)?;
+    Ok(Text2dShadow { offset, color })
+}
+
+fn shadow_fields(v: &Value, mut offset: Vec2, mut c: Color) -> Result<(Vec2, Color), String> {
+    for (k, x) in fields(v, "textShadow", &["x", "y", "color"])? {
         match k.as_str() {
             "x" | "y" => {
                 let n = x.as_f64().ok_or_else(|| format!("textShadow.{k} takes a number of pixels"))? as f32;
-                if k == "x" { s.offset.x = n } else { s.offset.y = n }
+                if k == "x" { offset.x = n } else { offset.y = n }
             }
-            _ => s.color = color(x)?,
+            _ => c = color(x)?,
         }
     }
-    Ok(s)
+    Ok((offset, c))
+}
+
+/// `<text2d bounds>`: `[width, height]` in pixels, either `null` for unbounded.
+fn bounds(v: &Value) -> Result<TextBounds, String> {
+    let side = |x: &Value| -> Result<Option<f32>, String> {
+        if x.is_null() {
+            return Ok(None);
+        }
+        x.as_f64().map(|n| n as f32).filter(|n| n.is_finite() && *n > 0.0).map(Some).ok_or_else(|| format!("bounds: {x} is not a positive number of pixels or null"))
+    };
+    match v.as_array().map(Vec::as_slice) {
+        Some([w, h]) => Ok(TextBounds { width: side(w)?, height: side(h)? }),
+        _ => Err(format!("bounds: {v} is not [width, height] (a number of pixels or null each)")),
+    }
 }
 
 /// A positive, finite number of world units.
@@ -1403,6 +1451,8 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::LetterSpacing => letter_spacing(&props["letterSpacing"]).map(|_| ()),
         Part::TextShadow => text_shadow(&props["textShadow"]).map(|_| ()),
         Part::TextHalo => text_halo(&props["textHalo"]).map(|_| ()),
+        Part::Anchor => anchor(&props["anchor"]).map(|_| ()),
+        Part::Bounds => bounds(&props["bounds"]).map(|_| ()),
         Part::TextBackground => color(&props["textBackground"]).map(|_| ()),
         Part::Underline => decoration(&props["underline"], "underline").map(|_| ()),
         Part::Strikethrough => decoration(&props["strikethrough"], "strikethrough").map(|_| ()),
@@ -1512,6 +1562,8 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
                 world.entity_mut(e).insert(TextSpan::new(s));
             } else if kind == UiKind::WorldText {
                 world.entity_mut(e).insert(WorldText::new(s));
+            } else if kind == UiKind::Text2d {
+                world.entity_mut(e).insert(Text2d::new(s));
             } else {
                 world.entity_mut(e).insert(Text::new(s));
             }
@@ -1544,11 +1596,14 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             let l = props.get("letterSpacing").map(letter_spacing).transpose()?.unwrap_or_default();
             world.entity_mut(e).insert(l);
         }
+        Part::TextShadow if present && kind == UiKind::Text2d => {
+            world.entity_mut(e).insert(text2d_shadow(&props["textShadow"])?);
+        }
         Part::TextShadow if present => {
             world.entity_mut(e).insert(text_shadow(&props["textShadow"])?);
         }
         Part::TextShadow => {
-            world.entity_mut(e).remove::<TextShadow>();
+            world.entity_mut(e).remove::<(TextShadow, Text2dShadow)>();
         }
         Part::TextHalo if present => {
             world.entity_mut(e).insert(text_halo(&props["textHalo"])?);
@@ -1591,8 +1646,8 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             world.entity_mut(e).insert(TextColor(color(&props["color"])?));
             cursor(world, e, kind, props)?;
         }
-        // A label always has a colour: white unless given.
-        Part::Color if kind == UiKind::WorldText => {
+        // A label and a `Text2d` always have a colour: white unless given.
+        Part::Color if matches!(kind, UiKind::WorldText | UiKind::Text2d) => {
             world.entity_mut(e).insert(TextColor::default());
         }
         Part::Color => {
@@ -1761,6 +1816,15 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
                 world.entity_mut(e).insert(TabGroup::default());
             }
         }
+        // `Text2d` requires both: an absent prop writes Bevy's default rather than removing.
+        Part::Anchor => {
+            let a = props.get("anchor").map(anchor).transpose()?.map_or(Anchor::default(), Anchor);
+            world.entity_mut(e).insert(a);
+        }
+        Part::Bounds => {
+            let b = props.get("bounds").map(bounds).transpose()?.unwrap_or_default();
+            world.entity_mut(e).insert(b);
+        }
     }
     Ok(())
 }
@@ -1808,12 +1872,12 @@ fn props_of(kind: UiKind, props: &Map<String, Value>, p: Part) -> bool {
 
 /// Inserts everything a UI intrinsic owns, from its current props.
 pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
-    if !matches!(kind, UiKind::Span | UiKind::WorldText | UiKind::ScrollbarThumb) {
+    if !matches!(kind, UiKind::Span | UiKind::WorldText | UiKind::ScrollbarThumb | UiKind::Text2d) {
         write_part(world, e, kind, props, Part::Node)?;
     }
     let mut parts: Vec<Part> = props.keys().map(|k| part(kind, k)).filter(|p| *p != Part::Node).collect();
     match kind {
-        UiKind::Text | UiKind::Span => parts.extend([Part::Text, Part::Font]),
+        UiKind::Text | UiKind::Span | UiKind::Text2d => parts.extend([Part::Text, Part::Font]),
         UiKind::WorldText => parts.extend([Part::Text, Part::Font, Part::Color, Part::Layout, Part::LineHeight, Part::WorldStyle]),
         UiKind::Input => {
             if props.contains_key("initialValue") {
@@ -1940,6 +2004,10 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
         UiKind::WorldText => {
             em.remove::<(WorldText, WorldTextStyle, TextFont, TextColor, TextLayout, LineHeight, bevy::light::NotShadowCaster)>();
         }
+        UiKind::Text2d => {
+            em.remove::<(Text2d, TextFont, TextColor, TextLayout, LineHeight, LetterSpacing, Text2dShadow, TextBackgroundColor, Anchor, TextBounds)>();
+            em.remove::<(Underline, UnderlineColor, Strikethrough, StrikethroughColor)>();
+        }
         UiKind::Node => {
             em.remove::<ScrollArea>();
         }
@@ -2040,6 +2108,29 @@ mod tests {
         assert_eq!(anchor(&json!("bottom-left")).unwrap(), Vec2::new(-0.5, -0.5));
         assert_eq!(anchor(&json!("top")).unwrap(), Vec2::new(0.0, 0.5));
         assert_eq!(world_style(&Map::new()).unwrap(), WorldTextStyle::default());
+    }
+
+    #[test]
+    fn text2d_takes_text_props_anchor_and_bounds_and_refuses_node_props() {
+        let ok = json!({
+            "text": "Score", "size": 24, "color": "#fff", "justify": "center", "textShadow": { "y": -2 }, "underline": "#f00",
+            "anchor": [0, -0.5], "bounds": [200, null],
+        });
+        check(UiKind::Text2d, ok.as_object().unwrap()).unwrap();
+        let b = bounds(&json!([200, null])).unwrap();
+        assert_eq!((b.width, b.height), (Some(200.0), None));
+        let s = text2d_shadow(&json!({ "y": -2 })).unwrap();
+        assert_eq!((s.offset, s.color), (Vec2::new(4.0, -2.0), Color::BLACK));
+        for (props, prop) in [
+            (json!({ "style": { "width": 3 } }), "style"),
+            (json!({ "background": "#000" }), "background"),
+            (json!({ "bounds": 200 }), "bounds"),
+            (json!({ "bounds": [0, 10] }), "bounds"),
+            (json!({ "anchor": [1, 0] }), "anchor"),
+        ] {
+            let e = check(UiKind::Text2d, props.as_object().unwrap()).expect_err(&format!("{props} is refused"));
+            assert!(e.contains(prop), "{props}: {e} names {prop}");
+        }
     }
 
     /// Every refusal names the prop it refuses.

@@ -201,6 +201,27 @@ Deno.test("worldText is a component of its entity, its children its text", () =>
   if (!b.components[0].props.text.$b) throw new Error("a bound child makes text a binding");
 });
 
+Deno.test("text2d is a component of its entity; its spans are child entities that inherit its font", () => {
+  const [e] = describe(
+    jsx("entity", {
+      children: [
+        jsx(Transform, { translation: [0, 40, 0] }),
+        jsxs("text2d", { size: 24, color: "#fff", anchor: [0, -0.5], children: ["Score ", jsx("span", { color: "#f00", children: "9" }), "!"] }),
+      ],
+    }),
+  );
+  eq(e.components.map((c) => [c.type, c.kind]), [["Transform", "rust"], ["text2d", "intrinsic"]]);
+  eq(e.components[1].props, { size: 24, color: "#fff", anchor: [0, -0.5], text: "Score " });
+  eq(e.children.map((c) => [c.key, c.components[0].type, c.components[0].props]), [
+    ["span#0", "span", { color: "#f00", size: 24, text: "9" }],
+    ["span#1", "span", { size: 24, color: "#fff", text: "!" }],
+  ]);
+  const [b] = describe(jsx("entity", { children: jsxs("text2d", { children: ["HP ", () => 9] }) }));
+  if (!b.components[0].props.text.$b) throw new Error("a bound child makes text a binding");
+  throws(() => describe(jsx("entity", { children: jsx("text2d", { children: jsx("node", {}) }) })), /<text2d> takes strings, bindings and <span>, not <node>/);
+  throws(() => describe(jsx("entity", { children: jsx("span", { children: "x" }) })), /<span> goes inside a <text>, a <text2d> or a <span>/);
+});
+
 Deno.test("worldText refuses an element child and a place outside an entity", () => {
   const inside = throws(() => describe(jsx("entity", { children: dev("worldText", { children: dev("span", { children: "x" }, undefined, at("game.tsx", 9)) }, undefined, at("game.tsx", 8)) })), /<worldText> takes strings.*not <span>/);
   eq(inside.bevyTsLocation.line, 9);
