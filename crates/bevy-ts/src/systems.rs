@@ -1752,7 +1752,8 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     skip |= !ok;
                     ParamFrame::Query { tables: out, last_run: last_run.get() }
                 }
-                RunParam::Res { name, id, size, write, heap, optional } => match world.resource_entities().get(*id).and_then(|e| Some((e, world.entities().get_spawned(e).ok()?))) {
+                // A removed resource leaves its entity behind, so it is present only while the entity has it.
+                RunParam::Res { name, id, size, write, heap, optional } => match world.resource_entities().get(*id).filter(|_| world.contains_resource_by_id(*id)).and_then(|e| Some((e, world.entities().get_spawned(e).ok()?))) {
                     // A Rust resource is stored in a sparse set (`#[derive(Resource)]`); a TS one in a table.
                     Some((e, _)) if world.storages().sparse_sets.get(*id).is_some() => {
                         let set = world.storages().sparse_sets.get(*id).expect("sparse set");
