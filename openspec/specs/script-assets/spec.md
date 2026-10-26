@@ -36,8 +36,12 @@ A hot reload SHALL drop every strong handle the old script session held. An asse
 - **THEN** a `MessageReader<AssetEvent<Mesh>>` sees `Unused` then `Removed` for the id, and `Assets<Mesh>` no longer has it
 
 #### Scenario: A dropped mesh an entity draws stays
-- **WHEN** a system adds a mesh, spawns an entity with `Mesh3d` holding it, then drops the ref
+- **WHEN** a system adds a mesh and spawns an entity with `Mesh3d` holding it, and a later run drops the ref
 - **THEN** the mesh stays in `Assets<Mesh>` while the entity lives, and is freed after the entity despawns
+
+#### Scenario: A drop in the spawning system loses the component
+- **WHEN** a system spawns an entity with `Mesh3d.of(ref)` and calls `assets.drop(ref)` in the same run
+- **THEN** the deferred spawn applies after the drop: the entity spawns with its other components and no `Mesh3d`, and the system logs "insert Mesh3d" with "stale asset ref"
 
 #### Scenario: Remove frees at once
 - **WHEN** a system calls `assets.remove(ref)` on a mesh an entity holds
