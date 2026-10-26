@@ -91,7 +91,7 @@ fn a_restart_drops_a_pending_message() {
     let (mut app, fake) = app();
     fake.push(program());
     generation::apply(app.world_mut(), set(), false);
-    app.world_mut().resource_mut::<TsPayloads>().messages[0].push(&[]);
+    app.world_mut().resource_mut::<TsPayloads>().messages[0].push(bevy_ts::heap::HeapBytes::plain(vec![]));
     assert!(app.world().resource::<TsPayloads>().messages[0].has_unread(0));
     fake.push(program());
     generation::apply(app.world_mut(), set(), true);

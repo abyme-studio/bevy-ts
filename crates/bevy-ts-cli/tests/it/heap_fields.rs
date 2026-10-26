@@ -1,8 +1,8 @@
 //! Heap fields in TS systems (openspecs ts-component-heap-fields, ts-heap-fields-2), through V8: a
 //! `string` or `T[]` field of a component or resource read through the host at its place and
 //! cached by its changed tick, assigned whole on a `Mut` row or `ResMut`, read from a lifecycle
-//! value's copy, kept by a `Local` across runs and reloads, and refused where heap values are not
-//! held yet.
+//! value's copy, kept by a `Local` across runs and reloads, carried by messages and events
+//! (read-only to readers and observers), and refused where its type is not one yet.
 
 use crate::common;
 
@@ -209,16 +209,94 @@ app.addSystems(Update, tally);
 }
 
 #[test]
-fn heap_fields_outside_components_and_unsupported_types_fail_with_file_and_line() {
-    let errors = load_errors(
-        "heap-message",
-        r#"import { Message } from "bevy-ts";
-export class Said extends Message { text: string = "x" }
-"#,
-    );
-    let e = errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join("\n");
-    assert!(e.contains("game.ts:2:") && e.contains("Said field text") && e.contains("allowed on components, resources and Local only"), "{e}");
+fn a_message_string_is_read_by_two_readers_and_set_on_next() {
+    let src = r#"import { app, chain, Message, Update } from "bevy-ts";
+import type { MessageReader, MessageWriter, u32 } from "bevy-ts";
+export class Chat extends Message { text: string = "hi"; n: u32 = 0 }
+let frame = 0;
+export function send(w: MessageWriter<Chat>) {
+  if (frame++ > 0) return;
+  w.write(Chat.of({ text: "hello", n: 1 }));
+  const m = w.next();
+  m.n = 2;
+  console.log("pending " + m.text);
+  m.text = "next";
+  console.log("pending " + m.text);
+  w.next().n = 3;
+}
+export function readA(r: MessageReader<Chat>) {
+  r.each((m) => console.log("a " + m.n + " " + m.text));
+}
+export function readB(r: MessageReader<Chat>) {
+  for (const m of r) {
+    try {
+      (m as any).text = "x";
+    } catch (e) {
+      if (!(e instanceof TypeError)) throw e;
+      console.log("b read-only");
+    }
+    console.log("b " + m.n + " " + m.text);
+  }
+}
+app.addMessage(Chat).addSystems(Update, chain(send, readA, readB));
+"#;
+    let (_, mut app) = load("heap-message", src);
+    updates(&mut app, 2);
+    let m = messages(&app);
+    let want = ["pending hi", "pending next", "a 1 hello", "a 2 next", "a 3 hi", "b read-only", "b 1 hello", "b 2 next", "b 3 hi"];
+    for w in want {
+        assert!(m.iter().any(|l| l == w), "{w}: {m:?}");
+    }
+    assert_eq!(m.iter().filter(|l| l.starts_with("a ")).count(), 3, "each message is read once by each reader: {m:?}");
+}
 
+#[test]
+fn an_event_list_is_seen_by_two_observers() {
+    let src = r#"import { app, Event, Startup } from "bevy-ts";
+import type { Commands, On } from "bevy-ts";
+export class Shout extends Event { words: string[] = []; loud: boolean = true }
+export function fire(c: Commands) { c.trigger(Shout.of({ words: ["a", "b"] })); }
+export function hearA(on: On<Shout>) {
+  try {
+    (on.words as string[]).push("c");
+  } catch (e) {
+    if (!(e instanceof TypeError)) throw e;
+  }
+  console.log("A " + on.words.join(",") + " " + on.loud);
+}
+export function hearB(on: On<Shout>) { console.log("B " + JSON.stringify(on.event)); }
+app.addObserver(hearA).addObserver(hearB).addSystems(Startup, fire);
+"#;
+    let (_, mut app) = load("heap-event", src);
+    updates(&mut app, 2);
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l == "A a,b true"), "{m:?}");
+    assert!(m.iter().any(|l| l == r#"B {"words":["a","b"],"loud":true}"#), "{m:?}");
+}
+
+#[test]
+fn a_plain_message_reader_makes_no_host_call() {
+    let src = r#"import { app, chain, Message, Update } from "bevy-ts";
+import type { f32, MessageReader, MessageWriter } from "bevy-ts";
+export class Ping extends Message { n: f32 = 0 }
+export function send(w: MessageWriter<Ping>) { for (let i = 0; i < 100; i++) w.write(Ping.of({ n: i })); }
+let sum = 0;
+export function read(r: MessageReader<Ping>) { r.each((m) => { sum += m.n; }); }
+app.addMessage(Ping).addSystems(Update, chain(send, read));
+"#;
+    let (_, mut app) = load("heap-plain-message", src);
+    updates(&mut app, 2);
+    // Tests in this binary run at once and share the counter: one quiet frame of five.
+    let quiet = (0..5).any(|_| {
+        let before = CALLS.load(Ordering::Relaxed);
+        app.update();
+        CALLS.load(Ordering::Relaxed) == before
+    });
+    assert!(quiet, "a plain message's reader made host calls");
+}
+
+#[test]
+fn unsupported_heap_types_fail_with_file_and_line() {
     let errors = load_errors(
         "heap-list-of",
         r#"import { Component, type Vec3 } from "bevy-ts";

@@ -741,11 +741,14 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                 }
             }
             Op::WriteMessage { index, bytes } => {
-                let pushed = world
-                    .get_resource_mut::<crate::messages::TsPayloads>()
-                    .and_then(|mut p| p.messages.get_mut(index as usize).map(|q| q.push(&bytes)));
-                if pushed.is_none() {
-                    warnings.push(format!("write: no message type {index}"));
+                let pushed = world.get_resource_mut::<crate::messages::TsPayloads>().and_then(|mut p| {
+                    let q = p.messages.get_mut(index as usize)?;
+                    Some(q.build(&bytes).map(|v| q.push(v)))
+                });
+                match pushed {
+                    None => warnings.push(format!("write: no message type {index}")),
+                    Some(Err(e)) => warnings.push(format!("write: {e}")),
+                    Some(Ok(())) => {}
                 }
             }
             Op::Trigger { index, target, bytes } => {
@@ -761,10 +764,17 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                     }
                     None => vec![],
                 };
+                let value = match t.build(&bytes) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warnings.push(format!("trigger: {e}"));
+                        return;
+                    }
+                };
                 let attached = crate::observers::attached_path(world, &path);
                 world.get_resource_or_init::<crate::observers::ObserverQueue>().0.push_back(crate::observers::Pending {
                     trigger: crate::observers::Trigger::Event(index as usize),
-                    bytes: crate::heap::HeapBytes::plain(bytes),
+                    bytes: value,
                     hops: vec![],
                     original: path.first().copied(),
                     attached,

@@ -270,8 +270,9 @@ pub enum ParamFrame {
     /// One row: a resource, a `Local`, or a computed view such as `Time`. `ticks` points at the
     /// row's changed tick when the param writes it.
     Row { data: *mut u8, bytes: usize, ticks: Option<*mut u32> },
-    /// Unread messages, oldest first, in at most two contiguous runs of `stride`-byte records.
-    Messages { parts: [(*const u8, usize); 2], stride: usize },
+    /// Unread messages, oldest first, in at most two contiguous runs of `stride`-byte records, with
+    /// each run's first sequence number (a heap field's place, `places.rs`).
+    Messages { parts: [(*const u8, usize); 2], stride: usize, seqs: [u64; 2] },
     State { value: u32 },
     /// An observer's trigger: the event's bytes, its current target and its first target
     /// (`u64::MAX` for none).

@@ -3,7 +3,8 @@
 //! rows or reads; its time is the system's run time less an empty system's over the same rows, per
 //! row, median of 200 frames (docs/reflection.md's method). Despawn is timed in Rust: 1,000 rows
 //! despawned, per row. A lifecycle value's read is timed by frame: 1,000 `On<Remove>` events a
-//! frame, read against not read.
+//! frame, read against not read. Messages and events are timed by whole frame: 1,000 written and
+//! read, or triggered and observed, a frame, plain against with a string.
 //!
 //! `plain` (the first argument) runs the arms of a component with no heap field only, with no
 //! API this change added, so the same file builds against main: `run.sh` runs them there too,
@@ -102,9 +103,51 @@ app.addSystems(Update, cycle);
 app.addObserver(__SYSTEM__);
 "#;
 
+/// 1,000 messages written and read a frame, or 1,000 events triggered and observed: `__SYSTEM__`
+/// is the registration. Plain types only, so `run.sh` builds it against main too.
+const PLAIN_PAYLOADS: &str = r#"import { app, chain, Event, Message, Update } from "bevy-ts";
+import type { Commands, f32, MessageReader, MessageWriter, On } from "bevy-ts";
+export class Ping extends Message { n: f32 = 0 }
+export class Hit extends Event { n: f32 = 0 }
+let sink = 0;
+export function send(w: MessageWriter<Ping>) { for (let i = 0; i < __ROWS__; i++) w.write(Ping.of({ n: i })); }
+export function read(r: MessageReader<Ping>) { r.each((m) => { sink += m.n; }); }
+export function fire(c: Commands) { for (let i = 0; i < __ROWS__; i++) c.trigger(Hit.of({ n: i })); }
+export function hear(on: On<Hit>) { sink += on.n; }
+app.addMessage(Ping);
+__SYSTEM__
+"#;
+
+/// As `PLAIN_PAYLOADS`, each message and event carrying a string the reader reads.
+const HEAP_PAYLOADS: &str = r#"import { app, chain, Event, Message, Update } from "bevy-ts";
+import type { Commands, f32, MessageReader, MessageWriter, On } from "bevy-ts";
+export class Chat extends Message { text: string = ""; n: f32 = 0 }
+export class Shout extends Event { text: string = ""; n: f32 = 0 }
+let sink = 0;
+export function send(w: MessageWriter<Chat>) { for (let i = 0; i < __ROWS__; i++) w.write(Chat.of({ text: "hello", n: i })); }
+export function read(r: MessageReader<Chat>) { r.each((m) => { sink += m.text.length; }); }
+export function fire(c: Commands) { for (let i = 0; i < __ROWS__; i++) c.trigger(Shout.of({ text: "hello", n: i })); }
+export function hear(on: On<Shout>) { sink += on.text.length; }
+app.addMessage(Chat);
+__SYSTEM__
+"#;
+
+const MESSAGES: &str = "app.addSystems(Update, chain(send, read));";
+const EVENTS: &str = "app.addSystems(Update, fire); app.addObserver(hear);";
+
 /// Median frame time in microseconds with `observer`, after a warm-up.
 fn frames(observer: &str) -> f64 {
-    let mut app = app(observer, LIFECYCLE, observer, None);
+    frame_us(observer, LIFECYCLE, observer)
+}
+
+/// Nanoseconds a message or event: a frame of `ROWS` of them, whole.
+fn payload_ns(src: &str, system: &str) -> f64 {
+    (frame_us("payloads", src, system) * 1000.0 / ROWS as f64).round()
+}
+
+/// Median frame time in microseconds of `src` with `system`, after a warm-up.
+fn frame_us(name: &str, src: &str, system: &str) -> f64 {
+    let mut app = app(name, src, system, None);
     for _ in 0..WARMUP {
         app.update();
     }
@@ -204,6 +247,8 @@ fn main() {
     println!("{tree} | despawn, plain | {:.0} ns a row", despawn(PLAIN, "game::Plain"));
     println!("{tree} | plain Res read (Score.value) | {} ns a read", per_row(run(PLAIN, "plainRes", None), empty, REPEAT));
     println!("{tree} | plain Local read (n) | {} ns a read", per_row(run(PLAIN, "plainLocal", None), empty, REPEAT));
+    println!("{tree} | plain message written and read (Ping.n), whole frame | {} ns a message", payload_ns(PLAIN_PAYLOADS, MESSAGES));
+    println!("{tree} | plain event triggered and observed (Hit.n), whole frame | {} ns an event", payload_ns(PLAIN_PAYLOADS, EVENTS));
     if plain_only {
         return;
     }
@@ -230,4 +275,6 @@ fn main() {
     println!("{tree} | despawn, a string and an 8-item list | {:.0} ns a row", despawn(HEAP, "game::Tag"));
     let (read, skip) = (frames("read"), frames("skip"));
     println!("{tree} | On<Remove> value's string read (Tag.label) | {} ns an event", per_row(read, skip, 1));
+    println!("{tree} | string message written and read (Chat.text), whole frame | {} ns a message", payload_ns(HEAP_PAYLOADS, MESSAGES));
+    println!("{tree} | string event triggered and observed (Shout.text), whole frame | {} ns an event", payload_ns(HEAP_PAYLOADS, EVENTS));
 }

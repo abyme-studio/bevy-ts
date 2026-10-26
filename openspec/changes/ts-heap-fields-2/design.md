@@ -122,10 +122,18 @@ component path. Revisit if the bench shows messages read every field.
 
 ### 5. Messages and events own their records
 
-- `MessageQueue` for a heap layout keeps records in an 8-aligned buffer and a shape; `push` takes
+- `MessageQueue` for a heap layout keeps a `HeapFill` (its shape and defaults); `push` takes
   `HeapBytes` by value (moves, forgets); `update` drops each record of `older` through the shape
-  before clearing; `Drop` drops both halves. Readers still get the raw buffers as external arrays for
-  plain fields; heap fields are read by place (decision 4).
+  before clearing; `Drop` drops both halves. Records stay in the byte buffer plain queues use:
+  every heap slot is read and written unaligned (`heap.rs`), so it needs no 8-aligned one. Readers
+  still get the raw buffers as external arrays for plain fields; heap fields are read by place
+  (decision 4): -3 and the record's sequence number, its frame giving each run's first. A
+  message's and an event's heap fields are `ReflectTargets::ts_heap` targets marked `Payload`, so
+  JS reads them as a component's holes.
+- A reload's rollback keeps `TsPayloads: Clone`: a queue's clone deep-copies each record
+  (`HeapBytes::copy_of`), so the failed generation's copy and the kept one each own their
+  values and each is freed once. Moving queues across and back would save that copy only on a
+  reload with unread heap messages.
 - `MessageWriter.next()` on a heap message: its view's heap setters keep the value in JS and the
   flush appends it as `encodeWithHeap` does. An unset heap field takes its default, built in Rust.
 - `plugin_api::write_message` encodes through `value::encode_component`, so heap fields work there.

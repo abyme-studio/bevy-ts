@@ -1,7 +1,7 @@
-//! Heap fields on TS components and resources (openspecs ts-component-heap-fields,
-//! ts-heap-fields-2): every path that builds, moves, clones or drops a `string` or `T[]` field
-//! frees each value once, counted by its shape's live values. On the fake backend: components are
-//! declared by a generation, written as commands.
+//! Heap fields on TS components, resources, messages and events (openspecs
+//! ts-component-heap-fields, ts-heap-fields-2): every path that builds, moves, clones or drops a
+//! `string` or `T[]` field frees each value once, counted by its shape's live values. On the fake
+//! backend: types are declared by a generation, values written as commands.
 
 use bevy::prelude::*;
 use bevy_ts::BevyTsPlugin;
@@ -228,17 +228,117 @@ fn an_undeclared_component_still_frees_its_strings() {
     assert_eq!(shape.live(), 0, "the drop fn reads the value's header, not the registry");
 }
 
+/// A message or event `name { text: string = "hi", n: f32 }`.
+fn chat(name: &str) -> bevy_ts::manifest::PayloadDecl {
+    let fields = vec![field("text", FieldType::Str, Some(json!("hi"))), field("n", FieldType::F32, None)];
+    bevy_ts::manifest::PayloadDecl { name: name.into(), fields, entity: true, propagate: true, added: true, location: None }
+}
+
+/// `text` of message `seq` of `name`, read in place.
+fn message_text(world: &World, name: &str, seq: u64) -> Option<String> {
+    let p = world.resource::<bevy_ts::messages::TsPayloads>();
+    let q = &p.messages[p.message(name)?];
+    let off = q.layout.field("text").unwrap().offset;
+    // SAFETY: the record is live while the queue holds it, with a string at `text`.
+    let v = unsafe { bevy_ts::heap::read(q.record(seq)?, off, bevy_ts::heap::HeapKind::Str) };
+    match v {
+        bevy_ts::heap::HeapValue::Str(s) => Some(s),
+        other => panic!("{other:?}"),
+    }
+}
+
 #[test]
-fn heap_fields_are_refused_on_messages() {
-    let mut g = Game::new(Manifest::default());
-    let bad = Manifest {
-        messages: vec![bevy_ts::manifest::PayloadDecl { name: "it::heap_fields::Said".into(), fields: vec![field("text", FieldType::Str, None)], entity: false, propagate: false, added: true, location: None }],
-        ..Default::default()
+fn a_failed_reload_keeps_unread_heap_messages_and_frees_nothing_twice() {
+    let name = "it::heap_fields::Chat";
+    let manifest = Manifest { messages: vec![chat(name)], ..Default::default() };
+    let mut g = Game::new(manifest.clone());
+    for text in ["a", "b"] {
+        assert!(plugin_api::write_message(g.world(), name, json!({ "text": text }).as_object().unwrap()).unwrap());
+    }
+    let shape = {
+        let p = g.app.world().resource::<bevy_ts::messages::TsPayloads>();
+        HeapShape::of(name, &p.messages[p.message(name).unwrap()].layout).unwrap()
     };
+    assert_eq!(shape.live(), 2);
+
+    // A system naming no resource fails the reload after its payloads were declared.
+    let mut bad = manifest.clone();
+    let res = ParamDecl::Res { resource: "it::heap_fields::Nowhere".into(), optional: false, reflect: false };
+    bad.systems = vec![SystemDecl { name: "game.ts#bad".into(), schedule: ScheduleDecl::Stage { stage: Stage::Update }, params: vec![res], after: vec![], before: vec![], sets: vec![], condition: None, groups: vec![], location: None }];
     g.fake.push(FakeProgram { manifest: bad, ..Default::default() });
     let r = generation::apply(g.world(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
     assert_ne!(r.status, ReloadStatus::Applied);
-    assert!(r.errors.iter().any(|e| e.message.contains("it::heap_fields::Said.text") && e.message.contains("allowed on components, resources and Local only")), "{:?}", r.errors);
+    assert_eq!(shape.live(), 2, "the failed generation's copy of the queue is dropped, the old one kept");
+    assert_eq!((message_text(g.app.world(), name, 0), message_text(g.app.world(), name, 1)), (Some("a".into()), Some("b".into())));
+
+    g.declare(manifest);
+    assert_eq!(shape.live(), 2, "a reload keeps the unread messages, each once");
+    g.app.update();
+    g.app.update();
+    assert_eq!((shape.live(), message_text(g.app.world(), name, 0)), (0, None), "two updates expire them");
+    plugin_api::write_message(g.world(), name, &Default::default()).unwrap();
+    assert_eq!(shape.live(), 1);
+    drop(g);
+    assert_eq!(shape.live(), 0, "the world's drop drops the queue");
+}
+
+#[test]
+fn an_event_over_two_observers_and_two_hops_is_read_by_each_and_freed_once() {
+    let name = "it::heap_fields::Said";
+    let decl = |n: &str| {
+        let on = ParamDecl::On { event: Some(name.into()), lifecycle: None, component: None };
+        SystemDecl { name: n.into(), schedule: ScheduleDecl::Observer, params: vec![on], after: vec![], before: vec![], sets: vec![], condition: None, groups: vec![], location: None }
+    };
+    let manifest = Manifest { events: vec![chat(name)], systems: vec![decl("game.ts#one"), decl("game.ts#two")], ..Default::default() };
+    let saw = Arc::new(Mutex::new(Vec::<String>::new()));
+    let read = |saw: Arc<Mutex<Vec<String>>>| -> FakeFn {
+        Box::new(move |call| {
+            let t = call.resolution.holes["it::heap_fields::Said"].iter().find(|h| h.name == "text").unwrap().target;
+            let mut buf = vec![0u8; 64];
+            let got = match call.host_call(reflect_codec::READ, &[places::OBSERVER, 0.0, t as f64], &mut [&mut buf]) {
+                Ok(_) => {
+                    let n = u32::from_le_bytes(buf[..4].try_into().unwrap()) as usize;
+                    String::from_utf8(buf[4..4 + n].to_vec()).unwrap()
+                }
+                Err(e) => e.message,
+            };
+            saw.lock().unwrap().push(got);
+            Ok(())
+        })
+    };
+    let mut g = Game::new(Manifest::default());
+    g.fake.push(FakeProgram { manifest, systems: vec![read(saw.clone()), read(saw.clone())], ..Default::default() });
+    let r = generation::apply(g.world(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    generation::start_game(g.world());
+    let parent = g.world().spawn_empty().id();
+    let child = g.world().spawn(ChildOf(parent)).id();
+    let (value, shape) = {
+        let p = g.app.world().resource::<bevy_ts::messages::TsPayloads>();
+        let e = &p.events[p.event(name).unwrap()];
+        let mut js = vec![0u8; e.layout.size];
+        js[e.layout.field("n").unwrap().offset..][..4].copy_from_slice(&2f32.to_le_bytes());
+        // The patch: one heap field, `text` (index 0), as the codec's string.
+        let mut patch = 1u16.to_le_bytes().to_vec();
+        patch.extend(0u16.to_le_bytes());
+        patch.extend(5u32.to_le_bytes());
+        patch.extend(b"hello");
+        js.extend(patch);
+        (e.build(&js).unwrap(), HeapShape::of(name, &e.layout).unwrap())
+    };
+    let index = g.app.world().resource::<bevy_ts::messages::TsPayloads>().event(name).unwrap();
+    g.world().get_resource_or_init::<bevy_ts::observers::ObserverQueue>().0.push_back(bevy_ts::observers::Pending {
+        trigger: bevy_ts::observers::Trigger::Event(index),
+        bytes: value,
+        hops: vec![],
+        path: vec![child, parent],
+        original: Some(child),
+        attached: vec![vec![], vec![]],
+    });
+    assert_eq!(shape.live(), 1);
+    g.app.update();
+    assert_eq!(*saw.lock().unwrap(), vec!["hello"; 4], "two observers at each of two hops read the one value");
+    assert_eq!(shape.live(), 0, "the drain dropped it once, after its last observer");
 }
 
 /// `name { text: string = "x", n: f32 }`, inserted with `text: "hello"`.

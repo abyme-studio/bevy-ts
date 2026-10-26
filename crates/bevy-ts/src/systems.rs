@@ -1480,11 +1480,12 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
         let targets: Vec<Option<Entity>> = if p.path.is_empty() { vec![None] } else { p.path.iter().copied().map(Some).collect() };
         // Every observer and hop reads its heap fields at the observer place; `p` holds the value
         // until the last of them has run, and drops it once, here.
-        let component = match p.trigger {
-            crate::observers::Trigger::Lifecycle(_, id) => Some(id),
-            _ => None,
+        let of = match p.trigger {
+            crate::observers::Trigger::Lifecycle(_, id) => crate::places::ValueOf::Component(id),
+            crate::observers::Trigger::Event(i) => crate::places::ValueOf::Event(i),
+            crate::observers::Trigger::Rust(_) => crate::places::ValueOf::Rust,
         };
-        let value = crate::places::ObserverValue { ptr: p.bytes.bytes().as_ptr(), component };
+        let value = crate::places::ObserverValue { ptr: p.bytes.bytes().as_ptr(), of };
         crate::places::with_observer(world, Some(value), |world| {
             'path: for (hop, target) in targets.into_iter().enumerate() {
                 let mut stop = false;
@@ -1741,7 +1742,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     let cursor = mem.cursors.get(&q.name).copied().unwrap_or(0);
                     let [a, b] = q.unread(cursor);
                     reader_cursors.push((q.name.clone(), q.next_seq));
-                    ParamFrame::Messages { parts: [(a.0.as_ptr(), a.1), (b.0.as_ptr(), b.1)], stride: q.layout.size.max(1) }
+                    ParamFrame::Messages { parts: [(a.0.as_ptr(), a.1), (b.0.as_ptr(), b.1)], stride: q.layout.size.max(1), seqs: [a.2, b.2] }
                 }
                 RunParam::Removed { id, key } => {
                     if scratch.entities.len() <= ents_used {
@@ -1821,7 +1822,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     }
                     reader_cursors.push((path.clone(), next as u64));
                     // One run of one-byte records: the codec's bytes, or a JSON array.
-                    ParamFrame::Messages { parts: [(buf.as_ptr(), buf.len()), (std::ptr::null(), 0)], stride: 1 }
+                    ParamFrame::Messages { parts: [(buf.as_ptr(), buf.len()), (std::ptr::null(), 0)], stride: 1, seqs: [0, 0] }
                 }
                 RunParam::State { index, previous } => {
                     // JS numbers a machine's values in its declared order.

@@ -86,13 +86,14 @@ A TS component or resource may hold a string or a list, as a Bevy component or r
 ```ts
 export class Tag extends Component { label: string = "crate"; scores: u32[] = []; declare note: string }
 export class Title extends Resource { text: string = "untitled" }
+export class Chat extends Message { text: string = ""; to: u32[] = [] }
 ```
 
 - A list's items are a number kind (`f32`, `f64`, `i8`..`u32`), `bool` or `string`. Vectors,
   `Entity`, objects and nested lists fail the load with the file and line. A `declare`d field
   starts as `""` or `[]`.
-- Components, resources and `Local` only, for now: a heap field in a message or an event fails
-  the load ("heap fields (string, T[]) are allowed on components, resources and Local only").
+- Components, resources, `Local`, messages and events take them; an `In<E>` input of an event
+  with one does not yet (`runSystemWith` throws).
 - A `Local<{ log: string; hits: u32[] }>` keeps its heap values across runs in the system's
   memory, Rust's `String` and `Vec<T>` as in a component. A reload that keeps a field moves its
   value; a changed field takes its default. A read is cached until the system writes that field
@@ -120,9 +121,18 @@ export class Title extends Resource { text: string = "untitled" }
   observer runs at the next stage boundary, so the copy is the closest match. The copy is freed
   once, after the event's last observer. This is a behaviour change from ts-component-heap-fields,
   where the read went to the wrong place (a resource) and always threw.
+- A message or event's heap field is read-only, as Bevy's `MessageReader` and `On` give `&M`
+  and `&E`: `m.text` reads it through the host, cached per message; assigning it throws a
+  `TypeError`. `MessageWriter.write(Chat.of({ text }))` carries it in the command, and a
+  `w.next()` view keeps what is set on it (`m.text = "hi"`) and sends it with the record. Each
+  value is built in Rust, owned by its queue or pending event and freed once: when Bevy's
+  two-frame rule expires the message, after the event's last observer, on a restart and when the
+  world drops. A reload keeps unread messages; a failed one copies them and drops the copy.
+- `plugin_api::write_message` (a Rust port writing a TS message) now gives each field it leaves
+  out its declared default, as a TS write does; it used to write zero.
 
-Every heap read and write names a place: the row's entity, the resource, or the running
-observer's value. `crates/bevy-ts/src/places.rs` is the one owner of that model (the host call's
+Every heap read and write names a place: the row's entity, the resource, the running system's
+`Local`, a message by its sequence number, or the running observer's value. `crates/bevy-ts/src/places.rs` is the one owner of that model (the host call's
 slot layout and the `RunPlace` the runner sets per run); `reflect_codec::call` is its one reader.
 A place that is not live (no observer running) fails the call naming it.
 

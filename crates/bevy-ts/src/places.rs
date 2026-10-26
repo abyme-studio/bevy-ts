@@ -12,7 +12,8 @@
 //! | a message | -3 | its sequence number |
 //! | the running observer's value | -4 | 0 |
 //!
-//! A `Local` has no reflected target: its slot 2 is the field's index in its layout.
+//! A `Local` has no reflected target: its slot 2 is the field's index in its layout. A message is
+//! found in its type's queue (`TsPayloads`, by the target's type path) by its sequence number.
 //!
 //! A `Local` and an observer's value are found through [`RunPlace`], which the runner sets once per
 //! system or observer run before it calls JS and clears after. A place that is not live fails the
@@ -66,11 +67,22 @@ impl std::fmt::Display for Place {
 }
 
 /// The running observer's value: its bytes, owned by the drain's queued event for the whole run,
-/// and the component it is a value of (a lifecycle event's), or `None` for an event's own.
+/// and what it is a value of.
 #[derive(Clone, Copy, Debug)]
 pub struct ObserverValue {
     pub ptr: *const u8,
-    pub component: Option<ComponentId>,
+    pub of: ValueOf,
+}
+
+/// What an observer's value is a value of.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ValueOf {
+    /// A lifecycle event's: a copy of the component's value.
+    Component(ComponentId),
+    /// A TS event's, by index in `TsPayloads::events`.
+    Event(usize),
+    /// A Rust event's JSON: no heap field is read from it.
+    Rust,
 }
 
 /// The running system's `Local`s: its memory's stores, which the runner holds out of the world for

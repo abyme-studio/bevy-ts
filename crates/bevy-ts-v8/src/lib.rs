@@ -437,11 +437,12 @@ fn frame_value<'s>(s: &mut v8::PinScope<'s, '_>, buffers: &mut Vec<v8::Local<'s,
             };
             v8::Array::new_with_elements(s, &[d.into(), t]).into()
         }
-        ParamFrame::Messages { parts, stride } => {
+        ParamFrame::Messages { parts, stride, seqs } => {
             let a = span(s, buffers, parts[0].0 as *mut u8, parts[0].1 * stride);
             let b = span(s, buffers, parts[1].0 as *mut u8, parts[1].1 * stride);
             let (na, nb, st) = (num(s, parts[0].1 as f64), num(s, parts[1].1 as f64), num(s, *stride as f64));
-            v8::Array::new_with_elements(s, &[a.into(), na, b.into(), nb, st]).into()
+            let (sa, sb) = (num(s, seqs[0] as f64), num(s, seqs[1] as f64));
+            v8::Array::new_with_elements(s, &[a.into(), na, b.into(), nb, st, sa, sb]).into()
         }
         ParamFrame::State { value } => num(s, if *value == u32::MAX { -1.0 } else { *value as f64 }),
         ParamFrame::Event { data, bytes, entity, original } => {

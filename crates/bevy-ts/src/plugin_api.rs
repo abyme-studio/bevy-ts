@@ -268,15 +268,9 @@ pub fn write_message(world: &mut World, name: &str, values: &serde_json::Map<Str
     let Some(mut payloads) = world.get_resource_mut::<crate::messages::TsPayloads>() else { return Ok(false) };
     let Some(i) = payloads.message(name) else { return Ok(false) };
     let queue = &mut payloads.messages[i];
-    let mut bytes = vec![0u8; queue.layout.size];
-    for f in &queue.layout.fields {
-        let Some(v) = values.get(&f.name) else { continue };
-        crate::value::encode_field(&format!("{name}.{}", f.name), &f.ty, v, &mut bytes[f.offset..f.offset + f.ty.size()])
-            .map_err(|e| e.to_string())?;
-    }
-    if let Some(k) = values.keys().find(|k| queue.layout.field(k).is_none()) {
-        return Err(format!("{name} has no field {k}"));
-    }
-    queue.push(&bytes);
+    // Its defaults and heap fields as a TS write's: the declaration's fields, Rust's layout.
+    let decl = crate::manifest::ComponentDecl { name: name.to_string(), fields: queue.fields.clone(), ..Default::default() };
+    let value = crate::value::encode_component(&decl, &queue.layout, values).map_err(|e| e.to_string())?;
+    queue.push(value);
     Ok(true)
 }

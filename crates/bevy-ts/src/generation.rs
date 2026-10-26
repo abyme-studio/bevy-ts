@@ -469,9 +469,6 @@ fn commit(world: &mut World, rt: &mut ScriptRuntime, generation: &Generation, lo
             if let Err(e) = f.ty.validate() {
                 errors.push(ScriptError::at(format!("{}.{}: {e}", p.name, f.name), p.location.clone()));
             }
-            if f.ty.is_heap() {
-                errors.push(ScriptError::at(format!("{}.{}: {}", p.name, f.name, crate::heap::REFUSED), p.location.clone()));
-            }
         }
     }
     for st in &manifest.states {
@@ -595,7 +592,21 @@ fn commit(world: &mut World, rt: &mut ScriptRuntime, generation: &Generation, lo
         (resolution.reflect, resolution.holes) = crate::reflect_codec::resolve(world, &systems);
         let heap: Vec<_> = pending.iter().filter(|(.., l)| l.has_heap()).map(|(n, id, l)| (n.to_string(), id, l.clone())).collect();
         for (name, id, layout) in heap {
-            let holes = crate::reflect_codec::ts_heap_holes(world, &name, id, &layout);
+            let holes = crate::reflect_codec::ts_heap_holes(world, &name, id, None, &layout);
+            resolution.holes.insert(name, holes);
+        }
+        // A message's or event's heap fields: read at the message or observer place only.
+        let payloads: Vec<_> = {
+            use crate::reflect_codec::Payload;
+            let p = world.resource::<crate::messages::TsPayloads>();
+            let messages = p.messages.iter().map(|m| (m.name.clone(), Payload::Message, m.layout.clone()));
+            let events = p.events.iter().map(|e| (e.name.clone(), Payload::Event, e.layout.clone()));
+            messages.chain(events).filter(|(.., l)| l.has_heap()).collect()
+        };
+        for (name, payload, layout) in payloads {
+            // No component: the target is read at a payload's place only.
+            let none = bevy::ecs::component::ComponentId::new(usize::MAX);
+            let holes = crate::reflect_codec::ts_heap_holes(world, &name, none, Some(payload), &layout);
             resolution.holes.insert(name, holes);
         }
         resolution.rust_messages = crate::rust_events::codecs(&world.resource::<AppTypeRegistry>().read());

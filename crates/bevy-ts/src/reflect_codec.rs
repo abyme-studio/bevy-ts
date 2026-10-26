@@ -493,6 +493,16 @@ pub struct Target {
     pub slot_type: TypeId,
     /// A TS component's heap field: its offset and kind. `type_id` and `slot_type` are then `()`.
     pub heap: Option<(usize, crate::heap::HeapKind)>,
+    /// A TS message's or event's heap field: read at a message or observer place only, never an
+    /// entity's; `component` is then no component's.
+    pub payload: Option<Payload>,
+}
+
+/// What a payload heap target's layout belongs to; `Target::type_path` names it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Payload {
+    Message,
+    Event,
 }
 
 /// The read targets every generation so far has named, by index. Kept across generations (a
@@ -521,7 +531,7 @@ impl ReflectTargets {
             return Err(format!("{} has no ReflectComponent", reg.type_info().type_path()));
         }
         let codec = compile_component(registry, reg.type_info());
-        Ok(self.push((component, None), Target { component, type_id, type_path: reg.type_info().type_path().into(), hole: None, codec, slot_type: type_id, heap: None }))
+        Ok(self.push((component, None), Target { component, type_id, type_path: reg.type_info().type_path().into(), hole: None, codec, slot_type: type_id, heap: None, payload: None }))
     }
 
     /// The target of one hole: the component's top-level field `name` (`value` for a newtype's,
@@ -551,12 +561,14 @@ impl ReflectTargets {
             codec: Codec { wrap: false, node },
             slot_type,
             heap: None,
+            payload: None,
         };
         Ok(self.push(key, target))
     }
 
-    /// The target of a heap field of the layout `name` owns (a TS component or resource).
-    pub fn ts_heap(&mut self, component: ComponentId, name: &str, field: &crate::layout::FieldLayout) -> u32 {
+    /// The target of a heap field of the layout `name` owns: a TS component or resource's
+    /// (`component`), or a message's or event's (`payload`, `component` unused).
+    pub fn ts_heap(&mut self, component: ComponentId, payload: Option<Payload>, name: &str, field: &crate::layout::FieldLayout) -> u32 {
         let kind = crate::heap::HeapKind::of(&field.ty).expect("a heap field");
         let key = (name.to_string(), field.name.clone(), field.offset, kind);
         if let Some(i) = self.by_heap.get(&key) {
@@ -587,6 +599,7 @@ impl ReflectTargets {
             codec: Codec { wrap: false, node },
             slot_type: TypeId::of::<()>(),
             heap: Some((field.offset, kind)),
+            payload,
         };
         let i = self.targets.len() as u32;
         self.targets.push(target);
@@ -704,15 +717,16 @@ pub unsafe fn write_heap(cell: UnsafeWorldCell, t: &Target, entity: Entity, mut 
     Ok(())
 }
 
-/// The read targets of a TS component's heap fields, as the resolution hands them to JS.
-pub fn ts_heap_holes(world: &mut World, name: &str, id: ComponentId, layout: &crate::layout::ComponentLayout) -> Vec<ResolvedHole> {
+/// The read targets of a TS component's heap fields, or (with `payload`, `id` unused) a
+/// message's or event's, as the resolution hands them to JS.
+pub fn ts_heap_holes(world: &mut World, name: &str, id: ComponentId, payload: Option<Payload>, layout: &crate::layout::ComponentLayout) -> Vec<ResolvedHole> {
     let mut targets = world.get_resource_or_init::<ReflectTargets>();
     layout
         .fields
         .iter()
         .filter(|f| f.ty.is_heap())
         .map(|f| {
-            let t = targets.ts_heap(id, name, f);
+            let t = targets.ts_heap(id, payload, name, f);
             let codec = serde_json::to_value(&targets.targets[t as usize].codec).expect("a codec is JSON");
             ResolvedHole { name: f.name.clone(), target: t, codec, heap: true }
         })
@@ -815,17 +829,29 @@ pub fn call(cell: UnsafeWorldCell, tick: Tick, id: u32, args: &[u8], ret: &mut [
     SCRATCH.with_borrow_mut(|scratch| call_with(cell, tick, scratch, id, args, ret, slices))
 }
 
-/// The bytes of a value at a place that is no entity's: the running observer's value.
+/// The bytes of a value at a place that is no entity's: the running observer's value, or a
+/// queued message.
 fn value_at(world: &World, t: &Target, place: Place) -> Result<*const u8, String> {
+    let payloads = || world.get_resource::<crate::messages::TsPayloads>().ok_or("no messages or events");
     match place {
         Place::Observer => {
             let v = world.get_resource::<crate::places::RunPlace>().and_then(|r| r.observer).ok_or_else(|| format!("{place}: no observer is running"))?;
-            if v.component != Some(t.component) {
+            let ours = match (t.payload, v.of) {
+                (None, crate::places::ValueOf::Component(c)) => c == t.component,
+                (Some(Payload::Event), crate::places::ValueOf::Event(i)) => payloads()?.events.get(i).is_some_and(|e| e.name == t.type_path),
+                _ => false,
+            };
+            if !ours {
                 return Err(format!("{place} is no {}", t.type_path));
             }
             Ok(v.ptr)
         }
-        _ => Err(format!("{place} is not live")),
+        Place::Message(seq) if t.payload == Some(Payload::Message) => {
+            let p = payloads()?;
+            let q = p.message(&t.type_path).map(|i| &p.messages[i]).ok_or_else(|| format!("{} is not a declared message", t.type_path))?;
+            q.record(seq).ok_or_else(|| format!("{place} of {} is gone (messages live two updates)", t.type_path))
+        }
+        _ => Err(format!("{place} holds no {}", t.type_path)),
     }
 }
 
@@ -887,6 +913,7 @@ fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, 
     let targets = world.get_resource::<ReflectTargets>().ok_or("no reflected targets")?;
     let t = targets.get(index).ok_or_else(|| format!("no reflected target {index}"))?;
     let entity = match place {
+        Place::Entity(_) | Place::Resource if t.payload.is_some() => return Err(format!("{place} holds no {}", t.type_path)),
         Place::Entity(e) => Some(e),
         // The target's resource, wherever it lives.
         Place::Resource => Some(world.resource_entities().get(t.component).ok_or_else(|| format!("resource {} does not exist", t.type_path))?),

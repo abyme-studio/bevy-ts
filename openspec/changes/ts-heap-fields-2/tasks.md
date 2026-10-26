@@ -33,16 +33,16 @@ binary, lowest layer, no fixed waits. Every cargo job through `~/dev/abyme/scrip
 
 ## 3. Stage 3: messages and events
 
-- [ ] 3.1 `crates/bevy-ts/src/messages.rs`: `MessageQueue` for a heap layout keeps an 8-aligned buffer and a shape; `push` takes `HeapBytes` by value; `update` drops each `older` record through the shape; `Drop` both halves; plain queues unchanged; `MessageQueue` and `TsPayloads` not `Clone`
-- [ ] 3.2 `crates/bevy-ts/src/generation.rs`: rollback moves the old `TsPayloads` aside instead of `clone` (`:455`); `declare` moves queues across and a failed reload moves them back; drop the message and event refusal (`:393`)
-- [ ] 3.3 `crates/bevy-ts/src/commands.rs`: `Op::WriteMessage` and `Op::Trigger` build heap payloads with `HeapFill::build` from `encodeWithHeap` bytes
-- [ ] 3.4 `crates/bevy-ts/src/plugin_api.rs` `write_message`: encode through `value::encode_component`
-- [ ] 3.5 `crates/bevy-ts/src/systems.rs`: `MessageReader` frames give each record's sequence for the message place; events read at the observer place (stage 1)
-- [ ] 3.6 `core.js`: messages and events set `C.heap` and holes (read-only, cached per record); `MessageWriter.next()` keeps heap values set on its view and sends them with the record; `On<E>.event` reads heap fields through the place
-- [ ] 3.7 `reader.rs`: heap types allowed on `Message`, `Event`, `EntityEvent` fields
-- [ ] 3.8 Tests: `crates/bevy-ts/src/messages.rs` unit: a heap queue frees each record once on `update` and on drop; `crates/bevy-ts/tests/it/heap_fields.rs` a failed reload keeps unread heap messages and frees nothing twice; an event over two observers and two hops freed once; `crates/bevy-ts-cli/tests/it/heap_fields.rs` `Chat { text }` read by two readers, `next()` with a string, an event with a list seen by two observers, a plain message reader makes no host call
-- [ ] 3.9 Bench: plain message write + read and plain event trigger + observer read (controls against main), message with a string, event with a string
-- [ ] 3.10 Docs: `docs/ecs.md` messages and events
+- [x] 3.1 `crates/bevy-ts/src/messages.rs`: `MessageQueue` for a heap layout keeps a `HeapFill`; `push` takes `HeapBytes` by value; `update` drops each `older` record through the shape; `Drop` both halves; `Clone` deep-copies each record; plain queues unchanged
+- [x] 3.2 `crates/bevy-ts/src/generation.rs`: rollback keeps `clone`, now a deep copy (design 5); drop the message and event refusal; the resolution hands JS each heap message's and event's holes
+- [x] 3.3 `crates/bevy-ts/src/commands.rs`: `Op::WriteMessage` and `Op::Trigger` build heap payloads with `HeapFill::build` from `encodeWithHeap` bytes
+- [x] 3.4 `crates/bevy-ts/src/plugin_api.rs` `write_message`: encode through `value::encode_component`
+- [x] 3.5 `crates/bevy-ts/src/systems.rs`: `MessageReader` frames give each record's sequence for the message place; events read at the observer place (stage 1)
+- [x] 3.6 `core.js`: messages and events set `C.heap` and holes (read-only, cached per record); `MessageWriter.next()` keeps heap values set on its view and sends them with the record; `On<E>.event` reads heap fields through the place
+- [x] 3.7 `reader.rs`: heap types allowed on `Message`, `Event`, `EntityEvent` fields
+- [x] 3.8 Tests: `crates/bevy-ts/src/messages.rs` unit: a heap queue frees each record once on `update` and on drop; `crates/bevy-ts/tests/it/heap_fields.rs` a failed reload keeps unread heap messages and frees nothing twice; an event over two observers and two hops freed once; `crates/bevy-ts-cli/tests/it/heap_fields.rs` `Chat { text }` read by two readers, `next()` with a string, an event with a list seen by two observers, a plain message reader makes no host call
+- [x] 3.9 Bench: plain message write + read and plain event trigger + observer read (controls against main), message with a string, event with a string
+- [x] 3.10 Docs: `docs/ecs.md` messages and events
 - [ ] 3.11 `cargo build`, tests of `bevy-ts` and `bevy-ts-cli` through `gate-slot`
 
 ## 4. Stage 4: richer list items

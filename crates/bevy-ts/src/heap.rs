@@ -21,9 +21,6 @@ use std::sync::{LazyLock, Mutex};
 /// Bytes before the first field of a component with a heap field: the `&'static HeapShape`.
 pub const HEADER: usize = 8;
 
-/// Why a heap field where none is held yet (a message, an event, a `Local`) fails the load.
-pub const REFUSED: &str = "heap fields (string, T[]) are allowed on components, resources and Local only";
-
 /// A heap slot's bytes: a `String` or a `Vec<T>`.
 const HEAP_SLOT: usize = 24;
 
@@ -626,7 +623,7 @@ impl Drop for HeapBytes {
 /// What a command needs to build a component with heap fields from JS's bytes: its layout, its
 /// shape, and each heap field's default. JS never writes a heap slot; Rust fills each one from the
 /// command's value or the default.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct HeapFill {
     pub name: String,
     pub layout: ComponentLayout,

@@ -2752,8 +2752,6 @@ function localPair(fields, index) {
   return T;
 }
 
-const PLACE_LOCAL = -2;
-
 /** A `Local` heap field's value, read through the host. */
 function localFetch(index, field, decode) {
   if (!core) throw new Error("heap fields need the engine");
@@ -3209,17 +3207,19 @@ class MessageReaderParam {
     this.acc = null;
   }
   bind(frame) {
-    // [bufferA, countA, bufferB, countB, stride]
-    this.parts = [[frame[0], frame[1]], [frame[2], frame[3]]];
+    // [bufferA, countA, bufferB, countB, stride, seqA, seqB]: a heap field reads at the message
+    // place, by its record's sequence number.
+    this.parts = [[frame[0], frame[1], frame[5]], [frame[2], frame[3], frame[6]]];
     if (!this.acc) this.acc = new this.cls.Read();
   }
   get len() {
     return this.parts[0][1] + this.parts[1][1];
   }
   each(fn) {
-    for (const [buf, n] of this.parts) {
+    for (const [buf, n, seq] of this.parts) {
       if (!n) continue;
       bindRow(this.acc, this.cls, buf, null, 0);
+      this.acc[SEQ] = seq;
       for (let r = 0; r < n; r++) {
         this.acc[ROW] = r;
         fn(this.acc);
@@ -3227,11 +3227,12 @@ class MessageReaderParam {
     }
   }
   *[Symbol.iterator]() {
-    for (const [buf, n] of this.parts) {
+    for (const [buf, n, seq] of this.parts) {
       if (!n) continue;
       for (let r = 0; r < n; r++) {
         const a = new this.cls.Read();
         bindRow(a, this.cls, buf, null, 0);
+        a[SEQ] = seq;
         a[ROW] = r;
         yield a;
       }
@@ -3330,14 +3331,22 @@ class MessageWriterParam {
     const bytes = new Uint8Array(this.cls.size);
     const acc = new this.cls.Write();
     bindRow(acc, this.cls, bytes.buffer, null, 0);
-    this.pending = bytes;
+    // A heap field set on the view stays here and goes with the record; one left unset takes its
+    // default, built in Rust.
+    if (this.cls.heap) acc[HEAP_VALUES] = {};
+    this.pending = [bytes, acc];
     return acc;
   }
   flush() {
-    if (this.pending) {
-      this.ctx.commands.writeBytes(this.cls, this.pending);
-      this.pending = null;
-    }
+    if (!this.pending) return;
+    const [bytes, acc] = this.pending;
+    this.pending = null;
+    const heap = acc[HEAP_VALUES];
+    if (!heap) return this.ctx.commands.writeBytes(this.cls, bytes);
+    const w = new Writer();
+    w.raw(bytes);
+    heapPatch(w, this.cls, this.cls.layout, heap);
+    this.ctx.commands.writeBytes(this.cls, w.bytes());
   }
 }
 
@@ -3704,9 +3713,13 @@ const REFLECT_READ = 0xffff0000, REFLECT_WRITE = 0xffff0001;
  * model): an entity's bits, or one of these kinds and its id. The target is slot 2, the call's own
  * slots follow.
  */
-const PLACE_RESOURCE = -1, PLACE_OBSERVER = -4;
+const PLACE_RESOURCE = -1, PLACE_LOCAL = -2, PLACE_MESSAGE = -3, PLACE_OBSERVER = -4;
 /** An accessor bound to a place that is no entity's: its kind. */
 const PLACE = Symbol("place");
+/** A message reader's accessor: the sequence number of its run's first record (`ROW` 0). */
+const SEQ = Symbol("seq");
+/** A `MessageWriter.next()` view's heap values, by field: sent with the record, never a host call. */
+const HEAP_VALUES = Symbol("heapValues");
 /** Binds of `On` values so far: a lifecycle value's heap reads are cached for one bind. */
 const ON_BINDS = new Uint32Array(1);
 /** Entries kept per target before its cache is cleared (despawned rows are never looked up again). */
@@ -4085,12 +4098,32 @@ function reflectAccessor(name, info, write) {
 }
 
 /** Hole getters and setters on a layout-tier class's accessors; never columns. A TS component's
- * heap field (`h.heap`) is a hole too: assigned whole, written as the codec's bytes. */
-function addHoles(Acc, holes, name, write) {
+ * heap field (`h.heap`) is a hole too: assigned whole, written as the codec's bytes. A message's
+ * or event's (by `C`'s kind) is read-only, as Bevy's `&M` and `&E`: a message's reads at its
+ * record's place, an event's at the observer place. */
+function addHoles(Acc, holes, name, write, C) {
+  const kind = C[KIND];
   for (const h of holes) {
     const t = h.target;
     const heap = h.heap === true;
     const encode = heap ? codecEncoder(h.codec.node) : null;
+    if (kind === "message") {
+      const d = ((C.decl && C.decl.fields) || []).find((f) => f.name === h.name);
+      Object.defineProperty(Acc.prototype, h.name, messageHole(t, h, name, encode, d && d.default));
+      continue;
+    }
+    if (kind === "event") {
+      Object.defineProperty(Acc.prototype, h.name, {
+        configurable: true,
+        get() {
+          return reflectGet(t, rowEntity(this), this[TICKS][this[ROW]]);
+        },
+        set() {
+          throw new TypeError(`${name}.${h.name} is read-only: an observer reads its event as Bevy's &E`);
+        },
+      });
+      continue;
+    }
     Object.defineProperty(Acc.prototype, h.name, {
       configurable: true,
       get() {
@@ -4106,6 +4139,37 @@ function addHoles(Acc, holes, name, write) {
       },
     });
   }
+}
+
+/**
+ * A message's heap field. Read: at the message place, by the record's sequence number, cached per
+ * record. A `MessageWriter.next()` view (`HEAP_VALUES`) keeps what is set on it and reads that,
+ * or the field's default, until the record is sent.
+ */
+function messageHole(t, h, name, encode, initial) {
+  const path = `${name}.${h.name}`;
+  return {
+    configurable: true,
+    get() {
+      const own = this[HEAP_VALUES];
+      if (own) return h.name in own ? own[h.name] : heapDefault(h, initial);
+      const seq = this[SEQ] + this[ROW];
+      return reflectGet(t, PLACE_MESSAGE, seq, seq);
+    },
+    set(v) {
+      const own = this[HEAP_VALUES];
+      if (!own) throw new TypeError(`${path} is read-only: a reader reads its message as Bevy's &M`);
+      // Checked now, so a bad value throws where it was set.
+      encode(new Writer(), v, path);
+      own[h.name] = h.codec.node.k === "list" ? Object.freeze([...v]) : v;
+    },
+  };
+}
+
+/** A heap hole's value before anything is set: the declaration's default `d`, else empty. */
+function heapDefault(h, d) {
+  if (h.codec.node.k === "list") return Object.freeze(d === undefined ? [] : [...d]);
+  return d === undefined ? "" : d;
 }
 
 /** Writes a heap field at once as the codec's bytes; the next read fetches it. */
@@ -4187,8 +4251,8 @@ function resolveReflect(C, res) {
   }
   const holes = res.holes && res.holes[C.componentName];
   if (holes && C.Read) {
-    addHoles(C.Read, holes, C.name, false);
-    addHoles(C.Write, holes, C.name, true);
+    addHoles(C.Read, holes, C.name, false, C);
+    addHoles(C.Write, holes, C.name, true, C);
   }
 }
 
@@ -4788,6 +4852,8 @@ class Commands {
     if (!E || E[KIND] !== "event") throw new TypeError("runSystemWith: the input is an Event value (SpawnAt.of({ x: 3 }))");
     const r = this.res && this.res.events[E.componentName];
     if (!r) throw new Error(`${E.componentName} is not a declared event`);
+    // An input is no observer's value, so a heap field would have no place to be read at.
+    if (E.heap) throw new TypeError(`runSystemWith: ${E.name} has heap fields (string, T[]), which an In<E> input does not carry yet`);
     this.runSystemOp(target, encodeWithLayout(E, r.layout, input));
   }
   runSystemOp(target, bytes) {
@@ -5127,12 +5193,8 @@ function encodeWithHeap(C, layout, values) {
   const out = new Uint8Array(layout.size);
   const dv = new DataView(out.buffer);
   const defaults = (C.decl && C.decl.fields) || [];
-  const given = [];
-  layout.fields.forEach((f, i) => {
-    if (isHeap(f.type)) {
-      if (values && values[f.name] !== undefined) given.push([i, f]);
-      return;
-    }
+  layout.fields.forEach((f) => {
+    if (isHeap(f.type)) return;
     let v = values ? values[f.name] : undefined;
     if (v === undefined) v = (defaults.find((d) => d.name === f.name) || {}).default;
     if (v !== undefined) encodeField(dv, f.type, f.offset, v, `${C.componentName}.${f.name}`);
@@ -5144,14 +5206,23 @@ function encodeWithHeap(C, layout, values) {
   }
   const w = new Writer();
   w.raw(out);
-  if (given.length) {
-    w.u16(given.length);
-    for (const [i, f] of given) {
-      w.u16(i);
-      heapEncoder(f.type)(w, values[f.name], `${C.componentName}.${f.name}`);
-    }
-  }
+  heapPatch(w, C, layout, values);
   return w.bytes();
+}
+
+/** Appends `HeapFill::build`'s patch: the heap fields `values` gives, each as its index in the
+ * layout and the codec's bytes. Nothing when it gives none. */
+function heapPatch(w, C, layout, values) {
+  const given = [];
+  layout.fields.forEach((f, i) => {
+    if (isHeap(f.type) && values && values[f.name] !== undefined) given.push([i, f]);
+  });
+  if (!given.length) return;
+  w.u16(given.length);
+  for (const [i, f] of given) {
+    w.u16(i);
+    heapEncoder(f.type)(w, values[f.name], `${C.componentName}.${f.name}`);
+  }
 }
 
 /** A heap field type's codec encoder (the op Rust builds from the type). */
