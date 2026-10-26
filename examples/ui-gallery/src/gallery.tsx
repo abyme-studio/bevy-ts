@@ -152,6 +152,11 @@ app.scene("gallery", () => (
       <mesh shape="cuboid" size={[1, 1, 1]} />
       <material color="#c33" roughness={0.6} />
     </entity>
+    {/* Not UI: a label above the cube, so <worldText> appears (its own entity; it cannot share one with a mesh). */}
+    <entity key="label">
+      <Transform translation={[0, 1, 0]} />
+      <worldText size={0.4} color="#ffd060" outline={{ width: 0.08, color: "#000" }}>{() => `Clicked ${clicks()} times`}</worldText>
+    </entity>
     {/* Not UI either: a flat square, so <mesh2d> and <material2d> appear (it draws under a Camera2d only). */}
     <entity key="square">
       <mesh2d shape="rectangle" size={[1, 1]} />
