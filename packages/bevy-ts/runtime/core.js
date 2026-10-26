@@ -5134,13 +5134,16 @@ class Commands {
     this.res = null;
     /** The root `Commands` of the run: itself, or a delayed queue's. */
     this.root = this;
-    /** Bumped at each run's begin and end, so a delayed object kept past its run is refused. */
+    /** Bumped at each run's begin, so a delayed object kept past its run is refused. */
     this.run = 0;
+    /** Between `begin` and `end`; a run that throws never reaches `end`, and the next `begin` bumps `run`. */
+    this.active = false;
     /** `delayed()`'s objects, each one `OP_DELAYED` at the end, in call order. */
     this.delays = [];
   }
   begin(arena, pool, kinds, res) {
     this.run++;
+    this.active = true;
     this.delays = [];
     this.arena = new Uint8Array(arena);
     this.at = 0;
@@ -5161,7 +5164,7 @@ class Commands {
       }
       this.delays = [];
     }
-    this.run++;
+    this.active = false;
     let over = null;
     if (this.overflow) {
       const total = this.overflow.reduce((n, c) => n + c.length, 0);
@@ -5189,7 +5192,7 @@ class Commands {
   }
   /** Throws unless run `run` of this root is under way. */
   live(run) {
-    if (run !== this.run || run % 2 === 0) throw new Error("delayed commands are used in the run that made them");
+    if (run !== this.run || !this.active) throw new Error("delayed commands are used in the run that made them");
   }
   /** The next spawn id: from the pool, then from `reserve` host calls once it runs out. */
   alloc() {

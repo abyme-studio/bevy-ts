@@ -362,6 +362,25 @@ app.addSystems(Update, queue);
 }
 
 #[test]
+fn a_run_after_a_throw_can_delay() {
+    let src = r#"
+let runs = 0;
+export function queue(commands: Commands) {
+  if (++runs === 1) {
+    commands.delayed().secs(0.25).spawn(Dummy);
+    throw new Error("boom");
+  }
+  if (runs === 2) commands.delayed().secs(0.25).spawn(Dummy);
+}
+app.addSystems(Update, queue);
+"#;
+    let mut app = stepped("delayed-after-throw", src, 250);
+    updates(&mut app, 4);
+    assert!(!messages(&app).iter().any(|m| m.contains("used in the run that made them")), "{:?}", messages(&app));
+    assert_eq!(count(&mut app, "game::Dummy"), 1, "the second run's delay applied, the first's did not");
+}
+
+#[test]
 fn delayed_commands_kept_past_the_run_throw() {
     let src = r#"
 let kept: DelayedCommands | null = null;
