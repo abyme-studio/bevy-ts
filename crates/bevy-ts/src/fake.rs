@@ -68,6 +68,8 @@ pub struct FakeCall<'a> {
     /// An observer's event bytes and target bits.
     pub event: Option<(&'a [u8], u64)>,
     pub stop_propagation: bool,
+    /// What the system returns: a predicate's `boolean`.
+    pub returned: Option<bool>,
     pub commands: FakeCommands<'a>,
     pub resolution: &'a Resolution,
     /// `(param, table, column)` triples to mark wholly changed, as `table.write(T)` does.
@@ -233,6 +235,7 @@ impl FakeBackend {
             rows,
             event,
             stop_propagation: false,
+            returned: None,
             commands: FakeCommands { encoder: Encoder::default(), pool: ctx_pool, used: 0 },
             resolution: &resolution,
             write_marks: Vec::new(),
@@ -254,6 +257,7 @@ impl FakeBackend {
                 pool_used: call.commands.used,
                 write_marks: call.write_marks,
                 stop_propagation: call.stop_propagation,
+                returned: call.returned,
             },
         ))
     }

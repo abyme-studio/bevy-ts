@@ -2101,9 +2101,10 @@
           "onTransition",
           "observer",
           "oneShot",
+          "predicate",
           "schedule"
         ],
-        "description": "The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition."
+        "description": "The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition. (1.32) predicate (a TS predicate condition, run when a condition naming it is evaluated)."
       },
       "SystemInfo": {
         "type": "object",
@@ -2159,7 +2160,7 @@
           },
           "schedule": {
             "type": "object",
-            "description": "Where it runs: {kind: preStartup|startup|postStartup|stage|schedule|onEnter|onExit|observer|oneShot, ...}; a custom schedule's is {kind: schedule, label} with its label (game::Waves, net:tick).",
+            "description": "Where it runs: {kind: preStartup|startup|postStartup|stage|schedule|onEnter|onExit|onTransition|observer|oneShot|predicate, ...}; a custom schedule's is {kind: schedule, label} with its label (game::Waves, net:tick).",
             "required": [
               "kind"
             ],

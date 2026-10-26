@@ -1,6 +1,6 @@
 //! Run conditions, compiled from the manifest and evaluated in Rust with no call into JS: Bevy
 //! 0.20's built-in conditions under their names, the combinators, and conditions a crate exposes
-//! with `app.ts_condition`. A stateful condition keeps its tick, cursor or previous value in
+//! with `app.ts_condition`. A TS predicate is the one node that calls into JS, once per evaluation. A stateful condition keeps its tick, cursor or previous value in
 //! [`ConditionMemory`], per gated config and position in its tree, so a reload keeps it and a
 //! restart clears it.
 
@@ -45,6 +45,8 @@ pub enum Condition {
     All(Vec<Condition>),
     Combine { op: CombineOp, a: Box<Condition>, b: Box<Condition>, eager: bool },
     Native { system: Arc<Mutex<BoxedCondition>> },
+    /// A TS predicate by identity: evaluating it is one call into JS.
+    Predicate { system: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,6 +154,8 @@ pub struct Compile<'a> {
     pub config: &'a str,
     /// Native condition instances this generation uses, by key.
     pub natives: &'a mut HashSet<String>,
+    /// The generation's TS predicates, by identity.
+    pub predicates: &'a HashSet<String>,
 }
 
 /// A resource condition's resource: `None` when no type has the name (the condition is never
@@ -306,6 +310,12 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             b: Box::new(compile(world, b, &child(1), c)?),
             eager: *eager,
         },
+        ConditionDecl::Predicate { system, location } => {
+            if !c.predicates.contains(system) {
+                return Err(CompileError { message: format!("runIf({}): not a predicate this generation declares", system.rsplit('#').next().unwrap_or(system)), location: location.clone() });
+            }
+            Condition::Predicate { system: system.clone() }
+        }
         ConditionDecl::Native { name, args, location } => {
             let at = |message: String| CompileError { message, location: location.clone() };
             let Some(exposed) = world.get_resource::<TsConditions>().and_then(|t| t.get(name)).cloned() else {
@@ -329,9 +339,12 @@ fn state<'w>(world: &'w mut World, slot: &str) -> &'w mut ConditionState {
     world.get_resource_or_init::<ConditionMemory>().into_inner().0.entry(slot.to_string()).or_default()
 }
 
+/// Runs a TS predicate by identity and gives its return.
+pub type CallPredicate<'a> = dyn FnMut(&mut World, &str) -> bool + 'a;
+
 /// Evaluates a condition. Stateful nodes advance each time they are evaluated, as Bevy's
-/// condition systems do.
-pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
+/// condition systems do. `predicate` runs a TS predicate, the only node that calls into JS.
+pub fn evaluate(world: &mut World, c: &mut Condition, predicate: &mut CallPredicate) -> bool {
     match c {
         Condition::InState { slot, value } => crate::states::current_of(world, *slot) == Some(*value),
         Condition::StateExists { slot } => crate::states::current_of(world, *slot).is_some(),
@@ -407,21 +420,21 @@ pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
             })
         }
         Condition::Changed { condition, to, slot } => {
-            let now = evaluate(world, condition);
+            let now = evaluate(world, condition, predicate);
             let st = state(world, slot);
             let before = std::mem::replace(&mut st.previous, now);
             before != now && to.is_none_or(|t| t == now)
         }
-        Condition::Not(c) => !evaluate(world, c),
+        Condition::Not(c) => !evaluate(world, c, predicate),
         Condition::All(cs) => {
             let mut ok = true;
             for c in cs.iter_mut() {
-                ok &= evaluate(world, c);
+                ok &= evaluate(world, c, predicate);
             }
             ok
         }
         Condition::Combine { op, a, b, eager } => {
-            let x = evaluate(world, a);
+            let x = evaluate(world, a, predicate);
             let decided = match op {
                 CombineOp::And | CombineOp::Nand => !x,
                 CombineOp::Or | CombineOp::Nor => x,
@@ -430,7 +443,7 @@ pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
             if decided && !*eager {
                 return matches!(op, CombineOp::Or | CombineOp::Nand);
             }
-            let y = evaluate(world, b);
+            let y = evaluate(world, b, predicate);
             match op {
                 CombineOp::And => x && y,
                 CombineOp::Or => x || y,
@@ -441,6 +454,7 @@ pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
             }
         }
         Condition::Native { system } => system.lock().unwrap().run_readonly((), world).unwrap_or(false),
+        Condition::Predicate { system } => predicate(world, system),
     }
 }
 

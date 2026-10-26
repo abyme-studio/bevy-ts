@@ -4125,7 +4125,7 @@ pub struct SourceLocation {
     pub file: ::std::string::String,
     pub line: u32,
 }
-///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition.
+///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition. (1.32) predicate (a TS predicate condition, run when a condition naming it is evaluated).
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
@@ -4179,6 +4179,8 @@ pub enum Stage {
     Observer,
     #[serde(rename = "oneShot")]
     OneShot,
+    #[serde(rename = "predicate")]
+    Predicate,
     #[serde(rename = "schedule")]
     Schedule,
 }
@@ -4205,6 +4207,7 @@ impl ::std::fmt::Display for Stage {
             Self::OnTransition => f.write_str("onTransition"),
             Self::Observer => f.write_str("observer"),
             Self::OneShot => f.write_str("oneShot"),
+            Self::Predicate => f.write_str("predicate"),
             Self::Schedule => f.write_str("schedule"),
         }
     }
@@ -4235,6 +4238,7 @@ impl ::std::str::FromStr for Stage {
             "onTransition" => Ok(Self::OnTransition),
             "observer" => Ok(Self::Observer),
             "oneShot" => Ok(Self::OneShot),
+            "predicate" => Ok(Self::Predicate),
             "schedule" => Ok(Self::Schedule),
             _ => Err("invalid value".into()),
         }
@@ -4318,7 +4322,7 @@ pub struct SystemInfo {
 pub struct SystemInfoParamsItem {
     pub kind: ::std::string::String,
 }
-///Where it runs: {kind: preStartup|startup|postStartup|stage|schedule|onEnter|onExit|observer|oneShot, ...}; a custom schedule's is {kind: schedule, label} with its label (game::Waves, net:tick).
+///Where it runs: {kind: preStartup|startup|postStartup|stage|schedule|onEnter|onExit|onTransition|observer|oneShot|predicate, ...}; a custom schedule's is {kind: schedule, label} with its label (game::Waves, net:tick).
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct SystemInfoSchedule {
     pub kind: ::std::string::String,

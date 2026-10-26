@@ -466,7 +466,7 @@ fn num<'s>(scope: &mut v8::PinScope<'s, '_>, n: f64) -> v8::Local<'s, v8::Value>
     v8::Number::new(scope, n).into()
 }
 
-/// Reads `[arenaLen, overflow, poolUsed, marks]` from a run's return value.
+/// Reads `[arenaLen, overflow, poolUsed, marks, stopped, returned]` from a run's return value.
 fn read_output<'s>(scope: &mut v8::PinScope<'s, '_>, v: v8::Local<'s, v8::Value>, offset: u32) -> RunOutput {
     let arr = v8::Local::<v8::Array>::try_from(v).expect("runtime returns an array");
     let arena_len = arr.get_index(scope, offset).unwrap().number_value(scope).unwrap_or(0.0) as usize;
@@ -493,7 +493,8 @@ fn read_output<'s>(scope: &mut v8::PinScope<'s, '_>, v: v8::Local<'s, v8::Value>
         }
     }
     let stop_propagation = arr.length() > 4 + offset && arr.get_index(scope, offset + 4).unwrap().is_true();
-    RunOutput { arena_len, overflow, pool_used, write_marks, stop_propagation }
+    let returned = if arr.length() > 5 + offset { arr.get_index(scope, offset + 5).filter(|v| v.is_boolean()).map(|v| v.is_true()) } else { None };
+    RunOutput { arena_len, overflow, pool_used, write_marks, stop_propagation, returned }
 }
 
 impl V8Backend {
