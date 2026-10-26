@@ -2,7 +2,7 @@
 
 - [x] 0.1 Stage 1 is buildable now (lead@engine-core's go)
 - [x] 0.2 Stage 2 waits for reflect-assets to land `app.ts_hand_map::<T: Asset + TypePath>(read, write)` (after its stage 1, before its stage 2); rebase on main once it has
-- [ ] 0.3 Stage 3 waits for stage 2's 60 Hz bench (4.4), its numbers in stage 2's landing note, and the operator's go on its ask-first items (proposal, Impact)
+- [x] 0.3 Stage 3 waits for stage 2's 60 Hz bench (4.4), its numbers in stage 2's landing note, and the operator's go on its ask-first items (proposal, Impact)
 
 ## 1. Stage 1: sweep unused keyed instances (buildable now)
 
@@ -10,7 +10,7 @@
 - [x] 1.2 `crates/bevy-ts-material/src/lib.rs`: run `sweep` in `PostUpdate` after the TSX reconcile (order against `bevy-ts-tsx`'s reconcile set)
 - [x] 1.3 `crates/bevy-ts-cli/tests/it/materials.rs`: state-driven `pulse` changing every frame for 120 frames keeps the kind's instances and `Assets<ScriptMaterial>` at most 2; one of two sharers removed keeps the other's handle
 - [x] 1.4 `docs/materials.md`: "Equal props share one material instance", plus unused ones are freed and keyed instances are never written in place
-- [ ] 1.5 `openspec/changes/material-params/specs/script-materials/spec.md` keyed-instance requirement holds; land stage 1
+- [x] 1.5 `openspec/changes/material-params/specs/script-materials/spec.md` keyed-instance requirement holds; land stage 1
 
 ## 2. Stage 2: owned instances written in place (after reflect-assets' `ts_hand_map`)
 
@@ -39,9 +39,9 @@
 - [x] 4.1 Bench as `bench/material-params/rust`, release with Bevy static; `results/README.md` with the command
 - [x] 4.2 Stage 2: N owned instances (1, 10, 100) written at 60 Hz with `assets.set` vs the same values re-keyed through props: frame time, asset count, bind groups made
 - [x] 4.3 Stage 3: 10k entities with an animated instance param vs re-keying: frame time, buffer bytes
-- [ ] 4.4 Run 4.2 before stage 3 starts; its numbers go in stage 2's landing note
+- [x] 4.4 Run 4.2 before stage 3 starts; its numbers go in stage 2's landing note
 
 ## 5. Landing (each stage)
 
-- [ ] 5.1 Cargo for touched crates through `~/dev/abyme/scripts/gate-slot` while working; workspace build, tests and clippy once before landing; `pnpm check`
-- [ ] 5.2 `openspec validate material-params --strict`
+- [x] 5.1 Cargo for touched crates through `~/dev/abyme/scripts/gate-slot` while working; workspace build, tests and clippy once before landing; `pnpm check`
+- [x] 5.2 `openspec validate material-params --strict`
