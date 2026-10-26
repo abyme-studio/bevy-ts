@@ -42,10 +42,10 @@ Research: `docs/research/custom-relationships.md` (options, Bevy's hook code, th
 1. **A source is a layout-tier component with `target: Entity` at offset 0.**
    `class Likes extends Relationship { declare target: Entity; since: f32 = 0 }`. The compile step
    refuses a `Relationship` class whose first field is not `target: Entity`. Layout rules put an
-   8-aligned first field at 0, so the offset is fixed for every source. The accessor is
-   `Relationship { entity_field_offset: 0, .. }`. `static allowSelfReferential = true` maps to
-   Bevy's `allow_self_referential`. A fixed offset lets the source's clone fn, a plain `fn` with no
-   world, map the entity without a lookup.
+   8-aligned first field at 0, or at 8 behind the header a heap field adds. The accessor is
+   `Relationship { entity_field_offset, .. }` with that offset. `static allowSelfReferential = true`
+   maps to Bevy's `allow_self_referential`. The source's clone fn, a plain `fn` with no world,
+   reads the offset from its component's accessor, so it maps the entity without a lookup.
 
 2. **A source is immutable**, as `ChildOf` is. It is registered with `mutable: false`. `Mut<Likes>`
    fails the load naming the class, and a protocol mutation of it re-inserts the value. An
@@ -97,9 +97,11 @@ Research: `docs/research/custom-relationships.md` (options, Bevy's hook code, th
    the fn and does not ship its own.
 
 7. **Reads are packed per table before the JS call.** For a query naming a target as data,
-   `systems.rs` fills, per matched table, a `u32` offsets array of `len + 1` and one entity array,
-   in the encoding an `Entity` column uses, and puts both in the frame where a column would go. JS
-   hands each row a read-only list view (`length`, index, iteration) over a `subarray`. The
+   `systems.rs` fills, per matched table, one `u32` array: `len + 1` row offsets into the array
+   itself, then each row's entities as (index, generation) pairs, the encoding the frame's
+   entities use. It goes in the frame where a column would go. JS hands each row a read-only
+   `TargetList` (`length`, `at(i)`, `includes`, iteration, `toArray()`), reused per row as every
+   accessor is. The
    buffers are reused across runs, grown when short. `Option<LikedBy>` reads `undefined` on a row
    without one. Change detection on a target uses its own tick, which Bevy bumps when the list
    changes. Measured (research §3): 4-10 ns per row against 32-41 ns for a host call per row. Cost
@@ -108,7 +110,9 @@ Research: `docs/research/custom-relationships.md` (options, Bevy's hook code, th
 8. **Hot reload: a role change is a layout change; target lists are rebuilt.** A component's
    role, counterpart, `linkedSpawn` and `allowSelfReferential` are part of its layout identity.
    A change gives it a new id with hooks for its new role, through `commit`'s `Planned::New`.
-   When either half of a pair gets a new id in a generation, `commit`:
+   The two halves' accessors name each other's ids, so when either half needs a new id, `prepare`
+   gives both one, and a pair's ids are never reused from a failed generation's spares.
+   When a pair gets new ids in a generation, `commit`:
    1. sets `TsHooks.suspended` for the pair, so the dispatcher skips its hooks;
    2. migrates sources by field name as any layout change does, and removes every old target component (its drop runs);
    3. clears the flag, then rebuilds: for each entity holding the source, push it onto its
