@@ -48,6 +48,9 @@ function isShaderFile(v) {
   return v !== null && typeof v === "object" && v.kind === "shaderFile" && typeof v.path === "string";
 }
 
+/** Each kind's params and textures, by name, for `Kind.add`. */
+const SCHEMAS = new Map();
+
 /** The asset class of every script material instance, for `assets.add`. */
 const ScriptMaterial = asset("bevy_ts_material::render::ScriptMaterial", { of: false });
 
@@ -58,10 +61,14 @@ class MaterialKind {
     Object.freeze(this);
   }
 
-  /** An owned instance: one asset outside the shared cache, written in place with `assets.set(ref, patch)` and given as `<material asset={ref} />`. */
+  /**
+   * An owned instance: one asset outside the shared cache, written in place with
+   * `assets.set(ref, patch)` and given as `<material asset={ref} />`. Its schema goes with it, so
+   * an instance added while the script loads is encoded before the generation's kinds apply.
+   */
   add(props = {}) {
-    if (props && typeof props === "object" && "kind" in props) throw new Error(`${this.name}.add(props): the kind is ${this.name}; leave kind out`);
-    return assets.add(ScriptMaterial, { ...props, kind: this.name });
+    if (props && typeof props === "object" && ("kind" in props || "$schema" in props)) throw new Error(`${this.name}.add(props): the kind is ${this.name}; leave kind out`);
+    return assets.add(ScriptMaterial, { ...props, kind: this.name, $schema: SCHEMAS.get(this.name) });
   }
 }
 
@@ -106,5 +113,6 @@ export function material(name, decl) {
   const items = sectionItems("materials");
   if (items.some((m) => m.name === name)) fail("is declared twice");
   items.push({ name, params, textures, fragment, vertex: shader("vertex"), alphaMode, location: at || null });
+  SCHEMAS.set(name, { params, textures });
   return new MaterialKind(name);
 }
