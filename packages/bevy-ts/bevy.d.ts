@@ -4,7 +4,7 @@
 import { Component, EntityEvent, Event, Message, Resource } from "bevy-ts";
 import type { AssetClass, AssetEventOf, AssetFields, AssetLoad, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, MeshData, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
-export { Time, Transform } from "bevy-ts";
+export { GlobalTransform, Time, Transform } from "bevy-ts";
 
 export declare class ManageAccessibilityUpdates extends Resource {
   static readonly path: "bevy_a11y::ManageAccessibilityUpdates";
@@ -136,8 +136,8 @@ export declare class ManualTextureViewHandle extends Component {
   declare value: u32;
 }
 
-/** As an element, `<RenderTarget value={...} />`: the whole value, in Bevy's shape; `RenderTarget.of(...)` in commands. */
-export declare const RenderTarget: ReflectClass<RenderTargetValue, ReflectValue<RenderTargetValue>> & { readonly tsxProps: { value?: RenderTargetValue } };
+/** As an element, `<RenderTarget value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `RenderTarget.of(...)` in commands. */
+export declare const RenderTarget: ReflectClass<RenderTargetValue, ReflectValue<RenderTargetValue>> & { readonly tsxProps: { value?: RenderTargetValue | (() => RenderTargetValue) } };
 export type RenderTargetValue = { Window: "Primary" | { Entity: Entity } } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { size?: readonly [number, number] } };
 export type RenderTarget = InstanceType<typeof RenderTarget>;
 
@@ -193,8 +193,8 @@ export declare class Sphere extends Component {
   declare radius: f32;
 }
 
-/** As an element, `<Projection value={...} />`: the whole value, in Bevy's shape; `Projection.of(...)` in commands. */
-export declare const Projection: ReflectClass<ProjectionValue, ReflectValue<ProjectionValue>> & { readonly tsxProps: { value?: ProjectionValue } };
+/** As an element, `<Projection value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `Projection.of(...)` in commands. */
+export declare const Projection: ReflectClass<ProjectionValue, ReflectValue<ProjectionValue>> & { readonly tsxProps: { value?: ProjectionValue | (() => ProjectionValue) } };
 export type ProjectionValue = { Perspective: { fov?: number; aspect_ratio?: number; near?: number; far?: number; near_clip_plane?: readonly [number, number, number, number] } } | { Orthographic: { near?: number; far?: number; viewport_origin?: readonly [number, number]; scaling_mode?: "WindowSize" | { Fixed: { width?: number; height?: number } } | { AutoMin: { min_width?: number; min_height?: number } } | { AutoMax: { max_width?: number; max_height?: number } } | { FixedVertical: { viewport_height?: number } } | { FixedHorizontal: { viewport_width?: number } }; scale?: number; area?: { min?: readonly [number, number]; max?: readonly [number, number] } } } | { Custom: {  } };
 export type Projection = InstanceType<typeof Projection>;
 
@@ -560,8 +560,8 @@ export interface CascadeShadowConfig extends Holes<{ bounds: readonly number[] }
 export declare const Cascades: ReflectClass<{ cascades?: readonly (readonly [Entity, readonly ({ world_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_world?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; texel_size?: number })[]])[] }, { cascades: readonly (readonly [Entity, readonly ({ world_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_cascade?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; clip_from_world?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; texel_size?: number })[]])[] }>;
 export type Cascades = InstanceType<typeof Cascades>;
 
-/** As an element, `<ClusterConfig value={...} />`: the whole value, in Bevy's shape; `ClusterConfig.of(...)` in commands. */
-export declare const ClusterConfig: ReflectClass<ClusterConfigValue, ReflectValue<ClusterConfigValue>> & { readonly tsxProps: { value?: ClusterConfigValue } };
+/** As an element, `<ClusterConfig value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `ClusterConfig.of(...)` in commands. */
+export declare const ClusterConfig: ReflectClass<ClusterConfigValue, ReflectValue<ClusterConfigValue>> & { readonly tsxProps: { value?: ClusterConfigValue | (() => ClusterConfigValue) } };
 export type ClusterConfigValue = "None" | "Single" | { XYZ: { dimensions?: readonly [number, number, number]; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } } | { FixedZ: { total?: number; z_slices?: number; z_config?: { first_slice_depth?: number; far_z_mode?: "MaxClusterableObjectRange" | { Constant: number } }; dynamic_resizing?: boolean } };
 export type ClusterConfig = InstanceType<typeof ClusterConfig>;
 
@@ -668,8 +668,8 @@ export declare class LightProbe extends Component {
   declare readonly falloff: Vec3;
 }
 
-/** As an element, `<ParallaxCorrection value={...} />`: the whole value, in Bevy's shape; `ParallaxCorrection.of(...)` in commands. */
-export declare const ParallaxCorrection: ReflectClass<ParallaxCorrectionValue, ReflectValue<ParallaxCorrectionValue>> & { readonly tsxProps: { value?: ParallaxCorrectionValue } };
+/** As an element, `<ParallaxCorrection value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `ParallaxCorrection.of(...)` in commands. */
+export declare const ParallaxCorrection: ReflectClass<ParallaxCorrectionValue, ReflectValue<ParallaxCorrectionValue>> & { readonly tsxProps: { value?: ParallaxCorrectionValue | (() => ParallaxCorrectionValue) } };
 export type ParallaxCorrectionValue = "None" | "Auto" | { Custom: readonly [number, number, number] };
 export type ParallaxCorrection = InstanceType<typeof ParallaxCorrection>;
 
@@ -767,8 +767,8 @@ export declare class MeshTag extends Component {
 }
 export interface MeshTag extends Holes<{ type_id: never | null }> {}
 
-/** As an element, `<MeshMorphWeights value={...} />`: the whole value, in Bevy's shape; `MeshMorphWeights.of(...)` in commands. */
-export declare const MeshMorphWeights: ReflectClass<MeshMorphWeightsValue, ReflectValue<MeshMorphWeightsValue>> & { readonly tsxProps: { value?: MeshMorphWeightsValue } };
+/** As an element, `<MeshMorphWeights value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `MeshMorphWeights.of(...)` in commands. */
+export declare const MeshMorphWeights: ReflectClass<MeshMorphWeightsValue, ReflectValue<MeshMorphWeightsValue>> & { readonly tsxProps: { value?: MeshMorphWeightsValue | (() => MeshMorphWeightsValue) } };
 export type MeshMorphWeightsValue = { Value: { weights?: readonly number[] } } | { Reference: Entity };
 export type MeshMorphWeights = InstanceType<typeof MeshMorphWeights>;
 
@@ -934,8 +934,8 @@ export type RayMap = InstanceType<typeof RayMap>;
 export declare const DefaultCursor: ReflectClass<{ Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" }, { value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } }>;
 export type DefaultCursor = InstanceType<typeof DefaultCursor>;
 
-/** As an element, `<EntityCursor value={...} />`: the whole value, in Bevy's shape; `EntityCursor.of(...)` in commands. */
-export declare const EntityCursor: ReflectClass<EntityCursorValue, ReflectValue<EntityCursorValue>> & { readonly tsxProps: { value?: EntityCursorValue } };
+/** As an element, `<EntityCursor value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `EntityCursor.of(...)` in commands. */
+export declare const EntityCursor: ReflectClass<EntityCursorValue, ReflectValue<EntityCursorValue>> & { readonly tsxProps: { value?: EntityCursorValue | (() => EntityCursorValue) } };
 export type EntityCursorValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type EntityCursor = InstanceType<typeof EntityCursor>;
 
@@ -997,8 +997,8 @@ export type RayCastBackfaces = InstanceType<typeof RayCastBackfaces>;
 export declare const SimplifiedMesh: ReflectClass<string | AssetRef<Mesh> | AssetValue<Mesh> | null, { value: string | AssetRef<Mesh> | AssetValue<Mesh> | null }>;
 export type SimplifiedMesh = InstanceType<typeof SimplifiedMesh>;
 
-/** As an element, `<PointerId value={...} />`: the whole value, in Bevy's shape; `PointerId.of(...)` in commands. */
-export declare const PointerId: ReflectClass<PointerIdValue, ReflectValue<PointerIdValue>> & { readonly tsxProps: { value?: PointerIdValue } };
+/** As an element, `<PointerId value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `PointerId.of(...)` in commands. */
+export declare const PointerId: ReflectClass<PointerIdValue, ReflectValue<PointerIdValue>> & { readonly tsxProps: { value?: PointerIdValue | (() => PointerIdValue) } };
 export type PointerIdValue = "Mouse" | { Touch: number | string } | { Custom: string };
 export type PointerId = InstanceType<typeof PointerId>;
 
@@ -1291,13 +1291,13 @@ export declare class FontHinting extends Component {
   declare value: "Disabled" | "Enabled";
 }
 
-/** As an element, `<LetterSpacing value={...} />`: the whole value, in Bevy's shape; `LetterSpacing.of(...)` in commands. */
-export declare const LetterSpacing: ReflectClass<LetterSpacingValue, ReflectValue<LetterSpacingValue>> & { readonly tsxProps: { value?: LetterSpacingValue } };
+/** As an element, `<LetterSpacing value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `LetterSpacing.of(...)` in commands. */
+export declare const LetterSpacing: ReflectClass<LetterSpacingValue, ReflectValue<LetterSpacingValue>> & { readonly tsxProps: { value?: LetterSpacingValue | (() => LetterSpacingValue) } };
 export type LetterSpacingValue = { Px: number } | { Rem: number };
 export type LetterSpacing = InstanceType<typeof LetterSpacing>;
 
-/** As an element, `<LineHeight value={...} />`: the whole value, in Bevy's shape; `LineHeight.of(...)` in commands. */
-export declare const LineHeight: ReflectClass<LineHeightValue, ReflectValue<LineHeightValue>> & { readonly tsxProps: { value?: LineHeightValue } };
+/** As an element, `<LineHeight value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `LineHeight.of(...)` in commands. */
+export declare const LineHeight: ReflectClass<LineHeightValue, ReflectValue<LineHeightValue>> & { readonly tsxProps: { value?: LineHeightValue | (() => LineHeightValue) } };
 export type LineHeightValue = { Px: number } | { RelativeToFont: number };
 export type LineHeight = InstanceType<typeof LineHeight>;
 
@@ -1341,10 +1341,6 @@ export type UnderlineColor = InstanceType<typeof UnderlineColor>;
 /** `DelayedCommandQueue.of(...)` in commands: the value written over its default. */
 export declare const DelayedCommandQueue: ReflectClass<{ submit_at?: number }, { submit_at: number }>;
 export type DelayedCommandQueue = InstanceType<typeof DelayedCommandQueue>;
-
-/** `GlobalTransform.of(...)` in commands: the value written over its default. */
-export declare const GlobalTransform: ReflectClass<readonly [number, number, number, number, number, number, number, number, number, number, number, number], { value: readonly [number, number, number, number, number, number, number, number, number, number, number, number] }>;
-export type GlobalTransform = InstanceType<typeof GlobalTransform>;
 
 /** `TransformTreeChanged.of(...)` in commands: the value written over its default. */
 export declare const TransformTreeChanged: ReflectClass<{  }, {}>;
@@ -1520,8 +1516,8 @@ export type BorderColor = InstanceType<typeof BorderColor>;
 export declare const BoxShadow: ReflectClass<readonly ({ color?: ColorValue; x_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; spread_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; blur_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } })[], { value: readonly ({ color?: ColorValue; x_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y_offset?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; spread_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; blur_radius?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } })[] }>;
 export type BoxShadow = InstanceType<typeof BoxShadow>;
 
-/** As an element, `<CalculatedClip value={...} />`: the whole value, in Bevy's shape; `CalculatedClip.of(...)` in commands. */
-export declare const CalculatedClip: ReflectClass<CalculatedClipValue, ReflectValue<CalculatedClipValue>> & { readonly tsxProps: { value?: CalculatedClipValue } };
+/** As an element, `<CalculatedClip value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `CalculatedClip.of(...)` in commands. */
+export declare const CalculatedClip: ReflectClass<CalculatedClipValue, ReflectValue<CalculatedClipValue>> & { readonly tsxProps: { value?: CalculatedClipValue | (() => CalculatedClipValue) } };
 export type CalculatedClipValue = { Rects: readonly ({ rect?: { min?: readonly [number, number]; max?: readonly [number, number] }; world_to_clip_local?: readonly [number, number, number, number, number, number] })[] } | "FullyClipped";
 export type CalculatedClip = InstanceType<typeof CalculatedClip>;
 
@@ -1800,8 +1796,8 @@ export type ListItem = InstanceType<typeof ListItem>;
 export declare const MenuButton: ReflectClass<{  }, {}>;
 export type MenuButton = InstanceType<typeof MenuButton>;
 
-/** As an element, `<MenuFocusState value={...} />`: the whole value, in Bevy's shape; `MenuFocusState.of(...)` in commands. */
-export declare const MenuFocusState: ReflectClass<MenuFocusStateValue, ReflectValue<MenuFocusStateValue>> & { readonly tsxProps: { value?: MenuFocusStateValue } };
+/** As an element, `<MenuFocusState value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `MenuFocusState.of(...)` in commands. */
+export declare const MenuFocusState: ReflectClass<MenuFocusStateValue, ReflectValue<MenuFocusStateValue>> & { readonly tsxProps: { value?: MenuFocusStateValue | (() => MenuFocusStateValue) } };
 export type MenuFocusStateValue = { Opening: "Next" | "Previous" | "First" | "Last" } | "Open" | "Closed";
 export type MenuFocusState = InstanceType<typeof MenuFocusState>;
 
@@ -1926,8 +1922,8 @@ export type SelectAllOnFocus = InstanceType<typeof SelectAllOnFocus>;
 export declare const TextInput: ReflectClass<{  }, {}>;
 export type TextInput = InstanceType<typeof TextInput>;
 
-/** As an element, `<CursorIcon value={...} />`: the whole value, in Bevy's shape; `CursorIcon.of(...)` in commands. */
-export declare const CursorIcon: ReflectClass<CursorIconValue, ReflectValue<CursorIconValue>> & { readonly tsxProps: { value?: CursorIconValue } };
+/** As an element, `<CursorIcon value={...} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `CursorIcon.of(...)` in commands. */
+export declare const CursorIcon: ReflectClass<CursorIconValue, ReflectValue<CursorIconValue>> & { readonly tsxProps: { value?: CursorIconValue | (() => CursorIconValue) } };
 export type CursorIconValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type CursorIcon = InstanceType<typeof CursorIcon>;
 

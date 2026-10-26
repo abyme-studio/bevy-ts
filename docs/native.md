@@ -146,6 +146,10 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
   inner value. Nested enums work at any depth. A component that is itself an enum takes its whole
   value as `value`: `<Projection value={{ Orthographic: { scaling_mode: { FixedVertical: {
   viewport_height: 12 } } } }} />`.
+- A reflect-tier prop binds, as a column field does: `<Projection value={() => (zoomed() ? {
+  Orthographic: {} } : { Perspective: {} })} />` writes each value through reflection when the
+  binding's value changes, checked as it arrives (a bad one is logged naming the type). A
+  layout-tier hole prop (below) takes a value only.
 - An `Option<T>`: `null` for `None`, a `T` for `Some`.
 - A `Color`: any colour form (below).
 - A written value is the JSON over the default: keys left out take the value in the component's
@@ -200,6 +204,20 @@ export function ortho(q: Query<[Mut<Projection>], With<Camera3d>>) {
   it.
 - `ref.get(C)` in TSX reads reflect-tier components and holes too, and re-runs its binding when
   they change.
+- `GlobalTransform` comes from `bevy-ts` (re-exported by `bevy-ts/bevy`), typed as `Transform`
+  is. Its rows and `ref.get(GlobalTransform)` have Bevy 0.20's read methods, computed in JS from
+  `value` (the affine's 12 floats): `translation()`, `rotation()`, `scale()`,
+  `toScaleRotationTranslation()`, `computeTransform()`, `affine()`, `toMatrix()`, `right()`,
+  `left()`, `up()`, `down()`, `back()`, `forward()`, `transformPoint(p)`, `transformVector(v)`,
+  `reparentedTo(parent)` and `mulTransform(t)`. Each returns a fresh value. Read it after
+  `bevy:transform-propagate` for this frame's; `Mut<GlobalTransform>` is a type error.
+
+```ts
+export function follow(q: Query<[GlobalTransform], With<Player>>) {
+  q.each((g) => console.log(g.translation().x, g.forward()));
+}
+app.addSystems(PostUpdate, systems(follow).after(systemSet("bevy:transform-propagate")));
+```
 
 Colours have one parser (`bevy_ts::color`), used by every colour bevy-ts takes: TSX props, `<mesh
 color>`, `<material color>`, UI colours, script-material `color` params and script commands. It takes a hex

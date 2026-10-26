@@ -1015,8 +1015,8 @@ type DescElement = Element;
 
 /**
  * Props a component element takes beyond its columns, written through reflection: a layout-tier
- * Rust component's writable holes (`<DirectionalLight color>`), or an enum component's `value`
- * (`<Projection value>`). TS systems never see them.
+ * Rust component's writable holes (`<DirectionalLight color>`, a value only), or an enum
+ * component's `value` (`<Projection value>`, a value or `() => value`). TS systems never see them.
  */
 type TsxProps<C> = C extends { readonly tsxProps: infer X } ? X : {};
 

@@ -1018,6 +1018,155 @@ function quatFromAxes(x, y, z) {
   return [(m12 - m21) * inv, (m20 - m02) * inv, (m01 - m10) * inv, f * inv];
 }
 
+// `GlobalTransform`: reflect-tier (Bevy computes it), its `value` the affine's 12 floats in
+// `Affine3A::to_cols_array` order. Its rows, and `ref.get(GlobalTransform)`, have Bevy 0.20's read
+// methods, computed here from `value` with Bevy's and glam's math; each returns a fresh value.
+
+/** A vector argument's lanes: a tuple or a vector. */
+function lanes3(v) {
+  return Array.isArray(v) ? [v[0], v[1], v[2]] : [v.x, v.y, v.z];
+}
+
+/** `Mat3::determinant` of an affine's 3x3 part. */
+function det3(a) {
+  return a[0] * (a[4] * a[8] - a[7] * a[5]) - a[3] * (a[1] * a[8] - a[7] * a[2]) + a[6] * (a[1] * a[5] - a[4] * a[2]);
+}
+
+/** glam's `Affine3A::to_scale_rotation_translation`. */
+function affineSrt(a) {
+  const sx = Math.hypot(a[0], a[1], a[2]) * (det3(a) < 0 ? -1 : 1);
+  const sy = Math.hypot(a[3], a[4], a[5]);
+  const sz = Math.hypot(a[6], a[7], a[8]);
+  const q = quatFromAxes([a[0] / sx, a[1] / sx, a[2] / sx], [a[3] / sy, a[4] / sy, a[5] / sy], [a[6] / sz, a[7] / sz, a[8] / sz]);
+  return [new Vec3(sx, sy, sz), new Quat(q[0], q[1], q[2], q[3]), new Vec3(a[9], a[10], a[11])];
+}
+
+/** glam's `Affine3A::from_scale_rotation_translation`, as `Transform::compute_affine`. */
+function affineOf(t) {
+  const [x, y, z, w] = t.rotation ? (Array.isArray(t.rotation) ? t.rotation : [t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w]) : [0, 0, 0, 1];
+  const [sx, sy, sz] = t.scale ? lanes3(t.scale) : [1, 1, 1];
+  const [tx, ty, tz] = t.translation ? lanes3(t.translation) : [0, 0, 0];
+  const x2 = x + x, y2 = y + y, z2 = z + z;
+  const xx = x * x2, xy = x * y2, xz = x * z2, yy = y * y2, yz = y * z2, zz = z * z2, wx = w * x2, wy = w * y2, wz = w * z2;
+  return [
+    (1 - (yy + zz)) * sx, (xy + wz) * sx, (xz - wy) * sx,
+    (xy - wz) * sy, (1 - (xx + zz)) * sy, (yz + wx) * sy,
+    (xz + wy) * sz, (yz - wx) * sz, (1 - (xx + yy)) * sz,
+    tx, ty, tz,
+  ];
+}
+
+/** `a * b` for two affines (`Affine3A`'s `Mul`). */
+function affineMul(a, b) {
+  const v = (x, y, z) => [a[0] * x + a[3] * y + a[6] * z, a[1] * x + a[4] * y + a[7] * z, a[2] * x + a[5] * y + a[8] * z];
+  const t = v(b[9], b[10], b[11]);
+  return [...v(b[0], b[1], b[2]), ...v(b[3], b[4], b[5]), ...v(b[6], b[7], b[8]), t[0] + a[9], t[1] + a[10], t[2] + a[11]];
+}
+
+/** glam's `Affine3A::inverse`. */
+function affineInverse(a) {
+  const d = det3(a);
+  const [m00, m01, m02, m10, m11, m12, m20, m21, m22] = a;
+  // Columns of the inverse: the cross products of the rows' columns over the determinant.
+  const m = [
+    (m11 * m22 - m21 * m12) / d, (m21 * m02 - m01 * m22) / d, (m01 * m12 - m11 * m02) / d,
+    (m20 * m12 - m10 * m22) / d, (m00 * m22 - m20 * m02) / d, (m10 * m02 - m00 * m12) / d,
+    (m10 * m21 - m20 * m11) / d, (m20 * m01 - m00 * m21) / d, (m00 * m11 - m10 * m01) / d,
+  ];
+  const t = [a[9], a[10], a[11]];
+  return [...m, -(m[0] * t[0] + m[3] * t[1] + m[6] * t[2]), -(m[1] * t[0] + m[4] * t[1] + m[7] * t[2]), -(m[2] * t[0] + m[5] * t[1] + m[8] * t[2])];
+}
+
+/** `matrix3 * axis`, normalised: Bevy's `impl_local_axis`. */
+function affineAxis(a, i, sign) {
+  const l = Math.hypot(a[i], a[i + 1], a[i + 2]);
+  return new Vec3((sign * a[i]) / l, (sign * a[i + 1]) / l, (sign * a[i + 2]) / l);
+}
+
+function transformOf([scale, rotation, translation]) {
+  return Transform.of({ translation, rotation, scale });
+}
+
+/** Bevy's `GlobalTransform` read methods over `this.value`; on its rows and on `GlobalTransformValue`. */
+const GLOBAL_TRANSFORM_READ = {
+  translation() {
+    const a = this.value;
+    return new Vec3(a[9], a[10], a[11]);
+  },
+  rotation() {
+    return affineSrt(this.value)[1];
+  },
+  scale() {
+    const a = this.value;
+    return new Vec3(Math.hypot(a[0], a[1], a[2]) * (det3(a) < 0 ? -1 : 1), Math.hypot(a[3], a[4], a[5]), Math.hypot(a[6], a[7], a[8]));
+  },
+  toScaleRotationTranslation() {
+    return affineSrt(this.value);
+  },
+  computeTransform() {
+    return transformOf(affineSrt(this.value));
+  },
+  affine() {
+    return Array.from(this.value);
+  },
+  toMatrix() {
+    const a = this.value;
+    return [a[0], a[1], a[2], 0, a[3], a[4], a[5], 0, a[6], a[7], a[8], 0, a[9], a[10], a[11], 1];
+  },
+  right() {
+    return affineAxis(this.value, 0, 1);
+  },
+  left() {
+    return affineAxis(this.value, 0, -1);
+  },
+  up() {
+    return affineAxis(this.value, 3, 1);
+  },
+  down() {
+    return affineAxis(this.value, 3, -1);
+  },
+  back() {
+    return affineAxis(this.value, 6, 1);
+  },
+  forward() {
+    return affineAxis(this.value, 6, -1);
+  },
+  transformPoint(p) {
+    const a = this.value;
+    const [x, y, z] = lanes3(p);
+    return new Vec3(a[0] * x + a[3] * y + a[6] * z + a[9], a[1] * x + a[4] * y + a[7] * z + a[10], a[2] * x + a[5] * y + a[8] * z + a[11]);
+  },
+  transformVector(v) {
+    const a = this.value;
+    const [x, y, z] = lanes3(v);
+    return new Vec3(a[0] * x + a[3] * y + a[6] * z, a[1] * x + a[4] * y + a[7] * z, a[2] * x + a[5] * y + a[8] * z);
+  },
+  reparentedTo(parent) {
+    return transformOf(affineSrt(affineMul(affineInverse(parent.value), this.value)));
+  },
+  mulTransform(t) {
+    return new GlobalTransformValue(affineMul(this.value, affineOf(t)));
+  },
+};
+
+/** A `GlobalTransform` value outside a row: `ref.get(GlobalTransform)` and `mulTransform`. */
+class GlobalTransformValue {
+  constructor(value) {
+    this.value = value;
+  }
+  toJSON() {
+    return this.value;
+  }
+}
+Object.defineProperty(GlobalTransformValue, "name", { value: "GlobalTransform" });
+Object.assign(GlobalTransformValue.prototype, GLOBAL_TRANSFORM_READ);
+
+/** `GlobalTransform`: a reflect class whose rows have Bevy's read methods. Writes throw (Rust refuses them). */
+export const GlobalTransform = reflectClass("GlobalTransform");
+GlobalTransform.rowMethods = GLOBAL_TRANSFORM_READ;
+/** A delivered value (`ref.get`): the 12 floats wrapped in the read methods. */
+GlobalTransform.fromValue = (v) => (Array.isArray(v) ? new GlobalTransformValue(v) : v);
+
 // Bevy's clocks, read-only views built per run (docs/time.md). Every clock's fields first, then
 // its own; Rust lays them out and fills them.
 const CLOCK = { delta_secs: f32, elapsed_secs: f32, delta_secs_f64: f64, elapsed_secs_f64: f64, elapsed_secs_wrapped_f64: f64, wrap_period: f64, elapsed_secs_wrapped: f32 };
@@ -4310,6 +4459,8 @@ function resolveReflect(C, res) {
     C.Read = reflectAccessor(C.name, info, false);
     C.Write = reflectAccessor(C.name, info, true);
     C.views = [];
+    // A class with read methods of its own (`GlobalTransform`) has them on its rows.
+    if (C.rowMethods) for (const R of [C.Read, C.Write]) Object.assign(R.prototype, C.rowMethods);
   }
   const holes = res.holes && res.holes[C.componentName];
   if (holes && C.Read) {

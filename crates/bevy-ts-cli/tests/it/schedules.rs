@@ -296,15 +296,14 @@ app.registerSystem(count);
     assert_eq!(said(&mut app), ["run1", "run2"]);
 }
 
-/// native-ordering "After propagation". Waits on reflect-coverage stage 3, which makes
-/// `GlobalTransform` readable from TS; un-ignore it then.
+/// native-ordering "After propagation": a system after `bevy:transform-propagate` reads this
+/// frame's `GlobalTransform`.
 #[test]
-#[ignore = "waits on reflect-coverage stage 3: GlobalTransform is not query data yet"]
 fn after_propagation_reads_this_frames_global_transform() {
     let body = r#"import { GlobalTransform, systemSet, Transform } from "bevy-ts";
 import type { Mut, Query } from "bevy-ts";
 export function move(q: Query<[Mut<Transform>]>) { q.each((t) => { t.translation.x += 1; }); }
-export function follow(q: Query<[GlobalTransform]>) { q.each((g) => console.log(`at${g.translation.x}`)); }
+export function follow(q: Query<[GlobalTransform]>) { q.each((g) => console.log(`at${g.translation().x}`)); }
 app.addSystems(Update, move).addSystems(PostUpdate, systems(follow).after(systemSet("bevy:transform-propagate")));
 "#;
     let (_, mut app) = load("sched-afterpropagate", &src(body));

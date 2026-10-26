@@ -511,6 +511,13 @@ pub fn rust_component_by_name(world: &World, name: &str) -> Result<Option<Compon
     }
 }
 
+/// Whether a component id is a reflected resource. Checked before [`is_sparse`]: Bevy 0.20 stores a
+/// resource as a sparse-set component on its own entity.
+fn is_resource(world: &World, id: ComponentId) -> bool {
+    let Some(type_id) = world.components().get_info(id).and_then(|i| i.type_id()) else { return false };
+    world.get_resource::<AppTypeRegistry>().is_some_and(|r| r.read().get_type_data::<bevy::ecs::reflect::ReflectResource>(type_id).is_some())
+}
+
 /// Whether a component is stored in a sparse set (it then splits no tables).
 fn is_sparse(world: &World, id: ComponentId) -> bool {
     world.components().get_info(id).is_some_and(|i| i.storage_type() == bevy::ecs::component::StorageType::SparseSet)
@@ -540,6 +547,9 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
                     return Err(sparse());
                 }
                 return Ok((n.id, n.layout.size));
+            }
+            if data && is_resource(world, id) {
+                return Err(format!("{} is a resource, not a component; take Res<{}>", r.name, r.name));
             }
             if data && is_sparse(world, id) {
                 return Err(sparse());
@@ -603,14 +613,15 @@ fn reflect_term(world: &mut World, r: &ComponentRef) -> Result<Option<(Component
     }
     let Some(id) = native.reflect_tier(&r.name).map(|t| t.id) else { return Ok(None) };
     let info = world.components().get_info(id).ok_or_else(|| format!("{} is not registered", r.name))?;
-    if info.storage_type() != bevy::ecs::component::StorageType::Table {
-        return Err(format!("{} is stored in a sparse set; TS reads only table components as query data", r.name));
-    }
     let type_id = info.type_id().ok_or_else(|| format!("{} has no Rust type", r.name))?;
     let registry = world.resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
+    // Before the storage check: a resource is a sparse-set component too.
     if registry.get_type_data::<bevy::ecs::reflect::ReflectResource>(type_id).is_some() {
         return Err(format!("{} is a resource, not a component; take Res<{}>", r.name, r.name));
+    }
+    if info.storage_type() != bevy::ecs::component::StorageType::Table {
+        return Err(format!("{} is stored in a sparse set; TS reads only table components as query data", r.name));
     }
     let target = world.get_resource_or_init::<ReflectTargets>().component(&registry, id, type_id).map_err(|e| format!("{}: {e}", r.name))?;
     Ok(Some((id, target)))

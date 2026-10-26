@@ -1,6 +1,6 @@
 // Type tests for reflected values in TSX (reflect-enums-color): colours, enum components and
 // writable holes. `tsc -p test` must pass, and every `@ts-expect-error` must be an error.
-import { app, hex, hsl, linear, srgb, Startup, Transform } from "bevy-ts";
+import { app, hex, hsl, linear, signal, srgb, Startup, Transform } from "bevy-ts";
 import type { ColorValue, Commands, Query } from "bevy-ts";
 import { Camera3d, DirectionalLight, PointLight, Projection } from "bevy-ts/bevy";
 
@@ -19,6 +19,18 @@ export const Lights = () => (
     <entity><Projection value={{ Orthographic: { scale: 2 } }} /></entity>
     <entity><Projection value={{ Orthographic: { scaling_mode: { FixedVertical: { viewport_height: 12 } } } }} /></entity>
     <entity><Projection value={{ Orthographic: { scaling_mode: "WindowSize" } }} /></entity>
+  </>
+);
+
+// reflect-bindable: a reflect-tier prop binds; a layout-tier hole takes a value only.
+const [zoomed] = signal(false);
+export const Bound = () => (
+  <>
+    <entity><Projection value={() => (zoomed() ? { Orthographic: {} } : { Perspective: {} })} /></entity>
+    {/* @ts-expect-error a layout-tier hole is written once, so it takes a value, not a binding */}
+    <entity><DirectionalLight color={() => "#fff"} /></entity>
+    {/* @ts-expect-error a bound value is still checked against the enum */}
+    <entity><Projection value={() => ({ Isometric: {} })} /></entity>
   </>
 );
 

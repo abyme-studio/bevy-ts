@@ -309,3 +309,93 @@ app.addSystems(Update, shadows);
     assert_eq!(seen[n - 1], (4096, false, 4096, false), "{seen:?}");
     assert!(messages(&app).iter().all(|m| !m.contains("threw")), "{:?}", messages(&app));
 }
+
+/// reflect-bindable: a `GlobalTransform` row has Bevy's read methods, each equal to Bevy's own on a
+/// rotated, scaled, parented entity, read after propagation.
+#[test]
+fn global_transform_reads_as_bevys() {
+    let body = r#"
+import { GlobalTransform, PostUpdate, systems, systemSet } from "bevy-ts";
+import type { Entity } from "bevy-ts";
+const v = (x: { x: number; y: number; z: number }) => [x.x, x.y, x.z];
+export function read(q: Query<[Entity, GlobalTransform]>) {
+  q.each((e, g) => {
+    const r = g.rotation();
+    const [s, r2, t2] = g.toScaleRotationTranslation();
+    const ct = g.computeTransform();
+    const lanes = [
+      ...v(g.translation()), r.x, r.y, r.z, r.w, ...v(g.scale()),
+      ...v(s), r2.x, r2.y, r2.z, r2.w, ...v(t2),
+      ...v(ct.translation), ...v(ct.scale),
+      ...g.affine(), ...g.toMatrix(),
+      ...v(g.right()), ...v(g.left()), ...v(g.up()), ...v(g.down()), ...v(g.back()), ...v(g.forward()),
+      ...v(g.transformPoint([0, 0, 1])), ...v(g.transformVector([1, 2, 3])),
+      ...g.mulTransform({ translation: [1, 0, 0], scale: [2, 2, 2] }).value,
+    ];
+    console.log(`gt ${e} ${JSON.stringify(lanes)}`);
+  });
+  const all: [Entity, readonly number[]][] = [];
+  q.each((e, g) => { all.push([e, Array.from(g.value)]); });
+  q.each((e, g) => {
+    for (const [p, value] of all) {
+      const t = g.reparentedTo({ value: value as GlobalTransform["value"] });
+      console.log(`rp ${e} ${p} ${JSON.stringify([...v(t.translation), t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w, ...v(t.scale)])}`);
+    }
+  });
+}
+app.addSystems(PostUpdate, systems(read).after(systemSet("bevy:transform-propagate")));
+"#;
+    let mut app = with_types("reflect-global-transform", body);
+    app.add_plugins(bevy::transform::TransformPlugin);
+    let parent = app
+        .world_mut()
+        .spawn(Transform::from_xyz(0.0, 2.0, 0.0).with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)).with_scale(Vec3::splat(2.0)))
+        .id();
+    let child = app.world_mut().spawn((Transform::from_xyz(1.0, 0.0, 0.0).with_rotation(Quat::from_rotation_x(0.3)), ChildOf(parent))).id();
+    app.update();
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.update();
+    app.update();
+    bevy_ts::runtime::pump(app.world_mut());
+    let logs = messages(&app);
+    for e in [parent, child] {
+        let g = *app.world().get::<GlobalTransform>(e).unwrap();
+        let (s, r, t) = g.to_scale_rotation_translation();
+        let ct = g.compute_transform();
+        let mut want: Vec<f32> = Vec::new();
+        want.extend(g.translation().to_array());
+        want.extend(g.rotation().to_array());
+        want.extend(g.scale().to_array());
+        want.extend(s.to_array());
+        want.extend(r.to_array());
+        want.extend(t.to_array());
+        want.extend(ct.translation.to_array());
+        want.extend(ct.scale.to_array());
+        want.extend(g.affine().to_cols_array());
+        want.extend(g.to_matrix().to_cols_array());
+        for d in [g.right(), g.left(), g.up(), g.down(), g.back(), g.forward()] {
+            want.extend(d.to_array());
+        }
+        want.extend(g.transform_point(Vec3::Z).to_array());
+        want.extend(g.transform_vector(Vec3::new(1.0, 2.0, 3.0)).to_array());
+        want.extend(g.mul_transform(Transform::from_xyz(1.0, 0.0, 0.0).with_scale(Vec3::splat(2.0))).affine().to_cols_array());
+        let prefix = format!("gt {} ", e.to_bits());
+        let line = logs.iter().rev().find_map(|m| m.strip_prefix(&prefix)).unwrap_or_else(|| panic!("no read of {e}: {logs:?}"));
+        let got: Vec<f32> = serde_json::from_str(line).unwrap();
+        assert_eq!(got.len(), want.len(), "{line}");
+        for (i, (a, b)) in got.iter().zip(&want).enumerate() {
+            assert!((a - b).abs() < 1e-5, "lane {i} of {e}: got {a}, Bevy has {b}\n{line}");
+        }
+    }
+    // `reparentedTo`, the child relative to its parent: Bevy's, which is the child's own Transform.
+    let (pg, cg) = (*app.world().get::<GlobalTransform>(parent).unwrap(), *app.world().get::<GlobalTransform>(child).unwrap());
+    let rel = cg.reparented_to(&pg);
+    let want: Vec<f32> = [rel.translation.to_array().as_slice(), &rel.rotation.to_array(), &rel.scale.to_array()].concat();
+    let prefix = format!("rp {} {} ", child.to_bits(), parent.to_bits());
+    let line = logs.iter().rev().find_map(|m| m.strip_prefix(&prefix)).unwrap_or_else(|| panic!("no reparentedTo: {logs:?}"));
+    let got: Vec<f32> = serde_json::from_str(line).unwrap();
+    for (i, (a, b)) in got.iter().zip(&want).enumerate() {
+        assert!((a - b).abs() < 1e-5, "reparentedTo lane {i}: got {a}, Bevy has {b}\n{line}");
+    }
+}

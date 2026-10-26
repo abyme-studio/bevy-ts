@@ -617,6 +617,9 @@ declare const singleBrand: unique symbol;
 declare const filterBrand: unique symbol;
 declare const resBrand: unique symbol;
 export type Mut<T> = { readonly [mutBrand]: T };
+declare const computedBrand: unique symbol;
+/** What a `Mut` of a component Bevy computes (`GlobalTransform`) gives: nothing to read or write. */
+type Computed = { readonly computedByBevy: "take it read-only; Bevy computes it" };
 /** Query data `Option<C>`; a system param `Option<Res<R>>` is `undefined` when `R` is absent, and
  * `Option<Single<...>>` is zero or one match. */
 export type Option<T> = T extends { readonly [resBrand]: true } ? T | undefined : T extends { readonly [singleBrand]: true } ? T | undefined : OptionData<T>;
@@ -661,7 +664,7 @@ type Item<D> =
   : D extends Has<unknown> ? boolean
   : D extends Ref<infer T> ? (T extends ReflectComponent ? ReadView<ReflectRow<T>> : LayoutRow<T>) & RefTicks
   : D extends AnyOf<infer Ts> ? { -readonly [I in keyof Ts]: Item<Ts[I]> | undefined }
-  : D extends Mut<infer T> ? (T extends ReflectComponent ? ReflectRow<T> : MutView<T> & HolesOf<T>)
+  : D extends Mut<infer T> ? (T extends { readonly [computedBrand]: true } ? Computed : T extends ReflectComponent ? ReflectRow<T> : MutView<T> & HolesOf<T>)
   : D extends abstract new (...a: never) => infer I ? (I extends ReflectComponent ? ReadView<ReflectRow<I>> : LayoutRow<I>) // value form: Mut(C) / C
   : D extends ReflectComponent ? ReadView<ReflectRow<D>>
   : LayoutRow<D>;
@@ -1097,6 +1100,37 @@ export declare class Transform extends Component {
   declare readonly translation: Vec3;
   declare readonly rotation: Quat;
   declare readonly scale: Vec3;
+}
+/**
+ * Bevy's `GlobalTransform`, computed by Bevy from `Transform` and the hierarchy: read-only query
+ * data (`Query<[GlobalTransform]>`), `ref.get(GlobalTransform)` in TSX. `value` is the affine's 12
+ * floats (`Affine3A::to_cols_array`); the methods are Bevy 0.20's, each returning a fresh value.
+ */
+export declare class GlobalTransform extends ReflectComponent {
+  static readonly path: "bevy_transform::components::global_transform::GlobalTransform";
+  declare readonly [computedBrand]: true;
+  declare readonly value: readonly [number, number, number, number, number, number, number, number, number, number, number, number];
+  translation(): Vec3;
+  rotation(): Quat;
+  scale(): Vec3;
+  /** `[scale, rotation, translation]`, as Bevy's tuple. */
+  toScaleRotationTranslation(): [Vec3, Quat, Vec3];
+  computeTransform(): Transform;
+  /** The 12 floats of `Affine3A::to_cols_array`. */
+  affine(): number[];
+  /** The 16 floats of `Mat4::to_cols_array`. */
+  toMatrix(): number[];
+  right(): Vec3;
+  left(): Vec3;
+  up(): Vec3;
+  down(): Vec3;
+  back(): Vec3;
+  forward(): Vec3;
+  transformPoint(point: Vec3Like): Vec3;
+  transformVector(vector: Vec3Like): Vec3;
+  /** This transform relative to `parent`, as Bevy's `reparented_to`. */
+  reparentedTo(parent: { readonly value: GlobalTransform["value"] }): Transform;
+  mulTransform(transform: { translation?: Vec3Like; rotation?: readonly [number, number, number, number] | ReadonlyQuat; scale?: Vec3Like }): GlobalTransform;
 }
 /** Marks an entity `commands.saveWorld` saves by default; saved itself, so a loaded entity has it again. */
 export declare class Save extends Component {

@@ -609,6 +609,7 @@ const LANE_NAMES = ["x", "y", "z", "w"];
 
 /** A delivered component value: plain fields, vectors with `.x`/`.y`/`.z` and `toArray()`. */
 function componentValue(C, json, row) {
+  if (C && C.fromValue) return C.fromValue(json);
   if (json === null || typeof json !== "object") return json;
   const out = {};
   for (const k of Object.keys(json)) {

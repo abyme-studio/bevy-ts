@@ -150,17 +150,20 @@ fn unusable_resources_fail_the_load_naming_the_system_and_resource() {
         ("Res<Gust>", "Gust names more than one Rust type (it::rust_resources::a::Gust, it::rust_resources::b::Gust)"),
         ("Res<Nope>", "Res<Nope>: no resource named Nope"),
         ("Query<[AmbientData]>", "GlobalAmbientLight is a resource, not a component"),
+        // A reflect-tier resource is a sparse-set component in Bevy 0.20; the error says resource.
+        ("Query<[ClearColorHandle]>", "ClearColor is a resource, not a component; take Res<ClearColor>"),
     ];
     for (i, (ty, want)) in cases.iter().enumerate() {
         // Transform is a component class in JS too; name it through a Rust-side spelling.
         let ty = ty.replace("Res<Transform>", "Res<TransformRes>");
-        let extra = "import { nativeComponent } from \"bevy-ts\";\nimport type { Query } from \"bevy-ts\";\nexport class TransformRes extends nativeResource(\"Transform\", { v: f32 }) {}\nexport class AmbientData extends nativeComponent(\"GlobalAmbientLight\", { brightness: f32 }) {}\n";
+        let extra = "import { nativeComponent, rustComponent } from \"bevy-ts\";\nimport type { Query } from \"bevy-ts\";\nexport class TransformRes extends nativeResource(\"Transform\", { v: f32 }) {}\nexport class AmbientData extends nativeComponent(\"GlobalAmbientLight\", { brightness: f32 }) {}\nexport const ClearColorHandle = rustComponent(\"ClearColor\");\n";
         let body = format!("{extra}export function s(r: {ty}) {{}}\napp.addSystems(Update, s);\n");
         let dir = project(&format!("rust-res-refuse-{i}"), &[("game.ts", &format!("{HEAD}{body}"))]);
         let mut app = with_types(&dir);
         app.register_type::<Transform>();
         let r = reload(&mut app, false);
         assert!(r.errors.iter().any(|e| e.message.starts_with("system game.ts#s: ") && e.message.contains(want)), "{ty}: {:?}", r.errors);
+        assert!(r.errors.iter().all(|e| !e.message.contains("sparse")), "{ty}: {:?}", r.errors);
     }
 }
 

@@ -289,6 +289,7 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts, reg
     match &r.target {
         Target::Native { layout, .. } => {
             for f in bound.keys() {
+                // Only a layout-tier hole refuses a binding; a reflect-tier prop binds (below).
                 if native.get(&c.ty).is_some_and(|n| n.reflect_holes.iter().any(|h| &h.name == f)) {
                     return Err(err(format!("{}.{f} is written through reflection, so it takes a value, not a binding", c.ty), &at(c, f)));
                 }
@@ -306,7 +307,8 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts, reg
                     .map_err(|e| err(format!("<{}> {e}", c.ty), &c.source))?;
             }
         }
-        // Checked against the type by reflection when a value arrives.
+        // A reflect-tier prop binds: each value is checked against the type by reflection as it
+        // arrives and written over the current value.
         Target::Reflect { .. } => {}
         // Instance params may be bound; the tsx check, which sees the kinds, fails any other.
         Target::ScriptMaterial { .. } => {}

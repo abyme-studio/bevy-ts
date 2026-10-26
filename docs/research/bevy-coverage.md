@@ -34,12 +34,12 @@ Bevy features with no owner. They are ranked at the end.
 | Rust layout-tier components as query data | idiomatic | `native_components.rs` `a_ts_write_is_seen_by_rust_the_same_frame_and_changed_only_on_written_rows` | — |
 | Layout-tier holes (`Color`, enums with data, `Option`) | idiomatic in TSX and systems (`light.color`); no system test of a data-enum or `Option` hole | `reflect_systems.rs` `a_hole_reads_and_writes_and_column_views_stay_valid`; `reflect_values.rs` `a_light_colour_is_a_prop_written_through_reflection`, `every_kind_is_a_tsx_prop_and_a_list_is_replaced` | — |
 | Reflect-tier components in TSX, `With`/`Without` | idiomatic | `native_components.rs` `a_reflect_tier_component_is_a_tsx_element`; `ecs_queries.rs` `probe_disabled_and_sparse_filters` | — |
-| Reflect-tier TSX props bound to a function (`<Projection value={() => …}>`) | partial: the runtime binds them (`bevy-ts-tsx/src/resolve.rs:310`, checked when the value arrives), but `jsx-runtime.d.ts:1028` types `tsxProps` without `Bindable`, so tsc refuses a bound value. Only a layout-tier hole refuses a binding (`resolve.rs:291`) | negative only: `reflect_values.rs:134` (a bound `DirectionalLight color` hole fails); no test binds a reflect-tier prop | open |
+| Reflect-tier TSX props bound to a function (`<Projection value={() => …}>`) | idiomatic: typed `T \| (() => T)` and written through reflection as each value arrives; a layout-tier hole takes a value only | `reflect_values.rs` `a_bound_projection_follows_its_signal`, `an_opaque_hole_loads_and_a_bound_one_fails_naming_it`; tsc: `packages/bevy-ts/test/tsx/reflect.tsx` `Bound` | — |
 | Reflect-tier components from `Commands` (`Camera3d`, `Projection`, `DirectionalLight`, `Name`, `Disabled`) | idiomatic: `Class.of(json)` over `OP_INSERT_REFLECT`; `Name` and `Disabled`: no test | `reflect_scripts.rs` `an_orthographic_camera_from_ts`, `a_warm_sun_from_ts`, `a_bad_value_fails_its_command_naming_type_and_field` | — |
 | Reflect-tier components as query data | idiomatic; computed components read and refuse writes | `reflect_systems.rs` `a_camera_switches_to_orthographic_and_changed_sees_it`, `a_computed_component_refuses_a_write`, `ref_get_reads_reflected_values_and_reruns_on_change` | — |
 | `bevy.d.ts` reflect-tier types carry fields | idiomatic: generated `ReflectClass<…>` with `Holes<>` | `reflect_coverage.rs` `prebuilt_engine_has_no_unlisted_gap`, `codec_output_equals_read_for_every_covered_type` | — |
 | TS resources (`Res`, `ResMut`) | idiomatic | `surface.rs` `a_score_resource_is_written_in_place_and_kept_across_reloads` | — |
-| Rust resources (layout and reflect tier) | idiomatic: `Res`/`ResMut`/`Option<Res>` by path or short name; `GlobalsUniform` (render world) fails every run | `rust_resources.rs` `a_ts_write_to_a_bevy_resource_is_seen_by_rust_that_frame_and_changed_once`, `unusable_resources_fail_the_load_naming_the_system_and_resource`, `an_absent_resource_fails_the_run_and_an_optional_one_is_undefined`; `reflect_systems.rs` `res_mut_of_a_reflect_tier_resource_writes_back_with_change_detection` | — |
+| Rust resources (layout and reflect tier) | idiomatic: `Res`/`ResMut`/`Option<Res>` by path or short name; `GlobalsUniform` (render world) fails every run; a resource named as query data fails the load saying to take `Res<T>` | `rust_resources.rs` `a_ts_write_to_a_bevy_resource_is_seen_by_rust_that_frame_and_changed_once`, `unusable_resources_fail_the_load_naming_the_system_and_resource`, `an_absent_resource_fails_the_run_and_an_optional_one_is_undefined`; `reflect_systems.rs` `res_mut_of_a_reflect_tier_resource_writes_back_with_change_detection` | — |
 | Filters `With`, `Without`, `Changed`, `Added` | idiomatic | `systems.rs` `changed_and_added_filters_visit_only_matching_rows` | — |
 | Filters `Or`, `Spawned`, `Has`, `AnyOf`, `Ref`; sparse-set filters | idiomatic | `ecs_queries.rs` `or_mixes_archetype_and_row_terms`, `spawned_sees_new_entities_once`, `has_is_a_bool_and_never_filters`, `any_of_needs_one_part`, `ref_reports_ticks_and_refuses_writes`, `probe_disabled_and_sparse_filters` | — |
 | `Option`, `Entity`, `get`, `single`, `each`, iteration | idiomatic | `systems.rs` `option_entity_single_get_and_iteration` | — |
@@ -89,7 +89,7 @@ Bevy features with no owner. They are ranked at the end.
 |---|---|---|---|
 | `Transform` columns, `Vec3`/`Quat` helpers | idiomatic | `systems.rs` `a_vector_method_stores_the_tick_once` | — |
 | `Transform.lookingAt` | idiomatic, a value for `spawn` (not a method on a live column) | `reflect_scripts.rs` `looking_at_matches_bevy` | — |
-| `GlobalTransform` read; `TransformHelper` | partial: reflect-tier query data, read as 12 raw floats (`bevy.d.ts:1346`), no `translation` or `compute_transform`; writes refused. `TransformHelper` missing. `schedules.rs:302` `after_propagation_reads_this_frames_global_transform` is still `#[ignore]` on a stale reason and reads `g.translation`, which the type lacks | `reflect_systems.rs` `a_computed_component_refuses_a_write` (write only); no read test | open |
+| `GlobalTransform` read; `TransformHelper` | `GlobalTransform` idiomatic: `bevy-ts` ships it typed, with Bevy 0.20's read methods (`translation()`, `rotation()`, `scale()`, `computeTransform()`, directions, `transformPoint`, `reparentedTo`, ...); writes refused. `TransformHelper` missing | `reflect_systems.rs` `global_transform_reads_as_bevys`, `a_computed_component_refuses_a_write`; `schedules.rs` `after_propagation_reads_this_frames_global_transform` | `TransformHelper`: open |
 | `Res<Time>` | idiomatic, read-only (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`; `time.rs` `fixed_update_reads_timestep` | — |
 | `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | partial: every clock reads; writes fail the load | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame`, `clock_writes_fail_the_load` | script-time stage 2 |
 | `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: timers and Bevy's time conditions work; `commands.delayed()` missing (its blocker, writable-native-params, has landed) | `time.rs` `timer_matches_bevy`, `stopwatch_pauses`, `time_conditions_match_bevy`, `paused_follows_the_game_clock` | open (script-time lists stage 4 as not its task) |
@@ -177,37 +177,30 @@ Bevy features with no owner. They are ranked at the end.
 ## Docs and specs that claim more than the code
 
 The four from 2026-10-23 are fixed (rust-resources, script-time stage 1, reflect-coverage stages 1
-and 2). New ones:
+and 2), and the three from 2026-10-26 too (reflect-bindable: the ts-systems "Resources" line, the
+ignored after-propagation test, script-2d research's claim that reflect-path props cannot be bound).
+One is left, in another change's files:
 
-- `openspec/specs/ts-systems/spec.md:145` says a reflect-tier Rust resource fails the load. It
-  works since reflect-coverage stage 3 (`audio.rs` `global_volume_and_default_spatial_scale_from_ts`).
-- `crates/bevy-ts-cli/tests/it/schedules.rs:300` ignores its test "until reflect-coverage stage 3",
-  which has landed; the test reads `g.translation`, which `GlobalTransform` lacks.
 - `openspec/changes/script-2d/design.md` says reflect-path props cannot be bound. Only layout-tier
-  holes refuse (`bevy-ts-tsx/src/resolve.rs:291`); reflect-tier props bind at run time.
+  holes refuse; reflect-tier props bind (`reflect_values.rs` `a_bound_projection_follows_its_signal`).
 
 ## Open, ranked
 
 Missing or partial, no running owner, ranked by which a game team waits on.
 
-1. Bound reflect-tier props are refused by tsc (`jsx-runtime.d.ts:1028` lacks `Bindable`) though
-   the runtime binds them. Agent town (`<Projection value>`) and script-2d wait.
-2. `GlobalTransform` reads as 12 raw floats with no `translation`, and no test reads it; the
-   after-propagation test is ignored on a stale reason. Agent town waits (it reads it through BRP
-   with its own `component()` helper, `agent-town/test/fit-walk.mjs:111`).
-3. `PointerInteraction` under the headless pointer: untested; 3D mesh picking is tested only
+1. `PointerInteraction` under the headless pointer: untested; 3D mesh picking is tested only
    through observers. Agent town waits; its build is bisecting whether the empty value is ours.
-4. 2D in the editor: the editor camera is a `Camera3d`. script-2d waits and lists it as a non-goal.
-5. `commands.delayed()`: its blocker has landed; script-time disowns stage 4.
-6. `Gltf` asset fields unreadable (no reflection).
-7. A project's own Rust messages are not emitted to `native.d.ts`.
-8. `Image` pixel data from TS (procedural textures); custom vertex attributes and morph targets.
-9. `<mesh>` line shapes and rings.
-10. Hierarchy sibling-order helpers.
-11. `GamepadSettings` writes.
-12. UI materials (`MaterialNode`): ask-first, nobody has asked.
-13. The 18 `StandardMaterial` textures: upstream, Bevy's sampler limit; no issue filed.
-14. Test-only gaps, no code missing: `Window`/`CursorOptions` from TS, `Name`/`Disabled` from
+2. 2D in the editor: the editor camera is a `Camera3d`. script-2d waits and lists it as a non-goal.
+3. `commands.delayed()`: its blocker has landed; script-time disowns stage 4.
+4. `Gltf` asset fields unreadable (no reflection).
+5. A project's own Rust messages are not emitted to `native.d.ts`.
+6. `Image` pixel data from TS (procedural textures); custom vertex attributes and morph targets.
+7. `<mesh>` line shapes and rings.
+8. Hierarchy sibling-order helpers.
+9. `GamepadSettings` writes.
+10. UI materials (`MaterialNode`): ask-first, nobody has asked.
+11. The 18 `StandardMaterial` textures: upstream, Bevy's sampler limit; no issue filed.
+12. Test-only gaps, no code missing: `Window`/`CursorOptions` from TS, `Name`/`Disabled` from
     commands, the `Insert` observer, `RenderTarget`, `Hdr`, `CursorIcon`, render markers.
 
 Owned by a running change, so not ranked: heap fields (ts-heap-fields-2), `iterDescendants`

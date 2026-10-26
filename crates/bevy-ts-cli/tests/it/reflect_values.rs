@@ -91,6 +91,52 @@ fn an_orthographic_projection_in_tsx_and_its_reloads() {
     assert_eq!(o.scale, OrthographicProjection::default_3d().scale);
 }
 
+/// reflect-bindable: a reflect-tier prop bound to a signal follows it, each value written through
+/// reflection as it arrives; a bad bound value is reported naming the type's variants.
+#[test]
+fn a_bound_projection_follows_its_signal() {
+    let src = r#"import { app, signal, Update } from "bevy-ts";
+import type { Local, u32 } from "bevy-ts";
+import { Projection } from "bevy-ts/bevy";
+
+export const [zoomed, setZoomed] = signal(false);
+export function flip(n: Local<{ n: u32 }>) {
+  n.n += 1;
+  if (n.n === 3) setZoomed(true);
+  if (n.n === 6) setZoomed(false);
+}
+app.addSystems(Update, flip);
+app.scene("s", () => (
+  <entity name="it">
+    <Projection value={() => (zoomed() ? { Orthographic: {} } : { Perspective: {} })} />
+  </entity>
+));
+"#;
+    let (_, mut app) = setup("reflect-bound-projection", src);
+    let mut seen: Vec<&str> = Vec::new();
+    for _ in 0..30 {
+        app.update();
+        let v = match the::<Projection>(&mut app) {
+            Projection::Perspective(_) => "perspective",
+            Projection::Orthographic(_) => "orthographic",
+            Projection::Custom(_) => "custom",
+        };
+        if seen.last() != Some(&v) {
+            seen.push(v);
+        }
+        if seen.len() == 3 {
+            break;
+        }
+    }
+    assert_eq!(seen, ["perspective", "orthographic", "perspective"]);
+
+    let src = scene("Projection", "<Projection value={() => ({ Isometric: {} }) as any} />");
+    let (_, mut app) = setup("reflect-bound-bad", &src);
+    app.update();
+    let log = messages(&app).join("\n");
+    assert!(log.contains("Projection") && log.contains("Perspective, Orthographic, Custom"), "{log}");
+}
+
 #[test]
 fn a_bad_variant_or_key_fails_the_load_naming_it() {
     let e = errors("reflect-variant", &scene("Projection", "<Projection value={{ Isometric: {} } as any} />"));

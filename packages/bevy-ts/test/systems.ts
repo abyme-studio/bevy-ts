@@ -79,7 +79,7 @@ export function countGrunts(grunts: Query<[Grunt]>) {
 export function grounded(moving: Query<[Mut<Transform>], With<GlobalTransform>>) {
   moving.each((t) => t.translation.scale(0.99));
 }
-// @ts-expect-error  GlobalTransform has no native layout
+// @ts-expect-error  Bevy computes GlobalTransform, so a Mut row has nothing to read or write
 export function bad(q: Query<[Mut<GlobalTransform>]>) { q.each((g) => g.translation); }
 
 // ---------- 2. Ordering, run conditions, states ----------

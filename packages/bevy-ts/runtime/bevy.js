@@ -5,7 +5,7 @@
 // layout read from reflection; the rest are handles for With/Without filters and TSX.
 import { array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, reflectClass, rustAsset, rustEntityEvent, rustEvent, rustGeneric, rustMessage, u16, u32, u8, vec2, vec3, vec4 } from "bevy-ts";
 
-export { Time, Transform } from "bevy-ts";
+export { GlobalTransform, Time, Transform } from "bevy-ts";
 
 export class ManageAccessibilityUpdates extends nativeResource("ManageAccessibilityUpdates", { value: bool }) {}
 
@@ -455,8 +455,6 @@ export const TextSpan = reflectClass("TextSpan");
 export const UnderlineColor = reflectClass("UnderlineColor");
 
 export const DelayedCommandQueue = reflectClass("DelayedCommandQueue");
-
-export const GlobalTransform = reflectClass("GlobalTransform");
 
 export const TransformTreeChanged = reflectClass("TransformTreeChanged");
 

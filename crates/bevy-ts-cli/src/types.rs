@@ -730,7 +730,7 @@ fn element_props(registry: &TypeRegistry, reg: &TypeRegistration) -> String {
 /// `bevy-ts/bevy` for the prebuilt engine (native task 3.5): a JS module of handles and its
 /// declarations, generated from the engine's registry. Layout-tier components are column
 /// classes and layout-tier resources `Resource` classes; reflect-tier components are handles for
-/// filters and TSX, and reflect-tier resources handles for `Res` and `ResMut`. `Transform` and `Time` come from `bevy-ts` itself and are re-exported.
+/// filters and TSX, and reflect-tier resources handles for `Res` and `ResMut`. `Transform`, `GlobalTransform` and `Time` come from `bevy-ts` itself and are re-exported.
 pub fn emit_bevy(world: &World) -> (String, String) {
     let registry = world.resource::<AppTypeRegistry>().read();
     let native = world.resource::<NativeLayouts>();
@@ -740,20 +740,20 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name. Column classes have a native\n\
          // layout read from reflection; the rest are handles for With/Without filters and TSX.\n\
          import {{ array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, reflectClass, rustAsset, rustEntityEvent, rustEvent, rustGeneric, rustMessage, u16, u32, u8, vec2, vec3, vec4 }} from \"bevy-ts\";\n\n\
-         export {{ Time, Transform }} from \"bevy-ts\";\n"
+         export {{ GlobalTransform, Time, Transform }} from \"bevy-ts\";\n"
     );
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name.\n\
          import {{ Component, EntityEvent, Event, Message, Resource }} from \"bevy-ts\";\n\
          import type {{ AssetClass, AssetEventOf, AssetFields, AssetLoad, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, MeshData, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
-         export {{ Time, Transform }} from \"bevy-ts\";\n"
+         export {{ GlobalTransform, Time, Transform }} from \"bevy-ts\";\n"
     );
     let components = named(&registry, native, &claimed(world));
     let mut taken: BTreeSet<String> = components.iter().map(|(_, n, _)| n.clone()).collect();
-    taken.extend(["Time".to_string(), "Transform".to_string()]);
+    taken.extend(["GlobalTransform".to_string(), "Time".to_string(), "Transform".to_string()]);
     for (path, name, reg) in components {
-        // `Time` and its clocks are `bevy-ts`'s own (script-time).
-        if name == "Transform" || name == "Time" || path.starts_with("bevy_time::time::Time<") {
+        // `Time` and its clocks (script-time) and `GlobalTransform` (reflect-bindable) are `bevy-ts`'s own.
+        if name == "Transform" || name == "GlobalTransform" || name == "Time" || path.starts_with("bevy_time::time::Time<") {
             continue;
         }
         let (factory, base) = if is_resource(reg) { ("nativeResource", "Resource") } else { ("nativeComponent", "Component") };
@@ -826,8 +826,8 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                     let _ = writeln!(dts, "export declare const Name: ReflectClass<string, ReflectValue<string>> & {{ readonly __nameElement: true }};");
                 } else if let TypeInfo::Enum(_) = reg.type_info() {
                     // An enum component takes its whole value as `value`.
-                    let _ = writeln!(dts, "/** As an element, `<{name} value={{...}} />`: the whole value, in Bevy's shape; `{name}.of(...)` in commands. */");
-                    let _ = writeln!(dts, "export declare const {name}: ReflectClass<{name}Value, ReflectValue<{name}Value>> & {{ readonly tsxProps: {{ value?: {name}Value }} }};");
+                    let _ = writeln!(dts, "/** As an element, `<{name} value={{...}} />`: the whole value, in Bevy's shape, or `() => value` to bind it; `{name}.of(...)` in commands. */");
+                    let _ = writeln!(dts, "export declare const {name}: ReflectClass<{name}Value, ReflectValue<{name}Value>> & {{ readonly tsxProps: {{ value?: {name}Value | (() => {name}Value) }} }};");
                     let _ = writeln!(dts, "export type {name}Value = {};", ts_type(&registry, &path, 0));
                 } else if is_resource(reg) {
                     let _ = writeln!(dts, "/** `Res<{name}>` and `ResMut<{name}>` in systems, read and written through reflection. */");
