@@ -46,5 +46,5 @@ holds its proposal and research only.
 
 ## 7. Landing
 
-- [ ] 7.1 `openspec validate script-image-bytes --strict`
-- [ ] 7.2 Review, then archive and `abyme call land add`
+- [x] 7.1 `openspec validate script-image-bytes --strict`
+- [x] 7.2 Review, then archive and `abyme call land add`
