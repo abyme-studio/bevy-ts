@@ -1,6 +1,6 @@
 // Type tests for TSX elements: `deno check` (and `tsc -p test`) must pass, and every
 // `@ts-expect-error` must be an error.
-import { app, Component, SceneComponent, Startup } from "bevy-ts";
+import { app, Component, SceneComponent, sliced, Startup, tiled } from "bevy-ts";
 import type { Commands, f32, u8, Vec3 } from "bevy-ts";
 import { AnimationGraph, Transform, Name, PlayAnimation, WorldAssetRoot, Sprite, Anchor } from "bevy-ts/bevy";
 
@@ -220,6 +220,9 @@ export const Hero = () => (
   </entity>
 );
 export const TiledHero = () => <entity><Sprite image_mode={{ Tiled: { tile_x: true, stretch_value: 2 } }} /></entity>;
+// UI's helpers return the shape `image_mode` takes.
+export const SlicedPanel = () => <entity><Sprite image_mode={sliced({ border: 8 })} /></entity>;
+export const TiledPanel = () => <entity><Sprite image_mode={tiled({ y: false })} /></entity>;
 // @ts-expect-error  `custom_size` is a size, not a number
 export const BadSize = () => <entity><Sprite custom_size={32} /></entity>;
 // @ts-expect-error  `image_mode` is Bevy's enum, not a mode name

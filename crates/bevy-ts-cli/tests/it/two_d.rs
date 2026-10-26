@@ -22,7 +22,7 @@ use common::*;
 use std::sync::{Arc, Mutex};
 
 fn scene(body: &str) -> String {
-    format!("import {{ app }} from \"bevy-ts\";\nimport {{ Anchor, Camera2d, Projection, Sprite, TextureAtlasLayout }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
+    format!("import {{ app, sliced, tiled }} from \"bevy-ts\";\nimport {{ Anchor, Camera2d, Projection, Sprite, TextureAtlasLayout }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
 }
 
 /// Bevy's default plugins with no window, every camera drawing into [`Offscreen`], and the first
@@ -278,6 +278,26 @@ fn a_sprites_fields_reach_bevy_in_its_reflected_form_and_anchor_sets_the_anchor(
     assert!(matches!(s.image_mode, SpriteImageMode::Tiled { tile_x: true, tile_y: false, stretch_value } if stretch_value == 1.5), "{:?}", s.image_mode);
     let d = node(&mut app, "d");
     assert!(matches!(app.world().get::<Sprite>(d).unwrap().image_mode, SpriteImageMode::Auto));
+}
+
+#[test]
+fn ui_sliced_and_tiled_helpers_are_a_sprites_image_mode() {
+    let body = concat!(
+        "    <entity key=\"a\"><Sprite image_mode={sliced({ border: 8 })} /></entity>\n",
+        "    <entity key=\"b\"><Sprite image_mode={sliced({ border: { left: 1, right: 2, top: 3, bottom: 4 }, center: { tile: 2 } })} /></entity>\n",
+        "    <entity key=\"c\"><Sprite image_mode={tiled({ y: false, stretch: 1.5 })} /></entity>\n",
+    );
+    let mut app = setup("2d-sprite-helpers", body);
+    let a = node(&mut app, "a");
+    let SpriteImageMode::Sliced(slicer) = &app.world().get::<Sprite>(a).unwrap().image_mode else { panic!("sliced") };
+    assert_eq!((slicer.border.min_inset, slicer.border.max_inset), (Vec2::splat(8.0), Vec2::splat(8.0)), "an 8 px border on every side");
+    assert!(matches!(slicer.center_scale_mode, bevy::sprite::SliceScaleMode::Stretch));
+    let b = node(&mut app, "b");
+    let SpriteImageMode::Sliced(slicer) = &app.world().get::<Sprite>(b).unwrap().image_mode else { panic!("sliced") };
+    assert_eq!((slicer.border.min_inset, slicer.border.max_inset), (Vec2::new(1.0, 3.0), Vec2::new(2.0, 4.0)), "min is left and top");
+    assert!(matches!(slicer.center_scale_mode, bevy::sprite::SliceScaleMode::Tile { stretch_value } if stretch_value == 2.0));
+    let c = node(&mut app, "c");
+    assert!(matches!(app.world().get::<Sprite>(c).unwrap().image_mode, SpriteImageMode::Tiled { tile_x: true, tile_y: false, stretch_value } if stretch_value == 1.5));
 }
 
 #[test]

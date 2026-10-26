@@ -2,7 +2,7 @@
 // and a row of sprites: plain, tinted, flipped; click one to tint it. Beside them, frame 3 of a
 // sprite sheet, and a `<text2d>` counting the clicks. One world unit is one pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
-import { app, signal } from "bevy-ts";
+import { app, signal, sliced } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
 import { Camera2d, Sprite, TextureAtlasLayout, Transform } from "bevy-ts/bevy";
 
@@ -66,6 +66,11 @@ export const Shapes = () => (
     <entity key="frame" name="sheet frame 3">
       <Transform translation={[2.5 * STEP, -1.5 * STEP, 0]} />
       <Sprite image="sheet.png" custom_size={[96, 96]} texture_atlas={{ layout: sheet, index: 2 }} />
+    </entity>
+    {/* panel.png is 32 px with an 8 px border: sliced, its corners keep their size as it stretches. */}
+    <entity key="panel" name="sliced panel">
+      <Transform translation={[-2.5 * STEP, -1.5 * STEP, 0]} />
+      <Sprite image="panel.png" custom_size={[120, 72]} image_mode={sliced({ border: 8 })} />
     </entity>
     <entity key="clicks" name="clicks">
       {/* Above the shapes: inside a 540-pixel-high view. */}

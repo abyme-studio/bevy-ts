@@ -18,7 +18,7 @@
 - [x] 2.4 Check the generated `bevy.d.ts` types every `Sprite` prop; `elements.tsx` gains a wrong-shape `@ts-expect-error` (`custom_size={32}`)
 - [x] 2.5 Picking test (design 6): a `Camera2d` with an image target, a sprite with `custom_size` and `SpritePickingMode::BoundingBox`, `PointerInput` press and release over it: `onPointerClick` runs once with its entity (sprite done: `events.rs` `set` inserts Bevy 0.20's required `Pickable`, and the test spawns the window-less primary window `dev --headless` uses (mesh-picking 5a)); same for a `<mesh2d>` (after stage 1)
 - [x] 2.6 `examples/shapes-2d`: a sprite row (plain, tinted, flipped); click a sprite to tint it; `docs/2d.md` rows
-- [ ] 2.7 The sliced sprite in shapes-2d's row, `image_mode={sliced(...)}`, and its `docs/2d.md` row, once bevy-ui-coverage's helpers return Bevy's reflected shape
+- [x] 2.7 The sliced sprite in shapes-2d's row, `image_mode={sliced(...)}`, and its `docs/2d.md` row, once bevy-ui-coverage's helpers return Bevy's reflected shape
 
 ## 3. Stage 3: atlases and 2D text (after reflect-coverage stage 1 and bevy-ui-coverage stages 2 and 7)
 
