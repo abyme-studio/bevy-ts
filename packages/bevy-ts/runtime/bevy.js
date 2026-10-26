@@ -13,7 +13,16 @@ export const AnimatedBy = reflectClass("AnimatedBy");
 
 export const AnimationPlayer = reflectClass("AnimationPlayer");
 
-export const AnimationTargetId = reflectClass("AnimationTargetId");
+/**
+ * Bevy's `AnimationTargetId`, and how TS names one: `fromNames(names)`, the names from the
+ * animation root down to the target, which Rust hashes with Bevy's `from_names`; `fromName(name)`;
+ * `root`, the animation root itself. A UUID string names one too.
+ */
+export const AnimationTargetId = Object.assign(rustComponent("AnimationTargetId"), {
+  fromNames: (names) => Object.freeze({ names: Object.freeze([...names].map(String)) }),
+  fromName: (name) => Object.freeze({ names: Object.freeze([String(name)]) }),
+  root: Object.freeze({ names: Object.freeze([]) }),
+});
 
 export const AnimationGraphHandle = reflectClass("AnimationGraphHandle");
 
@@ -623,9 +632,352 @@ export const DynamicWorldRoot = reflectClass("DynamicWorldRoot");
 
 export const WorldAssetRoot = reflectClass("WorldAssetRoot");
 
-export const AnimationClip = asset("bevy_animation::AnimationClip");
+/**
+ * Bevy's `AnimationClip` as a builder, and the curves that go in it (change `animation-control`,
+ * design 16): Bevy's constructors and adaptors by their names, each a JSON value Rust's hand-map
+ * turns into Bevy's own curve. Building makes no host call. A clip is an asset value: it goes in
+ * `PlayAnimation.clip`, a graph's `addClip`, `assets.add(clip)` and `assets.set(ref, clip)`.
+ */
+const CLIP_PATH = "bevy_animation::AnimationClip";
 
-export const AnimationGraph = asset("bevy_animation::graph::AnimationGraph", { of: false });
+/** Bevy's `interval(start, end)`: `null` or `Infinity` for an unbounded end. */
+export function interval(start, end) {
+  const n = (x) => (x === null || !Number.isFinite(x) ? null : x);
+  if (start !== null && end !== null && Number.isFinite(start) && Number.isFinite(end) && end < start) throw new RangeError(`interval(${start}, ${end}): end is before start`);
+  return Object.freeze([n(start), n(end)]);
+}
+
+/** Bevy's `animated_field!(Component::field)`: a reflected component's top-level field. */
+export function animatedField(component, field) {
+  const path = component?.typePath ?? component?.path ?? component?.componentName;
+  if (typeof path !== "string") throw new TypeError("animatedField(Component, field): Component is a component class (Transform)");
+  return Object.freeze({ component: path, field: String(field) });
+}
+
+/** A curve: Bevy's constructor or adaptor, as the JSON Rust builds it from. */
+class Curve {
+  constructor(json) {
+    this.json = json;
+  }
+  toJSON() {
+    return this.json;
+  }
+  /** Bevy's `reparametrize_linear`: this curve over `domain` (how an ease over 0..1 becomes N seconds). */
+  reparametrizeLinear(domain) {
+    return new Curve({ ReparametrizeLinear: [this.json, domain] });
+  }
+  reverse() {
+    return new Curve({ Reverse: this.json });
+  }
+  /** Plays the curve `count` more times after the first. */
+  repeat(count) {
+    return new Curve({ Repeat: [this.json, count] });
+  }
+  /** Repeats without end: a clip of it needs `setDuration`. */
+  forever() {
+    return new Curve({ Forever: this.json });
+  }
+  /** There and back. */
+  pingPong() {
+    return new Curve({ PingPong: this.json });
+  }
+  /** This curve, then `other`. */
+  chain(other) {
+    return new Curve({ Chain: [this.json, other.json] });
+  }
+  /** This curve, then `other` offset to start where this one ends (vector values). */
+  chainContinue(other) {
+    return new Curve({ ChainContinue: [this.json, other.json] });
+  }
+}
+
+export class EasingCurve extends Curve {
+  constructor(start, end, ease) {
+    super({ EasingCurve: { start, end, ease } });
+  }
+}
+export class ConstantCurve extends Curve {
+  constructor(domain, value) {
+    super({ ConstantCurve: { domain, value } });
+  }
+}
+export class SampleAutoCurve extends Curve {
+  constructor(domain, samples) {
+    super({ SampleAutoCurve: { domain, samples: [...samples] } });
+  }
+}
+const timed = (name) =>
+  class extends Curve {
+    constructor(keyframes) {
+      super({ [name]: [...keyframes].map(([t, v]) => [t, v]) });
+    }
+  };
+export const UnevenSampleAutoCurve = timed("UnevenSampleAutoCurve");
+export const AnimatableKeyframeCurve = timed("AnimatableKeyframeCurve");
+export const SteppedKeyframeCurve = timed("SteppedKeyframeCurve");
+export class CubicKeyframeCurve extends Curve {
+  /** `values` holds three per time: in-tangent, value, out-tangent. */
+  constructor(times, values) {
+    super({ CubicKeyframeCurve: { times: [...times], values: [...values] } });
+  }
+}
+export class CubicRotationCurve extends Curve {
+  constructor(times, values) {
+    super({ CubicRotationCurve: { times: [...times], values: [...values] } });
+  }
+}
+
+/** A spline: `toCurve()` and `toCurveCyclic()` make its curve, as Bevy's generators do. */
+class Spline {
+  constructor(json) {
+    this.json = json;
+  }
+  toCurve() {
+    return new Curve({ ToCurve: this.json });
+  }
+  toCurveCyclic() {
+    return new Curve({ ToCurveCyclic: this.json });
+  }
+}
+export class CubicBezier extends Spline {
+  /** Each segment is four control points. */
+  constructor(controlPoints) {
+    super({ CubicBezier: { control_points: [...controlPoints] } });
+  }
+}
+export class CubicHermite extends Spline {
+  constructor(controlPoints, tangents) {
+    super({ CubicHermite: { control_points: [...controlPoints], tangents: [...tangents] } });
+  }
+}
+export class CubicCardinalSpline extends Spline {
+  constructor(tension, controlPoints) {
+    super({ CubicCardinalSpline: { tension, control_points: [...controlPoints] } });
+  }
+  /** Bevy's `new_catmull_rom`: tension 0.5. */
+  static newCatmullRom(controlPoints) {
+    return new CubicCardinalSpline(0.5, controlPoints);
+  }
+}
+export class CubicBSpline extends Spline {
+  constructor(controlPoints) {
+    super({ CubicBSpline: { control_points: [...controlPoints] } });
+  }
+}
+export class CubicNurbs extends Spline {
+  constructor(controlPoints, weights = null, knots = null) {
+    super({ CubicNurbs: { control_points: [...controlPoints], weights: weights && [...weights], knots: knots && [...knots] } });
+  }
+}
+export class LinearSpline extends Spline {
+  constructor(points) {
+    super({ LinearSpline: { points: [...points] } });
+  }
+}
+
+/** Bevy's `AnimatableCurve::new(animated_field!(...), curve)`. */
+export class AnimatableCurve {
+  constructor(property, curve) {
+    this.property = property;
+    this.curve = curve;
+  }
+  toJSON() {
+    return { property: this.property, curve: this.curve.json };
+  }
+}
+
+export class AnimationClip {
+  static typePath = CLIP_PATH;
+  /** `AnimationClip.of(props)`: an asset value from the clip's JSON. */
+  static of(props = {}) {
+    return Object.freeze({ $of: CLIP_PATH, props });
+  }
+
+  /** An empty clip (Bevy's `AnimationClip::default`). */
+  constructor() {
+    this.$of = CLIP_PATH;
+    this.props = { curves: [] };
+  }
+  /** Adds `curve` (an `AnimatableCurve`) on `target`; the duration grows to the curve's end. */
+  addCurveToTarget(target, curve) {
+    this.props.curves.push([target, curve.toJSON()]);
+    return this;
+  }
+  /** Fixes the clip's length in seconds; a clip with an unbounded curve needs one. */
+  setDuration(secs) {
+    this.props.duration = secs;
+    return this;
+  }
+  /** The length set with `setDuration`; `undefined` until then (Rust takes the longest curve). */
+  get duration() {
+    return this.props.duration;
+  }
+}
+
+/**
+ * Bevy's `AnimationGraph` as a builder (change `animation-control`, design 10): Bevy's methods,
+ * camelCased, over the JSON Rust's hand-map reads and writes (Bevy's `SerializedAnimationGraph`
+ * shape, `mask_groups` as `[target, mask]` pairs). Building makes no host call. A graph is an
+ * asset value: it goes in a `Handle<AnimationGraph>` slot (`<PlayAnimation graph={g} />`),
+ * `assets.add(g)` and `assets.set(ref, g)`. Node numbers are this graph's own, as Bevy returns them.
+ */
+const GRAPH_PATH = "bevy_animation::graph::AnimationGraph";
+
+// Masks are u64 bitfields in Rust, numbers here: exact up to bit 52.
+const bits = (f) => (a, b) => Number(BigInt.asUintN(64, f(BigInt(a), BigInt(b))));
+const or = bits((a, b) => a | b);
+const andNot = bits((a, b) => a & ~b);
+const bit = (group) => {
+  if (!Number.isInteger(group) || group < 0 || group > 52) throw new RangeError(`a mask group is a whole number from 0 to 52, not ${group}`);
+  return 2 ** group;
+};
+const sameTarget = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+export class AnimationGraph {
+  static typePath = GRAPH_PATH;
+
+  /** A graph with one blend node, its root (Bevy's `AnimationGraph::new`). */
+  constructor() {
+    this.$of = GRAPH_PATH;
+    this.props = {
+      graph: { nodes: [{ node_type: "Blend", mask: 0, weight: 1 }], node_holes: [], edge_property: "directed", edges: [] },
+      root: 0,
+      mask_groups: [],
+    };
+  }
+
+  /** A graph playing one clip under its root: `[graph, node]`. */
+  static fromClip(clip) {
+    const g = new AnimationGraph();
+    return [g, g.addClip(clip, 1, g.root)];
+  }
+
+  /** A graph playing each clip under its root: `[graph, nodes]`. */
+  static fromClips(clips) {
+    const g = new AnimationGraph();
+    return [g, g.addClips(clips, 1, g.root)];
+  }
+
+  get root() {
+    return this.props.root;
+  }
+  set root(n) {
+    this.#node(n);
+    this.props.root = n;
+  }
+  get graph() {
+    return this.props.graph;
+  }
+  get mask_groups() {
+    return this.props.mask_groups;
+  }
+
+  #add(node_type, mask, weight, parent) {
+    this.#node(parent);
+    const nodes = this.props.graph.nodes;
+    nodes.push({ node_type, mask, weight });
+    const n = nodes.length - 1;
+    this.props.graph.edges.push([parent, n, null]);
+    return n;
+  }
+
+  #node(n) {
+    if (!Number.isInteger(n) || n < 0 || n >= this.props.graph.nodes.length) throw new RangeError(`node ${n} is not in this graph`);
+    return n;
+  }
+
+  /** A clip node under `parent`; `clip` is an asset path (`"models/Fox.glb#Animation0"`), an `AnimationClip` ref or value. */
+  addClip(clip, weight, parent) {
+    return this.#add({ Clip: clip }, 0, weight, parent);
+  }
+  addClipWithMask(clip, mask, weight, parent) {
+    return this.#add({ Clip: clip }, mask, weight, parent);
+  }
+  addClips(clips, weight, parent) {
+    return [...clips].map((c) => this.addClip(c, weight, parent));
+  }
+  /** A blend node: its children's weights are normalized to 1. */
+  addBlend(weight, parent) {
+    return this.#add("Blend", 0, weight, parent);
+  }
+  addBlendWithMask(mask, weight, parent) {
+    return this.#add("Blend", mask, weight, parent);
+  }
+  /** An additive node: each child is added, scaled by its weight. */
+  addAdditiveBlend(weight, parent) {
+    return this.#add("Add", 0, weight, parent);
+  }
+  addAdditiveBlendWithMask(mask, weight, parent) {
+    return this.#add("Add", mask, weight, parent);
+  }
+  /** Makes `to` a child of `from` too. */
+  addEdge(from, to) {
+    this.props.graph.edges.push([this.#node(from), this.#node(to), null]);
+  }
+  /** Removes the edge from `from` to `to`; false when there was none. */
+  removeEdge(from, to) {
+    const edges = this.props.graph.edges;
+    const i = edges.findIndex(([a, b]) => a === from && b === to);
+    if (i < 0) return false;
+    edges.splice(i, 1);
+    return true;
+  }
+  /** A live view of node `n`: `weight` and `mask` write through, as Bevy's `get_mut`; `undefined` when there is no such node. */
+  get(n) {
+    const node = this.props.graph.nodes[n];
+    return Number.isInteger(n) && node ? new AnimationGraphNode(node) : undefined;
+  }
+  /** Every node number, in order. */
+  nodes() {
+    return this.props.graph.nodes.map((_, i) => i);
+  }
+  /** Puts `target` (`AnimationTargetId.fromNames(...)` or a UUID) in mask group `group`. */
+  addTargetToMaskGroup(target, group) {
+    const groups = this.props.mask_groups;
+    const entry = groups.find(([t]) => sameTarget(t, target));
+    if (entry) entry[1] = or(entry[1], bit(group));
+    else groups.push([target, bit(group)]);
+  }
+}
+
+/** One node of a graph, as `AnimationGraph.get(n)` gives it. */
+class AnimationGraphNode {
+  #node;
+  constructor(node) {
+    this.#node = node;
+  }
+  /** `"Blend"`, `"Add"` or `{ Clip: clip }`. */
+  get node_type() {
+    return this.#node.node_type;
+  }
+  get weight() {
+    return this.#node.weight;
+  }
+  set weight(w) {
+    this.#node.weight = w;
+  }
+  /** The mask groups this node and its descendants do not animate, one bit each. */
+  get mask() {
+    return this.#node.mask;
+  }
+  set mask(m) {
+    this.#node.mask = m;
+  }
+  addMask(mask) {
+    this.#node.mask = or(this.#node.mask, mask);
+    return this;
+  }
+  removeMask(mask) {
+    this.#node.mask = andNot(this.#node.mask, mask);
+    return this;
+  }
+  addMaskGroup(group) {
+    return this.addMask(bit(group));
+  }
+  removeMaskGroup(group) {
+    return this.removeMask(bit(group));
+  }
+}
 
 export const Image = asset("bevy_image::image::Image", { load: true });
 

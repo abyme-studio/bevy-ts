@@ -26,6 +26,7 @@ descendants, insert an `AnimationGraphHandle` and `AnimationTransitions`, then
 | `PlayAnimation` | Default | What Rust does |
 | --- | --- | --- |
 | `clip: Handle<AnimationClip>` | none | an asset path with a label, `"models/Fox.glb#Animation2"`; a node in the shared graph |
+| `graph: Handle<AnimationGraph>` | none | a graph of the root's own, played in place of `clip` ([below](#blending-clips-a-graph)) |
 | `repeat: RepeatAnimation` | `Forever` | `ActiveAnimation::set_repeat`: `Never`, `Count(n)` or `Forever` |
 | `speed: f32` | `1.0` | `ActiveAnimation::set_speed`; negative plays backwards |
 | `transition_secs: f32` | `0.25` | the cross-fade when `clip` changes, through `AnimationTransitions::play` |
@@ -116,6 +117,156 @@ export function offsets(anims: Animations, villagers: Query<[Entity, PlayAnimati
 }
 ```
 
+## Blending clips: a graph
+
+A root with a `graph` plays every clip node of that `AnimationGraph`, blended by the graph's
+weights and masks, in place of `clip`. `bevy-ts/bevy`'s `AnimationGraph` is Bevy's builder,
+camelCased, building the graph as a TS value with no host call:
+
+```tsx
+import { AnimationGraph, AnimationTargetId, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
+
+const g = new AnimationGraph();
+const blend = g.addBlend(1, g.root);
+const walk = g.addClip("models/Fox.glb#Animation1", 0.5, blend);
+g.addClip("models/Fox.glb#Animation2", 0.5, blend);
+
+<entity name="fox">
+  <WorldAssetRoot value="models/Fox.glb#Scene0" />
+  <PlayAnimation graph={g} />
+</entity>
+```
+
+- Each `add*` returns the new node's number in this graph, as Bevy returns its
+  `AnimationNodeIndex`; the next `add*` takes it as `parent`. The numbers mean nothing outside the
+  graph value. `addBlend` normalizes its children's weights; `addAdditiveBlend` adds each child,
+  scaled by its weight, onto what is below it. `addClips`, the `*WithMask` forms, `addEdge`,
+  `removeEdge`, `nodes()` and the statics `AnimationGraph.fromClip(clip)` and `fromClips(clips)`
+  (each returning the graph and its node or nodes) are Bevy's.
+- `g.get(n)` is a live view of a node: its `weight` and `mask` write through, and it has
+  `addMask`, `removeMask`, `addMaskGroup` and `removeMaskGroup`.
+- A clip is an asset path with a label, or an `AnimationClip` ref or value.
+- The graph is an asset value: it goes in `graph={g}`, `assets.add(g)` and `assets.set(ref, g)`
+  ([assets](assets.md)). `new AnimationGraph()` builds an `AnimationGraphBuilder`; the type
+  `AnimationGraph` is the JSON Rust reads and writes, which `assets.get(ref)` returns.
+- `graph` also takes a `.animgraph.ron` path, Bevy's graph file
+  (`graph="anims/fox_blend.animgraph.ron"`, or a level's `PlayAnimation { graph: "..." }`), with no
+  TS involved.
+
+Rust gives the root's players that graph's handle in place of the shared graph's, and plays every
+clip node with the root's `repeat` and `speed`. `clip` and `transition_secs` go unused: a root with
+both `clip` and `graph` warns once and plays the graph. A changed `graph` stops the old clips and
+plays the new graph's from 0, with no cross-fade; clearing it returns the root to its `clip`.
+Parking, `cull` and `Animations` hold as for any root: `status` reads the graph's first clip node,
+and `seek`, `rewind` and `replay` act on every clip it plays.
+
+**Live edits.** Bevy reads a graph's weights and masks from the asset each frame, so a TS system
+reweights by editing its builder and setting the asset; no clip restarts. A new clip node starts,
+and a node that is no longer a clip stops:
+
+```ts
+const ref = assets.add(g);  // <PlayAnimation graph={ref} />
+export function lean(anims: Animations) {
+  g.get(walk)!.weight = 0.2;
+  assets.set(ref, g);
+}
+```
+
+Each `set` is a reflected write and a rebuild of Bevy's evaluation cache for that graph, so a set
+every frame costs that every frame: set when the weight changes.
+
+**Masks.** A mask group is a set of bones; a node whose `mask` has a group's bit animates none of
+that group's bones. Bevy keys a bone by a hash of the names from the animation root down to it,
+which TS cannot compute, so TS names the bone and Rust hashes it with Bevy's `from_names`:
+
+```ts
+const leg = AnimationTargetId.fromNames(["root", "_rootJoint", "b_Root_00", "b_Hip_01", "b_LeftLeg01_015"]);
+g.addTargetToMaskGroup(leg, 0);
+g.addClipWithMask("models/Fox.glb#Animation2", 0b1, 1, g.root);  // runs, leg still
+```
+
+A target is `AnimationTargetId.fromNames(names)`, `fromName(name)`, `AnimationTargetId.root` (the
+animation root itself), or a UUID string; reads give UUIDs. Masks are numbers, exact up to group
+52 (Bevy allows 64).
+
+The graph's JSON is Bevy's `SerializedAnimationGraph` (the `.animgraph.ron` shape) with
+`mask_groups` as `[target, mask]` pairs: `{ graph: { nodes: [{ node_type, mask, weight }],
+node_holes: [], edge_property: "directed", edges: [[from, to, null]] }, root, mask_groups }`, a
+`node_type` being `"Blend"`, `"Add"` or `{ Clip: path }`. `assets.get(ref)` reads it back; a
+clip with no path and no ref fails naming its node.
+
+## Tweens: a clip built in TS
+
+A clip need not come from a file. `new AnimationClip()` builds one from Bevy's own curves, and
+`PlayAnimation` plays it on any entity, with or without a scene. Bevy samples the curves each
+frame; no JS runs while it plays.
+
+```tsx
+import { Transform } from "bevy-ts";
+import { AnimatableCurve, animatedField, AnimationClip, AnimationTargetId, EasingCurve, interval, PlayAnimation } from "bevy-ts/bevy";
+
+const rise = new EasingCurve([0, 0, 0], [0, 2, 0], "CubicOut").reparametrizeLinear(interval(0, 0.5));
+const clip = new AnimationClip().addCurveToTarget(AnimationTargetId.root, new AnimatableCurve(animatedField(Transform, "translation"), rise));
+
+<entity>
+  <Transform />
+  <PlayAnimation clip={clip} repeat="Never" />
+</entity>
+```
+
+The four common tweens:
+
+- **Move**: an `EasingCurve` on `Transform.translation`, as above.
+- **Turn**: an `EasingCurve` of two quaternions on `Transform.rotation` (`[x, y, z, w]`); Bevy
+  slerps the short way round.
+- **Pulse**: `.pingPong()` on a curve of `Transform.scale`, with `repeat="Forever"`.
+- **Fade**: a curve of `MaterialAlpha.alpha` (bevy-ts-material,
+  [docs/materials.md](materials.md)). The fade draws the alpha sampled that frame.
+
+`animatedField(C, field)` is Bevy's `animated_field!`: any reflected component's top-level field
+whose type Bevy can animate (`f32`, `f64`, `bool`, the `Vec`, `DVec` and `Quat` types, `Rot2`,
+`Transform`, and the linear colour types). A field of another type fails `tsc`, and Rust refuses
+it naming the field and its type. A newtype component's one field is `value`. A `Vec2` field is
+a `Vec3` view in TS whose `z` reads 0, so its values are `[x, y, 0]` (`[x, y]` works too, and a
+`z` that is not 0 is refused). Two gaps in `tsc`: an integer field (`u32`, `i32`) passes as a
+number and Rust refuses it at the write; a `Rot2` field has no TS type, so it cannot be named. A script rotation
+on a bone blends with the glTF clips on the same bone, since both are the same Bevy field.
+
+**Curves.** Bevy's constructors by their names: `EasingCurve(start, end, ease)`,
+`ConstantCurve(domain, value)`, `SampleAutoCurve(domain, samples)`,
+`UnevenSampleAutoCurve(keyframes)`, `AnimatableKeyframeCurve(keyframes)`,
+`SteppedKeyframeCurve(keyframes)`, `CubicKeyframeCurve(times, values)`,
+`CubicRotationCurve(times, values)`; the splines `CubicBezier`, `CubicHermite`,
+`CubicCardinalSpline` (and `newCatmullRom`), `CubicBSpline`, `CubicNurbs` and `LinearSpline`, each
+with `toCurve()` and `toCurveCyclic()`. The adaptors: `reparametrizeLinear(domain)`, `reverse()`,
+`repeat(n)`, `forever()`, `pingPong()`, `chain(other)`, `chainContinue(other)`. `interval(start,
+end)` is a domain; `null` or `Infinity` is an unbounded end. An ease is one of Bevy's
+`EaseFunction` names (`"CubicOut"`, `{ Steps: [4, "End"] }`, `{ Elastic: 2 }`).
+
+Bevy bounds some constructors by the value type, and Rust refuses the rest naming the type:
+`EasingCurve` takes numbers, vectors, `Quat` and `Rot2`, not colours (Bevy has no `Ease` for
+them: use `SampleAutoCurve` or a keyframe curve); the cubic curves and splines take numbers,
+`f32` vectors and colours; `CubicRotationCurve` takes `Quat` only.
+
+**Targets.** `AnimationTargetId.root` is the entity carrying `PlayAnimation`;
+`fromNames([...])` is a descendant by its `Name` path from it. On an entity with no scene, Rust
+makes the entity its own `AnimationPlayer` and gives it and its named descendants their target
+ids, the frame it starts: a descendant counts when every entity between it and the root is named
+too. A child named under an unnamed one, or added later, is not a target; give it its
+`AnimationTargetId` (`fromNames`) and `AnimatedBy` in Rust.
+
+**Duration.** A clip lasts as long as its longest curve. A curve with no end (`forever()`, an
+unbounded domain) needs `clip.setDuration(secs)`; without one the clip is refused naming the curve.
+
+The clip is an asset value: `assets.add(clip)` gives a ref, `assets.set(ref, clip)` replaces its
+curves (a clip's events, Rust-only, go with them), and a graph's `addClip` takes it. `assets.get(ref)` reads back the JSON written; a clip
+from a file reads as `{ duration, curves: null }` (its curves have no JSON form), and writing
+`curves: null` keeps them.
+
+**Material colours cannot be tweened.** A clip writes components only, and a colour lives in a
+material asset (`StandardMaterial.base_color`). Fade through `MaterialAlpha`, or set the colour
+from a TS system with `assets.set`.
+
 ## Placing it
 
 - **TSX**: as above. Every prop can be bound, so a signal switches the clip:
@@ -132,8 +283,8 @@ export function offsets(anims: Animations, villagers: Query<[Entity, PlayAnimati
 
 - **The editor** lists it among the components it can add, and edits its fields in the inspector.
 - **A TS system** reads and writes `speed`, `transition_secs`, `paused` and `cull` as columns
-  (`Query<[Mut<PlayAnimation>]>`); `clip` holds a handle and `repeat` an enum with data, so only
-  TSX, a level or the editor set them.
+  (`Query<[Mut<PlayAnimation>]>`); `clip` and `graph` hold handles and `repeat` an enum with
+  data, so only TSX, a level or the editor set them.
 
 A click on an animated model reaches a handler on its root: `onPointerClick` on the entity with
 `WorldAssetRoot` fires for any of the scene's meshes ([docs/picking.md](picking.md), "Bubbling").
@@ -150,8 +301,10 @@ entity, the scene and the clip. A clip path that fails to load (a wrong label) i
 
 ## Every control, and its TS path
 
-Every public item of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation` and `AnimationTransitions`.
-No TS name takes a node index.
+Every public item of Bevy 0.20's `AnimationPlayer`, `ActiveAnimation`, `AnimationTransitions`,
+`AnimationGraph`, `AnimationGraphNode`, `AnimationClip` and `AnimationTargetId`, the graph's loader
+and serialized types, and the curves a clip holds. No TS name takes an index into the shared graph; a TS-built graph's own node
+numbers are the only node indices TS sees.
 
 | Bevy item | TS name | Test |
 | --- | --- | --- |
@@ -170,14 +323,43 @@ No TS name takes a node index.
 | `ActiveAnimation::set_weight` | Rust only: `AnimationTransitions` owns weights during a fade | – |
 | `AnimationPlayer::is_playing_animation`, `animation`, `animation_mut`, `playing_animations`, `playing_animations_mut` | Rust only: node-keyed; `status()` reads the root's clip | – |
 | `AnimationTransitions::new`, `get_main_animation`, its `transitions` | Rust only: node-keyed; `status().weight` shows a fade | – |
-| `AnimationGraphHandle` on a player | Rust only: parking | `park.rs::culled_roots_park_off_screen` |
+| `AnimationGraphHandle` on a player | `PlayAnimation.graph` chooses it; parking removes it | `park.rs::culled_roots_park_off_screen`, `graph.rs::a_parked_graph_root_wakes_with_its_graph` |
 | `AnimationClip::duration` | `status().duration`, `loaded` | `animation.rs::animations_status` |
+| `AnimationGraph::new`, `Default` | `new AnimationGraph()` | `animation-graph.test.ts` |
+| `AnimationGraph::from_clip`, `from_clips` | `AnimationGraph.fromClip`, `fromClips` (the graph and its node or nodes) | `animation-graph.test.ts` |
+| `AnimationGraph::add_clip`, `add_clip_with_mask`, `add_clips` | `addClip`, `addClipWithMask`, `addClips` | `graph.rs::a_graph_blends_two_clips`, `graph.rs::a_mask_keeps_a_bone_still`, `animation.rs::a_ts_built_graph_blends` |
+| `AnimationGraph::add_blend`, `add_blend_with_mask` | `addBlend`, `addBlendWithMask` | `graph.rs::a_graph_blends_two_clips` |
+| `AnimationGraph::add_additive_blend`, `add_additive_blend_with_mask` | `addAdditiveBlend`, `addAdditiveBlendWithMask` | `graph.rs::an_additive_blend_adds` |
+| `AnimationGraph::add_edge`, `remove_edge` | `addEdge`, `removeEdge` | `animation-graph.test.ts`, `graph.rs::an_edited_graph_plays_new_clips` |
+| `AnimationGraph::get`, `get_mut`, `Index`, `IndexMut`, `nodes` | `get(node)` (a live node view), `nodes()` | `animation-graph.test.ts` |
+| `AnimationGraph.root`, `.graph` | `root`; `graph` is the hand-mapped JSON the builder holds | `bevy-ts-animation/src/hand.rs::animation_graph_round_trips` |
+| `AnimationGraph.mask_groups`, `add_target_to_mask_group` | `mask_groups`, `addTargetToMaskGroup(target, group)` | `graph.rs::a_mask_keeps_a_bone_still` |
+| `AnimationGraphNode.node_type`, `weight`, `mask`, `add_mask`, `remove_mask`, `add_mask_group`, `remove_mask_group` | the node view's `node_type`, `weight`, `mask`, `addMask`, `removeMask`, `addMaskGroup`, `removeMaskGroup` | `animation-graph.test.ts`, `animation.rs::a_ts_graph_reweights_live` |
+| `AnimationNodeType::Clip`, `Blend`, `Add` | `{ Clip: path }`, `"Blend"`, `"Add"` | `bevy-ts-animation/src/hand.rs::animation_graph_round_trips` |
+| `AnimationTargetId::from_names`, `from_name`, its UUID | `AnimationTargetId.fromNames(names)`, `fromName(name)`, or a UUID string | `graph.rs::a_mask_keeps_a_bone_still`, `animation-graph.test.ts` |
+| `AnimationGraphAssetLoader` (`.animgraph.ron`, `.animgraph`) | `PlayAnimation.graph` as an asset path | `graph.rs::a_ron_graph_plays` |
+| `SerializedAnimationGraph`, `SerializedAnimationGraphNode`, `SerializedAnimationNodeType` | Rust only: the shape the hand-map reads and writes | `bevy-ts-animation/src/hand.rs::animation_graph_round_trips` |
+| `AnimationGraph::save` | Rust only: writes a file; `assets.get` reads the value | – |
+| `ThreadedAnimationGraph`, `ThreadedAnimationGraphs`, `ThreadedAnimationSubgraph` | Rust only: Bevy's evaluation cache | – |
+| `AnimationClip::default`, `add_curve_to_target`, `set_duration`, `duration` | `new AnimationClip()`, `addCurveToTarget`, `setDuration`, `duration` | `animation-clip.test.ts`, `bevy-ts-animation/src/hand.rs::animation_clip_round_trips` |
+| `AnimationClip::curves`, `curves_for_target`, `add_variable_curve_to_target` | Rust only: boxed curves with no JSON form; a read gives the JSON written | `bevy-ts-animation/src/hand.rs::animation_clip_round_trips` |
+| `AnimationClip::add_event`, `add_event_to_target`, `add_event_fn`, `AnimationEvent` | Rust only (below) | – |
+| `AnimatableCurve::new`, `animated_field!`, `AnimatableProperty` | `new AnimatableCurve(animatedField(C, field), curve)` | `clip.rs::a_tween_translates_with_an_ease`, `clip.rs::a_wrong_field_fails` |
+| `AnimatedField` evaluator ids | the same id as `animated_field!`, so script and glTF curves blend | `clip.rs::a_script_rotation_blends_with_a_gltf_clip` |
+| `EasingCurve`, `EaseFunction` | `EasingCurve`, an ease name | `clip.rs::every_ease_samples_as_bevy` |
+| `ConstantCurve`, `SampleAutoCurve`, `UnevenSampleAutoCurve`, `AnimatableKeyframeCurve`, `SteppedKeyframeCurve`, `CubicKeyframeCurve`, `CubicRotationCurve` | the same names | `clip.rs::every_curve_samples_as_bevy` |
+| `CubicBezier`, `CubicHermite`, `CubicCardinalSpline`, `CubicBSpline`, `CubicNurbs`, `LinearSpline`, `to_curve`, `to_curve_cyclic` | the same names, `toCurve`, `toCurveCyclic` | `clip.rs::every_curve_samples_as_bevy` |
+| `Curve::reparametrize_linear`, `reverse`, `repeat`, `forever`, `ping_pong`, `chain`, `chain_continue`, `interval` | `reparametrizeLinear`, `reverse`, `repeat`, `forever`, `pingPong`, `chain`, `chainContinue`, `interval` | `clip.rs::scale_ping_pongs`, `clip.rs::every_curve_samples_as_bevy` |
+| `Curve::map`, `zip`, `graph`, `reparametrize` and the other closure adaptors | Rust only: they take Rust closures | – |
+| `AnimationTargetId` on a plain entity, `AnimatedBy` | `AnimationTargetId.root`, `fromNames`; Rust adds both | `clip.rs::a_named_child_moves_alone`, `animation.rs::a_tsx_tween_moves_with_no_ts_per_frame` |
 
 ## When to write Rust instead
 
-`PlayAnimation` plays one clip at a time. Blend trees, masks, several clips at once, events at a
-clip's end, or retargeting onto another file's skeleton are Rust in the project's native crate,
-as in Bevy ([docs/native.md](native.md)).
+Events at a clip's end, and retargeting onto another file's skeleton, are Rust in the project's
+native crate, as in Bevy ([docs/native.md](native.md)). Blends and masks are a graph, and tweens a
+TS-built clip (above). Clip events stay Rust: Bevy fires them as observers in the animation
+system, mid-frame, where a TS handler cannot run; a TS system can watch `Animations.status` for
+`justCompleted` instead. Curves that need a closure (`map`, `zip`) are Rust too.
 
 ## Cost
 
@@ -254,3 +436,20 @@ by the headless window, so CPU is the number that moves.
 
 Speed 0 and hiding cost what playing does; `paused` and `cull` bring 100 villagers to within about
 5 to 10 points of none.
+
+### Tweens: a TS clip against a TS system
+
+400 cubes bobbing `translation.y` (`ARMS="T S" scripts/animation-bench.sh 8 400`, process
+`animation-control-tween-bench`): one clip built in TS with `assets.add`, played ping-pong by
+`PlayAnimation` on every cube (T), against a TS system writing every cube's `Transform` each frame
+(S). 3 runs per arm were within noise, so 8, interleaved, niced, on a shared machine; mean ±
+standard deviation over runs, p95 the median over runs.
+
+| Arm | CPU | Update mean | Update p95 |
+| --- | --- | --- | --- |
+| T, clip | 112 ± 11 % | 2.81 ± 0.90 ms | 11.56 ms |
+| S, TS system | 109 ± 12 % | 2.70 ± 0.74 ms | 11.66 ms |
+
+At 400 they cost the same: the arms are within noise. The clip arm runs no TS per frame (the TSX
+tween test checks no host call is made), so its cost does not grow with the script's own work; a
+TS system's does.

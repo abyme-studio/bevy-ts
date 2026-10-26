@@ -238,9 +238,52 @@ const HAND_FIELDS: &[(&str, &[(&str, &str)])] = &[("bevy_image::image::Image", &
 /// `bevy_ts::reflect_asset`'s loader entries.
 const LOAD_SETTINGS: &[(&str, &[(&str, &str)])] = &[("bevy_image::image::Image", &[("sampler", "bevy_image::image::ImageSampler"), ("is_srgb", "bool")])];
 
+/// A `bevy-ts/bevy` class written by hand in place of the generated one (change
+/// `animation-control`): a builder TS holds as JSON for a hand-mapped asset
+/// (`app.ts_hand_map`), or statics on a component. Its JS and d.ts replace the generated
+/// lines; an asset's `fields` is the JSON its hand-map reads and writes.
+struct Hand {
+    path: &'static str,
+    js: &'static str,
+    dts: &'static str,
+    fields: Option<&'static str>,
+}
+
+const HAND: &[Hand] = &[
+    Hand {
+        path: "bevy_animation::AnimationTargetId",
+        js: include_str!("hand_ts/animation_target_id.js"),
+        dts: include_str!("hand_ts/animation_target_id.d.ts"),
+        fields: None,
+    },
+    Hand {
+        path: "bevy_animation::graph::AnimationGraph",
+        js: include_str!("hand_ts/animation_graph.js"),
+        dts: include_str!("hand_ts/animation_graph.d.ts"),
+        fields: Some(
+            "graph: { nodes: { node_type: \"Blend\" | \"Add\" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; \
+             node_holes: never[]; edge_property: \"directed\"; edges: [number, number, null][] }; root: number; \
+             mask_groups: [string | { readonly names: readonly string[] }, number][]",
+        ),
+    },
+    Hand {
+        path: "bevy_animation::AnimationClip",
+        js: include_str!("hand_ts/animation_clip.js"),
+        dts: include_str!("hand_ts/animation_clip.d.ts"),
+        fields: Some("curves: [AnimationTarget, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number"),
+    },
+];
+
+fn hand(path: &str) -> Option<&'static Hand> {
+    HAND.iter().find(|h| h.path == path)
+}
+
 /// An asset's fields as `bevy-ts/bevy` types them: as the writer takes them, tagged with its type
 /// path so refs of two assets never type as each other.
 fn asset_fields(registry: &TypeRegistry, path: &str, reg: &TypeRegistration) -> String {
+    if let Some(fields) = hand(path).and_then(|h| h.fields) {
+        return format!("AssetFields<{path:?}, {{ {fields} }}>");
+    }
     let hand = HAND_FIELDS.iter().find(|(p, _)| *p == path).map(|(_, f)| *f);
     let fields: Vec<String> = match (hand, reg.type_info()) {
         (Some(fields), _) => fields.iter().map(|(f, ty)| format!("{}: {}", prop(f), ts_type(registry, ty, 1))).collect(),
@@ -599,7 +642,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
     let mut dts = format!(
         "{head}// `bevy-ts/bevy`: Rust components and resources TS can name.\n\
          import {{ Component, EntityEvent, Event, Message, Resource }} from \"bevy-ts\";\n\
-         import type {{ AssetClass, AssetFields, AssetLoad, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
+         import type {{ AssetClass, AssetFields, AssetLoad, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 }} from \"bevy-ts\";\n\n\
          export {{ Time, Transform }} from \"bevy-ts\";\n"
     );
     let components = named(&registry, native);
@@ -613,6 +656,11 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         let (factory, base) = if is_resource(reg) { ("nativeResource", "Resource") } else { ("nativeComponent", "Component") };
         js.push('\n');
         dts.push('\n');
+        if let Some(h) = hand(&path) {
+            js.push_str(h.js);
+            dts.push_str(h.dts);
+            continue;
+        }
         match native.get(&path).filter(|n| n.type_path == path) {
             Some(n) => {
                 let fields: Vec<String> = n.layout.fields.iter().map(|f| format!("{}: {}", prop(&f.name), field_js(&f.ty))).collect();
@@ -698,6 +746,12 @@ pub fn emit_bevy(world: &World) -> (String, String) {
             (false, false) => ", { of: false }",
             (false, true) => ", { of: false, load: true }",
         };
+        if let Some(h) = hand(&path) {
+            js.push_str(h.js);
+            let _ = writeln!(dts, "export type {name} = {};", asset_fields(&registry, &path, reg));
+            dts.push_str(h.dts);
+            continue;
+        }
         let _ = writeln!(js, "export const {name} = asset({path:?}{opts});");
         let _ = writeln!(dts, "export type {name} = {};", asset_fields(&registry, &path, reg));
         let class = if default { "AssetClass" } else { "AssetType" };

@@ -1,0 +1,29 @@
+(
+    graph: (
+        nodes: [
+            (
+                node_type: Blend,
+                mask: 0,
+                weight: 1.0,
+            ),
+            (
+                node_type: Clip("models/Fox.glb#Animation0"),
+                mask: 0,
+                weight: 0.5,
+            ),
+            (
+                node_type: Clip("models/Fox.glb#Animation2"),
+                mask: 0,
+                weight: 0.5,
+            ),
+        ],
+        node_holes: [],
+        edge_property: directed,
+        edges: [
+            Some((0, 1, ())),
+            Some((0, 2, ())),
+        ],
+    ),
+    root: 0,
+    mask_groups: {},
+)

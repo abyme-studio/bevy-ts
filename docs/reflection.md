@@ -108,6 +108,11 @@ default` gap: TSX, levels and the editor build a component from its default, so 
 it. It fails the test unless `bevy_ts::type_data` gives it a default or `reflect_value::NO_DEFAULT`
 lists it with a reason. A `type_data` entry Bevy already reflects fails the test too.
 
+A hand-mapped asset (`app.ts_hand_map`: `AnimationGraph`, `AnimationClip`) is not walked into:
+its entry reads and writes it whole, so the check adds `{}` with `assets.add`, reads it with
+`assets.get`, adds that read and reads again, and fails when the two reads differ. Its TS type is hand-written
+([animation](animation.md)).
+
 ## Uncovered
 
 `reflect_value::UNCOVERED`, each with its reason. A field of an uncovered type reads as absent and
@@ -123,7 +128,6 @@ fails to write with the reason; a hole of one fails the load.
 | `bevy_picking::events::PointerState` | press and click times are Instants, opaque with no reflected serde |
 | `bevy_time::time::Time<bevy_time::real::Real>` | its clock readings are Instants, opaque with no reflected serde |
 | `bevy_scene::scene_component::SceneComponentInfo` | computed by bevy_scene; holds a &'static str |
-| `bevy_animation::graph::AnimationGraph` | its graph is a petgraph DiGraph, opaque with no default or reflected serde (building graphs is animation-control's) |
 | `bevy_image::image::Image` | reflect-assets: its wgpu texture and view descriptors are opaque with no reflected serde |
 | `bevy_render::storage::ShaderBuffer` | opaque with no reflected serde |
 | `bevy_mesh::mesh::Mesh` | script-assets: no default; attributes and indices are reflect(ignore); engine-core builds meshes |

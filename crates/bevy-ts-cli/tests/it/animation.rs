@@ -301,6 +301,9 @@ app.scene("foxes", () => (
 fn animations_seek_rewind_replay() {
     let dir = fox_project("animation-seek", &[("package.json", "{}"), ("src/game.tsx", DRIVE_GAME)]);
     let mut app = anim_app(&dir, "src/game.tsx");
+    // Frames of 1/60 s, not of wall time: a loaded machine's long frames would carry the run past
+    // where two frames take it.
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f32(1.0 / 60.0)));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     until(&mut app, "the rewind line", |app| messages(app).iter().any(|l| l.starts_with("after rewind")));
@@ -311,9 +314,144 @@ fn animations_seek_rewind_replay() {
     let field = |l: &str, tag: &str| -> f32 { l.split(' ').skip_while(|w| *w != tag).nth(1).unwrap().parse().unwrap() };
     let after = line("after seek");
     let run = field(&after, "run");
-    assert!((0.7..1.0).contains(&run), "the run plays on from 0.7: {after}");
+    assert!((0.7..0.8).contains(&run), "the run plays on from 0.7: {after}");
     assert_eq!(field(&after, "held"), 0.3, "a parked root's clip moved and stands still: {after}");
     let back = line("after rewind");
     assert!(field(&back, "run") < 0.2, "rewound to 0 and playing: {back}");
     assert_eq!(field(&back, "held"), 0.0, "replayed, still parked: {back}");
+}
+
+fn graph_handle(app: &App, root: Entity) -> Handle<AnimationGraph> {
+    let p = app.world().get::<AnimationTargets>(root).unwrap().players[0];
+    app.world().get::<bevy::animation::graph::AnimationGraphHandle>(p).unwrap().0.clone()
+}
+
+/// The clip nodes the root's first player plays, and each one's elapsed seconds.
+fn clips_playing(app: &App, root: Entity) -> Vec<(usize, f32)> {
+    let p = app.world().get::<AnimationTargets>(root).unwrap().players[0];
+    let mut out: Vec<(usize, f32)> = app.world().get::<AnimationPlayer>(p).unwrap().playing_animations().map(|(n, a)| (n.index(), a.elapsed())).collect();
+    out.sort_by_key(|(n, _)| *n);
+    out
+}
+
+const GRAPH_GAME: &str = r#"import { app } from "bevy-ts";
+import { AnimationGraph, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
+const g = new AnimationGraph();
+const b = g.addBlend(1, g.root);
+g.addClip("models/Fox.glb#Animation0", 0.5, b);
+g.addClip("models/Fox.glb#Animation2", 0.5, b);
+app.scene("foxes", () => (
+  <entity key="fox">
+    <WorldAssetRoot value="models/Fox.glb#Scene0" />
+    <PlayAnimation graph={g} />
+  </entity>
+));
+"#;
+
+#[test]
+fn a_ts_built_graph_blends() {
+    let dir = fox_project("animation-graph", &[("package.json", "{}"), ("src/game.tsx", GRAPH_GAME)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    until(&mut app, "the fox to play both clips", |app| {
+        let w = app.world_mut();
+        the_fox(w).is_some_and(|f| w.get::<AnimationTargets>(f).is_some_and(|t| !t.players.is_empty())) && {
+            let f = the_fox(app.world_mut()).unwrap();
+            clips_playing(app, f).len() == 2
+        }
+    });
+    let fox = the_fox(app.world_mut()).unwrap();
+    let handle = graph_handle(&app, fox);
+    assert_ne!(handle, app.world().resource::<SharedGraph>().handle, "the fox has its own graph, not the shared one");
+    let graphs = app.world().resource::<Assets<AnimationGraph>>();
+    let g = graphs.get(&handle).expect("the built graph is an asset");
+    let weights: Vec<f32> = g.nodes().map(|n| g[n].weight).collect();
+    assert_eq!(weights, vec![1.0, 1.0, 0.5, 0.5]);
+    assert_eq!(clips_playing(&app, fox).iter().map(|(n, _)| *n).collect::<Vec<_>>(), vec![2, 3], "both clip nodes play");
+}
+
+const REWEIGHT_GAME: &str = r#"import { app, assets, Update } from "bevy-ts";
+import { AnimationGraph, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
+const g = new AnimationGraph();
+const b = g.addBlend(1, g.root);
+const survey = g.addClip("models/Fox.glb#Animation0", 0.5, b);
+const run = g.addClip("models/Fox.glb#Animation2", 0.5, b);
+const ref = assets.add(g);
+let frames = 0;
+export function reweight() {
+  if (++frames !== 40) return;
+  g.get(survey)!.weight = 1;
+  g.get(run)!.weight = 0;
+  assets.set(ref, g);
+  console.log("reweighted");
+}
+app.addSystems(Update, reweight);
+app.scene("foxes", () => (
+  <entity key="fox">
+    <WorldAssetRoot value="models/Fox.glb#Scene0" />
+    <PlayAnimation graph={ref} />
+  </entity>
+));
+"#;
+
+#[test]
+fn a_ts_graph_reweights_live() {
+    let dir = fox_project("animation-reweight", &[("package.json", "{}"), ("src/game.tsx", REWEIGHT_GAME)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    until(&mut app, "the reweight", |app| messages(app).iter().any(|l| l == "reweighted"));
+    let fox = the_fox(app.world_mut()).unwrap();
+    let before = clips_playing(&app, fox);
+    assert_eq!(before.len(), 2, "both clips play: {before:?}");
+    for _ in 0..3 {
+        app.update();
+    }
+    let handle = graph_handle(&app, fox);
+    let graphs = app.world().resource::<Assets<AnimationGraph>>();
+    let g = graphs.get(&handle).unwrap();
+    assert_eq!(g.nodes().map(|n| g[n].weight).collect::<Vec<_>>(), vec![1.0, 1.0, 1.0, 0.0], "the weights reached the asset");
+    let after = clips_playing(&app, fox);
+    assert_eq!(after.iter().map(|(n, _)| *n).collect::<Vec<_>>(), vec![2, 3], "no clip stopped");
+    for ((_, a), (_, b)) in before.iter().zip(&after) {
+        assert!(b > a, "no clip restarted: {before:?} then {after:?}");
+    }
+}
+
+const TWEEN_GAME: &str = r#"import { app, Transform } from "bevy-ts";
+import { AnimatableCurve, animatedField, AnimationClip, AnimationTargetId, EasingCurve, interval, PlayAnimation } from "bevy-ts/bevy";
+const rise = new EasingCurve([0, 0, 0], [0, 2, 0], "CubicOut").reparametrizeLinear(interval(0, 1)).pingPong();
+const clip = new AnimationClip().addCurveToTarget(AnimationTargetId.root, new AnimatableCurve(animatedField(Transform, "translation"), rise));
+app.scene("signs", () => (
+  <entity name="sign">
+    <Transform translation={[0, 0, 0]} />
+    <PlayAnimation clip={clip} repeat="Forever" />
+  </entity>
+));
+"#;
+
+#[test]
+fn a_tsx_tween_moves_with_no_ts_per_frame() {
+    let dir = fox_project("animation-tween", &[("package.json", "{}"), ("src/game.tsx", TWEEN_GAME)]);
+    let mut app = anim_app(&dir, "src/game.tsx");
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f32(1.0 / 60.0)));
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let sign = |app: &mut App| {
+        let w = app.world_mut();
+        w.query::<(Entity, &Name)>().iter(w).find(|(_, n)| n.as_str() == "sign").map(|(e, _)| e)
+    };
+    until(&mut app, "the sign to rise", |app| sign(app).is_some_and(|e| app.world().get::<Transform>(e).unwrap().translation.y > 0.1));
+    let e = sign(&mut app).unwrap();
+    assert_eq!(app.world().resource::<bevy_ts::systems::TsSystems>().iter().count(), 0, "the game has no TS system");
+    let calls = app.world().resource::<bevy_ts::host::HostParams>().calls;
+    let mut ys = vec![];
+    for _ in 0..60 {
+        app.update();
+        ys.push(app.world().get::<Transform>(e).unwrap().translation.y);
+    }
+    assert!(ys.windows(2).filter(|w| w[0] != w[1]).count() > 30, "the sign moves every frame: {ys:?}");
+    assert!(ys.iter().all(|y| (-1e-4..=2.0001).contains(y)), "it stays between its ends: {ys:?}");
+    assert_eq!(app.world().resource::<bevy_ts::host::HostParams>().calls, calls, "no host call per frame");
 }

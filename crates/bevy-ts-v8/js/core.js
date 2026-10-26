@@ -1376,6 +1376,10 @@ function assetCall(name, args) {
   return JSON.parse(out);
 }
 
+function isAssetValue(v) {
+  return v !== null && typeof v === "object" && typeof v.$of === "string";
+}
+
 function assetPath(T) {
   if (!T || typeof T.typePath !== "string" || T[KIND] !== "asset") throw new TypeError("assets.add(Type, props): Type is an asset class from bevy-ts/bevy (StandardMaterial)");
   return T.typePath;
@@ -1387,8 +1391,12 @@ function assetPath(T) {
  * reloads or stops (the assets stay for a hot reload's entities, until a restart or stop).
  */
 export const assets = {
-  /** `assets.add(StandardMaterial, { base_color: "#f80" })`: the asset from its default, with `props` written over it. */
+  /**
+   * `assets.add(StandardMaterial, { base_color: "#f80" })`: the asset from its default, with `props`
+   * written over it. `assets.add(value)` makes an asset value (`T.of(...)`, a built graph) its own asset.
+   */
   add(T, props = {}) {
+    if (isAssetValue(T)) return Object.freeze(assetCall("add", [T.$of, T.props]));
     return Object.freeze(assetCall("add", [assetPath(T), props]));
   },
   /** The asset as JSON, or `undefined` when it is gone. One host call and a full read: keep the value in JS rather than reading per frame. */
@@ -1396,9 +1404,9 @@ export const assets = {
     const v = assetCall("get", [ref]);
     return v === null ? undefined : v;
   },
-  /** Writes `patch` over the asset's current value; a patch that changes nothing marks nothing changed. */
+  /** Writes `patch` over the asset's current value (an asset value: its props); a patch that changes nothing marks nothing changed. */
   set(ref, patch) {
-    assetCall("set", [ref, patch]);
+    assetCall("set", [ref, isAssetValue(patch) ? patch.props : patch]);
   },
 };
 
