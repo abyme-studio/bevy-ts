@@ -43,7 +43,7 @@ export function outcomes(saved: MessageReader<WorldSaved>, loaded: MessageReader
   whole, and two saves of one name at once leave one of them whole (the last rename).
 - The outcome is a message. `WorldSaved { name, error }` comes once the file is in place or the
   save failed; `WorldLoaded { name, entities, error }` once the entities are in the world, with
-  the new entities. `error` is absent on success and names the cause: a missing file, Bevy's parse
+  the new entities. `error` is `None` on success (`null` in TS) and names the cause: a missing file, Bevy's parse
   error with its position, a component with no serde form (its type path), an IO error (the
   path). A script reads them with `MessageReader<WorldSaved>` (both from `bevy-ts/bevy`);
   Rust reads them as any message.
