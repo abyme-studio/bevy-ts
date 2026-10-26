@@ -664,7 +664,10 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         }
     }
     // Asset types (reflect-assets): `assets.add(T, ...)`, `T.of(...)`, and the `T` of `Handle<T>`.
+    let mut assets = BTreeMap::new();
     for (path, name, reg) in assets_named(&registry) {
+        taken.insert(name.clone());
+        assets.insert(path.clone(), name.clone());
         let default = reg.data::<ReflectDefault>().is_some();
         js.push('\n');
         dts.push('\n');
@@ -673,7 +676,7 @@ pub fn emit_bevy(world: &World) -> (String, String) {
         let class = if default { "AssetClass" } else { "AssetType" };
         let _ = writeln!(dts, "export declare const {name}: {class}<{name}>;");
     }
-    emit_rust_events(&registry, &mut taken, &mut js, &mut dts);
+    emit_rust_events(&registry, &mut taken, assets, &mut js, &mut dts);
     (js, dts)
 }
 
@@ -731,7 +734,8 @@ const ON_OWN: [&str; 5] = ["entity", "original", "propagate", "toJSON", "event"]
 /// fields, an enum as its value's type, a generic type (`AssetEvent<A>`) as one name whose
 /// instances the reader picks by type argument. An asset type a generic is instanced on gets a
 /// marker to spell it (`AssetEvent<Image>`).
-fn emit_rust_events(registry: &TypeRegistry, taken: &mut BTreeSet<String>, js: &mut String, dts: &mut String) {
+/// `assets` are the asset classes already emitted, by type path: a generic's argument names them.
+fn emit_rust_events(registry: &TypeRegistry, taken: &mut BTreeSet<String>, assets: BTreeMap<String, String>, js: &mut String, dts: &mut String) {
     use bevy_ts::rust_events::{ReflectTsEvent, ReflectTsMessage};
     let mut all: Vec<RustData> = registry
         .iter()
@@ -787,8 +791,9 @@ fn emit_rust_events(registry: &TypeRegistry, taken: &mut BTreeSet<String>, js: &
             }
         }
     }
-    // Asset markers by type path, made once whichever generic names them first.
-    let mut markers: BTreeMap<String, String> = BTreeMap::new();
+    // Asset classes and markers by type path; a marker is made once, for an asset type with no
+    // class (`Gltf`, `Shader`, `Font`), whichever generic names it first.
+    let mut markers = assets;
     for (base, instances) in generics {
         let short = base.rsplit("::").next().unwrap_or(&base);
         let krate = base.split("::").next().unwrap_or("");
