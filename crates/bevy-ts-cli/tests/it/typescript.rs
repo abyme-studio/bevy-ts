@@ -104,5 +104,5 @@ fn repeated_errors_are_logged_once_per_second_with_a_count() {
     assert!((1..=1 + secs).contains(&lines.len()), "{} lines in {secs} s: {:?}", lines.len(), messages(&app));
     assert!(lines.iter().map(|e| e.count).sum::<u32>() <= 50, "{lines:?}");
     let systems = app.world().resource::<bevy_ts::systems::TsSystems>();
-    assert!(systems.iter().next().unwrap().last_error.is_some());
+    assert!(systems.iter().next().unwrap().last_error().is_some());
 }

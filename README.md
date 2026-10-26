@@ -8,7 +8,8 @@ without recompiling Rust.
 - **TypeScript says what exists and how it behaves**: components (registered as real ECS
   components with native layouts), systems, scenes, UI.
 - **The bridge** runs an embedded JS runtime and crosses the boundary in batches (queries,
-  command buffers, events), never once per component access.
+  command buffers, events), never once per component access. Each TS system is a Bevy system with
+  its exact access; its JS runs on the main thread.
 - **TSX describes the world; Bevy runs it.** A custom JSX runtime and reconciler turn TSX into
   native entities on mount and on change, never per frame. Stable keys keep runtime state across
   hot reloads; `initial*` props are never reset by a reload. Built on BSN templates where they fit.

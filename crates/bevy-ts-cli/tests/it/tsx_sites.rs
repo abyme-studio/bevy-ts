@@ -198,7 +198,7 @@ fn ten_thousand_bound_sirens_cost_within_twice_a_ts_system() {
         }
         frame_time(&mut system, &ids, 50);
         let run = median_over(&mut system, &ids, 300, |app| {
-            app.world().resource::<bevy_ts::systems::TsSystems>().iter().next().map_or(0.0, |s| s.last_run_us as f64)
+            app.world().resource::<bevy_ts::systems::TsSystems>().iter().next().map_or(0.0, |s| s.last_run_us() as f64)
         });
         println!("TS system: its run per frame, median {run:.1} µs");
         (frame_time(&mut system, &ids, 300), run)

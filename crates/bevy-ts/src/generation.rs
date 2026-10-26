@@ -179,6 +179,7 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
         crate::net::close_all(world);
         a.rt.backend.restart();
         world.insert_resource(TsSystems::default());
+        crate::bevy_system::retire_all(world);
         a.rt.entries.clear();
     }
     a.load(world);
@@ -283,6 +284,7 @@ impl Applying {
             h(world);
         }
         world.insert_resource(TsSystems::default());
+        crate::bevy_system::retire_all(world);
         self.rt.entries.clear();
     }
 
@@ -660,6 +662,7 @@ fn commit(world: &mut World, rt: &mut ScriptRuntime, generation: &Generation, lo
     crate::schedules::reconcile_order(world, &manifest.schedule_order);
     crate::schedules::ensure_stages(world, &manifest.init_schedules);
     crate::states::sync(world);
+    crate::bevy_system::commit(world);
     crate::observers::install(world, &watched);
     crate::observers::install_rust(world, &rust);
     rt.entries = manifest.entries.iter().map(|e| e.name.clone()).collect();

@@ -84,7 +84,7 @@ fn load_ok(app: &mut App) {
 }
 
 fn run_error(app: &App) -> Option<String> {
-    app.world().resource::<bevy_ts::systems::TsSystems>().iter().find_map(|s| s.last_error.as_ref().map(|e| e.message.clone()))
+    app.world().resource::<bevy_ts::systems::TsSystems>().iter().find_map(|s| s.last_error().map(|e| e.message.clone()))
 }
 
 #[derive(Clone, Default)]

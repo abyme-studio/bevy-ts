@@ -299,6 +299,11 @@ impl ScriptAssets {
 /// A queued value, its handle, and its kind when the table knows it.
 type FlushItem = (Queued, UntypedHandle, Option<Kind>);
 
+/// Whether values wait for [`flush`].
+pub fn queued(world: &World) -> bool {
+    world.get_resource::<ScriptAssets>().is_some_and(|a| !a.table().queued.is_empty())
+}
+
 /// Puts every queued value in its `Assets<T>`: an add inserted at its UUID, a set applied once.
 /// A hand-mapped value is inserted whole at the ref's id, for an add and a set alike.
 /// Runs after each system run and entry call, before its commands apply.

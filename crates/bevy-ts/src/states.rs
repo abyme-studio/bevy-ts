@@ -12,6 +12,7 @@ use crate::messages::TsPayloads;
 use crate::systems::ListKey;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::message::MessageRegistry;
+use bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell;
 use bevy::prelude::*;
 use bevy::state::state::{FreelyMutableState, StateTransition, StateTransitionEvent, StateTransitionSystems};
 use bevy::state::state_scoped::{
@@ -83,6 +84,9 @@ pub struct SlotOps {
     take_next: fn(&mut World) -> Option<(u32, bool)>,
     enter: fn(&mut World),
     state_id: fn(&World) -> Option<ComponentId>,
+    /// The `State` resource's id, registered if it is not yet, and its value read with only that
+    /// resource's access: a run condition's, which Bevy may evaluate off the main thread.
+    state_cell: fn(&mut World) -> StateCell,
     add_runner: fn(&mut World, u8, RunKind, u32, u32),
     insert_scoped: fn(&mut World, Entity, u8, u32),
     remove_scoped: fn(&mut World, Entity, u8),
@@ -262,6 +266,22 @@ fn state_id<const N: u8>(world: &World) -> Option<ComponentId> {
     world.components().component_id::<State<TsState<N>>>()
 }
 
+fn state_cell<const N: u8>(world: &mut World) -> StateCell {
+    // SAFETY (the readers): the caller may read `State<TsState<N>>`, `PreviousState<TsState<N>>`.
+    unsafe fn current<const N: u8>(world: UnsafeWorldCell) -> Option<u32> {
+        unsafe { world.get_resource::<State<TsState<N>>>() }.map(|s| s.get().0)
+    }
+    unsafe fn previous<const N: u8>(world: UnsafeWorldCell) -> Option<u32> {
+        unsafe { world.get_resource::<PreviousState<TsState<N>>>() }.map(|s| s.get().0)
+    }
+    StateCell {
+        state: world.register_component::<State<TsState<N>>>(),
+        previous: world.register_component::<PreviousState<TsState<N>>>(),
+        current: current::<N>,
+        previous_of: previous::<N>,
+    }
+}
+
 fn add_runner<const N: u8>(world: &mut World, _slot: u8, kind: RunKind, a: u32, b: u32) {
     let slot = N as usize;
     let mut schedules = world.resource_mut::<Schedules>();
@@ -291,6 +311,7 @@ macro_rules! ops {
             take_next: take_next::<$n>,
             enter: enter::<$n>,
             state_id: state_id::<$n>,
+            state_cell: state_cell::<$n>,
             add_runner: add_runner::<$n>,
             insert_scoped: p_insert_scoped::<$n>,
             remove_scoped: p_remove_scoped::<$n>,
@@ -357,6 +378,16 @@ fn r_set_next<S: FreelyMutableState + FromReflect>(world: &mut World, value: u32
 fn r_state_id<S: FreelyMutableState>(world: &World) -> Option<ComponentId> {
     world.components().component_id::<State<S>>()
 }
+fn r_state_cell<S: FreelyMutableState + Reflect>(world: &mut World) -> StateCell {
+    // SAFETY (the readers): the caller may read `State<S>`, `PreviousState<S>`.
+    unsafe fn current<S: FreelyMutableState + Reflect>(world: UnsafeWorldCell) -> Option<u32> {
+        unsafe { world.get_resource::<State<S>>() }.and_then(|s| variant(s.get())).map(sym)
+    }
+    unsafe fn previous<S: FreelyMutableState + Reflect>(world: UnsafeWorldCell) -> Option<u32> {
+        unsafe { world.get_resource::<PreviousState<S>>() }.and_then(|s| variant(s.get())).map(sym)
+    }
+    StateCell { state: world.register_component::<State<S>>(), previous: world.register_component::<PreviousState<S>>(), current: current::<S>, previous_of: previous::<S> }
+}
 fn r_add_runner<S: FreelyMutableState + FromReflect>(world: &mut World, slot: u8, kind: RunKind, a: u32, b: u32) {
     let (Some(va), vb) = (from_sym::<S>(a), from_sym::<S>(b)) else { return };
     let slot_i = slot as usize;
@@ -416,6 +447,7 @@ pub fn expose_rust<S: FreelyMutableState + Reflect + FromReflect + bevy::reflect
         take_next: r_take_next,
         enter: r_none,
         state_id: r_state_id::<S>,
+        state_cell: r_state_cell::<S>,
         add_runner: r_add_runner::<S>,
         insert_scoped: r_insert_scoped::<S>,
         remove_scoped: r_remove_scoped::<S>,
@@ -582,6 +614,24 @@ pub fn set_next_of(world: &mut World, slot: u8, value: u32, if_neq: bool) -> boo
 /// The resource id of `State<TsState<N>>`, once registered: for `stateChanged`.
 pub fn state_id_of(world: &World, slot: u8) -> Option<ComponentId> {
     (ops_of(world, slot).state_id)(world)
+}
+
+/// Reads a machine's value given only read access to its `State` resource.
+pub type CurrentCell = unsafe fn(UnsafeWorldCell) -> Option<u32>;
+
+/// A machine's `State` and `PreviousState` resource ids and their readers, for a run condition
+/// or a TS system's `State` param run as a Bevy system.
+#[derive(Clone, Copy)]
+pub struct StateCell {
+    pub state: ComponentId,
+    pub previous: ComponentId,
+    pub current: CurrentCell,
+    pub previous_of: CurrentCell,
+}
+
+/// [`StateCell`] of machine `slot`.
+pub fn state_cell_of(world: &mut World, slot: u8) -> StateCell {
+    (ops_of(world, slot).state_cell)(world)
 }
 
 /// Inserts state-scoped component `kind` (crate::states::SCOPED) of machine `slot`'s `value`:

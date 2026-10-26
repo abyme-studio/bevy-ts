@@ -147,7 +147,7 @@ fn run(mut app: App) -> Vec<f64> {
             app.update();
             match app.world().get_resource::<Chunk>() {
                 Some(c) => c.took,
-                None => app.world().resource::<bevy_ts::systems::TsSystems>().iter().next().unwrap().last_run_us as f64,
+                None => app.world().resource::<bevy_ts::systems::TsSystems>().iter().next().unwrap().last_run_us() as f64,
             }
         })
         .collect()

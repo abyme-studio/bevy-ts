@@ -573,7 +573,7 @@ app.addSystems(Startup, setup).addSystems(Update, drive);
         let mut systems = app.world_mut().resource_mut::<bevy_ts::systems::TsSystems>();
         let name = systems.targeted.keys().next().cloned().expect("onHit is built");
         let s = systems.targeted.remove(&name).unwrap();
-        (s.key.index, s.decl)
+        (s.key().index, s.decl)
     };
     let e = spawn_ts(&mut app, "game::Tag", serde_json::json!({ "n": 2 }), ());
     bevy_ts::observers::observe(app.world_mut(), e, index, decl);

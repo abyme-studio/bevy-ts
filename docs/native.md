@@ -12,7 +12,7 @@ the engine is rebuilt only when Rust changes, and a team can share built engines
 | Particles | GPU or parallel CPU systems | Native crate | Settings as columns |
 | Spatial queries at scale | The index is a heap structure | Native crate, as a resource | Exported param methods, batched |
 | Render-world work | Runs in the render sub-app, no JS there | Native crate | Settings as columns on cameras or entities |
-| Parallel systems | JS runs exclusive on the main thread | Native crate | Ordering through slots, data through shared components |
+| Parallel systems | JS runs on the main thread, one TS system at a time | Native crate | Ordering through `BevyTsSet` and slots, data through shared components |
 | Third-party Bevy plugins | They are Rust crates | One line of `bevy-ts.json` | Their reflected types |
 | Components with heap data (`String`, `Vec`, `Handle`) | No fixed layout; need drop | Rust types | Typed values in TSX and the protocol, filters in queries |
 | Platform SDKs | C SDKs, foreign threads | Native crate | Exported params, components for results |
@@ -399,12 +399,22 @@ anchors: `bevy:transform-propagate` in `PostUpdate`, `bevy:fixed-main-loop` in
 `RunFixedMainLoop` (the fixed steps), and one per stage, `bevy-ts:<stage>` in kebab case
 (`bevy-ts:update`, `bevy-ts:fixed-last`), which names its set even before the stage exists. A TS system orders against one with
 `systems(s).after(systemSet("rapier:step"))` (or `.before`) and runs in a slot around the set, in
-the set's schedule. The first generation that names a set makes its slot: one exclusive system,
-one schedule edit at that reload. Later reloads move systems between existing slots without
-touching a schedule; an emptied slot stays and is skipped. An unused set has no slot, so it costs
-the parallel executor nothing. A system names at most one exposed set, in that set's schedule,
+the set's schedule. The first generation that names a set makes its slot: a set,
+`BevyTsSlot`, ordered against the exposed set once. Each TS system in a slot is a Bevy system of its
+own, as in a stage. A reload that moves a system edits only the schedules it leaves and enters; an
+emptied slot stays, empty. An unused set has no slot, so it costs the parallel executor nothing.
+Rust orders against every TS system of a stage with `BevyTsSet::<Stage>` (`.after(BevyTsSet::Update)`),
+and a Rust system that conflicts with none of them may run beside them. A system names at most one exposed set, in that set's schedule,
 and orders against other TS systems only within its slot. Rust orders against a slot with
 `BevyTsSlot::before(name)` / `BevyTsSlot::after(name)`.
+
+Some TS systems declare more access than they use, so Bevy runs them beside less than it could.
+With `reflect`, every TS system reads every resource (an `assets.*` call may read any `Assets<T>`):
+it conflicts only with a Rust system that writes a resource. A system with a reflect-tier term, a
+reflected resource or a Rust `MessageReader` writes the whole world and runs alone. A condition
+holding a TS predicate or a Rust `onMessage` runs in an exclusive gate system just before what it
+gates, since JS runs on the main thread only. Typed terms, typed resources and the other conditions
+declare exact access.
 
 ## Schedules, conditions and one-shot systems from Rust
 

@@ -264,7 +264,7 @@ app.addSystems(Update, nudge);
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     app.update();
-    let err = app.world().resource::<bevy_ts::systems::TsSystems>().iter().find_map(|s| s.last_error.as_ref().map(|e| e.message.clone()));
+    let err = app.world().resource::<bevy_ts::systems::TsSystems>().iter().find_map(|s| s.last_error().map(|e| e.message.clone()));
     assert!(err.as_deref().is_some_and(|m| m.contains("GlobalTransform is computed by Bevy, so it cannot be written")), "{err:?}");
     assert_eq!(app.world().get::<GlobalTransform>(e).unwrap().translation(), Vec3::new(1.0, 2.0, 3.0));
 }
