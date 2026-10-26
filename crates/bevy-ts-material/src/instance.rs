@@ -139,10 +139,9 @@ fn upload(mut inst: ResMut<Instances>, buffers: Option<ResMut<Assets<ShaderBuffe
         *buffer_size = grown as u64;
     }
     let out: &mut [u8] = data.as_mut();
-    for (chunk, row) in out.chunks_exact_mut(INSTANCE_BYTES).zip(&inst.data) {
-        for (w, v) in chunk.chunks_exact_mut(4).zip(row) {
-            w.copy_from_slice(&v.to_le_bytes());
-        }
+    let (words, _) = out.as_chunks_mut::<4>();
+    for (w, v) in words.iter_mut().zip(inst.data.iter().flatten()) {
+        *w = v.to_le_bytes();
     }
 }
 
